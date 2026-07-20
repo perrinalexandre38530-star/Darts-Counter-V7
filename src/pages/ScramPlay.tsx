@@ -153,6 +153,7 @@ export default function ScramPlay(props: any) {
   const [hitMode, setHitMode] = React.useState<HitMode>("S");
   const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
   const [showEnd, setShowEnd] = React.useState(false);
+  const [showMarksBoard, setShowMarksBoard] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const [viewport, setViewport] = React.useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 390,
@@ -185,6 +186,10 @@ export default function ScramPlay(props: any) {
     return out;
   }, [params.teamConfigs]);
   const isSolo = params.participantMode !== "teams" && teamPlayers.A.length === 1 && teamPlayers.B.length === 1;
+  const teamLogoBySide = React.useMemo(() => ({
+    A: teamConfigBySide.A?.logoDataUrl || null,
+    B: teamConfigBySide.B?.logoDataUrl || null,
+  }), [teamConfigBySide]);
   const displayTeamName = React.useCallback((team: ScramTeam) => {
     if (isSolo && teamPlayers[team][0]) return playerName(teamPlayers[team][0]);
     const configured = String(teamConfigBySide[team]?.name || "").trim();
@@ -418,12 +423,7 @@ export default function ScramPlay(props: any) {
     setShowEnd(false);
   }
 
-  const volleyLabel = throwDarts.map((dart) => {
-    if (dart.v === 50) return "DBULL";
-    if (dart.v === 25) return "BULL";
-    if (dart.v === 0) return "MISS";
-    return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
-  }).join(" • ");
+  const phaseProgress = playableTargets.length ? (closedCount / playableTargets.length) * 100 : 0;
 
   const tickerHeight = viewport.height < 690 ? 48 : 56;
   const dartboardSize = Math.max(132, Math.min(220, viewport.width - 44, Math.floor(viewport.height * .27)));
@@ -441,102 +441,133 @@ export default function ScramPlay(props: any) {
         right={<InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} />}
       />
 
-      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", padding: "6px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto minmax(120px,1fr) auto", gap: 6, overflow: "hidden" }}>
-        <section style={{ ...panelStyle(), minWidth: 0, padding: 7, borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(142px,44%)", gap: 7, alignItems: "center" }}>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}>
-              <div style={{ width: 43, height: 43, position: "relative", flex: "0 0 auto" }}>
-                <div style={{ position: "absolute", inset: 4 }}><ProfileAvatar profile={activeProfile as any} size={35} /></div>
-                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={activeProfile as any} size={43} glow /></div>
+      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", padding: "6px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto auto minmax(0,1fr)", gap: 6, overflow: "hidden", position: "relative" }}>
+        <section style={{ ...panelStyle(), minWidth: 0, padding: 6, borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 106px", gap: 6, alignItems: "stretch" }}>
+            <div style={{ minWidth: 0, display: "grid", justifyItems: "center", alignContent: "center", gap: 2, padding: "2px 0" }}>
+              <div style={{ width: 52, height: 52, position: "relative", flex: "0 0 auto" }}>
+                <div style={{ position: "absolute", inset: 4 }}><ProfileAvatar profile={activeProfile as any} size={44} /></div>
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={activeProfile as any} size={52} glow /></div>
               </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: activeColor, fontSize: 9, fontWeight: 1000, letterSpacing: .8 }}>{botThinking ? "BOT EN RÉFLEXION" : "JOUEUR ACTIF"} • {roleLabel(activeTeam, state.stopperTeam)}</div>
-                <div style={{ marginTop: 1, fontSize: 15, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-                {!isSolo && teamPlayers[activeTeam].length > 1 ? <div style={{ marginTop: 1, color: T.soft, fontSize: 9.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayTeamName(activeTeam)}</div> : null}
-              </div>
+              <div style={{ maxWidth: "100%", fontSize: 15, fontWeight: 1000, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
+              <div style={{ fontSize: 10.5, fontWeight: 1000, color: activeColor, textAlign: "center", letterSpacing: .3 }}>{roleLabel(activeTeam, state.stopperTeam)}</div>
+              {!isSolo && teamPlayers[activeTeam].length > 1 ? <div style={{ maxWidth: "100%", color: T.soft, fontSize: 8.5, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayTeamName(activeTeam)}</div> : null}
             </div>
 
-            <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "1fr 1px 1fr", alignItems: "stretch", borderRadius: 13, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.26)", overflow: "hidden" }}>
-              {(["A", "B"] as ScramTeam[]).map((team, index) => (
-                <React.Fragment key={team}>
-                  {index === 1 ? <div style={{ background: "rgba(255,255,255,.1)" }} /> : null}
-                  <div style={{ minWidth: 0, padding: "4px 5px", textAlign: "center", background: activeTeam === team ? `${TEAM_COLOR[team]}12` : "transparent" }}>
-                    <div style={{ color: TEAM_COLOR[team], fontSize: 8.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sideNames[team]}</div>
-                    <div style={{ marginTop: -1, fontSize: 24, lineHeight: 1, fontWeight: 1000, color: TEAM_COLOR[team], textShadow: `0 0 10px ${TEAM_COLOR[team]}66` }}>{state.scores[team]}</div>
+            <div style={{ minWidth: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)", gap: 5 }}>
+              <div style={{ display: "flex", justifyContent: "center", gap: 3, paddingTop: 1 }}>
+                {Array.from({ length: 3 }, (_, index) => <DartIconColorizable key={index} color={activeColor} active={index < throwDarts.length} size={22} />)}
+              </div>
+              <div style={{ position: "relative", minHeight: 0, borderRadius: 14, border: `1px solid ${T.stroke}`, background: "linear-gradient(180deg, rgba(17,25,44,.92), rgba(8,11,18,.84))", overflow: "hidden", padding: "6px 10px" }}>
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", opacity: .14 }}>
+                    <ScoreGhostVisual logoSrc={teamLogoBySide.A} fallbackProfile={teamPlayers.A[0]} size={68} />
                   </div>
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginTop: 5, display: "grid", gridTemplateColumns: "minmax(94px,.75fr) minmax(0,1.25fr)", gap: 6, alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 5, fontSize: 8.5, fontWeight: 1000, color: T.soft }}>
-                <span>PHASE {state.phase}/2 • R{state.round}</span><span>{closedCount}/{playableTargets.length}</span>
+                  <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", opacity: .14 }}>
+                    <ScoreGhostVisual logoSrc={teamLogoBySide.B} fallbackProfile={teamPlayers.B[0]} size={68} />
+                  </div>
+                </div>
+                <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1px 1fr", alignItems: "center", height: "100%", minHeight: 62 }}>
+                  <div style={{ display: "grid", placeItems: "center", minWidth: 0, minHeight: 0, borderRadius: 12, background: activeTeam === "A" ? `${TEAM_COLOR.A}10` : "transparent" }}>
+                    <div style={{ fontSize: "clamp(28px,5.5dvh,42px)", lineHeight: 1, fontWeight: 1000, color: TEAM_COLOR.A, textShadow: `0 0 14px ${TEAM_COLOR.A}66` }}>{state.scores.A}</div>
+                  </div>
+                  <div style={{ width: 1, height: "62%", justifySelf: "center", background: "rgba(255,255,255,.16)" }} />
+                  <div style={{ display: "grid", placeItems: "center", minWidth: 0, minHeight: 0, borderRadius: 12, background: activeTeam === "B" ? `${TEAM_COLOR.B}10` : "transparent" }}>
+                    <div style={{ fontSize: "clamp(28px,5.5dvh,42px)", lineHeight: 1, fontWeight: 1000, color: TEAM_COLOR.B, textShadow: `0 0 14px ${TEAM_COLOR.B}66` }}>{state.scores.B}</div>
+                  </div>
+                </div>
               </div>
-              <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.08)", marginTop: 3, overflow: "hidden" }}>
-                <div style={{ width: `${(closedCount / playableTargets.length) * 100}%`, height: "100%", borderRadius: 999, background: TEAM_COLOR[state.stopperTeam], boxShadow: `0 0 9px ${TEAM_COLOR[state.stopperTeam]}` }} />
+            </div>
+
+            <div style={{ minWidth: 0, display: "grid", gridTemplateRows: "auto auto 1fr", gap: 4 }}>
+              <div style={{ textAlign: "right", fontSize: 9.5, color: T.soft, fontWeight: 1000, letterSpacing: .35 }}>PHASE {state.phase}/2 • R{state.round}</div>
+              <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden" }}><div style={{ width: `${phaseProgress}%`, height: "100%", borderRadius: 999, background: TEAM_COLOR[state.stopperTeam], boxShadow: `0 0 8px ${TEAM_COLOR[state.stopperTeam]}` }} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                <MiniKpi label="DARTS" value={activeStats.darts} />
+                <MiniKpi label="POINTS" value={activeStats.points} />
+                <MiniKpi label="MARKS" value={activeStats.marks} />
+                <MiniKpi label="BEST" value={activeStats.bestVisit} />
               </div>
             </div>
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, padding: "3px 6px", minHeight: 25, borderRadius: 10, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.18)" }}>
-              <div style={{ minWidth: 0, fontSize: 10.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{botThinking ? "…" : volleyLabel || "VOLÉE À SAISIR"}</div>
-              <div style={{ display: "flex", gap: 1, flexShrink: 0 }}>{Array.from({ length: 3 }, (_, index) => <DartIconColorizable key={index} color={activeColor} active={index < throwDarts.length} size={20} />)}</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 5, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
-            <MiniKpi label="DARTS" value={activeStats.darts} /><MiniKpi label="POINTS" value={activeStats.points} /><MiniKpi label="MARKS" value={activeStats.marks} /><MiniKpi label="BEST" value={activeStats.bestVisit} />
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), minHeight: 0, padding: 5, overflow: "hidden" }}>
-          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateRows: `repeat(${playableTargets.length}, minmax(17px,1fr))`, gap: 2 }}>
-            {playableTargets.map((target) => (
-              <div key={target} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px minmax(0,1fr)", gap: 5, alignItems: "stretch" }}>
-                {(["A", "B"] as ScramTeam[]).map((team, index) => {
-                  const mark = state.marksByTeam[team][target] || 0;
-                  const cell = <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 9, border: `1px solid ${mark >= 3 ? TEAM_COLOR[team] + "88" : "rgba(255,255,255,.08)"}`, background: mark >= 3 ? `${TEAM_COLOR[team]}12` : "rgba(20,31,54,.48)" }}><CricketMarkIcon marks={mark} color={TEAM_COLOR[team]} size={mark >= 3 ? 21 : 18} glow /></div>;
-                  if (index === 0) return <React.Fragment key={team}>{cell}<div style={{ display: "grid", placeItems: "center", color: TARGET_COLOR[target], fontSize: target === 25 ? 13 : 17, fontWeight: 1000, textShadow: `0 0 10px ${TARGET_COLOR[target]}88` }}>{targetLabel(target)}</div></React.Fragment>;
-                  return <React.Fragment key={team}>{cell}</React.Fragment>;
-                })}
+        <button
+          type="button"
+          onClick={() => setShowMarksBoard(true)}
+          style={{
+            ...panelStyle(),
+            minWidth: 0,
+            padding: 0,
+            overflow: "hidden",
+            cursor: "pointer",
+            backgroundImage: `linear-gradient(90deg, rgba(5,8,16,.94), rgba(18,13,6,.50), rgba(5,8,16,.94)), url(${tickerScram})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: "8px 10px" }}>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 11, fontWeight: 1000, color: T.gold, letterSpacing: .4 }}>MARQUEURS</div>
+              <div style={{ fontSize: 8.8, color: T.soft }}>Touchez pour ouvrir</div>
+            </div>
+            <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: `repeat(${playableTargets.length}, minmax(0,1fr))`, gap: 3 }}>
+              {playableTargets.map((target) => {
+                const closed = stopperMarks[target] >= 3;
+                return (
+                  <div key={target} style={{ minWidth: 0, padding: "4px 0", borderRadius: 999, border: `1px solid ${closed ? TARGET_COLOR[target] + '88' : 'rgba(255,255,255,.10)'}`, background: closed ? `${TARGET_COLOR[target]}16` : "rgba(0,0,0,.18)", color: TARGET_COLOR[target], fontWeight: 1000, fontSize: target === 25 ? 9.5 : 11.5, lineHeight: 1, textAlign: "center", textShadow: closed ? `0 0 10px ${TARGET_COLOR[target]}55` : "none" }}>{target === 25 ? "BULL" : target}</div>
+                );
+              })}
+            </div>
+            <div style={{ color: T.text, fontSize: 18, fontWeight: 900 }}>›</div>
+          </div>
+        </button>
+
+        <section style={{ ...panelStyle(), minWidth: 0, minHeight: 0, padding: 6, overflow: "hidden" }}>
+          <div style={{ height: "100%", minHeight: 0, display: "grid", gridTemplateRows: inputMethod === "dartboard" ? "auto minmax(0,1fr) auto" : "auto auto auto", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: state.rules.useBull ? "1fr 1fr 1fr" : "1fr 1fr", gap: 5 }}>
+              <ModeButton label="DOUBLE" color="#31c9ef" active={hitMode === "D"} onClick={() => setHitMode(hitMode === "D" ? "S" : "D")} disabled={state.finished || botThinking} />
+              <ModeButton label="TRIPLE" color="#c24cff" active={hitMode === "T"} onClick={() => setHitMode(hitMode === "T" ? "S" : "T")} disabled={state.finished || botThinking} />
+              {state.rules.useBull ? <ModeButton label="BULL" color="#28dc92" active={false} onClick={() => addDart(25)} disabled={state.finished || botThinking || throwDarts.length >= 3} /> : null}
+            </div>
+
+            {inputMethod === "dartboard" ? (
+              <div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}>
+                <DartboardClickable
+                  size={dartboardSize}
+                  multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
+                  disabled={state.finished || botThinking}
+                  onHit={(segment, multiplier) => addDart(segment, multiplier)}
+                />
               </div>
-            ))}
+            ) : (
+              <div style={{ padding: 4, borderRadius: 11, background: "rgba(0,0,0,.23)", border: `1px solid ${T.stroke}` }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 4 }}>
+                  {Array.from({ length: 21 }, (_, value) => {
+                    const target = value >= 15 && value <= 20;
+                    const color = target ? TARGET_COLOR[value as ScramTarget] : T.text;
+                    return <button key={value} type="button" onClick={() => addDart(value)} disabled={state.finished || botThinking || throwDarts.length >= 3} style={{ height: "clamp(29px,4.8dvh,38px)", minWidth: 0, padding: 0, borderRadius: 8, border: target ? `1px solid ${color}bb` : `1px solid ${T.stroke}`, background: "linear-gradient(145deg,#152039,#080c18)", color, fontWeight: 1000, fontSize: 12.5, cursor: "pointer", boxShadow: target ? `0 0 8px ${color}28` : "none", opacity: state.finished || botThinking ? .48 : 1 }}>{value}</button>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              <ActionButton label="ANNULER" color={T.red} disabled={botThinking || (!throwDarts.length && !canUndo)} onClick={() => throwDarts.length ? setThrowDarts([]) : undoVisit()} />
+              <ActionButton label="VALIDER" color={T.green} disabled={botThinking || !throwDarts.length || state.finished} onClick={validateVisit} />
+            </div>
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), minWidth: 0, padding: 6 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 5, marginBottom: 5 }}>
-            <ModeButton label="DOUBLE" color="#31c9ef" active={hitMode === "D"} onClick={() => setHitMode(hitMode === "D" ? "S" : "D")} disabled={state.finished || botThinking} />
-            <ModeButton label="TRIPLE" color="#c24cff" active={hitMode === "T"} onClick={() => setHitMode(hitMode === "T" ? "S" : "T")} disabled={state.finished || botThinking} />
-            <ModeButton label="BULL" color="#28dc92" active={false} onClick={() => addDart(25)} disabled={state.finished || botThinking || !state.rules.useBull} />
-          </div>
-
-          {inputMethod === "dartboard" ? (
-            <div style={{ minHeight: 0, display: "grid", placeItems: "center", marginBottom: 5 }}>
-              <DartboardClickable
-                size={dartboardSize}
-                multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
-                disabled={state.finished || botThinking}
-                onHit={(segment, multiplier) => addDart(segment, multiplier)}
-              />
-            </div>
-          ) : (
-            <div style={{ padding: 4, borderRadius: 11, background: "rgba(0,0,0,.23)", border: `1px solid ${T.stroke}`, marginBottom: 5 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 4 }}>
-                {Array.from({ length: 21 }, (_, value) => {
-                  const target = value >= 15 && value <= 20;
-                  const color = target ? TARGET_COLOR[value as ScramTarget] : T.text;
-                  return <button key={value} type="button" onClick={() => addDart(value)} disabled={state.finished || botThinking || throwDarts.length >= 3} style={{ height: "clamp(27px,4.2dvh,34px)", minWidth: 0, padding: 0, borderRadius: 8, border: target ? `1px solid ${color}bb` : `1px solid ${T.stroke}`, background: "linear-gradient(145deg,#152039,#080c18)", color, fontWeight: 1000, fontSize: 12.5, cursor: "pointer", boxShadow: target ? `0 0 8px ${color}28` : "none", opacity: state.finished || botThinking ? .48 : 1 }}>{value}</button>;
-                })}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            <ActionButton label="ANNULER" color={T.red} disabled={botThinking || (!throwDarts.length && !canUndo)} onClick={() => throwDarts.length ? setThrowDarts([]) : undoVisit()} />
-            <ActionButton label="VALIDER" color={T.green} disabled={botThinking || !throwDarts.length || state.finished} onClick={validateVisit} />
-          </div>
-        </section>
+        {showMarksBoard ? (
+          <MarksOverlay
+            playableTargets={playableTargets}
+            marksByTeam={state.marksByTeam}
+            teamLogoBySide={teamLogoBySide}
+            teamPlayers={teamPlayers}
+            onClose={() => setShowMarksBoard(false)}
+          />
+        ) : null}
       </main>
 
       {showEnd && state.finished ? (
@@ -568,6 +599,48 @@ function ActionButton({ label, color, disabled, onClick }: any) {
 
 function MiniKpi({ label, value }: { label: string; value: number }) {
   return <div style={{ minWidth: 0, padding: "3px 2px", borderRadius: 8, textAlign: "center", background: "rgba(255,255,255,.042)", border: `1px solid ${T.stroke}` }}><div style={{ color: T.soft, fontSize: 7.5, fontWeight: 1000 }}>{label}</div><div style={{ color: T.cyan, fontSize: 12.5, lineHeight: 1.05, fontWeight: 1000, marginTop: 1 }}>{value}</div></div>;
+}
+
+function ScoreGhostVisual({ logoSrc, fallbackProfile, size = 64 }: { logoSrc?: string | null; fallbackProfile?: any; size?: number }) {
+  if (logoSrc) {
+    return <img src={logoSrc} alt="" style={{ width: size, height: size, objectFit: "cover", borderRadius: 16, display: "block" }} />;
+  }
+  if (fallbackProfile) {
+    return <ProfileAvatar profile={fallbackProfile as any} size={size} noFrame showStars={false} />;
+  }
+  return <div style={{ width: size, height: size, borderRadius: size / 2, background: "rgba(255,255,255,.08)" }} />;
+}
+
+function MarksOverlay({ playableTargets, marksByTeam, teamLogoBySide, teamPlayers, onClose }: any) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1100, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(520px, 94vw)", maxHeight: "78dvh", overflowY: "auto", borderRadius: 22, padding: 14, color: T.text, background: "linear-gradient(180deg,#16223a,#070a12)", border: `1px solid ${T.gold}55`, boxShadow: `0 0 30px ${T.gold}22` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 12, color: T.soft, fontWeight: 1000, letterSpacing: 1 }}>SCRAM</div>
+            <div style={{ fontSize: 18, color: T.gold, fontWeight: 1000 }}>MARQUEURS DES SEGMENTS</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ minHeight: 34, padding: "6px 14px", borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.text, fontWeight: 900, cursor: "pointer" }}>FERMER</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 48px 1fr", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "center" }}><ScoreGhostVisual logoSrc={teamLogoBySide?.A} fallbackProfile={teamPlayers?.A?.[0]} size={44} /></div>
+          <div />
+          <div style={{ display: "flex", justifyContent: "center" }}><ScoreGhostVisual logoSrc={teamLogoBySide?.B} fallbackProfile={teamPlayers?.B?.[0]} size={44} /></div>
+        </div>
+
+        <div style={{ display: "grid", gap: 6 }}>
+          {playableTargets.map((target: ScramTarget) => (
+            <div key={target} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 48px minmax(0,1fr)", gap: 6, alignItems: "stretch" }}>
+              <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 10, border: `1px solid ${(marksByTeam?.A?.[target] || 0) >= 3 ? TEAM_COLOR.A + '88' : 'rgba(255,255,255,.08)'}`, background: (marksByTeam?.A?.[target] || 0) >= 3 ? `${TEAM_COLOR.A}12` : "rgba(20,31,54,.48)" }}><CricketMarkIcon marks={marksByTeam?.A?.[target] || 0} color={TEAM_COLOR.A} size={20} glow /></div>
+              <div style={{ display: "grid", placeItems: "center", color: TARGET_COLOR[target], fontSize: target === 25 ? 12 : 18, fontWeight: 1000, textShadow: `0 0 10px ${TARGET_COLOR[target]}88` }}>{targetLabel(target)}</div>
+              <div style={{ minHeight: 0, display: "grid", placeItems: "center", borderRadius: 10, border: `1px solid ${(marksByTeam?.B?.[target] || 0) >= 3 ? TEAM_COLOR.B + '88' : 'rgba(255,255,255,.08)'}`, background: (marksByTeam?.B?.[target] || 0) >= 3 ? `${TEAM_COLOR.B}12` : "rgba(20,31,54,.48)" }}><CricketMarkIcon marks={marksByTeam?.B?.[target] || 0} color={TEAM_COLOR.B} size={20} glow /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function EndModal({ state, profilesById, sideNames, isSolo, onClose, onSave, onReplay }: any) {

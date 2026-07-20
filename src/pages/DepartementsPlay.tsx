@@ -35,6 +35,8 @@ import {
   applyVisit,
   endTurn,
   countOwnedByOwnerId,
+  initializeEqualTerritoryOwnership,
+  getOwnerIdForPlayer,
 } from "../territories/engine";
 
 import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
@@ -43,15 +45,18 @@ import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
 export type TerritoriesConfigPayload = {
   players: number;
   teamSize: 1 | 2 | 3;
+  teamCount?: number;
   selectedIds: string[];
   teamsById?: Record<string, number>;
   botsEnabled: boolean;
   botLevel: "easy" | "normal" | "hard";
   rounds: number;
   objective: number;
-  mapId: string; // FR / EN / IT / ...
+  mapId: string;
 
-  // Options
+  gameMode?: "classic" | "fortress";
+  fortressVictoryMode?: "majority" | "conquest";
+  maxFortressesPerOwner?: number;
   targetSelectionMode?: "free" | "by_score";
   captureRule?: "exact" | "gte";
   victoryMode?: "territories" | "regions" | "time";
@@ -199,14 +204,21 @@ function shortName(id: string) {
   return `${s.slice(0, 12)}…`;
 }
 
-const SOLO_COLORS = ["#ffd25a", "#ff5abe", "#52f7ff", "#7cff6b", "#c38bff", "#ff8f52"];
+const OWNER_COLORS = [
+  "#ffd25a", "#ff5abe", "#52f7ff", "#7cff6b", "#c38bff",
+  "#ff8f52", "#58a6ff", "#ff6b6b", "#4ee1b8", "#f4a6ff",
+];
 
-function interleaveTeams(team0: string[], team1: string[]) {
+const OWNER_NAMES = ["Gold", "Pink", "Blue", "Green", "Violet", "Orange", "Azur", "Red", "Mint", "Rose"];
+
+function interleaveTeams(groups: string[][]) {
   const out: string[] = [];
-  const n = Math.max(team0.length, team1.length);
-  for (let i = 0; i < n; i++) {
-    if (team0[i]) out.push(team0[i]);
-    if (team1[i]) out.push(team1[i]);
+  const n = Math.max(0, ...groups.map((group) => group.length));
+  for (let playerIndex = 0; playerIndex < n; playerIndex += 1) {
+    for (const group of groups) {
+      const id = group[playerIndex];
+      if (id) out.push(id);
+    }
   }
   return out;
 }
@@ -224,29 +236,59 @@ function computeVisitScores(darts: UIDart[]) {
   return norm.slice(0, 3).map(dartScore);
 }
 
-type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: number };
+type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: number; fortresses: number; breaches: number };
 
 const RULES_TEXT = (cfg: {
+  gameMode: "classic" | "fortress";
+  fortressVictoryMode: "majority" | "conquest";
   selectionMode: "free" | "by_score";
   captureRule: "exact" | "gte";
   victoryMode: "territories" | "regions" | "time";
   winTerritories: number;
   winRegions: number;
   timeLimitMin: number;
+  maxRounds: number;
+  maxFortressesPerOwner: number;
 }) => {
-  const { selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin } = cfg;
-  const cap = captureRule === "gte" ? "≥" : "=";
-  return `TERRITORIES\n\nBut\n- Capturer des territoires selon la condition de victoire.\n\nCible\n- ${
-    selectionMode === "free"
-      ? "Choisir la cible sur la carte avant la volée"
-      : "Ne pas choisir : le score de la volée attribue la cible (aléatoire si plusieurs territoires ont la même valeur)"
-  }\n\nCapture\n- Règle: score ${cap} valeur du territoire (sur 3 fléchettes).\n\nVictoire\n- ${
-    victoryMode === "territories"
-      ? `Atteindre ${winTerritories} territoires.`
-      : victoryMode === "regions"
-        ? `Atteindre ${winRegions} régions (France : une région est gagnée quand tous ses départements sont capturés).`
-        : `Temps: ${timeLimitMin} min, celui qui a le plus de territoires gagne.`
-  }\n\nNotes\n- L'avatar actif est glow.\n- La carte est le cœur du gameplay (clic + couleurs).`;
+  const { gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner } = cfg;
+  if (gameMode === "fortress") {
+    return `FORTERESSES
+
+Départ
+- Chaque joueur ou équipe reçoit exactement le même nombre de territoires. Si la carte ne se divise pas parfaitement, le surplus reste neutre au départ.
+- Chaque camp possède une couleur.
+
+Défendre
+- Choisis un de tes territoires et réalise EXACTEMENT sa valeur.
+- Il devient une forteresse. Chaque camp peut en maintenir jusqu'à ${maxFortressesPerOwner} simultanément.
+- Lorsque cette limite est atteinte, une nouvelle forteresse déplace automatiquement la plus ancienne.
+
+Attaquer
+- Territoire adverse sans forteresse : une réussite exacte le conquiert.
+- Territoire adverse protégé : une première réussite exacte brise la forteresse ; une seconde réussite exacte conquiert le territoire.
+
+Cible
+- ${selectionMode === "free" ? "Choix libre sur la carte." : "La valeur de la volée détermine automatiquement la cible."}
+
+Victoire
+- ${fortressVictoryMode === "conquest" ? "Conquête totale : posséder toute la carte." : `Majorité : posséder le plus de territoires après ${maxRounds} rounds.`}`;
+  }
+
+  const cap = captureRule === "gte" ? "GTE : total supérieur ou égal" : "EXACT : total strictement égal";
+  return `CONQUÊTE CLASSIQUE
+
+But
+- Capturer les territoires neutres ou adverses.
+
+Cible
+- ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Le score de la volée détermine automatiquement une cible compatible."}
+
+Capture
+- ${cap} à la valeur du territoire, sur une volée de 1 à 3 fléchettes.
+
+Victoire
+- ${victoryMode === "territories" ? `Atteindre ${winTerritories} territoires.` : victoryMode === "regions" ? `Atteindre ${winRegions} régions complètes.` : `Après ${timeLimitMin} minutes, le plus de territoires gagne.`}
+- Si l'objectif n'est pas atteint avant ${maxRounds} rounds, le plus de possessions gagne.`;
 };
 
 export default function DepartementsPlay(props: any) {
@@ -284,6 +326,9 @@ export default function DepartementsPlay(props: any) {
     rounds: 12,
     objective: 10,
     mapId: "FR",
+    gameMode: "classic",
+    fortressVictoryMode: "majority",
+    maxFortressesPerOwner: 2,
     targetSelectionMode: "free",
     captureRule: "exact",
     victoryMode: "territories",
@@ -296,10 +341,17 @@ export default function DepartementsPlay(props: any) {
   const country = normalizeMapIdToCountry(mapId);
 
   const maxRounds = Math.max(1, Number(effectiveCfg.rounds || 12));
+  const gameMode: "classic" | "fortress" = effectiveCfg.gameMode === "fortress" ? "fortress" : "classic";
+  const fortressVictoryMode: "majority" | "conquest" =
+    effectiveCfg.fortressVictoryMode === "conquest" ? "conquest" : "majority";
+  const maxFortressesPerOwner = Math.max(
+    1,
+    Math.min(10, Math.floor(Number(effectiveCfg.maxFortressesPerOwner ?? 2) || 2)),
+  );
 
   const selectionMode: "free" | "by_score" =
     effectiveCfg.targetSelectionMode === "by_score" ? "by_score" : "free";
-  const captureRule: "exact" | "gte" = effectiveCfg.captureRule === "gte" ? "gte" : "exact";
+  const captureRule: "exact" | "gte" = gameMode === "fortress" ? "exact" : effectiveCfg.captureRule === "gte" ? "gte" : "exact";
 
   // Regions only for FR (hard gate)
   const requestedVictoryMode =
@@ -323,57 +375,63 @@ export default function DepartementsPlay(props: any) {
 
   // Players/teams + owner colors
   const { players, teams, ownerColors } = React.useMemo(() => {
-    if (
-      effectiveCfg.teamSize > 1 &&
-      Array.isArray(effectiveCfg.selectedIds) &&
-      effectiveCfg.selectedIds.length
-    ) {
+    const selected = Array.isArray(effectiveCfg.selectedIds) && effectiveCfg.selectedIds.length
+      ? effectiveCfg.selectedIds.slice(0, 10)
+      : ["Player A", "Player B"];
+
+    if (effectiveCfg.teamSize > 1 && selected.length) {
       const teamsById = effectiveCfg.teamsById || {};
-      const team0 = effectiveCfg.selectedIds.filter((id) => teamsById[id] === 0);
-      const team1 = effectiveCfg.selectedIds.filter((id) => teamsById[id] === 1);
-      const order = interleaveTeams(team0, team1);
-
-      const t0: TerritoriesTeam = { id: "TEAM0", name: "TEAM Gold", color: "#ffd25a" };
-      const t1: TerritoriesTeam = { id: "TEAM1", name: "TEAM Pink", color: "#ff5abe" };
-
-      const ps: TerritoriesPlayer[] = order.map((id) => ({
-        id,
-        name: profileById[id]?.name || profileById[id]?.displayName || shortName(id),
-        color: teamsById[id] === 1 ? t1.color : t0.color,
-        teamId: teamsById[id] === 1 ? t1.id : t0.id,
-        capturedTerritories: [],
+      const configuredCount = Math.max(
+        2,
+        Math.min(4, Number(effectiveCfg.teamCount || (Math.max(...selected.map((id) => Number(teamsById[id] ?? 0))) + 1) || 2)),
+      );
+      const groups = Array.from({ length: configuredCount }, (_, teamIndex) =>
+        selected.filter((id) => Number(teamsById[id]) === teamIndex),
+      );
+      const order = interleaveTeams(groups);
+      const builtTeams: TerritoriesTeam[] = groups.map((_, teamIndex) => ({
+        id: `TEAM${teamIndex}`,
+        name: `TEAM ${OWNER_NAMES[teamIndex] || teamIndex + 1}`,
+        color: OWNER_COLORS[teamIndex % OWNER_COLORS.length] || "#52f7ff",
       }));
 
-      return {
-        players: ps,
-        teams: [t0, t1],
-        ownerColors: { [t0.id]: t0.color, [t1.id]: t1.color } as Record<string, string>,
-      };
+      const ps: TerritoriesPlayer[] = order.map((id) => {
+        const teamIndex = Math.max(0, Math.min(configuredCount - 1, Number(teamsById[id] ?? 0)));
+        const team = builtTeams[teamIndex] || builtTeams[0]!;
+        return {
+          id,
+          name: profileById[id]?.name || profileById[id]?.displayName || shortName(id),
+          color: team.color,
+          teamId: team.id,
+          capturedTerritories: [],
+        };
+      });
+
+      const colors: Record<string, string> = {};
+      builtTeams.forEach((team) => { colors[team.id] = team.color; });
+      return { players: ps, teams: builtTeams, ownerColors: colors };
     }
 
-    const ids =
-      Array.isArray(effectiveCfg.selectedIds) && effectiveCfg.selectedIds.length
-        ? effectiveCfg.selectedIds
-        : ["Player A", "Player B"];
-
-    const ps: TerritoriesPlayer[] = ids.map((id, i) => ({
+    const ps: TerritoriesPlayer[] = selected.map((id, i) => ({
       id,
       name: profileById[id]?.name || profileById[id]?.displayName || shortName(id),
-      color: SOLO_COLORS[i % SOLO_COLORS.length],
+      color: OWNER_COLORS[i % OWNER_COLORS.length] || "#52f7ff",
       capturedTerritories: [],
     }));
 
     const colors: Record<string, string> = {};
     for (const p of ps) colors[p.id] = p.color;
-    return { players: ps, teams: undefined as any, ownerColors: colors };
-  }, [effectiveCfg.teamSize, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), profileById]);
+    return { players: ps, teams: undefined as TerritoriesTeam[] | undefined, ownerColors: colors };
+  }, [effectiveCfg.teamSize, effectiveCfg.teamCount, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), profileById]);
 
   const victoryCondition: TerritoriesVictoryCondition = React.useMemo(() => {
-    // ⚠️ Must match src/territories/types.ts schema
+    if (gameMode === "fortress") {
+      return fortressVictoryMode === "conquest" ? { type: "conquest" } : { type: "rounds" };
+    }
     if (victoryMode === "regions") return { type: "regions", value: winRegions };
     if (victoryMode === "time") return { type: "time", minutes: timeLimitMin };
     return { type: "territories", value: winTerritories };
-  }, [victoryMode, winTerritories, winRegions, timeLimitMin]);
+  }, [gameMode, fortressVictoryMode, victoryMode, winTerritories, winRegions, timeLimitMin]);
 
   const initialState = React.useMemo<TerritoriesGameState>(() => {
     const map = buildTerritoriesMap(country);
@@ -383,6 +441,9 @@ export default function DepartementsPlay(props: any) {
       },
       config: {
         country,
+        gameMode,
+        initialDistribution: gameMode === "fortress" ? "equal" : "neutral",
+        maxFortressesPerOwner,
         targetSelectionMode: selectionMode,
         captureRule,
         multiCapture: false,
@@ -406,8 +467,9 @@ export default function DepartementsPlay(props: any) {
       status: "playing",
     };
 
-    return normalizeTerritoriesState(base).state;
-  }, [country, selectionMode, captureRule, maxRounds, victoryCondition, players, teams]);
+    const distributed = gameMode === "fortress" ? initializeEqualTerritoryOwnership(base) : base;
+    return normalizeTerritoriesState(distributed).state;
+  }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams]);
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
   const submitLockRef = React.useRef(false);
@@ -418,7 +480,7 @@ export default function DepartementsPlay(props: any) {
 
   const [playerStats, setPlayerStats] = React.useState<Record<string, PlayerLiveStats>>(() => {
     const out: Record<string, PlayerLiveStats> = {};
-    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0 };
+    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
     return out;
   });
 
@@ -427,7 +489,7 @@ export default function DepartementsPlay(props: any) {
     setCurrentThrow([]);
     setMultiplier(1);
     const out: Record<string, PlayerLiveStats> = {};
-    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0 };
+    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
     setPlayerStats(out);
   }, [initialState, players]);
 
@@ -437,6 +499,8 @@ export default function DepartementsPlay(props: any) {
   );
   const activeColor = activePlayer?.color || theme?.accent || "#52f7ff";
   const themeColor = theme?.accent || activeColor;
+  const activeOwnerId = activePlayer?.teamId || activePlayer?.id || "";
+  const activeOwnerLabel = teams?.find((team) => team.id === activeOwnerId)?.name || activePlayer?.name || "Player";
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
 
@@ -447,9 +511,11 @@ export default function DepartementsPlay(props: any) {
   }, [game.turn.selectedTerritoryId, game.map.territories]);
 
   const objectiveValueLabel = selectedTerritory ? String(selectedTerritory.value) : "—";
-  const territoryNameLabel = selectedTerritory ? selectedTerritory.name : "—";
+  const territoryNameLabel = selectedTerritory
+    ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritory.name}`
+    : "—";
 
-  const isFrRegionsVictory = country === "FR" && victoryMode === "regions";
+  const isFrRegionsVictory = gameMode === "classic" && country === "FR" && victoryMode === "regions";
 
   // Owned regions (FR) — a region is owned when ALL its departments share the same owner.
   const ownedRegionsByOwner = React.useMemo(() => {
@@ -523,15 +589,22 @@ export default function DepartementsPlay(props: any) {
   }, [valuesByRegion]);
 
   const classement = React.useMemo(() => {
-    const rows = game.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-      color: p.color,
-      owned: (ownedByOwner[p.id] || 0) as number,
-    }));
+    const rows = game.teams?.length
+      ? game.teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          color: team.color,
+          owned: (ownedByOwner[team.id] || 0) as number,
+        }))
+      : game.players.map((player) => ({
+          id: player.id,
+          name: player.name,
+          color: player.color,
+          owned: (ownedByOwner[player.id] || 0) as number,
+        }));
     rows.sort((a, b) => b.owned - a.owned || a.name.localeCompare(b.name));
     return rows;
-  }, [game.players, ownedByOwner]);
+  }, [game.players, game.teams, ownedByOwner]);
 
   function goBack() {
     if (props?.go) return props.go("departements_config", { config: effectiveCfg });
@@ -559,48 +632,58 @@ export default function DepartementsPlay(props: any) {
 
     // Snapshot before applying
     const activeId = game.turn.activePlayerId;
-    // Snapshot (pre-visit) of the territory that will be captured (if any).
-    // In by_score mode, the captured territory is derived from the score, not from selectedTerritoryId.
+    const activeOwner = getOwnerIdForPlayer(game, activeId) || activeId;
 
     const r1 = applyVisit(game, dartScores);
     if (r1.error) return;
     const next = r1.state;
 
-    const capturedEvent = (r1.events as any[])?.find((e) => e?.type === "territory_captured");
+    const capturedEvent = (r1.events as any[])?.find((event) => event?.type === "territory_captured");
     const capturedTid: string | undefined = capturedEvent?.territoryId;
-    const beforeOwner = capturedTid ? game.map.territories.find((t) => t.id === capturedTid)?.ownerId : undefined;
+    const beforeOwner = capturedTid ? game.map.territories.find((territory) => territory.id === capturedTid)?.ownerId : undefined;
+    const previousOwnerPlayerId = beforeOwner
+      ? game.players.find((player) => (player.teamId || player.id) === beforeOwner)?.id
+      : undefined;
+    const fortressBuilt = r1.events?.some((event) => event.type === "fortress_built") || false;
+    const fortressBroken = r1.events?.some((event) => event.type === "fortress_broken") || false;
 
     setPlayerStats((prev) => {
       const out = { ...prev };
-      const cur = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0 };
-      cur.darts += 3;
-      out[activeId] = cur;
+      const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+      out[activeId] = {
+        ...current,
+        darts: current.darts + 3,
+        fortresses: current.fortresses + (fortressBuilt ? 1 : 0),
+        breaches: current.breaches + (fortressBroken ? 1 : 0),
+      };
 
-      const captured = r1.events?.some((e) => e.type === "territory_captured");
-      if (captured) {
-        out[activeId] = { ...out[activeId], captures: (out[activeId]?.captures || 0) + 1 };
-        if (beforeOwner && beforeOwner !== activeId) {
-          if (!out[beforeOwner]) out[beforeOwner] = { darts: 0, captures: 0, steals: 0, lost: 0 };
-          out[activeId] = { ...out[activeId], steals: (out[activeId]?.steals || 0) + 1 };
-          out[beforeOwner] = { ...out[beforeOwner], lost: (out[beforeOwner]?.lost || 0) + 1 };
+      if (capturedEvent) {
+        out[activeId] = {
+          ...out[activeId],
+          captures: (out[activeId]?.captures || 0) + 1,
+          steals: (out[activeId]?.steals || 0) + (beforeOwner && beforeOwner !== activeOwner ? 1 : 0),
+        };
+        if (previousOwnerPlayerId && beforeOwner !== activeOwner) {
+          const previous = out[previousOwnerPlayerId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+          out[previousOwnerPlayerId] = { ...previous, lost: previous.lost + 1 };
         }
       }
       return out;
     });
 
-    setGame(next);
     setCurrentThrow([]);
     setMultiplier(1);
-
-    if (next.status !== "playing") return;
-    setGame(endTurn(next).state);
+    setGame(next.status === "playing" ? endTurn(next).state : next);
   }
 
   const replay = React.useCallback(() => {
     setGame(initialState);
     setCurrentThrow([]);
     setMultiplier(1);
-  }, [initialState]);
+    const reset: Record<string, PlayerLiveStats> = {};
+    for (const player of players) reset[player.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    setPlayerStats(reset);
+  }, [initialState, players]);
 
   // Time remaining (UI only)
   const timeRemaining = React.useMemo(() => {
@@ -615,15 +698,34 @@ export default function DepartementsPlay(props: any) {
   }, [game.config.victoryCondition, game.meta?.startedAtMs, game.turnIndex]);
 
   const possessionsForActive = React.useMemo(() => {
-    if (!activePlayer) return 0;
-    if (victoryMode === "regions" && ownedRegionsByOwner) return ownedRegionsByOwner[activePlayer.id] || 0;
-    return ownedByOwner[activePlayer.id] || 0;
-  }, [activePlayer, ownedByOwner, ownedRegionsByOwner, victoryMode]);
+    if (!activeOwnerId) return 0;
+    if (gameMode === "classic" && victoryMode === "regions" && ownedRegionsByOwner) {
+      return ownedRegionsByOwner[activeOwnerId] || 0;
+    }
+    return ownedByOwner[activeOwnerId] || 0;
+  }, [activeOwnerId, gameMode, ownedByOwner, ownedRegionsByOwner, victoryMode]);
 
   const possessionsGoal = React.useMemo(() => {
+    if (gameMode === "fortress") return game.map.territories.length;
     if (victoryMode === "regions") return winRegions;
     return winTerritories;
-  }, [victoryMode, winRegions, winTerritories]);
+  }, [gameMode, game.map.territories.length, victoryMode, winRegions, winTerritories]);
+
+  const activeStats = React.useMemo<PlayerLiveStats>(() => {
+    const total: PlayerLiveStats = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    for (const player of game.players) {
+      if ((player.teamId || player.id) !== activeOwnerId) continue;
+      const stats = playerStats[player.id];
+      if (!stats) continue;
+      total.darts += stats.darts;
+      total.captures += stats.captures;
+      total.steals += stats.steals;
+      total.lost += stats.lost;
+      total.fortresses += stats.fortresses;
+      total.breaches += stats.breaches;
+    }
+    return total;
+  }, [activeOwnerId, game.players, playerStats]);
 
   /* -------------------------------------------
      ENDGAME (victory + stats recording)
@@ -637,7 +739,7 @@ export default function DepartementsPlay(props: any) {
 
     // Use regions count if mode=regions and map supports it, else territories.
     const ownedCounts: Record<string, number> =
-      victoryMode === "regions" && ownedRegionsByOwner
+      gameMode === "classic" && victoryMode === "regions" && ownedRegionsByOwner
         ? ownedRegionsByOwner
         : ownedByOwner;
 
@@ -656,18 +758,22 @@ export default function DepartementsPlay(props: any) {
       if (best) return best.id;
     }
 
-    // Time-based or fallback: most possessions
-    let maxId = ownersOrder[0] || null;
+    // Time, rounds or fallback: most possessions. A strict tie stays a tie.
+    let maxId: string | null = null;
     let maxV = -1;
+    let tied = false;
     for (const oid of ownersOrder) {
-      const v = ownedCounts[oid] || 0;
-      if (v > maxV) {
-        maxV = v;
+      const value = ownedCounts[oid] || 0;
+      if (value > maxV) {
+        maxV = value;
         maxId = oid;
+        tied = false;
+      } else if (value === maxV) {
+        tied = true;
       }
     }
-    return maxId;
-  }, [game.status, game.config.victoryCondition, victoryMode, ownedByOwner, ownedRegionsByOwner, ownersOrder]);
+    return tied ? null : maxId;
+  }, [game.status, game.config.victoryCondition, gameMode, victoryMode, ownedByOwner, ownedRegionsByOwner, ownersOrder]);
 
   const recordedRef = React.useRef(false);
   React.useEffect(() => {
@@ -678,7 +784,7 @@ export default function DepartementsPlay(props: any) {
     if (recordedRef.current) return;
 
     const ownedCounts: Record<string, number> =
-      victoryMode === "regions" && ownedRegionsByOwner
+      gameMode === "classic" && victoryMode === "regions" && ownedRegionsByOwner
         ? ownedRegionsByOwner
         : ownedByOwner;
 
@@ -690,6 +796,8 @@ export default function DepartementsPlay(props: any) {
     const dartsByOwner: Record<string, number> = {};
     const stealsByOwner: Record<string, number> = {};
     const lostByOwner: Record<string, number> = {};
+    const fortressesByOwner: Record<string, number> = {};
+    const breachesByOwner: Record<string, number> = {};
 
     for (const [pid, st] of Object.entries(playerStats || {})) {
       const oid = ownerByPlayer[pid] || pid;
@@ -697,6 +805,8 @@ export default function DepartementsPlay(props: any) {
       dartsByOwner[oid] = (dartsByOwner[oid] || 0) + (st?.darts || 0);
       stealsByOwner[oid] = (stealsByOwner[oid] || 0) + (st?.steals || 0);
       lostByOwner[oid] = (lostByOwner[oid] || 0) + (st?.lost || 0);
+      fortressesByOwner[oid] = (fortressesByOwner[oid] || 0) + (st?.fortresses || 0);
+      breachesByOwner[oid] = (breachesByOwner[oid] || 0) + (st?.breaches || 0);
     }
 
     const winner = winnerOwnerId || ownersOrder[0] || "";
@@ -712,8 +822,14 @@ export default function DepartementsPlay(props: any) {
       mode: teams?.length ? "teams" : "solo",
       teams: teams?.length ? teams.length : players.length,
       teamSize: teams?.length ? (effectiveCfg.teamSize || 2) : 1,
-      victory: victoryMode,
-      objective: victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories,
+      gameMode,
+      maxFortressesPerOwner,
+      victory: gameMode === "fortress"
+        ? fortressVictoryMode === "conquest" ? "conquest" : "majority"
+        : victoryMode,
+      objective: gameMode === "fortress"
+        ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
+        : victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories,
       rounds: game.roundIndex || 1,
       durationMs,
       winnerTeam: winnerTeamIndex,
@@ -721,12 +837,14 @@ export default function DepartementsPlay(props: any) {
       darts: ownersOrder.map((oid) => dartsByOwner[oid] || 0),
       steals: ownersOrder.map((oid) => stealsByOwner[oid] || 0),
       lost: ownersOrder.map((oid) => lostByOwner[oid] || 0),
+      fortresses: ownersOrder.map((oid) => fortressesByOwner[oid] || 0),
+      breaches: ownersOrder.map((oid) => breachesByOwner[oid] || 0),
       domination: ownersOrder.map((oid) => ownedCounts[oid] || 0),
-      players: players.map((p) => ({
-        id: p.id,
-        name: p.name,
-        avatar: (p as any).avatar,
-        teamId: (p as any).teamId,
+      players: players.map((player) => ({
+        id: player.id,
+        name: player.name,
+        avatarDataUrl: profileById[player.id]?.avatarDataUrl ?? profileById[player.id]?.avatar ?? player.avatar ?? null,
+        teamIndex: Math.max(0, ownersOrder.indexOf(player.teamId || player.id)),
       })),
     });
 
@@ -735,6 +853,11 @@ export default function DepartementsPlay(props: any) {
     game.status,
     game.meta?.startedAtMs,
     game.roundIndex,
+    gameMode,
+    maxFortressesPerOwner,
+    fortressVictoryMode,
+    maxRounds,
+    game.map.territories.length,
     victoryMode,
     ownedByOwner,
     ownedRegionsByOwner,
@@ -747,6 +870,7 @@ export default function DepartementsPlay(props: any) {
     timeLimitMin,
     winnerOwnerId,
     playerStats,
+    profileById,
     effectiveCfg.teamSize,
   ]);
 
@@ -755,6 +879,7 @@ export default function DepartementsPlay(props: any) {
       <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 8 }}>Valeurs des territoires</div>
       <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
         Chaque territoire a une valeur cible (score total sur une volée).
+        {gameMode === "fortress" ? " Le contour blanc pointillé et le symbole 🛡 signalent une forteresse active." : ""}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -817,7 +942,9 @@ export default function DepartementsPlay(props: any) {
                 >
                   <div style={{ minWidth: 52, textAlign: "center", fontWeight: 950, color: themeColor }}>{tt.value}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tt.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
+                    </div>
                     <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
                   </div>
                 </div>
@@ -843,7 +970,9 @@ export default function DepartementsPlay(props: any) {
               >
                 <div style={{ minWidth: 52, textAlign: "center", fontWeight: 950, color: themeColor }}>{tt.value}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tt.name}</div>
+                  <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
+                    </div>
                   <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
                 </div>
               </div>
@@ -860,7 +989,7 @@ export default function DepartementsPlay(props: any) {
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles" content={RULES_TEXT({ selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin })} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner })} />}
       />
 
       {/* END OF MATCH MODAL */}
@@ -871,9 +1000,11 @@ export default function DepartementsPlay(props: any) {
           ownersOrder={ownersOrder}
           players={players}
           teams={teams}
-          ownedByOwner={victoryMode === "regions" && ownedRegionsByOwner ? ownedRegionsByOwner : ownedByOwner}
-          victoryMode={victoryMode}
-          objective={victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories}
+          ownedByOwner={gameMode === "classic" && victoryMode === "regions" && ownedRegionsByOwner ? ownedRegionsByOwner : ownedByOwner}
+          victoryMode={gameMode === "fortress" ? fortressVictoryMode : victoryMode}
+          objective={gameMode === "fortress"
+            ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
+            : victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories}
           onReplay={replay}
           onQuit={goBack}
         />
@@ -992,7 +1123,7 @@ export default function DepartementsPlay(props: any) {
             </div>
 
             <div style={{ marginTop: 3, fontSize: 11, opacity: 0.8, fontWeight: 800, textAlign: "center" }}>
-              {teams?.length ? "Mode Teams" : "Mode Solo"}
+              {teams?.length ? activeOwnerLabel : "Mode Solo"} • {gameMode === "fortress" ? "Forteresses" : "Conquête"}
               {timeRemaining ? ` • ${timeRemaining}` : ""}
             </div>
           </div>
@@ -1020,10 +1151,12 @@ export default function DepartementsPlay(props: any) {
                 }}
               >
                 <StatLine label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} valueColor={activeColor} />
-                <StatLine label="Darts" value={String(playerStats[game.turn.activePlayerId]?.darts || 0)} />
-                <StatLine label="Captures" value={String(playerStats[game.turn.activePlayerId]?.captures || 0)} />
-                <StatLine label="Steals" value={String(playerStats[game.turn.activePlayerId]?.steals || 0)} />
-                <StatLine label="Lost" value={String(playerStats[game.turn.activePlayerId]?.lost || 0)} />
+                <StatLine label="Fléchettes" value={String(activeStats.darts)} />
+                <StatLine label="Captures" value={String(activeStats.captures)} />
+                {gameMode === "fortress" ? <StatLine label="Forteresses" value={String(activeStats.fortresses)} /> : null}
+                {gameMode === "fortress" ? <StatLine label="Brèches" value={String(activeStats.breaches)} /> : null}
+                <StatLine label="Vols" value={String(activeStats.steals)} />
+                <StatLine label="Perdus" value={String(activeStats.lost)} />
               </div>
             </div>
           </div>
@@ -1071,6 +1204,21 @@ export default function DepartementsPlay(props: any) {
           title={country === "FR" ? "CARTE — France" : "CARTE"}
           onClose={() => setShowMapModal(false)}
           valuesModalContent={valuesModalContent}
+          legend={
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              {classement.map((row) => {
+                const hasFortress = game.map.territories.some((territory) => territory.fortressOwnerId === row.id && territory.ownerId === row.id);
+                return (
+                  <div key={row.id} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 999, background: "rgba(0,0,0,0.28)", border: `1px solid ${row.color}66` }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: row.color, boxShadow: `0 0 9px ${row.color}` }} />
+                    <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 950 }}>{row.name}</span>
+                    <span style={{ color: row.color, fontSize: 11, fontWeight: 1000 }}>{row.owned}</span>
+                    {hasFortress ? <span title="Forteresse active" style={{ fontSize: 12 }}>🛡</span> : null}
+                  </div>
+                );
+              })}
+            </div>
+          }
         >
           <TerritoriesMapView
             country={country}
@@ -1236,7 +1384,8 @@ function KpiCard(props: {
 function TerritoriesMapModal(props: {
   title: string;
   onClose: () => void;
-  valuesModalContent: string;
+  valuesModalContent: React.ReactNode;
+  legend?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -1300,6 +1449,8 @@ function TerritoriesMapModal(props: {
             </button>
           </div>
         </div>
+
+        {props.legend}
 
         <div
           style={{
@@ -1374,15 +1525,15 @@ function TerritoriesEndModal(props: {
   players: any[];
   teams?: any[] | null;
   ownedByOwner: Record<string, number>;
-  victoryMode: "territories" | "regions" | "time";
+  victoryMode: "territories" | "regions" | "time" | "majority" | "conquest";
   objective: number;
   onReplay: () => void;
   onQuit: () => void;
 }) {
-  const winnerId = props.winnerOwnerId || props.ownersOrder[0] || "";
+  const winnerId = props.winnerOwnerId || "";
 
   const winnerLabel = React.useMemo(() => {
-    if (!winnerId) return "—";
+    if (!winnerId) return "Égalité";
     if (props.teams?.length) {
       const t = props.teams.find((x) => String(x.id) === String(winnerId));
       return t?.name || "Équipe";
@@ -1434,8 +1585,11 @@ function TerritoriesEndModal(props: {
             {winnerLabel}
           </div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8 }}>
-            Victoire par {props.victoryMode === "time" ? "temps" : props.victoryMode === "regions" ? "régions" : "territoires"}
-            {props.victoryMode === "time" ? ` (${props.objective} min)` : ` (objectif: ${props.objective})`}
+            {props.victoryMode === "majority"
+              ? `Majorité après ${props.objective} rounds`
+              : props.victoryMode === "conquest"
+                ? "Conquête totale de la carte"
+                : `Victoire par ${props.victoryMode === "time" ? "temps" : props.victoryMode === "regions" ? "régions" : "territoires"}${props.victoryMode === "time" ? ` (${props.objective} min)` : ` (objectif: ${props.objective})`}`}
           </div>
         </div>
 

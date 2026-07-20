@@ -1,5 +1,5 @@
 // ============================================
-// TERRITORIES — STEP 1 : DATA SCHEMAS (FINAL)
+// TERRITORIES — DATA SCHEMAS
 // Location: src/territories/types.ts
 // ============================================
 
@@ -45,21 +45,30 @@ export type TerritoriesCountry =
   | "RU"
   | "WORLD";
 
+export type TerritoriesGameMode = "classic" | "fortress";
+export type TerritoriesTargetSelectionMode = "imposed" | "free" | "by_score";
+export type TerritoriesCaptureRule = "exact" | "gte";
+
+export type TerritoriesVictoryCondition =
+  | { type: "territories"; value: number }
+  | { type: "regions"; value: number }
+  | { type: "time"; minutes: number }
+  | { type: "rounds" }
+  | { type: "conquest" };
+
 export interface TerritoriesConfig {
   country: TerritoriesCountry;
-  targetSelectionMode: "imposed" | "free" | "by_score";
-  // ✅ Align with UI/config vocabulary
-  captureRule: "exact" | "gte";
+  gameMode?: TerritoriesGameMode;
+  initialDistribution?: "neutral" | "equal";
+  // Maximum number of active fortresses for each player/team in Forteresses mode.
+  maxFortressesPerOwner?: number;
+  targetSelectionMode: TerritoriesTargetSelectionMode;
+  captureRule: TerritoriesCaptureRule;
   multiCapture: boolean;
   minTerritoryValue?: number;
   allowEnemyCapture: boolean;
   maxRounds: number;
-  // ✅ Full victory modes supported by the engine + UI
-  victoryCondition:
-    | { type: "territories"; value: number }
-    | { type: "regions"; value: number }
-    | { type: "time"; minutes: number }
-    | { type: "rounds" };
+  victoryCondition: TerritoriesVictoryCondition;
   voiceAnnouncements: boolean;
 }
 
@@ -86,6 +95,10 @@ export interface Territory {
   value: number;     // objective score
   svgPathId: string; // per-country key used to find SVG element (id or data-*)
   ownerId?: string;  // playerId or teamId
+  // In Forteresses mode, a territory can carry its owner's fortress.
+  fortressOwnerId?: string;
+  // Used to move the oldest fortress when the configured simultaneous limit is reached.
+  fortressBuiltAtTurn?: number;
 }
 
 export interface TerritoriesMap {
@@ -121,6 +134,8 @@ export interface VoiceEvent {
     | "territory_selected"
     | "territory_captured"
     | "territory_failed"
+    | "fortress_built"
+    | "fortress_broken"
     | "round_end"
     | "game_end";
   playerId: string;

@@ -653,7 +653,7 @@ export default function ScramConfig(props: any) {
   } as React.CSSProperties;
 
   return (
-    <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
+    <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 168 }}>
       <PageHeader
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
@@ -901,21 +901,50 @@ export default function ScramConfig(props: any) {
           </div>
         </Section>
 
-        <div style={{ padding: "4px 12px 14px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!validSelection}
-            onClick={onStart}
-            style={{ width: "100%", minHeight: 48, fontWeight: 1000, letterSpacing: 1.1 }}
-          >
-            DÉMARRER LE SCRAM
-          </button>
-          {!validSelection ? (
-            <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>
-              {selectionError}
-            </div>
-          ) : null}
+        <div
+          style={{
+            position: "sticky",
+            bottom: `calc(env(safe-area-inset-bottom, 0px) + 74px)`,
+            zIndex: 30,
+            padding: "10px 4px 18px",
+            width: "100%",
+            maxWidth: "100%",
+            boxSizing: "border-box",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ pointerEvents: "auto" }}>
+            <button
+              type="button"
+              disabled={!validSelection}
+              onClick={onStart}
+              style={{
+                width: "100%",
+                minHeight: 70,
+                borderRadius: 999,
+                border: validSelection ? "1px solid rgba(255,255,255,.22)" : "1px solid rgba(255,255,255,.08)",
+                background: validSelection
+                  ? "linear-gradient(90deg, #37d8f6 0%, #8fe8d5 45%, #f3e28d 100%)"
+                  : "linear-gradient(90deg, rgba(120,125,140,.92), rgba(90,95,112,.92))",
+                boxShadow: validSelection
+                  ? "0 0 0 1px rgba(255,255,255,.06) inset, 0 14px 34px rgba(62, 214, 245, .26), 0 0 26px rgba(243, 226, 141, .22)"
+                  : "none",
+                color: "#09111c",
+                fontWeight: 1000,
+                fontSize: 18,
+                letterSpacing: 1.25,
+                textTransform: "uppercase",
+                cursor: validSelection ? "pointer" : "not-allowed",
+              }}
+            >
+              DÉMARRER LE SCRAM
+            </button>
+            {!validSelection ? (
+              <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>
+                {selectionError}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

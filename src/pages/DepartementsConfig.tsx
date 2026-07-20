@@ -52,23 +52,27 @@ type BotLevel = "easy" | "normal" | "hard";
 export type TerritoriesConfigPayload = {
   players: number;
 
-  // ✅ Teams
+  // Participants
   teamSize: 1 | 2 | 3;
-  // ✅ Selected players (humans + bots)
+  teamCount?: number;
   selectedIds: string[];
-  // ✅ Team assignment (only when teamSize > 1)
   teamsById?: Record<string, number>;
 
   botsEnabled: boolean;
   botLevel: BotLevel;
   rounds: number;
-  objective: number; // nb territoires à posséder pour gagner
+  objective: number;
   mapId: string;
   participantMode?: "players" | "teams";
   teamSourceMode?: "manual" | "saved" | "auto";
   selectedTeamIds?: string[];
   selectedTeamPlayerIds?: Record<string, string[]>;
   playerDartSets?: Record<string, string | null>;
+
+  // Rules
+  gameMode?: "classic" | "fortress";
+  fortressVictoryMode?: "majority" | "conquest";
+  maxFortressesPerOwner?: number;
   targetSelectionMode?: "free" | "by_score";
   captureRule?: "exact" | "gte";
   victoryMode?: "territories" | "regions" | "time";
@@ -79,52 +83,135 @@ export type TerritoriesConfigPayload = {
   timeLimitMin?: number;
 };
 
-const INFO_TEXT = `TERRITORIES (Départements)
+const INFO_TEXT = `TERRITORIES / DÉPARTEMENTS
 
-Objectif
-- Posséder X territoires (réglage "Objectif") ou, à la fin des Rounds, être l’équipe/la personne qui en possède le plus.
+Deux modes de jeu
 
-Déroulement (en match)
-1) Le header indique qui doit jouer (TEAM Gold / TEAM Pink, ou joueur en Solo).
-2) Choisis un territoire à attaquer (carte + liste).
-3) Joue une volée de 3 fléchettes : chaque flèche = 1 "touche".
-4) À 3 touches, le territoire est capturé par l’équipe/joueur.
+1. CONQUÊTE CLASSIQUE
+- La carte commence neutre.
+- Choisis ou obtiens une cible, puis réalise le score demandé sur une volée de 1 à 3 fléchettes.
+- Tu peux capturer un territoire libre ou reprendre un territoire adverse.
 
-Règles importantes
-- Une touche sur un territoire déjà capturé n’a pas d’effet (sauf si une variante est ajoutée plus tard).
-- En mode équipes, l’influence et les captures sont comptées par TEAM.
+2. FORTERESSES
+- Chaque joueur ou équipe reçoit strictement le même nombre de territoires dès le départ. Si la carte ne se divise pas parfaitement, le petit surplus reste neutre et pourra être conquis.
+- Chaque camp possède une couleur différente.
+- En réalisant exactement la valeur de l'un de tes territoires, tu y places une forteresse.
+- Le nombre maximal de forteresses actives est configurable pour chaque joueur ou équipe. Quand la limite est atteinte, une nouvelle forteresse déplace automatiquement la plus ancienne.
+- Pour voler un territoire adverse non protégé : réalise exactement sa valeur.
+- Pour voler un territoire protégé : une première réussite exacte brise la forteresse, puis une seconde réussite exacte conquiert le territoire.
 
-Conseils
-- Utilise la carte pour repérer rapidement les zones déjà prises / encore libres.
+Participants
+- Joueurs : de 2 à 10 participants, profils locaux et Bots IA compris.
+- Équipes : de 2 à 4 équipes de 2 ou 3 joueurs, avec un maximum de 10 participants au total.
+
+Sélection de cible
+- LIBRE : tu choisis précisément le territoire sur la carte.
+- PAR LE SCORE : la valeur totale de la volée détermine automatiquement un territoire compatible.
+
+Règle de capture
+- EXACT : le total doit être strictement égal à la valeur du territoire.
+- GTE (Greater Than or Equal) : le total peut être égal ou supérieur. Exemple : pour une valeur 46, 46, 47 ou 60 réussissent.
+- Le mode FORTERESSES impose toujours EXACT.
+
+Conditions de victoire
+- OBJECTIF TERRITOIRES : victoire immédiate dès le nombre demandé atteint.
+- OBJECTIF RÉGIONS : France uniquement ; une région est possédée quand tous ses départements ont la même couleur.
+- TEMPS : à la fin du chrono, le camp qui possède le plus de territoires gagne.
+- MAJORITÉ : à la fin des rounds, le camp qui possède le plus de territoires gagne.
+- CONQUÊTE TOTALE : la partie continue jusqu'à ce qu'un camp possède toute la carte.
 `;
 
 
 
+
+const HELP_GAME_MODE = `Mode de jeu
+
+CONQUÊTE CLASSIQUE
+- La carte commence sans propriétaire.
+- Chaque réussite capture directement la cible selon la règle EXACT ou GTE.
+
+FORTERESSES
+- Chaque camp reçoit strictement le même nombre de territoires, colorés dès le départ. Un éventuel surplus indivisible reste neutre.
+- Marque exactement la valeur d'un de tes territoires pour y placer une forteresse.
+- Le nombre de forteresses simultanées est configurable par joueur/équipe. Une nouvelle protection déplace la plus ancienne uniquement lorsque la limite choisie est déjà atteinte.
+- Une attaque exacte brise d'abord une forteresse ennemie ; une nouvelle attaque exacte conquiert ensuite le territoire.`;
+
+const HELP_ROUNDS = `Rounds
+- Un round est terminé quand tous les joueurs ont joué une fois.
+- En CLASSIQUE, les rounds servent aussi de limite : si personne n'a atteint l'objectif, le plus grand nombre de possessions l'emporte.
+- En FORTERESSES + MAJORITÉ, le classement final est calculé exactement à la fin du dernier round.
+- En CONQUÊTE TOTALE, la limite de rounds ne termine pas la partie.`;
+
 const HELP_OBJECTIF_REGIONS = `Objectif (régions)
-- Nombre de régions à posséder pour gagner quand la condition de victoire est REGIONS.`;
-const HELP_VICTORY = `Condition de victoire
-TERRITORIES
-- Gagne en atteignant l'objectif (territoires).
+- Disponible sur la carte France.
+- Une région est gagnée seulement lorsque tous ses départements appartiennent au même joueur ou à la même équipe.
+- La victoire est immédiate dès que le nombre de régions demandé est atteint.`;
 
-REGIONS (FR uniquement)
-- Gagne en atteignant l'objectif (régions).
+const HELP_VICTORY = `Condition de victoire — mode Classique
 
-TIME
-- Gagne au temps : à la fin, le joueur/équipe avec le plus de possessions est gagnant.`;
+TERRITOIRES
+- Victoire immédiate dès que le nombre de territoires demandé est atteint.
+- Si les rounds se terminent avant, le plus grand nombre de territoires l'emporte.
+
+RÉGIONS (France uniquement)
+- Victoire immédiate dès que le nombre de régions complètes demandé est atteint.
+
+TEMPS
+- La partie s'arrête à la fin du chrono.
+- Le joueur ou l'équipe qui possède le plus de territoires gagne.`;
+
+const HELP_FORTRESS_VICTORY = `Condition de victoire — mode Forteresses
+
+MAJORITÉ AUX ROUNDS
+- Tous les camps jouent le nombre de rounds choisi.
+- À la fin, celui qui possède le plus de territoires gagne.
+
+CONQUÊTE TOTALE
+- Aucun objectif chiffré et aucune fin automatique aux rounds.
+- La partie se termine uniquement lorsqu'un joueur ou une équipe possède toute la carte.`;
+
+const HELP_FORTRESS_LIMIT = `Nombre maximal de forteresses
+
+- Cette limite s'applique séparément à chaque joueur ou équipe, afin que tous les camps disposent du même potentiel défensif.
+- Exemple : valeur 3 = chaque camp peut protéger jusqu'à 3 de ses territoires en même temps.
+- Tant que la limite n'est pas atteinte, chaque score exact sur un territoire allié ajoute une nouvelle forteresse.
+- Une fois la limite atteinte, protéger un nouveau territoire déplace automatiquement la forteresse la plus ancienne.
+- Une forteresse brisée libère immédiatement une place.`;
+
 const HELP_OBJECTIF = `Objectif (territoires)
-- Nombre de territoires à posséder pour gagner.
-- Victoire immédiate dès que l'objectif est atteint.
-- Si les rounds se terminent avant : le joueur/équipe avec le plus de possessions gagne.`;
+- Nombre de territoires à posséder pour gagner immédiatement.
+- Exemple : objectif 10 = la partie s'arrête dès qu'un camp contrôle son 10e territoire.
+- Si personne n'y arrive avant la fin des rounds, le plus grand nombre de possessions l'emporte.`;
+
+const HELP_TIME = `Temps de partie
+- Le chrono démarre au lancement de la partie.
+- À son expiration, la partie s'arrête au prochain contrôle de fin de tour.
+- Le joueur ou l'équipe qui possède le plus de territoires gagne ; une égalité de possession donne une égalité.`;
 
 const HELP_SELECTION = `Sélection de cible
-FREE : vous choisissez le territoire.
-IMPOSED : le territoire est imposé.
-BY SCORE : le territoire est déterminé automatiquement par le score.
-(La sélection carte est informative uniquement.)`;
+
+LIBRE
+- Tu touches la carte pour choisir exactement le territoire à attaquer ou à défendre.
+- C'est le choix le plus stratégique, recommandé pour FORTERESSES.
+
+PAR LE SCORE
+- Tu ne choisis pas obligatoirement la cible.
+- Le total de ta volée recherche automatiquement un territoire dont la valeur correspond à la règle de capture.
+- S'il existe plusieurs territoires compatibles, le jeu en sélectionne un automatiquement.`;
 
 const HELP_CAPTURE = `Règle de capture
-EXACT : le score doit être exactement égal.
-D'autres règles peuvent autoriser une marge.`;
+
+EXACT
+- Le total de la volée doit être strictement égal à la valeur affichée.
+- Exemple : territoire 46 → il faut faire exactement 46.
+
+GTE = GREATER THAN OR EQUAL = SUPÉRIEUR OU ÉGAL
+- Le total peut être égal OU supérieur à la valeur affichée.
+- Exemple : territoire 46 → 46, 47, 60 ou 100 réussissent ; 45 échoue.
+- En mode PAR LE SCORE, le jeu attribue le territoire de plus grande valeur accessible avec le total réalisé.
+
+FORTERESSES
+- La règle est automatiquement verrouillée sur EXACT pour les attaques, les défenses et la destruction d'une forteresse.`;
 
 // Alphabetical order (carousel)
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
@@ -302,6 +389,15 @@ export default function DepartementsConfig(props: any) {
   const [mapId, setMapId] = React.useState<string>(() => "FR");
 
   const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
+  const [teamCount, setTeamCount] = React.useState<number>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      const value = Math.floor(Number(parsed?.teamCount || 2));
+      return Math.max(2, Math.min(4, value));
+    } catch {
+      return 2;
+    }
+  });
   const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
@@ -321,8 +417,9 @@ export default function DepartementsConfig(props: any) {
   const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      const savedCount = Math.max(2, Math.min(4, Math.floor(Number(parsed?.teamCount || 2))));
       return Array.isArray(parsed?.selectedTeamIds)
-        ? parsed.selectedTeamIds.map(String).filter((id: string) => !isTemporaryTeamSelectionId(id)).slice(0, 2)
+        ? parsed.selectedTeamIds.map(String).filter((id: string) => !isTemporaryTeamSelectionId(id)).slice(0, savedCount)
         : [];
     } catch {
       return [];
@@ -340,6 +437,9 @@ export default function DepartementsConfig(props: any) {
   const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
   const [rounds, setRounds] = React.useState(12);
   const [objective, setObjective] = React.useState(10);
+  const [gameMode, setGameMode] = React.useState<"classic" | "fortress">("classic");
+  const [fortressVictoryMode, setFortressVictoryMode] = React.useState<"majority" | "conquest">("majority");
+  const [maxFortressesPerOwner, setMaxFortressesPerOwner] = React.useState<number>(2);
 
   const [targetSelectionMode, setTargetSelectionMode] = React.useState<"free" | "by_score">("free");
   const [captureRule, setCaptureRule] = React.useState<"exact" | "gte">("exact");
@@ -356,12 +456,14 @@ export default function DepartementsConfig(props: any) {
 
       if (parsed?.mapId) setMapId(String(parsed.mapId));
       if (parsed?.teamSize) setTeamSize(parsed.teamSize);
+      if (parsed?.teamCount != null) setTeamCount(Math.max(2, Math.min(4, Math.floor(Number(parsed.teamCount) || 2))));
       if (parsed?.participantMode === "players" || parsed?.participantMode === "teams") setParticipantMode(parsed.participantMode);
       if (parsed?.teamSourceMode === "manual" || parsed?.teamSourceMode === "saved" || parsed?.teamSourceMode === "auto") {
         setTeamSourceMode(parsed.teamSourceMode);
       }
       if (Array.isArray(parsed?.selectedTeamIds)) {
-        setSelectedTeamIds(parsed.selectedTeamIds.map(String).filter((id: string) => !isTemporaryTeamSelectionId(id)).slice(0, 2));
+        const savedCount = Math.max(2, Math.min(4, Math.floor(Number(parsed?.teamCount || 2))));
+        setSelectedTeamIds(parsed.selectedTeamIds.map(String).filter((id: string) => !isTemporaryTeamSelectionId(id)).slice(0, savedCount));
       }
       if (parsed?.selectedTeamPlayerIds && typeof parsed.selectedTeamPlayerIds === "object") {
         setSelectedTeamPlayerIds(withoutTemporaryTeamSelections(parsed.selectedTeamPlayerIds));
@@ -373,6 +475,16 @@ export default function DepartementsConfig(props: any) {
       // Objective / win territories (support legacy keys)
       const objT = parsed?.winTerritories ?? parsed?.objectiveTerritories ?? parsed?.objective;
       if (objT != null) setObjective(Math.max(1, Number(objT) || 10));
+
+      const gm = parsed?.gameMode;
+      if (gm === "classic" || gm === "fortress") setGameMode(gm);
+
+      const fvm = parsed?.fortressVictoryMode;
+      if (fvm === "majority" || fvm === "conquest") setFortressVictoryMode(fvm);
+
+      if (parsed?.maxFortressesPerOwner != null) {
+        setMaxFortressesPerOwner(Math.max(1, Math.min(10, Math.floor(Number(parsed.maxFortressesPerOwner) || 2))));
+      }
 
       const tsm = parsed?.targetSelectionMode;
       if (tsm === "free" || tsm === "by_score") setTargetSelectionMode(tsm);
@@ -406,7 +518,7 @@ export default function DepartementsConfig(props: any) {
       const raw = localStorage.getItem("dc_modecfg_departements");
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 6);
+      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 10);
     } catch {}
     return [];
   });
@@ -500,7 +612,7 @@ export default function DepartementsConfig(props: any) {
   // store profiles (humans)
   const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
   const humanProfiles = React.useMemo(
-    () => sortProfilesByModeUsage(storeProfiles.filter((p) => p && !isBotLike(p)), "x01", (store as any)?.activeProfileId),
+    () => sortProfilesByModeUsage(storeProfiles.filter((p) => p && !isBotLike(p)), "territories", (store as any)?.activeProfileId),
     [storeProfiles, (store as any)?.activeProfileId]
   );
 
@@ -577,8 +689,8 @@ export default function DepartementsConfig(props: any) {
     };
   }, []);
 
-  const maxPlayers = participantMode === "teams" ? teamSize * 2 : 6;
-  const minPlayers = participantMode === "teams" ? teamSize * 2 : 2;
+  const maxPlayers = participantMode === "teams" ? Math.min(10, teamSize * teamCount) : 10;
+  const minPlayers = participantMode === "teams" ? teamSize * teamCount : 2;
 
   // (maps) is already memoized above (alphabetical order)
 
@@ -603,6 +715,7 @@ export default function DepartementsConfig(props: any) {
     resetParticipants();
     setParticipantMode(next);
     setTeamSize(next === "players" ? 1 : 2);
+    if (next === "teams") setTeamCount(2);
     if (next === "players") setTeamSourceMode("manual");
   }
 
@@ -610,6 +723,15 @@ export default function DepartementsConfig(props: any) {
     if (teamSize === next) return;
     resetParticipants();
     setTeamSize(next);
+    const maxCountForSize = Math.max(2, Math.min(4, Math.floor(10 / next)));
+    setTeamCount((current) => Math.min(current, maxCountForSize));
+  }
+
+  function chooseTeamCount(next: number) {
+    const safe = Math.max(2, Math.min(4, Math.floor(Number(next) || 2)));
+    if (safe === teamCount || safe * teamSize > 10) return;
+    resetParticipants();
+    setTeamCount(safe);
   }
 
   function chooseTeamSource(next: "manual" | "saved" | "auto") {
@@ -640,12 +762,13 @@ export default function DepartementsConfig(props: any) {
       }
       if (participantMode === "teams" && teamSourceMode === "manual") {
         setTeamsById((current) => {
-          const counts = [0, 0];
-          for (const pid of prev) {
-            const teamIndex = current[pid];
-            if (teamIndex === 0 || teamIndex === 1) counts[teamIndex] += 1;
+          const counts = Array.from({ length: teamCount }, () => 0);
+          for (const currentId of prev) {
+            const teamIndex = current[currentId];
+            if (typeof teamIndex === "number" && teamIndex >= 0 && teamIndex < teamCount) counts[teamIndex] += 1;
           }
-          const nextTeam = counts[0] <= counts[1] ? 0 : 1;
+          let nextTeam = 0;
+          for (let i = 1; i < counts.length; i += 1) if (counts[i] < counts[nextTeam]) nextTeam = i;
           return { ...current, [pid]: nextTeam };
         });
       }
@@ -653,16 +776,16 @@ export default function DepartementsConfig(props: any) {
     });
   }
 
-  function setManualPlayerTeam(id: string, teamIndex: 0 | 1) {
+  function setManualPlayerTeam(id: string, teamIndex: 0 | 1 | 2 | 3) {
     if (!selectedIds.includes(id)) return;
     setTeamsById((prev) => ({ ...prev, [id]: teamIndex }));
   }
 
   function addStoredTeam(baseTeamId: string, playerIds: string[]) {
-    if (selectedTeamIds.length >= 2) return;
+    if (selectedTeamIds.length >= teamCount) return;
     const instanceId = nextTeamInstanceId({ id: baseTeamId }, selectedTeamIds);
     const chosen = Array.from(new Set((playerIds || []).map(String).filter(Boolean))).slice(0, teamSize);
-    setSelectedTeamIds((prev) => [...prev, instanceId].slice(0, 2));
+    setSelectedTeamIds((prev) => [...prev, instanceId].slice(0, teamCount));
     setSelectedTeamPlayerIds((prev) => ({ ...prev, [instanceId]: chosen }));
   }
 
@@ -700,15 +823,15 @@ export default function DepartementsConfig(props: any) {
 
   React.useEffect(() => {
     if (participantMode !== "teams" || teamSourceMode === "manual") return;
-    const first = (selectedTeamPlayerIds[selectedTeamIds[0] || ""] || []).map(String);
-    const second = (selectedTeamPlayerIds[selectedTeamIds[1] || ""] || []).map(String);
-    const ids = Array.from(new Set([...first, ...second]));
+    const groups = selectedTeamIds.slice(0, teamCount).map((teamId) =>
+      (selectedTeamPlayerIds[teamId] || []).map(String).slice(0, teamSize),
+    );
+    const ids = Array.from(new Set(groups.flat()));
     const assignments: Record<string, number> = {};
-    first.forEach((id) => { assignments[id] = 0; });
-    second.forEach((id) => { assignments[id] = 1; });
+    groups.forEach((group, teamIndex) => group.forEach((id) => { assignments[id] = teamIndex; }));
     setSelectedIds(ids);
     setTeamsById(assignments);
-  }, [participantMode, teamSourceMode, teamSize, selectedTeamIds, selectedTeamPlayerIds]);
+  }, [participantMode, teamSourceMode, teamSize, teamCount, selectedTeamIds, selectedTeamPlayerIds]);
 
   // keep teamsById clean when players removed
   React.useEffect(() => {
@@ -738,21 +861,17 @@ export default function DepartementsConfig(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botsEnabled, userBots]);
 
-  // ✅ Toujours 2 TEAMS en mode équipes (Team 1 + Team 2)
-  const neededTeams = React.useMemo(() => {
-    if (teamSize === 1) return 0;
-    return 2;
-  }, [teamSize]);
+  const neededTeams = React.useMemo(() => (teamSize === 1 ? 0 : teamCount), [teamSize, teamCount]);
 
-  // Team slots model (2 teams fixes)
+  // Team slots model (2 to 4 teams)
   const slots = React.useMemo(() => {
     if (teamSize === 1) return [];
-    const out: Array<Array<string | null>> = Array.from({ length: 2 }, () =>
+    const out: Array<Array<string | null>> = Array.from({ length: teamCount }, () =>
       Array.from({ length: teamSize }, () => null)
     );
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= 2) continue;
+      if (typeof te !== "number" || te < 0 || te >= teamCount) continue;
       for (let s = 0; s < teamSize; s++) {
         if (!out[te][s]) {
           out[te][s] = id;
@@ -761,7 +880,7 @@ export default function DepartementsConfig(props: any) {
       }
     }
     return out;
-  }, [teamSize, selectedIds, teamsById]);
+  }, [teamSize, teamCount, selectedIds, teamsById]);
 
   const unassigned = React.useMemo(() => {
     if (teamSize === 1) return [];
@@ -791,7 +910,7 @@ export default function DepartementsConfig(props: any) {
     const ids = [...unassigned]; // ✅ inclut humains + bots sélectionnés
     if (!ids.length) return;
 
-    for (let te = 0; te < 2; te++) {
+    for (let te = 0; te < teamCount; te++) {
       for (let s = 0; s < teamSize; s++) {
         if (slots[te]?.[s]) continue;
         if (!ids.length) return;
@@ -812,14 +931,14 @@ export default function DepartementsConfig(props: any) {
     setSelectedIds((prev) => {
       // ✅ Ne rien ajouter si la sélection est déjà suffisante
       // - Solo: minPlayers atteint
-      // - Équipes: on exige exactement 2 teams => teamSize*2 joueurs
+      // - Équipes: on exige exactement teamCount équipes complètes
       if (teamSize === 1 && prev.length >= minPlayers) return prev;
-      if (teamSize > 1 && prev.length >= teamSize * 2) return prev;
+      if (teamSize > 1 && prev.length >= teamSize * teamCount) return prev;
 
       let next = [...prev];
 
       // fill to target
-      const target = teamSize === 1 ? minPlayers : teamSize * 2;
+      const target = teamSize === 1 ? minPlayers : teamSize * teamCount;
       for (const id of botIds) {
         if (next.length >= maxPlayers) break;
         if (next.length >= target) break;
@@ -843,29 +962,29 @@ export default function DepartementsConfig(props: any) {
 
     if (participantMode === "players") return true;
 
-    // ✅ mode équipes = EXACTEMENT 2 teams, donc EXACTEMENT 2 * teamSize joueurs
-    if (selectedIds.length !== teamSize * 2) return false;
+    if (selectedIds.length !== teamSize * teamCount) return false;
 
     if (teamSourceMode !== "manual") {
-      if (selectedTeamIds.length !== 2) return false;
+      if (selectedTeamIds.length !== teamCount) return false;
       const chosen = selectedTeamIds.map((id) => selectedTeamPlayerIds[id] || []);
       if (chosen.some((ids) => ids.length !== teamSize)) return false;
-      if (new Set(chosen.flat().map(String)).size !== teamSize * 2) return false;
+      if (new Set(chosen.flat().map(String)).size !== teamSize * teamCount) return false;
     }
 
     // Every selected id must be assigned and each team must have exactly teamSize members
-    const counts = [0, 0];
+    const counts = Array.from({ length: teamCount }, () => 0);
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te > 1) return false;
-      counts[te]++;
+      if (typeof te !== "number" || te < 0 || te >= teamCount) return false;
+      counts[te] += 1;
     }
-    return counts[0] === teamSize && counts[1] === teamSize;
-  }, [selectedIds, minPlayers, maxPlayers, participantMode, teamSize, teamSourceMode, selectedTeamIds, selectedTeamPlayerIds, teamsById]);
+    return counts.every((count) => count === teamSize);
+  }, [selectedIds, minPlayers, maxPlayers, participantMode, teamSize, teamCount, teamSourceMode, selectedTeamIds, selectedTeamPlayerIds, teamsById]);
 
   const payload: TerritoriesConfigPayload = {
     players: selectedIds.length,
     teamSize,
+    teamCount: participantMode === "teams" ? teamCount : 1,
     selectedIds,
     teamsById: participantMode === "players" ? undefined : teamsById,
     participantMode,
@@ -883,7 +1002,10 @@ export default function DepartementsConfig(props: any) {
     // ✅ Engine/play keys
     winTerritories: objective,
     winRegions: objectiveRegions,
-    captureRule,
+    gameMode,
+    fortressVictoryMode,
+    maxFortressesPerOwner,
+    captureRule: gameMode === "fortress" ? "exact" : captureRule,
     targetSelectionMode,
     victoryMode,
     objectiveRegions,
@@ -904,17 +1026,19 @@ export default function DepartementsConfig(props: any) {
   const cardBg = "rgba(10, 12, 24, 0.96)";
 
   const x01TeamAssignments = React.useMemo(() => {
-    const next: Record<string, "gold" | "pink" | null> = {};
+    const ids = ["gold", "pink", "blue", "green"] as const;
+    const next: Record<string, "gold" | "pink" | "blue" | "green" | null> = {};
     for (const id of selectedIds) {
-      next[id] = teamsById[id] === 0 ? "gold" : teamsById[id] === 1 ? "pink" : null;
+      const index = teamsById[id];
+      next[id] = typeof index === "number" && index >= 0 && index < ids.length ? ids[index] : null;
     }
     return next;
   }, [selectedIds, teamsById]);
 
   const setX01PlayerTeam = React.useCallback((playerId: string, teamId: "gold" | "pink" | "blue" | "green") => {
-    if (teamId === "gold") setManualPlayerTeam(String(playerId), 0);
-    if (teamId === "pink") setManualPlayerTeam(String(playerId), 1);
-  }, [selectedIds]);
+    const index = ({ gold: 0, pink: 1, blue: 2, green: 3 } as const)[teamId];
+    if (index < teamCount) setManualPlayerTeam(String(playerId), index as 0 | 1 | 2 | 3);
+  }, [selectedIds, teamCount]);
 
   return (
     <div className="page" style={{ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden" }}>
@@ -1166,7 +1290,7 @@ export default function DepartementsConfig(props: any) {
             <InfoMini
               title="Joueurs / Équipes"
               content={
-                "JOUEURS : sélection libre de 2 à 6 participants, avec profils locaux et Bots IA.\n\nÉQUIPES : choisis un format 2v2 ou 3v3, puis compose les deux équipes manuellement, depuis tes équipes enregistrées, ou avec un brassage automatique."
+                "JOUEURS : sélection libre de 2 à 10 participants, avec profils locaux et Bots IA.\n\nÉQUIPES : choisis 2 à 4 équipes de 2 ou 3 joueurs, sans dépasser 10 participants. Composition manuelle, équipes enregistrées ou brassage automatique."
               }
               onOpen={(title, content) => setInfoModal({ title, content })}
             />
@@ -1203,7 +1327,7 @@ export default function DepartementsConfig(props: any) {
                   allProfiles={humanProfiles}
                 />
                 <PlayerPagedSelector
-                  usageMode="x01"
+                  usageMode="territories"
                   profiles={humanProfiles}
                   selectedIds={selectedIds}
                   onToggle={togglePlayer}
@@ -1278,11 +1402,32 @@ export default function DepartementsConfig(props: any) {
           <div style={{ display: "grid", gap: 14, width: "100%", maxWidth: "100%", minWidth: 0, overflow: "hidden" }}>
             <div>
               <div style={{ color: "#aeb2d3", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
-                Format des équipes
+                Joueurs par équipe
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <X01PillButton label="2 v 2" active={teamSize === 2} onClick={() => chooseTeamSize(2)} primary={primary} primarySoft={primarySoft} />
-                <X01PillButton label="3 v 3" active={teamSize === 3} onClick={() => chooseTeamSize(3)} primary={primary} primarySoft={primarySoft} />
+                <X01PillButton label="2 joueurs" active={teamSize === 2} onClick={() => chooseTeamSize(2)} primary={primary} primarySoft={primarySoft} />
+                <X01PillButton label="3 joueurs" active={teamSize === 3} onClick={() => chooseTeamSize(3)} primary={primary} primarySoft={primarySoft} />
+              </div>
+            </div>
+
+            <div>
+              <div style={{ color: "#aeb2d3", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+                Nombre d'équipes
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[2, 3, 4].filter((count) => count * teamSize <= 10).map((count) => (
+                  <X01PillButton
+                    key={count}
+                    label={`${count} équipes`}
+                    active={teamCount === count}
+                    onClick={() => chooseTeamCount(count)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                  />
+                ))}
+              </div>
+              <div style={{ marginTop: 7, color: "#8f94b2", fontSize: 11 }}>
+                {teamCount} × {teamSize} = {teamCount * teamSize} participants
               </div>
             </div>
 
@@ -1311,7 +1456,7 @@ export default function DepartementsConfig(props: any) {
               savedTeamMemberSelections={selectedTeamPlayerIds}
               toggleSavedTeamMember={toggleStoredTeamMemberFromX01}
               teamSizeOverride={teamSize}
-              teamCountOverride={2}
+              teamCountOverride={teamCount}
               allowSaveGeneratedTeams={false}
               primary={primary}
               primarySoft={primarySoft}
@@ -1325,7 +1470,7 @@ export default function DepartementsConfig(props: any) {
               ? `Sélection prête · ${selectedIds.length} participant${selectedIds.length > 1 ? "s" : ""}`
               : participantMode === "players"
                 ? `Sélectionne entre 2 et ${maxPlayers} joueurs.`
-                : `Sélectionne exactement 2 équipes de ${teamSize} joueurs.`}
+                : `Sélectionne exactement ${teamCount} équipes de ${teamSize} joueurs.`}
           </div>
         </div>
       </Section>
@@ -1336,43 +1481,88 @@ export default function DepartementsConfig(props: any) {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("config.rules", "Règles")}</span>
             <InfoMini
-              title="Règles"
-              content={"Rounds = nombre de tours maximum. Objectif = territoires à posséder pour gagner."}
+              title="Règles TERRITORIES"
+              content={INFO_TEXT}
               onOpen={(title, content) => setInfoModal({ title, content })}
             />
           </div>
         }
       >
-        <OptionRow label={t("config.rounds", "Rounds")}>
-          <OptionSelect value={rounds} options={[8, 10, 12, 15, 20]} onChange={setRounds} />
-        </OptionRow>
-
         <OptionRow label={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>{t("territories.objective", "Objectif (territoires)")}</span>
-            <InfoMini
-              title="Objectif (territoires)"
-              content={HELP_OBJECTIF}
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <span>Mode de jeu</span>
+            <InfoMini title="Mode de jeu" content={HELP_GAME_MODE} onOpen={(title, content) => setInfoModal({ title, content })} />
           </div>
         }>
-          <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
+          <OptionSelect
+            value={gameMode}
+            options={[
+              { value: "classic", label: "Conquête classique" },
+              { value: "fortress", label: "Forteresses" },
+            ]}
+            onChange={setGameMode as any}
+          />
         </OptionRow>
+
+        {gameMode === "fortress" ? (
+          <div style={{ margin: "8px 0 12px", borderRadius: 16, padding: "12px 14px", border: `1px solid ${primary}55`, background: `${primary}0f` }}>
+            <div style={{ color: primary, fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 0.7 }}>
+              Répartition équitable activée
+            </div>
+            <div style={{ marginTop: 6, color: "#d7dcf2", fontSize: 11.5, lineHeight: 1.45 }}>
+              La carte sera partagée automatiquement entre les {participantMode === "teams" ? `${teamCount} équipes` : `${selectedIds.length || 2} joueurs`}.
+              Chaque camp commencera avec exactement le même nombre de territoires et sa propre couleur. Si la division laisse un petit surplus, ces territoires resteront neutres au départ. Chaque camp pourra maintenir jusqu'à {maxFortressesPerOwner} forteresse{maxFortressesPerOwner > 1 ? "s" : ""} active{maxFortressesPerOwner > 1 ? "s" : ""}.
+            </div>
+          </div>
+        ) : null}
+
+        {gameMode === "fortress" ? (
+          <OptionRow label={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span>Forteresses max. / camp</span>
+              <InfoMini title="Nombre maximal de forteresses" content={HELP_FORTRESS_LIMIT} onOpen={(title, content) => setInfoModal({ title, content })} />
+            </div>
+          }>
+            <OptionSelect
+              value={maxFortressesPerOwner}
+              options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
+              onChange={(value: any) => setMaxFortressesPerOwner(Math.max(1, Math.min(10, Number(value) || 2)))}
+            />
+          </OptionRow>
+        ) : null}
+
+        {(gameMode === "classic" || fortressVictoryMode === "majority") ? (
+          <OptionRow label={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span>{t("config.rounds", "Rounds")}</span>
+              <InfoMini title="Rounds" content={HELP_ROUNDS} onOpen={(title, content) => setInfoModal({ title, content })} />
+            </div>
+          }>
+            <OptionSelect value={rounds} options={[6, 8, 10, 12, 15, 20, 25]} onChange={setRounds} />
+          </OptionRow>
+        ) : (
+          <OptionRow label={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span>Durée</span>
+              <InfoMini title="Conquête totale" content={HELP_FORTRESS_VICTORY} onOpen={(title, content) => setInfoModal({ title, content })} />
+            </div>
+          }>
+            <span style={{ color: primary, fontWeight: 950 }}>Jusqu'à conquête totale</span>
+          </OptionRow>
+        )}
 
         <OptionRow label={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("territories.targetMode", "Sélection de cible")}</span>
-            <InfoMini
-              title="Sélection de cible"
-              content={HELP_SELECTION}
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <InfoMini title="Sélection de cible" content={HELP_SELECTION} onOpen={(title, content) => setInfoModal({ title, content })} />
           </div>
         }>
           <OptionSelect
             value={targetSelectionMode}
-            options={["free", "by_score"]}
+            options={[
+              { value: "free", label: "Libre — choix sur la carte" },
+              { value: "by_score", label: "Par le score — automatique" },
+            ]}
             onChange={setTargetSelectionMode as any}
           />
         </OptionRow>
@@ -1380,33 +1570,92 @@ export default function DepartementsConfig(props: any) {
         <OptionRow label={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("territories.captureRule", "Règle de capture")}</span>
-            <InfoMini
-              title="Règle de capture"
-              content={HELP_CAPTURE}
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <InfoMini title="Règle de capture — EXACT / GTE" content={HELP_CAPTURE} onOpen={(title, content) => setInfoModal({ title, content })} />
           </div>
         }>
-          <OptionSelect value={captureRule} options={["exact", "gte"]} onChange={setCaptureRule as any} />
-        </OptionRow>
-
-        <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 10 }}><span>{t("territories.victoryMode", "Condition de victoire")}</span><InfoMini title="Condition de victoire" content={HELP_VICTORY} onOpen={(t, c) => setInfoModal({ title: t, content: c })} /></div>}>
           <OptionSelect
-            value={victoryMode}
-            options={String(mapId || "").toUpperCase() === "FR" ? ["territories", "regions", "time"] : ["territories", "time"]}
-            onChange={setVictoryMode as any}
+            value={gameMode === "fortress" ? "exact" : captureRule}
+            options={[
+              { value: "exact", label: "EXACT — score strictement égal" },
+              { value: "gte", label: "GTE — supérieur ou égal" },
+            ]}
+            onChange={setCaptureRule as any}
+            disabled={gameMode === "fortress"}
           />
         </OptionRow>
 
-        {victoryMode === "regions" && String(mapId || "").toUpperCase() === "FR" && (
-          <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 10 }}><span>{t("territories.objectiveRegions", "Objectif (régions)")}</span><InfoMini title="Objectif (régions)" content={HELP_OBJECTIF_REGIONS} onOpen={(t, c) => setInfoModal({ title: t, content: c })} /></div>}>
-            <OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} />
-          </OptionRow>
-        )}
+        {gameMode === "classic" ? (
+          <>
+            <OptionRow label={
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span>{t("territories.victoryMode", "Condition de victoire")}</span>
+                <InfoMini title="Condition de victoire" content={HELP_VICTORY} onOpen={(title, content) => setInfoModal({ title, content })} />
+              </div>
+            }>
+              <OptionSelect
+                value={victoryMode}
+                options={String(mapId || "").toUpperCase() === "FR"
+                  ? [
+                      { value: "territories", label: "Objectif territoires" },
+                      { value: "regions", label: "Objectif régions" },
+                      { value: "time", label: "Temps — majorité finale" },
+                    ]
+                  : [
+                      { value: "territories", label: "Objectif territoires" },
+                      { value: "time", label: "Temps — majorité finale" },
+                    ]}
+                onChange={setVictoryMode as any}
+              />
+            </OptionRow>
 
-        {victoryMode === "time" && (
-          <OptionRow label={t("territories.timeLimit", "Temps de partie")}>
-            <OptionSelect value={timeLimitMin} options={[15,20,30,60]} onChange={setTimeLimitMin} />
+            {victoryMode === "territories" ? (
+              <OptionRow label={
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span>{t("territories.objective", "Objectif (territoires)")}</span>
+                  <InfoMini title="Objectif (territoires)" content={HELP_OBJECTIF} onOpen={(title, content) => setInfoModal({ title, content })} />
+                </div>
+              }>
+                <OptionSelect value={objective} options={[5, 6, 8, 10, 12, 15, 18, 20, 25]} onChange={setObjective} />
+              </OptionRow>
+            ) : null}
+
+            {victoryMode === "regions" && String(mapId || "").toUpperCase() === "FR" ? (
+              <OptionRow label={
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span>{t("territories.objectiveRegions", "Objectif (régions)")}</span>
+                  <InfoMini title="Objectif (régions)" content={HELP_OBJECTIF_REGIONS} onOpen={(title, content) => setInfoModal({ title, content })} />
+                </div>
+              }>
+                <OptionSelect value={objectiveRegions} options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} onChange={setObjectiveRegions} />
+              </OptionRow>
+            ) : null}
+
+            {victoryMode === "time" ? (
+              <OptionRow label={
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span>{t("territories.timeLimit", "Temps de partie")}</span>
+                  <InfoMini title="Temps de partie" content={HELP_TIME} onOpen={(title, content) => setInfoModal({ title, content })} />
+                </div>
+              }>
+                <OptionSelect value={timeLimitMin} options={[10, 15, 20, 30, 45, 60]} onChange={setTimeLimitMin} />
+              </OptionRow>
+            ) : null}
+          </>
+        ) : (
+          <OptionRow label={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span>Condition de victoire</span>
+              <InfoMini title="Victoire — Forteresses" content={HELP_FORTRESS_VICTORY} onOpen={(title, content) => setInfoModal({ title, content })} />
+            </div>
+          }>
+            <OptionSelect
+              value={fortressVictoryMode}
+              options={[
+                { value: "majority", label: "Majorité à la fin des rounds" },
+                { value: "conquest", label: "Conquête totale de la carte" },
+              ]}
+              onChange={setFortressVictoryMode as any}
+            />
           </OptionRow>
         )}
       </Section>

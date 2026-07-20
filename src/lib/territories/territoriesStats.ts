@@ -34,7 +34,9 @@ export type TerritoriesMatch = {
 
   // mode
   mode?: "solo" | "teams";
-  victory?: "territories" | "regions" | "time";
+  gameMode?: "classic" | "fortress";
+  maxFortressesPerOwner?: number;
+  victory?: "territories" | "regions" | "time" | "majority" | "conquest";
 
   // config / meta
   teams: number;
@@ -54,6 +56,8 @@ export type TerritoriesMatch = {
   darts?: number[];
   steals?: number[];
   lost?: number[];
+  fortresses?: number[];
+  breaches?: number[];
 
   // ✅ pour le classement (par profil)
   players?: TerritoriesPlayerRef[];
@@ -108,10 +112,16 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
   const darts = arrNums(raw.darts);
   const steals = arrNums(raw.steals);
   const lost = arrNums(raw.lost);
+  const fortresses = arrNums(raw.fortresses);
+  const breaches = arrNums(raw.breaches);
 
   const mode = raw.mode === "teams" || raw.mode === "solo" ? raw.mode : undefined;
+  const gameMode = raw.gameMode === "fortress" || raw.gameMode === "classic" ? raw.gameMode : undefined;
+  const maxFortressesPerOwner = raw.maxFortressesPerOwner !== undefined
+    ? Math.max(1, Math.min(10, Math.floor(toNum(raw.maxFortressesPerOwner, 2))))
+    : undefined;
   const victory =
-    raw.victory === "territories" || raw.victory === "regions" || raw.victory === "time"
+    raw.victory === "territories" || raw.victory === "regions" || raw.victory === "time" || raw.victory === "majority" || raw.victory === "conquest"
       ? raw.victory
       : undefined;
 
@@ -146,8 +156,12 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
     darts,
     steals,
     lost,
+    fortresses,
+    breaches,
     durationMs,
     mode,
+    gameMode,
+    maxFortressesPerOwner,
     victory,
     players,
   };
@@ -228,6 +242,11 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
             darts: (m as any).darts,
             steals: (m as any).steals,
             lost: (m as any).lost,
+            fortresses: (m as any).fortresses,
+            breaches: (m as any).breaches,
+            gameMode: (m as any).gameMode,
+            maxFortressesPerOwner: (m as any).maxFortressesPerOwner,
+            victory: (m as any).victory,
             durationMs: (m as any).durationMs,
           },
         },
