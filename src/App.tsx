@@ -5008,7 +5008,7 @@ case "babyfoot_team_edit":
         page = <CapitalConfig setTab={go} go={go} store={store} params={routeParams} />;
         break;
       case "capital_play":
-        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "capital", routeParams))} />;
+        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "capital", routeParams), { navigate: false })} />;
         break;
 
       case "happy_mille_config":

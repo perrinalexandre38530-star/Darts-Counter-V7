@@ -25,8 +25,12 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { getProBotAvatar } from "../lib/botsProAvatars";
+import { loadBotPlayers } from "../lib/bots";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
+import CapitalParticipantsX01, {
+  type CapitalParticipantSelection,
+} from "./CapitalParticipantsX01";
 
 type BotLevel = "easy" | "normal" | "hard";
 type BotRisk = "safe" | "normal" | "aggressive";
@@ -57,6 +61,19 @@ export type CapitalConfigPayload = {
   players: number; // total slots (humains + bots)
   selectedIds: string[]; // ordre = ordre de jeu (si fixed) ; sinon ordre initial
   startOrderMode: CapitalStartOrderMode;
+  startOrderApplied?: boolean;
+  participantMode?: "players" | "teams";
+  teamsSourceMode?: "manual" | "saved" | "auto";
+  playersList?: any[];
+  teams?: Array<{
+    id: string;
+    name: string;
+    color?: string | null;
+    logoDataUrl?: string | null;
+    playerIds: string[];
+    players: string[];
+  }>;
+  playerDartSets?: Record<string, string | null>;
 
   // Bots
   botsEnabled: boolean;
@@ -116,6 +133,15 @@ Ensuite, chaque contrat se joue en 1 volée de 3 fléchettes :
 
 - ✅ Contrat réussi → on AJOUTE le total de la volée au score
 - ❌ Contrat raté → le score est DIVISÉ PAR 2 (arrondi à l’entier inférieur)
+
+PARAMÈTRES DE CONFIGURATION
+- Joueurs / Équipes : reprend le sélecteur X01 (profils, bots, équipes manuelles, enregistrées et brassage auto).
+- En équipes : le capital collectif est la somme des capitaux des membres.
+- Ordre aléatoire : tiré une seule fois au démarrage de la partie.
+- Version Custom : permet de choisir et réordonner les contrats.
+- Score cible : arrête la partie dès que le score est atteint.
+- Timer : une volée expirée vaut trois MISS.
+- Saisie : keypad, cible interactive ou presets.
 
 Liste officielle des contrats :
 1) Capital
@@ -242,6 +268,11 @@ export default function CapitalConfig(props: any) {
 
   const store = props?.store;
   const go = props?.go || props?.setTab;
+  const restoredConfig: Partial<CapitalConfigPayload> = props?.params?.config || {};
+  const useCanonicalParticipants = true;
+  const [viewMode, setViewMode] = useState<"guided" | "complete">("guided");
+  const [guidedStep, setGuidedStep] = useState<0 | 1 | 2 | 3>(0);
+  const [configError, setConfigError] = useState("");
 
   const activeProfileId = useMemo(() => safeActiveProfileId(store), [store]);
   const locals = useMemo(
@@ -278,28 +309,34 @@ export default function CapitalConfig(props: any) {
     return Array.from(m.values());
   }, [proBots, customBots]);
 
+  const [canonicalSelection, setCanonicalSelection] = useState<CapitalParticipantSelection | null>(null);
+  const handleCanonicalSelection = React.useCallback((selection: CapitalParticipantSelection) => {
+    setCanonicalSelection(selection);
+    if (selection.valid) setConfigError("");
+  }, []);
+
   // ------------------ Config core ------------------
-  const [players, setPlayers] = useState<number>(2);
-  const [botsEnabled, setBotsEnabled] = useState<boolean>(false);
-  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
+  const [players, setPlayers] = useState<number>(typeof restoredConfig.players === "number" ? restoredConfig.players : 2);
+  const [botsEnabled, setBotsEnabled] = useState<boolean>(restoredConfig.botsEnabled === true);
+  const [botLevel, setBotLevel] = useState<BotLevel>(restoredConfig.botLevel || "normal");
 
   // ✅ Ajout : presets de règles (remplit automatiquement les toggles)
   const [rulesPreset, setRulesPreset] = useState<RulesPreset>("official");
 
   // ✅ Ajout : bots comportement
-  const [botsAutoPlay, setBotsAutoPlay] = useState<boolean>(true);
-  const [botTurnDelayMs, setBotTurnDelayMs] = useState<number>(650);
-  const [botRisk, setBotRisk] = useState<BotRisk>("normal");
+  const [botsAutoPlay, setBotsAutoPlay] = useState<boolean>(restoredConfig.botsAutoPlay !== false);
+  const [botTurnDelayMs, setBotTurnDelayMs] = useState<number>(restoredConfig.botTurnDelayMs ?? 650);
+  const [botRisk, setBotRisk] = useState<BotRisk>(restoredConfig.botRisk || "normal");
 
   const [startOrderMode, setStartOrderMode] =
-    useState<CapitalStartOrderMode>("random");
+    useState<CapitalStartOrderMode>(restoredConfig.startOrderMode || "random");
 
   // ✅ Ajout : timer par tour
-  const [turnTimerSec, setTurnTimerSec] = useState<number>(0);
+  const [turnTimerSec, setTurnTimerSec] = useState<number>(restoredConfig.turnTimerSec ?? 0);
 
   const [inputMethod, setInputMethod] = useState<ScoreInputMethod>(() => {
     try {
-      const v = (localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad") as any;
+      const v = (restoredConfig.inputMethod || localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad") as any;
       return (["keypad", "dartboard", "presets"].includes(v) ? v : "keypad") as any;
     } catch {
       return "keypad";
@@ -343,24 +380,24 @@ export default function CapitalConfig(props: any) {
   }, [players, botsEnabled, selectedHumanIds, selectedBotIds]);
 
   // ------------------ Mode / Contrats ------------------
-  const [mode, setMode] = useState<CapitalModeKind>("official");
-  const [includeCapital, setIncludeCapital] = useState<boolean>(true);
+  const [mode, setMode] = useState<CapitalModeKind>(restoredConfig.mode || "official");
+  const [includeCapital, setIncludeCapital] = useState<boolean>(restoredConfig.includeCapital !== false);
 
   // ✅ Ajout : limite du nombre de contrats (custom)
-  const [maxCustomContracts, setMaxCustomContracts] = useState<number>(15);
+  const [maxCustomContracts, setMaxCustomContracts] = useState<number>(restoredConfig.maxCustomContracts ?? 15);
 
   // ------------------ Victoire / règles ------------------
   const [victoryMode, setVictoryMode] = useState<
     "best_after_contracts" | "first_to_target"
-  >("best_after_contracts");
-  const [targetScore, setTargetScore] = useState<number>(700);
+  >(restoredConfig.victoryMode || "best_after_contracts");
+  const [targetScore, setTargetScore] = useState<number>(restoredConfig.targetScore ?? 700);
   const [tieBreaker, setTieBreaker] = useState<"none" | "last_contract_total">(
-    "last_contract_total"
+    restoredConfig.tieBreaker || "last_contract_total"
   );
-  const [failDivideBy2, setFailDivideBy2] = useState<boolean>(true);
-  const [startingCapital, setStartingCapital] = useState<number>(301);
+  const [failDivideBy2, setFailDivideBy2] = useState<boolean>(restoredConfig.failDivideBy2 !== false);
+  const [startingCapital, setStartingCapital] = useState<number>(restoredConfig.startingCapital ?? 301);
 
-  const [customContracts, setCustomContracts] = useState<CapitalContractID[]>([
+  const [customContracts, setCustomContracts] = useState<CapitalContractID[]>(() => Array.isArray(restoredConfig.customContracts) && restoredConfig.customContracts.length ? restoredConfig.customContracts.filter((id) => id !== "capital") : [
     "n20",
     "triple_any",
     "n19",
@@ -377,8 +414,14 @@ export default function CapitalConfig(props: any) {
     "center",
   ]);
 
+  const restoredPresetRef = React.useRef(Boolean(props?.params?.config));
+
   // ✅ Presets : applique des defaults sans empêcher l'édition
   React.useEffect(() => {
+    if (restoredPresetRef.current) {
+      restoredPresetRef.current = false;
+      return;
+    }
     if (rulesPreset === "official") {
       setVictoryMode("best_after_contracts");
       setTieBreaker("last_contract_total");
@@ -407,16 +450,24 @@ export default function CapitalConfig(props: any) {
 
   const payload: CapitalConfigPayload = useMemo(() => {
     const cappedPlayers = clamp(players, 1, 12);
+    const canonicalIds = canonicalSelection?.selectedIds || [];
+    const canonicalBotsEnabled = canonicalSelection?.botsEnabled || false;
     const cfg: CapitalConfigPayload = {
-      players: cappedPlayers,
-      selectedIds,
+      players: useCanonicalParticipants ? canonicalIds.length : cappedPlayers,
+      selectedIds: useCanonicalParticipants ? canonicalIds : selectedIds,
       startOrderMode,
-      botsEnabled,
+      startOrderApplied: false,
+      participantMode: canonicalSelection?.participantMode || "players",
+      teamsSourceMode: canonicalSelection?.teamsSourceMode,
+      playersList: canonicalSelection?.playersList || [],
+      teams: canonicalSelection?.teams || [],
+      playerDartSets: canonicalSelection?.playerDartSets || {},
+      botsEnabled: useCanonicalParticipants ? canonicalBotsEnabled : botsEnabled,
       botLevel,
 
-      botsAutoPlay: botsEnabled ? botsAutoPlay : undefined,
-      botTurnDelayMs: botsEnabled ? clamp(botTurnDelayMs, 0, 6000) : undefined,
-      botRisk: botsEnabled ? botRisk : undefined,
+      botsAutoPlay: (useCanonicalParticipants ? canonicalBotsEnabled : botsEnabled) ? botsAutoPlay : undefined,
+      botTurnDelayMs: (useCanonicalParticipants ? canonicalBotsEnabled : botsEnabled) ? clamp(botTurnDelayMs, 0, 6000) : undefined,
+      botRisk: (useCanonicalParticipants ? canonicalBotsEnabled : botsEnabled) ? botRisk : undefined,
 
       mode,
       includeCapital,
@@ -440,6 +491,7 @@ export default function CapitalConfig(props: any) {
   }, [
     players,
     selectedIds,
+    canonicalSelection,
     startOrderMode,
     botsEnabled,
     botLevel,
@@ -461,19 +513,45 @@ export default function CapitalConfig(props: any) {
 
   // ------------------ UI helpers ------------------
   function goBack() {
-    if (go) return go("games");
+    if (go) return go(props?.params?.returnTab || "games");
     if (props?.setTab) return props.setTab("games");
     window.history.back();
   }
 
   function start() {
+    if (useCanonicalParticipants && !canonicalSelection?.valid) {
+      setConfigError(canonicalSelection?.error || "Sélectionne au moins deux participants.");
+      setViewMode("guided");
+      setGuidedStep(0);
+      return;
+    }
     try {
       localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod);
     } catch {}
     const cfg: any = { ...payload };
     if (cfg.startOrderMode === "random") {
-      cfg.selectedIds = shuffleCopy(cfg.selectedIds);
+      if (cfg.participantMode === "teams" && Array.isArray(cfg.teams) && cfg.teams.length) {
+        const shuffledTeams = shuffleCopy(cfg.teams).map((team: any) => ({
+          ...team,
+          players: shuffleCopy(team.players || team.playerIds || []),
+        }));
+        const maximum = Math.max(0, ...shuffledTeams.map((team: any) => team.players.length));
+        const ordered: string[] = [];
+        for (let memberIndex = 0; memberIndex < maximum; memberIndex += 1) {
+          shuffledTeams.forEach((team: any) => {
+            if (team.players[memberIndex]) ordered.push(String(team.players[memberIndex]));
+          });
+        }
+        cfg.selectedIds = ordered;
+      } else {
+        cfg.selectedIds = shuffleCopy(cfg.selectedIds);
+      }
     }
+    cfg.playersList = cfg.selectedIds
+      .map((id: string) => (cfg.playersList || []).find((player: any) => String(player.id) === String(id)))
+      .filter(Boolean);
+    cfg.players = cfg.selectedIds.length;
+    cfg.startOrderApplied = true;
     try { recordProfileUsageForMode("capital", cfg.selectedIds || selectedIds); } catch {}
     if (props?.setTab) return props.setTab("capital_play", { config: cfg });
     if (go) return go("capital_play", { config: cfg });
@@ -546,6 +624,19 @@ export default function CapitalConfig(props: any) {
   const ring = theme?.primary || "rgba(255,198,58,0.55)";
   const cardBorder = "1px solid rgba(255,255,255,0.10)";
   const cardBg = "rgba(255,255,255,0.04)";
+  const accent = theme?.primary || "#42d6ff";
+  const showParticipants = viewMode === "complete" || guidedStep === 0;
+  const showMode = viewMode === "complete" || guidedStep === 1;
+  const showOptions = viewMode === "complete" || guidedStep === 2;
+  const showRecap = viewMode === "complete" || guidedStep === 3;
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    borderRadius: 14,
+    border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`,
+    background: active ? `${accent}22` : "rgba(255,255,255,.04)",
+    color: active ? "#fff" : "#aeb3c7",
+    padding: "11px 12px",
+    fontWeight: 950,
+  });
 
   return (
     <div className="page">
@@ -556,9 +647,58 @@ export default function CapitalConfig(props: any) {
         right={<InfoDot title="Règles CAPITAL" content={INFO_TEXT} />}
       />
 
+      <div style={{ padding: "12px 12px 0" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <button type="button" onClick={() => setViewMode("guided")} style={pillStyle(viewMode === "guided")}>Configuration guidée</button>
+          <button type="button" onClick={() => setViewMode("complete")} style={pillStyle(viewMode === "complete")}>Configuration complète</button>
+        </div>
+        {viewMode === "guided" ? (
+          <div style={{ marginTop: 10, padding: 11, borderRadius: 15, background: `${accent}10`, border: `1px solid ${accent}38` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 950 }}>
+              <span style={{ color: accent }}>Étape {guidedStep + 1}/4</span>
+              <span>{["Participants", "Contrats", "Options", "Récapitulatif"][guidedStep]}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5, marginTop: 8 }}>
+              {[0, 1, 2, 3].map((step) => <div key={step} style={{ height: 4, borderRadius: 999, background: step <= guidedStep ? accent : "rgba(255,255,255,.10)" }} />)}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {showParticipants ? (
+        <>
+          <CapitalParticipantsX01
+            humans={locals}
+            bots={allBots}
+            accent={accent}
+            accentSoft={`${accent}20`}
+            initialSelectedIds={Array.isArray(restoredConfig.selectedIds) && restoredConfig.selectedIds.length ? restoredConfig.selectedIds : activeProfile?.id ? [String(activeProfile.id)] : []}
+            initialConfig={restoredConfig}
+            onChange={handleCanonicalSelection}
+          />
+          {canonicalSelection?.botsEnabled ? (
+            <Section title="Comportement des bots">
+              <OptionRow label="Niveau bots"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow>
+              <OptionRow label="Bots auto-play"><OptionToggle value={botsAutoPlay} onChange={setBotsAutoPlay} /></OptionRow>
+              <OptionRow label="Vitesse bots"><OptionSelect value={botTurnDelayMs} options={[{ value: 250, label: "Très rapide" }, { value: 450, label: "Rapide" }, { value: 650, label: "Normal" }, { value: 900, label: "Lent" }, { value: 1300, label: "Très lent" }]} onChange={(value: any) => setBotTurnDelayMs(Number(value))} /></OptionRow>
+              <OptionRow label="Prise de risque"><OptionSelect value={botRisk} options={[{ value: "safe", label: "Prudente" }, { value: "normal", label: "Normale" }, { value: "aggressive", label: "Agressive" }]} onChange={(value: any) => setBotRisk(value)} /></OptionRow>
+            </Section>
+          ) : null}
+          <Section title="Départ">
+            <OptionRow label="Ordre de départ">
+              <OptionSelect value={startOrderMode} options={[{ value: "random", label: "Aléatoire" }, { value: "fixed", label: "Ordre de sélection" }]} onChange={(value: any) => setStartOrderMode(value)} />
+            </OptionRow>
+            <div style={{ marginTop: 9, fontSize: 12, opacity: .72 }}>
+              {startOrderMode === "random" ? "L’ordre sera tiré une seule fois au démarrage." : "L’ordre affiché dans le sélecteur X01 sera conservé."}
+            </div>
+          </Section>
+        </>
+      ) : null}
+
       {/* ============================= */}
       {/* PARTICIPANTS */}
       {/* ============================= */}
+      {!useCanonicalParticipants ? <>
       <Section title="Participants">
         <OptionRow
           label={t("config.playerCount", "Nombre de joueurs (total)")}
@@ -1074,10 +1214,12 @@ export default function CapitalConfig(props: any) {
           </>
         )}
       </Section>
+      </> : null}
 
       {/* ============================= */}
       {/* MODE / CONTRATS */}
       {/* ============================= */}
+      {showMode ? (
       <Section title={t("config.mode", "Mode")}>
         <OptionRow label="Version">
           <OptionSelect
@@ -1284,10 +1426,12 @@ export default function CapitalConfig(props: any) {
           </>
         )}
       </Section>
+      ) : null}
 
       {/* ============================= */}
       {/* VICTOIRE / RÈGLES */}
       {/* ============================= */}
+      {showOptions ? (
       <Section title="Victoire / Règles">
         {/* ✅ Ajout : preset règles */}
         <OptionRow label="Preset règles">
@@ -1392,10 +1536,12 @@ export default function CapitalConfig(props: any) {
           ✅ Officiel : Capital ON + /2 ON + Meilleur score après contrats. (Timer OFF)
         </div>
       </Section>
+      ) : null}
 
       {/* ============================= */}
       {/* SAISIE */}
       {/* ============================= */}
+      {showOptions ? (
       <Section title="Saisie">
         <OptionRow label="Mode de saisie">
           <OptionSelect
@@ -1409,7 +1555,44 @@ export default function CapitalConfig(props: any) {
           />
         </OptionRow>
       </Section>
+      ) : null}
 
+      {showRecap ? (
+        <Section title="Récapitulatif">
+          <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
+            {[
+              ["Participants", canonicalSelection?.participantMode === "teams" ? `${canonicalSelection?.teams.length || 0} équipes • ${canonicalSelection?.selectedIds.length || 0} joueurs` : `${canonicalSelection?.selectedIds.length || 0} joueurs`],
+              ["Mode", mode === "official" ? "Officiel • 15 contrats" : `Custom • ${customList.length} contrats`],
+              ["Échec", failDivideBy2 ? "Capital divisé par 2" : "Aucune division"],
+              ["Victoire", victoryMode === "first_to_target" ? `Score cible ${targetScore}` : "Meilleur capital final"],
+              ["Départ", startOrderMode === "random" ? "Aléatoire (une seule fois)" : "Ordre de sélection"],
+              ["Saisie", String(inputMethod).toUpperCase()],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: "grid", gridTemplateColumns: "105px 1fr", gap: 8, padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)" }}>
+                <span style={{ opacity: .65 }}>{label}</span><b>{value}</b>
+              </div>
+            ))}
+          </div>
+        </Section>
+      ) : null}
+
+      {configError ? <div style={{ margin: "8px 16px", color: "#ff8aa6", fontSize: 12, fontWeight: 900 }}>{configError}</div> : null}
+
+      {viewMode === "guided" && guidedStep < 3 ? (
+        <div style={{ padding: 12, display: "grid", gridTemplateColumns: guidedStep > 0 ? "1fr 1fr" : "1fr", gap: 9 }}>
+          {guidedStep > 0 ? <button type="button" onClick={() => { setGuidedStep((guidedStep - 1) as any); setConfigError(""); }} style={pillStyle(false)}>Précédent</button> : null}
+          <button type="button" onClick={() => {
+            if (guidedStep === 0 && !canonicalSelection?.valid) {
+              setConfigError(canonicalSelection?.error || "Sélectionne les participants.");
+              return;
+            }
+            setGuidedStep((guidedStep + 1) as any);
+            setConfigError("");
+          }} style={pillStyle(true)}>Suivant</button>
+        </div>
+      ) : null}
+
+      {showRecap ? (
       <div style={{ padding: 12 }}>
         <button
           onClick={start}
@@ -1431,6 +1614,7 @@ export default function CapitalConfig(props: any) {
           Officiel = séquence fixe des 15 contrats. Custom = tu choisis l’ordre et les contrats.
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

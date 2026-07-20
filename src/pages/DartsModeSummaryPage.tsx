@@ -361,6 +361,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 
       {mode === "five_lives" ? <FiveLivesSummaryTables rec={rec} rows={rows} accent={meta.accent} /> : mode === "scram" ? (
         <ScramSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "capital" ? (
+        <CapitalSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : (
         <section style={card(meta.accent)}>
           <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
@@ -376,6 +378,78 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   );
 }
 
+function CapitalSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const visits = asArray(pick(summary?.visits, rec?.payload?.stats?.visits, rec?.payload?.visits, rec?.visits));
+  const teams = asArray(pick(summary?.teams, rec?.payload?.stats?.teams, rec?.teams));
+  const winnerTeamId = String(pick(summary?.winnerTeamId, rec?.winnerTeamId, rec?.payload?.winnerTeamId, ""));
+  const contracts = asArray(pick(summary?.contracts, rec?.payload?.summary?.contracts, rec?.config?.contracts));
+  const columns: Array<[string, (p: any) => any]> = [
+    ["Joueur", (p) => pick(p.name, p.playerName, "Joueur")],
+    ["Capital", (p) => num(pick(p.finalCapital, p.capital, p.score), 0)],
+    ["Départ", (p) => num(p.startingCapital, 0)],
+    ["Réussis", (p) => num(pick(p.successfulContracts, p.successfulVisits), 0)],
+    ["Échecs", (p) => num(pick(p.failedContracts, p.failedVisits, p.fails), 0)],
+    ["Réussite", (p) => `${num(p.successRate, 0).toFixed(1)}%`],
+    ["Gagnés", (p) => num(pick(p.pointsWon, p.points), 0)],
+    ["Perdus", (p) => num(pick(p.capitalLost, p.penaltyLost), 0)],
+    ["AVG volée", (p) => num(pick(p.averageVisit, p.avgVisit), 0).toFixed(1)],
+    ["Best", (p) => num(p.bestVisit, 0)],
+    ["D", (p) => num(p.doubles, 0)], ["T", (p) => num(p.triples, 0)],
+    ["Bull", (p) => num(p.bulls, 0)], ["DBull", (p) => num(p.dbulls, 0)],
+  ];
+  const dartLabel = (dart: any) => {
+    const value = num(dart?.v, 0);
+    const mult = num(dart?.mult, 1);
+    if (!value) return "MISS";
+    if (value === 25) return mult === 2 ? "DBULL" : "BULL";
+    return `${mult === 3 ? "T" : mult === 2 ? "D" : "S"}${value}`;
+  };
+
+  return <>
+    {teams.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Classement des équipes</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+        {[...teams].sort((a, b) => num(b?.score, 0) - num(a?.score, 0)).map((team: any) => {
+          const color = String(team?.color || accent);
+          const winner = String(team?.id) === winnerTeamId;
+          return <div key={String(team?.id)} style={{ padding: 12, borderRadius: 15, background: `${color}12`, border: `1px solid ${winner ? color : `${color}55`}` }}>
+            <div style={{ color, fontSize: 11, fontWeight: 1000 }}>{winner ? "🏆 " : ""}{pick(team?.name, "Équipe")}</div>
+            <div style={{ marginTop: 5, fontSize: 28, fontWeight: 1000 }}>{num(pick(team?.score, team?.capital), 0)}</div>
+            <div style={{ fontSize: 10.5, color: "#aeb0bd" }}>{asArray(team?.members).length || asArray(team?.players).length} membre(s)</div>
+          </div>;
+        })}
+      </div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Tableau CAPITAL complet</div>
+      <div style={{ color: "#aeb0bd", fontSize: 11, marginBottom: 9 }}>{contracts.length || "—"} contrat(s) joué(s)</div>
+      <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
+        <table style={{ width: "100%", minWidth: 1040, borderCollapse: "collapse", fontSize: 11 }}>
+          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((row) => <tr key={`capital-${row.id}`} style={{ background: row.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, color: label === "Joueur" && row.isWinner ? accent : td.color }}>{read(row.raw)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Historique des contrats</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {visits.length ? visits.map((visit: any, index: number) => {
+          const player = rows.find((row) => String(row.id) === String(visit?.playerId));
+          const success = Boolean(visit?.success);
+          return <div key={visit?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: "9px 10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
+            <div style={{ color: success ? "#72f0a8" : "#ff8aa6", fontWeight: 1000 }}>#{num(visit?.contractIndex, 0) + 1}</div>
+            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{player?.name || visit?.playerName || "Joueur"} • {String(visit?.contractId || "CAPITAL")}</div><div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asArray(visit?.darts).map(dartLabel).join(" · ") || "—"} • {visit?.scoreBefore} → {visit?.scoreAfter}</div></div>
+            <div style={{ color: success ? "#72f0a8" : "#ff8aa6", fontWeight: 1000 }}>{success ? `+${num(visit?.visitScore, 0)}` : `-${num(visit?.penaltyLost, 0)}`}</div>
+          </div>;
+        }) : <div style={{ color: "#c9c9d4" }}>Aucun détail de volée enregistré.</div>}
+      </div>
+    </section>
+  </>;
+}
+
 function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
   const scoreA = num(pick(summary?.scoreA, rec?.payload?.state?.scores?.A, 0), 0);
@@ -384,7 +458,15 @@ function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acce
   const tied = Boolean(pick(summary?.tied, rec?.payload?.tied, scoreA === scoreB));
   const phaseRounds = pick(summary?.phaseRounds, rec?.payload?.state?.phaseRounds, {}) || {};
   const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory, rec?.visits));
+  const teams = asArray(pick(summary?.teams, rec?.payload?.teams, rec?.game?.teams));
   const teamColor = (team: string) => team === "A" ? "#ff4ad1" : "#ffd76a";
+  const teamMeta = (slot: string, index: number) => {
+    const team = teams.find((item: any) => String(pick(item?.id, item?.slot, "")).toUpperCase() === slot) || teams[index] || {};
+    return {
+      name: String(pick(team?.name, `Team ${slot}`)),
+      logo: pick(team?.logoDataUrl, team?.logoUrl, team?.avatarDataUrl, null),
+    };
+  };
   const columns: Array<[string, (p: any) => any]> = [
     ["Joueur", (p) => p.name], ["Team", (p) => pick(p.team, "—")], ["Points", (p) => num(pick(p.points, p.score), 0)],
     ["Marks", (p) => num(pick(p.totalMarks, p.marksTotal, p.marks), 0)], ["Ferm.", (p) => num(pick(p.closed, p.closes, p.closedNumbers), 0)],
@@ -398,16 +480,21 @@ function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acce
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Duel des équipes</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
-        {(["A", "B"] as const).map((team, index) => <React.Fragment key={team}>
+        {(["A", "B"] as const).map((team, index) => {
+          const meta = teamMeta(team, index);
+          return <React.Fragment key={team}>
           {index ? <div style={{ color: "#8c91a1", fontWeight: 1000 }}>—</div> : null}
           <div style={{ padding: 13, borderRadius: 15, textAlign: "center", border: `1px solid ${winnerTeam === team ? teamColor(team) : "rgba(255,255,255,.11)"}`, background: winnerTeam === team ? `${teamColor(team)}16` : "rgba(255,255,255,.035)", boxShadow: winnerTeam === team ? `0 0 18px ${teamColor(team)}25` : "none" }}>
+            {meta.logo ? <img src={String(meta.logo)} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${teamColor(team)}`, marginBottom: 5 }} /> : null}
             <div style={{ color: teamColor(team), fontWeight: 1000, fontSize: 11 }}>TEAM {team}{winnerTeam === team ? " • WIN" : ""}</div>
+            <div style={{ fontSize: 12, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</div>
             <div style={{ fontSize: 32, fontWeight: 1000, marginTop: 2 }}>{team === "A" ? scoreA : scoreB}</div>
           </div>
-        </React.Fragment>)}
+        </React.Fragment>;
+        })}
       </div>
       <div style={{ marginTop: 10, color: "#b8bcc8", textAlign: "center", fontSize: 11.5 }}>
-        {tied ? "Partie nulle" : `Vainqueur : Team ${winnerTeam || "—"}`} • Phase 1 : {num(phaseRounds?.[1], 0)} rounds • Phase 2 : {num(phaseRounds?.[2], 0)} rounds
+        {tied ? "Partie nulle" : `Vainqueur : ${winnerTeam ? teamMeta(winnerTeam, winnerTeam === "A" ? 0 : 1).name : "—"}`} • Phase 1 : {num(phaseRounds?.[1], 0)} rounds • Phase 2 : {num(phaseRounds?.[2], 0)} rounds
       </div>
     </section>
 

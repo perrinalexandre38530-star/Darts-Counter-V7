@@ -266,6 +266,9 @@ const X01MultiStatsTabFull = React.lazy(
 const FiveLivesStatsTabFull = React.lazy(
   () => import("../stats/FiveLivesStatsTabFull")
 );
+const CapitalStatsTabFull = React.lazy(
+  () => import("../components/stats/CapitalStatsTabFull")
+);
 const StatsLeaderboardsTab = React.lazy(
   () => import("../components/stats/StatsLeaderboardsTab")
 );
@@ -913,7 +916,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
 
       const toHydrate: string[] = [];
       for (const r of arr) {
@@ -8378,7 +8381,25 @@ return (
               </div>
             )}
 
-{["battle_royale", "warfare", "scram", "baseball", "capital"].includes(String(currentMode)) && (
+{currentMode === "capital" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement CAPITAL…" />}>
+                    <CapitalStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques CAPITAL.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {["battle_royale", "warfare", "scram", "baseball"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

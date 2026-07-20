@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -7,6 +8,18 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
+import { loadBotPlayers } from "../lib/bots";
+import ProfileAvatar from "../components/ProfileAvatar";
+import {
+  applyCapitalVisit,
+  buildCapitalPlayerStats,
+  buildCapitalTeamStats,
+  capitalDartLabel,
+  makeCapitalBotVisit,
+  normalizeCapitalDarts,
+  rankCapitalPlayers,
+  type CapitalVisit,
+} from "../lib/capitalGame";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -36,6 +49,19 @@ export type CapitalConfigPayload = {
   players: number; // total (humains + bots)
   selectedIds?: string[]; // ids profils/bots (si fourni, il prime)
   startOrderMode?: CapitalStartOrderMode;
+  startOrderApplied?: boolean;
+  participantMode?: "players" | "teams";
+  teamsSourceMode?: "manual" | "saved" | "auto";
+  playersList?: any[];
+  teams?: Array<{
+    id: string;
+    name: string;
+    color?: string | null;
+    logoDataUrl?: string | null;
+    playerIds?: string[];
+    players?: string[];
+  }>;
+  playerDartSets?: Record<string, string | null>;
 
   // Bots
   botsEnabled: boolean;
@@ -417,15 +443,19 @@ export default function CapitalPlay(props: any) {
     const ids =
       Array.isArray(cfg?.selectedIds) && cfg.selectedIds.length ? cfg.selectedIds.map((x) => String(x)).filter(Boolean) : [];
     let resolved: any[] = [];
+    const configuredPlayers = Array.isArray(cfg?.playersList) ? cfg.playersList : [];
+    const configuredById = new Map(configuredPlayers.map((player: any) => [String(player?.id), player]));
     if (ids.length) {
-      resolved = ids.map((id) => allEntities.get(id) || { id, name: id, isBot: false });
+      resolved = ids.map((id) => configuredById.get(id) || allEntities.get(id) || { id, name: id, isBot: false });
     } else {
       resolved = Array.from({ length: Math.max(1, cfg.players || 2) }, (_, i) => ({
         id: String(i + 1),
         name: `Joueur ${i + 1}`,
       }));
     }
-    if (cfg?.startOrderMode === "random" && ids.length) resolved = shuffleCopy(resolved);
+    // CapitalConfig applique l'ordre aléatoire une seule fois. Compatibilité avec
+    // les anciennes configurations qui ne possèdent pas startOrderApplied.
+    if (cfg?.startOrderMode === "random" && !cfg?.startOrderApplied && ids.length) resolved = shuffleCopy(resolved);
     return resolved;
   }, [cfg, allEntities]);
 
@@ -454,6 +484,9 @@ export default function CapitalPlay(props: any) {
   const [scores, setScores] = useState<number[]>(() =>
     Array.from({ length: playerCount }, () => (cfg?.includeCapital === false ? (cfg?.startingCapital ?? 0) : 0))
   );
+  const [visits, setVisits] = useState<CapitalVisit[]>([]);
+  const [finishedRecord, setFinishedRecord] = useState<any>(null);
+  const historySavedRef = useRef(false);
 
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
@@ -473,7 +506,8 @@ export default function CapitalPlay(props: any) {
   const isFinished = roundIdx >= rounds;
 
   function goBack() {
-    if (props?.setTab) return props.setTab("capital_config");
+    if (props?.setTab) return props.setTab("capital_config", { config: cfg, returnTab: "games" });
+    if (props?.go) return props.go("capital_config", { config: cfg, returnTab: "games" });
     window.history.back();
   }
 
@@ -493,48 +527,63 @@ export default function CapitalPlay(props: any) {
     if (isFinished) return;
     if (!force && currentThrow.length === 0) return;
 
-    const th: Dart[] = forcedThrow ? [...forcedThrow] : [...currentThrow];
-    while (th.length < 3) th.push({ v: 0, mult: 1 });
+    const th = normalizeCapitalDarts((forcedThrow ? [...forcedThrow] : [...currentThrow]) as any) as Dart[];
+    const before = Number(scores[playerIdx] || 0);
+    const applied = applyCapitalVisit(before, currentContract as any, th as any, cfg?.failDivideBy2 !== false);
+    const nextScores = [...scores];
+    nextScores[playerIdx] = applied.scoreAfter;
+    setScores(nextScores);
 
-    const ok = contractSuccess(currentContract, th);
-    const visit = scoreThrow(th);
+    const participant = participants[playerIdx] || {};
+    const teamId = cfg?.teams?.find((team: any) => (team.players || team.playerIds || []).map(String).includes(String(participant.id)))?.id || participant?.teamId || null;
+    const newVisit: CapitalVisit = {
+      id: `capital-visit-${Date.now()}-${playerIdx}-${roundIdx}`,
+      contractId: currentContract as any,
+      contractIndex: roundIdx,
+      playerId: String(participant?.id ?? playerIdx),
+      playerIndex: playerIdx,
+      playerName: participant?.nickname ?? participant?.name ?? `Joueur ${playerIdx + 1}`,
+      teamId,
+      darts: th as any,
+      visitScore: applied.visitScore,
+      success: applied.success,
+      scoreBefore: before,
+      scoreAfter: applied.scoreAfter,
+      delta: applied.delta,
+      penaltyLost: applied.penaltyLost,
+      createdAt: Date.now(),
+    };
+    setVisits((previous) => [...previous, newVisit]);
 
-    setScores((prev) => {
-      const out = [...prev];
-      const prevScore = out[playerIdx] ?? 0;
+    const targetReached = (() => {
+      if (cfg?.victoryMode !== "first_to_target" || !Number(cfg?.targetScore)) return false;
+      if (cfg?.participantMode !== "teams") return applied.scoreAfter >= Number(cfg.targetScore);
+      const team = cfg?.teams?.find((candidate: any) => String(candidate.id) === String(teamId));
+      if (!team) return false;
+      const memberIds = (team.players || team.playerIds || []).map(String);
+      const total = participants.reduce((sum, player, index) => memberIds.includes(String(player?.id)) ? sum + Number(nextScores[index] || 0) : sum, 0);
+      return total >= Number(cfg.targetScore);
+    })();
 
-      let nextScore = prevScore;
-
-      if (currentContract === "capital") {
-        nextScore = visit;
-      } else {
-        if (ok) nextScore = prevScore + visit;
-        else nextScore = cfg?.failDivideBy2 === false ? prevScore : Math.floor(prevScore / 2);
-      }
-
-      out[playerIdx] = nextScore;
-
-      if (cfg?.victoryMode === "first_to_target" && typeof cfg?.targetScore === "number" && cfg.targetScore > 0 && nextScore >= cfg.targetScore) {
-        setWinnerIdx(playerIdx);
-        setRoundIdx(rounds);
-      }
-
-      return out;
-    });
+    if (targetReached) {
+      setWinnerIdx(playerIdx);
+      setRoundIdx(rounds);
+    }
 
     if (roundIdx === rounds - 1) {
       setLastContractTotals((prev) => {
         const out = [...prev];
-        out[playerIdx] = visit;
+        out[playerIdx] = applied.visitScore;
         return out;
       });
     }
 
-    const nextP = (playerIdx + 1) % playerCount;
-    const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
-
-    setPlayerIdx(nextP);
-    setRoundIdx(nextR);
+    if (!targetReached) {
+      const nextP = (playerIdx + 1) % playerCount;
+      const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
+      setPlayerIdx(nextP);
+      setRoundIdx(nextR);
+    }
 
     cancelTurn();
   }
@@ -550,6 +599,20 @@ export default function CapitalPlay(props: any) {
     });
     return bestIdx;
   }, [scores]);
+
+  const normalizedTeams = useMemo(() => (Array.isArray(cfg?.teams) ? cfg.teams : []).map((team: any, index: number) => ({
+    id: String(team?.id || `team-${index + 1}`),
+    name: String(team?.name || `Équipe ${index + 1}`),
+    color: team?.color || (index === 0 ? "#ff4fa2" : index === 1 ? "#f7c85c" : index === 2 ? "#4fc3ff" : "#6dff7c"),
+    logoDataUrl: team?.logoDataUrl || null,
+    players: (team?.players || team?.playerIds || []).map(String),
+  })), [cfg?.teams]);
+
+  const teamScores = useMemo(() => normalizedTeams.map((team: any) => ({
+    ...team,
+    score: participants.reduce((total, player, index) => team.players.includes(String(player?.id)) ? total + Number(scores[index] || 0) : total, 0),
+    last: participants.reduce((total, player, index) => team.players.includes(String(player?.id)) ? total + Number(lastContractTotals[index] || 0) : total, 0),
+  })), [normalizedTeams, participants, scores, lastContractTotals]);
 
   const finalWinnerIdx = useMemo(() => {
     if (winnerIdx !== null) return winnerIdx;
@@ -578,6 +641,16 @@ export default function CapitalPlay(props: any) {
 
     return tied[0];
   }, [winnerIdx, isFinished, scores, cfg?.tieBreaker, lastContractTotals]);
+
+  const winnerTeam = useMemo(() => {
+    if (cfg?.participantMode !== "teams" || !teamScores.length) return null;
+    const ranked = [...teamScores].sort((a, b) => b.score - a.score || (cfg?.tieBreaker === "last_contract_total" ? b.last - a.last : 0));
+    if (winnerIdx !== null) {
+      const winnerPlayerId = String(participants[winnerIdx]?.id || "");
+      return teamScores.find((team: any) => team.players.includes(winnerPlayerId)) || ranked[0];
+    }
+    return ranked[0] || null;
+  }, [cfg?.participantMode, cfg?.tieBreaker, teamScores, winnerIdx, participants]);
 
   useEffect(() => {
     if (isFinished) setEndModalOpen(true);
@@ -648,12 +721,9 @@ export default function CapitalPlay(props: any) {
     const risk = cfg?.botRisk ?? "normal";
 
     const id = window.setTimeout(() => {
-      const th = botMakeThrow(currentContract, level, risk);
-      setCurrentThrow(th);
-      window.setTimeout(() => {
-        validateTurn(true, th);
-        botActingRef.current = false;
-      }, 120);
+      const th = makeCapitalBotVisit(currentContract as any, level, risk) as Dart[];
+      validateTurn(true, th);
+      botActingRef.current = false;
     }, Math.max(0, delay));
 
     return () => {
@@ -674,6 +744,83 @@ export default function CapitalPlay(props: any) {
   ]);
 
   const winnerI = finalWinnerIdx ?? leaderIdx;
+  const capitalPlayers = useMemo(() => participants.map((player: any, index: number) => ({
+    ...player,
+    id: String(player?.id ?? index),
+    profileId: player?.isBot ? null : String(player?.profileId || player?.id || index),
+    name: player?.nickname ?? player?.name ?? `Joueur ${index + 1}`,
+    teamId: normalizedTeams.find((team: any) => team.players.includes(String(player?.id)))?.id || player?.teamId || null,
+  })), [participants, normalizedTeams]);
+  const rawPlayerStats = useMemo(() => buildCapitalPlayerStats(capitalPlayers as any, visits, scores), [capitalPlayers, visits, scores]);
+  const winningPlayerIds = useMemo(() => winnerTeam
+    ? [...winnerTeam.players]
+    : finalWinnerIdx !== null ? [String(capitalPlayers[finalWinnerIdx]?.id || "")] : [], [winnerTeam, finalWinnerIdx, capitalPlayers]);
+  const playerStats = useMemo(() => rankCapitalPlayers(rawPlayerStats, winningPlayerIds), [rawPlayerStats, winningPlayerIds]);
+  const teamStats = useMemo(() => buildCapitalTeamStats(normalizedTeams as any, playerStats), [normalizedTeams, playerStats]);
+
+  useEffect(() => {
+    if (!isFinished || historySavedRef.current || !visits.length) return;
+    historySavedRef.current = true;
+    const now = Date.now();
+    const winnerIds = winningPlayerIds.filter(Boolean);
+    const record = {
+      id: `capital-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      kind: "capital",
+      mode: "capital",
+      sport: "darts",
+      status: "finished",
+      createdAt: now,
+      updatedAt: now,
+      players: playerStats,
+      teams: teamStats,
+      winnerId: winnerIds[0] || null,
+      winnerIds,
+      winnerTeamId: winnerTeam?.id || null,
+      config: cfg,
+      summary: {
+        mode: "capital",
+        title: "CAPITAL",
+        participantMode: cfg?.participantMode || "players",
+        winnerId: winnerIds[0] || null,
+        winnerIds,
+        winnerTeamId: winnerTeam?.id || null,
+        winnerTeamName: winnerTeam?.name || null,
+        contracts: contracts.map((id) => ({ id, label: contractLabel(id) })),
+        contractsPlayed: Math.min(rounds, roundIdx),
+        players: playerStats,
+        perPlayer: playerStats,
+        teams: teamStats,
+        visits,
+        finishedAt: now,
+      },
+      payload: {
+        kind: "capital",
+        mode: "capital",
+        config: cfg,
+        players: playerStats,
+        teams: teamStats,
+        winnerId: winnerIds[0] || null,
+        winnerIds,
+        winnerTeamId: winnerTeam?.id || null,
+        stats: { players: playerStats, teams: teamStats, visits },
+        summary: {
+          mode: "capital",
+          winnerId: winnerIds[0] || null,
+          winnerIds,
+          winnerTeamId: winnerTeam?.id || null,
+          winnerTeamName: winnerTeam?.name || null,
+          players: playerStats,
+          perPlayer: playerStats,
+          teams: teamStats,
+          visits,
+          contracts: contracts.map((id) => ({ id, label: contractLabel(id) })),
+          finishedAt: now,
+        },
+      },
+    };
+    setFinishedRecord(record);
+    try { props?.onFinish?.(record); } catch {}
+  }, [isFinished, visits, playerStats, teamStats, winningPlayerIds, winnerTeam, cfg, contracts, rounds, roundIdx, props?.onFinish]);
 
   const EndModal = () => {
     if (!isFinished || !endModalOpen) return null;
@@ -684,6 +831,7 @@ export default function CapitalPlay(props: any) {
       isBot: !!p?.isBot,
       score: Number(scores[i] ?? 0),
       last: Number(lastContractTotals[i] ?? 0),
+      stats: playerStats.find((row: any) => String(row.id || row.playerId) === String(p?.id)),
     }));
 
     const ranked = [...cols].sort((a, b) => {
@@ -790,12 +938,19 @@ export default function CapitalPlay(props: any) {
               <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000 }}>
                 🏆 Vainqueur :{" "}
                 <span style={{ color: "rgba(255,230,120,0.95)" }}>
-                  {participants[winnerI]?.name ?? `Joueur ${winnerI + 1}`}
+                  {winnerTeam?.name || participants[winnerI]?.name || `Joueur ${winnerI + 1}`}
                 </span>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => finishedRecord && (props?.go || props?.setTab)?.("darts_mode_summary", { record: finishedRecord })}
+                disabled={!finishedRecord}
+                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,215,106,.35)", background: "rgba(255,215,106,.10)", fontWeight: 1000, opacity: finishedRecord ? 1 : .5 }}
+              >
+                Stats détaillées
+              </button>
               <button
                 onClick={() => setEndModalOpen(false)}
                 style={{
@@ -856,7 +1011,22 @@ export default function CapitalPlay(props: any) {
                 {cols.map((p) => cell(p.last, p.i === winnerI))}
 
                 {rowLabelCell("Contrats joués")}
-                {cols.map((p) => cell(rounds, p.i === winnerI))}
+                {cols.map((p) => cell(p.stats?.contractsPlayed ?? rounds, p.i === winnerI))}
+
+                {rowLabelCell("Contrats réussis")}
+                {cols.map((p) => cell(p.stats?.successfulContracts ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Taux de réussite")}
+                {cols.map((p) => cell(`${p.stats?.successRate ?? 0}%`, p.i === winnerI))}
+
+                {rowLabelCell("Points gagnés")}
+                {cols.map((p) => cell(p.stats?.pointsWon ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Capital perdu")}
+                {cols.map((p) => cell(p.stats?.capitalLost ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Meilleure volée")}
+                {cols.map((p) => cell(p.stats?.bestVisit ?? 0, p.i === winnerI))}
 
                 {rowLabelCell("Mode")}
                 {cols.map((p) => cell(cfg?.mode ?? "official", p.i === winnerI))}
@@ -868,6 +1038,30 @@ export default function CapitalPlay(props: any) {
 
                 {rowLabelCell("/2 si échec")}
                 {cols.map((p) => cell(cfg?.failDivideBy2 === false ? "OFF" : "ON", p.i === winnerI))}
+              </div>
+            </div>
+
+            {teamStats.length ? (
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                {teamStats.map((team: any) => (
+                  <div key={team.id} style={{ padding: 11, borderRadius: 14, background: `${team.color || "#ffd76a"}12`, border: `1px solid ${team.color || "#ffd76a"}55` }}>
+                    <div style={{ fontSize: 11, opacity: .72, fontWeight: 900 }}>ÉQUIPE</div>
+                    <div style={{ marginTop: 3, fontWeight: 1000 }}>{team.name}</div>
+                    <div style={{ marginTop: 6, color: team.color || "#ffd76a", fontSize: 22, fontWeight: 1000 }}>{team.score}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}>
+              <div style={{ fontSize: 11, fontWeight: 1000, opacity: .72 }}>DERNIÈRES VOLÉES</div>
+              <div style={{ marginTop: 7, display: "grid", gap: 5 }}>
+                {visits.slice(-8).reverse().map((visit) => (
+                  <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, fontSize: 11.5 }}>
+                    <span><b>{visit.playerName}</b> • {contractLabel(visit.contractId as any)} • {visit.darts.map(capitalDartLabel as any).join(" · ")}</span>
+                    <b style={{ color: visit.success ? "#72f0a8" : "#ff8aa6" }}>{visit.success ? `+${visit.visitScore}` : `/${cfg?.failDivideBy2 === false ? "—" : "2"}`}</b>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -915,7 +1109,13 @@ export default function CapitalPlay(props: any) {
 
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>{t("generic.player", "JOUEUR")}</div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>{isFinished ? "—" : `${playerIdx + 1}/${playerCount}`}</div>
+              <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                {!isFinished ? <ProfileAvatar profile={participants[playerIdx]} size={34} showStars={false} /> : null}
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 1000 }}>{isFinished ? "—" : participants[playerIdx]?.nickname || participants[playerIdx]?.name || `Joueur ${playerIdx + 1}`}</div>
+                  {!isFinished ? <div style={{ fontSize: 10.5, opacity: .66 }}>#{playerIdx + 1}/{playerCount}</div> : null}
+                </div>
+              </div>
               {timeLeft > 0 && !isFinished && (
                 <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>⏱ {timeLeft}s</div>
               )}
@@ -923,10 +1123,23 @@ export default function CapitalPlay(props: any) {
           </div>
         </div>
 
+        {teamScores.length ? (
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+            {teamScores.map((team: any) => {
+              const active = !isFinished && team.players.includes(String(participants[playerIdx]?.id));
+              const winner = isFinished && String(winnerTeam?.id) === String(team.id);
+              return <div key={team.id} style={{ padding: 10, borderRadius: 15, background: `${team.color}12`, border: `1px solid ${active || winner ? team.color : `${team.color}55`}` }}>
+                <div style={{ fontSize: 10.5, opacity: .72, fontWeight: 900 }}>{winner ? "🏆 " : ""}{team.name}</div>
+                <div style={{ marginTop: 4, color: team.color, fontSize: 21, fontWeight: 1000 }}>{team.score}</div>
+              </div>;
+            })}
+          </div>
+        ) : null}
+
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
-            const leader = isFinished ? i === winnerI : false;
+            const leader = isFinished ? winningPlayerIds.includes(String(participants[i]?.id)) : false;
             return (
               <div
                 key={i}
@@ -946,7 +1159,7 @@ export default function CapitalPlay(props: any) {
                 }}
               >
                 <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>
-                  {t("generic.player", "Joueur")} {i + 1} {leader ? "🏆" : ""}
+                  {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`} {leader ? "🏆" : ""}
                 </div>
                 <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{s}</div>
               </div>
@@ -956,7 +1169,7 @@ export default function CapitalPlay(props: any) {
 
         {isFinished ? (
           <div style={{ marginTop: 14, opacity: 0.9 }}>
-            <div style={{ fontSize: 14, fontWeight: 900 }}>Fin de partie — vainqueur : Joueur {winnerI + 1}</div>
+            <div style={{ fontSize: 14, fontWeight: 900 }}>Fin de partie — vainqueur : {winnerTeam?.name || participants[winnerI]?.name || `Joueur ${winnerI + 1}`}</div>
             <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
               <button
                 onClick={() => setEndModalOpen(true)}
@@ -981,6 +1194,13 @@ export default function CapitalPlay(props: any) {
                 }}
               >
                 Rejouer / config
+              </button>
+              <button
+                disabled={!finishedRecord}
+                onClick={() => finishedRecord && (props?.go || props?.setTab)?.("darts_mode_summary", { record: finishedRecord })}
+                style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid rgba(255,215,106,.35)", background: "rgba(255,215,106,.10)", fontWeight: 1000, opacity: finishedRecord ? 1 : .5 }}
+              >
+                Stats détaillées
               </button>
             </div>
             <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>Appuie sur retour pour rejouer / reconfigurer.</div>
