@@ -1,56 +1,52 @@
 // ============================================
 // src/hooks/useScramEngine.ts
-// Hook pour piloter ScramEngine (state stack + undo)
-// ✅ reset automatique quand players/rules changent
+// State stack + undo pour le moteur SCRAM
 // ============================================
 
 import * as React from "react";
 import type { Player } from "../lib/types-game";
 import { uiThrowToGameDarts } from "../lib/types-game";
-import { ScramEngine, type ScramState, type ScramRules } from "../lib/gameEngines/scramEngine";
+import {
+  ScramEngine,
+  type ScramRules,
+  type ScramState,
+  type ScramTeam,
+} from "../lib/gameEngines/scramEngine";
 
 export type UseScramEngineRules = {
-  objective: number;
-  maxRounds?: number; // 0 = illimité
+  maxRoundsPerPhase?: number;
   useBull?: boolean;
-  marksToClose?: 1 | 2 | 3;
+  firstStopper?: ScramTeam;
 };
 
 function normalizePlayers(players: Player[]): Player[] {
-  const clean = (players ?? []).filter((p: any) => p && typeof p.id === "string" && p.id.length > 0);
+  const clean = (players || []).filter((p: any) => p && String(p.id || "").trim());
   if (clean.length >= 2) return clean;
   return [
-    { id: "p1", name: clean[0]?.name ?? "Joueur 1" },
+    { id: "p1", name: clean[0]?.name || "Joueur 1" },
     { id: "p2", name: "Joueur 2" },
-  ] as Player[];
+  ];
 }
 
 export function useScramEngine(players: Player[], rules: UseScramEngineRules) {
-  const safePlayers = React.useMemo(() => normalizePlayers(players), [
-    Array.isArray(players) ? players.map((p: any) => p?.id).join("|") : "",
-  ]);
+  const playerKey = (players || []).map((p: any) => String(p?.id || "")).join("|");
+  const safePlayers = React.useMemo(() => normalizePlayers(players), [playerKey]);
 
-  const init = React.useMemo(() => {
-    const engineRules: Partial<ScramRules> = {
+  const engineRules = React.useMemo<Partial<ScramRules>>(() => ({
       mode: "scram",
-      objective: rules.objective,
-      maxRounds: rules.maxRounds ?? 0,
-      useBull: rules.useBull ?? true,
-      marksToClose: rules.marksToClose ?? 3,
-    };
-    return ScramEngine.initGame(safePlayers, engineRules);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    safePlayers.map((p) => p.id).join("|"),
-    rules.objective,
-    rules.maxRounds,
-    rules.useBull,
-    rules.marksToClose,
-  ]);
+      useBull: rules.useBull !== false,
+      marksToClose: 3,
+      maxRoundsPerPhase: rules.maxRoundsPerPhase || 0,
+      firstStopper: rules.firstStopper === "B" ? "B" : "A",
+  }), [rules.maxRoundsPerPhase, rules.useBull, rules.firstStopper]);
+
+  const init = React.useMemo(
+    () => ScramEngine.initGame(safePlayers, engineRules),
+    [playerKey, engineRules]
+  );
 
   const [stack, setStack] = React.useState<ScramState[]>([init]);
 
-  // IMPORTANT: si init change (nouveaux joueurs / nouvelles règles), on reset le stack
   React.useEffect(() => {
     setStack([init]);
   }, [init]);
@@ -58,21 +54,22 @@ export function useScramEngine(players: Player[], rules: UseScramEngineRules) {
   const state = stack[stack.length - 1];
 
   const play = React.useCallback((uiThrow: any) => {
-    setStack((prev) => {
-      const cur = prev[prev.length - 1];
-      const darts = uiThrowToGameDarts(uiThrow as any);
-      const next = ScramEngine.playTurn(cur, darts);
-      return [...prev, next];
+    setStack((previous) => {
+      const current = previous[previous.length - 1];
+      if (!current || current.finished) return previous;
+      const next = ScramEngine.playTurn(current, uiThrowToGameDarts(uiThrow as any));
+      return next === current ? previous : [...previous, next];
     });
   }, []);
 
   const undo = React.useCallback(() => {
-    setStack((prev) => (prev.length <= 1 ? prev : prev.slice(0, -1)));
+    setStack((previous) => (previous.length <= 1 ? previous : previous.slice(0, -1)));
   }, []);
 
-  const reset = React.useCallback(() => {
-    setStack([init]);
-  }, [init]);
+  const reset = React.useCallback(
+    () => setStack([ScramEngine.initGame(safePlayers, engineRules)]),
+    [safePlayers, engineRules]
+  );
 
   return {
     state,

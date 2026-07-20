@@ -1,30 +1,24 @@
 // =============================================================
 // src/pages/ScramConfig.tsx
-// SCRAM — Config PRO (UX alignée sur DepartementsConfig / X01Config)
-// - Carrousel Profils (humains) toujours visible
-// - Carrousel Bots IA visible si toggle activé
-// - Bots = PRO_BOTS + bots custom (localStorage dc_bots_v1)
-// - Sélection via click (selectedIds)
+// SCRAM — configuration alignée avec les modes Darts avancés
 // =============================================================
 
 import React from "react";
-import { loadBotPlayers } from "../lib/bots";
 import BackDot from "../components/BackDot";
-import InfoDot from "../components/InfoDot";
-import PageHeader from "../components/PageHeader";
-import Section from "../components/Section";
-import OptionRow from "../components/OptionRow";
-import OptionToggle from "../components/OptionToggle";
-import OptionSelect from "../components/OptionSelect";
-import ProfileAvatar from "../components/ProfileAvatar";
-import PlayerPagedSelector from "../components/PlayerPagedSelector";
-import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BotPagedSelector from "../components/BotPagedSelector";
-import { useLang } from "../contexts/LangContext";
+import InfoDot from "../components/InfoDot";
+import OptionRow from "../components/OptionRow";
+import OptionSelect from "../components/OptionSelect";
+import OptionToggle from "../components/OptionToggle";
+import PageHeader from "../components/PageHeader";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
+import { loadBotPlayers } from "../lib/bots";
+import type { ScramConfigPayload, ScramTeam } from "../lib/gameEngines/scramEngine";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 
 import tickerScram from "../assets/tickers/ticker_scram.png";
-
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
 import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
@@ -47,329 +41,332 @@ import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
 import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
 
 type BotLevel = "easy" | "normal" | "hard";
-
-export type ScramConfigPayload = {
-  players: number;
-  selectedIds: string[];
-  botsEnabled: boolean;
-  botLevel: BotLevel;
-  objective: number;
-  roundsCap: number; // 0 = illimité
+type FirstStopperChoice = ScramTeam | "random";
+type BotLite = {
+  id: string;
+  name: string;
+  avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
+  botLevel?: string;
+  isBot?: boolean;
 };
 
-const LS_CFG_KEY = "dc_modecfg_scram";
-type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
+export type { ScramConfigPayload } from "../lib/gameEngines/scramEngine";
+
+const LS_CFG_KEY = "dc_modecfg_scram_v2";
+const CYAN = "#42d6ff";
+const GOLD = "#ffd76a";
 
 const PRO_BOTS: BotLite[] = [
-  { id: "pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
-  { id: "pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
-  { id: "pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
-  { id: "pro_taylor", name: "The Power", botLevel: "5/5", avatarDataUrl: avatarThePower as any },
-
-  { id: "pro_crafty", name: "Crafty", botLevel: "5/5", avatarDataUrl: avatarCraftyCockney as any },
-  { id: "pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot as any },
-  { id: "pro_barney", name: "Barney", botLevel: "4.5/5", avatarDataUrl: avatarBarney as any },
-  { id: "pro_price", name: "Ice Man", botLevel: "4/5", avatarDataUrl: avatarIceMan as any },
-
-  { id: "pro_wright", name: "Snake King", botLevel: "4/5", avatarDataUrl: avatarSnakeKing as any },
-  { id: "pro_anderson", name: "Flying Scotsman", botLevel: "4/5", avatarDataUrl: avatarFlyingScotsman as any },
-  { id: "pro_smith", name: "Bully Boy", botLevel: "4/5", avatarDataUrl: avatarBullyBoy as any },
-  { id: "pro_clayton", name: "The Ferret", botLevel: "4/5", avatarDataUrl: avatarTheFerret as any },
-
-  { id: "pro_aspinall", name: "The Asp", botLevel: "3.5/5", avatarDataUrl: avatarTheAsp as any },
-  { id: "pro_dobey", name: "Hollywood", botLevel: "3.5/5", avatarDataUrl: avatarHollywood as any },
-  { id: "pro_darth_maple", name: "Darth Maple", botLevel: "3.5/5", avatarDataUrl: avatarDarthMaple as any },
-  { id: "pro_menace", name: "The Menace", botLevel: "3.5/5", avatarDataUrl: avatarTheMenace as any },
-
-  { id: "pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
-  { id: "pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
-  { id: "pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
-  { id: "pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
+  { id: "pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine },
+  { id: "pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid },
+  { id: "pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand },
+  { id: "pro_taylor", name: "The Power", botLevel: "5/5", avatarDataUrl: avatarThePower },
+  { id: "pro_crafty", name: "Crafty", botLevel: "5/5", avatarDataUrl: avatarCraftyCockney },
+  { id: "pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot },
+  { id: "pro_barney", name: "Barney", botLevel: "4.5/5", avatarDataUrl: avatarBarney },
+  { id: "pro_price", name: "Ice Man", botLevel: "4/5", avatarDataUrl: avatarIceMan },
+  { id: "pro_wright", name: "Snake King", botLevel: "4/5", avatarDataUrl: avatarSnakeKing },
+  { id: "pro_anderson", name: "Flying Scotsman", botLevel: "4/5", avatarDataUrl: avatarFlyingScotsman },
+  { id: "pro_smith", name: "Bully Boy", botLevel: "4/5", avatarDataUrl: avatarBullyBoy },
+  { id: "pro_clayton", name: "The Ferret", botLevel: "4/5", avatarDataUrl: avatarTheFerret },
+  { id: "pro_aspinall", name: "The Asp", botLevel: "3.5/5", avatarDataUrl: avatarTheAsp },
+  { id: "pro_dobey", name: "Hollywood", botLevel: "3.5/5", avatarDataUrl: avatarHollywood },
+  { id: "pro_darth_maple", name: "Darth Maple", botLevel: "3.5/5", avatarDataUrl: avatarDarthMaple },
+  { id: "pro_menace", name: "The Menace", botLevel: "3.5/5", avatarDataUrl: avatarTheMenace },
+  { id: "pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant },
+  { id: "pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage },
+  { id: "pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart },
+  { id: "pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer },
 ];
 
-function readUserBotsFromLS(): BotLite[] {
+function loadUserBots(): BotLite[] {
   try {
-    return loadBotPlayers().map((b: any) => ({
-      id: String(b.id),
-      name: b?.name || "BOT",
-      avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? b?.avatar ?? null,
-      avatarUrl: b?.avatarUrl ?? b?.avatar ?? null,
-      avatar: b?.avatar ?? b?.avatarUrl ?? b?.avatarDataUrl ?? null,
-      botLevel: b?.botLevel ?? b?.level ?? "",
-    })).filter((b: any) => !!b.id);
+    return loadBotPlayers().map((bot: any) => ({
+      id: String(bot.id),
+      name: bot?.name || "BOT",
+      avatarDataUrl: bot?.avatarDataUrl ?? bot?.avatarUrl ?? bot?.avatar ?? null,
+      avatarUrl: bot?.avatarUrl ?? bot?.avatar ?? null,
+      avatar: bot?.avatar ?? bot?.avatarUrl ?? bot?.avatarDataUrl ?? null,
+      botLevel: bot?.botLevel ?? bot?.level ?? "",
+      isBot: true,
+    })).filter((bot: BotLite) => Boolean(bot.id));
   } catch {
     return [];
   }
 }
 
-function botToFakeProfile(b: BotLite) {
-  return {
-    id: b.id,
-    name: b.name,
-    avatarDataUrl: (b as any).avatarDataUrl ?? (b as any).avatarUrl ?? (b as any).avatar ?? null,
-    avatarUrl: (b as any).avatarUrl ?? (b as any).avatar ?? null,
-    avatar: (b as any).avatar ?? (b as any).avatarUrl ?? (b as any).avatarDataUrl ?? null,
-    isBot: true,
-    botLevel: b.botLevel || "",
-  } as any;
+function isBotLike(profile: any) {
+  return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel);
 }
 
-function isBotLike(p: any) {
-  if (!p) return false;
-  if (p.isBot || p.bot || p.type === "bot" || p.kind === "bot") return true;
-  if (typeof p.botLevel === "string" && p.botLevel) return true;
-  if (typeof p.level === "string" && p.level) return true;
-  return false;
+function readSavedConfig() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS_CFG_KEY) || "null");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function RulesContent() {
+  return (
+    <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.45 }}>
+      <div>
+        <strong style={{ color: CYAN }}>PRINCIPE</strong><br />
+        Le Scram se joue en <strong>deux phases</strong>, avec les cibles Cricket 15 à 20 et le Bull.
+        Une équipe est <strong>Bloqueur</strong>, l’autre est <strong>Scoreur</strong>.
+      </div>
+      <div>
+        <strong style={{ color: GOLD }}>PHASE 1</strong><br />
+        Le Bloqueur joue en premier et ferme chaque cible en 3 marques : simple = 1, double = 2,
+        triple = 3. Pendant ce temps, le Scoreur marque la valeur de ses fléchettes sur les cibles
+        qui ne sont pas encore fermées.
+      </div>
+      <div>
+        <strong style={{ color: GOLD }}>PHASE 2</strong><br />
+        Les rôles s’inversent. Le nouveau Bloqueur commence avec un tableau vierge et l’autre équipe
+        tente de dépasser le score obtenu pendant la première phase.
+      </div>
+      <div>
+        <strong style={{ color: "#7dffca" }}>VICTOIRE</strong><br />
+        Quand le second Bloqueur a fermé toutes les cibles, l’équipe qui totalise le plus de points gagne.
+        Une égalité est possible. Le cap de rounds est seulement une sécurité facultative par phase.
+      </div>
+      <div style={{ opacity: 0.78 }}>
+        Équipes automatiques : J1 + J3 + J5 + J7 contre J2 + J4 + J6 + J8.
+        Il faut donc sélectionner 2, 4, 6 ou 8 participants.
+      </div>
+    </div>
+  );
 }
 
 export default function ScramConfig(props: any) {
-  const { t } = useLang();
-  const theme = useTheme();
+  const { theme } = useTheme();
+  const store = props?.store ?? props?.params?.store ?? null;
+  const go = props?.go ?? props?.setTab ?? props?.params?.go;
+  const saved = React.useMemo(readSavedConfig, []);
+  const storeProfiles: any[] = Array.isArray(store?.profiles) ? store.profiles : [];
+  const humanProfiles = React.useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
+
+  const [botsEnabled, setBotsEnabled] = React.useState(Boolean(saved.botsEnabled));
+  const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
+  const [useBull, setUseBull] = React.useState(saved.useBull !== false);
+  const [maxRoundsPerPhase, setMaxRoundsPerPhase] = React.useState<number>(Number(saved.maxRoundsPerPhase || 0) || 0);
+  const [firstStopper, setFirstStopper] = React.useState<FirstStopperChoice>(saved.firstStopper === "B" || saved.firstStopper === "random" ? saved.firstStopper : "A");
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.slice(0, 8).map(String) : []);
+  const [botProfiles, setBotProfiles] = React.useState<BotLite[]>([]);
 
   React.useLayoutEffect(() => {
-    try {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    } catch {}
+    try { window.scrollTo(0, 0); } catch {}
   }, []);
 
-  const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
-
-  const primary = (theme as any)?.primary ?? "#7dffca";
-
-  const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
-  const humanProfiles = storeProfiles.filter((p) => !isBotLike(p));
-
-  const [botsEnabled, setBotsEnabled] = React.useState(false);
-  const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
-  const [objective, setObjective] = React.useState<number>(200);
-  const [roundsCap, setRoundsCap] = React.useState<number>(0);
-
-  const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
-    const custom = readUserBotsFromLS();
-    const m = new Map<string, BotLite>();
-    for (const b of PRO_BOTS) m.set(b.id, b);
-    for (const b of custom) m.set(b.id, b);
-    setUserBots(Array.from(m.values()));
+    const map = new Map<string, BotLite>();
+    PRO_BOTS.forEach((bot) => map.set(bot.id, { ...bot, isBot: true }));
+    loadUserBots().forEach((bot) => map.set(bot.id, { ...bot, isBot: true }));
+    setBotProfiles([...map.values()]);
   }, []);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(LS_CFG_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 8);
-    } catch {}
-    // fallback: 2 premiers profils humains
-    return humanProfiles.slice(0, 2).map((p) => String(p.id));
-  });
-
-  // persist
   React.useEffect(() => {
-    try {
-      localStorage.setItem(
-        LS_CFG_KEY,
-        JSON.stringify({ selectedIds, botsEnabled, botLevel, objective, roundsCap })
-      );
-    } catch {}
-  }, [selectedIds, botsEnabled, botLevel, objective, roundsCap]);
+    if (selectedIds.length || humanProfiles.length < 2) return;
+    setSelectedIds(humanProfiles.slice(0, 2).map((p) => String(p.id)));
+  }, [humanProfiles, selectedIds.length]);
 
-  // si bots off => virer les bots sélectionnés
   React.useEffect(() => {
     if (botsEnabled) return;
-    const botIds = new Set(userBots.map((b) => b.id));
-    setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
-  }, [botsEnabled, userBots]);
+    const botIds = new Set(botProfiles.map((bot) => bot.id));
+    setSelectedIds((previous) => previous.filter((id) => !botIds.has(id)));
+  }, [botsEnabled, botProfiles]);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(LS_CFG_KEY, JSON.stringify({
+        selectedIds,
+        botsEnabled,
+        botLevel,
+        useBull,
+        maxRoundsPerPhase,
+        firstStopper,
+      }));
+    } catch {}
+  }, [selectedIds, botsEnabled, botLevel, useBull, maxRoundsPerPhase, firstStopper]);
+
+  const allProfiles = React.useMemo(() => [
+    ...humanProfiles,
+    ...botProfiles.map((bot) => ({ ...bot, isBot: true })),
+  ], [humanProfiles, botProfiles]);
+  const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
+  const selectedProfiles = selectedIds.map((id) => byId.get(String(id))).filter(Boolean) as any[];
+  const teamA = selectedProfiles.filter((_, index) => index % 2 === 0);
+  const teamB = selectedProfiles.filter((_, index) => index % 2 === 1);
+  const validCount = selectedIds.length >= 2 && selectedIds.length <= 8 && selectedIds.length % 2 === 0;
 
   function togglePlayer(id: string) {
-    setSelectedIds((prev) => {
-      const has = prev.includes(id);
-      if (has) return prev.filter((x) => x !== id);
-      if (prev.length >= 8) return prev;
-      return [...prev, id];
+    setSelectedIds((previous) => {
+      if (previous.includes(id)) return previous.filter((value) => value !== id);
+      if (previous.length >= 8) return previous;
+      return [...previous, id];
     });
   }
 
-  function onStart(e?: any) {
-    try {
-      e?.preventDefault?.();
-      e?.stopPropagation?.();
-    } catch {}
+  function backToGames() {
+    if (typeof go === "function") go("games");
+  }
 
+  function onStart() {
+    if (!validCount) return;
+    const botIds = selectedProfiles.filter(isBotLike).map((p: any) => String(p.id));
+    const chosenFirstStopper: ScramTeam = firstStopper === "random" ? (Math.random() < 0.5 ? "A" : "B") : firstStopper;
     const payload: ScramConfigPayload = {
       players: selectedIds.length,
       selectedIds,
+      playersList: selectedProfiles.map((profile: any) => ({
+        ...profile,
+        id: String(profile.id),
+        name: profile?.name || profile?.displayName || "Joueur",
+      })),
+      botIds,
       botsEnabled,
       botLevel,
-      objective,
-      roundsCap,
+      useBull,
+      maxRoundsPerPhase,
+      firstStopper: chosenFirstStopper,
     };
-
     try { recordProfileUsageForMode("scram", selectedIds); } catch {}
-
-    // Debug (utile si "start" reset l'app): on garde le dernier payload
-    try {
-      localStorage.setItem("dc_last_scram_start_payload", JSON.stringify(payload));
-    } catch {}
-
-    // compat go(tab, params) ou navigation props.go
-    const go = (props as any)?.go ?? (props as any)?.params?.go;
-    const setTab = (props as any)?.setTab;
-
-    // 1) chemin normal : go("scram_play", payload)
-    if (typeof go === "function") {
-      try {
-        go("scram_play", payload);
-      } catch {
-        try {
-          go("scram.play", payload);
-        } catch {}
-      }
-    } else if (typeof setTab === "function") {
-      try {
-        setTab("scram_play", payload);
-      } catch {}
-    }
-
-    // 2) safety net : App expose window.__appGo (voir App.tsx)
-    // Certains environnements mobile peuvent perdre la prop go lors d'un re-render.
-    try {
-      const appGo = (window as any)?.__appGo || (window as any)?.__appStore?.go;
-      if (typeof appGo === "function") {
-        window.setTimeout(() => {
-          try {
-            appGo("scram_play", payload);
-          } catch {}
-        }, 40);
-      }
-    } catch {}
+    if (typeof go === "function") go("scram_play", payload);
   }
 
-  const canStart = selectedIds.length >= 2;
-  const cardBg = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))";
+  const panel = {
+    borderRadius: 18,
+    padding: 12,
+    background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(0,0,0,.28))",
+    border: "1px solid rgba(255,255,255,.10)",
+  } as React.CSSProperties;
 
   return (
-    <div style={{ minHeight: "100dvh" }}>
+    <div style={{ minHeight: "100dvh", paddingBottom: 92 }}>
       <PageHeader
-        title="SCRAM"
-        left={<BackDot onClick={() => (props as any)?.go?.("games") || (props as any)?.setTab?.("games")} />}
-        right={
-          <InfoDot
-            title="SCRAM"
-            body={
-              "Phase RACE: fermer toutes les cibles (20→15 + Bull). Puis phase SCRAM: marquer des points pendant que l'autre team ferme. Premier à l'objectif (ou fin de rounds) gagne." 
-            }
-          />
-        }
         tickerSrc={tickerScram}
+        tickerAlt="SCRAM"
+        left={<BackDot onClick={backToGames} color={CYAN} glow="rgba(66,214,255,.58)" title="Retour aux jeux" />}
+        right={<InfoDot title="Règles et configuration du Scram" color={GOLD} glow="rgba(255,215,106,.55)" content={<RulesContent />} />}
       />
 
-      <div style={{ padding: 12, paddingTop: 10 }}>
-        <Section title={t("players") || "JOUEURS"}>
-          <div
-            style={{
-              borderRadius: 18,
-              padding: 12,
-              background: cardBg,
-              border: "1px solid rgba(255,255,255,0.10)",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginBottom: 8 }}>
-              Sélection : {selectedIds.length}/8 — min 2
+      <div style={{ padding: "12px 12px 0" }}>
+        <Section title="PARTICIPANTS">
+          <div style={panel}>
+            <div style={{ fontSize: 12, opacity: .84, fontWeight: 950, marginBottom: 9 }}>
+              Sélection : {selectedIds.length}/8 — 2 équipes équilibrées
             </div>
-
-            {/* Profils : sélection en bloc flottant type avatars */}
             <PlayerPagedSelector
-                  usageMode="scram"
+              usageMode="scram"
               profiles={humanProfiles}
               selectedIds={selectedIds}
               onToggle={togglePlayer}
-              accent={primary}
+              accent={theme?.primary || CYAN}
               pageSize={9}
-              modalTitle="Choisir des joueurs"
+              modalTitle="Choisir les joueurs Scram"
             />
 
-            {/* Bots */}
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 12 }}>
               <OptionRow label="Bots IA">
                 <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
               </OptionRow>
-
-              {botsEnabled && (
+              {botsEnabled ? (
                 <>
                   <OptionRow label="Difficulté IA">
                     <OptionSelect
                       value={botLevel}
                       options={[
-                        { value: "easy", label: "Easy" },
+                        { value: "easy", label: "Facile" },
                         { value: "normal", label: "Normal" },
-                        { value: "hard", label: "Hard" },
+                        { value: "hard", label: "Difficile" },
                       ]}
                       onChange={setBotLevel}
                     />
                   </OptionRow>
-
-                <div style={{ marginTop: 10 }}>
-                  <BotPagedSelector
-                    bots={userBots}
-                    selectedIds={selectedIds}
-                    onToggle={togglePlayer}
-                    accent={primary}
-                    label="BOTS IA"
-                    modalTitle="Choisir des BOTS IA"
-                    showCheckbox={false}
-                  />
-                </div>
+                  <div style={{ marginTop: 10 }}>
+                    <BotPagedSelector
+                      bots={botProfiles as any}
+                      selectedIds={selectedIds}
+                      onToggle={togglePlayer}
+                      accent={CYAN}
+                      label="BOTS IA"
+                      modalTitle="Choisir des BOTS IA"
+                      showCheckbox={false}
+                    />
+                  </div>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </Section>
 
-        <Section title="RÈGLES">
-          <div
-            style={{
-              borderRadius: 18,
-              padding: 12,
-              background: cardBg,
-              border: "1px solid rgba(255,255,255,0.10)",
-            }}
-          >
-            <OptionRow label="Objectif points (phase SCRAM)">
-              <OptionSelect
-                value={objective}
-                options={[150, 200, 250, 300].map((v) => ({ value: v, label: String(v) }))}
-                onChange={(v: any) => setObjective(Number(v) || 200)}
-              />
-            </OptionRow>
+        {selectedIds.length ? (
+          <Section title="ÉQUIPES AUTOMATIQUES">
+            <div style={{ ...panel, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {([
+                ["TEAM A", teamA, "#ff4ad1"],
+                ["TEAM B", teamB, GOLD],
+              ] as const).map(([label, members, color]) => (
+                <div key={label} style={{ minWidth: 0, padding: 10, borderRadius: 15, background: `${color}10`, border: `1px solid ${color}55` }}>
+                  <div style={{ color, fontWeight: 1000, fontSize: 12, marginBottom: 7 }}>{label}</div>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    {members.map((member: any) => <div key={member.id} style={{ fontSize: 12, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>)}
+                    {!members.length ? <div style={{ opacity: .5, fontSize: 12 }}>—</div> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        ) : null}
 
-            <OptionRow label="Cap de rounds (0 = illimité)">
+        <Section title="RÈGLES">
+          <div style={panel}>
+            <OptionRow label="Bull inclus">
+              <OptionToggle value={useBull} onChange={setUseBull} />
+            </OptionRow>
+            <OptionRow label="Premier bloqueur">
               <OptionSelect
-                value={roundsCap}
-                options={[0, 5, 7, 9, 11, 13].map((v) => ({ value: v, label: v === 0 ? "Illimité" : String(v) }))}
-                onChange={(v: any) => setRoundsCap(Number(v) || 0)}
+                value={firstStopper}
+                options={[
+                  { value: "A", label: "Team A" },
+                  { value: "B", label: "Team B" },
+                  { value: "random", label: "Aléatoire" },
+                ]}
+                onChange={setFirstStopper}
               />
             </OptionRow>
+            <OptionRow label="Cap de rounds / phase">
+              <OptionSelect
+                value={maxRoundsPerPhase}
+                options={[0, 10, 15, 20, 25, 30].map((value) => ({ value, label: value ? String(value) : "Illimité" }))}
+                onChange={(value: any) => setMaxRoundsPerPhase(Number(value) || 0)}
+              />
+            </OptionRow>
+            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.35 }}>
+              Partie standard : deux phases, rôles inversés, meilleur total final. Le cap termine seulement une phase trop longue.
+            </div>
           </div>
         </Section>
 
-        <div style={{ padding: 12, paddingTop: 4 }}>
+        <div style={{ padding: "4px 12px 14px" }}>
           <button
             type="button"
             className="btn-primary"
-            disabled={!canStart}
+            disabled={!validCount}
             onClick={onStart}
-            style={{ width: "100%" }}
+            style={{ width: "100%", minHeight: 48, fontWeight: 1000, letterSpacing: 1.1 }}
           >
-            {t("start") || "Démarrer la partie"}
+            DÉMARRER LE SCRAM
           </button>
-          {!canStart && (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
-              Sélectionne au moins 2 joueurs (humains et/ou bots).
+          {!validCount ? (
+            <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>
+              Sélectionne 2, 4, 6 ou 8 participants pour équilibrer les équipes.
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

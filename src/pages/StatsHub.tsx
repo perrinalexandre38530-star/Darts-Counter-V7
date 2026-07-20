@@ -8411,7 +8411,10 @@ return (
                       return { rec: r, pl: null };
                     }).filter((x: any) => x.pl);
                     const games = rows.length;
-                    const wins = rows.filter((r: any) => String(r?.winnerId || r?.summary?.winnerId || r?.payload?.winnerId || "") === pid).length;
+                    const wins = playerRows.filter(({ rec, pl }: any) =>
+                      pl?.win === true || pl?.winner === true ||
+                      String(rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || "") === pid
+                    ).length;
                     const sum = (key: string) => playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.[key] ?? 0) || 0), 0);
                     const darts = sum("dartsThrown") || sum("darts") || sum("totalThrows");
                     const points = sum("points") || sum("score") || sum("totalScore");
@@ -8435,6 +8438,14 @@ return (
                     const bulls = sum("bulls");
                     const dbulls = sum("dbulls");
                     const misses = sum("misses");
+                    const marks = sum("marks") || sum("totalMarks") || sum("marksTotal");
+                    const closes = sum("closed") || sum("closes") || sum("closedNumbers");
+                    const scoringHits = sum("scoringHits");
+                    const blockedDarts = sum("blockedDarts");
+                    const wastedDarts = sum("wastedDarts");
+                    const stopperVisits = sum("stopperVisits");
+                    const scorerVisits = sum("scorerVisits");
+                    const marksPerRound = darts ? (marks / darts) * 3 : 0;
                     const bestMargin = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestMargin ?? 0) || 0), 0);
                     const averageVisit = visits ? points / visits : 0;
                     const objectiveRate = targetsFaced ? Math.round((successfulVisits / targetsFaced) * 1000) / 10 : 0;
@@ -8463,6 +8474,32 @@ return (
                         </div>
                         <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
                           Données issues des volées Les 5 vies : objectifs affrontés et réussis, marges, vies perdues et zones touchées.
+                        </div>
+                      </>
+                    ) : currentMode === "scram" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Points marqués</div><div style={value}>{points}</div></div>
+                          <div style={statBox}><div style={label}>Marks posées</div><div style={value}>{marks}</div><div style={{ opacity: .75, fontSize: 11 }}>MPR {marksPerRound.toFixed(2)}</div></div>
+                          <div style={statBox}><div style={label}>Cibles fermées</div><div style={value}>{closes}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure volée</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Volées bloqueur</div><div style={value}>{stopperVisits}</div></div>
+                          <div style={statBox}><div style={label}>Volées scoreur</div><div style={value}>{scorerVisits}</div></div>
+                          <div style={statBox}><div style={label}>Impacts de score</div><div style={value}>{scoringHits}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes bloquées</div><div style={value}>{blockedDarts}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes jouées</div><div style={value}>{darts}</div></div>
+                          <div style={statBox}><div style={label}>Hors cible / Miss</div><div style={value}>{wastedDarts} / {misses}</div></div>
+                        </div>
+                        <div style={{ ...softCard, marginTop: 10, padding: 14 }}>
+                          <div style={{ ...label, marginBottom: 9, fontWeight: 950 }}>Répartition des impacts</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                            {[["Simple", singles], ["Double", doubles], ["Triple", triples], ["Bull", bulls], ["DBull", dbulls], ["Miss", misses]].map(([name, n]: any) => <div key={name} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.045)", textAlign: "center" }}><div style={{ fontSize: 10, opacity: .72 }}>{name}</div><div style={{ fontWeight: 1000, fontSize: 17 }}>{n}</div></div>)}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
+                          Statistiques cumulées sur les deux phases du Scram, avec rôles Bloqueur et Scoreur séparés.
                         </div>
                       </>
                     ) : (

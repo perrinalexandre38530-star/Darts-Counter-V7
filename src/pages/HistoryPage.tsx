@@ -1515,6 +1515,33 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     );
   }
 
+  if (normalizeToken(baseMode(e)) === "scram" || inferGameFilterKey(e, "darts") === "scram") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const scoreA = Number(summary?.scoreA ?? anyE?.payload?.state?.scores?.A ?? 0) || 0;
+    const scoreB = Number(summary?.scoreB ?? anyE?.payload?.state?.scores?.B ?? 0) || 0;
+    const winnerTeam = String(summary?.winnerTeam || anyE?.winnerTeam || anyE?.payload?.winnerTeam || "").toUpperCase();
+    const allPlayers = getAllEntryPlayers(e);
+    const members = (team: "A" | "B") => allPlayers
+      .filter((p: any, index: number) => String(p?.team || (Number(p?.teamIndex) === 0 ? "A" : Number(p?.teamIndex) === 1 ? "B" : index % 2 === 0 ? "A" : "B")).toUpperCase() === team)
+      .map((p: any) => historyScoreName(e, p) || getName(p))
+      .filter(Boolean);
+    const colorA = "#ff4ad1";
+    const colorB = "#ffd76a";
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ color: colorA, fontWeight: 1000 }}>TEAM A{winnerTeam === "A" ? " 🏆" : ""}</span>
+          <span style={{ color: theme.primary, fontWeight: 1100, textShadow: `0 0 9px ${theme.primary}55` }}>{scoreA} — {scoreB}</span>
+          <span style={{ color: colorB, fontWeight: 1000 }}>TEAM B{winnerTeam === "B" ? " 🏆" : ""}</span>
+        </div>
+        <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
+          {members("A").join(" + ") || "Team A"} • {members("B").join(" + ") || "Team B"}
+        </div>
+      </div>
+    );
+  }
+
   const teamRows = isX01Entry(e) ? historyTeamRowsForX01(e) : [];
   if (teamRows.length >= 2) {
     const scoreStyle = { color: theme.primary, fontWeight: 950, textShadow: `0 0 9px ${theme.primary}55` };

@@ -485,7 +485,9 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     const points = Number(pl?.points ?? pl?.score ?? pl?.totalScore ?? pl?.capital ?? pl?.finalCapital ?? 0) || 0;
     const dartsThrown = Number(pl?.dartsThrown ?? pl?.darts ?? pl?.totalThrows ?? 0) || 0;
     const bestVisit = Number(pl?.bestVisit ?? pl?.bestRound ?? pl?.bestAction ?? pl?.validHits ?? pl?.captures ?? pl?.kills ?? points ?? 0) || 0;
-    const isWinner = !!winnerId && String(winnerId) === pid;
+    // Les modes par équipes (dont SCRAM) marquent chaque membre gagnant avec win=true.
+    // winnerId reste l'identifiant léger utilisé par les anciennes cartes historiques.
+    const isWinner = pl?.win === true || pl?.winner === true || (!!winnerId && String(winnerId) === pid);
     bumpPlayer(idx, pid, {
       name: pl?.name || pl?.displayName,
       matches: 1,

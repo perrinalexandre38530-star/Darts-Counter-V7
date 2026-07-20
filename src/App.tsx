@@ -4936,8 +4936,17 @@ case "babyfoot_team_edit":
         page = <ScramConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "scram_play":
-        // ✅ pass store so ScramPlay can resolve player avatars/names like other Play pages
-        page = <ScramPlay store={store} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "scram", routeParams))} />;
+        page = (
+          <ScramPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "scram", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "golf_config":

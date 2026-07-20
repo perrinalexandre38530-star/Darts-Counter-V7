@@ -30,10 +30,22 @@ import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import BotPagedSelector from "../components/BotPagedSelector";
+import TeamSelectorV2 from "../components/TeamSelectorV2";
+import {
+  PlayerDartBadge,
+  SelectedParticipantsCompactBlock,
+  x01BumpPlayerDartSetUsage,
+  x01MostUsedDartSetIdForProfile,
+} from "./X01ConfigV3";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS, type TerritoryMap } from "../lib/territories/maps";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
+import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
+import { nextTeamInstanceId } from "../lib/teamSelectionInstances";
+import { bumpDartSetUsage } from "../lib/dartSetsStore";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -52,6 +64,19 @@ export type TerritoriesConfigPayload = {
   rounds: number;
   objective: number; // nb territoires à posséder pour gagner
   mapId: string;
+  participantMode?: "players" | "teams";
+  teamSourceMode?: "manual" | "saved" | "auto";
+  selectedTeamIds?: string[];
+  selectedTeamPlayerIds?: Record<string, string[]>;
+  playerDartSets?: Record<string, string | null>;
+  targetSelectionMode?: "free" | "by_score";
+  captureRule?: "exact" | "gte";
+  victoryMode?: "territories" | "regions" | "time";
+  objectiveTerritories?: number;
+  objectiveRegions?: number;
+  winTerritories?: number;
+  winRegions?: number;
+  timeLimitMin?: number;
 };
 
 const INFO_TEXT = `TERRITORIES (Départements)
@@ -184,8 +209,9 @@ function readUserBotsFromLS(): BotLite[] {
 function isBotLike(p: any) {
   if (!p) return false;
   if (p.isBot || p.bot || p.type === "bot" || p.kind === "bot") return true;
-  if (typeof p.botLevel === "string" && p.botLevel) return true;
-  if (typeof p.level === "string" && p.level) return true;
+  // IMPORTANT : un profil humain peut avoir un champ `level` ou `botLevel`
+  // utilisé uniquement pour son starring. X01 ne filtre les humains que sur
+  // le marqueur explicite isBot ; on conserve exactement ce comportement ici.
   return false;
 }
 
@@ -236,6 +262,42 @@ function InfoMini({
   );
 }
 
+function SelectorPill({
+  label,
+  active,
+  accent,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  accent: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        minHeight: 40,
+        padding: "8px 14px",
+        borderRadius: 999,
+        border: `1px solid ${active ? accent : "rgba(255,255,255,0.12)"}`,
+        background: active ? `${accent}20` : "rgba(255,255,255,0.04)",
+        color: active ? accent : "#aeb4ce",
+        boxShadow: active ? `0 0 18px ${accent}33` : "none",
+        fontSize: 12,
+        fontWeight: 950,
+        letterSpacing: 0.7,
+        textTransform: "uppercase",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function DepartementsConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
@@ -257,6 +319,40 @@ export default function DepartementsConfig(props: any) {
   const [mapId, setMapId] = React.useState<string>(() => "FR");
 
   const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
+  const [participantMode, setParticipantMode] = React.useState<"players" | "teams">(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      return parsed?.participantMode === "teams" || Number(parsed?.teamSize) > 1 ? "teams" : "players";
+    } catch {
+      return "players";
+    }
+  });
+  const [teamSourceMode, setTeamSourceMode] = React.useState<"manual" | "saved" | "auto">(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      return parsed?.teamSourceMode === "saved" || parsed?.teamSourceMode === "auto" ? parsed.teamSourceMode : "manual";
+    } catch {
+      return "manual";
+    }
+  });
+  const [selectedTeamIds, setSelectedTeamIds] = React.useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      return Array.isArray(parsed?.selectedTeamIds) ? parsed.selectedTeamIds.map(String).slice(0, 2) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedTeamPlayerIds, setSelectedTeamPlayerIds] = React.useState<Record<string, string[]>>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      return parsed?.selectedTeamPlayerIds && typeof parsed.selectedTeamPlayerIds === "object"
+        ? parsed.selectedTeamPlayerIds
+        : {};
+    } catch {
+      return {};
+    }
+  });
   const [botsEnabled, setBotsEnabled] = React.useState(false);
   const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
   const [rounds, setRounds] = React.useState(12);
@@ -277,6 +373,14 @@ export default function DepartementsConfig(props: any) {
 
       if (parsed?.mapId) setMapId(String(parsed.mapId));
       if (parsed?.teamSize) setTeamSize(parsed.teamSize);
+      if (parsed?.participantMode === "players" || parsed?.participantMode === "teams") setParticipantMode(parsed.participantMode);
+      if (parsed?.teamSourceMode === "manual" || parsed?.teamSourceMode === "saved" || parsed?.teamSourceMode === "auto") {
+        setTeamSourceMode(parsed.teamSourceMode);
+      }
+      if (Array.isArray(parsed?.selectedTeamIds)) setSelectedTeamIds(parsed.selectedTeamIds.map(String).slice(0, 2));
+      if (parsed?.selectedTeamPlayerIds && typeof parsed.selectedTeamPlayerIds === "object") {
+        setSelectedTeamPlayerIds(parsed.selectedTeamPlayerIds);
+      }
       if (typeof parsed?.botsEnabled === "boolean") setBotsEnabled(parsed.botsEnabled);
       if (parsed?.botLevel) setBotLevel(parsed.botLevel);
       if (parsed?.rounds) setRounds(Number(parsed.rounds) || 12);
@@ -321,6 +425,16 @@ export default function DepartementsConfig(props: any) {
     } catch {}
     return [];
   });
+  const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("dc_modecfg_departements") || "null");
+      return parsed?.playerDartSets && typeof parsed.playerDartSets === "object" ? parsed.playerDartSets : {};
+    } catch {
+      return {};
+    }
+  });
+  const [autoDartSetPicker, setAutoDartSetPicker] = React.useState<{ profileId: string; seq: number } | null>(null);
+  const playersTouchedRef = React.useRef(false);
 
   // Team assignment (Option A: Teams panel with slots)
   const [teamsById, setTeamsById] = React.useState<Record<string, number>>({});
@@ -405,8 +519,77 @@ export default function DepartementsConfig(props: any) {
     [storeProfiles, (store as any)?.activeProfileId]
   );
 
-  const maxPlayers = 6;
-  const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
+  const selectedParticipantProfiles = React.useMemo(() => {
+    const humansById = new Map((humanProfiles || []).map((p: any) => [String(p?.id), p]));
+    const botsById = new Map((userBots || []).map((b: any) => [String(b?.id), botToFakeProfile(b)]));
+    return (selectedIds || []).map((rawId) => {
+      const id = String(rawId || "");
+      const human = humansById.get(id);
+      if (human) return { id, kind: "player", name: human?.name || human?.displayName || "Joueur", profile: human };
+      const bot = botsById.get(id);
+      if (bot) return { id, kind: "bot", name: bot?.name || "BOT IA", profile: bot };
+      return null;
+    }).filter(Boolean);
+  }, [selectedIds, humanProfiles, userBots]);
+
+  React.useEffect(() => {
+    if (playersTouchedRef.current || !humanProfiles.length) return;
+    setSelectedIds((prev) => {
+      const available = new Set(humanProfiles.map((p: any) => String(p?.id || "")));
+      const valid = (prev || []).filter((id) => available.has(String(id)));
+      if (valid.length) return valid;
+      const activeId = String((store as any)?.activeProfileId || "");
+      const ordered = activeId
+        ? [...humanProfiles].sort((a: any, b: any) => Number(String(b?.id) === activeId) - Number(String(a?.id) === activeId))
+        : humanProfiles;
+      return ordered.slice(0, Math.min(2, ordered.length)).map((p: any) => String(p.id));
+    });
+  }, [humanProfiles, (store as any)?.activeProfileId]);
+
+  const handleChangePlayerDartSet = React.useCallback((profileId: string, dartSetId: string | null) => {
+    const pid = String(profileId || "").trim();
+    const dsid = dartSetId ? String(dartSetId) : null;
+    if (!pid) return;
+    setPlayerDartSets((prev) => ({ ...prev, [pid]: dsid }));
+    if (dsid) {
+      x01BumpPlayerDartSetUsage(pid, dsid);
+      try { bumpDartSetUsage(dsid); } catch {}
+    }
+  }, []);
+
+  const openDartSetPickerAfterPlayerSelection = React.useCallback((id: any, meta?: any) => {
+    const pid = String(id || "").trim();
+    if (!pid || meta?.selected === false) return;
+    if (!humanProfiles.some((p: any) => String(p?.id) === pid)) return;
+    setAutoDartSetPicker({ profileId: pid, seq: Date.now() });
+  }, [humanProfiles]);
+
+  const [storedDartsTeams, setStoredDartsTeams] = React.useState<any[]>(() => {
+    try {
+      return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0);
+    } catch {
+      return [];
+    }
+  });
+
+  React.useEffect(() => {
+    const refreshTeams = () => {
+      try {
+        setStoredDartsTeams(loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0));
+      } catch {
+        setStoredDartsTeams([]);
+      }
+    };
+    window.addEventListener("storage", refreshTeams);
+    window.addEventListener("focus", refreshTeams);
+    return () => {
+      window.removeEventListener("storage", refreshTeams);
+      window.removeEventListener("focus", refreshTeams);
+    };
+  }, []);
+
+  const maxPlayers = participantMode === "teams" ? teamSize * 2 : 6;
+  const minPlayers = participantMode === "teams" ? teamSize * 2 : 2;
 
   // (maps) is already memoized above (alphabetical order)
 
@@ -416,23 +599,114 @@ export default function DepartementsConfig(props: any) {
     window.history.back();
   }
 
+  function resetParticipants() {
+    playersTouchedRef.current = true;
+    setAutoDartSetPicker(null);
+    setSelectedIds([]);
+    setTeamsById({});
+    setPendingId(null);
+    setSelectedTeamIds([]);
+    setSelectedTeamPlayerIds({});
+  }
+
+  function chooseParticipantMode(next: "players" | "teams") {
+    if (next === participantMode) return;
+    resetParticipants();
+    setParticipantMode(next);
+    setTeamSize(next === "players" ? 1 : 2);
+    if (next === "players") setTeamSourceMode("manual");
+  }
+
+  function chooseTeamSize(next: 2 | 3) {
+    if (teamSize === next) return;
+    resetParticipants();
+    setTeamSize(next);
+  }
+
+  function chooseTeamSource(next: "manual" | "saved" | "auto") {
+    if (teamSourceMode === next) return;
+    resetParticipants();
+    setTeamSourceMode(next);
+  }
+
   function togglePlayer(id: string) {
+    const pid = String(id || "");
+    playersTouchedRef.current = true;
     setSelectedIds((prev) => {
-      const exists = prev.includes(id);
+      const exists = prev.includes(pid);
       if (exists) {
-        const next = prev.filter((x) => x !== id);
+        const next = prev.filter((x) => x !== pid);
         setTeamsById((tb) => {
           const n = { ...tb };
-          delete n[id];
+          delete n[pid];
           return n;
         });
-        setPendingId((p) => (p === id ? null : p));
+        setPendingId((p) => (p === pid ? null : p));
         return next;
       }
       if (prev.length >= maxPlayers) return prev;
-      return [...prev, id];
+      if (humanProfiles.some((p: any) => String(p?.id) === pid)) {
+        const preferred = x01MostUsedDartSetIdForProfile(pid, humanProfiles);
+        setPlayerDartSets((old) => Object.prototype.hasOwnProperty.call(old, pid) ? old : { ...old, [pid]: preferred });
+      }
+      if (participantMode === "teams" && teamSourceMode === "manual") {
+        setTeamsById((current) => {
+          const counts = [0, 0];
+          for (const pid of prev) {
+            const teamIndex = current[pid];
+            if (teamIndex === 0 || teamIndex === 1) counts[teamIndex] += 1;
+          }
+          const nextTeam = counts[0] <= counts[1] ? 0 : 1;
+          return { ...current, [pid]: nextTeam };
+        });
+      }
+      return [...prev, pid];
     });
   }
+
+  function setManualPlayerTeam(id: string, teamIndex: 0 | 1) {
+    if (!selectedIds.includes(id)) return;
+    setTeamsById((prev) => ({ ...prev, [id]: teamIndex }));
+  }
+
+  function addStoredTeam(baseTeamId: string, playerIds: string[]) {
+    if (selectedTeamIds.length >= 2) return;
+    const instanceId = nextTeamInstanceId({ id: baseTeamId }, selectedTeamIds);
+    const chosen = Array.from(new Set((playerIds || []).map(String).filter(Boolean))).slice(0, teamSize);
+    setSelectedTeamIds((prev) => [...prev, instanceId].slice(0, 2));
+    setSelectedTeamPlayerIds((prev) => ({ ...prev, [instanceId]: chosen }));
+  }
+
+  function removeStoredTeam(instanceId: string) {
+    setSelectedTeamIds((prev) => prev.filter((id) => id !== instanceId));
+    setSelectedTeamPlayerIds((prev) => {
+      const next = { ...prev };
+      delete next[instanceId];
+      return next;
+    });
+  }
+
+  function replaceStoredTeams(teamIds: string[], selections: Record<string, string[]>) {
+    const ids = (teamIds || []).map(String).filter(Boolean).slice(0, 2);
+    const nextSelections: Record<string, string[]> = {};
+    for (const id of ids) {
+      nextSelections[id] = Array.from(new Set((selections?.[id] || []).map(String).filter(Boolean))).slice(0, teamSize);
+    }
+    setSelectedTeamIds(ids);
+    setSelectedTeamPlayerIds(nextSelections);
+  }
+
+  React.useEffect(() => {
+    if (participantMode !== "teams" || teamSourceMode === "manual") return;
+    const first = (selectedTeamPlayerIds[selectedTeamIds[0] || ""] || []).map(String);
+    const second = (selectedTeamPlayerIds[selectedTeamIds[1] || ""] || []).map(String);
+    const ids = Array.from(new Set([...first, ...second]));
+    const assignments: Record<string, number> = {};
+    first.forEach((id) => { assignments[id] = 0; });
+    second.forEach((id) => { assignments[id] = 1; });
+    setSelectedIds(ids);
+    setTeamsById(assignments);
+  }, [participantMode, teamSourceMode, teamSize, selectedTeamIds, selectedTeamPlayerIds]);
 
   // keep teamsById clean when players removed
   React.useEffect(() => {
@@ -565,10 +839,17 @@ export default function DepartementsConfig(props: any) {
     if (selectedIds.length < minPlayers) return false;
     if (selectedIds.length > maxPlayers) return false;
 
-    if (teamSize === 1) return true;
+    if (participantMode === "players") return true;
 
     // ✅ mode équipes = EXACTEMENT 2 teams, donc EXACTEMENT 2 * teamSize joueurs
     if (selectedIds.length !== teamSize * 2) return false;
+
+    if (teamSourceMode !== "manual") {
+      if (selectedTeamIds.length !== 2) return false;
+      const chosen = selectedTeamIds.map((id) => selectedTeamPlayerIds[id] || []);
+      if (chosen.some((ids) => ids.length !== teamSize)) return false;
+      if (new Set(chosen.flat().map(String)).size !== teamSize * 2) return false;
+    }
 
     // Every selected id must be assigned and each team must have exactly teamSize members
     const counts = [0, 0];
@@ -578,13 +859,18 @@ export default function DepartementsConfig(props: any) {
       counts[te]++;
     }
     return counts[0] === teamSize && counts[1] === teamSize;
-  }, [selectedIds, minPlayers, maxPlayers, teamSize, teamsById]);
+  }, [selectedIds, minPlayers, maxPlayers, participantMode, teamSize, teamSourceMode, selectedTeamIds, selectedTeamPlayerIds, teamsById]);
 
   const payload: TerritoriesConfigPayload = {
     players: selectedIds.length,
     teamSize,
     selectedIds,
-    teamsById: teamSize === 1 ? undefined : teamsById,
+    teamsById: participantMode === "players" ? undefined : teamsById,
+    participantMode,
+    teamSourceMode,
+    selectedTeamIds: participantMode === "teams" && teamSourceMode !== "manual" ? selectedTeamIds : undefined,
+    selectedTeamPlayerIds: participantMode === "teams" && teamSourceMode !== "manual" ? selectedTeamPlayerIds : undefined,
+    playerDartSets,
     botsEnabled,
     botLevel,
     rounds,
@@ -865,495 +1151,263 @@ export default function DepartementsConfig(props: any) {
 
       </Section>
 
-      {/* PLAYERS */}
+      {/* PARTICIPANTS — même système visuel que X01 */}
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>{t("config.players", "Joueurs")}</span>
+            <span>{t("config.participants", "Participants")}</span>
             <InfoMini
-              title="Joueurs"
+              title="Joueurs / Équipes"
               content={
-                "Sélectionne les participants (jusqu'à 6).\n\nEn mode équipes :\n1) Clique un joueur sélectionné pour le mettre 'en attente'\n2) Clique un slot vide dans TEAMS."
+                "JOUEURS : sélection libre de 2 à 6 participants, avec profils locaux et Bots IA.\n\nÉQUIPES : choisis un format 2v2 ou 3v3, puis compose les deux équipes manuellement, depuis tes équipes enregistrées, ou avec un brassage automatique."
               }
               onOpen={(title, content) => setInfoModal({ title, content })}
             />
           </div>
         }
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-            Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
-            {teamSize > 1 && selectedIds.length > 0 && selectedIds.length !== teamSize * 2 && (
-              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être exactement {teamSize * 2})</span>
-            )}
-          </div>
-        </div>
-
-        {/* Human carousel */}
-        {humanProfiles.length === 0 ? (
-          <p style={{ fontSize: 11, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
-            Aucun profil local. Crée des joueurs dans <b>Profils</b>.
-          </p>
-        ) : (
-          <div
-            className="dc-scroll-thin"
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => chooseParticipantMode("players")}
             style={{
-              display: "flex",
-              gap: 18,
-              overflowX: "auto",
-              paddingBottom: 10,
-              marginTop: 12,
-              paddingLeft: 8,
+              borderRadius: 18,
+              border: `1px solid ${participantMode === "players" ? primary : "rgba(255,255,255,0.10)"}`,
+              background: participantMode === "players" ? primarySoft : "rgba(255,255,255,0.035)",
+              color: "#fff",
+              padding: 14,
+              textAlign: "left",
+              cursor: "pointer",
+              boxShadow: participantMode === "players" ? `0 0 20px ${primary}22` : "none",
             }}
           >
-            {humanProfiles.map((p: any) => {
-              const active = selectedIds.includes(p.id);
-              const isPending = pendingId === p.id;
-              return (
-                <div
-                  key={p.id}
-                  style={{
-                    minWidth: 122,
-                    maxWidth: 122,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 7,
-                    flexShrink: 0,
-                    userSelect: "none",
-                  }}
-                >
-                  <div
-                    role="button"
-                    onClick={() => togglePlayer(p.id)}
-                    style={{
-                      width: 78,
-                      height: 78,
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                      outline: isPending ? `2px solid ${primary}` : "none",
-                      outlineOffset: 2,
-                      background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                    }}
-                    title={active ? "Clique pour retirer" : "Clique pour ajouter"}
-                  >
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                        opacity: active ? 1 : 0.6,
-                        transition: "filter .2s ease, opacity .2s ease",
-                      }}
-                    >
-                      <ProfileAvatar profile={p as any} size={78} />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.name}
-                  </div>
-
-                  {teamSize > 1 && active && (
-                    <button
-                      onClick={() => setPendingId((prev) => (prev === p.id ? null : p.id))}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${primary}66`,
-                        background: isPending ? primarySoft : "rgba(0,0,0,0.18)",
-                        color: "#fff",
-                        fontSize: 11,
-                        fontWeight: 950,
-                        cursor: "pointer",
-                      }}
-                      title="Clique puis assigne dans TEAMS"
-                    >
-                      {isPending ? "En attente" : "Assigner"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Mode équipes */}
-        <div style={{ marginTop: 8 }}>
-          <OptionRow
-            label={
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span>Mode équipes</span>
-                <InfoMini
-                  title="Mode équipes"
-                  content={"Solo : chacun pour soi.\n2v2 / 3v3 : influence par team. Ensuite, place les joueurs dans TEAMS."}
-                  onOpen={(title, content) => setInfoModal({ title, content })}
-                />
-              </div>
-            }
+            <div style={{ color: participantMode === "players" ? primary : "#d5d8e8", fontWeight: 950, fontSize: 18 }}>Joueurs</div>
+            <div style={{ color: "#aeb2d3", fontSize: 11, marginTop: 4 }}>Duel ou multi-joueurs.</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => chooseParticipantMode("teams")}
+            style={{
+              borderRadius: 18,
+              border: `1px solid ${participantMode === "teams" ? primary : "rgba(255,255,255,0.10)"}`,
+              background: participantMode === "teams" ? primarySoft : "rgba(255,255,255,0.035)",
+              color: "#fff",
+              padding: 14,
+              textAlign: "left",
+              cursor: "pointer",
+              boxShadow: participantMode === "teams" ? `0 0 20px ${primary}22` : "none",
+            }}
           >
-            <OptionSelect
-              value={teamSize}
-              options={[
-                { value: 1, label: "Solo" },
-                { value: 2, label: "2 v 2" },
-                { value: 3, label: "3 v 3" },
-              ]}
-              onChange={(v: any) => {
-                const next = clampTeamSize(v);
-                setTeamSize(next);
-                setTeamsById({});
-                setPendingId(null);
-              }}
-            />
-          </OptionRow>
+            <div style={{ color: participantMode === "teams" ? primary : "#d5d8e8", fontWeight: 950, fontSize: 18 }}>Équipes</div>
+            <div style={{ color: "#aeb2d3", fontSize: 11, marginTop: 4 }}>Manuel, enregistrées ou brassage.</div>
+          </button>
         </div>
 
-        {/* Option A: TEAMS PANEL */}
-        {teamSize > 1 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontWeight: 1100, letterSpacing: 0.6 }}>TEAMS</div>
-                <InfoMini
-                  title="TEAMS"
-                  content={
-                    "1) Clique un joueur (bouton 'Assigner') pour le mettre en attente\n2) Clique un slot vide pour l'ajouter à une team\n\nChaque Team doit avoir exactement " +
-                    teamSize +
-                    " joueurs."
-                  }
-                  onOpen={(title, content) => setInfoModal({ title, content })}
+        {participantMode === "players" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            {humanProfiles.length > 0 ? (
+              <>
+                <SelectedParticipantsCompactBlock
+                  items={selectedParticipantProfiles}
+                  accent={primary}
+                  onRemove={togglePlayer}
+                  playerDartSets={playerDartSets}
+                  onDartSetChange={handleChangePlayerDartSet}
+                  allProfiles={humanProfiles}
                 />
-              </div>
-              {/* ✅ garde ton style, mais bouton = même “famille” que config X01 (pas de bouton néon géant) */}
-              <button
-                onClick={autoFillTeams}
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: 999,
-                  border: "1px solid " + primary + "55",
-                  background: "linear-gradient(90deg, " + primary + "22, rgba(0,0,0,0.20))",
-                  color: "#fff",
-                  fontWeight: 1000,
-                  letterSpacing: 0.4,
-                  boxShadow: "0 0 18px " + primary + "22",
-                  cursor: "pointer",
-                }}
-              >
-                Auto-fill
-              </button>
-            </div>
-
-            {pendingId && (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
-                Joueur en attente :{" "}
-                <span style={{ color: primary }}>{(profileById.get(pendingId)?.name as string) || pendingId}</span> — clique
-                un slot vide.
+                <PlayerPagedSelector
+                  usageMode="territories"
+                  profiles={humanProfiles}
+                  selectedIds={selectedIds}
+                  onToggle={togglePlayer}
+                  onAfterToggle={openDartSetPickerAfterPlayerSelection}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle="Choisir des joueurs"
+                  onClose={() => setAutoDartSetPicker(null)}
+                  renderAvatarOverlay={(p: any) => (
+                    <PlayerDartBadge
+                      profileId={String(p.id)}
+                      dartSetId={playerDartSets[String(p.id)] ?? null}
+                      onChange={(id) => handleChangePlayerDartSet(String(p.id), id)}
+                      compact
+                      allProfiles={humanProfiles}
+                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
+                    />
+                  )}
+                  showSelectedSummary={false}
+                />
+              </>
+            ) : (
+              <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.08)", padding: 12, color: "#aeb2d3", fontSize: 12 }}>
+                Aucun profil local. Crée d’abord tes joueurs dans le menu Profils.
               </div>
             )}
 
-            {/* ✅ TEAMS VERTICALES (Team 1 puis Team 2) */}
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(1, minmax(0,1fr))", gap: 10 }}>
-              {[0, 1].map((te) => {
-                const teamSlots = slots[te] || Array.from({ length: teamSize }, () => null);
-                const filled = teamSlots.filter(Boolean).length;
-                const ok = filled === teamSize;
-
-                return (
-                  <div
-                    key={te}
-                    style={{
-                      borderRadius: 16,
-                      padding: 12,
-                      border: ok ? `1px solid ${primary}44` : "1px solid rgba(255,255,255,0.10)",
-                      background: ok ? primarySoft : cardBg,
-                      boxShadow: ok ? `0 10px 26px ${primary}1a` : "0 10px 24px rgba(0,0,0,0.35)",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                      <div style={{ fontWeight: 1100 }}>Team {te + 1}</div>
-                      <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-                        {filled}/{teamSize}
-                      </div>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "grid",
-                        gridTemplateColumns: `repeat(${teamSize}, minmax(0,1fr))`,
-                        gap: 10,
-                      }}
-                    >
-                      {teamSlots.map((id, sIdx) => {
-                        const isEmpty = !id;
-                        const p = id ? profileById.get(id) : null;
-
-                        return (
-                          <button
-                            key={sIdx}
-                            onClick={() => {
-                              if (isEmpty) return assignToTeam(te);
-                              setPendingId(id);
-                            }}
-                            style={{
-                              borderRadius: 14,
-                              padding: 10,
-                              border: isEmpty ? "1px dashed rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.12)",
-                              background: isEmpty ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.06)",
-                              cursor: isEmpty ? (pendingId ? "pointer" : "not-allowed") : "pointer",
-                              minHeight: 96,
-                            }}
-                            title={
-                              isEmpty
-                                ? pendingId
-                                  ? "Clique pour assigner"
-                                  : "Sélectionne un joueur d'abord"
-                                : "Clique pour sélectionner ce joueur"
-                            }
-                          >
-                            {isEmpty ? (
-                              <div style={{ opacity: 0.8, fontWeight: 950, fontSize: 12 }}>Slot vide</div>
-                            ) : (
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                                <div style={{ width: 44, height: 44, borderRadius: "50%", overflow: "hidden" }}>
-                                  <ProfileAvatar profile={p as any} size={44} showStars={false} />
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 900,
-                                    maxWidth: "100%",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                    opacity: 0.95,
-                                  }}
-                                >
-                                  {p?.name || id}
-                                </div>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    unassignId(id);
-                                  }}
-                                  style={{
-                                    padding: "4px 8px",
-                                    borderRadius: 999,
-                                    border: "1px solid rgba(255,255,255,0.12)",
-                                    background: "rgba(0,0,0,0.18)",
-                                    color: "#fff",
-                                    fontSize: 11,
-                                    fontWeight: 950,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  Retirer
-                                </button>
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 12 }}>
+              <OptionRow
+                label={
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span>Bots IA</span>
+                    <InfoMini
+                      title="Bots IA"
+                      content="Active ce bloc pour ajouter un ou plusieurs adversaires virtuels à la sélection."
+                      onOpen={(title, content) => setInfoModal({ title, content })}
+                    />
                   </div>
-                );
-              })}
+                }
+              >
+                <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
+              </OptionRow>
+              {botsEnabled ? (
+                <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                  <OptionRow label="Difficulté IA">
+                    <OptionSelect
+                      value={botLevel}
+                      options={[
+                        { value: "easy", label: "Easy" },
+                        { value: "normal", label: "Normal" },
+                        { value: "hard", label: "Hard" },
+                      ]}
+                      onChange={setBotLevel}
+                    />
+                  </OptionRow>
+                  <BotPagedSelector
+                    bots={userBots}
+                    selectedIds={selectedIds}
+                    onToggle={togglePlayer}
+                    accent={primary}
+                    pageSize={4}
+                    showCheckbox={false}
+                    label="BOTS IA"
+                    modalTitle="Choisir des BOTS IA"
+                    showSelectedSummary={false}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div>
+              <div style={{ color: "#aeb2d3", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+                Format des équipes
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <SelectorPill label="2 v 2" active={teamSize === 2} accent={primary} onClick={() => chooseTeamSize(2)} />
+                <SelectorPill label="3 v 3" active={teamSize === 3} accent={primary} onClick={() => chooseTeamSize(3)} />
+              </div>
             </div>
 
-            {unassigned.length > 0 && (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85, fontWeight: 900 }}>
-                Non assignés : {unassigned.map((id) => (profileById.get(id)?.name as string) || id).join(", ")}
+            <div>
+              <div style={{ color: "#aeb2d3", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+                Composition
               </div>
-            )}
-          </div>
-        )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(138px, 1fr))", gap: 8 }}>
+                <SelectorPill label="Manuel" active={teamSourceMode === "manual"} accent={primary} onClick={() => chooseTeamSource("manual")} />
+                <SelectorPill label="Équipes enregistrées" active={teamSourceMode === "saved"} accent={primary} onClick={() => chooseTeamSource("saved")} />
+                <SelectorPill label="Brassage auto" active={teamSourceMode === "auto"} accent={primary} onClick={() => chooseTeamSource("auto")} />
+              </div>
+            </div>
 
-        {/* Bots */}
-        <div
-          style={{
-            marginTop: 12,
-            borderRadius: 16,
-            padding: 12,
-            background: cardBg,
-            border: "1px solid rgba(255,255,255,0.10)",
-          }}
-        >
-          <OptionRow
-            label={
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span>Bots IA</span>
-                <InfoMini
-                  title="Bots IA"
-                  content={"Active les bots pour compléter tes teams. Utilise 'Auto-complete' pour compléter automatiquement la sélection."}
-                  onOpen={(title, content) => setInfoModal({ title, content })}
+            {teamSourceMode === "manual" ? (
+              <div style={{ display: "grid", gap: 14 }}>
+                <PlayerPagedSelector
+                  usageMode="territories"
+                  profiles={humanProfiles}
+                  selectedIds={selectedIds}
+                  onToggle={togglePlayer}
+                  onAfterToggle={openDartSetPickerAfterPlayerSelection}
+                  accent={primary}
+                  pageSize={9}
+                  modalTitle={`Choisir ${teamSize * 2} joueurs`}
+                  onClose={() => setAutoDartSetPicker(null)}
+                  showSelectedSummary
+                  renderAvatarOverlay={(p: any) => (
+                    <PlayerDartBadge
+                      profileId={String(p.id)}
+                      dartSetId={playerDartSets[String(p.id)] ?? null}
+                      onChange={(id) => handleChangePlayerDartSet(String(p.id), id)}
+                      compact
+                      allProfiles={humanProfiles}
+                      autoOpenToken={autoDartSetPicker?.profileId === String(p.id) ? autoDartSetPicker.seq : null}
+                    />
+                  )}
+                  renderActions={(p: any) => selectedIds.includes(String(p?.id)) ? (
+                    <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                      <button type="button" onClick={() => setManualPlayerTeam(String(p.id), 0)} style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${teamsById[String(p.id)] === 0 ? "#ffd25a" : "rgba(255,255,255,.12)"}`, background: teamsById[String(p.id)] === 0 ? "rgba(255,210,90,.18)" : "rgba(255,255,255,.03)", color: teamsById[String(p.id)] === 0 ? "#ffd25a" : "#8f94b2", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>GOLD</button>
+                      <button type="button" onClick={() => setManualPlayerTeam(String(p.id), 1)} style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${teamsById[String(p.id)] === 1 ? "#ff5abe" : "rgba(255,255,255,.12)"}`, background: teamsById[String(p.id)] === 1 ? "rgba(255,90,190,.18)" : "rgba(255,255,255,.03)", color: teamsById[String(p.id)] === 1 ? "#ff5abe" : "#8f94b2", fontSize: 9, fontWeight: 950, cursor: "pointer" }}>PINK</button>
+                    </div>
+                  ) : null}
                 />
-              </div>
-            }
-          >
-            <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-          </OptionRow>
 
-          {botsEnabled && (
-            <>
-              <OptionRow label="Difficulté IA">
-                <OptionSelect
-                  value={botLevel}
-                  options={[
-                    { value: "easy", label: "Easy" },
-                    { value: "normal", label: "Normal" },
-                    { value: "hard", label: "Hard" },
-                  ]}
-                  onChange={setBotLevel}
-                />
-              </OptionRow>
-
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-                <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>Bots : {userBots.length}</div>
-                <button
-                  onClick={autoCompleteWithBots}
-                  disabled={!userBots.length}
-                  style={{
-                    padding: "7px 12px",
-                    borderRadius: 999,
-                    border: "1px solid " + primary + "55",
-                    background: "linear-gradient(90deg, " + primary + "22, rgba(0,0,0,0.20))",
-                    color: "#fff",
-                    fontWeight: 1000,
-                    letterSpacing: 0.4,
-                    boxShadow: "0 0 18px " + primary + "22",
-                    cursor: userBots.length ? "pointer" : "not-allowed",
-                    opacity: userBots.length ? 1 : 0.55,
-                  }}
-                >
-                  Auto-complete
-                </button>
-              </div>
-
-              {userBots.length === 0 ? (
-                <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 8 }}>
-                  Aucun bot personnalisé trouvé (dc_bots_v1).
-                </div>
-              ) : (
-                <div
-                  className="dc-scroll-thin"
-                  style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}
-                >
-                  {userBots.map((b) => {
-                    const active = selectedIds.includes(b.id);
-                    const isPending = pendingId === b.id;
-                    const fakeProfile = botToFakeProfile(b);
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  {[0, 1].map((teamIndex) => {
+                    const accent = teamIndex === 0 ? "#ffd25a" : "#ff5abe";
+                    const members = selectedIds.filter((id) => teamsById[id] === teamIndex);
                     return (
-                      <div
-                        key={b.id}
-                        style={{
-                          minWidth: 122,
-                          maxWidth: 122,
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: 7,
-                          flexShrink: 0,
-                          userSelect: "none",
-                        }}
-                      >
-                        <div
-                          role="button"
-                          onClick={() => togglePlayer(b.id)}
-                          style={{
-                            width: 78,
-                            height: 78,
-                            borderRadius: "50%",
-                            overflow: "hidden",
-                            boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                            background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              borderRadius: "50%",
-                              overflow: "hidden",
-                              filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                              opacity: active ? 1 : 0.6,
-                              transition: "filter .2s ease, opacity .2s ease",
-                            }}
-                          >
-                            <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
-                          </div>
+                      <div key={teamIndex} style={{ minWidth: 0, borderRadius: 18, padding: 10, border: `1px solid ${accent}66`, background: `${accent}10`, textAlign: "center" }}>
+                        <div style={{ color: accent, fontSize: 12, fontWeight: 1000, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                          Team {teamIndex === 0 ? "Gold" : "Pink"} · {members.length}/{teamSize}
                         </div>
-
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            textAlign: "center",
-                            color: active ? "#f6f2e9" : "#7e8299",
-                            maxWidth: "100%",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {b.name}
+                        <div style={{ display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap", marginTop: 9, minHeight: 42 }}>
+                          {members.length ? members.map((id) => {
+                            const profile = profileById.get(id);
+                            return (
+                              <button key={id} type="button" title={`Passer dans Team ${teamIndex === 0 ? "Pink" : "Gold"}`} onClick={() => setManualPlayerTeam(id, teamIndex === 0 ? 1 : 0)} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}>
+                                <ProfileAvatar profile={profile} size={38} showStars={false} />
+                              </button>
+                            );
+                          }) : <span style={{ alignSelf: "center", color: "#777d98", fontSize: 10 }}>Sélection vide</span>}
                         </div>
-
-                        {teamSize > 1 && active && (
-                          <button
-                            onClick={() => setPendingId((prev) => (prev === b.id ? null : b.id))}
-                            style={{
-                              padding: "4px 10px",
-                              borderRadius: 999,
-                              border: `1px solid ${primary}66`,
-                              background: isPending ? primarySoft : "rgba(0,0,0,0.18)",
-                              color: "#fff",
-                              fontSize: 11,
-                              fontWeight: 950,
-                              cursor: "pointer",
-                            }}
-                            title="Clique puis assigne dans TEAMS"
-                          >
-                            {isPending ? "En attente" : "Assigner"}
-                          </button>
-                        )}
                       </div>
                     );
                   })}
                 </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {!selectionValid && (
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
-            Configuration invalide : sélectionne {minPlayers} joueurs minimum
-            {teamSize > 1 ? `, exactement ${teamSize * 2}, et remplis Team 1 + Team 2.` : "."}
+              </div>
+            ) : (
+              <TeamSelectorV2
+                title={teamSourceMode === "auto" ? "Brassage des équipes" : "Sélection des équipes"}
+                teams={storedDartsTeams}
+                selectedTeamIds={selectedTeamIds}
+                selectedTeamPlayerIds={selectedTeamPlayerIds}
+                profilesById={profileById}
+                onAdd={addStoredTeam}
+                onRemove={removeStoredTeam}
+                maxPlayers={teamSize}
+                maxSelections={2}
+                primary={primary}
+                primarySoft={primarySoft}
+                emptyLabel="Aucune équipe Darts enregistrée. Crée-les dans Profils → Teams Fléchettes."
+                validatedTitle="Équipes validées"
+                selectorTitle="Équipes enregistrées"
+                allowAutoShuffle={teamSourceMode === "auto"}
+                autoShufflePlayers={humanProfiles}
+                sport="darts"
+                onReplaceSelectedTeams={(ids, selections) => replaceStoredTeams(ids, selections)}
+                renderPlayerOverlay={(p: any) => (
+                  <PlayerDartBadge
+                    profileId={String(p.id)}
+                    dartSetId={playerDartSets[String(p.id)] ?? null}
+                    onChange={(id) => handleChangePlayerDartSet(String(p.id), id)}
+                    compact
+                    allProfiles={humanProfiles}
+                  />
+                )}
+              />
+            )}
           </div>
         )}
+
+        <div style={{ marginTop: 14, borderRadius: 15, padding: "10px 12px", border: `1px solid ${selectionValid ? `${primary}55` : "rgba(255,120,150,.28)"}`, background: selectionValid ? `${primary}10` : "rgba(255,80,120,.07)" }}>
+          <div style={{ color: selectionValid ? primary : "#ffb2c8", fontSize: 12, fontWeight: 950 }}>
+            {selectionValid
+              ? `Sélection prête · ${selectedIds.length} participant${selectedIds.length > 1 ? "s" : ""}`
+              : participantMode === "players"
+                ? `Sélectionne entre 2 et ${maxPlayers} joueurs.`
+                : `Sélectionne exactement 2 équipes de ${teamSize} joueurs.`}
+          </div>
+        </div>
       </Section>
 
       {/* Rules */}

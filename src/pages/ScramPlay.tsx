@@ -1,712 +1,610 @@
 // =============================================================
 // src/pages/ScramPlay.tsx
-// SCRAM — Play
-// 🎯 UI = clone visuel du CricketPlay (mêmes blocs / mêmes styles),
-//    mais moteur + règles = ScramEngine (phase RACE puis SCRAM).
+// SCRAM — UI Cricket, moteur deux phases, stats + historique
 // =============================================================
 
-import React, { useEffect, useMemo, useState } from "react";
+import React from "react";
 import BackDot from "../components/BackDot";
+import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
+import { CricketMarkIcon, DartIconColorizable } from "../components/MaskIcon";
+import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
-import { DartIconColorizable, CricketMarkIcon } from "../components/MaskIcon";
-
-import { useTheme } from "../contexts/ThemeContext";
 import { useScramEngine } from "../hooks/useScramEngine";
-import type { ScramConfigPayload } from "../lib/gameEngines/scramEngine";
+import type {
+  ScramConfigPayload,
+  ScramPlayerStats,
+  ScramTarget,
+  ScramTeam,
+} from "../lib/gameEngines/scramEngine";
+import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
 
 import tickerScram from "../assets/tickers/ticker_scram.png";
 
-// =============================================================
-// Fullscreen Play helper (UI V3.4)
-// - Active le layout "plein écran" + safe-area
-// - Tente le fullscreen navigateur si possible (sans jamais crasher)
-//   (peut être refusé si pas de "user gesture" -> on catch)
-// =============================================================
-function useFullscreenPlay() {
-  // ❌ Désactivé: l'ancien mode fullscreen (classes globales + requestFullscreen)
-  // provoquait des régressions d'affichage sur d'autres modes.
-  // Si besoin, on réactivera plus tard via src/hooks/useFullscreenPlay (opt-in).
-}
-
-// ---------- Styles (copiés de CricketPlay) ----------
+const UI_TARGETS: ScramTarget[] = [15, 16, 17, 18, 19, 20, 25];
+const TEAM_COLOR: Record<ScramTeam, string> = { A: "#ff4ad1", B: "#ffd76a" };
+const TARGET_COLOR: Record<ScramTarget, string> = {
+  15: "#fff05a",
+  16: "#ffd54a",
+  17: "#ffad4a",
+  18: "#ff7b62",
+  19: "#ff62d5",
+  20: "#ff5d6c",
+  25: "#ff6262",
+};
 const T = {
-  bg: "#0b1020",
-  panel: "rgba(10,14,22,0.55)",
-  panel2: "rgba(255,255,255,0.06)",
-  stroke: "rgba(255,255,255,0.10)",
-  text: "rgba(255,255,255,0.92)",
-  sub: "rgba(255,255,255,0.72)",
-  gold: "#F6C256",
-  gold2: "#ffcf6b",
-  red: "#ff4a4a",
-  green: "#20d67b",
+  bg: "#050711",
+  panel: "#111827",
+  panelSoft: "rgba(255,255,255,.055)",
+  stroke: "rgba(255,255,255,.105)",
+  text: "#f8fafc",
+  soft: "rgba(226,232,240,.72)",
+  cyan: "#42d6ff",
+  gold: "#ffd76a",
+  green: "#65efb4",
+  red: "#ff667e",
 };
 
 type HitMode = "S" | "D" | "T";
+type InputMethod = "keypad" | "dartboard";
+type UiDart = { v: number; mult: 1 | 2 | 3 };
 
-type Target = 15 | 16 | 17 | 18 | 19 | 20 | 25;
-
-const UI_TARGETS: Target[] = [15, 16, 17, 18, 19, 20, 25];
-
-const TARGET_COLORS: Record<Target, string> = {
-  15: "#ffd54a",
-  16: "#ffb84a",
-  17: "#ff8a4a",
-  18: "#ff5a5a",
-  19: "#ff4ad1",
-  20: "#ff4a4a",
-  25: "#ff4a4a",
-};
-
-function getTargetLabel(t: Target) {
-  return t === 25 ? "Bull" : String(t);
-}
-function getTargetColor(t: Target) {
-  return TARGET_COLORS[t] ?? T.gold;
-}
-function darkenColor(hex: string, amt = 0.22) {
-  // hex "#rrggbb"
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  const dr = Math.max(0, Math.floor(r * (1 - amt)));
-  const dg = Math.max(0, Math.floor(g * (1 - amt)));
-  const db = Math.max(0, Math.floor(b * (1 - amt)));
-  const toHex = (n: number) => n.toString(16).padStart(2, "0");
-  return `#${toHex(dr)}${toHex(dg)}${toHex(db)}`;
+function targetLabel(target: ScramTarget) {
+  return target === 25 ? "Bull" : String(target);
 }
 
-function marksToIcons(m: number) {
-  // 0..3 => icons in CricketMarkIcon: "none|one|two|three"
-  if (m <= 0) return "none";
-  if (m === 1) return "one";
-  if (m === 2) return "two";
-  return "three";
+function percent(part: number, total: number) {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+function emptyStats(): ScramPlayerStats {
+  return {
+    darts: 0, hits: 0, misses: 0, singles: 0, doubles: 0, triples: 0,
+    bulls: 0, dbulls: 0, visits: 0, stopperVisits: 0, scorerVisits: 0,
+    marks: 0, targetsClosed: 0, points: 0, scoringHits: 0, blockedDarts: 0,
+    wastedDarts: 0, bestVisit: 0,
+  };
+}
+
+function isBot(profile: any, botIds: Set<string>) {
+  return botIds.has(String(profile?.id || "")) || Boolean(profile?.isBot || profile?.bot || profile?.botLevel || profile?.kind === "bot");
+}
+
+function playerName(profile: any) {
+  return profile?.name || profile?.displayName || profile?.display_name || profile?.pseudo || "Joueur";
+}
+
+function RulesContent({ useBull, maxRounds }: { useBull: boolean; maxRounds: number }) {
+  return (
+    <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
+      <div><strong style={{ color: T.cyan }}>CIBLES</strong><br />15, 16, 17, 18, 19, 20{useBull ? " et Bull" : ""}.</div>
+      <div><strong style={{ color: T.gold }}>PHASE 1</strong><br />Le Bloqueur joue en premier. Il ferme une cible avec 3 marques : S = 1, D = 2, T = 3. Le Scoreur additionne la valeur de ses impacts tant que la cible visée n’est pas fermée.</div>
+      <div><strong style={{ color: T.gold }}>PHASE 2</strong><br />Les rôles s’inversent et le nouveau Bloqueur recommence avec des cibles vierges.</div>
+      <div><strong style={{ color: T.green }}>VICTOIRE</strong><br />Après la fermeture de la seconde phase, le plus gros total gagne. En cas de même total, la partie est déclarée nulle.</div>
+      {maxRounds > 0 ? <div style={{ opacity: .75 }}>Sécurité active : maximum {maxRounds} rounds par phase.</div> : null}
+    </div>
+  );
+}
+
+function roleLabel(team: ScramTeam, stopper: ScramTeam) {
+  return team === stopper ? "BLOQUEUR" : "SCOREUR";
+}
+
+function randomBotVisit(args: {
+  role: "stopper" | "scorer";
+  openTargets: ScramTarget[];
+  level: string;
+}): UiDart[] {
+  const baseAccuracy = args.level === "hard" ? .84 : args.level === "easy" ? .46 : .66;
+  const weighted = [...args.openTargets].sort((a, b) => b - a);
+  return Array.from({ length: 3 }, () => {
+    if (!weighted.length || Math.random() > baseAccuracy) {
+      const misses = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14];
+      return { v: misses[Math.floor(Math.random() * misses.length)] || 0, mult: 1 as const };
+    }
+    const target = weighted[Math.min(weighted.length - 1, Math.floor(Math.random() * Math.min(3, weighted.length)))];
+    if (target === 25) return Math.random() < baseAccuracy * .28 ? { v: 50, mult: 1 } : { v: 25, mult: 1 };
+    const roll = Math.random();
+    const mult: 1 | 2 | 3 = roll < baseAccuracy * .18 ? 3 : roll < baseAccuracy * .38 ? 2 : 1;
+    return { v: target, mult };
+  });
+}
+
+function teamName(team: ScramTeam, members: any[]) {
+  if (members.length === 1) return playerName(members[0]);
+  return `TEAM ${team}`;
 }
 
 export default function ScramPlay(props: any) {
-  useFullscreenPlay();
-  const { theme } = useTheme();
-
+  const params = (props?.params || {}) as ScramConfigPayload;
   const store = props?.store;
-  const params = (props?.params ?? {}) as ScramConfigPayload;
+  const go = props?.go ?? props?.setTab;
+  const onFinish = props?.onFinish as ((record: any, options?: { navigate?: boolean }) => void) | undefined;
 
-  // players: resolved by App.tsx via store.resolveSelectedProfiles in most modes.
-  const players = useMemo(() => {
-    const resolved =
-      (store?.resolveSelectedProfiles?.(params?.selectedIds ?? []) as any[]) ??
-      (params?.playersList as any[]) ??
-      [];
-    return Array.isArray(resolved) ? resolved : [];
-  }, [store, params?.selectedIds, params?.playersList]);
+  const profiles = React.useMemo(() => {
+    const fromPayload = Array.isArray(params.playersList) ? params.playersList : [];
+    const resolved = typeof store?.resolveSelectedProfiles === "function"
+      ? store.resolveSelectedProfiles(params.selectedIds || [])
+      : [];
+    const pool = [...fromPayload, ...(Array.isArray(resolved) ? resolved : []), ...(Array.isArray(store?.profiles) ? store.profiles : [])];
+    const byId = new Map<string, any>();
+    pool.forEach((profile: any) => {
+      const id = String(profile?.id || "");
+      if (id) byId.set(id, { ...(byId.get(id) || {}), ...profile, id, name: playerName(profile) });
+    });
+    return (params.selectedIds || []).map((id) => byId.get(String(id))).filter(Boolean);
+  }, [store, params.selectedIds, params.playersList]);
 
-  const rules = useMemo(
-    () => ({
-      objective: params?.objective ?? 200,
-      maxRounds: params?.roundsCap ?? 0,
-      useBull: true,
-      marksToClose: 3,
-    }),
-    [params?.objective, params?.roundsCap]
-  );
+  const firstStopper: ScramTeam = params.firstStopper === "B" ? "B" : "A";
+  const rules = React.useMemo(() => ({
+    useBull: params.useBull !== false,
+    maxRoundsPerPhase: Number(params.maxRoundsPerPhase || 0) || 0,
+    firstStopper,
+  }), [params.useBull, params.maxRoundsPerPhase, firstStopper]);
 
-  const { state, play, undo } = useScramEngine(players, rules);
+  const { state, play, undo, reset, canUndo, isFinished } = useScramEngine(profiles as any, rules);
+  const [inputMethod, setInputMethod] = React.useState<InputMethod>(() => {
+    try { return localStorage.getItem(SCORE_INPUT_LS_KEY) === "dartboard" ? "dartboard" : "keypad"; }
+    catch { return "keypad"; }
+  });
+  const [hitMode, setHitMode] = React.useState<HitMode>("S");
+  const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
+  const [showEnd, setShowEnd] = React.useState(false);
+  const [botThinking, setBotThinking] = React.useState(false);
+  const matchIdRef = React.useRef(`scram-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const lastBackRef = React.useRef(0);
+  const savedRef = React.useRef(new Set<string>());
 
-  // UI local (identique cricket)
-  const [showHelp, setShowHelp] = useState(false);
-  const [hitMode, setHitMode] = useState<HitMode>("S");
-  const [throwDarts, setThrowDarts] = useState<{ v: number; mult: number }[]>([]);
+  React.useEffect(() => {
+    try { localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod); } catch {}
+  }, [inputMethod]);
 
-  const totalDartsPerTurn = 3;
+  React.useEffect(() => {
+    if (isFinished) setShowEnd(true);
+  }, [isFinished]);
 
-  const teamA = "A";
-  const teamB = "B";
+  const byId = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
+  const teamPlayers = React.useMemo(() => ({
+    A: (state?.teams?.A || []).map((id) => byId.get(String(id))).filter(Boolean),
+    B: (state?.teams?.B || []).map((id) => byId.get(String(id))).filter(Boolean),
+  }), [state?.teams, byId]);
+  const activePlayer = state?.players?.[state.activePlayerIndex] || null;
+  const activeProfile = activePlayer ? byId.get(String(activePlayer.id)) || activePlayer : null;
+  const activeTeam: ScramTeam = activePlayer ? state.teamByPlayer[String(activePlayer.id)] : "A";
+  const activeStats = activePlayer ? state.statsByPlayer[String(activePlayer.id)] || emptyStats() : emptyStats();
+  const botIds = React.useMemo(() => new Set((params.botIds || []).map(String)), [params.botIds]);
+  const playableTargets = UI_TARGETS.filter((target) => target !== 25 || state.rules.useBull);
+  const stopperMarks = state.marksByTeam[state.stopperTeam];
+  const closedCount = playableTargets.filter((target) => stopperMarks[target] >= 3).length;
 
-  const teamPlayers = useMemo(() => {
-    const idsA = state?.teams?.A ?? [];
-    const idsB = state?.teams?.B ?? [];
-    const byId = new Map(players.map((p: any) => [String(p.id), p]));
-    return {
-      A: idsA.map((id) => byId.get(String(id))).filter(Boolean),
-      B: idsB.map((id) => byId.get(String(id))).filter(Boolean),
-    };
-  }, [state?.teams, players]);
-
-  const activePlayerId = state?.players?.[state?.turnIndex ?? 0]?.id;
-  const activeTeam = state?.teamByPlayer?.[String(activePlayerId ?? "")] ?? "A";
-
-  const uiTitle = "Scram";
-
-  const objective = state?.rules?.objective ?? rules.objective;
-
-  const scramTeamScore = (teamId: "A" | "B") => {
-    if (!state) return 0;
-    if (state.phase !== "scram") return 0;
-    return state.scorersTeam === teamId ? state.scramScore : 0;
-  };
-
-  const getMarksForTeamTarget = (teamId: "A" | "B", target: Target) => {
-    if (!state) return 0;
-    const key = target === 25 ? "B" : String(target);
-    if (state.phase === "race") {
-      return state.raceMarks?.[teamId]?.[key] ?? 0;
+  React.useEffect(() => {
+    if (!activeProfile || state.finished || !isBot(activeProfile, botIds)) {
+      setBotThinking(false);
+      return;
     }
-    // phase scram: l'équipe "closers" ferme (marks visibles), l'autre marque (pas de marks ici)
-    if (state.closersTeam === teamId) {
-      return state.closersMarks?.[key] ?? 0;
+    setBotThinking(true);
+    const timer = window.setTimeout(() => {
+      const role = activeTeam === state.stopperTeam ? "stopper" : "scorer";
+      const openTargets = playableTargets.filter((target) => state.marksByTeam[state.stopperTeam][target] < 3);
+      play(randomBotVisit({ role, openTargets, level: params.botLevel || "normal" }));
+      setThrowDarts([]);
+      setHitMode("S");
+      setBotThinking(false);
+    }, 720);
+    return () => window.clearTimeout(timer);
+  }, [state.history.length, state.phase, state.finished, activePlayer?.id, activeTeam, botIds, params.botLevel]);
+
+  function addDart(value: number, multiplier?: 1 | 2 | 3) {
+    if (state.finished || botThinking || throwDarts.length >= 3) return;
+    const mult: 1 | 2 | 3 = multiplier || (hitMode === "D" ? 2 : hitMode === "T" ? 3 : 1);
+    if (value === 25) {
+      setThrowDarts((previous) => [...previous, mult >= 2 ? { v: 50, mult: 1 } : { v: 25, mult: 1 }]);
+    } else {
+      setThrowDarts((previous) => [...previous, { v: value, mult }]);
     }
-    return 0;
-  };
+    if (mult >= 2) setHitMode("S");
+  }
 
-  const onAddDart = (v: number) => {
-    if (throwDarts.length >= totalDartsPerTurn) return;
-    const mult = hitMode === "D" ? 2 : hitMode === "T" ? 3 : 1;
-    setThrowDarts((prev) => [...prev, { v, mult }]);
-  };
-
-  const onAddBull = () => {
-    // bull = 25 (outer). Si mode D/T, l'engine normalise en 50.
-    onAddDart(25);
-  };
-
-  const onClear = () => setThrowDarts([]);
-  const onValidate = () => {
-    if (!state) return;
-    if (throwDarts.length === 0) return;
+  function validateVisit() {
+    if (!throwDarts.length || state.finished || botThinking) return;
     play(throwDarts);
     setThrowDarts([]);
-  };
+    setHitMode("S");
+  }
 
-  const onUndo = () => {
+  function undoVisit() {
+    if (!canUndo || botThinking) return;
     undo();
     setThrowDarts([]);
-  };
+    setHitMode("S");
+    setShowEnd(false);
+  }
 
-  const currentName = (() => {
-    const p = players.find((x: any) => String(x.id) === String(activePlayerId));
-    return p?.name ?? p?.display_name ?? p?.pseudo ?? "—";
-  })();
+  function backToConfig() {
+    const now = Date.now();
+    if (now - lastBackRef.current < 350) return;
+    lastBackRef.current = now;
+    if (state.history.length && !state.finished && !window.confirm("Quitter cette partie Scram en cours ?")) return;
+    if (typeof go === "function") go("scram_config", params);
+  }
 
-  const stats = state?.statsByPlayer?.[String(activePlayerId ?? "")] ?? {
-    darts: 0,
-    miss: 0,
-    S: 0,
-    D: 0,
-    T: 0,
-    OB: 0,
-    IB: 0,
-  };
+  function buildHistoryRecord() {
+    const now = Date.now();
+    const winnerTeam = state.winnerTeam;
+    const winnerId = winnerTeam ? state.teams[winnerTeam][0] || null : null;
+    const teamAName = teamName("A", teamPlayers.A);
+    const teamBName = teamName("B", teamPlayers.B);
+    const ordered = [...state.players].sort((left, right) => {
+      const leftTeam = state.teamByPlayer[left.id];
+      const rightTeam = state.teamByPlayer[right.id];
+      if (winnerTeam && leftTeam !== rightTeam) return leftTeam === winnerTeam ? -1 : 1;
+      return (state.statsByPlayer[right.id]?.points || 0) - (state.statsByPlayer[left.id]?.points || 0);
+    });
+    const richPlayers = ordered.map((player, index) => {
+      const profile: any = byId.get(String(player.id)) || player;
+      const team = state.teamByPlayer[player.id];
+      const stats = state.statsByPlayer[player.id] || emptyStats();
+      const win = Boolean(winnerTeam && team === winnerTeam);
+      const totalTargetDarts = stats.scoringHits + stats.blockedDarts + stats.wastedDarts;
+      return {
+        id: player.id,
+        playerId: player.id,
+        profileId: player.id,
+        name: playerName(profile),
+        avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
+        team,
+        teamIndex: team === "A" ? 0 : 1,
+        rolePhase1: team === firstStopper ? "stopper" : "scorer",
+        rolePhase2: team === firstStopper ? "scorer" : "stopper",
+        win,
+        winner: win,
+        rank: state.tied ? 1 : win ? 1 : 2,
+        score: stats.points,
+        points: stats.points,
+        darts: stats.darts,
+        dartsThrown: stats.darts,
+        hits: stats.hits,
+        hitRate: percent(stats.hits, stats.darts),
+        validHits: stats.scoringHits + stats.marks,
+        misses: stats.misses,
+        singles: stats.singles,
+        doubles: stats.doubles,
+        triples: stats.triples,
+        bulls: stats.bulls,
+        dbulls: stats.dbulls,
+        visits: stats.visits,
+        stopperVisits: stats.stopperVisits,
+        scorerVisits: stats.scorerVisits,
+        marks: stats.marks,
+        marksTotal: stats.marks,
+        totalMarks: stats.marks,
+        closed: stats.targetsClosed,
+        closes: stats.targetsClosed,
+        closedNumbers: stats.targetsClosed,
+        scoringHits: stats.scoringHits,
+        scoringAccuracy: percent(stats.scoringHits, Math.max(1, totalTargetDarts)),
+        blockedDarts: stats.blockedDarts,
+        wastedDarts: stats.wastedDarts,
+        bestVisit: stats.bestVisit,
+        mpr: stats.darts ? Math.round((stats.marks / stats.darts) * 300) / 100 : 0,
+        rawStats: stats,
+        _order: index,
+      };
+    });
+    const teams = (["A", "B"] as ScramTeam[]).map((team) => ({
+      id: team,
+      name: team === "A" ? teamAName : teamBName,
+      playerIds: state.teams[team],
+      players: state.teams[team],
+      score: state.scores[team],
+      winner: winnerTeam === team,
+      color: TEAM_COLOR[team],
+    }));
+    const summary = {
+      kind: "scram",
+      mode: "scram",
+      finished: true,
+      winnerId,
+      winnerTeam,
+      winnerName: state.tied ? "Égalité" : winnerTeam ? teamName(winnerTeam, teamPlayers[winnerTeam]) : "Égalité",
+      tied: state.tied,
+      scoreA: state.scores.A,
+      scoreB: state.scores.B,
+      scoreLine: `${teamAName} ${state.scores.A} — ${state.scores.B} ${teamBName}`,
+      rounds: state.phaseRounds[1] + state.phaseRounds[2],
+      phaseRounds: state.phaseRounds,
+      darts: richPlayers.reduce((total, player) => total + player.dartsThrown, 0),
+      duration: Math.max(0, now - state.startedAt),
+      teamAProfileIds: state.teams.A,
+      teamBProfileIds: state.teams.B,
+      teams,
+      game: { mode: "scram", teams },
+      rankings: richPlayers,
+      players: richPlayers,
+      perPlayer: richPlayers,
+      detailedByPlayer: Object.fromEntries(richPlayers.map((player) => [player.id, player])),
+    };
+    return {
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
+      kind: "scram",
+      status: "finished",
+      createdAt: state.startedAt,
+      updatedAt: now,
+      winnerId,
+      winnerTeam,
+      teamAProfileIds: state.teams.A,
+      teamBProfileIds: state.teams.B,
+      players: richPlayers,
+      game: { mode: "scram", teams },
+      summary,
+      payload: {
+        kind: "scram",
+        mode: "scram",
+        sport: "darts",
+        winnerId,
+        winnerTeam,
+        tied: state.tied,
+        config: params,
+        rules: state.rules,
+        teams,
+        players: richPlayers,
+        summary,
+        visits: state.history,
+        visitHistory: state.history,
+        state: {
+          phase: state.phase,
+          scores: state.scores,
+          marksByTeam: state.marksByTeam,
+          phaseRounds: state.phaseRounds,
+          finishReason: state.finishReason,
+        },
+        stats: {
+          sport: "darts",
+          mode: "scram",
+          players: richPlayers,
+          teams,
+          global: {
+            duration: Math.max(0, now - state.startedAt),
+            rounds: summary.rounds,
+            darts: summary.darts,
+            visits: state.history.length,
+          },
+        },
+      },
+    };
+  }
 
-  const volleyLabel = throwDarts
-    .map((d) => {
-      if (d.v === 25) return d.mult >= 2 ? "IB" : "OB";
-      const p = d.mult === 2 ? "D" : d.mult === 3 ? "T" : "S";
-      return `${p}${d.v}`;
-    })
-    .join(" • ");
+  function persistFinished(navigate: boolean) {
+    const id = matchIdRef.current;
+    if (savedRef.current.has(id)) return;
+    savedRef.current.add(id);
+    onFinish?.(buildHistoryRecord(), { navigate });
+  }
 
-  const totalLine = `Total: ${stats.darts ?? 0} darts • ${stats.miss ?? 0} miss • ${stats.S ?? 0}S / ${stats.D ?? 0}D / ${stats.T ?? 0}T • ${stats.OB ?? 0}OB / ${stats.IB ?? 0}IB`;
+  function saveAndQuit() {
+    persistFinished(true);
+  }
 
-  // --------- RENDER (clone CricketPlay) ---------
+  function saveAndReplay() {
+    persistFinished(false);
+    reset();
+    matchIdRef.current = `scram-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setThrowDarts([]);
+    setHitMode("S");
+    setShowEnd(false);
+  }
+
+  const volleyLabel = throwDarts.map((dart) => {
+    if (dart.v === 50) return "DBULL";
+    if (dart.v === 25) return "BULL";
+    if (dart.v === 0) return "MISS";
+    return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
+  }).join(" • ");
+
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        background: `radial-gradient(1200px 600px at 50% -20%, rgba(255,255,255,0.10), rgba(0,0,0,0) 55%), linear-gradient(180deg, ${T.bg}, #06080f)`,
-        color: T.text,
-        padding: 12,
-        paddingBottom: 22,
-        boxSizing: "border-box",
-      }}
-    >
-      {/* HEADER */}
-      <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 900,
-                letterSpacing: 2,
-                textTransform: "uppercase",
-                color: T.gold,
-                textShadow: "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.7)",
-              }}
-            >
-              {uiTitle}
+    <div style={{ minHeight: "100dvh", color: T.text, background: "radial-gradient(circle at 50% -5%, #1e3154 0, #080b16 44%, #020309 100%)", paddingBottom: 34 }}>
+      <PageHeader
+        tickerSrc={tickerScram}
+        tickerAlt="SCRAM"
+        left={<BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" />}
+        right={<InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} />} />}
+      />
+
+      <div style={{ padding: "10px 10px 0" }}>
+        <section style={{ ...panelStyle(), marginBottom: 10, padding: 11, borderColor: `${TEAM_COLOR[state.stopperTeam]}66` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div>
+              <div style={{ color: T.cyan, fontSize: 11, fontWeight: 1000, letterSpacing: 1 }}>PHASE {state.phase}/2 • ROUND {state.round}</div>
+              <div style={{ marginTop: 3, fontSize: 15, fontWeight: 1000 }}>
+                <span style={{ color: TEAM_COLOR[state.stopperTeam] }}>TEAM {state.stopperTeam}</span> bloque • <span style={{ color: TEAM_COLOR[state.scorerTeam] }}>TEAM {state.scorerTeam}</span> marque
+              </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowHelp(true)}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                border: "1px solid rgba(246,194,86,0.6)",
-                background: "rgba(0,0,0,0.4)",
-                color: T.gold,
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: "pointer",
-                textShadow: "0 0 6px rgba(246,194,86,0.8)",
-                boxShadow: "0 0 8px rgba(246,194,86,0.5)",
-              }}
-            >
-              i
-            </button>
+            <div style={{ minWidth: 64, textAlign: "right" }}>
+              <div style={{ fontSize: 18, fontWeight: 1000 }}>{closedCount}/{playableTargets.length}</div>
+              <div style={{ fontSize: 10, opacity: .65 }}>FERMÉES</div>
+            </div>
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {Array.from({ length: totalDartsPerTurn }).map((_, i) => {
-              const active = i < throwDarts.length;
-              return (
-                <div key={i} style={{ opacity: active ? 1 : 0.25 }}>
-                  <DartIconColorizable size={18} color={T.gold} />
-                </div>
-              );
-            })}
+          <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,.08)", marginTop: 9, overflow: "hidden" }}>
+            <div style={{ width: `${(closedCount / playableTargets.length) * 100}%`, height: "100%", borderRadius: 999, background: TEAM_COLOR[state.stopperTeam], boxShadow: `0 0 12px ${TEAM_COLOR[state.stopperTeam]}` }} />
           </div>
-        </div>
+        </section>
 
-        {/* ticker */}
-        <div
-          style={{
-            width: "100%",
-            borderRadius: 18,
-            overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.22)",
-          }}
-        >
-          <img src={tickerScram} alt="SCRAM" style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }} />
-        </div>
-
-        {/* cards A/B */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {(["A", "B"] as const).map((teamId) => {
-            const isActiveTeam = activeTeam === teamId;
-            const p0 = teamPlayers[teamId]?.[0] as any;
-            const name = p0?.name ?? p0?.display_name ?? p0?.pseudo ?? `Team ${teamId}`;
-            const score = scramTeamScore(teamId);
-            const accent = teamId === "A" ? "#ff4ad1" : "#F6C256";
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 10 }}>
+          {(["A", "B"] as ScramTeam[]).map((team) => {
+            const members = teamPlayers[team];
+            const active = activeTeam === team;
+            const shown = active ? activeProfile : members[0];
+            const color = TEAM_COLOR[team];
             return (
-              <div
-                key={teamId}
-                style={{
-                  borderRadius: 18,
-                  padding: 12,
-                  background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))`,
-                  border: `1px solid rgba(255,255,255,0.10)`,
-                  boxShadow: isActiveTeam ? `0 0 0 2px ${accent}55, 0 0 22px ${accent}44` : "none",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ position: "relative", width: 44, height: 44 }}>
-                      <ProfileStarRing size={44} glow={isActiveTeam} />
-                      <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
-                        <ProfileAvatar profile={p0} size={34} />
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 900, letterSpacing: 0.2, fontSize: 14, color: T.text }}>{name}</div>
-                      <div style={{ fontSize: 12, opacity: 0.78, color: accent, fontWeight: 900 }}>TEAM {teamId}</div>
-                    </div>
+              <section key={team} style={{ ...panelStyle(), minWidth: 0, padding: 10, borderColor: active ? color : T.stroke, boxShadow: active ? `0 0 20px ${color}35, inset 0 0 18px ${color}10` : "none" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 48, height: 48, position: "relative", flex: "0 0 auto" }}>
+                    <div style={{ position: "absolute", inset: 5 }}><ProfileAvatar profile={shown as any} size={38} /></div>
+                    <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={shown as any} size={48} glow={active} /></div>
                   </div>
-
-                  <div style={{ fontSize: 28, fontWeight: 900, color: T.text, textShadow: "0 0 10px rgba(255,255,255,0.22)" }}>
-                    {score}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 10.5, color, fontWeight: 1000 }}>TEAM {team} • {roleLabel(team, state.stopperTeam)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active ? playerName(shown) : teamName(team, members)}</div>
                   </div>
+                  <div style={{ color, fontSize: 28, fontWeight: 1000, textShadow: `0 0 12px ${color}88` }}>{state.scores[team]}</div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* TABLE */}
-      <div
-        style={{
-          borderRadius: 22,
-          padding: 14,
-          background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))`,
-          border: "1px solid rgba(255,255,255,0.10)",
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-          <div style={{ fontSize: 20, fontWeight: 950, letterSpacing: 0.2 }}>
-            {state?.phase === "race" ? "RACE" : "SCRAM"} — {state?.phase === "race" ? "fermeture des cibles" : "points"}
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.85 }}>
-            Objectif: <span style={{ fontWeight: 950, color: T.gold }}>{objective}</span>
-          </div>
-        </div>
-
-        {/* header row */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "76px 1fr 1fr",
-            gap: 8,
-            alignItems: "center",
-            padding: "0 6px 6px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            marginBottom: 8,
-            fontSize: 13,
-            fontWeight: 900,
-            letterSpacing: 0.2,
-          }}
-        >
-          <div style={{ opacity: 0.7 }}>Cible</div>
-          <div style={{ color: "#ff4ad1" }}>TEAM A</div>
-          <div style={{ color: "#F6C256" }}>TEAM B</div>
-        </div>
-
-        {/* rows */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {UI_TARGETS.map((target) => {
-            const label = getTargetLabel(target);
-            const colColor = getTargetColor(target);
-            const leftMarks = getMarksForTeamTarget(teamA, target);
-            const rightMarks = getMarksForTeamTarget(teamB, target);
-
-            return (
-              <div
-                key={target}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "76px 1fr 1fr",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <div
-                  style={{
-                    height: 44,
-                    borderRadius: 14,
-                    display: "grid",
-                    placeItems: "center",
-                    background: "rgba(0,0,0,0.35)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    color: colColor,
-                    fontWeight: 950,
-                    textShadow: `0 0 10px ${colColor}55`,
-                  }}
-                >
-                  {label}
-                </div>
-
-                <div
-                  style={{
-                    height: 44,
-                    borderRadius: 14,
-                    display: "grid",
-                    placeItems: "center",
-                    background: "rgba(12,20,40,0.40)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <CricketMarkIcon kind={marksToIcons(leftMarks)} color="#ff4ad1" />
-                </div>
-
-                <div
-                  style={{
-                    height: 44,
-                    borderRadius: 14,
-                    display: "grid",
-                    placeItems: "center",
-                    background: "rgba(12,20,40,0.40)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <CricketMarkIcon kind={marksToIcons(rightMarks)} color="#F6C256" />
-                </div>
-              </div>
+                {members.length > 1 ? <div style={{ marginTop: 6, fontSize: 9.5, opacity: .62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{members.map(playerName).join(" • ")}</div> : null}
+              </section>
             );
           })}
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.72, textAlign: "center" }}>
-          Fermeture = {state?.rules?.marksToClose ?? 3} marks
-        </div>
-      </div>
-
-      {/* INPUT */}
-      <div
-        style={{
-          borderRadius: 22,
-          padding: 14,
-          background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))`,
-          border: "1px solid rgba(255,255,255,0.10)",
-        }}
-      >
-        {/* mode switch */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div
-            style={{
-              height: 42,
-              borderRadius: 999,
-              display: "grid",
-              placeItems: "center",
-              background: "rgba(0,0,0,0.35)",
-              border: "1px solid rgba(246,194,86,0.75)",
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-              boxShadow: "0 0 10px rgba(246,194,86,0.25)",
-            }}
-          >
-            KEYPAD
+        <section style={{ ...panelStyle(), marginBottom: 10, padding: 11 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px minmax(0,1fr)", gap: 7, color: T.soft, fontSize: 10.5, fontWeight: 1000, textAlign: "center", marginBottom: 5 }}>
+            <div style={{ color: TEAM_COLOR.A }}>TEAM A</div><div>CIBLE</div><div style={{ color: TEAM_COLOR.B }}>TEAM B</div>
           </div>
-          <div
-            style={{
-              height: 42,
-              borderRadius: 999,
-              display: "grid",
-              placeItems: "center",
-              background: "rgba(0,0,0,0.25)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              opacity: 0.55,
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-            }}
-          >
-            CIBLE
-          </div>
-        </div>
-
-        {/* S/D/T/BULL */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-          {[
-            { k: "D" as HitMode, label: "DOUBLE", color: "#28d8ff" },
-            { k: "T" as HitMode, label: "TRIPLE", color: "#b04aff" },
-            { k: "S" as HitMode, label: "BULL", color: "#20d67b", bull: true },
-          ].map((b) => {
-            const active = b.bull ? false : hitMode === b.k;
-            return (
-              <button
-                key={b.label}
-                type="button"
-                onClick={() => (b.bull ? onAddBull() : setHitMode(b.k))}
-                style={{
-                  height: 44,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: active ? `linear-gradient(180deg, ${b.color}33, ${darkenColor(b.color, 0.35)}33)` : "rgba(0,0,0,0.28)",
-                  color: T.text,
-                  fontWeight: 950,
-                  letterSpacing: 0.6,
-                  cursor: "pointer",
-                  boxShadow: active ? `0 0 16px ${b.color}40` : "none",
-                }}
-              >
-                {b.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* keypad numbers */}
-        <div
-          style={{
-            borderRadius: 18,
-            padding: 12,
-            background: "rgba(0,0,0,0.22)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
-            {Array.from({ length: 21 }).map((_, n) => {
-              const v = n;
-              const isHighlight = UI_TARGETS.includes(v as any);
-              const col = isHighlight ? getTargetColor(v === 0 ? 15 : (v as any)) : "rgba(255,255,255,0.10)";
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => onAddDart(v)}
-                  style={{
-                    height: 44,
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(10,14,22,0.35)",
-                    color: T.text,
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    boxShadow: isHighlight ? `0 0 0 1px ${col}55` : "none",
-                  }}
-                >
-                  {v}
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={onAddBull}
-            style={{
-              marginTop: 10,
-              width: "100%",
-              height: 44,
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "linear-gradient(180deg, rgba(32,214,123,0.35), rgba(0,0,0,0.35))",
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-              cursor: "pointer",
-            }}
-          >
-            BULL (S=OB / D,T=IB)
-          </button>
-        </div>
-
-        {/* action row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          <button
-            type="button"
-            onClick={onClear}
-            style={{
-              height: 50,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "linear-gradient(180deg, rgba(255,74,74,0.45), rgba(0,0,0,0.35))",
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-              cursor: "pointer",
-            }}
-          >
-            ANNULER
-          </button>
-
-          <button
-            type="button"
-            onClick={onValidate}
-            style={{
-              height: 50,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: throwDarts.length ? "linear-gradient(180deg, rgba(255,255,255,0.18), rgba(0,0,0,0.35))" : "rgba(255,255,255,0.06)",
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-              cursor: throwDarts.length ? "pointer" : "not-allowed",
-              opacity: throwDarts.length ? 1 : 0.45,
-            }}
-          >
-            VALIDER
-          </button>
-        </div>
-
-        {/* volley + undo + total */}
-        <div
-          style={{
-            borderRadius: 18,
-            padding: 12,
-            background: "rgba(0,0,0,0.18)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            marginBottom: 8,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>Volée:</div>
-            <div style={{ fontSize: 16, fontWeight: 950 }}>{volleyLabel || "—"}</div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onUndo}
-            style={{
-              height: 42,
-              padding: "0 18px",
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(0,0,0,0.28)",
-              color: T.text,
-              fontWeight: 950,
-              letterSpacing: 1,
-              cursor: "pointer",
-            }}
-          >
-            UNDO
-          </button>
-        </div>
-
-        <div style={{ fontSize: 12, opacity: 0.8 }}>{totalLine}</div>
-      </div>
-
-      {/* help modal */}
-      {showHelp && (
-        <div
-          onClick={() => setShowHelp(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.66)",
-            display: "grid",
-            placeItems: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(520px, 92vw)",
-              borderRadius: 22,
-              padding: 14,
-              background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.55))",
-              border: "1px solid rgba(255,255,255,0.14)",
-              boxShadow: "0 0 32px rgba(0,0,0,0.55)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 18, fontWeight: 950, color: T.gold }}>SCRAM</div>
-              <button
-                type="button"
-                onClick={() => setShowHelp(false)}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(0,0,0,0.35)",
-                  color: T.text,
-                  fontWeight: 950,
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
+          {playableTargets.map((target) => (
+            <div key={target} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px minmax(0,1fr)", gap: 7, alignItems: "center", padding: "5px 0", borderTop: "1px solid rgba(255,255,255,.045)" }}>
+              {(["A", "B"] as ScramTeam[]).map((team, index) => {
+                const mark = state.marksByTeam[team][target] || 0;
+                const cell = <div style={{ minHeight: 43, display: "grid", placeItems: "center", borderRadius: 13, border: `1px solid ${mark >= 3 ? TEAM_COLOR[team] + "88" : "rgba(255,255,255,.09)"}`, background: mark >= 3 ? `${TEAM_COLOR[team]}12` : "rgba(20,31,54,.52)" }}><CricketMarkIcon marks={mark} color={TEAM_COLOR[team]} size={mark >= 3 ? 32 : 25} glow /></div>;
+                if (index === 0) return <React.Fragment key={team}>{cell}<div style={{ color: TARGET_COLOR[target], textAlign: "center", fontSize: target === 25 ? 15 : 19, fontWeight: 1000, textShadow: `0 0 12px ${TARGET_COLOR[target]}88` }}>{targetLabel(target)}</div></React.Fragment>;
+                return <React.Fragment key={team}>{cell}</React.Fragment>;
+              })}
             </div>
+          ))}
+          <div style={{ marginTop: 7, fontSize: 11, color: T.soft, textAlign: "center" }}>Fermeture = 3 marks • les marques restent visibles après l’inversion</div>
+        </section>
 
-            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.35, opacity: 0.9 }}>
-              <div style={{ marginBottom: 8 }}>
-                <b>Phase RACE</b> : les deux équipes ferment 20→15 + Bull (3 marques).
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <b>Phase SCRAM</b> : l’équipe qui a gagné la RACE marque des points pendant que l’autre ferme (ses marques s’affichent).
-              </div>
-              <div>
-                <b>Objectif</b> : premier à <b>{objective}</b> points (ou fin de rounds si cap).
+        <section style={{ ...panelStyle(), padding: 11 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <InputTab active={inputMethod === "keypad"} color={T.gold} onClick={() => setInputMethod("keypad")} disabled={state.finished || botThinking}>KEYPAD</InputTab>
+            <InputTab active={inputMethod === "dartboard"} color={T.cyan} onClick={() => setInputMethod("dartboard")} disabled={state.finished || botThinking}>CIBLE</InputTab>
+          </div>
+
+          {inputMethod === "dartboard" ? (
+            <div style={{ padding: "2px 0 10px" }}>
+              <DartboardClickable
+                multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
+                disabled={state.finished || botThinking}
+                onHit={(segment, multiplier) => addDart(segment, multiplier)}
+              />
+            </div>
+          ) : null}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+            <ModeButton label="DOUBLE" color="#31c9ef" active={hitMode === "D"} onClick={() => setHitMode(hitMode === "D" ? "S" : "D")} disabled={state.finished || botThinking} />
+            <ModeButton label="TRIPLE" color="#c24cff" active={hitMode === "T"} onClick={() => setHitMode(hitMode === "T" ? "S" : "T")} disabled={state.finished || botThinking} />
+            <ModeButton label="BULL" color="#28dc92" active={false} onClick={() => addDart(25)} disabled={state.finished || botThinking || !state.rules.useBull} />
+          </div>
+
+          {inputMethod === "keypad" ? (
+            <div style={{ padding: 9, borderRadius: 17, background: "rgba(0,0,0,.26)", border: `1px solid ${T.stroke}`, marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 7 }}>
+                {Array.from({ length: 21 }, (_, value) => {
+                  const target = value >= 15 && value <= 20;
+                  const color = target ? TARGET_COLOR[value as ScramTarget] : T.text;
+                  return <button key={value} type="button" onClick={() => addDart(value)} disabled={state.finished || botThinking || throwDarts.length >= 3} style={{ height: 42, borderRadius: 13, border: target ? `1px solid ${color}cc` : `1px solid ${T.stroke}`, background: "linear-gradient(145deg,#152039,#080c18)", color, fontWeight: 1000, fontSize: 15, cursor: "pointer", boxShadow: target ? `0 0 10px ${color}30` : "none", opacity: state.finished || botThinking ? .48 : 1 }}>{value}</button>;
+                })}
               </div>
             </div>
+          ) : null}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, minHeight: 48, padding: "8px 10px", borderRadius: 15, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.20)", marginBottom: 9 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: T.soft, fontWeight: 900 }}>{botThinking ? "BOT EN RÉFLEXION" : `VOLÉE DE ${playerName(activeProfile)}`}</div>
+              <div style={{ fontSize: 14, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{botThinking ? "…" : volleyLabel || "—"}</div>
+            </div>
+            <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>{Array.from({ length: 3 }, (_, index) => <DartIconColorizable key={index} color={TEAM_COLOR[activeTeam]} active={index < throwDarts.length} size={26} />)}</div>
           </div>
-        </div>
-      )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginBottom: 9 }}>
+            <ActionButton label="ANNULER" color={T.red} disabled={botThinking || (!throwDarts.length && !canUndo)} onClick={() => throwDarts.length ? setThrowDarts([]) : undoVisit()} />
+            <ActionButton label="VALIDER" color={T.green} disabled={botThinking || !throwDarts.length || state.finished} onClick={validateVisit} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <MiniKpi label="DARTS" value={activeStats.darts} /><MiniKpi label="POINTS" value={activeStats.points} /><MiniKpi label="MARKS" value={activeStats.marks} /><MiniKpi label="BEST" value={activeStats.bestVisit} />
+          </div>
+          <div style={{ marginTop: 8, fontSize: 10.5, color: T.soft, textAlign: "center" }}>S {activeStats.singles} • D {activeStats.doubles} • T {activeStats.triples} • Bull {activeStats.bulls} • DBull {activeStats.dbulls} • Miss {activeStats.misses}</div>
+        </section>
+      </div>
+
+      {showEnd && state.finished ? (
+        <EndModal
+          state={state}
+          profilesById={byId}
+          onClose={() => setShowEnd(false)}
+          onSave={saveAndQuit}
+          onReplay={saveAndReplay}
+        />
+      ) : null}
     </div>
   );
+}
+
+function panelStyle(): React.CSSProperties {
+  return { borderRadius: 18, border: `1px solid ${T.stroke}`, background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(5,8,16,.72))", boxShadow: "0 14px 30px rgba(0,0,0,.25)" };
+}
+
+function InputTab({ active, color, onClick, disabled, children }: any) {
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ height: 40, borderRadius: 999, border: `1px solid ${active ? color : T.stroke}`, background: active ? `${color}18` : "rgba(255,255,255,.035)", color: active ? color : T.text, fontWeight: 1000, letterSpacing: 1, boxShadow: active ? `0 0 14px ${color}38` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .5 : 1 }}>{children}</button>;
+}
+
+function ModeButton({ label, color, active, onClick, disabled }: any) {
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ minHeight: 43, borderRadius: 999, border: `1px solid ${active ? color : T.stroke}`, background: active ? `linear-gradient(180deg,${color}55,${color}18)` : "rgba(0,0,0,.24)", color: active ? "#fff" : color, fontWeight: 1000, letterSpacing: .6, boxShadow: active ? `0 0 18px ${color}55` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .42 : 1 }}>{label}</button>;
+}
+
+function ActionButton({ label, color, disabled, onClick }: any) {
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ minHeight: 48, borderRadius: 999, border: `1px solid ${color}88`, background: disabled ? "rgba(255,255,255,.055)" : `linear-gradient(180deg,${color}88,${color}32)`, color: disabled ? "rgba(255,255,255,.4)" : "#fff", fontWeight: 1000, letterSpacing: 1, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : `0 0 15px ${color}38` }}>{label}</button>;
+}
+
+function MiniKpi({ label, value }: { label: string; value: number }) {
+  return <div style={{ padding: "7px 4px", borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${T.stroke}` }}><div style={{ color: T.soft, fontSize: 8.5, fontWeight: 1000 }}>{label}</div><div style={{ color: T.cyan, fontSize: 15, fontWeight: 1000, marginTop: 2 }}>{value}</div></div>;
+}
+
+function EndModal({ state, profilesById, onClose, onSave, onReplay }: any) {
+  const rows = state.players.map((player: any) => {
+    const team: ScramTeam = state.teamByPlayer[player.id];
+    const stats: ScramPlayerStats = state.statsByPlayer[player.id] || emptyStats();
+    return { player, profile: profilesById.get(String(player.id)) || player, team, stats };
+  });
+  const winnerLabel = state.tied ? "ÉGALITÉ" : `TEAM ${state.winnerTeam} GAGNE`;
+  const columns: Array<[string, (row: any) => React.ReactNode]> = [
+    ["Joueur", (row) => playerName(row.profile)], ["Team", (row) => row.team], ["Pts", (row) => row.stats.points],
+    ["Marks", (row) => row.stats.marks], ["Ferm.", (row) => row.stats.targetsClosed], ["Darts", (row) => row.stats.darts],
+    ["Hit %", (row) => `${percent(row.stats.hits, row.stats.darts)}%`], ["MPR", (row) => row.stats.darts ? ((row.stats.marks / row.stats.darts) * 3).toFixed(2) : "0.00"],
+    ["Best", (row) => row.stats.bestVisit], ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples],
+    ["Bull", (row) => row.stats.bulls], ["DBull", (row) => row.stats.dbulls], ["Miss", (row) => row.stats.misses],
+  ];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.76)", backdropFilter: "blur(8px)" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "88dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16223a,#070a12)", border: `1px solid ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}99`, boxShadow: `0 0 34px ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}30` }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU SCRAM</div>
+          <div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000, color: state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam], textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center", margin: "14px 0" }}>
+          <TeamResult team="A" score={state.scores.A} winner={state.winnerTeam === "A"} /><div style={{ color: T.soft, fontWeight: 1000 }}>—</div><TeamResult team="B" score={state.scores.B} winner={state.winnerTeam === "B"} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <MiniKpi label="ROUNDS PHASE 1" value={state.phaseRounds[1]} /><MiniKpi label="ROUNDS PHASE 2" value={state.phaseRounds[2]} />
+        </div>
+        <div style={{ fontSize: 12, color: T.cyan, fontWeight: 1000, marginBottom: 7 }}>TABLEAU COMPLET</div>
+        <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}` }}>
+          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11 }}>
+            <thead><tr style={{ color: T.cyan, background: "rgba(66,214,255,.08)", textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead>
+            <tbody>{rows.map((row: any) => <tr key={row.player.id} style={{ background: state.winnerTeam === row.team ? `${TEAM_COLOR[row.team]}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Team" ? TEAM_COLOR[row.team] : T.text }}>{read(row)}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
+          <ActionButton label="SAUVER & QUITTER" color={T.red} onClick={onSave} disabled={false} />
+          <ActionButton label="SAUVER & REJOUER" color={T.green} onClick={onReplay} disabled={false} />
+        </div>
+        <button type="button" onClick={onClose} style={{ width: "100%", minHeight: 42, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LE TABLEAU</button>
+      </div>
+    </div>
+  );
+}
+
+function TeamResult({ team, score, winner }: { team: ScramTeam; score: number; winner: boolean }) {
+  const color = TEAM_COLOR[team];
+  return <div style={{ padding: 12, borderRadius: 16, textAlign: "center", border: `1px solid ${winner ? color : T.stroke}`, background: winner ? `${color}16` : "rgba(255,255,255,.035)", boxShadow: winner ? `0 0 18px ${color}30` : "none" }}><div style={{ color, fontSize: 11, fontWeight: 1000 }}>TEAM {team}</div><div style={{ fontSize: 32, fontWeight: 1000, marginTop: 2 }}>{score}</div></div>;
 }

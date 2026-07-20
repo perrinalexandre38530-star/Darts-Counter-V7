@@ -3051,7 +3051,8 @@ return {
   </button>
 </div>
 
-{/* CLAVIER 0–20 */}
+{/* CLAVIER 0–20 — masqué quand la saisie CIBLE est active */}
+{inputMethod === "keypad" ? (
 <div
   style={{
     borderRadius: 20,
@@ -3095,6 +3096,7 @@ return {
     })}
   </div>
 </div>
+) : null}
 
 {/* BAS : ANNULER / RESUME */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

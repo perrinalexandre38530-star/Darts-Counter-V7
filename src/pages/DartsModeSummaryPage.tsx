@@ -359,7 +359,9 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         </div>
       </section>
 
-      {mode === "five_lives" ? <FiveLivesSummaryTables rec={rec} rows={rows} accent={meta.accent} /> : (
+      {mode === "five_lives" ? <FiveLivesSummaryTables rec={rec} rows={rows} accent={meta.accent} /> : mode === "scram" ? (
+        <ScramSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : (
         <section style={card(meta.accent)}>
           <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
           <div style={{ overflowX: "auto" }}>
@@ -372,6 +374,71 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       )}
     </div>
   );
+}
+
+function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const scoreA = num(pick(summary?.scoreA, rec?.payload?.state?.scores?.A, 0), 0);
+  const scoreB = num(pick(summary?.scoreB, rec?.payload?.state?.scores?.B, 0), 0);
+  const winnerTeam = String(pick(summary?.winnerTeam, rec?.winnerTeam, rec?.payload?.winnerTeam, "")).toUpperCase();
+  const tied = Boolean(pick(summary?.tied, rec?.payload?.tied, scoreA === scoreB));
+  const phaseRounds = pick(summary?.phaseRounds, rec?.payload?.state?.phaseRounds, {}) || {};
+  const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory, rec?.visits));
+  const teamColor = (team: string) => team === "A" ? "#ff4ad1" : "#ffd76a";
+  const columns: Array<[string, (p: any) => any]> = [
+    ["Joueur", (p) => p.name], ["Team", (p) => pick(p.team, "—")], ["Points", (p) => num(pick(p.points, p.score), 0)],
+    ["Marks", (p) => num(pick(p.totalMarks, p.marksTotal, p.marks), 0)], ["Ferm.", (p) => num(pick(p.closed, p.closes, p.closedNumbers), 0)],
+    ["Darts", (p) => num(pick(p.dartsThrown, p.darts), 0)], ["Hit %", (p) => `${num(p.hitRate, 0).toFixed(1)}%`],
+    ["MPR", (p) => num(p.mpr, 0).toFixed(2)], ["Best", (p) => num(p.bestVisit, 0)],
+    ["S", (p) => num(p.singles, 0)], ["D", (p) => num(p.doubles, 0)], ["T", (p) => num(p.triples, 0)],
+    ["Bull", (p) => num(p.bulls, 0)], ["DBull", (p) => num(p.dbulls, 0)], ["Miss", (p) => num(p.misses, 0)],
+  ];
+
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Duel des équipes</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
+        {(["A", "B"] as const).map((team, index) => <React.Fragment key={team}>
+          {index ? <div style={{ color: "#8c91a1", fontWeight: 1000 }}>—</div> : null}
+          <div style={{ padding: 13, borderRadius: 15, textAlign: "center", border: `1px solid ${winnerTeam === team ? teamColor(team) : "rgba(255,255,255,.11)"}`, background: winnerTeam === team ? `${teamColor(team)}16` : "rgba(255,255,255,.035)", boxShadow: winnerTeam === team ? `0 0 18px ${teamColor(team)}25` : "none" }}>
+            <div style={{ color: teamColor(team), fontWeight: 1000, fontSize: 11 }}>TEAM {team}{winnerTeam === team ? " • WIN" : ""}</div>
+            <div style={{ fontSize: 32, fontWeight: 1000, marginTop: 2 }}>{team === "A" ? scoreA : scoreB}</div>
+          </div>
+        </React.Fragment>)}
+      </div>
+      <div style={{ marginTop: 10, color: "#b8bcc8", textAlign: "center", fontSize: 11.5 }}>
+        {tied ? "Partie nulle" : `Vainqueur : Team ${winnerTeam || "—"}`} • Phase 1 : {num(phaseRounds?.[1], 0)} rounds • Phase 2 : {num(phaseRounds?.[2], 0)} rounds
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Tableau complet de fin de partie</div>
+      <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
+        <table style={{ width: "100%", minWidth: 1030, borderCollapse: "collapse", fontSize: 11 }}>
+          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((r) => <tr key={`scram-stat-${r.id}`} style={{ background: r.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, color: label === "Team" ? teamColor(String(r.raw?.team || "")) : label === "Joueur" && r.isWinner ? accent : td.color }}>{read(r.raw)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Déroulé des volées</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {visits.length ? visits.map((visit, index) => {
+          const team = String(visit?.team || "").toUpperCase();
+          const player = rows.find((row) => String(row.id) === String(visit?.playerId));
+          return <div key={visit?.id || index} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: "9px 10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
+            <div style={{ color: teamColor(team), fontWeight: 1000 }}>P{pick(visit?.phase, "—")}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 1000 }}>{player?.name || "Joueur"} <span style={{ color: teamColor(team), fontSize: 10 }}>TEAM {team}</span></div>
+              <div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Round {pick(visit?.round, "—")} • {visit?.role === "stopper" ? "Bloqueur" : "Scoreur"} • {asArray(visit?.labels).join(" · ") || "—"}</div>
+            </div>
+            <div style={{ color: num(visit?.points, 0) > 0 ? "#72f0a8" : accent, fontWeight: 1000 }}>{num(visit?.points, 0) > 0 ? `+${num(visit?.points, 0)} pts` : `+${num(visit?.marks, 0)} marks`}</div>
+          </div>;
+        }) : <div style={{ color: "#c9c9d4" }}>Aucun détail de volée enregistré.</div>}
+      </div>
+    </section>
+  </>;
 }
 
 function FiveLivesSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {

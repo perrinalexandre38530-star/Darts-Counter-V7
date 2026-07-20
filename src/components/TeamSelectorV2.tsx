@@ -45,6 +45,8 @@ type TeamSelectorV2Props = {
   onReplaceSelectedTeams?: (teamIds: string[], selectedTeamPlayerIds: Record<string, string[]>, teams: any[]) => void;
   /** Notification optionnelle pour les pages qui veulent intégrer les équipes temporaires dans leur état. */
   onGeneratedTeamsChange?: (teams: any[]) => void;
+  /** Overlay optionnel dans le bloc flottant joueur (ex. set de fléchettes X01). */
+  renderPlayerOverlay?: (player: any) => React.ReactNode;
 };
 
 function mapGet(map: any, id: string) {
@@ -124,6 +126,7 @@ export default function TeamSelectorV2({
   sport = "darts",
   onReplaceSelectedTeams,
   onGeneratedTeamsChange,
+  renderPlayerOverlay,
 }: TeamSelectorV2Props) {
   const [pickerTeam, setPickerTeam] = React.useState<any | null>(null);
   const [pickerIds, setPickerIds] = React.useState<string[]>([]);
@@ -443,16 +446,41 @@ export default function TeamSelectorV2({
                 const p = mapGet(profilesById, pid);
                 const checked = pickerIds.includes(pid);
                 return (
-                  <button key={pid} type="button" onClick={() => setPickerIds((prev) => checked ? prev.filter((id) => id !== pid) : [...prev, pid])} style={{ display: "flex", alignItems: "center", gap: 9, borderRadius: 17, padding: 9, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: checked ? `${primary}18` : "rgba(255,255,255,.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}>
-                    <ProfileAvatar profile={p} name={pickName(p)} size={36} />
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickName(p)}</span>
+                  <button
+                    key={pid}
+                    type="button"
+                    onClick={() => setPickerIds((prev) => {
+                      if (checked) return prev.filter((id) => id !== pid);
+                      if (prev.length >= teamSize) return prev;
+                      return [...prev, pid];
+                    })}
+                    style={renderPlayerOverlay
+                      ? { minWidth: 0, borderRadius: 18, padding: "10px 6px", background: checked ? `${primary}22` : "rgba(255,255,255,.035)", border: checked ? `1px solid ${primary}` : `1px solid ${primary}33`, boxShadow: checked ? `0 0 22px ${primary}66` : "inset 0 0 16px rgba(255,255,255,.03)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, color: "#fff" }
+                      : { display: "flex", alignItems: "center", gap: 9, borderRadius: 17, padding: 9, border: checked ? `1px solid ${primary}` : "1px solid rgba(255,255,255,.10)", background: checked ? `${primary}18` : "rgba(255,255,255,.04)", color: "#fff", cursor: "pointer", fontWeight: 850, minWidth: 0 }}
+                  >
+                    {renderPlayerOverlay ? (
+                      <>
+                        <span style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible", marginTop: 4 }}>
+                          <span style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${checked ? primary : `${primary}88`}`, boxShadow: `0 0 16px ${primary}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
+                            <ProfileAvatar profile={p} name={pickName(p)} size={76} noFrame />
+                          </span>
+                          {checked ? renderPlayerOverlay(p) : null}
+                        </span>
+                        <span style={{ color: checked ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pickName(p)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <ProfileAvatar profile={p} name={pickName(p)} size={36} />
+                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pickName(p)}</span>
+                      </>
+                    )}
                   </button>
                 );
               })}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
               <button type="button" onClick={() => setPickerTeam(null)} style={{ borderRadius: 999, padding: "10px 15px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.04)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Annuler</button>
-              <button type="button" disabled={!pickerIds.length} onClick={validate} style={{ borderRadius: 999, padding: "10px 18px", border: `1px solid ${primary}`, background: pickerIds.length ? `${primary}22` : "rgba(255,255,255,.04)", color: pickerIds.length ? primary : "#777", fontWeight: 950, cursor: pickerIds.length ? "pointer" : "not-allowed" }}>Valider</button>
+              <button type="button" disabled={pickerIds.length !== teamSize} onClick={validate} style={{ borderRadius: 999, padding: "10px 18px", border: `1px solid ${primary}`, background: pickerIds.length === teamSize ? `${primary}22` : "rgba(255,255,255,.04)", color: pickerIds.length === teamSize ? primary : "#777", fontWeight: 950, cursor: pickerIds.length === teamSize ? "pointer" : "not-allowed" }}>Valider ({pickerIds.length}/{teamSize})</button>
             </div>
           </div>
         </div>
