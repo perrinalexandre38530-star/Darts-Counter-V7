@@ -443,13 +443,11 @@ function safeParseArray(raw: string | null): any[] {
 export function rememberGeneratedTeams(teams: any[]) {
   if (typeof window === "undefined") return;
   try {
-    const previous = safeParseArray(window.sessionStorage.getItem(GENERATED_TEAMS_KEY));
-    const byId = new Map<string, any>();
-    [...previous, ...(teams || [])].forEach((team) => {
-      const id = String(team?.id || "").trim();
-      if (id) byId.set(id, team);
-    });
-    window.sessionStorage.setItem(GENERATED_TEAMS_KEY, JSON.stringify(Array.from(byId.values()).slice(-80)));
+    // Important : ce stockage sert uniquement à résoudre les équipes temporaires
+    // validées pour la partie en cours. On remplace donc l'ancien brassage au lieu
+    // de l'empiler, sinon des anciens joueurs réapparaissent dans le brassage auto.
+    const clean = (teams || []).filter((team) => String(team?.id || team?.baseTeamId || "").trim());
+    window.sessionStorage.setItem(GENERATED_TEAMS_KEY, JSON.stringify(clean.slice(-80)));
   } catch {}
 }
 
