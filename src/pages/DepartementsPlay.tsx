@@ -1408,8 +1408,8 @@ function TerritoriesMapModal(props: {
     >
       <div
         style={{
-          width: "min(980px, 100%)",
-          maxHeight: "calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+          width: "min(1100px, 100%)",
+          maxHeight: "calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
           borderRadius: 20,
           overflow: "hidden",
           background: "rgba(12, 14, 26, 0.92)",
@@ -1463,7 +1463,8 @@ function TerritoriesMapModal(props: {
           <div
             style={{
               width: "100%",
-              height: "min(72vh, 560px)",
+              height: "clamp(320px, calc(100dvh - 205px), 760px)",
+              minHeight: 0,
               position: "relative",
               borderRadius: 18,
               background: "rgba(12, 14, 26, 0.65)",

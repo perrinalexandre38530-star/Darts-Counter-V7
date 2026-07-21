@@ -15,7 +15,8 @@
     "test:sync": "node ./tools/test-cloud-sync.mjs",
     "test:ci": "npm run typecheck && npm run build && npm run test:auth && npm run test:sync",
     "compress-images": "node ./src/tools/compress-images.js",
-    "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs"
+    "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs",
+    "test:territories-maps": "node ./tools/audit-territories-maps.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
