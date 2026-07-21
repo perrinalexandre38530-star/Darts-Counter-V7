@@ -70,6 +70,11 @@ export interface TerritoriesConfig {
   maxRounds: number;
   victoryCondition: TerritoriesVictoryCondition;
   voiceAnnouncements: boolean;
+  // Calibration automatique des valeurs selon le niveau du groupe.
+  valueSkillAverage3?: number;
+  valueTargetMin?: number;
+  valueTargetMax?: number;
+  valueDifficultyLabel?: string;
 }
 
 export interface TerritoriesPlayer {

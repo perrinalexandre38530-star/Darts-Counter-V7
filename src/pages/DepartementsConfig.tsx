@@ -50,6 +50,7 @@ import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profi
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { nextTeamInstanceId } from "../lib/teamSelectionInstances";
 import { bumpDartSetUsage } from "../lib/dartSetsStore";
+import { buildTerritoryValueCalibration } from "../territories/territoryValueBalancing";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -87,6 +88,11 @@ export type TerritoriesConfigPayload = {
   winTerritories?: number;
   winRegions?: number;
   timeLimitMin?: number;
+  // Valeurs de territoires calibrées automatiquement selon les participants.
+  valueSkillAverage3?: number;
+  valueTargetMin?: number;
+  valueTargetMax?: number;
+  valueDifficultyLabel?: string;
 };
 
 const INFO_TEXT = `TERRITORIES / DÉPARTEMENTS
@@ -113,6 +119,10 @@ Participants
 Sélection de cible
 - LIBRE : tu choisis précisément le territoire sur la carte.
 - PAR LE SCORE : la valeur totale de la volée détermine automatiquement un territoire compatible.
+
+Valeurs des territoires
+- Elles sont calculées selon la surface réelle : les grands territoires demandent les scores les plus élevés.
+- La difficulté s'adapte automatiquement au niveau des participants sélectionnés et chaque score reste réalisable en 1 à 3 fléchettes.
 
 Règle de capture
 - EXACT : le total doit être strictement égal à la valeur du territoire.
@@ -204,6 +214,15 @@ PAR LE SCORE
 - Tu ne choisis pas obligatoirement la cible.
 - Le total de ta volée recherche automatiquement un territoire dont la valeur correspond à la règle de capture.
 - S'il existe plusieurs territoires compatibles, le jeu en sélectionne un automatiquement.`;
+
+
+const HELP_VALUE_BALANCE = `Valeurs adaptatives des territoires
+
+- Les scores demandés sont toujours réalisables avec une volée de 1 à 3 fléchettes.
+- Les territoires sont classés selon leur surface réelle sur la carte : plus un territoire est grand, plus sa valeur est élevée.
+- La plage de scores est calculée automatiquement à partir du niveau des joueurs et Bots sélectionnés.
+- Le joueur le moins fort est volontairement pris en compte pour que les plus grandes cibles restent difficiles, mais atteignables.
+- Les valeurs sont fixées au lancement et restent identiques pour tous pendant toute la partie.`;
 
 const HELP_CAPTURE = `Règle de capture
 
@@ -711,6 +730,14 @@ export default function DepartementsConfig(props: any) {
     }).filter(Boolean);
   }, [selectedIds, humanProfiles, userBots]);
 
+  const territoryValueCalibration = React.useMemo(
+    () => buildTerritoryValueCalibration(
+      selectedParticipantProfiles.map((entry: any) => entry?.profile).filter(Boolean),
+      botLevel,
+    ),
+    [selectedParticipantProfiles, botLevel],
+  );
+
   React.useEffect(() => {
     if (playersTouchedRef.current || !humanProfiles.length) return;
     setSelectedIds((prev) => {
@@ -1093,6 +1120,10 @@ export default function DepartementsConfig(props: any) {
     objectiveRegions,
     timeLimitMin,
     mapId,
+    valueSkillAverage3: territoryValueCalibration.referenceAvg3,
+    valueTargetMin: territoryValueCalibration.minTarget,
+    valueTargetMax: territoryValueCalibration.maxTarget,
+    valueDifficultyLabel: territoryValueCalibration.label,
   };
 
   function start() {
@@ -1660,6 +1691,23 @@ export default function DepartementsConfig(props: any) {
             onChange={setCaptureRule as any}
             disabled={gameMode === "fortress"}
           />
+        </OptionRow>
+
+
+        <OptionRow label={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span>Valeurs des territoires</span>
+            <InfoMini title="Valeurs adaptatives" content={HELP_VALUE_BALANCE} onOpen={(title, content) => setInfoModal({ title, content })} />
+          </div>
+        }>
+          <div style={{ textAlign: "right", lineHeight: 1.15 }}>
+            <div style={{ color: primary, fontWeight: 1000, fontSize: 12 }}>
+              {territoryValueCalibration.label} · {territoryValueCalibration.minTarget}–{territoryValueCalibration.maxTarget}
+            </div>
+            <div style={{ marginTop: 3, color: "#aeb5cc", fontSize: 10.5, fontWeight: 850 }}>
+              Surface + niveau du groupe
+            </div>
+          </div>
         </OptionRow>
 
         {gameMode === "classic" ? (

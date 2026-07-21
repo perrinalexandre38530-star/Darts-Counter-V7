@@ -31,6 +31,11 @@ import type {
 import { buildTerritoriesMap } from "../territories/map";
 import TerritoriesMapView from "../territories/TerritoriesMapView";
 import {
+  applyBalancedTerritoryValues,
+  buildTerritoryValueCalibration,
+  buildTerritoryValueCalibrationFromAverage,
+} from "../territories/territoryValueBalancing";
+import {
   normalizeTerritoriesState,
   selectTerritory,
   applyVisit,
@@ -64,6 +69,10 @@ export type TerritoriesConfigPayload = {
   winTerritories?: number;
   winRegions?: number;
   timeLimitMin?: number;
+  valueSkillAverage3?: number;
+  valueTargetMin?: number;
+  valueTargetMax?: number;
+  valueDifficultyLabel?: string;
 };
 
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
@@ -290,14 +299,21 @@ const RULES_TEXT = (cfg: {
   timeLimitMin: number;
   maxRounds: number;
   maxFortressesPerOwner: number;
+  valueDifficultyLabel: string;
+  valueTargetMin: number;
+  valueTargetMax: number;
 }) => {
-  const { gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner } = cfg;
+  const { gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel, valueTargetMin, valueTargetMax } = cfg;
   if (gameMode === "fortress") {
     return `FORTERESSES
 
 Départ
 - Chaque joueur ou équipe reçoit exactement le même nombre de territoires. Si la carte ne se divise pas parfaitement, le surplus reste neutre au départ.
 - Chaque camp possède une couleur.
+
+Valeurs des territoires
+- Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
+- Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Tous les scores sont réalisables en 1 à 3 fléchettes.
 
 Défendre
 - Choisis un de tes territoires et réalise EXACTEMENT sa valeur.
@@ -320,6 +336,10 @@ Victoire
 
 But
 - Capturer les territoires neutres ou adverses.
+
+Valeurs des territoires
+- Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
+- Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Tous les scores sont réalisables en 1 à 3 fléchettes.
 
 Cible
 - ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Le score de la volée détermine automatiquement une cible compatible."}
@@ -412,6 +432,24 @@ export default function DepartementsPlay(props: any) {
   const winRegions = Math.max(1, Number(effectiveCfg.winRegions || (effectiveCfg as any).objectiveRegions || 3));
   const timeLimitMin = Math.max(1, Number(effectiveCfg.timeLimitMin || 20));
 
+  const territoryValueCalibration = React.useMemo(() => {
+    const savedAverage = Number(effectiveCfg.valueSkillAverage3);
+    if (Number.isFinite(savedAverage) && savedAverage > 0) {
+      return buildTerritoryValueCalibrationFromAverage(savedAverage);
+    }
+
+    const selectedProfiles = (effectiveCfg.selectedIds || []).map((id) => {
+      const stored = profileById[String(id)];
+      if (stored) return stored;
+      return {
+        id,
+        isBot: true,
+        botLevel: effectiveCfg.botLevel || "normal",
+      };
+    });
+    return buildTerritoryValueCalibration(selectedProfiles, effectiveCfg.botLevel || "normal");
+  }, [effectiveCfg.valueSkillAverage3, effectiveCfg.botLevel, JSON.stringify(effectiveCfg.selectedIds), profileById]);
+
   const tickerSrc = findTerritoriesTicker(mapId) || findTerritoriesTicker(country) || undefined;
   const flagSrc = React.useMemo(() => findFlagByCountry(country), [country]);
 
@@ -494,6 +532,10 @@ export default function DepartementsPlay(props: any) {
         maxRounds,
         victoryCondition,
         voiceAnnouncements: false,
+        valueSkillAverage3: territoryValueCalibration.referenceAvg3,
+        valueTargetMin: territoryValueCalibration.minTarget,
+        valueTargetMax: territoryValueCalibration.maxTarget,
+        valueDifficultyLabel: territoryValueCalibration.label,
       },
       players,
       teams,
@@ -511,7 +553,7 @@ export default function DepartementsPlay(props: any) {
 
     const distributed = gameMode === "fortress" ? initializeEqualTerritoryOwnership(base) : base;
     return normalizeTerritoriesState(distributed).state;
-  }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams]);
+  }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams, territoryValueCalibration]);
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
   const submitLockRef = React.useRef(false);
@@ -527,14 +569,19 @@ export default function DepartementsPlay(props: any) {
     return out;
   });
 
-  React.useEffect(() => {
-    setGame(initialState);
+  React.useLayoutEffect(() => {
+    const calibratedMap = applyBalancedTerritoryValues(
+      initialState.map,
+      country,
+      territoryValueCalibration,
+    );
+    setGame({ ...initialState, map: calibratedMap });
     setCurrentThrow([]);
     setMultiplier(1);
     const out: Record<string, PlayerLiveStats> = {};
     for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
     setPlayerStats(out);
-  }, [initialState, players]);
+  }, [initialState, players, country, territoryValueCalibration]);
 
   const activePlayer = React.useMemo(
     () => game.players.find((p) => p.id === game.turn.activePlayerId),
@@ -952,7 +999,7 @@ export default function DepartementsPlay(props: any) {
     <div style={{ maxHeight: "70vh", overflow: "auto" }} className="dc-scroll-thin">
       <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 8 }}>Valeurs des territoires</div>
       <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
-        Chaque territoire a une valeur cible (score total sur une volée).
+        Chaque territoire a une valeur cible réalisable sur une volée. Les valeurs sont classées par surface : les grands territoires demandent les scores les plus élevés. Niveau {territoryValueCalibration.label}, plage {territoryValueCalibration.minTarget}–{territoryValueCalibration.maxTarget}.
         {gameMode === "fortress" ? " Le contour blanc pointillé et le symbole 🛡 signalent une forteresse active." : ""}
       </div>
 
@@ -1063,7 +1110,7 @@ export default function DepartementsPlay(props: any) {
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner })} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: territoryValueCalibration.minTarget, valueTargetMax: territoryValueCalibration.maxTarget })} />}
       />
 
       {/* END OF MATCH MODAL */}
@@ -1406,12 +1453,10 @@ function KpiCard(props: {
               alt=""
               style={{
                 position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -50%)",
-                width: "135%",
-                height: "135%",
-                objectFit: "contain",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
                 filter: "saturate(1.15) contrast(1.05) drop-shadow(0 0 12px rgba(0,0,0,0.35))",
                 mixBlendMode: "normal",
               }}
