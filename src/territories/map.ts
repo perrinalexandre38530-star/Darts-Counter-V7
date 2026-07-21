@@ -248,31 +248,49 @@ export function buildTerritoriesMap(country: TerritoriesCountry, opts: BuildMapO
 
 /** Extract territories from <path id="...">. */
 function extractByPathId(svgText: string, country: TerritoriesCountry, opts: BuildMapOptions): Territory[] {
-  const ids: string[] = [];
-  const re = /<path\b[^>]*\bid="([^"]+)"[^>]*>/g;
+  const paths: Array<{ id: string; title?: string }> = [];
+  const re = /<path\b([^>]*)>/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(svgText))) ids.push(m[1]);
+
+  while ((m = re.exec(svgText))) {
+    const attrs = m[1] || "";
+    const id = matchAttrFromAttrs(attrs, "id");
+    if (!id) continue;
+    const rawTitle =
+      matchAttrFromAttrs(attrs, "title") ||
+      matchAttrFromAttrs(attrs, "data-name") ||
+      matchAttrFromAttrs(attrs, "name") ||
+      undefined;
+    paths.push({
+      id,
+      title: rawTitle ? decodeXmlEntities(rawTitle).trim() : undefined,
+    });
+  }
 
   // Stable order for sequential numbering
-  const sorted = [...ids].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }));
+  const sorted = paths
+    .map((path) => path.id)
+    .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }));
   const seqValueById: Record<string, number> = {};
   if (opts.valueStrategy === "sequential") {
     let n = 1;
     for (const pid of sorted) seqValueById[pid] = n++;
   }
 
-  return ids.map((pid) => {
-    const id = pid.trim();
+  return paths.map(({ id: pathId, title }) => {
+    const id = pathId.trim();
     const base: Territory = {
       id,
       country,
       region: country,
-      name: id,
+      // Les cartes continentales fournissent généralement le vrai nom dans
+      // l'attribut SVG `title`. On le conserve plutôt que d'afficher seulement KZ, DZ, etc.
+      name: title || id,
       value:
         opts.valueStrategy === "sequential"
-          ? (seqValueById[pid] ?? defaultValueForId(id, "hash_21_180"))
+          ? (seqValueById[pathId] ?? defaultValueForId(id, "hash_21_180"))
           : defaultValueForId(id, (opts.valueStrategy ?? "hash_21_180") as any),
-      svgPathId: pid.trim(),
+      svgPathId: pathId.trim(),
       ownerId: undefined,
     };
     return applyMeta(base, opts.metaById?.[base.id]);
@@ -394,6 +412,17 @@ function applyMeta(t: Territory, meta?: TerritoryMetaOverride): Territory {
     value: typeof meta.value === "number" ? meta.value : t.value,
     svgPathId: meta.svgPathId ?? t.svgPathId,
   };
+}
+
+function decodeXmlEntities(value: string): string {
+  return String(value || "")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#([0-9]+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 function matchAttr(svgText: string, attr: string): string | null {

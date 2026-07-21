@@ -387,15 +387,20 @@ export default function DepartementsConfig(props: any) {
   }, []);
 
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
+  const incomingConfig = ((props as any)?.params?.config || (props as any)?.config || null) as
+    | Partial<TerritoriesConfigPayload>
+    | null;
 
   const primary = (theme as any)?.primary ?? "#7dffca";
   const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
 
   // ---------- state
   const mapTouchedRef = React.useRef(false);
-  const [mapId, setMapId] = React.useState<string>(() =>
-    resolvePreferredTerritoriesMapId(lang, TERRITORY_MAP_IDS),
-  );
+  const [mapId, setMapId] = React.useState<string>(() => {
+    const returnedMapId = String(incomingConfig?.mapId || "").toUpperCase().trim();
+    if (returnedMapId && TERRITORY_MAP_IDS.includes(returnedMapId)) return returnedMapId;
+    return resolvePreferredTerritoriesMapId(lang, TERRITORY_MAP_IDS);
+  });
 
   const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
   const [teamCount, setTeamCount] = React.useState<number>(() => {

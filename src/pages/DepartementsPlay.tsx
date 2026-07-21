@@ -19,6 +19,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 
 import type { Dart as UIDart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 
 import type {
   TerritoriesCountry,
@@ -135,6 +136,46 @@ function findFlagByCountry(country: string): string | null {
     }
   }
   return null;
+}
+
+
+const CONTINENT_MAP_IDS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM"]);
+// Ces fichiers représentent une CARTE/CONTINENT, pas le pays portant le même code ISO.
+// Exemple : AF.png = Afrique, alors que le territoire AF de la carte Asie = Afghanistan.
+const MAP_LEVEL_FLAG_CODES = new Set(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
+
+function findTerritoryFlagByCountry(countryCode: string | null): string | null {
+  if (!countryCode || MAP_LEVEL_FLAG_CODES.has(countryCode)) return null;
+  return findFlagByCountry(countryCode);
+}
+
+function getTerritoryCountryCode(country: TerritoriesCountry, territoryId?: string | null): string | null {
+  if (!CONTINENT_MAP_IDS.has(country)) return null;
+  const raw = String(territoryId || "")
+    .toUpperCase()
+    .replace(/^WORLD-/, "")
+    .trim();
+  return /^[A-Z]{2}$/.test(raw) ? raw : null;
+}
+
+function getLocalizedTerritoryName(code: string | null, lang: string, fallback: string): string {
+  if (!code) return fallback;
+  try {
+    const DisplayNamesCtor = (Intl as any)?.DisplayNames;
+    if (typeof DisplayNamesCtor === "function") {
+      const label = new DisplayNamesCtor([lang || "fr", "fr"], { type: "region" }).of(code);
+      if (label && label !== code) return String(label);
+    }
+  } catch {}
+  return fallback || code;
+}
+
+function isoCodeToFlagEmoji(code: string | null): string | undefined {
+  if (!code || !/^[A-Z]{2}$/.test(code)) return undefined;
+  const base = 0x1f1e6;
+  return Array.from(code)
+    .map((char) => String.fromCodePoint(base + char.charCodeAt(0) - 65))
+    .join("");
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -294,6 +335,7 @@ Victoire
 export default function DepartementsPlay(props: any) {
   useFullscreenPlay();
   const { theme } = useTheme();
+  const { lang } = useLang();
 
   // Map is heavy vertically on mobile -> open it in a dedicated modal via a compact card.
   const [showMapModal, setShowMapModal] = React.useState(false);
@@ -473,6 +515,7 @@ export default function DepartementsPlay(props: any) {
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
   const submitLockRef = React.useRef(false);
+  const backNavigationLockedRef = React.useRef(false);
 
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
@@ -511,9 +554,21 @@ export default function DepartementsPlay(props: any) {
   }, [game.turn.selectedTerritoryId, game.map.territories]);
 
   const objectiveValueLabel = selectedTerritory ? String(selectedTerritory.value) : "—";
-  const territoryNameLabel = selectedTerritory
-    ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritory.name}`
+  const selectedTerritoryCountryCode = getTerritoryCountryCode(country, selectedTerritory?.id);
+  const selectedTerritoryDisplayName = selectedTerritory
+    ? getLocalizedTerritoryName(
+        selectedTerritoryCountryCode,
+        lang,
+        String(selectedTerritory.name || selectedTerritory.id),
+      )
     : "—";
+  const territoryNameLabel = selectedTerritory
+    ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritoryDisplayName}`
+    : "—";
+  const territoryFlagSrc = findTerritoryFlagByCountry(selectedTerritoryCountryCode);
+  const territoryFlagEmoji = territoryFlagSrc
+    ? undefined
+    : isoCodeToFlagEmoji(selectedTerritoryCountryCode);
 
   const isFrRegionsVictory = gameMode === "classic" && country === "FR" && victoryMode === "regions";
 
@@ -607,9 +662,28 @@ export default function DepartementsPlay(props: any) {
   }, [game.players, game.teams, ownedByOwner]);
 
   function goBack() {
-    if (props?.go) return props.go("departements_config", { config: effectiveCfg });
-    if (props?.setTab) return props.setTab("games");
+    // BackDot déclenche pointerdown puis click sur certains appareils. On ne navigue
+    // qu'une seule fois, sinon le second événement peut dépasser la page CONFIG.
+    if (backNavigationLockedRef.current) return;
+    backNavigationLockedRef.current = true;
+    setShowMapModal(false);
+
+    const navigate = props?.go || props?.setTab;
+    if (navigate) {
+      navigate("departements_config", {
+        config: effectiveCfg,
+        fromTerritoriesPlay: true,
+      });
+      window.setTimeout(() => {
+        backNavigationLockedRef.current = false;
+      }, 700);
+      return;
+    }
+
     window.history.back();
+    window.setTimeout(() => {
+      backNavigationLockedRef.current = false;
+    }, 700);
   }
 
   function handleMapSelect(territoryId: string) {
@@ -1182,8 +1256,12 @@ export default function DepartementsPlay(props: any) {
           valueColor="#fff"
           borderColor="rgba(255,255,255,0.12)"
           glowColor="rgba(0,0,0,0.0)"
-          valueFontSize={14}
+          valueFontSize={13}
           allowWrap
+          centerValue
+          fitValue
+          watermarkSrc={territoryFlagSrc || undefined}
+          watermarkEmoji={territoryFlagEmoji}
         />
         <KpiCard
           title="CARTE"
@@ -1279,7 +1357,14 @@ function KpiCard(props: {
   valueFontSize?: number;
   allowWrap?: boolean;
   watermarkSrc?: string;
+  watermarkEmoji?: string;
+  centerValue?: boolean;
+  fitValue?: boolean;
 }) {
+  const fittedValueFontSize = props.fitValue
+    ? Math.max(8, Math.min(props.valueFontSize ?? 13, 16 - Math.max(0, props.value.length - 10) * 0.22))
+    : (props.valueFontSize ?? 20);
+
   return (
     <div
       style={{
@@ -1294,6 +1379,8 @@ function KpiCard(props: {
         userSelect: "none",
         position: "relative",
         overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
       role={props.onClick ? "button" : undefined}
       tabIndex={props.onClick ? 0 : undefined}
@@ -1303,40 +1390,55 @@ function KpiCard(props: {
         if (e.key === "Enter" || e.key === " ") props.onClick();
       }}
     >
-      {props.watermarkSrc ? (
+      {props.watermarkSrc || props.watermarkEmoji ? (
         <div
           aria-hidden
           style={{
             position: "absolute",
             inset: 0,
             pointerEvents: "none",
-            // Watermark: subtle but visible.
-            opacity: 0.32,
+            opacity: props.watermarkSrc ? 0.32 : 0.24,
           }}
         >
-          <img
-            src={props.watermarkSrc}
-            alt=""
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-              width: "135%",
-              height: "135%",
-              objectFit: "contain",
-              filter: "saturate(1.15) contrast(1.05) drop-shadow(0 0 12px rgba(0,0,0,0.35))",
-              mixBlendMode: "normal",
-            }}
-            draggable={false}
-          />
+          {props.watermarkSrc ? (
+            <img
+              src={props.watermarkSrc}
+              alt=""
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: "135%",
+                height: "135%",
+                objectFit: "contain",
+                filter: "saturate(1.15) contrast(1.05) drop-shadow(0 0 12px rgba(0,0,0,0.35))",
+                mixBlendMode: "normal",
+              }}
+              draggable={false}
+            />
+          ) : (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "grid",
+                placeItems: "center",
+                fontSize: "clamp(38px, 10vw, 62px)",
+                lineHeight: 1,
+                filter: "saturate(1.1) drop-shadow(0 0 12px rgba(0,0,0,0.45))",
+                transform: "scale(1.12)",
+              }}
+            >
+              {props.watermarkEmoji}
+            </div>
+          )}
           <div
             style={{
               position: "absolute",
               inset: 0,
-              // Keep readability while letting the flag be seen.
               background:
-                "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.10) 55%, rgba(0,0,0,0.26) 100%)",
+                "linear-gradient(180deg, rgba(0,0,0,0.28) 0%, rgba(0,0,0,0.11) 55%, rgba(0,0,0,0.30) 100%)",
             }}
           />
         </div>
@@ -1361,17 +1463,25 @@ function KpiCard(props: {
           style={{
             position: "relative",
             zIndex: 1,
-            marginTop: 4,
-            fontSize: props.valueFontSize ?? 20,
+            marginTop: props.centerValue ? 2 : 4,
+            flex: props.centerValue ? 1 : undefined,
+            minHeight: 0,
+            fontSize: fittedValueFontSize,
             fontWeight: 950,
             color: props.valueColor,
             whiteSpace: props.allowWrap ? "normal" : "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            display: props.allowWrap ? "-webkit-box" : "block",
-            WebkitLineClamp: props.allowWrap ? 3 : undefined,
-            WebkitBoxOrient: props.allowWrap ? ("vertical" as any) : undefined,
-            lineHeight: props.allowWrap ? 1.12 : undefined,
+            overflow: props.fitValue ? "visible" : "hidden",
+            textOverflow: props.fitValue ? "clip" : "ellipsis",
+            display: props.centerValue ? "grid" : props.allowWrap ? "-webkit-box" : "block",
+            placeItems: props.centerValue ? "center" : undefined,
+            textAlign: props.centerValue ? "center" : undefined,
+            overflowWrap: props.fitValue ? "anywhere" : undefined,
+            wordBreak: props.fitValue ? "normal" : undefined,
+            WebkitLineClamp: props.allowWrap && !props.fitValue ? 3 : undefined,
+            WebkitBoxOrient: props.allowWrap && !props.fitValue ? ("vertical" as any) : undefined,
+            lineHeight: props.allowWrap ? 1.08 : undefined,
+            padding: props.centerValue ? "0 2px" : undefined,
+            textShadow: props.centerValue ? "0 1px 5px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.8)" : undefined,
           }}
         >
           {props.value}
