@@ -9,6 +9,7 @@
 // ============================================
 
 import type { TerritoriesCountry, TerritoriesMap, Territory } from "./types";
+import { getTerritoriesMapPresentationProfile } from "./mapPresentation";
 
 // FR: base departments SVG from existing project assets
 import svgFranceDepartements from "../assets/maps/france_departements.svg?raw";
@@ -213,6 +214,33 @@ export function buildTerritoriesMap(country: TerritoriesCountry, opts: BuildMapO
     }));
   } else {
     territories = extractByPathId(svg, country, effectiveOpts);
+  }
+
+  // Certains SVG tiers contiennent des paths qui n'appartiennent pas à la
+  // carte annoncée. Ils doivent être retirés du moteur, sinon ils faussent le
+  // partage initial, les objectifs et le cadrage visuel.
+  const presentation = getTerritoriesMapPresentationProfile(country);
+  const excluded = new Set((presentation.excludedTerritoryIds ?? []).map(String));
+  if (excluded.size) {
+    territories = territories.filter(
+      (territory) => !excluded.has(territory.id) && !excluded.has(territory.svgPathId),
+    );
+  }
+
+  // Après filtrage, la numérotation séquentielle reste compacte (1..N) afin
+  // qu'aucune valeur ne corresponde à un territoire supprimé.
+  if (effectiveOpts.valueStrategy === "sequential") {
+    const ordered = [...territories].sort((left, right) =>
+      String(left.id).localeCompare(String(right.id), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+    const valueById = new Map(ordered.map((territory, index) => [territory.id, index + 1]));
+    territories = territories.map((territory) => ({
+      ...territory,
+      value: valueById.get(territory.id) ?? territory.value,
+    }));
   }
 
   return { country, svgViewBox, territories };

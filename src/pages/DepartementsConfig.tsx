@@ -42,12 +42,18 @@ import {
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS, type TerritoryMap } from "../lib/territories/maps";
+import {
+  recordTerritoriesMapUsage,
+  resolvePreferredTerritoriesMapId,
+} from "../territories/mapPreferences";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { nextTeamInstanceId } from "../lib/teamSelectionInstances";
 import { bumpDartSetUsage } from "../lib/dartSetsStore";
 
 type BotLevel = "easy" | "normal" | "hard";
+
+const TERRITORY_MAP_IDS = Object.keys(TERRITORY_MAPS);
 
 export type TerritoriesConfigPayload = {
   players: number;
@@ -369,7 +375,7 @@ function InfoMini({
 }
 
 export default function DepartementsConfig(props: any) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const theme = useTheme();
 
   React.useLayoutEffect(() => {
@@ -386,7 +392,10 @@ export default function DepartementsConfig(props: any) {
   const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
 
   // ---------- state
-  const [mapId, setMapId] = React.useState<string>(() => "FR");
+  const mapTouchedRef = React.useRef(false);
+  const [mapId, setMapId] = React.useState<string>(() =>
+    resolvePreferredTerritoriesMapId(lang, TERRITORY_MAP_IDS),
+  );
 
   const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
   const [teamCount, setTeamCount] = React.useState<number>(() => {
@@ -454,7 +463,6 @@ export default function DepartementsConfig(props: any) {
       if (!raw) return;
       const parsed: any = JSON.parse(raw);
 
-      if (parsed?.mapId) setMapId(String(parsed.mapId));
       if (parsed?.teamSize) setTeamSize(parsed.teamSize);
       if (parsed?.teamCount != null) setTeamCount(Math.max(2, Math.min(4, Math.floor(Number(parsed.teamCount) || 2))));
       if (parsed?.participantMode === "players" || parsed?.participantMode === "teams") setParticipantMode(parsed.participantMode);
@@ -507,6 +515,14 @@ export default function DepartementsConfig(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Le contexte de langue est chargé après le premier rendu. Tant que le
+  // joueur n'a pas manipulé le carrousel, on recalcule donc la préférence :
+  // carte la plus utilisée, puis pays/continent correspondant à la langue.
+  React.useEffect(() => {
+    if (mapTouchedRef.current) return;
+    setMapId(resolvePreferredTerritoriesMapId(lang, TERRITORY_MAP_IDS));
+  }, [lang]);
+
   // Disable Regions victory unless FR (until we have proper region grouping for other maps)
   React.useEffect(() => {
     const isFR = String(mapId || "").toUpperCase() === "FR";
@@ -540,9 +556,13 @@ export default function DepartementsConfig(props: any) {
   // Inline info modal
   const [infoModal, setInfoModal] = React.useState<{ title: string; content: string } | null>(null);
 
-  // Map carousel (infinite loop feel)
+  // Map carousel : la carte réellement centrée est TOUJOURS la carte
+  // sélectionnée. Le joueur n'a plus besoin de cliquer une seconde fois sur
+  // le ticker déjà visible pour que cette carte soit envoyée au mode PLAY.
   const mapStripRef = React.useRef<HTMLDivElement | null>(null);
-  const mapCardWidthRef = React.useRef<number>(0);
+  const mapScrollFrameRef = React.useRef<number | null>(null);
+  const mapProgrammaticScrollRef = React.useRef(false);
+  const mapProgrammaticTimerRef = React.useRef<number | null>(null);
 
   const maps = React.useMemo(() => {
     return Object.keys(TERRITORY_MAPS)
@@ -552,47 +572,104 @@ export default function DepartementsConfig(props: any) {
   }, []);
 
   const loopMaps = React.useMemo(() => {
-    // triple list to allow scroll-wrap
+    // Trois copies permettent une navigation circulaire sans fin visible.
     return [...maps, ...maps, ...maps];
   }, [maps]);
 
-  React.useLayoutEffect(() => {
-    const el = mapStripRef.current;
-    if (!el) return;
-    // Move initial scroll to the middle copy
-    requestAnimationFrame(() => {
-      const third = el.scrollWidth / 3;
-      el.scrollLeft = third;
-      // Estimate card width (first child)
-      const first = el.querySelector<HTMLElement>("[data-map-card='1']");
-      if (first) mapCardWidthRef.current = first.getBoundingClientRect().width;
-    });
-  }, [loopMaps.length]);
-
-  const onMapStripScroll = React.useCallback(() => {
-    const el = mapStripRef.current;
-    if (!el) return;
-    const third = el.scrollWidth / 3;
-    if (el.scrollLeft < third * 0.35) el.scrollLeft += third;
-    else if (el.scrollLeft > third * 1.65) el.scrollLeft -= third;
+  const markProgrammaticMapScroll = React.useCallback((durationMs = 80) => {
+    mapProgrammaticScrollRef.current = true;
+    if (mapProgrammaticTimerRef.current != null) {
+      window.clearTimeout(mapProgrammaticTimerRef.current);
+    }
+    mapProgrammaticTimerRef.current = window.setTimeout(() => {
+      mapProgrammaticScrollRef.current = false;
+      mapProgrammaticTimerRef.current = null;
+    }, durationMs);
   }, []);
 
-  const cycleMap = React.useCallback(
-    (dir: -1 | 1) => {
-      let idx = maps.findIndex((m) => m.id === mapId);
-              if (idx < 0) idx = 0;
-              const n = maps.length || 1;
-      const nextId = maps[(idx + dir + n) % n]?.id ?? maps[0]?.id;
-      setMapId(nextId);
+  const centerMapInStrip = React.useCallback((targetMapId: string, behavior: ScrollBehavior = "auto") => {
+    const strip = mapStripRef.current;
+    if (!strip) return;
 
-      // Also scroll to keep it centered-ish
-      const el = mapStripRef.current;
-      if (!el) return;
-      const cw = mapCardWidthRef.current || 240;
-      el.scrollBy({ left: dir * (cw + 14), behavior: "smooth" });
-    },
-    [mapId]
-  );
+    const cards = Array.from(strip.querySelectorAll<HTMLElement>("[data-map-card='1']"));
+    const target = cards.find((card) =>
+      card.dataset.mapCopy === "1" && card.dataset.mapId === String(targetMapId),
+    );
+    if (!target) return;
+
+    const nextLeft = target.offsetLeft - (strip.clientWidth - target.offsetWidth) / 2;
+    markProgrammaticMapScroll(behavior === "smooth" ? 420 : 90);
+    strip.scrollTo({ left: nextLeft, behavior });
+  }, [markProgrammaticMapScroll]);
+
+  const selectMap = React.useCallback((nextMapId: string, behavior: ScrollBehavior = "smooth") => {
+    mapTouchedRef.current = true;
+    setMapId(String(nextMapId));
+    requestAnimationFrame(() => centerMapInStrip(String(nextMapId), behavior));
+  }, [centerMapInStrip]);
+
+  // À l'ouverture et après le chargement de la langue, le carrousel se place
+  // exactement sur la carte sélectionnée, dans la copie centrale.
+  React.useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => centerMapInStrip(mapId, "auto"));
+    return () => cancelAnimationFrame(frame);
+  }, [centerMapInStrip, loopMaps.length, mapId]);
+
+  React.useEffect(() => () => {
+    if (mapScrollFrameRef.current != null) cancelAnimationFrame(mapScrollFrameRef.current);
+    if (mapProgrammaticTimerRef.current != null) window.clearTimeout(mapProgrammaticTimerRef.current);
+  }, []);
+
+  const onMapStripScroll = React.useCallback(() => {
+    const strip = mapStripRef.current;
+    if (!strip) return;
+
+    const third = strip.scrollWidth / 3;
+    if (third > 0) {
+      if (strip.scrollLeft < third * 0.35) {
+        markProgrammaticMapScroll();
+        strip.scrollLeft += third;
+      } else if (strip.scrollLeft > third * 1.65) {
+        markProgrammaticMapScroll();
+        strip.scrollLeft -= third;
+      }
+    }
+
+    if (mapScrollFrameRef.current != null) cancelAnimationFrame(mapScrollFrameRef.current);
+    mapScrollFrameRef.current = requestAnimationFrame(() => {
+      const currentStrip = mapStripRef.current;
+      if (!currentStrip) return;
+
+      const stripRect = currentStrip.getBoundingClientRect();
+      const stripCenter = stripRect.left + stripRect.width / 2;
+      const cards = Array.from(currentStrip.querySelectorAll<HTMLElement>("[data-map-card='1']"));
+      let nearest: HTMLElement | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        const distance = Math.abs(rect.left + rect.width / 2 - stripCenter);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = card;
+        }
+      }
+
+      const centeredMapId = nearest?.dataset.mapId;
+      if (!centeredMapId || centeredMapId === mapId) return;
+      if (mapProgrammaticScrollRef.current) return;
+      mapTouchedRef.current = true;
+      setMapId(centeredMapId);
+    });
+  }, [mapId, markProgrammaticMapScroll]);
+
+  const cycleMap = React.useCallback((dir: -1 | 1) => {
+    let index = maps.findIndex((map) => map.id === mapId);
+    if (index < 0) index = 0;
+    const count = maps.length || 1;
+    const nextId = maps[(index + dir + count) % count]?.id ?? maps[0]?.id;
+    if (nextId) selectMap(nextId, "smooth");
+  }, [mapId, maps, selectMap]);
 
   // bots list (PRO + bots personnalisés)
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
@@ -1018,6 +1095,7 @@ export default function DepartementsConfig(props: any) {
     try {
       localStorage.setItem("dc_modecfg_departements", JSON.stringify(payload));
     } catch {}
+    try { recordTerritoriesMapUsage(mapId); } catch {}
     try { recordProfileUsageForMode("territories", selectedIds); } catch {}
     if ((props as any)?.go) return (props as any).go("departements_play", { config: payload });
     if ((props as any)?.setTab) return (props as any).setTab("departements_play", { config: payload });
@@ -1135,14 +1213,7 @@ export default function DepartementsConfig(props: any) {
                 flex: 1,
                 scrollSnapType: "x mandatory",
               }}
-              onScroll={() => {
-                const el = mapStripRef.current;
-                if (!el) return;
-                const third = el.scrollWidth / 3;
-                if (!third) return;
-                if (el.scrollLeft < third * 0.3) el.scrollLeft += third;
-                else if (el.scrollLeft > third * 1.7) el.scrollLeft -= third;
-              }}
+              onScroll={onMapStripScroll}
             >
               {loopMaps.map((m, idx) => {
                 const selected = m.id === mapId;
@@ -1151,7 +1222,9 @@ export default function DepartementsConfig(props: any) {
                 return (
                   <div
                     key={idx + "-" + m.id}
-                    data-map-card
+                    data-map-card="1"
+                    data-map-id={m.id}
+                    data-map-copy={String(Math.floor(idx / Math.max(1, maps.length)))}
                     style={{
                       scrollSnapAlign: "center",
                       cursor: "pointer",
@@ -1161,7 +1234,7 @@ export default function DepartementsConfig(props: any) {
                       paddingLeft: 12,
                       paddingRight: 12,
                     }}
-                    onClick={() => setMapId(m.id)}
+                    onClick={() => selectMap(m.id)}
                   >
                     <div
                       style={{

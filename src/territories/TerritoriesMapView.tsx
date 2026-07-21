@@ -7,6 +7,7 @@
 import React from "react";
 import type { TerritoriesCountry, TerritoriesMap } from "./types";
 import { getTerritoryIdFromSvgElement, getOverlaySvgForCountry, getBaseSvgForCountry } from "./map";
+import { getTerritoriesMapPresentationProfile } from "./mapPresentation";
 
 type OwnerColorIndex = Record<string, string>;
 type Point = { x: number; y: number };
@@ -199,15 +200,35 @@ function injectStylesAndFills(params: {
     return svg.outerHTML;
   }
 
+  const presentation = getTerritoriesMapPresentationProfile(country);
+  const territoryByPathId = new Map(map.territories.map((territory) => [territory.svgPathId, territory]));
   const pathById = new Map<string, SVGPathElement>();
+
   for (const path of Array.from(svg.querySelectorAll("path[id]")) as SVGPathElement[]) {
-    if (path.id) pathById.set(path.id, path);
+    if (!path.id) continue;
+    pathById.set(path.id, path);
+
+    // Un path absent du moteur ne doit pas rester visible : il fausserait le
+    // cadrage et pourrait donner l'impression d'être un territoire jouable.
+    if (!territoryByPathId.has(path.id)) {
+      path.style.setProperty("display", "none", "important");
+      path.style.setProperty("pointer-events", "none", "important");
+      path.setAttribute("aria-hidden", "true");
+    }
   }
 
   for (const territory of map.territories) {
     const path = pathById.get(territory.svgPathId);
     if (!path) continue;
     path.setAttribute("data-territory-id", territory.id);
+
+    const transform = presentation.pathTransforms?.[territory.id]
+      ?? presentation.pathTransforms?.[territory.svgPathId];
+    if (transform) {
+      const existing = path.getAttribute("transform");
+      path.setAttribute("transform", [existing, transform].filter(Boolean).join(" "));
+    }
+
     applyPathVisual(path, fillByTerritoryId[territory.id], selectedTerritoryId === territory.id);
   }
 
@@ -383,7 +404,9 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     const svg = host?.querySelector("svg") as SVGSVGElement | null;
     if (!svg) return;
 
+    const presentation = getTerritoriesMapPresentationProfile(country);
     const territoryIds = new Set(map.territories.map((territory) => territory.id));
+    const fitExcludedIds = new Set((presentation.fitExcludedTerritoryIds ?? []).map(String));
     const candidatePaths = Array.from(svg.querySelectorAll("path")) as SVGPathElement[];
 
     let minX = Number.POSITIVE_INFINITY;
@@ -394,7 +417,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
 
     for (const path of candidatePaths) {
       const territoryId = path.getAttribute("data-territory-id") || getTerritoryIdFromSvgElement(country, path);
-      if (!territoryId || !territoryIds.has(territoryId)) continue;
+      if (!territoryId || !territoryIds.has(territoryId) || fitExcludedIds.has(territoryId)) continue;
       try {
         const box = path.getBBox();
         if (!Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) continue;
