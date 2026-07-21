@@ -70,6 +70,18 @@ import {
   type StoragePlanId,
 } from "../lib/storagePlans";
 import {
+  chooseExternalBackupFile,
+  downloadExternalBackupFallback,
+  forgetExternalBackupFile,
+  getExternalBackupStatus,
+  writeExternalBackupNow,
+  type ExternalBackupStatus,
+} from "../lib/externalBackupTarget";
+import {
+  getSupabaseAuthFailoverState,
+  type SupabaseAuthFailoverState,
+} from "../lib/supabaseAuthFailover";
+import {
   createStorageCheckoutSession,
   getAccountStorageUsage,
   deleteCloudObjectRemote,
@@ -1273,6 +1285,9 @@ function AccountPages({
 
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
+  const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({ supported: false, configured: false, permission: "unknown" }));
+  const [externalBackupBusy, setExternalBackupBusy] = React.useState<null | "choose" | "save" | "download" | "forget">(null);
+  const [supabaseFailoverState, setSupabaseFailoverState] = React.useState<SupabaseAuthFailoverState | null>(() => getSupabaseAuthFailoverState());
   const [storageEstimate, setStorageEstimate] = React.useState<{ usage: number; quota: number; free: number }>(() => ({ usage: 0, quota: 0, free: 0 }));
   const [cloudUsage, setCloudUsage] = React.useState<AccountStorageUsage | null>(null);
   const [cloudUsageLoading, setCloudUsageLoading] = React.useState(false);
@@ -1310,19 +1325,37 @@ function AccountPages({
   React.useEffect(() => {
     let alive = true;
     const refresh = async () => {
-      const est = await estimateBrowserStorage();
-      if (alive) setStorageEstimate(est);
+      const [estimate, external] = await Promise.all([
+        estimateBrowserStorage(),
+        getExternalBackupStatus(),
+      ]);
+      if (!alive) return;
+      setStorageEstimate(estimate);
+      setExternalBackupStatus(external);
+      setSupabaseFailoverState(getSupabaseAuthFailoverState());
     };
-    refresh();
+    void refresh();
     const onStoragePrefs = () => {
       setStoragePrefs(loadStoragePrefs());
-      refresh();
+      void refresh();
+    };
+    const onExternalStatus = (event: Event) => {
+      const detail = (event as CustomEvent<ExternalBackupStatus>).detail;
+      if (detail) setExternalBackupStatus(detail);
+    };
+    const onFailoverStatus = (event: Event) => {
+      const detail = (event as CustomEvent<SupabaseAuthFailoverState>).detail;
+      setSupabaseFailoverState(detail || getSupabaseAuthFailoverState());
     };
     window.addEventListener("dc-storage-prefs-changed", onStoragePrefs as any);
+    window.addEventListener("dc-external-backup-status", onExternalStatus as EventListener);
+    window.addEventListener("dc-supabase-failover-status", onFailoverStatus as EventListener);
     window.addEventListener("storage", onStoragePrefs as any);
     return () => {
       alive = false;
       window.removeEventListener("dc-storage-prefs-changed", onStoragePrefs as any);
+      window.removeEventListener("dc-external-backup-status", onExternalStatus as EventListener);
+      window.removeEventListener("dc-supabase-failover-status", onFailoverStatus as EventListener);
       window.removeEventListener("storage", onStoragePrefs as any);
     };
   }, []);
@@ -1410,6 +1443,11 @@ function AccountPages({
       const res = await saveAccountStoragePreferences({
         planId: saved.selectedCloudPlan,
         storageDestination: saved.selectedDestination,
+        metadata: {
+          keepLocalSafetyCopy: saved.keepLocalSafetyCopy,
+          supabaseUsage: "auth_profile_only",
+          heavyDataProvider: saved.selectedDestination === "cloud_r2" ? "cloudflare_r2" : saved.selectedDestination,
+        },
       });
       await refreshCloudUsage();
       if (res?.requiresPayment) {
@@ -1425,6 +1463,27 @@ function AccountPages({
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
     void syncStoragePrefsToBackend(saved);
+  }
+
+  async function runExternalBackupAction(action: "choose" | "save" | "download" | "forget") {
+    setExternalBackupBusy(action);
+    setError(null);
+    try {
+      let next: ExternalBackupStatus;
+      if (action === "choose") next = await chooseExternalBackupFile();
+      else if (action === "save") next = await writeExternalBackupNow("settings-manual", { requestPermission: true });
+      else if (action === "forget") next = await forgetExternalBackupFile();
+      else next = await downloadExternalBackupFallback("settings-download");
+      setExternalBackupStatus(next);
+      if (next.lastError) setError(next.lastError);
+      else if (action === "forget") setMessage("Emplacement externe oublié.");
+      else setMessage(action === "choose" ? "Emplacement choisi et première sauvegarde créée." : "Sauvegarde externe créée.");
+    } catch (e: any) {
+      const cancelled = String(e?.name || "") === "AbortError";
+      if (!cancelled) setError(e?.message || "Opération de sauvegarde externe impossible.");
+    } finally {
+      setExternalBackupBusy(null);
+    }
   }
 
   async function refreshSupabaseStatus(showFeedback = true) {
@@ -2014,9 +2073,9 @@ function AccountPages({
           </h2>
 
           <p style={{ margin: 0, marginBottom: 12, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
-            Le gratuit sert uniquement à tester le cloud. Le stockage lourd doit être payé par l'utilisateur :
-            historiques, stats, compétitions, avatars, sauvegardes et médias partiront vers Cloudflare R2 quand le mode cloud sera branché.
-            Ton compte fondateur reste prévu à part sur NAS.
+            Chaque compte choisit sa destination : mémoire locale gratuite, fichier placé sur ordinateur/HDD/USB/NAS monté,
+            cloud Cloudflare R2, ou NAS fondateur. Supabase reste limité à l’authentification et aux données légères du profil ;
+            les parties, historiques, statistiques, sauvegardes et médias ne sont jamais enregistrés dans Supabase.
           </p>
 
           <div style={{ ...softCard, marginBottom: 12 }}>
@@ -2039,6 +2098,33 @@ function AccountPages({
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
               OPFS : {storageCapabilities.opfs ? "OK" : "non dispo"} · Persistance : {storageCapabilities.persistentStorage ? "OK" : "non dispo"} · Export fichier : {storageCapabilities.filePicker ? "sélecteur avancé" : "fallback téléchargement"}
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+              Redondance et connexion de secours
+            </div>
+            <div style={{ marginTop: 7, display: "grid", gap: 8 }}>
+              <div style={{ borderRadius: 12, border: "1px solid rgba(98,210,111,0.35)", background: "rgba(98,210,111,0.07)", padding: 10 }}>
+                <div style={{ fontWeight: 950, color: "#9cffaa" }}>Copie locale de sécurité : ACTIVE</div>
+                <div style={{ marginTop: 3, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.35 }}>
+                  Les données restent d'abord dans IndexedDB sur cet appareil, même quand une destination distante est choisie.
+                </div>
+              </div>
+
+
+              <div style={{ borderRadius: 12, border: `1px solid ${supabaseFailoverState?.status === "ready" ? "rgba(98,210,111,0.45)" : "rgba(255,204,102,0.4)"}`, background: "rgba(255,255,255,0.03)", padding: 10 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <b>Connexion admin Supabase</b>
+                  <span style={{ marginLeft: "auto", color: supabaseFailoverState?.status === "ready" ? "#9cffaa" : "#ffdd88", fontSize: 10.5, fontWeight: 950 }}>
+                    {supabaseFailoverState?.status === "ready" ? "PRÊTE" : supabaseFailoverState?.status === "pending_confirmation" ? "EMAIL À CONFIRMER" : supabaseFailoverState?.status === "error" ? "À VÉRIFIER" : "CRÉÉE AU PROCHAIN LOGIN NAS"}
+                  </span>
+                </div>
+                <div style={{ marginTop: 3, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.35 }}>
+                  {supabaseFailoverState?.message || "La copie d’authentification est créée automatiquement après une connexion NAS réussie. Aucune partie, statistique ou sauvegarde n’est envoyée dans Supabase."}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2513,19 +2599,77 @@ function AccountPages({
                 );
               })}
 
-              <div
+              <button
+                type="button"
+                disabled={!isSignedIn}
+                onClick={() => persistStoragePrefs(
+                  {
+                    selectedDestination: "founder_nas",
+                    keepLocalSafetyCopy: true,
+                  },
+                  "NAS fondateur sélectionné avec copie locale et authentification Supabase de secours."
+                )}
                 style={{
+                  textAlign: "left",
                   borderRadius: 14,
                   padding: 12,
-                  border: `1px dashed ${theme.primary}77`,
-                  background: "rgba(255,255,255,0.025)",
+                  border: storagePrefs.selectedDestination === "founder_nas" ? `1px solid ${theme.primary}` : `1px dashed ${theme.primary}77`,
+                  background: storagePrefs.selectedDestination === "founder_nas" ? `${theme.primary}16` : "rgba(255,255,255,0.025)",
+                  color: theme.text,
+                  cursor: isSignedIn ? "pointer" : "not-allowed",
+                  opacity: isSignedIn ? 1 : 0.65,
                 }}
               >
-                <div style={{ fontWeight: 950, color: theme.primary }}>NAS fondateur</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <b style={{ color: theme.primary }}>NAS fondateur + connexion Supabase de secours</b>
+                  {storagePrefs.selectedDestination === "founder_nas" && <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 950, color: "#9cffaa" }}>ACTIF</span>}
+                </div>
                 <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
-                  Réservé à ton compte admin : tu conserves ton NAS pour ne pas payer ton propre usage. Cette option ne sera pas proposée aux utilisateurs lambda.
+                  Réservé au compte admin : le NAS reste la destination principale et IndexedDB garde une copie locale. Supabase ne reçoit que l’authentification et le profil léger, jamais les parties ni les sauvegardes.
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ ...softCard, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                  Fichier externe — ordinateur, HDD, USB ou NAS monté
+                </div>
+                <div style={{ marginTop: 4, fontWeight: 950, color: externalBackupStatus.configured ? "#9cffaa" : theme.primary }}>
+                  {externalBackupStatus.configured ? externalBackupStatus.fileName || "Fichier configuré" : "Aucun fichier choisi"}
                 </div>
               </div>
+              <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 950, color: externalBackupStatus.permission === "granted" ? "#9cffaa" : "#ffdd88" }}>
+                {externalBackupStatus.permission === "granted" ? "ÉCRITURE AUTORISÉE" : externalBackupStatus.supported ? "AUTORISATION REQUISE" : "TÉLÉCHARGEMENT MANUEL"}
+              </span>
+            </div>
+            <div style={{ marginTop: 7, fontSize: 10.8, color: theme.textSoft, lineHeight: 1.4 }}>
+              Le navigateur écrit dans le fichier que tu choisis. Il peut se trouver sur le disque du PC, un HDD USB ou un partage NAS déjà monté comme lecteur dans le système.
+              Une copie automatique est tentée après les modifications lorsque cette destination est active.
+            </div>
+            {externalBackupStatus.lastSavedAt && (
+              <div style={{ marginTop: 6, fontSize: 10.5, color: "#9cffaa" }}>
+                Dernière sauvegarde : {new Date(externalBackupStatus.lastSavedAt).toLocaleString("fr-FR")} · {formatStorageBytes(externalBackupStatus.lastBytes || 0)}
+              </div>
+            )}
+            {externalBackupStatus.lastError && <div style={{ marginTop: 6, fontSize: 10.5, color: "#ff9b9b" }}>{externalBackupStatus.lastError}</div>}
+            <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
+              <button type="button" disabled={!!externalBackupBusy} onClick={() => void runExternalBackupAction("choose")} style={{ borderRadius: 999, border: `1px solid ${theme.primary}88`, background: `${theme.primary}20`, color: theme.primary, padding: "8px 10px", fontSize: 10.8, fontWeight: 950, cursor: externalBackupBusy ? "wait" : "pointer" }}>
+                {externalBackupBusy === "choose" ? "Ouverture…" : externalBackupStatus.configured ? "Changer de fichier" : "Choisir un fichier"}
+              </button>
+              <button type="button" disabled={!!externalBackupBusy || !externalBackupStatus.configured} onClick={() => void runExternalBackupAction("save")} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,0.055)", color: theme.text, padding: "8px 10px", fontSize: 10.8, fontWeight: 950, cursor: externalBackupBusy || !externalBackupStatus.configured ? "not-allowed" : "pointer", opacity: !externalBackupStatus.configured ? 0.55 : 1 }}>
+                {externalBackupBusy === "save" ? "Sauvegarde…" : "Sauvegarder maintenant"}
+              </button>
+              <button type="button" disabled={!!externalBackupBusy} onClick={() => void runExternalBackupAction("download")} style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,0.055)", color: theme.text, padding: "8px 10px", fontSize: 10.8, fontWeight: 950, cursor: externalBackupBusy ? "wait" : "pointer" }}>
+                {externalBackupBusy === "download" ? "Export…" : "Télécharger une copie"}
+              </button>
+              {externalBackupStatus.configured && (
+                <button type="button" disabled={!!externalBackupBusy} onClick={() => void runExternalBackupAction("forget")} style={{ borderRadius: 999, border: "1px solid rgba(255,107,107,0.4)", background: "rgba(255,107,107,0.07)", color: "#ff9b9b", padding: "8px 10px", fontSize: 10.8, fontWeight: 950, cursor: externalBackupBusy ? "wait" : "pointer" }}>
+                  Oublier
+                </button>
+              )}
             </div>
           </div>
 

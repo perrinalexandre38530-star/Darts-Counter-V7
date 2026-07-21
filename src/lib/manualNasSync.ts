@@ -13,6 +13,23 @@ async function getOnlineApi() {
   return mod.onlineApi;
 }
 
+async function assertNasDatabaseReadyForBackup(): Promise<void> {
+  try {
+    const { apiGet } = await import("./apiClient");
+    const health: any = await apiGet("/health/db");
+    if (!health?.ok || health?.dbReady === false) {
+      throw new Error(health?.message || health?.error || "PostgreSQL indisponible");
+    }
+  } catch (error: any) {
+    const raw = String(error?.message || error || "").trim();
+    const dbHint = /timeout exceeded when trying to connect|econnrefused|etimedout|enotfound|postgres|database|base de données/i.test(raw);
+    if (dbHint) {
+      throw new Error("Sauvegarde NAS interrompue avant l’envoi : PostgreSQL est inaccessible. Vérifie PGHOST/PGPORT et le conteneur PostgreSQL, puis redémarre l’API NAS. La sauvegarde locale de sécurité reste disponible.");
+    }
+    throw new Error(`Sauvegarde NAS interrompue : contrôle de la base impossible. ${raw || "Backend NAS indisponible."}`);
+  }
+}
+
 const DIRTY_KEY = "dc_nas_sync_dirty_v1";
 const DIRTY_REASON_KEY = "dc_nas_sync_dirty_reason_v1";
 const LAST_PUSH_KEY = "dc_nas_sync_last_push_v1";
@@ -473,6 +490,10 @@ export async function pushNasAccountSnapshot() {
   const startedAt = Date.now();
   await flushRuntimeStoreBeforeNasPush();
   await waitForRuntimeFlushToSettle();
+
+  // Préflight critique : ne pas parcourir et uploader tous les médias si l’API
+  // répond mais que PostgreSQL est hors ligne ou pointe vers une mauvaise IP.
+  await assertNasDatabaseReadyForBackup();
 
   const persistedStore: any = await loadStore().catch(() => null);
   const runtimeStore: any = getRuntimeStoreSnapshot();

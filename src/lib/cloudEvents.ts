@@ -10,6 +10,9 @@ export function emitCloudChange(reason: string) {
     const why = String(reason || "change");
     markNasSyncDirty(why);
     pushNasSyncDirtyReason(why);
+    void import("./externalBackupTarget")
+      .then((mod) => mod.queueExternalBackup(why))
+      .catch(() => undefined);
   } catch {}
 }
 

@@ -4,7 +4,7 @@ let __authBootstrapPromise: Promise<void> | null = null;
 // src/lib/onlineApi.ts
 // API Mode Online (V7 STABLE -> A+B SPECTATOR READY)
 // - Auth / Profil → Supabase (table: profiles)
-// - Snapshot cloud du store → Supabase (table: user_store)
+// - Données lourdes / sauvegardes → Cloudflare R2 via le backend dédié
 // - Salons X01 (lobbies) → Supabase (table: online_lobbies)
 // - Matchs online live (state_json) → Supabase (table: online_matches)
 //
@@ -21,6 +21,13 @@ let __authBootstrapPromise: Promise<void> | null = null;
 
 import { supabase, __SUPABASE_ENV__ } from "./supabaseClient";
 import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
+import {
+  ensureSupabaseAuthBackup,
+  getLiveSupabaseSession,
+  isSupabaseFailoverSession,
+  rememberCanonicalUserMapping,
+  resolveCanonicalUserId,
+} from "./supabaseAuthFailover";
 import {
   nasDeleteAccount,
   nasGetProfile,
@@ -110,6 +117,9 @@ export type AuthSession = {
   userId: string | null;
   user: UserAuth;
   profile: OnlineProfile | null;
+  authProvider?: "nas" | "supabase" | "supabase_failover";
+  degradedMode?: boolean;
+  supabaseUserId?: string | null;
 };
 
 export type SignupPayload = {
@@ -344,6 +354,10 @@ function saveAuthToLS(session: AuthSession | null) {
   } catch {}
 }
 
+function shouldUseNasForCurrentSession(): boolean {
+  return useNasOnlineBackend() && !isSupabaseFailoverSession(loadAuthFromLS());
+}
+
 function safeUpper(code: string) {
   return String(code || "").trim().toUpperCase();
 }
@@ -500,7 +514,10 @@ function warnNasOnce(label: string, extra?: any) {
 }
 
 function isValidNasSession(session: AuthSession | null | undefined): session is AuthSession {
-  return !!session && !!String(session?.token || "").trim() && !!String(session?.user?.id || session?.userId || "").trim();
+  return !!session
+    && !isSupabaseFailoverSession(session)
+    && !!String(session?.token || "").trim()
+    && !!String(session?.user?.id || session?.userId || "").trim();
 }
 
 function refreshNasSessionInBackground(reason: string) {
@@ -679,7 +696,7 @@ async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, prof
   if (!accessToken) return null;
 
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 12000) : null;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 5000) : null;
   try {
     const res = await fetch(`${getApiUrl()}/auth/supabase/bridge`, {
       method: "POST",
@@ -737,6 +754,8 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
       createdAt: Number(user?.createdAt || (user?.created_at ? Date.parse(user.created_at) : Date.now())),
     },
     profile,
+    authProvider: "nas",
+    degradedMode: false,
   };
   if (!session.token || !session.user?.id) {
     throw new Error("Réponse bridge NAS/R2 invalide : session absente.");
@@ -783,8 +802,22 @@ async function tryNasLoginWithoutInvitation(payload: LoginPayload): Promise<Auth
   try {
     const session = await nasLogin({ email: payload.email, password: payload.password, nickname: payload.nickname });
     if (session?.token) {
+      session.authProvider = "nas";
+      session.degradedMode = false;
       saveAuthToLS(session);
       markAuthReady(true);
+
+      const canonicalUserId = String(session.user?.id || session.userId || "").trim();
+      rememberCanonicalUserMapping({ email: payload.email, canonicalUserId });
+      // Ne bloque jamais la connexion NAS : la copie Supabase est créée/vérifiée en arrière-plan.
+      if (__SUPABASE_ENV__.hasEnv && canonicalUserId && payload.email && payload.password) {
+        void ensureSupabaseAuthBackup({
+          email: payload.email,
+          password: payload.password,
+          nickname: session.user?.nickname || payload.nickname,
+          canonicalUserId,
+        }).catch((error) => console.warn("[onlineApi] Supabase auth backup failed", error));
+      }
       return session;
     }
   } catch (error: any) {
@@ -801,7 +834,7 @@ async function tryNasLoginWithoutInvitation(payload: LoginPayload): Promise<Auth
   return null;
 }
 
-async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
+async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }): Promise<AuthSession | null> {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
     console.warn("[onlineApi] getSession error", sessionError);
@@ -814,39 +847,66 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 
   const meta = (user.user_metadata || {}) as any;
   const nickname = meta?.nickname || user.email || "Player";
+  const supabaseUserId = String(user.id || "");
 
-  const userAuth: UserAuth = {
-    id: user.id,
+  const supabaseUserAuth: UserAuth = {
+    id: supabaseUserId,
     email: user.email ?? undefined,
     nickname,
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  const profile = await getOrCreateProfile(user.id, nickname);
-
-  const authSession: AuthSession = {
-    token: session?.access_token ?? "",
-    refreshToken: (session as any)?.refresh_token ?? "",
-    expiresAt: (session as any)?.expires_at ?? null,
-    userId: user.id,
-    user: userAuth,
-    profile,
-  };
+  const profile = await getOrCreateProfile(supabaseUserId, nickname);
 
   try {
-    const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile);
+    const bridged = await bridgeSupabaseSessionToNas(session, supabaseUserAuth, profile);
     if (bridged?.token) {
+      bridged.authProvider = "nas";
+      bridged.degradedMode = false;
+      bridged.supabaseUserId = supabaseUserId;
+      rememberCanonicalUserMapping({
+        email: user.email,
+        canonicalUserId: bridged.user?.id || bridged.userId,
+        supabaseUserId,
+      });
       saveAuthToLS(bridged);
       return bridged;
     }
   } catch (bridgeError) {
     console.warn("[onlineApi] Supabase -> NAS/R2 bridge failed", bridgeError);
-    if (isNasDataSyncEnabled()) {
+    if (isNasDataSyncEnabled() && !opts?.allowNasFailure) {
       throw bridgeError instanceof Error ? bridgeError : new Error(String(bridgeError || "Bridge Supabase/NAS impossible."));
     }
   }
 
+  const canonicalUserId = resolveCanonicalUserId(user) || supabaseUserId;
+  rememberCanonicalUserMapping({ email: user.email, canonicalUserId, supabaseUserId });
+
+  const authSession: AuthSession = {
+    token: session?.access_token ?? "",
+    refreshToken: (session as any)?.refresh_token ?? "",
+    expiresAt: (session as any)?.expires_at ?? null,
+    userId: canonicalUserId,
+    user: {
+      ...supabaseUserAuth,
+      id: canonicalUserId,
+    },
+    profile,
+    authProvider: isNasDataSyncEnabled() ? "supabase_failover" : "supabase",
+    degradedMode: isNasDataSyncEnabled(),
+    supabaseUserId,
+  };
+
+  // En secours, ne jamais recopier le JWT Supabase dans la clé JWT NAS.
+  if (authSession.degradedMode) {
+    try {
+      localStorage.removeItem(NAS_TOKEN_KEY);
+      localStorage.removeItem(NAS_REFRESH_KEY);
+    } catch {}
+  }
+
   saveAuthToLS(authSession);
+  markAuthReady(!!authSession?.token);
   return authSession;
 }
 
@@ -925,61 +985,71 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
   }
 
   let nasError: any = null;
-  let publicError: any = null;
   let directError: any = null;
+  let publicError: any = null;
 
-  // Connexion unifiée V8 : on teste d'abord la session NAS interne.
-  // Les comptes fondateur/invités NAS doivent pouvoir se reconnecter ici sans code.
-  // Les comptes publics Supabase bridgés ont souvent un mot de passe NAS aléatoire :
-  // dans ce cas le 401 est normal et on bascule ensuite vers Supabase.
+  // 1) NAS prioritaire pour les comptes privés/fondateur, avec timeout court.
   try {
     const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
     if (nasSession) return nasSession;
   } catch (error: any) {
     nasError = error;
-    console.warn("[onlineApi] NAS-first login failed -> trying public Supabase bridge", error);
+    console.warn("[onlineApi] NAS-first login failed -> trying Supabase failover", error);
   }
 
-  // Connexion stabilisée : le backend vérifie Supabase côté serveur et renvoie
-  // directement la session interne utilisée par toute l'app.
+  // 2) Secours direct Supabase AVANT le backend NAS : c'est ce qui garantit
+  // que le compte admin reste connectable lorsque le NAS ou son tunnel est coupé.
+  if (__SUPABASE_ENV__.hasEnv) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
+      const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+      if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
+      markAuthReady(true);
+      return session;
+    } catch (error: any) {
+      directError = error;
+      console.warn("[onlineApi] direct Supabase login failed -> trying server bridge", error);
+    }
+  }
+
+  // 3) Compatibilité anciens comptes publics : bridge serveur si l'accès direct
+  // Supabase est filtré par le navigateur/réseau mais que le backend reste joignable.
   try {
     return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
   } catch (error: any) {
     publicError = error;
-    console.warn("[onlineApi] public backend login failed -> trying direct Supabase fallback", error);
-  }
-
-  if (__SUPABASE_ENV__.hasEnv) {
-    // Dernier secours seulement : ancien compte Supabase direct non bridgé.
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
-      const session = await buildAuthSessionFromSupabase();
-      if (!session) throw new Error("Impossible de récupérer la session publique après la connexion.");
-      markAuthReady(!!session?.token);
-      return session;
-    } catch (error: any) {
-      directError = error;
-      console.warn("[onlineApi] public direct Supabase fallback failed", error);
-    }
+    console.warn("[onlineApi] public backend login failed", error);
   }
 
   const nasMsg = String(nasError?.message || "");
-  const publicMsg = String(publicError?.message || "");
   const directMsg = String(directError?.message || "");
-  if (/Internal Server Error|Erreur login|Backend NAS|failed \(500\)|500/i.test(nasMsg)) {
-    throw new Error(`Connexion NAS impossible : ${nasMsg}`);
-  }
-  if (publicError && !/Invalid login credentials/i.test(publicMsg)) {
-    throw publicError instanceof Error ? publicError : new Error(publicMsg);
-  }
-  if (directError && !/Invalid login credentials/i.test(directMsg)) {
+  const publicMsg = String(publicError?.message || "");
+
+  if (directError && !/Invalid login credentials|Identifiants invalides/i.test(directMsg)) {
     throw directError instanceof Error ? directError : new Error(directMsg);
   }
-  if (nasError && !/Compte introuvable|Mot de passe invalide|401|Invalid login credentials/i.test(nasMsg)) {
+  if (publicError && !/Invalid login credentials|Identifiants invalides/i.test(publicMsg)) {
+    throw publicError instanceof Error ? publicError : new Error(publicMsg);
+  }
+  if (nasError && !/Compte introuvable|Mot de passe invalide|401|Invalid login credentials|Backend NAS|timeout|injoignable/i.test(nasMsg)) {
     throw nasError instanceof Error ? nasError : new Error(nasMsg);
   }
   throw new Error("Identifiants invalides ou compte introuvable. Vérifie l’email et le mot de passe.");
+}
+
+async function ensureNasAccountFailoverCopy(session: AuthSession, payload: LoginPayload | SignupPayload): Promise<void> {
+  const email = String(payload.email || session.user?.email || "").trim();
+  const password = String(payload.password || "").trim();
+  const canonicalUserId = String(session.user?.id || session.userId || "").trim();
+  if (!__SUPABASE_ENV__.hasEnv || !email || !password || !canonicalUserId) return;
+  rememberCanonicalUserMapping({ email, canonicalUserId });
+  await ensureSupabaseAuthBackup({
+    email,
+    password,
+    nickname: session.user?.nickname || payload.nickname,
+    canonicalUserId,
+  });
 }
 
 async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {
@@ -987,7 +1057,10 @@ async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
   try { await supabase.auth.signOut(); } catch {}
   const s = await nasSignup({ ...payload, invitationCode });
+  s.authProvider = "nas";
+  s.degradedMode = false;
   saveAuthToLS(s);
+  void ensureNasAccountFailoverCopy(s, payload).catch((error) => console.warn("[onlineApi] Supabase auth backup failed", error));
   return s;
 }
 
@@ -996,7 +1069,10 @@ async function loginWithInvitation(payload: LoginPayload): Promise<AuthSession> 
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
   try { await supabase.auth.signOut(); } catch {}
   const s = await nasLogin({ ...payload, invitationCode });
+  s.authProvider = "nas";
+  s.degradedMode = false;
   saveAuthToLS(s);
+  void ensureNasAccountFailoverCopy(s, payload).catch((error) => console.warn("[onlineApi] Supabase auth backup failed", error));
   return s;
 }
 
@@ -1085,6 +1161,14 @@ async function restoreSession(): Promise<AuthSession | null> {
     return cachedNas;
   }
 
+  if (isSupabaseFailoverSession(cachedNas)) {
+    const liveSupabase = await getLiveSupabaseSession();
+    if (liveSupabase?.user) {
+      markAuthReady(true);
+      return cachedNas;
+    }
+  }
+
   if (isNasProviderEnabled()) {
     return null;
   }
@@ -1092,7 +1176,7 @@ async function restoreSession(): Promise<AuthSession | null> {
   try {
     await maybeConsumeAuthRedirectFromHash();
 
-    const live = await buildAuthSessionFromSupabase();
+    const live = await buildAuthSessionFromSupabase({ allowNasFailure: true });
     if (live) {
       try {
         importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
@@ -1107,7 +1191,7 @@ async function restoreSession(): Promise<AuthSession | null> {
           access_token: cached.token,
           refresh_token: cached.refreshToken,
         });
-        const retry = await buildAuthSessionFromSupabase();
+        const retry = await buildAuthSessionFromSupabase({ allowNasFailure: true });
         if (retry) {
           try {
             importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
@@ -1148,6 +1232,12 @@ async function logout(): Promise<void> {
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
+  const cached = loadAuthFromLS();
+  if (isSupabaseFailoverSession(cached)) {
+    const liveSupabase = await getLiveSupabaseSession();
+    if (liveSupabase?.user) return cached;
+  }
+
   if (useNasOnlineBackend()) {
     try {
       return await ensureNasSession();
@@ -1161,7 +1251,7 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasGetProfile();
   }
@@ -1293,7 +1383,7 @@ async function deleteAccount(): Promise<void> {
 // Profil
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasUpdateProfile(patch);
   }
@@ -1340,7 +1430,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const profile = mapProfile(res.data as any);
 
   const current = loadAuthFromLS();
-  if (current?.user?.id === userId) {
+  if (current?.user?.id === userId || current?.supabaseUserId === userId) {
     saveAuthToLS({ ...current, profile });
   }
 
@@ -1355,7 +1445,7 @@ async function uploadAvatarImage(opts: {
   folder?: string;
   updateProfile?: boolean;
 }): Promise<{ publicUrl: string; path: string }> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasUploadAvatarImage(opts);
   }
@@ -1390,182 +1480,83 @@ async function uploadAvatarImage(opts: {
 }
 
 // ============================================================
-// Cloud store snapshot (user_store) — store-direct
+// Snapshot de compte — NAS uniquement
+// Supabase reste strictement limité à l’authentification et au profil léger.
+// Les données lourdes sont routées vers Cloudflare R2 par cloudStorageApi /
+// matchAutoBackup, ou vers un fichier/local/NAS selon la destination choisie.
 // ============================================================
-async function pullStoreSnapshot(): Promise<{
+type StoreSnapshotPullResult = {
   status: "ok" | "not_found" | "error";
   payload?: any;
   updatedAt?: string | null;
   version?: number | null;
   error?: any;
-}> {
-  if (isNasDataSyncEnabled()) {
-    try {
-      await ensureNasSession();
-      return await nasPullStoreSnapshot();
-    } catch (e) {
-      console.warn("[onlineApi] nasPullStoreSnapshot failed", e);
-      return { status: "error", error: e };
-    }
+  provider?: "nas";
+  degradedMode?: boolean;
+  skipped?: boolean;
+  reason?: string;
+};
+
+async function pullStoreSnapshot(): Promise<StoreSnapshotPullResult> {
+  const cached = loadAuthFromLS();
+  const failoverSession = isSupabaseFailoverSession(cached);
+
+  // En session Supabase de secours, aucune partie ni sauvegarde n’est lue
+  // depuis Supabase. L’app continue avec sa copie locale et, si configuré,
+  // les sauvegardes R2/fichier restent gérées par leurs modules dédiés.
+  if (failoverSession) {
+    return {
+      status: "not_found",
+      payload: null,
+      updatedAt: null,
+      version: null,
+      provider: "nas",
+      degradedMode: true,
+      skipped: true,
+      reason: "supabase_auth_only",
+    };
+  }
+
+  if (!isNasDataSyncEnabled()) {
+    return {
+      status: "not_found",
+      payload: null,
+      updatedAt: null,
+      version: null,
+      provider: "nas",
+      skipped: true,
+      reason: "nas_sync_disabled",
+    };
   }
 
   try {
-    const { user } = await ensureAuthedUser();
-
-    const selectCols = "payload,data,store,updated_at,version";
-    let data: any = null;
-    let error: any = null;
-
-    {
-      const r1 = await supabase
-        .from("user_store")
-        .select(selectCols)
-        .eq("user_id", user.id)
-        .eq("store", CLOUD_STORE_KEY)
-        .order("updated_at", { ascending: false })
-        .limit(1);
-
-      data = (r1.data as any)?.[0] ?? null;
-      error = r1.error as any;
-
-      if (!error && !data) {
-        const r2 = await supabase
-          .from("user_store")
-          .select(selectCols)
-          .eq("user_id", user.id)
-          .order("updated_at", { ascending: false })
-          .limit(1);
-        data = (r2.data as any)?.[0] ?? null;
-        error = r2.error as any;
-      }
-    }
-
-    if (error) {
-      const msg = String((error as any)?.message || error);
-      const lower = msg.toLowerCase();
-      const looksMissingUserId =
-        lower.includes("could not find the 'user_id' column") ||
-        (lower.includes("column") && lower.includes("user_id") && lower.includes("does not exist")) ||
-        String((error as any)?.code || "") === "PGRST204";
-
-      if (looksMissingUserId) {
-        const r2 = await supabase.from("user_store").select(selectCols).eq("owner_user_id", user.id).maybeSingle();
-        data = r2.data as any;
-        error = r2.error as any;
-      }
-    }
-
-    if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
-    if (error) return { status: "error", error };
-
-    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? null;
-    return {
-      status: "ok",
-      payload,
-      updatedAt: (data as any)?.updated_at ?? null,
-      version: (data as any)?.version ?? null,
-    };
-  } catch (e) {
-    return { status: "error", error: e };
+    await ensureNasSession();
+    const result = await nasPullStoreSnapshot();
+    return { ...(result as any), provider: "nas", degradedMode: false };
+  } catch (error) {
+    return { status: "error", error, provider: "nas", degradedMode: false };
   }
 }
 
 async function pushStoreSnapshot(payload: any, version = 8, opts?: { force?: boolean; reason?: string }): Promise<any> {
-  if (isNasDataSyncEnabled()) {
-    await ensureNasSession();
-    return await nasPushStoreSnapshot(payload, version, opts);
+  const cached = loadAuthFromLS();
+  const failoverSession = isSupabaseFailoverSession(cached);
+
+  // Garde-fou absolu : jamais de snapshot, partie, historique ou sauvegarde
+  // dans Supabase, même lorsque le NAS est en panne.
+  if (failoverSession || !isNasDataSyncEnabled()) {
+    return {
+      ok: false,
+      skipped: true,
+      provider: "nas",
+      degradedMode: failoverSession,
+      reason: failoverSession ? "supabase_auth_only" : "nas_sync_disabled",
+    };
   }
 
-  const { user } = await ensureAuthedUser();
-
-  const baseCommon: any = {
-    version,
-    updated_at: new Date().toISOString(),
-  };
-
-  const payloadObjWithStore: any = {
-    ...baseCommon,
-    user_id: user.id,
-    owner_user_id: user.id,
-    store: CLOUD_STORE_KEY,
-    payload,
-    data: payload,
-    store_json: payload,
-    snapshot_json: payload,
-  };
-
-  const payloadObjNoStore: any = {
-    ...baseCommon,
-    user_id: user.id,
-    owner_user_id: user.id,
-    payload,
-    data: payload,
-    store_json: payload,
-    snapshot_json: payload,
-  };
-
-  const attempt = async (obj: any, onConflict: string) => {
-    return await writeWithColumnFallback<any>(
-      async (cleanObj) => {
-        const { data, error } = await supabase
-          .from("user_store")
-          .upsert(cleanObj as any, { onConflict } as any);
-        return { data, error };
-      },
-      obj,
-      { debugLabel: `user_store upsert (${onConflict})` }
-    );
-  };
-
-  const isOnConflictMismatch = (err: any) => {
-    const msg = String(err?.message ?? err);
-    const lower = msg.toLowerCase();
-    return (lower.includes("on conflict") && lower.includes("no unique")) || String(err?.code ?? "") === "42P10";
-  };
-
-  const isMissingColumn = (err: any, col: string) => {
-    const msg = String(err?.message ?? err);
-    const lower = msg.toLowerCase();
-    return (
-      (lower.includes("column") && lower.includes(col.toLowerCase()) && lower.includes("does not exist")) ||
-      lower.includes(`could not find the '${col.toLowerCase()}' column`)
-    );
-  };
-
-  const plans: Array<{ obj: any; onConflict: string; label: string }> = [
-    { obj: payloadObjWithStore, onConflict: "user_id,store", label: "user_id+store" },
-    { obj: payloadObjWithStore, onConflict: "user_id", label: "user_id" },
-    { obj: payloadObjNoStore, onConflict: "user_id", label: "user_id (no store)" },
-    { obj: payloadObjWithStore, onConflict: "owner_user_id,store", label: "owner_user_id+store" },
-    { obj: payloadObjWithStore, onConflict: "owner_user_id", label: "owner_user_id" },
-    { obj: payloadObjNoStore, onConflict: "owner_user_id", label: "owner_user_id (no store)" },
-  ];
-
-  let lastErr: any = null;
-
-  for (const p of plans) {
-    const res = await attempt(p.obj, p.onConflict);
-
-    if (res.error && isMissingColumn(res.error, "store") && p.onConflict.includes("store")) {
-      lastErr = res.error;
-      continue;
-    }
-
-    if (res.error && isOnConflictMismatch(res.error)) {
-      lastErr = res.error;
-      continue;
-    }
-
-    if (res.error && isMissingColumn(res.error, "user_id")) {
-      lastErr = res.error;
-      continue;
-    }
-
-    if (!res.error) return;
-    lastErr = res.error;
-  }
-
-  throw new Error((lastErr as any)?.message || String(lastErr) || "push_failed");
+  await ensureNasSession();
+  const result = await nasPushStoreSnapshot(payload, version, opts);
+  return { ...(result && typeof result === "object" ? result : {}), ok: true, provider: "nas" };
 }
 
 // ============================================================
@@ -1608,7 +1599,7 @@ function generateLobbyCode(): string {
 }
 
 async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiPost("/online/lobbies/create-safe", {
       mode: args.mode,
@@ -1655,7 +1646,7 @@ async function createLobby(args: { mode: string; maxPlayers: number; settings: O
 async function joinLobby(args: { code: string; [k: string]: any }): Promise<OnlineLobby> {
   const codeUpper = safeUpper(args.code);
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/join-safe`, {
       code: codeUpper,
@@ -1682,7 +1673,7 @@ async function setLobbyReady(args: { code: string; ready: boolean; nickname?: st
   const codeUpper = safeUpper(args.code);
   if (!codeUpper) throw new Error("Code salon manquant.");
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiPost(`/online/lobbies/${encodeURIComponent(codeUpper)}/ready-safe`, {
       ready: !!args.ready,
@@ -1717,7 +1708,7 @@ async function setLobbyReady(args: { code: string; ready: boolean; nickname?: st
 
 async function getLobby(code: string): Promise<OnlineLobby> {
   const codeUpper = safeUpper(code);
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiGet(`/online/lobbies/${encodeURIComponent(codeUpper)}`);
     return (res?.lobby || res) as OnlineLobby;
@@ -1737,7 +1728,7 @@ async function getLobby(code: string): Promise<OnlineLobby> {
 
 // ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
 async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiGet(`/online/lobbies?limit=${encodeURIComponent(String(limit))}`);
     return Array.isArray(res?.lobbies) ? res.lobbies : [];
@@ -1760,7 +1751,7 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
 async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
   const code = safeUpper(args.lobbyCode);
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiPost("/online/matches/start-safe", {
       lobbyCode: code,
@@ -1805,7 +1796,7 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     await apiPost("/online/matches/state-safe", {
       lobbyCode: code,
@@ -1828,7 +1819,7 @@ async function updateMatchState(args: { lobbyCode: string; state: any; status?: 
 async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     await apiPost("/online/matches/end-safe", {
       lobbyCode: code,
@@ -1852,7 +1843,7 @@ async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | nul
   const code = safeUpper(lobbyCode);
   if (!code) return null;
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiGet(`/online/matches/by-code-safe/${encodeURIComponent(code)}`);
     return (res?.match || null) as OnlineMatchRow | null;
@@ -2000,7 +1991,7 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
 }
 
 async function listMatches(limit = 50): Promise<OnlineMatch[]> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     const res = await apiGet(`/online/matches?limit=${encodeURIComponent(String(limit))}`);
     const rows = Array.isArray(res?.matches) ? res.matches : [];
@@ -2019,7 +2010,7 @@ async function listMatches(limit = 50): Promise<OnlineMatch[]> {
 
 
 async function uploadMediaAsset(payload: UploadMediaAssetPayload): Promise<ResolvedMediaAsset> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasUploadMediaAsset(payload as any);
   }
@@ -2030,7 +2021,7 @@ async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset
   const cleanIds = (Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean);
   if (!cleanIds.length) return [];
 
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     await ensureNasSession();
     return await nasBulkResolveMediaAssets(cleanIds);
   }
@@ -2038,7 +2029,7 @@ async function bulkResolveMediaAssets(ids: string[]): Promise<ResolvedMediaAsset
 }
 
 async function mediaHealth(): Promise<any> {
-  if (useNasOnlineBackend()) {
+  if (shouldUseNasForCurrentSession()) {
     return await nasMediaHealth();
   }
   return { ok: false, provider: "supabase" };

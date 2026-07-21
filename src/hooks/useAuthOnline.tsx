@@ -18,7 +18,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
-import { isNasProviderEnabled, isNasDataSyncEnabled } from "../lib/serverConfig";
+import { isNasProviderEnabled } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
@@ -90,7 +90,7 @@ async function cleanupDeletedAccountLocalData(): Promise<void> {
 
 async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
   try {
-    if (!isNasDataSyncEnabled()) return;
+    if (!isNasProviderEnabled()) return;
 
     try {
       const authAny: any = (supabase as any)?.auth;
@@ -134,7 +134,7 @@ async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
 
 async function ensureOnlineProfileRow(user: User): Promise<void> {
   try {
-    if (isNasDataSyncEnabled()) return;
+    if (isNasProviderEnabled()) return;
     const existing = await supabase
       .from("profiles")
       .select("id")
@@ -222,7 +222,7 @@ async function safeGetSession(): Promise<Session | null> {
     const nasBridge = await safeGetNasBridgeSession();
     if (nasBridge?.user) return nasBridge;
 
-    if (isNasDataSyncEnabled()) {
+    if (isNasProviderEnabled()) {
       await cleanupSupabaseLocalSessionForNas();
       return null;
     }
@@ -321,7 +321,7 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
         return String((pi as any)?.onlineUserId || "") === uid;
       });
 
-      if (isNasDataSyncEnabled() && !alreadyLinked) {
+      if (isNasProviderEnabled() && !alreadyLinked) {
         return store;
       }
 
@@ -373,14 +373,19 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
   try {
     const uid = String(s?.user?.id || s?.userId || "").trim();
     if (!uid) return null;
+    const degraded = s?.degradedMode === true || String(s?.authProvider || "") === "supabase_failover";
     return {
-      access_token: String(s?.token || ""),
-      refresh_token: String(s?.refreshToken || ""),
+      // Le JWT Supabase ne doit jamais être envoyé comme Bearer au backend NAS.
+      access_token: degraded ? "" : String(s?.token || ""),
+      refresh_token: degraded ? "" : String(s?.refreshToken || ""),
       user: {
         id: uid,
         email: s?.user?.email || undefined,
         user_metadata: {
           nickname: s?.user?.nickname || s?.profile?.displayName || s?.profile?.nickname || "Player",
+          auth_provider: s?.authProvider || (degraded ? "supabase_failover" : "nas"),
+          degraded_mode: degraded,
+          supabase_user_id: s?.supabaseUserId || null,
         },
       },
     } as any;
@@ -550,13 +555,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   React.useEffect(() => {
-    if (!isNasDataSyncEnabled()) return;
+    if (!isNasProviderEnabled()) return;
     cleanupSupabaseLocalSessionForNas();
   }, []);
 
   const refresh = React.useCallback(async () => {
     try {
-      if (isNasDataSyncEnabled()) {
+      if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
 
@@ -599,7 +604,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     (async () => {
       try {
-        if (isNasDataSyncEnabled()) {
+        if (isNasProviderEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
 
@@ -637,7 +642,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             }
             lastNasAuthAttemptRef.current = nowTs;
 
-            if (isNasDataSyncEnabled()) {
+            if (isNasProviderEnabled()) {
               await cleanupSupabaseLocalSessionForNas();
             }
             const nextSession = await safeEnsureSession();
@@ -671,43 +676,42 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
         window.addEventListener("dc-auth-changed", nasHandler as EventListener);
 
-        if (isNasDataSyncEnabled()) {
+        if (isNasProviderEnabled()) {
           return;
         }
 
-        const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+        const { data } = supabase.auth.onAuthStateChange(async () => {
           try {
             if (!alive) return;
 
-            if (event === "SIGNED_OUT" || !nextSession?.user) {
-              const fallback = await safeGetNasBridgeSession();
-              if (fallback?.user) {
-                lastSignedInSessionRef.current = fallback;
-                applyAuthFromSession(setState, fallback);
-                return;
-              }
+            // Résout toujours la session par onlineApi : NAS prioritaire quand il répond,
+            // Supabase de secours avec l'identifiant canonique quand le NAS est indisponible.
+            const resolvedSession = await safeGetSession();
+            if (!alive) return;
+
+            if (!resolvedSession?.user) {
+              lastSignedInSessionRef.current = null;
               applyAuthFromSession(setState, null);
               return;
             }
 
-            applyAuthFromSession(setState, nextSession);
+            lastSignedInSessionRef.current = resolvedSession;
+            applyAuthFromSession(setState, resolvedSession);
 
-            const nextUser = nextSession.user;
+            const nextUser = resolvedSession.user;
             tryBridgeLocalProfile(nextUser, null);
-
             safeLoadProfileBestEffort(nextUser).then((profile) => {
               if (!alive) return;
-              setState((s) => {
-                if (!s.user || s.user.id !== nextUser.id) return s;
-                return { ...s, profile };
+              setState((state) => {
+                if (!state.user || state.user.id !== nextUser.id) return state;
+                return { ...state, profile };
               });
-
               tryBridgeLocalProfile(nextUser, profile);
               void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
             });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
-            setState((s) => ({ ...s, loading: false, ready: true }));
+            setState((state) => ({ ...state, loading: false, ready: true }));
           }
         });
 
@@ -737,7 +741,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {
       try {
-        if (isNasDataSyncEnabled()) {
+        if (isNasProviderEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
         const ok = await (onlineApi as any).signup?.(payload);
@@ -764,7 +768,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const login = React.useCallback(
     async (payload: { email?: string; nickname?: string; password?: string }) => {
       try {
-        if (isNasDataSyncEnabled()) {
+        if (isNasProviderEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
         }
         const ok = await (onlineApi as any).login?.(payload);
@@ -797,7 +801,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } finally {
       try { setStorageUser(null); } catch {}
       purgeAuthKeysFromBrowser();
-      if (isNasDataSyncEnabled()) {
+      if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
       lastSignedInSessionRef.current = null;
@@ -826,7 +830,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } finally {
       try { setStorageUser(null); } catch {}
       await cleanupDeletedAccountLocalData();
-      if (isNasDataSyncEnabled()) {
+      if (isNasProviderEnabled()) {
         await cleanupSupabaseLocalSessionForNas();
       }
       lastSignedInSessionRef.current = null;

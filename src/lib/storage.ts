@@ -2311,13 +2311,13 @@ function extractBotsFromSnapshot(snap: any) {
 }
 
 /* ============================================================
-   ✅ CLOUD SNAPSHOT (Supabase user_store)
+   ✅ SNAPSHOT PORTABLE (destination choisie : R2 / NAS / fichier / local)
 ============================================================ */
 
 export type CloudSnapshot = any;
 
 // ============================================================
-// ✅ Sanitize snapshots before pushing to Supabase
+// ✅ Nettoyage du snapshot avant envoi vers une destination distante ou un fichier
 // - Avoid pushing huge base64 blobs (data:...)
 // - Avoid leaking sensitive local-only fields
 // ============================================================

@@ -204,20 +204,23 @@ export const STORAGE_DESTINATIONS: StorageDestination[] = [
 ];
 
 export type StoragePrefs = {
-  version: 1;
+  version: 2;
   selectedDestination: StorageDestinationId;
   selectedCloudPlan: StoragePlanId;
   preferExternalStorage: boolean;
+  /** Conserve toujours la copie IndexedDB locale comme filet de sécurité. */
+  keepLocalSafetyCopy: boolean;
   updatedAt: number;
 };
 
 export const STORAGE_PREFS_KEY = "dc_storage_prefs_v1";
 
 export const DEFAULT_STORAGE_PREFS: StoragePrefs = {
-  version: 1,
+  version: 2,
   selectedDestination: "app_local",
   selectedCloudPlan: "free_test_100mb",
   preferExternalStorage: false,
+  keepLocalSafetyCopy: true,
   updatedAt: 0,
 };
 
@@ -275,10 +278,11 @@ export function loadStoragePrefs(): StoragePrefs {
     if (!raw) return DEFAULT_STORAGE_PREFS;
     const parsed = JSON.parse(raw) || {};
     return {
-      version: 1,
+      version: 2,
       selectedDestination: normalizeDestinationId(parsed.selectedDestination),
       selectedCloudPlan: normalizePlanId(parsed.selectedCloudPlan),
       preferExternalStorage: !!parsed.preferExternalStorage,
+      keepLocalSafetyCopy: parsed.keepLocalSafetyCopy !== false,
       updatedAt: Number(parsed.updatedAt || 0),
     };
   } catch {
@@ -290,10 +294,11 @@ export function saveStoragePrefs(next: Partial<StoragePrefs>): StoragePrefs {
   const merged: StoragePrefs = {
     ...loadStoragePrefs(),
     ...next,
-    version: 1,
+    version: 2,
     selectedDestination: normalizeDestinationId(next.selectedDestination ?? loadStoragePrefs().selectedDestination),
     selectedCloudPlan: normalizePlanId(next.selectedCloudPlan ?? loadStoragePrefs().selectedCloudPlan),
     preferExternalStorage: !!(next.preferExternalStorage ?? loadStoragePrefs().preferExternalStorage),
+    keepLocalSafetyCopy: next.keepLocalSafetyCopy ?? loadStoragePrefs().keepLocalSafetyCopy,
     updatedAt: Date.now(),
   };
   try {

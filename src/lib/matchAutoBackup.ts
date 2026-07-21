@@ -1,6 +1,8 @@
 import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
+import { loadStoragePrefs } from "./storagePlans";
+import { queueExternalBackup } from "./externalBackupTarget";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
   deleteCloudObjectRemote,
@@ -108,7 +110,15 @@ function readStorageProviderFromCachedAuthSession(): string {
 }
 
 async function getActiveStorageProviderCached(): Promise<string> {
-  if (!readNasAccessToken()) return "";
+  const localPrefs = loadStoragePrefs();
+  if (localPrefs.updatedAt > 0) {
+    if (localPrefs.selectedDestination === "cloud_r2") return "cloud_r2";
+    if (localPrefs.selectedDestination === "founder_nas") return "nas_founder";
+    if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual") return "external_file";
+    return "local_device";
+  }
+
+  if (!readNasAccessToken()) return "local_device";
   const cachedAuthProvider = readStorageProviderFromCachedAuthSession();
   if (cachedAuthProvider === "nas_founder") {
     storageProviderCache = { at: Date.now(), provider: "nas_founder", ok: true };
@@ -581,8 +591,16 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
 }): Promise<void> {
   const item = buildMatchBackupItem(args);
   if (!item) return;
+  // La copie locale reste le filet de sécurité, quelle que soit la destination choisie.
   await saveLocalMatchBackup(item).catch(() => undefined);
-  const provider = await getActiveStorageProviderCached().catch(() => "");
+  const provider = await getActiveStorageProviderCached().catch(() => "local_device");
+
+  if (provider === "external_file") {
+    queueExternalBackup("history-upsert");
+    return;
+  }
+  if (provider === "local_device") return;
+
   if (provider === "cloud_r2") {
     await pushMatchBackupToCloud(item).catch((error) => {
       try {

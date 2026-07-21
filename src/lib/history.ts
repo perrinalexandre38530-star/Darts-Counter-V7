@@ -90,7 +90,8 @@ import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { getStorageUser, loadStore, scopedStorageKey } from "./storage";
+import { exportCloudSnapshot, getStorageUser, loadStore, scopedStorageKey } from "./storage";
+import { loadStoragePrefs } from "./storagePlans";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
@@ -568,45 +569,41 @@ function _sanitizeStoreForCloudMini(s: any) {
 }
 
 let __cloudPushTimer: number | null = null;
-
-const HISTORY_CLOUD_PUSH_ENABLED = false;
+let __lastCloudPushAt = 0;
+const HISTORY_CLOUD_MIN_INTERVAL_MS = 60_000;
 
 function scheduleCloudSnapshotPush(reason: string) {
-  if (!HISTORY_CLOUD_PUSH_ENABLED) return;
   try {
     if (typeof window === "undefined") return;
+    const prefs = loadStoragePrefs();
+    const wantsRemoteSnapshot =
+      prefs.mirrorToSupabase ||
+      prefs.selectedDestination === "cloud_r2" ||
+      prefs.selectedDestination === "founder_nas";
+    if (!wantsRemoteSnapshot) return;
 
     if (__cloudPushTimer) {
       window.clearTimeout(__cloudPushTimer);
       __cloudPushTimer = null;
     }
 
+    const delay = Math.max(1200, HISTORY_CLOUD_MIN_INTERVAL_MS - (Date.now() - __lastCloudPushAt));
     __cloudPushTimer = window.setTimeout(async () => {
+      __cloudPushTimer = null;
       try {
-        // on vérifie une session réelle
-        const sess = await onlineApi.getCurrentSession().catch(() => null);
-        const uid = String((sess as any)?.user?.id || "");
+        const session = await onlineApi.getCurrentSession().catch(() => null);
+        const uid = String((session as any)?.user?.id || "");
         if (!uid) return;
 
-        const store = await loadStore<Store>().catch(() => null);
-        if (!store) return;
-
-        const payload = {
-          kind: "dc_store_snapshot_v1",
-          createdAt: new Date().toISOString(),
-          app: "darts-counter-v5",
-          reason,
-          store: _sanitizeStoreForCloudMini(store),
-        };
-
-        await onlineApi.pushStoreSnapshot(payload);
-      } catch (e) {
-        console.warn("[history] cloud snapshot push failed:", e);
+        const payload = await exportCloudSnapshot();
+        await onlineApi.pushStoreSnapshot(payload, 8, { reason });
+        __lastCloudPushAt = Date.now();
+      } catch (error) {
+        console.warn("[history] routed snapshot push failed:", error);
       }
-    }, 900);
+    }, delay);
   } catch {}
 }
-
 
 
 /* =========================

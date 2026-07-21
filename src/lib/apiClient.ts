@@ -106,7 +106,12 @@ function tokenFromStoredValue(raw: string): string {
   // prenait donc pour un token opaque et envoyait tout le JSON dans le header
   // Authorization. On parse toujours le JSON avant le fallback token brut.
   if (value.startsWith("{") || value.startsWith("[")) {
-    return extractAuthTokenFromObject(safeParseJson<any>(value, null));
+    const parsed = safeParseJson<any>(value, null);
+    const isSupabaseFailover =
+      parsed?.degradedMode === true ||
+      String(parsed?.authProvider || parsed?.auth_provider || "") === "supabase_failover";
+    if (isSupabaseFailover) return "";
+    return extractAuthTokenFromObject(parsed);
   }
   if (looksLikeBearerToken(value)) return value;
   return extractAuthTokenFromObject(safeParseJson<any>(value, null));

@@ -1481,13 +1481,26 @@ ${label}`)) return;
     const ok = window.confirm("Créer une sauvegarde NAS complète maintenant ?\n\nElle remplace l’emplacement courant et ajoute un point de restauration versionné.");
     if (!ok) return;
     setBusy(true);
+    let localSafetySlot: MemorySlot | null = null;
     try {
+      // La sécurité locale est créée AVANT tout appel réseau. Ainsi, même si le
+      // NAS ou PostgreSQL tombe pendant l’opération, les données du navigateur
+      // disposent immédiatement d’un point de restauration exploitable.
+      localSafetySlot = await createLocalMemorySlot(
+        `Sécurité locale avant sauvegarde NAS — ${new Date().toLocaleString("fr-FR")}`,
+        "before-nas-backup"
+      ).catch(() => null);
+
       const res: any = await createNasVersionedSnapshot();
       const summary = normalizeSummary(res?.summary || res?.summary?.after || {});
-      setMessage(`Sauvegarde NAS créée. ${summary.matches || res?.summary?.after?.historyCount || ""} partie(s) détectée(s).`);
+      setMessage(`Sauvegarde NAS créée. ${summary.matches || res?.summary?.after?.historyCount || ""} partie(s) détectée(s).${localSafetySlot ? " Une sécurité locale a aussi été conservée." : ""}`);
       await refresh();
     } catch (error: any) {
-      setMessage(`Sauvegarde NAS impossible : ${error?.message || error}`);
+      const localNotice = localSafetySlot
+        ? " Une sauvegarde locale de sécurité a néanmoins été créée sur cet appareil."
+        : " La création de la sécurité locale a également échoué.";
+      setMessage(`Sauvegarde NAS impossible : ${error?.message || error}.${localNotice}`);
+      await refresh().catch(() => undefined);
     } finally { setBusy(false); }
   };
 

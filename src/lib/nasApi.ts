@@ -210,6 +210,35 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 
 type NasFetchInit = RequestInit & { timeoutMs?: number };
 
+function humanizeNasBackendError(message: unknown, status?: number): string {
+  const raw = String(message || "Erreur backend NAS").trim();
+  const haystack = raw.toLowerCase();
+
+  const dbConnectionFailure =
+    haystack.includes("timeout exceeded when trying to connect") ||
+    haystack.includes("connection terminated unexpectedly") ||
+    haystack.includes("connection refused") ||
+    haystack.includes("econnrefused") ||
+    haystack.includes("etimedout") ||
+    haystack.includes("enotfound") ||
+    haystack.includes("could not connect to server") ||
+    haystack.includes("the database system is starting up");
+
+  if (dbConnectionFailure) {
+    return "Base PostgreSQL du NAS inaccessible. L’API répond, mais elle ne parvient pas à joindre PostgreSQL. Vérifie PGHOST/PGPORT, l’adresse du conteneur PostgreSQL et son état, puis redémarre l’API NAS.";
+  }
+
+  if (haystack.includes("too many clients") || haystack.includes("remaining connection slots are reserved")) {
+    return "PostgreSQL refuse de nouvelles connexions car son pool est saturé. Redémarre l’API NAS/PostgreSQL puis vérifie la limite de connexions.";
+  }
+
+  if (Number(status || 0) === 503 && /database|postgres|db/i.test(raw)) {
+    return `Base de données NAS indisponible : ${raw}`;
+  }
+
+  return raw;
+}
+
 async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
   const bases = getNasApiBaseCandidates();
   if (!bases.length) {
@@ -259,12 +288,14 @@ async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
     const json = readJson<any>(text, {});
 
     if (!res.ok) {
-      const message = json?.error || json?.message || text || `Erreur backend NAS (${res.status})`;
+      const rawMessage = json?.message || json?.error || text || `Erreur backend NAS (${res.status})`;
+      const message = humanizeNasBackendError(rawMessage, res.status);
       if (res.status === 401) {
         runtimeDiag("nas:http401", { path, message });
         try { saveNasTokens(null, { silent: true }); } catch {}
       }
       const err: any = new Error(message);
+      err.rawMessage = String(rawMessage || "");
       err.status = res.status;
       err.path = path;
       err.baseUrl = baseUrl;
@@ -473,6 +504,7 @@ export function saveNasTokens(session: AuthSession | null, opts?: { silent?: boo
 export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
   const json = await apiFetch("/auth/login", {
     method: "POST",
+    timeoutMs: 6000,
     body: JSON.stringify({
       email: payload.email,
       password: payload.password,

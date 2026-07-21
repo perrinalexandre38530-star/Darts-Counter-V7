@@ -1,6 +1,6 @@
 // ============================================================
 // src/lib/hydrateFromOnline.ts
-// V8 — hydrate store DIRECT depuis user_store.data = {version, store}
+// V8 — hydrate le store depuis le snapshot NAS quand cette destination est active
 // ============================================================
 
 import { onlineApi } from "./onlineApi";
