@@ -118,7 +118,7 @@ Participants
 
 Sélection de cible
 - LIBRE : tu choisis précisément le territoire sur la carte.
-- PAR LE SCORE : la valeur totale de la volée détermine automatiquement un territoire compatible.
+- VOLÉE DIRECTE : joue immédiatement sans sélectionner de cible ; le total de la volée désigne automatiquement l’unique territoire portant cette valeur.
 
 Valeurs des territoires
 - Elles sont calculées selon la surface réelle : les grands territoires demandent les scores les plus élevés.
@@ -219,10 +219,11 @@ LIBRE
 - Tu touches la carte pour choisir exactement le territoire à attaquer ou à défendre.
 - C'est le choix le plus stratégique, recommandé pour FORTERESSES.
 
-PAR LE SCORE
-- Tu ne choisis pas obligatoirement la cible.
-- Le total de ta volée recherche automatiquement un territoire dont la valeur correspond à la règle de capture.
-- S'il existe plusieurs territoires compatibles, le jeu en sélectionne un automatiquement.`;
+VOLÉE DIRECTE — SANS SÉLECTION
+- Tu joues immédiatement ta volée, sans ouvrir la carte et sans choisir de territoire avant de lancer.
+- Le total de la volée recherche automatiquement l'unique territoire portant cette valeur.
+- En FORTERESSES : ton propre territoire construit une forteresse, une forteresse adverse est brisée, et un territoire adverse non protégé est conquis.
+- Si aucune valeur ne correspond au score réalisé, aucun territoire ne change de propriétaire.`;
 
 
 const HELP_VALUE_BALANCE = `Valeurs adaptatives des territoires
@@ -243,7 +244,7 @@ EXACT
 GTE = GREATER THAN OR EQUAL = SUPÉRIEUR OU ÉGAL
 - Le total peut être égal OU supérieur à la valeur affichée.
 - Exemple : territoire 46 → 46, 47, 60 ou 100 réussissent ; 45 échoue.
-- En mode PAR LE SCORE, le jeu attribue le territoire de plus grande valeur accessible avec le total réalisé.
+- En mode VOLÉE DIRECTE, le score total désigne directement l’unique territoire portant cette valeur ; aucune sélection préalable n’est nécessaire.
 
 FORTERESSES
 - La règle est automatiquement verrouillée sur EXACT pour les attaques, les défenses et la destruction d'une forteresse.`;
@@ -1680,7 +1681,7 @@ export default function DepartementsConfig(props: any) {
             value={targetSelectionMode}
             options={[
               { value: "free", label: "Libre — choix sur la carte" },
-              { value: "by_score", label: "Par le score — automatique" },
+              { value: "by_score", label: "Volée directe — sans sélection" },
             ]}
             onChange={setTargetSelectionMode as any}
           />

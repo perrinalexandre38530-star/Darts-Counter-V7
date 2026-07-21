@@ -66,8 +66,14 @@ function itemTime(v: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isAuthenticationRoute(): boolean {
+  if (typeof window === "undefined") return false;
+  const hash = String(window.location.hash || "").toLowerCase();
+  return hash.startsWith("#/auth/") || hash.startsWith("#/account/start");
+}
+
 export function canUseMessageCenterPolling() {
-  return !!readNasAccessToken();
+  return !isAuthenticationRoute() && !!readNasAccessToken();
 }
 
 export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUnreadSummary> {

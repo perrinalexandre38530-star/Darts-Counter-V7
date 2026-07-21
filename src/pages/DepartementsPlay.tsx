@@ -47,6 +47,7 @@ import {
 } from "../territories/engine";
 
 import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
+import { speak } from "../lib/voice";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -320,6 +321,130 @@ function computeVisitScores(darts: UIDart[]) {
 
 type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: number; fortresses: number; breaches: number };
 
+const TTS_LANG_BY_APP_LANG: Record<string, string> = {
+  fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT", pt: "pt-PT",
+  nl: "nl-NL", ru: "ru-RU", zh: "zh-CN", ja: "ja-JP", ar: "ar-SA", hi: "hi-IN",
+  tr: "tr-TR", da: "da-DK", no: "nb-NO", sv: "sv-SE", is: "is-IS", pl: "pl-PL",
+  ro: "ro-RO", sr: "sr-RS", hr: "hr-HR", cs: "cs-CZ",
+};
+
+function FortressLineIcon(props: { size?: number; color?: string; glowColor?: string; title?: string }) {
+  const size = props.size ?? 20;
+  const color = props.color ?? "#ffffff";
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      role={props.title ? "img" : undefined}
+      aria-label={props.title}
+      aria-hidden={props.title ? undefined : true}
+      style={{
+        display: "block",
+        color,
+        flex: "0 0 auto",
+        filter: props.glowColor ? `drop-shadow(0 0 4px ${props.glowColor}) drop-shadow(0 0 8px ${props.glowColor})` : undefined,
+      }}
+    >
+      <path
+        d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Zm4 0v-5h8v5M4 12h16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TerritoryOwnerBadge(props: {
+  ownerId?: string;
+  hasFortress: boolean;
+  players: TerritoriesPlayer[];
+  profileById: Record<string, any>;
+  ownerColor?: string;
+}) {
+  const members = props.ownerId
+    ? props.players.filter((player) => (player.teamId || player.id) === props.ownerId)
+    : [];
+
+  if (!props.ownerId || !members.length) {
+    return <span style={{ fontSize: 10, fontWeight: 900, opacity: 0.42, whiteSpace: "nowrap" }}>LIBRE</span>;
+  }
+
+  const color = props.ownerColor || members[0]?.color || "#ffffff";
+  return (
+    <div
+      title={members.map((member) => member.name).join(" · ")}
+      style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, flex: "0 0 auto" }}
+    >
+      {props.hasFortress ? (
+        <FortressLineIcon size={22} color="#fff" glowColor={color} title="Forteresse active" />
+      ) : null}
+      <div style={{ display: "flex", alignItems: "center", paddingLeft: members.length > 1 ? 7 : 0 }}>
+        {members.slice(0, 3).map((member, index) => (
+          <div
+            key={member.id}
+            style={{
+              width: 32,
+              height: 32,
+              marginLeft: index === 0 ? 0 : -8,
+              borderRadius: 999,
+              overflow: "hidden",
+              border: `2px solid ${color}`,
+              background: "rgba(2,5,10,0.92)",
+              boxShadow: `0 0 8px ${color}88`,
+              position: "relative",
+              zIndex: members.length - index,
+            }}
+          >
+            <ProfileAvatar
+              profile={props.profileById[member.id] ?? { id: member.id, name: member.name }}
+              size={28}
+              showStars={false}
+              showDartOverlay={false}
+              noFrame
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function captureAnnouncementPhrases(lang: string, playerName: string, territoryName: string, stolen: boolean): string[] {
+  if (lang === "fr") {
+    return stolen
+      ? [
+          `${playerName} arrache ${territoryName} à l'adversaire !`,
+          `${territoryName} change de camp. Belle conquête de ${playerName} !`,
+          `Coup stratégique ! ${playerName} prend le contrôle de ${territoryName}.`,
+          `${playerName} renverse la défense et s'empare de ${territoryName}.`,
+          `Territoire volé ! ${territoryName} appartient maintenant à ${playerName}.`,
+        ]
+      : [
+          `${playerName} conquiert ${territoryName} !`,
+          `Nouvelle conquête pour ${playerName} : ${territoryName}.`,
+          `${territoryName} tombe aux mains de ${playerName}.`,
+          `${playerName} prend le contrôle de ${territoryName}.`,
+          `Territoire sécurisé ! ${playerName} s'empare de ${territoryName}.`,
+        ];
+  }
+
+  return stolen
+    ? [
+        `${playerName} steals ${territoryName} from the opponent!`,
+        `${territoryName} changes sides. Great capture by ${playerName}!`,
+        `${playerName} takes control of ${territoryName}.`,
+      ]
+    : [
+        `${playerName} conquers ${territoryName}!`,
+        `New territory for ${playerName}: ${territoryName}.`,
+        `${territoryName} is now controlled by ${playerName}.`,
+      ];
+}
+
 const RULES_TEXT = (cfg: {
   gameMode: "classic" | "fortress";
   fortressVictoryMode: "majority" | "value" | "conquest";
@@ -357,7 +482,7 @@ Attaquer
 - Territoire adverse protégé : une première réussite exacte brise la forteresse ; une seconde réussite exacte conquiert le territoire.
 
 Cible
-- ${selectionMode === "free" ? "Choix libre sur la carte." : "La valeur de la volée détermine automatiquement la cible."}
+- ${selectionMode === "free" ? "Choix libre sur la carte." : "Volée directe : joue sans sélectionner de cible ; le total désigne automatiquement le territoire correspondant."}
 
 Victoire
 - ${fortressVictoryMode === "conquest"
@@ -378,7 +503,7 @@ Valeurs des territoires
 - Chaque territoire jouable possède une valeur différente. Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Une carte de plus de 180 territoires limite la partie à 180 cibles et grise les autres.
 
 Cible
-- ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Le score de la volée détermine automatiquement une cible compatible."}
+- ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Volée directe : joue immédiatement ; le total de la volée désigne automatiquement l’unique territoire correspondant."}
 
 Capture
 - ${cap} à la valeur du territoire, sur une volée de 1 à 3 fléchettes.
@@ -609,6 +734,7 @@ export default function DepartementsPlay(props: any) {
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
   const submitLockRef = React.useRef(false);
   const backNavigationLockedRef = React.useRef(false);
+  const lastCaptureVoiceIndexRef = React.useRef(-1);
 
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
@@ -810,8 +936,16 @@ export default function DepartementsPlay(props: any) {
 
   function handleMapSelect(territoryId: string) {
     const res = selectTerritory(game, territoryId);
-    if (res.error) return;
+    if (res.error) return false;
     setGame(res.state);
+    return true;
+  }
+
+  function handleValuesTerritorySelect(territoryId: string, close: () => void) {
+    if (game.config.targetSelectionMode !== "free") return;
+    if (!handleMapSelect(territoryId)) return;
+    close();
+    setShowMapModal(false);
   }
 
   function validateThrow() {
@@ -842,6 +976,35 @@ export default function DepartementsPlay(props: any) {
       : undefined;
     const fortressBuilt = r1.events?.some((event) => event.type === "fortress_built") || false;
     const fortressBroken = r1.events?.some((event) => event.type === "fortress_broken") || false;
+
+    if (capturedTid) {
+      const capturedTerritory = next.map.territories.find((territory) => territory.id === capturedTid);
+      const capturedCode = getTerritoryCountryCode(country, capturedTid);
+      const capturedName = getLocalizedTerritoryName(
+        capturedCode,
+        lang,
+        capturedTerritory?.name || capturedTid,
+      );
+      const playerName = activePlayer?.name || activeOwnerLabel || "Joueur";
+      const stolen = Boolean(beforeOwner && beforeOwner !== activeOwner);
+      const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen);
+      let phraseIndex = Math.floor(Math.random() * phrases.length);
+      if (phrases.length > 1 && phraseIndex === lastCaptureVoiceIndexRef.current) {
+        phraseIndex = (phraseIndex + 1) % phrases.length;
+      }
+      lastCaptureVoiceIndexRef.current = phraseIndex;
+      const phrase = phrases[phraseIndex];
+      if (phrase) {
+        window.setTimeout(() => {
+          speak(phrase, {
+            lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR",
+            rate: 0.94,
+            pitch: 1.02,
+            interrupt: false,
+          });
+        }, 260);
+      }
+    }
 
     setPlayerStats((prev) => {
       const out = { ...prev };
@@ -1075,7 +1238,96 @@ export default function DepartementsPlay(props: any) {
     effectiveCfg.teamSize,
   ]);
 
-  const valuesModalContent = (
+  const renderTerritoryValueRow = (tt: any, close: () => void) => {
+    const disabled = tt.playable === false;
+    const selected = game.turn.selectedTerritoryId === tt.id;
+    const canSelect = !disabled && game.status === "playing" && game.config.targetSelectionMode === "free";
+    const hasFortress = Boolean(tt.ownerId && tt.fortressOwnerId === tt.ownerId);
+    const ownerColor = tt.ownerId ? ownerColors[tt.ownerId] : undefined;
+    const territoryCode = getTerritoryCountryCode(country, tt.id);
+    const displayName = getLocalizedTerritoryName(territoryCode, lang, String(tt.name || tt.id));
+
+    return (
+      <button
+        key={tt.id}
+        type="button"
+        disabled={!canSelect}
+        aria-pressed={selected}
+        onClick={() => handleValuesTerritorySelect(tt.id, close)}
+        style={{
+          width: "100%",
+          display: "grid",
+          gridTemplateColumns: "76px minmax(0, 1fr) auto",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 11px",
+          borderRadius: 12,
+          color: "#fff",
+          textAlign: "left",
+          background: disabled
+            ? "rgba(120,126,140,0.08)"
+            : selected
+              ? `${activeColor}20`
+              : ownerColor
+                ? `${ownerColor}12`
+                : "rgba(255,255,255,0.04)",
+          border: disabled
+            ? "1px solid rgba(160,166,180,0.14)"
+            : selected
+              ? `2px solid ${activeColor}`
+              : `1px solid ${ownerColor ? `${ownerColor}55` : "rgba(255,255,255,0.08)"}`,
+          boxShadow: selected ? `0 0 18px ${activeColor}44` : "none",
+          opacity: disabled ? 0.52 : 1,
+          cursor: canSelect ? "pointer" : "default",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <div
+          style={{
+            minWidth: 0,
+            textAlign: "center",
+            fontWeight: 1000,
+            fontSize: disabled ? 9 : 16,
+            color: disabled ? "rgba(255,255,255,0.45)" : themeColor,
+            textShadow: disabled ? "none" : `0 0 12px ${themeColor}88`,
+          }}
+        >
+          {disabled ? "HORS PARTIE" : tt.value}
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 13,
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{displayName}</span>
+            {selected ? <span style={{ color: activeColor, fontSize: 10 }}>✓</span> : null}
+          </div>
+          <div style={{ fontSize: 10, opacity: 0.62, marginTop: 2 }}>
+            {tt.id}{canSelect ? " · toucher pour sélectionner" : ""}
+          </div>
+        </div>
+
+        <TerritoryOwnerBadge
+          ownerId={tt.ownerId}
+          hasFortress={hasFortress}
+          players={game.players}
+          profileById={profileById}
+          ownerColor={ownerColor}
+        />
+      </button>
+    );
+  };
+
+  const valuesModalContent = ({ close }: { close: () => void }) => (
     <div style={{ maxHeight: "70vh", overflow: "auto" }} className="dc-scroll-thin">
       <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 8 }}>Valeurs des territoires</div>
       <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
@@ -1083,13 +1335,30 @@ export default function DepartementsPlay(props: any) {
         {disabledTerritoryCount > 0
           ? ` ${playableTerritoryCount} territoires sont jouables. ${disabledTerritoryCount} territoires supplémentaires sont grisés et exclus de cette partie afin de respecter la limite de 180 valeurs uniques.`
           : ""}
-        {gameMode === "fortress" ? " Le contour blanc pointillé et le symbole 🛡 signalent une forteresse active." : ""}
+        {gameMode === "fortress" ? " Le contour blanc pointillé et l'icône de château signalent une forteresse active." : ""}
+      </div>
+
+      <div
+        style={{
+          marginBottom: 10,
+          padding: "8px 10px",
+          borderRadius: 10,
+          background: game.config.targetSelectionMode === "free" ? `${activeColor}12` : "rgba(255,255,255,0.04)",
+          border: `1px solid ${game.config.targetSelectionMode === "free" ? `${activeColor}55` : "rgba(255,255,255,0.08)"}`,
+          fontSize: 11,
+          fontWeight: 850,
+          lineHeight: 1.35,
+        }}
+      >
+        {game.config.targetSelectionMode === "free"
+          ? "Touchez une carte ci-dessous : le territoire est sélectionné et cette fenêtre se ferme automatiquement."
+          : "Mode VOLÉE DIRECTE actif : aucune cible n'est à sélectionner. Le score total de la volée désigne automatiquement l'unique territoire correspondant."}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {isFrRegionsVictory && regionGroupsForValues ? (
-          regionGroupsForValues.map((g) => (
-            <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          regionGroupsForValues.map((group) => (
+            <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div
                 style={{
                   display: "flex",
@@ -1101,10 +1370,10 @@ export default function DepartementsPlay(props: any) {
                   border: "1px solid rgba(255,255,255,0.10)",
                 }}
               >
-                {g.iconSrc ? (
+                {group.iconSrc ? (
                   <img
-                    src={g.iconSrc}
-                    alt={g.name}
+                    src={group.iconSrc}
+                    alt={group.name}
                     style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
                   />
                 ) : (
@@ -1125,64 +1394,18 @@ export default function DepartementsPlay(props: any) {
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.name}</div>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>{g.code || g.key}</div>
+                  <div style={{ fontSize: 13, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</div>
+                  <div style={{ fontSize: 11, opacity: 0.7 }}>{group.code || group.key}</div>
                 </div>
               </div>
 
-              {g.items.map((tt) => (
-                <div
-                  key={tt.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    background: tt.playable === false ? "rgba(120,126,140,0.08)" : "rgba(255,255,255,0.04)",
-                    border: tt.playable === false ? "1px solid rgba(160,166,180,0.14)" : "1px solid rgba(255,255,255,0.08)",
-                    opacity: tt.playable === false ? 0.52 : 1,
-                  }}
-                >
-                  <div style={{ minWidth: 76, textAlign: "center", fontWeight: 950, fontSize: tt.playable === false ? 9 : 13, color: tt.playable === false ? "rgba(255,255,255,0.45)" : themeColor }}>{tt.playable === false ? "HORS PARTIE" : tt.value}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
-                  </div>
-                </div>
-              ))}
+              {group.items.map((tt) => renderTerritoryValueRow(tt, close))}
             </div>
           ))
         ) : (
           [...game.map.territories]
             .sort((a, b) => Number(a.playable === false) - Number(b.playable === false) || (a.value - b.value) || a.name.localeCompare(b.name))
-            .map((tt) => (
-              <div
-                key={tt.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  background: tt.playable === false ? "rgba(120,126,140,0.08)" : "rgba(255,255,255,0.04)",
-                  border: tt.playable === false ? "1px solid rgba(160,166,180,0.14)" : "1px solid rgba(255,255,255,0.08)",
-                  opacity: tt.playable === false ? 0.52 : 1,
-                }}
-              >
-                <div style={{ minWidth: 76, textAlign: "center", fontWeight: 950, fontSize: tt.playable === false ? 9 : 13, color: tt.playable === false ? "rgba(255,255,255,0.45)" : themeColor }}>{tt.playable === false ? "HORS PARTIE" : tt.value}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
-                    </div>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
-                </div>
-              </div>
-            ))
+            .map((tt) => renderTerritoryValueRow(tt, close))
         )}
       </div>
     </div>
@@ -1632,7 +1855,7 @@ function KpiCard(props: {
 function TerritoriesMapModal(props: {
   title: string;
   onClose: () => void;
-  valuesModalContent: React.ReactNode;
+  valuesModalContent: React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
   legend?: React.ReactNode;
   children: React.ReactNode;
 }) {

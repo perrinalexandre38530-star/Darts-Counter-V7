@@ -793,7 +793,7 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
 
 async function publicSupabaseViaBackend(kind: "login" | "register", payload: LoginPayload | SignupPayload): Promise<AuthSession> {
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 20000) : null;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 10000) : null;
   try {
     let res: Response;
     try {
@@ -1026,7 +1026,11 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
   // que le compte admin reste connectable lorsque le NAS ou son tunnel est coupé.
   if (__SUPABASE_ENV__.hasEnv) {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const signInResult: any = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
+      ]);
+      const { error } = signInResult || {};
       if (error) throw new Error(normalizeAuthErrorMessage(error.message));
       const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
       if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");

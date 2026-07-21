@@ -109,6 +109,22 @@ type CloudSlot = CloudObjectIndexItem & {
   deletedAt?: string | null;
 };
 
+const REMOTE_SOURCE_PREF_KEY = "dc_storage_vault_remote_source_v1";
+
+function readPreferredRemoteSource(): BackupProvider | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = String(window.localStorage.getItem(REMOTE_SOURCE_PREF_KEY) || "").trim();
+    return raw === "cloud" || raw === "nas" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePreferredRemoteSource(provider: BackupProvider) {
+  try { window.localStorage.setItem(REMOTE_SOURCE_PREF_KEY, provider); } catch {}
+}
+
 const neon = "var(--dc-accent-soft, #22d3ee)";
 const gold = "var(--dc-accent, #d9ff33)";
 const red = "#fb7185";
@@ -820,7 +836,7 @@ function SummaryLines({ summary }: { summary: Partial<VaultSummary> }) {
   );
 }
 
-function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete, restoreLabel = "Restaurer cet état", exportLabel = "Exporter JSON", deleteLabel = "Supprimer" }: {
+function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete, onCloudCopy, restoreLabel = "Restaurer cet état", exportLabel = "Exporter JSON", deleteLabel = "Supprimer", cloudCopyLabel = "Copier vers Cloud R2" }: {
   entry: SaveEntry;
   busy: boolean;
   expanded: boolean;
@@ -828,9 +844,11 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
   onRestore: () => void;
   onExport: () => void;
   onDelete?: () => void;
+  onCloudCopy?: () => void;
   restoreLabel?: string;
   exportLabel?: string;
   deleteLabel?: string;
+  cloudCopyLabel?: string;
 }) {
   const q = entry.quality;
   const s = normalizeSummary(entry.summary);
@@ -895,6 +913,15 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
           {restoreLabel}
         </button>
         <button style={btn} disabled={busy} onClick={onExport}>{exportLabel}</button>
+        {onCloudCopy && (
+          <button
+            style={{ ...btn, borderColor: gold, color: gold, background: "color-mix(in srgb, var(--dc-accent, #d9ff33) 9%, transparent)" }}
+            disabled={busy}
+            onClick={onCloudCopy}
+          >
+            {cloudCopyLabel}
+          </button>
+        )}
         {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>{deleteLabel}</button>}
       </div>
     </div>
@@ -1016,7 +1043,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [trashNasSlots, setTrashNasSlots] = React.useState<NasSlot[]>([]);
   const [cloudSlots, setCloudSlots] = React.useState<CloudSlot[]>([]);
   const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
-  const [backupProvider, setBackupProvider] = React.useState<BackupProvider>("nas");
+  const [backupProvider, setBackupProvider] = React.useState<BackupProvider>(() => readPreferredRemoteSource() || "nas");
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
   const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({
     supported: typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function",
@@ -1024,6 +1051,7 @@ export default function StorageVaultPage({ go }: Props) {
     permission: "unknown",
   }));
   const [externalBackupBusy, setExternalBackupBusy] = React.useState<null | "choose" | "save" | "download">(null);
+  const [cloudTransferBusy, setCloudTransferBusy] = React.useState<null | "current" | "file" | "entry">(null);
   const [storageEstimate, setStorageEstimate] = React.useState({ usage: 0, quota: 0, free: 0 });
   const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
@@ -1032,6 +1060,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const [accountScopeId, setAccountScopeId] = React.useState<string | null>(() => getVaultCurrentUserId());
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const cloudImportRef = React.useRef<HTMLInputElement | null>(null);
 
   const currentAuthForVault = React.useMemo(() => ({
     token: (auth.session as any)?.access_token || (auth.session as any)?.token || "",
@@ -1248,6 +1277,8 @@ export default function StorageVaultPage({ go }: Props) {
   const technicalCount = blocks.length;
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
+    const preferred = readPreferredRemoteSource();
+    if (preferred) return preferred;
     const localChoice = loadStoragePrefs().selectedDestination;
     if (localChoice === "cloud_r2") return "cloud";
     if (localChoice === "founder_nas") return "nas";
@@ -1393,13 +1424,28 @@ export default function StorageVaultPage({ go }: Props) {
     try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason } })); } catch {}
   };
 
-  const uploadCurrentSnapshotToCloudVault = async (reason: string, title?: string) => {
-    const snapshot = await exportCloudSnapshot();
+  const uploadSnapshotPayloadToCloudVault = async (
+    payload: any,
+    reason: string,
+    title?: string,
+    options?: { cloudCopyOnly?: boolean; sourceDestination?: string }
+  ) => {
+    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(payload));
+    const isBackupV1 = looksLikeCloudBackupV1(snapshot);
+    if (!looksLikeCloudSnapshot(snapshot) && !isBackupV1) {
+      throw new Error("Ce fichier ne contient pas une sauvegarde Multisports complète exploitable.");
+    }
     const summary = strictSummaryForCloudPayload(snapshot);
+    const quality = assessSaveForProvider(summary, "cloud");
+    if (!quality.restorable) {
+      throw new Error(`Sauvegarde refusée par le garde-fou : ${quality.reason}`);
+    }
     const snapshotJson = JSON.stringify(snapshot);
     const uploaded = await uploadCloudVaultSnapshotJson({
       snapshotJson,
       title: title || `Sauvegarde cloud — ${new Date().toLocaleString("fr-FR")}`,
+      cloudCopyOnly: options?.cloudCopyOnly === true,
+      sourceDestination: options?.sourceDestination || loadStoragePrefs().selectedDestination,
       metadata: {
         reason,
         exportedAt: new Date().toISOString(),
@@ -1407,9 +1453,20 @@ export default function StorageVaultPage({ go }: Props) {
         profilesCount: summary.profiles || 0,
         statsBlocks: summary.statsBlocks || 0,
         rawSizeBytes: new Blob([snapshotJson]).size,
+        crossDeviceCopy: options?.cloudCopyOnly === true,
+        sourceDestination: options?.sourceDestination || loadStoragePrefs().selectedDestination,
       },
     });
     return { uploaded, summary };
+  };
+
+  const uploadCurrentSnapshotToCloudVault = async (
+    reason: string,
+    title?: string,
+    options?: { cloudCopyOnly?: boolean; sourceDestination?: string }
+  ) => {
+    const snapshot = await exportCloudSnapshot();
+    return uploadSnapshotPayloadToCloudVault(snapshot, reason, title, options);
   };
 
   const restoreSnapshotIntoBrowserAndAccount = async (payload: any, reason: string, label: string) => {
@@ -1523,6 +1580,111 @@ ${label}`)) return;
     }
   };
 
+  const selectRemoteRestoreSource = async (provider: BackupProvider) => {
+    writePreferredRemoteSource(provider);
+    setBackupProvider(provider);
+    setRestoreView("current");
+    await refresh().catch(() => undefined);
+    setMessage(provider === "cloud"
+      ? "Source distante sélectionnée : Cloudflare R2. Les sauvegardes disponibles sur tous tes appareils sont affichées ci-dessous."
+      : "Source distante sélectionnée : NAS. Les sauvegardes privées du serveur sont affichées ci-dessous.");
+  };
+
+  const finishCloudTransfer = async (messageText: string) => {
+    writePreferredRemoteSource("cloud");
+    setBackupProvider("cloud");
+    setRestoreView("current");
+    await refresh().catch(() => undefined);
+    setMessage(messageText);
+  };
+
+  const publishCurrentDeviceToCloud = async () => {
+    if (!hasConnectedAccount) {
+      setMessage("Connexion requise : connecte le même compte sur tous les appareils avant d’envoyer une copie Cloud R2.");
+      return;
+    }
+    if (!window.confirm(`Créer une copie Cloud R2 de l’état complet de cet appareil ?
+
+La destination principale reste inchangée. Cette copie apparaîtra dans Restaurer → Cloud R2 sur tes autres appareils.`)) return;
+    setCloudTransferBusy("current");
+    setBusy(true);
+    try {
+      const { summary } = await uploadCurrentSnapshotToCloudVault(
+        "cross-device-current-device",
+        `Copie multi-appareils — ${new Date().toLocaleString("fr-FR")}`,
+        { cloudCopyOnly: true, sourceDestination: selectedDestination }
+      );
+      await finishCloudTransfer(`Copie Cloud R2 créée : ${summary.matches} partie(s) • ${summary.profiles} profil(s) • ${summary.statsBlocks} stats. Elle est maintenant disponible sur les autres appareils connectés au même compte.`);
+    } catch (error: any) {
+      setMessage(`Copie multi-appareils impossible : ${error?.message || error}`);
+    } finally {
+      setCloudTransferBusy(null);
+      setBusy(false);
+    }
+  };
+
+  const publishFileToCloud = async (file: File | null) => {
+    if (!file) return;
+    if (!hasConnectedAccount) {
+      setMessage("Connexion requise avant d’envoyer un fichier de sauvegarde vers Cloud R2.");
+      return;
+    }
+    setCloudTransferBusy("file");
+    setBusy(true);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const { summary } = await uploadSnapshotPayloadToCloudVault(
+        parsed,
+        `cross-device-file:${file.name || "backup"}`,
+        `Fichier ${file.name || "sauvegarde"} — ${new Date().toLocaleString("fr-FR")}`,
+        { cloudCopyOnly: true, sourceDestination: "external_manual" }
+      );
+      await finishCloudTransfer(`Fichier envoyé dans Cloud R2 : ${summary.matches} partie(s) • ${summary.profiles} profil(s). Tu peux maintenant le restaurer depuis un autre appareil.`);
+    } catch (error: any) {
+      setMessage(`Envoi du fichier vers Cloud R2 impossible : ${error?.message || error}`);
+    } finally {
+      setCloudTransferBusy(null);
+      setBusy(false);
+      if (cloudImportRef.current) cloudImportRef.current.value = "";
+    }
+  };
+
+  const copyEntryToCloud = async (entry: SaveEntry) => {
+    if (!hasConnectedAccount) {
+      setMessage("Connexion requise avant de copier cette sauvegarde vers Cloud R2.");
+      return;
+    }
+    if (!window.confirm(`Copier « ${entry.title} » vers Cloudflare R2 ?
+
+Cette copie sera visible sur les autres appareils connectés au même compte.`)) return;
+    setCloudTransferBusy("entry");
+    setBusy(true);
+    try {
+      let payload: any = null;
+      if (entry.source === "local") {
+        payload = (entry.slot as MemorySlot).payload;
+      } else if (entry.source === "nas") {
+        const id = String((entry.slot as NasSlot).id || "latest");
+        payload = (await pullNasMemorySlot(id)).payload;
+      } else {
+        payload = (entry.slot as CloudSlot).__payload || (await pullCloudVaultSlot(entry.slot as CloudSlot)).payload;
+      }
+      const { summary } = await uploadSnapshotPayloadToCloudVault(
+        payload,
+        `cross-device-copy:${entry.source}`,
+        `Copie de ${entry.title} — ${new Date().toLocaleString("fr-FR")}`,
+        { cloudCopyOnly: true, sourceDestination: entry.source }
+      );
+      await finishCloudTransfer(`Sauvegarde copiée dans Cloud R2 : ${summary.matches} partie(s) • ${summary.profiles} profil(s). Elle est disponible sur tes autres appareils.`);
+    } catch (error: any) {
+      setMessage(`Copie vers Cloud R2 impossible : ${error?.message || error}`);
+    } finally {
+      setCloudTransferBusy(null);
+      setBusy(false);
+    }
+  };
+
   const selectStorageDestination = async (destination: StorageDestinationId) => {
     const saved = saveStoragePrefs({
       selectedDestination: destination,
@@ -1530,8 +1692,14 @@ ${label}`)) return;
       keepLocalSafetyCopy: true,
     });
     setStoragePrefs(saved);
-    if (destination === "cloud_r2") setBackupProvider("cloud");
-    if (destination === "founder_nas") setBackupProvider("nas");
+    if (destination === "cloud_r2") {
+      writePreferredRemoteSource("cloud");
+      setBackupProvider("cloud");
+    }
+    if (destination === "founder_nas") {
+      writePreferredRemoteSource("nas");
+      setBackupProvider("nas");
+    }
 
     const label = getStorageDestination(destination).label;
     if ((destination === "cloud_r2" || destination === "founder_nas") && !hasConnectedAccount) {
@@ -1655,7 +1823,11 @@ ${label}`)) return;
     if (!ok) return;
     setBusy(true);
     try {
-      const { uploaded, summary } = await uploadCurrentSnapshotToCloudVault("manual-storage-vault", `Sauvegarde cloud manuelle — ${new Date().toLocaleString("fr-FR")}`);
+      const { uploaded, summary } = await uploadCurrentSnapshotToCloudVault(
+        "manual-storage-vault",
+        `Sauvegarde cloud manuelle — ${new Date().toLocaleString("fr-FR")}`,
+        { cloudCopyOnly: false, sourceDestination: "cloud_r2" }
+      );
       const storedBytes = Number(uploaded?.object?.size_bytes || 0) || 0;
       setMessage(`Sauvegarde cloud créée. ${summary.matches} partie(s) • ${summary.profiles} profil(s) • ${fmtBytes(storedBytes)} stockés sur R2.`);
       await refresh();
@@ -1810,6 +1982,8 @@ ${label}`)) return;
           setMessage(`Export impossible : ${error?.message || error}`);
         }
       }}
+      onCloudCopy={entry.source !== "cloud" && hasConnectedAccount ? () => void copyEntryToCloud(entry) : undefined}
+      cloudCopyLabel={entry.source === "nas" ? "Copier ce NAS vers R2" : "Rendre disponible sur mes appareils"}
       onDelete={entry.source === "nas" && !(entry.slot as NasSlot).latest ? async () => {
         const slot = entry.slot as NasSlot;
         const id = String(slot.id || "");
@@ -1992,6 +2166,47 @@ ${label}`)) return;
 
         {tab === "restore" && (
           <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ ...panel, borderColor: accentSoftBorder }}>
+              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Source distante à afficher</h2>
+              <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                Ce choix est indépendant de la destination utilisée pour sauvegarder. Affiche <b style={{ color: gold }}>Cloud R2</b> pour retrouver une copie depuis un autre appareil, ou <b style={{ color: neon }}>NAS</b> pour consulter les sauvegardes privées du serveur.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                <TabButton active={backupProvider === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}>Cloud R2</TabButton>
+                <TabButton active={backupProvider === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}>NAS</TabButton>
+              </div>
+            </div>
+
+            <div style={{ ...panel, borderColor: "rgba(251,191,36,.38)" }}>
+              <h2 style={{ margin: 0, color: gold, fontSize: 19 }}>Rendre une sauvegarde disponible sur tous mes appareils</h2>
+              <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                Une sauvegarde locale, sur HDD, clé USB, carte SD ou fichier reste attachée à l’appareil tant qu’elle n’est pas copiée dans Cloudflare R2. L’envoi ci-dessous crée seulement une <b>copie multi-appareils</b> et ne change pas ta destination principale.
+              </p>
+              {!hasConnectedAccount && (
+                <div style={{ marginBottom: 10, color: red, fontSize: 12, fontWeight: 900 }}>
+                  Connecte ton compte pour associer la copie R2 à la même identité sur tous les appareils.
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                <button style={primaryBtn} disabled={busy || !hasConnectedAccount} onClick={() => void publishCurrentDeviceToCloud()}>
+                  {cloudTransferBusy === "current" ? "Envoi en cours…" : "Envoyer cet appareil vers R2"}
+                </button>
+                <button style={btn} disabled={busy || !hasConnectedAccount} onClick={() => cloudImportRef.current?.click()}>
+                  {cloudTransferBusy === "file" ? "Lecture du fichier…" : "Choisir un fichier et l’envoyer"}
+                </button>
+                <input
+                  ref={cloudImportRef}
+                  type="file"
+                  accept="application/json,.json,.dcbackup"
+                  style={{ display: "none" }}
+                  onChange={(e) => void publishFileToCloud(e.currentTarget.files?.[0] || null)}
+                />
+              </div>
+              <div style={{ marginTop: 9, color: muted, fontSize: 11.5, lineHeight: 1.4 }}>
+                Sur le second appareil : connecte le même compte → Sauvegarde → Restaurer → Cloud R2 → Actualiser → Restaurer cet état.
+              </div>
+            </div>
+
             <div style={{ ...panel, borderColor: "rgba(52,211,153,.36)" }}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Choisir un état à restaurer</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>

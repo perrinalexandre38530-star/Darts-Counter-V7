@@ -137,6 +137,7 @@ function applyPathVisual(
   fill: string | undefined,
   isSelected: boolean,
   disabled: boolean,
+  hasFortress: boolean,
 ) {
   const finalFill = disabled
     ? "rgba(115,122,136,0.50)"
@@ -146,19 +147,42 @@ function applyPathVisual(
   // fill ne suffit donc pas : on force le style inline en !important.
   path.style.setProperty("fill", finalFill, "important");
   path.style.setProperty("fill-opacity", disabled ? "0.58" : fill ? "0.96" : "1", "important");
-  path.style.setProperty("stroke", disabled ? "rgba(185,190,202,0.34)" : "rgba(255,255,255,0.78)", "important");
-  path.style.setProperty("stroke-width", disabled ? "0.55" : "0.8", "important");
   path.style.setProperty("vector-effect", "non-scaling-stroke", "important");
   path.style.setProperty("pointer-events", disabled ? "none" : "all", "important");
   path.style.setProperty("cursor", disabled ? "not-allowed" : "pointer", "important");
-  path.style.setProperty("filter", disabled ? "grayscale(1) brightness(.62)" : "", "important");
 
   if (disabled) {
+    path.style.setProperty("stroke", "rgba(185,190,202,0.34)", "important");
+    path.style.setProperty("stroke-width", "0.55", "important");
+    path.style.removeProperty("stroke-dasharray");
+    path.style.setProperty("filter", "grayscale(1) brightness(.62)", "important");
     path.classList.add("territory-disabled");
+    path.classList.remove("territory-fortress");
     path.setAttribute("aria-disabled", "true");
   } else {
     path.classList.remove("territory-disabled");
     path.removeAttribute("aria-disabled");
+
+    if (hasFortress) {
+      // Forteresse : double signal visuel, contour pointillé blanc + halo de la couleur du propriétaire.
+      path.style.setProperty("stroke", "rgba(255,255,255,0.98)", "important");
+      path.style.setProperty("stroke-width", "2.15", "important");
+      path.style.setProperty("stroke-dasharray", "5 3", "important");
+      path.style.setProperty("stroke-linejoin", "round", "important");
+      path.style.setProperty(
+        "filter",
+        `drop-shadow(0 0 3px ${fill || "#ffffff"}) drop-shadow(0 0 8px ${fill || "#ffffff"})`,
+        "important",
+      );
+      path.classList.add("territory-fortress");
+    } else {
+      path.style.setProperty("stroke", "rgba(255,255,255,0.78)", "important");
+      path.style.setProperty("stroke-width", "0.8", "important");
+      path.style.removeProperty("stroke-dasharray");
+      path.style.removeProperty("stroke-linejoin");
+      path.style.removeProperty("filter");
+      path.classList.remove("territory-fortress");
+    }
   }
 
   if (isSelected && !disabled) path.classList.add("territory-selected");
@@ -217,6 +241,7 @@ function injectStylesAndFills(params: {
         fillByTerritoryId[territoryId],
         selectedTerritoryId === territoryId,
         territory?.playable === false,
+        Boolean(territory?.fortressOwnerId && territory?.fortressOwnerId === territory?.ownerId),
       );
     }
     return svg.outerHTML;
@@ -256,10 +281,80 @@ function injectStylesAndFills(params: {
       fillByTerritoryId[territory.id],
       selectedTerritoryId === territory.id,
       territory.playable === false,
+      Boolean(territory.fortressOwnerId && territory.fortressOwnerId === territory.ownerId),
     );
   }
 
   return svg.outerHTML;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function appendFortressMarker(
+  svg: SVGSVGElement,
+  path: SVGPathElement,
+  territoryId: string,
+  color: string,
+) {
+  let box: DOMRect | SVGRect;
+  try {
+    box = path.getBBox();
+  } catch {
+    return;
+  }
+  if (!Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) return;
+
+  let centerX = box.x + box.width / 2;
+  let centerY = box.y + box.height / 2;
+  try {
+    const point = svg.createSVGPoint();
+    point.x = centerX;
+    point.y = centerY;
+    const pathMatrix = path.getCTM();
+    const rootMatrix = svg.getCTM();
+    if (pathMatrix && rootMatrix) {
+      // getCTM() inclut la transformation viewBox -> viewport. On la retire pour
+      // replacer le marqueur dans les coordonnées internes du SVG racine.
+      const relativeMatrix = rootMatrix.inverse().multiply(pathMatrix);
+      const transformed = point.matrixTransform(relativeMatrix);
+      centerX = transformed.x;
+      centerY = transformed.y;
+    }
+  } catch {
+    // Le centre du bbox reste un repli acceptable.
+  }
+
+  const viewBox = svg.viewBox?.baseVal;
+  const maxDimension = Math.max(1, viewBox?.width || 1000, viewBox?.height || 600);
+  const markerSize = Math.max(maxDimension * 0.026, Math.min(maxDimension * 0.042, Math.max(box.width, box.height) * 0.65));
+  const scale = markerSize / 24;
+
+  const group = document.createElementNS(SVG_NS, "g");
+  group.setAttribute("data-fortress-marker", territoryId);
+  group.setAttribute("transform", `translate(${centerX} ${centerY}) scale(${scale}) translate(-12 -12)`);
+  group.setAttribute("pointer-events", "none");
+  group.style.filter = `drop-shadow(0 0 4px ${color}) drop-shadow(0 0 9px ${color})`;
+
+  const circle = document.createElementNS(SVG_NS, "circle");
+  circle.setAttribute("cx", "12");
+  circle.setAttribute("cy", "12");
+  circle.setAttribute("r", "10.5");
+  circle.setAttribute("fill", "rgba(3,7,14,0.88)");
+  circle.setAttribute("stroke", "#ffffff");
+  circle.setAttribute("stroke-width", "1.45");
+  circle.setAttribute("vector-effect", "non-scaling-stroke");
+
+  const castle = document.createElementNS(SVG_NS, "path");
+  castle.setAttribute("d", "M4 20V9h4V5h3v4h2V5h3v4h4v11H4Zm4 0v-5h8v5M4 12h16");
+  castle.setAttribute("fill", "none");
+  castle.setAttribute("stroke", "#ffffff");
+  castle.setAttribute("stroke-width", "1.75");
+  castle.setAttribute("stroke-linecap", "round");
+  castle.setAttribute("stroke-linejoin", "round");
+  castle.setAttribute("vector-effect", "non-scaling-stroke");
+
+  group.append(circle, castle);
+  svg.appendChild(group);
 }
 
 function injectOverlayStyles(overlayRaw: string, themeColor: string, viewBox: string): string {
@@ -480,6 +575,25 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
       setRotation(shouldAutoRotate(contentRatio, viewportRatio) ? 90 : 0);
     }
   }, [baseSvgHtml, country, map.territories, viewport.width, viewport.height]);
+
+  // Ajoute un médaillon "forteresse" au centre de chaque territoire protégé.
+  // Le contour pointillé reste visible même sur les micro-territoires ; le médaillon
+  // reprend le langage graphique linéaire des icônes du BottomNav.
+  React.useLayoutEffect(() => {
+    const svg = baseHostRef.current?.querySelector("svg") as SVGSVGElement | null;
+    if (!svg) return;
+
+    for (const marker of Array.from(svg.querySelectorAll("[data-fortress-marker]"))) marker.remove();
+    const paths = Array.from(svg.querySelectorAll("path[data-territory-id]")) as SVGPathElement[];
+
+    for (const territory of map.territories) {
+      if (territory.playable === false) continue;
+      if (!territory.ownerId || territory.fortressOwnerId !== territory.ownerId) continue;
+      const path = paths.find((candidate) => candidate.getAttribute("data-territory-id") === territory.id);
+      if (!path) continue;
+      appendFortressMarker(svg, path, territory.id, ownerColors[territory.ownerId] || "#ffffff");
+    }
+  }, [baseSvgHtml, map.territories, ownerColors]);
 
   React.useEffect(() => {
     rotationWasManualRef.current = false;

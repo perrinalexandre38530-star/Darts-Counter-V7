@@ -333,6 +333,8 @@ export async function uploadCloudObject(args: {
   contentBase64?: string;
   gzip?: boolean;
   metadata?: Record<string, any>;
+  cloudCopyOnly?: boolean;
+  sourceDestination?: string;
 }): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
   return apiPost("/account/cloud-storage/upload", args) as any;
 }
@@ -410,6 +412,8 @@ export async function uploadCloudVaultSnapshotJson(args: {
   snapshotJson: string;
   title?: string;
   metadata?: Record<string, any>;
+  cloudCopyOnly?: boolean;
+  sourceDestination?: string;
 }): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
   const now = new Date();
   const stamp = now.toISOString().replace(/[:.]/g, "-");
@@ -421,8 +425,10 @@ export async function uploadCloudVaultSnapshotJson(args: {
     mimeType: "application/json",
     content: args.snapshotJson,
     gzip: true,
+    cloudCopyOnly: args.cloudCopyOnly === true,
+    sourceDestination: args.sourceDestination,
     metadata: {
-      source: "storage_vault_cloud_r2",
+      source: args.cloudCopyOnly ? "storage_vault_cross_device_copy" : "storage_vault_cloud_r2",
       backupKind: "vault_full_snapshot",
       ...(args.metadata || {}),
     },

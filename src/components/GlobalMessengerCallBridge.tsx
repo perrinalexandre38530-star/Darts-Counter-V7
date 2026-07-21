@@ -25,6 +25,14 @@ function safeStorageSet(key: string, value: string) {
   try { window.localStorage.setItem(key, value); } catch {}
 }
 
+function canRunMessengerBackground(auth: any): boolean {
+  if (typeof window === "undefined") return false;
+  const hash = String(window.location.hash || "").toLowerCase();
+  if (hash.startsWith("#/auth/") || hash.startsWith("#/account/start")) return false;
+  if (String(auth?.status || "") !== "signed_in") return false;
+  return !!readNasAccessToken();
+}
+
 function loadSeenCalls(): Set<string> {
   try {
     const raw = safeStorageGet(SEEN_CALLS_KEY);
@@ -140,7 +148,7 @@ export default function GlobalMessengerCallBridge() {
   React.useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
-    if (!readNasAccessToken()) return;
+    if (!canRunMessengerBackground(auth)) return;
     ensureMessagePushSubscription().catch(() => {});
   }, [auth?.status, auth?.ready, auth?.userId]);
 
@@ -158,7 +166,7 @@ export default function GlobalMessengerCallBridge() {
 
   React.useEffect(() => {
     if (typeof window === "undefined" || typeof EventSource === "undefined") return;
-    if (!readNasAccessToken()) return;
+    if (!canRunMessengerBackground(auth)) return;
     let es: EventSource | null = null;
     let stopped = false;
     let reconnectTimer: number | null = null;
@@ -214,7 +222,7 @@ export default function GlobalMessengerCallBridge() {
   }, [alertIncomingCall, auth?.status, auth?.ready, auth?.userId]);
 
   React.useEffect(() => {
-    if (!readNasAccessToken()) return;
+    if (!canRunMessengerBackground(auth)) return;
     let stopped = false;
     let timer: number | null = null;
     let pollDelayMs = 10_000;

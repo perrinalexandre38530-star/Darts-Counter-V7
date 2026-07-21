@@ -150,8 +150,28 @@ export function readNasAccessToken(): string {
 const envUrl = sanitizeApiUrl(getNasApiUrl());
 const PUBLIC_HTTPS_API_URL = "https://api.multisports-api.fr";
 const LEGACY_HTTP_API_URL = "http://api.multisports-api.fr:3000";
+const SAME_ORIGIN_API_PROXY_PATH = "/api/backend";
 const API_LAST_OK_KEY = "dc_api_url_last_ok";
 const API_OVERRIDE_KEY = "dc_api_url";
+
+function sameOriginApiProxyBase(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const host = String(window.location.hostname || "").toLowerCase();
+    // Le proxy Pages supprime entièrement le problème CORS navigateur tout en
+    // conservant le backend NAS/R2 comme source de vérité.
+    if (window.location.protocol === "https:" && (host === "darts-counter-v7.pages.dev" || host.endsWith(".pages.dev"))) {
+      return `${window.location.origin}${SAME_ORIGIN_API_PROXY_PATH}`;
+    }
+  } catch {}
+  return "";
+}
+
+function isAuthScreenRoute(): boolean {
+  if (typeof window === "undefined") return false;
+  const hash = String(window.location.hash || "").toLowerCase();
+  return hash.startsWith("#/auth/") || hash.startsWith("#/account/start");
+}
 
 function uniqApiUrls(values: string[]): string[] {
   const seen = new Set<string>();
@@ -185,6 +205,7 @@ export function getApiBaseCandidates(): string[] {
   // Vite compilé est cassé / DNS KO. Avant, envUrl gagnait toujours, donc on ne
   // pouvait plus dépanner l’Online depuis l’app.
   return uniqApiUrls([
+    sameOriginApiProxyBase(),
     lastOk,
     localOverride,
     envUrl,
@@ -308,6 +329,15 @@ async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const requestMethod = String(init?.method || "GET").toUpperCase();
   const isBackgroundOnlineGet = requestMethod === "GET" && normalizedPath.startsWith("/online/");
+
+  // Les badges/messages/appels ne doivent jamais lancer une rafale réseau sur
+  // l'écran de connexion, même si un ancien JWT NAS traîne encore en cache.
+  if (isBackgroundOnlineGet && isAuthScreenRoute()) {
+    const error: any = new Error(`GET ${normalizedPath} suspendu pendant l’authentification`);
+    error.status = 204;
+    error.code = "auth_route_suspended";
+    throw error;
+  }
 
   if (isBackgroundOnlineGet && Date.now() < onlineBackendCooldownUntil) {
     const seconds = Math.max(1, Math.ceil((onlineBackendCooldownUntil - Date.now()) / 1000));

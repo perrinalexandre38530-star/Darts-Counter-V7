@@ -88,6 +88,17 @@ function legacyNasHttpAllowed(): boolean {
   return window.location.protocol !== "https:";
 }
 
+function getSameOriginNasProxyBase(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const host = String(window.location.hostname || "").toLowerCase();
+    if (window.location.protocol === "https:" && (host === "darts-counter-v7.pages.dev" || host.endsWith(".pages.dev"))) {
+      return `${window.location.origin}/api/backend`;
+    }
+  } catch {}
+  return "";
+}
+
 function getNasApiBaseCandidates(): string[] {
   const legacyAllowed = legacyNasHttpAllowed();
   const legacyHttp = "http://api.multisports-api.fr:3000";
@@ -96,6 +107,7 @@ function getNasApiBaseCandidates(): string[] {
   const manualOverride = sanitizeNasBaseUrl(readLs("dc_api_url"));
   const legacy = legacyAllowed ? legacyHttp : "";
   return uniqueNasBaseUrls([
+    getSameOriginNasProxyBase(),
     lastOk,
     manualOverride,
     NAS_API_URL,
@@ -504,7 +516,7 @@ export function saveNasTokens(session: AuthSession | null, opts?: { silent?: boo
 export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
   const json = await apiFetch("/auth/login", {
     method: "POST",
-    timeoutMs: 6000,
+    timeoutMs: 3500,
     body: JSON.stringify({
       email: payload.email,
       password: payload.password,

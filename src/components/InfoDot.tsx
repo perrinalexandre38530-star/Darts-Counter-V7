@@ -12,6 +12,8 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import RulesModal from "./RulesModal";
 
+type InfoDotContent = React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
+
 type Props = {
   onClick?: (e: any) => void;
 
@@ -28,7 +30,7 @@ type Props = {
   color?: string;
 
   /** Si fourni, ouvre un modal RulesModal au clic. */
-  content?: React.ReactNode;
+  content?: InfoDotContent;
 
   /** Compatibilité avec les anciens appels <InfoDot active />. */
   active?: boolean;
@@ -45,6 +47,8 @@ export default function InfoDot({
 }: Props) {
   const { theme } = useTheme();
   const [open, setOpen] = React.useState(false);
+  const closeContent = React.useCallback(() => setOpen(false), []);
+  const renderedContent = typeof content === "function" ? content({ close: closeContent }) : content;
 
   const iconColor = color ?? theme.primary;
   const halo = glow ?? `${iconColor}88`;
@@ -138,11 +142,11 @@ export default function InfoDot({
       </div>
 
       {content != null ? (
-        <RulesModal open={open} onClose={() => setOpen(false)} title={title}>
-          {typeof content === "string" ? (
-            <div style={{ whiteSpace: "pre-wrap" }}>{content}</div>
+        <RulesModal open={open} onClose={closeContent} title={title}>
+          {typeof renderedContent === "string" ? (
+            <div style={{ whiteSpace: "pre-wrap" }}>{renderedContent}</div>
           ) : (
-            content
+            renderedContent
           )}
         </RulesModal>
       ) : null}

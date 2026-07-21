@@ -137,11 +137,19 @@ export default function AuthV7Login({ go }: Props) {
         "Connexion"
       );
       const uid = String((session as any)?.user?.id || "").trim();
+      const degraded = (session as any)?.degradedMode === true || String((session as any)?.authProvider || "") === "supabase_failover";
 
       if (uid) {
-        const restored = await restoreRemoteSnapshotIntoLocalStore();
+        // Une connexion Supabase valide ne doit jamais rester bloquée parce que
+        // le NAS/R2 est momentanément inaccessible. La restauration distante est
+        // bornée et pourra être relancée depuis la page Sauvegarde.
+        const restored = degraded
+          ? false
+          : await withTimeout(restoreRemoteSnapshotIntoLocalStore(), 8000, "Restauration distante").catch(() => false);
         const linked = hasLinkedLocalProfile(uid);
-        const remote = restored || await hasRemoteSnapshot();
+        const remote = restored || (degraded
+          ? false
+          : await withTimeout(hasRemoteSnapshot(), 5000, "Vérification sauvegarde distante").catch(() => false));
         if (!linked && !remote) {
           armNasProfileOnboarding(uid);
           go("profiles", {
