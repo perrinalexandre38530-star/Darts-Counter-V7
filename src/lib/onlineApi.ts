@@ -742,25 +742,50 @@ function buildSessionFromNasBridgeResponse(json: any, fallbackEmail?: string): A
   const profile = json?.profile || null;
   const token = String(json?.token || json?.accessToken || json?.access_token || "").trim();
   const refreshToken = String(json?.refreshToken || json?.refresh_token || "").trim();
+  const rawExpiresAt = json?.expiresAt ?? json?.expires_at ?? null;
+  const expiresAt = typeof rawExpiresAt === "number"
+    ? (rawExpiresAt > 0 && rawExpiresAt < 1_000_000_000_000 ? rawExpiresAt * 1000 : rawExpiresAt)
+    : rawExpiresAt
+      ? Date.parse(String(rawExpiresAt))
+      : null;
+  const provider = String(json?.authProvider || json?.auth_provider || "nas");
+  const degradedMode = json?.degradedMode === true || provider === "supabase_failover";
+  const userId = String(user?.id || json?.userId || json?.canonicalUserId || json?.supabaseUserId || "").trim();
   const session: AuthSession = {
     token,
     refreshToken,
-    expiresAt: json?.expiresAt ? Date.parse(String(json.expiresAt)) : (typeof json?.expiresAt === "number" ? json.expiresAt : null),
-    userId: String(user?.id || json?.userId || "").trim() || null,
+    expiresAt: Number.isFinite(Number(expiresAt)) ? Number(expiresAt) : null,
+    userId: userId || null,
     user: {
-      id: String(user?.id || json?.userId || "").trim(),
+      id: userId,
       email: user?.email || fallbackEmail || undefined,
       nickname: String(user?.nickname || profile?.displayName || profile?.nickname || (fallbackEmail ? String(fallbackEmail).split("@")[0] : "Player")),
       createdAt: Number(user?.createdAt || (user?.created_at ? Date.parse(user.created_at) : Date.now())),
     },
     profile,
-    authProvider: "nas",
-    degradedMode: false,
+    authProvider: degradedMode ? "supabase_failover" : provider === "supabase" ? "supabase" : "nas",
+    degradedMode,
+    supabaseUserId: String(json?.supabaseUserId || json?.bridge?.supabaseUserId || "").trim() || null,
   };
   if (!session.token || !session.user?.id) {
-    throw new Error("Réponse bridge NAS/R2 invalide : session absente.");
+    throw new Error("Réponse de connexion invalide : session absente.");
   }
-  saveNasTokens(session);
+
+  if (degradedMode) {
+    // Le token est un JWT Supabase : ne jamais le ranger dans les clés NAS.
+    try {
+      localStorage.removeItem(NAS_TOKEN_KEY);
+      localStorage.removeItem(NAS_REFRESH_KEY);
+    } catch {}
+    rememberCanonicalUserMapping({
+      email: session.user.email,
+      canonicalUserId: session.user.id,
+      supabaseUserId: session.supabaseUserId,
+    });
+  } else {
+    saveNasTokens(session);
+  }
+
   saveAuthToLS(session);
   markAuthReady(true);
   return session;

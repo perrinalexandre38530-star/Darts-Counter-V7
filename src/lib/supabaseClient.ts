@@ -9,14 +9,49 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { purgeLegacyLocalStorageIfNeeded } from "./storageQuota";
 import { isSupabaseHardDisabledInNasMode } from "./serverConfig";
 
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || "";
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "";
+const RAW_SUPABASE_URL = String((import.meta.env.VITE_SUPABASE_URL as string) || "").trim();
+const RAW_SUPABASE_ANON_KEY = String((import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "").trim();
+
+// Projet Supabase officiel de Multisports Scoring.
+// Certains anciens builds Cloudflare ont conservé un ancien project-ref
+// (hkyqtgnhuqgciixmepcnbw) désormais introuvable : la connexion échouait
+// alors avant même d'atteindre Supabase. On refuse donc toute URL provenant
+// d'un autre projet pour cette application et on utilise la configuration
+// publique canonique fournie avec le projet actuel.
+const CANONICAL_SUPABASE_PROJECT_REF = "rckbdaqksujehszafior";
+const CANONICAL_SUPABASE_URL = `https://${CANONICAL_SUPABASE_PROJECT_REF}.supabase.co`;
+const CANONICAL_SUPABASE_ANON_KEY = "sb_publishable_QlOTwTh-mKNLxQM9-dmIiw_EDegyTtU";
+
+function resolveSupabaseRuntimeConfig() {
+  try {
+    const parsed = new URL(RAW_SUPABASE_URL);
+    const projectRef = String(parsed.hostname || "").split(".")[0] || "";
+    if (parsed.protocol === "https:" && projectRef === CANONICAL_SUPABASE_PROJECT_REF && RAW_SUPABASE_ANON_KEY) {
+      return {
+        url: RAW_SUPABASE_URL.replace(/\/+$/, ""),
+        anonKey: RAW_SUPABASE_ANON_KEY,
+        repairedLegacyConfig: false,
+      };
+    }
+  } catch {}
+  return {
+    url: CANONICAL_SUPABASE_URL,
+    anonKey: CANONICAL_SUPABASE_ANON_KEY,
+    repairedLegacyConfig: true,
+  };
+}
+
+const RESOLVED_SUPABASE_CONFIG = resolveSupabaseRuntimeConfig();
+const SUPABASE_URL = RESOLVED_SUPABASE_CONFIG.url;
+const SUPABASE_ANON_KEY = RESOLVED_SUPABASE_CONFIG.anonKey;
 const isDev = !!import.meta.env.DEV;
 
 export const __SUPABASE_ENV__ = {
   url: SUPABASE_URL,
+  projectRef: CANONICAL_SUPABASE_PROJECT_REF,
   hasEnv: !!SUPABASE_URL && !!SUPABASE_ANON_KEY,
   disabledInNasMode: isSupabaseHardDisabledInNasMode(),
+  repairedLegacyConfig: RESOLVED_SUPABASE_CONFIG.repairedLegacyConfig,
 } as const;
 
 function supabaseProjectRef(url: string): string {
@@ -47,7 +82,18 @@ declare global {
 }
 
 const canUseWindow = typeof window !== "undefined";
-if (canUseWindow) purgeLegacyLocalStorageIfNeeded({ force: false });
+if (canUseWindow) {
+  purgeLegacyLocalStorageIfNeeded({ force: false });
+  // Supprime uniquement les sessions du projet Supabase obsolète.
+  // Les autres données de l'application ne sont jamais touchées.
+  try {
+    const obsoleteRefs = ["hkyqtgnhuqgciixmepcnbw"];
+    for (const ref of obsoleteRefs) {
+      window.localStorage.removeItem(`dc-supabase-auth-v2:${ref}`);
+      window.sessionStorage.removeItem(`dc-supabase-auth-v2:${ref}`);
+    }
+  } catch {}
+}
 
 type StorageLike = {
   getItem: (key: string) => string | null;

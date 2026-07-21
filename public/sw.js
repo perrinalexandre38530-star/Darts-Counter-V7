@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-07-05-messenger-call-push-v2";
+const SW_VERSION = "dc-sw-2026-07-21-supabase-auth-storage-icons-v1";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

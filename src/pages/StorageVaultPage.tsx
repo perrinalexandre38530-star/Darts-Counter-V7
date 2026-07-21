@@ -120,6 +120,61 @@ const accentSoftBorder = "color-mix(in srgb, var(--dc-accent, #d9ff33) 32%, tran
 const accentGlow = "color-mix(in srgb, var(--dc-accent, #d9ff33) 45%, transparent)";
 const accentSoftGlow = "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 28%, transparent)";
 
+function StorageDestinationIcon({ id, size = 31 }: { id: StorageDestinationId; size?: number }) {
+  const p = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  } as const;
+
+  switch (id) {
+    case "app_local":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <rect {...p} x="6.5" y="2.5" width="11" height="19" rx="2.4" />
+          <path {...p} d="M9.5 5h5" />
+          <path {...p} d="M10 18.5h4" />
+          <path {...p} d="M9 9.5h6M9 12.5h6M9 15.5h4" />
+        </svg>
+      );
+    case "device_file":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M3.5 6.5h6l2 2H20.5v10a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-12Z" />
+          <path {...p} d="M8.5 13h7M8.5 16h5" />
+        </svg>
+      );
+    case "external_sd_manual":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M7 2.5h8l4 4v15H7Z" />
+          <path {...p} d="M15 2.5v5h4" />
+          <path {...p} d="M9.5 12v4M12.5 12v4M15.5 12v4" />
+        </svg>
+      );
+    case "cloud_r2":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M7 18.5H5.5a3.5 3.5 0 0 1-.5-7A6.5 6.5 0 0 1 17.6 9a4.6 4.6 0 0 1 .9 9.1H17" />
+          <path {...p} d="m9 15 3-3 3 3" />
+          <path {...p} d="M12 12v8" />
+        </svg>
+      );
+    case "founder_nas":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <rect {...p} x="3" y="4" width="18" height="6" rx="1.6" />
+          <rect {...p} x="3" y="14" width="18" height="6" rx="1.6" />
+          <path {...p} d="M7 7h.01M7 17h.01M11 7h7M11 17h7" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 const AUTH_KEYS = [
   "dc_nas_access_token_v1",
   "dc_nas_refresh_token_v1",
@@ -2072,10 +2127,26 @@ ${label}`)) return;
                         boxShadow: active ? `0 0 18px ${accentGlow}` : "none",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                        <strong style={{ color: active ? gold : "#fff", fontSize: 13, ...wrapText }}>{destination.label}</strong>
-                        {active && <span style={{ marginLeft: "auto", color: green, fontSize: 10, fontWeight: 1000 }}>ACTIF</span>}
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                        <span
+                          style={{
+                            width: 44,
+                            height: 44,
+                            flex: "0 0 44px",
+                            display: "grid",
+                            placeItems: "center",
+                            borderRadius: 14,
+                            color: active ? gold : neon,
+                            border: active ? `1px solid ${accentSoftBorder}` : "1px solid rgba(148,163,184,.24)",
+                            background: active ? accentSoftBg : "rgba(15,23,42,.55)",
+                            boxShadow: active ? `0 0 16px ${accentGlow}` : "none",
+                          }}
+                        >
+                          <StorageDestinationIcon id={destination.id} />
+                        </span>
+                        {active && <span style={{ color: green, fontSize: 10, fontWeight: 1000, paddingTop: 4 }}>ACTIF</span>}
                       </div>
+                      <strong style={{ display: "block", marginTop: 9, color: active ? gold : "#fff", fontSize: 13, ...wrapText }}>{destination.label}</strong>
                       <div style={{ marginTop: 5, color: muted, fontSize: 11, lineHeight: 1.38, ...wrapText }}>{destination.description}</div>
                       {accountRequired && !hasConnectedAccount && <div style={{ marginTop: 6, color: amber, fontSize: 10.5, fontWeight: 900 }}>Connexion requise</div>}
                       {destination.warning && <div style={{ marginTop: 6, color: amber, fontSize: 10.5, lineHeight: 1.35 }}>{destination.warning}</div>}

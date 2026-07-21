@@ -106,6 +106,7 @@ async function provisionConfirmedSupabaseBackupViaNas(args: {
   email: string;
   password: string;
   nickname?: string;
+  canonicalUserId?: string;
 }): Promise<{ ok: boolean; message?: string }> {
   const baseUrl = String(getNasApiUrl() || "").replace(/\/+$/, "");
   if (!baseUrl) return { ok: false, message: "API NAS non configurée." };
@@ -120,6 +121,7 @@ async function provisionConfirmedSupabaseBackupViaNas(args: {
         email: args.email,
         password: args.password,
         nickname: args.nickname || args.email.split("@")[0] || "Player",
+        canonicalUserId: args.canonicalUserId || undefined,
       }),
       signal: controller?.signal,
     });
@@ -183,7 +185,7 @@ export async function ensureSupabaseAuthBackup(args: {
     // Supabase déjà confirmé via sa service role. C'est plus fiable que signUp()
     // côté navigateur et évite de bloquer le secours sur un email à confirmer.
     if (signedIn.error || !signedIn.data?.user) {
-      const provisioned = await provisionConfirmedSupabaseBackupViaNas({ email, password, nickname });
+      const provisioned = await provisionConfirmedSupabaseBackupViaNas({ email, password, nickname, canonicalUserId });
       if (provisioned.ok) {
         signedIn = await supabase.auth.signInWithPassword({ email, password });
       }
