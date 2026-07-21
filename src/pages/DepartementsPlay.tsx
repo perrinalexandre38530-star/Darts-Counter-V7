@@ -149,23 +149,43 @@ function findFlagByCountry(country: string): string | null {
 }
 
 
-const CONTINENT_MAP_IDS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM"]);
+const CONTINENT_MAP_IDS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD"]);
 // Ces fichiers représentent une CARTE/CONTINENT, pas le pays portant le même code ISO.
-// Exemple : AF.png = Afrique, alors que le territoire AF de la carte Asie = Afghanistan.
-const MAP_LEVEL_FLAG_CODES = new Set(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
+// Les collisions AF (Afrique/Afghanistan) et NA (North America/Namibie) utilisent
+// des fichiers explicites pour que les deux visuels puissent cohabiter.
+const MAP_LEVEL_FLAG_CODES = new Set(["ASIA", "EU", "SAM", "WORLD", "UN"]);
+const TERRITORY_FLAG_ALIASES: Record<string, string> = {
+  AF: "AF_COUNTRY",
+  NA: "NA_COUNTRY",
+  KV: "XK",
+};
+
+function normalizeTerritoryFlagCode(countryCode: string | null): string | null {
+  const raw = String(countryCode || "").toUpperCase().trim();
+  if (!raw) return null;
+  if (raw.startsWith("WORLD-")) return normalizeTerritoryFlagCode(raw.slice(6));
+  if (raw === "KV") return "KV";
+  if (/^UM(?:-|$)/.test(raw)) return "UM";
+  const match = /^([A-Z]{2})(?:-|$)/.exec(raw);
+  return match?.[1] || null;
+}
 
 function findTerritoryFlagByCountry(countryCode: string | null): string | null {
-  const rawCode = String(countryCode || "").toUpperCase().trim();
-  if (!/^[A-Z]{2}$/.test(rawCode) || MAP_LEVEL_FLAG_CODES.has(rawCode)) return null;
-  const code = rawCode === "KV" ? "XK" : rawCode;
+  const rawCode = normalizeTerritoryFlagCode(countryCode);
+  if (!rawCode) return null;
 
-  // Priorité aux ressources locales, utilisables hors ligne.
-  const local = findFlagByCountry(code);
+  const assetCode = TERRITORY_FLAG_ALIASES[rawCode] || rawCode;
+  if (MAP_LEVEL_FLAG_CODES.has(rawCode) && !TERRITORY_FLAG_ALIASES[rawCode]) return null;
+
+  // Priorité absolue aux ressources locales fournies, utilisables hors ligne.
+  const local = findFlagByCountry(assetCode);
   if (local) return local;
 
-  // Le projet ne contient historiquement qu'une partie des drapeaux mondiaux.
-  // Ce secours garantit l'affichage des pays absents du bundle local.
-  return `https://flagcdn.com/w320/${code.toLowerCase()}.png`;
+  // Secours réseau uniquement pour un vrai code ISO à deux lettres.
+  const remoteCode = rawCode === "KV" ? "XK" : rawCode;
+  return /^[A-Z]{2}$/.test(remoteCode)
+    ? `https://flagcdn.com/w320/${remoteCode.toLowerCase()}.png`
+    : null;
 }
 
 function getTerritoryCountryCode(country: TerritoriesCountry, territoryId?: string | null): string | null {
@@ -174,25 +194,27 @@ function getTerritoryCountryCode(country: TerritoriesCountry, territoryId?: stri
     .toUpperCase()
     .replace(/^WORLD-/, "")
     .trim();
-  return /^[A-Z]{2}$/.test(raw) ? raw : null;
+  return normalizeTerritoryFlagCode(raw);
 }
 
 function getLocalizedTerritoryName(code: string | null, lang: string, fallback: string): string {
   if (!code) return fallback;
+  const displayCode = code === "KV" ? "XK" : code;
   try {
     const DisplayNamesCtor = (Intl as any)?.DisplayNames;
     if (typeof DisplayNamesCtor === "function") {
-      const label = new DisplayNamesCtor([lang || "fr", "fr"], { type: "region" }).of(code);
-      if (label && label !== code) return String(label);
+      const label = new DisplayNamesCtor([lang || "fr", "fr"], { type: "region" }).of(displayCode);
+      if (label && label !== displayCode) return String(label);
     }
   } catch {}
-  return fallback || code;
+  return fallback || displayCode;
 }
 
 function isoCodeToFlagEmoji(code: string | null): string | undefined {
-  if (!code || !/^[A-Z]{2}$/.test(code)) return undefined;
+  const normalized = code === "KV" ? "XK" : code;
+  if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return undefined;
   const base = 0x1f1e6;
-  return Array.from(code)
+  return Array.from(normalized)
     .map((char) => String.fromCodePoint(base + char.charCodeAt(0) - 65))
     .join("");
 }
@@ -323,7 +345,7 @@ Départ
 
 Valeurs des territoires
 - Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
-- Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Tous les scores sont réalisables en 1 à 3 fléchettes.
+- Chaque territoire jouable possède une valeur différente. Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Une carte de plus de 180 territoires limite la partie à 180 cibles et grise les autres.
 
 Défendre
 - Choisis un de tes territoires et réalise EXACTEMENT sa valeur.
@@ -353,7 +375,7 @@ But
 
 Valeurs des territoires
 - Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
-- Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Tous les scores sont réalisables en 1 à 3 fléchettes.
+- Chaque territoire jouable possède une valeur différente. Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Une carte de plus de 180 territoires limite la partie à 180 cibles et grise les autres.
 
 Cible
 - ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Le score de la volée détermine automatiquement une cible compatible."}
@@ -536,7 +558,12 @@ export default function DepartementsPlay(props: any) {
   }, [gameMode, fortressVictoryMode, victoryMode, winTerritories, winRegions, timeLimitMin]);
 
   const initialState = React.useMemo<TerritoriesGameState>(() => {
-    const map = buildTerritoriesMap(country);
+    const rawMap = buildTerritoriesMap(country);
+    const map = applyBalancedTerritoryValues(
+      rawMap,
+      country,
+      territoryValueCalibration,
+    );
     const base: TerritoriesGameState = {
       meta: {
         startedAtMs: Date.now(),
@@ -555,8 +582,8 @@ export default function DepartementsPlay(props: any) {
         victoryCondition,
         voiceAnnouncements: false,
         valueSkillAverage3: territoryValueCalibration.referenceAvg3,
-        valueTargetMin: territoryValueCalibration.minTarget,
-        valueTargetMax: territoryValueCalibration.maxTarget,
+        valueTargetMin: map.assignedValueMin ?? territoryValueCalibration.minTarget,
+        valueTargetMax: map.assignedValueMax ?? territoryValueCalibration.maxTarget,
         valueDifficultyLabel: territoryValueCalibration.label,
       },
       players,
@@ -573,6 +600,8 @@ export default function DepartementsPlay(props: any) {
       status: "playing",
     };
 
+    // La distribution initiale s'effectue APRES l'attribution des valeurs
+    // uniques et ignore donc automatiquement les territoires gris/non jouables.
     const distributed = gameMode === "fortress" ? initializeEqualTerritoryOwnership(base) : base;
     return normalizeTerritoriesState(distributed).state;
   }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams, territoryValueCalibration]);
@@ -592,18 +621,13 @@ export default function DepartementsPlay(props: any) {
   });
 
   React.useLayoutEffect(() => {
-    const calibratedMap = applyBalancedTerritoryValues(
-      initialState.map,
-      country,
-      territoryValueCalibration,
-    );
-    setGame({ ...initialState, map: calibratedMap });
+    setGame(initialState);
     setCurrentThrow([]);
     setMultiplier(1);
     const out: Record<string, PlayerLiveStats> = {};
     for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
     setPlayerStats(out);
-  }, [initialState, players, country, territoryValueCalibration]);
+  }, [initialState, players]);
 
   const activePlayer = React.useMemo(
     () => game.players.find((p) => p.id === game.turn.activePlayerId),
@@ -616,8 +640,24 @@ export default function DepartementsPlay(props: any) {
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
   const ownedValueByOwner = React.useMemo(() => sumOwnedValueByOwnerId(game), [game]);
+  const playableTerritoryCount = React.useMemo(
+    () => game.map.playableTerritoryCount
+      ?? game.map.territories.filter((territory) => territory.playable !== false).length,
+    [game.map.playableTerritoryCount, game.map.territories],
+  );
+  const disabledTerritoryCount = React.useMemo(
+    () => game.map.disabledTerritoryCount
+      ?? game.map.territories.filter((territory) => territory.playable === false).length,
+    [game.map.disabledTerritoryCount, game.map.territories],
+  );
+  const assignedValueMin = game.map.assignedValueMin ?? territoryValueCalibration.minTarget;
+  const assignedValueMax = game.map.assignedValueMax ?? territoryValueCalibration.maxTarget;
   const totalMapValue = React.useMemo(
-    () => game.map.territories.reduce((sum, territory) => sum + Math.max(0, Number(territory.value) || 0), 0),
+    () => game.map.territories.reduce((sum, territory) => (
+      territory.playable === false
+        ? sum
+        : sum + Math.max(0, Number(territory.value) || 0)
+    ), 0),
     [game.map.territories],
   );
 
@@ -652,6 +692,7 @@ export default function DepartementsPlay(props: any) {
 
     const byRegion = new Map<string, any[]>();
     for (const tt of game.map.territories) {
+      if (tt.playable === false) continue;
       const regionId = String((tt as any).region || "FR-00");
       const arr = byRegion.get(regionId) || [];
       arr.push(tt);
@@ -863,10 +904,10 @@ export default function DepartementsPlay(props: any) {
   const possessionValueForActive = activeOwnerId ? ownedValueByOwner[activeOwnerId] || 0 : 0;
 
   const possessionsGoal = React.useMemo(() => {
-    if (gameMode === "fortress") return game.map.territories.length;
+    if (gameMode === "fortress") return playableTerritoryCount;
     if (victoryMode === "regions") return winRegions;
     return winTerritories;
-  }, [gameMode, game.map.territories.length, victoryMode, winRegions, winTerritories]);
+  }, [gameMode, playableTerritoryCount, victoryMode, winRegions, winTerritories]);
 
   const activeStats = React.useMemo<PlayerLiveStats>(() => {
     const total: PlayerLiveStats = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
@@ -986,7 +1027,7 @@ export default function DepartementsPlay(props: any) {
         ? fortressVictoryMode === "conquest" ? "conquest" : fortressVictoryMode === "value" ? "value" : "majority"
         : victoryMode,
       objective: gameMode === "fortress"
-        ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
+        ? fortressVictoryMode === "conquest" ? playableTerritoryCount : maxRounds
         : victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories,
       rounds: game.roundIndex || 1,
       durationMs,
@@ -1016,7 +1057,7 @@ export default function DepartementsPlay(props: any) {
     maxFortressesPerOwner,
     fortressVictoryMode,
     maxRounds,
-    game.map.territories.length,
+    playableTerritoryCount,
     victoryMode,
     ownedByOwner,
     ownedValueByOwner,
@@ -1038,7 +1079,10 @@ export default function DepartementsPlay(props: any) {
     <div style={{ maxHeight: "70vh", overflow: "auto" }} className="dc-scroll-thin">
       <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 8 }}>Valeurs des territoires</div>
       <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
-        Chaque territoire a une valeur cible réalisable sur une volée. Les valeurs sont classées par surface : les grands territoires demandent les scores les plus élevés. Niveau {territoryValueCalibration.label}, plage {territoryValueCalibration.minTarget}–{territoryValueCalibration.maxTarget}.
+        Chaque territoire jouable possède une valeur strictement unique. Les valeurs sont classées par surface : les grands territoires demandent les scores les plus élevés. Niveau {territoryValueCalibration.label}, plage réelle {assignedValueMin}–{assignedValueMax}.
+        {disabledTerritoryCount > 0
+          ? ` ${playableTerritoryCount} territoires sont jouables. ${disabledTerritoryCount} territoires supplémentaires sont grisés et exclus de cette partie afin de respecter la limite de 180 valeurs uniques.`
+          : ""}
         {gameMode === "fortress" ? " Le contour blanc pointillé et le symbole 🛡 signalent une forteresse active." : ""}
       </div>
 
@@ -1096,11 +1140,12 @@ export default function DepartementsPlay(props: any) {
                     gap: 10,
                     padding: "10px 12px",
                     borderRadius: 12,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: tt.playable === false ? "rgba(120,126,140,0.08)" : "rgba(255,255,255,0.04)",
+                    border: tt.playable === false ? "1px solid rgba(160,166,180,0.14)" : "1px solid rgba(255,255,255,0.08)",
+                    opacity: tt.playable === false ? 0.52 : 1,
                   }}
                 >
-                  <div style={{ minWidth: 52, textAlign: "center", fontWeight: 950, color: themeColor }}>{tt.value}</div>
+                  <div style={{ minWidth: 76, textAlign: "center", fontWeight: 950, fontSize: tt.playable === false ? 9 : 13, color: tt.playable === false ? "rgba(255,255,255,0.45)" : themeColor }}>{tt.playable === false ? "HORS PARTIE" : tt.value}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
@@ -1113,7 +1158,7 @@ export default function DepartementsPlay(props: any) {
           ))
         ) : (
           [...game.map.territories]
-            .sort((a, b) => (a.value - b.value) || a.name.localeCompare(b.name))
+            .sort((a, b) => Number(a.playable === false) - Number(b.playable === false) || (a.value - b.value) || a.name.localeCompare(b.name))
             .map((tt) => (
               <div
                 key={tt.id}
@@ -1124,11 +1169,12 @@ export default function DepartementsPlay(props: any) {
                   gap: 10,
                   padding: "10px 12px",
                   borderRadius: 12,
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: tt.playable === false ? "rgba(120,126,140,0.08)" : "rgba(255,255,255,0.04)",
+                  border: tt.playable === false ? "1px solid rgba(160,166,180,0.14)" : "1px solid rgba(255,255,255,0.08)",
+                  opacity: tt.playable === false ? 0.52 : 1,
                 }}
               >
-                <div style={{ minWidth: 52, textAlign: "center", fontWeight: 950, color: themeColor }}>{tt.value}</div>
+                <div style={{ minWidth: 76, textAlign: "center", fontWeight: 950, fontSize: tt.playable === false ? 9 : 13, color: tt.playable === false ? "rgba(255,255,255,0.45)" : themeColor }}>{tt.playable === false ? "HORS PARTIE" : tt.value}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {tt.fortressOwnerId === tt.ownerId ? "🛡 " : ""}{tt.name}
@@ -1149,7 +1195,7 @@ export default function DepartementsPlay(props: any) {
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} title="Retour à la configuration TERRITORIES" />}
-        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: territoryValueCalibration.minTarget, valueTargetMax: territoryValueCalibration.maxTarget })} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax })} />}
       />
 
       {/* END OF MATCH MODAL */}
@@ -1164,7 +1210,7 @@ export default function DepartementsPlay(props: any) {
           ownedValueByOwner={ownedValueByOwner}
           victoryMode={gameMode === "fortress" ? fortressVictoryMode : victoryMode}
           objective={gameMode === "fortress"
-            ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
+            ? fortressVictoryMode === "conquest" ? playableTerritoryCount : maxRounds
             : victoryMode === "time" ? timeLimitMin : victoryMode === "regions" ? winRegions : winTerritories}
           onReplay={replay}
           onQuit={goBack}
@@ -1390,6 +1436,9 @@ export default function DepartementsPlay(props: any) {
             activeColor={activeColor}
             themeColor={themeColor}
             interactive={game.status === "playing" && game.config.targetSelectionMode !== "imposed"}
+            isSelectableTerritoryId={(territoryId) =>
+              game.map.territories.some((territory) => territory.id === territoryId && territory.playable !== false)
+            }
             onSelectTerritory={handleMapSelect}
           />
         </TerritoriesMapModal>

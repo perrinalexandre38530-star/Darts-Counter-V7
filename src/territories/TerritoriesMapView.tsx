@@ -132,20 +132,36 @@ function prepareSvgRoot(svg: SVGSVGElement, fallbackViewBox: string) {
   svg.style.setProperty("overflow", "visible", "important");
 }
 
-function applyPathVisual(path: SVGPathElement, fill: string | undefined, isSelected: boolean) {
-  const finalFill = fill || "rgba(255,255,255,0.012)";
+function applyPathVisual(
+  path: SVGPathElement,
+  fill: string | undefined,
+  isSelected: boolean,
+  disabled: boolean,
+) {
+  const finalFill = disabled
+    ? "rgba(115,122,136,0.50)"
+    : fill || "rgba(255,255,255,0.012)";
 
   // Les cartes amCharts possèdent souvent .land { fill:#ccc }. Un simple attribut
   // fill ne suffit donc pas : on force le style inline en !important.
   path.style.setProperty("fill", finalFill, "important");
-  path.style.setProperty("fill-opacity", fill ? "0.96" : "1", "important");
-  path.style.setProperty("stroke", "rgba(255,255,255,0.78)", "important");
-  path.style.setProperty("stroke-width", "0.8", "important");
+  path.style.setProperty("fill-opacity", disabled ? "0.58" : fill ? "0.96" : "1", "important");
+  path.style.setProperty("stroke", disabled ? "rgba(185,190,202,0.34)" : "rgba(255,255,255,0.78)", "important");
+  path.style.setProperty("stroke-width", disabled ? "0.55" : "0.8", "important");
   path.style.setProperty("vector-effect", "non-scaling-stroke", "important");
-  path.style.setProperty("pointer-events", "all", "important");
-  path.style.setProperty("cursor", "pointer", "important");
+  path.style.setProperty("pointer-events", disabled ? "none" : "all", "important");
+  path.style.setProperty("cursor", disabled ? "not-allowed" : "pointer", "important");
+  path.style.setProperty("filter", disabled ? "grayscale(1) brightness(.62)" : "", "important");
 
-  if (isSelected) path.classList.add("territory-selected");
+  if (disabled) {
+    path.classList.add("territory-disabled");
+    path.setAttribute("aria-disabled", "true");
+  } else {
+    path.classList.remove("territory-disabled");
+    path.removeAttribute("aria-disabled");
+  }
+
+  if (isSelected && !disabled) path.classList.add("territory-selected");
   else path.classList.remove("territory-selected");
 }
 
@@ -195,7 +211,13 @@ function injectStylesAndFills(params: {
       const regionCode = FR_DEP_TO_REGION[department];
       if (regionCode) path.classList.add(`fr-region-${regionCode}`);
       path.setAttribute("data-territory-id", territoryId);
-      applyPathVisual(path, fillByTerritoryId[territoryId], selectedTerritoryId === territoryId);
+      const territory = map.territories.find((item) => item.id === territoryId);
+      applyPathVisual(
+        path,
+        fillByTerritoryId[territoryId],
+        selectedTerritoryId === territoryId,
+        territory?.playable === false,
+      );
     }
     return svg.outerHTML;
   }
@@ -229,7 +251,12 @@ function injectStylesAndFills(params: {
       path.setAttribute("transform", [existing, transform].filter(Boolean).join(" "));
     }
 
-    applyPathVisual(path, fillByTerritoryId[territory.id], selectedTerritoryId === territory.id);
+    applyPathVisual(
+      path,
+      fillByTerritoryId[territory.id],
+      selectedTerritoryId === territory.id,
+      territory.playable === false,
+    );
   }
 
   return svg.outerHTML;

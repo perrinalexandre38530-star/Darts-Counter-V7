@@ -69,6 +69,10 @@ function isFortressMode(state: TerritoriesGameState): boolean {
   return state.config.gameMode === "fortress";
 }
 
+export function isTerritoryPlayable(territory: Territory): boolean {
+  return territory.playable !== false;
+}
+
 function maxFortressesPerOwner(state: TerritoriesGameState): number {
   const raw = Number(state.config.maxFortressesPerOwner ?? 2);
   if (!Number.isFinite(raw)) return 2;
@@ -78,6 +82,7 @@ function maxFortressesPerOwner(state: TerritoriesGameState): number {
 function isEligibleTerritory(state: TerritoriesGameState, territory: Territory, ownerId: OwnerId): boolean {
   const { allowEnemyCapture, minTerritoryValue } = state.config;
 
+  if (!isTerritoryPlayable(territory)) return false;
   if (typeof minTerritoryValue === "number" && territory.value < minTerritoryValue) return false;
 
   // Forteresses mode deliberately allows attacking an enemy territory and
@@ -117,12 +122,12 @@ function addCapturedToOwner(state: TerritoriesGameState, ownerId: OwnerId, terri
 }
 
 function countTerritoriesOwned(state: TerritoriesGameState, ownerId: OwnerId): number {
-  return state.map.territories.filter((t) => t.ownerId === ownerId).length;
+  return state.map.territories.filter((t) => isTerritoryPlayable(t) && t.ownerId === ownerId).length;
 }
 
 function sumTerritoryValueOwned(state: TerritoriesGameState, ownerId: OwnerId): number {
   return state.map.territories.reduce((total, territory) => {
-    if (territory.ownerId !== ownerId) return total;
+    if (!isTerritoryPlayable(territory) || territory.ownerId !== ownerId) return total;
     const value = Number(territory.value);
     return total + (Number.isFinite(value) ? Math.max(0, value) : 0);
   }, 0);
@@ -133,6 +138,7 @@ function computeRegionOwnership(state: TerritoriesGameState): Record<string, Own
   const byRegion: Record<string, Territory[]> = {};
 
   for (const t of state.map.territories) {
+    if (!isTerritoryPlayable(t)) continue;
     const r = String(t.region || "").trim();
     if (!r) continue;
     (byRegion[r] ||= []).push(t);
@@ -240,7 +246,7 @@ function checkVictory(state: TerritoriesGameState, nowMs: number = Date.now()): 
   }
 
   if (victoryCondition.type === "conquest") {
-    const total = state.map.territories.length;
+    const total = state.map.territories.filter(isTerritoryPlayable).length;
     for (const ownerId of owners) {
       if (total > 0 && countTerritoriesOwned(state, ownerId) === total) {
         return { gameEnded: true, winnerId: ownerId };
@@ -395,7 +401,8 @@ export function initializeEqualTerritoryOwnership(input: TerritoriesGameState): 
     t.fortressBuiltAtTurn = undefined;
   }
 
-  const total = state.map.territories.length;
+  const playableTerritories = state.map.territories.filter(isTerritoryPlayable);
+  const total = playableTerritories.length;
   const equalShare = Math.floor(total / owners.length);
 
   if (state.config.victoryCondition.type === "rounds_value") {
@@ -405,7 +412,7 @@ export function initializeEqualTerritoryOwnership(input: TerritoriesGameState): 
     // preserving exactly equal territory counts.
     const totals: Record<string, number> = Object.fromEntries(owners.map((ownerId) => [ownerId, 0]));
     const counts: Record<string, number> = Object.fromEntries(owners.map((ownerId) => [ownerId, 0]));
-    const candidates = [...state.map.territories]
+    const candidates = [...playableTerritories]
       .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0) || a.id.localeCompare(b.id))
       .slice(0, equalShare * owners.length);
 
@@ -425,7 +432,7 @@ export function initializeEqualTerritoryOwnership(input: TerritoriesGameState): 
   let cursor = 0;
   owners.forEach((ownerId) => {
     for (let i = 0; i < equalShare; i += 1) {
-      const territory = state.map.territories[cursor++];
+      const territory = playableTerritories[cursor++];
       if (!territory) continue;
       territory.ownerId = ownerId;
       addCapturedToOwner(state, ownerId, territory.id);
@@ -589,7 +596,7 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
 export function countOwnedByOwnerId(state: TerritoriesGameState): Record<string, number> {
   const out: Record<string, number> = {};
   for (const t of state.map.territories) {
-    if (!t.ownerId) continue;
+    if (!isTerritoryPlayable(t) || !t.ownerId) continue;
     out[t.ownerId] = (out[t.ownerId] || 0) + 1;
   }
   return out;
@@ -598,7 +605,7 @@ export function countOwnedByOwnerId(state: TerritoriesGameState): Record<string,
 export function sumOwnedValueByOwnerId(state: TerritoriesGameState): Record<string, number> {
   const out: Record<string, number> = {};
   for (const territory of state.map.territories) {
-    if (!territory.ownerId) continue;
+    if (!isTerritoryPlayable(territory) || !territory.ownerId) continue;
     const value = Number(territory.value);
     out[territory.ownerId] = (out[territory.ownerId] || 0) + (Number.isFinite(value) ? Math.max(0, value) : 0);
   }

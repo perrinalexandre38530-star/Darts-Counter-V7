@@ -1,5 +1,10 @@
 import type { TerritoriesCountry, TerritoriesMap, Territory } from "./types";
 import { getBaseSvgForCountry, getTerritoryIdFromSvgElement } from "./map";
+import {
+  MAX_PLAYABLE_TERRITORIES,
+  buildUniqueTerritoryValues,
+  selectPlayableTerritoryIds,
+} from "./territoryValueRules";
 
 export type TerritoryValueCalibration = {
   referenceAvg3: number;
@@ -164,34 +169,6 @@ export function buildTerritoryValueCalibrationFromAverage(referenceAvg3Raw: numb
   return { referenceAvg3, minTarget, maxTarget, label, playerCount: 1 };
 }
 
-function reachableVisitTotals(): number[] {
-  const dartScores = new Set<number>([0, 25, 50]);
-  for (let value = 1; value <= 20; value += 1) {
-    dartScores.add(value);
-    dartScores.add(value * 2);
-    dartScores.add(value * 3);
-  }
-  const darts = [...dartScores];
-  const totals = new Set<number>();
-  for (const a of darts) {
-    totals.add(a);
-    for (const b of darts) {
-      totals.add(a + b);
-      for (const c of darts) totals.add(a + b + c);
-    }
-  }
-  return [...totals].filter((total) => total >= 1 && total <= 180).sort((a, b) => a - b);
-}
-
-const REACHABLE_TOTALS = reachableVisitTotals();
-
-function scorePool(calibration: TerritoryValueCalibration): number[] {
-  const filtered = REACHABLE_TOTALS.filter(
-    (score) => score >= calibration.minTarget && score <= calibration.maxTarget,
-  );
-  return filtered.length >= 2 ? filtered : [calibration.minTarget, calibration.maxTarget];
-}
-
 function territoryIdForPath(country: TerritoriesCountry, path: SVGPathElement): string | null {
   const raw = getTerritoryIdFromSvgElement(country, path);
   if (!raw) return null;
@@ -293,29 +270,50 @@ export function applyBalancedTerritoryValues(
   calibration: TerritoryValueCalibration,
 ): TerritoriesMap {
   const areas = measureTerritoryAreas(country, map);
-  const pool = scorePool(calibration);
-  const ordered = [...map.territories].sort((left, right) => {
-    const areaDiff = (areas[left.id] || 0) - (areas[right.id] || 0);
-    if (Math.abs(areaDiff) > 0.000001) return areaDiff;
-    return String(left.id).localeCompare(String(right.id), undefined, { numeric: true });
+  const playableIds = selectPlayableTerritoryIds(
+    map.territories,
+    areas,
+    MAX_PLAYABLE_TERRITORIES,
+  );
+
+  const orderedPlayable = map.territories
+    .filter((territory) => playableIds.has(territory.id))
+    .sort((left, right) => {
+      const areaDifference = (areas[left.id] || 0) - (areas[right.id] || 0);
+      if (Math.abs(areaDifference) > 0.000001) return areaDifference;
+      return String(left.id).localeCompare(String(right.id), undefined, { numeric: true });
+    });
+
+  const uniqueValues = buildUniqueTerritoryValues(
+    orderedPlayable.length,
+    calibration.minTarget,
+    calibration.maxTarget,
+  );
+  const valueById = new Map<string, number>();
+  orderedPlayable.forEach((territory, index) => {
+    valueById.set(territory.id, uniqueValues[index] ?? index + 1);
   });
 
-  const scoreById = new Map<string, number>();
-  const count = ordered.length;
-  ordered.forEach((territory, index) => {
-    const progress = count <= 1 ? 0.5 : index / (count - 1);
-    // Légère courbe : davantage de cibles restent dans la zone accessible,
-    // tandis que les plus grands territoires occupent le haut de la plage.
-    const curvedProgress = Math.pow(progress, 1.12);
-    const poolIndex = Math.round(curvedProgress * (pool.length - 1));
-    scoreById.set(territory.id, pool[poolIndex] ?? calibration.minTarget);
-  });
+  const assignedValues = [...valueById.values()];
+  const assignedValueMin = assignedValues.length ? Math.min(...assignedValues) : 0;
+  const assignedValueMax = assignedValues.length ? Math.max(...assignedValues) : 0;
 
   return {
     ...map,
-    territories: map.territories.map((territory) => ({
-      ...territory,
-      value: scoreById.get(territory.id) ?? territory.value,
-    })),
+    playableTerritoryCount: orderedPlayable.length,
+    disabledTerritoryCount: Math.max(0, map.territories.length - orderedPlayable.length),
+    assignedValueMin,
+    assignedValueMax,
+    territories: map.territories.map((territory) => {
+      const playable = playableIds.has(territory.id);
+      return {
+        ...territory,
+        playable,
+        value: playable ? (valueById.get(territory.id) ?? territory.value) : 0,
+        ownerId: playable ? territory.ownerId : undefined,
+        fortressOwnerId: playable ? territory.fortressOwnerId : undefined,
+        fortressBuiltAtTurn: playable ? territory.fortressBuiltAtTurn : undefined,
+      };
+    }),
   };
 }

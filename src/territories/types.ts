@@ -99,6 +99,9 @@ export interface Territory {
   region: string;    // free text / code
   name: string;      // display
   value: number;     // objective score
+  // A map can contain more than 180 shapes. Only playable territories receive
+  // a unique target value for the current match; the others stay visible but greyed out.
+  playable?: boolean;
   svgPathId: string; // per-country key used to find SVG element (id or data-*)
   ownerId?: string;  // playerId or teamId
   // In Forteresses mode, a territory can carry its owner's fortress.
@@ -111,6 +114,10 @@ export interface TerritoriesMap {
   country: string;
   svgViewBox: string;
   territories: Territory[];
+  playableTerritoryCount?: number;
+  disabledTerritoryCount?: number;
+  assignedValueMin?: number;
+  assignedValueMax?: number;
 }
 
 export interface TerritoriesTurnState {

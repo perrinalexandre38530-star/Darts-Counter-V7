@@ -122,7 +122,8 @@ Sélection de cible
 
 Valeurs des territoires
 - Elles sont calculées selon la surface réelle : les grands territoires demandent les scores les plus élevés.
-- La difficulté s'adapte automatiquement au niveau des participants sélectionnés et chaque score reste réalisable en 1 à 3 fléchettes.
+- La difficulté s'adapte automatiquement au niveau des participants sélectionnés. Chaque territoire jouable reçoit une valeur différente.
+- Au-delà de 180 territoires, 180 cibles sont retenues pour la partie et les autres restent visibles mais grisées et non jouables.
 
 Règle de capture
 - EXACT : le total doit être strictement égal à la valeur du territoire.
@@ -226,8 +227,9 @@ PAR LE SCORE
 
 const HELP_VALUE_BALANCE = `Valeurs adaptatives des territoires
 
-- Les scores demandés sont toujours réalisables avec une volée de 1 à 3 fléchettes.
+- Chaque territoire jouable reçoit une valeur strictement unique : aucun doublon n'est possible.
 - Les territoires sont classés selon leur surface réelle sur la carte : plus un territoire est grand, plus sa valeur est élevée.
+- Une carte de plus de 180 territoires sélectionne les 180 territoires les plus lisibles et grise les autres pour la partie en cours.
 - La plage de scores est calculée automatiquement à partir du niveau des joueurs et Bots sélectionnés.
 - Le joueur le moins fort est volontairement pris en compte pour que les plus grandes cibles restent difficiles, mais atteignables.
 - Les valeurs sont fixées au lancement et restent identiques pour tous pendant toute la partie.`;
