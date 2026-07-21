@@ -1,0 +1,138 @@
+{
+  "notice": "Drapeaux graphiques fictifs reprenant les couleurs et emblèmes visibles sur la carte MONDE UN fournie. Ils ne constituent pas des drapeaux officiels.",
+  "dimensions": "960x540",
+  "regions": [
+    {
+      "id": "nAfrica",
+      "nameFr": "Afrique du Nord",
+      "file": "nAfrica.png",
+      "symbol": "sun_bars"
+    },
+    {
+      "id": "wAfrica",
+      "nameFr": "Afrique de l’Ouest",
+      "file": "wAfrica.png",
+      "symbol": "sun_vertical"
+    },
+    {
+      "id": "mAfrica",
+      "nameFr": "Afrique centrale",
+      "file": "mAfrica.png",
+      "symbol": "diamond"
+    },
+    {
+      "id": "eAfrica",
+      "nameFr": "Afrique de l’Est",
+      "file": "eAfrica.png",
+      "symbol": "east_star"
+    },
+    {
+      "id": "sAfrica",
+      "nameFr": "Afrique australe",
+      "file": "sAfrica.png",
+      "symbol": "leaf"
+    },
+    {
+      "id": "nAmerica",
+      "nameFr": "Amérique du Nord",
+      "file": "nAmerica.png",
+      "symbol": "maple_wreath"
+    },
+    {
+      "id": "cAmerica",
+      "nameFr": "Amérique centrale",
+      "file": "cAmerica.png",
+      "symbol": "central_sun"
+    },
+    {
+      "id": "caribbean",
+      "nameFr": "Caraïbes",
+      "file": "caribbean.png",
+      "symbol": "stars_waves"
+    },
+    {
+      "id": "sAmerica",
+      "nameFr": "Amérique du Sud",
+      "file": "sAmerica.png",
+      "symbol": "south_sun_stripes"
+    },
+    {
+      "id": "nEurope",
+      "nameFr": "Europe septentrionale",
+      "file": "nEurope.png",
+      "symbol": "compass"
+    },
+    {
+      "id": "wEurope",
+      "nameFr": "Europe occidentale",
+      "file": "wEurope.png",
+      "symbol": "star_circle"
+    },
+    {
+      "id": "sEurope",
+      "nameFr": "Europe méridionale",
+      "file": "sEurope.png",
+      "symbol": "purple_sun"
+    },
+    {
+      "id": "eEurope",
+      "nameFr": "Europe orientale",
+      "file": "eEurope.png",
+      "symbol": "swoosh_star"
+    },
+    {
+      "id": "cAsia",
+      "nameFr": "Asie centrale",
+      "file": "cAsia.png",
+      "symbol": "orb_wings"
+    },
+    {
+      "id": "wAsia",
+      "nameFr": "Asie occidentale",
+      "file": "wAsia.png",
+      "symbol": "west_sun"
+    },
+    {
+      "id": "sAsia",
+      "nameFr": "Asie du Sud",
+      "file": "sAsia.png",
+      "symbol": "lotus"
+    },
+    {
+      "id": "eAsia",
+      "nameFr": "Asie de l’Est",
+      "file": "eAsia.png",
+      "symbol": "flower"
+    },
+    {
+      "id": "seAsia",
+      "nameFr": "Asie du Sud-Est",
+      "file": "seAsia.png",
+      "symbol": "sunburst"
+    },
+    {
+      "id": "australiaNZ",
+      "nameFr": "Australie et Nouvelle-Zélande",
+      "file": "australiaNZ.png",
+      "symbol": "australia_waves"
+    },
+    {
+      "id": "melanesia",
+      "nameFr": "Mélanésie",
+      "file": "melanesia.png",
+      "symbol": "island_leaf"
+    },
+    {
+      "id": "micronesia",
+      "nameFr": "Micronésie",
+      "file": "micronesia.png",
+      "symbol": "four_stars"
+    },
+    {
+      "id": "polynesia",
+      "nameFr": "Polynésie",
+      "file": "polynesia.png",
+      "symbol": "fern_waves"
+    }
+  ]
+}

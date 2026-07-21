@@ -88,6 +88,48 @@ const flagGlob = import.meta.glob("../assets/flags/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+// Drapeaux graphiques des 22 territoires de la carte MONDE UN.
+// Les fichiers utilisent directement les IDs du SVG un-regions.svg.
+const unRegionFlagGlob = import.meta.glob("../assets/flags_un/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const UN_REGION_NAMES_FR: Record<string, string> = {
+  nAfrica: "Afrique du Nord",
+  wAfrica: "Afrique de l’Ouest",
+  mAfrica: "Afrique centrale",
+  eAfrica: "Afrique de l’Est",
+  sAfrica: "Afrique australe",
+  nAmerica: "Amérique du Nord",
+  cAmerica: "Amérique centrale",
+  caribbean: "Caraïbes",
+  sAmerica: "Amérique du Sud",
+  nEurope: "Europe septentrionale",
+  wEurope: "Europe occidentale",
+  sEurope: "Europe méridionale",
+  eEurope: "Europe orientale",
+  cAsia: "Asie centrale",
+  wAsia: "Asie occidentale",
+  sAsia: "Asie du Sud",
+  eAsia: "Asie de l’Est",
+  seAsia: "Asie du Sud-Est",
+  australiaNZ: "Australie et Nouvelle-Zélande",
+  melanesia: "Mélanésie",
+  micronesia: "Micronésie",
+  polynesia: "Polynésie",
+};
+
+function findUnRegionFlag(regionId: string | null | undefined): string | null {
+  const wanted = String(regionId || "").trim().toLowerCase();
+  if (!wanted) return null;
+  for (const [path, src] of Object.entries(unRegionFlagGlob)) {
+    const filename = path.split("/").pop()?.replace(/\.png$/i, "").toLowerCase();
+    if (filename === wanted) return src;
+  }
+  return null;
+}
+
 // France regions icons (used in values modal)
 const regionsFrGlob = import.meta.glob("../assets/regions_fr/FR-*.png", {
   eager: true,
@@ -794,21 +836,28 @@ export default function DepartementsPlay(props: any) {
   }, [game.turn.selectedTerritoryId, game.map.territories]);
 
   const objectiveValueLabel = selectedTerritory ? String(selectedTerritory.value) : "—";
-  const selectedTerritoryCountryCode = getTerritoryCountryCode(country, selectedTerritory?.id);
+  const selectedTerritoryCountryCode =
+    country === "UN" ? null : getTerritoryCountryCode(country, selectedTerritory?.id);
   const selectedTerritoryDisplayName = selectedTerritory
-    ? getLocalizedTerritoryName(
-        selectedTerritoryCountryCode,
-        lang,
-        String(selectedTerritory.name || selectedTerritory.id),
-      )
+    ? country === "UN"
+      ? (UN_REGION_NAMES_FR[String(selectedTerritory.id)] || String(selectedTerritory.name || selectedTerritory.id))
+      : getLocalizedTerritoryName(
+          selectedTerritoryCountryCode,
+          lang,
+          String(selectedTerritory.name || selectedTerritory.id),
+        )
     : "—";
   const territoryNameLabel = selectedTerritory
     ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritoryDisplayName}`
     : "—";
-  const territoryFlagSrc = findTerritoryFlagByCountry(selectedTerritoryCountryCode);
-  // Toujours conserver l'emoji : il prend automatiquement le relais si une
-  // image locale ou distante est absente / bloquée.
-  const territoryFlagEmoji = isoCodeToFlagEmoji(selectedTerritoryCountryCode);
+  const territoryFlagSrc =
+    country === "UN"
+      ? findUnRegionFlag(selectedTerritory?.id)
+      : findTerritoryFlagByCountry(selectedTerritoryCountryCode);
+  // Les territoires UN utilisent systématiquement leur PNG local.
+  // Les emojis restent uniquement le secours des territoires ISO classiques.
+  const territoryFlagEmoji =
+    country === "UN" ? undefined : isoCodeToFlagEmoji(selectedTerritoryCountryCode);
 
   const isFrRegionsVictory = gameMode === "classic" && country === "FR" && victoryMode === "regions";
 
