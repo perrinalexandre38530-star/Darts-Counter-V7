@@ -401,6 +401,103 @@ function FortressLineIcon(props: { size?: number; color?: string; glowColor?: st
   );
 }
 
+function HeaderModeIcons(props: {
+  teamMode: boolean;
+  fortressMode: boolean;
+  color: string;
+  timeRemaining?: string | null;
+}) {
+  const iconShell: React.CSSProperties = {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    display: "grid",
+    placeItems: "center",
+    color: props.color,
+    background: "rgba(0,0,0,0.30)",
+    border: `1px solid ${props.color}66`,
+    boxShadow: `0 0 10px ${props.color}22`,
+  };
+
+  const commonSvg = {
+    width: 18,
+    height: 18,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: "auto",
+        paddingTop: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        minHeight: 30,
+      }}
+    >
+      <div style={iconShell} title={props.teamMode ? "Mode équipes" : "Mode solo"} aria-label={props.teamMode ? "Mode équipes" : "Mode solo"}>
+        {props.teamMode ? (
+          <svg {...commonSvg}>
+            <path d="M8.5 11a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
+            <path d="M15.8 10.2a2.6 2.6 0 1 0 0-5.2" />
+            <path d="M3.2 20v-1.6c0-3 2.3-5.2 5.3-5.2s5.3 2.2 5.3 5.2V20" />
+            <path d="M15 13.5c3.2.2 5.8 2 5.8 4.9V20" />
+          </svg>
+        ) : (
+          <svg {...commonSvg}>
+            <circle cx="12" cy="7.5" r="3.4" />
+            <path d="M5.3 20v-1.8c0-3.7 2.8-6.3 6.7-6.3s6.7 2.6 6.7 6.3V20" />
+          </svg>
+        )}
+      </div>
+
+      <div style={iconShell} title={props.fortressMode ? "Mode forteresses" : "Mode conquête"} aria-label={props.fortressMode ? "Mode forteresses" : "Mode conquête"}>
+        {props.fortressMode ? (
+          <svg {...commonSvg}>
+            <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Z" />
+            <path d="M8 20v-5h8v5M4 12h16" />
+          </svg>
+        ) : (
+          <svg {...commonSvg}>
+            <circle cx="12" cy="12" r="7.5" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+          </svg>
+        )}
+      </div>
+
+      {props.timeRemaining ? (
+        <div
+          title="Temps restant"
+          style={{
+            minWidth: 42,
+            height: 30,
+            padding: "0 7px",
+            borderRadius: 10,
+            display: "grid",
+            placeItems: "center",
+            color: props.color,
+            background: "rgba(0,0,0,0.30)",
+            border: `1px solid ${props.color}55`,
+            fontSize: 10,
+            fontWeight: 950,
+          }}
+        >
+          {props.timeRemaining}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TerritoryOwnerBadge(props: {
   ownerId?: string;
   hasFortress: boolean;
@@ -854,9 +951,14 @@ export default function DepartementsPlay(props: any) {
             String(selectedTerritory.name || selectedTerritory.id),
           )
     : "—";
-  const territoryNameLabel = selectedTerritory
-    ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritoryDisplayName}`
-    : "—";
+  const selectedTerritoryHasFortress = Boolean(
+    selectedTerritory?.ownerId
+    && selectedTerritory.fortressOwnerId === selectedTerritory.ownerId,
+  );
+  const selectedTerritoryOwnerColor = selectedTerritory?.ownerId
+    ? ownerColors[selectedTerritory.ownerId]
+    : undefined;
+  const territoryNameLabel = selectedTerritory ? selectedTerritoryDisplayName : "—";
   const territoryFlagSrc =
     country === "UN"
       ? findUnRegionFlag(selectedTerritory?.id)
@@ -1600,7 +1702,8 @@ export default function DepartementsPlay(props: any) {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "flex-start",
+              alignSelf: "stretch",
               paddingRight: 6,
             }}
           >
@@ -1641,10 +1744,12 @@ export default function DepartementsPlay(props: any) {
               {activePlayer?.name || "Player"}
             </div>
 
-            <div style={{ marginTop: 3, fontSize: 11, opacity: 0.8, fontWeight: 800, textAlign: "center" }}>
-              {teams?.length ? activeOwnerLabel : "Mode Solo"} • {gameMode === "fortress" ? "Forteresses" : "Conquête"}
-              {timeRemaining ? ` • ${timeRemaining}` : ""}
-            </div>
+            <HeaderModeIcons
+              teamMode={Boolean(teams?.length)}
+              fortressMode={gameMode === "fortress"}
+              color={activeColor}
+              timeRemaining={timeRemaining}
+            />
           </div>
 
           {/* Right: live stats as compact KPI cards */}
@@ -1687,6 +1792,7 @@ export default function DepartementsPlay(props: any) {
           valueColor={activeColor}
           borderColor={`${activeColor}55`}
           glowColor={`${activeColor}22`}
+          centerValue
         />
         <KpiCard
           title="TERRITOIRE"
@@ -1702,6 +1808,8 @@ export default function DepartementsPlay(props: any) {
           fitValue
           watermarkSrc={territoryFlagSrc || undefined}
           watermarkEmoji={territoryFlagEmoji}
+          fortressActive={selectedTerritoryHasFortress}
+          fortressColor={selectedTerritoryOwnerColor || activeColor}
         />
         <KpiCard
           title="CARTE"
@@ -1814,6 +1922,8 @@ function KpiCard(props: {
   watermarkEmoji?: string;
   centerValue?: boolean;
   fitValue?: boolean;
+  fortressActive?: boolean;
+  fortressColor?: string;
 }) {
   const fittedValueFontSize = props.fitValue
     ? Math.max(8, Math.min(props.valueFontSize ?? 13, 16 - Math.max(0, props.value.length - 10) * 0.22))
@@ -1830,8 +1940,12 @@ function KpiCard(props: {
         padding: "12px 14px",
         borderRadius: 16,
         background: "rgba(0,0,0,0.22)",
-        border: `1px solid ${props.borderColor}`,
-        boxShadow: `0 0 18px ${props.glowColor}`,
+        border: props.fortressActive
+          ? "2px dashed rgba(255,255,255,0.94)"
+          : `1px solid ${props.borderColor}`,
+        boxShadow: props.fortressActive
+          ? `0 0 8px ${props.fortressColor || props.glowColor}, 0 0 20px ${props.glowColor}`
+          : `0 0 18px ${props.glowColor}`,
         cursor: props.onClick ? "pointer" : "default",
         userSelect: "none",
         position: "relative",
@@ -1847,6 +1961,22 @@ function KpiCard(props: {
         if (e.key === "Enter" || e.key === " ") props.onClick();
       }}
     >
+      {props.fortressActive ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 0,
+            backgroundColor: props.fortressColor || props.borderColor,
+            backgroundImage:
+              "repeating-linear-gradient(135deg, transparent 0 7px, rgba(255,255,255,0.34) 7px 10px, transparent 10px 18px)",
+            opacity: 0.24,
+          }}
+        />
+      ) : null}
+
       {showWatermarkImage || props.watermarkEmoji ? (
         <div
           aria-hidden
@@ -1855,6 +1985,7 @@ function KpiCard(props: {
             inset: 0,
             pointerEvents: "none",
             opacity: showWatermarkImage ? 0.32 : 0.24,
+            zIndex: 0,
           }}
         >
           {showWatermarkImage ? (
@@ -1913,6 +2044,8 @@ function KpiCard(props: {
             ? `0 0 10px ${props.titleGlowColor || props.titleColor}, 0 0 18px ${props.titleGlowColor || props.titleColor}`
             : undefined,
           opacity: props.titleColor ? 1 : 0.78,
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {props.title}
@@ -1944,6 +2077,28 @@ function KpiCard(props: {
           }}
         >
           {props.value}
+        </div>
+      ) : null}
+
+      {props.fortressActive ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: 7,
+            bottom: 7,
+            zIndex: 3,
+            width: 24,
+            height: 24,
+            borderRadius: 8,
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(2,6,12,0.72)",
+            border: "1px solid rgba(255,255,255,0.84)",
+            boxShadow: `0 0 9px ${props.fortressColor || "#ffffff"}`,
+          }}
+        >
+          <FortressLineIcon size={17} color="#fff" glowColor={props.fortressColor} />
         </div>
       ) : null}
     </div>

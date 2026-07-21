@@ -548,27 +548,32 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
   let territoryId = opts.territoryId ?? state.turn.selectedTerritoryId;
 
   if (state.config.targetSelectionMode === "by_score") {
-    // Direct-volley mode stays automatic when no target was chosen.
-    // A manual selection from the map or the values list acts as a one-turn override,
-    // allowing the player to target a territory quickly without changing game settings.
-    if (territoryId) {
-      const manuallyChosen = findTerritory(state, territoryId);
-      if (!manuallyChosen || !isEligibleTerritory(state, manuallyChosen, ownerId)) {
-        return { state, events, error: "Selected territory is not eligible." };
-      }
-      state.turn.selectedTerritoryId = manuallyChosen.id;
-      events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: manuallyChosen.id });
-    } else {
-      const chosen = chooseByScoreTarget(state, ownerId, total);
-      if (!chosen) {
-        state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
-        events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
-        return { state, events };
-      }
-      territoryId = chosen.id;
-      state.turn.selectedTerritoryId = chosen.id;
-      events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
+    // VOLÉE DIRECTE : le score doit toujours rester la source de vérité.
+    // Une cible manuelle n'est utilisée que si la volée correspond réellement à sa valeur.
+    // Cela évite qu'une ancienne sélection silencieuse bloque une fortification pourtant valide
+    // (ex. score 12 sur son propre territoire de valeur 12).
+    const manuallyChosen = territoryId ? findTerritory(state, territoryId) : undefined;
+    const exactOnly = isFortressMode(state) || state.config.captureRule === "exact";
+    const manualMatchesScore = Boolean(
+      manuallyChosen
+      && isEligibleTerritory(state, manuallyChosen, ownerId)
+      && (exactOnly ? total === manuallyChosen.value : total >= manuallyChosen.value),
+    );
+
+    const chosen = manualMatchesScore
+      ? manuallyChosen
+      : chooseByScoreTarget(state, ownerId, total);
+
+    if (!chosen) {
+      state.turn.selectedTerritoryId = undefined;
+      state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
+      events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
+      return { state, events };
     }
+
+    territoryId = chosen.id;
+    state.turn.selectedTerritoryId = chosen.id;
+    events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
   } else if (!territoryId) {
     if (state.config.targetSelectionMode === "free") {
       return { state, events, error: "No selected territory (free mode requires selection before visit)." };

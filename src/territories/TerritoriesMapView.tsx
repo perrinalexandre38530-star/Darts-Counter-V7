@@ -132,21 +132,71 @@ function prepareSvgRoot(svg: SVGSVGElement, fallbackViewBox: string) {
   svg.style.setProperty("overflow", "visible", "important");
 }
 
+function ensureFortressHatchPattern(svg: SVGSVGElement, color: string): string {
+  const token = String(color || "ffffff").replace(/[^a-zA-Z0-9_-]/g, "");
+  const id = `territory-fortress-hatch-${token || "default"}`;
+  if (svg.querySelector(`#${id}`)) return `url(#${id})`;
+
+  let defs = svg.querySelector("defs") as SVGDefsElement | null;
+  if (!defs) {
+    defs = document.createElementNS("http://www.w3.org/2000/svg", "defs") as SVGDefsElement;
+    svg.insertBefore(defs, svg.firstChild);
+  }
+
+  const pattern = document.createElementNS("http://www.w3.org/2000/svg", "pattern");
+  pattern.setAttribute("id", id);
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "12");
+  pattern.setAttribute("height", "12");
+  pattern.setAttribute("patternTransform", "rotate(35)");
+
+  const base = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  base.setAttribute("x", "0");
+  base.setAttribute("y", "0");
+  base.setAttribute("width", "12");
+  base.setAttribute("height", "12");
+  base.setAttribute("fill", color || "#ffffff");
+  base.setAttribute("fill-opacity", "0.96");
+
+  const lightStripe = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  lightStripe.setAttribute("x", "0");
+  lightStripe.setAttribute("y", "0");
+  lightStripe.setAttribute("width", "3.2");
+  lightStripe.setAttribute("height", "12");
+  lightStripe.setAttribute("fill", "#ffffff");
+  lightStripe.setAttribute("fill-opacity", "0.30");
+
+  const darkStripe = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  darkStripe.setAttribute("x", "6.4");
+  darkStripe.setAttribute("y", "0");
+  darkStripe.setAttribute("width", "2.2");
+  darkStripe.setAttribute("height", "12");
+  darkStripe.setAttribute("fill", "#000000");
+  darkStripe.setAttribute("fill-opacity", "0.16");
+
+  pattern.append(base, lightStripe, darkStripe);
+  defs.appendChild(pattern);
+  return `url(#${id})`;
+}
+
 function applyPathVisual(
   path: SVGPathElement,
   fill: string | undefined,
   isSelected: boolean,
   disabled: boolean,
   hasFortress: boolean,
+  fortressPatternFill?: string,
 ) {
   const finalFill = disabled
     ? "rgba(115,122,136,0.50)"
-    : fill || "rgba(255,255,255,0.012)";
+    : hasFortress && fortressPatternFill
+      ? fortressPatternFill
+      : fill || "rgba(255,255,255,0.012)";
 
   // Les cartes amCharts possèdent souvent .land { fill:#ccc }. Un simple attribut
   // fill ne suffit donc pas : on force le style inline en !important.
   path.style.setProperty("fill", finalFill, "important");
-  path.style.setProperty("fill-opacity", disabled ? "0.58" : fill ? "0.96" : "1", "important");
+  path.style.setProperty("fill-opacity", disabled ? "0.58" : hasFortress ? "1" : fill ? "0.96" : "1", "important");
   path.style.setProperty("vector-effect", "non-scaling-stroke", "important");
   path.style.setProperty("pointer-events", disabled ? "none" : "all", "important");
   path.style.setProperty("cursor", disabled ? "not-allowed" : "pointer", "important");
@@ -166,8 +216,9 @@ function applyPathVisual(
     if (hasFortress) {
       // Forteresse : double signal visuel, contour pointillé blanc + halo de la couleur du propriétaire.
       path.style.setProperty("stroke", "rgba(255,255,255,0.98)", "important");
-      path.style.setProperty("stroke-width", "2.15", "important");
-      path.style.setProperty("stroke-dasharray", "5 3", "important");
+      path.style.setProperty("stroke-width", "2.35", "important");
+      path.style.setProperty("stroke-dasharray", "1 3.4", "important");
+      path.style.setProperty("stroke-linecap", "round", "important");
       path.style.setProperty("stroke-linejoin", "round", "important");
       path.style.setProperty(
         "filter",
@@ -179,6 +230,7 @@ function applyPathVisual(
       path.style.setProperty("stroke", "rgba(255,255,255,0.78)", "important");
       path.style.setProperty("stroke-width", "0.8", "important");
       path.style.removeProperty("stroke-dasharray");
+      path.style.removeProperty("stroke-linecap");
       path.style.removeProperty("stroke-linejoin");
       path.style.removeProperty("filter");
       path.classList.remove("territory-fortress");
@@ -236,12 +288,15 @@ function injectStylesAndFills(params: {
       if (regionCode) path.classList.add(`fr-region-${regionCode}`);
       path.setAttribute("data-territory-id", territoryId);
       const territory = map.territories.find((item) => item.id === territoryId);
+      const ownerFill = fillByTerritoryId[territoryId];
+      const hasFortress = Boolean(territory?.fortressOwnerId && territory?.fortressOwnerId === territory?.ownerId);
       applyPathVisual(
         path,
-        fillByTerritoryId[territoryId],
+        ownerFill,
         selectedTerritoryId === territoryId,
         territory?.playable === false,
-        Boolean(territory?.fortressOwnerId && territory?.fortressOwnerId === territory?.ownerId),
+        hasFortress,
+        hasFortress && ownerFill ? ensureFortressHatchPattern(svg, ownerFill) : undefined,
       );
     }
     return svg.outerHTML;
@@ -276,12 +331,15 @@ function injectStylesAndFills(params: {
       path.setAttribute("transform", [existing, transform].filter(Boolean).join(" "));
     }
 
+    const ownerFill = fillByTerritoryId[territory.id];
+    const hasFortress = Boolean(territory.fortressOwnerId && territory.fortressOwnerId === territory.ownerId);
     applyPathVisual(
       path,
-      fillByTerritoryId[territory.id],
+      ownerFill,
       selectedTerritoryId === territory.id,
       territory.playable === false,
-      Boolean(territory.fortressOwnerId && territory.fortressOwnerId === territory.ownerId),
+      hasFortress,
+      hasFortress && ownerFill ? ensureFortressHatchPattern(svg, ownerFill) : undefined,
     );
   }
 
