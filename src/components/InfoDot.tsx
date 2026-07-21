@@ -32,6 +32,9 @@ type Props = {
   /** Si fourni, ouvre un modal RulesModal au clic. */
   content?: InfoDotContent;
 
+  /** Optional compact control displayed next to the title of the opened modal. */
+  modalTitleAddon?: React.ReactNode;
+
   /** Compatibilité avec les anciens appels <InfoDot active />. */
   active?: boolean;
 };
@@ -43,6 +46,7 @@ export default function InfoDot({
   size = 42,
   color,
   content,
+  modalTitleAddon,
   active = false,
 }: Props) {
   const { theme } = useTheme();
@@ -142,7 +146,7 @@ export default function InfoDot({
       </div>
 
       {content != null ? (
-        <RulesModal open={open} onClose={closeContent} title={title}>
+        <RulesModal open={open} onClose={closeContent} title={title} titleAddon={modalTitleAddon}>
           {typeof renderedContent === "string" ? (
             <div style={{ whiteSpace: "pre-wrap" }}>{renderedContent}</div>
           ) : (

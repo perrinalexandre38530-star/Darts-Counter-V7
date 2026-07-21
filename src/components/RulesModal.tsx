@@ -10,6 +10,8 @@ export default function RulesModal({
   topRight,
   /** If true, hides the default × button (useful when you already provide a footer button). */
   hideClose,
+  /** Optional compact control displayed immediately next to the modal title. */
+  titleAddon,
 }: {
   open: boolean;
   onClose: () => void;
@@ -17,6 +19,7 @@ export default function RulesModal({
   children: React.ReactNode;
   topRight?: React.ReactNode;
   hideClose?: boolean;
+  titleAddon?: React.ReactNode;
 }) {
   if (!open) return null;
 
@@ -50,8 +53,18 @@ export default function RulesModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="row-between" style={{ marginBottom: 8, paddingRight: 42 }}>
-          <h2 style={{ margin: 0 }}>{title}</h2>
+        <div
+          style={{
+            marginBottom: 8,
+            paddingRight: 42,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
+          <h2 style={{ margin: 0, minWidth: 0 }}>{title}</h2>
+          {titleAddon ? <div style={{ flex: "0 0 auto", display: "grid", placeItems: "center" }}>{titleAddon}</div> : null}
         </div>
 
         {/* Top-right slot (Tour:X etc.) OR default close button */}

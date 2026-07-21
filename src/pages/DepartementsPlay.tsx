@@ -562,6 +562,8 @@ export default function DepartementsPlay(props: any) {
 
   // Map is heavy vertically on mobile -> open it in a dedicated modal via a compact card.
   const [showMapModal, setShowMapModal] = React.useState(false);
+  const [valuesSortMode, setValuesSortMode] = React.useState<"value" | "owner">("value");
+  const [valuesOwnerFilter, setValuesOwnerFilter] = React.useState<string>("all");
 
   // Profiles store (names + avatars)
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
@@ -898,41 +900,6 @@ export default function DepartementsPlay(props: any) {
     return counts;
   }, [isFrRegionsVictory, game.map.territories, game.players, game.teams]);
 
-  const valuesByRegion = React.useMemo(() => {
-    if (!isFrRegionsVictory) return null;
-    const groups = new Map<string, any[]>();
-    for (const tt of game.map.territories) {
-      const key = String((tt as any).region || "FR-00");
-      const arr = groups.get(key) || [];
-      arr.push(tt);
-      groups.set(key, arr);
-    }
-
-    const out = [...groups.entries()].map(([regionId, items]) => {
-      const meta = FR_REGION_META[regionId as keyof typeof FR_REGION_META];
-      const name = meta?.name || regionId;
-      const icon = meta?.code ? findFrRegionIcon(meta.code) : undefined;
-      const sorted = [...items].sort((a, b) => (a.value - b.value) || String(a.name).localeCompare(String(b.name)));
-      return { regionId, name, icon, items: sorted };
-    });
-    out.sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
-    return out;
-  }, [isFrRegionsVictory, game.map.territories]);
-
-  const regionGroupsForValues = React.useMemo(() => {
-    if (!valuesByRegion) return null;
-    return valuesByRegion.map((g) => {
-      const meta = FR_REGION_META[g.regionId as keyof typeof FR_REGION_META];
-      return {
-        key: g.regionId,
-        name: g.name,
-        code: meta?.code || "",
-        iconSrc: meta?.code ? findFrRegionIcon(meta.code) : null,
-        items: g.items,
-      };
-    });
-  }, [valuesByRegion]);
-
   const classement = React.useMemo(() => {
     const rows = game.teams?.length
       ? game.teams.map((team) => ({
@@ -991,7 +958,6 @@ export default function DepartementsPlay(props: any) {
   }
 
   function handleValuesTerritorySelect(territoryId: string, close: () => void) {
-    if (game.config.targetSelectionMode !== "free") return;
     if (!handleMapSelect(territoryId)) return;
     close();
     setShowMapModal(false);
@@ -1287,10 +1253,43 @@ export default function DepartementsPlay(props: any) {
     effectiveCfg.teamSize,
   ]);
 
+  const valuesOwnerOptions = React.useMemo(() => {
+    if (game.teams?.length) {
+      return game.teams.map((team) => ({ id: String(team.id), name: String(team.name), color: team.color || ownerColors[team.id] || themeColor }));
+    }
+    return game.players.map((player) => ({ id: String(player.id), name: String(player.name), color: player.color || ownerColors[player.id] || themeColor }));
+  }, [game.players, game.teams, ownerColors, themeColor]);
+
+  const sortedTerritoriesForValues = React.useMemo(() => {
+    const ownerOrder = new Map<string, number>();
+    valuesOwnerOptions.forEach((owner, index) => ownerOrder.set(owner.id, index));
+
+    const filtered = game.map.territories.filter((territory) => {
+      if (valuesSortMode !== "owner" || valuesOwnerFilter === "all") return true;
+      if (valuesOwnerFilter === "free") return !territory.ownerId;
+      return String(territory.ownerId || "") === valuesOwnerFilter;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const disabledOrder = Number(a.playable === false) - Number(b.playable === false);
+      if (disabledOrder !== 0) return disabledOrder;
+
+      if (valuesSortMode === "owner") {
+        const aOwner = a.ownerId ? String(a.ownerId) : "";
+        const bOwner = b.ownerId ? String(b.ownerId) : "";
+        const aRank = aOwner ? (ownerOrder.get(aOwner) ?? valuesOwnerOptions.length + 1) : valuesOwnerOptions.length;
+        const bRank = bOwner ? (ownerOrder.get(bOwner) ?? valuesOwnerOptions.length + 1) : valuesOwnerOptions.length;
+        if (aRank !== bRank) return aRank - bRank;
+      }
+
+      return (a.value - b.value) || String(a.name).localeCompare(String(b.name), lang === "fr" ? "fr" : undefined, { sensitivity: "base" });
+    });
+  }, [game.map.territories, lang, valuesOwnerFilter, valuesOwnerOptions, valuesSortMode]);
+
   const renderTerritoryValueRow = (tt: any, close: () => void) => {
     const disabled = tt.playable === false;
     const selected = game.turn.selectedTerritoryId === tt.id;
-    const canSelect = !disabled && game.status === "playing" && game.config.targetSelectionMode === "free";
+    const canSelect = !disabled && game.status === "playing";
     const hasFortress = Boolean(tt.ownerId && tt.fortressOwnerId === tt.ownerId);
     const ownerColor = tt.ownerId ? ownerColors[tt.ownerId] : undefined;
     const territoryCode = getTerritoryCountryCode(country, tt.id);
@@ -1361,7 +1360,7 @@ export default function DepartementsPlay(props: any) {
             {selected ? <span style={{ color: activeColor, fontSize: 10 }}>✓</span> : null}
           </div>
           <div style={{ fontSize: 10, opacity: 0.62, marginTop: 2 }}>
-            {tt.id}{canSelect ? " · toucher pour sélectionner" : ""}
+            {tt.id}{canSelect ? (game.config.targetSelectionMode === "by_score" ? " · cible manuelle pour cette volée" : " · toucher pour sélectionner") : ""}
           </div>
         </div>
 
@@ -1376,86 +1375,116 @@ export default function DepartementsPlay(props: any) {
     );
   };
 
+  const valuesHelpContent = (
+    <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
+      <div>
+        Chaque territoire jouable possède une valeur strictement unique. Les valeurs suivent la surface réelle de la carte : les territoires les plus grands demandent les scores les plus élevés.
+      </div>
+      <div>
+        Niveau <strong>{territoryValueCalibration.label}</strong> · plage réelle <strong>{assignedValueMin}–{assignedValueMax}</strong>.
+      </div>
+      {disabledTerritoryCount > 0 ? (
+        <div>
+          {playableTerritoryCount} territoires sont jouables. Les {disabledTerritoryCount} autres sont grisés et exclus de cette partie afin de conserver au maximum 180 valeurs uniques.
+        </div>
+      ) : null}
+      {gameMode === "fortress" ? (
+        <div>Le contour blanc pointillé et l’icône de château indiquent une forteresse active.</div>
+      ) : null}
+      <div>
+        {game.config.targetSelectionMode === "free"
+          ? "Touchez une carte pour sélectionner immédiatement le territoire et revenir au clavier."
+          : "En VOLÉE DIRECTE, aucune sélection n’est obligatoire. Vous pouvez néanmoins toucher une carte pour définir une cible manuelle uniquement pour la volée en cours ; sans sélection, le total choisit automatiquement le territoire correspondant."}
+      </div>
+    </div>
+  );
+
   const valuesModalContent = ({ close }: { close: () => void }) => (
     <div style={{ maxHeight: "70vh", overflow: "auto" }} className="dc-scroll-thin">
-      <div style={{ fontSize: 14, fontWeight: 950, marginBottom: 8 }}>Valeurs des territoires</div>
-      <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
-        Chaque territoire jouable possède une valeur strictement unique. Les valeurs sont classées par surface : les grands territoires demandent les scores les plus élevés. Niveau {territoryValueCalibration.label}, plage réelle {assignedValueMin}–{assignedValueMax}.
-        {disabledTerritoryCount > 0
-          ? ` ${playableTerritoryCount} territoires sont jouables. ${disabledTerritoryCount} territoires supplémentaires sont grisés et exclus de cette partie afin de respecter la limite de 180 valeurs uniques.`
-          : ""}
-        {gameMode === "fortress" ? " Le contour blanc pointillé et l'icône de château signalent une forteresse active." : ""}
-      </div>
-
       <div
         style={{
-          marginBottom: 10,
-          padding: "8px 10px",
-          borderRadius: 10,
-          background: game.config.targetSelectionMode === "free" ? `${activeColor}12` : "rgba(255,255,255,0.04)",
-          border: `1px solid ${game.config.targetSelectionMode === "free" ? `${activeColor}55` : "rgba(255,255,255,0.08)"}`,
-          fontSize: 11,
-          fontWeight: 850,
-          lineHeight: 1.35,
+          position: "sticky",
+          top: 0,
+          zIndex: 4,
+          display: "grid",
+          gap: 8,
+          padding: "2px 0 10px",
+          background: "linear-gradient(180deg, rgba(10,24,40,0.98) 0%, rgba(10,24,40,0.94) 78%, rgba(10,24,40,0) 100%)",
         }}
       >
-        {game.config.targetSelectionMode === "free"
-          ? "Touchez une carte ci-dessous : le territoire est sélectionné et cette fenêtre se ferme automatiquement."
-          : "Mode VOLÉE DIRECTE actif : aucune cible n'est à sélectionner. Le score total de la volée désigne automatiquement l'unique territoire correspondant."}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+          {(["value", "owner"] as const).map((mode) => {
+            const active = valuesSortMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setValuesSortMode(mode);
+                  if (mode === "value") setValuesOwnerFilter("all");
+                }}
+                style={{
+                  minHeight: 36,
+                  borderRadius: 11,
+                  border: `1px solid ${active ? `${activeColor}AA` : "rgba(255,255,255,0.12)"}`,
+                  background: active ? `${activeColor}20` : "rgba(255,255,255,0.045)",
+                  color: active ? activeColor : "rgba(255,255,255,0.82)",
+                  fontWeight: 950,
+                  fontSize: 11,
+                  letterSpacing: 0.35,
+                  cursor: "pointer",
+                }}
+              >
+                {mode === "value" ? "PAR VALEUR" : "PAR PROPRIÉTAIRE"}
+              </button>
+            );
+          })}
+        </div>
+
+        {valuesSortMode === "owner" ? (
+          <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+            {[
+              { id: "all", name: "Tous", color: themeColor },
+              { id: "free", name: "Libres", color: "rgba(255,255,255,0.72)" },
+              ...valuesOwnerOptions,
+            ].map((owner) => {
+              const active = valuesOwnerFilter === owner.id;
+              return (
+                <button
+                  key={owner.id}
+                  type="button"
+                  onClick={() => setValuesOwnerFilter(owner.id)}
+                  style={{
+                    flex: "0 0 auto",
+                    minHeight: 31,
+                    padding: "0 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? owner.color : "rgba(255,255,255,0.12)"}`,
+                    background: active
+                      ? owner.id === "free"
+                        ? "rgba(255,255,255,0.10)"
+                        : `${owner.color}24`
+                      : "rgba(0,0,0,0.24)",
+                    color: active ? owner.color : "rgba(255,255,255,0.82)",
+                    fontWeight: 900,
+                    fontSize: 10,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {owner.name}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {isFrRegionsVictory && regionGroupsForValues ? (
-          regionGroupsForValues.map((group) => (
-            <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                }}
-              >
-                {group.iconSrc ? (
-                  <img
-                    src={group.iconSrc}
-                    alt={group.name}
-                    style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 10,
-                      background: "rgba(0,0,0,0.25)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 900,
-                      fontSize: 12,
-                    }}
-                  >
-                    R
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</div>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>{group.code || group.key}</div>
-                </div>
-              </div>
-
-              {group.items.map((tt) => renderTerritoryValueRow(tt, close))}
-            </div>
-          ))
-        ) : (
-          [...game.map.territories]
-            .sort((a, b) => Number(a.playable === false) - Number(b.playable === false) || (a.value - b.value) || a.name.localeCompare(b.name))
-            .map((tt) => renderTerritoryValueRow(tt, close))
-        )}
+        {sortedTerritoriesForValues.map((tt) => renderTerritoryValueRow(tt, close))}
+        {sortedTerritoriesForValues.length === 0 ? (
+          <div style={{ padding: 18, textAlign: "center", opacity: 0.68, fontWeight: 800 }}>Aucun territoire dans ce filtre.</div>
+        ) : null}
       </div>
     </div>
   );
@@ -1682,6 +1711,15 @@ export default function DepartementsPlay(props: any) {
           title={country === "FR" ? "CARTE — France" : "CARTE"}
           onClose={() => setShowMapModal(false)}
           valuesModalContent={valuesModalContent}
+          valuesModalTitleAddon={
+            <InfoDot
+              size={28}
+              title="Comprendre les valeurs"
+              content={valuesHelpContent}
+              color={themeColor}
+              glow={`${themeColor}88`}
+            />
+          }
           legend={
             <div className="dc-scroll-thin" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               {classement.map((row) => {
@@ -1905,6 +1943,7 @@ function TerritoriesMapModal(props: {
   title: string;
   onClose: () => void;
   valuesModalContent: React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
+  valuesModalTitleAddon?: React.ReactNode;
   legend?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -1951,7 +1990,11 @@ function TerritoriesMapModal(props: {
         >
           <div style={{ fontWeight: 950, letterSpacing: 0.8, fontSize: 12, opacity: 0.9 }}>{props.title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <InfoDot title="Valeurs des territoires" content={props.valuesModalContent} />
+            <InfoDot
+              title="Valeurs des territoires"
+              content={props.valuesModalContent}
+              modalTitleAddon={props.valuesModalTitleAddon}
+            />
             <button
               onClick={props.onClose}
               style={{

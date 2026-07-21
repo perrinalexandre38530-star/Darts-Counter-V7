@@ -548,15 +548,27 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
   let territoryId = opts.territoryId ?? state.turn.selectedTerritoryId;
 
   if (state.config.targetSelectionMode === "by_score") {
-    const chosen = chooseByScoreTarget(state, ownerId, total);
-    if (!chosen) {
-      state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
-      events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
-      return { state, events };
+    // Direct-volley mode stays automatic when no target was chosen.
+    // A manual selection from the map or the values list acts as a one-turn override,
+    // allowing the player to target a territory quickly without changing game settings.
+    if (territoryId) {
+      const manuallyChosen = findTerritory(state, territoryId);
+      if (!manuallyChosen || !isEligibleTerritory(state, manuallyChosen, ownerId)) {
+        return { state, events, error: "Selected territory is not eligible." };
+      }
+      state.turn.selectedTerritoryId = manuallyChosen.id;
+      events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: manuallyChosen.id });
+    } else {
+      const chosen = chooseByScoreTarget(state, ownerId, total);
+      if (!chosen) {
+        state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
+        events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
+        return { state, events };
+      }
+      territoryId = chosen.id;
+      state.turn.selectedTerritoryId = chosen.id;
+      events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
     }
-    territoryId = chosen.id;
-    state.turn.selectedTerritoryId = chosen.id;
-    events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
   } else if (!territoryId) {
     if (state.config.targetSelectionMode === "free") {
       return { state, events, error: "No selected territory (free mode requires selection before visit)." };
