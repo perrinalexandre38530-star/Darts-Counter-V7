@@ -1,10 +1,14 @@
 // @ts-nocheck
 // ============================================
 // src/lib/matchInboxLocal.ts
-// Inbox LOCAL de parties reçues (import fichier / QR / etc.)
-// - liste / add / remove / clear
+// Inbox LOCAL robuste pour les parties importées.
+// - compression LZString pour limiter le quota localStorage
+// - compatibilité avec l'ancien JSON non compressé
+// - repli sessionStorage puis mémoire si le quota est plein
+// - déduplication par matchId
 // ============================================
 
+import LZString from "lz-string";
 import type { MatchSharePacketV1 } from "./matchShare";
 
 export type InboxItemLocal = {
@@ -14,33 +18,167 @@ export type InboxItemLocal = {
 };
 
 const KEY = "dc_inbox_matches_v1";
+const SESSION_KEY = "dc_inbox_matches_v1_session";
+const PACKED_PREFIX = "lz:";
+const MAX_ITEMS = 100;
+
+let memoryFallback: InboxItemLocal[] = [];
 
 function uid() {
-  return (globalThis.crypto?.randomUUID?.() || `inbox_${Date.now()}_${Math.random().toString(16).slice(2)}`);
+  return globalThis.crypto?.randomUUID?.() || `inbox_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-export function inboxListLocal(): InboxItemLocal[] {
+function getLocal(): Storage | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    return typeof localStorage !== "undefined" ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSession(): Storage | null {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeItem(value: any): InboxItemLocal | null {
+  try {
+    if (!value || typeof value !== "object" || !value.packet) return null;
+    const packet = value.packet as MatchSharePacketV1;
+    const matchId = String(packet?.matchId || "").trim();
+    if (!matchId) return null;
+    return {
+      id: String(value.id || uid()),
+      receivedAt: String(value.receivedAt || new Date().toISOString()),
+      packet,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function decode(raw: string | null): InboxItemLocal[] {
+  if (!raw) return [];
+  try {
+    let json = raw;
+    if (raw.startsWith(PACKED_PREFIX)) {
+      json = LZString.decompressFromUTF16(raw.slice(PACKED_PREFIX.length)) || "[]";
+    }
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeItem).filter(Boolean) as InboxItemLocal[];
   } catch {
     return [];
   }
 }
 
+function encode(items: InboxItemLocal[]): string {
+  const json = JSON.stringify(items);
+  const packed = LZString.compressToUTF16(json);
+  return packed ? `${PACKED_PREFIX}${packed}` : json;
+}
+
+function read(storage: Storage | null, key: string): InboxItemLocal[] {
+  if (!storage) return [];
+  try {
+    return decode(storage.getItem(key));
+  } catch {
+    return [];
+  }
+}
+
+function write(storage: Storage | null, key: string, items: InboxItemLocal[]): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(key, encode(items));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removeStorageKey(storage: Storage | null, key: string) {
+  try {
+    storage?.removeItem(key);
+  } catch {}
+}
+
+function matchIdOf(item: InboxItemLocal): string {
+  return String(item?.packet?.matchId || "").trim();
+}
+
+function mergeDedup(...groups: InboxItemLocal[][]): InboxItemLocal[] {
+  const out: InboxItemLocal[] = [];
+  const seenItems = new Set<string>();
+  const seenMatches = new Set<string>();
+
+  for (const group of groups) {
+    for (const raw of group || []) {
+      const item = normalizeItem(raw);
+      if (!item) continue;
+      const itemId = String(item.id || "");
+      const matchId = matchIdOf(item);
+      if ((itemId && seenItems.has(itemId)) || (matchId && seenMatches.has(matchId))) continue;
+      if (itemId) seenItems.add(itemId);
+      if (matchId) seenMatches.add(matchId);
+      out.push(item);
+    }
+  }
+
+  return out
+    .sort((a, b) => String(b.receivedAt || "").localeCompare(String(a.receivedAt || "")))
+    .slice(0, MAX_ITEMS);
+}
+
+function persist(items: InboxItemLocal[]) {
+  const next = mergeDedup(items);
+  const local = getLocal();
+  const session = getSession();
+
+  // Stockage persistant prioritaire.
+  if (write(local, KEY, next)) {
+    removeStorageKey(session, SESSION_KEY);
+    memoryFallback = [];
+    return;
+  }
+
+  // Repli valable pendant l'onglet/session si localStorage est saturé.
+  if (write(session, SESSION_KEY, next)) {
+    memoryFallback = next;
+    return;
+  }
+
+  // Dernier repli : la carte reste visible immédiatement et peut être acceptée.
+  memoryFallback = next;
+}
+
+export function inboxListLocal(): InboxItemLocal[] {
+  return mergeDedup(memoryFallback, read(getSession(), SESSION_KEY), read(getLocal(), KEY));
+}
+
 export function inboxAddLocal(packet: MatchSharePacketV1): InboxItemLocal {
-  const item: InboxItemLocal = { id: uid(), receivedAt: new Date().toISOString(), packet };
-  const next = [item, ...inboxListLocal()];
-  localStorage.setItem(KEY, JSON.stringify(next));
+  const item: InboxItemLocal = {
+    id: uid(),
+    receivedAt: new Date().toISOString(),
+    packet,
+  };
+
+  const matchId = String(packet?.matchId || "").trim();
+  const current = inboxListLocal().filter((row) => !matchId || matchIdOf(row) !== matchId);
+  persist([item, ...current]);
   return item;
 }
 
 export function inboxRemoveLocal(id: string) {
-  const next = inboxListLocal().filter((x) => x.id !== id);
-  localStorage.setItem(KEY, JSON.stringify(next));
+  const wanted = String(id || "");
+  persist(inboxListLocal().filter((row) => String(row.id || "") !== wanted));
 }
 
 export function inboxClearLocal() {
-  localStorage.removeItem(KEY);
+  memoryFallback = [];
+  removeStorageKey(getLocal(), KEY);
+  removeStorageKey(getSession(), SESSION_KEY);
 }

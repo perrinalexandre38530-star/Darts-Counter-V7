@@ -2534,9 +2534,14 @@ export default function HistoryPage({
   async function loadInbox() {
     setInboxLoading(true);
     try {
+      // La liste locale doit toujours s'afficher, même si le serveur/cloud est indisponible.
       setInboxLocal(inboxListLocal());
-      const cloud = await listInboxCloud("pending");
-      setInboxCloud(cloud.ok ? cloud.rows : []);
+      try {
+        const cloud = await listInboxCloud("pending");
+        setInboxCloud(cloud.ok ? cloud.rows : []);
+      } catch {
+        setInboxCloud([]);
+      }
     } finally {
       setInboxLoading(false);
     }
@@ -2570,6 +2575,10 @@ export default function HistoryPage({
     const raw =
       packet?.payload?.game?.startScore ??
       packet?.payload?.summary?.game?.startScore ??
+      packet?.payload?.config?.startScore ??
+      packet?.payload?.config?.x01StartScore ??
+      packet?.payload?.state?.summary?.startScore ??
+      packet?.payload?.state?.summary?.x01StartScore ??
       packet?.payload?.resume?.config?.startScore ??
       packet?.payload?.compact?.o?.startscore ??
       packet?.payload?.compact?.o?.startScore;
@@ -2651,23 +2660,54 @@ export default function HistoryPage({
     const scoreLine = packetPreviewLine(packet);
     const winnerId =
       payload?.winnerId ||
+      payload?.summary?.winnerId ||
+      payload?.state?.winnerId ||
+      payload?.state?.lastWinnerId ||
+      payload?.state?.lastLegWinnerId ||
+      payload?.state?.lastWinningPlayerId ||
+      payload?.resume?.state?.winnerId ||
       payload?.resume?.state?.lastWinnerId ||
       payload?.resume?.state?.lastLegWinnerId ||
       payload?.resume?.state?.lastWinningPlayerId ||
       payload?.compact?.d?.s?.lastwinnerid ||
       null;
-    const game =
-      payload?.game ||
-      payload?.summary?.game ||
-      payload?.resume?.state?.summary?.game ||
-      {
-        mode: packet.kind,
-        startScore: packetStartScore(packet) || undefined,
-      };
 
-    const packetFinishedAt = asHistoryTs(packet?.summary?.finishedAt || payload?.finishedAt || payload?.summary?.finishedAt);
-    const created = asHistoryTs(payload?.createdAt || payload?.created_at || packetFinishedAt || packet.exportedAt);
-    const updated = asHistoryTs(payload?.updatedAt || payload?.updated_at || packetFinishedAt || payload?.createdAt || packet.exportedAt);
+    const cfg = payload?.config || payload?.resume?.config || {};
+    const summaryGame = payload?.summary?.game || payload?.resume?.state?.summary?.game || {};
+    const payloadGame = payload?.game || {};
+    const game = {
+      mode: payloadGame?.mode || summaryGame?.mode || cfg?.gameMode || cfg?.matchMode || packet.kind,
+      startScore: payloadGame?.startScore ?? summaryGame?.startScore ?? packetStartScore(packet) ?? undefined,
+      x01StartScore: payloadGame?.x01StartScore ?? summaryGame?.x01StartScore ?? cfg?.x01StartScore ?? cfg?.startScore,
+      x01Variant: payloadGame?.x01Variant ?? summaryGame?.x01Variant ?? cfg?.x01Variant,
+      ...summaryGame,
+      ...payloadGame,
+    };
+
+    const packetFinishedAt = asHistoryTs(
+      packet?.summary?.finishedAt ||
+      payload?.finishedAt ||
+      payload?.summary?.finishedAt ||
+      payload?.summary?.updatedAt ||
+      payload?.state?.summary?.updatedAt
+    );
+    const created = asHistoryTs(
+      payload?.createdAt ||
+      payload?.created_at ||
+      payload?.config?.createdAt ||
+      payload?.resume?.config?.createdAt ||
+      packetFinishedAt ||
+      packet.exportedAt
+    );
+    const updated = asHistoryTs(
+      payload?.updatedAt ||
+      payload?.updated_at ||
+      payload?.summary?.updatedAt ||
+      payload?.state?.summary?.updatedAt ||
+      packetFinishedAt ||
+      created ||
+      packet.exportedAt
+    );
 
     return {
       id: packet.matchId,
@@ -2684,6 +2724,11 @@ export default function HistoryPage({
         ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
         title: packet.summary?.title || payload?.summary?.title || String(packet.kind || "match").toUpperCase(),
         status: packet.summary?.status || payload?.summary?.status || "finished",
+        finished: packet.summary?.status !== "in_progress",
+        finishedAt: packetFinishedAt || updated || created || null,
+        winnerId: winnerId || payload?.summary?.winnerId || null,
+        winnerName: payload?.winnerName || payload?.summary?.winnerName || payload?.summary?.winnerLabel || null,
+        game,
         players,
         scoreLine,
         finalScores: {
@@ -2736,9 +2781,13 @@ export default function HistoryPage({
 
       inboxAddLocal(json as MatchSharePacketV1);
       setInboxLocal(inboxListLocal());
-      window.alert("Partie reçue ✅ (en attente d'acceptation)");
-    } catch (e) {
-      window.alert("Import impossible : fichier illisible.");
+      setFilterOpen(false);
+      setTab("inbox");
+      await loadInbox();
+      window.alert("Partie importée ✅ Elle est disponible dans l'onglet Reçues pour validation.");
+    } catch (e: any) {
+      console.error("[HistoryPage] import fichier impossible", e);
+      window.alert(`Import impossible : ${String(e?.message || "fichier illisible ou stockage indisponible")}.`);
     }
   }
 
@@ -2751,9 +2800,24 @@ export default function HistoryPage({
   }
 
   async function acceptLocal(item: InboxItemLocal) {
-    await acceptPacket(item.packet);
-    inboxRemoveLocal(item.id);
-    setInboxLocal(inboxListLocal());
+    try {
+      const packetTs = asHistoryTs(
+        item?.packet?.summary?.finishedAt ||
+        item?.packet?.payload?.finishedAt ||
+        item?.packet?.payload?.summary?.updatedAt ||
+        item?.packet?.exportedAt
+      );
+      await acceptPacket(item.packet);
+      inboxRemoveLocal(item.id);
+      setInboxLocal(inboxListLocal());
+      setGameFilter("all");
+      setPlayerFilter("all");
+      setSub(packetTs && packetTs < startOf("year") ? "archives" : "year");
+      setTab("done");
+    } catch (e: any) {
+      console.error("[HistoryPage] validation import impossible", e);
+      window.alert(`Validation impossible : ${String(e?.message || "la partie n'a pas pu être enregistrée")}.`);
+    }
   }
 
   async function refuseLocal(item: InboxItemLocal) {
