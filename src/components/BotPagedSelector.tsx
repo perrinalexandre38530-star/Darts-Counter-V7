@@ -109,7 +109,7 @@ export default function BotPagedSelector({
   modalTitle?: string;
   showSelectedSummary?: boolean;
 }) {
-  const [enabled, setEnabled] = React.useState(true);
+  const [enabled, setEnabled] = React.useState(() => !showCheckbox);
   const [open, setOpen] = React.useState(false);
   const [page, setPage] = React.useState(0);
 

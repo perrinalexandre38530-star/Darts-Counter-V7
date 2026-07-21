@@ -2497,14 +2497,14 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>("manual");
   const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>([]);
-  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState<boolean>(true);
+  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState<boolean>(false);
   const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>([]);
   const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>({});
 
   // profileId -> dartSetId (ou null)
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
   const [autoDartSetPicker, setAutoDartSetPicker] = React.useState<{ profileId: string; seq: number } | null>(null);
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(true);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(false);
 
   React.useEffect(() => {
     setAutoDartSetPicker(null);
@@ -4970,7 +4970,7 @@ export function BotTeamsSection({
   toggleBotTeam,
   addBotTeamSelection,
   removeBotTeamSelection,
-  botTeamsPanelEnabled = true,
+  botTeamsPanelEnabled = false,
   setBotTeamsPanelEnabled,
   profiles = [],
   savedTeamMemberSelections = {},
@@ -5237,7 +5237,7 @@ export function TeamsSection({
   addStoredTeamSelection,
   removeStoredTeamSelection,
   botTeams = [],
-  botTeamsPanelEnabled = true,
+  botTeamsPanelEnabled = false,
   setBotTeamsPanelEnabled,
   selectedBotTeamIds = [],
   toggleBotTeam,

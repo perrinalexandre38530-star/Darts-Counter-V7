@@ -135,8 +135,8 @@ export default function CapitalParticipantsX01(props: {
 
   const [participantMode, setParticipantMode] = React.useState<CapitalParticipantMode>(initial.participantMode === "teams" ? "teams" : "players");
   const [teamsSourceMode, setTeamsSourceMode] = React.useState<CapitalTeamsSourceMode>(initial.teamsSourceMode === "saved" || initial.teamsSourceMode === "auto" ? initial.teamsSourceMode : "manual");
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(true);
-  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState(true);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(false);
+  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
     unique(props.initialSelectedIds?.length ? props.initialSelectedIds : initial.selectedIds || []).slice(0, 12)
   );

@@ -368,7 +368,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     }
   });
   const [infoOpen, setInfoOpen] = React.useState(false);
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(true);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(false);
 
   const userBots = React.useMemo(() => loadUserBots(), []);
   const botProfiles: BotLite[] = React.useMemo(() => {

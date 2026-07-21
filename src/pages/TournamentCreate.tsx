@@ -1972,7 +1972,7 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [bracketTarget, setBracketTarget] = React.useState<string>("");
 
   // ✅ auto-fill bots (désactivé en Pétanque)
-  const [autoFillBots, setAutoFillBots] = React.useState(true);
+  const [autoFillBots, setAutoFillBots] = React.useState(false);
   React.useEffect(() => {
     if (!isPetanque) return;
     setAutoFillBots(false);

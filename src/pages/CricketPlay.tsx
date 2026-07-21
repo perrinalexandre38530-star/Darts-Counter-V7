@@ -452,7 +452,7 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
 
   const [randomStart, setRandomStart] = React.useState<boolean>(false);
   const [teamMode, setTeamMode] = React.useState<boolean>(false);
-  const [fillWithBots, setFillWithBots] = React.useState<boolean>(true);
+  const [fillWithBots, setFillWithBots] = React.useState<boolean>(false);
 
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;

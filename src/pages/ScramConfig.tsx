@@ -196,8 +196,8 @@ export default function ScramConfig(props: any) {
       ? saved.savedTeamMemberSelections
       : {}
   );
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(saved.botsPanelEnabled !== false);
-  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState(saved.botTeamsPanelEnabled !== false);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(saved.botsPanelEnabled === true);
+  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState(saved.botTeamsPanelEnabled === true);
   const [botLevel, setBotLevel] = React.useState<BotLevel>(
     saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal"
   );
@@ -653,7 +653,7 @@ export default function ScramConfig(props: any) {
   } as React.CSSProperties;
 
   return (
-    <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 168 }}>
+    <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 112 }}>
       <PageHeader
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
@@ -903,36 +903,38 @@ export default function ScramConfig(props: any) {
 
         <div
           style={{
-            position: "sticky",
-            bottom: `calc(env(safe-area-inset-bottom, 0px) + 74px)`,
-            zIndex: 30,
-            padding: "10px 4px 18px",
+            position: "relative",
+            zIndex: 2,
+            display: "grid",
+            placeItems: "center",
+            padding: "20px 14px 24px",
+            marginTop: 8,
             width: "100%",
             maxWidth: "100%",
             boxSizing: "border-box",
-            pointerEvents: "none",
           }}
         >
-          <div style={{ pointerEvents: "auto" }}>
+          <div style={{ width: "min(560px, 92%)" }}>
             <button
               type="button"
               disabled={!validSelection}
               onClick={onStart}
               style={{
                 width: "100%",
-                minHeight: 70,
+                minHeight: 58,
+                padding: "10px 18px",
                 borderRadius: 999,
                 border: validSelection ? "1px solid rgba(255,255,255,.22)" : "1px solid rgba(255,255,255,.08)",
                 background: validSelection
                   ? "linear-gradient(90deg, #37d8f6 0%, #8fe8d5 45%, #f3e28d 100%)"
                   : "linear-gradient(90deg, rgba(120,125,140,.92), rgba(90,95,112,.92))",
                 boxShadow: validSelection
-                  ? "0 0 0 1px rgba(255,255,255,.06) inset, 0 14px 34px rgba(62, 214, 245, .26), 0 0 26px rgba(243, 226, 141, .22)"
+                  ? "0 0 0 1px rgba(255,255,255,.06) inset, 0 10px 26px rgba(62,214,245,.22), 0 0 20px rgba(243,226,141,.18)"
                   : "none",
                 color: "#09111c",
                 fontWeight: 1000,
-                fontSize: 18,
-                letterSpacing: 1.25,
+                fontSize: 16.5,
+                letterSpacing: 1.1,
                 textTransform: "uppercase",
                 cursor: validSelection ? "pointer" : "not-allowed",
               }}

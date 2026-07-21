@@ -735,7 +735,7 @@ export default function KillerConfigPage(props: Props) {
   }, [numberAssignMode, blindKiller]);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
-  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(true);
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState<boolean>(false);
 
   const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>({});
 
