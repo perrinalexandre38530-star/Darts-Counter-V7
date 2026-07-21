@@ -1,5 +1,14 @@
 import { apiDelete, apiGet, apiPost, buildApiUrl, readNasAccessToken } from "./apiClient";
 import type { StorageDestinationId, StoragePlanId } from "./storagePlans";
+import {
+  createDirectR2Backup,
+  deleteDirectR2Backup,
+  downloadDirectR2Backup,
+  emptyDirectR2Trash,
+  isDirectR2BackupId,
+  listDirectR2Backups,
+  restoreDirectR2Backup,
+} from "./directR2BackupApi";
 
 export type AccountStoragePreference = {
   user_id?: string;
@@ -120,6 +129,7 @@ export async function upsertCloudObjectIndex(input: {
 }
 
 export async function deleteCloudObjectIndex(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage }> {
+  if (isDirectR2BackupId(id)) return deleteDirectR2Backup(id, false) as any;
   return apiDelete(`/account/cloud-objects/${encodeURIComponent(id)}`) as any;
 }
 
@@ -340,6 +350,7 @@ export async function uploadCloudObject(args: {
 }
 
 export async function downloadCloudObject(id: string, opts?: { trash?: boolean }): Promise<{ ok: boolean; object: CloudObjectIndexItem; mode?: "json" | "text" | "base64"; content?: any; text?: string; contentBase64?: string; error?: string }> {
+  if (isDirectR2BackupId(id)) return downloadDirectR2Backup(id) as any;
   const qs = opts?.trash ? "?trash=1" : "";
   return apiGet(`/account/cloud-storage/download/${encodeURIComponent(String(id || ""))}${qs}`) as any;
 }
@@ -350,14 +361,17 @@ export async function deleteCloudObjectRemote(id: string, opts?: { force?: boole
 }
 
 export async function restoreCloudObjectFromTrash(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string }> {
+  if (isDirectR2BackupId(id)) return restoreDirectR2Backup(id) as any;
   return apiPost(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}/undelete`, {}) as any;
 }
 
 export async function purgeCloudObjectRemote(id: string): Promise<{ ok: boolean; usage: AccountStorageUsage; error?: string }> {
+  if (isDirectR2BackupId(id)) return deleteDirectR2Backup(id, true) as any;
   return apiDelete(`/account/cloud-storage/object/${encodeURIComponent(String(id || ""))}?force=1`) as any;
 }
 
 export async function emptyCloudObjectTrash(objectType?: string): Promise<{ ok: boolean; purged?: number; usage: AccountStorageUsage; error?: string }> {
+  try { return await emptyDirectR2Trash() as any; } catch {}
   const qs = objectType ? `?objectType=${encodeURIComponent(objectType)}` : "";
   return apiDelete(`/account/cloud-storage/trash${qs}`) as any;
 }
@@ -370,19 +384,9 @@ export async function listCloudBackups(limit = 10, includeDeleted = false): Prom
 }
 
 export async function listCloudVaultBackups(limit = 30, includeDeleted = false): Promise<CloudObjectIndexItem[]> {
-  const [vault, legacy] = await Promise.all([
-    listCloudObjects({ objectType: CLOUD_VAULT_OBJECT_TYPE, sport: "system", limit, includeDeleted }).catch(() => []),
-    listCloudObjects({ objectType: CLOUD_BACKUP_OBJECT_TYPE, sport: "system", limit, includeDeleted }).catch(() => []),
-  ]);
-  const byId = new Map<string, CloudObjectIndexItem>();
-  for (const item of [...vault, ...legacy]) {
-    if (item?.id) byId.set(String(item.id), item);
-  }
-  return Array.from(byId.values()).sort((a, b) => {
-    const ta = Date.parse(String(a.updated_at || a.created_at || "")) || 0;
-    const tb = Date.parse(String(b.updated_at || b.created_at || "")) || 0;
-    return tb - ta;
-  });
+  // Le client direct tente d'abord la Function Pages, puis la route backend
+  // stateless. Aucun de ces deux chemins ne dépend de PostgreSQL.
+  return listDirectR2Backups(limit, includeDeleted);
 }
 
 export async function uploadCloudBackupJson(args: {
@@ -416,23 +420,21 @@ export async function uploadCloudVaultSnapshotJson(args: {
   sourceDestination?: string;
 }): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
   const now = new Date();
-  const stamp = now.toISOString().replace(/[:.]/g, "-");
-  return uploadCloudObject({
-    objectType: CLOUD_VAULT_OBJECT_TYPE,
-    sport: "system",
+  const metadata = {
+    source: args.cloudCopyOnly ? "storage_vault_cross_device_copy" : "storage_vault_cloud_r2",
+    backupKind: "vault_full_snapshot",
+    ...(args.metadata || {}),
+  };
+  const direct = await createDirectR2Backup({
+    snapshotJson: args.snapshotJson,
     title: args.title || `Sauvegarde cloud ${now.toLocaleString("fr-FR")}`,
-    objectKey: `backups/cloud_vault_v1/manual_${stamp}.json`,
-    mimeType: "application/json",
-    content: args.snapshotJson,
-    gzip: true,
-    cloudCopyOnly: args.cloudCopyOnly === true,
-    sourceDestination: args.sourceDestination,
-    metadata: {
-      source: args.cloudCopyOnly ? "storage_vault_cross_device_copy" : "storage_vault_cloud_r2",
-      backupKind: "vault_full_snapshot",
-      ...(args.metadata || {}),
-    },
+    summary: (metadata as any)?.summary || metadata,
+    metadata,
   });
+  return {
+    ...direct,
+    usage: { ok: true, preference: { plan_id: "direct_r2", storage_provider: "cloud_r2", quota_bytes: 0, used_bytes: 0 }, usedBytes: 0, quotaBytes: 0, remainingBytes: 0, percentUsed: 0 },
+  } as any;
 }
 
 export async function downloadCloudBackupJson(id: string): Promise<{ ok: boolean; object: CloudObjectIndexItem; backupJson: string }> {

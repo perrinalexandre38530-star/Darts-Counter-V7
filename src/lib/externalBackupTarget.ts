@@ -124,6 +124,84 @@ async function buildBackupJson(reason: string): Promise<string> {
   return JSON.stringify(wrapped);
 }
 
+function wrapPreparedSnapshotJson(snapshotJson: string, reason: string): string {
+  try {
+    const parsed = JSON.parse(snapshotJson);
+    return JSON.stringify({
+      ...parsed,
+      externalBackup: {
+        version: 1,
+        reason,
+        exportedAt: new Date().toISOString(),
+        app: "multisports-scoring",
+      },
+    });
+  } catch {
+    return snapshotJson;
+  }
+}
+
+export async function chooseExternalBackupFileWithJson(snapshotJson: string, reason = "manual"): Promise<ExternalBackupStatus> {
+  if (!supportsFilePicker()) return downloadExternalBackupJson(snapshotJson, reason);
+  const handle = await (window as any).showSaveFilePicker({
+    suggestedName: "multisports-scoring-backup.json",
+    types: [{ description: "Sauvegarde Multisports", accept: { "application/json": [".json", ".dcbackup"] } }],
+  });
+  await putHandle(handle);
+  writeStatus({ ...readStatus(), configured: true, fileName: String(handle?.name || "multisports-scoring-backup.json"), permission: "granted", lastError: null });
+  return writeExternalBackupJsonNow(snapshotJson, reason, { requestPermission: true });
+}
+
+export async function downloadExternalBackupJson(snapshotJson: string, reason = "manual-download"): Promise<ExternalBackupStatus> {
+  try {
+    const json = wrapPreparedSnapshotJson(snapshotJson, reason);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `multisports-scoring-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return writeStatus({ ...readStatus(), lastSavedAt: new Date().toISOString(), lastBytes: blob.size, lastError: null });
+  } catch (error: any) {
+    return writeStatus({ ...readStatus(), lastError: String(error?.message || error || "Export impossible") });
+  }
+}
+
+export async function writeExternalBackupJsonNow(
+  snapshotJson: string,
+  reason = "manual",
+  opts?: { requestPermission?: boolean }
+): Promise<ExternalBackupStatus> {
+  const current = readStatus();
+  const handle = await getHandle();
+  if (!handle) {
+    return writeStatus({ ...current, configured: false, permission: supportsFilePicker() ? "unknown" : "unsupported", lastError: "Choisis d'abord un fichier de sauvegarde." });
+  }
+  const permission = await permissionFor(handle, !!opts?.requestPermission);
+  if (permission !== "granted") {
+    return writeStatus({ ...current, configured: true, fileName: String(handle?.name || current.fileName || "backup.json"), permission, lastError: "Autorisation d'écriture requise." });
+  }
+  try {
+    const json = wrapPreparedSnapshotJson(snapshotJson, reason);
+    const writable = await handle.createWritable();
+    await writable.write(json);
+    await writable.close();
+    lastAutoWriteAt = Date.now();
+    return writeStatus({
+      ...current,
+      configured: true,
+      fileName: String(handle?.name || current.fileName || "backup.json"),
+      permission: "granted",
+      lastSavedAt: new Date().toISOString(),
+      lastBytes: new Blob([json]).size,
+      lastError: null,
+    });
+  } catch (error: any) {
+    return writeStatus({ ...current, configured: true, permission, lastError: String(error?.message || error || "Écriture impossible") });
+  }
+}
+
 export async function getExternalBackupStatus(): Promise<ExternalBackupStatus> {
   const current = readStatus();
   if (!supportsFilePicker()) return current;

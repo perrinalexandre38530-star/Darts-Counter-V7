@@ -1,10 +1,11 @@
 import * as React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { apiPost, readNasAccessToken } from "../lib/apiClient";
+import { apiPost, buildApiUrl, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
 import {
   createLocalMemorySlot,
+  createLocalMemorySlotFromSnapshot,
   createNasVersionedSnapshot,
   deleteLocalMemorySlot,
   deleteNasMemorySlot,
@@ -65,8 +66,11 @@ import {
 } from "../lib/storagePlans";
 import {
   chooseExternalBackupFile,
+  chooseExternalBackupFileWithJson,
   downloadExternalBackupFallback,
+  downloadExternalBackupJson,
   getExternalBackupStatus,
+  writeExternalBackupJsonNow,
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
@@ -481,10 +485,11 @@ function normalizeCloudPayload(input: any): any {
 
 function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSummary> | null {
   const meta: any = item?.metadata || {};
-  const historyCount = Number(meta.historyCount ?? meta.matches ?? meta.historyRows ?? 0) || 0;
-  const profilesCount = Number(meta.profilesCount ?? meta.profiles ?? 0) || 0;
+  const nested: any = meta.summary && typeof meta.summary === "object" ? meta.summary : {};
+  const historyCount = Number(nested.matches ?? nested.historyRows ?? meta.historyCount ?? meta.matches ?? meta.historyRows ?? 0) || 0;
+  const profilesCount = Number(nested.profiles ?? meta.profilesCount ?? meta.profiles ?? 0) || 0;
   const dartsetsCount = Number(meta.dartsetsCount ?? 0) || 0;
-  const rawSize = Number(meta.rawSizeBytes ?? meta.originalByteSize ?? item?.size_bytes ?? 0) || 0;
+  const rawSize = Number(nested.bytes ?? meta.rawSizeBytes ?? meta.originalByteSize ?? item?.size_bytes ?? 0) || 0;
   if (!historyCount && !profilesCount && !dartsetsCount && !rawSize) return null;
   return {
     bytes: rawSize,
@@ -492,12 +497,12 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
     profiles: profilesCount,
     matches: historyCount,
     historyRows: historyCount,
-    statsBlocks: 0,
-    mediaRefs: 0,
-    dataImages: 0,
-    sports: [],
-    names: [],
-    exportedAt: meta.exportedAt || item?.created_at || null,
+    statsBlocks: Number(nested.statsBlocks || 0) || 0,
+    mediaRefs: Number(nested.mediaRefs || 0) || 0,
+    dataImages: Number(nested.dataImages || 0) || 0,
+    sports: Array.isArray(nested.sports) ? nested.sports : [],
+    names: Array.isArray(nested.names) ? nested.names : [],
+    exportedAt: nested.exportedAt || meta.exportedAt || item?.created_at || null,
     probableContent: [
       historyCount ? "historique réel" : "",
       profilesCount ? "profils" : "",
@@ -1031,6 +1036,80 @@ async function pushSnapshotToAccount(payload: any, reason: string) {
   return apiPost("/sync/push", { payload: snapshot, version, reason });
 }
 
+type PreparedBackup = {
+  snapshot: any;
+  snapshotJson: string;
+  summary: VaultSummary;
+  bytes: number;
+  preparedAt: number;
+};
+
+let preparedBackupInFlight: Promise<PreparedBackup> | null = null;
+let preparedBackupCache: PreparedBackup | null = null;
+
+async function prepareCurrentBackupOnce(): Promise<PreparedBackup> {
+  if (preparedBackupInFlight) return preparedBackupInFlight;
+  if (preparedBackupCache && Date.now() - preparedBackupCache.preparedAt < 2_000) return preparedBackupCache;
+  preparedBackupInFlight = (async () => {
+    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot()));
+    if (!looksLikeCloudSnapshot(snapshot) && !looksLikeCloudBackupV1(snapshot)) {
+      throw new Error("L’état courant ne contient pas une sauvegarde Multisports exploitable.");
+    }
+    const summary = strictSummaryForRestore(snapshot);
+    const snapshotJson = JSON.stringify(snapshot);
+    const prepared = {
+      snapshot,
+      snapshotJson,
+      summary,
+      bytes: new Blob([snapshotJson]).size,
+      preparedAt: Date.now(),
+    };
+    preparedBackupCache = prepared;
+    return prepared;
+  })();
+  try {
+    return await preparedBackupInFlight;
+  } finally {
+    preparedBackupInFlight = null;
+  }
+}
+
+async function withFastFallback<T>(promise: Promise<T>, fallback: T, timeoutMs = 2_500): Promise<T> {
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => window.setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
+async function pushSnapshotToNasFast(payload: any, reason: string, token: string): Promise<any> {
+  const snapshot = unwrapSnapshotEnvelope(payload);
+  const version = Number(snapshot?._v || snapshot?.v || 2) || 2;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(buildApiUrl("/sync/push"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ payload: snapshot, version, reason }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const text = await response.text().catch(() => "");
+    let data: any = null;
+    try { data = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok) throw new Error(String(data?.message || data?.error || text || `NAS HTTP ${response.status}`));
+    return data;
+  } catch (error: any) {
+    if (error?.name === "AbortError") throw new Error("Le NAS n’a pas répondu en moins de 5 secondes.");
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export default function StorageVaultPage({ go }: Props) {
   const { theme } = useTheme();
   const auth = useAuthOnline();
@@ -1038,6 +1117,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [tab, setTab] = React.useState<TabKey>("restore");
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("Scan en attente…");
+  const lastUserActionAtRef = React.useRef(0);
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
   const [trashNasSlots, setTrashNasSlots] = React.useState<NasSlot[]>([]);
@@ -1278,21 +1358,17 @@ export default function StorageVaultPage({ go }: Props) {
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
     const preferred = readPreferredRemoteSource();
-    if (preferred) return preferred;
     const localChoice = loadStoragePrefs().selectedDestination;
     if (localChoice === "cloud_r2") return "cloud";
     if (localChoice === "founder_nas") return "nas";
-    try {
-      const usage = await getAccountStorageUsage();
-      const provider = String(usage?.preference?.storage_provider || "").trim();
-      return provider === "cloud_r2" ? "cloud" : "nas";
-    } catch {
-      return "nas";
-    }
+    // Local/fichier ne doit jamais attendre le backend pour savoir quel onglet
+    // distant afficher. On conserve le dernier choix explicite, sinon R2.
+    return preferred || "cloud";
   }, []);
 
   const refresh = React.useCallback(async () => {
-    setBusy(true);
+    // L'actualisation des listes ne bloque jamais le bouton Sauvegarder.
+    const refreshStartedAt = Date.now();
     ensureVaultNasToken();
     setAccountScopeId(getVaultCurrentUserId());
     try {
@@ -1301,121 +1377,69 @@ export default function StorageVaultPage({ go }: Props) {
       const selectedForSave = loadStoragePrefs().selectedDestination;
       const selectedForSaveLabel = getStorageDestination(selectedForSave).label;
 
-      const [ls, bs, localMatches] = await Promise.all([
+      // Chargement rapide : uniquement les métadonnées nécessaires à l'écran.
+      // Le scan complet IndexedDB/localStorage reste réservé à l'onglet Expert.
+      const [ls, localMatches, bs] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
-        scanLocalStorageAndIndexedDb().catch(() => []),
         listLocalMatchBackups().catch(() => []),
+        tab === "diagnostic" ? scanLocalStorageAndIndexedDb().catch(() => []) : Promise.resolve([]),
       ]);
-
       setLocalSlots(ls);
       setBlocks(bs);
 
       if (provider === "cloud") {
-        const [cloudRaw, cloudAllRaw] = await Promise.all([
+        const [activeRaw, allRaw, cloudMatches] = await Promise.all([
           listCloudVaultBackups(120, false).catch(() => []),
           listCloudVaultBackups(120, true).catch(() => []),
+          withFastFallback(listCloudMatchBackups(), [], 2_500),
         ]);
-        const trashRaw = cloudAllRaw.filter((item) => !!item.is_deleted);
-        const activeRaw = cloudRaw.filter((item) => !item.is_deleted);
-
-        const activeToCheck = activeRaw.slice(0, 30);
-        const checkedCloud = await Promise.all(activeToCheck.map(async (slot: CloudObjectIndexItem, idx: number) => {
-          try {
-            const pulled = await pullCloudVaultSlot(slot);
-            return { ...slot, __payload: pulled.payload, __summary: pulled.summary, latest: idx === 0 } as CloudSlot;
-          } catch {
-            const fallback = strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot));
-            return { ...slot, __summary: fallback, latest: idx === 0 } as CloudSlot;
-          }
-        }));
-
-        const trashToCheck = trashRaw.slice(0, 30);
-        const checkedTrashCloud = await Promise.all(trashToCheck.map(async (slot: CloudObjectIndexItem) => {
-          try {
-            const pulled = await pullCloudVaultSlot(slot, { trash: true });
-            return { ...slot, __payload: pulled.payload, __summary: pulled.summary, deletedAt: slot.updated_at || null } as CloudSlot;
-          } catch {
-            const fallback = strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot));
-            return { ...slot, __summary: fallback, deletedAt: slot.updated_at || null } as CloudSlot;
-          }
-        }));
+        const active = activeRaw
+          .filter((item) => !item.is_deleted)
+          .map((slot, idx) => ({
+            ...slot,
+            __summary: strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot)),
+            latest: idx === 0,
+          } as CloudSlot));
+        const trash = allRaw
+          .filter((item) => !!item.is_deleted)
+          .map((slot) => ({
+            ...slot,
+            __summary: strictSummaryForCloudPayload(null, cloudObjectMetadataSummary(slot)),
+            deletedAt: slot.updated_at || null,
+          } as CloudSlot));
 
         setNasSlots([]);
         setTrashNasSlots([]);
-        const cloudMatches = await listCloudMatchBackups().catch(() => []);
-
-        setCloudSlots(checkedCloud);
-        setTrashCloudSlots(checkedTrashCloud);
+        setCloudSlots(active);
+        setTrashCloudSlots(trash);
         setMatchBackups([...(localMatches || []), ...(cloudMatches || [])]);
-
-        const validCloud = checkedCloud.filter((slot) => assessSaveForProvider(slot.__summary, "cloud").restorable).length;
-        const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
-        const hidden = Math.max(0, activeRaw.length - checkedCloud.length);
-        const accountHint = getVaultCurrentUserId() ? `Compte public cloud : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes cloud sont masquées.";
-        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination de sauvegarde active : ${selectedForSaveLabel}. Source distante affichée : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${cloudMatches.length} sauvegarde(s) cloud de partie à l’unité + ${localMatches.length} locale(s) détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
+        if (lastUserActionAtRef.current <= refreshStartedAt) setMessage(`Prêt. Destination active : ${selectedForSaveLabel}. ${active.length} sauvegarde(s) Cloud R2, ${ls.length} sauvegarde(s) locale(s). Aucun contenu lourd n'a été téléchargé.`);
         return;
       }
 
       const [nsRaw, trashRaw, nasMatches] = await Promise.all([
-        listNasMemorySlots().catch(() => []),
-        listNasDeletedMemorySlots().catch(() => []),
-        listNasMatchBackups().catch(() => []),
+        withFastFallback(listNasMemorySlots(), [], 2_500),
+        withFastFallback(listNasDeletedMemorySlots(), [], 2_500),
+        withFastFallback(listNasMatchBackups(), [], 2_500),
       ]);
-
-      const nsToCheck = nsRaw.slice(0, 30);
-      const checkedNas = await Promise.all(nsToCheck.map(async (slot: NasSlot) => {
-        try {
-          const id = String(slot.id || "latest");
-          const pulled = await pullNasMemorySlot(id);
-          return {
-            ...slot,
-            summary: strictSummaryForRestore(pulled.payload, pulled.summary),
-            updatedAt: pulled.slot.updatedAt || slot.updatedAt,
-            createdAt: pulled.slot.createdAt || slot.createdAt,
-            __strictChecked: true,
-          } as NasSlot & { __strictChecked?: boolean };
-        } catch {
-          return { ...slot, summary: normalizeSummary(slot.summary || {}), __strictChecked: false } as NasSlot & { __strictChecked?: boolean };
-        }
-      }));
-
-      const trashToCheck = trashRaw.slice(0, 30);
-      const checkedTrashNas = await Promise.all(trashToCheck.map(async (slot: NasSlot) => {
-        try {
-          const id = String(slot.id || "");
-          const pulled = await pullNasMemorySlot(id, { trash: true });
-          return {
-            ...slot,
-            summary: strictSummaryForRestore(pulled.payload, pulled.summary),
-            updatedAt: pulled.slot.updatedAt || slot.updatedAt,
-            createdAt: pulled.slot.createdAt || slot.createdAt,
-            deletedAt: slot.deletedAt || pulled.slot.deletedAt || null,
-            __strictChecked: true,
-          } as NasSlot & { __strictChecked?: boolean };
-        } catch {
-          return { ...slot, summary: normalizeSummary(slot.summary || {}), __strictChecked: false } as NasSlot & { __strictChecked?: boolean };
-        }
-      }));
+      const activeNas = nsRaw.map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
+      const trashNas = trashRaw.map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
 
       setCloudSlots([]);
       setTrashCloudSlots([]);
-      setNasSlots(checkedNas);
-      setTrashNasSlots(checkedTrashNas);
+      setNasSlots(activeNas);
+      setTrashNasSlots(trashNas);
       setMatchBackups([...(localMatches || []), ...(nasMatches || [])]);
-
-      const validNas = checkedNas.filter((slot) => isRestorable(slot.summary)).length;
-      const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
-      const hidden = Math.max(0, nsRaw.length - checkedNas.length);
-      const accountHint = getVaultCurrentUserId() ? `Compte isolé : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes utilisateur sont masquées.";
-      setMessage(`${accountHint} ${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Destination de sauvegarde active : ${selectedForSaveLabel}. Source distante affichée : NAS. La dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les blocs locaux d’un autre compte sont maintenant masqués. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
+      if (lastUserActionAtRef.current <= refreshStartedAt) setMessage(`Prêt. Destination active : ${selectedForSaveLabel}. ${activeNas.length} sauvegarde(s) NAS, ${ls.length} sauvegarde(s) locale(s). Aucun snapshot n'a été téléchargé pendant le scan.`);
     } catch (error: any) {
-      setMessage(`Erreur scan : ${error?.message || error}`);
+      if (lastUserActionAtRef.current <= refreshStartedAt) setMessage(`Actualisation impossible : ${error?.message || error}`);
     } finally {
-      setBusy(false);
+      // Aucun verrou global : une liste distante lente ne doit jamais empêcher
+      // une sauvegarde locale ou fichier immédiate.
     }
-  }, [ensureVaultNasToken, resolveBackupProvider]);
+  }, [ensureVaultNasToken, resolveBackupProvider, tab]);
 
-  React.useEffect(() => { refresh(); }, [refresh]);
+  React.useEffect(() => { void refresh(); }, [refresh]);
 
   const afterRestoreHousekeeping = async (reason: string) => {
     try { markStatsIndexDirty(reason); } catch {}
@@ -1695,68 +1719,50 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     if (destination === "cloud_r2") {
       writePreferredRemoteSource("cloud");
       setBackupProvider("cloud");
-    }
-    if (destination === "founder_nas") {
+    } else if (destination === "founder_nas") {
       writePreferredRemoteSource("nas");
       setBackupProvider("nas");
     }
 
     const label = getStorageDestination(destination).label;
-    if ((destination === "cloud_r2" || destination === "founder_nas") && !hasConnectedAccount) {
-      setMessage(`Destination « ${label} » enregistrée localement. Connecte un compte avant de lancer la sauvegarde distante.`);
-      return;
-    }
+    setMessage(`Destination active : ${label}. Le prochain clic sur Sauvegarder écrira directement ici.`);
 
+    // La préférence locale est la source de vérité immédiate. La copie serveur
+    // est best-effort et ne doit jamais bloquer l'interface ni empêcher une
+    // sauvegarde locale/fichier/R2.
     if (hasConnectedAccount) {
-      try {
-        const planId = destination === "founder_nas" ? "founder_nas" : saved.selectedCloudPlan;
-        await saveAccountStoragePreferences({
-          planId,
-          storageDestination: destination,
-          metadata: {
-            source: "storage-vault-page",
-            keepLocalSafetyCopy: true,
-            supabaseUsage: "auth_profile_only",
-            heavyDataProvider: destination === "cloud_r2" ? "cloudflare_r2" : destination,
-          },
-        });
-        setMessage(`Destination active enregistrée : ${label}.`);
-      } catch (error: any) {
-        setMessage(`Destination locale enregistrée : ${label}. Synchronisation du choix avec le compte impossible : ${error?.message || error}`);
-      }
-    } else {
-      setMessage(`Destination active enregistrée : ${label}.`);
-    }
-
-    if (destination === "cloud_r2" || destination === "founder_nas") {
-      await refresh().catch(() => undefined);
+      const planId = destination === "founder_nas" ? "founder_nas" : saved.selectedCloudPlan;
+      void withFastFallback(saveAccountStoragePreferences({
+        planId,
+        storageDestination: destination,
+        metadata: {
+          source: "storage-vault-page",
+          keepLocalSafetyCopy: true,
+          supabaseUsage: "auth_profile_only",
+          heavyDataProvider: destination === "cloud_r2" ? "cloudflare_r2" : destination,
+        },
+      }), null, 2_500).catch(() => null);
     }
   };
 
   const runExternalBackupAction = async (action: "choose" | "save" | "download") => {
     setExternalBackupBusy(action);
     setBusy(true);
+    const startedAt = performance.now();
     try {
+      const prepared = await prepareCurrentBackupOnce();
       let next: ExternalBackupStatus;
-      if (action === "choose") next = await chooseExternalBackupFile();
-      else if (action === "save") next = await writeExternalBackupNow("storage-vault-manual", { requestPermission: true });
-      else next = await downloadExternalBackupFallback("storage-vault-download");
+      if (action === "choose") next = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-manual");
+      else if (action === "save") next = await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-manual", { requestPermission: true });
+      else next = await downloadExternalBackupJson(prepared.snapshotJson, "storage-vault-download");
       setExternalBackupStatus(next);
-      if (next.lastError) {
-        setMessage(`Sauvegarde fichier : ${next.lastError}`);
-      } else if (action === "choose") {
-        setMessage(`Fichier choisi et première sauvegarde créée : ${next.fileName || "sauvegarde.json"}.`);
-      } else if (action === "save") {
-        setMessage(`Sauvegarde écrite dans ${next.fileName || "le fichier sélectionné"}${next.lastBytes ? ` · ${formatStorageBytes(next.lastBytes)}` : ""}.`);
-      } else {
-        setMessage("Copie JSON téléchargée sur l’appareil.");
-      }
+      if (next.lastError) throw new Error(next.lastError);
+      const duration = Math.max(1, Math.round(performance.now() - startedAt));
+      setMessage(`Sauvegarde fichier créée en ${duration} ms · ${next.fileName || "copie téléchargée"} · ${formatStorageBytes(next.lastBytes || prepared.bytes)}.`);
       const estimate = await estimateBrowserStorage();
       setStorageEstimate(estimate);
     } catch (error: any) {
-      if (String(error?.name || "") !== "AbortError") {
-        setMessage(`Sauvegarde fichier impossible : ${error?.message || error}`);
-      }
+      if (String(error?.name || "") !== "AbortError") setMessage(`Sauvegarde fichier impossible : ${error?.message || error}`);
     } finally {
       setExternalBackupBusy(null);
       setBusy(false);
@@ -1765,11 +1771,13 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
   const createLocalSlot = async () => {
     setBusy(true);
+    const startedAt = performance.now();
     try {
-      const slot = await createLocalMemorySlot("Bloc local de sécurité", "manual");
-      const q = assessSave(strictSummaryForRestore(slot.payload, slot.summary));
-      setMessage(`Bloc local créé : ${q.label} · ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
-      await refresh();
+      const prepared = await prepareCurrentBackupOnce();
+      const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, "Bloc local de sécurité", "manual", prepared.summary);
+      setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
+      const q = assessSave(prepared.summary);
+      setMessage(`Bloc local créé en ${Math.max(1, Math.round(performance.now() - startedAt))} ms : ${q.label} · ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
     } catch (error: any) {
       setMessage(`Création bloc local impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
@@ -1870,25 +1878,108 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
   };
 
   const createSelectedDestinationBackup = async () => {
-    if (selectedDestination === "app_local") {
-      await createLocalSlot();
-      return;
-    }
-    if (selectedDestination === "device_file" || selectedDestination === "external_sd_manual") {
-      if (!externalBackupStatus.configured && externalBackupStatus.supported) {
-        await runExternalBackupAction("choose");
-      } else if (externalBackupStatus.configured) {
-        await runExternalBackupAction("save");
-      } else {
-        await runExternalBackupAction("download");
+    if (busy) return;
+    lastUserActionAtRef.current = Date.now();
+    const startedAt = performance.now();
+    const destination = loadStoragePrefs().selectedDestination;
+    const destinationLabel = getStorageDestination(destination).label;
+    setBusy(true);
+    setMessage(`Préparation de la sauvegarde vers ${destinationLabel}…`);
+
+    try {
+      // Le snapshot complet n'est construit qu'une seule fois, puis le même
+      // objet est écrit vers la destination choisie.
+      const prepared = await prepareCurrentBackupOnce();
+      const quality = assessSaveForProvider(prepared.summary, destination === "cloud_r2" ? "cloud" : destination === "founder_nas" ? "nas" : "local");
+      if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
+
+      const elapsed = () => `${Math.max(1, Math.round(performance.now() - startedAt))} ms`;
+      const localLabel = `Sauvegarde ${destinationLabel} — ${new Date().toLocaleString("fr-FR")}`;
+
+      if (destination === "app_local") {
+        const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, localLabel, "manual", prepared.summary);
+        setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
+        setMessage(`Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(prepared.bytes)}.`);
+        return;
       }
-      return;
+
+      if (destination === "device_file" || destination === "external_sd_manual") {
+        let status: ExternalBackupStatus;
+        if (!externalBackupStatus.configured && externalBackupStatus.supported) {
+          status = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-instant");
+        } else if (externalBackupStatus.configured) {
+          status = await writeExternalBackupJsonNow(prepared.snapshotJson, "storage-vault-instant", { requestPermission: true });
+        } else {
+          status = await downloadExternalBackupJson(prepared.snapshotJson, "storage-vault-instant");
+        }
+        setExternalBackupStatus(status);
+        if (status.lastError) throw new Error(status.lastError);
+        if (storagePrefs.keepLocalSafetyCopy) {
+          const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary);
+          setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
+        }
+        setMessage(`Sauvegarde fichier créée en ${elapsed()} · ${status.fileName || "fichier téléchargé"} · ${formatStorageBytes(status.lastBytes || prepared.bytes)}.`);
+        return;
+      }
+
+      if (destination === "cloud_r2") {
+        const localSlot = storagePrefs.keepLocalSafetyCopy
+          ? await createLocalMemorySlotFromSnapshot(prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary).catch(() => null)
+          : null;
+        if (localSlot) setLocalSlots((current) => [localSlot, ...current.filter((item) => item.id !== localSlot.id)].slice(0, 10));
+
+        const uploaded = await uploadCloudVaultSnapshotJson({
+          snapshotJson: prepared.snapshotJson,
+          title: localLabel,
+          sourceDestination: "cloud_r2",
+          metadata: {
+            summary: prepared.summary,
+            exportedAt: new Date().toISOString(),
+            rawSizeBytes: prepared.bytes,
+            engine: "instant-backup-v44",
+          },
+        });
+        const item = uploaded.object as CloudSlot;
+        item.__summary = prepared.summary;
+        item.latest = true;
+        setCloudSlots((current) => [item, ...current.filter((row) => row.id !== item.id)].slice(0, 120));
+        setBackupProvider("cloud");
+        writePreferredRemoteSource("cloud");
+        setMessage(`Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · disponible sur les autres appareils.`);
+        return;
+      }
+
+      // NAS : on crée d'abord une copie locale immédiate avec le même snapshot,
+      // puis l'appel réseau est limité à 5 secondes.
+      const localSlot = await createLocalMemorySlotFromSnapshot(
+        prepared.snapshot,
+        `Sécurité locale avant NAS — ${new Date().toLocaleString("fr-FR")}`,
+        "before-restore",
+        prepared.summary
+      );
+      setLocalSlots((current) => [localSlot, ...current.filter((item) => item.id !== localSlot.id)].slice(0, 10));
+
+      const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+      setAccountScopeId(getVaultCurrentUserId());
+      if (!token) throw new Error("Token NAS introuvable. La copie locale a été créée, mais l'envoi NAS nécessite une reconnexion au compte NAS.");
+      const response = await pushSnapshotToNasFast(prepared.snapshot, "storage-vault-instant", token);
+      const slotId = String(response?.slotId || response?.id || `nas_${Date.now()}`);
+      const nasSlot: NasSlot = {
+        id: slotId,
+        latest: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        summary: prepared.summary,
+      };
+      setNasSlots((current) => [nasSlot, ...current.map((row) => ({ ...row, latest: false })).filter((row) => row.id !== slotId)].slice(0, 120));
+      setBackupProvider("nas");
+      writePreferredRemoteSource("nas");
+      setMessage(`Sauvegarde NAS créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · copie locale de sécurité conservée.`);
+    } catch (error: any) {
+      setMessage(`Sauvegarde impossible vers ${destinationLabel} : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
     }
-    if (selectedDestination === "cloud_r2") {
-      await createCloudBackup();
-      return;
-    }
-    await createNasBackup();
   };
 
   const restoreNas = async (entry: SaveEntry) => {
@@ -2438,9 +2529,6 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
                 <button style={primaryBtn} disabled={primaryBackupDisabled} onClick={() => void createSelectedDestinationBackup()}>{primaryBackupLabel}</button>
                 {selectedDestination !== "app_local" && <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>}
-                {(selectedDestination === "cloud_r2" || selectedDestination === "founder_nas") && (
-                  <button style={btn} disabled={busy || !hasConnectedAccount} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
-                )}
                 <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer JSON</button>
                 <input ref={inputRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => importJsonFile(e.currentTarget.files?.[0] || null)} />
               </div>

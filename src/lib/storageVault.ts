@@ -330,8 +330,12 @@ export async function listLocalMemorySlots(): Promise<MemorySlot[]> {
     .sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""));
 }
 
-export async function createLocalMemorySlot(label = "Bloc local", source: MemorySlot["source"] = "manual"): Promise<MemorySlot> {
-  const payload = await exportCloudSnapshot();
+export async function createLocalMemorySlotFromSnapshot(
+  payload: any,
+  label = "Bloc local",
+  source: MemorySlot["source"] = "manual",
+  summaryInput?: VaultSummary | null
+): Promise<MemorySlot> {
   const now = new Date().toISOString();
   const slot: MemorySlot = {
     id: `local_${now.replace(/[^0-9]/g, "")}_${Math.random().toString(16).slice(2, 8)}`,
@@ -341,12 +345,17 @@ export async function createLocalMemorySlot(label = "Bloc local", source: Memory
     label,
     source,
     payload,
-    summary: summarizeVaultPayload(payload),
+    summary: summaryInput || summarizeVaultPayload(payload),
   };
   await vaultPut(slot);
   const slots = await listLocalMemorySlots();
   for (const old of slots.slice(MAX_LOCAL_SLOTS)) await vaultDelete(old.id).catch(() => {});
   return slot;
+}
+
+export async function createLocalMemorySlot(label = "Bloc local", source: MemorySlot["source"] = "manual"): Promise<MemorySlot> {
+  const payload = await exportCloudSnapshot();
+  return createLocalMemorySlotFromSnapshot(payload, label, source);
 }
 
 export async function deleteLocalMemorySlot(id: string): Promise<void> {
