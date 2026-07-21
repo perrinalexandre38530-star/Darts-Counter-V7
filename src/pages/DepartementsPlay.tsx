@@ -30,6 +30,7 @@ import type {
 } from "../territories/types";
 import { buildTerritoriesMap } from "../territories/map";
 import TerritoriesMapView from "../territories/TerritoriesMapView";
+import { getFrenchDepartmentFlagUrl } from "../territories/frDepartmentFlags";
 import {
   applyBalancedTerritoryValues,
   buildTerritoryValueCalibration,
@@ -839,15 +840,19 @@ export default function DepartementsPlay(props: any) {
 
   const objectiveValueLabel = selectedTerritory ? String(selectedTerritory.value) : "—";
   const selectedTerritoryCountryCode =
-    country === "UN" ? null : getTerritoryCountryCode(country, selectedTerritory?.id);
+    country === "UN" || country === "FR"
+      ? null
+      : getTerritoryCountryCode(country, selectedTerritory?.id);
   const selectedTerritoryDisplayName = selectedTerritory
     ? country === "UN"
       ? (UN_REGION_NAMES_FR[String(selectedTerritory.id)] || String(selectedTerritory.name || selectedTerritory.id))
-      : getLocalizedTerritoryName(
-          selectedTerritoryCountryCode,
-          lang,
-          String(selectedTerritory.name || selectedTerritory.id),
-        )
+      : country === "FR"
+        ? String(selectedTerritory.name || selectedTerritory.id)
+        : getLocalizedTerritoryName(
+            selectedTerritoryCountryCode,
+            lang,
+            String(selectedTerritory.name || selectedTerritory.id),
+          )
     : "—";
   const territoryNameLabel = selectedTerritory
     ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritoryDisplayName}`
@@ -855,11 +860,17 @@ export default function DepartementsPlay(props: any) {
   const territoryFlagSrc =
     country === "UN"
       ? findUnRegionFlag(selectedTerritory?.id)
-      : findTerritoryFlagByCountry(selectedTerritoryCountryCode);
-  // Les territoires UN utilisent systématiquement leur PNG local.
+      : country === "FR"
+        ? getFrenchDepartmentFlagUrl(selectedTerritory?.id)
+        : findTerritoryFlagByCountry(selectedTerritoryCountryCode);
+  // Les régions UN et les départements français utilisent leur visuel dédié.
   // Les emojis restent uniquement le secours des territoires ISO classiques.
   const territoryFlagEmoji =
-    country === "UN" ? undefined : isoCodeToFlagEmoji(selectedTerritoryCountryCode);
+    country === "UN"
+      ? undefined
+      : country === "FR"
+        ? "🇫🇷"
+        : isoCodeToFlagEmoji(selectedTerritoryCountryCode);
 
   const isFrRegionsVictory = gameMode === "classic" && country === "FR" && victoryMode === "regions";
 

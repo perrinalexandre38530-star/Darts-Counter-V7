@@ -1,0 +1,678 @@
+{
+  "notice": "Les départements français ne disposent pas tous d'un drapeau juridiquement officiel. Cette sélection utilise le drapeau institutionnel/logotypique quand il existe et un drapeau traditionnel ou proposé lorsque la colonne officielle est vide.",
+  "sourcePage": "https://fr.wikipedia.org/wiki/Drapeaux_des_départements_français",
+  "items": [
+    {
+      "code": "01",
+      "name": "Ain",
+      "file": "Flag_of_the_Department_of_Ain.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "02",
+      "name": "Aisne",
+      "file": "Flag_of_the_Department_of_Aisne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "03",
+      "name": "Allier",
+      "file": "Flag_of_the_Department_of_Allier.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "04",
+      "name": "Alpes-de-Haute-Provence",
+      "file": "Flag_of_the_Department_of_Alpes-de-Haute-Provence.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "05",
+      "name": "Hautes-Alpes",
+      "file": "Flag_of_Hautes-Alpes.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "06",
+      "name": "Alpes-Maritimes",
+      "file": "Flag_of_the_Department_of_Alpes-Maritimes.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "07",
+      "name": "Ardèche",
+      "file": "Flag_of_the_Department_of_Ardèche.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "08",
+      "name": "Ardennes",
+      "file": "Flag_of_the_Department_of_Ardennes.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "09",
+      "name": "Ariège",
+      "file": "Flag_of_the_Department_of_Ariège.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "10",
+      "name": "Aube",
+      "file": "Flag_of_the_Department_of_Aube.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "11",
+      "name": "Aude",
+      "file": "Flag_of_the_Department_of_Aude.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "12",
+      "name": "Aveyron",
+      "file": "Flag_of_Rouergue.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "13",
+      "name": "Bouches-du-Rhône",
+      "file": "Flag_of_the_Department_of_Bouches-du-Rhône.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "14",
+      "name": "Calvados",
+      "file": "Flag_of_the_Department_of_Calvados.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "15",
+      "name": "Cantal",
+      "file": "Flag_of_the_Department_of_Cantal.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "16",
+      "name": "Charente",
+      "file": "Flag_of_the_Department_of_Charente_(Variant_2).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "17",
+      "name": "Charente-Maritime",
+      "file": "Flag_of_the_Department_of_Charente-Maritime.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "18",
+      "name": "Cher",
+      "file": "Drapeau_fr_département_Cher.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "19",
+      "name": "Corrèze",
+      "file": "Flag_of_the_Department_of_Corrèze.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "2A",
+      "name": "Corse-du-Sud",
+      "file": "Logo_Corse_Sud_2015.svg",
+      "host": "frwiki",
+      "status": "institutional"
+    },
+    {
+      "code": "2B",
+      "name": "Haute-Corse",
+      "file": "Logo_Haute_Corse_2011.svg",
+      "host": "frwiki",
+      "status": "institutional"
+    },
+    {
+      "code": "21",
+      "name": "Côte-d'Or",
+      "file": "Flag_of_the_Department_of_Côte-d'Or.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "22",
+      "name": "Côtes-d’Armor",
+      "file": "Flag_of_the_Department_of_Côtes-d'Armor.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "23",
+      "name": "Creuse",
+      "file": "Creuse_(23)_logo_2017.svg",
+      "host": "frwiki",
+      "status": "institutional"
+    },
+    {
+      "code": "24",
+      "name": "Dordogne",
+      "file": "Flag_of_the_Department_of_Dordogne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "25",
+      "name": "Doubs",
+      "file": "Flag_of_the_Department_of_Doubs.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "26",
+      "name": "Drôme",
+      "file": "Flag_of_the_Department_of_Drôme.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "27",
+      "name": "Eure",
+      "file": "Flag_of_the_Department_of_Eure.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "28",
+      "name": "Eure-et-Loir",
+      "file": "Flag_of_the_Department_of_Eure-et-Loir.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "29",
+      "name": "Finistère",
+      "file": "Flag_of_the_Department_of_Finistère.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "30",
+      "name": "Gard",
+      "file": "Flag_of_the_Department_of_Gard.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "31",
+      "name": "Haute-Garonne",
+      "file": "Flag_of_the_Department_of_Haute-Garonne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "32",
+      "name": "Gers",
+      "file": "Flag_of_the_Department_of_Gers.png",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "33",
+      "name": "Gironde",
+      "file": "Flag_of_the_Department_of_Gironde.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "34",
+      "name": "Hérault",
+      "file": "Flag_of_the_Department_of_Hérault.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "35",
+      "name": "Ille-et-Vilaine",
+      "file": "Flag_of_the_Department_of_Ille-et-Vilaine.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "36",
+      "name": "Indre",
+      "file": "Drapeau_département_fr_Indre.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "37",
+      "name": "Indre-et-Loire",
+      "file": "Drapeau_non-officiel_fr_département_Indre-et-Loire.svg",
+      "host": "commons",
+      "status": "proposed"
+    },
+    {
+      "code": "38",
+      "name": "Isère",
+      "file": "Drapeau_non-officiel_département_fr_Isère.svg",
+      "host": "commons",
+      "status": "proposed"
+    },
+    {
+      "code": "39",
+      "name": "Jura",
+      "file": "Flag_of_the_Department_of_Jura.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "40",
+      "name": "Landes",
+      "file": "Drapeau_fr_département_Landes.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "41",
+      "name": "Loir-et-Cher",
+      "file": "Drapeau_fr_département_Loir-et-Cher.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "42",
+      "name": "Loire",
+      "file": "Flag_of_the_Department_of_Loire.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "43",
+      "name": "Haute-Loire",
+      "file": "Drapeau_département_fr_Haute-Loire.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "44",
+      "name": "Loire-Atlantique",
+      "file": "Flag_of_the_Department_of_Loire-Atlantique.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "45",
+      "name": "Loiret",
+      "file": "Flag_of_the_Department_of_Loiret.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "46",
+      "name": "Lot",
+      "file": "Flag_of_the_Department_of_Lot.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "47",
+      "name": "Lot-et-Garonne",
+      "file": "Drapeau_fr_département_Lot-et-Garonne.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "48",
+      "name": "Lozère",
+      "file": "Flag_of_the_Department_of_Lozère.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "49",
+      "name": "Maine-et-Loire",
+      "file": "Flag_of_the_Department_of_Maine-et-Loire_(Variant_2).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "50",
+      "name": "Manche",
+      "file": "Flag_of_the_Department_of_Manche.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "51",
+      "name": "Marne",
+      "file": "Flag_of_the_Department_of_Marne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "52",
+      "name": "Haute-Marne",
+      "file": "Flag_of_the_Department_of_Haute-Marne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "53",
+      "name": "Mayenne",
+      "file": "Flag_of_the_Department_of_Mayenne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "54",
+      "name": "Meurthe-et-Moselle",
+      "file": "Drapeau_fr_département_Meurthe-et-Moselle.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "55",
+      "name": "Meuse",
+      "file": "Flag_of_the_Department_of_Meuse.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "56",
+      "name": "Morbihan",
+      "file": "Banniel_departamant_ar_Mor-Bihan_2022.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "57",
+      "name": "Moselle",
+      "file": "Flag_of_the_Department_of_Moselle.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "58",
+      "name": "Nièvre",
+      "file": "Flag_of_the_Department_of_Nièvre.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "59",
+      "name": "Nord",
+      "file": "Flag_of_the_Department_of_Nord.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "60",
+      "name": "Oise",
+      "file": "Flag_of_the_Department_of_Oise.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "61",
+      "name": "Orne",
+      "file": "Flag_of_the_Department_of_Orne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "62",
+      "name": "Pas-de-Calais",
+      "file": "Flag_of_the_Department_of_Pas-de-Calais_(Variant_1).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "63",
+      "name": "Puy-de-Dôme",
+      "file": "Flag_of_the_Department_of_Puy-de-Dôme.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "64",
+      "name": "Pyrénées-Atlantiques",
+      "file": "Drapeau_proposé_pour_les_Pyrenees-atlantiques.svg",
+      "host": "commons",
+      "status": "proposed"
+    },
+    {
+      "code": "65",
+      "name": "Hautes-Pyrénées",
+      "file": "Flag_of_the_Department_of_Hautes-Pyrénées.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "66",
+      "name": "Pyrénées-Orientales",
+      "file": "Flag_of_the_Department_of_Pyrénées-Orientales.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "67",
+      "name": "Bas-Rhin",
+      "file": "Flag_of_the_Department_of_Bas-Rhin.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "68",
+      "name": "Haut-Rhin",
+      "file": "Flag_of_the_Department_of_Haut-Rhin.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "69",
+      "name": "Rhône",
+      "file": "Flag_of_Rhône.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "70",
+      "name": "Haute-Saône",
+      "file": "Flag_of_the_Department_of_Haute-Saône.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "71",
+      "name": "Saône-et-Loire",
+      "file": "Flag_of_the_Department_of_Saône-et-Loire.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "72",
+      "name": "Sarthe",
+      "file": "Flag_of_the_Department_of_Sarthe.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "73",
+      "name": "Savoie",
+      "file": "Savoie_(73),_logo.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "74",
+      "name": "Haute-Savoie",
+      "file": "Drapeau_de_la_Savoie.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "75",
+      "name": "Paris",
+      "file": "Flag_of_Paris_with_coat_of_arms.svg",
+      "host": "commons",
+      "status": "official"
+    },
+    {
+      "code": "76",
+      "name": "Seine-Maritime",
+      "file": "Flag_of_the_Department_of_Seine-Maritime_(Variant_1).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "77",
+      "name": "Seine-et-Marne",
+      "file": "Flag_of_the_Department_of_Seine-et-Marne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "78",
+      "name": "Yvelines",
+      "file": "Drapeau_fr_département_Yvelines.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "79",
+      "name": "Deux-Sèvres",
+      "file": "Flag_of_the_Department_of_Deux-Sèvres.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "80",
+      "name": "Somme",
+      "file": "Flag_of_the_Department_of_Somme_(Variant_2).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "81",
+      "name": "Tarn",
+      "file": "Drapeau_fr_département_Tarn.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "82",
+      "name": "Tarn-et-Garonne",
+      "file": "Flag_of_Tarn-et-Garonne.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "83",
+      "name": "Var",
+      "file": "Flag_of_the_Department_of_Var.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "84",
+      "name": "Vaucluse",
+      "file": "Flag_of_the_Department_of_Vaucluse.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "85",
+      "name": "Vendée",
+      "file": "Flag_of_the_Department_of_Vendée_(Variant_1).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "86",
+      "name": "Vienne",
+      "file": "Flag_of_the_Department_of_Vienne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "87",
+      "name": "Haute-Vienne",
+      "file": "Flag_of_the_Department_of_Haute-Vienne_(Variant_2).svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "88",
+      "name": "Vosges",
+      "file": "Flag_of_Vosges.svg",
+      "host": "commons",
+      "status": "traditional"
+    },
+    {
+      "code": "89",
+      "name": "Yonne",
+      "file": "Flag_of_the_Department_of_Yonne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "90",
+      "name": "Territoire de Belfort",
+      "file": "Flag_of_the_Department_of_Belfort.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "91",
+      "name": "Essonne",
+      "file": "DrapeauEssonnePicture.png",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "92",
+      "name": "Hauts-de-Seine",
+      "file": "Flag_of_the_Department_of_Hauts-de-Seine.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "93",
+      "name": "Seine-Saint-Denis",
+      "file": "Proposition_de_drapeau_fr_département_Seine-Saint-Denis.svg",
+      "host": "commons",
+      "status": "proposed"
+    },
+    {
+      "code": "94",
+      "name": "Val-de-Marne",
+      "file": "Flag_of_the_Department_of_Val-de-Marne.svg",
+      "host": "commons",
+      "status": "institutional"
+    },
+    {
+      "code": "95",
+      "name": "Val-d’Oise",
+      "file": "Flag_of_the_Department_of_Val-d'Oise_(Variant_2).svg",
+      "host": "commons",
+      "status": "institutional"
+    }
+  ]
+}
