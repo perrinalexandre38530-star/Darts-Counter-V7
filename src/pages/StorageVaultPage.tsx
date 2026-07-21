@@ -55,6 +55,7 @@ import {
   type CloudObjectIndexItem,
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
+import { getDirectR2Status, type DirectR2Status } from "../lib/directR2BackupApi";
 import {
   estimateBrowserStorage,
   formatStorageBytes,
@@ -1133,6 +1134,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [externalBackupBusy, setExternalBackupBusy] = React.useState<null | "choose" | "save" | "download">(null);
   const [cloudTransferBusy, setCloudTransferBusy] = React.useState<null | "current" | "file" | "entry">(null);
   const [storageEstimate, setStorageEstimate] = React.useState({ usage: 0, quota: 0, free: 0 });
+  const [directR2Status, setDirectR2Status] = React.useState<DirectR2Status | null>(null);
   const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
@@ -1194,6 +1196,17 @@ export default function StorageVaultPage({ go }: Props) {
   const selectedDestination = storagePrefs.selectedDestination;
   const activeDestination = getStorageDestination(selectedDestination);
   const hasConnectedAccount = Boolean(accountScopeId || auth.userId || auth.user);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (selectedDestination !== "cloud_r2" && backupProvider !== "cloud") return () => { alive = false; };
+    void getDirectR2Status()
+      .then((status) => { if (alive) setDirectR2Status(status); })
+      .catch((error: any) => {
+        if (alive) setDirectR2Status({ ok: false, error: String(error?.message || error || "Diagnostic R2 impossible") });
+      });
+    return () => { alive = false; };
+  }, [selectedDestination, backupProvider]);
 
   const nasEntries = React.useMemo<SaveEntry[]>(() => {
     return nasSlots
@@ -2504,8 +2517,23 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               )}
 
               {selectedDestination === "cloud_r2" && (
-                <div style={{ marginTop: 12, color: "#cbd5e1", fontSize: 11.5, lineHeight: 1.42 }}>
-                  Les parties, historiques, statistiques, sauvegardes et médias sont envoyés dans <b style={{ color: neon }}>Cloudflare R2</b>. Supabase reste limité à l’authentification et au profil léger.
+                <div style={{ marginTop: 12, padding: 11, borderRadius: 14, border: `1px solid ${directR2Status?.ok ? "rgba(52,211,153,.34)" : "rgba(251,191,36,.34)"}`, background: "rgba(255,255,255,.025)", color: "#cbd5e1", fontSize: 11.5, lineHeight: 1.42 }}>
+                  <strong style={{ color: directR2Status?.ok ? green : amber }}>
+                    {directR2Status == null
+                      ? "Vérification Cloudflare Pages/R2…"
+                      : directR2Status.ok
+                        ? "R2 DIRECT PRÊT — indépendant du NAS"
+                        : "R2 DIRECT INCOMPLET"}
+                  </strong>
+                  <div style={{ marginTop: 5 }}>
+                    Les parties, historiques, statistiques, sauvegardes et médias sont envoyés dans <b style={{ color: neon }}>Cloudflare R2</b>. Supabase reste limité à l’authentification et au profil léger.
+                  </div>
+                  {directR2Status && (
+                    <div style={{ marginTop: 6, color: directR2Status.ok ? green : amber, fontSize: 10.5 }}>
+                      Binding USER_DATA_BUCKET : {directR2Status.bucketReady ? "OK" : "MANQUANT"} · Auth Supabase : {directR2Status.supabaseAuthConfigured ? "OK" : "NON"} · Auth JWT NAS : {directR2Status.nasJwtConfigured ? "OK" : "NON"}
+                      {!directR2Status.ok && directR2Status.message ? ` · ${directR2Status.message}` : ""}
+                    </div>
+                  )}
                 </div>
               )}
 

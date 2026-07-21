@@ -19,11 +19,14 @@ function token(secret) {
   const s = crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url');
   return `${h}.${p}.${s}`;
 }
-async function call(method, path = '', body) {
-  const url = `https://example.pages.dev/api/storage/backups${path ? `/${path}` : ''}`;
+async function call(method, path = '', body, withAuth = true) {
+  const suffix = path ? `/${path}` : '';
+  const url = `https://example.pages.dev/api/storage/backups${suffix}`;
+  const headers = { ...(body ? { 'content-type': 'application/json' } : {}) };
+  if (withAuth) headers.authorization = `Bearer ${auth}`;
   const request = new Request(url, {
     method,
-    headers: { authorization: `Bearer ${auth}`, ...(body ? { 'content-type': 'application/json' } : {}) },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const response = await onRequest({ request, env, params: { path }, waitUntil() {}, next() {} });
@@ -40,16 +43,17 @@ const env = {
   CLOUD_OBJECT_MAX_UPLOAD_BYTES: String(1024 * 1024),
 };
 
-
-const status = await call('GET', 'status');
-assert.equal(status.json.ok, true);
-assert.equal(status.json.route, 'cloudflare-pages-r2-direct');
-assert.equal(status.response.headers.get('x-multisports-storage-route'), 'cloudflare-pages-r2-direct');
+const publicStatus = await call('GET', 'status', undefined, false);
+assert.equal(publicStatus.json.ok, true);
+assert.equal(publicStatus.json.bucketReady, true);
+assert.equal(publicStatus.json.nasJwtConfigured, true);
+assert.equal(publicStatus.response.headers.get('x-multisports-storage-route'), 'cloudflare-pages-r2-direct');
 
 const snapshotJson = JSON.stringify({ version: 1, profiles: [{ id: 'p1' }], history: { rows: { m1: { score: '3-2' } } } });
 const created = await call('POST', '', { snapshotJson, title: 'Test', summary: { matches: 1 } });
 assert.equal(created.response.status, 201);
 assert.equal(created.json.ok, true);
+assert.equal(created.json.authMode, 'nas-jwt');
 assert.match(created.json.backup.id, /^r2b_/);
 const id = created.json.backup.id;
 
@@ -70,4 +74,13 @@ assert.equal(restored.json.ok, true);
 const visibleAgain = await call('GET');
 assert.equal(visibleAgain.json.backups.length, 1);
 
-console.log('Direct R2 backup Pages Function: OK');
+const missingSecret = await onRequest({
+  request: new Request('https://example.pages.dev/api/storage/backups', { headers: { authorization: `Bearer ${auth}` } }),
+  env: { USER_DATA_BUCKET: new MemoryBucket() },
+  params: { path: '' }, waitUntil() {}, next() {},
+});
+const missingSecretJson = await missingSecret.json();
+assert.equal(missingSecret.status, 503);
+assert.equal(missingSecretJson.code, 'nas_jwt_secret_missing');
+
+console.log('Direct R2 backup Pages Function (binding + NAS JWT + CRUD): OK');

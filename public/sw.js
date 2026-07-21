@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-07-22-r2-direct-v48-1";
+const SW_VERSION = "dc-sw-2026-07-22-storage-dual-auth-v51-1";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

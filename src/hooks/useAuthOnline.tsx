@@ -18,7 +18,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
-import { isNasProviderEnabled } from "../lib/serverConfig";
+import { isNasProviderEnabled, isSupabaseHardDisabledInNasMode } from "../lib/serverConfig";
 import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
@@ -90,7 +90,11 @@ async function cleanupDeletedAccountLocalData(): Promise<void> {
 
 async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
   try {
-    if (!isNasProviderEnabled()) return;
+    // IMPORTANT : NAS et Supabase doivent pouvoir coexister.
+    // Supabase authentifie les sauvegardes R2 directes et sert de secours de
+    // connexion. On ne supprime sa session que si le mode dépannage explicite
+    // VITE_DISABLE_SUPABASE_CLIENT_IN_NAS=true a été activé.
+    if (!isNasProviderEnabled() || !isSupabaseHardDisabledInNasMode()) return;
 
     try {
       const authAny: any = (supabase as any)?.auth;
@@ -222,14 +226,16 @@ async function safeGetSession(): Promise<Session | null> {
     const nasBridge = await safeGetNasBridgeSession();
     if (nasBridge?.user) return nasBridge;
 
-    if (isNasProviderEnabled()) {
-      await cleanupSupabaseLocalSessionForNas();
-      return null;
+    // En mode NAS, la session Supabase reste volontairement active : elle
+    // permet la connexion de secours et l'accès direct à Cloudflare R2.
+    // Elle ne remplace jamais le JWT NAS dans apiClient.
+    if (!isSupabaseHardDisabledInNasMode()) {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (data?.session?.user) return data.session;
     }
 
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    return data?.session ?? null;
+    return null;
   } catch (e) {
     console.warn("[useAuthOnline] getSession failed:", e);
     return null;

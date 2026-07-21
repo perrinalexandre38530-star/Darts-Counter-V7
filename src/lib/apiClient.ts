@@ -225,20 +225,87 @@ function rememberWorkingApiUrl(url: string) {
 function currentApiUrl(): string {
   return getApiBaseCandidates()[0] || PUBLIC_HTTPS_API_URL;
 }
-// Le NAS/Cloudflare peut dépasser 3,5 s au réveil ou pendant une écriture snapshot/stats.
-// Ancien défaut: 3500 ms => les synchros profil lié étaient annulées côté navigateur
-// avant même que le backend ait fini de répondre. On laisse maintenant 60 s, surtout pour NAS + Cloudflare au réveil.
-const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 60000) || 60000;
-const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
+// Délais courts et différenciés. Une panne NAS ne doit plus bloquer l'interface
+// pendant 60 secondes. Les écritures explicites disposent d'un peu plus de temps,
+// tandis que les lectures automatiques du démarrage abandonnent rapidement.
+const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 8000) || 8000;
+const API_TIMEOUT_MS = Math.max(2500, Math.min(20_000, rawApiTimeoutMs));
+const API_BACKGROUND_TIMEOUT_MS = 4_000;
+const API_WRITE_TIMEOUT_MS = 10_000;
 
-// Evite qu'une panne PostgreSQL/NAS déclenche des dizaines de GET /online/*
-// simultanés. Les actions utilisateur POST/PUT/DELETE restent toujours tentées.
-const ONLINE_BACKEND_COOLDOWN_MS = 15_000;
+// Evite qu'une panne PostgreSQL/NAS déclenche des dizaines de GET simultanés.
+// Les actions utilisateur POST/PUT/DELETE restent toujours tentées.
+const ONLINE_BACKEND_COOLDOWN_MS = 20_000;
+const DATABASE_BACKEND_COOLDOWN_MS = 30_000;
 let onlineBackendCooldownUntil = 0;
+let databaseBackendCooldownUntil = 0;
+let backendHealthyUntil = 0;
+let backendHealthProbeInFlight: Promise<boolean> | null = null;
 
 let lastAuthChangedDispatchAt = 0;
 let lastMissingTokenWarningAt = 0;
 let nasAuthRecoveryInFlight: Promise<string> | null = null;
+
+function isAutomaticBackendRead(path: string, method: string): boolean {
+  if (String(method || "GET").toUpperCase() !== "GET") return false;
+  const normalized = String(path || "");
+  return normalized.startsWith("/online/") ||
+    normalized === "/auth/me" ||
+    normalized === "/profiles/me" ||
+    normalized.startsWith("/account/storage-usage") ||
+    normalized.startsWith("/account/storage-preferences") ||
+    normalized.startsWith("/sync/slots") ||
+    normalized.startsWith("/sync/pull") ||
+    normalized.startsWith("/sync/match-backups");
+}
+
+function requestTimeoutFor(path: string, method: string): number {
+  const verb = String(method || "GET").toUpperCase();
+  if (verb !== "GET") return API_WRITE_TIMEOUT_MS;
+  if (isAutomaticBackendRead(path, verb)) return API_BACKGROUND_TIMEOUT_MS;
+  return API_TIMEOUT_MS;
+}
+
+function isDatabaseUnavailablePayload(payload: any): boolean {
+  const code = String(payload?.code || "").toLowerCase();
+  const text = String(payload?.message || payload?.error || payload?.detail || "").toLowerCase();
+  return code === "database_unavailable" ||
+    text.includes("postgresql") ||
+    text.includes("base de données nas indisponible") ||
+    text.includes("database unavailable");
+}
+
+async function ensureAutomaticBackendAvailable(): Promise<boolean> {
+  const now = Date.now();
+  if (now < databaseBackendCooldownUntil) return false;
+  if (now < backendHealthyUntil) return true;
+  if (backendHealthProbeInFlight) return backendHealthProbeInFlight;
+
+  backendHealthProbeInFlight = (async () => {
+    const base = sameOriginApiProxyBase() || getApiBaseCandidates()[0] || "";
+    if (!base) return false;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? window.setTimeout(() => controller.abort(), 1_800) : null;
+    try {
+      const response = await fetch(`${base}/health`, { cache: "no-store", signal: controller?.signal });
+      const payload = await response.clone().json().catch(() => null);
+      if (response.ok && payload?.dbReady !== false) {
+        backendHealthyUntil = Date.now() + 15_000;
+        return true;
+      }
+      databaseBackendCooldownUntil = Date.now() + DATABASE_BACKEND_COOLDOWN_MS;
+      return false;
+    } catch {
+      databaseBackendCooldownUntil = Date.now() + DATABASE_BACKEND_COOLDOWN_MS;
+      return false;
+    } finally {
+      if (timer) window.clearTimeout(timer);
+      backendHealthProbeInFlight = null;
+    }
+  })();
+
+  return backendHealthProbeInFlight;
+}
 
 function isSoftOnlineEndpoint(path: string): boolean {
   const normalized = String(path || "");
@@ -310,7 +377,14 @@ async function parseJsonSafe(res: Response) {
   try {
     return text ? JSON.parse(text) : null;
   } catch {
-    throw new Error(`Réponse JSON invalide: ${text}`);
+    if (/<!doctype|<html/i.test(text)) {
+      const cloudflareCode = text.match(/Error\s*<\/span>\s*<span>(\d+)|Error\s+(\d{3,4})/i);
+      const code = cloudflareCode?.[1] || cloudflareCode?.[2] || "";
+      throw new Error(code
+        ? `Réponse HTML Cloudflare inattendue (erreur ${code}).`
+        : "Réponse HTML inattendue du backend.");
+    }
+    throw new Error(`Réponse JSON invalide (${text.slice(0, 240)})`);
   }
 }
 
@@ -329,6 +403,9 @@ async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const requestMethod = String(init?.method || "GET").toUpperCase();
   const isBackgroundOnlineGet = requestMethod === "GET" && normalizedPath.startsWith("/online/");
+  const isAutomaticRead = isAutomaticBackendRead(normalizedPath, requestMethod);
+  const requestTimeoutMs = requestTimeoutFor(normalizedPath, requestMethod);
+  const proxyBase = sameOriginApiProxyBase();
 
   // Les badges/messages/appels ne doivent jamais lancer une rafale réseau sur
   // l'écran de connexion, même si un ancien JWT NAS traîne encore en cache.
@@ -345,6 +422,27 @@ async function doFetch(path: string, init?: RequestInit) {
     error.status = 503;
     error.code = "backend_cooldown";
     throw error;
+  }
+
+  if (isAutomaticRead && Date.now() < databaseBackendCooldownUntil) {
+    const seconds = Math.max(1, Math.ceil((databaseBackendCooldownUntil - Date.now()) / 1000));
+    const error: any = new Error(`GET ${normalizedPath} suspendu — PostgreSQL NAS indisponible, nouvel essai dans ${seconds}s`);
+    error.status = 503;
+    error.code = "database_cooldown";
+    throw error;
+  }
+
+  // Un seul /health très court sert de garde au démarrage. Tous les hooks
+  // automatiques partagent ce probe : si PostgreSQL est coupé, on obtient une
+  // seule requête en erreur au lieu de dizaines d'appels rouges concurrents.
+  if (isAutomaticRead) {
+    const available = await ensureAutomaticBackendAvailable();
+    if (!available) {
+      const error: any = new Error(`GET ${normalizedPath} suspendu — backend NAS/PostgreSQL indisponible`);
+      error.status = 503;
+      error.code = "database_probe_failed";
+      throw error;
+    }
   }
 
   // Garde anti-spam, mais sans faux positif au boot : avant d'annoncer une
@@ -373,7 +471,7 @@ async function doFetch(path: string, init?: RequestInit) {
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
       const timer = ctrl ? window.setTimeout(() => {
         try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
-      }, API_TIMEOUT_MS) : null;
+      }, requestTimeoutMs) : null;
 
       try {
         res = await fetch(`${apiBase}${normalizedPath}`, {
@@ -384,9 +482,13 @@ async function doFetch(path: string, init?: RequestInit) {
       } catch (error: any) {
         const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
         lastError = new Error(aborted
-          ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${API_TIMEOUT_MS}ms)`
+          ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${requestTimeoutMs}ms)`
           : `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS inaccessible (${apiBase})`);
         res = null;
+        // Depuis Cloudflare Pages, le proxy et le domaine direct visent le même
+        // backend. Retenter immédiatement le domaine direct ne fait qu'ajouter
+        // une seconde erreur CORS/503 dans la console.
+        if (proxyBase && apiBase === proxyBase) throw lastError;
         break;
       } finally {
         if (timer) window.clearTimeout(timer);
@@ -421,6 +523,16 @@ async function doFetch(path: string, init?: RequestInit) {
       if (isBackgroundOnlineGet && [502, 503, 504].includes(res.status)) {
         onlineBackendCooldownUntil = Date.now() + ONLINE_BACKEND_COOLDOWN_MS;
       }
+      if (res.status === 503 && isDatabaseUnavailablePayload(errPayload)) {
+        databaseBackendCooldownUntil = Date.now() + DATABASE_BACKEND_COOLDOWN_MS;
+      }
+
+      // Le proxy Pages et le domaine direct pointent vers le même NAS. Une
+      // réponse structurée 5xx du proxy est définitive pour cette tentative :
+      // aucun second appel direct/CORS n'est lancé.
+      if (proxyBase && apiBase === proxyBase && res.status >= 500) {
+        throw error;
+      }
 
       // Si on a un reverse proxy KO (502/503/504) ou une route health absente
       // sur un ancien endpoint, on tente le candidat suivant. Pour les erreurs
@@ -434,6 +546,8 @@ async function doFetch(path: string, init?: RequestInit) {
 
     rememberWorkingApiUrl(apiBase);
     if (normalizedPath.startsWith("/online/")) onlineBackendCooldownUntil = 0;
+    databaseBackendCooldownUntil = 0;
+    backendHealthyUntil = Date.now() + 15_000;
     return parseJsonSafe(res);
   }
 

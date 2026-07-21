@@ -446,11 +446,12 @@ function HeaderModeIcons(props: {
   fortressMode: boolean;
   color: string;
   timeRemaining?: string | null;
+  compact?: boolean;
 }) {
   const iconShell: React.CSSProperties = {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
+    width: props.compact ? 24 : 28,
+    height: props.compact ? 24 : 28,
+    borderRadius: props.compact ? 8 : 10,
     display: "grid",
     placeItems: "center",
     color: props.color,
@@ -474,13 +475,13 @@ function HeaderModeIcons(props: {
   return (
     <div
       style={{
-        marginTop: "auto",
-        paddingTop: 5,
+        marginTop: props.compact ? 0 : "auto",
+        paddingTop: props.compact ? 0 : 5,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: 7,
-        minHeight: 28,
+        gap: props.compact ? 6 : 7,
+        minHeight: props.compact ? 24 : 28,
       }}
     >
       <div style={iconShell} title={props.teamMode ? "Mode équipes" : "Mode solo"} aria-label={props.teamMode ? "Mode équipes" : "Mode solo"}>
@@ -564,35 +565,13 @@ function TerritoryTargetSuggestions(props: {
     .slice(0, 24);
 
   return (
-    <div style={{ width: "100%", marginTop: 6, minWidth: 0 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 4,
-          marginBottom: 4,
-          fontSize: 7.2,
-          lineHeight: 1,
-          fontWeight: 950,
-          letterSpacing: 0.4,
-          textTransform: "uppercase",
-          color: props.accentColor,
-          opacity: 0.92,
-        }}
-      >
-        <span>Cibles à voler</span>
-        <span style={{ color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>
-          {props.currentTotal} pts · {props.dartsRemaining} fl.
-        </span>
-      </div>
-
+    <div style={{ width: "100%", marginTop: 5, minWidth: 0 }}>
       {visible.length ? (
         <div
           className="dc-scroll-thin"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(25px, 1fr))",
+            gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
             gap: 4,
             maxHeight: "64px",
             overflowY: "auto",
@@ -861,6 +840,7 @@ function TerritorySilhouetteBadge(props: {
   flagSrc?: string | null;
   flagEmoji?: string;
   color: string;
+  height?: number;
 }) {
   const geometry = React.useMemo(
     () => getTerritoryShapeGeometry(props.country, props.territoryId, props.svgPathId),
@@ -901,7 +881,7 @@ function TerritorySilhouetteBadge(props: {
       <div
         style={{
           width: "100%",
-          height: 112,
+          height: props.height ?? 112,
           display: "grid",
           placeItems: "center",
           borderRadius: 24,
@@ -930,7 +910,7 @@ function TerritorySilhouetteBadge(props: {
       viewBox={viewBox}
       role="img"
       aria-label={`Territoire, valeur ${props.territoryValue}`}
-      style={{ width: "100%", height: 118, display: "block", overflow: "visible" }}
+      style={{ width: "100%", height: props.height ?? 118, display: "block", overflow: "visible" }}
       preserveAspectRatio="xMidYMid meet"
     >
       <defs>
@@ -1956,6 +1936,52 @@ export default function DepartementsPlay(props: any) {
     return rows;
   }, [game.players, game.teams, gameMode, fortressVictoryMode, ownedByOwner, ownedValueByOwner]);
 
+  const ownerProfilesById = React.useMemo(() => {
+    const out: Record<string, any[]> = {};
+    for (const player of game.players) {
+      const ownerId = String(player.teamId || player.id);
+      if (!out[ownerId]) out[ownerId] = [];
+      out[ownerId].push(
+        profileById[player.id] ?? {
+          id: player.id,
+          name: player.name,
+          avatar: player.avatar,
+        },
+      );
+    }
+    return out;
+  }, [game.players, profileById]);
+
+  const selectedMapTerritoryCountryCode =
+    country === "UN" || country === "FR"
+      ? null
+      : getTerritoryCountryCode(country, selectedTerritory?.id);
+  const selectedMapTerritoryName = selectedTerritory
+    ? country === "UN"
+      ? (UN_REGION_NAMES_FR[String(selectedTerritory.id)] || String(selectedTerritory.name || selectedTerritory.id))
+      : country === "FR"
+        ? String(selectedTerritory.name || selectedTerritory.id)
+        : getLocalizedTerritoryName(
+            selectedMapTerritoryCountryCode,
+            lang,
+            String(selectedTerritory.name || selectedTerritory.id),
+          )
+    : "";
+  const selectedMapTerritoryFlagSrc = selectedTerritory
+    ? country === "UN"
+      ? findUnRegionFlag(selectedTerritory.id)
+      : country === "FR"
+        ? getFrenchDepartmentFlagUrl(selectedTerritory.id)
+        : findTerritoryFlagByCountry(selectedMapTerritoryCountryCode)
+    : null;
+  const selectedMapTerritoryFlagEmoji = selectedTerritory
+    ? country === "UN"
+      ? undefined
+      : country === "FR"
+        ? "🇫🇷"
+        : isoCodeToFlagEmoji(selectedMapTerritoryCountryCode)
+    : undefined;
+
   function goBack() {
     // Verrou de sécurité : même en cas de double activation matérielle, une seule
     // navigation vers la configuration TERRITORIES est autorisée.
@@ -1982,6 +2008,18 @@ export default function DepartementsPlay(props: any) {
   }
 
   function handleMapSelect(territoryId: string) {
+    // A second tap on the currently selected territory cancels the objective.
+    if (String(game.turn.selectedTerritoryId || "") === String(territoryId)) {
+      setGame({
+        ...game,
+        turn: {
+          ...game.turn,
+          selectedTerritoryId: undefined,
+        },
+      });
+      return true;
+    }
+
     const res = selectTerritory(game, territoryId);
     if (res.error) return false;
     setGame(res.state);
@@ -2732,12 +2770,6 @@ export default function DepartementsPlay(props: any) {
               }}
             />
 
-            <HeaderModeIcons
-              teamMode={Boolean(teams?.length)}
-              fortressMode={gameMode === "fortress"}
-              color={activeColor}
-              timeRemaining={timeRemaining}
-            />
           </div>
 
           {/* Right: compact live stats. Captures = all territories taken; Vols = enemy territories taken. */}
@@ -2756,6 +2788,13 @@ export default function DepartementsPlay(props: any) {
                 alignContent: "center",
               }}
             >
+              <HeaderModeIcons
+                teamMode={Boolean(teams?.length)}
+                fortressMode={gameMode === "fortress"}
+                color={activeColor}
+                timeRemaining={timeRemaining}
+                compact
+              />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
                 <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
                 <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={fortressVictoryMode === "value" ? activeColor : undefined} />
@@ -2830,7 +2869,9 @@ export default function DepartementsPlay(props: any) {
       {/* MAP MODAL (keeps base UI compact + prevents cutting the active player stats) */}
       {showMapModal && (
         <TerritoriesMapModal
-          title={country === "FR" ? "CARTE — France" : "CARTE"}
+          title="CARTE"
+          headerFlagSrc={flagSrc || undefined}
+          headerFlagEmoji={flagSrc ? undefined : isoCodeToFlagEmoji(country)}
           onClose={() => setShowMapModal(false)}
           valuesModalContent={valuesModalContent}
           valuesModalTitleAddon={
@@ -2843,36 +2884,143 @@ export default function DepartementsPlay(props: any) {
             />
           }
           legend={
-            <div className="dc-scroll-thin" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "9px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "7px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               {classement.map((row) => {
                 const hasFortress = game.map.territories.some((territory) => territory.fortressOwnerId === row.id && territory.ownerId === row.id);
+                const ownerProfiles = ownerProfilesById[String(row.id)] || [];
+                const ownerProfile = ownerProfiles[0];
                 return (
-                  <div key={row.id} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 999, background: "rgba(0,0,0,0.28)", border: `1px solid ${row.color}66` }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: row.color, boxShadow: `0 0 9px ${row.color}` }} />
-                    <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 950 }}>{row.name}</span>
-                    <span style={{ color: row.color, fontSize: 11, fontWeight: 1000 }}>
-                      {row.owned}<span style={{ opacity: 0.72, marginLeft: 4 }}>• {row.value} pts</span>
+                  <div
+                    key={row.id}
+                    title={row.name}
+                    style={{
+                      flex: "0 0 auto",
+                      height: 34,
+                      minWidth: 122,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "0 10px 0 43px",
+                      borderRadius: 999,
+                      background: `linear-gradient(90deg, ${row.color}1f, rgba(0,0,0,0.34))`,
+                      border: `1px solid ${row.color}66`,
+                      position: "relative",
+                      overflow: "hidden",
+                      boxShadow: `0 0 9px ${row.color}16`,
+                    }}
+                  >
+                    {ownerProfile ? (
+                      <div
+                        aria-hidden
+                        style={{
+                          position: "absolute",
+                          left: -4,
+                          top: -10,
+                          width: 48,
+                          height: 54,
+                          display: "grid",
+                          placeItems: "center",
+                          overflow: "hidden",
+                          opacity: 0.95,
+                          filter: `drop-shadow(0 0 7px ${row.color})`,
+                        }}
+                      >
+                        <div style={{ transform: "scale(1.42)", transformOrigin: "center" }}>
+                          <ProfileAvatar
+                            profile={ownerProfile}
+                            size={48}
+                            showStars={false}
+                            showDartOverlay={false}
+                            noFrame
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                    <span style={{ color: row.color, fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap" }}>
+                      {row.owned}<span style={{ opacity: 0.76, marginLeft: 4 }}>• {row.value} pts</span>
                     </span>
-                    {hasFortress ? <span title="Forteresse active" style={{ fontSize: 12 }}>🛡</span> : null}
+                    {hasFortress ? <FortressLineIcon size={12} color="#fff" glowColor={row.color} title="Forteresse active" /> : null}
                   </div>
                 );
               })}
             </div>
           }
         >
-          <TerritoriesMapView
-            country={country}
-            map={game.map}
-            ownerColors={ownerColors}
-            selectedTerritoryId={game.turn.selectedTerritoryId}
-            activeColor={activeColor}
-            themeColor={themeColor}
-            interactive={game.status === "playing" && game.config.targetSelectionMode !== "imposed"}
-            isSelectableTerritoryId={(territoryId) =>
-              game.map.territories.some((territory) => territory.id === territoryId && territory.playable !== false)
-            }
-            onSelectTerritory={handleMapSelect}
-          />
+          <div style={{ position: "relative", width: "100%", height: "100%" }}>
+            <TerritoriesMapView
+              country={country}
+              map={game.map}
+              ownerColors={ownerColors}
+              selectedTerritoryId={game.turn.selectedTerritoryId}
+              activeColor={activeColor}
+              themeColor={themeColor}
+              interactive={game.status === "playing" && game.config.targetSelectionMode !== "imposed"}
+              isSelectableTerritoryId={(territoryId) =>
+                game.map.territories.some((territory) => territory.id === territoryId && territory.playable !== false)
+              }
+              onSelectTerritory={handleMapSelect}
+            />
+
+            {selectedTerritory ? (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  top: 12,
+                  width: "min(260px, calc(100% - 24px))",
+                  minHeight: 82,
+                  padding: "7px 10px",
+                  borderRadius: 16,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "rgba(5,8,16,0.88)",
+                  border: `1px solid ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : activeColor) || activeColor}77`,
+                  boxShadow: `0 0 18px ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : activeColor) || activeColor}33, 0 8px 24px rgba(0,0,0,0.42)`,
+                  backdropFilter: "blur(8px)",
+                  pointerEvents: "none",
+                  zIndex: 6,
+                }}
+              >
+                <div style={{ minWidth: 0, display: "grid", gap: 1 }}>
+                  <TerritorySilhouetteBadge
+                    country={country}
+                    territoryId={selectedTerritory.id}
+                    svgPathId={selectedTerritory.svgPathId}
+                    territoryValue={Number(selectedTerritory.value) || 0}
+                    flagSrc={selectedMapTerritoryFlagSrc}
+                    flagEmoji={selectedMapTerritoryFlagEmoji}
+                    color={(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : activeColor) || activeColor}
+                    height={54}
+                  />
+                  <div
+                    style={{
+                      marginTop: -2,
+                      textAlign: "center",
+                      fontSize: 9,
+                      lineHeight: 1.05,
+                      fontWeight: 950,
+                      color: "#fff",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      textShadow: "0 1px 5px rgba(0,0,0,0.95)",
+                    }}
+                  >
+                    {selectedMapTerritoryName}
+                  </div>
+                </div>
+                <TerritoryOwnerBadge
+                  ownerId={selectedTerritory.ownerId}
+                  hasFortress={Boolean(selectedTerritory.ownerId && selectedTerritory.fortressOwnerId === selectedTerritory.ownerId)}
+                  players={game.players}
+                  profileById={profileById}
+                  ownerColor={selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : activeColor}
+                />
+              </div>
+            ) : null}
+          </div>
         </TerritoriesMapModal>
       )}
 
@@ -3172,6 +3320,8 @@ function KpiCard(props: {
 
 function TerritoriesMapModal(props: {
   title: string;
+  headerFlagSrc?: string;
+  headerFlagEmoji?: string;
   onClose: () => void;
   valuesModalContent: React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
   valuesModalTitleAddon?: React.ReactNode;
@@ -3219,7 +3369,26 @@ function TerritoriesMapModal(props: {
             borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          <div style={{ fontWeight: 950, letterSpacing: 0.8, fontSize: 12, opacity: 0.9 }}>{props.title}</div>
+          <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+            {props.headerFlagSrc ? (
+              <img
+                src={props.headerFlagSrc}
+                alt={props.title}
+                style={{
+                  width: 46,
+                  height: 28,
+                  objectFit: "cover",
+                  borderRadius: 7,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  boxShadow: "0 0 10px rgba(255,255,255,0.08)",
+                }}
+              />
+            ) : props.headerFlagEmoji ? (
+              <span role="img" aria-label={props.title} style={{ fontSize: 25, lineHeight: 1 }}>{props.headerFlagEmoji}</span>
+            ) : (
+              <div style={{ fontWeight: 950, letterSpacing: 0.8, fontSize: 12, opacity: 0.9 }}>{props.title}</div>
+            )}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <InfoDot
               title="Valeurs des territoires"
@@ -3227,19 +3396,27 @@ function TerritoriesMapModal(props: {
               modalTitleAddon={props.valuesModalTitleAddon}
             />
             <button
+              type="button"
               onClick={props.onClose}
+              aria-label="Fermer la carte"
+              title="Fermer"
               style={{
-                height: 34,
-                padding: "0 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
+                width: 38,
+                height: 38,
+                padding: 0,
+                borderRadius: 13,
+                border: "1px solid rgba(255,255,255,0.16)",
                 background: "rgba(0,0,0,0.30)",
                 color: "#fff",
-                fontWeight: 900,
+                display: "grid",
+                placeItems: "center",
                 cursor: "pointer",
+                boxShadow: "0 0 10px rgba(0,0,0,0.34)",
               }}
             >
-              Fermer
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
             </button>
           </div>
         </div>
