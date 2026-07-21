@@ -46,6 +46,7 @@ import {
   downloadCloudObject,
   emptyCloudObjectTrash,
   getAccountStorageUsage,
+  saveAccountStoragePreferences,
   listCloudVaultBackups,
   purgeCloudObjectRemote,
   restoreCloudObjectFromTrash,
@@ -53,6 +54,22 @@ import {
   type CloudObjectIndexItem,
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
+import {
+  estimateBrowserStorage,
+  formatStorageBytes,
+  getPublicStorageDestinations,
+  getStorageDestination,
+  loadStoragePrefs,
+  saveStoragePrefs,
+  type StorageDestinationId,
+} from "../lib/storagePlans";
+import {
+  chooseExternalBackupFile,
+  downloadExternalBackupFallback,
+  getExternalBackupStatus,
+  writeExternalBackupNow,
+  type ExternalBackupStatus,
+} from "../lib/externalBackupTarget";
 
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
@@ -945,6 +962,14 @@ export default function StorageVaultPage({ go }: Props) {
   const [cloudSlots, setCloudSlots] = React.useState<CloudSlot[]>([]);
   const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
   const [backupProvider, setBackupProvider] = React.useState<BackupProvider>("nas");
+  const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
+  const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({
+    supported: typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function",
+    configured: false,
+    permission: "unknown",
+  }));
+  const [externalBackupBusy, setExternalBackupBusy] = React.useState<null | "choose" | "save" | "download">(null);
+  const [storageEstimate, setStorageEstimate] = React.useState({ usage: 0, quota: 0, free: 0 });
   const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
@@ -969,6 +994,42 @@ export default function StorageVaultPage({ go }: Props) {
   React.useEffect(() => {
     ensureVaultNasToken();
   }, [ensureVaultNasToken]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const refreshStorageContext = async () => {
+      const [external, estimate] = await Promise.all([
+        getExternalBackupStatus(),
+        estimateBrowserStorage(),
+      ]);
+      if (!alive) return;
+      setExternalBackupStatus(external);
+      setStorageEstimate(estimate);
+      setStoragePrefs(loadStoragePrefs());
+    };
+    void refreshStorageContext();
+    const onPrefs = () => {
+      setStoragePrefs(loadStoragePrefs());
+      void refreshStorageContext();
+    };
+    const onExternal = (event: Event) => {
+      const detail = (event as CustomEvent<ExternalBackupStatus>).detail;
+      if (detail) setExternalBackupStatus(detail);
+    };
+    window.addEventListener("dc-storage-prefs-changed", onPrefs as EventListener);
+    window.addEventListener("dc-external-backup-status", onExternal as EventListener);
+    window.addEventListener("storage", onPrefs as EventListener);
+    return () => {
+      alive = false;
+      window.removeEventListener("dc-storage-prefs-changed", onPrefs as EventListener);
+      window.removeEventListener("dc-external-backup-status", onExternal as EventListener);
+      window.removeEventListener("storage", onPrefs as EventListener);
+    };
+  }, []);
+
+  const selectedDestination = storagePrefs.selectedDestination;
+  const activeDestination = getStorageDestination(selectedDestination);
+  const hasConnectedAccount = Boolean(accountScopeId || auth.userId || auth.user);
 
   const nasEntries = React.useMemo<SaveEntry[]>(() => {
     return nasSlots
@@ -1132,6 +1193,9 @@ export default function StorageVaultPage({ go }: Props) {
   const technicalCount = blocks.length;
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
+    const localChoice = loadStoragePrefs().selectedDestination;
+    if (localChoice === "cloud_r2") return "cloud";
+    if (localChoice === "founder_nas") return "nas";
     try {
       const usage = await getAccountStorageUsage();
       const provider = String(usage?.preference?.storage_provider || "").trim();
@@ -1148,6 +1212,8 @@ export default function StorageVaultPage({ go }: Props) {
     try {
       const provider = await resolveBackupProvider();
       setBackupProvider(provider);
+      const selectedForSave = loadStoragePrefs().selectedDestination;
+      const selectedForSaveLabel = getStorageDestination(selectedForSave).label;
 
       const [ls, bs, localMatches] = await Promise.all([
         listLocalMemorySlots().catch(() => []),
@@ -1200,7 +1266,7 @@ export default function StorageVaultPage({ go }: Props) {
         const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
         const hidden = Math.max(0, activeRaw.length - checkedCloud.length);
         const accountHint = getVaultCurrentUserId() ? `Compte public cloud : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes cloud sont masquées.";
-        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${cloudMatches.length} sauvegarde(s) cloud de partie à l’unité + ${localMatches.length} locale(s) détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
+        setMessage(`${accountHint} ${validCloud + validLocal} vrai(s) emplacement(s) restaurable(s). Destination de sauvegarde active : ${selectedForSaveLabel}. Source distante affichée : Cloudflare R2. La dernière sauvegarde cloud reste visible, les anciennes sont dans Archives, la corbeille contient ${checkedTrashCloud.length} sauvegarde(s). ${cloudMatches.length} sauvegarde(s) cloud de partie à l’unité + ${localMatches.length} locale(s) détectée(s). ${hidden ? `${hidden} ancien(s) slot(s) cloud non scanné(s) restent en expert.` : ""}`);
         return;
       }
 
@@ -1255,7 +1321,7 @@ export default function StorageVaultPage({ go }: Props) {
       const validLocal = ls.filter((slot) => isRestorable(strictSummaryForRestore(slot.payload, slot.summary))).length;
       const hidden = Math.max(0, nsRaw.length - checkedNas.length);
       const accountHint = getVaultCurrentUserId() ? `Compte isolé : ${shortId(getVaultCurrentUserId())}.` : "Aucun compte connecté : les sauvegardes utilisateur sont masquées.";
-      setMessage(`${accountHint} ${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Affichage simple : la dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les blocs locaux d’un autre compte sont maintenant masqués. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
+      setMessage(`${accountHint} ${validNas + validLocal} vrai(s) emplacement(s) restaurable(s). Destination de sauvegarde active : ${selectedForSaveLabel}. Source distante affichée : NAS. La dernière sauvegarde NAS reste visible, les anciennes sont dans l’onglet Archives, la corbeille contient ${checkedTrashNas.length} emplacement(s). ${((localMatches || []).length + (nasMatches || []).length)} sauvegarde(s) de partie à l’unité détectée(s). Les blocs locaux d’un autre compte sont maintenant masqués. ${hidden ? `${hidden} ancien(s) slot(s) non scanné(s) restent en expert.` : ""}`);
     } catch (error: any) {
       setMessage(`Erreur scan : ${error?.message || error}`);
     } finally {
@@ -1402,6 +1468,78 @@ ${label}`)) return;
     }
   };
 
+  const selectStorageDestination = async (destination: StorageDestinationId) => {
+    const saved = saveStoragePrefs({
+      selectedDestination: destination,
+      preferExternalStorage: destination === "device_file" || destination === "external_sd_manual",
+      keepLocalSafetyCopy: true,
+    });
+    setStoragePrefs(saved);
+    if (destination === "cloud_r2") setBackupProvider("cloud");
+    if (destination === "founder_nas") setBackupProvider("nas");
+
+    const label = getStorageDestination(destination).label;
+    if ((destination === "cloud_r2" || destination === "founder_nas") && !hasConnectedAccount) {
+      setMessage(`Destination « ${label} » enregistrée localement. Connecte un compte avant de lancer la sauvegarde distante.`);
+      return;
+    }
+
+    if (hasConnectedAccount) {
+      try {
+        const planId = destination === "founder_nas" ? "founder_nas" : saved.selectedCloudPlan;
+        await saveAccountStoragePreferences({
+          planId,
+          storageDestination: destination,
+          metadata: {
+            source: "storage-vault-page",
+            keepLocalSafetyCopy: true,
+            supabaseUsage: "auth_profile_only",
+            heavyDataProvider: destination === "cloud_r2" ? "cloudflare_r2" : destination,
+          },
+        });
+        setMessage(`Destination active enregistrée : ${label}.`);
+      } catch (error: any) {
+        setMessage(`Destination locale enregistrée : ${label}. Synchronisation du choix avec le compte impossible : ${error?.message || error}`);
+      }
+    } else {
+      setMessage(`Destination active enregistrée : ${label}.`);
+    }
+
+    if (destination === "cloud_r2" || destination === "founder_nas") {
+      await refresh().catch(() => undefined);
+    }
+  };
+
+  const runExternalBackupAction = async (action: "choose" | "save" | "download") => {
+    setExternalBackupBusy(action);
+    setBusy(true);
+    try {
+      let next: ExternalBackupStatus;
+      if (action === "choose") next = await chooseExternalBackupFile();
+      else if (action === "save") next = await writeExternalBackupNow("storage-vault-manual", { requestPermission: true });
+      else next = await downloadExternalBackupFallback("storage-vault-download");
+      setExternalBackupStatus(next);
+      if (next.lastError) {
+        setMessage(`Sauvegarde fichier : ${next.lastError}`);
+      } else if (action === "choose") {
+        setMessage(`Fichier choisi et première sauvegarde créée : ${next.fileName || "sauvegarde.json"}.`);
+      } else if (action === "save") {
+        setMessage(`Sauvegarde écrite dans ${next.fileName || "le fichier sélectionné"}${next.lastBytes ? ` · ${formatStorageBytes(next.lastBytes)}` : ""}.`);
+      } else {
+        setMessage("Copie JSON téléchargée sur l’appareil.");
+      }
+      const estimate = await estimateBrowserStorage();
+      setStorageEstimate(estimate);
+    } catch (error: any) {
+      if (String(error?.name || "") !== "AbortError") {
+        setMessage(`Sauvegarde fichier impossible : ${error?.message || error}`);
+      }
+    } finally {
+      setExternalBackupBusy(null);
+      setBusy(false);
+    }
+  };
+
   const createLocalSlot = async () => {
     setBusy(true);
     try {
@@ -1502,6 +1640,28 @@ ${label}`)) return;
       setMessage(`Sauvegarde NAS impossible : ${error?.message || error}.${localNotice}`);
       await refresh().catch(() => undefined);
     } finally { setBusy(false); }
+  };
+
+  const createSelectedDestinationBackup = async () => {
+    if (selectedDestination === "app_local") {
+      await createLocalSlot();
+      return;
+    }
+    if (selectedDestination === "device_file" || selectedDestination === "external_sd_manual") {
+      if (!externalBackupStatus.configured && externalBackupStatus.supported) {
+        await runExternalBackupAction("choose");
+      } else if (externalBackupStatus.configured) {
+        await runExternalBackupAction("save");
+      } else {
+        await runExternalBackupAction("download");
+      }
+      return;
+    }
+    if (selectedDestination === "cloud_r2") {
+      await createCloudBackup();
+      return;
+    }
+    await createNasBackup();
   };
 
   const restoreNas = async (entry: SaveEntry) => {
@@ -1702,6 +1862,27 @@ ${label}`)) return;
     } finally { setBusy(false); }
   };
 
+  const primaryBackupLabel = selectedDestination === "app_local"
+    ? "Créer sauvegarde locale"
+    : selectedDestination === "device_file"
+      ? (externalBackupStatus.configured ? "Sauvegarder dans le fichier" : "Choisir un fichier")
+      : selectedDestination === "external_sd_manual"
+        ? (externalBackupStatus.configured ? "Sauvegarder sur le support externe" : "Choisir le support externe")
+        : selectedDestination === "cloud_r2"
+          ? "Créer sauvegarde Cloud R2"
+          : "Créer sauvegarde NAS";
+
+  const destinationStatValue = selectedDestination === "app_local"
+    ? localEntries.length
+    : selectedDestination === "device_file" || selectedDestination === "external_sd_manual"
+      ? (externalBackupStatus.configured ? 1 : 0)
+      : selectedDestination === "cloud_r2"
+        ? cloudEntries.length
+        : nasEntries.length;
+
+  const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas";
+  const primaryBackupDisabled = busy || externalBackupBusy !== null || (remoteDestinationNeedsAccount && !hasConnectedAccount);
+
   return (
     <div style={{ ...pageStyle, ...themeVars }}>
       <div style={shellStyle}>
@@ -1721,6 +1902,9 @@ ${label}`)) return;
               <div style={{ color: accountScopeId ? green : red, fontSize: 11, marginTop: 3, fontWeight: 900, ...wrapText }}>
                 Compte sauvegarde : {accountScopeId ? shortId(accountScopeId) : "aucun compte connecté"}
               </div>
+              <div style={{ color: gold, fontSize: 10.5, marginTop: 3, fontWeight: 900, ...wrapText }}>
+                Destination active : {activeDestination.shortLabel}
+              </div>
             </div>
             <button
               style={{ ...btn, width: 42, height: 42, borderRadius: 999, padding: 0, borderColor: neon, color: neon, boxShadow: "0 0 16px color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 22%, transparent)" }}
@@ -1735,7 +1919,7 @@ ${label}`)) return;
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
             <StatBox label="Emplacements" value={restorableEntries.length} color={green} />
             <StatBox label="Parties auto" value={matchBackupEntries.length} color={gold} />
-            <StatBox label={backupProvider === "cloud" ? "CLOUD" : "NAS"} value={remoteEntries.length} color={neon} />
+            <StatBox label={activeDestination.shortLabel.toUpperCase()} value={destinationStatValue} color={neon} />
           </div>
         </div>
 
@@ -1859,15 +2043,118 @@ ${label}`)) return;
 
         {tab === "backup" && (
           <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ ...panel, borderColor: accentSoftBorder }}>
+              <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Choisir la destination</h2>
+              <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
+                Choisis ici où cette sauvegarde complète doit être écrite. Ce choix est mémorisé et devient aussi la destination des prochaines sauvegardes automatiques compatibles.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 9, marginTop: 10 }}>
+                {[...getPublicStorageDestinations(), getStorageDestination("founder_nas")].map((destination) => {
+                  const active = selectedDestination === destination.id;
+                  const accountRequired = destination.id === "cloud_r2" || destination.id === "founder_nas";
+                  const disabled = accountRequired && !hasConnectedAccount;
+                  return (
+                    <button
+                      key={destination.id}
+                      type="button"
+                      disabled={disabled || busy}
+                      onClick={() => void selectStorageDestination(destination.id)}
+                      style={{
+                        textAlign: "left",
+                        borderRadius: 16,
+                        padding: 12,
+                        minWidth: 0,
+                        border: active ? `2px solid ${gold}` : "1px solid rgba(148,163,184,.28)",
+                        background: active ? accentSoftBg : "rgba(255,255,255,.035)",
+                        color: "#fff",
+                        cursor: disabled || busy ? "not-allowed" : "pointer",
+                        opacity: disabled ? .55 : 1,
+                        boxShadow: active ? `0 0 18px ${accentGlow}` : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                        <strong style={{ color: active ? gold : "#fff", fontSize: 13, ...wrapText }}>{destination.label}</strong>
+                        {active && <span style={{ marginLeft: "auto", color: green, fontSize: 10, fontWeight: 1000 }}>ACTIF</span>}
+                      </div>
+                      <div style={{ marginTop: 5, color: muted, fontSize: 11, lineHeight: 1.38, ...wrapText }}>{destination.description}</div>
+                      {accountRequired && !hasConnectedAccount && <div style={{ marginTop: 6, color: amber, fontSize: 10.5, fontWeight: 900 }}>Connexion requise</div>}
+                      {destination.warning && <div style={{ marginTop: 6, color: amber, fontSize: 10.5, lineHeight: 1.35 }}>{destination.warning}</div>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDestination === "app_local" && (
+                <div style={{ marginTop: 12, padding: 11, borderRadius: 14, border: "1px solid rgba(52,211,153,.28)", background: "rgba(52,211,153,.06)" }}>
+                  <strong style={{ color: green }}>Espace local de cet appareil</strong>
+                  <div style={{ marginTop: 5, color: "#cbd5e1", fontSize: 12, lineHeight: 1.4 }}>
+                    Utilisé : {formatStorageBytes(storageEstimate.usage)} · Disponible estimé : {formatStorageBytes(storageEstimate.free)} · Quota navigateur : {formatStorageBytes(storageEstimate.quota)}
+                  </div>
+                </div>
+              )}
+
+              {(selectedDestination === "device_file" || selectedDestination === "external_sd_manual") && (
+                <div style={{ marginTop: 12, padding: 11, borderRadius: 14, border: `1px solid ${externalBackupStatus.configured ? "rgba(52,211,153,.34)" : "rgba(251,191,36,.34)"}`, background: "rgba(255,255,255,.025)" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <strong style={{ color: externalBackupStatus.configured ? green : amber }}>
+                      {externalBackupStatus.configured ? externalBackupStatus.fileName || "Fichier configuré" : "Aucun fichier sélectionné"}
+                    </strong>
+                    <span style={{ marginLeft: "auto", color: externalBackupStatus.permission === "granted" ? green : muted, fontSize: 10.5, fontWeight: 900 }}>
+                      {externalBackupStatus.permission === "granted" ? "ÉCRITURE AUTORISÉE" : externalBackupStatus.supported ? "AUTORISATION À DONNER" : "TÉLÉCHARGEMENT MANUEL"}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 5, color: muted, fontSize: 11.5, lineHeight: 1.4 }}>
+                    Le fichier peut se trouver sur le PC, un HDD, une clé USB, une carte SD ou un partage NAS déjà monté dans le système.
+                  </div>
+                  {externalBackupStatus.lastSavedAt && (
+                    <div style={{ marginTop: 5, color: green, fontSize: 10.5 }}>
+                      Dernière écriture : {new Date(externalBackupStatus.lastSavedAt).toLocaleString("fr-FR")} · {formatStorageBytes(externalBackupStatus.lastBytes || 0)}
+                    </div>
+                  )}
+                  {externalBackupStatus.lastError && <div style={{ marginTop: 5, color: red, fontSize: 10.5 }}>{externalBackupStatus.lastError}</div>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+                    <button style={btn} disabled={busy || externalBackupBusy !== null} onClick={() => void runExternalBackupAction("choose")}>
+                      {externalBackupBusy === "choose" ? "Ouverture…" : externalBackupStatus.configured ? "Changer de fichier" : "Choisir un fichier"}
+                    </button>
+                    <button style={btn} disabled={busy || externalBackupBusy !== null || !externalBackupStatus.configured} onClick={() => void runExternalBackupAction("save")}>
+                      {externalBackupBusy === "save" ? "Écriture…" : "Sauvegarder maintenant"}
+                    </button>
+                    <button style={btn} disabled={busy || externalBackupBusy !== null} onClick={() => void runExternalBackupAction("download")}>
+                      {externalBackupBusy === "download" ? "Export…" : "Télécharger une copie"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedDestination === "cloud_r2" && (
+                <div style={{ marginTop: 12, color: "#cbd5e1", fontSize: 11.5, lineHeight: 1.42 }}>
+                  Les parties, historiques, statistiques, sauvegardes et médias sont envoyés dans <b style={{ color: neon }}>Cloudflare R2</b>. Supabase reste limité à l’authentification et au profil léger.
+                </div>
+              )}
+
+              {selectedDestination === "founder_nas" && (
+                <div style={{ marginTop: 12, color: "#cbd5e1", fontSize: 11.5, lineHeight: 1.42 }}>
+                  Le NAS reçoit la sauvegarde complète. Une sécurité locale est créée avant l’envoi. Supabase sert uniquement de connexion de secours et ne reçoit aucune partie.
+                </div>
+              )}
+            </div>
+
             <div style={panel}>
               <h2 style={{ margin: 0, color: "#fff", fontSize: 19 }}>Créer un point de restauration</h2>
               <p style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.45, ...wrapText }}>
-                Utilise surtout <b>{backupProvider === "cloud" ? "Créer sauvegarde cloud" : "Créer sauvegarde NAS"}</b>. C’est l’équivalent “Sauvegarder la partie” : historique, stats, profils et médias sont envoyés vers la destination active du compte.
+                Destination sélectionnée : <b style={{ color: gold }}>{activeDestination.label}</b>. La sauvegarde contient les parties, l’historique, les profils, les statistiques, les compétitions et les références médias.
               </p>
+              {remoteDestinationNeedsAccount && !hasConnectedAccount && (
+                <div style={{ marginBottom: 10, padding: 9, borderRadius: 12, border: "1px solid rgba(251,113,133,.35)", color: red, background: "rgba(251,113,133,.07)", fontSize: 12, lineHeight: 1.4 }}>
+                  Aucun compte connecté : cette destination distante ne peut pas être utilisée. Choisis Local/Fichier ou reconnecte ton compte.
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
-                <button style={primaryBtn} disabled={busy} onClick={backupProvider === "cloud" ? createCloudBackup : createNasBackup}>{backupProvider === "cloud" ? "Créer sauvegarde cloud" : "Créer sauvegarde NAS"}</button>
-                <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>
-                <button style={btn} disabled={busy} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
+                <button style={primaryBtn} disabled={primaryBackupDisabled} onClick={() => void createSelectedDestinationBackup()}>{primaryBackupLabel}</button>
+                {selectedDestination !== "app_local" && <button style={btn} disabled={busy} onClick={createLocalSlot}>Créer sécurité locale</button>}
+                {(selectedDestination === "cloud_r2" || selectedDestination === "founder_nas") && (
+                  <button style={btn} disabled={busy || !hasConnectedAccount} onClick={pushCurrentToAccount}>Envoyer état actuel</button>
+                )}
                 <button style={{ ...btn, borderColor: amber, color: amber, background: "rgba(251,191,36,.10)" }} disabled={busy} onClick={() => inputRef.current?.click()}>Importer JSON</button>
                 <input ref={inputRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={(e) => importJsonFile(e.currentTarget.files?.[0] || null)} />
               </div>
