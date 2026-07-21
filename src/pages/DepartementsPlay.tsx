@@ -362,6 +362,44 @@ function computeVisitScores(darts: UIDart[]) {
   return norm.slice(0, 3).map(dartScore);
 }
 
+// Totaux réellement disponibles avec une fléchette. Le 0 représente une fléchette
+// manquée et permet au calcul de couvrir aussi une validation avant la 3e fléchette.
+const TERRITORIES_DART_TOTALS = Array.from(new Set([
+  0,
+  ...Array.from({ length: 20 }, (_, index) => index + 1),
+  ...Array.from({ length: 20 }, (_, index) => (index + 1) * 2),
+  ...Array.from({ length: 20 }, (_, index) => (index + 1) * 3),
+  25,
+  50,
+])).sort((a, b) => a - b);
+
+const TERRITORIES_REACHABLE_ADDITIONAL_TOTALS: Array<Set<number>> = [new Set([0])];
+for (let darts = 1; darts <= 3; darts += 1) {
+  const previous = TERRITORIES_REACHABLE_ADDITIONAL_TOTALS[darts - 1];
+  const next = new Set<number>();
+  for (const subtotal of previous) {
+    for (const dartTotal of TERRITORIES_DART_TOTALS) next.add(subtotal + dartTotal);
+  }
+  TERRITORIES_REACHABLE_ADDITIONAL_TOTALS.push(next);
+}
+
+function canStillReachTerritoryValue(currentTotal: number, targetValue: number, dartsRemaining: number): boolean {
+  const remaining = Math.max(0, Math.min(3, Math.floor(dartsRemaining)));
+  const needed = targetValue - currentTotal;
+  return needed >= 0 && TERRITORIES_REACHABLE_ADDITIONAL_TOTALS[remaining]?.has(needed) === true;
+}
+
+type TerritoryStealSuggestion = {
+  territoryId: string;
+  territoryName: string;
+  value: number;
+  needed: number;
+  ownerId: string;
+  ownerName: string;
+  ownerColor: string;
+  fortress: boolean;
+};
+
 type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: number; fortresses: number; breaches: number };
 
 const TTS_LANG_BY_APP_LANG: Record<string, string> = {
@@ -494,6 +532,123 @@ function HeaderModeIcons(props: {
           {props.timeRemaining}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TerritoryTargetSuggestions(props: {
+  suggestions: TerritoryStealSuggestion[];
+  currentTotal: number;
+  dartsRemaining: number;
+  accentColor: string;
+  onSelect?: (territoryId: string) => void;
+}) {
+  const visible = props.suggestions.slice(0, 4);
+  const hiddenCount = Math.max(0, props.suggestions.length - visible.length);
+
+  return (
+    <div style={{ width: "100%", marginTop: 8, minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 5,
+          marginBottom: 4,
+          fontSize: 7.5,
+          lineHeight: 1,
+          fontWeight: 950,
+          letterSpacing: 0.45,
+          textTransform: "uppercase",
+          color: props.accentColor,
+          opacity: 0.92,
+        }}
+      >
+        <span>Cibles à voler</span>
+        <span style={{ color: "rgba(255,255,255,0.55)", whiteSpace: "nowrap" }}>
+          {props.currentTotal} pts · {props.dartsRemaining} fl.
+        </span>
+      </div>
+
+      {visible.length ? (
+        <div style={{ display: "grid", gap: 3 }}>
+          {visible.map((suggestion) => (
+            <button
+              key={suggestion.territoryId}
+              type="button"
+              onClick={() => props.onSelect?.(suggestion.territoryId)}
+              title={`${suggestion.territoryName} · ${suggestion.ownerName} · total ${suggestion.value}`}
+              style={{
+                width: "100%",
+                minWidth: 0,
+                minHeight: 24,
+                padding: "3px 5px",
+                borderRadius: 8,
+                border: `1px solid ${suggestion.ownerColor}66`,
+                background: `${suggestion.ownerColor}12`,
+                color: "#fff",
+                display: "grid",
+                gridTemplateColumns: "auto minmax(0, 1fr)",
+                alignItems: "center",
+                gap: 5,
+                cursor: props.onSelect ? "pointer" : "default",
+                boxShadow: `0 0 8px ${suggestion.ownerColor}14`,
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 3, color: suggestion.ownerColor }}>
+                {suggestion.fortress ? (
+                  <FortressLineIcon
+                    size={12}
+                    color="#fff"
+                    glowColor={suggestion.ownerColor}
+                    title="Forteresse à briser"
+                  />
+                ) : null}
+                <strong style={{ fontSize: 12, lineHeight: 1, fontWeight: 1000 }}>{suggestion.value}</strong>
+              </span>
+              <span
+                style={{
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 4,
+                  fontSize: 8.5,
+                  lineHeight: 1,
+                  fontWeight: 900,
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {suggestion.ownerName}
+                </span>
+                <span style={{ flex: "0 0 auto", opacity: 0.58, fontSize: 7.5 }}>+{suggestion.needed}</span>
+              </span>
+            </button>
+          ))}
+          {hiddenCount > 0 ? (
+            <div style={{ fontSize: 7.5, fontWeight: 900, opacity: 0.5, textAlign: "center", paddingTop: 1 }}>
+              +{hiddenCount} autres cibles possibles
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div
+          style={{
+            minHeight: 24,
+            padding: "5px 6px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(0,0,0,0.18)",
+            fontSize: 8,
+            fontWeight: 900,
+            lineHeight: 1.2,
+            opacity: 0.52,
+            textAlign: "center",
+          }}
+        >
+          Aucun territoire adverse atteignable
+        </div>
+      )}
     </div>
   );
 }
@@ -920,14 +1075,85 @@ export default function DepartementsPlay(props: any) {
   );
   const assignedValueMin = game.map.assignedValueMin ?? territoryValueCalibration.minTarget;
   const assignedValueMax = game.map.assignedValueMax ?? territoryValueCalibration.maxTarget;
-  const totalMapValue = React.useMemo(
-    () => game.map.territories.reduce((sum, territory) => (
-      territory.playable === false
-        ? sum
-        : sum + Math.max(0, Number(territory.value) || 0)
-    ), 0),
-    [game.map.territories],
+
+  const currentVisitTotal = React.useMemo(
+    () => currentThrow.reduce((total, dart) => total + dartScore(dart), 0),
+    [currentThrow],
   );
+  const dartsRemaining = Math.max(0, 3 - currentThrow.length);
+
+  const territoryStealSuggestions = React.useMemo<TerritoryStealSuggestion[]>(() => {
+    if (game.status !== "playing" || !activeOwnerId) return [];
+    if (gameMode !== "fortress" && game.config.allowEnemyCapture === false) return [];
+
+    const ownerNameById: Record<string, string> = {};
+    for (const team of game.teams || []) ownerNameById[String(team.id)] = String(team.name || team.id);
+    for (const player of game.players) {
+      const ownerId = String(player.teamId || player.id);
+      if (!ownerNameById[ownerId]) ownerNameById[ownerId] = String(player.name || ownerId);
+    }
+
+    return game.map.territories
+      .filter((territory) => (
+        territory.playable !== false
+        && Boolean(territory.ownerId)
+        && String(territory.ownerId) !== String(activeOwnerId)
+        && canStillReachTerritoryValue(
+          currentVisitTotal,
+          Number(territory.value) || 0,
+          dartsRemaining,
+        )
+      ))
+      .map((territory) => {
+        const ownerId = String(territory.ownerId || "");
+        const countryCode = country === "UN" || country === "FR"
+          ? null
+          : getTerritoryCountryCode(country, territory.id);
+        const territoryName = country === "UN"
+          ? (UN_REGION_NAMES_FR[String(territory.id)] || String(territory.name || territory.id))
+          : country === "FR"
+            ? String(territory.name || territory.id)
+            : getLocalizedTerritoryName(
+                countryCode,
+                lang,
+                String(territory.name || territory.id),
+              );
+        const value = Number(territory.value) || 0;
+        return {
+          territoryId: String(territory.id),
+          territoryName,
+          value,
+          needed: Math.max(0, value - currentVisitTotal),
+          ownerId,
+          ownerName: ownerNameById[ownerId] || ownerId,
+          ownerColor: ownerColors[ownerId] || "#ffffff",
+          fortress: Boolean(
+            gameMode === "fortress"
+            && territory.fortressOwnerId
+            && territory.fortressOwnerId === territory.ownerId
+          ),
+        };
+      })
+      .sort((a, b) => (
+        a.needed - b.needed
+        || Number(b.fortress) - Number(a.fortress)
+        || b.value - a.value
+        || a.territoryName.localeCompare(b.territoryName, lang === "fr" ? "fr" : undefined, { sensitivity: "base" })
+      ));
+  }, [
+    activeOwnerId,
+    country,
+    currentVisitTotal,
+    dartsRemaining,
+    game.config.allowEnemyCapture,
+    game.map.territories,
+    game.players,
+    game.status,
+    game.teams,
+    gameMode,
+    lang,
+    ownerColors,
+  ]);
 
   const selectedTerritory = React.useMemo(() => {
     const id = game.turn.selectedTerritoryId;
@@ -1744,6 +1970,16 @@ export default function DepartementsPlay(props: any) {
               {activePlayer?.name || "Player"}
             </div>
 
+            <TerritoryTargetSuggestions
+              suggestions={territoryStealSuggestions}
+              currentTotal={currentVisitTotal}
+              dartsRemaining={dartsRemaining}
+              accentColor={activeColor}
+              onSelect={(territoryId) => {
+                handleMapSelect(territoryId);
+              }}
+            />
+
             <HeaderModeIcons
               teamMode={Boolean(teams?.length)}
               fortressMode={gameMode === "fortress"}
@@ -1770,7 +2006,7 @@ export default function DepartementsPlay(props: any) {
               }}
             >
               <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
-              <ProfileStatKpi label="Valeur" value={`${possessionValueForActive}/${totalMapValue}`} color={fortressVictoryMode === "value" ? activeColor : undefined} />
+              <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={fortressVictoryMode === "value" ? activeColor : undefined} />
               <ProfileStatKpi label="Fléchettes" value={String(activeStats.darts)} />
               <ProfileStatKpi label="Captures" value={String(activeStats.captures)} />
               {gameMode === "fortress" ? <ProfileStatKpi label="Forteresses" value={String(activeStats.fortresses)} /> : null}
