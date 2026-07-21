@@ -547,30 +547,26 @@ function TerritoryTargetSuggestions(props: {
   profileById: Record<string, any>;
   onSelect?: (territoryId: string) => void;
 }) {
-  // Keep up to five reachable targets PER opposing owner. The final list follows
-  // the real turn order, then uses a small internal vertical scroll when needed.
-  const ownerOrder = Array.from(new Set(
-    props.players.map((player) => String(player.teamId || player.id)),
-  ));
-  const byOwner = new Map<string, TerritoryStealSuggestion[]>();
-  for (const suggestion of props.suggestions) {
-    const current = byOwner.get(suggestion.ownerId) || [];
-    if (current.length < 5) current.push(suggestion);
-    byOwner.set(suggestion.ownerId, current);
-  }
-  const visible = [
-    ...ownerOrder.flatMap((ownerId) => byOwner.get(ownerId) || []),
-    ...Array.from(byOwner.entries())
-      .filter(([ownerId]) => !ownerOrder.includes(ownerId))
-      .flatMap(([, suggestions]) => suggestions),
-  ];
-  const hiddenCount = Math.max(0, props.suggestions.length - visible.length);
-
+  // Show the richest still-reachable territories first. The visual is now a
+  // compact KPI wall: 4 to 5 mini-cards per row depending on available width,
+  // internal vertical scroll if there are many targets, and only the value is
+  // displayed prominently inside each KPI.
   const ownerAvatarProfile = (ownerId: string) => {
     const member = props.players.find((player) => String(player.teamId || player.id) === ownerId);
     if (!member) return null;
     return props.profileById[member.id] ?? { id: member.id, name: member.name, avatar: member.avatar };
   };
+
+  const visible = [...props.suggestions]
+    .sort((a, b) => (
+      b.value - a.value
+      || Number(b.fortress) - Number(a.fortress)
+      || a.needed - b.needed
+      || a.territoryName.localeCompare(b.territoryName, undefined, { sensitivity: "base" })
+    ))
+    .slice(0, 18);
+
+  const hiddenCount = Math.max(0, props.suggestions.length - visible.length);
 
   return (
     <div style={{ width: "100%", marginTop: 8, minWidth: 0 }}>
@@ -580,7 +576,7 @@ function TerritoryTargetSuggestions(props: {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 5,
-          marginBottom: 4,
+          marginBottom: 5,
           fontSize: 7.5,
           lineHeight: 1,
           fontWeight: 950,
@@ -601,152 +597,134 @@ function TerritoryTargetSuggestions(props: {
           className="dc-scroll-thin"
           style={{
             display: "grid",
-            gap: 4,
-            maxHeight: "clamp(118px, 22vh, 188px)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(50px, 1fr))",
+            gap: 6,
+            maxHeight: "clamp(128px, 23vh, 208px)",
             overflowY: "auto",
             overflowX: "hidden",
             paddingRight: 2,
             WebkitOverflowScrolling: "touch",
+            alignContent: "start",
           }}
         >
-          {visible.map((suggestion) => (
-            <button
-              key={suggestion.territoryId}
-              type="button"
-              onClick={() => props.onSelect?.(suggestion.territoryId)}
-              title={`${suggestion.territoryName} · ${suggestion.ownerName} · total ${suggestion.value}`}
-              style={{
-                width: "100%",
-                minWidth: 0,
-                minHeight: 35,
-                padding: "4px 6px",
-                borderRadius: 10,
-                border: `1px solid ${suggestion.ownerColor}66`,
-                background: `linear-gradient(90deg, ${suggestion.ownerColor}18, rgba(2,5,10,0.72))`,
-                color: "#fff",
-                display: "grid",
-                gridTemplateColumns: "auto minmax(0, 1fr) auto",
-                alignItems: "center",
-                gap: 5,
-                cursor: props.onSelect ? "pointer" : "default",
-                boxShadow: `0 0 8px ${suggestion.ownerColor}14`,
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              {ownerAvatarProfile(suggestion.ownerId) ? (
+          {visible.map((suggestion) => {
+            const ownerProfile = ownerAvatarProfile(suggestion.ownerId);
+            return (
+              <button
+                key={suggestion.territoryId}
+                type="button"
+                onClick={() => props.onSelect?.(suggestion.territoryId)}
+                title={`${suggestion.value} · ${suggestion.territoryName} · ${suggestion.ownerName}${suggestion.fortress ? ' · Forteresse' : ''}`}
+                style={{
+                  width: "100%",
+                  aspectRatio: "1 / 1",
+                  minHeight: 54,
+                  borderRadius: 14,
+                  border: `1px solid ${suggestion.ownerColor}77`,
+                  background: `linear-gradient(180deg, ${suggestion.ownerColor}20, rgba(2,5,10,0.86))`,
+                  color: suggestion.ownerColor,
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: props.onSelect ? "pointer" : "default",
+                  boxShadow: `0 0 10px ${suggestion.ownerColor}18, inset 0 0 10px ${suggestion.ownerColor}12`,
+                  position: "relative",
+                  overflow: "hidden",
+                  isolation: "isolate",
+                  padding: 4,
+                }}
+              >
+                {ownerProfile ? (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "grid",
+                      placeItems: "center",
+                      pointerEvents: "none",
+                      opacity: 0.16,
+                      zIndex: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "grid",
+                        placeItems: "center",
+                        transform: "scale(1.55)",
+                        filter: `saturate(1.15) drop-shadow(0 0 12px ${suggestion.ownerColor})`,
+                      }}
+                    >
+                      <ProfileAvatar
+                        profile={ownerProfile}
+                        size={64}
+                        showStars={false}
+                        showDartOverlay={false}
+                        noFrame
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
                 <div
-                  aria-hidden
                   style={{
                     position: "absolute",
-                    right: -13,
-                    top: -21,
-                    width: 66,
-                    height: 66,
-                    opacity: 0.22,
-                    transform: "scale(1.28)",
-                    transformOrigin: "center",
+                    inset: 0,
+                    background: `radial-gradient(circle at 50% 58%, transparent 0%, transparent 22%, rgba(0,0,0,0.22) 58%, rgba(0,0,0,0.45) 100%)`,
                     pointerEvents: "none",
-                    filter: `saturate(1.2) drop-shadow(0 0 9px ${suggestion.ownerColor})`,
+                    zIndex: 0,
                   }}
-                >
-                  <ProfileAvatar
-                    profile={ownerAvatarProfile(suggestion.ownerId)}
-                    size={66}
-                    showStars={false}
-                    showDartOverlay={false}
-                    noFrame
-                  />
-                </div>
-              ) : null}
+                />
 
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  minWidth: 25,
-                  height: 25,
-                  padding: "0 5px",
-                  borderRadius: 8,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 3,
-                  color: suggestion.ownerColor,
-                  background: "rgba(0,0,0,0.38)",
-                  border: `1px solid ${suggestion.ownerColor}55`,
-                  boxShadow: `inset 0 0 10px ${suggestion.ownerColor}18`,
-                }}
-              >
                 {suggestion.fortress ? (
-                  <FortressLineIcon
-                    size={11}
-                    color="#fff"
-                    glowColor={suggestion.ownerColor}
-                    title="Forteresse à briser"
-                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 4,
+                      right: 4,
+                      zIndex: 2,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 7,
+                      display: "grid",
+                      placeItems: "center",
+                      background: "rgba(0,0,0,0.34)",
+                      border: `1px solid ${suggestion.ownerColor}55`,
+                    }}
+                  >
+                    <FortressLineIcon size={10} color="#fff" glowColor={suggestion.ownerColor} title="Forteresse à briser" />
+                  </div>
                 ) : null}
-                <strong style={{ fontSize: 13, lineHeight: 1, fontWeight: 1000 }}>{suggestion.value}</strong>
-              </span>
 
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  minWidth: 0,
-                  display: "grid",
-                  gap: 2,
-                  textAlign: "left",
-                }}
-              >
-                <span
+                <strong
                   style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    fontSize: 8.5,
+                    position: "relative",
+                    zIndex: 1,
+                    fontSize: 21,
                     lineHeight: 1,
-                    fontWeight: 950,
-                  }}
-                >
-                  {suggestion.territoryName}
-                </span>
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    fontWeight: 1000,
+                    letterSpacing: -0.4,
                     color: suggestion.ownerColor,
-                    fontSize: 7.2,
-                    lineHeight: 1,
-                    fontWeight: 900,
-                    opacity: 0.9,
+                    textShadow: `0 0 10px ${suggestion.ownerColor}, 0 2px 8px rgba(0,0,0,0.96)`,
                   }}
                 >
-                  {suggestion.ownerName}
-                </span>
-              </span>
-
-              <span
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  minWidth: 24,
-                  textAlign: "right",
-                  fontSize: 7.5,
-                  fontWeight: 950,
-                  opacity: 0.72,
-                  textShadow: "0 1px 4px rgba(0,0,0,0.95)",
-                }}
-              >
-                +{suggestion.needed}
-              </span>
-            </button>
-          ))}
+                  {suggestion.value}
+                </strong>
+              </button>
+            );
+          })}
           {hiddenCount > 0 ? (
-            <div style={{ fontSize: 7.5, fontWeight: 900, opacity: 0.5, textAlign: "center", paddingTop: 1 }}>
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                fontSize: 7.4,
+                fontWeight: 900,
+                opacity: 0.5,
+                textAlign: "center",
+                paddingTop: 1,
+              }}
+            >
               +{hiddenCount} autres cibles possibles
             </div>
           ) : null}
@@ -1852,9 +1830,9 @@ export default function DepartementsPlay(props: any) {
         };
       })
       .sort((a, b) => (
-        a.needed - b.needed
+        b.value - a.value
         || Number(b.fortress) - Number(a.fortress)
-        || b.value - a.value
+        || a.needed - b.needed
         || a.territoryName.localeCompare(b.territoryName, lang === "fr" ? "fr" : undefined, { sensitivity: "base" })
       ));
   }, [
