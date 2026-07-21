@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "deploy:online": "wrangler deploy",
+    "deploy:online": "wrangler deploy --config wrangler.online.toml",
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
@@ -18,7 +18,9 @@
     "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs",
     "test:territories-maps": "node ./src/tools/audit-territories-maps.mjs",
     "test:territories-value": "node --experimental-strip-types ./tools/test-territories-value-win.ts",
-    "test:territories-unique": "node --experimental-strip-types ./tools/test-territories-unique-values.ts"
+    "test:territories-unique": "node --experimental-strip-types ./tools/test-territories-unique-values.ts",
+    "deploy:pages": "npm run build && wrangler pages deploy dist --project-name darts-counter-v7 --config wrangler.toml",
+    "test:r2-backups": "node --experimental-strip-types ./tools/test-direct-r2-backups.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

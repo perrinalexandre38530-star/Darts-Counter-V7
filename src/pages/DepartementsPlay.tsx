@@ -448,8 +448,8 @@ function HeaderModeIcons(props: {
   timeRemaining?: string | null;
 }) {
   const iconShell: React.CSSProperties = {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: 10,
     display: "grid",
     placeItems: "center",
@@ -460,8 +460,8 @@ function HeaderModeIcons(props: {
   };
 
   const commonSvg = {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
@@ -475,12 +475,12 @@ function HeaderModeIcons(props: {
     <div
       style={{
         marginTop: "auto",
-        paddingTop: 8,
+        paddingTop: 5,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         gap: 7,
-        minHeight: 30,
+        minHeight: 28,
       }}
     >
       <div style={iconShell} title={props.teamMode ? "Mode équipes" : "Mode solo"} aria-label={props.teamMode ? "Mode équipes" : "Mode solo"}>
@@ -547,16 +547,13 @@ function TerritoryTargetSuggestions(props: {
   profileById: Record<string, any>;
   onSelect?: (territoryId: string) => void;
 }) {
-  // Show the richest still-reachable territories first. The visual is now a
-  // compact KPI wall: 4 to 5 mini-cards per row depending on available width,
-  // internal vertical scroll if there are many targets, and only the value is
-  // displayed prominently inside each KPI.
   const ownerAvatarProfile = (ownerId: string) => {
     const member = props.players.find((player) => String(player.teamId || player.id) === ownerId);
     if (!member) return null;
     return props.profileById[member.id] ?? { id: member.id, name: member.name, avatar: member.avatar };
   };
 
+  // The most valuable reachable enemy territories must always be presented first.
   const visible = [...props.suggestions]
     .sort((a, b) => (
       b.value - a.value
@@ -564,23 +561,21 @@ function TerritoryTargetSuggestions(props: {
       || a.needed - b.needed
       || a.territoryName.localeCompare(b.territoryName, undefined, { sensitivity: "base" })
     ))
-    .slice(0, 18);
-
-  const hiddenCount = Math.max(0, props.suggestions.length - visible.length);
+    .slice(0, 24);
 
   return (
-    <div style={{ width: "100%", marginTop: 8, minWidth: 0 }}>
+    <div style={{ width: "100%", marginTop: 6, minWidth: 0 }}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 5,
-          marginBottom: 5,
-          fontSize: 7.5,
+          gap: 4,
+          marginBottom: 4,
+          fontSize: 7.2,
           lineHeight: 1,
           fontWeight: 950,
-          letterSpacing: 0.45,
+          letterSpacing: 0.4,
           textTransform: "uppercase",
           color: props.accentColor,
           opacity: 0.92,
@@ -597,9 +592,9 @@ function TerritoryTargetSuggestions(props: {
           className="dc-scroll-thin"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(50px, 1fr))",
-            gap: 6,
-            maxHeight: "clamp(128px, 23vh, 208px)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(25px, 1fr))",
+            gap: 4,
+            maxHeight: "64px",
             overflowY: "auto",
             overflowX: "hidden",
             paddingRight: 2,
@@ -614,23 +609,23 @@ function TerritoryTargetSuggestions(props: {
                 key={suggestion.territoryId}
                 type="button"
                 onClick={() => props.onSelect?.(suggestion.territoryId)}
-                title={`${suggestion.value} · ${suggestion.territoryName} · ${suggestion.ownerName}${suggestion.fortress ? ' · Forteresse' : ''}`}
+                title={`${suggestion.value} · ${suggestion.territoryName} · ${suggestion.ownerName}${suggestion.fortress ? " · Forteresse" : ""}`}
                 style={{
                   width: "100%",
-                  aspectRatio: "1 / 1",
-                  minHeight: 54,
-                  borderRadius: 14,
-                  border: `1px solid ${suggestion.ownerColor}77`,
-                  background: `linear-gradient(180deg, ${suggestion.ownerColor}20, rgba(2,5,10,0.86))`,
+                  minWidth: 0,
+                  height: 30,
+                  borderRadius: 9,
+                  border: `1px solid ${suggestion.ownerColor}72`,
+                  background: `linear-gradient(180deg, ${suggestion.ownerColor}1f, rgba(2,5,10,0.88))`,
                   color: suggestion.ownerColor,
                   display: "grid",
                   placeItems: "center",
                   cursor: props.onSelect ? "pointer" : "default",
-                  boxShadow: `0 0 10px ${suggestion.ownerColor}18, inset 0 0 10px ${suggestion.ownerColor}12`,
+                  boxShadow: `0 0 7px ${suggestion.ownerColor}18, inset 0 0 8px ${suggestion.ownerColor}12`,
                   position: "relative",
                   overflow: "hidden",
                   isolation: "isolate",
-                  padding: 4,
+                  padding: 1,
                 }}
               >
                 {ownerProfile ? (
@@ -642,7 +637,7 @@ function TerritoryTargetSuggestions(props: {
                       display: "grid",
                       placeItems: "center",
                       pointerEvents: "none",
-                      opacity: 0.16,
+                      opacity: 0.18,
                       zIndex: 0,
                     }}
                   >
@@ -652,13 +647,13 @@ function TerritoryTargetSuggestions(props: {
                         height: "100%",
                         display: "grid",
                         placeItems: "center",
-                        transform: "scale(1.55)",
-                        filter: `saturate(1.15) drop-shadow(0 0 12px ${suggestion.ownerColor})`,
+                        transform: "scale(1.08)",
+                        filter: `saturate(1.15) drop-shadow(0 0 8px ${suggestion.ownerColor})`,
                       }}
                     >
                       <ProfileAvatar
                         profile={ownerProfile}
-                        size={64}
+                        size={42}
                         showStars={false}
                         showDartOverlay={false}
                         noFrame
@@ -668,10 +663,11 @@ function TerritoryTargetSuggestions(props: {
                 ) : null}
 
                 <div
+                  aria-hidden
                   style={{
                     position: "absolute",
                     inset: 0,
-                    background: `radial-gradient(circle at 50% 58%, transparent 0%, transparent 22%, rgba(0,0,0,0.22) 58%, rgba(0,0,0,0.45) 100%)`,
+                    background: "linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.40))",
                     pointerEvents: "none",
                     zIndex: 0,
                   }}
@@ -681,19 +677,19 @@ function TerritoryTargetSuggestions(props: {
                   <div
                     style={{
                       position: "absolute",
-                      top: 4,
-                      right: 4,
+                      top: 2,
+                      right: 2,
                       zIndex: 2,
-                      width: 18,
-                      height: 18,
-                      borderRadius: 7,
+                      width: 12,
+                      height: 12,
+                      borderRadius: 4,
                       display: "grid",
                       placeItems: "center",
-                      background: "rgba(0,0,0,0.34)",
-                      border: `1px solid ${suggestion.ownerColor}55`,
+                      background: "rgba(0,0,0,0.44)",
+                      border: `1px solid ${suggestion.ownerColor}66`,
                     }}
                   >
-                    <FortressLineIcon size={10} color="#fff" glowColor={suggestion.ownerColor} title="Forteresse à briser" />
+                    <FortressLineIcon size={7} color="#fff" glowColor={suggestion.ownerColor} title="Forteresse à briser" />
                   </div>
                 ) : null}
 
@@ -701,12 +697,12 @@ function TerritoryTargetSuggestions(props: {
                   style={{
                     position: "relative",
                     zIndex: 1,
-                    fontSize: 21,
+                    fontSize: 12.5,
                     lineHeight: 1,
                     fontWeight: 1000,
-                    letterSpacing: -0.4,
+                    letterSpacing: -0.25,
                     color: suggestion.ownerColor,
-                    textShadow: `0 0 10px ${suggestion.ownerColor}, 0 2px 8px rgba(0,0,0,0.96)`,
+                    textShadow: `0 0 8px ${suggestion.ownerColor}, 0 1px 5px rgba(0,0,0,0.98)`,
                   }}
                 >
                   {suggestion.value}
@@ -714,37 +710,23 @@ function TerritoryTargetSuggestions(props: {
               </button>
             );
           })}
-          {hiddenCount > 0 ? (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                fontSize: 7.4,
-                fontWeight: 900,
-                opacity: 0.5,
-                textAlign: "center",
-                paddingTop: 1,
-              }}
-            >
-              +{hiddenCount} autres cibles possibles
-            </div>
-          ) : null}
         </div>
       ) : (
         <div
           style={{
-            minHeight: 24,
-            padding: "5px 6px",
+            minHeight: 22,
+            padding: "4px 5px",
             borderRadius: 8,
             border: "1px solid rgba(255,255,255,0.08)",
             background: "rgba(0,0,0,0.18)",
-            fontSize: 8,
+            fontSize: 7.5,
             fontWeight: 900,
-            lineHeight: 1.2,
+            lineHeight: 1.15,
             opacity: 0.52,
             textAlign: "center",
           }}
         >
-          Aucun territoire adverse atteignable
+          Aucune cible atteignable
         </div>
       )}
     </div>
@@ -780,16 +762,16 @@ function TerritoryOwnerBadge(props: {
   }
 
   const color = props.ownerColor || members[0]?.color || "#ffffff";
-  const avatarBox = props.compact ? 24 : 32;
-  const avatarSize = props.compact ? 21 : 28;
-  const overlap = props.compact ? -6 : -8;
+  const avatarBox = props.compact ? 20 : 32;
+  const avatarSize = props.compact ? 18 : 28;
+  const overlap = props.compact ? -5 : -8;
   return (
     <div
       title={members.map((member) => member.name).join(" · ")}
       style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, flex: "0 0 auto" }}
     >
       {props.hasFortress ? (
-        <FortressLineIcon size={props.compact ? 15 : 22} color="#fff" glowColor={color} title="Forteresse active" />
+        <FortressLineIcon size={props.compact ? 12 : 22} color="#fff" glowColor={color} title="Forteresse active" />
       ) : null}
       <div style={{ display: "flex", alignItems: "center", paddingLeft: members.length > 1 ? (props.compact ? 5 : 7) : 0 }}>
         {members.slice(0, 3).map((member, index) => (
@@ -2633,7 +2615,7 @@ export default function DepartementsPlay(props: any) {
             display: "flex",
             gap: 12,
             alignItems: "stretch",
-            padding: "12px 12px",
+            padding: "9px 10px",
             borderRadius: 18,
             background: "rgba(12, 14, 26, 0.55)",
             border: "1px solid rgba(255,255,255,0.08)",
@@ -2703,8 +2685,8 @@ export default function DepartementsPlay(props: any) {
           >
             <div
               style={{
-                width: 82,
-                height: 82,
+                width: 74,
+                height: 74,
                 borderRadius: 999,
                 display: "grid",
                 placeItems: "center",
@@ -2715,7 +2697,7 @@ export default function DepartementsPlay(props: any) {
             >
               <ProfileAvatar
                 profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
-                size={82}
+                size={74}
                 ringColor={activeColor}
                 textColor="#fff"
                 showStars={false}
@@ -2724,8 +2706,8 @@ export default function DepartementsPlay(props: any) {
 
             <div
               style={{
-                marginTop: 8,
-                fontSize: 15,
+                marginTop: 6,
+                fontSize: 14,
                 fontWeight: 950,
                 color: activeColor,
                 textAlign: "center",
@@ -2758,31 +2740,34 @@ export default function DepartementsPlay(props: any) {
             />
           </div>
 
-          {/* Right: live stats as compact KPI cards */}
+          {/* Right: compact live stats. Captures = all territories taken; Vols = enemy territories taken. */}
           <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", zIndex: 1, minWidth: 0 }}>
             <div
               style={{
-                width: "clamp(170px, 45vw, 238px)",
+                width: "clamp(166px, 45vw, 238px)",
                 minWidth: 0,
-                padding: 8,
-                borderRadius: 16,
+                padding: 7,
+                borderRadius: 15,
                 background: "rgba(0,0,0,0.22)",
                 border: `1px solid ${activeColor}55`,
                 boxShadow: `0 0 18px ${activeColor}1f`,
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 6,
+                gap: 5,
                 alignContent: "center",
               }}
             >
-              <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
-              <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={fortressVictoryMode === "value" ? activeColor : undefined} />
-              <ProfileStatKpi label="Fléchettes" value={String(activeStats.darts)} />
-              <ProfileStatKpi label="Captures" value={String(activeStats.captures)} />
-              {gameMode === "fortress" ? <ProfileStatKpi label="Forteresses" value={String(activeStats.fortresses)} /> : null}
-              {gameMode === "fortress" ? <ProfileStatKpi label="Brèches" value={String(activeStats.breaches)} /> : null}
-              <ProfileStatKpi label="Vols" value={String(activeStats.steals)} />
-              <ProfileStatKpi label="Perdus" value={String(activeStats.lost)} />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
+                <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
+                <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={fortressVictoryMode === "value" ? activeColor : undefined} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
+                <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} disabled={gameMode !== "fortress"} />
+                <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} disabled={gameMode !== "fortress"} />
+                <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} />
+                <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} />
+                <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} />
+              </div>
             </div>
           </div>
         </div>
@@ -2809,7 +2794,7 @@ export default function DepartementsPlay(props: any) {
           valueColor="#fff"
           borderColor="rgba(255,255,255,0.12)"
           glowColor="rgba(0,0,0,0.0)"
-          valueFontSize={13}
+          valueFontSize={10.5}
           allowWrap
           centerValue
           fitValue
@@ -2818,7 +2803,7 @@ export default function DepartementsPlay(props: any) {
           fortressActive={displayedTerritoryHasFortress}
           fortressColor={displayedTerritoryOwnerColor || activeColor}
           showFortressIcon={false}
-          valueAddon={displayedTerritory ? (
+          titleAddon={displayedTerritory ? (
             <TerritoryOwnerBadge
               ownerId={displayedTerritory?.ownerId}
               hasFortress={displayedTerritoryHasFortress}
@@ -2960,6 +2945,7 @@ function KpiCard(props: {
   fortressActive?: boolean;
   fortressColor?: string;
   valueAddon?: React.ReactNode;
+  titleAddon?: React.ReactNode;
   showFortressIcon?: boolean;
 }) {
   const fittedValueFontSize = props.fitValue
@@ -3073,19 +3059,38 @@ function KpiCard(props: {
 
       <div
         style={{
-          fontSize: 11,
-          letterSpacing: 1.2,
-          fontWeight: 950,
-          color: props.titleColor || "rgba(255,255,255,0.78)",
-          textShadow: props.titleColor
-            ? `0 0 10px ${props.titleGlowColor || props.titleColor}, 0 0 18px ${props.titleGlowColor || props.titleColor}`
-            : undefined,
-          opacity: props.titleColor ? 1 : 0.78,
           position: "relative",
           zIndex: 2,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 5,
+          minWidth: 0,
         }}
       >
-        {props.title}
+        <div
+          style={{
+            minWidth: 0,
+            fontSize: 11,
+            letterSpacing: 1.2,
+            fontWeight: 950,
+            color: props.titleColor || "rgba(255,255,255,0.78)",
+            textShadow: props.titleColor
+              ? `0 0 10px ${props.titleGlowColor || props.titleColor}, 0 0 18px ${props.titleGlowColor || props.titleColor}`
+              : undefined,
+            opacity: props.titleColor ? 1 : 0.78,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {props.title}
+        </div>
+        {props.titleAddon ? (
+          <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+            {props.titleAddon}
+          </div>
+        ) : null}
       </div>
       {props.value ? (
         <div
@@ -3108,7 +3113,8 @@ function KpiCard(props: {
             wordBreak: props.fitValue ? "normal" : undefined,
             WebkitLineClamp: props.allowWrap && !props.fitValue ? 3 : undefined,
             WebkitBoxOrient: props.allowWrap && !props.fitValue ? ("vertical" as any) : undefined,
-            lineHeight: props.allowWrap ? 1.08 : undefined,
+            lineHeight: props.allowWrap ? 1.02 : undefined,
+            maxHeight: props.fitValue ? "2.15em" : undefined,
             padding: props.centerValue
               ? props.valueAddon
                 ? "0 44px 0 2px"
@@ -3268,13 +3274,128 @@ function TerritoriesMapModal(props: {
   );
 }
 
+type ProfileStatIconName = "darts" | "fortress" | "breach" | "capture" | "steal" | "lost";
+
+function ProfileStatLineIcon(props: { icon: ProfileStatIconName; size?: number }) {
+  const size = props.size ?? 16;
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (props.icon === "fortress") {
+    return (
+      <svg {...common}>
+        <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Z" />
+        <path d="M8 20v-5h8v5M4 12h16" />
+      </svg>
+    );
+  }
+  if (props.icon === "darts") {
+    return (
+      <svg {...common}>
+        <path d="m5 19 10-10" />
+        <path d="m13 5 6-1-1 6-3-1-1-3Z" />
+        <path d="m5 19 4-1-3-3-1 4Z" />
+      </svg>
+    );
+  }
+  if (props.icon === "breach") {
+    return (
+      <svg {...common}>
+        <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11" />
+        <path d="M4 12h6l-2 3 4 1-2 4h10" />
+      </svg>
+    );
+  }
+  if (props.icon === "capture") {
+    return (
+      <svg {...common}>
+        <path d="M6 21V4" />
+        <path d="M6 5h10l-2.2 3L16 11H6" />
+        <circle cx="18" cy="17" r="3" />
+        <path d="m16.8 17 1 1 1.6-2" />
+      </svg>
+    );
+  }
+  if (props.icon === "steal") {
+    return (
+      <svg {...common}>
+        <path d="M4 8h12" />
+        <path d="m13 5 3 3-3 3" />
+        <path d="M20 16H8" />
+        <path d="m11 13-3 3 3 3" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M12 3 5 6v5c0 4.4 2.8 8.3 7 10 4.2-1.7 7-5.6 7-10V6l-7-3Z" />
+      <path d="m9 10 6 6M15 10l-6 6" />
+    </svg>
+  );
+}
+
+function ProfileStatIconKpi(props: {
+  icon: ProfileStatIconName;
+  title: string;
+  value: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div
+      title={props.title}
+      aria-label={`${props.title} : ${props.value}`}
+      style={{
+        minWidth: 0,
+        height: 34,
+        padding: "0 5px",
+        borderRadius: 10,
+        background: "rgba(255,255,255,0.042)",
+        border: "1px solid rgba(255,255,255,0.085)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        color: props.disabled ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.84)",
+        overflow: "hidden",
+      }}
+    >
+      <span style={{ display: "grid", placeItems: "center", flex: "0 0 auto" }}>
+        <ProfileStatLineIcon icon={props.icon} size={15} />
+      </span>
+      <strong
+        style={{
+          minWidth: 0,
+          fontSize: 12.5,
+          lineHeight: 1,
+          fontWeight: 1000,
+          color: props.disabled ? "rgba(255,255,255,0.28)" : "#fff",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {props.disabled ? "—" : props.value}
+      </strong>
+    </div>
+  );
+}
+
 function ProfileStatKpi(props: { label: string; value: string; color?: string }) {
   return (
     <div
       style={{
         minWidth: 0,
-        minHeight: 43,
-        padding: "6px 7px",
+        minHeight: 38,
+        padding: "5px 7px",
         borderRadius: 11,
         background: props.color ? `${props.color}14` : "rgba(255,255,255,0.045)",
         border: `1px solid ${props.color ? `${props.color}55` : "rgba(255,255,255,0.09)"}`,
@@ -3302,8 +3423,8 @@ function ProfileStatKpi(props: { label: string; value: string; color?: string })
       </div>
       <div
         style={{
-          marginTop: 4,
-          fontSize: 13,
+          marginTop: 3,
+          fontSize: 12.5,
           lineHeight: 1,
           fontWeight: 1000,
           color: props.color || "#fff",

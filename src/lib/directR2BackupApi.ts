@@ -1,9 +1,13 @@
 import { supabase } from "./supabaseClient";
 import type { CloudObjectIndexItem } from "./cloudStorageApi";
 
+/**
+ * Route Cloudflare Pages Function, liée directement au bucket R2.
+ * IMPORTANT : aucune solution de repli vers le NAS n'est autorisée ici.
+ * Une sauvegarde R2 ne doit jamais dépendre de api.multisports-api.fr.
+ */
 const DIRECT_BASE = "/api/storage/backups";
-const FALLBACK_BASE = "/api/backend/account/cloud-storage-direct/backups";
-const REQUEST_TIMEOUT_MS = 2_500;
+const REQUEST_TIMEOUT_MS = 8_000;
 
 export type DirectBackupSummary = Record<string, any>;
 
@@ -24,46 +28,64 @@ function safeJson(raw: string): any {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 
-function tokenFromStoredSession(): string {
+function decodeJwtPayload(token: string): any {
+  try {
+    const part = String(token || "").split(".")[1] || "";
+    if (!part) return null;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (part.length % 4)) % 4);
+    return JSON.parse(decodeURIComponent(Array.from(atob(base64)).map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`).join("")));
+  } catch {
+    return null;
+  }
+}
+
+function isSupabaseAccessToken(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  const issuer = String(payload?.iss || "").toLowerCase();
+  return !!payload?.sub && (issuer.includes("supabase.co/auth/v1") || String(payload?.role || "") === "authenticated");
+}
+
+function tokenFromStoredSupabaseSession(): string {
   if (typeof window === "undefined") return "";
   const keys = [
     "dc_online_auth_supabase_v1",
-    "dc_session",
-    "auth_session",
-    "current_user",
-    "dc_nas_access_token_v1",
-    "auth_token",
-    "access_token",
+    "sb-rckbdaqksujehszafior-auth-token",
   ];
+
+  // Les SDK Supabase utilisent aussi une clé sb-<project>-auth-token.
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) || "";
+      if (/^sb-.*-auth-token$/i.test(key) && !keys.includes(key)) keys.push(key);
+    }
+  } catch {}
+
   for (const key of keys) {
     try {
       const raw = window.localStorage.getItem(key) || window.sessionStorage.getItem(key) || "";
       if (!raw) continue;
-      if (raw.startsWith("{") || raw.startsWith("[")) {
-        const parsed = safeJson(raw);
-        const token = String(
-          parsed?.token || parsed?.accessToken || parsed?.access_token || parsed?.session?.access_token ||
-          parsed?.session?.token || parsed?.data?.token || parsed?.data?.access_token || ""
-        ).trim();
-        if (token) return token;
-      } else if (raw.length >= 24) {
-        return raw.trim();
-      }
+      const parsed = safeJson(raw);
+      const token = String(
+        parsed?.access_token || parsed?.accessToken || parsed?.token ||
+        parsed?.session?.access_token || parsed?.currentSession?.access_token ||
+        parsed?.data?.session?.access_token || parsed?.data?.access_token || ""
+      ).trim();
+      if (token && isSupabaseAccessToken(token)) return token;
     } catch {}
   }
   return "";
 }
 
-async function readAnyAccessToken(): Promise<string> {
+async function readSupabaseAccessToken(): Promise<string> {
   try {
     const result = await Promise.race([
       supabase.auth.getSession(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 450)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 900)),
     ]);
     const token = String((result as any)?.data?.session?.access_token || "").trim();
-    if (token) return token;
+    if (token && isSupabaseAccessToken(token)) return token;
   } catch {}
-  return tokenFromStoredSession();
+  return tokenFromStoredSupabaseSession();
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
@@ -76,46 +98,50 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
   }
 }
 
-function shouldTryFallback(status: number, payload: any): boolean {
-  const code = String(payload?.code || payload?.error || "").toLowerCase();
-  return status === 404 || status === 502 || status === 503 || status === 501 ||
-    code.includes("binding") || code.includes("unavailable") || code.includes("not_configured");
+function conciseR2Error(status: number, payload: any, rawText: string): Error {
+  const code = String(payload?.code || "").trim();
+  const message = String(payload?.message || payload?.error || "").trim();
+
+  if (code === "r2_binding_missing") {
+    return new Error("Cloud R2 non relié au projet Cloudflare Pages. Le binding USER_DATA_BUCKET doit pointer vers multisports-user-data, puis le projet doit être redéployé.");
+  }
+  if (status === 401) {
+    return new Error("Session Supabase requise pour Cloud R2. Déconnecte-toi puis reconnecte le même compte avant de sauvegarder.");
+  }
+  if (status === 413) {
+    return new Error(message || "Sauvegarde trop volumineuse ou quota Cloud R2 dépassé.");
+  }
+  if (/<!doctype|<html/i.test(rawText)) {
+    return new Error("La route Cloudflare Pages de sauvegarde R2 ne répond pas correctement. Aucun appel au tunnel NAS n'a été effectué.");
+  }
+  return new Error(message || `Cloud R2 HTTP ${status}`);
 }
 
 async function requestDirect(path = "", init: RequestInit = {}): Promise<any> {
-  const token = await readAnyAccessToken();
-  if (!token) throw new Error("Session utilisateur absente. Reconnecte-toi avant une sauvegarde Cloud R2.");
+  const token = await readSupabaseAccessToken();
+  if (!token) {
+    throw new Error("Session Supabase absente. Reconnecte ton compte avant une sauvegarde Cloud R2. Les sauvegardes Local et Fichier restent disponibles hors ligne.");
+  }
 
   const headers = new Headers(init.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
-  const candidates = [`${DIRECT_BASE}${path}`, `${FALLBACK_BASE}${path}`];
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < candidates.length; i += 1) {
-    try {
-      const response = await fetchWithTimeout(candidates[i], { ...init, headers });
-      const text = await response.text().catch(() => "");
-      const payload = safeJson(text) ?? (text ? { message: text } : null);
-      if (response.ok && payload?.ok === true) return payload;
-      if (response.ok && i === 0) {
-        lastError = new Error("La Function Cloudflare R2 n'est pas déployée sur cette route.");
-        continue;
-      }
-      const error = new Error(String(payload?.message || payload?.error || `Cloud R2 HTTP ${response.status}`));
-      (error as any).status = response.status;
-      lastError = error;
-      if (i === 0 && shouldTryFallback(response.status, payload)) continue;
-      throw error;
-    } catch (error: any) {
-      lastError = error?.name === "AbortError"
-        ? new Error("Le stockage Cloud R2 n’a pas répondu en moins de 8 secondes.")
-        : error instanceof Error ? error : new Error(String(error));
-      if (i === 0) continue;
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers });
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Cloud R2 n'a pas répondu en moins de 8 secondes.");
     }
+    throw new Error(`Route Cloudflare Pages R2 inaccessible : ${error?.message || String(error)}`);
   }
-  throw lastError || new Error("Stockage Cloud R2 indisponible.");
+
+  const text = await response.text().catch(() => "");
+  const payload = safeJson(text);
+  if (response.ok && payload?.ok === true) return payload;
+  throw conciseR2Error(response.status, payload, text);
 }
 
 function toCloudItem(item: DirectBackupRecord): CloudObjectIndexItem {

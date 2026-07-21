@@ -29,7 +29,11 @@ type Manifest = { version: 1; userId: string; updatedAt: string; backups: Backup
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-multisports-storage-route": "cloudflare-pages-r2-direct",
+    },
   });
 }
 
@@ -127,11 +131,26 @@ function founderSet(env: Env): Set<string> {
 export const onRequest: PagesFunction<Env> = async ({ request, env, params }) => {
   try {
     const bucket = env.USER_DATA_BUCKET;
-    if (!bucket) return json({ ok: false, code: "r2_binding_missing", error: "Binding R2 USER_DATA_BUCKET manquant." }, 503);
+    if (!bucket) return json({
+      ok: false,
+      code: "r2_binding_missing",
+      error: "Binding R2 USER_DATA_BUCKET manquant.",
+      message: "Le projet Cloudflare Pages doit lier USER_DATA_BUCKET au bucket multisports-user-data puis être redéployé.",
+    }, 503);
     const identity = await resolveIdentity(request, env);
     const manifest = await readManifest(bucket, identity.userId);
     const parts = routeParts(params);
     const method = request.method.toUpperCase();
+
+    if (method === "GET" && parts.length === 1 && parts[0] === "status") {
+      return json({
+        ok: true,
+        route: "cloudflare-pages-r2-direct",
+        binding: "USER_DATA_BUCKET",
+        bucketReady: true,
+        userId: identity.userId,
+      });
+    }
 
     if (method === "GET" && parts.length === 0) {
       const url = new URL(request.url);
