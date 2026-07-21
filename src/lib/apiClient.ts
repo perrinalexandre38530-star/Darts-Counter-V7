@@ -210,6 +210,11 @@ function currentApiUrl(): string {
 const rawApiTimeoutMs = Number((typeof window !== "undefined" ? window.localStorage.getItem("dc_api_timeout_ms") : "") || 60000) || 60000;
 const API_TIMEOUT_MS = Math.max(60000, rawApiTimeoutMs);
 
+// Evite qu'une panne PostgreSQL/NAS déclenche des dizaines de GET /online/*
+// simultanés. Les actions utilisateur POST/PUT/DELETE restent toujours tentées.
+const ONLINE_BACKEND_COOLDOWN_MS = 15_000;
+let onlineBackendCooldownUntil = 0;
+
 let lastAuthChangedDispatchAt = 0;
 let lastMissingTokenWarningAt = 0;
 let nasAuthRecoveryInFlight: Promise<string> | null = null;
@@ -301,6 +306,16 @@ function buildHeaders(init?: RequestInit): HeadersInit {
 
 async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const requestMethod = String(init?.method || "GET").toUpperCase();
+  const isBackgroundOnlineGet = requestMethod === "GET" && normalizedPath.startsWith("/online/");
+
+  if (isBackgroundOnlineGet && Date.now() < onlineBackendCooldownUntil) {
+    const seconds = Math.max(1, Math.ceil((onlineBackendCooldownUntil - Date.now()) / 1000));
+    const error: any = new Error(`GET ${normalizedPath} différé — backend NAS indisponible, nouvel essai dans ${seconds}s`);
+    error.status = 503;
+    error.code = "backend_cooldown";
+    throw error;
+  }
 
   // Garde anti-spam, mais sans faux positif au boot : avant d'annoncer une
   // déconnexion, on tente de restaurer la session NAS depuis le cache complet.
@@ -368,9 +383,14 @@ async function doFetch(path: string, init?: RequestInit) {
           errPayload?.hint ||
           ""
       ).trim();
-      const error = new Error(
+      const error: any = new Error(
         `${init?.method || "GET"} ${normalizedPath} failed (${res.status})${errMessage ? ` — ${errMessage}` : ""}`
       );
+      error.status = res.status;
+      error.payload = errPayload;
+      if (isBackgroundOnlineGet && [502, 503, 504].includes(res.status)) {
+        onlineBackendCooldownUntil = Date.now() + ONLINE_BACKEND_COOLDOWN_MS;
+      }
 
       // Si on a un reverse proxy KO (502/503/504) ou une route health absente
       // sur un ancien endpoint, on tente le candidat suivant. Pour les erreurs
@@ -383,6 +403,7 @@ async function doFetch(path: string, init?: RequestInit) {
     }
 
     rememberWorkingApiUrl(apiBase);
+    if (normalizedPath.startsWith("/online/")) onlineBackendCooldownUntil = 0;
     return parseJsonSafe(res);
   }
 

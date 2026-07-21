@@ -161,11 +161,23 @@ export default function GlobalMessengerCallBridge() {
     if (!readNasAccessToken()) return;
     let es: EventSource | null = null;
     let stopped = false;
+    let reconnectTimer: number | null = null;
+    let reconnectDelayMs = 2500;
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer) return;
+      const delay = reconnectDelayMs;
+      reconnectDelayMs = Math.min(30_000, Math.max(5000, reconnectDelayMs * 2));
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
+    };
     const connect = () => {
       if (stopped) return;
       try {
         es?.close();
         es = new EventSource(buildPrivateMessagesStreamUrl());
+        es.onopen = () => { reconnectDelayMs = 2500; };
         const handle = (event: MessageEvent) => {
           try {
             const payload = JSON.parse(String(event.data || "{}"));
@@ -187,35 +199,54 @@ export default function GlobalMessengerCallBridge() {
         }) as EventListener);
         es.onerror = () => {
           try { es?.close(); } catch {}
-          if (!stopped) window.setTimeout(connect, 2500);
+          scheduleReconnect();
         };
       } catch {
-        if (!stopped) window.setTimeout(connect, 3500);
+        scheduleReconnect();
       }
     };
     connect();
-    return () => { stopped = true; try { es?.close(); } catch {} };
+    return () => {
+      stopped = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try { es?.close(); } catch {}
+    };
   }, [alertIncomingCall, auth?.status, auth?.ready, auth?.userId]);
 
   React.useEffect(() => {
     if (!readNasAccessToken()) return;
     let stopped = false;
+    let timer: number | null = null;
+    let pollDelayMs = 10_000;
+    const schedule = (delay = pollDelayMs) => {
+      if (stopped) return;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { poll().catch(() => {}); }, delay);
+    };
     const poll = async () => {
       if (stopped) return;
       try {
         const calls = await listIncomingMessengerCalls();
+        pollDelayMs = 10_000;
         const first = (Array.isArray(calls) ? calls : []).find((call: any) => isRingingIncoming(call));
         if (first) alertIncomingCall(first as AnyCall);
-      } catch {}
+      } catch {
+        pollDelayMs = Math.min(60_000, Math.max(20_000, pollDelayMs * 2));
+      } finally {
+        schedule();
+      }
     };
-    poll();
-    const timer = window.setInterval(poll, 2500);
-    const onFocus = () => poll();
+    poll().catch(() => {});
+    const onFocus = () => {
+      if (document.visibilityState === "hidden") return;
+      pollDelayMs = 10_000;
+      poll().catch(() => {});
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       stopped = true;
-      window.clearInterval(timer);
+      if (timer) window.clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
