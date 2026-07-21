@@ -47,7 +47,15 @@ export default function BackDot({
       aria-label={title}
       title={title}
       tabIndex={0}
-      onPointerDown={handle}
+      onPointerDown={(e: any) => {
+        // Ne jamais naviguer sur pointerdown : le composant peut être démonté avant
+        // le click, qui retomberait alors sur le BackDot de la page suivante.
+        // C'était la cause du saut PLAY -> CONFIG -> JEUX sur mobile.
+        try {
+          e?.preventDefault?.();
+          e?.stopPropagation?.();
+        } catch {}
+      }}
       onClick={handle}
       onKeyDown={(e: any) => {
         if (e.key === "Enter" || e.key === " ") handle(e);

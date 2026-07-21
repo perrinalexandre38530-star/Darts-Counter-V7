@@ -78,7 +78,7 @@ export type TerritoriesConfigPayload = {
 
   // Rules
   gameMode?: "classic" | "fortress";
-  fortressVictoryMode?: "majority" | "conquest";
+  fortressVictoryMode?: "majority" | "value" | "conquest";
   maxFortressesPerOwner?: number;
   targetSelectionMode?: "free" | "by_score";
   captureRule?: "exact" | "gte";
@@ -133,7 +133,8 @@ Conditions de victoire
 - OBJECTIF TERRITOIRES : victoire immédiate dès le nombre demandé atteint.
 - OBJECTIF RÉGIONS : France uniquement ; une région est possédée quand tous ses départements ont la même couleur.
 - TEMPS : à la fin du chrono, le camp qui possède le plus de territoires gagne.
-- MAJORITÉ : à la fin des rounds, le camp qui possède le plus de territoires gagne.
+- MAJORITÉ EN NOMBRE : à la fin des rounds, le camp qui possède le plus de territoires gagne.
+- MAJORITÉ EN VALEUR : à la fin des rounds, le camp dont les territoires totalisent le plus de points gagne.
 - CONQUÊTE TOTALE : la partie continue jusqu'à ce qu'un camp possède toute la carte.
 `;
 
@@ -155,7 +156,7 @@ FORTERESSES
 const HELP_ROUNDS = `Rounds
 - Un round est terminé quand tous les joueurs ont joué une fois.
 - En CLASSIQUE, les rounds servent aussi de limite : si personne n'a atteint l'objectif, le plus grand nombre de possessions l'emporte.
-- En FORTERESSES + MAJORITÉ, le classement final est calculé exactement à la fin du dernier round.
+- En FORTERESSES + MAJORITÉ EN NOMBRE ou EN VALEUR, le classement final est calculé exactement à la fin du dernier round.
 - En CONQUÊTE TOTALE, la limite de rounds ne termine pas la partie.`;
 
 const HELP_OBJECTIF_REGIONS = `Objectif (régions)
@@ -178,9 +179,16 @@ TEMPS
 
 const HELP_FORTRESS_VICTORY = `Condition de victoire — mode Forteresses
 
-MAJORITÉ AUX ROUNDS
+MAJORITÉ EN NOMBRE
 - Tous les camps jouent le nombre de rounds choisi.
 - À la fin, celui qui possède le plus de territoires gagne.
+
+MAJORITÉ EN VALEUR
+- Tous les camps jouent le nombre de rounds choisi.
+- Chaque territoire rapporte sa valeur cible.
+- La distribution de départ équilibre à la fois le nombre de territoires et leur valeur cumulée entre les camps.
+- À la fin, le camp dont les territoires possédés totalisent la plus grande valeur gagne.
+- Un grand territoire pèse donc davantage qu'un petit territoire.
 
 CONQUÊTE TOTALE
 - Aucun objectif chiffré et aucune fin automatique aux rounds.
@@ -471,7 +479,7 @@ export default function DepartementsConfig(props: any) {
   const [rounds, setRounds] = React.useState(12);
   const [objective, setObjective] = React.useState(10);
   const [gameMode, setGameMode] = React.useState<"classic" | "fortress">("classic");
-  const [fortressVictoryMode, setFortressVictoryMode] = React.useState<"majority" | "conquest">("majority");
+  const [fortressVictoryMode, setFortressVictoryMode] = React.useState<"majority" | "value" | "conquest">("majority");
   const [maxFortressesPerOwner, setMaxFortressesPerOwner] = React.useState<number>(2);
 
   const [targetSelectionMode, setTargetSelectionMode] = React.useState<"free" | "by_score">("free");
@@ -512,7 +520,7 @@ export default function DepartementsConfig(props: any) {
       if (gm === "classic" || gm === "fortress") setGameMode(gm);
 
       const fvm = parsed?.fortressVictoryMode;
-      if (fvm === "majority" || fvm === "conquest") setFortressVictoryMode(fvm);
+      if (fvm === "majority" || fvm === "value" || fvm === "conquest") setFortressVictoryMode(fvm);
 
       if (parsed?.maxFortressesPerOwner != null) {
         setMaxFortressesPerOwner(Math.max(1, Math.min(10, Math.floor(Number(parsed.maxFortressesPerOwner) || 2))));
@@ -1640,7 +1648,7 @@ export default function DepartementsConfig(props: any) {
           </OptionRow>
         ) : null}
 
-        {(gameMode === "classic" || fortressVictoryMode === "majority") ? (
+        {(gameMode === "classic" || fortressVictoryMode !== "conquest") ? (
           <OptionRow label={
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span>{t("config.rounds", "Rounds")}</span>
@@ -1777,13 +1785,31 @@ export default function DepartementsConfig(props: any) {
             <OptionSelect
               value={fortressVictoryMode}
               options={[
-                { value: "majority", label: "Majorité à la fin des rounds" },
+                { value: "majority", label: "Majorité — nombre de territoires" },
+                { value: "value", label: "Majorité — valeur cumulée" },
                 { value: "conquest", label: "Conquête totale de la carte" },
               ]}
               onChange={setFortressVictoryMode as any}
             />
           </OptionRow>
         )}
+
+        {gameMode === "fortress" && fortressVictoryMode === "value" ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: `1px solid ${primary}55`,
+              background: `${primary}10`,
+              color: "#dfe5f5",
+              fontSize: 11.5,
+              lineHeight: 1.45,
+            }}
+          >
+            <strong style={{ color: primary }}>Victoire à la valeur :</strong> chaque territoire rapporte sa valeur cible. La distribution initiale équilibre le nombre et la valeur entre les camps, puis le classement final additionne les valeurs possédées.
+          </div>
+        ) : null}
       </Section>
 
       {/* ✅ Bouton EXACTEMENT “famille X01” */}

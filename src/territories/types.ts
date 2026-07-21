@@ -54,6 +54,7 @@ export type TerritoriesVictoryCondition =
   | { type: "regions"; value: number }
   | { type: "time"; minutes: number }
   | { type: "rounds" }
+  | { type: "rounds_value" }
   | { type: "conquest" };
 
 export interface TerritoriesConfig {

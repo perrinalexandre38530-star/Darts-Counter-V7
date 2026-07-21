@@ -36,7 +36,7 @@ export type TerritoriesMatch = {
   mode?: "solo" | "teams";
   gameMode?: "classic" | "fortress";
   maxFortressesPerOwner?: number;
-  victory?: "territories" | "regions" | "time" | "majority" | "conquest";
+  victory?: "territories" | "regions" | "time" | "majority" | "value" | "conquest";
 
   // config / meta
   teams: number;
@@ -51,6 +51,7 @@ export type TerritoriesMatch = {
   // agrégats gameplay par teamIndex
   captured: number[]; // captures
   domination: number[]; // score final (territoires/regions possédés)
+  dominationValue?: number[]; // somme des valeurs des territoires possédés
 
   // ✅ nouveaux champs (optionnels)
   darts?: number[];
@@ -108,6 +109,7 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
 
   const captured = arrNums(raw.captured) ?? [];
   const domination = arrNums(raw.domination) ?? [];
+  const dominationValue = arrNums(raw.dominationValue);
 
   const darts = arrNums(raw.darts);
   const steals = arrNums(raw.steals);
@@ -121,7 +123,7 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
     ? Math.max(1, Math.min(10, Math.floor(toNum(raw.maxFortressesPerOwner, 2))))
     : undefined;
   const victory =
-    raw.victory === "territories" || raw.victory === "regions" || raw.victory === "time" || raw.victory === "majority" || raw.victory === "conquest"
+    raw.victory === "territories" || raw.victory === "regions" || raw.victory === "time" || raw.victory === "majority" || raw.victory === "value" || raw.victory === "conquest"
       ? raw.victory
       : undefined;
 
@@ -153,6 +155,7 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
     winnerTeam,
     captured,
     domination,
+    dominationValue,
     darts,
     steals,
     lost,
@@ -239,6 +242,7 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
             winnerTeam: (m as any).winnerTeam,
             captured: (m as any).captured,
             domination: (m as any).domination,
+            dominationValue: (m as any).dominationValue,
             darts: (m as any).darts,
             steals: (m as any).steals,
             lost: (m as any).lost,

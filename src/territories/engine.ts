@@ -120,6 +120,14 @@ function countTerritoriesOwned(state: TerritoriesGameState, ownerId: OwnerId): n
   return state.map.territories.filter((t) => t.ownerId === ownerId).length;
 }
 
+function sumTerritoryValueOwned(state: TerritoriesGameState, ownerId: OwnerId): number {
+  return state.map.territories.reduce((total, territory) => {
+    if (territory.ownerId !== ownerId) return total;
+    const value = Number(territory.value);
+    return total + (Number.isFinite(value) ? Math.max(0, value) : 0);
+  }, 0);
+}
+
 function computeRegionOwnership(state: TerritoriesGameState): Record<string, OwnerId | undefined> {
   const out: Record<string, OwnerId | undefined> = {};
   const byRegion: Record<string, Territory[]> = {};
@@ -162,21 +170,30 @@ function roundLimitReachedAtEndOfCurrentTurn(state: TerritoriesGameState): boole
   return state.roundIndex >= Math.max(1, state.config.maxRounds) && isLastPlayerOfRound(state);
 }
 
-function bestOwnerByTerritories(state: TerritoriesGameState): { winnerId?: OwnerId; tie: boolean } {
+function bestOwnerByMetric(
+  state: TerritoriesGameState,
+  metric: "count" | "value" = "count",
+): { winnerId?: OwnerId; tie: boolean } {
   let winnerId: OwnerId | undefined;
   let best = -1;
   let tie = false;
   for (const ownerId of possibleOwnerIds(state)) {
-    const n = countTerritoriesOwned(state, ownerId);
-    if (n > best) {
-      best = n;
+    const score = metric === "value"
+      ? sumTerritoryValueOwned(state, ownerId)
+      : countTerritoriesOwned(state, ownerId);
+    if (score > best) {
+      best = score;
       winnerId = ownerId;
       tie = false;
-    } else if (n === best) {
+    } else if (score === best) {
       tie = true;
     }
   }
   return { winnerId, tie };
+}
+
+function bestOwnerByTerritories(state: TerritoriesGameState): { winnerId?: OwnerId; tie: boolean } {
+  return bestOwnerByMetric(state, "count");
 }
 
 function checkVictory(state: TerritoriesGameState, nowMs: number = Date.now()): { gameEnded: boolean; winnerId?: OwnerId } {
@@ -241,9 +258,9 @@ function checkVictory(state: TerritoriesGameState, nowMs: number = Date.now()): 
     return { gameEnded: true, winnerId: best.tie ? undefined : best.winnerId };
   }
 
-  if (victoryCondition.type === "rounds") {
+  if (victoryCondition.type === "rounds" || victoryCondition.type === "rounds_value") {
     if (!roundLimitReachedAtEndOfCurrentTurn(state)) return { gameEnded: false };
-    const best = bestOwnerByTerritories(state);
+    const best = bestOwnerByMetric(state, victoryCondition.type === "rounds_value" ? "value" : "count");
     return { gameEnded: true, winnerId: best.tie ? undefined : best.winnerId };
   }
 
@@ -380,8 +397,32 @@ export function initializeEqualTerritoryOwnership(input: TerritoriesGameState): 
 
   const total = state.map.territories.length;
   const equalShare = Math.floor(total / owners.length);
-  let cursor = 0;
 
+  if (state.config.victoryCondition.type === "rounds_value") {
+    // In value mode, equal territory counts are not sufficient: a camp could
+    // start with the same quantity but a much larger total value. Distribute
+    // the highest-value territories first to the currently weakest camp while
+    // preserving exactly equal territory counts.
+    const totals: Record<string, number> = Object.fromEntries(owners.map((ownerId) => [ownerId, 0]));
+    const counts: Record<string, number> = Object.fromEntries(owners.map((ownerId) => [ownerId, 0]));
+    const candidates = [...state.map.territories]
+      .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0) || a.id.localeCompare(b.id))
+      .slice(0, equalShare * owners.length);
+
+    for (const territory of candidates) {
+      const ownerId = [...owners]
+        .filter((id) => counts[id] < equalShare)
+        .sort((a, b) => totals[a] - totals[b] || counts[a] - counts[b] || a.localeCompare(b))[0];
+      if (!ownerId) continue;
+      territory.ownerId = ownerId;
+      counts[ownerId] += 1;
+      totals[ownerId] += Math.max(0, Number(territory.value) || 0);
+      addCapturedToOwner(state, ownerId, territory.id);
+    }
+    return state;
+  }
+
+  let cursor = 0;
   owners.forEach((ownerId) => {
     for (let i = 0; i < equalShare; i += 1) {
       const territory = state.map.territories[cursor++];
@@ -550,6 +591,16 @@ export function countOwnedByOwnerId(state: TerritoriesGameState): Record<string,
   for (const t of state.map.territories) {
     if (!t.ownerId) continue;
     out[t.ownerId] = (out[t.ownerId] || 0) + 1;
+  }
+  return out;
+}
+
+export function sumOwnedValueByOwnerId(state: TerritoriesGameState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const territory of state.map.territories) {
+    if (!territory.ownerId) continue;
+    const value = Number(territory.value);
+    out[territory.ownerId] = (out[territory.ownerId] || 0) + (Number.isFinite(value) ? Math.max(0, value) : 0);
   }
   return out;
 }

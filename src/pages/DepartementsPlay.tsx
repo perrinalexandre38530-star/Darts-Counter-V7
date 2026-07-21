@@ -41,6 +41,7 @@ import {
   applyVisit,
   endTurn,
   countOwnedByOwnerId,
+  sumOwnedValueByOwnerId,
   initializeEqualTerritoryOwnership,
   getOwnerIdForPlayer,
 } from "../territories/engine";
@@ -61,7 +62,7 @@ export type TerritoriesConfigPayload = {
   mapId: string;
 
   gameMode?: "classic" | "fortress";
-  fortressVictoryMode?: "majority" | "conquest";
+  fortressVictoryMode?: "majority" | "value" | "conquest";
   maxFortressesPerOwner?: number;
   targetSelectionMode?: "free" | "by_score";
   captureRule?: "exact" | "gte";
@@ -154,8 +155,17 @@ const CONTINENT_MAP_IDS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA",
 const MAP_LEVEL_FLAG_CODES = new Set(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
 function findTerritoryFlagByCountry(countryCode: string | null): string | null {
-  if (!countryCode || MAP_LEVEL_FLAG_CODES.has(countryCode)) return null;
-  return findFlagByCountry(countryCode);
+  const rawCode = String(countryCode || "").toUpperCase().trim();
+  if (!/^[A-Z]{2}$/.test(rawCode) || MAP_LEVEL_FLAG_CODES.has(rawCode)) return null;
+  const code = rawCode === "KV" ? "XK" : rawCode;
+
+  // Priorité aux ressources locales, utilisables hors ligne.
+  const local = findFlagByCountry(code);
+  if (local) return local;
+
+  // Le projet ne contient historiquement qu'une partie des drapeaux mondiaux.
+  // Ce secours garantit l'affichage des pays absents du bundle local.
+  return `https://flagcdn.com/w320/${code.toLowerCase()}.png`;
 }
 
 function getTerritoryCountryCode(country: TerritoriesCountry, territoryId?: string | null): string | null {
@@ -290,7 +300,7 @@ type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: 
 
 const RULES_TEXT = (cfg: {
   gameMode: "classic" | "fortress";
-  fortressVictoryMode: "majority" | "conquest";
+  fortressVictoryMode: "majority" | "value" | "conquest";
   selectionMode: "free" | "by_score";
   captureRule: "exact" | "gte";
   victoryMode: "territories" | "regions" | "time";
@@ -328,7 +338,11 @@ Cible
 - ${selectionMode === "free" ? "Choix libre sur la carte." : "La valeur de la volée détermine automatiquement la cible."}
 
 Victoire
-- ${fortressVictoryMode === "conquest" ? "Conquête totale : posséder toute la carte." : `Majorité : posséder le plus de territoires après ${maxRounds} rounds.`}`;
+- ${fortressVictoryMode === "conquest"
+    ? "Conquête totale : posséder toute la carte."
+    : fortressVictoryMode === "value"
+      ? `Majorité en valeur : la distribution initiale équilibre les valeurs entre les camps. Après ${maxRounds} rounds, le total cumulé le plus élevé gagne.`
+      : `Majorité en nombre : posséder le plus de territoires après ${maxRounds} rounds.`}`;
   }
 
   const cap = captureRule === "gte" ? "GTE : total supérieur ou égal" : "EXACT : total strictement égal";
@@ -404,8 +418,12 @@ export default function DepartementsPlay(props: any) {
 
   const maxRounds = Math.max(1, Number(effectiveCfg.rounds || 12));
   const gameMode: "classic" | "fortress" = effectiveCfg.gameMode === "fortress" ? "fortress" : "classic";
-  const fortressVictoryMode: "majority" | "conquest" =
-    effectiveCfg.fortressVictoryMode === "conquest" ? "conquest" : "majority";
+  const fortressVictoryMode: "majority" | "value" | "conquest" =
+    effectiveCfg.fortressVictoryMode === "conquest"
+      ? "conquest"
+      : effectiveCfg.fortressVictoryMode === "value"
+        ? "value"
+        : "majority";
   const maxFortressesPerOwner = Math.max(
     1,
     Math.min(10, Math.floor(Number(effectiveCfg.maxFortressesPerOwner ?? 2) || 2)),
@@ -506,7 +524,11 @@ export default function DepartementsPlay(props: any) {
 
   const victoryCondition: TerritoriesVictoryCondition = React.useMemo(() => {
     if (gameMode === "fortress") {
-      return fortressVictoryMode === "conquest" ? { type: "conquest" } : { type: "rounds" };
+      return fortressVictoryMode === "conquest"
+        ? { type: "conquest" }
+        : fortressVictoryMode === "value"
+          ? { type: "rounds_value" }
+          : { type: "rounds" };
     }
     if (victoryMode === "regions") return { type: "regions", value: winRegions };
     if (victoryMode === "time") return { type: "time", minutes: timeLimitMin };
@@ -593,6 +615,11 @@ export default function DepartementsPlay(props: any) {
   const activeOwnerLabel = teams?.find((team) => team.id === activeOwnerId)?.name || activePlayer?.name || "Player";
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
+  const ownedValueByOwner = React.useMemo(() => sumOwnedValueByOwnerId(game), [game]);
+  const totalMapValue = React.useMemo(
+    () => game.map.territories.reduce((sum, territory) => sum + Math.max(0, Number(territory.value) || 0), 0),
+    [game.map.territories],
+  );
 
   const selectedTerritory = React.useMemo(() => {
     const id = game.turn.selectedTerritoryId;
@@ -613,9 +640,9 @@ export default function DepartementsPlay(props: any) {
     ? `${selectedTerritory.fortressOwnerId === selectedTerritory.ownerId ? "🛡 " : ""}${selectedTerritoryDisplayName}`
     : "—";
   const territoryFlagSrc = findTerritoryFlagByCountry(selectedTerritoryCountryCode);
-  const territoryFlagEmoji = territoryFlagSrc
-    ? undefined
-    : isoCodeToFlagEmoji(selectedTerritoryCountryCode);
+  // Toujours conserver l'emoji : il prend automatiquement le relais si une
+  // image locale ou distante est absente / bloquée.
+  const territoryFlagEmoji = isoCodeToFlagEmoji(selectedTerritoryCountryCode);
 
   const isFrRegionsVictory = gameMode === "classic" && country === "FR" && victoryMode === "regions";
 
@@ -697,20 +724,27 @@ export default function DepartementsPlay(props: any) {
           name: team.name,
           color: team.color,
           owned: (ownedByOwner[team.id] || 0) as number,
+          value: (ownedValueByOwner[team.id] || 0) as number,
         }))
       : game.players.map((player) => ({
           id: player.id,
           name: player.name,
           color: player.color,
           owned: (ownedByOwner[player.id] || 0) as number,
+          value: (ownedValueByOwner[player.id] || 0) as number,
         }));
-    rows.sort((a, b) => b.owned - a.owned || a.name.localeCompare(b.name));
+    rows.sort((a, b) => {
+      if (gameMode === "fortress" && fortressVictoryMode === "value") {
+        return b.value - a.value || b.owned - a.owned || a.name.localeCompare(b.name);
+      }
+      return b.owned - a.owned || b.value - a.value || a.name.localeCompare(b.name);
+    });
     return rows;
-  }, [game.players, game.teams, ownedByOwner]);
+  }, [game.players, game.teams, gameMode, fortressVictoryMode, ownedByOwner, ownedValueByOwner]);
 
   function goBack() {
-    // BackDot déclenche pointerdown puis click sur certains appareils. On ne navigue
-    // qu'une seule fois, sinon le second événement peut dépasser la page CONFIG.
+    // Verrou de sécurité : même en cas de double activation matérielle, une seule
+    // navigation vers la configuration TERRITORIES est autorisée.
     if (backNavigationLockedRef.current) return;
     backNavigationLockedRef.current = true;
     setShowMapModal(false);
@@ -826,6 +860,8 @@ export default function DepartementsPlay(props: any) {
     return ownedByOwner[activeOwnerId] || 0;
   }, [activeOwnerId, gameMode, ownedByOwner, ownedRegionsByOwner, victoryMode]);
 
+  const possessionValueForActive = activeOwnerId ? ownedValueByOwner[activeOwnerId] || 0 : 0;
+
   const possessionsGoal = React.useMemo(() => {
     if (gameMode === "fortress") return game.map.territories.length;
     if (victoryMode === "regions") return winRegions;
@@ -879,12 +915,13 @@ export default function DepartementsPlay(props: any) {
       if (best) return best.id;
     }
 
-    // Time, rounds or fallback: most possessions. A strict tie stays a tie.
+    // In Forteresses + valeur, the final ranking is the sum of territory values.
+    const finalScores = vc.type === "rounds_value" ? ownedValueByOwner : ownedCounts;
     let maxId: string | null = null;
     let maxV = -1;
     let tied = false;
     for (const oid of ownersOrder) {
-      const value = ownedCounts[oid] || 0;
+      const value = finalScores[oid] || 0;
       if (value > maxV) {
         maxV = value;
         maxId = oid;
@@ -894,7 +931,7 @@ export default function DepartementsPlay(props: any) {
       }
     }
     return tied ? null : maxId;
-  }, [game.status, game.config.victoryCondition, gameMode, victoryMode, ownedByOwner, ownedRegionsByOwner, ownersOrder]);
+  }, [game.status, game.config.victoryCondition, gameMode, victoryMode, ownedByOwner, ownedValueByOwner, ownedRegionsByOwner, ownersOrder]);
 
   const recordedRef = React.useRef(false);
   React.useEffect(() => {
@@ -946,7 +983,7 @@ export default function DepartementsPlay(props: any) {
       gameMode,
       maxFortressesPerOwner,
       victory: gameMode === "fortress"
-        ? fortressVictoryMode === "conquest" ? "conquest" : "majority"
+        ? fortressVictoryMode === "conquest" ? "conquest" : fortressVictoryMode === "value" ? "value" : "majority"
         : victoryMode,
       objective: gameMode === "fortress"
         ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
@@ -961,6 +998,7 @@ export default function DepartementsPlay(props: any) {
       fortresses: ownersOrder.map((oid) => fortressesByOwner[oid] || 0),
       breaches: ownersOrder.map((oid) => breachesByOwner[oid] || 0),
       domination: ownersOrder.map((oid) => ownedCounts[oid] || 0),
+      dominationValue: ownersOrder.map((oid) => ownedValueByOwner[oid] || 0),
       players: players.map((player) => ({
         id: player.id,
         name: player.name,
@@ -981,6 +1019,7 @@ export default function DepartementsPlay(props: any) {
     game.map.territories.length,
     victoryMode,
     ownedByOwner,
+    ownedValueByOwner,
     ownedRegionsByOwner,
     ownersOrder,
     players,
@@ -1109,7 +1148,7 @@ export default function DepartementsPlay(props: any) {
         tickerSrc={tickerSrc}
         tickerAlt="TERRITORIES"
         tickerHeight={92}
-        left={<BackDot onClick={goBack} />}
+        left={<BackDot onClick={goBack} title="Retour à la configuration TERRITORIES" />}
         right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: territoryValueCalibration.minTarget, valueTargetMax: territoryValueCalibration.maxTarget })} />}
       />
 
@@ -1122,6 +1161,7 @@ export default function DepartementsPlay(props: any) {
           players={players}
           teams={teams}
           ownedByOwner={gameMode === "classic" && victoryMode === "regions" && ownedRegionsByOwner ? ownedRegionsByOwner : ownedByOwner}
+          ownedValueByOwner={ownedValueByOwner}
           victoryMode={gameMode === "fortress" ? fortressVictoryMode : victoryMode}
           objective={gameMode === "fortress"
             ? fortressVictoryMode === "conquest" ? game.map.territories.length : maxRounds
@@ -1249,36 +1289,31 @@ export default function DepartementsPlay(props: any) {
             </div>
           </div>
 
-          {/* Right: stats (labels + values, stacked) */}
-          <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", zIndex: 1 }}>
+          {/* Right: live stats as compact KPI cards */}
+          <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", zIndex: 1, minWidth: 0 }}>
             <div
               style={{
-                // Hard guard against overflow on small screens
-                width: "clamp(142px, 40vw, 210px)",
+                width: "clamp(170px, 45vw, 238px)",
                 minWidth: 0,
-                padding: "12px 14px 12px 14px",
+                padding: 8,
                 borderRadius: 16,
                 background: "rgba(0,0,0,0.22)",
                 border: `1px solid ${activeColor}55`,
                 boxShadow: `0 0 18px ${activeColor}1f`,
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 6,
+                alignContent: "center",
               }}
             >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 8,
-                  alignItems: "center",
-                }}
-              >
-                <StatLine label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} valueColor={activeColor} />
-                <StatLine label="Fléchettes" value={String(activeStats.darts)} />
-                <StatLine label="Captures" value={String(activeStats.captures)} />
-                {gameMode === "fortress" ? <StatLine label="Forteresses" value={String(activeStats.fortresses)} /> : null}
-                {gameMode === "fortress" ? <StatLine label="Brèches" value={String(activeStats.breaches)} /> : null}
-                <StatLine label="Vols" value={String(activeStats.steals)} />
-                <StatLine label="Perdus" value={String(activeStats.lost)} />
-              </div>
+              <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
+              <ProfileStatKpi label="Valeur" value={`${possessionValueForActive}/${totalMapValue}`} color={fortressVictoryMode === "value" ? activeColor : undefined} />
+              <ProfileStatKpi label="Fléchettes" value={String(activeStats.darts)} />
+              <ProfileStatKpi label="Captures" value={String(activeStats.captures)} />
+              {gameMode === "fortress" ? <ProfileStatKpi label="Forteresses" value={String(activeStats.fortresses)} /> : null}
+              {gameMode === "fortress" ? <ProfileStatKpi label="Brèches" value={String(activeStats.breaches)} /> : null}
+              <ProfileStatKpi label="Vols" value={String(activeStats.steals)} />
+              <ProfileStatKpi label="Perdus" value={String(activeStats.lost)} />
             </div>
           </div>
         </div>
@@ -1337,7 +1372,9 @@ export default function DepartementsPlay(props: any) {
                   <div key={row.id} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 999, background: "rgba(0,0,0,0.28)", border: `1px solid ${row.color}66` }}>
                     <span style={{ width: 10, height: 10, borderRadius: 999, background: row.color, boxShadow: `0 0 9px ${row.color}` }} />
                     <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 950 }}>{row.name}</span>
-                    <span style={{ color: row.color, fontSize: 11, fontWeight: 1000 }}>{row.owned}</span>
+                    <span style={{ color: row.color, fontSize: 11, fontWeight: 1000 }}>
+                      {row.owned}<span style={{ opacity: 0.72, marginLeft: 4 }}>• {row.value} pts</span>
+                    </span>
                     {hasFortress ? <span title="Forteresse active" style={{ fontSize: 12 }}>🛡</span> : null}
                   </div>
                 );
@@ -1411,6 +1448,9 @@ function KpiCard(props: {
   const fittedValueFontSize = props.fitValue
     ? Math.max(8, Math.min(props.valueFontSize ?? 13, 16 - Math.max(0, props.value.length - 10) * 0.22))
     : (props.valueFontSize ?? 20);
+  const [watermarkFailed, setWatermarkFailed] = React.useState(false);
+  React.useEffect(() => setWatermarkFailed(false), [props.watermarkSrc]);
+  const showWatermarkImage = !!props.watermarkSrc && !watermarkFailed;
 
   return (
     <div
@@ -1437,17 +1477,17 @@ function KpiCard(props: {
         if (e.key === "Enter" || e.key === " ") props.onClick();
       }}
     >
-      {props.watermarkSrc || props.watermarkEmoji ? (
+      {showWatermarkImage || props.watermarkEmoji ? (
         <div
           aria-hidden
           style={{
             position: "absolute",
             inset: 0,
             pointerEvents: "none",
-            opacity: props.watermarkSrc ? 0.32 : 0.24,
+            opacity: showWatermarkImage ? 0.32 : 0.24,
           }}
         >
-          {props.watermarkSrc ? (
+          {showWatermarkImage ? (
             <img
               src={props.watermarkSrc}
               alt=""
@@ -1457,10 +1497,13 @@ function KpiCard(props: {
                 width: "100%",
                 height: "100%",
                 objectFit: "cover",
+                objectPosition: "center",
                 filter: "saturate(1.15) contrast(1.05) drop-shadow(0 0 12px rgba(0,0,0,0.35))",
                 mixBlendMode: "normal",
               }}
               draggable={false}
+              referrerPolicy="no-referrer"
+              onError={() => setWatermarkFailed(true)}
             />
           ) : (
             <div
@@ -1471,6 +1514,7 @@ function KpiCard(props: {
                 placeItems: "center",
                 fontSize: "clamp(38px, 10vw, 62px)",
                 lineHeight: 1,
+                fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
                 filter: "saturate(1.1) drop-shadow(0 0 12px rgba(0,0,0,0.45))",
                 transform: "scale(1.12)",
               }}
@@ -1635,42 +1679,53 @@ function TerritoriesMapModal(props: {
   );
 }
 
-function StatMini(props: { label: string; value: number }) {
+function ProfileStatKpi(props: { label: string; value: string; color?: string }) {
   return (
     <div
       style={{
-        padding: "8px 10px",
-        borderRadius: 12,
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.10)",
         minWidth: 0,
+        minHeight: 43,
+        padding: "6px 7px",
+        borderRadius: 11,
+        background: props.color ? `${props.color}14` : "rgba(255,255,255,0.045)",
+        border: `1px solid ${props.color ? `${props.color}55` : "rgba(255,255,255,0.09)"}`,
+        boxShadow: props.color ? `0 0 12px ${props.color}18` : undefined,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        overflow: "hidden",
       }}
     >
-      <div style={{ fontSize: 10, opacity: 0.75, fontWeight: 900, letterSpacing: 0.6 }}>{props.label.toUpperCase()}</div>
-      <div style={{ marginTop: 2, fontSize: 16, fontWeight: 950 }}>{props.value}</div>
-    </div>
-  );
-}
-
-function StatLine(props: { label: string; value: string; valueColor?: string }) {
-  return (
-    <>
-      <div style={{ fontSize: 11, opacity: 0.78, fontWeight: 950, letterSpacing: 0.6 }}>{props.label.toUpperCase()}</div>
       <div
         style={{
-          fontSize: 14,
+          fontSize: 8.5,
+          lineHeight: 1,
+          opacity: 0.76,
           fontWeight: 950,
-          color: props.valueColor || "#fff",
-          maxWidth: "100%",
+          letterSpacing: 0.45,
+          textTransform: "uppercase",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
-          textAlign: "right",
+        }}
+      >
+        {props.label}
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 13,
+          lineHeight: 1,
+          fontWeight: 1000,
+          color: props.color || "#fff",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         {props.value}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1681,7 +1736,8 @@ function TerritoriesEndModal(props: {
   players: any[];
   teams?: any[] | null;
   ownedByOwner: Record<string, number>;
-  victoryMode: "territories" | "regions" | "time" | "majority" | "conquest";
+  ownedValueByOwner: Record<string, number>;
+  victoryMode: "territories" | "regions" | "time" | "majority" | "value" | "conquest";
   objective: number;
   onReplay: () => void;
   onQuit: () => void;
@@ -1703,11 +1759,18 @@ function TerritoriesEndModal(props: {
       const label = props.teams?.length
         ? props.teams.find((t) => String(t.id) === String(id))?.name || "Équipe"
         : props.players.find((p) => String(p.id) === String(id))?.name || "Joueur";
-      return { id, label, owned: props.ownedByOwner[id] || 0 };
+      return {
+        id,
+        label,
+        owned: props.ownedByOwner[id] || 0,
+        value: props.ownedValueByOwner[id] || 0,
+      };
     });
-    rows.sort((a, b) => b.owned - a.owned);
+    rows.sort((a, b) => props.victoryMode === "value"
+      ? b.value - a.value || b.owned - a.owned
+      : b.owned - a.owned || b.value - a.value);
     return rows;
-  }, [props.ownersOrder, props.ownedByOwner, props.players, props.teams]);
+  }, [props.ownersOrder, props.ownedByOwner, props.ownedValueByOwner, props.players, props.teams, props.victoryMode]);
 
   return (
     <div
@@ -1742,10 +1805,12 @@ function TerritoriesEndModal(props: {
           </div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.8 }}>
             {props.victoryMode === "majority"
-              ? `Majorité après ${props.objective} rounds`
-              : props.victoryMode === "conquest"
-                ? "Conquête totale de la carte"
-                : `Victoire par ${props.victoryMode === "time" ? "temps" : props.victoryMode === "regions" ? "régions" : "territoires"}${props.victoryMode === "time" ? ` (${props.objective} min)` : ` (objectif: ${props.objective})`}`}
+              ? `Majorité en nombre après ${props.objective} rounds`
+              : props.victoryMode === "value"
+                ? `Majorité en valeur après ${props.objective} rounds`
+                : props.victoryMode === "conquest"
+                  ? "Conquête totale de la carte"
+                  : `Victoire par ${props.victoryMode === "time" ? "temps" : props.victoryMode === "regions" ? "régions" : "territoires"}${props.victoryMode === "time" ? ` (${props.objective} min)` : ` (objectif: ${props.objective})`}`}
           </div>
         </div>
 
@@ -1759,7 +1824,7 @@ function TerritoriesEndModal(props: {
           }}
         >
           <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: 0.8, opacity: 0.85, marginBottom: 8, textTransform: "uppercase" }}>
-            Récap possession
+            {props.victoryMode === "value" ? "Classement par valeur" : "Récap possession"}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {recap.map((r) => (
@@ -1778,8 +1843,13 @@ function TerritoriesEndModal(props: {
                 <div style={{ fontSize: 13, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.label}
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 1000, color: props.themeColor }}>
-                  {r.owned}
+                <div style={{ textAlign: "right", lineHeight: 1.05 }}>
+                  <div style={{ fontSize: 13, fontWeight: 1000, color: props.themeColor }}>
+                    {props.victoryMode === "value" ? `${r.value} pts` : `${r.owned} territoires`}
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 10, opacity: 0.68, fontWeight: 850 }}>
+                    {props.victoryMode === "value" ? `${r.owned} territoires` : `${r.value} pts cumulés`}
+                  </div>
                 </div>
               </div>
             ))}
