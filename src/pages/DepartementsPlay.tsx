@@ -28,7 +28,7 @@ import type {
   TerritoriesTeam,
   TerritoriesVictoryCondition,
 } from "../territories/types";
-import { buildTerritoriesMap } from "../territories/map";
+import { buildTerritoriesMap, getBaseSvgForCountry } from "../territories/map";
 import TerritoriesMapView from "../territories/TerritoriesMapView";
 import { getFrenchDepartmentFlagUrl } from "../territories/frDepartmentFlags";
 import {
@@ -49,6 +49,7 @@ import {
 
 import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
 import { speak } from "../lib/voice";
+import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -708,15 +709,584 @@ function TerritoryOwnerBadge(props: {
   );
 }
 
-function captureAnnouncementPhrases(lang: string, playerName: string, territoryName: string, stolen: boolean): string[] {
+
+
+type TerritoryShapeGeometry = {
+  d: string;
+  transform?: string;
+  fillRule?: "nonzero" | "evenodd";
+  clipRule?: "nonzero" | "evenodd";
+};
+
+function getTerritoryShapeGeometry(
+  country: TerritoriesCountry,
+  territoryId: string,
+  svgPathId?: string,
+): TerritoryShapeGeometry | null {
+  if (typeof DOMParser === "undefined") return null;
+  try {
+    const raw = getBaseSvgForCountry(country);
+    const doc = new DOMParser().parseFromString(raw, "image/svg+xml");
+    const paths = Array.from(doc.querySelectorAll("path"));
+    const wantedPathId = String(svgPathId || "").trim();
+    const wantedTerritoryId = String(territoryId || "").trim();
+    const wantedDepartment = wantedTerritoryId.startsWith("FR-")
+      ? wantedTerritoryId.slice(3)
+      : wantedPathId;
+
+    const path = paths.find((candidate) => {
+      if (country === "FR") {
+        return String(candidate.getAttribute("data-numerodepartement") || "") === wantedDepartment;
+      }
+      return String(candidate.getAttribute("id") || "") === wantedPathId
+        || String(candidate.getAttribute("id") || "") === wantedTerritoryId;
+    });
+    const d = path?.getAttribute("d");
+    if (!path || !d) return null;
+
+    const normalizeRule = (value: string | null): "nonzero" | "evenodd" | undefined =>
+      value === "evenodd" ? "evenodd" : value === "nonzero" ? "nonzero" : undefined;
+
+    return {
+      d,
+      transform: path.getAttribute("transform") || undefined,
+      fillRule: normalizeRule(path.getAttribute("fill-rule")),
+      clipRule: normalizeRule(path.getAttribute("clip-rule")),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function TerritorySilhouetteBadge(props: {
+  country: TerritoriesCountry;
+  territoryId: string;
+  svgPathId?: string;
+  territoryValue: number;
+  flagSrc?: string | null;
+  flagEmoji?: string;
+  color: string;
+}) {
+  const geometry = React.useMemo(
+    () => getTerritoryShapeGeometry(props.country, props.territoryId, props.svgPathId),
+    [props.country, props.territoryId, props.svgPathId],
+  );
+  const measureRef = React.useRef<SVGPathElement | null>(null);
+  const [bounds, setBounds] = React.useState({ x: 0, y: 0, width: 100, height: 100 });
+  const [viewBox, setViewBox] = React.useState("0 0 100 100");
+  const [center, setCenter] = React.useState({ x: 50, y: 50, fontSize: 34 });
+  const clipId = React.useId().replace(/:/g, "");
+  const glowId = `${clipId}-glow`;
+
+  React.useLayoutEffect(() => {
+    const node = measureRef.current;
+    if (!node) return;
+    try {
+      const bbox = node.getBBox();
+      if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0 || bbox.height <= 0) return;
+      const pad = Math.max(bbox.width, bbox.height) * 0.11;
+      const x = bbox.x - pad;
+      const y = bbox.y - pad;
+      const width = bbox.width + pad * 2;
+      const height = bbox.height + pad * 2;
+      setBounds({ x, y, width, height });
+      setViewBox(`${x} ${y} ${width} ${height}`);
+      setCenter({
+        x: bbox.x + bbox.width / 2,
+        y: bbox.y + bbox.height / 2,
+        fontSize: Math.max(12, Math.min(bbox.width, bbox.height) * 0.34),
+      });
+    } catch {
+      // Keep the resilient fallback viewBox.
+    }
+  }, [geometry?.d, geometry?.transform]);
+
+  if (!geometry) {
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: 112,
+          display: "grid",
+          placeItems: "center",
+          borderRadius: 24,
+          border: `2px solid ${props.color}`,
+          background: `radial-gradient(circle, ${props.color}33, rgba(0,0,0,.48) 70%)`,
+          boxShadow: `0 0 20px ${props.color}55`,
+          color: "#fff",
+          fontSize: 40,
+          fontWeight: 1000,
+        }}
+      >
+        {props.territoryValue}
+      </div>
+    );
+  }
+
+  const commonPathProps = {
+    d: geometry.d,
+    transform: geometry.transform,
+    fillRule: geometry.fillRule,
+    clipRule: geometry.clipRule,
+  } as const;
+
+  return (
+    <svg
+      viewBox={viewBox}
+      role="img"
+      aria-label={`Territoire, valeur ${props.territoryValue}`}
+      style={{ width: "100%", height: 118, display: "block", overflow: "visible" }}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+          <path {...commonPathProps} />
+        </clipPath>
+        <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="3.2" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <path ref={measureRef} {...commonPathProps} fill="transparent" stroke="transparent" />
+
+      <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill={props.color} clipPath={`url(#${clipId})`} />
+      {props.flagSrc ? (
+        <image
+          href={props.flagSrc}
+          x={bounds.x}
+          y={bounds.y}
+          width={bounds.width}
+          height={bounds.height}
+          preserveAspectRatio="xMidYMid slice"
+          opacity="0.92"
+          clipPath={`url(#${clipId})`}
+        />
+      ) : props.flagEmoji ? (
+        <text
+          x={center.x}
+          y={center.y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={center.fontSize * 2.2}
+          opacity="0.52"
+          clipPath={`url(#${clipId})`}
+        >
+          {props.flagEmoji}
+        </text>
+      ) : null}
+      <path {...commonPathProps} fill={`${props.color}33`} stroke="rgba(255,255,255,.98)" strokeWidth="2.6" vectorEffect="non-scaling-stroke" filter={`url(#${glowId})`} />
+      <text
+        x={center.x}
+        y={center.y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={center.fontSize}
+        fontWeight="1000"
+        fill="#fff"
+        stroke="rgba(0,0,0,.84)"
+        strokeWidth={Math.max(1.4, center.fontSize * 0.08)}
+        paintOrder="stroke fill"
+        style={{ filter: `drop-shadow(0 0 7px ${props.color})` }}
+      >
+        {props.territoryValue}
+      </text>
+    </svg>
+  );
+}
+
+function TerritoriesTurnCarousel(props: {
+  players: TerritoriesPlayer[];
+  activeId: string;
+  profileById: Record<string, any>;
+  ownedValueByOwner: Record<string, number>;
+}) {
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const itemRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
+
+  React.useEffect(() => {
+    const wrap = wrapRef.current;
+    const active = itemRefs.current[props.activeId];
+    if (!wrap || !active) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const delta = activeRect.left + activeRect.width / 2 - (wrapRect.left + wrapRect.width / 2);
+    wrap.scrollBy({ left: delta, behavior: "smooth" });
+  }, [props.activeId, props.players.length]);
+
+  return (
+    <div style={{ padding: "3px 10px 0" }}>
+      <div
+        ref={wrapRef}
+        className="dc-scroll-thin"
+        style={{
+          display: "flex",
+          gap: 9,
+          overflowX: "auto",
+          overflowY: "hidden",
+          padding: "3px 2px 5px",
+          WebkitOverflowScrolling: "touch",
+          scrollSnapType: "x proximity",
+        }}
+      >
+        {props.players.map((player) => {
+          const ownerId = player.teamId || player.id;
+          const value = Math.max(0, Number(props.ownedValueByOwner[ownerId] || 0));
+          const active = player.id === props.activeId;
+          const color = player.color || "#52f7ff";
+          const profile = props.profileById[player.id] ?? { id: player.id, name: player.name, avatar: player.avatar };
+
+          return (
+            <div
+              key={player.id}
+              ref={(node) => { itemRefs.current[player.id] = node; }}
+              title={`${player.name} · ${value} points de territoires`}
+              style={{
+                flex: "0 0 auto",
+                height: 44,
+                minWidth: 118,
+                maxWidth: 148,
+                display: "grid",
+                gridTemplateColumns: "54px minmax(58px, 1fr)",
+                alignItems: "stretch",
+                overflow: "hidden",
+                borderRadius: 999,
+                border: `1px solid ${active ? color : `${color}77`}`,
+                background: active
+                  ? `linear-gradient(180deg, ${color}24, rgba(4,7,13,.94))`
+                  : "rgba(0,0,0,.34)",
+                boxShadow: active ? `0 0 0 1px ${color}55, 0 0 20px ${color}66` : "none",
+                scrollSnapAlign: "center",
+              }}
+            >
+              <div style={{ position: "relative", width: 54, height: 44, overflow: "hidden", background: `${color}18` }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: -7,
+                    top: -13,
+                    width: 68,
+                    height: 68,
+                    transform: "scale(1.22)",
+                    transformOrigin: "center",
+                  }}
+                >
+                  <ProfileAvatar
+                    profile={profile}
+                    size={68}
+                    showStars={false}
+                    showDartOverlay={false}
+                    noFrame
+                  />
+                </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "linear-gradient(90deg, transparent 58%, rgba(3,6,12,.82) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  minWidth: 0,
+                  padding: "5px 10px 4px 7px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  lineHeight: 1,
+                }}
+              >
+                <div style={{ fontSize: 8, fontWeight: 1000, letterSpacing: 0.7, color: "rgba(255,255,255,.58)" }}>
+                  VALEUR
+                </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontSize: 18,
+                    fontWeight: 1000,
+                    color,
+                    textShadow: active ? `0 0 10px ${color}` : "none",
+                  }}
+                >
+                  {value}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type TerritoryCaptureToastData = {
+  id: number;
+  country: TerritoriesCountry;
+  territoryId: string;
+  svgPathId?: string;
+  territoryName: string;
+  territoryValue: number;
+  capturerName: string;
+  capturerPlayerId: string;
+  previousOwnerName?: string;
+  previousOwnerPlayerId?: string;
+  stolen: boolean;
+  color: string;
+  previousOwnerColor?: string;
+  flagSrc?: string | null;
+  flagEmoji?: string;
+};
+
+function TerritoryCaptureToast(props: {
+  data: TerritoryCaptureToastData | null;
+  profileById: Record<string, any>;
+}) {
+  const data = props.data;
+  if (!data) return null;
+
+  const rightPlayerId = data.stolen && data.previousOwnerPlayerId
+    ? data.previousOwnerPlayerId
+    : data.capturerPlayerId;
+  const rightPlayerName = data.stolen && data.previousOwnerName
+    ? data.previousOwnerName
+    : data.capturerName;
+  const rightColor = data.stolen
+    ? data.previousOwnerColor || "#fff"
+    : data.color;
+  const rightProfile = props.profileById[rightPlayerId] ?? {
+    id: rightPlayerId,
+    name: rightPlayerName,
+  };
+
+  return (
+    <div
+      key={data.id}
+      aria-live="assertive"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 12000,
+        pointerEvents: "none",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "clamp(96px, 15vh, 150px) 12px 14px",
+      }}
+    >
+      <style>{`
+        @keyframes territoriesCaptureToast {
+          0% { opacity: 0; transform: translateY(-18px) scale(.88); }
+          9% { opacity: 1; transform: translateY(0) scale(1.02); }
+          15%, 78% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-8px) scale(.96); }
+        }
+        @keyframes territoriesCapturedAvatarPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.055); }
+        }
+      `}</style>
+      <div
+        style={{
+          position: "relative",
+          width: "min(540px, calc(100vw - 24px))",
+          minHeight: 192,
+          overflow: "hidden",
+          borderRadius: 24,
+          border: `2px solid ${data.color}`,
+          background: "rgba(7,10,18,.97)",
+          boxShadow: `0 0 24px ${data.color}88, 0 18px 52px rgba(0,0,0,.76)`,
+          animation: "territoriesCaptureToast 3.25s ease both",
+          isolation: "isolate",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: `
+              radial-gradient(circle at 28% 48%, ${data.color}35, transparent 42%),
+              linear-gradient(90deg, rgba(5,8,15,.98) 0%, rgba(5,8,15,.94) 64%, rgba(5,8,15,.78) 100%)
+            `,
+            zIndex: -2,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 3,
+            background: `linear-gradient(90deg, transparent, ${data.color}, transparent)`,
+            boxShadow: `0 0 14px ${data.color}`,
+          }}
+        />
+
+        <div
+          style={{
+            minHeight: 192,
+            padding: "14px 15px 15px",
+            display: "grid",
+            gridTemplateRows: "auto 1fr",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: 11,
+              lineHeight: 1,
+              fontWeight: 1000,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              color: data.stolen ? "#ffcf58" : data.color,
+              textShadow: `0 0 10px ${data.stolen ? "#ffcf58" : data.color}`,
+            }}
+          >
+            {data.stolen ? "Vol de territoire" : "Territoire conquis"}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) 104px",
+              alignItems: "center",
+              gap: 12,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ minWidth: 0, display: "grid", alignContent: "center" }}>
+              <TerritorySilhouetteBadge
+                country={data.country}
+                territoryId={data.territoryId}
+                svgPathId={data.svgPathId}
+                territoryValue={data.territoryValue}
+                flagSrc={data.flagSrc}
+                flagEmoji={data.flagEmoji}
+                color={data.color}
+              />
+              <div
+                style={{
+                  marginTop: 1,
+                  padding: "0 4px",
+                  textAlign: "center",
+                  fontSize: "clamp(17px, 4.6vw, 24px)",
+                  lineHeight: 1.05,
+                  fontWeight: 1000,
+                  color: "#fff",
+                  textShadow: "0 2px 10px rgba(0,0,0,.95)",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {data.territoryName}
+              </div>
+              <div
+                style={{
+                  marginTop: 5,
+                  textAlign: "center",
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: data.color,
+                }}
+              >
+                {data.capturerName}
+              </div>
+            </div>
+
+            <div
+              style={{
+                minWidth: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 7,
+                paddingLeft: 10,
+                borderLeft: "1px solid rgba(255,255,255,.11)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 9,
+                  lineHeight: 1,
+                  fontWeight: 1000,
+                  letterSpacing: 0.9,
+                  color: data.stolen ? "rgba(255,255,255,.64)" : data.color,
+                  textAlign: "center",
+                }}
+              >
+                {data.stolen ? "DESTITUÉ" : "CONQUÉRANT"}
+              </div>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 999,
+                  display: "grid",
+                  placeItems: "center",
+                  border: `2px solid ${rightColor}`,
+                  background: "rgba(0,0,0,.45)",
+                  boxShadow: `0 0 18px ${rightColor}88`,
+                  animation: "territoriesCapturedAvatarPulse 1.1s ease-in-out 2",
+                }}
+              >
+                <ProfileAvatar
+                  profile={rightProfile}
+                  size={68}
+                  ringColor={rightColor}
+                  textColor="#fff"
+                  showStars={false}
+                  showDartOverlay={false}
+                />
+              </div>
+              <div
+                style={{
+                  maxWidth: 96,
+                  textAlign: "center",
+                  fontSize: 11,
+                  lineHeight: 1.05,
+                  fontWeight: 950,
+                  color: rightColor,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {rightPlayerName}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function captureAnnouncementPhrases(
+  lang: string,
+  playerName: string,
+  territoryName: string,
+  stolen: boolean,
+  previousOwnerName?: string,
+): string[] {
+  const formerOwner = previousOwnerName || (lang === "fr" ? "l'adversaire" : "the opponent");
+
   if (lang === "fr") {
     return stolen
       ? [
-          `${playerName} arrache ${territoryName} à l'adversaire !`,
-          `${territoryName} change de camp. Belle conquête de ${playerName} !`,
-          `Coup stratégique ! ${playerName} prend le contrôle de ${territoryName}.`,
-          `${playerName} renverse la défense et s'empare de ${territoryName}.`,
-          `Territoire volé ! ${territoryName} appartient maintenant à ${playerName}.`,
+          `${playerName} arrache ${territoryName} à ${formerOwner} !`,
+          `${territoryName} change de camp. ${formerOwner} est destitué par ${playerName} !`,
+          `Coup stratégique ! ${playerName} prend ${territoryName} à ${formerOwner}.`,
+          `${playerName} renverse ${formerOwner} et s'empare de ${territoryName}.`,
+          `Territoire volé ! ${territoryName} passe de ${formerOwner} à ${playerName}.`,
         ]
       : [
           `${playerName} conquiert ${territoryName} !`,
@@ -729,9 +1299,9 @@ function captureAnnouncementPhrases(lang: string, playerName: string, territoryN
 
   return stolen
     ? [
-        `${playerName} steals ${territoryName} from the opponent!`,
-        `${territoryName} changes sides. Great capture by ${playerName}!`,
-        `${playerName} takes control of ${territoryName}.`,
+        `${playerName} steals ${territoryName} from ${formerOwner}!`,
+        `${territoryName} changes sides. ${formerOwner} is displaced by ${playerName}!`,
+        `${playerName} takes ${territoryName} from ${formerOwner}.`,
       ]
     : [
         `${playerName} conquers ${territoryName}!`,
@@ -1029,6 +1599,8 @@ export default function DepartementsPlay(props: any) {
   }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams, territoryValueCalibration]);
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
+  const [captureToast, setCaptureToast] = React.useState<TerritoryCaptureToastData | null>(null);
+  const captureToastTimerRef = React.useRef<number | null>(null);
   const submitLockRef = React.useRef(false);
   const backNavigationLockedRef = React.useRef(false);
   const lastCaptureVoiceIndexRef = React.useRef(-1);
@@ -1047,10 +1619,19 @@ export default function DepartementsPlay(props: any) {
     setGame(initialState);
     setCurrentThrow([]);
     setMultiplier(1);
+    setCaptureToast(null);
+    if (captureToastTimerRef.current != null) {
+      window.clearTimeout(captureToastTimerRef.current);
+      captureToastTimerRef.current = null;
+    }
     const out: Record<string, PlayerLiveStats> = {};
     for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
     setPlayerStats(out);
   }, [initialState, players]);
+
+  React.useEffect(() => () => {
+    if (captureToastTimerRef.current != null) window.clearTimeout(captureToastTimerRef.current);
+  }, []);
 
   const activePlayer = React.useMemo(
     () => game.players.find((p) => p.id === game.turn.activePlayerId),
@@ -1334,14 +1915,63 @@ export default function DepartementsPlay(props: any) {
     if (capturedTid) {
       const capturedTerritory = next.map.territories.find((territory) => territory.id === capturedTid);
       const capturedCode = getTerritoryCountryCode(country, capturedTid);
-      const capturedName = getLocalizedTerritoryName(
-        capturedCode,
-        lang,
-        capturedTerritory?.name || capturedTid,
-      );
-      const playerName = activePlayer?.name || activeOwnerLabel || "Joueur";
+      const capturedName = country === "UN"
+        ? (UN_REGION_NAMES_FR[String(capturedTid)] || String(capturedTerritory?.name || capturedTid))
+        : country === "FR"
+          ? String(capturedTerritory?.name || capturedTid)
+          : getLocalizedTerritoryName(
+              capturedCode,
+              lang,
+              capturedTerritory?.name || capturedTid,
+            );
+      const playerName = activeOwnerLabel || activePlayer?.name || "Joueur";
       const stolen = Boolean(beforeOwner && beforeOwner !== activeOwner);
-      const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen);
+      const previousOwnerName = beforeOwner
+        ? game.teams?.find((team) => String(team.id) === String(beforeOwner))?.name
+          || game.players.find((player) => String(player.teamId || player.id) === String(beforeOwner))?.name
+          || String(beforeOwner)
+        : undefined;
+      const previousOwnerColor = beforeOwner ? ownerColors[String(beforeOwner)] : undefined;
+      const capturedFlagSrc = country === "UN"
+        ? findUnRegionFlag(capturedTid)
+        : country === "FR"
+          ? getFrenchDepartmentFlagUrl(capturedTid)
+          : findTerritoryFlagByCountry(capturedCode);
+      const capturedFlagEmoji = country === "UN"
+        ? undefined
+        : country === "FR"
+          ? "🇫🇷"
+          : isoCodeToFlagEmoji(capturedCode);
+
+      if (captureToastTimerRef.current != null) window.clearTimeout(captureToastTimerRef.current);
+      setCaptureToast({
+        id: Date.now(),
+        country,
+        territoryId: capturedTid,
+        svgPathId: capturedTerritory?.svgPathId,
+        territoryName: capturedName,
+        territoryValue: Number(capturedTerritory?.value) || 0,
+        capturerName: playerName,
+        capturerPlayerId: activeId,
+        previousOwnerName,
+        previousOwnerPlayerId,
+        stolen,
+        color: activeColor,
+        previousOwnerColor,
+        flagSrc: capturedFlagSrc,
+        flagEmoji: capturedFlagEmoji,
+      });
+      captureToastTimerRef.current = window.setTimeout(() => {
+        setCaptureToast(null);
+        captureToastTimerRef.current = null;
+      }, 3250);
+
+      try {
+        unlockAudio();
+        playGolfTickerSound(stolen ? "BIRDIE" : "SIMPLE", stolen ? 0.84 : 0.72);
+      } catch {}
+
+      const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen, previousOwnerName);
       let phraseIndex = Math.floor(Math.random() * phrases.length);
       if (phrases.length > 1 && phraseIndex === lastCaptureVoiceIndexRef.current) {
         phraseIndex = (phraseIndex + 1) % phrases.length;
@@ -1356,7 +1986,7 @@ export default function DepartementsPlay(props: any) {
             pitch: 1.02,
             interrupt: false,
           });
-        }, 260);
+        }, 560);
       }
     }
 
@@ -1838,6 +2468,8 @@ export default function DepartementsPlay(props: any) {
         right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax })} />}
       />
 
+      <TerritoryCaptureToast data={captureToast} profileById={profileById} />
+
       {/* END OF MATCH MODAL */}
       {game.status === "game_end" && (
         <TerritoriesEndModal
@@ -1857,8 +2489,15 @@ export default function DepartementsPlay(props: any) {
         />
       )}
 
+      <TerritoriesTurnCarousel
+        players={game.players}
+        activeId={game.turn.activePlayerId}
+        profileById={profileById}
+        ownedValueByOwner={ownedValueByOwner}
+      />
+
       {/* ACTIVE PLAYER HEADER (style proche GolfPlay) */}
-      <div style={{ padding: "10px 12px" }}>
+      <div style={{ padding: "6px 12px 10px" }}>
         <div
           style={{
             position: "relative",
