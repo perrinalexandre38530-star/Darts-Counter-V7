@@ -1382,7 +1382,6 @@ type TerritoriesHistoryOwnerRow = {
   id: string;
   name: string;
   color: string;
-  logoDataUrl?: string | null;
   rank: number;
   winner: boolean;
   owned: number;
@@ -1452,7 +1451,6 @@ function territoriesHistoryOwnerRows(e: SavedEntry): TerritoriesHistoryOwnerRow[
       id: String(owner?.id || explicit?.id || `owner-${index}`),
       name: cleanName(owner?.name || explicit?.name) || fallbackName,
       color: String(owner?.color || explicit?.color || palette[index % palette.length]),
-      logoDataUrl: owner?.logoDataUrl || owner?.avatarUrl || explicit?.logoDataUrl || explicit?.avatarUrl || null,
       rank: Number(explicit?.rank || index + 1) || index + 1,
       winner: explicit?.winner === true || index === winnerTeam,
       owned: Number(explicit?.owned ?? explicit?.territories ?? match?.domination?.[index] ?? 0) || 0,
@@ -1514,11 +1512,6 @@ function TerritoriesHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any 
           >
             <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
               <span style={{ color: historyRankColor(row.rank), fontWeight: 1000 }}>{row.rank}.</span>
-              {row.logoDataUrl ? (
-                <div style={{ width: 24, height: 24, borderRadius: 999, overflow: "hidden", flex: "0 0 auto", border: `1px solid ${row.color}66`, boxShadow: `0 0 7px ${row.color}44` }}>
-                  <ProfileAvatar name={row.name} dataUrl={row.logoDataUrl} size={24} showStars={false} showDartOverlay={false} noFrame />
-                </div>
-              ) : null}
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: row.color, fontWeight: 1000 }}>
                 {row.name}{row.winner ? " 🏆" : ""}
               </span>
@@ -1575,6 +1568,87 @@ function fiveLivesHistoryScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
     successRate: Number(r?.successRate ?? 0) || 0,
     failed: Number(r?.failedVisits ?? r?.fails ?? r?.livesLost ?? 0) || 0,
   })).filter((x: any) => x.name).sort((a: any, b: any) => Number(a.rank || 0) - Number(b.rank || 0));
+}
+
+function capitalHistoryRows(e: SavedEntry): any[] {
+  const anyE: any = e as any;
+  const pools = [
+    anyE?.summary?.players,
+    anyE?.summary?.perPlayer,
+    anyE?.payload?.stats?.players,
+    anyE?.payload?.summary?.players,
+    anyE?.payload?.summary?.perPlayer,
+    anyE?.payload?.players,
+    anyE?.players,
+  ];
+  const source = pools.find((pool) => Array.isArray(pool) && pool.length) || [];
+  return source.map((row: any, index: number) => ({
+    ...row,
+    name: historyScoreName(e, row) || getName(row) || `Joueur ${index + 1}`,
+    rank: Number(row?.rank ?? row?.position ?? index + 1) || index + 1,
+    finalCapital: Number(row?.finalCapital ?? row?.capital ?? row?.score ?? 0) || 0,
+    startingCapital: Number(row?.startingCapital ?? 0) || 0,
+    pointsWon: Number(row?.pointsWon ?? row?.points ?? 0) || 0,
+    capitalLost: Number(row?.capitalLost ?? row?.penaltyLost ?? 0) || 0,
+    successRate: Number(row?.successRate ?? 0) || 0,
+    averageVisit: Number(row?.averageVisit ?? row?.avgVisit ?? 0) || 0,
+    bestVisit: Number(row?.bestVisit ?? 0) || 0,
+    hitRate: Number(row?.hitRate ?? 0) || 0,
+    dartsThrown: Number(row?.dartsThrown ?? row?.darts ?? 0) || 0,
+    penaltyEvents: Number(row?.penaltyEvents ?? row?.failedContracts ?? 0) || 0,
+  })).sort((a: any, b: any) => Number(a.rank || 0) - Number(b.rank || 0));
+}
+
+function CapitalHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
+  const anyE: any = e as any;
+  const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+  const rows = capitalHistoryRows(e);
+  const teams = Array.isArray(summary?.teams) ? summary.teams : Array.isArray(anyE?.payload?.stats?.teams) ? anyE.payload.stats.teams : [];
+  const matchStats = summary?.matchStats || summary?.stats || anyE?.payload?.stats?.match || {};
+  const winnerTeamId = String(summary?.winnerTeamId || anyE?.payload?.winnerTeamId || "");
+  const fmtDuration = (msRaw: any) => {
+    const ms = Number(msRaw || 0);
+    if (!Number.isFinite(ms) || ms <= 0) return "";
+    const total = Math.round(ms / 1000);
+    return `${Math.floor(total / 60)}m${String(total % 60).padStart(2, "0")}`;
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      {teams.length ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {[...teams].sort((a: any, b: any) => Number(b?.score || b?.capital || 0) - Number(a?.score || a?.capital || 0)).slice(0, 4).map((team: any, index: number) => {
+            const score = Number(team?.score ?? team?.capital ?? 0) || 0;
+            const winner = String(team?.id || "") === winnerTeamId;
+            return <React.Fragment key={String(team?.id || team?.name || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+              <span style={{ color: winner ? theme.primary : "rgba(255,255,255,.94)", fontWeight: 1000 }}>{team?.name || `Équipe ${index + 1}`}{winner ? " 🏆" : ""}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{score}</span>
+            </React.Fragment>;
+          })}
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {rows.slice(0, 4).map((row: any, index: number) => <React.Fragment key={`${row.name}-${index}`}>
+            {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+            <span style={{ color: historyRankColor(row.rank || index + 1), fontWeight: 1000 }}>{row.rank || index + 1}.</span>
+            <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{row.name}</span>
+            <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{row.finalCapital}</span>
+          </React.Fragment>)}
+        </div>
+      )}
+      {rows.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
+        {rows.slice(0, 3).map((row: any) => `${row.name}: ${row.startingCapital}→${row.finalCapital} • +${row.pointsWon}/-${row.capitalLost} • contrats ${row.successRate.toFixed(1)}% • moy. ${row.averageVisit.toFixed(1)} • best ${row.bestVisit}`).join("  |  ")}
+      </div> : null}
+      <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
+        Contrats {Number(matchStats?.successfulContracts || 0)}/{Number(matchStats?.contractsPlayed || 0)} ({Number(matchStats?.successRate || 0).toFixed(1)}%)
+        {Number(matchStats?.totalDarts || 0) ? ` • ${Number(matchStats.totalDarts)} flèches • hit ${Number(matchStats?.hitRate || 0).toFixed(1)}%` : ""}
+        {Number(matchStats?.totalPointsWon || 0) || Number(matchStats?.totalCapitalLost || 0) ? ` • +${Number(matchStats?.totalPointsWon || 0)} pts / -${Number(matchStats?.totalCapitalLost || 0)} cap.` : ""}
+        {Number(matchStats?.visits100Plus || 0) || Number(matchStats?.visits140Plus || 0) || Number(matchStats?.visits180 || 0) ? ` • 100+ ${Number(matchStats?.visits100Plus || 0)} • 140+ ${Number(matchStats?.visits140Plus || 0)} • 180 ${Number(matchStats?.visits180 || 0)}` : ""}
+        {fmtDuration(matchStats?.durationMs || summary?.durationMs) ? ` • ${fmtDuration(matchStats?.durationMs || summary?.durationMs)}` : ""}
+      </div>
+    </div>
+  );
 }
 
 function historyRankColor(rank: number): string {
@@ -1692,6 +1766,10 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </div>
       </div>
     );
+  }
+
+  if (normalizeToken(baseMode(e)) === "capital" || inferGameFilterKey(e, "darts") === "capital") {
+    return <CapitalHistoryScoreBlock e={e} theme={theme} />;
   }
 
   if (normalizeToken(baseMode(e)) === "baseball" || inferGameFilterKey(e, "darts") === "baseball") {

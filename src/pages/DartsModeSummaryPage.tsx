@@ -308,11 +308,16 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const meta = MODE_META[mode] || MODE_META.unknown;
   const rows = React.useMemo(() => buildRows(rec, mode), [rec, mode]);
   const winner = rows.find((r) => r.isWinner) || rows[0] || null;
+  const capitalSummary = mode === "capital" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
+  const capitalMatchStats = mode === "capital" ? (pick(capitalSummary?.matchStats, capitalSummary?.stats, rec?.payload?.stats?.match, {}) || {}) : {};
+  const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : (winner?.name || "—");
   const date = pick(rec?.createdAt, rec?.updatedAt, rec?.summary?.createdAt, rec?.payload?.createdAt);
   const createdLabel = date ? new Date(Number(date) || date).toLocaleString("fr-FR") : "—";
 
   const totalDarts = rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
-  const totalActions = rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
+  const totalActions = mode === "capital"
+    ? num(capitalMatchStats?.contractsPlayed, rows.reduce((sum, r) => sum + num(r.raw?.contractsPlayed, 0), 0))
+    : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   return (
     <div style={pageStyle}>
@@ -333,10 +338,10 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       <section style={card(meta.accent)}>
         <div style={sectionTitle(meta.accent)}>Vue générale</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Kpi label="Vainqueur" value={winner?.name || "—"} accent={meta.accent} />
+          <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label="Total actions" value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -382,21 +387,57 @@ function CapitalSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
   const visits = asArray(pick(summary?.visits, rec?.payload?.stats?.visits, rec?.payload?.visits, rec?.visits));
   const teams = asArray(pick(summary?.teams, rec?.payload?.stats?.teams, rec?.teams));
+  const matchStats = pick(summary?.matchStats, summary?.stats, rec?.payload?.stats?.match, rec?.payload?.summary?.matchStats, {}) || {};
   const winnerTeamId = String(pick(summary?.winnerTeamId, rec?.winnerTeamId, rec?.payload?.winnerTeamId, ""));
   const contracts = asArray(pick(summary?.contracts, rec?.payload?.summary?.contracts, rec?.config?.contracts));
+  const contractLabels = new Map<string, string>();
+  contracts.forEach((item: any) => {
+    if (typeof item === "string") contractLabels.set(item, item);
+    else contractLabels.set(String(item?.id || ""), String(item?.label || item?.id || ""));
+  });
+  const labelContract = (id: any) => contractLabels.get(String(id)) || String(id || "CAPITAL").replaceAll("_", " ");
+  const fmtDuration = (value: any) => {
+    const ms = num(value, 0);
+    if (!ms) return "—";
+    const seconds = Math.max(0, Math.round(ms / 1000));
+    const min = Math.floor(seconds / 60);
+    const sec = seconds % 60;
+    return `${min}m ${String(sec).padStart(2, "0")}s`;
+  };
   const columns: Array<[string, (p: any) => any]> = [
     ["Joueur", (p) => pick(p.name, p.playerName, "Joueur")],
     ["Capital", (p) => num(pick(p.finalCapital, p.capital, p.score), 0)],
     ["Départ", (p) => num(p.startingCapital, 0)],
+    ["Pic", (p) => num(p.peakCapital, 0)],
+    ["Mini", (p) => num(p.lowestCapital, 0)],
+    ["Net", (p) => `${num(p.netCapitalChange, 0) >= 0 ? "+" : ""}${num(p.netCapitalChange, 0)}`],
+    ["Conservé", (p) => `${num(p.capitalRetentionRate, 0).toFixed(1)}%`],
     ["Réussis", (p) => num(pick(p.successfulContracts, p.successfulVisits), 0)],
     ["Échecs", (p) => num(pick(p.failedContracts, p.failedVisits, p.fails), 0)],
     ["Réussite", (p) => `${num(p.successRate, 0).toFixed(1)}%`],
+    ["Série +", (p) => num(p.successStreakMax, 0)],
+    ["Série −", (p) => num(p.failStreakMax, 0)],
     ["Gagnés", (p) => num(pick(p.pointsWon, p.points), 0)],
     ["Perdus", (p) => num(pick(p.capitalLost, p.penaltyLost), 0)],
+    ["Pénalités", (p) => num(p.penaltyEvents, 0)],
+    ["Moy. pén.", (p) => num(p.avgPenalty, 0).toFixed(1)],
     ["AVG volée", (p) => num(pick(p.averageVisit, p.avgVisit), 0).toFixed(1)],
+    ["AVG/3", (p) => num(p.avg3, 0).toFixed(1)],
     ["Best", (p) => num(p.bestVisit, 0)],
-    ["D", (p) => num(p.doubles, 0)], ["T", (p) => num(p.triples, 0)],
-    ["Bull", (p) => num(p.bulls, 0)], ["DBull", (p) => num(p.dbulls, 0)],
+    ["Gain max", (p) => `+${num(p.bestGain, 0)}`],
+    ["Perte max", (p) => `-${num(p.biggestLoss, 0)}`],
+  ];
+  const precisionColumns: Array<[string, (p: any) => any]> = [
+    ["Joueur", (p) => pick(p.name, p.playerName, "Joueur")],
+    ["Volées", (p) => num(p.visits, 0)],
+    ["Flèches", (p) => num(p.dartsThrown, 0)],
+    ["Hit %", (p) => `${num(p.hitRate, 0).toFixed(1)}%`],
+    ["S", (p) => num(p.singles, 0)], ["D", (p) => num(p.doubles, 0)], ["T", (p) => num(p.triples, 0)],
+    ["Bull", (p) => num(p.bulls, 0)], ["DBull", (p) => num(p.dbulls, 0)], ["Miss", (p) => num(p.misses, 0)],
+    ["60+", (p) => num(p.visits60Plus, 0)], ["100+", (p) => num(p.visits100Plus, 0)], ["140+", (p) => num(p.visits140Plus, 0)], ["180", (p) => num(p.visits180, 0)],
+    ["57 exact", (p) => num(p.exact57, 0)],
+    ["Top secteur", (p) => p.topSector ? `${p.topSector} (${num(p.topSectorHits, 0)})` : "—"],
+    ["Top pts secteur", (p) => p.topScoringSector ? `${p.topScoringSector} (${num(p.topScoringSectorPoints, 0)} pts)` : "—"],
   ];
   const dartLabel = (dart: any) => {
     const value = num(dart?.v, 0);
@@ -405,28 +446,58 @@ function CapitalSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
     if (value === 25) return mult === 2 ? "DBULL" : "BULL";
     return `${mult === 3 ? "T" : mult === 2 ? "D" : "S"}${value}`;
   };
+  const matchKpis = [
+    ["Durée", fmtDuration(matchStats?.durationMs || summary?.durationMs)],
+    ["Contrats tentés", num(matchStats?.contractsPlayed, 0)],
+    ["Réussite globale", `${num(matchStats?.successRate, 0).toFixed(1)}%`],
+    ["Total fléchettes", num(matchStats?.totalDarts, 0)],
+    ["Précision", `${num(matchStats?.hitRate, 0).toFixed(1)}%`],
+    ["Points gagnés", num(matchStats?.totalPointsWon, 0)],
+    ["Capital perdu", num(matchStats?.totalCapitalLost, 0)],
+    ["Capital final moy.", num(matchStats?.averageFinalCapital, 0).toFixed(1)],
+    ["Meilleur capital", num(matchStats?.bestFinalCapital, 0)],
+    ["Best volée", num(matchStats?.bestVisit, 0)],
+    ["Moy. / volée", num(matchStats?.averageVisit, 0).toFixed(1)],
+    ["AVG / 3", num(matchStats?.avg3, 0).toFixed(1)],
+    ["Pénalités", num(matchStats?.penaltyEvents, 0)],
+    ["Plus grosse perte", `-${num(matchStats?.biggestLoss, 0)}`],
+    ["60+ / 100+", `${num(matchStats?.visits60Plus, 0)} / ${num(matchStats?.visits100Plus, 0)}`],
+    ["140+ / 180", `${num(matchStats?.visits140Plus, 0)} / ${num(matchStats?.visits180, 0)}`],
+  ];
 
   return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Synthèse CAPITAL</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+        {matchKpis.map(([label, value]) => <Kpi key={String(label)} label={String(label)} value={value} accent={accent} />)}
+      </div>
+    </section>
+
     {teams.length ? <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Classement des équipes</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8 }}>
         {[...teams].sort((a, b) => num(b?.score, 0) - num(a?.score, 0)).map((team: any) => {
           const color = String(team?.color || accent);
           const winner = String(team?.id) === winnerTeamId;
           return <div key={String(team?.id)} style={{ padding: 12, borderRadius: 15, background: `${color}12`, border: `1px solid ${winner ? color : `${color}55`}` }}>
             <div style={{ color, fontSize: 11, fontWeight: 1000 }}>{winner ? "🏆 " : ""}{pick(team?.name, "Équipe")}</div>
             <div style={{ marginTop: 5, fontSize: 28, fontWeight: 1000 }}>{num(pick(team?.score, team?.capital), 0)}</div>
-            <div style={{ fontSize: 10.5, color: "#aeb0bd" }}>{asArray(team?.members).length || asArray(team?.players).length} membre(s)</div>
+            <div style={{ marginTop: 5, fontSize: 10.5, color: "#aeb0bd", lineHeight: 1.45 }}>
+              Départ {num(team?.startingCapital, 0)} • Net {num(team?.netCapitalChange, 0) >= 0 ? "+" : ""}{num(team?.netCapitalChange, 0)}<br />
+              Contrats {num(team?.successfulContracts, 0)}/{num(team?.contractsPlayed, 0)} • {num(team?.successRate, 0).toFixed(1)}%<br />
+              Points +{num(team?.pointsWon, 0)} • Pertes -{num(team?.capitalLost, 0)} • Best {num(team?.bestVisit, 0)}<br />
+              Hit {num(team?.hitRate, 0).toFixed(1)}% • AVG/3 {num(team?.avg3, 0).toFixed(1)}
+            </div>
           </div>;
         })}
       </div>
     </section> : null}
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Tableau CAPITAL complet</div>
-      <div style={{ color: "#aeb0bd", fontSize: 11, marginBottom: 9 }}>{contracts.length || "—"} contrat(s) joué(s)</div>
+      <div style={sectionTitle(accent)}>Capital & contrats — tableau complet</div>
+      <div style={{ color: "#aeb0bd", fontSize: 11, marginBottom: 9 }}>{contracts.length || "—"} contrat(s) au programme</div>
       <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
-        <table style={{ width: "100%", minWidth: 1040, borderCollapse: "collapse", fontSize: 11 }}>
+        <table style={{ width: "100%", minWidth: 1750, borderCollapse: "collapse", fontSize: 11 }}>
           <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
           <tbody>{rows.map((row) => <tr key={`capital-${row.id}`} style={{ background: row.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, color: label === "Joueur" && row.isWinner ? accent : td.color }}>{read(row.raw)}</td>)}</tr>)}</tbody>
         </table>
@@ -434,14 +505,45 @@ function CapitalSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; ac
     </section>
 
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Historique des contrats</div>
+      <div style={sectionTitle(accent)}>Précision, impacts & grosses volées</div>
+      <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
+        <table style={{ width: "100%", minWidth: 1250, borderCollapse: "collapse", fontSize: 11 }}>
+          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{precisionColumns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((row) => <tr key={`capital-precision-${row.id}`}>{precisionColumns.map(([label, read]) => <td key={label} style={td}>{read(row.raw)}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Performance contrat par contrat</div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map((row) => {
+          const contractStats = row?.raw?.contractStats && typeof row.raw.contractStats === "object" ? Object.entries(row.raw.contractStats) as Array<[string, any]> : [];
+          return <div key={`contracts-${row.id}`} style={{ padding: 11, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}>
+            <div style={{ color: row.isWinner ? accent : "#fff", fontWeight: 1000, marginBottom: 8 }}>{row.name}{row.isWinner ? " 🏆" : ""}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 6 }}>
+              {contractStats.length ? contractStats.map(([id, stat]) => <div key={id} style={{ padding: 8, borderRadius: 11, background: stat?.successes ? `${accent}10` : "rgba(255,70,100,.06)", border: `1px solid ${stat?.successes ? `${accent}42` : "rgba(255,100,130,.20)"}` }}>
+                <div style={{ fontSize: 10, fontWeight: 1000 }}>{labelContract(id)}</div>
+                <div style={{ marginTop: 3, fontSize: 10, color: "#b5b8c5", lineHeight: 1.35 }}>
+                  {num(stat?.successes, 0)}/{num(stat?.attempts, 0)} • {num(stat?.successRate, 0).toFixed(1)}%<br />
+                  +{num(stat?.pointsWon, 0)} pts • -{num(stat?.capitalLost, 0)} cap.<br />Best {num(stat?.bestVisit, 0)} • Moy. {num(stat?.averageVisit, 0).toFixed(1)}
+                </div>
+              </div>) : <div style={{ color: "#aeb0bd", fontSize: 11 }}>Pas de ventilation disponible.</div>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Historique complet des contrats</div>
       <div style={{ display: "grid", gap: 7 }}>
         {visits.length ? visits.map((visit: any, index: number) => {
           const player = rows.find((row) => String(row.id) === String(visit?.playerId));
           const success = Boolean(visit?.success);
           return <div key={visit?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: "9px 10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
             <div style={{ color: success ? "#72f0a8" : "#ff8aa6", fontWeight: 1000 }}>#{num(visit?.contractIndex, 0) + 1}</div>
-            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{player?.name || visit?.playerName || "Joueur"} • {String(visit?.contractId || "CAPITAL")}</div><div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asArray(visit?.darts).map(dartLabel).join(" · ") || "—"} • {visit?.scoreBefore} → {visit?.scoreAfter}</div></div>
+            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{player?.name || visit?.playerName || "Joueur"} • {labelContract(visit?.contractId)}</div><div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asArray(visit?.darts).map(dartLabel).join(" · ") || "—"} • {visit?.scoreBefore} → {visit?.scoreAfter}</div></div>
             <div style={{ color: success ? "#72f0a8" : "#ff8aa6", fontWeight: 1000 }}>{success ? `+${num(visit?.visitScore, 0)}` : `-${num(visit?.penaltyLost, 0)}`}</div>
           </div>;
         }) : <div style={{ color: "#c9c9d4" }}>Aucun détail de volée enregistré.</div>}

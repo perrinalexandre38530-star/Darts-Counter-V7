@@ -315,34 +315,142 @@ export function capitalDartLabel(dart: CapitalDart): string {
 }
 
 export function buildCapitalPlayerStats(players: CapitalPlayer[], visits: CapitalVisit[], finalScores: number[]) {
+  const round1 = (value: number) => Math.round(value * 10) / 10;
+  const ratio = (num: number, den: number) => den ? round1((num / den) * 100) : 0;
+
   return players.map((player, index) => {
     const rows = (visits || []).filter((visit) => String(visit.playerId) === String(player.id));
     const scoringRows = rows.filter((visit) => visit.contractId !== "capital");
     const opening = rows.find((visit) => visit.contractId === "capital");
     const darts = rows.flatMap((visit) => visit.darts || []);
+    const successfulRows = scoringRows.filter((visit) => visit.success);
+    const failedRows = scoringRows.filter((visit) => !visit.success);
     const visitsPlayed = rows.length;
-    const successfulVisits = scoringRows.filter((visit) => visit.success).length;
-    const failedVisits = scoringRows.length - successfulVisits;
-    const pointsWon = scoringRows.filter((visit) => visit.success).reduce((sum, visit) => sum + visit.visitScore, 0);
-    const capitalLost = scoringRows.reduce((sum, visit) => sum + visit.penaltyLost, 0);
-    const scored = rows.reduce((sum, visit) => sum + visit.visitScore, 0);
-    const bestVisit = rows.reduce((best, visit) => Math.max(best, visit.visitScore), 0);
-    const bestGain = rows.reduce((best, visit) => Math.max(best, visit.delta), 0);
-    const biggestLoss = rows.reduce((best, visit) => Math.max(best, visit.penaltyLost), 0);
+    const successfulVisits = successfulRows.length;
+    const failedVisits = failedRows.length;
+    const pointsWon = successfulRows.reduce((sum, visit) => sum + Number(visit.visitScore || 0), 0);
+    const capitalLost = scoringRows.reduce((sum, visit) => sum + Number(visit.penaltyLost || 0), 0);
+    const scored = rows.reduce((sum, visit) => sum + Number(visit.visitScore || 0), 0);
+    const failedRawPoints = failedRows.reduce((sum, visit) => sum + Number(visit.visitScore || 0), 0);
+    const bestVisit = rows.reduce((best, visit) => Math.max(best, Number(visit.visitScore || 0)), 0);
+    const lowestVisit = rows.length ? rows.reduce((low, visit) => Math.min(low, Number(visit.visitScore || 0)), Number.POSITIVE_INFINITY) : 0;
+    const bestGain = rows.reduce((best, visit) => Math.max(best, Number(visit.delta || 0)), 0);
+    const biggestLoss = rows.reduce((best, visit) => Math.max(best, Number(visit.penaltyLost || 0)), 0);
     const count = (predicate: (dart: CapitalDart) => boolean) => darts.filter(predicate).length;
     const dartsThrown = darts.length;
+    const hitCount = count((dart) => Number(dart?.v || 0) > 0);
+    const misses = dartsThrown - hitCount;
+    const singles = count((dart) => dart.v > 0 && dart.mult === 1 && dart.v !== 25);
+    const doubles = count((dart) => dart.v > 0 && dart.mult === 2 && dart.v !== 25);
+    const triples = count((dart) => dart.v > 0 && dart.mult === 3 && dart.v !== 25);
+    const bulls = count((dart) => dart.v === 25 && dart.mult === 1);
+    const dbulls = count((dart) => dart.v === 25 && dart.mult === 2);
+    const finalCapital = Number(finalScores[index] || 0);
+    const startingCapital = Number(opening?.scoreAfter || 0);
+    const scoreAfterValues = rows.map((visit) => Number(visit.scoreAfter || 0));
+    const peakCapital = scoreAfterValues.length ? Math.max(...scoreAfterValues) : finalCapital;
+    const lowestCapital = scoreAfterValues.length ? Math.min(...scoreAfterValues) : finalCapital;
+    const averageCapitalAfterVisit = scoreAfterValues.length ? round1(scoreAfterValues.reduce((a, b) => a + b, 0) / scoreAfterValues.length) : finalCapital;
+    const grossCapital = startingCapital + pointsWon;
+    const netCapitalChange = finalCapital - startingCapital;
+    const penaltyEvents = failedRows.filter((visit) => Number(visit.penaltyLost || 0) > 0).length;
+    const avgPenalty = penaltyEvents ? round1(capitalLost / penaltyEvents) : 0;
+
+    let successStreak = 0;
+    let failStreak = 0;
+    let successStreakMax = 0;
+    let failStreakMax = 0;
+    for (const visit of scoringRows) {
+      if (visit.success) {
+        successStreak += 1;
+        failStreak = 0;
+        successStreakMax = Math.max(successStreakMax, successStreak);
+      } else {
+        failStreak += 1;
+        successStreak = 0;
+        failStreakMax = Math.max(failStreakMax, failStreak);
+      }
+    }
+
+    const contractStats: Record<string, {
+      attempts: number;
+      successes: number;
+      failures: number;
+      successRate: number;
+      pointsWon: number;
+      rawPoints: number;
+      capitalLost: number;
+      bestVisit: number;
+      averageVisit: number;
+    }> = {};
+    for (const visit of scoringRows) {
+      const key = String(visit.contractId || "unknown");
+      const current = contractStats[key] || { attempts: 0, successes: 0, failures: 0, successRate: 0, pointsWon: 0, rawPoints: 0, capitalLost: 0, bestVisit: 0, averageVisit: 0 };
+      current.attempts += 1;
+      current.successes += visit.success ? 1 : 0;
+      current.failures += visit.success ? 0 : 1;
+      current.pointsWon += visit.success ? Number(visit.visitScore || 0) : 0;
+      current.rawPoints += Number(visit.visitScore || 0);
+      current.capitalLost += Number(visit.penaltyLost || 0);
+      current.bestVisit = Math.max(current.bestVisit, Number(visit.visitScore || 0));
+      current.successRate = ratio(current.successes, current.attempts);
+      current.averageVisit = round1(current.rawPoints / current.attempts);
+      contractStats[key] = current;
+    }
+
+    const sectorHits: Record<string, number> = {};
+    const sectorPoints: Record<string, number> = {};
+    for (const dart of darts) {
+      const v = Number(dart?.v || 0);
+      if (v <= 0) continue;
+      const key = String(v);
+      sectorHits[key] = (sectorHits[key] || 0) + 1;
+      sectorPoints[key] = (sectorPoints[key] || 0) + capitalDartScore(dart);
+    }
+    const topSectorEntry = Object.entries(sectorHits).sort((a, b) => b[1] - a[1] || Number(b[0]) - Number(a[0]))[0];
+    const topScoringSectorEntry = Object.entries(sectorPoints).sort((a, b) => b[1] - a[1] || Number(b[0]) - Number(a[0]))[0];
+    const visitScores = rows.map((visit) => Number(visit.visitScore || 0));
+    const buckets = {
+      zero: visitScores.filter((score) => score === 0).length,
+      under20: visitScores.filter((score) => score > 0 && score < 20).length,
+      h20: visitScores.filter((score) => score >= 20 && score < 40).length,
+      h40: visitScores.filter((score) => score >= 40 && score < 60).length,
+      h60: visitScores.filter((score) => score >= 60 && score < 100).length,
+      h100: visitScores.filter((score) => score >= 100 && score < 140).length,
+      h140: visitScores.filter((score) => score >= 140 && score < 180).length,
+      h180: visitScores.filter((score) => score === 180).length,
+    };
+    const visits60Plus = visitScores.filter((score) => score >= 60).length;
+    const visits100Plus = visitScores.filter((score) => score >= 100).length;
+    const visits140Plus = visitScores.filter((score) => score >= 140).length;
+    const maxDart = darts.reduce((best, dart) => Math.max(best, capitalDartScore(dart)), 0);
+    const rawDartAverage = dartsThrown ? round1(scored / dartsThrown) : 0;
+
+    const contractSuccess = (contractId: CapitalContractId) => scoringRows.filter((visit) => visit.contractId === contractId && visit.success).length;
+
     return {
       ...player,
       playerId: player.id,
       profileId: player.profileId ?? player.id,
-      capital: Number(finalScores[index] || 0),
-      finalCapital: Number(finalScores[index] || 0),
-      score: Number(finalScores[index] || 0),
-      startingCapital: Number(opening?.scoreAfter || 0),
+      capital: finalCapital,
+      finalCapital,
+      score: finalCapital,
+      startingCapital,
+      peakCapital,
+      lowestCapital,
+      averageCapital: averageCapitalAfterVisit,
+      averageCapitalAfterVisit,
+      grossCapital,
+      netCapitalChange,
+      capitalRetentionRate: ratio(finalCapital, grossCapital),
       points: pointsWon,
       pointsWon,
+      rawPointsScored: scored,
+      failedRawPoints,
       capitalLost,
       penaltyLost: capitalLost,
+      penaltyEvents,
+      avgPenalty,
       visits: visitsPlayed,
       turns: visitsPlayed,
       rounds: visitsPlayed,
@@ -354,43 +462,215 @@ export function buildCapitalPlayerStats(players: CapitalPlayer[], visits: Capita
       failedContracts: failedVisits,
       failedVisits,
       fails: failedVisits,
-      successRate: scoringRows.length ? Math.round((successfulVisits / scoringRows.length) * 1000) / 10 : 0,
+      successRate: ratio(successfulVisits, scoringRows.length),
+      successStreakMax,
+      failStreakMax,
       darts: dartsThrown,
       dartsThrown,
       totalThrows: dartsThrown,
+      hitCount,
+      misses,
+      hitRate: ratio(hitCount, dartsThrown),
+      missRate: ratio(misses, dartsThrown),
       totalScore: scored,
-      averageVisit: visitsPlayed ? Math.round((scored / visitsPlayed) * 10) / 10 : 0,
-      avgVisit: visitsPlayed ? Math.round((scored / visitsPlayed) * 10) / 10 : 0,
-      avg3: dartsThrown ? Math.round((scored / dartsThrown) * 30) / 10 : 0,
+      averageVisit: visitsPlayed ? round1(scored / visitsPlayed) : 0,
+      avgVisit: visitsPlayed ? round1(scored / visitsPlayed) : 0,
+      avg3: dartsThrown ? round1((scored / dartsThrown) * 3) : 0,
+      rawDartAverage,
+      averageSuccessfulVisit: successfulRows.length ? round1(successfulRows.reduce((sum, visit) => sum + Number(visit.visitScore || 0), 0) / successfulRows.length) : 0,
+      averageFailedVisit: failedRows.length ? round1(failedRows.reduce((sum, visit) => sum + Number(visit.visitScore || 0), 0) / failedRows.length) : 0,
       bestVisit,
+      lowestVisit: Number.isFinite(lowestVisit) ? lowestVisit : 0,
       bestGain,
       biggestLoss,
-      exact57: scoringRows.some((visit) => visit.contractId === "exact_57" && visit.success) ? 1 : 0,
-      singles: count((dart) => dart.v > 0 && dart.mult === 1 && dart.v !== 25),
-      doubles: count((dart) => dart.v > 0 && dart.mult === 2 && dart.v !== 25),
-      triples: count((dart) => dart.v > 0 && dart.mult === 3 && dart.v !== 25),
-      bulls: count((dart) => dart.v === 25 && dart.mult === 1),
-      dbulls: count((dart) => dart.v === 25 && dart.mult === 2),
-      misses: count((dart) => dart.v === 0),
+      maxDart,
+      exact57: contractSuccess("exact_57"),
+      centerSuccess: contractSuccess("center"),
+      tripleContractSuccess: contractSuccess("triple_any"),
+      doubleContractSuccess: contractSuccess("double_any"),
+      sideSuccess: contractSuccess("side"),
+      suiteSuccess: contractSuccess("suite"),
+      colorsSuccess: contractSuccess("colors_3"),
+      singles,
+      doubles,
+      triples,
+      bulls,
+      dbulls,
+      singleRate: ratio(singles, dartsThrown),
+      doubleRate: ratio(doubles, dartsThrown),
+      tripleRate: ratio(triples, dartsThrown),
+      bullRate: ratio(bulls + dbulls, dartsThrown),
+      zeroVisits: buckets.zero,
+      visits60Plus,
+      visits100Plus,
+      visits140Plus,
+      visits180: buckets.h180,
+      h60: buckets.h60,
+      h100: buckets.h100,
+      h140: buckets.h140,
+      h180: buckets.h180,
+      buckets,
+      sectorHits,
+      sectorPoints,
+      topSector: topSectorEntry ? Number(topSectorEntry[0]) : null,
+      topSectorHits: topSectorEntry ? topSectorEntry[1] : 0,
+      topScoringSector: topScoringSectorEntry ? Number(topScoringSectorEntry[0]) : null,
+      topScoringSectorPoints: topScoringSectorEntry ? topScoringSectorEntry[1] : 0,
+      successfulContractIds: scoringRows.filter((visit) => visit.success).map((visit) => visit.contractId),
+      failedContractIds: scoringRows.filter((visit) => !visit.success).map((visit) => visit.contractId),
+      contractStats,
+      lastContractScore: scoringRows.length ? Number(scoringRows[scoringRows.length - 1].visitScore || 0) : 0,
+      lastContractSuccess: scoringRows.length ? Boolean(scoringRows[scoringRows.length - 1].success) : false,
     };
   });
 }
 
 export function buildCapitalTeamStats(teams: CapitalTeam[], playerStats: any[]) {
+  const round1 = (value: number) => Math.round(value * 10) / 10;
+  const ratio = (num: number, den: number) => den ? round1((num / den) * 100) : 0;
   return (teams || []).map((team, index) => {
     const members = playerStats.filter((player) => (team.players || []).map(String).includes(String(player.id || player.playerId)));
+    const sum = (key: string) => members.reduce((total, player) => total + Number(player?.[key] || 0), 0);
+    const max = (key: string) => members.reduce((best, player) => Math.max(best, Number(player?.[key] || 0)), 0);
+    const darts = sum("dartsThrown");
+    const rawPoints = sum("rawPointsScored");
+    const attempts = sum("contractsPlayed");
+    const successfulContracts = sum("successfulContracts");
+    const contractStats: Record<string, any> = {};
+    for (const member of members) {
+      for (const [contractId, row] of Object.entries(member?.contractStats || {}) as Array<[string, any]>) {
+        const current = contractStats[contractId] || { attempts: 0, successes: 0, failures: 0, pointsWon: 0, rawPoints: 0, capitalLost: 0, bestVisit: 0, successRate: 0, averageVisit: 0 };
+        current.attempts += Number(row?.attempts || 0);
+        current.successes += Number(row?.successes || 0);
+        current.failures += Number(row?.failures || 0);
+        current.pointsWon += Number(row?.pointsWon || 0);
+        current.rawPoints += Number(row?.rawPoints || 0);
+        current.capitalLost += Number(row?.capitalLost || 0);
+        current.bestVisit = Math.max(current.bestVisit, Number(row?.bestVisit || 0));
+        current.successRate = ratio(current.successes, current.attempts);
+        current.averageVisit = current.attempts ? round1(current.rawPoints / current.attempts) : 0;
+        contractStats[contractId] = current;
+      }
+    }
     return {
       ...team,
       teamIndex: index,
-      score: members.reduce((sum, player) => sum + Number(player.finalCapital || 0), 0),
-      capital: members.reduce((sum, player) => sum + Number(player.finalCapital || 0), 0),
-      pointsWon: members.reduce((sum, player) => sum + Number(player.pointsWon || 0), 0),
-      capitalLost: members.reduce((sum, player) => sum + Number(player.capitalLost || 0), 0),
-      successfulContracts: members.reduce((sum, player) => sum + Number(player.successfulContracts || 0), 0),
-      failedContracts: members.reduce((sum, player) => sum + Number(player.failedContracts || 0), 0),
+      score: sum("finalCapital"),
+      capital: sum("finalCapital"),
+      finalCapital: sum("finalCapital"),
+      startingCapital: sum("startingCapital"),
+      peakCapital: sum("peakCapital"),
+      lowestCapital: sum("lowestCapital"),
+      netCapitalChange: sum("netCapitalChange"),
+      pointsWon: sum("pointsWon"),
+      rawPointsScored: rawPoints,
+      capitalLost: sum("capitalLost"),
+      penaltyEvents: sum("penaltyEvents"),
+      successfulContracts,
+      failedContracts: sum("failedContracts"),
+      contractsPlayed: attempts,
+      successRate: ratio(successfulContracts, attempts),
+      dartsThrown: darts,
+      visits: sum("visits"),
+      avg3: darts ? round1((rawPoints / darts) * 3) : 0,
+      averageVisit: sum("visits") ? round1(rawPoints / sum("visits")) : 0,
+      hitCount: sum("hitCount"),
+      misses: sum("misses"),
+      hitRate: ratio(sum("hitCount"), darts),
+      singles: sum("singles"),
+      doubles: sum("doubles"),
+      triples: sum("triples"),
+      bulls: sum("bulls"),
+      dbulls: sum("dbulls"),
+      bestVisit: max("bestVisit"),
+      bestGain: max("bestGain"),
+      biggestLoss: max("biggestLoss"),
+      successStreakMax: max("successStreakMax"),
+      failStreakMax: max("failStreakMax"),
+      visits60Plus: sum("visits60Plus"),
+      visits100Plus: sum("visits100Plus"),
+      visits140Plus: sum("visits140Plus"),
+      visits180: sum("visits180"),
+      exact57: sum("exact57"),
+      capitalRetentionRate: ratio(sum("finalCapital"), sum("grossCapital")),
+      contractStats,
       members,
     };
   });
+}
+
+export function buildCapitalMatchStats(playerStats: any[], teamStats: any[], visits: CapitalVisit[]) {
+  const round1 = (value: number) => Math.round(value * 10) / 10;
+  const ratio = (num: number, den: number) => den ? round1((num / den) * 100) : 0;
+  const rows = Array.isArray(playerStats) ? playerStats : [];
+  const sum = (key: string) => rows.reduce((total, row) => total + Number(row?.[key] || 0), 0);
+  const max = (key: string) => rows.reduce((best, row) => Math.max(best, Number(row?.[key] || 0)), 0);
+  const darts = sum("dartsThrown");
+  const totalVisits = sum("visits");
+  const rawPoints = sum("rawPointsScored");
+  const attempts = sum("contractsPlayed");
+  const successfulContracts = sum("successfulContracts");
+  const times = (visits || []).map((visit) => Number(visit?.createdAt || 0)).filter((value) => value > 0);
+  const durationMs = times.length > 1 ? Math.max(...times) - Math.min(...times) : 0;
+  const contractStats: Record<string, any> = {};
+  for (const player of rows) {
+    for (const [contractId, row] of Object.entries(player?.contractStats || {}) as Array<[string, any]>) {
+      const current = contractStats[contractId] || { attempts: 0, successes: 0, failures: 0, pointsWon: 0, rawPoints: 0, capitalLost: 0, bestVisit: 0, successRate: 0, averageVisit: 0 };
+      current.attempts += Number(row?.attempts || 0);
+      current.successes += Number(row?.successes || 0);
+      current.failures += Number(row?.failures || 0);
+      current.pointsWon += Number(row?.pointsWon || 0);
+      current.rawPoints += Number(row?.rawPoints || 0);
+      current.capitalLost += Number(row?.capitalLost || 0);
+      current.bestVisit = Math.max(current.bestVisit, Number(row?.bestVisit || 0));
+      current.successRate = ratio(current.successes, current.attempts);
+      current.averageVisit = current.attempts ? round1(current.rawPoints / current.attempts) : 0;
+      contractStats[contractId] = current;
+    }
+  }
+  return {
+    players: rows.length,
+    teams: Array.isArray(teamStats) ? teamStats.length : 0,
+    totalVisits,
+    totalDarts: darts,
+    rawPointsScored: rawPoints,
+    averageVisit: totalVisits ? round1(rawPoints / totalVisits) : 0,
+    avg3: darts ? round1((rawPoints / darts) * 3) : 0,
+    totalStartingCapital: sum("startingCapital"),
+    totalFinalCapital: sum("finalCapital"),
+    averageFinalCapital: rows.length ? round1(sum("finalCapital") / rows.length) : 0,
+    bestFinalCapital: max("finalCapital"),
+    totalPointsWon: sum("pointsWon"),
+    totalCapitalLost: sum("capitalLost"),
+    netCapitalChange: sum("netCapitalChange"),
+    capitalRetentionRate: ratio(sum("finalCapital"), sum("grossCapital")),
+    contractsPlayed: attempts,
+    successfulContracts,
+    failedContracts: sum("failedContracts"),
+    successRate: ratio(successfulContracts, attempts),
+    penaltyEvents: sum("penaltyEvents"),
+    averagePenalty: sum("penaltyEvents") ? round1(sum("capitalLost") / sum("penaltyEvents")) : 0,
+    bestVisit: max("bestVisit"),
+    bestGain: max("bestGain"),
+    biggestLoss: max("biggestLoss"),
+    successStreakMax: max("successStreakMax"),
+    failStreakMax: max("failStreakMax"),
+    hitCount: sum("hitCount"),
+    misses: sum("misses"),
+    hitRate: ratio(sum("hitCount"), darts),
+    singles: sum("singles"),
+    doubles: sum("doubles"),
+    triples: sum("triples"),
+    bulls: sum("bulls"),
+    dbulls: sum("dbulls"),
+    visits60Plus: sum("visits60Plus"),
+    visits100Plus: sum("visits100Plus"),
+    visits140Plus: sum("visits140Plus"),
+    visits180: sum("visits180"),
+    exact57: sum("exact57"),
+    durationMs,
+    contractStats,
+  };
 }
 
 export function rankCapitalPlayers(playerStats: any[], winnerIds: string[] = []) {

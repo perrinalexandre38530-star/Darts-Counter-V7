@@ -12,6 +12,7 @@ import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {
   applyCapitalVisit,
+  buildCapitalMatchStats,
   buildCapitalPlayerStats,
   buildCapitalTeamStats,
   capitalDartLabel,
@@ -757,11 +758,14 @@ export default function CapitalPlay(props: any) {
     : finalWinnerIdx !== null ? [String(capitalPlayers[finalWinnerIdx]?.id || "")] : [], [winnerTeam, finalWinnerIdx, capitalPlayers]);
   const playerStats = useMemo(() => rankCapitalPlayers(rawPlayerStats, winningPlayerIds), [rawPlayerStats, winningPlayerIds]);
   const teamStats = useMemo(() => buildCapitalTeamStats(normalizedTeams as any, playerStats), [normalizedTeams, playerStats]);
+  const matchStats = useMemo(() => buildCapitalMatchStats(playerStats, teamStats, visits), [playerStats, teamStats, visits]);
 
   useEffect(() => {
     if (!isFinished || historySavedRef.current || !visits.length) return;
     historySavedRef.current = true;
     const now = Date.now();
+    const startedAt = Number(visits[0]?.createdAt || now);
+    const savedMatchStats = { ...matchStats, durationMs: Math.max(Number(matchStats?.durationMs || 0), Math.max(0, now - startedAt)) };
     const winnerIds = winningPlayerIds.filter(Boolean);
     const record = {
       id: `capital-${now}-${Math.random().toString(36).slice(2, 7)}`,
@@ -769,7 +773,7 @@ export default function CapitalPlay(props: any) {
       mode: "capital",
       sport: "darts",
       status: "finished",
-      createdAt: now,
+      createdAt: startedAt,
       updatedAt: now,
       players: playerStats,
       teams: teamStats,
@@ -786,7 +790,11 @@ export default function CapitalPlay(props: any) {
         winnerTeamId: winnerTeam?.id || null,
         winnerTeamName: winnerTeam?.name || null,
         contracts: contracts.map((id) => ({ id, label: contractLabel(id) })),
-        contractsPlayed: Math.min(rounds, roundIdx),
+        contractsPlayed: contracts.length,
+        rounds: contracts.length,
+        durationMs: savedMatchStats.durationMs,
+        matchStats: savedMatchStats,
+        stats: savedMatchStats,
         players: playerStats,
         perPlayer: playerStats,
         teams: teamStats,
@@ -802,7 +810,7 @@ export default function CapitalPlay(props: any) {
         winnerId: winnerIds[0] || null,
         winnerIds,
         winnerTeamId: winnerTeam?.id || null,
-        stats: { players: playerStats, teams: teamStats, visits },
+        stats: { players: playerStats, teams: teamStats, visits, match: savedMatchStats },
         summary: {
           mode: "capital",
           winnerId: winnerIds[0] || null,
@@ -814,13 +822,18 @@ export default function CapitalPlay(props: any) {
           teams: teamStats,
           visits,
           contracts: contracts.map((id) => ({ id, label: contractLabel(id) })),
+          contractsPlayed: contracts.length,
+          rounds: contracts.length,
+          durationMs: savedMatchStats.durationMs,
+          matchStats: savedMatchStats,
+          stats: savedMatchStats,
           finishedAt: now,
         },
       },
     };
     setFinishedRecord(record);
     try { props?.onFinish?.(record); } catch {}
-  }, [isFinished, visits, playerStats, teamStats, winningPlayerIds, winnerTeam, cfg, contracts, rounds, roundIdx, props?.onFinish]);
+  }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, props?.onFinish]);
 
   const EndModal = () => {
     if (!isFinished || !endModalOpen) return null;
@@ -980,6 +993,23 @@ export default function CapitalPlay(props: any) {
 
           {/* Table */}
           <div style={{ padding: 14 }}>
+            <div style={{ marginBottom: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+              {[
+                ["Contrats", matchStats.contractsPlayed],
+                ["Réussite", `${matchStats.successRate}%`],
+                ["Fléchettes", matchStats.totalDarts],
+                ["Précision", `${matchStats.hitRate}%`],
+                ["Points gagnés", matchStats.totalPointsWon],
+                ["Capital perdu", matchStats.totalCapitalLost],
+                ["Best volée", matchStats.bestVisit],
+                ["Moy. / volée", matchStats.averageVisit],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ padding: 10, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}>
+                  <div style={{ fontSize: 9.5, opacity: .65, fontWeight: 950, textTransform: "uppercase" }}>{label}</div>
+                  <div style={{ marginTop: 3, color: "#ffd76a", fontSize: 18, fontWeight: 1000 }}>{value}</div>
+                </div>
+              ))}
+            </div>
             <div
               style={{
                 borderRadius: D.radius,
@@ -1007,6 +1037,21 @@ export default function CapitalPlay(props: any) {
                 {rowLabelCell("Score final")}
                 {cols.map((p) => cell(p.score, p.i === winnerI))}
 
+                {rowLabelCell("Capital de départ")}
+                {cols.map((p) => cell(p.stats?.startingCapital ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Pic de capital")}
+                {cols.map((p) => cell(p.stats?.peakCapital ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Capital minimum")}
+                {cols.map((p) => cell(p.stats?.lowestCapital ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Variation nette")}
+                {cols.map((p) => cell(`${Number(p.stats?.netCapitalChange ?? 0) >= 0 ? "+" : ""}${p.stats?.netCapitalChange ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Capital conservé")}
+                {cols.map((p) => cell(`${p.stats?.capitalRetentionRate ?? 0}%`, p.i === winnerI))}
+
                 {rowLabelCell("Dernier contrat (tie-break)")}
                 {cols.map((p) => cell(p.last, p.i === winnerI))}
 
@@ -1025,8 +1070,50 @@ export default function CapitalPlay(props: any) {
                 {rowLabelCell("Capital perdu")}
                 {cols.map((p) => cell(p.stats?.capitalLost ?? 0, p.i === winnerI))}
 
+                {rowLabelCell("Pénalités")}
+                {cols.map((p) => cell(`${p.stats?.penaltyEvents ?? 0} • moy. ${p.stats?.avgPenalty ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Série réussites max")}
+                {cols.map((p) => cell(p.stats?.successStreakMax ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Série échecs max")}
+                {cols.map((p) => cell(p.stats?.failStreakMax ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Volées / fléchettes")}
+                {cols.map((p) => cell(`${p.stats?.visits ?? 0} / ${p.stats?.dartsThrown ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Moyenne / volée")}
+                {cols.map((p) => cell(p.stats?.averageVisit ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Moyenne / 3 flèches")}
+                {cols.map((p) => cell(p.stats?.avg3 ?? 0, p.i === winnerI))}
+
                 {rowLabelCell("Meilleure volée")}
                 {cols.map((p) => cell(p.stats?.bestVisit ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Meilleur gain")}
+                {cols.map((p) => cell(`+${p.stats?.bestGain ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Plus grosse perte")}
+                {cols.map((p) => cell(`-${p.stats?.biggestLoss ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Précision impacts")}
+                {cols.map((p) => cell(`${p.stats?.hitRate ?? 0}%`, p.i === winnerI))}
+
+                {rowLabelCell("S / D / T")}
+                {cols.map((p) => cell(`${p.stats?.singles ?? 0} / ${p.stats?.doubles ?? 0} / ${p.stats?.triples ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("Bull / DBull / Miss")}
+                {cols.map((p) => cell(`${p.stats?.bulls ?? 0} / ${p.stats?.dbulls ?? 0} / ${p.stats?.misses ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("60+ / 100+ / 140+ / 180")}
+                {cols.map((p) => cell(`${p.stats?.visits60Plus ?? 0} / ${p.stats?.visits100Plus ?? 0} / ${p.stats?.visits140Plus ?? 0} / ${p.stats?.visits180 ?? 0}`, p.i === winnerI))}
+
+                {rowLabelCell("57 exact")}
+                {cols.map((p) => cell(p.stats?.exact57 ?? 0, p.i === winnerI))}
+
+                {rowLabelCell("Secteur le + touché")}
+                {cols.map((p) => cell(p.stats?.topSector ? `${p.stats.topSector} (${p.stats?.topSectorHits ?? 0})` : "—", p.i === winnerI))}
 
                 {rowLabelCell("Mode")}
                 {cols.map((p) => cell(cfg?.mode ?? "official", p.i === winnerI))}
