@@ -5,6 +5,7 @@ import {
   deleteDirectR2Backup,
   downloadDirectR2Backup,
   emptyDirectR2Trash,
+  getDirectR2Usage,
   isDirectR2BackupId,
   listDirectR2Backups,
   restoreDirectR2Backup,
@@ -384,8 +385,8 @@ export async function listCloudBackups(limit = 10, includeDeleted = false): Prom
 }
 
 export async function listCloudVaultBackups(limit = 30, includeDeleted = false): Promise<CloudObjectIndexItem[]> {
-  // Le client direct tente d'abord la Function Pages, puis la route backend
-  // stateless. Aucun de ces deux chemins ne dépend de PostgreSQL.
+  // Source canonique des sauvegardes complètes : Pages Function -> R2 direct.
+  // Aucun fallback NAS/PostgreSQL n'est autorisé pour cette liste.
   return listDirectR2Backups(limit, includeDeleted);
 }
 
@@ -431,9 +432,32 @@ export async function uploadCloudVaultSnapshotJson(args: {
     summary: (metadata as any)?.summary || metadata,
     metadata,
   });
+  const directUsage: any = direct.usage || await getDirectR2Usage().catch(() => null);
+  const quotaBytes = Number(directUsage?.quotaBytes || 0);
+  const usedBytes = Number(directUsage?.usedBytes || 0);
   return {
     ...direct,
-    usage: { ok: true, preference: { plan_id: "direct_r2", storage_provider: "cloud_r2", quota_bytes: 0, used_bytes: 0 }, usedBytes: 0, quotaBytes: 0, remainingBytes: 0, percentUsed: 0 },
+    usage: directUsage ? {
+      ok: true,
+      preference: {
+        plan_id: String(directUsage.planId || "free_test_100mb"),
+        storage_provider: "cloud_r2",
+        quota_bytes: quotaBytes,
+        used_bytes: usedBytes,
+        billing_status: String(directUsage.billingStatus || "free"),
+        billing_exempt: directUsage.billingExempt === true,
+      },
+      usedBytes,
+      quotaBytes,
+      remainingBytes: Number(directUsage.remainingBytes || 0),
+      percentUsed: Number(directUsage.percentUsed || 0),
+      retentionTotal: Number(directUsage.retentionTotal || 2),
+      retainedBackups: Number(directUsage.retainedBackups || 0),
+    } : {
+      ok: true,
+      preference: { plan_id: "free_test_100mb", storage_provider: "cloud_r2", quota_bytes: 0, used_bytes: 0 },
+      usedBytes: 0, quotaBytes: 0, remainingBytes: 0, percentUsed: 0,
+    },
   } as any;
 }
 

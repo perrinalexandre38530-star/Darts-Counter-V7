@@ -106,6 +106,7 @@ import {
   type StorageBillingInterval,
   type StorageStripeStatus,
 } from "../lib/cloudStorageApi";
+import { getDirectR2Status, getDirectR2Usage } from "../lib/directR2BackupApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1269,7 +1270,11 @@ function AccountPages({
   const emailLabel = (user as any)?.email || "—";
   const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
 
-  const [page, setPage] = React.useState<AccountPage>("account_menu");
+  const [page, setPage] = React.useState<AccountPage>(() => {
+    if (typeof window === "undefined") return "account_menu";
+    const hash = String(window.location.hash || "");
+    return /[?&]account=storage(?:&|$)/.test(hash) ? "account_storage" : "account_menu";
+  });
 
   const [displayName, setDisplayName] = React.useState(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
   const [country, setCountry] = React.useState(profile?.country || "");
@@ -1368,50 +1373,65 @@ function AccountPages({
     }
     setCloudUsageLoading(true);
     setCloudUsageError(null);
+
+    // Quota : le backend reste la source de facturation Stripe, mais la Pages
+    // Function R2 est le fallback de lecture. Ainsi l'écran reste utile même si
+    // le NAS/PostgreSQL est momentanément indisponible.
     try {
       const usage = await getAccountStorageUsage();
       setCloudUsage(usage);
+    } catch (backendError: any) {
       try {
-        const status = await getCloudStorageStatus();
-        setCloudStorageStatus(status);
+        const direct = await getDirectR2Usage();
+        setCloudUsage({
+          ok: true,
+          preference: {
+            plan_id: direct.planId,
+            storage_provider: "cloud_r2",
+            quota_bytes: direct.quotaBytes,
+            used_bytes: direct.usedBytes,
+            billing_status: direct.billingStatus,
+            billing_exempt: direct.billingExempt,
+          },
+          usedBytes: direct.usedBytes,
+          quotaBytes: direct.quotaBytes,
+          remainingBytes: direct.remainingBytes,
+          percentUsed: direct.percentUsed,
+        });
+        setCloudUsageError(null);
       } catch {
-        setCloudStorageStatus(null);
+        setCloudUsageError(backendError?.message || "Impossible de charger le quota cloud.");
       }
-      try {
-        const supabaseStatus = await getSupabaseAccountStatus();
-        setSupabaseAccountStatus(supabaseStatus);
-      } catch {
-        setSupabaseAccountStatus(null);
-      }
-      try {
-        const bridge = await getSupabaseBridgeStatus();
-        setSupabaseBridgeStatus(bridge);
-      } catch {
-        setSupabaseBridgeStatus(null);
-      }
-      try {
-        const stripe = await getStorageStripeStatus(false);
-        setStorageStripeStatus(stripe);
-      } catch {
-        setStorageStripeStatus(null);
-      }
-    } catch (e: any) {
-      setCloudUsageError(e?.message || "Impossible de charger le quota cloud.");
-    } finally {
-      setCloudUsageLoading(false);
     }
+
+    // État R2 : priorité au chemin réellement utilisé pour les sauvegardes.
+    try {
+      const directStatus = await getDirectR2Status();
+      setCloudStorageStatus({
+        ok: !!directStatus.ok,
+        configured: !!directStatus.ok && !!directStatus.bucketReady,
+        provider: "cloudflare-pages-r2-direct",
+        bucket: directStatus.bucketReady ? "multisports-user-data" : null,
+        canUpload: !!directStatus.ok && !!directStatus.bucketReady,
+        message: directStatus.message || directStatus.error || "Cloudflare Pages/R2 direct",
+      });
+    } catch {
+      setCloudStorageStatus(null);
+    }
+
+    // Ces diagnostics sont secondaires et peuvent dépendre du backend NAS.
+    // Leur échec ne doit pas invalider le stockage R2 direct.
+    try { setSupabaseAccountStatus(await getSupabaseAccountStatus()); } catch { setSupabaseAccountStatus(null); }
+    try { setSupabaseBridgeStatus(await getSupabaseBridgeStatus()); } catch { setSupabaseBridgeStatus(null); }
+    try { setStorageStripeStatus(await getStorageStripeStatus(false)); } catch { setStorageStripeStatus(null); }
+
+    setCloudUsageLoading(false);
   }, [isSignedIn]);
 
   React.useEffect(() => {
     if (page !== "account_storage") return;
     void refreshCloudUsage();
   }, [page, refreshCloudUsage]);
-
-  React.useEffect(() => {
-    if (page !== "account_storage" || !isSignedIn) return;
-    void refreshCloudBackupList(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, isSignedIn]);
 
   async function refreshStorageStripeStatus(verify = true) {
     if (!isSignedIn) {
@@ -2255,168 +2275,33 @@ function AccountPages({
           </div>
 
           <div style={{ ...softCard, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
-                  Cloud Sync V1 — sauvegarde R2
+                  Sauvegardes Cloud R2
                 </div>
                 <div style={{ marginTop: 4, fontWeight: 950, color: theme.primary }}>
-                  Backup manuel sécurisé
+                  1 courante + 1 précédente
+                </div>
+                <div style={{ marginTop: 5, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+                  La page Sauvegarde est désormais l’unique point de création/restauration R2. Après chaque nouvelle sauvegarde, toute génération plus ancienne que la précédente est supprimée physiquement du bucket.
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  disabled={!!cloudBackupLoading || !isSignedIn}
-                  onClick={() => void runCloudBackupNow()}
-                  style={{
-                    borderRadius: 999,
-                    border: `1px solid ${theme.primary}88`,
-                    background: cloudBackupLoading === "backup" ? "rgba(255,255,255,0.08)" : `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                    color: cloudBackupLoading === "backup" ? theme.textSoft : "#000",
-                    padding: "9px 12px",
-                    fontSize: 11,
-                    fontWeight: 950,
-                    cursor: cloudBackupLoading || !isSignedIn ? "wait" : "pointer",
-                    opacity: cloudBackupLoading || !isSignedIn ? 0.7 : 1,
-                  }}
-                >
-                  {cloudBackupLoading === "backup" ? "Sauvegarde…" : "Sauvegarder maintenant"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!!cloudBackupLoading || !isSignedIn}
-                  onClick={() => void refreshCloudBackupList(true)}
-                  style={{
-                    borderRadius: 999,
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(255,255,255,0.055)",
-                    color: theme.primary,
-                    padding: "9px 12px",
-                    fontSize: 11,
-                    fontWeight: 950,
-                    cursor: cloudBackupLoading || !isSignedIn ? "wait" : "pointer",
-                    opacity: cloudBackupLoading || !isSignedIn ? 0.7 : 1,
-                  }}
-                >
-                  {cloudBackupLoading === "list" ? "Lecture…" : "Rafraîchir"}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
-              Cette V1 crée une sauvegarde cloud complète compressée vers Cloudflare R2 : profils locaux, dartsets et historique.
-              La restauration est volontairement en <b>fusion</b> pour éviter d’écraser brutalement les données locales.
-            </div>
-
-            {cloudBackupResult && (
-              <div
+              <button
+                type="button"
+                onClick={() => {
+                  const saved = saveStoragePrefs({ selectedDestination: "cloud_r2" });
+                  setStoragePrefs(saved);
+                  go?.("storage_vault");
+                }}
                 style={{
-                  marginTop: 10,
-                  borderRadius: 12,
-                  border: `1px solid ${
-                    cloudBackupResult.status === "ok"
-                      ? "rgba(98,210,111,0.55)"
-                      : cloudBackupResult.status === "error"
-                        ? "rgba(255,107,107,0.65)"
-                        : theme.borderSoft
-                  }`,
-                  background:
-                    cloudBackupResult.status === "ok"
-                      ? "rgba(98,210,111,0.10)"
-                      : cloudBackupResult.status === "error"
-                        ? "rgba(255,107,107,0.10)"
-                        : "rgba(255,255,255,0.055)",
-                  padding: 10,
-                  fontSize: 11,
-                  lineHeight: 1.35,
-                  color: cloudBackupResult.status === "error" ? "#ff8c8c" : theme.text,
+                  marginLeft: "auto", borderRadius: 999, border: `1px solid ${theme.primary}88`,
+                  background: `${theme.primary}20`, color: theme.primary, padding: "9px 12px",
+                  fontSize: 11, fontWeight: 950, cursor: "pointer",
                 }}
               >
-                <div style={{ fontWeight: 950, color: cloudBackupResult.status === "ok" ? "#62d26f" : cloudBackupResult.status === "error" ? "#ff8c8c" : theme.primary }}>
-                  {cloudBackupResult.title}
-                </div>
-                {cloudBackupResult.detail && <div style={{ marginTop: 4, color: theme.textSoft }}>{cloudBackupResult.detail}</div>}
-              </div>
-            )}
-
-            <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
-              {cloudBackupItems.length === 0 ? (
-                <div style={{ borderRadius: 12, padding: 10, border: `1px dashed ${theme.borderSoft}`, color: theme.textSoft, fontSize: 11, lineHeight: 1.35 }}>
-                  Aucune sauvegarde cloud listée pour ce compte. Clique sur “Sauvegarder maintenant” pour créer la première.
-                </div>
-              ) : (
-                cloudBackupItems.slice(0, 6).map((item) => {
-                  const meta: any = item.metadata || {};
-                  const updatedAt = String(item.updated_at || item.created_at || "");
-                  const restoreLoading = cloudBackupLoading === `restore:${item.id}`;
-                  const deleteLoading = cloudBackupLoading === `delete:${item.id}`;
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        borderRadius: 12,
-                        padding: 10,
-                        border: `1px solid ${theme.borderSoft}`,
-                        background: "rgba(255,255,255,0.035)",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 950, color: "#fff", fontSize: 12 }}>
-                            {item.title || "Sauvegarde cloud"}
-                          </div>
-                          <div style={{ marginTop: 3, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.35 }}>
-                            {updatedAt ? new Date(updatedAt).toLocaleString("fr-FR") : "date inconnue"}
-                            {" · "}{formatStorageBytes(Number(item.size_bytes || 0))}
-                            {meta.historyCount != null ? ` · ${meta.historyCount} parties` : ""}
-                            {meta.profilesCount != null ? ` · ${meta.profilesCount} profils` : ""}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            disabled={!!cloudBackupLoading}
-                            onClick={() => void restoreCloudBackupItem(item)}
-                            style={{
-                              borderRadius: 999,
-                              border: `1px solid ${theme.primary}77`,
-                              background: `${theme.primary}18`,
-                              color: theme.primary,
-                              padding: "7px 9px",
-                              fontSize: 10.5,
-                              fontWeight: 950,
-                              cursor: cloudBackupLoading ? "wait" : "pointer",
-                            }}
-                          >
-                            {restoreLoading ? "Restauration…" : "Restaurer"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!!cloudBackupLoading}
-                            onClick={() => void deleteCloudBackupItem(item)}
-                            style={{
-                              borderRadius: 999,
-                              border: "1px solid rgba(255,107,107,0.45)",
-                              background: "rgba(255,107,107,0.08)",
-                              color: "#ff9b9b",
-                              padding: "7px 9px",
-                              fontSize: 10.5,
-                              fontWeight: 950,
-                              cursor: cloudBackupLoading ? "wait" : "pointer",
-                            }}
-                          >
-                            {deleteLoading ? "Suppression…" : "Supprimer"}
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 5, fontSize: 9.8, color: theme.textSoft, wordBreak: "break-all" }}>
-                        {item.object_key}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+                Ouvrir Sauvegarde
+              </button>
             </div>
           </div>
 
@@ -2575,7 +2460,7 @@ function AccountPages({
                           preferExternalStorage: dest.id === "external_sd_manual" || dest.id === "device_file",
                         },
                         dest.id === "cloud_r2"
-                          ? "Cloud R2 sélectionné. Les uploads réels seront bloqués tant que les clés R2 ne seront pas remplies dans le .env."
+                          ? "Cloud R2 sélectionné. Les sauvegardes passent directement par Cloudflare Pages/R2 ; le NAS reste une destination séparée."
                           : "Destination locale enregistrée."
                       )
                     }
@@ -2705,6 +2590,7 @@ function AccountPages({
 
             <div style={{ marginTop: 8, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.4 }}>
               {storageStripeStatus?.message || "Stripe sert uniquement à activer les quotas payants. Les fichiers restent stockés dans Cloudflare R2."}
+              <div style={{ marginTop: 5 }}>Après confirmation Stripe, le plan/quota est recopié sous forme d’un droit privé léger dans R2. La Pages Function applique ensuite ce quota directement, même lorsque le NAS est hors ligne.</div>
             </div>
 
             {storageStripeStatus && (

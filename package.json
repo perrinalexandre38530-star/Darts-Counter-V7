@@ -20,7 +20,8 @@
     "test:territories-value": "node --experimental-strip-types ./tools/test-territories-value-win.ts",
     "test:territories-unique": "node --experimental-strip-types ./tools/test-territories-unique-values.ts",
     "deploy:pages": "npm run build && wrangler pages deploy dist --project-name darts-counter-v7 --config wrangler.toml",
-    "test:r2-backups": "node --experimental-strip-types ./tools/test-direct-r2-backups.mjs"
+    "test:r2-backups": "node --experimental-strip-types ./tools/test-direct-r2-backups.mjs",
+    "test:storage": "npm run test:r2-backups && node ./tools/test-storage-destinations.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

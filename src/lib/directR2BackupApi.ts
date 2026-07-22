@@ -25,6 +25,19 @@ export type DirectR2Status = {
   message?: string;
 };
 
+export type DirectR2Usage = {
+  usedBytes: number;
+  quotaBytes: number;
+  remainingBytes: number;
+  percentUsed: number;
+  planId: string;
+  billingStatus: string;
+  billingExempt: boolean;
+  planSource?: string;
+  retainedBackups: number;
+  retentionTotal: number;
+};
+
 type DirectBackupRecord = {
   id: string;
   objectKey: string;
@@ -252,7 +265,7 @@ export async function createDirectR2Backup(args: {
   title?: string;
   summary?: DirectBackupSummary;
   metadata?: Record<string, any>;
-}): Promise<{ ok: boolean; object: CloudObjectIndexItem }> {
+}): Promise<{ ok: boolean; object: CloudObjectIndexItem; previousObject?: CloudObjectIndexItem | null; usage?: DirectR2Usage; cleaned?: number; cleanupPending?: number; plan?: any }> {
   const payload = await requestDirect("", {
     method: "POST",
     body: JSON.stringify({
@@ -262,7 +275,24 @@ export async function createDirectR2Backup(args: {
       metadata: args.metadata || {},
     }),
   });
-  return { ok: true, object: toCloudItem(payload?.backup || payload?.object || {}) };
+  return {
+    ok: true,
+    object: toCloudItem(payload?.backup || payload?.object || {}),
+    previousObject: payload?.previousBackup ? toCloudItem(payload.previousBackup) : null,
+    usage: payload?.usage || undefined,
+    cleaned: Number(payload?.cleaned || 0),
+    cleanupPending: Number(payload?.cleanupPending || 0),
+    plan: payload?.plan || undefined,
+  };
+}
+
+export async function getDirectR2Usage(): Promise<DirectR2Usage> {
+  const payload = await requestDirect("/usage", { method: "GET" });
+  return payload?.usage || {
+    usedBytes: 0, quotaBytes: 0, remainingBytes: 0, percentUsed: 0,
+    planId: "free_test_100mb", billingStatus: "free", billingExempt: false,
+    retainedBackups: 0, retentionTotal: 2,
+  };
 }
 
 export async function listDirectR2Backups(limit = 30, includeDeleted = false): Promise<CloudObjectIndexItem[]> {

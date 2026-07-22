@@ -3,7 +3,6 @@ import React from "react";
 import { loadBotPlayers } from "../lib/bots";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import PageHeader from "../components/PageHeader";
 import tickerDepartements from "../assets/tickers/ticker-departements.png";
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
@@ -446,6 +445,17 @@ export default function DepartementsConfig(props: any) {
 
   const primary = (theme as any)?.primary ?? "#7dffca";
   const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
+  const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
+    try { return localStorage.getItem("dc_territories_config_view_mode") === "complete" ? "complete" : "guided"; }
+    catch { return "guided"; }
+  });
+  const [guidedStep, setGuidedStep] = React.useState(0);
+  const guidedSteps = ["Carte", "Participants", "Mode", "Règles", "Victoire"];
+  const guidedMaxStep = guidedSteps.length - 1;
+  const selectConfigViewMode = React.useCallback((mode: "guided" | "complete") => {
+    setConfigViewMode(mode);
+    try { localStorage.setItem("dc_territories_config_view_mode", mode); } catch {}
+  }, []);
 
   // ---------- state
   const mapTouchedRef = React.useRef(false);
@@ -1203,14 +1213,57 @@ export default function DepartementsConfig(props: any) {
     if (index < teamCount) setManualPlayerTeam(String(playerId), index as 0 | 1 | 2 | 3);
   }, [selectedIds, teamCount]);
 
+  const activeMapLabel = React.useMemo(() => String(maps.find((map) => map.id === mapId)?.name || mapId), [maps, mapId]);
+  const guidedParticipantLabel = participantMode === "teams"
+    ? `${teamCount} équipes · ${teamSize} joueurs`
+    : `${selectedIds.length} joueur${selectedIds.length > 1 ? "s" : ""}`;
+  const guidedVictoryLabel = gameMode === "fortress"
+    ? fortressVictoryMode === "value" ? "Majorité en valeur" : fortressVictoryMode === "conquest" ? "Conquête totale" : "Majorité territoires"
+    : victoryMode === "regions" ? `Objectif ${objectiveRegions} régions` : victoryMode === "time" ? `${timeLimitMin} min` : `Objectif ${objective} territoires`;
+
   return (
-    <div className="page" style={{ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden" }}>
-      <PageHeader
-        title="TERRITORIES"
-        tickerSrc={tickerDepartements}
-        left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles TERRITORIES" content={INFO_TEXT} />}
-      />
+    <div className="page" style={{ width: "calc(100% + 32px)", maxWidth: "none", minWidth: 0, overflowX: "hidden", margin: "-18px -16px 0", paddingBottom: 86 }}>
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          height: "clamp(112px, 18vw, 138px)",
+          overflow: "hidden",
+          background: "#05070b",
+          borderBottom: `1px solid ${primary}44`,
+          marginBottom: 8,
+        }}
+      >
+        <img src={tickerDepartements} alt="TERRITORIES" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", display: "block" }} />
+        <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.36), transparent 24%, transparent 76%, rgba(0,0,0,.36))" }} />
+        <div style={{ position: "absolute", left: 10, top: "calc(env(safe-area-inset-top) + 7px)", zIndex: 2 }}><BackDot onClick={goBack} /></div>
+        <div style={{ position: "absolute", right: 10, top: "calc(env(safe-area-inset-top) + 7px)", zIndex: 2 }}><InfoDot title="Règles TERRITORIES" content={INFO_TEXT} color={primary} glow={`${primary}88`} /></div>
+      </div>
+
+      <div style={{ padding: "0 8px" }}>
+        <section style={{ background: "rgba(10,12,24,0.94)", borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${primary}33`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
+          <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration Territories</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <X01PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => selectConfigViewMode("guided")} primary={primary} primarySoft={primarySoft} />
+            <X01PillButton label="Complète" active={configViewMode === "complete"} onClick={() => selectConfigViewMode("complete")} primary={primary} primarySoft={primarySoft} />
+          </div>
+          <div style={{ marginTop: 8, color: "#9298bb", fontSize: 11, lineHeight: 1.35 }}>Guidée : les choix essentiels étape par étape. Complète : tous les paramètres avancés sur une seule page.</div>
+        </section>
+
+        {configViewMode === "guided" ? (
+          <section style={{ background: cardBg, borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${primary}33`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
+              <div>
+                <div style={{ color: primary, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div>
+                <div style={{ marginTop: 3, color: "#9298bb", fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {guidedSteps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", color: idx === guidedStep ? primary : "#aeb2d3", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>{idx + 1}</button>)}
+              </div>
+            </div>
+            <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, #fff2b4)`, transition: "width .18s ease" }} /></div>
+          </section>
+        ) : null}
 
       {/* Inline info modal */}
       {infoModal && (
@@ -1264,6 +1317,7 @@ export default function DepartementsConfig(props: any) {
       )}
 
       {/* MAPS CAROUSEL */}
+      {(configViewMode === "complete" || guidedStep === 0) ? (
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1439,8 +1493,10 @@ export default function DepartementsConfig(props: any) {
           </div>
 
       </Section>
+      ) : null}
 
       {/* PARTICIPANTS — même système visuel que X01 */}
+      {(configViewMode === "complete" || guidedStep === 1) ? (
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1632,8 +1688,62 @@ export default function DepartementsConfig(props: any) {
           </div>
         </div>
       </Section>
+      ) : null}
+
+      {configViewMode === "guided" && guidedStep === 2 ? (
+        <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${primary}33`, boxShadow: "0 16px 40px rgba(0,0,0,.52)" }}>
+          <h3 style={{ margin: "0 0 7px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>3. Mode de jeu</h3>
+          <div style={{ color: "#aeb2d3", fontSize: 11.5, lineHeight: 1.4, marginBottom: 12 }}>Choisis la philosophie de la partie puis sa durée.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 9, marginBottom: 12 }}>
+            <button type="button" onClick={() => setGameMode("classic")} style={{ minHeight: 74, borderRadius: 16, padding: 12, textAlign: "left", cursor: "pointer", border: `1px solid ${gameMode === "classic" ? primary : "rgba(255,255,255,.10)"}`, background: gameMode === "classic" ? primarySoft : "rgba(255,255,255,.035)", color: "#fff" }}><div style={{ color: primary, fontSize: 15, fontWeight: 950 }}>Conquête</div><div style={{ marginTop: 4, fontSize: 10.5, color: "#aeb2d3" }}>Carte neutre, capture directe.</div></button>
+            <button type="button" onClick={() => setGameMode("fortress")} style={{ minHeight: 74, borderRadius: 16, padding: 12, textAlign: "left", cursor: "pointer", border: `1px solid ${gameMode === "fortress" ? primary : "rgba(255,255,255,.10)"}`, background: gameMode === "fortress" ? primarySoft : "rgba(255,255,255,.035)", color: "#fff" }}><div style={{ color: primary, fontSize: 15, fontWeight: 950 }}>Forteresses</div><div style={{ marginTop: 4, fontSize: 10.5, color: "#aeb2d3" }}>Territoires partagés et défendables.</div></button>
+          </div>
+          {(gameMode === "classic" || fortressVictoryMode !== "conquest") ? <OptionRow label="Rounds"><OptionSelect value={rounds} options={[6,8,10,12,15,20,25]} onChange={setRounds} /></OptionRow> : null}
+          {gameMode === "fortress" ? <OptionRow label="Forteresses max. / camp"><OptionSelect value={maxFortressesPerOwner} options={[1,2,3,4,5,6,7,8,9,10]} onChange={(value:any) => setMaxFortressesPerOwner(Math.max(1,Math.min(10,Number(value)||2)))} /></OptionRow> : null}
+        </section>
+      ) : null}
+
+      {configViewMode === "guided" && guidedStep === 3 ? (
+        <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${primary}33`, boxShadow: "0 16px 40px rgba(0,0,0,.52)" }}>
+          <h3 style={{ margin: "0 0 7px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>4. Règles de jeu</h3>
+          <OptionRow label="Sélection de cible"><OptionSelect value={targetSelectionMode} options={[{value:"free",label:"Libre — choix sur la carte"},{value:"by_score",label:"Volée directe — sans sélection"}]} onChange={setTargetSelectionMode as any} /></OptionRow>
+          <OptionRow label="Règle de capture"><OptionSelect value={gameMode === "fortress" ? "exact" : captureRule} options={[{value:"exact",label:"EXACT — score égal"},{value:"gte",label:"GTE — supérieur ou égal"}]} onChange={setCaptureRule as any} disabled={gameMode === "fortress"} /></OptionRow>
+          <OptionRow label="Bull / DBull = rejouer 1×"><OptionToggle value={bullReplayEnabled} onChange={setBullReplayEnabled} /></OptionRow>
+          <OptionRow label="MISS = passe son tour"><OptionToggle value={missPassTurn} onChange={setMissPassTurn} /></OptionRow>
+          <div style={{ marginTop: 10, padding: "9px 10px", borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.4 }}>Le joueur peut toujours appuyer sur VALIDER après 1, 2 ou 3 fléchettes.</div>
+        </section>
+      ) : null}
+
+      {configViewMode === "guided" && guidedStep === 4 ? (
+        <section style={{ background: cardBg, borderRadius: 18, padding: 14, marginBottom: 14, border: `1px solid ${selectionValid ? primary + "66" : "rgba(255,255,255,.08)"}`, boxShadow: "0 16px 40px rgba(0,0,0,.52)" }}>
+          <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>5. Victoire & récapitulatif</h3>
+          {gameMode === "classic" ? (
+            <>
+              <OptionRow label="Condition de victoire"><OptionSelect value={victoryMode} options={String(mapId).toUpperCase() === "FR" ? [{value:"territories",label:"Objectif territoires"},{value:"regions",label:"Objectif régions"},{value:"time",label:"Temps — majorité"}] : [{value:"territories",label:"Objectif territoires"},{value:"time",label:"Temps — majorité"}]} onChange={setVictoryMode as any} /></OptionRow>
+              {victoryMode === "territories" ? <OptionRow label="Objectif"><OptionSelect value={objective} options={[5,6,8,10,12,15,18,20,25]} onChange={setObjective} /></OptionRow> : null}
+              {victoryMode === "regions" ? <OptionRow label="Régions"><OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} /></OptionRow> : null}
+              {victoryMode === "time" ? <OptionRow label="Temps"><OptionSelect value={timeLimitMin} options={[10,15,20,30,45,60]} onChange={setTimeLimitMin} /></OptionRow> : null}
+            </>
+          ) : <OptionRow label="Condition de victoire"><OptionSelect value={fortressVictoryMode} options={[{value:"majority",label:"Majorité — territoires"},{value:"value",label:"Majorité — valeur"},{value:"conquest",label:"Conquête totale"}]} onChange={setFortressVictoryMode as any} /></OptionRow>}
+          <div style={{ marginTop: 12, display: "grid", gap: 7, padding: 11, borderRadius: 14, background: `${primary}0c`, border: `1px solid ${primary}33`, fontSize: 11.5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Carte</span><b>{activeMapLabel}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Participants</span><b>{guidedParticipantLabel}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Mode</span><b>{gameMode === "fortress" ? "Forteresses" : "Conquête"}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Cible</span><b>{targetSelectionMode === "by_score" ? "Volée directe" : "Libre"}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Victoire</span><b>{guidedVictoryLabel}</b></div>
+          </div>
+        </section>
+      ) : null}
+
+      {configViewMode === "guided" ? (
+        <div style={{ display: "flex", gap: 9, margin: "0 0 14px" }}>
+          <button type="button" onClick={() => setGuidedStep((step) => Math.max(0, step - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: guidedStep === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.065)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>
+          <button type="button" onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: guidedStep === guidedMaxStep ? "rgba(255,255,255,.025)" : primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button>
+        </div>
+      ) : null}
 
       {/* Rules */}
+      {configViewMode === "complete" ? (
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1870,6 +1980,7 @@ export default function DepartementsConfig(props: any) {
           </div>
         ) : null}
       </Section>
+      ) : null}
 
       {/* ✅ Bouton EXACTEMENT “famille X01” */}
       <Section>
@@ -1908,6 +2019,7 @@ export default function DepartementsConfig(props: any) {
           </button>
         </div>
       </Section>
+      </div>
     </div>
   );
 }

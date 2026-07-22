@@ -656,6 +656,38 @@ function HeaderModeIcons(props: {
   );
 }
 
+
+function TerritoriesLegendGlyph(props: {
+  kind: "solo" | "teams" | "classic" | "fortress" | "free" | "direct" | "exact" | "gte" | "value" | "territories" | "conquest" | "regions" | "time" | "round";
+  color: string;
+}) {
+  const common = {
+    width: 16,
+    height: 16,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  const k = props.kind;
+  if (k === "teams") return <svg {...common}><path d="M8.5 11a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="M15.8 10.2a2.6 2.6 0 1 0 0-5.2"/><path d="M3.2 20v-1.6c0-3 2.3-5.2 5.3-5.2s5.3 2.2 5.3 5.2V20"/><path d="M15 13.5c3.2.2 5.8 2 5.8 4.9V20"/></svg>;
+  if (k === "solo") return <svg {...common}><circle cx="12" cy="7.5" r="3.4"/><path d="M5.3 20v-1.8c0-3.7 2.8-6.3 6.7-6.3s6.7 2.6 6.7 6.3V20"/></svg>;
+  if (k === "fortress") return <svg {...common}><path d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Z"/><path d="M8 20v-5h8v5M4 12h16"/></svg>;
+  if (k === "classic") return <svg {...common}><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>;
+  if (k === "direct") return <svg {...common}><path d="m13 2-7 11h6l-1 9 7-12h-6l1-8Z"/></svg>;
+  if (k === "free") return <svg {...common}><path d="M4 4h6M4 4v6M20 4h-6M20 4v6M4 20h6M4 20v-6M20 20h-6M20 20v-6"/><circle cx="12" cy="12" r="2.5"/></svg>;
+  if (k === "exact" || k === "gte") return <span style={{fontSize:13,fontWeight:1000,lineHeight:1}}>{k === "gte" ? "≥" : "="}</span>;
+  if (k === "value") return <svg {...common}><path d="M12 3 4 8l8 5 8-5-8-5Z"/><path d="m4 12 8 5 8-5M4 16l8 5 8-5"/></svg>;
+  if (k === "conquest") return <svg {...common}><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.2 2.3 3.3 4.9 3.3 8S14.2 17.7 12 20M12 4C9.8 6.3 8.7 8.9 8.7 12S9.8 17.7 12 20"/></svg>;
+  if (k === "time") return <svg {...common}><circle cx="12" cy="13" r="7"/><path d="M12 10v4l3 2M9 2h6"/></svg>;
+  if (k === "regions") return <svg {...common}><path d="M4 5h7v6H4zM13 4h7v7h-7zM5 13h6v7H5zM13 13h7v6h-7z"/></svg>;
+  if (k === "round") return <svg {...common}><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>;
+  return <svg {...common}><path d="M6 21V4"/><path d="M6 5h11l-2.4 3L17 11H6"/></svg>;
+}
+
 function TerritoriesConfigLegend(props: {
   open: boolean;
   onClose: () => void;
@@ -665,18 +697,19 @@ function TerritoriesConfigLegend(props: {
   selectionMode: "free" | "by_score";
   captureRule: "exact" | "gte";
   victoryLabel: string;
+  victoryKind: "value" | "territories" | "conquest" | "regions" | "time";
   roundProgress: string;
   bullReplayEnabled: boolean;
   missPassTurn: boolean;
 }) {
   if (!props.open) return null;
-  const rows = [
-    [props.teamMode ? "👥" : "♙", props.teamMode ? "Équipes" : "Solo"],
-    [props.fortressMode ? "♜" : "◎", props.fortressMode ? "Forteresses" : "Conquête classique"],
-    [props.selectionMode === "by_score" ? "⚡" : "⌖", props.selectionMode === "by_score" ? "Volée directe — sans sélection" : "Sélection libre sur la carte"],
-    [props.captureRule === "gte" ? "≥" : "=", props.captureRule === "gte" ? "Capture GTE — supérieur ou égal" : "Capture EXACTE"],
-    ["🏆", props.victoryLabel],
-    ["↻", `Tour ${props.roundProgress}`],
+  const rows: Array<{ kind: React.ComponentProps<typeof TerritoriesLegendGlyph>["kind"]; label: string }> = [
+    { kind: props.teamMode ? "teams" : "solo", label: props.teamMode ? "Équipes" : "Solo" },
+    { kind: props.fortressMode ? "fortress" : "classic", label: props.fortressMode ? "Forteresses" : "Conquête classique" },
+    { kind: props.selectionMode === "by_score" ? "direct" : "free", label: props.selectionMode === "by_score" ? "Volée directe — sans sélection" : "Sélection libre sur la carte" },
+    { kind: props.captureRule === "gte" ? "gte" : "exact", label: props.captureRule === "gte" ? "Capture GTE — supérieur ou égal" : "Capture EXACTE" },
+    { kind: props.victoryKind, label: props.victoryLabel },
+    { kind: "round", label: `Tour ${props.roundProgress}` },
   ];
   return (
     <div
@@ -689,10 +722,10 @@ function TerritoriesConfigLegend(props: {
           <button type="button" onClick={props.onClose} aria-label="Fermer" style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.38)", border: `1px solid ${props.color}66`, fontSize: 18, cursor: "pointer" }}>×</button>
         </div>
         <div style={{ display: "grid", gap: 7 }}>
-          {rows.map(([icon, label]) => (
-            <div key={label} style={{ minHeight: 38, display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "center", gap: 9, padding: "6px 9px", borderRadius: 12, background: `${props.color}0d`, border: `1px solid ${props.color}2f` }}>
-              <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.35)", border: `1px solid ${props.color}55`, fontSize: 16, fontWeight: 1000 }}>{icon}</div>
-              <div style={{ fontSize: 11.5, lineHeight: 1.25, fontWeight: 900, color: "#fff" }}>{label}</div>
+          {rows.map((row) => (
+            <div key={row.label} style={{ minHeight: 38, display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "center", gap: 9, padding: "6px 9px", borderRadius: 12, background: `${props.color}0d`, border: `1px solid ${props.color}2f` }}>
+              <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.35)", border: `1px solid ${props.color}55` }}><TerritoriesLegendGlyph kind={row.kind} color={props.color} /></div>
+              <div style={{ fontSize: 11.5, lineHeight: 1.25, fontWeight: 900, color: "#fff" }}>{row.label}</div>
             </div>
           ))}
         </div>
@@ -3417,8 +3450,17 @@ export default function DepartementsPlay(props: any) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
                 <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
-                <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} disabled={gameMode !== "fortress"} />
-                <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} disabled={gameMode !== "fortress"} />
+                {gameMode === "fortress" ? (
+                  <>
+                    <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} />
+                    <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} />
+                  </>
+                ) : (
+                  <>
+                    <ProfileStatIconKpi icon="neutral" title="Territoires libres capturés" value={String(Math.max(0, activeStats.captures - activeStats.steals))} color="#7de9ff" />
+                    <ProfileStatIconKpi icon="balance" title="Solde net de territoires (captures - pertes)" value={String(activeStats.captures - activeStats.lost)} color={activeStats.captures - activeStats.lost < 0 ? "#ff6f7d" : "#7de9ff"} />
+                  </>
+                )}
                 <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} color="#59f18d" />
                 <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} color="#59f18d" />
                 <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} color="#ff6f7d" />
@@ -3701,6 +3743,7 @@ export default function DepartementsPlay(props: any) {
         selectionMode={selectionMode}
         captureRule={captureRule}
         victoryLabel={victoryConfigLabel}
+        victoryKind={victoryConfigKind}
         roundProgress={`${Math.max(1, Math.min(maxRounds, game.roundIndex || 1))}/${maxRounds}`}
         bullReplayEnabled={bullReplayEnabled}
         missPassTurn={missPassTurn}
@@ -4191,7 +4234,7 @@ function TerritoriesMapModal(props: {
   );
 }
 
-type ProfileStatIconName = "darts" | "fortress" | "breach" | "capture" | "steal" | "lost";
+type ProfileStatIconName = "darts" | "fortress" | "breach" | "capture" | "steal" | "lost" | "neutral" | "balance";
 
 function ProfileStatLineIcon(props: { icon: ProfileStatIconName; size?: number }) {
   const size = props.size ?? 16;
@@ -4229,6 +4272,21 @@ function ProfileStatLineIcon(props: { icon: ProfileStatIconName; size?: number }
       <svg {...common}>
         <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11" />
         <path d="M4 12h6l-2 3 4 1-2 4h10" />
+      </svg>
+    );
+  }
+  if (props.icon === "neutral") {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="7" />
+        <path d="M8.5 12h7M12 8.5v7" />
+      </svg>
+    );
+  }
+  if (props.icon === "balance") {
+    return (
+      <svg {...common}>
+        <path d="M4 8h16M7 5 4 8l3 3M17 13l3 3-3 3M20 16H4" />
       </svg>
     );
   }

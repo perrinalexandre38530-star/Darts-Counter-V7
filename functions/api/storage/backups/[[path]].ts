@@ -24,7 +24,30 @@ type BackupRow = {
   metadata: Record<string, any>;
 };
 
-type Manifest = { version: 1; userId: string; updatedAt: string; backups: BackupRow[] };
+type Manifest = {
+  version: 2;
+  userId: string;
+  updatedAt: string;
+  backups: BackupRow[];
+  /** Clés R2 à supprimer au prochain passage si un delete précédent a échoué. */
+  cleanupKeys?: string[];
+};
+
+type StorageEntitlement = {
+  version: 1;
+  userId: string;
+  planId: string;
+  quotaBytes: number;
+  baseUsedBytes?: number;
+  billingStatus: string;
+  billingExempt: boolean;
+  storageProvider: string;
+  updatedAt: string;
+  currentPeriodEnd?: string | null;
+};
+
+const R2_BACKUP_RETENTION_TOTAL = 2; // courante + précédente
+const DEFAULT_FREE_QUOTA_BYTES = 100 * 1024 * 1024;
 
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -165,14 +188,150 @@ function backupKey(userId: string, id: string): string {
   return `users/${safeId(userId)}/backups/${safeId(id)}.json`;
 }
 
+function entitlementKey(userId: string): string {
+  return `users/${safeId(userId)}/billing/storage-entitlement-v1.json`;
+}
+
+async function readStorageEntitlement(bucket: R2Bucket, userId: string): Promise<StorageEntitlement | null> {
+  const object = await bucket.get(entitlementKey(userId));
+  if (!object) return null;
+  try {
+    const parsed: any = JSON.parse(await object.text());
+    const quotaBytes = Number(parsed?.quotaBytes || 0);
+    if (!parsed || !Number.isFinite(quotaBytes) || quotaBytes <= 0) return null;
+    return {
+      version: 1,
+      userId: String(parsed.userId || userId),
+      planId: String(parsed.planId || "free_test_100mb"),
+      quotaBytes,
+      baseUsedBytes: Math.max(0, Number(parsed?.baseUsedBytes || 0)),
+      billingStatus: String(parsed.billingStatus || "free"),
+      billingExempt: parsed.billingExempt === true,
+      storageProvider: String(parsed.storageProvider || "cloud_r2"),
+      updatedAt: String(parsed.updatedAt || ""),
+      currentPeriodEnd: parsed.currentPeriodEnd == null ? null : String(parsed.currentPeriodEnd),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isEntitlementActive(entitlement: StorageEntitlement | null): boolean {
+  if (!entitlement) return false;
+  if (entitlement.billingExempt) return true;
+  return ["free", "active", "trialing"].includes(String(entitlement.billingStatus || "").toLowerCase());
+}
+
+async function resolveStoragePlan(bucket: R2Bucket, identity: { userId: string; email: string }, env: Env) {
+  const founders = founderSet(env);
+  if (founders.has(identity.email)) {
+    return {
+      planId: "founder_nas",
+      quotaBytes: Number.MAX_SAFE_INTEGER,
+      billingStatus: "active",
+      baseUsedBytes: 0,
+      billingExempt: true,
+      source: "founder" as const,
+    };
+  }
+  const entitlement = await readStorageEntitlement(bucket, identity.userId);
+  if (isEntitlementActive(entitlement)) {
+    return {
+      planId: entitlement!.planId,
+      quotaBytes: entitlement!.billingExempt ? Number.MAX_SAFE_INTEGER : entitlement!.quotaBytes,
+      billingStatus: entitlement!.billingStatus,
+      baseUsedBytes: Math.max(0, Number(entitlement!.baseUsedBytes || 0)),
+      billingExempt: entitlement!.billingExempt,
+      source: "entitlement" as const,
+    };
+  }
+  return {
+    planId: "free_test_100mb",
+    quotaBytes: Math.max(1024, Number(env.FREE_CLOUD_QUOTA_BYTES || DEFAULT_FREE_QUOTA_BYTES)),
+    billingStatus: "free",
+    baseUsedBytes: 0,
+    billingExempt: false,
+    source: "fallback_free" as const,
+  };
+}
+
+function sortBackupsNewestFirst(rows: BackupRow[]): BackupRow[] {
+  return [...rows].sort((a, b) => Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt));
+}
+
+function activeBackups(rows: BackupRow[]): BackupRow[] {
+  return sortBackupsNewestFirst(rows.filter((row) => !row.deletedAt));
+}
+
+async function retryPendingCleanup(bucket: R2Bucket, manifest: Manifest): Promise<void> {
+  const pending = Array.from(new Set((manifest.cleanupKeys || []).filter(Boolean)));
+  if (!pending.length) return;
+  const failed: string[] = [];
+  for (const key of pending) {
+    try { await bucket.delete(key); } catch { failed.push(key); }
+  }
+  if (failed.length !== pending.length) {
+    manifest.cleanupKeys = failed;
+    await writeManifest(bucket, manifest);
+  }
+}
+
+async function cleanupLegacyFullBackups(bucket: R2Bucket, userId: string): Promise<number> {
+  // Nettoyage ciblé des anciens backups complets créés par l'ancien écran
+  // "Cloud Sync V1". Ne touche PAS aux sauvegardes unitaires de parties
+  // (backups/matches_v1) ni au snapshot auto_latest.
+  const prefix = `users/${safeId(userId)}/backups/cloud_sync_v1/`;
+  let cursor: string | undefined = undefined;
+  let deleted = 0;
+  for (let page = 0; page < 10; page += 1) {
+    const listed: any = await bucket.list({ prefix, cursor, limit: 1000 });
+    const keys = Array.isArray(listed?.objects) ? listed.objects.map((o: any) => String(o?.key || "")).filter(Boolean) : [];
+    if (keys.length) {
+      await Promise.all(keys.map(async (key: string) => {
+        try { await bucket.delete(key); deleted += 1; } catch {}
+      }));
+    }
+    if (!listed?.truncated || !listed?.cursor) break;
+    cursor = String(listed.cursor);
+  }
+  return deleted;
+}
+
+function usagePayload(manifest: Manifest, plan: any) {
+  const backupBytes = activeBackups(manifest.backups).reduce((sum, row) => sum + Number(row.sizeBytes || 0), 0);
+  const baseUsedBytes = Math.max(0, Number(plan.baseUsedBytes || 0));
+  const usedBytes = baseUsedBytes + backupBytes;
+  const quotaBytes = Number(plan.quotaBytes || 0);
+  return {
+    usedBytes,
+    backupBytes,
+    baseUsedBytes,
+    quotaBytes,
+    remainingBytes: quotaBytes >= Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : Math.max(0, quotaBytes - usedBytes),
+    percentUsed: quotaBytes > 0 && quotaBytes < Number.MAX_SAFE_INTEGER ? Math.min(100, Math.max(0, (usedBytes / quotaBytes) * 100)) : 0,
+    planId: String(plan.planId || "free_test_100mb"),
+    billingStatus: String(plan.billingStatus || "free"),
+    billingExempt: plan.billingExempt === true,
+    planSource: String(plan.source || "unknown"),
+    retainedBackups: activeBackups(manifest.backups).length,
+    retentionTotal: R2_BACKUP_RETENTION_TOTAL,
+  };
+}
+
 async function readManifest(bucket: R2Bucket, userId: string): Promise<Manifest> {
   const object = await bucket.get(manifestKey(userId));
-  if (!object) return { version: 1, userId, updatedAt: new Date(0).toISOString(), backups: [] };
+  if (!object) return { version: 2, userId, updatedAt: new Date(0).toISOString(), backups: [], cleanupKeys: [] };
   try {
     const parsed = JSON.parse(await object.text());
-    return { version: 1, userId, updatedAt: String(parsed?.updatedAt || ""), backups: Array.isArray(parsed?.backups) ? parsed.backups : [] };
+    return {
+      version: 2,
+      userId,
+      updatedAt: String(parsed?.updatedAt || ""),
+      backups: Array.isArray(parsed?.backups) ? parsed.backups : [],
+      cleanupKeys: Array.isArray(parsed?.cleanupKeys) ? parsed.cleanupKeys.filter(Boolean) : [],
+    };
   } catch {
-    return { version: 1, userId, updatedAt: new Date(0).toISOString(), backups: [] };
+    return { version: 2, userId, updatedAt: new Date(0).toISOString(), backups: [], cleanupKeys: [] };
   }
 }
 
@@ -211,6 +370,8 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
         binding: "USER_DATA_BUCKET",
         bucketReady: !!bucket,
         ...auth,
+        retention: { current: 1, previous: 1, total: R2_BACKUP_RETENTION_TOTAL, autoCleanup: true },
+        paidPlans: { supported: true, entitlementSource: "R2 private entitlement written after Stripe confirmation" },
         code: bucket ? undefined : "r2_binding_missing",
         message: bucket
           ? "Pages Function R2 prête."
@@ -227,16 +388,29 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
 
     const identity = await resolveIdentity(request, env);
     const manifest = await readManifest(bucket, identity.userId);
+    await retryPendingCleanup(bucket, manifest).catch(() => undefined);
+    const plan = await resolveStoragePlan(bucket, identity, env);
+
+    if (method === "GET" && parts.length === 1 && parts[0] === "usage") {
+      return json({ ok: true, usage: usagePayload(manifest, plan), authMode: identity.authMode });
+    }
 
     if (method === "GET" && parts.length === 0) {
       const url = new URL(request.url);
       const includeDeleted = url.searchParams.get("includeDeleted") === "1";
       const limit = Math.min(120, Math.max(1, Number(url.searchParams.get("limit") || 30)));
-      const backups = manifest.backups
+      const visible = manifest.backups
         .filter((row) => includeDeleted || !row.deletedAt)
         .sort((a, b) => Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt))
         .slice(0, limit);
-      return json({ ok: true, backups, authMode: identity.authMode });
+      let activeIndex = 0;
+      const backups = visible.map((row) => {
+        if (row.deletedAt) return row;
+        const retentionRole = activeIndex === 0 ? "current" : activeIndex === 1 ? "previous" : "expired";
+        activeIndex += 1;
+        return { ...row, metadata: { ...(row.metadata || {}), retentionRole } };
+      });
+      return json({ ok: true, backups, usage: usagePayload(manifest, plan), authMode: identity.authMode });
     }
 
     if (method === "POST" && parts.length === 0) {
@@ -248,12 +422,20 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       const maxUpload = Math.max(1024, Number(env.CLOUD_OBJECT_MAX_UPLOAD_BYTES || 25 * 1024 * 1024));
       if (sizeBytes > maxUpload) return json({ ok: false, error: `Sauvegarde trop volumineuse (${sizeBytes} octets).` }, 413);
 
-      const founders = founderSet(env);
-      const quota = founders.has(identity.email)
-        ? Number.MAX_SAFE_INTEGER
-        : Math.max(1024, Number(env.FREE_CLOUD_QUOTA_BYTES || 100 * 1024 * 1024));
-      const used = manifest.backups.filter((row) => !row.deletedAt).reduce((sum, row) => sum + Number(row.sizeBytes || 0), 0);
-      if (used + sizeBytes > quota) return json({ ok: false, code: "quota_exceeded", error: "Quota Cloud R2 dépassé." }, 413);
+      // Seules deux générations complètes sont conservées dans R2 :
+      // la nouvelle sauvegarde + la sauvegarde immédiatement précédente.
+      const previous = activeBackups(manifest.backups)[0] || null;
+      const projectedUsed = Math.max(0, Number(plan.baseUsedBytes || 0)) + sizeBytes + Number(previous?.sizeBytes || 0);
+      const quota = Number(plan.quotaBytes || 0);
+      if (!plan.billingExempt && projectedUsed > quota) {
+        return json({
+          ok: false,
+          code: "quota_exceeded",
+          error: "Quota Cloud R2 dépassé.",
+          message: `Le plan ${plan.planId} ne peut pas contenir la sauvegarde courante + la précédente (${projectedUsed} octets > ${quota}).`,
+          usage: usagePayload(manifest, plan),
+        }, 413);
+      }
 
       const id = `r2b_${Date.now()}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
       const objectKey = backupKey(identity.userId, id);
@@ -273,20 +455,57 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
         sizeBytes,
         checksum,
         summary: body?.summary && typeof body.summary === "object" ? body.summary : {},
-        metadata: body?.metadata && typeof body.metadata === "object" ? body.metadata : {},
+        metadata: {
+          ...(body?.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+          retentionPolicy: "current_plus_previous",
+        },
       };
-      manifest.backups.unshift(row);
-      manifest.backups = manifest.backups.slice(0, 120);
+
+      const retained = [row, ...(previous ? [previous] : [])].slice(0, R2_BACKUP_RETENTION_TOTAL);
+      const retainedKeys = new Set(retained.map((item) => item.objectKey));
+      const cleanupKeys = Array.from(new Set([
+        ...(manifest.cleanupKeys || []),
+        ...manifest.backups.filter((item) => !retainedKeys.has(item.objectKey)).map((item) => item.objectKey),
+      ].filter(Boolean)));
+
+      // Le manifeste devient immédiatement minimal. Les suppressions physiques sont
+      // ensuite tentées; les rares échecs restent dans cleanupKeys et seront retentés
+      // automatiquement lors de la prochaine opération.
+      manifest.backups = retained;
+      manifest.cleanupKeys = cleanupKeys;
       await writeManifest(bucket, manifest);
-      return json({ ok: true, backup: row, authMode: identity.authMode }, 201);
+
+      const failedCleanup: string[] = [];
+      for (const key of cleanupKeys) {
+        try { await bucket.delete(key); } catch { failedCleanup.push(key); }
+      }
+      manifest.cleanupKeys = failedCleanup;
+      await writeManifest(bucket, manifest);
+
+      const legacyCleaned = await cleanupLegacyFullBackups(bucket, identity.userId).catch(() => 0);
+
+      return json({
+        ok: true,
+        backup: { ...row, metadata: { ...(row.metadata || {}), retentionRole: "current" } },
+        previousBackup: previous ? { ...previous, metadata: { ...(previous.metadata || {}), retentionRole: "previous" } } : null,
+        cleaned: cleanupKeys.length - failedCleanup.length,
+        cleanupPending: failedCleanup.length,
+        legacyCleaned,
+        retention: { current: 1, previous: 1, total: R2_BACKUP_RETENTION_TOTAL },
+        usage: usagePayload(manifest, plan),
+        plan: { planId: plan.planId, billingStatus: plan.billingStatus, billingExempt: plan.billingExempt },
+        authMode: identity.authMode,
+      }, 201);
     }
 
     if (method === "DELETE" && parts.length === 1 && parts[0] === "trash") {
       const deleted = manifest.backups.filter((row) => !!row.deletedAt);
-      await Promise.all(deleted.map((row) => bucket.delete(row.objectKey)));
+      const keys = Array.from(new Set([...deleted.map((row) => row.objectKey), ...(manifest.cleanupKeys || [])]));
+      await Promise.all(keys.map((key) => bucket.delete(key)));
       manifest.backups = manifest.backups.filter((row) => !row.deletedAt);
+      manifest.cleanupKeys = [];
       await writeManifest(bucket, manifest);
-      return json({ ok: true, purged: deleted.length });
+      return json({ ok: true, purged: keys.length, usage: usagePayload(manifest, plan) });
     }
 
     const id = parts[0] || "";

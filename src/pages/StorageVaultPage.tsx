@@ -55,12 +55,13 @@ import {
   type CloudObjectIndexItem,
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
-import { getDirectR2Status, type DirectR2Status } from "../lib/directR2BackupApi";
+import { getDirectR2Status, getDirectR2Usage, type DirectR2Status, type DirectR2Usage } from "../lib/directR2BackupApi";
 import {
   estimateBrowserStorage,
   formatStorageBytes,
   getPublicStorageDestinations,
   getStorageDestination,
+  getStoragePlan,
   loadStoragePrefs,
   saveStoragePrefs,
   type StorageDestinationId,
@@ -562,9 +563,10 @@ async function pullCloudVaultSlot(item: CloudObjectIndexItem, opts?: { trash?: b
   };
 }
 
-function cloudTitle(item: CloudObjectIndexItem, idx: number, latest = false) {
-  if (item.title) return item.title;
-  return latest ? "Sauvegarde cloud courante" : `Sauvegarde cloud ${String(idx + 1).padStart(2, "0")}`;
+function cloudTitle(_item: CloudObjectIndexItem, idx: number, latest = false) {
+  if (latest || idx === 0) return "Sauvegarde cloud courante";
+  if (idx === 1) return "Sauvegarde cloud précédente";
+  return `Sauvegarde cloud ${String(idx + 1).padStart(2, "0")}`;
 }
 
 function n(value: any): number {
@@ -1135,6 +1137,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [cloudTransferBusy, setCloudTransferBusy] = React.useState<null | "current" | "file" | "entry">(null);
   const [storageEstimate, setStorageEstimate] = React.useState({ usage: 0, quota: 0, free: 0 });
   const [directR2Status, setDirectR2Status] = React.useState<DirectR2Status | null>(null);
+  const [directR2Usage, setDirectR2Usage] = React.useState<DirectR2Usage | null>(null);
   const [restoreView, setRestoreView] = React.useState<RestoreView>("current");
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
@@ -1200,13 +1203,20 @@ export default function StorageVaultPage({ go }: Props) {
   React.useEffect(() => {
     let alive = true;
     if (selectedDestination !== "cloud_r2" && backupProvider !== "cloud") return () => { alive = false; };
-    void getDirectR2Status()
-      .then((status) => { if (alive) setDirectR2Status(status); })
+    void Promise.all([
+      getDirectR2Status(),
+      hasConnectedAccount ? getDirectR2Usage().catch(() => null) : Promise.resolve(null),
+    ])
+      .then(([status, usage]) => {
+        if (!alive) return;
+        setDirectR2Status(status);
+        if (usage) setDirectR2Usage(usage);
+      })
       .catch((error: any) => {
         if (alive) setDirectR2Status({ ok: false, error: String(error?.message || error || "Diagnostic R2 impossible") });
       });
     return () => { alive = false; };
-  }, [selectedDestination, backupProvider]);
+  }, [selectedDestination, backupProvider, hasConnectedAccount]);
 
   const nasEntries = React.useMemo<SaveEntry[]>(() => {
     return nasSlots
@@ -1402,8 +1412,8 @@ export default function StorageVaultPage({ go }: Props) {
 
       if (provider === "cloud") {
         const [activeRaw, allRaw, cloudMatches] = await Promise.all([
-          listCloudVaultBackups(120, false).catch(() => []),
-          listCloudVaultBackups(120, true).catch(() => []),
+          listCloudVaultBackups(2, false).catch(() => []),
+          listCloudVaultBackups(4, true).catch(() => []),
           withFastFallback(listCloudMatchBackups(), [], 2_500),
         ]);
         const active = activeRaw
@@ -1955,10 +1965,21 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         const item = uploaded.object as CloudSlot;
         item.__summary = prepared.summary;
         item.latest = true;
-        setCloudSlots((current) => [item, ...current.filter((row) => row.id !== item.id)].slice(0, 120));
+        setCloudSlots((current) => [item, ...current.filter((row) => row.id !== item.id)].slice(0, 2));
         setBackupProvider("cloud");
         writePreferredRemoteSource("cloud");
-        setMessage(`Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · disponible sur les autres appareils.`);
+        if ((uploaded as any)?.usage) {
+          const u: any = (uploaded as any).usage;
+          setDirectR2Usage({
+            usedBytes: Number(u.usedBytes || 0), quotaBytes: Number(u.quotaBytes || 0),
+            remainingBytes: Number(u.remainingBytes || 0), percentUsed: Number(u.percentUsed || 0),
+            planId: String(u.preference?.plan_id || u.planId || "free_test_100mb"),
+            billingStatus: String(u.preference?.billing_status || u.billingStatus || "free"),
+            billingExempt: u.preference?.billing_exempt === true || u.billingExempt === true,
+            retainedBackups: Number(u.retainedBackups || 1), retentionTotal: Number(u.retentionTotal || 2),
+          });
+        }
+        setMessage(`Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · conservation automatique : courante + précédente uniquement.`);
         return;
       }
 
@@ -2528,6 +2549,31 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   <div style={{ marginTop: 5 }}>
                     Les parties, historiques, statistiques, sauvegardes et médias sont envoyés dans <b style={{ color: neon }}>Cloudflare R2</b>. Supabase reste limité à l’authentification et au profil léger.
                   </div>
+                  <div style={{ marginTop: 6, color: green, fontSize: 10.8, fontWeight: 900 }}>
+                    Rétention automatique : 2 sauvegardes maximum — la courante + la précédente. Toute génération plus ancienne est supprimée physiquement de R2 après chaque nouvelle sauvegarde.
+                  </div>
+                  {directR2Usage && (() => {
+                    const plan = getStoragePlan(directR2Usage.planId);
+                    const unlimited = directR2Usage.billingExempt || directR2Usage.quotaBytes >= Number.MAX_SAFE_INTEGER;
+                    return (
+                      <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: "1px solid rgba(34,211,238,.22)", background: "rgba(34,211,238,.05)" }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <b style={{ color: neon }}>Offre : {plan.label}</b>
+                          <span style={{ color: muted }}>· {unlimited ? "quota admin" : `${formatStorageBytes(directR2Usage.usedBytes)} / ${formatStorageBytes(directR2Usage.quotaBytes)}`}</span>
+                          <span style={{ color: green, marginLeft: "auto" }}>{directR2Usage.retainedBackups}/{directR2Usage.retentionTotal} backup(s)</span>
+                        </div>
+                        {!directR2Usage.billingExempt && (
+                          <button
+                            type="button"
+                            onClick={() => { window.location.hash = "#/settings?account=storage"; }}
+                            style={{ ...btn, marginTop: 8, borderColor: gold, color: gold }}
+                          >
+                            Gérer / passer à une offre cloud payante
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {directR2Status && (
                     <div style={{ marginTop: 6, color: directR2Status.ok ? green : amber, fontSize: 10.5 }}>
                       Binding USER_DATA_BUCKET : {directR2Status.bucketReady ? "OK" : "MANQUANT"} · Auth Supabase : {directR2Status.supabaseAuthConfigured ? "OK" : "NON"} · Auth JWT NAS : {directR2Status.nasJwtConfigured ? "OK" : "NON"}
