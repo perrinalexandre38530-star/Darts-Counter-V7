@@ -496,20 +496,20 @@ export default function BaseballPlay(props: any) {
 
   return (
     <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
-      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" />} right={<InfoDot title="Règles du Baseball Darts" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} secondary={secondary} />} />} />
+      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles du Baseball Darts" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} secondary={secondary} />} /></div>} />
 
-      <div style={{ padding: "4px 4px 0", width: "100vw", maxWidth: "100vw", marginLeft: "calc(50% - 50vw)", boxSizing: "border-box" }}>
+      <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         <section style={{ ...panelStyle(), marginBottom: 6, padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20` }}>
           <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(88px,.82fr) minmax(110px,1fr) minmax(92px,.86fr)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))` }} />
-            <div style={{ position: "absolute", left: -18, top: -6, bottom: -6, width: "33%", minWidth: 108, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: -18, top: 12, transform: "scale(1.78)", transformOrigin: "left top", filter: "saturate(.88)" }}>
+            <div style={{ position: "absolute", left: -24, top: -4, bottom: -4, width: "30%", minWidth: 96, overflow: "hidden", opacity: .12, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -22, top: 16, transform: "scale(1.46)", transformOrigin: "left top", filter: "saturate(.84)" }}>
                 <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
-            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 8 }}>
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 14 }}>
               <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1 }}>{botThinking ? "BOT EN RÉFLEXION" : "AU LANCER"}</div>
-              <div style={{ marginTop: 3, marginLeft: 2, color: themeText, fontSize: 14, fontWeight: 1000, lineHeight: 1.05 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
+              <div style={{ marginTop: 3, marginLeft: 4, color: themeText, fontSize: 14, fontWeight: 1000, lineHeight: 1.05 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
               {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 5, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, padding: "2px 0" }}>
@@ -521,7 +521,7 @@ export default function BaseballPlay(props: any) {
               {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 9.5, fontWeight: 850, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{activeTeam.name}</div> : null}
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
-              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(90deg, rgba(4,8,16,.92) 0%, rgba(4,8,16,.62) 18%, rgba(4,8,16,.20) 42%, rgba(4,8,16,.12) 100%), linear-gradient(180deg, rgba(4,8,16,.22), rgba(4,8,16,.50)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .68, borderLeft: `1px solid ${secondary}20` }} />
+              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(90deg, rgba(4,8,16,1) 0%, rgba(4,8,16,.98) 20%, rgba(4,8,16,.84) 38%, rgba(4,8,16,.38) 64%, rgba(4,8,16,.10) 100%), linear-gradient(180deg, rgba(4,8,16,.18), rgba(4,8,16,.52)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .74, borderLeft: `1px solid ${secondary}20` }} />
               <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
                 <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
                 <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginTop: 2 }}>CIBLE</div>
@@ -530,7 +530,7 @@ export default function BaseballPlay(props: any) {
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), marginBottom: 6, padding: 8, overflow: "hidden" }}>
+        <section style={{ ...panelStyle(), marginBottom: 8, padding: 8, overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 5 }}>
             <div style={{ color: primary, fontSize: 10.5, fontWeight: 1000, letterSpacing: .9 }}>TABLEAU DES MANCHES</div>
             <div style={{ color: themeSoft, fontSize: 9.5 }}>Glisser horizontalement</div>
@@ -569,7 +569,7 @@ export default function BaseballPlay(props: any) {
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), marginBottom: 6, padding: 8 }}>
+        <section style={{ ...panelStyle(), marginBottom: 8, padding: 8 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
             {state.rules.gameVariant === "attack_defense" ? (
               <>
@@ -628,7 +628,7 @@ export default function BaseballPlay(props: any) {
                 onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
                 onValidate={validateVisit}
                 hidePreview={false}
-                centerSlot={<div style={{ display: "grid", placeItems: "center", minWidth: "clamp(88px,28vw,172px)", width: "100%", minHeight: "clamp(42px,7vw,58px)", padding: "0 10px", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,205,58,.98), rgba(255,175,0,.92))", border: "1px solid rgba(255,221,118,.78)", boxShadow: "0 0 18px rgba(255,175,0,.34), inset 0 1px 0 rgba(255,255,255,.34)" }}><div style={{ color: "#251600", fontSize: "clamp(20px,4vw,34px)", fontWeight: 1100, lineHeight: 1 }}>{state.rules.gameVariant === "attack_defense" ? previewPower : previewRuns}</div></div>}
+                centerSlot={<span style={{ display: "inline-block", minWidth: 56, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{state.rules.gameVariant === "attack_defense" ? previewPower : previewRuns}</span>}
               />
             </div>
           )}
