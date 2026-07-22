@@ -269,6 +269,9 @@ const FiveLivesStatsTabFull = React.lazy(
 const CapitalStatsTabFull = React.lazy(
   () => import("../components/stats/CapitalStatsTabFull")
 );
+const ScramStatsTabFull = React.lazy(
+  () => import("../components/stats/ScramStatsTabFull")
+);
 const StatsLeaderboardsTab = React.lazy(
   () => import("../components/stats/StatsLeaderboardsTab")
 );
@@ -8399,7 +8402,24 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "scram", "baseball"].includes(String(currentMode)) && (
+{currentMode === "scram" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement SCRAM…" />}>
+                    <ScramStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques SCRAM.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {["battle_royale", "warfare", "baseball"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>

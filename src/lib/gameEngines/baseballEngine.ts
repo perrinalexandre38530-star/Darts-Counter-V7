@@ -513,9 +513,13 @@ function finishOrAdvanceInning(next: BaseballState): BaseballState {
 
   next.inning += 1;
   next.target = targetForInning(next, next.inning);
-  next.activePlayerIndex = 0;
   next.duelPairIndex = 0;
   next.duelPhase = next.rules.gameVariant === "attack_defense" ? "attack" : null;
+  if (next.rules.gameVariant === "attack_defense") {
+    setActivePlayer(next, currentDuelIds(next).attackerId);
+  } else {
+    next.activePlayerIndex = 0;
+  }
   next.pendingAttackPower = 0;
   next.pendingAttackerId = null;
   next.pendingDefenderId = null;
@@ -523,13 +527,57 @@ function finishOrAdvanceInning(next: BaseballState): BaseballState {
   return next;
 }
 
+function duelPairs(state: BaseballState): Array<{ attackerId: string; defenderId: string }> {
+  if (state.rules.participantMode === "teams") {
+    // Le duel d'équipes oppose toujours exactement 2 équipes de même taille.
+    // Pour chaque cible, on joue deux demi-manches :
+    // 1) tous les joueurs de l'équipe A attaquent face à leur vis-à-vis de B ;
+    // 2) les rôles s'inversent et tous les joueurs de B attaquent face à A.
+    // Chaque joueur attaque ET défend donc exactement une fois sur la cible.
+    const teamA = state.teams[0];
+    const teamB = state.teams[1];
+    if (!teamA || !teamB) return [];
+    const count = Math.min(teamA.playerIds.length, teamB.playerIds.length);
+    const pairs: Array<{ attackerId: string; defenderId: string }> = [];
+    for (let memberIndex = 0; memberIndex < count; memberIndex += 1) {
+      const a = teamA.playerIds[memberIndex];
+      const b = teamB.playerIds[memberIndex];
+      if (a && b) pairs.push({ attackerId: a, defenderId: b });
+    }
+    for (let memberIndex = 0; memberIndex < count; memberIndex += 1) {
+      const a = teamA.playerIds[memberIndex];
+      const b = teamB.playerIds[memberIndex];
+      if (a && b) pairs.push({ attackerId: b, defenderId: a });
+    }
+    return pairs;
+  }
+
+  // Duel individuel : strictement 2 joueurs, chacun attaque puis défend
+  // sur la même cible avant de passer à la suivante.
+  const first = state.turnOrder[0];
+  const second = state.turnOrder[1];
+  if (!first || !second) return [];
+  return [
+    { attackerId: first, defenderId: second },
+    { attackerId: second, defenderId: first },
+  ];
+}
+
+function duelPairCount(state: BaseballState): number {
+  return duelPairs(state).length;
+}
+
 function currentDuelIds(state: BaseballState): { attackerId: string; defenderId: string } {
-  const count = state.turnOrder.length;
-  const pairIndex = Math.max(0, Math.min(count - 1, state.duelPairIndex));
-  return {
-    attackerId: state.turnOrder[pairIndex] || state.turnOrder[0],
-    defenderId: state.turnOrder[(pairIndex + 1) % count] || state.turnOrder[0],
-  };
+  const pairs = duelPairs(state);
+  const fallback = state.turnOrder[0] || state.players[0]?.id || "";
+  if (!pairs.length) return { attackerId: fallback, defenderId: fallback };
+  const pairIndex = Math.max(0, Math.min(pairs.length - 1, state.duelPairIndex));
+  return pairs[pairIndex];
+}
+
+function setActivePlayer(state: BaseballState, playerId: string) {
+  const index = state.turnOrder.indexOf(playerId);
+  state.activePlayerIndex = index >= 0 ? index : 0;
 }
 
 function refreshPlayerRunStats(state: BaseballState) {
@@ -701,7 +749,7 @@ function playDuelTurn(state: BaseballState, dartsInput: GameDart[]): BaseballSta
       endedByMiss,
     });
     next.duelPhase = "defense";
-    next.activePlayerIndex = (next.duelPairIndex + 1) % next.turnOrder.length;
+    setActivePlayer(next, defenderId);
     next.standings = computeStandings(next);
     return next;
   }
@@ -748,11 +796,11 @@ function playDuelTurn(state: BaseballState, dartsInput: GameDart[]): BaseballSta
   next.pendingDefenderId = null;
   next.pendingAttackHadOwnScore = false;
 
-  const lastPair = next.duelPairIndex >= next.turnOrder.length - 1;
+  const lastPair = next.duelPairIndex >= duelPairCount(next) - 1;
   if (!lastPair) {
     next.duelPairIndex += 1;
     next.duelPhase = "attack";
-    next.activePlayerIndex = next.duelPairIndex;
+    setActivePlayer(next, currentDuelIds(next).attackerId);
     next.standings = computeStandings(next);
     return next;
   }
@@ -773,7 +821,15 @@ export const BaseballEngine = {
     const teamByPlayer: Record<string, string> = {};
     teams.forEach((team) => team.playerIds.forEach((id) => { teamByPlayer[id] = team.id; }));
     const turnOrder = players.map((player) => player.id);
-    const gameVariant: BaseballGameVariant = rulesInput.gameVariant === "attack_defense" && turnOrder.length >= 2 ? "attack_defense" : "target";
+    const requestedDuel = rulesInput.gameVariant === "attack_defense";
+    const duelEligible = participantMode === "players"
+      ? turnOrder.length === 2
+      : teams.length === 2
+        && teams[0].playerIds.length >= 1
+        && teams[0].playerIds.length === teams[1].playerIds.length;
+    // Garde-fou moteur : le duel individuel est strictement 1v1 ;
+    // le duel multi-joueurs passe obligatoirement par exactement 2 équipes équilibrées.
+    const gameVariant: BaseballGameVariant = requestedDuel && duelEligible ? "attack_defense" : "target";
     const bullTargetMode: BaseballBullTargetMode =
       rulesInput.bullTargetMode === "defense" || rulesInput.bullTargetMode === "attack" || rulesInput.bullTargetMode === "random"
         ? rulesInput.bullTargetMode
@@ -831,6 +887,9 @@ export const BaseballEngine = {
       pendingDefenderId: null,
       pendingAttackHadOwnScore: false,
     };
+    if (state.rules.gameVariant === "attack_defense") {
+      setActivePlayer(state, currentDuelIds(state).attackerId);
+    }
     state.standings = computeStandings(state);
     return state;
   },

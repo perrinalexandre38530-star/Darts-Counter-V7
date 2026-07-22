@@ -13,11 +13,12 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { useTheme } from "../contexts/ThemeContext";
 import { useBaseballEngine } from "../hooks/useBaseballEngine";
-import type {
-  BaseballConfigPayload,
-  BaseballPlayerStats,
-  BaseballStanding,
-  BaseballTeamConfig,
+import {
+  BaseballEngine,
+  type BaseballConfigPayload,
+  type BaseballPlayerStats,
+  type BaseballStanding,
+  type BaseballTeamConfig,
 } from "../lib/gameEngines/baseballEngine";
 import tickerBaseball from "../assets/tickers/ticker_baseball.png";
 
@@ -123,8 +124,8 @@ function RulesContent({ config, primary = T.cyan, secondary = T.gold }: { config
     <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
       {config.gameVariant === "attack_defense" ? (
         <>
-          <div><strong style={{ color: primary }}>ATTAQUE / DÉFENSE</strong><br />Chaque manche possède une cible aléatoire. Le premier joueur attaque cette cible, le second la défend, puis les rôles s’inversent sur exactement la même cible avant de passer à la manche suivante.</div>
-          <div><strong style={{ color: secondary }}>CALCUL SUR LA CIBLE</strong><br />Seules les touches sur la cible comptent : S=1, D=2, T=3. Toute autre valeur vaut 0. Exemple cible 20 : T20 + S1 + D5 = 3 en attaque ; D20 + MISS = 2 en défense ; l’attaquant marque 3 − 2 = 1 point. Si l’option BULL dans le tirage est active et que BULL sort : BULL=3 et DBULL=5.</div>
+          <div><strong style={{ color: primary }}>ATTAQUE / DÉFENSE</strong><br />En individuel, la confrontation est strictement 1 contre 1 : J1 attaque/J2 défend, puis J2 attaque/J1 défend sur exactement la même cible. Pour jouer à plusieurs, il faut passer par exactement 2 équipes de même taille.</div>
+          <div><strong style={{ color: secondary }}>CALCUL SUR LA CIBLE</strong><br />Seules les touches sur la cible comptent : S=1, D=2, T=3. Toute autre valeur vaut 0. Exemple cible 20 : T20 + S1 + D5 = 3 en attaque ; D20 + MISS = 2 en défense ; l’attaquant marque 3 − 2 = 1 point. En équipes, tous les membres de l’équipe A attaquent d’abord face à leur vis-à-vis de B qui défendent, puis les rôles s’inversent. Chaque joueur attaque et défend une fois, et tous les points obtenus sont additionnés au score de l’équipe pour cette cible. Si BULL est tiré comme cible : BULL=3 et DBULL=5.</div>
         </>
       ) : (
         <>
@@ -482,8 +483,9 @@ export default function BaseballPlay(props: any) {
   const previewRuns = visitRuns(throwDarts, state.target, state.rules.bullTargetMode);
   const previewPower = visitRuns(throwDarts, state.target, state.rules.bullTargetMode);
   const shownInnings = Array.from({ length: Math.max(state.rules.innings, state.inning) }, (_, index) => index + 1);
-  const duelOpponentId = state.rules.gameVariant === "attack_defense"
-    ? (state.duelPhase === "defense" ? state.turnOrder[state.duelPairIndex] : state.turnOrder[(state.duelPairIndex + 1) % state.turnOrder.length])
+  const currentDuel = state.rules.gameVariant === "attack_defense" ? BaseballEngine.getCurrentDuel(state) : null;
+  const duelOpponentId = currentDuel
+    ? (state.duelPhase === "defense" ? currentDuel.attackerId : currentDuel.defenderId)
     : null;
   const duelOpponent = duelOpponentId ? (byId.get(String(duelOpponentId)) || state.players.find((player: any) => player.id === duelOpponentId)) : null;
   const activeEntityIdForScore = config.participantMode === "teams" ? activeTeamId : activePlayer?.id;

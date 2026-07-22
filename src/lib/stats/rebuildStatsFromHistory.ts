@@ -503,7 +503,10 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     const cur: any = (idx.byPlayer[pid] as any)[mode] || {
       points: 0, darts: 0, wins: 0, captures: 0, steals: 0, kills: 0, friendlyKills: 0,
       fails: 0, validHits: 0, rounds: 0, advances: 0, livesLeft: 0, lostLives: 0,
-      marks: 0, closed: 0, penalties: 0, success: 0,
+      marks: 0, closed: 0, penalties: 0, success: 0, visits: 0, hits: 0, misses: 0,
+      singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, scoringHits: 0,
+      blockedDarts: 0, wastedDarts: 0, stopperVisits: 0, scorerVisits: 0, stopperDarts: 0, scorerDarts: 0,
+      bestScoringVisit: 0, bestMarksVisit: 0, segmentStats: {},
     };
     cur.points += points;
     cur.darts += dartsThrown;
@@ -522,6 +525,31 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
     cur.closed += Number(pl?.closed ?? pl?.closes ?? pl?.closedNumbers ?? 0) || 0;
     cur.penalties += Number(pl?.penalties ?? 0) || 0;
     cur.success += Number(pl?.success ?? pl?.successes ?? pl?.validHits ?? 0) || 0;
+    cur.visits += Number(pl?.visits ?? pl?.turns ?? 0) || 0;
+    cur.hits += Number(pl?.hits ?? pl?.hitsTotal ?? 0) || 0;
+    cur.misses += Number(pl?.misses ?? 0) || 0;
+    cur.singles += Number(pl?.singles ?? 0) || 0;
+    cur.doubles += Number(pl?.doubles ?? 0) || 0;
+    cur.triples += Number(pl?.triples ?? 0) || 0;
+    cur.bulls += Number(pl?.bulls ?? 0) || 0;
+    cur.dbulls += Number(pl?.dbulls ?? 0) || 0;
+    cur.scoringHits += Number(pl?.scoringHits ?? 0) || 0;
+    cur.blockedDarts += Number(pl?.blockedDarts ?? 0) || 0;
+    cur.wastedDarts += Number(pl?.wastedDarts ?? 0) || 0;
+    cur.stopperVisits += Number(pl?.stopperVisits ?? 0) || 0;
+    cur.scorerVisits += Number(pl?.scorerVisits ?? 0) || 0;
+    cur.stopperDarts += Number(pl?.stopperDarts ?? 0) || 0;
+    cur.scorerDarts += Number(pl?.scorerDarts ?? 0) || 0;
+    cur.bestScoringVisit = Math.max(Number(cur.bestScoringVisit || 0), Number(pl?.bestScoringVisit ?? pl?.bestVisit ?? 0) || 0);
+    cur.bestMarksVisit = Math.max(Number(cur.bestMarksVisit || 0), Number(pl?.bestMarksVisit ?? 0) || 0);
+    if (pl?.segmentStats && typeof pl.segmentStats === "object") {
+      for (const [target, values] of Object.entries(pl.segmentStats as any)) {
+        const dst: any = cur.segmentStats[target] || { darts: 0, marks: 0, closes: 0, scoringHits: 0, points: 0, blockedDarts: 0 };
+        const src: any = values || {};
+        for (const key of ["darts", "marks", "closes", "scoringHits", "points", "blockedDarts"]) dst[key] += Number(src[key] || 0) || 0;
+        cur.segmentStats[target] = dst;
+      }
+    }
     (idx.byPlayer[pid] as any)[mode] = cur;
   }
 }

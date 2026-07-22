@@ -294,7 +294,7 @@ const MODE_DEFS: {
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
   { id: "five_lives", label: "FIVE LIVES", metrics: ["wins", "winRate", "matches"] },
   { id: "clock", label: "TOUR DE L’HORLOGE", metrics: ["wins", "winRate", "matches"] },
-  { id: "scram", label: "SCRAM", metrics: ["wins", "winRate", "matches"] },
+  { id: "scram", label: "SCRAM", metrics: ["wins", "winRate", "matches", "points", "pointsPerMatch", "marks", "marksPerMatch", "mpr", "hitRate", "closedSegments", "bestVisit", "darts", "singleHits", "doubleHits", "tripleHits", "bullHits"] },
   { id: "warfare", label: "WARFARE", metrics: ["wins", "winRate", "matches"] },
   { id: "babyfoot", label: "BABY-FOOT", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },
   { id: "pingpong", label: "PING-PONG", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },

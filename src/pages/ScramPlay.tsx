@@ -58,12 +58,87 @@ function percent(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
 }
 
+function round2(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function readTargetFromDart(dart: any): ScramTarget | null {
+  if (!dart || dart.bed === "MISS") return null;
+  if (dart.bed === "OB" || dart.bed === "IB") return 25;
+  const n = Number(dart.number || 0);
+  return n >= 15 && n <= 20 ? (n as ScramTarget) : null;
+}
+
+function buildPlayerScramMetrics(state: any, playerId: string, fallbackStats?: ScramPlayerStats) {
+  const stats: any = fallbackStats || state?.statsByPlayer?.[playerId] || emptyStats();
+  const visits = (Array.isArray(state?.history) ? state.history : []).filter((visit: any) => String(visit?.playerId || "") === String(playerId));
+  const stopper = visits.filter((visit: any) => visit?.role === "stopper");
+  const scorer = visits.filter((visit: any) => visit?.role === "scorer");
+  const sumDarts = (rows: any[]) => rows.reduce((sum, visit) => sum + (Array.isArray(visit?.darts) ? visit.darts.length : Number(visit?.dartsCount || 0)), 0);
+  const stopperDarts = Number(stats.stopperDarts || 0) || sumDarts(stopper);
+  const scorerDarts = Number(stats.scorerDarts || 0) || sumDarts(scorer);
+  const stopperMarks = stopper.reduce((sum, visit) => sum + Number(visit?.marks || 0), 0);
+  const scorerPoints = scorer.reduce((sum, visit) => sum + Number(visit?.points || 0), 0);
+  const bestMarksVisit = Math.max(Number(stats.bestMarksVisit || 0), ...stopper.map((visit) => Number(visit?.marks || 0)), 0);
+  const bestScoringVisit = Math.max(Number(stats.bestScoringVisit || stats.bestVisit || 0), ...scorer.map((visit) => Number(visit?.points || 0)), 0);
+  const onTargetDarts = visits.reduce((sum, visit) => sum + (Array.isArray(visit?.darts) ? visit.darts.filter((dart: any) => readTargetFromDart(dart) != null).length : 0), 0);
+  const segmentStats: Record<string, any> = {};
+  for (const target of UI_TARGETS) {
+    segmentStats[String(target)] = { target, darts: 0, marks: 0, points: 0, scoringHits: 0, blockedDarts: 0, closes: 0 };
+  }
+  for (const visit of visits) {
+    for (const dart of Array.isArray(visit?.darts) ? visit.darts : []) {
+      const target = readTargetFromDart(dart);
+      if (target != null && segmentStats[String(target)]) segmentStats[String(target)].darts += 1;
+    }
+    for (const [target, value] of Object.entries(visit?.marksByTarget || {})) if (segmentStats[String(target)]) segmentStats[String(target)].marks += Number(value || 0);
+    for (const [target, value] of Object.entries(visit?.pointsByTarget || {})) if (segmentStats[String(target)]) segmentStats[String(target)].points += Number(value || 0);
+    for (const [target, value] of Object.entries(visit?.scoringHitsByTarget || {})) if (segmentStats[String(target)]) segmentStats[String(target)].scoringHits += Number(value || 0);
+    for (const [target, value] of Object.entries(visit?.blockedDartsByTarget || {})) if (segmentStats[String(target)]) segmentStats[String(target)].blockedDarts += Number(value || 0);
+    for (const target of Array.isArray(visit?.targetsClosed) ? visit.targetsClosed : []) if (segmentStats[String(target)]) segmentStats[String(target)].closes += 1;
+  }
+  const phaseStats: Record<string, any> = {};
+  for (const phase of [1, 2]) {
+    const phaseVisits = visits.filter((visit: any) => Number(visit?.phase) === phase);
+    phaseStats[String(phase)] = {
+      visits: phaseVisits.length,
+      darts: sumDarts(phaseVisits),
+      points: phaseVisits.reduce((sum, visit) => sum + Number(visit?.points || 0), 0),
+      marks: phaseVisits.reduce((sum, visit) => sum + Number(visit?.marks || 0), 0),
+      closes: phaseVisits.reduce((sum, visit) => sum + (Array.isArray(visit?.targetsClosed) ? visit.targetsClosed.length : 0), 0),
+    };
+  }
+  const darts = Number(stats.darts || 0);
+  const hits = Number(stats.hits || 0);
+  const misses = Number(stats.misses || 0);
+  const scoringHits = Number(stats.scoringHits || 0);
+  const blockedDarts = Number(stats.blockedDarts || 0);
+  const wastedDarts = Number(stats.wastedDarts || 0);
+  const stopperVisits = Number(stats.stopperVisits || stopper.length);
+  const scorerVisits = Number(stats.scorerVisits || scorer.length);
+  return {
+    stopperDarts, scorerDarts, stopperMarks, scorerPoints, bestMarksVisit, bestScoringVisit, onTargetDarts, segmentStats, phaseStats,
+    hitRate: percent(hits, darts),
+    targetRate: percent(onTargetDarts, darts),
+    missRate: percent(misses, darts),
+    scorerEfficiency: percent(scoringHits, scorerDarts),
+    blockedRate: percent(blockedDarts, scorerDarts),
+    wastedRate: percent(wastedDarts, darts),
+    mpr: stopperDarts ? round2((stopperMarks / stopperDarts) * 3) : 0,
+    marksPerStopperVisit: stopperVisits ? round2(stopperMarks / stopperVisits) : 0,
+    pointsPerScorerVisit: scorerVisits ? round2(scorerPoints / scorerVisits) : 0,
+    pointsPerScorerDart: scorerDarts ? round2(scorerPoints / scorerDarts) : 0,
+    closesPerStopperVisit: stopperVisits ? round2(Number(stats.targetsClosed || 0) / stopperVisits) : 0,
+  };
+}
+
 function emptyStats(): ScramPlayerStats {
   return {
     darts: 0, hits: 0, misses: 0, singles: 0, doubles: 0, triples: 0,
     bulls: 0, dbulls: 0, visits: 0, stopperVisits: 0, scorerVisits: 0,
+    stopperDarts: 0, scorerDarts: 0, stopperHits: 0, scorerHits: 0, stopperMisses: 0, scorerMisses: 0,
     marks: 0, targetsClosed: 0, points: 0, scoringHits: 0, blockedDarts: 0,
-    wastedDarts: 0, bestVisit: 0,
+    wastedDarts: 0, bestVisit: 0, bestMarksVisit: 0, bestScoringVisit: 0,
   };
 }
 
@@ -271,6 +346,7 @@ export default function ScramPlay(props: any) {
       const profile: any = byId.get(String(player.id)) || player;
       const team = state.teamByPlayer[player.id];
       const stats = state.statsByPlayer[player.id] || emptyStats();
+      const metrics = buildPlayerScramMetrics(state, String(player.id), stats);
       const win = Boolean(winnerTeam && team === winnerTeam);
       const totalTargetDarts = stats.scoringHits + stats.blockedDarts + stats.wastedDarts;
       return {
@@ -291,7 +367,9 @@ export default function ScramPlay(props: any) {
         darts: stats.darts,
         dartsThrown: stats.darts,
         hits: stats.hits,
-        hitRate: percent(stats.hits, stats.darts),
+        hitRate: metrics.hitRate,
+        targetRate: metrics.targetRate,
+        missRate: metrics.missRate,
         validHits: stats.scoringHits + stats.marks,
         misses: stats.misses,
         singles: stats.singles,
@@ -302,6 +380,12 @@ export default function ScramPlay(props: any) {
         visits: stats.visits,
         stopperVisits: stats.stopperVisits,
         scorerVisits: stats.scorerVisits,
+        stopperDarts: metrics.stopperDarts,
+        scorerDarts: metrics.scorerDarts,
+        stopperHits: stats.stopperHits || 0,
+        scorerHits: stats.scorerHits || 0,
+        stopperMisses: stats.stopperMisses || 0,
+        scorerMisses: stats.scorerMisses || 0,
         marks: stats.marks,
         marksTotal: stats.marks,
         totalMarks: stats.marks,
@@ -310,29 +394,62 @@ export default function ScramPlay(props: any) {
         closedNumbers: stats.targetsClosed,
         scoringHits: stats.scoringHits,
         scoringAccuracy: percent(stats.scoringHits, Math.max(1, totalTargetDarts)),
+        scorerEfficiency: metrics.scorerEfficiency,
         blockedDarts: stats.blockedDarts,
+        blockedRate: metrics.blockedRate,
         wastedDarts: stats.wastedDarts,
-        bestVisit: stats.bestVisit,
-        mpr: stats.darts ? Math.round((stats.marks / stats.darts) * 300) / 100 : 0,
-        rawStats: stats,
+        wastedRate: metrics.wastedRate,
+        bestVisit: metrics.bestScoringVisit,
+        bestScoringVisit: metrics.bestScoringVisit,
+        bestMarksVisit: metrics.bestMarksVisit,
+        mpr: metrics.mpr,
+        marksPerStopperVisit: metrics.marksPerStopperVisit,
+        pointsPerScorerVisit: metrics.pointsPerScorerVisit,
+        pointsPerScorerDart: metrics.pointsPerScorerDart,
+        closesPerStopperVisit: metrics.closesPerStopperVisit,
+        onTargetDarts: metrics.onTargetDarts,
+        segmentStats: metrics.segmentStats,
+        phaseStats: metrics.phaseStats,
+        rawStats: { ...stats, ...metrics },
         _order: index,
       };
     });
-    const teams = (["A", "B"] as ScramTeam[]).map((team) => ({
-      id: team,
-      name: team === "A" ? teamAName : teamBName,
-      playerIds: state.teams[team],
-      players: state.teams[team],
-      score: state.scores[team],
-      winner: winnerTeam === team,
-      color: teamConfigBySide[team]?.color || TEAM_COLOR[team],
-      logoDataUrl: teamConfigBySide[team]?.logoDataUrl || null,
-    }));
+    const teams = (["A", "B"] as ScramTeam[]).map((team) => {
+      const members = richPlayers.filter((player) => player.team === team);
+      return {
+        id: team,
+        name: team === "A" ? teamAName : teamBName,
+        playerIds: state.teams[team],
+        players: state.teams[team],
+        score: state.scores[team],
+        winner: winnerTeam === team,
+        color: teamConfigBySide[team]?.color || TEAM_COLOR[team],
+        logoDataUrl: teamConfigBySide[team]?.logoDataUrl || null,
+        darts: members.reduce((sum, player) => sum + Number(player.darts || 0), 0),
+        visits: members.reduce((sum, player) => sum + Number(player.visits || 0), 0),
+        points: members.reduce((sum, player) => sum + Number(player.points || 0), 0),
+        marks: members.reduce((sum, player) => sum + Number(player.marks || 0), 0),
+        closes: members.reduce((sum, player) => sum + Number(player.closed || 0), 0),
+        scoringHits: members.reduce((sum, player) => sum + Number(player.scoringHits || 0), 0),
+        blockedDarts: members.reduce((sum, player) => sum + Number(player.blockedDarts || 0), 0),
+        bestScoringVisit: members.reduce((best, player) => Math.max(best, Number(player.bestScoringVisit || 0)), 0),
+        bestMarksVisit: members.reduce((best, player) => Math.max(best, Number(player.bestMarksVisit || 0)), 0),
+      };
+    });
+    const winnerIds = winnerTeam ? [...state.teams[winnerTeam]] : [];
+    const allDarts = richPlayers.reduce((total, player) => total + Number(player.dartsThrown || 0), 0);
+    const allVisits = richPlayers.reduce((total, player) => total + Number(player.visits || 0), 0);
+    const allPoints = richPlayers.reduce((total, player) => total + Number(player.points || 0), 0);
+    const allMarks = richPlayers.reduce((total, player) => total + Number(player.marks || 0), 0);
+    const allCloses = richPlayers.reduce((total, player) => total + Number(player.closed || 0), 0);
     const summary = {
       kind: "scram",
       mode: "scram",
       finished: true,
+      participantMode: params.participantMode || (isSolo ? "players" : "teams"),
+      inputMethod,
       winnerId,
+      winnerIds,
       winnerTeam,
       winnerName: state.tied ? "Égalité" : winnerTeam ? displayTeamName(winnerTeam) : "Égalité",
       tied: state.tied,
@@ -341,7 +458,14 @@ export default function ScramPlay(props: any) {
       scoreLine: `${teamAName} ${state.scores.A} — ${state.scores.B} ${teamBName}`,
       rounds: state.phaseRounds[1] + state.phaseRounds[2],
       phaseRounds: state.phaseRounds,
-      darts: richPlayers.reduce((total, player) => total + player.dartsThrown, 0),
+      darts: allDarts,
+      visits: allVisits,
+      points: allPoints,
+      marks: allMarks,
+      closes: allCloses,
+      bestScoringVisit: richPlayers.reduce((best, player) => Math.max(best, Number(player.bestScoringVisit || 0)), 0),
+      bestMarksVisit: richPlayers.reduce((best, player) => Math.max(best, Number(player.bestMarksVisit || 0)), 0),
+      finishReason: state.finishReason,
       duration: Math.max(0, now - state.startedAt),
       teamAProfileIds: state.teams.A,
       teamBProfileIds: state.teams.B,
@@ -360,6 +484,7 @@ export default function ScramPlay(props: any) {
       createdAt: state.startedAt,
       updatedAt: now,
       winnerId,
+      winnerIds,
       winnerTeam,
       teamAProfileIds: state.teams.A,
       teamBProfileIds: state.teams.B,
@@ -371,6 +496,7 @@ export default function ScramPlay(props: any) {
         mode: "scram",
         sport: "darts",
         winnerId,
+        winnerIds,
         winnerTeam,
         tied: state.tied,
         config: params,
@@ -395,8 +521,17 @@ export default function ScramPlay(props: any) {
           global: {
             duration: Math.max(0, now - state.startedAt),
             rounds: summary.rounds,
-            darts: summary.darts,
-            visits: state.history.length,
+            phaseRounds: state.phaseRounds,
+            darts: allDarts,
+            visits: allVisits,
+            points: allPoints,
+            marks: allMarks,
+            closes: allCloses,
+            bestScoringVisit: summary.bestScoringVisit,
+            bestMarksVisit: summary.bestMarksVisit,
+            finishReason: state.finishReason,
+            inputMethod,
+            participantMode: summary.participantMode,
           },
         },
       },
@@ -647,41 +782,81 @@ function EndModal({ state, profilesById, sideNames, isSolo, onClose, onSave, onR
   const rows = state.players.map((player: any) => {
     const team: ScramTeam = state.teamByPlayer[player.id];
     const stats: ScramPlayerStats = state.statsByPlayer[player.id] || emptyStats();
-    return { player, profile: profilesById.get(String(player.id)) || player, team, stats };
+    const metrics = buildPlayerScramMetrics(state, String(player.id), stats);
+    return { player, profile: profilesById.get(String(player.id)) || player, team, stats, metrics };
   });
   const winnerLabel = state.tied ? "ÉGALITÉ" : `${sideNames?.[state.winnerTeam] || `ÉQUIPE ${state.winnerTeam}`} GAGNE`;
+  const totalDarts = rows.reduce((sum: number, row: any) => sum + Number(row.stats.darts || 0), 0);
+  const totalVisits = rows.reduce((sum: number, row: any) => sum + Number(row.stats.visits || 0), 0);
+  const totalMarks = rows.reduce((sum: number, row: any) => sum + Number(row.stats.marks || 0), 0);
+  const totalPoints = rows.reduce((sum: number, row: any) => sum + Number(row.stats.points || 0), 0);
+  const totalCloses = rows.reduce((sum: number, row: any) => sum + Number(row.stats.targetsClosed || 0), 0);
+  const bestScoringVisit = rows.reduce((best: number, row: any) => Math.max(best, Number(row.metrics.bestScoringVisit || 0)), 0);
+  const bestMarksVisit = rows.reduce((best: number, row: any) => Math.max(best, Number(row.metrics.bestMarksVisit || 0)), 0);
   const columns: Array<[string, (row: any) => React.ReactNode]> = [
-    ["Joueur", (row) => playerName(row.profile)], ...(!isSolo ? [["Équipe", (row: any) => sideNames?.[row.team] || row.team] as [string, (row: any) => React.ReactNode]] : []), ["Pts", (row) => row.stats.points],
-    ["Marks", (row) => row.stats.marks], ["Ferm.", (row) => row.stats.targetsClosed], ["Darts", (row) => row.stats.darts],
-    ["Hit %", (row) => `${percent(row.stats.hits, row.stats.darts)}%`], ["MPR", (row) => row.stats.darts ? ((row.stats.marks / row.stats.darts) * 3).toFixed(2) : "0.00"],
-    ["Best", (row) => row.stats.bestVisit], ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples],
+    ["Joueur", (row) => playerName(row.profile)],
+    ...(!isSolo ? [["Équipe", (row: any) => sideNames?.[row.team] || row.team] as [string, (row: any) => React.ReactNode]] : []),
+    ["Pts", (row) => row.stats.points], ["Marks", (row) => row.stats.marks], ["Ferm.", (row) => row.stats.targetsClosed],
+    ["Darts", (row) => row.stats.darts], ["Volées", (row) => row.stats.visits], ["Hit %", (row) => `${row.metrics.hitRate.toFixed(1)}%`],
+    ["Cible %", (row) => `${row.metrics.targetRate.toFixed(1)}%`], ["MPR", (row) => row.metrics.mpr.toFixed(2)],
+    ["Pts/volée", (row) => row.metrics.pointsPerScorerVisit.toFixed(1)], ["Marks/volée", (row) => row.metrics.marksPerStopperVisit.toFixed(2)],
+    ["Best pts", (row) => row.metrics.bestScoringVisit], ["Best marks", (row) => row.metrics.bestMarksVisit],
+    ["Score hits", (row) => row.stats.scoringHits], ["Bloquées", (row) => row.stats.blockedDarts], ["Hors cible", (row) => row.stats.wastedDarts],
+    ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples],
     ["Bull", (row) => row.stats.bulls], ["DBull", (row) => row.stats.dbulls], ["Miss", (row) => row.stats.misses],
   ];
+  const globalKpis = [
+    ["ROUNDS", Number(state.phaseRounds?.[1] || 0) + Number(state.phaseRounds?.[2] || 0)],
+    ["VOLÉES", totalVisits], ["DARTS", totalDarts], ["POINTS", totalPoints],
+    ["MARKS", totalMarks], ["FERMETURES", totalCloses], ["BEST SCORE", bestScoringVisit], ["BEST MARKS", bestMarksVisit],
+  ];
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.76)", backdropFilter: "blur(8px)" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(720px,96vw)", maxHeight: "88dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16223a,#070a12)", border: `1px solid ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}99`, boxShadow: `0 0 34px ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}30` }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 12, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(860px,97vw)", maxHeight: "91dvh", overflowY: "auto", borderRadius: 22, padding: 14, color: T.text, background: "linear-gradient(180deg,#16223a,#070a12)", border: `1px solid ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}99`, boxShadow: `0 0 34px ${state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam]}30` }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU SCRAM</div>
-          <div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000, color: state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam], textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div>
+          <div style={{ fontSize: 10.5, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU SCRAM</div>
+          <div style={{ marginTop: 3, fontSize: 22, fontWeight: 1000, color: state.tied ? T.cyan : TEAM_COLOR[state.winnerTeam as ScramTeam], textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center", margin: "14px 0" }}>
-          <TeamResult team="A" label={sideNames?.A || "ÉQUIPE A"} score={state.scores.A} winner={state.winnerTeam === "A"} /><div style={{ color: T.soft, fontWeight: 1000 }}>—</div><TeamResult team="B" label={sideNames?.B || "ÉQUIPE B"} score={state.scores.B} winner={state.winnerTeam === "B"} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "center", margin: "11px 0" }}>
+          <TeamResult team="A" label={sideNames?.A || (isSolo ? "Joueur A" : "ÉQUIPE A")} score={state.scores.A} winner={state.winnerTeam === "A"} />
+          <div style={{ color: T.soft, fontWeight: 1000 }}>—</div>
+          <TeamResult team="B" label={sideNames?.B || (isSolo ? "Joueur B" : "ÉQUIPE B")} score={state.scores.B} winner={state.winnerTeam === "B"} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-          <MiniKpi label="ROUNDS PHASE 1" value={state.phaseRounds[1]} /><MiniKpi label="ROUNDS PHASE 2" value={state.phaseRounds[2]} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 11 }}>
+          {globalKpis.map(([label, value]) => <MiniKpi key={String(label)} label={String(label)} value={Number(value)} />)}
         </div>
-        <div style={{ fontSize: 12, color: T.cyan, fontWeight: 1000, marginBottom: 7 }}>TABLEAU COMPLET</div>
+
+        <div style={{ fontSize: 11.5, color: T.cyan, fontWeight: 1000, marginBottom: 7 }}>STATS COMPLÈTES DES JOUEURS</div>
         <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}` }}>
-          <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11 }}>
-            <thead><tr style={{ color: T.cyan, background: "rgba(66,214,255,.08)", textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead>
-            <tbody>{rows.map((row: any) => <tr key={row.player.id} style={{ background: state.winnerTeam === row.team ? `${TEAM_COLOR[row.team]}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Équipe" ? TEAM_COLOR[row.team] : T.text }}>{read(row)}</td>)}</tr>)}</tbody>
+          <table style={{ width: "100%", minWidth: 1580, borderCollapse: "collapse", fontSize: 10.5 }}>
+            <thead><tr style={{ color: T.cyan, background: "rgba(66,214,255,.08)", textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "7px 6px", borderBottom: `1px solid ${T.stroke}`, whiteSpace: "nowrap" }}>{label}</th>)}</tr></thead>
+            <tbody>{rows.map((row: any) => <tr key={row.player.id} style={{ background: state.winnerTeam === row.team ? `${TEAM_COLOR[row.team]}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ padding: "8px 6px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Équipe" ? TEAM_COLOR[row.team] : T.text, whiteSpace: "nowrap" }}>{read(row)}</td>)}</tr>)}</tbody>
           </table>
         </div>
+
+        <div style={{ marginTop: 11, display: "grid", gap: 8 }}>
+          {rows.map((row: any) => (
+            <div key={`role-${row.player.id}`} style={{ borderRadius: 14, border: `1px solid ${TEAM_COLOR[row.team]}44`, background: `${TEAM_COLOR[row.team]}08`, padding: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 7 }}>
+                <div style={{ fontWeight: 1000 }}>{playerName(row.profile)}</div>
+                <div style={{ color: TEAM_COLOR[row.team], fontSize: 10, fontWeight: 1000 }}>{isSolo ? "DUEL" : sideNames?.[row.team] || `ÉQUIPE ${row.team}`}</div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+                <MiniKpi label="VOL. BLOQUEUR" value={row.stats.stopperVisits} /><MiniKpi label="DARTS BLOQ." value={row.metrics.stopperDarts} />
+                <MiniKpi label="MPR BLOQ." value={row.metrics.mpr} /><MiniKpi label="BEST MARKS" value={row.metrics.bestMarksVisit} />
+                <MiniKpi label="VOL. SCOREUR" value={row.stats.scorerVisits} /><MiniKpi label="DARTS SCORE" value={row.metrics.scorerDarts} />
+                <MiniKpi label="PTS/VOLÉE" value={row.metrics.pointsPerScorerVisit} /><MiniKpi label="BEST SCORE" value={row.metrics.bestScoringVisit} />
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}>
           <ActionButton label="SAUVER & QUITTER" color={T.red} onClick={onSave} disabled={false} />
           <ActionButton label="SAUVER & REJOUER" color={T.green} onClick={onReplay} disabled={false} />
         </div>
-        <button type="button" onClick={onClose} style={{ width: "100%", minHeight: 42, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LE TABLEAU</button>
+        <button type="button" onClick={onClose} style={{ width: "100%", minHeight: 40, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LA PARTIE</button>
       </div>
     </div>
   );

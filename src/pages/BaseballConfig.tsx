@@ -144,13 +144,13 @@ function RulesContent({ primary = CYAN, accent = GOLD }: { primary?: string; acc
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.45 }}>
       <div><strong style={{ color: primary }}>MODE CIBLES</strong><br />Chaque manche tire une cible aléatoire parmi 1 à 20, sans répétition tant que possible. Simple = 1 run, Double = 2 runs, Triple = 3 runs.</div>
-      <div><strong style={{ color: accent }}>VARIANTE ATTAQUE / DÉFENSE</strong><br />Chaque manche possède une cible aléatoire. Le premier joueur attaque cette cible, le second la défend, puis les rôles s’inversent sur la même cible. Seules les touches sur la cible comptent : Simple = 1, Double = 2, Triple = 3. Après la défense : points marqués = attaque − défense, minimum 0.</div>
+      <div><strong style={{ color: accent }}>VARIANTE ATTAQUE / DÉFENSE</strong><br />En individuel, ce mode est strictement limité à 2 joueurs : J1 attaque, J2 défend, puis J2 attaque et J1 défend sur la même cible. Pour jouer à plus de 2, il faut utiliser exactement 2 équipes de même taille. Chaque membre attaque et défend une fois sur la cible ; tous les points individuels sont additionnés au score de son équipe pour la manche.</div>
       <div><strong style={{ color: GREEN }}>MISS</strong><br />L’option « MISS = fin du tour » valide immédiatement la volée au premier MISS et passe au rôle/joueur suivant.</div>
       <div><strong style={{ color: primary }}>BULL / DBULL — JAMAIS</strong><br />Aucun effet spécial. En mode cibles, le BULL n’entre jamais dans la rotation par défaut.</div>
       <div><strong style={{ color: "#ff9bbf" }}>BULL — DÉFENSE</strong><br />BULL retire le nombre de points configuré à l’adversaire. DBULL divise son score par 2 ; si le résultat finit par ,5, il est arrondi à l’entier supérieur.</div>
       <div><strong style={{ color: accent }}>BULL — ATTAQUE</strong><br />BULL ajoute le bonus configuré à son propre score. DBULL double son score courant.</div>
       <div><strong style={{ color: primary }}>BULL DANS LE TIRAGE</strong><br />Le BULL devient une cible possible dans la rotation. Sur cette manche, BULL = 3 points et DBULL = 5 points par fléchette, y compris dans la variante Attaque / Défense.</div>
-      <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />Les points des joueurs d’une même équipe sont additionnés. Les effets BULL/DBULL agissent alors sur le score global de l’équipe concernée.</div>
+      <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />En Attaque / Défense : 2 équipes maximum et obligatoirement de même taille. Sur chaque cible, tous les joueurs de l’équipe A attaquent d’abord face à leur vis-à-vis de B qui défendent ; ensuite les rôles s’inversent et tous les joueurs de B attaquent. Chaque joueur attaque et défend une fois. Le total de tous les duels gagnés sur la cible forme le score de l’équipe pour cette manche. Les effets BULL/DBULL agissent sur le score global de l’équipe concernée.</div>
     </div>
   );
 }
@@ -200,8 +200,9 @@ export default function BaseballConfig(props: any) {
     setSelectedIds(humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((profile) => String(profile.id)));
   }, [humanProfiles, selectedIds.length]);
   React.useEffect(() => {
-    if (gameVariant === "attack_defense" && bullTargetMode === "random") setBullTargetMode("off");
-  }, [gameVariant, bullTargetMode]);
+    if (gameVariant !== "attack_defense" || participantMode !== "players") return;
+    setSelectedIds((previous) => previous.length > 2 ? previous.slice(0, 2) : previous);
+  }, [gameVariant, participantMode]);
 
   React.useEffect(() => {
     try {
@@ -264,6 +265,7 @@ export default function BaseballConfig(props: any) {
         setTeamAssignments((assignments) => { const next = { ...assignments }; delete next[id]; return next; });
         return previous.filter((value) => value !== id);
       }
+      if (participantMode === "players" && gameVariant === "attack_defense" && previous.length >= 2) return previous;
       if (previous.length >= 12) return previous;
       if (!isBotLike(byId.get(id)) && !playerDartSets[id]) {
         const preferred = x01MostUsedDartSetIdForProfile(id, humanProfiles);
@@ -274,7 +276,20 @@ export default function BaseballConfig(props: any) {
   }
 
   function setPlayerTeam(playerId: string, teamId: TeamId) {
-    setTeamAssignments((previous) => ({ ...previous, [playerId]: previous[playerId] === teamId ? null : teamId }));
+    setTeamAssignments((previous) => {
+      if (previous[playerId] === teamId) return { ...previous, [playerId]: null };
+      if (gameVariant === "attack_defense" && participantMode === "teams") {
+        const usedTeams = new Set(
+          selectedIds
+            .filter((id) => id !== playerId)
+            .map((id) => previous[id])
+            .filter(Boolean) as TeamId[]
+        );
+        const externalSlots = teamsSourceMode === "manual" ? selectedBotTeamIds.length : 0;
+        if (!usedTeams.has(teamId) && usedTeams.size + externalSlots >= 2) return previous;
+      }
+      return { ...previous, [playerId]: teamId };
+    });
   }
 
   function toggleSavedTeamMember(teamIdRaw: string, playerIdRaw: string) {
@@ -298,10 +313,24 @@ export default function BaseballConfig(props: any) {
     });
   }
 
+  function duelTeamSlotsUsed(): number {
+    if (gameVariant !== "attack_defense" || participantMode !== "teams") return 0;
+    if (teamsSourceMode === "manual") {
+      const manualIds = new Set(selectedIds.map((id) => teamAssignments[id]).filter(Boolean));
+      return manualIds.size + selectedBotTeamIds.length;
+    }
+    if (teamsSourceMode === "auto") return selectedStoredTeamIds.length;
+    return selectedStoredTeamIds.length + selectedBotTeamIds.length;
+  }
+
+  function canAddDuelTeamSlot(): boolean {
+    return gameVariant !== "attack_defense" || participantMode !== "teams" || duelTeamSlotsUsed() < 2;
+  }
+
   function addStoredTeamSelection(teamIdRaw: string, playerIds: string[]) {
     const baseId = String(teamIdRaw || "");
     const picked = uniqueIds(playerIds);
-    if (!baseId || !picked.length) return;
+    if (!baseId || !picked.length || !canAddDuelTeamSlot()) return;
     setSelectedStoredTeamIds((previous) => {
       const same = previous.filter((id) => teamBaseId(id) === baseId);
       const instanceId = same.length ? `${baseId}__slot_${teamSuffix(same.length)}` : baseId;
@@ -318,6 +347,7 @@ export default function BaseballConfig(props: any) {
     const baseId = String(teamIdRaw || "");
     const team = storedDartsTeams.find((candidate: any) => String(candidate.id) === baseId);
     const allIds = uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []);
+    if (!canAddDuelTeamSlot()) return;
     setSelectedStoredTeamIds((previous) => {
       const same = previous.filter((id) => teamBaseId(id) === baseId);
       const used = new Set<string>();
@@ -331,7 +361,7 @@ export default function BaseballConfig(props: any) {
   function addBotTeamSelection(teamIdRaw: string, playerIds: string[]) {
     const baseId = String(teamIdRaw || "");
     const picked = uniqueIds(playerIds);
-    if (!baseId || !picked.length) return;
+    if (!baseId || !picked.length || !canAddDuelTeamSlot()) return;
     setSelectedBotTeamIds((previous) => {
       const same = previous.filter((id) => teamBaseId(id) === baseId);
       const instanceId = same.length ? `${baseId}__slot_${teamSuffix(same.length)}` : baseId;
@@ -377,19 +407,39 @@ export default function BaseballConfig(props: any) {
   const activeTeamPlayerIds = activeTeamConfigs.flatMap((team) => team.playerIds);
   const activeUniquePlayerIds = uniqueIds(activeTeamPlayerIds);
   const teamSizes = Array.from(new Set(activeTeamConfigs.map((team) => team.playerIds.length)));
-  const minPlayers = gameVariant === "attack_defense" ? 2 : 1;
-  const validPlayers = selectedIds.length >= minPlayers && selectedIds.length <= 12;
-  const validTeams = activeTeamConfigs.length >= 2 && activeTeamConfigs.length <= 4 && teamSizes.length === 1 && teamSizes[0] >= 1 && teamSizes[0] <= 4 && activeUniquePlayerIds.length === activeTeamPlayerIds.length && activeUniquePlayerIds.length <= 12;
+  const isDuel = gameVariant === "attack_defense";
+  const validPlayers = isDuel
+    ? selectedIds.length === 2
+    : selectedIds.length >= 1 && selectedIds.length <= 12;
+  const validTeams = isDuel
+    ? activeTeamConfigs.length === 2
+      && teamSizes.length === 1
+      && teamSizes[0] >= 1
+      && teamSizes[0] <= 4
+      && activeUniquePlayerIds.length === activeTeamPlayerIds.length
+      && activeUniquePlayerIds.length <= 8
+    : activeTeamConfigs.length >= 2
+      && activeTeamConfigs.length <= 4
+      && teamSizes.length === 1
+      && teamSizes[0] >= 1
+      && teamSizes[0] <= 4
+      && activeUniquePlayerIds.length === activeTeamPlayerIds.length
+      && activeUniquePlayerIds.length <= 12;
   const validSelection = participantMode === "players" ? validPlayers : validTeams;
   const selectedBotCount = selectedProfiles.filter(isBotLike).length;
 
   const selectionError = React.useMemo(() => {
-    if (participantMode === "players") return gameVariant === "attack_defense" ? "La variante Attaque / Défense nécessite au moins 2 joueurs ou BOTS IA." : "Sélectionne entre 1 et 12 joueurs ou BOTS IA.";
-    if (activeTeamConfigs.length < 2) return "Sélectionne au moins 2 équipes.";
-    if (activeTeamConfigs.length > 4) return "Le Baseball accepte jusqu’à 4 équipes.";
-    if (teamSizes.length !== 1) return "Toutes les équipes doivent contenir le même nombre de joueurs.";
+    if (participantMode === "players") return gameVariant === "attack_defense"
+      ? "Le duel Attaque / Défense se joue obligatoirement à 2 joueurs exactement. Pour jouer à plusieurs, passe en mode ÉQUIPES."
+      : "Sélectionne entre 1 et 12 joueurs ou BOTS IA.";
+    if (activeTeamConfigs.length < 2) return gameVariant === "attack_defense" ? "Le duel par équipes nécessite exactement 2 équipes." : "Sélectionne au moins 2 équipes.";
+    if (gameVariant === "attack_defense" && activeTeamConfigs.length > 2) return "Le duel Attaque / Défense est limité à 2 équipes maximum.";
+    if (gameVariant !== "attack_defense" && activeTeamConfigs.length > 4) return "Le Baseball accepte jusqu’à 4 équipes.";
+    if (teamSizes.length !== 1) return "Les 2 équipes doivent contenir le même nombre de joueurs pour que chacun attaque et défende une fois.";
     if (activeUniquePlayerIds.length !== activeTeamPlayerIds.length) return "Un même profil ne peut pas jouer dans plusieurs équipes.";
-    return "Compose 2 à 4 équipes de 1 à 4 joueurs, avec 12 participants maximum.";
+    return gameVariant === "attack_defense"
+      ? "Compose exactement 2 équipes équilibrées de 1 à 4 joueurs chacune."
+      : "Compose 2 à 4 équipes de 1 à 4 joueurs, avec 12 participants maximum.";
   }, [participantMode, gameVariant, activeTeamConfigs, teamSizes.length, activeUniquePlayerIds.length, activeTeamPlayerIds.length]);
 
   function backToGames() {
@@ -449,7 +499,7 @@ export default function BaseballConfig(props: any) {
             <>
               <SelectedParticipantsCompactBlock items={selectedParticipantItems} accent={primary} onRemove={togglePlayer} playerDartSets={playerDartSets} onDartSetChange={handleChangePlayerDartSet} allProfiles={humanProfiles} />
               <PlayerPagedSelector usageMode="baseball" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>1 à 12 profils. Le tri privilégie les profils les plus utilisés en Baseball, puis l’ordre alphabétique.</p>
+              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>{gameVariant === "attack_defense" ? "Duel : 2 profils exactement. Pour jouer à plus de 2, utilise le mode ÉQUIPES." : "1 à 12 profils. Le tri privilégie les profils les plus utilisés en Baseball, puis l’ordre alphabétique."}</p>
             </>
           ) : (
             <TeamsSection
@@ -500,7 +550,9 @@ export default function BaseballConfig(props: any) {
             <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
             <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.4 }}>
               {gameVariant === "attack_defense"
-                ? `Chaque manche tire une cible aléatoire parmi 1 à 20${bullTargetMode === "random" ? " + BULL" : ""}. Les deux joueurs jouent la même cible : le 1er attaque, le 2e défend, puis les rôles s’inversent avant de passer à la cible suivante. Seules les touches sur la cible comptent : S=1, D=2, T=3${bullTargetMode === "random" ? ", BULL=3, DBULL=5 lorsque BULL est la cible" : ""}. Points = attaque − défense, minimum 0.`
+                ? participantMode === "teams"
+                  ? `Duel limité à 2 équipes équilibrées. Sur chaque cible, tous les membres de l'équipe A attaquent d'abord face à leur vis-à-vis de B qui défendent ; ensuite les rôles s'inversent. Chaque joueur attaque et défend donc une fois. Tous les points attaque − défense (minimum 0) sont additionnés pour former le score de l'équipe sur cette cible.`
+                  : `Duel limité à 2 joueurs exactement. Sur chaque cible : J1 attaque/J2 défend, puis J2 attaque/J1 défend. Seules les touches sur la cible comptent : S=1, D=2, T=3. Points = attaque − défense, minimum 0. Pour jouer à plus de 2, passe en mode ÉQUIPES.`
                 : bullTargetMode === "random"
                   ? "Les cibles sont tirées parmi 1 à 20 + BULL. Quand BULL sort : BULL=3 runs et DBULL=5 runs."
                   : "Les cibles sont tirées uniquement parmi 1 à 20. Le BULL reste une option spéciale séparée et n’entre pas dans la rotation."}

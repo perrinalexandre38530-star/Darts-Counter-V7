@@ -1813,22 +1813,63 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const scoreA = Number(summary?.scoreA ?? anyE?.payload?.state?.scores?.A ?? 0) || 0;
     const scoreB = Number(summary?.scoreB ?? anyE?.payload?.state?.scores?.B ?? 0) || 0;
     const winnerTeam = String(summary?.winnerTeam || anyE?.winnerTeam || anyE?.payload?.winnerTeam || "").toUpperCase();
-    const allPlayers = getAllEntryPlayers(e);
+    const richPool = Array.isArray(anyE?.payload?.stats?.players) && anyE.payload.stats.players.length
+      ? anyE.payload.stats.players
+      : Array.isArray(anyE?.payload?.players) && anyE.payload.players.length
+      ? anyE.payload.players
+      : Array.isArray(summary?.players) && summary.players.length
+      ? summary.players
+      : getAllEntryPlayers(e);
+    const allPlayers = richPool;
+    const participantMode = String(summary?.participantMode || anyE?.payload?.stats?.global?.participantMode || anyE?.payload?.config?.participantMode || "players");
+    const isSolo = participantMode !== "teams" && allPlayers.length === 2;
+    const teams = Array.isArray(summary?.teams) ? summary.teams : Array.isArray(anyE?.payload?.teams) ? anyE.payload.teams : [];
+    const teamName = (team: "A" | "B") => {
+      const meta = teams.find((row: any) => String(row?.id || row?.side || "").toUpperCase() === team);
+      if (meta?.name) return String(meta.name);
+      const member = allPlayers.find((p: any, index: number) => String(p?.team || (Number(p?.teamIndex) === 0 ? "A" : Number(p?.teamIndex) === 1 ? "B" : index % 2 === 0 ? "A" : "B")).toUpperCase() === team);
+      return isSolo ? (historyScoreName(e, member) || getName(member) || `Joueur ${team}`) : `Équipe ${team}`;
+    };
     const members = (team: "A" | "B") => allPlayers
       .filter((p: any, index: number) => String(p?.team || (Number(p?.teamIndex) === 0 ? "A" : Number(p?.teamIndex) === 1 ? "B" : index % 2 === 0 ? "A" : "B")).toUpperCase() === team)
       .map((p: any) => historyScoreName(e, p) || getName(p))
       .filter(Boolean);
+    const total = (key: string, ...fallbacks: string[]) => allPlayers.reduce((sum: number, p: any) => {
+      const keys = [key, ...fallbacks];
+      for (const k of keys) {
+        const value = Number(p?.[k]);
+        if (Number.isFinite(value)) return sum + value;
+      }
+      return sum;
+    }, 0);
+    const best = (key: string, ...fallbacks: string[]) => allPlayers.reduce((value: number, p: any) => {
+      for (const k of [key, ...fallbacks]) {
+        const n = Number(p?.[k]);
+        if (Number.isFinite(n)) return Math.max(value, n);
+      }
+      return value;
+    }, 0);
     const colorA = "#ff4ad1";
     const colorB = "#ffd76a";
+    const darts = Number(summary?.darts || 0) || total("dartsThrown", "darts");
+    const marks = Number(summary?.marks || 0) || total("marks", "totalMarks", "marksTotal");
+    const closes = Number(summary?.closes || 0) || total("closed", "closes", "closedNumbers");
+    const bestScore = Number(summary?.bestScoringVisit || 0) || best("bestScoringVisit", "bestVisit");
     return (
       <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ color: colorA, fontWeight: 1000 }}>TEAM A{winnerTeam === "A" ? " 🏆" : ""}</span>
+          <span style={{ color: colorA, fontWeight: 1000 }}>{teamName("A")}{winnerTeam === "A" ? " 🏆" : ""}</span>
           <span style={{ color: theme.primary, fontWeight: 1100, textShadow: `0 0 9px ${theme.primary}55` }}>{scoreA} — {scoreB}</span>
-          <span style={{ color: colorB, fontWeight: 1000 }}>TEAM B{winnerTeam === "B" ? " 🏆" : ""}</span>
+          <span style={{ color: colorB, fontWeight: 1000 }}>{teamName("B")}{winnerTeam === "B" ? " 🏆" : ""}</span>
         </div>
-        <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
-          {members("A").join(" + ") || "Team A"} • {members("B").join(" + ") || "Team B"}
+        {!isSolo ? <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
+          {members("A").join(" + ") || teamName("A")} • {members("B").join(" + ") || teamName("B")}
+        </div> : null}
+        <div style={{ color: "rgba(255,255,255,.68)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
+          {darts} darts • {marks} marks • {closes} fermetures • best score {bestScore}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 800, lineHeight: 1.25 }}>
+          {allPlayers.slice(0, 4).map((p: any) => `${historyScoreName(e, p) || getName(p)} : ${Number(p?.points || p?.score || 0)} pts • MPR ${Number(p?.mpr || 0).toFixed(2)} • ${Number(p?.hitRate || 0).toFixed(0)}% hit`).join("  |  ")}
         </div>
       </div>
     );

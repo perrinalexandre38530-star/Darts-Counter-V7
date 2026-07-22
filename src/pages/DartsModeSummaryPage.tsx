@@ -561,52 +561,103 @@ function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acce
   const phaseRounds = pick(summary?.phaseRounds, rec?.payload?.state?.phaseRounds, {}) || {};
   const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory, rec?.visits));
   const teams = asArray(pick(summary?.teams, rec?.payload?.teams, rec?.game?.teams));
+  const participantMode = String(pick(summary?.participantMode, rec?.payload?.stats?.global?.participantMode, rec?.payload?.config?.participantMode, "players"));
+  const isSolo = participantMode !== "teams" && rows.length === 2;
   const teamColor = (team: string) => team === "A" ? "#ff4ad1" : "#ffd76a";
   const teamMeta = (slot: string, index: number) => {
     const team = teams.find((item: any) => String(pick(item?.id, item?.slot, "")).toUpperCase() === slot) || teams[index] || {};
+    const fallbackRow = rows.find((row) => String(row?.raw?.team || "").toUpperCase() === slot);
     return {
-      name: String(pick(team?.name, `Team ${slot}`)),
-      logo: pick(team?.logoDataUrl, team?.logoUrl, team?.avatarDataUrl, null),
+      name: String(pick(team?.name, isSolo ? fallbackRow?.name : `Équipe ${slot}`)),
+      logo: pick(team?.logoDataUrl, team?.logoUrl, team?.avatarDataUrl, isSolo ? fallbackRow?.avatar : null),
+      darts: num(team?.darts, 0), visits: num(team?.visits, 0), marks: num(team?.marks, 0), closes: num(team?.closes, 0),
     };
   };
   const columns: Array<[string, (p: any) => any]> = [
-    ["Joueur", (p) => p.name], ["Team", (p) => pick(p.team, "—")], ["Points", (p) => num(pick(p.points, p.score), 0)],
-    ["Marks", (p) => num(pick(p.totalMarks, p.marksTotal, p.marks), 0)], ["Ferm.", (p) => num(pick(p.closed, p.closes, p.closedNumbers), 0)],
-    ["Darts", (p) => num(pick(p.dartsThrown, p.darts), 0)], ["Hit %", (p) => `${num(p.hitRate, 0).toFixed(1)}%`],
-    ["MPR", (p) => num(p.mpr, 0).toFixed(2)], ["Best", (p) => num(p.bestVisit, 0)],
+    ["Joueur", (p) => p.name], ...(!isSolo ? [["Équipe", (p: any) => pick(p.team, "—")] as [string, (p: any) => any]] : []),
+    ["Points", (p) => num(pick(p.points, p.score), 0)], ["Marks", (p) => num(pick(p.totalMarks, p.marksTotal, p.marks), 0)],
+    ["Ferm.", (p) => num(pick(p.closed, p.closes, p.closedNumbers), 0)], ["Darts", (p) => num(pick(p.dartsThrown, p.darts), 0)],
+    ["Volées", (p) => num(p.visits, 0)], ["Hit %", (p) => `${num(p.hitRate, 0).toFixed(1)}%`], ["Cible %", (p) => `${num(p.targetRate, 0).toFixed(1)}%`],
+    ["MPR", (p) => num(p.mpr, 0).toFixed(2)], ["Marks/vol.", (p) => num(p.marksPerStopperVisit, 0).toFixed(2)],
+    ["Pts/vol.", (p) => num(p.pointsPerScorerVisit, 0).toFixed(1)], ["Pts/dart", (p) => num(p.pointsPerScorerDart, 0).toFixed(2)],
+    ["Best pts", (p) => num(pick(p.bestScoringVisit, p.bestVisit), 0)], ["Best marks", (p) => num(p.bestMarksVisit, 0)],
+    ["Score hits", (p) => num(p.scoringHits, 0)], ["Score %", (p) => `${num(p.scorerEfficiency, 0).toFixed(1)}%`],
+    ["Bloquées", (p) => num(p.blockedDarts, 0)], ["Bloc %", (p) => `${num(p.blockedRate, 0).toFixed(1)}%`], ["Hors cible", (p) => num(p.wastedDarts, 0)],
     ["S", (p) => num(p.singles, 0)], ["D", (p) => num(p.doubles, 0)], ["T", (p) => num(p.triples, 0)],
     ["Bull", (p) => num(p.bulls, 0)], ["DBull", (p) => num(p.dbulls, 0)], ["Miss", (p) => num(p.misses, 0)],
   ];
+  const total = (key: string) => rows.reduce((sum, row) => sum + num(row?.raw?.[key], 0), 0);
+  const best = (key: string) => rows.reduce((value, row) => Math.max(value, num(row?.raw?.[key], 0)), 0);
+  const durationMs = num(summary?.duration, 0);
+  const duration = durationMs ? `${Math.floor(durationMs / 60000)}:${String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0")}` : "—";
 
   return <>
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Duel des équipes</div>
+      <div style={sectionTitle(accent)}>{isSolo ? "Duel SCRAM" : "Duel des équipes"}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 10, alignItems: "center" }}>
         {(["A", "B"] as const).map((team, index) => {
           const meta = teamMeta(team, index);
           return <React.Fragment key={team}>
-          {index ? <div style={{ color: "#8c91a1", fontWeight: 1000 }}>—</div> : null}
-          <div style={{ padding: 13, borderRadius: 15, textAlign: "center", border: `1px solid ${winnerTeam === team ? teamColor(team) : "rgba(255,255,255,.11)"}`, background: winnerTeam === team ? `${teamColor(team)}16` : "rgba(255,255,255,.035)", boxShadow: winnerTeam === team ? `0 0 18px ${teamColor(team)}25` : "none" }}>
-            {meta.logo ? <img src={String(meta.logo)} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${teamColor(team)}`, marginBottom: 5 }} /> : null}
-            <div style={{ color: teamColor(team), fontWeight: 1000, fontSize: 11 }}>TEAM {team}{winnerTeam === team ? " • WIN" : ""}</div>
-            <div style={{ fontSize: 12, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</div>
-            <div style={{ fontSize: 32, fontWeight: 1000, marginTop: 2 }}>{team === "A" ? scoreA : scoreB}</div>
-          </div>
-        </React.Fragment>;
+            {index ? <div style={{ color: "#8c91a1", fontWeight: 1000 }}>—</div> : null}
+            <div style={{ padding: 13, borderRadius: 15, textAlign: "center", border: `1px solid ${winnerTeam === team ? teamColor(team) : "rgba(255,255,255,.11)"}`, background: winnerTeam === team ? `${teamColor(team)}16` : "rgba(255,255,255,.035)", boxShadow: winnerTeam === team ? `0 0 18px ${teamColor(team)}25` : "none" }}>
+              {meta.logo ? <img src={String(meta.logo)} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${teamColor(team)}`, marginBottom: 5 }} /> : null}
+              <div style={{ color: teamColor(team), fontWeight: 1000, fontSize: 11 }}>{winnerTeam === team ? "🏆 " : ""}{isSolo ? meta.name : `ÉQUIPE ${team}`}</div>
+              {!isSolo ? <div style={{ fontSize: 12, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta.name}</div> : null}
+              <div style={{ fontSize: 32, fontWeight: 1000, marginTop: 2 }}>{team === "A" ? scoreA : scoreB}</div>
+              <div style={{ fontSize: 9.5, color: "#aeb0bd" }}>{meta.visits} volées • {meta.darts} darts • {meta.marks} marks</div>
+            </div>
+          </React.Fragment>;
         })}
       </div>
       <div style={{ marginTop: 10, color: "#b8bcc8", textAlign: "center", fontSize: 11.5 }}>
-        {tied ? "Partie nulle" : `Vainqueur : ${winnerTeam ? teamMeta(winnerTeam, winnerTeam === "A" ? 0 : 1).name : "—"}`} • Phase 1 : {num(phaseRounds?.[1], 0)} rounds • Phase 2 : {num(phaseRounds?.[2], 0)} rounds
+        {tied ? "Partie nulle" : `Vainqueur : ${winnerTeam ? teamMeta(winnerTeam, winnerTeam === "A" ? 0 : 1).name : "—"}`} • Phase 1 : {num(phaseRounds?.[1], 0)} rounds • Phase 2 : {num(phaseRounds?.[2], 0)} rounds • {duration}
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Résumé statistique de la partie</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        {[["Volées", total("visits")], ["Darts", total("dartsThrown") || total("darts")], ["Points", total("points")], ["Marks", total("marks")], ["Fermetures", total("closed")], ["Score hits", total("scoringHits")], ["Best score", best("bestScoringVisit") || best("bestVisit")], ["Best marks", best("bestMarksVisit")]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)", textAlign: "center" }}><div style={{ color: "#9da1b1", fontSize: 9.5 }}>{label}</div><div style={{ marginTop: 2, fontWeight: 1000, fontSize: 18, color: accent }}>{value}</div></div>)}
       </div>
     </section>
 
     <section style={card(accent)}>
       <div style={sectionTitle(accent)}>Tableau complet de fin de partie</div>
       <div style={{ overflowX: "auto", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)" }}>
-        <table style={{ width: "100%", minWidth: 1030, borderCollapse: "collapse", fontSize: 11 }}>
-          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={th}>{label}</th>)}</tr></thead>
-          <tbody>{rows.map((r) => <tr key={`scram-stat-${r.id}`} style={{ background: r.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, color: label === "Team" ? teamColor(String(r.raw?.team || "")) : label === "Joueur" && r.isWinner ? accent : td.color }}>{read(r.raw)}</td>)}</tr>)}</tbody>
+        <table style={{ width: "100%", minWidth: 1700, borderCollapse: "collapse", fontSize: 10.5 }}>
+          <thead><tr style={{ color: accent, textAlign: "left", background: `${accent}12` }}>{columns.map(([label]) => <th key={label} style={{ ...th, whiteSpace: "nowrap" }}>{label}</th>)}</tr></thead>
+          <tbody>{rows.map((r) => <tr key={`scram-stat-${r.id}`} style={{ background: r.isWinner ? `${accent}0e` : "transparent" }}>{columns.map(([label, read]) => <td key={label} style={{ ...td, whiteSpace: "nowrap", color: label === "Équipe" ? teamColor(String(r.raw?.team || "")) : label === "Joueur" && r.isWinner ? accent : td.color }}>{read(r.raw)}</td>)}</tr>)}</tbody>
         </table>
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bloqueur / Scoreur par joueur</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((row) => {
+          const p = row.raw || {};
+          return <div key={`roles-${row.id}`} style={{ padding: 10, borderRadius: 14, border: `1px solid ${teamColor(String(p.team || "A"))}44`, background: `${teamColor(String(p.team || "A"))}08` }}>
+            <div style={{ fontWeight: 1000, marginBottom: 7, color: row.isWinner ? accent : "#fff" }}>{row.name}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+              {[["Vol. bloqueur", num(p.stopperVisits)], ["Darts bloqueur", num(p.stopperDarts)], ["MPR", num(p.mpr).toFixed(2)], ["Best marks", num(p.bestMarksVisit)], ["Vol. scoreur", num(p.scorerVisits)], ["Darts scoreur", num(p.scorerDarts)], ["Pts/volée", num(p.pointsPerScorerVisit).toFixed(1)], ["Best score", num(pick(p.bestScoringVisit,p.bestVisit))]].map(([label,value]) => <div key={String(label)} style={{ padding: 7, borderRadius: 11, background: "rgba(255,255,255,.04)", textAlign: "center" }}><div style={{ fontSize: 8.8, color: "#9da1b1" }}>{label}</div><div style={{ marginTop: 2, fontWeight: 1000, color: accent }}>{value}</div></div>)}
+            </div>
+          </div>;
+        })}
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Efficacité par segment</div>
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map((row) => {
+          const segments = row.raw?.segmentStats || {};
+          return <div key={`segments-${row.id}`}>
+            <div style={{ fontWeight: 1000, marginBottom: 6 }}>{row.name}</div>
+            <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)" }}>
+              <table style={{ width: "100%", minWidth: 620, borderCollapse: "collapse", fontSize: 10.5 }}><thead><tr style={{ color: accent }}><th style={th}>Segment</th><th style={th}>Darts</th><th style={th}>Marks</th><th style={th}>Ferm.</th><th style={th}>Score hits</th><th style={th}>Points</th><th style={th}>Bloquées</th></tr></thead><tbody>{["15","16","17","18","19","20","25"].map((key) => { const seg = segments?.[key] || {}; return <tr key={key}><td style={td}>{key === "25" ? "Bull" : key}</td><td style={td}>{num(seg.darts)}</td><td style={td}>{num(seg.marks)}</td><td style={td}>{num(seg.closes)}</td><td style={td}>{num(seg.scoringHits)}</td><td style={td}>{num(seg.points)}</td><td style={td}>{num(seg.blockedDarts)}</td></tr>; })}</tbody></table>
+            </div>
+          </div>;
+        })}
       </div>
     </section>
 
@@ -616,11 +667,12 @@ function ScramSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; acce
         {visits.length ? visits.map((visit, index) => {
           const team = String(visit?.team || "").toUpperCase();
           const player = rows.find((row) => String(row.id) === String(visit?.playerId));
+          const closed = asArray(visit?.targetsClosed).map((target) => Number(target) === 25 ? "Bull" : target).join(", ");
           return <div key={visit?.id || index} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: "9px 10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)" }}>
             <div style={{ color: teamColor(team), fontWeight: 1000 }}>P{pick(visit?.phase, "—")}</div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 1000 }}>{player?.name || "Joueur"} <span style={{ color: teamColor(team), fontSize: 10 }}>TEAM {team}</span></div>
-              <div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Round {pick(visit?.round, "—")} • {visit?.role === "stopper" ? "Bloqueur" : "Scoreur"} • {asArray(visit?.labels).join(" · ") || "—"}</div>
+              <div style={{ fontWeight: 1000 }}>{player?.name || "Joueur"} <span style={{ color: teamColor(team), fontSize: 10 }}>{isSolo ? (visit?.role === "stopper" ? "BLOQUEUR" : "SCOREUR") : `${teamMeta(team, team === "A" ? 0 : 1).name} • ${visit?.role === "stopper" ? "Bloqueur" : "Scoreur"}`}</span></div>
+              <div style={{ color: "#aeb0bd", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Round {pick(visit?.round, "—")} • {asArray(visit?.labels).join(" · ") || "—"}{closed ? ` • fermé : ${closed}` : ""}</div>
             </div>
             <div style={{ color: num(visit?.points, 0) > 0 ? "#72f0a8" : accent, fontWeight: 1000 }}>{num(visit?.points, 0) > 0 ? `+${num(visit?.points, 0)} pts` : `+${num(visit?.marks, 0)} marks`}</div>
           </div>;

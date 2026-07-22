@@ -59,6 +59,12 @@ export type ScramPlayerStats = {
   visits: number;
   stopperVisits: number;
   scorerVisits: number;
+  stopperDarts: number;
+  scorerDarts: number;
+  stopperHits: number;
+  scorerHits: number;
+  stopperMisses: number;
+  scorerMisses: number;
   marks: number;
   targetsClosed: number;
   points: number;
@@ -66,6 +72,8 @@ export type ScramPlayerStats = {
   blockedDarts: number;
   wastedDarts: number;
   bestVisit: number;
+  bestMarksVisit: number;
+  bestScoringVisit: number;
 };
 
 export type ScramVisit = {
@@ -81,6 +89,15 @@ export type ScramVisit = {
   points: number;
   marks: number;
   targetsClosed: ScramTarget[];
+  dartsCount?: number;
+  hits?: number;
+  misses?: number;
+  scoreBefore?: number;
+  scoreAfter?: number;
+  marksByTarget?: Partial<Record<ScramTarget, number>>;
+  pointsByTarget?: Partial<Record<ScramTarget, number>>;
+  scoringHitsByTarget?: Partial<Record<ScramTarget, number>>;
+  blockedDartsByTarget?: Partial<Record<ScramTarget, number>>;
 };
 
 export type ScramState = {
@@ -137,6 +154,12 @@ function emptyStats(): ScramPlayerStats {
     visits: 0,
     stopperVisits: 0,
     scorerVisits: 0,
+    stopperDarts: 0,
+    scorerDarts: 0,
+    stopperHits: 0,
+    scorerHits: 0,
+    stopperMisses: 0,
+    scorerMisses: 0,
     marks: 0,
     targetsClosed: 0,
     points: 0,
@@ -144,6 +167,8 @@ function emptyStats(): ScramPlayerStats {
     blockedDarts: 0,
     wastedDarts: 0,
     bestVisit: 0,
+    bestMarksVisit: 0,
+    bestScoringVisit: 0,
   };
 }
 
@@ -313,8 +338,15 @@ export const ScramEngine = {
     const roundBefore = next.round;
     let visitPoints = 0;
     let visitMarks = 0;
+    let visitHits = 0;
+    let visitMisses = 0;
     const labels: string[] = [];
     const closedTargets: ScramTarget[] = [];
+    const marksByTarget: Partial<Record<ScramTarget, number>> = {};
+    const pointsByTarget: Partial<Record<ScramTarget, number>> = {};
+    const scoringHitsByTarget: Partial<Record<ScramTarget, number>> = {};
+    const blockedDartsByTarget: Partial<Record<ScramTarget, number>> = {};
+    const scoreBefore = next.scores[team];
 
     stats.visits += 1;
     if (role === "stopper") stats.stopperVisits += 1;
@@ -324,8 +356,19 @@ export const ScramEngine = {
       const info = dartInfo(dart);
       labels.push(info.label);
       stats.darts += 1;
-      if (!info.onBoard) stats.misses += 1;
-      else stats.hits += 1;
+      if (role === "stopper") stats.stopperDarts += 1;
+      else stats.scorerDarts += 1;
+      if (!info.onBoard) {
+        stats.misses += 1;
+        visitMisses += 1;
+        if (role === "stopper") stats.stopperMisses += 1;
+        else stats.scorerMisses += 1;
+      } else {
+        stats.hits += 1;
+        visitHits += 1;
+        if (role === "stopper") stats.stopperHits += 1;
+        else stats.scorerHits += 1;
+      }
 
       if (dart.bed === "S") stats.singles += 1;
       else if (dart.bed === "D") stats.doubles += 1;
@@ -345,6 +388,7 @@ export const ScramEngine = {
         next.marksByTeam[team][info.target] = after;
         stats.marks += applied;
         visitMarks += applied;
+        marksByTarget[info.target] = Number(marksByTarget[info.target] || 0) + applied;
         if (before < next.rules.marksToClose && after >= next.rules.marksToClose) {
           stats.targetsClosed += 1;
           closedTargets.push(info.target);
@@ -354,12 +398,17 @@ export const ScramEngine = {
         stats.points += info.points;
         stats.scoringHits += 1;
         visitPoints += info.points;
+        pointsByTarget[info.target] = Number(pointsByTarget[info.target] || 0) + info.points;
+        scoringHitsByTarget[info.target] = Number(scoringHitsByTarget[info.target] || 0) + 1;
       } else {
         stats.blockedDarts += 1;
+        blockedDartsByTarget[info.target] = Number(blockedDartsByTarget[info.target] || 0) + 1;
       }
     }
 
     stats.bestVisit = Math.max(stats.bestVisit, visitPoints);
+    stats.bestScoringVisit = Math.max(stats.bestScoringVisit, visitPoints);
+    stats.bestMarksVisit = Math.max(stats.bestMarksVisit, visitMarks);
     next.history.push({
       id: `scram-${next.startedAt}-${next.history.length + 1}`,
       createdAt: new Date().toISOString(),
@@ -373,6 +422,15 @@ export const ScramEngine = {
       points: visitPoints,
       marks: visitMarks,
       targetsClosed: closedTargets,
+      dartsCount: darts.length,
+      hits: visitHits,
+      misses: visitMisses,
+      scoreBefore,
+      scoreAfter: next.scores[team],
+      marksByTarget,
+      pointsByTarget,
+      scoringHitsByTarget,
+      blockedDartsByTarget,
     });
 
     if (role === "stopper" && allClosed(next.marksByTeam[next.stopperTeam], next.rules)) {

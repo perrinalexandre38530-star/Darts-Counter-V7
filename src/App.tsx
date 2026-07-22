@@ -2823,8 +2823,15 @@ useEffect(() => {
       id,
       kind: (m as any)?.kind || "x01",
       status: "finished",
-      players,
+      players: String((m as any)?.kind || "").toLowerCase() === "scram" && Array.isArray(richPlayers) && richPlayers.length ? richPlayers : players,
       winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      winnerIds: Array.isArray((m as any)?.winnerIds)
+        ? (m as any).winnerIds
+        : Array.isArray((m as any)?.summary?.winnerIds)
+        ? (m as any).summary.winnerIds
+        : Array.isArray((m as any)?.payload?.winnerIds)
+        ? (m as any).payload.winnerIds
+        : [],
       createdAt: (m as any)?.createdAt || now,
       updatedAt: now,
       summary,
