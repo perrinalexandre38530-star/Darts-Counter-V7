@@ -94,6 +94,9 @@ export interface TerritoriesTeam {
   id: string;
   name: string;
   color: string;
+  logoDataUrl?: string | null;
+  avatarUrl?: string | null;
+  playerIds?: string[];
 }
 
 export interface Territory {

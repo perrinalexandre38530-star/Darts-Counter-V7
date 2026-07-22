@@ -26,6 +26,9 @@ export type TerritoriesOwnerRef = {
   id: string;
   name?: string;
   color?: string;
+  logoDataUrl?: string | null;
+  avatarUrl?: string | null;
+  playerIds?: string[];
   teamIndex: number;
 };
 

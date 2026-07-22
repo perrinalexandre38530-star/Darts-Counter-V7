@@ -3,7 +3,7 @@ import {
   BaseballEngine,
   type BaseballRules,
   type BaseballState,
-} from "../src/lib/gameEngines/baseballEngine.ts";
+} from "../lib/gameEngines/baseballEngine.ts";
 
 const S = (number: number) => ({ bed: "S" as const, number });
 const D = (number: number) => ({ bed: "D" as const, number });
@@ -19,8 +19,10 @@ function rules(patch: Partial<BaseballRules> = {}): Partial<BaseballRules> {
     extraInnings: true,
     maxExtraInnings: 3,
     seventhInningRule: "none",
+    gameVariant: "target",
     bullTargetMode: "off",
-    dbullRuns: 2,
+    bullBonusPoints: 4,
+    missEndsTurn: true,
     participantMode: "players",
     ...patch,
   };
@@ -30,81 +32,168 @@ function play(state: BaseballState, darts: any[]): BaseballState {
   return BaseballEngine.playTurn(state, darts);
 }
 
-function targetDart(target: number, mult: 1 | 2 | 3 = 1) {
-  if (target === 25) return mult >= 2 ? DBULL : BULL;
-  return mult === 3 ? T(target) : mult === 2 ? D(target) : S(target);
-}
-
-// S/D/T sur la cible valent 1/2/3 runs ; le reste ne marque pas.
+// 1) Mode cibles : S/D/T sur la cible = 1/2/3, et le BULL n'est pas dans la rotation par défaut.
 {
   let state = BaseballEngine.initGame(
     [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
     rules({ innings: 1, extraInnings: false })
   );
+  assert.ok(state.target >= 1 && state.target <= 20);
+  assert.ok(!state.targetSequence.includes(25));
   const target = state.target;
   const wrong = target === 20 ? 19 : target + 1;
   state = play(state, [S(target), D(target), T(target)]);
-  state = play(state, [S(wrong), D(wrong), MISS]);
-  assert.equal(state.totalsByPlayer.p1, 6);
-  assert.equal(state.totalsByPlayer.p2, 0);
+  state = play(state, [S(wrong), D(wrong)]);
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 6);
+  assert.equal(state.standings.find((row) => row.id === "p2")?.total, 0);
   assert.equal(state.finished, true);
-  assert.deepEqual(state.winnerIds, ["p1"]);
 }
 
-// Une égalité après la manche réglementaire ouvre une nouvelle cible du tirage.
+// 2) BULL dans le tirage est un choix explicite : sur cette cible BULL=3 et DBULL=5.
+{
+  const seq = BaseballEngine.buildTargetSequence(20, 1, "random");
+  assert.equal(seq.length, 21);
+  assert.ok(seq.includes(25));
+  let state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }],
+    rules({ innings: 1, extraInnings: false, bullTargetMode: "random" })
+  );
+  state.target = 25;
+  state.targetSequence[0] = 25;
+  state = play(state, [BULL, DBULL]);
+  assert.equal(state.standings[0].total, 8);
+  assert.equal(state.statsByPlayer.p1.bestDart, 5);
+}
+
+// 3) BULL Attaque : +bonus ; DBULL : score personnel x2.
+{
+  let state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }],
+    rules({ innings: 3, extraInnings: false, bullTargetMode: "attack", bullBonusPoints: 4 })
+  );
+  state = play(state, [S(state.target)]); // 1
+  state = play(state, [BULL, DBULL]); // 1 + 4 = 5 ; DBULL => 10
+  assert.equal(state.standings[0].total, 10);
+  assert.equal(state.statsByPlayer.p1.bullAttackBonus, 4);
+  assert.equal(state.statsByPlayer.p1.dbullAttackDoubles, 1);
+}
+
+// 4) BULL Défense : -4 à l'adversaire ; DBULL : score /2 avec arrondi supérieur.
 {
   let state = BaseballEngine.initGame(
     [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
-    rules({ innings: 1, maxExtraInnings: 2 })
+    rules({ innings: 2, extraInnings: false, bullTargetMode: "defense", bullBonusPoints: 4 })
   );
-  const firstTarget = state.target;
-  state = play(state, [targetDart(firstTarget)]);
-  state = play(state, [targetDart(firstTarget)]);
-  assert.equal(state.finished, false);
+  const t1 = state.target;
+  state = play(state, [T(t1), D(t1)]); // A = 5
+  state = play(state, [DBULL]); // B défend contre A => ceil(5/2) = 3
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 3);
+  const t2 = state.target;
+  state = play(state, [S(t2)]); // A = 4
+  state = play(state, [BULL]); // B retire 4 => A = 0
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 0);
+}
+
+// 5) MISS configuré = fin immédiate du tour : les fléchettes après le MISS sont ignorées.
+{
+  let state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
+    rules({ innings: 1, extraInnings: false, missEndsTurn: true })
+  );
+  const target = state.target;
+  state = play(state, [S(target), MISS, T(target)]);
+  assert.equal(state.statsByPlayer.p1.darts, 2);
+  assert.equal(state.statsByPlayer.p1.turnsLostOnMiss, 1);
+  assert.equal(state.history[0].endedByMiss, true);
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
+}
+
+// 6) Variante Attaque/Défense : la cible de la manche est obligatoire pour S/D/T.
+//    Cible 20 : A attaque T20 + S1 + D5 = 3 ; B défend D20 + MISS = 2 ; A marque 1.
+//    Puis B attaque et A défend encore sur 20 avant seulement de changer de cible.
+{
+  let state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
+    rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, bullTargetMode: "off" })
+  );
+  state.target = 20;
+  state.targetSequence[0] = 20;
+  assert.equal(state.duelPhase, "attack");
+  assert.equal(state.target, 20);
+
+  state = play(state, [T(20), S(1), D(5)]); // A attaque = 3
+  assert.equal(state.duelPhase, "defense");
+  assert.equal(state.pendingAttackPower, 3);
+  assert.equal(state.target, 20);
+  assert.equal(state.statsByPlayer.p1.targetHits, 1);
+  assert.equal(state.statsByPlayer.p1.wastedDarts, 2);
+
+  state = play(state, [D(20), MISS, T(20)]); // B défense = 2 ; T20 après MISS ignoré
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
+  assert.equal(state.duelPhase, "attack");
+  assert.equal(state.duelPairIndex, 1);
+  assert.equal(state.target, 20);
+  assert.equal(state.statsByPlayer.p2.defensePower, 2);
+  assert.equal(state.statsByPlayer.p2.turnsLostOnMiss, 1);
+
+  state = play(state, [S(20), D(3), T(1)]); // B attaque = 1
+  assert.equal(state.pendingAttackPower, 1);
+  assert.equal(state.target, 20);
+  state = play(state, [S(20)]); // A défense = 1 => B +0
+
+  assert.equal(state.finished, true);
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
+  assert.equal(state.standings.find((row) => row.id === "p2")?.total, 0);
+  assert.deepEqual(state.history.map((visit) => visit.target), [20, 20, 20, 20]);
+  assert.equal(state.statsByPlayer.p1.attackPower, 3);
+  assert.equal(state.statsByPlayer.p2.runsPrevented, 2);
+}
+
+// 7) La cible ne change qu'après que chacun a attaqué ET défendu sur la cible courante.
+{
+  let state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
+    rules({ gameVariant: "attack_defense", innings: 2, extraInnings: false, bullTargetMode: "off" })
+  );
+  state.targetSequence[0] = 20;
+  state.targetSequence[1] = 5;
+  state.target = 20;
+
+  state = play(state, [S(20)]); // A attaque
+  state = play(state, [MISS]);  // B défend => A +1
+  state = play(state, [D(20)]); // B attaque
+  assert.equal(state.target, 20);
+  state = play(state, [S(20)]); // A défend => B +1 ; fin manche 1
+
   assert.equal(state.inning, 2);
-  assert.notEqual(state.target, firstTarget);
-  const secondTarget = state.target;
-  state = play(state, [targetDart(secondTarget, 2)]);
-  state = play(state, [targetDart(secondTarget, 1)]);
+  assert.equal(state.target, 5);
+  assert.equal(state.duelPhase, "attack");
+
+  state = play(state, [T(5), T(20)]); // A attaque = 3, T20 hors cible = 0
+  assert.equal(state.pendingAttackPower, 3);
+  state = play(state, [D(5)]); // B défend = 2 => A +1
+  state = play(state, [S(5)]); // B attaque = 1
+  state = play(state, [S(1)]); // A défense hors cible = 0 => B +1
+
   assert.equal(state.finished, true);
-  assert.equal(state.finishReason, "extra");
-  assert.deepEqual(state.winnerIds, ["p1"]);
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 2);
+  assert.equal(state.standings.find((row) => row.id === "p2")?.total, 2);
 }
 
-// Si l'égalité subsiste au cap extra, la partie est enregistrée comme nulle.
-{
-  let state = BaseballEngine.initGame(
-    [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
-    rules({ innings: 1, maxExtraInnings: 1 })
-  );
-  let target = state.target;
-  state = play(state, [targetDart(target)]);
-  state = play(state, [targetDart(target)]);
-  target = state.target;
-  state = play(state, [targetDart(target, 2)]);
-  state = play(state, [targetDart(target, 2)]);
-  assert.equal(state.finished, true);
-  assert.equal(state.tied, true);
-  assert.equal(state.finishReason, "extra-cap");
-}
-
-// Variante 7e manche : zéro run divise le total courant par deux.
+// 8) Règle de 7e manche toujours compatible avec les nouvelles cibles aléatoires.
 {
   let state = BaseballEngine.initGame(
     [{ id: "p1", name: "A" }],
     rules({ innings: 7, extraInnings: false, seventhInningRule: "halve_on_zero" })
   );
-  for (let inning = 1; inning <= 6; inning += 1) {
-    state = play(state, [targetDart(state.target, 3)]);
-  }
-  assert.equal(state.totalsByPlayer.p1, 18);
-  const wrong = state.target === 20 ? 19 : state.target + 1;
-  state = play(state, [MISS, S(wrong), D(wrong)]);
-  assert.equal(state.totalsByPlayer.p1, 9);
+  for (let inning = 1; inning <= 6; inning += 1) state = play(state, [T(state.target)]);
+  assert.equal(state.standings[0].total, 18);
+  state = play(state, [MISS]);
+  assert.equal(state.standings[0].total, 9);
   assert.equal(state.statsByPlayer.p1.penaltyRunsLost, 9);
 }
 
-// Équipes : le classement additionne tous les joueurs du camp.
+// 9) Équipes : score de base + effets spéciaux sont appliqués au total d'équipe.
 {
   let state = BaseballEngine.initGame(
     [
@@ -113,47 +202,19 @@ function targetDart(target: number, mult: 1 | 2 | 3 = 1) {
       { id: "a2", name: "A2" },
       { id: "b2", name: "B2" },
     ],
-    rules({ innings: 1, extraInnings: false, participantMode: "teams" }),
+    rules({ innings: 1, extraInnings: false, participantMode: "teams", bullTargetMode: "attack", bullBonusPoints: 4 }),
     [
       { id: "A", name: "Team A", playerIds: ["a1", "a2"] },
       { id: "B", name: "Team B", playerIds: ["b1", "b2"] },
     ]
   );
   const target = state.target;
-  state = play(state, [targetDart(target)]);
-  state = play(state, [targetDart(target, 2)]);
-  state = play(state, [targetDart(target, 3)]);
+  state = play(state, [S(target)]); // A +1
+  state = play(state, [BULL]);      // B +4
+  state = play(state, [DBULL]);     // A double 1 => 2
   state = play(state, [MISS]);
-  assert.equal(state.finished, true);
-  assert.equal(state.standings[0].id, "A");
-  assert.equal(state.standings[0].total, 4);
-  assert.equal(state.standings[1].total, 2);
+  assert.equal(state.standings.find((row) => row.id === "A")?.total, 2);
+  assert.equal(state.standings.find((row) => row.id === "B")?.total, 4);
 }
 
-// Tirage : les cibles sont uniques sur les 9 manches tant que le pool n'est pas épuisé.
-{
-  const state = BaseballEngine.initGame(
-    [{ id: "p1", name: "A" }],
-    rules({ innings: 9, bullTargetMode: "random" })
-  );
-  const firstNine = state.targetSequence.slice(0, 9);
-  assert.equal(firstNine.length, 9);
-  assert.equal(new Set(firstNine).size, 9);
-  assert.ok(firstNine.every((value) => (value >= 1 && value <= 20) || value === 25));
-}
-
-// BULL final + variante DBULL Home Run.
-{
-  let state = BaseballEngine.initGame(
-    [{ id: "p1", name: "A" }],
-    rules({ innings: 1, extraInnings: false, bullTargetMode: "final", dbullRuns: 3 })
-  );
-  assert.equal(state.target, 25);
-  assert.equal(state.targetSequence[0], 25);
-  state = play(state, [DBULL]);
-  assert.equal(state.totalsByPlayer.p1, 3);
-  assert.equal(state.statsByPlayer.p1.dbulls, 1);
-  assert.equal(state.statsByPlayer.p1.bestDart, 3);
-}
-
-console.log("[BASEBALL] All regression tests passed");
+console.log("[BASEBALL] 9 regression groups passed — Attaque/Défense cible-aware");

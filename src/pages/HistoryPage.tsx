@@ -1382,6 +1382,7 @@ type TerritoriesHistoryOwnerRow = {
   id: string;
   name: string;
   color: string;
+  logoDataUrl?: string | null;
   rank: number;
   winner: boolean;
   owned: number;
@@ -1451,6 +1452,7 @@ function territoriesHistoryOwnerRows(e: SavedEntry): TerritoriesHistoryOwnerRow[
       id: String(owner?.id || explicit?.id || `owner-${index}`),
       name: cleanName(owner?.name || explicit?.name) || fallbackName,
       color: String(owner?.color || explicit?.color || palette[index % palette.length]),
+      logoDataUrl: owner?.logoDataUrl || owner?.avatarUrl || explicit?.logoDataUrl || explicit?.avatarUrl || null,
       rank: Number(explicit?.rank || index + 1) || index + 1,
       winner: explicit?.winner === true || index === winnerTeam,
       owned: Number(explicit?.owned ?? explicit?.territories ?? match?.domination?.[index] ?? 0) || 0,
@@ -1512,6 +1514,11 @@ function TerritoriesHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any 
           >
             <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
               <span style={{ color: historyRankColor(row.rank), fontWeight: 1000 }}>{row.rank}.</span>
+              {row.logoDataUrl ? (
+                <div style={{ width: 24, height: 24, borderRadius: 999, overflow: "hidden", flex: "0 0 auto", border: `1px solid ${row.color}66`, boxShadow: `0 0 7px ${row.color}44` }}>
+                  <ProfileAvatar name={row.name} dataUrl={row.logoDataUrl} size={24} showStars={false} showDartOverlay={false} noFrame />
+                </div>
+              ) : null}
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: row.color, fontWeight: 1000 }}>
                 {row.name}{row.winner ? " 🏆" : ""}
               </span>

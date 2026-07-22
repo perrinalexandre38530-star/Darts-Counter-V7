@@ -19,6 +19,7 @@ import { loadBotPlayers } from "../lib/bots";
 import type {
   BaseballBullTargetMode,
   BaseballConfigPayload,
+  BaseballGameVariant,
   BaseballParticipantMode,
   BaseballSeventhInningRule,
   BaseballTeamConfig,
@@ -142,13 +143,14 @@ function shuffle<T>(items: T[]): T[] {
 function RulesContent({ primary = CYAN, accent = GOLD }: { primary?: string; accent?: string }) {
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.45 }}>
-      <div><strong style={{ color: primary }}>PRINCIPE</strong><br />Chaque manche tire une cible aléatoire parmi 1 à 20, sans répétition tant que possible. Seule la cible affichée marque des runs.</div>
-      <div><strong style={{ color: accent }}>COMPTAGE</strong><br />Simple = 1 run, Double = 2 runs, Triple = 3 runs. Chaque joueur lance 3 fléchettes par manche ; toute autre cible vaut 0.</div>
-      <div><strong style={{ color: GREEN }}>VICTOIRE</strong><br />Le meilleur total à la fin des manches gagne. En cas d’égalité, les manches supplémentaires utilisent les prochaines cibles du tirage jusqu’au départage ou au cap choisi.</div>
-      <div><strong style={{ color: "#ff9bbf" }}>7e MANCHE</strong><br />La variante optionnelle « score divisé par 2 » sanctionne un joueur qui ne marque aucun run pendant la 7e manche.</div>
-      <div><strong style={{ color: primary }}>BULL / DBULL</strong><br />Le BULL peut être absent, mélangé au tirage ou imposé à la dernière manche. Sur une manche BULL, BULL = 1 run et DBULL = 2 runs, ou 3 runs en variante « Home Run ».</div>
-      <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />Les runs des joueurs d’une même équipe sont additionnés. Les équipes doivent avoir le même nombre de joueurs pour conserver le même nombre de passages.</div>
-      <div style={{ color: "#aab1ca" }}>Le sélecteur reprend celui de X01 : profils, équipes enregistrées, brassage temporaire, BOTS IA et jeux de fléchettes.</div>
+      <div><strong style={{ color: primary }}>MODE CIBLES</strong><br />Chaque manche tire une cible aléatoire parmi 1 à 20, sans répétition tant que possible. Simple = 1 run, Double = 2 runs, Triple = 3 runs.</div>
+      <div><strong style={{ color: accent }}>VARIANTE ATTAQUE / DÉFENSE</strong><br />Chaque manche possède une cible aléatoire. Le premier joueur attaque cette cible, le second la défend, puis les rôles s’inversent sur la même cible. Seules les touches sur la cible comptent : Simple = 1, Double = 2, Triple = 3. Après la défense : points marqués = attaque − défense, minimum 0.</div>
+      <div><strong style={{ color: GREEN }}>MISS</strong><br />L’option « MISS = fin du tour » valide immédiatement la volée au premier MISS et passe au rôle/joueur suivant.</div>
+      <div><strong style={{ color: primary }}>BULL / DBULL — JAMAIS</strong><br />Aucun effet spécial. En mode cibles, le BULL n’entre jamais dans la rotation par défaut.</div>
+      <div><strong style={{ color: "#ff9bbf" }}>BULL — DÉFENSE</strong><br />BULL retire le nombre de points configuré à l’adversaire. DBULL divise son score par 2 ; si le résultat finit par ,5, il est arrondi à l’entier supérieur.</div>
+      <div><strong style={{ color: accent }}>BULL — ATTAQUE</strong><br />BULL ajoute le bonus configuré à son propre score. DBULL double son score courant.</div>
+      <div><strong style={{ color: primary }}>BULL DANS LE TIRAGE</strong><br />Le BULL devient une cible possible dans la rotation. Sur cette manche, BULL = 3 points et DBULL = 5 points par fléchette, y compris dans la variante Attaque / Défense.</div>
+      <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />Les points des joueurs d’une même équipe sont additionnés. Les effets BULL/DBULL agissent alors sur le score global de l’équipe concernée.</div>
     </div>
   );
 }
@@ -177,8 +179,10 @@ export default function BaseballConfig(props: any) {
   const [extraInnings, setExtraInnings] = React.useState(saved.extraInnings !== false);
   const [maxExtraInnings, setMaxExtraInnings] = React.useState<number>(Number(saved.maxExtraInnings || 3) || 3);
   const [seventhInningRule, setSeventhInningRule] = React.useState<BaseballSeventhInningRule>(saved.seventhInningRule === "halve_on_zero" ? "halve_on_zero" : "none");
-  const [bullTargetMode, setBullTargetMode] = React.useState<BaseballBullTargetMode>(saved.bullTargetMode === "off" || saved.bullTargetMode === "final" ? saved.bullTargetMode : "random");
-  const [dbullRuns, setDbullRuns] = React.useState<2 | 3>(saved.dbullRuns === 3 ? 3 : 2);
+  const [gameVariant, setGameVariant] = React.useState<BaseballGameVariant>(saved.gameVariant === "attack_defense" ? "attack_defense" : "target");
+  const [bullTargetMode, setBullTargetMode] = React.useState<BaseballBullTargetMode>(["defense", "attack", "random"].includes(saved.bullTargetMode) ? saved.bullTargetMode : "off");
+  const [bullBonusPoints, setBullBonusPoints] = React.useState<number>(Math.min(20, Math.max(1, Number(saved.bullBonusPoints || 4) || 4)));
+  const [missEndsTurn, setMissEndsTurn] = React.useState(saved.missEndsTurn !== false);
   const [randomOrder, setRandomOrder] = React.useState(Boolean(saved.randomOrder));
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets && typeof saved.playerDartSets === "object" ? saved.playerDartSets : {});
@@ -195,17 +199,20 @@ export default function BaseballConfig(props: any) {
     if (selectedIds.length || !humanProfiles.length) return;
     setSelectedIds(humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((profile) => String(profile.id)));
   }, [humanProfiles, selectedIds.length]);
+  React.useEffect(() => {
+    if (gameVariant === "attack_defense" && bullTargetMode === "random") setBullTargetMode("off");
+  }, [gameVariant, bullTargetMode]);
 
   React.useEffect(() => {
     try {
       localStorage.setItem(LS_CFG_KEY, JSON.stringify({
         participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
         selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
-        botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, bullTargetMode, dbullRuns, randomOrder,
+        botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, gameVariant, bullTargetMode, bullBonusPoints, missEndsTurn, randomOrder,
         scoreInputMethod, playerDartSets,
       }));
     } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, bullTargetMode, dbullRuns, randomOrder, scoreInputMethod, playerDartSets]);
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, gameVariant, bullTargetMode, bullBonusPoints, missEndsTurn, randomOrder, scoreInputMethod, playerDartSets]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
@@ -370,19 +377,20 @@ export default function BaseballConfig(props: any) {
   const activeTeamPlayerIds = activeTeamConfigs.flatMap((team) => team.playerIds);
   const activeUniquePlayerIds = uniqueIds(activeTeamPlayerIds);
   const teamSizes = Array.from(new Set(activeTeamConfigs.map((team) => team.playerIds.length)));
-  const validPlayers = selectedIds.length >= 1 && selectedIds.length <= 12;
+  const minPlayers = gameVariant === "attack_defense" ? 2 : 1;
+  const validPlayers = selectedIds.length >= minPlayers && selectedIds.length <= 12;
   const validTeams = activeTeamConfigs.length >= 2 && activeTeamConfigs.length <= 4 && teamSizes.length === 1 && teamSizes[0] >= 1 && teamSizes[0] <= 4 && activeUniquePlayerIds.length === activeTeamPlayerIds.length && activeUniquePlayerIds.length <= 12;
   const validSelection = participantMode === "players" ? validPlayers : validTeams;
   const selectedBotCount = selectedProfiles.filter(isBotLike).length;
 
   const selectionError = React.useMemo(() => {
-    if (participantMode === "players") return "Sélectionne entre 1 et 12 joueurs ou BOTS IA.";
+    if (participantMode === "players") return gameVariant === "attack_defense" ? "La variante Attaque / Défense nécessite au moins 2 joueurs ou BOTS IA." : "Sélectionne entre 1 et 12 joueurs ou BOTS IA.";
     if (activeTeamConfigs.length < 2) return "Sélectionne au moins 2 équipes.";
     if (activeTeamConfigs.length > 4) return "Le Baseball accepte jusqu’à 4 équipes.";
     if (teamSizes.length !== 1) return "Toutes les équipes doivent contenir le même nombre de joueurs.";
     if (activeUniquePlayerIds.length !== activeTeamPlayerIds.length) return "Un même profil ne peut pas jouer dans plusieurs équipes.";
     return "Compose 2 à 4 équipes de 1 à 4 joueurs, avec 12 participants maximum.";
-  }, [participantMode, activeTeamConfigs, teamSizes.length, activeUniquePlayerIds.length, activeTeamPlayerIds.length]);
+  }, [participantMode, gameVariant, activeTeamConfigs, teamSizes.length, activeUniquePlayerIds.length, activeTeamPlayerIds.length]);
 
   function backToGames() {
     if (typeof props?.onBack === "function") return props.onBack();
@@ -413,8 +421,10 @@ export default function BaseballConfig(props: any) {
       extraInnings,
       maxExtraInnings: Math.min(10, Math.max(1, maxExtraInnings)),
       seventhInningRule,
+      gameVariant,
       bullTargetMode,
-      dbullRuns,
+      bullBonusPoints,
+      missEndsTurn,
       randomOrder,
       scoreInputMethod,
     };
@@ -480,12 +490,21 @@ export default function BaseballConfig(props: any) {
             <OptionRow label="Nombre de manches"><OptionSelect value={innings} options={[5, 7, 9, 12, 15, 20]} onChange={(value: any) => setInnings(Number(value) || 9)} /></OptionRow>
             <OptionRow label="Manches supplémentaires"><OptionToggle value={extraInnings} onChange={setExtraInnings} /></OptionRow>
             {extraInnings ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(10, Math.max(1, maxExtraInnings))} options={[1, 2, 3, 5, 10]} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
-            {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 run = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
-            <OptionRow label="Cible BULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "random", label: "Dans le tirage aléatoire" }, { value: "final", label: "Dernière manche réglementaire" }]} onChange={setBullTargetMode} /></OptionRow>
-            {bullTargetMode !== "off" ? <OptionRow label="Valeur DBULL"><OptionSelect value={dbullRuns} options={[{ value: 2, label: "2 runs — Standard" }, { value: 3, label: "3 runs — Home Run" }]} onChange={(value: any) => setDbullRuns(Number(value) === 3 ? 3 : 2)} /></OptionRow> : null}
+            {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 point = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
+            <OptionRow label="Variante de jeu"><OptionSelect value={gameVariant} options={[{ value: "target", label: "Cibles aléatoires — Baseball" }, { value: "attack_defense", label: "Attaque / Défense — Cible par manche" }]} onChange={setGameVariant} /></OptionRow>
+            <OptionRow label="MISS"><OptionToggle value={missEndsTurn} onChange={setMissEndsTurn} /></OptionRow>
+            <div style={{ margin: "-5px 0 5px", fontSize: 10.5, opacity: .62, lineHeight: 1.3 }}>{missEndsTurn ? "MISS = perte immédiate de la volée en cours et changement de tour/rôle." : "MISS = 0 point, mais la volée peut continuer jusqu’à 3 fléchettes."}</div>
+            <OptionRow label="Règle BULL / DBULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "defense", label: "Défense" }, { value: "attack", label: "Attaque" }, { value: "random", label: "Dans le tirage aléatoire" }]} onChange={setBullTargetMode} /></OptionRow>
+            {(bullTargetMode === "attack" || bullTargetMode === "defense") ? <OptionRow label="Valeur du BULL"><OptionSelect value={bullBonusPoints} options={[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]} onChange={(value: any) => setBullBonusPoints(Math.min(20, Math.max(1, Number(value) || 4)))} /></OptionRow> : null}
             <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
             <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.35 }}>À chaque partie, les cibles sont tirées aléatoirement parmi 1 à 20 sans répétition. Selon le réglage BULL, le centre peut rejoindre le tirage ou devenir la cible de la dernière manche.</div>
+            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.4 }}>
+              {gameVariant === "attack_defense"
+                ? `Chaque manche tire une cible aléatoire parmi 1 à 20${bullTargetMode === "random" ? " + BULL" : ""}. Les deux joueurs jouent la même cible : le 1er attaque, le 2e défend, puis les rôles s’inversent avant de passer à la cible suivante. Seules les touches sur la cible comptent : S=1, D=2, T=3${bullTargetMode === "random" ? ", BULL=3, DBULL=5 lorsque BULL est la cible" : ""}. Points = attaque − défense, minimum 0.`
+                : bullTargetMode === "random"
+                  ? "Les cibles sont tirées parmi 1 à 20 + BULL. Quand BULL sort : BULL=3 runs et DBULL=5 runs."
+                  : "Les cibles sont tirées uniquement parmi 1 à 20. Le BULL reste une option spéciale séparée et n’entre pas dans la rotation."}
+            </div>
           </div>
         </Section>
 

@@ -55,6 +55,9 @@ import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
 import { x01EnsureAudioUnlocked, x01PlaySfxV3 } from "../lib/x01SfxV3";
 import { loadBotPlayers } from "../lib/bots";
 import targetBgUrl from "../assets/target_bg.png";
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
+import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
+import { resolveTeamInstances } from "../lib/teamSelectionInstances";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -63,6 +66,10 @@ export type TerritoriesConfigPayload = {
   teamCount?: number;
   selectedIds: string[];
   teamsById?: Record<string, number>;
+  participantMode?: "players" | "teams";
+  teamSourceMode?: "manual" | "saved" | "auto";
+  selectedTeamIds?: string[];
+  selectedTeamPlayerIds?: Record<string, string[]>;
   participantProfiles?: Record<string, { name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string | null }>;
   botsEnabled: boolean;
   botLevel: "easy" | "normal" | "hard";
@@ -337,6 +344,24 @@ function shortName(id: string) {
   if (!s) return "Player";
   if (s.length <= 12) return s;
   return `${s.slice(0, 12)}…`;
+}
+
+function territoriesTeamSkin(color: string, index = 0): "pink" | "gold" | "blue" | "green" {
+  const c = String(color || "").toLowerCase();
+  if (c.includes("ff4") || c.includes("pink") || c.includes("magenta")) return "pink";
+  if (c.includes("52f7") || c.includes("cyan") || c.includes("blue")) return "blue";
+  if (c.includes("7dff") || c.includes("green") || c.includes("vert")) return "green";
+  return (["gold", "pink", "blue", "green"] as const)[Math.max(0, index) % 4];
+}
+
+function territoriesTeamLogo(team: any, index = 0): string {
+  return String(
+    team?.logoDataUrl
+      || team?.logoUrl
+      || team?.avatarUrl
+      || team?.avatarDataUrl
+      || getTeamAvatarUrl(territoriesTeamSkin(team?.color || "", index)),
+  );
 }
 
 const OWNER_COLORS = [
@@ -921,16 +946,120 @@ function TerritoriesStatsLegend(props: {
   );
 }
 
+function TerritoriesTeamPlayersModal(props: {
+  open: boolean;
+  onClose: () => void;
+  color: string;
+  teams: TerritoriesTeam[];
+  players: TerritoriesPlayer[];
+  profileById: Record<string, any>;
+  playerStats: Record<string, PlayerLiveStats>;
+  ownedByOwner: Record<string, number>;
+  ownedValueByOwner: Record<string, number>;
+  activePlayerId: string;
+}) {
+  if (!props.open) return null;
+
+  return (
+    <div
+      onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 13080,
+        display: "grid",
+        placeItems: "center",
+        padding: 16,
+        background: "rgba(0,0,0,.68)",
+        backdropFilter: "blur(7px)",
+      }}
+    >
+      <div
+        style={{
+          width: "min(620px, calc(100vw - 24px))",
+          maxHeight: "82dvh",
+          overflow: "hidden",
+          borderRadius: 22,
+          background: "rgba(8,12,22,.97)",
+          border: `1px solid ${props.color}77`,
+          boxShadow: `0 0 32px ${props.color}35, 0 20px 60px rgba(0,0,0,.65)`,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div style={{ padding: "12px 14px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${props.color}33` }}>
+          <div>
+            <div style={{ color: props.color, fontSize: 15, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase", textShadow: `0 0 12px ${props.color}77` }}>Joueurs</div>
+            <div style={{ marginTop: 3, fontSize: 10, color: "rgba(255,255,255,.58)", fontWeight: 800 }}>Score individuel = valeur totale des territoires conquis par le joueur.</div>
+          </div>
+          <button type="button" onClick={props.onClose} aria-label="Fermer" style={{ width: 34, height: 34, borderRadius: 11, border: `1px solid ${props.color}66`, color: props.color, background: "rgba(0,0,0,.38)", display: "grid", placeItems: "center", fontSize: 20, fontWeight: 950, cursor: "pointer", boxShadow: `0 0 12px ${props.color}22` }}>×</button>
+        </div>
+
+        <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12, display: "grid", gap: 11 }}>
+          {props.teams.map((team, teamIndex) => {
+            const members = props.players.filter((player) => String(player.teamId) === String(team.id));
+            const teamLogo = territoriesTeamLogo(team, teamIndex);
+            return (
+              <section key={team.id} style={{ borderRadius: 17, overflow: "hidden", border: `1px solid ${team.color}55`, background: `linear-gradient(180deg, ${team.color}12, rgba(0,0,0,.22))`, boxShadow: `0 0 16px ${team.color}12` }}>
+                <div style={{ minHeight: 50, padding: "7px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto auto", gap: 8, alignItems: "center", borderBottom: `1px solid ${team.color}33` }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 999, overflow: "hidden", boxShadow: `0 0 10px ${team.color}77` }}>
+                    <ProfileAvatar profile={{ id: team.id, name: team.name, avatarDataUrl: teamLogo }} size={40} showStars={false} showDartOverlay={false} noFrame />
+                  </div>
+                  <div style={{ minWidth: 0, color: team.color, fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.name}</div>
+                  <div title="Territoires" style={{ minWidth: 32, height: 26, padding: "0 7px", borderRadius: 8, display: "grid", placeItems: "center", color: team.color, border: `1px solid ${team.color}66`, background: `${team.color}12`, fontSize: 11, fontWeight: 1000 }}>{props.ownedByOwner[team.id] || 0}</div>
+                  <div title="Valeur de l'équipe" style={{ color: team.color, fontSize: 16, fontWeight: 1000 }}>{props.ownedValueByOwner[team.id] || 0}</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 5, padding: 7 }}>
+                  {members.map((player) => {
+                    const stats = { ...EMPTY_PLAYER_LIVE_STATS, ...(props.playerStats[player.id] || {}) };
+                    const active = player.id === props.activePlayerId;
+                    const profile = props.profileById[player.id] ?? { id: player.id, name: player.name, avatar: player.avatar };
+                    return (
+                      <div key={player.id} style={{ minHeight: 44, padding: "5px 7px", display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderRadius: 12, border: `1px solid ${active ? team.color : "rgba(255,255,255,.07)"}`, background: active ? `${team.color}12` : "rgba(255,255,255,.025)", boxShadow: active ? `0 0 12px ${team.color}22` : undefined }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 999, overflow: "hidden", border: `1px solid ${team.color}66` }}>
+                          <ProfileAvatar profile={profile} size={34} showStars={false} showDartOverlay={false} noFrame />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: active ? team.color : "#fff", fontSize: 11.5, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}{active ? " · À jouer" : ""}</div>
+                          <div style={{ marginTop: 2, fontSize: 8.8, color: "rgba(255,255,255,.55)", fontWeight: 800 }}>Cap. {stats.captures} · Vols {stats.steals} · Fl. {stats.darts}</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ color: team.color, fontSize: 17, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 8px ${team.color}55` }}>{stats.captureValueTotal}</div>
+                          <div style={{ marginTop: 2, color: "rgba(255,255,255,.46)", fontSize: 7.5, fontWeight: 900, textTransform: "uppercase" }}>score</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TerritoryTargetSuggestions(props: {
   suggestions: TerritoryStealSuggestion[];
   currentTotal: number;
   dartsRemaining: number;
   accentColor: string;
   players: TerritoriesPlayer[];
+  teams?: TerritoriesTeam[];
   profileById: Record<string, any>;
   onSelect?: (territoryId: string) => void;
 }) {
   const ownerAvatarProfile = (ownerId: string) => {
+    const team = props.teams?.find((item) => String(item.id) === String(ownerId));
+    if (team) {
+      return {
+        id: team.id,
+        name: team.name,
+        avatarDataUrl: territoriesTeamLogo(team, props.teams?.findIndex((item) => item.id === team.id) || 0),
+      };
+    }
     const member = props.players.find((player) => String(player.teamId || player.id) === ownerId);
     if (!member) return null;
     return props.profileById[member.id] ?? { id: member.id, name: member.name, avatar: member.avatar };
@@ -1102,6 +1231,7 @@ function TerritoryOwnerBadge(props: {
   ownerId?: string;
   hasFortress: boolean;
   players: TerritoriesPlayer[];
+  teams?: TerritoriesTeam[];
   profileById: Record<string, any>;
   ownerColor?: string;
   compact?: boolean;
@@ -1127,6 +1257,23 @@ function TerritoryOwnerBadge(props: {
   }
 
   const color = props.ownerColor || members[0]?.color || "#ffffff";
+  const ownerTeam = props.teams?.find((team) => String(team.id) === String(props.ownerId)) || null;
+  if (ownerTeam) {
+    const size = props.compact ? 22 : 34;
+    const logoProfile = { id: ownerTeam.id, name: ownerTeam.name, avatarDataUrl: territoriesTeamLogo(ownerTeam, props.teams?.findIndex((team) => team.id === ownerTeam.id) || 0) };
+    return (
+      <div title={ownerTeam.name} style={{ minWidth: size, display: "grid", justifyItems: "center", gap: 0, flex: "0 0 auto" }}>
+        <div style={{ width: size, height: size, borderRadius: 999, overflow: "hidden", border: `${props.compact ? 1.5 : 2}px solid ${color}`, boxShadow: `0 0 9px ${color}88`, background: "rgba(2,5,10,.92)" }}>
+          <ProfileAvatar profile={logoProfile} size={size} showStars={false} showDartOverlay={false} noFrame />
+        </div>
+        {props.hasFortress ? (
+          <div style={{ marginTop: -1, display: "grid", placeItems: "center" }}>
+            <FortressLineIcon size={props.compact ? 10 : 12} color="#fff" glowColor={color} title="Forteresse active" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   const avatarBox = props.compact ? 20 : 32;
   const avatarSize = props.compact ? 18 : 28;
   const overlap = props.compact ? -5 : -8;
@@ -1387,23 +1534,50 @@ function TerritorySilhouetteBadge(props: {
 
 function TerritoriesTurnCarousel(props: {
   players: TerritoriesPlayer[];
+  teams?: TerritoriesTeam[];
   activeId: string;
+  activeOwnerId: string;
   profileById: Record<string, any>;
   ownedByOwner: Record<string, number>;
   ownedValueByOwner: Record<string, number>;
 }) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const itemRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
+  const teamMode = Boolean(props.teams?.length);
+
+  const items = React.useMemo(() => {
+    if (teamMode) {
+      return (props.teams || []).map((team, index) => ({
+        key: team.id,
+        ownerId: team.id,
+        label: team.name,
+        color: team.color,
+        profile: {
+          id: team.id,
+          name: team.name,
+          avatarDataUrl: territoriesTeamLogo(team, index),
+        },
+      }));
+    }
+    return props.players.map((player) => ({
+      key: player.id,
+      ownerId: player.id,
+      label: player.name,
+      color: player.color || "#52f7ff",
+      profile: props.profileById[player.id] ?? { id: player.id, name: player.name, avatar: player.avatar },
+    }));
+  }, [teamMode, props.teams, props.players, props.profileById]);
 
   React.useEffect(() => {
     const wrap = wrapRef.current;
-    const active = itemRefs.current[props.activeId];
+    const activeKey = teamMode ? props.activeOwnerId : props.activeId;
+    const active = itemRefs.current[activeKey];
     if (!wrap || !active) return;
     const wrapRect = wrap.getBoundingClientRect();
     const activeRect = active.getBoundingClientRect();
     const delta = activeRect.left + activeRect.width / 2 - (wrapRect.left + wrapRect.width / 2);
     wrap.scrollBy({ left: delta, behavior: "smooth" });
-  }, [props.activeId, props.players.length]);
+  }, [props.activeId, props.activeOwnerId, teamMode, items.length]);
 
   return (
     <div style={{ padding: "3px 10px 0" }}>
@@ -1420,19 +1594,17 @@ function TerritoriesTurnCarousel(props: {
           scrollSnapType: "x proximity",
         }}
       >
-        {props.players.map((player) => {
-          const ownerId = player.teamId || player.id;
-          const count = Math.max(0, Number(props.ownedByOwner[ownerId] || 0));
-          const value = Math.max(0, Number(props.ownedValueByOwner[ownerId] || 0));
-          const active = player.id === props.activeId;
-          const color = player.color || "#52f7ff";
-          const profile = props.profileById[player.id] ?? { id: player.id, name: player.name, avatar: player.avatar };
+        {items.map((item) => {
+          const count = Math.max(0, Number(props.ownedByOwner[item.ownerId] || 0));
+          const value = Math.max(0, Number(props.ownedValueByOwner[item.ownerId] || 0));
+          const active = teamMode ? item.ownerId === props.activeOwnerId : item.key === props.activeId;
+          const color = item.color || "#52f7ff";
 
           return (
             <div
-              key={player.id}
-              ref={(node) => { itemRefs.current[player.id] = node; }}
-              title={`${player.name} · ${value} points de territoires`}
+              key={item.key}
+              ref={(node) => { itemRefs.current[item.key] = node; }}
+              title={`${item.label} · ${count} territoires · ${value} valeur`}
               style={{
                 flex: "0 0 auto",
                 height: 44,
@@ -1459,39 +1631,22 @@ function TerritoriesTurnCarousel(props: {
                     top: -13,
                     width: 68,
                     height: 68,
-                    transform: "scale(1.22)",
+                    transform: teamMode ? "scale(1.30)" : "scale(1.22)",
                     transformOrigin: "center",
                   }}
                 >
                   <ProfileAvatar
-                    profile={profile}
+                    profile={item.profile}
                     size={68}
                     showStars={false}
                     showDartOverlay={false}
                     noFrame
                   />
                 </div>
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background: "linear-gradient(90deg, transparent 58%, rgba(3,6,12,.82) 100%)",
-                    pointerEvents: "none",
-                  }}
-                />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 58%, rgba(3,6,12,.82) 100%)", pointerEvents: "none" }} />
               </div>
 
-              <div
-                style={{
-                  minWidth: 0,
-                  padding: "5px 9px 4px 6px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  gap: 5,
-                  lineHeight: 1,
-                }}
-              >
+              <div style={{ minWidth: 0, padding: "5px 9px 4px 6px", display: "flex", justifyContent: "center", alignItems: "center", gap: 5, lineHeight: 1 }}>
                 <div
                   title={`${count} territoires possédés`}
                   style={{
@@ -1512,19 +1667,7 @@ function TerritoriesTurnCarousel(props: {
                 >
                   {count}
                 </div>
-                <div
-                  title={`${value} points de territoires`}
-                  style={{
-                    minWidth: 0,
-                    maxWidth: "100%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    fontSize: 17,
-                    fontWeight: 1000,
-                    color,
-                    textShadow: active ? `0 0 10px ${color}` : "none",
-                  }}
-                >
+                <div title={`${value} valeur cumulée`} style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", fontSize: 17, fontWeight: 1000, color, textShadow: active ? `0 0 10px ${color}` : "none" }}>
                   {value}
                 </div>
               </div>
@@ -1545,8 +1688,10 @@ type TerritoryCaptureToastData = {
   territoryValue: number;
   capturerName: string;
   capturerPlayerId: string;
+  capturerOwnerId?: string;
   previousOwnerName?: string;
   previousOwnerPlayerId?: string;
+  previousOwnerId?: string;
   stolen: boolean;
   color: string;
   previousOwnerColor?: string;
@@ -1557,6 +1702,7 @@ type TerritoryCaptureToastData = {
 function TerritoryCaptureToast(props: {
   data: TerritoryCaptureToastData | null;
   profileById: Record<string, any>;
+  teams?: TerritoriesTeam[];
 }) {
   const data = props.data;
   if (!data) return null;
@@ -1570,10 +1716,11 @@ function TerritoryCaptureToast(props: {
   const rightColor = data.stolen
     ? data.previousOwnerColor || "#fff"
     : data.color;
-  const rightProfile = props.profileById[rightPlayerId] ?? {
-    id: rightPlayerId,
-    name: rightPlayerName,
-  };
+  const rightOwnerId = data.stolen ? data.previousOwnerId : data.capturerOwnerId;
+  const rightTeam = props.teams?.find((team) => String(team.id) === String(rightOwnerId || "")) || null;
+  const rightProfile = rightTeam
+    ? { id: rightTeam.id, name: rightTeam.name, avatarDataUrl: territoriesTeamLogo(rightTeam, props.teams?.findIndex((team) => team.id === rightTeam.id) || 0) }
+    : (props.profileById[rightPlayerId] ?? { id: rightPlayerId, name: rightPlayerName });
 
   return (
     <div
@@ -2096,11 +2243,34 @@ export default function DepartementsPlay(props: any) {
         selected.filter((id) => Number(teamsById[id]) === teamIndex),
       );
       const order = interleaveTeams(groups);
-      const builtTeams: TerritoriesTeam[] = groups.map((_, teamIndex) => ({
-        id: `TEAM${teamIndex}`,
-        name: `TEAM ${OWNER_NAMES[teamIndex] || teamIndex + 1}`,
-        color: OWNER_COLORS[teamIndex % OWNER_COLORS.length] || "#52f7ff",
-      }));
+      let resolvedInstances: any[] = [];
+      if (Array.isArray(effectiveCfg.selectedTeamIds) && effectiveCfg.selectedTeamIds.length) {
+        try {
+          resolvedInstances = resolveTeamInstances(
+            loadTeamsBySport("darts"),
+            effectiveCfg.selectedTeamIds,
+            effectiveCfg.selectedTeamPlayerIds || {},
+            effectiveCfg.teamSize || 2,
+          ) as any[];
+        } catch {
+          resolvedInstances = [];
+        }
+      }
+
+      const builtTeams: TerritoriesTeam[] = groups.map((memberIds, teamIndex) => {
+        const sourceTeam = resolvedInstances[teamIndex] || null;
+        const color = OWNER_COLORS[teamIndex % OWNER_COLORS.length] || "#52f7ff";
+        const fallbackName = `TEAM ${OWNER_NAMES[teamIndex] || teamIndex + 1}`;
+        const logoDataUrl = territoriesTeamLogo(sourceTeam || { color }, teamIndex);
+        return {
+          id: `TEAM${teamIndex}`,
+          name: String(sourceTeam?.name || fallbackName),
+          color,
+          logoDataUrl,
+          avatarUrl: logoDataUrl,
+          playerIds: [...memberIds],
+        };
+      });
 
       const ps: TerritoriesPlayer[] = order.map((id) => {
         const teamIndex = Math.max(0, Math.min(configuredCount - 1, Number(teamsById[id] ?? 0)));
@@ -2131,7 +2301,7 @@ export default function DepartementsPlay(props: any) {
     const colors: Record<string, string> = {};
     for (const p of ps) colors[p.id] = p.color;
     return { players: ps, teams: undefined as TerritoriesTeam[] | undefined, ownerColors: colors };
-  }, [effectiveCfg.teamSize, effectiveCfg.teamCount, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), JSON.stringify(effectiveCfg.participantProfiles), profileById]);
+  }, [effectiveCfg.teamSize, effectiveCfg.teamCount, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), JSON.stringify(effectiveCfg.selectedTeamIds), JSON.stringify(effectiveCfg.selectedTeamPlayerIds), JSON.stringify(effectiveCfg.participantProfiles), profileById]);
 
   const victoryCondition: TerritoriesVictoryCondition = React.useMemo(() => {
     if (gameMode === "fortress") {
@@ -2208,6 +2378,7 @@ export default function DepartementsPlay(props: any) {
   const victorySoundPlayedRef = React.useRef(false);
   const [showConfigLegend, setShowConfigLegend] = React.useState(false);
   const [showStatsLegend, setShowStatsLegend] = React.useState(false);
+  const [showTeamPlayers, setShowTeamPlayers] = React.useState(false);
 
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
@@ -2258,7 +2429,11 @@ export default function DepartementsPlay(props: any) {
   const themeColor = theme?.primary || "#F6C256";
   const activeColor = activePlayer?.color || themeColor;
   const activeOwnerId = activePlayer?.teamId || activePlayer?.id || "";
-  const activeOwnerLabel = teams?.find((team) => team.id === activeOwnerId)?.name || activePlayer?.name || "Player";
+  const activeTeam = teams?.find((team) => team.id === activeOwnerId) || null;
+  const activeOwnerLabel = activeTeam?.name || activePlayer?.name || "Player";
+  const activeVisualProfile = activeTeam
+    ? { id: activeTeam.id, name: activeTeam.name, avatarDataUrl: territoriesTeamLogo(activeTeam, teams?.findIndex((team) => team.id === activeTeam.id) || 0) }
+    : (visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar });
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
   const ownedValueByOwner = React.useMemo(() => sumOwnedValueByOwnerId(game), [game]);
@@ -2480,6 +2655,16 @@ export default function DepartementsPlay(props: any) {
 
   const ownerProfilesById = React.useMemo(() => {
     const out: Record<string, any[]> = {};
+    if (teams?.length) {
+      teams.forEach((team, index) => {
+        out[String(team.id)] = [{
+          id: team.id,
+          name: team.name,
+          avatarDataUrl: territoriesTeamLogo(team, index),
+        }];
+      });
+      return out;
+    }
     for (const player of game.players) {
       const ownerId = String(player.teamId || player.id);
       if (!out[ownerId]) out[ownerId] = [];
@@ -2492,7 +2677,7 @@ export default function DepartementsPlay(props: any) {
       );
     }
     return out;
-  }, [game.players, visualProfileById]);
+  }, [game.players, teams, visualProfileById]);
 
   const selectedMapTerritoryCountryCode =
     country === "UN" || country === "FR"
@@ -2682,8 +2867,10 @@ export default function DepartementsPlay(props: any) {
         territoryValue: Number(capturedTerritory?.value) || 0,
         capturerName: currentOwnerLabel,
         capturerPlayerId: activeId,
+        capturerOwnerId: activeOwner,
         previousOwnerName,
         previousOwnerPlayerId,
+        previousOwnerId: beforeOwner,
         stolen,
         color: currentColor,
         previousOwnerColor,
@@ -2959,11 +3146,21 @@ export default function DepartementsPlay(props: any) {
       const stats = playerStats[player.id];
       if (!stats) continue;
       total.darts += stats.darts;
+      total.visits += stats.visits;
       total.captures += stats.captures;
       total.steals += stats.steals;
       total.lost += stats.lost;
       total.fortresses += stats.fortresses;
       total.breaches += stats.breaches;
+      total.bulls += stats.bulls;
+      total.dbulls += stats.dbulls;
+      total.misses += stats.misses;
+      total.bullReplays += stats.bullReplays;
+      total.missPasses += stats.missPasses;
+      total.captureValueTotal += stats.captureValueTotal;
+      total.maxCaptureValue = Math.max(total.maxCaptureValue, stats.maxCaptureValue);
+      total.exactCaptures += stats.exactCaptures;
+      total.gteCaptures += stats.gteCaptures;
     }
     return total;
   }, [activeOwnerId, game.players, playerStats]);
@@ -3145,14 +3342,21 @@ export default function DepartementsPlay(props: any) {
         fortressOwnerId: territory.fortressOwnerId || null,
         playable: territory.playable !== false,
       })),
-      owners: ownersOrder.map((ownerId, teamIndex) => ({
-        id: String(ownerId),
-        name: teams?.find((team) => String(team.id) === String(ownerId))?.name
-          || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.name
-          || `Camp ${teamIndex + 1}`,
-        color: ownerColors[String(ownerId)] || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.color,
-        teamIndex,
-      })),
+      owners: ownersOrder.map((ownerId, teamIndex) => {
+        const team = teams?.find((item) => String(item.id) === String(ownerId));
+        const logoDataUrl = team ? territoriesTeamLogo(team, teamIndex) : null;
+        return {
+          id: String(ownerId),
+          name: team?.name
+            || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.name
+            || `Camp ${teamIndex + 1}`,
+          color: ownerColors[String(ownerId)] || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.color,
+          logoDataUrl,
+          avatarUrl: logoDataUrl,
+          playerIds: team?.playerIds || players.filter((player) => String(player.teamId || player.id) === String(ownerId)).map((player) => player.id),
+          teamIndex,
+        };
+      }),
       players: players.map((player) => ({
         id: player.id,
         name: player.name,
@@ -3311,6 +3515,7 @@ export default function DepartementsPlay(props: any) {
           ownerId={tt.ownerId}
           hasFortress={hasFortress}
           players={game.players}
+          teams={teams}
           profileById={visualProfileById}
           ownerColor={ownerColor}
         />
@@ -3444,7 +3649,7 @@ export default function DepartementsPlay(props: any) {
         right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax, themeColor, bullReplayEnabled, missPassTurn })} />}
       />
 
-      <TerritoryCaptureToast data={captureToast} profileById={visualProfileById} />
+      <TerritoryCaptureToast data={captureToast} profileById={visualProfileById} teams={teams} />
 
       {/* END OF MATCH MODAL */}
       {game.status === "game_end" && (
@@ -3467,7 +3672,9 @@ export default function DepartementsPlay(props: any) {
 
       <TerritoriesTurnCarousel
         players={game.players}
+        teams={teams}
         activeId={game.turn.activePlayerId}
+        activeOwnerId={activeOwnerId}
         profileById={visualProfileById}
         ownedByOwner={ownedByOwner}
         ownedValueByOwner={ownedValueByOwner}
@@ -3515,7 +3722,7 @@ export default function DepartementsPlay(props: any) {
               {/* Same feel as X01V3: much larger, cropped on the right, heavy fade on the left */}
               <div style={{ transform: "scale(2.05)", transformOrigin: "center" }}>
                 <ProfileAvatar
-                  profile={visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar }}
+                  profile={activeVisualProfile}
                   size={210}
                   ringColor={activeColor}
                   textColor="#fff"
@@ -3561,7 +3768,7 @@ export default function DepartementsPlay(props: any) {
               }}
             >
               <ProfileAvatar
-                profile={visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar }}
+                profile={activeVisualProfile}
                 size={82}
                 ringColor={activeColor}
                 textColor="#fff"
@@ -3584,7 +3791,7 @@ export default function DepartementsPlay(props: any) {
                 textOverflow: "ellipsis",
               }}
             >
-              {activePlayer?.name || "Player"}
+              {activeOwnerLabel}
             </div>
 
             <TerritoryTargetSuggestions
@@ -3593,6 +3800,7 @@ export default function DepartementsPlay(props: any) {
               dartsRemaining={dartsRemaining}
               accentColor={activeColor}
               players={game.players}
+              teams={teams}
               profileById={visualProfileById}
               onSelect={(territoryId) => {
                 handleMapSelect(territoryId);
@@ -3677,6 +3885,36 @@ export default function DepartementsPlay(props: any) {
         </div>
       </div>
 
+      {teams?.length ? (
+        <div style={{ padding: "0 12px 9px" }}>
+          <button
+            type="button"
+            onClick={() => setShowTeamPlayers(true)}
+            style={{
+              width: "100%",
+              minHeight: 38,
+              padding: "7px 10px",
+              borderRadius: 13,
+              border: `1px solid ${activeColor}55`,
+              background: `linear-gradient(90deg, ${activeColor}12, rgba(0,0,0,.26), ${activeColor}08)`,
+              color: activeColor,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              cursor: "pointer",
+              boxShadow: `0 0 14px ${activeColor}14`,
+            }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 1000, letterSpacing: .75, textTransform: "uppercase", textShadow: `0 0 9px ${activeColor}66` }}>JOUEURS</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span style={{ width: 25, height: 25, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${activeColor}77`, background: `${activeColor}12`, fontSize: 10.5, fontWeight: 1000 }}>{game.players.length}</span>
+              <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>⌄</span>
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       {/* KPI: OBJECTIF + TERRITOIRE (single row, neon) */}
       <div style={{ padding: "0 12px 10px", display: "flex", gap: 12 }}>
         <KpiCard
@@ -3714,6 +3952,7 @@ export default function DepartementsPlay(props: any) {
               ownerId={displayedTerritory?.ownerId}
               hasFortress={displayedTerritoryHasFortress}
               players={game.players}
+              teams={teams}
               profileById={visualProfileById}
               ownerColor={displayedTerritoryOwnerColor}
               compact
@@ -3960,7 +4199,7 @@ export default function DepartementsPlay(props: any) {
         open={showStatsLegend}
         onClose={() => setShowStatsLegend(false)}
         color={activeColor}
-        playerName={activePlayer?.name || "Joueur"}
+        playerName={activeOwnerLabel}
         fortressMode={gameMode === "fortress"}
         territories={`${possessionsForActive}/${possessionsGoal}`}
         territoryValue={possessionValueForActive}
@@ -3973,6 +4212,21 @@ export default function DepartementsPlay(props: any) {
         steals={activeStats.steals}
         lost={activeStats.lost}
       />
+
+      {teams?.length ? (
+        <TerritoriesTeamPlayersModal
+          open={showTeamPlayers}
+          onClose={() => setShowTeamPlayers(false)}
+          color={activeColor}
+          teams={teams}
+          players={game.players}
+          profileById={visualProfileById}
+          playerStats={playerStats}
+          ownedByOwner={ownedByOwner}
+          ownedValueByOwner={ownedValueByOwner}
+          activePlayerId={game.turn.activePlayerId}
+        />
+      ) : null}
 
       <RulesModal
         open={showTerritoryListModal}
