@@ -737,6 +737,190 @@ function TerritoriesConfigLegend(props: {
   );
 }
 
+function TerritoriesStatsLegend(props: {
+  open: boolean;
+  onClose: () => void;
+  color: string;
+  playerName: string;
+  fortressMode: boolean;
+  territories: string;
+  territoryValue: number;
+  darts: number;
+  fortresses: number;
+  breaches: number;
+  neutralCaptures: number;
+  balance: number;
+  captures: number;
+  steals: number;
+  lost: number;
+}) {
+  if (!props.open) return null;
+
+  const rows: Array<{
+    icon: ProfileStatIconName;
+    label: string;
+    value: number;
+    color?: string;
+    description: string;
+  }> = [
+    {
+      icon: "darts",
+      label: "Fléchettes jouées",
+      value: props.darts,
+      description: "Nombre réel de fléchettes lancées pendant la partie.",
+    },
+    ...(props.fortressMode
+      ? [
+          {
+            icon: "fortress" as ProfileStatIconName,
+            label: "Forteresses construites",
+            value: props.fortresses,
+            description: "Territoires personnels transformés en forteresses.",
+          },
+          {
+            icon: "breach" as ProfileStatIconName,
+            label: "Forteresses brisées",
+            value: props.breaches,
+            description: "Protections adverses détruites avant une conquête.",
+          },
+        ]
+      : [
+          {
+            icon: "neutral" as ProfileStatIconName,
+            label: "Territoires libres capturés",
+            value: props.neutralCaptures,
+            color: "#7de9ff",
+            description: "Territoires neutres conquis sans les voler à un adversaire.",
+          },
+          {
+            icon: "balance" as ProfileStatIconName,
+            label: "Solde net",
+            value: props.balance,
+            color: props.balance < 0 ? "#ff6f7d" : "#7de9ff",
+            description: "Captures totales moins territoires perdus.",
+          },
+        ]),
+    {
+      icon: "capture",
+      label: "Captures",
+      value: props.captures,
+      color: "#59f18d",
+      description: "Toutes les prises : territoires libres + territoires volés.",
+    },
+    {
+      icon: "steal",
+      label: "Vols",
+      value: props.steals,
+      color: "#59f18d",
+      description: "Territoires retirés directement à un adversaire.",
+    },
+    {
+      icon: "lost",
+      label: "Perdus",
+      value: props.lost,
+      color: "#ff6f7d",
+      description: "Territoires que ce camp a perdus au profit d’un adversaire.",
+    },
+  ];
+
+  return (
+    <div
+      onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 13060,
+        display: "grid",
+        placeItems: "center",
+        padding: 18,
+        background: "rgba(0,0,0,0.62)",
+        backdropFilter: "blur(5px)",
+      }}
+    >
+      <div
+        style={{
+          width: "min(390px, 94vw)",
+          maxHeight: "min(76vh, 610px)",
+          overflowY: "auto",
+          borderRadius: 20,
+          padding: 14,
+          background: "rgba(7,12,21,0.97)",
+          border: `1px solid ${props.color}88`,
+          boxShadow: `0 0 26px ${props.color}44, 0 18px 54px rgba(0,0,0,.72)`,
+        }}
+        className="dc-scroll-thin"
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 11 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: props.color, fontSize: 14, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase", textShadow: `0 0 10px ${props.color}88` }}>
+              Statistiques
+            </div>
+            <div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 900, color: "rgba(255,255,255,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {props.playerName}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={props.onClose}
+            aria-label="Fermer"
+            style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.38)", border: `1px solid ${props.color}66`, fontSize: 18, cursor: "pointer" }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 7, marginBottom: 9 }}>
+          <div style={{ minHeight: 54, padding: "8px 10px", borderRadius: 13, background: `${props.color}12`, border: `1px solid ${props.color}4d`, boxShadow: `0 0 14px ${props.color}16` }}>
+            <div style={{ fontSize: 8.5, fontWeight: 1000, letterSpacing: .5, textTransform: "uppercase", color: props.color }}>Territoires</div>
+            <div style={{ marginTop: 5, fontSize: 18, fontWeight: 1000, color: "#fff" }}>{props.territories}</div>
+          </div>
+          <div style={{ minHeight: 54, padding: "8px 10px", borderRadius: 13, background: `${props.color}12`, border: `1px solid ${props.color}4d`, boxShadow: `0 0 14px ${props.color}16` }}>
+            <div style={{ fontSize: 8.5, fontWeight: 1000, letterSpacing: .5, textTransform: "uppercase", color: props.color }}>Valeur</div>
+            <div style={{ marginTop: 5, fontSize: 18, fontWeight: 1000, color: "#fff" }}>{props.territoryValue}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 7 }}>
+          {rows.map((row) => {
+            const rowColor = row.color || props.color;
+            return (
+              <div
+                key={row.label}
+                style={{
+                  minHeight: 48,
+                  display: "grid",
+                  gridTemplateColumns: "38px minmax(0,1fr) auto",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "7px 9px",
+                  borderRadius: 12,
+                  background: `${rowColor}0d`,
+                  border: `1px solid ${rowColor}2f`,
+                }}
+              >
+                <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color: rowColor, background: "rgba(0,0,0,.35)", border: `1px solid ${rowColor}55` }}>
+                  <ProfileStatLineIcon icon={row.icon} size={16} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, lineHeight: 1.15, fontWeight: 1000, color: "#fff" }}>{row.label}</div>
+                  <div style={{ marginTop: 3, fontSize: 9.5, lineHeight: 1.25, fontWeight: 700, color: "rgba(255,255,255,.58)" }}>{row.description}</div>
+                </div>
+                <strong style={{ minWidth: 32, textAlign: "right", fontSize: 18, lineHeight: 1, fontWeight: 1000, color: rowColor, textShadow: `0 0 8px ${rowColor}66` }}>
+                  {row.value}
+                </strong>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", fontSize: 10, lineHeight: 1.35, color: "rgba(255,255,255,.68)" }}>
+          <strong style={{ color: props.color }}>Captures ≠ Vols :</strong> une capture compte toute nouvelle prise de territoire ; un vol compte uniquement un territoire retiré à un adversaire.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TerritoryTargetSuggestions(props: {
   suggestions: TerritoryStealSuggestion[];
   currentTotal: number;
@@ -2023,6 +2207,7 @@ export default function DepartementsPlay(props: any) {
   const botActingRef = React.useRef(false);
   const victorySoundPlayedRef = React.useRef(false);
   const [showConfigLegend, setShowConfigLegend] = React.useState(false);
+  const [showStatsLegend, setShowStatsLegend] = React.useState(false);
 
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
@@ -3444,26 +3629,48 @@ export default function DepartementsPlay(props: any) {
                 victoryKind={victoryConfigKind}
                 onOpenLegend={() => setShowConfigLegend(true)}
               />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
-                <ProfileStatKpi label="Territoires" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
-                <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={activeColor} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
-                <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
-                {gameMode === "fortress" ? (
-                  <>
-                    <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} />
-                    <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} />
-                  </>
-                ) : (
-                  <>
-                    <ProfileStatIconKpi icon="neutral" title="Territoires libres capturés" value={String(Math.max(0, activeStats.captures - activeStats.steals))} color="#7de9ff" />
-                    <ProfileStatIconKpi icon="balance" title="Solde net de territoires (captures - pertes)" value={String(activeStats.captures - activeStats.lost)} color={activeStats.captures - activeStats.lost < 0 ? "#ff6f7d" : "#7de9ff"} />
-                  </>
-                )}
-                <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} color="#59f18d" />
-                <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} color="#59f18d" />
-                <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} color="#ff6f7d" />
+              <div
+                role="button"
+                tabIndex={0}
+                title="Afficher le détail des statistiques"
+                aria-label="Afficher le détail des statistiques du joueur actif"
+                onClick={() => setShowStatsLegend(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setShowStatsLegend(true);
+                  }
+                }}
+                style={{
+                  display: "grid",
+                  gap: 5,
+                  cursor: "pointer",
+                  borderRadius: 12,
+                  outline: "none",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
+                  <ProfileStatKpi label="Territoires" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
+                  <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={activeColor} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
+                  <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
+                  {gameMode === "fortress" ? (
+                    <>
+                      <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} />
+                      <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} />
+                    </>
+                  ) : (
+                    <>
+                      <ProfileStatIconKpi icon="neutral" title="Territoires libres capturés" value={String(Math.max(0, activeStats.captures - activeStats.steals))} color="#7de9ff" />
+                      <ProfileStatIconKpi icon="balance" title="Solde net de territoires (captures - pertes)" value={String(activeStats.captures - activeStats.lost)} color={activeStats.captures - activeStats.lost < 0 ? "#ff6f7d" : "#7de9ff"} />
+                    </>
+                  )}
+                  <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} color="#59f18d" />
+                  <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} color="#59f18d" />
+                  <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} color="#ff6f7d" />
+                </div>
               </div>
             </div>
           </div>
@@ -3747,6 +3954,24 @@ export default function DepartementsPlay(props: any) {
         roundProgress={`${Math.max(1, Math.min(maxRounds, game.roundIndex || 1))}/${maxRounds}`}
         bullReplayEnabled={bullReplayEnabled}
         missPassTurn={missPassTurn}
+      />
+
+      <TerritoriesStatsLegend
+        open={showStatsLegend}
+        onClose={() => setShowStatsLegend(false)}
+        color={activeColor}
+        playerName={activePlayer?.name || "Joueur"}
+        fortressMode={gameMode === "fortress"}
+        territories={`${possessionsForActive}/${possessionsGoal}`}
+        territoryValue={possessionValueForActive}
+        darts={activeStats.darts}
+        fortresses={activeStats.fortresses}
+        breaches={activeStats.breaches}
+        neutralCaptures={Math.max(0, activeStats.captures - activeStats.steals)}
+        balance={activeStats.captures - activeStats.lost}
+        captures={activeStats.captures}
+        steals={activeStats.steals}
+        lost={activeStats.lost}
       />
 
       <RulesModal
