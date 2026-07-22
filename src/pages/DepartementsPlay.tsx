@@ -55,6 +55,11 @@ import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
 import { x01EnsureAudioUnlocked, x01PlaySfxV3 } from "../lib/x01SfxV3";
 import { loadBotPlayers } from "../lib/bots";
 import targetBgUrl from "../assets/target_bg.png";
+import playersTicker01 from "../assets/tickers/ticker_territories_players_01.webp";
+import playersTicker02 from "../assets/tickers/ticker_territories_players_02.webp";
+import playersTicker03 from "../assets/tickers/ticker_territories_players_03.webp";
+import playersTicker04 from "../assets/tickers/ticker_territories_players_04.webp";
+import playersTicker05 from "../assets/tickers/ticker_territories_players_05.webp";
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import { loadTeamsBySport } from "../lib/petanqueTeamsStore";
 import { resolveTeamInstances } from "../lib/teamSelectionInstances";
@@ -111,6 +116,21 @@ const unRegionFlagGlob = import.meta.glob("../assets/flags_un/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
+
+const TERRITORIES_PLAYERS_TICKERS = [
+  playersTicker01,
+  playersTicker02,
+  playersTicker03,
+  playersTicker04,
+  playersTicker05,
+].filter(Boolean) as string[];
+
+function pickRandomTicker(tickers: string[], exclude?: string | null): string | null {
+  if (!tickers.length) return null;
+  const pool = exclude ? tickers.filter((src) => src !== exclude) : tickers.slice();
+  const source = pool.length ? pool : tickers;
+  return source[Math.floor(Math.random() * source.length)] ?? tickers[0] ?? null;
+}
 
 const UN_REGION_NAMES_FR: Record<string, string> = {
   nAfrica: "Afrique du Nord",
@@ -2430,6 +2450,10 @@ export default function DepartementsPlay(props: any) {
   const activeColor = activePlayer?.color || themeColor;
   const activeOwnerId = activePlayer?.teamId || activePlayer?.id || "";
   const activeTeam = teams?.find((team) => team.id === activeOwnerId) || null;
+  const [teamPlayersTickerSrc, setTeamPlayersTickerSrc] = React.useState<string | null>(() => pickRandomTicker(TERRITORIES_PLAYERS_TICKERS));
+  React.useEffect(() => {
+    setTeamPlayersTickerSrc((prev) => pickRandomTicker(TERRITORIES_PLAYERS_TICKERS, prev) || prev || null);
+  }, [activeOwnerId]);
   const activeOwnerLabel = activeTeam?.name || activePlayer?.name || "Player";
   const activeVisualProfile = activeTeam
     ? { id: activeTeam.id, name: activeTeam.name, avatarDataUrl: territoriesTeamLogo(activeTeam, teams?.findIndex((team) => team.id === activeTeam.id) || 0) }
@@ -3896,7 +3920,9 @@ export default function DepartementsPlay(props: any) {
               padding: "7px 10px",
               borderRadius: 13,
               border: `1px solid ${activeColor}55`,
-              background: `linear-gradient(90deg, ${activeColor}12, rgba(0,0,0,.26), ${activeColor}08)`,
+              background: teamPlayersTickerSrc
+                ? `linear-gradient(90deg, rgba(2,8,20,.86), rgba(4,10,26,.58), rgba(2,8,20,.86)), url(${teamPlayersTickerSrc}) center / cover no-repeat`
+                : `linear-gradient(90deg, ${activeColor}12, rgba(0,0,0,.26), ${activeColor}08)`,
               color: activeColor,
               display: "flex",
               alignItems: "center",
@@ -3904,10 +3930,23 @@ export default function DepartementsPlay(props: any) {
               gap: 10,
               cursor: "pointer",
               boxShadow: `0 0 14px ${activeColor}14`,
+              position: "relative",
+              overflow: "hidden",
+              isolation: "isolate",
             }}
           >
-            <span style={{ fontSize: 11.5, fontWeight: 1000, letterSpacing: .75, textTransform: "uppercase", textShadow: `0 0 9px ${activeColor}66` }}>JOUEURS</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: `linear-gradient(90deg, rgba(0,0,0,.12), rgba(0,0,0,.02), rgba(0,0,0,.12))`,
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+            />
+            <span style={{ position: "relative", zIndex: 1, fontSize: 11.5, fontWeight: 1000, letterSpacing: .75, textTransform: "uppercase", textShadow: `0 0 9px ${activeColor}66` }}>JOUEURS</span>
+            <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 7 }}>
               <span style={{ width: 25, height: 25, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${activeColor}77`, background: `${activeColor}12`, fontSize: 10.5, fontWeight: 1000 }}>{game.players.length}</span>
               <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>⌄</span>
             </span>
