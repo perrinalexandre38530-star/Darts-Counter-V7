@@ -571,11 +571,12 @@ export default function ScramPlay(props: any) {
         tickerAlt="SCRAM"
         tickerEdgeFade="strong"
         tickerHeight={tickerHeight}
+        tickerBottomGap={10}
         left={<BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" />}
         right={<InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} />}
       />
 
-      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", marginTop: 9, padding: "0 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto auto auto", alignContent: "start", gap: 6, overflow: "hidden", position: "relative" }}>
+      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", marginTop: 0, padding: "2px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto auto auto", alignContent: "start", gap: 6, overflow: "hidden", position: "relative" }}>
         <section style={{ ...panelStyle(), minWidth: 0, padding: 6, borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
           <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 106px", gap: 6, alignItems: "stretch" }}>
             <div style={{ minWidth: 0, display: "grid", justifyItems: "center", alignContent: "center", gap: 2, padding: "2px 0" }}>

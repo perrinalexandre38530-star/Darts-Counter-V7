@@ -13,6 +13,8 @@ export default function PageHeader(props: {
   tickerAlt?: string;
   tickerHeight?: number;
   tickerEdgeFade?: "default" | "strong";
+  /** Espace réservé sous le ticker pour éviter qu'un premier bloc ne vienne le toucher / passer dessous. */
+  tickerBottomGap?: number;
 }) {
   const {
     title = "",
@@ -23,6 +25,7 @@ export default function PageHeader(props: {
     tickerAlt = "ticker",
     tickerHeight = 92,
     tickerEdgeFade = "default",
+    tickerBottomGap = 0,
   } = props;
 
   const hasTicker = !!tickerSrc;
@@ -43,7 +46,7 @@ export default function PageHeader(props: {
         marginRight: hasTicker ? -CONTAINER_PAD_X : 0,
         width: hasTicker ? "calc(100% + 32px)" : undefined,
 
-        padding: hasTicker ? 0 : "12px 12px 10px",
+        padding: hasTicker ? `0 0 ${Math.max(0, tickerBottomGap)}px` : "12px 12px 10px",
         backdropFilter: "blur(10px)",
         background:
           "linear-gradient(180deg, rgba(10,10,18,0.92) 0%, rgba(10,10,18,0.65) 70%, rgba(10,10,18,0.0) 100%)",

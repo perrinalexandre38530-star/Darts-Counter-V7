@@ -54,6 +54,7 @@ import { speak } from "../lib/voice";
 import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
 import { x01EnsureAudioUnlocked, x01PlaySfxV3 } from "../lib/x01SfxV3";
 import { loadBotPlayers } from "../lib/bots";
+import { getDartSetById, getFavoriteDartSetForProfile } from "../lib/dartSetsStore";
 import targetBgUrl from "../assets/target_bg.png";
 import playersTicker01 from "../assets/tickers/ticker_territories_players_01.webp";
 import playersTicker02 from "../assets/tickers/ticker_territories_players_02.webp";
@@ -75,6 +76,7 @@ export type TerritoriesConfigPayload = {
   teamSourceMode?: "manual" | "saved" | "auto";
   selectedTeamIds?: string[];
   selectedTeamPlayerIds?: Record<string, string[]>;
+  playerDartSets?: Record<string, string | null>;
   participantProfiles?: Record<string, { name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string | null }>;
   botsEnabled: boolean;
   botLevel: "easy" | "normal" | "hard";
@@ -382,6 +384,24 @@ function territoriesTeamLogo(team: any, index = 0): string {
       || team?.avatarDataUrl
       || getTeamAvatarUrl(territoriesTeamSkin(team?.color || "", index)),
   );
+}
+
+function territoriesDartSetVisual(profileId: string | null | undefined, explicitSetId?: string | null): { src: string | null; bg: string } {
+  const pid = String(profileId || "").trim();
+  let set: any = null;
+  try {
+    if (explicitSetId) set = getDartSetById(String(explicitSetId));
+    if (!set && pid) set = getFavoriteDartSetForProfile(pid);
+  } catch {}
+  if (!set) return { src: null, bg: "rgba(0,0,0,.72)" };
+  const candidates = [
+    set.thumbImageUrl, set.mainImageUrl, set.photoThumbDataUrl, set.thumbDataUrl,
+    set.thumbImageDataUrl, set.photoDataUrl, set.imageDataUrl, set.mainImageDataUrl,
+    set.dartSetImageDataUrl, set.imageUrl, set.image, set.previewImageUrl,
+  ];
+  const src = candidates.find((raw: any) => typeof raw === "string" && raw.trim()) || null;
+  const bg = String(set.bgColor || set.backgroundColor || set.color || "rgba(0,0,0,.72)");
+  return { src, bg };
 }
 
 const OWNER_COLORS = [
@@ -2454,10 +2474,25 @@ export default function DepartementsPlay(props: any) {
   React.useEffect(() => {
     setTeamPlayersTickerSrc((prev) => pickRandomTicker(TERRITORIES_PLAYERS_TICKERS, prev) || prev || null);
   }, [activeOwnerId]);
-  const activeOwnerLabel = activeTeam?.name || activePlayer?.name || "Player";
-  const activeVisualProfile = activeTeam
-    ? { id: activeTeam.id, name: activeTeam.name, avatarDataUrl: territoriesTeamLogo(activeTeam, teams?.findIndex((team) => team.id === activeTeam.id) || 0) }
-    : (visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar });
+  const activePlayerLabel = activePlayer?.name || "Player";
+  const activePlayerVisualProfile = visualProfileById[game.turn.activePlayerId] ?? {
+    id: game.turn.activePlayerId,
+    name: activePlayer?.name,
+    avatar: activePlayer?.avatar,
+  };
+  const activeTeamLogoSrc = activeTeam
+    ? territoriesTeamLogo(activeTeam, teams?.findIndex((team) => team.id === activeTeam.id) || 0)
+    : null;
+  const activeDartSetVisual = React.useMemo(
+    () => territoriesDartSetVisual(
+      game.turn.activePlayerId,
+      effectiveCfg.playerDartSets?.[game.turn.activePlayerId]
+        || (profileById[game.turn.activePlayerId] as any)?.dartSetId
+        || (visualProfileById[game.turn.activePlayerId] as any)?.dartSetId
+        || null,
+    ),
+    [game.turn.activePlayerId, effectiveCfg.playerDartSets, profileById, visualProfileById],
+  );
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
   const ownedValueByOwner = React.useMemo(() => sumOwnedValueByOwnerId(game), [game]);
@@ -3163,7 +3198,12 @@ export default function DepartementsPlay(props: any) {
     return winTerritories;
   }, [gameMode, playableTerritoryCount, victoryMode, winRegions, winTerritories]);
 
-  const activeStats = React.useMemo<PlayerLiveStats>(() => {
+  const activePlayerStats = React.useMemo<PlayerLiveStats>(() => ({
+    ...EMPTY_PLAYER_LIVE_STATS,
+    ...(playerStats[game.turn.activePlayerId] || {}),
+  }), [game.turn.activePlayerId, playerStats]);
+
+  const activeTeamStats = React.useMemo<PlayerLiveStats>(() => {
     const total: PlayerLiveStats = { ...EMPTY_PLAYER_LIVE_STATS };
     for (const player of game.players) {
       if ((player.teamId || player.id) !== activeOwnerId) continue;
@@ -3188,6 +3228,29 @@ export default function DepartementsPlay(props: any) {
     }
     return total;
   }, [activeOwnerId, game.players, playerStats]);
+
+  const [statsScope, setStatsScope] = React.useState<"player" | "team">("player");
+  React.useEffect(() => {
+    setStatsScope("player");
+  }, [game.turn.activePlayerId]);
+  React.useEffect(() => {
+    if (!teams?.length) return;
+    const timer = window.setInterval(() => {
+      setStatsScope((prev) => prev === "player" ? "team" : "player");
+    }, 4800);
+    return () => window.clearInterval(timer);
+  }, [Boolean(teams?.length), activeOwnerId]);
+
+  const displayedStats = teams?.length && statsScope === "team" ? activeTeamStats : activePlayerStats;
+  const displayedStatsTitle = teams?.length && statsScope === "team"
+    ? `ÉQUIPE · ${activeTeam?.name || "Équipe"}`
+    : `JOUEUR · ${activePlayerLabel}`;
+  const displayedTerritoriesValue = teams?.length && statsScope === "team"
+    ? `${possessionsForActive}/${possessionsGoal}`
+    : String(activePlayerStats.captures);
+  const displayedPossessionValue = teams?.length && statsScope === "team"
+    ? possessionValueForActive
+    : activePlayerStats.captureValueTotal;
 
   /* -------------------------------------------
      ENDGAME (victory + stats recording)
@@ -3746,7 +3809,7 @@ export default function DepartementsPlay(props: any) {
               {/* Same feel as X01V3: much larger, cropped on the right, heavy fade on the left */}
               <div style={{ transform: "scale(2.05)", transformOrigin: "center" }}>
                 <ProfileAvatar
-                  profile={activeVisualProfile}
+                  profile={activePlayerVisualProfile}
                   size={210}
                   ringColor={activeColor}
                   textColor="#fff"
@@ -3782,23 +3845,70 @@ export default function DepartementsPlay(props: any) {
           >
             <div
               style={{
-                width: 82,
-                height: 82,
+                width: 88,
+                height: 88,
                 borderRadius: 999,
                 display: "grid",
                 placeItems: "center",
                 overflow: "visible",
+                position: "relative",
                 boxShadow: `0 0 0 1px ${activeColor}66, 0 0 16px ${activeColor}88, 0 0 28px ${activeColor}55`,
               }}
             >
               <ProfileAvatar
-                profile={activeVisualProfile}
-                size={82}
+                profile={activePlayerVisualProfile}
+                size={88}
                 ringColor={activeColor}
                 textColor="#fff"
                 showStars={false}
                 noFrame
               />
+              {teams?.length && activeTeamLogoSrc ? (
+                <span
+                  title={activeTeam?.name || "Équipe"}
+                  aria-label={`Équipe ${activeTeam?.name || ""}`}
+                  style={{
+                    position: "absolute",
+                    right: -7,
+                    bottom: -4,
+                    width: 31,
+                    height: 31,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    display: "grid",
+                    placeItems: "center",
+                    border: `2px solid ${activeColor}`,
+                    background: "rgba(4,6,12,.96)",
+                    boxShadow: `0 0 14px ${activeColor}88, 0 8px 16px rgba(0,0,0,.55)`,
+                    zIndex: 6,
+                  }}
+                >
+                  <img src={activeTeamLogoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </span>
+              ) : null}
+              {activeDartSetVisual.src ? (
+                <span
+                  title="Set de fléchettes"
+                  aria-label="Set de fléchettes du joueur"
+                  style={{
+                    position: "absolute",
+                    left: -7,
+                    bottom: -4,
+                    width: 31,
+                    height: 31,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    display: "grid",
+                    placeItems: "center",
+                    border: `2px solid ${activeColor}`,
+                    background: activeDartSetVisual.bg,
+                    boxShadow: `0 0 14px ${activeColor}66, 0 8px 16px rgba(0,0,0,.55)`,
+                    zIndex: 6,
+                  }}
+                >
+                  <img src={activeDartSetVisual.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </span>
+              ) : null}
             </div>
 
             <div
@@ -3815,7 +3925,7 @@ export default function DepartementsPlay(props: any) {
                 textOverflow: "ellipsis",
               }}
             >
-              {activeOwnerLabel}
+              {activePlayerLabel}
             </div>
 
             <TerritoryTargetSuggestions
@@ -3883,25 +3993,53 @@ export default function DepartementsPlay(props: any) {
                 }}
               >
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
-                  <ProfileStatKpi label="Territoires" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
-                  <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={activeColor} />
+                  <ProfileStatKpi label="Territoires" value={displayedTerritoriesValue} color={activeColor} />
+                  <ProfileStatKpi label="Valeur" value={String(displayedPossessionValue)} color={activeColor} />
                 </div>
+                {teams?.length ? (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setStatsScope((prev) => prev === "player" ? "team" : "player");
+                    }}
+                    title="Basculer les statistiques joueur / équipe"
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      color: activeColor,
+                      padding: "0 2px",
+                      margin: "-1px 0 -1px",
+                      fontSize: 7.3,
+                      lineHeight: 1.15,
+                      fontWeight: 950,
+                      letterSpacing: .48,
+                      textTransform: "uppercase",
+                      opacity: .78,
+                      textAlign: "center",
+                      cursor: "pointer",
+                      textShadow: `0 0 8px ${activeColor}55`,
+                    }}
+                  >
+                    {displayedStatsTitle}
+                  </button>
+                ) : null}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
-                  <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
+                  <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(displayedStats.darts)} />
                   {gameMode === "fortress" ? (
                     <>
-                      <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} />
-                      <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} />
+                      <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(displayedStats.fortresses)} />
+                      <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(displayedStats.breaches)} />
                     </>
                   ) : (
                     <>
-                      <ProfileStatIconKpi icon="neutral" title="Territoires libres capturés" value={String(Math.max(0, activeStats.captures - activeStats.steals))} color="#7de9ff" />
-                      <ProfileStatIconKpi icon="balance" title="Solde net de territoires (captures - pertes)" value={String(activeStats.captures - activeStats.lost)} color={activeStats.captures - activeStats.lost < 0 ? "#ff6f7d" : "#7de9ff"} />
+                      <ProfileStatIconKpi icon="neutral" title="Territoires libres capturés" value={String(Math.max(0, displayedStats.captures - displayedStats.steals))} color="#7de9ff" />
+                      <ProfileStatIconKpi icon="balance" title="Solde net de territoires (captures - pertes)" value={String(displayedStats.captures - displayedStats.lost)} color={displayedStats.captures - displayedStats.lost < 0 ? "#ff6f7d" : "#7de9ff"} />
                     </>
                   )}
-                  <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} color="#59f18d" />
-                  <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} color="#59f18d" />
-                  <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} color="#ff6f7d" />
+                  <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(displayedStats.captures)} color="#59f18d" />
+                  <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(displayedStats.steals)} color="#59f18d" />
+                  <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(displayedStats.lost)} color="#ff6f7d" />
                 </div>
               </div>
             </div>
@@ -3909,50 +4047,7 @@ export default function DepartementsPlay(props: any) {
         </div>
       </div>
 
-      {teams?.length ? (
-        <div style={{ padding: "0 12px 9px" }}>
-          <button
-            type="button"
-            onClick={() => setShowTeamPlayers(true)}
-            style={{
-              width: "100%",
-              minHeight: 38,
-              padding: "7px 10px",
-              borderRadius: 13,
-              border: `1px solid ${activeColor}55`,
-              background: teamPlayersTickerSrc
-                ? `linear-gradient(90deg, rgba(2,8,20,.86), rgba(4,10,26,.58), rgba(2,8,20,.86)), url(${teamPlayersTickerSrc}) center / cover no-repeat`
-                : `linear-gradient(90deg, ${activeColor}12, rgba(0,0,0,.26), ${activeColor}08)`,
-              color: activeColor,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              cursor: "pointer",
-              boxShadow: `0 0 14px ${activeColor}14`,
-              position: "relative",
-              overflow: "hidden",
-              isolation: "isolate",
-            }}
-          >
-            <span
-              aria-hidden
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: `linear-gradient(90deg, rgba(0,0,0,.12), rgba(0,0,0,.02), rgba(0,0,0,.12))`,
-                pointerEvents: "none",
-                zIndex: 0,
-              }}
-            />
-            <span style={{ position: "relative", zIndex: 1, fontSize: 11.5, fontWeight: 1000, letterSpacing: .75, textTransform: "uppercase", textShadow: `0 0 9px ${activeColor}66` }}>JOUEURS</span>
-            <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ width: 25, height: 25, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${activeColor}77`, background: `${activeColor}12`, fontSize: 10.5, fontWeight: 1000 }}>{game.players.length}</span>
-              <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>⌄</span>
-            </span>
-          </button>
-        </div>
-      ) : null}
+
 
       {/* KPI: OBJECTIF + TERRITOIRE (single row, neon) */}
       <div style={{ padding: "0 12px 10px", display: "flex", gap: 12 }}>
@@ -4010,6 +4105,51 @@ export default function DepartementsPlay(props: any) {
           watermarkSrc={flagSrc || undefined}
         />
       </div>
+
+      {teams?.length ? (
+        <div style={{ padding: "0 12px 9px" }}>
+          <button
+            type="button"
+            onClick={() => setShowTeamPlayers(true)}
+            style={{
+              width: "100%",
+              minHeight: 38,
+              padding: "7px 10px",
+              borderRadius: 13,
+              border: `1px solid ${activeColor}55`,
+              background: teamPlayersTickerSrc
+                ? `linear-gradient(90deg, rgba(2,8,20,.86), rgba(4,10,26,.58), rgba(2,8,20,.86)), url(${teamPlayersTickerSrc}) center / cover no-repeat`
+                : `linear-gradient(90deg, ${activeColor}12, rgba(0,0,0,.26), ${activeColor}08)`,
+              color: activeColor,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              cursor: "pointer",
+              boxShadow: `0 0 14px ${activeColor}14`,
+              position: "relative",
+              overflow: "hidden",
+              isolation: "isolate",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: `linear-gradient(90deg, rgba(0,0,0,.12), rgba(0,0,0,.02), rgba(0,0,0,.12))`,
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+            />
+            <span style={{ position: "relative", zIndex: 1, fontSize: 11.5, fontWeight: 1000, letterSpacing: .75, textTransform: "uppercase", textShadow: `0 0 9px ${activeColor}66` }}>JOUEURS</span>
+            <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 7 }}>
+              <span style={{ width: 25, height: 25, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${activeColor}77`, background: `${activeColor}12`, fontSize: 10.5, fontWeight: 1000 }}>{game.players.length}</span>
+              <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>⌄</span>
+            </span>
+          </button>
+        </div>
+      ) : null}
 
       {/* MAP MODAL (keeps base UI compact + prevents cutting the active player stats) */}
       {showMapModal && (
@@ -4238,18 +4378,18 @@ export default function DepartementsPlay(props: any) {
         open={showStatsLegend}
         onClose={() => setShowStatsLegend(false)}
         color={activeColor}
-        playerName={activeOwnerLabel}
+        playerName={teams?.length && statsScope === "team" ? (activeTeam?.name || "Équipe") : activePlayerLabel}
         fortressMode={gameMode === "fortress"}
-        territories={`${possessionsForActive}/${possessionsGoal}`}
-        territoryValue={possessionValueForActive}
-        darts={activeStats.darts}
-        fortresses={activeStats.fortresses}
-        breaches={activeStats.breaches}
-        neutralCaptures={Math.max(0, activeStats.captures - activeStats.steals)}
-        balance={activeStats.captures - activeStats.lost}
-        captures={activeStats.captures}
-        steals={activeStats.steals}
-        lost={activeStats.lost}
+        territories={displayedTerritoriesValue}
+        territoryValue={displayedPossessionValue}
+        darts={displayedStats.darts}
+        fortresses={displayedStats.fortresses}
+        breaches={displayedStats.breaches}
+        neutralCaptures={Math.max(0, displayedStats.captures - displayedStats.steals)}
+        balance={displayedStats.captures - displayedStats.lost}
+        captures={displayedStats.captures}
+        steals={displayedStats.steals}
+        lost={displayedStats.lost}
       />
 
       {teams?.length ? (
