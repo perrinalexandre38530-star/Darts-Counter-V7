@@ -175,7 +175,20 @@ function territoryIdForPath(country: TerritoriesCountry, path: SVGPathElement): 
   return raw;
 }
 
-function estimateFilledArea(path: SVGPathElement): number {
+const FR_PARIS_INSET_TERRITORIES = new Set(["FR-75", "FR-92", "FR-93", "FR-94"]);
+
+function isFranceParisInsetPoint(territoryId: string, x: number, y: number): boolean {
+  // The France SVG contains an enlarged Paris-area inset in the top-right.
+  // It is a visual aid only and must never increase the gameplay area/value
+  // of Paris or the inner-ring departments.
+  return FR_PARIS_INSET_TERRITORIES.has(territoryId) && x >= 560 && y <= 150;
+}
+
+function estimateFilledArea(
+  path: SVGPathElement,
+  country: TerritoriesCountry,
+  territoryId: string,
+): number {
   let box: DOMRect;
   try {
     box = path.getBBox();
@@ -190,12 +203,17 @@ function estimateFilledArea(path: SVGPathElement): number {
 
   // Échantillonnage de la surface peinte : contrairement au simple bounding-box,
   // il ne surévalue pas les pays très allongés ou composés de plusieurs îles éloignées.
-  const samples = 18;
+  // The four Paris inset paths need a denser scan because their real geometry is
+  // tiny compared with the decorative enlarged copy included in the same path.
+  const isParisInsetPath = country === "FR" && FR_PARIS_INSET_TERRITORIES.has(territoryId);
+  const samples = isParisInsetPath ? 128 : 18;
+  const cellArea = boxArea / (samples * samples);
   let inside = 0;
   for (let row = 0; row < samples; row += 1) {
     for (let column = 0; column < samples; column += 1) {
       const x = box.x + ((column + 0.5) / samples) * box.width;
       const y = box.y + ((row + 0.5) / samples) * box.height;
+      if (country === "FR" && isFranceParisInsetPoint(territoryId, x, y)) continue;
       try {
         if (geometry.isPointInFill(new DOMPoint(x, y))) inside += 1;
       } catch {
@@ -204,8 +222,8 @@ function estimateFilledArea(path: SVGPathElement): number {
     }
   }
 
-  if (inside <= 0) return boxArea * 0.08;
-  return boxArea * (inside / (samples * samples));
+  if (inside <= 0) return isParisInsetPath ? boxArea * 0.0005 : boxArea * 0.08;
+  return cellArea * inside;
 }
 
 function fallbackAreaByOrder(territories: Territory[]): Record<string, number> {
@@ -254,7 +272,7 @@ export function measureTerritoryAreas(
     for (const path of Array.from(svg.querySelectorAll("path")) as SVGPathElement[]) {
       const territoryId = territoryIdForPath(country, path);
       if (!territoryId || !validIds.has(territoryId)) continue;
-      const area = estimateFilledArea(path);
+      const area = estimateFilledArea(path, country, territoryId);
       if (area > 0) areas[territoryId] = (areas[territoryId] || 0) + area;
     }
 
