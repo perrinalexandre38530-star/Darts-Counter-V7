@@ -449,6 +449,7 @@ function HeaderModeIcons(props: {
   color: string;
   timeRemaining?: string | null;
   compact?: boolean;
+  roundProgress?: string | null;
 }) {
   const iconShell: React.CSSProperties = {
     width: props.compact ? 24 : 28,
@@ -516,6 +517,28 @@ function HeaderModeIcons(props: {
           </svg>
         )}
       </div>
+
+      {props.roundProgress ? (
+        <div
+          title="Tour en cours"
+          style={{
+            minWidth: 42,
+            height: 24,
+            padding: "0 8px",
+            borderRadius: 8,
+            display: "grid",
+            placeItems: "center",
+            color: props.color,
+            background: "rgba(0,0,0,0.30)",
+            border: `1px solid ${props.color}55`,
+            fontSize: 10,
+            fontWeight: 950,
+            boxShadow: `0 0 10px ${props.color}22`,
+          }}
+        >
+          {props.roundProgress}
+        </div>
+      ) : null}
 
       {props.timeRemaining ? (
         <div
@@ -868,6 +891,7 @@ function TerritorySilhouetteBadge(props: {
   flagEmoji?: string;
   color: string;
   height?: number;
+  showValue?: boolean;
 }) {
   const geometry = React.useMemo(
     () => getTerritoryShapeGeometry(props.country, props.territoryId, props.svgPathId),
@@ -913,14 +937,14 @@ function TerritorySilhouetteBadge(props: {
           placeItems: "center",
           borderRadius: 24,
           border: `2px solid ${props.color}`,
-          background: `radial-gradient(circle, ${props.color}33, rgba(0,0,0,.48) 70%)`,
+          background: `radial-gradient(circle, ${props.color}20, rgba(0,0,0,.48) 70%)`,
           boxShadow: `0 0 20px ${props.color}55`,
           color: "#fff",
           fontSize: 40,
           fontWeight: 1000,
         }}
       >
-        {props.territoryValue}
+        {props.showValue === false ? null : props.territoryValue}
       </div>
     );
   }
@@ -955,17 +979,20 @@ function TerritorySilhouetteBadge(props: {
 
       <path ref={measureRef} {...commonPathProps} fill="transparent" stroke="transparent" />
 
-      <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill={props.color} clipPath={`url(#${clipId})`} />
+      {!props.flagSrc && !props.flagEmoji ? (
+        <rect x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} fill={props.color} clipPath={`url(#${clipId})`} />
+      ) : null}
       {props.flagSrc ? (
         <image
           href={props.flagSrc}
-          x={bounds.x}
-          y={bounds.y}
-          width={bounds.width}
-          height={bounds.height}
+          x={bounds.x - bounds.width * 0.06}
+          y={bounds.y - bounds.height * 0.06}
+          width={bounds.width * 1.12}
+          height={bounds.height * 1.12}
           preserveAspectRatio="xMidYMid slice"
-          opacity="0.92"
+          opacity="1"
           clipPath={`url(#${clipId})`}
+          style={{ filter: "saturate(1.1) contrast(1.05)" }}
         />
       ) : props.flagEmoji ? (
         <text
@@ -980,22 +1007,24 @@ function TerritorySilhouetteBadge(props: {
           {props.flagEmoji}
         </text>
       ) : null}
-      <path {...commonPathProps} fill={`${props.color}33`} stroke="rgba(255,255,255,.98)" strokeWidth="2.6" vectorEffect="non-scaling-stroke" filter={`url(#${glowId})`} />
-      <text
-        x={center.x}
-        y={center.y}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={center.fontSize}
-        fontWeight="1000"
-        fill="#fff"
-        stroke="rgba(0,0,0,.84)"
-        strokeWidth={Math.max(1.4, center.fontSize * 0.08)}
-        paintOrder="stroke fill"
-        style={{ filter: `drop-shadow(0 0 7px ${props.color})` }}
-      >
-        {props.territoryValue}
-      </text>
+      <path {...commonPathProps} fill={props.flagSrc || props.flagEmoji ? "rgba(255,255,255,0.02)" : `${props.color}18`} stroke="rgba(255,255,255,.98)" strokeWidth="2.6" vectorEffect="non-scaling-stroke" filter={`url(#${glowId})`} />
+      {props.showValue === false ? null : (
+        <text
+          x={center.x}
+          y={center.y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={center.fontSize}
+          fontWeight="1000"
+          fill="#fff"
+          stroke="rgba(0,0,0,.84)"
+          strokeWidth={Math.max(1.4, center.fontSize * 0.08)}
+          paintOrder="stroke fill"
+          style={{ filter: `drop-shadow(0 0 7px ${props.color})` }}
+        >
+          {props.territoryValue}
+        </text>
+      )}
     </svg>
   );
 }
@@ -1296,6 +1325,7 @@ function TerritoryCaptureToast(props: {
                 flagSrc={data.flagSrc}
                 flagEmoji={data.flagEmoji}
                 color={data.color}
+                showValue={false}
               />
               <div
                 style={{
@@ -2909,9 +2939,10 @@ export default function DepartementsPlay(props: any) {
                 color={activeColor}
                 timeRemaining={timeRemaining}
                 compact
+                roundProgress={`${Math.max(1, Math.min(maxRounds, game.roundIndex || 1))}/${maxRounds}`}
               />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
-                <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
+                <ProfileStatKpi label="Territoires" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
                 <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={activeColor} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
@@ -2931,24 +2962,24 @@ export default function DepartementsPlay(props: any) {
       <div style={{ padding: "0 12px 10px", display: "flex", gap: 12 }}>
         <KpiCard
           title="OBJECTIF"
-          titleColor={themeColor}
-          titleGlowColor={`${themeColor}AA`}
+          titleColor={activeColor}
+          titleGlowColor={`${activeColor}AA`}
           value={selectedTerritory ? objectiveValueLabel : ""}
-          valueColor={themeColor}
-          borderColor={`${themeColor}55`}
-          glowColor={`${themeColor}22`}
+          valueColor={activeColor}
+          borderColor={`${activeColor}55`}
+          glowColor={`${activeColor}22`}
           centerValue
           onClick={!selectedTerritory ? () => setShowTerritoryListModal(true) : undefined}
         />
         <KpiCard
           title="TERRITOIRE"
-          titleColor={themeColor}
-          titleFontSize={9}
-          titleGlowColor={`${themeColor}AA`}
+          titleColor={displayedTerritoryOwnerColor || activeColor}
+          titleFontSize={8.2}
+          titleGlowColor={`${(displayedTerritoryOwnerColor || activeColor)}AA`}
           value={territoryNameLabel}
           valueColor="#fff"
-          borderColor="rgba(255,255,255,0.12)"
-          glowColor="rgba(0,0,0,0.0)"
+          borderColor={`${(displayedTerritoryOwnerColor || activeColor)}66`}
+          glowColor={`${(displayedTerritoryOwnerColor || activeColor)}40`}
           valueFontSize={10.5}
           allowWrap
           centerValue
@@ -2971,12 +3002,12 @@ export default function DepartementsPlay(props: any) {
         />
         <KpiCard
           title="CARTE"
-          titleColor={themeColor}
-          titleGlowColor={`${themeColor}AA`}
+          titleColor={activeColor}
+          titleGlowColor={`${activeColor}AA`}
           value=""
-          valueColor={themeColor}
-          borderColor={`${themeColor}55`}
-          glowColor={`${themeColor}18`}
+          valueColor={activeColor}
+          borderColor={`${activeColor}55`}
+          glowColor={`${activeColor}18`}
           onClick={() => setShowMapModal(true)}
           watermarkSrc={flagSrc || undefined}
         />
@@ -3108,7 +3139,7 @@ export default function DepartementsPlay(props: any) {
                   padding: "8px 12px",
                   borderRadius: 18,
                   display: "grid",
-                  gridTemplateColumns: "minmax(112px, 1fr) 70px minmax(62px, 0.75fr)",
+                  gridTemplateColumns: "minmax(124px, 1.1fr) 82px minmax(46px, 0.55fr)",
                   alignItems: "center",
                   justifyItems: "center",
                   gap: 8,
@@ -3805,7 +3836,7 @@ function ProfileStatKpi(props: { label: string; value: string; color?: string })
     >
       <div
         style={{
-          fontSize: 8.5,
+          fontSize: props.label.length > 10 ? 7.1 : 8.5,
           lineHeight: 1,
           opacity: 0.76,
           fontWeight: 950,
