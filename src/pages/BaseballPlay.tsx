@@ -502,14 +502,14 @@ export default function BaseballPlay(props: any) {
         <section style={{ ...panelStyle(), marginBottom: 6, padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20` }}>
           <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(88px,.82fr) minmax(110px,1fr) minmax(92px,.86fr)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))` }} />
-            <div style={{ position: "absolute", left: -18, top: -6, bottom: -6, width: "34%", minWidth: 112, overflow: "hidden", opacity: .16, pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: -10, top: 8, transform: "scale(2.15)", transformOrigin: "left top", filter: "saturate(.9)" }}>
+            <div style={{ position: "absolute", left: -18, top: -6, bottom: -6, width: "33%", minWidth: 108, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -18, top: 12, transform: "scale(1.78)", transformOrigin: "left top", filter: "saturate(.88)" }}>
                 <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
-            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 2 }}>
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 8 }}>
               <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1 }}>{botThinking ? "BOT EN RÉFLEXION" : "AU LANCER"}</div>
-              <div style={{ marginTop: 3, color: themeText, fontSize: 14, fontWeight: 1000, lineHeight: 1.05 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
+              <div style={{ marginTop: 3, marginLeft: 2, color: themeText, fontSize: 14, fontWeight: 1000, lineHeight: 1.05 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
               {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 5, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, padding: "2px 0" }}>
@@ -521,7 +521,7 @@ export default function BaseballPlay(props: any) {
               {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 9.5, fontWeight: 850, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{activeTeam.name}</div> : null}
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
-              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.28), rgba(4,8,16,.54)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62, borderLeft: `1px solid ${secondary}20` }} />
+              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(90deg, rgba(4,8,16,.92) 0%, rgba(4,8,16,.62) 18%, rgba(4,8,16,.20) 42%, rgba(4,8,16,.12) 100%), linear-gradient(180deg, rgba(4,8,16,.22), rgba(4,8,16,.50)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .68, borderLeft: `1px solid ${secondary}20` }} />
               <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
                 <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
                 <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginTop: 2 }}>CIBLE</div>

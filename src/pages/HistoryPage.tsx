@@ -3079,10 +3079,30 @@ export default function HistoryPage({
       }
 
       inboxAddLocal(json as MatchSharePacketV1);
-      setInboxLocal(inboxListLocal());
+
+      const importedMatchId = String((json as any)?.matchId || "").trim();
+      const localAfterImport = inboxListLocal();
+      const importVisible = localAfterImport.some(
+        (row: any) => String(row?.packet?.matchId || "").trim() === importedMatchId
+      );
+
+      if (!importVisible) {
+        throw new Error("le fichier a été lu mais la carte Reçues n'a pas pu être conservée sur cet appareil");
+      }
+
+      setInboxLocal(localAfterImport);
       setFilterOpen(false);
       setTab("inbox");
       await loadInbox();
+
+      // Deuxième relecture après refresh : aucune fausse confirmation sur Android/PWA.
+      const verifiedInbox = inboxListLocal().some(
+        (row: any) => String(row?.packet?.matchId || "").trim() === importedMatchId
+      );
+      if (!verifiedInbox) {
+        throw new Error("la partie a disparu du stockage Reçues après relecture");
+      }
+
       window.alert("Partie importée ✅ Elle est disponible dans l'onglet Reçues pour validation.");
     } catch (e: any) {
       console.error("[HistoryPage] import fichier impossible", e);
@@ -3107,12 +3127,31 @@ export default function HistoryPage({
         item?.packet?.exportedAt
       );
       await acceptPacket(item.packet);
+
+      // ✅ ANDROID / PWA FIX V5
+      // Ne jamais retirer la carte "Reçues" avant de vérifier que la partie
+      // est réellement visible dans l'historique (IDB OU fallback).
+      const wantedMatchId = String(item?.packet?.matchId || "").trim();
+      const stored = wantedMatchId
+        ? await History.get(wantedMatchId).catch(() => null)
+        : null;
+      const listedRows = await History.list().catch(() => [] as any[]);
+      const listed = Array.isArray(listedRows) && listedRows.some((row: any) => {
+        const id = String(row?.matchId || row?.id || row?.resumeId || "").trim();
+        return !!wantedMatchId && id === wantedMatchId;
+      });
+
+      if (!stored && !listed) {
+        throw new Error("la partie n'est pas retrouvée après enregistrement ; elle reste dans Reçues");
+      }
+
       inboxRemoveLocal(item.id);
       setInboxLocal(inboxListLocal());
       setGameFilter("all");
       setPlayerFilter("all");
       setSub(packetTs && packetTs < startOf("year") ? "archives" : "year");
       setTab("done");
+      await loadHistory();
     } catch (e: any) {
       console.error("[HistoryPage] validation import impossible", e);
       window.alert(`Validation impossible : ${String(e?.message || "la partie n'a pas pu être enregistrée")}.`);

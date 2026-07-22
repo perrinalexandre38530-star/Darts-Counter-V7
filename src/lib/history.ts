@@ -1906,7 +1906,22 @@ export async function list(): Promise<SavedMatch[]> {
       }
     }
 
-    const normalized = Array.from(byMatch.values())
+    const normalizedIdb = Array.from(byMatch.values())
+      .filter(isHistoryRowUsable)
+      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+
+    // ✅ ANDROID / PWA FIX V5
+    // IndexedDB peut rester LISIBLE mais refuser l'ÉCRITURE d'une grosse partie.
+    // upsert() bascule alors vers localStorage/sessionStorage.
+    // L'ancien list() ignorait ce fallback tant qu'IndexedDB restait lisible :
+    // message "importée" mais carte invisible dans Historique.
+    const fallbackRows = readLegacyRowsSafe()
+      .filter((r: any) => !isHistoryDeletedByTombstone(r))
+      .filter(isHistoryRowUsable)
+      .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+
+    const normalized = _historyRowsMerge(normalizedIdb, fallbackRows)
+      .filter((r: any) => !isHistoryDeletedByTombstone(r))
       .filter(isHistoryRowUsable)
       .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 
@@ -2181,7 +2196,20 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
     }
   }
 
-  return Array.from(byMatch.values())
+  const idbRows = Array.from(byMatch.values())
+    .filter(isHistoryRowUsable)
+    .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+
+  // ✅ ANDROID / PWA FIX V5
+  // Le cache léger doit voir les mêmes parties que list(), y compris celles
+  // écrites dans le fallback quand IndexedDB a refusé une écriture.
+  const fallbackRows = readLegacyRowsSafe()
+    .filter((r: any) => !isHistoryDeletedByTombstone(r))
+    .filter(isHistoryRowUsable)
+    .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+
+  return _historyRowsMerge(idbRows, fallbackRows)
+    .filter((r: any) => !isHistoryDeletedByTombstone(r))
     .filter(isHistoryRowUsable)
     .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 }
@@ -2865,36 +2893,20 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       const rows: any[] = readLegacyRowsSafe();
       const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
 
-      // ✅ IMPORTANT: même en fallback localStorage, on conserve un payload "lite"
-      // pour permettre la reprise (config + darts).
-      const cfgLite =
-        (payloadEffective as any)?.config ??
-        (payloadEffective as any)?.cfg ??
-        null;
-
-      const dartsLiteRaw =
-        (payloadEffective as any)?.darts ??
-        (payloadEffective as any)?.throws ??
-        (payloadEffective as any)?.visits ??
-        (payloadEffective as any)?.events ??
-        null;
-
-      const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
-
-      const payloadLite =
-        cfgLite || dartsLite
-          ? { config: cfgLite, darts: dartsLite }
-          : null;
-
-      // ✅ IMPORTANT: si un upsert arrive sans payload, on conserve l'ancien payload (sinon reprise cassée)
-      const payloadLiteFinal =
-        payloadLite ??
-        (idx >= 0 ? stripAvatarDataFromPayload((rows[idx] as any)?.payload ?? null) : null);
+      // ✅ ANDROID / PWA FIX V5
+      // Le fallback compressé conserve le payload X01 COMPLET (sans avatars/base64),
+      // afin que les stats détaillées, legs, volées et hits restent exploitables.
+      // L'ancien fallback ne gardait que config+darts et pouvait donc perdre
+      // une partie des statistiques après un échec d'écriture IndexedDB.
+      const payloadFallback =
+        payloadEffective != null
+          ? stripAvatarDataFromPayload(payloadEffective)
+          : (idx >= 0 ? stripAvatarDataFromPayload((rows[idx] as any)?.payload ?? null) : null);
 
       const trimmed = {
         ...safe,
         players: stripAvatarDataFromPlayers(safe.players) || [],
-        payload: stripAvatarDataFromPayload(payloadLiteFinal),
+        payload: payloadFallback,
       };
       if (idx >= 0) rows.splice(idx, 1);
       // ✅ Même nettoyage en fallback localStorage : retire au plus un autosave in_progress fantôme.
@@ -2931,7 +2943,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         if (String((trimmed as any)?.status || "").toLowerCase() !== "in_progress") {
           void saveMatchBackupAfterHistoryUpsert({
             header: trimmed,
-            payload: payloadLiteFinal,
+            payload: payloadFallback,
             source: "history-upsert-ls-fallback",
           });
         }
@@ -3197,6 +3209,35 @@ export async function remove(id: string): Promise<void> {
       }
     } catch {}
 
+    // ✅ ANDROID / PWA FIX V5
+    // Puisque list() fusionne IDB + fallback, une suppression doit nettoyer
+    // les deux sources même lorsque la suppression IndexedDB a réussi.
+    try {
+      const legacyRows = readLegacyRowsSafe() as any[];
+      const legacyOut = legacyRows.filter((r: any) => {
+        const candidates = [
+          r?.id,
+          r?.matchId,
+          r?.resumeId,
+          r?.payload?.matchId,
+          r?.payload?.resumeId,
+          r?.summary?.matchId,
+          r?.summary?.resumeId,
+          getCanonicalMatchId(r),
+        ].filter(Boolean).map(String);
+        return !Array.from(idsToDelete).some((x) => candidates.includes(String(x)));
+      });
+      if (legacyOut.length !== legacyRows.length) {
+        if (legacyOut.length) {
+          if (writeLegacyRowsSafe(legacyOut) === "none") {
+            throw new Error("Nettoyage du fallback impossible");
+          }
+        } else {
+          clearLegacyRowsSafe();
+        }
+      }
+    } catch {}
+
     invalidateStatsAfterHistoryMutation("history:remove");
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
@@ -3248,6 +3289,10 @@ export async function clear(): Promise<void> {
         window.dispatchEvent(new Event("dc-history-updated"));
       }
     } catch {}
+
+    // ✅ ANDROID / PWA FIX V5
+    // Clear doit vider IndexedDB ET le fallback local/session.
+    try { clearLegacyRowsSafe(); } catch {}
 
     invalidateStatsAfterHistoryMutation("history:clear");
     scheduleCloudSnapshotPush("history:clear");

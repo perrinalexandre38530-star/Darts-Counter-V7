@@ -138,21 +138,32 @@ function persist(items: InboxItemLocal[]) {
   const local = getLocal();
   const session = getSession();
 
-  // Stockage persistant prioritaire.
+  // ✅ ANDROID / PWA FIX V5
+  // Toujours garder une copie mémoire pour garantir l'affichage immédiat
+  // de la carte dans "Reçues", même si le stockage navigateur se comporte mal.
+  memoryFallback = next;
+
+  // Stockage persistant prioritaire + vérification par relecture.
   if (write(local, KEY, next)) {
-    removeStorageKey(session, SESSION_KEY);
-    memoryFallback = [];
-    return;
+    const roundTrip = read(local, KEY);
+    const expectedIds = new Set(next.map(matchIdOf).filter(Boolean));
+    const actualIds = new Set(roundTrip.map(matchIdOf).filter(Boolean));
+    const verified =
+      expectedIds.size === actualIds.size &&
+      Array.from(expectedIds).every((id) => actualIds.has(id));
+
+    if (verified) {
+      removeStorageKey(session, SESSION_KEY);
+      return;
+    }
   }
 
   // Repli valable pendant l'onglet/session si localStorage est saturé.
   if (write(session, SESSION_KEY, next)) {
-    memoryFallback = next;
     return;
   }
 
-  // Dernier repli : la carte reste visible immédiatement et peut être acceptée.
-  memoryFallback = next;
+  // Dernier repli : memoryFallback suffit pour la session courante.
 }
 
 export function inboxListLocal(): InboxItemLocal[] {
