@@ -52,6 +52,7 @@ import { TERRITORY_MAPS as TERRITORY_MAP_REGISTRY } from "../lib/territories/map
 import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
 import { speak } from "../lib/voice";
 import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
+import { playSound } from "../lib/sound";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -556,14 +557,16 @@ function TerritoryTargetSuggestions(props: {
   };
 
   // The most valuable reachable enemy territories must always be presented first.
-  const visible = [...props.suggestions]
+  const visibleBase = [...props.suggestions]
     .sort((a, b) => (
       b.value - a.value
       || Number(b.fortress) - Number(a.fortress)
       || a.needed - b.needed
       || a.territoryName.localeCompare(b.territoryName, undefined, { sensitivity: "base" })
     ))
-    .slice(0, 24);
+    .slice(0, 25);
+  const fillCount = visibleBase.length >= 5 && visibleBase.length % 5 !== 0 ? (5 - (visibleBase.length % 5)) : 0;
+  const visible = [...visibleBase, ...Array.from({ length: fillCount }, () => null as any)];
 
   return (
     <div style={{ width: "100%", marginTop: 5, minWidth: 0 }}>
@@ -582,7 +585,10 @@ function TerritoryTargetSuggestions(props: {
             alignContent: "start",
           }}
         >
-          {visible.map((suggestion) => {
+          {visible.map((suggestion, index) => {
+            if (!suggestion) {
+              return <div key={`territory-suggestion-empty-${index}`} aria-hidden style={{ height: 30, borderRadius: 9, opacity: 0 }} />;
+            }
             const ownerProfile = ownerAvatarProfile(suggestion.ownerId);
             return (
               <button
@@ -1420,58 +1426,99 @@ const RULES_TEXT = (cfg: {
   valueDifficultyLabel: string;
   valueTargetMin: number;
   valueTargetMax: number;
+  themeColor: string;
 }) => {
-  const { gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel, valueTargetMin, valueTargetMax } = cfg;
+  const {
+    gameMode,
+    fortressVictoryMode,
+    selectionMode,
+    captureRule,
+    victoryMode,
+    winTerritories,
+    winRegions,
+    timeLimitMin,
+    maxRounds,
+    maxFortressesPerOwner,
+    valueDifficultyLabel,
+    valueTargetMin,
+    valueTargetMax,
+    themeColor,
+  } = cfg;
+
+  const section = (title: string, lines: string[]) => (
+    <div style={{ display: "grid", gap: 7, padding: "10px 12px", borderRadius: 14, background: `${themeColor}10`, border: `1px solid ${themeColor}33`, boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.02), 0 0 18px ${themeColor}10` }}>
+      <div style={{ color: themeColor, fontWeight: 1000, letterSpacing: 0.7, textTransform: "uppercase", fontSize: 13, textDecoration: "underline" }}>{title}</div>
+      <div style={{ display: "grid", gap: 6, fontSize: 13, lineHeight: 1.38 }}>
+        {lines.map((line, index) => (
+          <div key={`${title}-${index}`} style={{ display: "grid", gridTemplateColumns: "10px minmax(0, 1fr)", gap: 8, alignItems: "start" }}>
+            <span style={{ color: themeColor, fontWeight: 1000 }}>•</span>
+            <span>{line}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const commonValues = [
+    "Les valeurs suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.",
+    `Chaque territoire jouable possède une valeur unique. Difficulté ${valueDifficultyLabel} · plage ${valueTargetMin} à ${valueTargetMax}.`,
+    "Au-delà de 180 territoires, la partie garde 180 cibles jouables et grise les autres.",
+  ];
+
   if (gameMode === "fortress") {
-    return `FORTERESSES
-
-Départ
-- Chaque joueur ou équipe reçoit exactement le même nombre de territoires. Si la carte ne se divise pas parfaitement, le surplus reste neutre au départ.
-- Chaque camp possède une couleur.
-
-Valeurs des territoires
-- Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
-- Chaque territoire jouable possède une valeur différente. Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Une carte de plus de 180 territoires limite la partie à 180 cibles et grise les autres.
-
-Défendre
-- Choisis un de tes territoires et réalise EXACTEMENT sa valeur.
-- Il devient une forteresse. Chaque camp peut en maintenir jusqu'à ${maxFortressesPerOwner} simultanément.
-- Lorsque cette limite est atteinte, une nouvelle forteresse déplace automatiquement la plus ancienne.
-
-Attaquer
-- Territoire adverse sans forteresse : une réussite exacte le conquiert.
-- Territoire adverse protégé : une première réussite exacte brise la forteresse ; une seconde réussite exacte conquiert le territoire.
-
-Cible
-- ${selectionMode === "free" ? "Choix libre sur la carte." : "Volée directe : joue sans sélectionner de cible ; le total désigne automatiquement le territoire correspondant."}
-
-Victoire
-- ${fortressVictoryMode === "conquest"
-    ? "Conquête totale : posséder toute la carte."
-    : fortressVictoryMode === "value"
-      ? `Majorité en valeur : la distribution initiale équilibre les valeurs entre les camps. Après ${maxRounds} rounds, le total cumulé le plus élevé gagne.`
-      : `Majorité en nombre : posséder le plus de territoires après ${maxRounds} rounds.`}`;
+    return (
+      <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.4 }}>
+        <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${themeColor}33` }}>
+          <div style={{ color: themeColor, fontWeight: 1000, fontSize: 14, letterSpacing: 0.8, textTransform: "uppercase" }}>Forteresses</div>
+          <div style={{ marginTop: 6, opacity: 0.92 }}>Construis, protège et conquiers : le contrôle de la carte passe par la défense de tes meilleurs territoires.</div>
+        </div>
+        {section("Départ", [
+          "Chaque joueur ou équipe reçoit exactement le même nombre de territoires. Si la carte ne se divise pas parfaitement, le surplus reste neutre.",
+          "Chaque camp possède sa propre couleur sur la carte et dans les KPI.",
+        ])}
+        {section("Valeurs des territoires", commonValues)}
+        {section("Défendre", [
+          "Choisis l’un de tes territoires et réalise EXACTEMENT sa valeur.",
+          `Le territoire devient une forteresse. Chaque camp peut en maintenir jusqu’à ${maxFortressesPerOwner} simultanément.`,
+          "Si cette limite est atteinte, la nouvelle forteresse remplace automatiquement la plus ancienne.",
+        ])}
+        {section("Attaquer", [
+          "Un territoire adverse sans forteresse est conquis par une réussite exacte.",
+          "Un territoire protégé nécessite d’abord une réussite exacte pour briser la forteresse, puis une seconde réussite exacte pour le conquérir.",
+        ])}
+        {section("Cible", [selectionMode === "free" ? "Choix libre sur la carte avant la volée." : "Volée directe : aucune sélection obligatoire, le total de la volée désigne automatiquement le territoire correspondant."])}
+        {section("Victoire", [
+          fortressVictoryMode === "conquest"
+            ? "Conquête totale : posséder toute la carte."
+            : fortressVictoryMode === "value"
+              ? `Majorité en valeur : après ${maxRounds} rounds, le total cumulé le plus élevé gagne.`
+              : `Majorité en nombre : après ${maxRounds} rounds, le plus grand nombre de territoires gagne.`,
+        ])}
+      </div>
+    );
   }
 
-  const cap = captureRule === "gte" ? "GTE : total supérieur ou égal" : "EXACT : total strictement égal";
-  return `CONQUÊTE CLASSIQUE
-
-But
-- Capturer les territoires neutres ou adverses.
-
-Valeurs des territoires
-- Elles suivent la surface réelle de la carte : les plus grands territoires ont les valeurs les plus élevées.
-- Chaque territoire jouable possède une valeur différente. Difficulté ${valueDifficultyLabel}, plage ${valueTargetMin} à ${valueTargetMax}. Une carte de plus de 180 territoires limite la partie à 180 cibles et grise les autres.
-
-Cible
-- ${selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Volée directe : joue immédiatement ; le total de la volée désigne automatiquement l’unique territoire correspondant."}
-
-Capture
-- ${cap} à la valeur du territoire, sur une volée de 1 à 3 fléchettes.
-
-Victoire
-- ${victoryMode === "territories" ? `Atteindre ${winTerritories} territoires.` : victoryMode === "regions" ? `Atteindre ${winRegions} régions complètes.` : `Après ${timeLimitMin} minutes, le plus de territoires gagne.`}
-- Si l'objectif n'est pas atteint avant ${maxRounds} rounds, le plus de possessions gagne.`;
+  const cap = captureRule === "gte" ? "Capture GTE : total supérieur ou égal à la valeur." : "Capture EXACT : total strictement égal à la valeur.";
+  return (
+    <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.4 }}>
+      <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${themeColor}33` }}>
+        <div style={{ color: themeColor, fontWeight: 1000, fontSize: 14, letterSpacing: 0.8, textTransform: "uppercase" }}>Conquête classique</div>
+        <div style={{ marginTop: 6, opacity: 0.92 }}>Capture les territoires neutres et vole les territoires adverses pour prendre l’ascendant sur la carte.</div>
+      </div>
+      {section("But", ["Capturer un maximum de territoires neutres ou adverses."])}
+      {section("Valeurs des territoires", commonValues)}
+      {section("Cible", [selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Volée directe : joue immédiatement, le total de la volée désigne automatiquement le territoire correspondant."])}
+      {section("Capture", ["" + cap, "Une volée contient de 1 à 3 fléchettes."])}
+      {section("Victoire", [
+        victoryMode === "territories"
+          ? `Atteindre ${winTerritories} territoires.`
+          : victoryMode === "regions"
+            ? `Compléter ${winRegions} régions.`
+            : `Après ${timeLimitMin} minutes, le joueur qui possède le plus de territoires gagne.`,
+        `Si l’objectif n’est pas atteint avant ${maxRounds} rounds, le plus de possessions l’emporte.`,
+      ])}
+    </div>
+  );
 };
 
 export default function DepartementsPlay(props: any) {
@@ -2058,6 +2105,13 @@ export default function DepartementsPlay(props: any) {
     setShowMapModal(false);
   }
 
+  function playKeypadUi(kind: "tap" | "soft" | "confirm" = "tap") {
+    try {
+      unlockAudio();
+      playSound(kind === "confirm" ? "ui-confirm" : kind === "soft" ? "ui-click-soft" : "ui-click");
+    } catch {}
+  }
+
   function validateThrow() {
     if (submitLockRef.current) return;
     submitLockRef.current = true;
@@ -2143,7 +2197,7 @@ export default function DepartementsPlay(props: any) {
 
       try {
         unlockAudio();
-        playGolfTickerSound(stolen ? "BIRDIE" : "SIMPLE", stolen ? 0.84 : 0.72);
+        playGolfTickerSound(stolen ? "BIRDIE" : "SIMPLE", stolen ? 0.84 : 0.8);
       } catch {}
 
       const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen, previousOwnerName);
@@ -2521,24 +2575,26 @@ export default function DepartementsPlay(props: any) {
 
   const valuesHelpContent = (
     <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
-      <div>
-        Chaque territoire jouable possède une valeur strictement unique. Les valeurs suivent la surface réelle de la carte : les territoires les plus grands demandent les scores les plus élevés.
+      <div style={{ padding: "10px 12px", borderRadius: 14, background: `${themeColor}10`, border: `1px solid ${themeColor}33` }}>
+        <div style={{ color: themeColor, fontWeight: 1000, textTransform: "uppercase", textDecoration: "underline", marginBottom: 6 }}>Comprendre les valeurs</div>
+        <div>Chaque territoire jouable possède une valeur strictement unique. Les territoires les plus grands demandent les scores les plus élevés.</div>
       </div>
-      <div>
-        Niveau <strong>{territoryValueCalibration.label}</strong> · plage réelle <strong>{assignedValueMin}–{assignedValueMax}</strong>.
+      <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <div><span style={{ color: themeColor, fontWeight: 1000 }}>Niveau</span> <strong>{territoryValueCalibration.label}</strong></div>
+        <div style={{ marginTop: 4 }}><span style={{ color: themeColor, fontWeight: 1000 }}>Plage réelle</span> <strong>{assignedValueMin}–{assignedValueMax}</strong></div>
+        {disabledTerritoryCount > 0 ? (
+          <div style={{ marginTop: 6 }}>{playableTerritoryCount} territoires sont jouables. Les {disabledTerritoryCount} autres sont grisés pour conserver un maximum de 180 valeurs uniques.</div>
+        ) : null}
       </div>
-      {disabledTerritoryCount > 0 ? (
-        <div>
-          {playableTerritoryCount} territoires sont jouables. Les {disabledTerritoryCount} autres sont grisés et exclus de cette partie afin de conserver au maximum 180 valeurs uniques.
+      {gameMode === "fortress" ? (
+        <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <span style={{ color: themeColor, fontWeight: 1000 }}>Forteresse</span> · le contour blanc pointillé et l’icône de château indiquent une protection active.
         </div>
       ) : null}
-      {gameMode === "fortress" ? (
-        <div>Le contour blanc pointillé et l’icône de château indiquent une forteresse active.</div>
-      ) : null}
-      <div>
-        {game.config.targetSelectionMode === "free"
+      <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <span style={{ color: themeColor, fontWeight: 1000 }}>Sélection</span> · {game.config.targetSelectionMode === "free"
           ? "Touchez une carte pour sélectionner immédiatement le territoire et revenir au clavier."
-          : "En VOLÉE DIRECTE, aucune sélection n’est obligatoire. Vous pouvez néanmoins toucher une carte pour définir une cible manuelle uniquement pour la volée en cours ; sans sélection, le total choisit automatiquement le territoire correspondant."}
+          : "En volée directe, aucune sélection n’est obligatoire. Vous pouvez néanmoins toucher une carte pour définir une cible manuelle pour la volée en cours."}
       </div>
     </div>
   );
@@ -2640,7 +2696,7 @@ export default function DepartementsPlay(props: any) {
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} title="Retour à la configuration TERRITORIES" />}
-        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax })} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax, themeColor })} />}
       />
 
       <TerritoryCaptureToast data={captureToast} profileById={profileById} />
@@ -2750,22 +2806,22 @@ export default function DepartementsPlay(props: any) {
           >
             <div
               style={{
-                width: 74,
-                height: 74,
+                width: 82,
+                height: 82,
                 borderRadius: 999,
                 display: "grid",
                 placeItems: "center",
-                boxShadow: `0 0 18px ${themeColor}99, 0 0 34px ${themeColor}66`,
-                outline: `2px solid ${themeColor}88`,
-                outlineOffset: 2,
+                overflow: "visible",
+                boxShadow: `0 0 0 1px ${themeColor}66, 0 0 16px ${themeColor}88, 0 0 28px ${themeColor}55`,
               }}
             >
               <ProfileAvatar
                 profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
-                size={74}
+                size={82}
                 ringColor={themeColor}
                 textColor="#fff"
                 showStars={false}
+                noFrame
               />
             </div>
 
@@ -2831,9 +2887,9 @@ export default function DepartementsPlay(props: any) {
                 <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
                 <ProfileStatIconKpi icon="fortress" title="Forteresses construites" value={String(activeStats.fortresses)} disabled={gameMode !== "fortress"} />
                 <ProfileStatIconKpi icon="breach" title="Forteresses brisées" value={String(activeStats.breaches)} disabled={gameMode !== "fortress"} />
-                <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} />
-                <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} />
-                <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} />
+                <ProfileStatIconKpi icon="capture" title="Captures totales : territoires libres et territoires volés" value={String(activeStats.captures)} color="#59f18d" />
+                <ProfileStatIconKpi icon="steal" title="Vols : territoires pris à un adversaire" value={String(activeStats.steals)} color="#59f18d" />
+                <ProfileStatIconKpi icon="lost" title="Territoires perdus" value={String(activeStats.lost)} color="#ff6f7d" />
               </div>
             </div>
           </div>
@@ -3015,23 +3071,51 @@ export default function DepartementsPlay(props: any) {
                   position: "absolute",
                   left: 12,
                   top: 12,
-                  width: "min(260px, calc(100% - 24px))",
-                  minHeight: 82,
-                  padding: "7px 10px",
-                  borderRadius: 16,
+                  width: "min(300px, calc(100% - 24px))",
+                  minHeight: 88,
+                  padding: "8px 12px",
+                  borderRadius: 18,
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gridTemplateColumns: "82px minmax(56px, 74px) minmax(0, 1fr)",
                   alignItems: "center",
-                  gap: 8,
-                  background: "rgba(5,8,16,0.88)",
+                  gap: 10,
+                  background: "rgba(5,8,16,0.9)",
                   border: `1px solid ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor}77`,
                   boxShadow: `0 0 18px ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor}33, 0 8px 24px rgba(0,0,0,0.42)`,
                   backdropFilter: "blur(8px)",
                   pointerEvents: "none",
                   zIndex: 6,
+                  overflow: "hidden",
                 }}
               >
-                <div style={{ minWidth: 0, display: "grid", gap: 1 }}>
+                {selectedTerritory.ownerId && (ownerProfilesById[String(selectedTerritory.ownerId)] || [])[0] ? (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      right: -14,
+                      top: -8,
+                      bottom: -8,
+                      width: 108,
+                      display: "grid",
+                      placeItems: "center",
+                      opacity: 0.18,
+                      filter: `drop-shadow(0 0 14px ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor})`,
+                    }}
+                  >
+                    <div style={{ transform: "scale(1.74)", transformOrigin: "center" }}>
+                      <ProfileAvatar
+                        profile={(ownerProfilesById[String(selectedTerritory.ownerId)] || [])[0]}
+                        size={68}
+                        showStars={false}
+                        showDartOverlay={false}
+                        noFrame
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={{ minWidth: 0, display: "grid", justifyItems: "center", gap: 3, position: "relative", zIndex: 1 }}>
                   <TerritorySilhouetteBadge
                     country={country}
                     territoryId={selectedTerritory.id}
@@ -3040,32 +3124,33 @@ export default function DepartementsPlay(props: any) {
                     flagSrc={selectedMapTerritoryFlagSrc}
                     flagEmoji={selectedMapTerritoryFlagEmoji}
                     color={(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor}
-                    height={54}
+                    height={48}
+                    showValue={false}
                   />
+                </div>
+                <div style={{ position: "relative", zIndex: 1, display: "grid", justifyItems: "center", gap: 2 }}>
+                  <div style={{ fontSize: 27, lineHeight: 1, fontWeight: 1000, color: (selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor, textShadow: `0 0 12px ${((selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor)}88` }}>
+                    {Number(selectedTerritory.value) || 0}
+                  </div>
+                </div>
+                <div style={{ minWidth: 0, position: "relative", zIndex: 1, paddingRight: 40 }}>
                   <div
                     style={{
-                      marginTop: -2,
-                      textAlign: "center",
-                      fontSize: 9,
-                      lineHeight: 1.05,
+                      textAlign: "left",
+                      fontSize: 12,
+                      lineHeight: 1.08,
                       fontWeight: 950,
                       color: "#fff",
-                      whiteSpace: "nowrap",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
                       overflow: "hidden",
-                      textOverflow: "ellipsis",
                       textShadow: "0 1px 5px rgba(0,0,0,0.95)",
                     }}
                   >
                     {selectedMapTerritoryName}
                   </div>
                 </div>
-                <TerritoryOwnerBadge
-                  ownerId={selectedTerritory.ownerId}
-                  hasFortress={Boolean(selectedTerritory.ownerId && selectedTerritory.fortressOwnerId === selectedTerritory.ownerId)}
-                  players={game.players}
-                  profileById={profileById}
-                  ownerColor={selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor}
-                />
               </div>
             ) : null}
           </div>
@@ -3094,25 +3179,43 @@ export default function DepartementsPlay(props: any) {
         <ScoreInputHub
           currentThrow={currentThrow}
           multiplier={multiplier}
-          onSimple={() => setMultiplier(1)}
-          onDouble={() => setMultiplier(2)}
-          onTriple={() => setMultiplier(3)}
+          onSimple={() => {
+            playKeypadUi("soft");
+            setMultiplier(1);
+          }}
+          onDouble={() => {
+            playKeypadUi("soft");
+            setMultiplier(2);
+          }}
+          onTriple={() => {
+            playKeypadUi("soft");
+            setMultiplier(3);
+          }}
           onNumber={(n) => {
+            playKeypadUi("tap");
             if (currentThrow.length >= 3) return;
             setCurrentThrow((prev) => [...prev, { v: n, mult: multiplier }]);
             setMultiplier(1);
           }}
           onBull={() => {
+            playKeypadUi("tap");
             if (currentThrow.length >= 3) return;
             setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier === 2 ? 2 : 1 }]);
             setMultiplier(1);
           }}
-          onBackspace={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+          onBackspace={() => {
+            playKeypadUi("soft");
+            setCurrentThrow((prev) => prev.slice(0, -1));
+          }}
           onCancel={() => {
+            playKeypadUi("soft");
             setCurrentThrow([]);
             setMultiplier(1);
           }}
-          onValidate={validateThrow}
+          onValidate={() => {
+            playKeypadUi("confirm");
+            validateThrow();
+          }}
           // Territories: UI must stay compact; method tabs waste vertical space.
           // We keep "keypad" as the single visible method.
           switcherMode="hidden"
@@ -3607,6 +3710,7 @@ function ProfileStatIconKpi(props: {
   title: string;
   value: string;
   disabled?: boolean;
+  color?: string;
 }) {
   return (
     <div
@@ -3623,7 +3727,7 @@ function ProfileStatIconKpi(props: {
         alignItems: "center",
         justifyContent: "center",
         gap: 5,
-        color: props.disabled ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.84)",
+        color: props.disabled ? "rgba(255,255,255,0.28)" : (props.color || "rgba(255,255,255,0.84)"),
         overflow: "hidden",
       }}
     >
@@ -3636,7 +3740,7 @@ function ProfileStatIconKpi(props: {
           fontSize: 12.5,
           lineHeight: 1,
           fontWeight: 1000,
-          color: props.disabled ? "rgba(255,255,255,0.28)" : "#fff",
+          color: props.disabled ? "rgba(255,255,255,0.28)" : (props.color || "#fff"),
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
