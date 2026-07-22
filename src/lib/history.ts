@@ -451,7 +451,10 @@ function sanitizeRecord(record: any) {
       p = { ...p };
 
       const sportKey = String(r?.kind || r?.sport || p?.kind || p?.sport || "").toLowerCase();
-      const keepDetailedStats = sportKey.includes("babyfoot") || sportKey.includes("baby-foot");
+      const keepDetailedStats =
+        sportKey.includes("babyfoot") ||
+        sportKey.includes("baby-foot") ||
+        sportKey.includes("territ");
       if (!keepDetailedStats) delete p.stats;
       if (!keepDetailedStats) delete p.liveStatsByPlayer;
       delete p.history;
@@ -485,6 +488,98 @@ function sanitizeRecord(record: any) {
   }
 
   return r;
+}
+
+
+const TERRITORIES_LOCAL_HISTORY_KEY = "dc_territories_history_v1";
+
+function _territoriesRichEnough(match: any): boolean {
+  if (!match || typeof match !== "object") return false;
+  return !!(
+    String(match.id || "").trim() &&
+    String(match.mapId || "").trim() &&
+    Array.isArray(match.captured) &&
+    Array.isArray(match.domination) &&
+    (Array.isArray(match.darts) || match.playerStats || Array.isArray(match.visitLog))
+  );
+}
+
+function _extractTerritoriesMatchForMirror(header: any, payload: any): any | null {
+  try {
+    const tag = String(header?.kind || payload?.kind || payload?.summary?.kind || "").toLowerCase();
+    if (!tag.includes("territ")) return null;
+
+    if (_territoriesRichEnough(payload?.match)) return { ...payload.match };
+
+    const global = payload?.stats?.global || {};
+    const summary = payload?.summary || header?.summary || {};
+    const candidate: any = {
+      id: String(header?.id || header?.matchId || payload?.matchId || ""),
+      ts: Number(header?.finishedAt || header?.updatedAt || header?.createdAt || Date.now()),
+      mapId: String(global?.mapId || summary?.mapId || ""),
+      mapName: global?.mapName || summary?.mapName,
+      mode: summary?.participantMode || summary?.matchMode || undefined,
+      teams: Number(global?.teams || summary?.teams || 0),
+      teamSize: Number(global?.teamSize || summary?.teamSize || 1),
+      objective: Number(global?.objective || summary?.objective || 0),
+      rounds: Number(global?.rounds || summary?.rounds || 0),
+      durationMs: Number(global?.durationMs || summary?.durationMs || 0),
+      winnerTeam: Number(global?.winnerTeam ?? summary?.winnerTeam ?? 0),
+      captured: global?.captured,
+      domination: global?.domination,
+      dominationValue: global?.dominationValue,
+      darts: global?.darts,
+      steals: global?.steals,
+      lost: global?.lost,
+      fortresses: global?.fortresses,
+      breaches: global?.breaches,
+      visits: global?.visits,
+      bulls: global?.bulls,
+      dbulls: global?.dbulls,
+      misses: global?.misses,
+      bullReplays: global?.bullReplays,
+      missPasses: global?.missPasses,
+      captureValueTotal: global?.captureValueTotal,
+      maxCaptureValue: global?.maxCaptureValue,
+      exactCaptures: global?.exactCaptures,
+      gteCaptures: global?.gteCaptures,
+      gameMode: global?.gameMode || summary?.gameMode,
+      maxFortressesPerOwner: global?.maxFortressesPerOwner || summary?.maxFortressesPerOwner,
+      victory: global?.victory || summary?.victory,
+      configSnapshot: global?.configSnapshot || summary?.configSnapshot,
+      playerStats: global?.playerStats,
+      visitLog: global?.visitLog,
+      finalTerritories: global?.finalTerritories,
+      schemaVersion: Number(global?.schemaVersion || summary?.schemaVersion || 2),
+      players: Array.isArray(header?.players) ? header.players : undefined,
+      owners: Array.isArray(global?.owners) ? global.owners : undefined,
+    };
+    return _territoriesRichEnough(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
+function _mirrorTerritoriesMatchToLocalStats(header: any, payload: any): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const match = _extractTerritoriesMatchForMirror(header, payload);
+    if (!match) return;
+
+    let rows: any[] = [];
+    try {
+      const raw = localStorage.getItem(TERRITORIES_LOCAL_HISTORY_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      rows = Array.isArray(parsed) ? parsed : [];
+    } catch {}
+
+    const id = String(match.id || "");
+    const next = [match, ...rows.filter((row) => String(row?.id || "") !== id)]
+      .filter(_territoriesRichEnough)
+      .slice(0, 250);
+    localStorage.setItem(TERRITORIES_LOCAL_HISTORY_KEY, JSON.stringify(next));
+    try { window.dispatchEvent(new Event("dc-territories-updated")); } catch {}
+  } catch {}
 }
 
 // =========================
@@ -576,9 +671,13 @@ function scheduleCloudSnapshotPush(reason: string) {
   try {
     if (typeof window === "undefined") return;
     const prefs = loadStoragePrefs();
+    // R2 est géré par matchAutoBackup/cloudAutoRestore.
+    // Ne jamais envoyer cloud_r2 vers pushStoreSnapshot(), qui correspond
+    // au chemin NAS historique.
+    if (prefs.selectedDestination === "cloud_r2") return;
+
     const wantsRemoteSnapshot =
       prefs.mirrorToSupabase ||
-      prefs.selectedDestination === "cloud_r2" ||
       prefs.selectedDestination === "founder_nas";
     if (!wantsRemoteSnapshot) return;
 
@@ -2659,6 +2758,12 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       });
     });
 
+    // TERRITORIES : reflète toute partie riche (locale/importée/R2)
+    // dans l'index local utilisé par StatsTerritories et les classements.
+    try {
+      _mirrorTerritoriesMatchToLocalStats(safe, payloadEffective);
+    } catch {}
+
     // ================================
     // 🧯 SAUVEGARDE PAR PARTIE (non bloquante)
     // - locale IndexedDB + NAS si connecté
@@ -2666,7 +2771,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // - ne bloque jamais le gameplay ni l'historique si le NAS est lent
     // ================================
     try {
-      if (String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
+      if (!isCloudImporting() && String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
         void saveMatchBackupAfterHistoryUpsert({
           header: { ...safe, players: stripAvatarDataFromPlayers(safe.players) || [] },
           payload: payloadEffective,
@@ -2709,8 +2814,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ================================
     // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
     // ================================
-    scheduleCloudSnapshotPush("history:upsert");
-    try { emitCloudChange("history:upsert"); } catch {}
+    if (!isCloudImporting()) {
+      scheduleCloudSnapshotPush("history:upsert");
+      try { emitCloudChange("history:upsert"); } catch {}
+    }
 
     // ================================
     // ✅ EVENT BUFFER (multi-device sync)

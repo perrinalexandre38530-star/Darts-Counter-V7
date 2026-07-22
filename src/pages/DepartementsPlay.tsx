@@ -448,7 +448,43 @@ type TerritoryStealSuggestion = {
   fortress: boolean;
 };
 
-type PlayerLiveStats = { darts: number; captures: number; steals: number; lost: number; fortresses: number; breaches: number };
+type PlayerLiveStats = {
+  darts: number;
+  visits: number;
+  captures: number;
+  steals: number;
+  lost: number;
+  fortresses: number;
+  breaches: number;
+  bulls: number;
+  dbulls: number;
+  misses: number;
+  bullReplays: number;
+  missPasses: number;
+  captureValueTotal: number;
+  maxCaptureValue: number;
+  exactCaptures: number;
+  gteCaptures: number;
+};
+
+const EMPTY_PLAYER_LIVE_STATS: PlayerLiveStats = {
+  darts: 0,
+  visits: 0,
+  captures: 0,
+  steals: 0,
+  lost: 0,
+  fortresses: 0,
+  breaches: 0,
+  bulls: 0,
+  dbulls: 0,
+  misses: 0,
+  bullReplays: 0,
+  missPasses: 0,
+  captureValueTotal: 0,
+  maxCaptureValue: 0,
+  exactCaptures: 0,
+  gteCaptures: 0,
+};
 
 const TTS_LANG_BY_APP_LANG: Record<string, string> = {
   fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT", pt: "pt-PT",
@@ -1958,10 +1994,11 @@ export default function DepartementsPlay(props: any) {
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
+  const [territoriesVisitLog, setTerritoriesVisitLog] = React.useState<any[]>([]);
 
   const [playerStats, setPlayerStats] = React.useState<Record<string, PlayerLiveStats>>(() => {
     const out: Record<string, PlayerLiveStats> = {};
-    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    for (const p of players) out[p.id] = { ...EMPTY_PLAYER_LIVE_STATS };
     return out;
   });
 
@@ -1978,7 +2015,7 @@ export default function DepartementsPlay(props: any) {
       captureToastTimerRef.current = null;
     }
     const out: Record<string, PlayerLiveStats> = {};
-    for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    for (const p of players) out[p.id] = { ...EMPTY_PLAYER_LIVE_STATS };
     setPlayerStats(out);
   }, [initialState, players]);
 
@@ -2332,10 +2369,28 @@ export default function DepartementsPlay(props: any) {
     const dartsUsed = Math.max(1, Math.min(3, currentThrow.length + 1));
     setPlayerStats((prev) => {
       const out = { ...prev };
-      const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
-      out[activeId] = { ...current, darts: current.darts + dartsUsed };
+      const current = out[activeId] || { ...EMPTY_PLAYER_LIVE_STATS };
+      out[activeId] = {
+        ...current,
+        darts: current.darts + dartsUsed,
+        visits: current.visits + 1,
+        misses: current.misses + 1,
+        missPasses: current.missPasses + 1,
+      };
       return out;
     });
+    setTerritoriesVisitLog((prev) => [
+      ...prev,
+      {
+        index: prev.length + 1,
+        round: Number(game.roundIndex || 1),
+        playerId: String(activeId),
+        ownerId: String(getOwnerIdForPlayer(game, activeId) || activeId),
+        darts: [{ v: 0, mult: 1, score: 0, label: "MISS" }],
+        total: 0,
+        missPass: true,
+      },
+    ]);
     setCurrentThrow([]);
     setMultiplier(1);
     bullReplayOwnerRef.current = null;
@@ -2364,6 +2419,15 @@ export default function DepartementsPlay(props: any) {
       : undefined;
     const fortressBuilt = r1.events?.some((event) => event.type === "fortress_built") || false;
     const fortressBroken = r1.events?.some((event) => event.type === "fortress_broken") || false;
+    const visitTotal = dartScores.reduce((acc, value) => acc + Number(value || 0), 0);
+    const bullCount = darts.filter((dart) => Number(dart.v) === 25 && Number(dart.mult || 1) !== 2).length;
+    const dbullCount = darts.filter((dart) => Number(dart.v) === 25 && Number(dart.mult || 1) === 2).length;
+    const missCount = darts.filter((dart) => Number(dart.v) === 0).length;
+    const capturedBefore = capturedTid ? game.map.territories.find((territory) => territory.id === capturedTid) : undefined;
+    const capturedValue = capturedTid
+      ? Number(next.map.territories.find((territory) => territory.id === capturedTid)?.value || capturedBefore?.value || 0)
+      : 0;
+    const captureWasGte = Boolean(capturedTid && captureRule === "gte" && visitTotal > capturedValue);
 
     if (capturedTid) {
       const capturedTerritory = next.map.territories.find((territory) => territory.id === capturedTid);
@@ -2435,10 +2499,14 @@ export default function DepartementsPlay(props: any) {
 
     setPlayerStats((prev) => {
       const out = { ...prev };
-      const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+      const current = out[activeId] || { ...EMPTY_PLAYER_LIVE_STATS };
       out[activeId] = {
         ...current,
         darts: current.darts + darts.length,
+        visits: current.visits + 1,
+        bulls: current.bulls + bullCount,
+        dbulls: current.dbulls + dbullCount,
+        misses: current.misses + missCount,
         fortresses: current.fortresses + (fortressBuilt ? 1 : 0),
         breaches: current.breaches + (fortressBroken ? 1 : 0),
       };
@@ -2447,9 +2515,13 @@ export default function DepartementsPlay(props: any) {
           ...out[activeId],
           captures: (out[activeId]?.captures || 0) + 1,
           steals: (out[activeId]?.steals || 0) + (beforeOwner && beforeOwner !== activeOwner ? 1 : 0),
+          captureValueTotal: (out[activeId]?.captureValueTotal || 0) + capturedValue,
+          maxCaptureValue: Math.max(Number(out[activeId]?.maxCaptureValue || 0), capturedValue),
+          exactCaptures: (out[activeId]?.exactCaptures || 0) + (captureWasGte ? 0 : 1),
+          gteCaptures: (out[activeId]?.gteCaptures || 0) + (captureWasGte ? 1 : 0),
         };
         if (previousOwnerPlayerId && beforeOwner !== activeOwner) {
-          const previous = out[previousOwnerPlayerId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+          const previous = out[previousOwnerPlayerId] || { ...EMPTY_PLAYER_LIVE_STATS };
           out[previousOwnerPlayerId] = { ...previous, lost: previous.lost + 1 };
         }
       }
@@ -2469,7 +2541,48 @@ export default function DepartementsPlay(props: any) {
 
     const hasBull = darts.some((dart) => dart.v === 25);
     const canReplay = bullReplayEnabled && hasBull && bullReplayOwnerRef.current !== activeId;
+
+    setTerritoriesVisitLog((prev) => [
+      ...prev,
+      {
+        index: prev.length + 1,
+        round: Number(game.roundIndex || 1),
+        playerId: String(activeId),
+        ownerId: String(activeOwner),
+        darts: darts.map((dart) => ({
+          v: Number(dart.v || 0),
+          mult: Number(dart.mult || 1),
+          score: Number(dart.v || 0) * Number(dart.mult || 1),
+          label: Number(dart.v) === 0
+            ? "MISS"
+            : Number(dart.v) === 25
+              ? (Number(dart.mult || 1) === 2 ? "DBULL" : "BULL")
+              : `${Number(dart.mult || 1) === 3 ? "T" : Number(dart.mult || 1) === 2 ? "D" : "S"}${Number(dart.v || 0)}`,
+        })),
+        total: visitTotal,
+        targetTerritoryId: forcedTerritoryId || game.turn.selectedTerritoryId || undefined,
+        targetValue: forcedTerritoryId || game.turn.selectedTerritoryId
+          ? Number(game.map.territories.find((territory) => territory.id === (forcedTerritoryId || game.turn.selectedTerritoryId))?.value || 0)
+          : undefined,
+        capturedTerritoryId: capturedTid,
+        capturedValue: capturedTid ? capturedValue : undefined,
+        previousOwnerId: beforeOwner || null,
+        stolen: Boolean(beforeOwner && beforeOwner !== activeOwner),
+        fortressBuilt,
+        fortressBroken,
+        bull: bullCount > 0,
+        dbull: dbullCount > 0,
+        bullReplay: canReplay,
+      },
+    ]);
+
     if (canReplay) {
+      setPlayerStats((prev) => {
+        const out = { ...prev };
+        const current = out[activeId] || { ...EMPTY_PLAYER_LIVE_STATS };
+        out[activeId] = { ...current, bullReplays: current.bullReplays + 1 };
+        return out;
+      });
       bullReplayOwnerRef.current = activeId;
       const replayState = normalizeTerritoriesState(next).state;
       setGame(replayState);
@@ -2562,7 +2675,7 @@ export default function DepartementsPlay(props: any) {
       } else {
         setPlayerStats((prev) => {
           const out = { ...prev };
-          const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+          const current = out[activeId] || { ...EMPTY_PLAYER_LIVE_STATS };
           out[activeId] = { ...current, darts: current.darts + darts.length };
           return out;
         });
@@ -2588,8 +2701,9 @@ export default function DepartementsPlay(props: any) {
     setCurrentThrow([]);
     setMultiplier(1);
     const reset: Record<string, PlayerLiveStats> = {};
-    for (const player of players) reset[player.id] = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    for (const player of players) reset[player.id] = { ...EMPTY_PLAYER_LIVE_STATS };
     setPlayerStats(reset);
+    setTerritoriesVisitLog([]);
   }, [initialState, players]);
 
   // Time remaining (UI only)
@@ -2621,7 +2735,7 @@ export default function DepartementsPlay(props: any) {
   }, [gameMode, playableTerritoryCount, victoryMode, winRegions, winTerritories]);
 
   const activeStats = React.useMemo<PlayerLiveStats>(() => {
-    const total: PlayerLiveStats = { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+    const total: PlayerLiveStats = { ...EMPTY_PLAYER_LIVE_STATS };
     for (const player of game.players) {
       if ((player.teamId || player.id) !== activeOwnerId) continue;
       const stats = playerStats[player.id];
@@ -2708,6 +2822,16 @@ export default function DepartementsPlay(props: any) {
     const lostByOwner: Record<string, number> = {};
     const fortressesByOwner: Record<string, number> = {};
     const breachesByOwner: Record<string, number> = {};
+    const visitsByOwner: Record<string, number> = {};
+    const bullsByOwner: Record<string, number> = {};
+    const dbullsByOwner: Record<string, number> = {};
+    const missesByOwner: Record<string, number> = {};
+    const bullReplaysByOwner: Record<string, number> = {};
+    const missPassesByOwner: Record<string, number> = {};
+    const captureValueByOwner: Record<string, number> = {};
+    const maxCaptureValueByOwner: Record<string, number> = {};
+    const exactCapturesByOwner: Record<string, number> = {};
+    const gteCapturesByOwner: Record<string, number> = {};
 
     for (const [pid, st] of Object.entries(playerStats || {})) {
       const oid = ownerByPlayer[pid] || pid;
@@ -2717,6 +2841,16 @@ export default function DepartementsPlay(props: any) {
       lostByOwner[oid] = (lostByOwner[oid] || 0) + (st?.lost || 0);
       fortressesByOwner[oid] = (fortressesByOwner[oid] || 0) + (st?.fortresses || 0);
       breachesByOwner[oid] = (breachesByOwner[oid] || 0) + (st?.breaches || 0);
+      visitsByOwner[oid] = (visitsByOwner[oid] || 0) + (st?.visits || 0);
+      bullsByOwner[oid] = (bullsByOwner[oid] || 0) + (st?.bulls || 0);
+      dbullsByOwner[oid] = (dbullsByOwner[oid] || 0) + (st?.dbulls || 0);
+      missesByOwner[oid] = (missesByOwner[oid] || 0) + (st?.misses || 0);
+      bullReplaysByOwner[oid] = (bullReplaysByOwner[oid] || 0) + (st?.bullReplays || 0);
+      missPassesByOwner[oid] = (missPassesByOwner[oid] || 0) + (st?.missPasses || 0);
+      captureValueByOwner[oid] = (captureValueByOwner[oid] || 0) + (st?.captureValueTotal || 0);
+      maxCaptureValueByOwner[oid] = Math.max(maxCaptureValueByOwner[oid] || 0, st?.maxCaptureValue || 0);
+      exactCapturesByOwner[oid] = (exactCapturesByOwner[oid] || 0) + (st?.exactCaptures || 0);
+      gteCapturesByOwner[oid] = (gteCapturesByOwner[oid] || 0) + (st?.gteCaptures || 0);
     }
 
     const winner = winnerOwnerId || ownersOrder[0] || "";
@@ -2750,8 +2884,49 @@ export default function DepartementsPlay(props: any) {
       lost: ownersOrder.map((oid) => lostByOwner[oid] || 0),
       fortresses: ownersOrder.map((oid) => fortressesByOwner[oid] || 0),
       breaches: ownersOrder.map((oid) => breachesByOwner[oid] || 0),
+      visits: ownersOrder.map((oid) => visitsByOwner[oid] || 0),
+      bulls: ownersOrder.map((oid) => bullsByOwner[oid] || 0),
+      dbulls: ownersOrder.map((oid) => dbullsByOwner[oid] || 0),
+      misses: ownersOrder.map((oid) => missesByOwner[oid] || 0),
+      bullReplays: ownersOrder.map((oid) => bullReplaysByOwner[oid] || 0),
+      missPasses: ownersOrder.map((oid) => missPassesByOwner[oid] || 0),
+      captureValueTotal: ownersOrder.map((oid) => captureValueByOwner[oid] || 0),
+      maxCaptureValue: ownersOrder.map((oid) => maxCaptureValueByOwner[oid] || 0),
+      exactCaptures: ownersOrder.map((oid) => exactCapturesByOwner[oid] || 0),
+      gteCaptures: ownersOrder.map((oid) => gteCapturesByOwner[oid] || 0),
       domination: ownersOrder.map((oid) => ownedCounts[oid] || 0),
       dominationValue: ownersOrder.map((oid) => ownedValueByOwner[oid] || 0),
+      schemaVersion: 2,
+      configSnapshot: {
+        gameMode,
+        fortressVictoryMode,
+        targetSelectionMode: selectionMode,
+        captureRule,
+        victoryMode,
+        maxFortressesPerOwner,
+        bullReplayEnabled,
+        missPassTurn,
+        valueSkillAverage3: territoryValueCalibration.referenceAvg3,
+        valueTargetMin: game.map.assignedValueMin ?? territoryValueCalibration.minTarget,
+        valueTargetMax: game.map.assignedValueMax ?? territoryValueCalibration.maxTarget,
+        valueDifficultyLabel: territoryValueCalibration.label,
+        playableTerritories: Number(game.map.playableTerritoryCount || game.map.territories.filter((territory) => territory.playable !== false).length),
+        disabledTerritories: Number(game.map.disabledTerritoryCount || game.map.territories.filter((territory) => territory.playable === false).length),
+        initialDistribution: gameMode === "fortress" ? "equal" : "neutral",
+      },
+      playerStats: Object.fromEntries(
+        Object.entries(playerStats || {}).map(([playerId, stats]) => [String(playerId), { ...EMPTY_PLAYER_LIVE_STATS, ...(stats || {}) }]),
+      ),
+      visitLog: territoriesVisitLog,
+      finalTerritories: game.map.territories.map((territory) => ({
+        id: String(territory.id),
+        name: territory.name,
+        region: territory.region,
+        value: Number(territory.value || 0),
+        ownerId: territory.ownerId || null,
+        fortressOwnerId: territory.fortressOwnerId || null,
+        playable: territory.playable !== false,
+      })),
       owners: ownersOrder.map((ownerId, teamIndex) => ({
         id: String(ownerId),
         name: teams?.find((team) => String(team.id) === String(ownerId))?.name
@@ -2793,6 +2968,12 @@ export default function DepartementsPlay(props: any) {
     timeLimitMin,
     winnerOwnerId,
     playerStats,
+    territoriesVisitLog,
+    selectionMode,
+    captureRule,
+    bullReplayEnabled,
+    missPassTurn,
+    territoryValueCalibration,
     profileById,
     effectiveCfg.teamSize,
   ]);

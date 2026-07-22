@@ -163,8 +163,25 @@ export default function StatsTerritories(props: any) {
     let totalDarts = 0;
     let totalSteals = 0;
     let totalLost = 0;
+    let totalFortresses = 0;
+    let totalBreaches = 0;
+    let totalVisits = 0;
+    let totalBulls = 0;
+    let totalDBulls = 0;
+    let totalMisses = 0;
+    let totalBullReplays = 0;
+    let totalMissPasses = 0;
+    let totalCaptureValue = 0;
+    let totalExactCaptures = 0;
+    let totalGteCaptures = 0;
     let totalDurationMs = 0;
     let durationCount = 0;
+    let classic = 0;
+    let fortress = 0;
+    let captureExact = 0;
+    let captureGte = 0;
+    let bullReplayOn = 0;
+    let missPassOn = 0;
     const objectives: Record<string, number> = {};
     const victoryTypes: Record<string, number> = {};
 
@@ -178,6 +195,27 @@ export default function StatsTerritories(props: any) {
       totalDarts += sumNumsLike((it as any).darts);
       totalSteals += sumNumsLike((it as any).steals);
       totalLost += sumNumsLike((it as any).lost);
+      totalFortresses += sumNumsLike((it as any).fortresses);
+      totalBreaches += sumNumsLike((it as any).breaches);
+      totalVisits += sumNumsLike((it as any).visits);
+      totalBulls += sumNumsLike((it as any).bulls);
+      totalDBulls += sumNumsLike((it as any).dbulls);
+      totalMisses += sumNumsLike((it as any).misses);
+      totalBullReplays += sumNumsLike((it as any).bullReplays);
+      totalMissPasses += sumNumsLike((it as any).missPasses);
+      totalCaptureValue += sumNumsLike((it as any).captureValueTotal);
+      totalExactCaptures += sumNumsLike((it as any).exactCaptures);
+      totalGteCaptures += sumNumsLike((it as any).gteCaptures);
+
+      const cfg = (it as any).configSnapshot || {};
+      const gm = String((it as any).gameMode || cfg.gameMode || "classic");
+      if (gm === "fortress") fortress++;
+      else classic++;
+      const cr = String(cfg.captureRule || "exact");
+      if (cr === "gte") captureGte++;
+      else captureExact++;
+      if (cfg.bullReplayEnabled === true) bullReplayOn++;
+      if (cfg.missPassTurn === true) missPassOn++;
 
       const dur = n((it as any).durationMs);
       if (dur > 0) {
@@ -224,8 +262,25 @@ return {
       totalDarts,
       totalSteals,
       totalLost,
+      totalFortresses,
+      totalBreaches,
+      totalVisits,
+      totalBulls,
+      totalDBulls,
+      totalMisses,
+      totalBullReplays,
+      totalMissPasses,
+      totalCaptureValue,
+      totalExactCaptures,
+      totalGteCaptures,
       totalDurationMs,
       durationCount,
+      classic,
+      fortress,
+      captureExact,
+      captureGte,
+      bullReplayOn,
+      missPassOn,
       lastCaptures,
       lastDom,
       lastRounds,
@@ -715,6 +770,34 @@ return {
             <div style={{ fontSize: 11, color: T.text70 }}>
               {t("territories.roundsPerMin", "Tours/min")}: {breakdown.avgDurationMin > 0 ? Math.round((avgRounds / breakdown.avgDurationMin) * 10) / 10 : 0}
             </div>
+          </div>
+        </div>
+
+
+        {/* VARIANTES + STATS AVANCÉES */}
+        <div style={card}>
+          <div style={{ ...goldNeon, fontSize: 13, marginBottom: 10 }}>
+            {t("territories.advancedStats", "Variantes & stats avancées")}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+            <div style={row}><span>Classique</span><strong>{breakdown.classic}</strong></div>
+            <div style={row}><span>Forteresses</span><strong>{breakdown.fortress}</strong></div>
+            <div style={row}><span>Capture exacte</span><strong>{breakdown.captureExact}</strong></div>
+            <div style={row}><span>Capture ≥</span><strong>{breakdown.captureGte}</strong></div>
+            <div style={row}><span>Forteresses construites</span><strong>{breakdown.totalFortresses}</strong></div>
+            <div style={row}><span>Brèches</span><strong>{breakdown.totalBreaches}</strong></div>
+            <div style={row}><span>Volées</span><strong>{breakdown.totalVisits}</strong></div>
+            <div style={row}><span>BULL</span><strong>{breakdown.totalBulls}</strong></div>
+            <div style={row}><span>DBULL</span><strong>{breakdown.totalDBulls}</strong></div>
+            <div style={row}><span>MISS</span><strong>{breakdown.totalMisses}</strong></div>
+            <div style={row}><span>Bonus Bull rejoués</span><strong>{breakdown.totalBullReplays}</strong></div>
+            <div style={row}><span>MISS passe-tour</span><strong>{breakdown.totalMissPasses}</strong></div>
+            <div style={row}><span>Captures exactes</span><strong>{breakdown.totalExactCaptures}</strong></div>
+            <div style={row}><span>Captures GTE</span><strong>{breakdown.totalGteCaptures}</strong></div>
+            <div style={row}><span>Valeur capturée</span><strong>{breakdown.totalCaptureValue}</strong></div>
+            <div style={row}><span>Option Bull active</span><strong>{breakdown.bullReplayOn} partie(s)</strong></div>
+            <div style={row}><span>Option MISS active</span><strong>{breakdown.missPassOn} partie(s)</strong></div>
           </div>
         </div>
 

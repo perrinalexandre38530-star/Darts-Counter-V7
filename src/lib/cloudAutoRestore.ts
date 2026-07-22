@@ -7,6 +7,8 @@ import {
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 import { restoreCloudBackupFromJson } from "./cloudBackup";
+import { History } from "./history";
+import LZString from "lz-string";
 
 const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v1";
 const AUTO_RESTORE_DECLINED_PREFIX = "dc_cloud_auto_restore_declined_v1";
@@ -29,6 +31,115 @@ function rowsFrom(value: any): any[] {
   if (Array.isArray(value)) return value;
   if (value && typeof value === "object") return Object.values(value);
   return [];
+}
+
+
+function decodeHistoryPayloadCompressed(value: any): any {
+  try {
+    const raw = String(value || "");
+    if (!raw) return null;
+    const text = LZString.decompressFromUTF16(raw);
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function mergeHistoryOnlyFromCloudSnapshot(snapshot: any, sourceId: string): Promise<number> {
+  const normalized = unwrapSnapshotEnvelope(snapshot);
+  const rows = rowsFrom(normalized?.history?.rows);
+  if (!rows.length) return 0;
+
+  let imported = 0;
+  for (const raw of rows) {
+    try {
+      const id = String(raw?.matchId || raw?.id || raw?.resumeId || "").trim();
+      if (!id) continue;
+
+      const payload =
+        raw?.payload && typeof raw.payload === "object"
+          ? raw.payload
+          : decodeHistoryPayloadCompressed(raw?.payloadCompressed);
+
+      const rec: any = {
+        ...(raw || {}),
+        id,
+        matchId: id,
+        ...(payload ? { payload } : {}),
+      };
+      delete rec.payloadCompressed;
+
+      const result = await History.upsertFromCloud(rec, {
+        cloudEventId: `${sourceId}:${id}`,
+        cloudCreatedAt: String(raw?.updatedAt || raw?.createdAt || ""),
+      });
+      if (result?.applied === "cloud") imported += 1;
+    } catch (error) {
+      console.warn("[cloudAutoRestore] history row merge skipped", error);
+    }
+  }
+
+  if (imported > 0) {
+    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason: "cloud-r2-history-merge", imported } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason: "cloud-r2-history-merge", imported } })); } catch {}
+  }
+  return imported;
+}
+
+const HISTORY_SYNC_PREFIX = "dc_cloud_r2_history_sync_v3";
+let historySyncTimer: number | null = null;
+let historySyncUserId = "";
+
+async function syncLatestCloudHistory(userId: string): Promise<number> {
+  const uid = String(userId || "").trim();
+  if (!uid || !readNasAccessToken()) return 0;
+
+  const usage = await getAccountStorageUsage().catch(() => null);
+  if (String(usage?.preference?.storage_provider || "").trim() !== "cloud_r2") return 0;
+
+  const cloudItems = await listCloudVaultBackups(20, false).catch(() => []);
+  const latest = pickLatestUsefulCloudSlot(cloudItems);
+  if (!latest?.id) return 0;
+
+  const updated = String(latest.updated_at || latest.created_at || "");
+  const markerKey = `${HISTORY_SYNC_PREFIX}:${uid}`;
+  const previous = readStorageKey(markerKey);
+  const signature = `${String(latest.id)}|${updated}`;
+  if (previous === signature) return 0;
+
+  const payload = await fetchCloudSlotPayload(latest);
+  const imported = await mergeHistoryOnlyFromCloudSnapshot(payload, String(latest.id));
+  writeStorageKey(markerKey, signature);
+  return imported;
+}
+
+function ensureCloudHistoryAutoSync(userId: string): void {
+  const uid = String(userId || "").trim();
+  if (!uid || typeof window === "undefined") return;
+  historySyncUserId = uid;
+
+  if (historySyncTimer == null) {
+    historySyncTimer = window.setInterval(() => {
+      if (!historySyncUserId) return;
+      void syncLatestCloudHistory(historySyncUserId).catch((error) =>
+        console.warn("[cloudAutoRestore] periodic R2 history sync skipped", error)
+      );
+    }, 60_000);
+  }
+
+  const anyWindow = window as any;
+  if (!anyWindow.__dcR2HistoryFocusSyncInstalled) {
+    anyWindow.__dcR2HistoryFocusSyncInstalled = true;
+    const run = () => {
+      if (!historySyncUserId) return;
+      void syncLatestCloudHistory(historySyncUserId).catch(() => undefined);
+    };
+    window.addEventListener("focus", run);
+    window.addEventListener("online", run);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") run();
+    });
+  }
 }
 
 function looksLikeCloudSnapshot(value: any): boolean {
@@ -206,6 +317,13 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
       const usage = await getAccountStorageUsage().catch(() => null);
       const provider = String(usage?.preference?.storage_provider || "").trim();
       if (provider !== "cloud_r2") return;
+
+      // Multi-appareils : fusionne toujours l'historique R2 le plus récent,
+      // même si ce navigateur possède déjà des profils ou des parties.
+      ensureCloudHistoryAutoSync(uid);
+      await syncLatestCloudHistory(uid).catch((error) => {
+        console.warn("[cloudAutoRestore] immediate R2 history sync skipped", error);
+      });
 
       const local = await summarizeLocalState();
       const localIsEmpty = local.profiles <= 0 && local.matches <= 0;

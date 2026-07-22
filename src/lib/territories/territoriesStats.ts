@@ -29,6 +29,46 @@ export type TerritoriesOwnerRef = {
   teamIndex: number;
 };
 
+export type TerritoriesPlayerDetailedStats = {
+  darts: number;
+  visits: number;
+  captures: number;
+  steals: number;
+  lost: number;
+  fortresses: number;
+  breaches: number;
+  bulls: number;
+  dbulls: number;
+  misses: number;
+  bullReplays: number;
+  missPasses: number;
+  captureValueTotal: number;
+  maxCaptureValue: number;
+  exactCaptures: number;
+  gteCaptures: number;
+};
+
+export type TerritoriesVisitStat = {
+  index: number;
+  round: number;
+  playerId: string;
+  ownerId: string;
+  darts: Array<{ v: number; mult: number; score: number; label: string }>;
+  total: number;
+  targetTerritoryId?: string;
+  targetValue?: number;
+  capturedTerritoryId?: string;
+  capturedValue?: number;
+  previousOwnerId?: string | null;
+  stolen?: boolean;
+  fortressBuilt?: boolean;
+  fortressBroken?: boolean;
+  bull?: boolean;
+  dbull?: boolean;
+  bullReplay?: boolean;
+  missPass?: boolean;
+};
+
 export type TerritoriesMatch = {
   // identifiant unique
   id: string;
@@ -66,6 +106,47 @@ export type TerritoriesMatch = {
   lost?: number[];
   fortresses?: number[];
   breaches?: number[];
+  visits?: number[];
+  bulls?: number[];
+  dbulls?: number[];
+  misses?: number[];
+  bullReplays?: number[];
+  missPasses?: number[];
+  captureValueTotal?: number[];
+  maxCaptureValue?: number[];
+  exactCaptures?: number[];
+  gteCaptures?: number[];
+
+  // Snapshot des règles/variantes réellement utilisées.
+  configSnapshot?: {
+    gameMode?: "classic" | "fortress";
+    fortressVictoryMode?: "majority" | "value" | "conquest";
+    targetSelectionMode?: "free" | "by_score";
+    captureRule?: "exact" | "gte";
+    victoryMode?: "territories" | "regions" | "time";
+    maxFortressesPerOwner?: number;
+    bullReplayEnabled?: boolean;
+    missPassTurn?: boolean;
+    valueSkillAverage3?: number;
+    valueTargetMin?: number;
+    valueTargetMax?: number;
+    valueDifficultyLabel?: string;
+    playableTerritories?: number;
+    disabledTerritories?: number;
+    initialDistribution?: "neutral" | "equal";
+  };
+  playerStats?: Record<string, TerritoriesPlayerDetailedStats>;
+  visitLog?: TerritoriesVisitStat[];
+  finalTerritories?: Array<{
+    id: string;
+    name?: string;
+    region?: string;
+    value: number;
+    ownerId?: string | null;
+    fortressOwnerId?: string | null;
+    playable?: boolean;
+  }>;
+  schemaVersion?: number;
 
   // ✅ pour le classement (par profil)
   players?: TerritoriesPlayerRef[];
@@ -101,6 +182,23 @@ function arrNums(v: any): number[] | undefined {
   return out;
 }
 
+function isRichTerritoriesMatch(v: TerritoriesMatch | null | undefined): v is TerritoriesMatch {
+  if (!v) return false;
+  return !!(
+    String(v.id || "").trim() &&
+    String(v.mapId || "").trim() &&
+    Array.isArray(v.captured) &&
+    v.captured.length > 0 &&
+    Array.isArray(v.domination) &&
+    v.domination.length > 0 &&
+    (
+      (Array.isArray(v.darts) && v.darts.length > 0) ||
+      (v.playerStats && Object.keys(v.playerStats).length > 0) ||
+      (Array.isArray(v.visitLog) && v.visitLog.length > 0)
+    )
+  );
+}
+
 // Normalisation "legacy" -> TerritoriesMatch moderne
 export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
   if (!raw || typeof raw !== "object") return null;
@@ -127,6 +225,16 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
   const lost = arrNums(raw.lost);
   const fortresses = arrNums(raw.fortresses);
   const breaches = arrNums(raw.breaches);
+  const visits = arrNums(raw.visits);
+  const bulls = arrNums(raw.bulls);
+  const dbulls = arrNums(raw.dbulls);
+  const misses = arrNums(raw.misses);
+  const bullReplays = arrNums(raw.bullReplays);
+  const missPasses = arrNums(raw.missPasses);
+  const captureValueTotal = arrNums(raw.captureValueTotal);
+  const maxCaptureValue = arrNums(raw.maxCaptureValue);
+  const exactCaptures = arrNums(raw.exactCaptures);
+  const gteCaptures = arrNums(raw.gteCaptures);
 
   const mode = raw.mode === "teams" || raw.mode === "solo" ? raw.mode : undefined;
   const gameMode = raw.gameMode === "fortress" || raw.gameMode === "classic" ? raw.gameMode : undefined;
@@ -187,6 +295,21 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
     lost,
     fortresses,
     breaches,
+    visits,
+    bulls,
+    dbulls,
+    misses,
+    bullReplays,
+    missPasses,
+    captureValueTotal,
+    maxCaptureValue,
+    exactCaptures,
+    gteCaptures,
+    configSnapshot: raw.configSnapshot && typeof raw.configSnapshot === "object" ? { ...raw.configSnapshot } : undefined,
+    playerStats: raw.playerStats && typeof raw.playerStats === "object" ? { ...raw.playerStats } : undefined,
+    visitLog: Array.isArray(raw.visitLog) ? raw.visitLog : undefined,
+    finalTerritories: Array.isArray(raw.finalTerritories) ? raw.finalTerritories : undefined,
+    schemaVersion: raw.schemaVersion !== undefined ? Math.max(1, toNum(raw.schemaVersion, 1)) : undefined,
     durationMs,
     mode,
     gameMode,
@@ -207,7 +330,9 @@ export function loadTerritoriesHistory(): TerritoriesMatch[] {
     const out: TerritoriesMatch[] = [];
     for (const it of arr) {
       const n = normalizeTerritoriesMatch(it);
-      if (n) out.push(n);
+      // Les anciens exports "compact summary only" n'avaient aucune stat réelle.
+      // On les ignore dans le centre de statistiques au lieu d'afficher des zéros.
+      if (isRichTerritoriesMatch(n)) out.push(n);
     }
     return out;
   } catch {
@@ -216,8 +341,14 @@ export function loadTerritoriesHistory(): TerritoriesMatch[] {
 }
 
 export function pushTerritoriesHistory(m: TerritoriesMatch) {
+  const normalizedInput = normalizeTerritoriesMatch({ ...m, schemaVersion: m.schemaVersion || 2 });
+  if (!normalizedInput || !isRichTerritoriesMatch(normalizedInput)) {
+    console.warn("[territoriesStats] partie ignorée: statistiques détaillées absentes");
+    return;
+  }
+  m = normalizedInput;
   const prev = loadTerritoriesHistory();
-  const next = [m, ...prev].slice(0, 250);
+  const next = [m, ...prev.filter((row) => String(row.id) !== String(m.id))].slice(0, 250);
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
@@ -249,6 +380,16 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
       lost: Number(m.lost?.[index] || 0),
       fortresses: Number(m.fortresses?.[index] || 0),
       breaches: Number(m.breaches?.[index] || 0),
+      visits: Number(m.visits?.[index] || 0),
+      bulls: Number(m.bulls?.[index] || 0),
+      dbulls: Number(m.dbulls?.[index] || 0),
+      misses: Number(m.misses?.[index] || 0),
+      bullReplays: Number(m.bullReplays?.[index] || 0),
+      missPasses: Number(m.missPasses?.[index] || 0),
+      captureValueTotal: Number(m.captureValueTotal?.[index] || 0),
+      maxCaptureValue: Number(m.maxCaptureValue?.[index] || 0),
+      exactCaptures: Number(m.exactCaptures?.[index] || 0),
+      gteCaptures: Number(m.gteCaptures?.[index] || 0),
       winner: index === Number(m.winnerTeam || 0),
       rank: 0,
     };
@@ -315,6 +456,8 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
         gameMode: m.gameMode,
         victory: m.victory,
         durationMs: m.durationMs,
+        configSnapshot: m.configSnapshot,
+        schemaVersion: m.schemaVersion || 2,
         winnerTeam: m.winnerTeam,
         winnerId,
         winnerName,
@@ -336,6 +479,8 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
           gameMode: m.gameMode,
           victory: m.victory,
           durationMs: m.durationMs,
+          configSnapshot: m.configSnapshot,
+          schemaVersion: m.schemaVersion || 2,
           winnerTeam: m.winnerTeam,
           winnerId,
           winnerName,
@@ -367,6 +512,21 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
             lost: m.lost,
             fortresses: m.fortresses,
             breaches: m.breaches,
+            visits: m.visits,
+            bulls: m.bulls,
+            dbulls: m.dbulls,
+            misses: m.misses,
+            bullReplays: m.bullReplays,
+            missPasses: m.missPasses,
+            captureValueTotal: m.captureValueTotal,
+            maxCaptureValue: m.maxCaptureValue,
+            exactCaptures: m.exactCaptures,
+            gteCaptures: m.gteCaptures,
+            playerStats: m.playerStats,
+            visitLog: m.visitLog,
+            finalTerritories: m.finalTerritories,
+            configSnapshot: m.configSnapshot,
+            schemaVersion: m.schemaVersion || 2,
             gameMode: m.gameMode,
             maxFortressesPerOwner: m.maxFortressesPerOwner,
             victory: m.victory,

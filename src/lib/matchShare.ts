@@ -75,8 +75,53 @@ export function buildMatchSharePacket(entry: any): MatchSharePacketV1 {
 
   const finishedAt = entry?.finishedAt || entry?.endedAt || entry?.summary?.finishedAt || entry?.updatedAt || undefined;
 
-  // payload: on privilégie un payload "décodé" si dispo
-  const payload = entry?.decoded ?? entry?.payload ?? entry;
+  // Le payload IndexedDB complet est la source de vérité.
+  // Un `decoded` issu du compact ne doit jamais remplacer le détail complet
+  // lors d'un export/partage.
+  let payload = entry?.payload ?? entry?.decoded ?? entry;
+
+  // TERRITORIES : exporter explicitement la partie riche lorsqu'elle existe.
+  if (kind === "territories") {
+    const richMatch =
+      payload?.match ??
+      entry?.payload?.match ??
+      entry?.decoded?.match ??
+      null;
+
+    if (richMatch && typeof richMatch === "object") {
+      payload = {
+        ...(payload && typeof payload === "object" ? payload : {}),
+        kind: "territories",
+        match: richMatch,
+        summary: {
+          ...(entry?.summary && typeof entry.summary === "object" ? entry.summary : {}),
+          ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
+          kind: "territories",
+          mode: "territories",
+          mapId: richMatch.mapId,
+          mapName: richMatch.mapName,
+          rounds: richMatch.rounds,
+          objective: richMatch.objective,
+          gameMode: richMatch.gameMode,
+          victory: richMatch.victory,
+          winnerTeam: richMatch.winnerTeam,
+          durationMs: richMatch.durationMs,
+          configSnapshot: richMatch.configSnapshot,
+          schemaVersion: richMatch.schemaVersion || 2,
+        },
+        stats: {
+          ...(payload?.stats && typeof payload.stats === "object" ? payload.stats : {}),
+          sport: "territories",
+          mode: "territories",
+          players: richMatch.players,
+          global: {
+            ...(payload?.stats?.global && typeof payload.stats.global === "object" ? payload.stats.global : {}),
+            ...richMatch,
+          },
+        },
+      };
+    }
+  }
 
   return {
     version: 1,
