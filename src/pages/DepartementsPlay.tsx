@@ -751,41 +751,61 @@ function TerritoryOwnerBadge(props: {
   const avatarBox = props.compact ? 20 : 32;
   const avatarSize = props.compact ? 18 : 28;
   const overlap = props.compact ? -5 : -8;
+  const avatarStack = (
+    <div style={{ display: "flex", alignItems: "center", paddingLeft: members.length > 1 ? (props.compact ? 5 : 7) : 0 }}>
+      {members.slice(0, 3).map((member, index) => (
+        <div
+          key={member.id}
+          style={{
+            width: avatarBox,
+            height: avatarBox,
+            marginLeft: index === 0 ? 0 : overlap,
+            borderRadius: 999,
+            overflow: "hidden",
+            border: `${props.compact ? 1.5 : 2}px solid ${color}`,
+            background: "rgba(2,5,10,0.92)",
+            boxShadow: `0 0 8px ${color}88`,
+            position: "relative",
+            zIndex: members.length - index,
+          }}
+        >
+          <ProfileAvatar
+            profile={props.profileById[member.id] ?? { id: member.id, name: member.name }}
+            size={avatarSize}
+            showStars={false}
+            showDartOverlay={false}
+            noFrame
+          />
+        </div>
+      ))}
+    </div>
+  );
+
+  if (props.compact) {
+    return (
+      <div
+        title={members.map((member) => member.name).join(" · ")}
+        style={{ minWidth: 24, display: "grid", justifyItems: "center", gap: 0, flex: "0 0 auto" }}
+      >
+        {avatarStack}
+        {props.hasFortress ? (
+          <div style={{ marginTop: -1, display: "grid", placeItems: "center" }}>
+            <FortressLineIcon size={10} color="#fff" glowColor={color} title="Forteresse active" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       title={members.map((member) => member.name).join(" · ")}
       style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, flex: "0 0 auto" }}
     >
       {props.hasFortress ? (
-        <FortressLineIcon size={props.compact ? 12 : 22} color="#fff" glowColor={color} title="Forteresse active" />
+        <FortressLineIcon size={22} color="#fff" glowColor={color} title="Forteresse active" />
       ) : null}
-      <div style={{ display: "flex", alignItems: "center", paddingLeft: members.length > 1 ? (props.compact ? 5 : 7) : 0 }}>
-        {members.slice(0, 3).map((member, index) => (
-          <div
-            key={member.id}
-            style={{
-              width: avatarBox,
-              height: avatarBox,
-              marginLeft: index === 0 ? 0 : overlap,
-              borderRadius: 999,
-              overflow: "hidden",
-              border: `${props.compact ? 1.5 : 2}px solid ${color}`,
-              background: "rgba(2,5,10,0.92)",
-              boxShadow: `0 0 8px ${color}88`,
-              position: "relative",
-              zIndex: members.length - index,
-            }}
-          >
-            <ProfileAvatar
-              profile={props.profileById[member.id] ?? { id: member.id, name: member.name }}
-              size={avatarSize}
-              showStars={false}
-              showDartOverlay={false}
-              noFrame
-            />
-          </div>
-        ))}
-      </div>
+      {avatarStack}
     </div>
   );
 }
@@ -2197,7 +2217,7 @@ export default function DepartementsPlay(props: any) {
 
       try {
         unlockAudio();
-        playGolfTickerSound(stolen ? "BIRDIE" : "SIMPLE", stolen ? 0.84 : 0.8);
+        playGolfTickerSound("SIMPLE", 0.96);
       } catch {}
 
       const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen, previousOwnerName);
@@ -2394,6 +2414,7 @@ export default function DepartementsPlay(props: any) {
       id: `territories_${now}_${Math.random().toString(16).slice(2)}`,
       ts: now,
       mapId,
+      mapName: mapDisplayName,
       mode: teams?.length ? "teams" : "solo",
       teams: teams?.length ? teams.length : players.length,
       teamSize: teams?.length ? (effectiveCfg.teamSize || 2) : 1,
@@ -2416,6 +2437,14 @@ export default function DepartementsPlay(props: any) {
       breaches: ownersOrder.map((oid) => breachesByOwner[oid] || 0),
       domination: ownersOrder.map((oid) => ownedCounts[oid] || 0),
       dominationValue: ownersOrder.map((oid) => ownedValueByOwner[oid] || 0),
+      owners: ownersOrder.map((ownerId, teamIndex) => ({
+        id: String(ownerId),
+        name: teams?.find((team) => String(team.id) === String(ownerId))?.name
+          || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.name
+          || `Camp ${teamIndex + 1}`,
+        color: ownerColors[String(ownerId)] || players.find((player) => String(player.teamId || player.id) === String(ownerId))?.color,
+        teamIndex,
+      })),
       players: players.map((player) => ({
         id: player.id,
         name: player.name,
@@ -2442,6 +2471,8 @@ export default function DepartementsPlay(props: any) {
     players,
     teams,
     mapId,
+    mapDisplayName,
+    ownerColors,
     winRegions,
     winTerritories,
     timeLimitMin,
@@ -2772,7 +2803,7 @@ export default function DepartementsPlay(props: any) {
                 <ProfileAvatar
                   profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
                   size={210}
-                  ringColor={themeColor}
+                  ringColor={activeColor}
                   textColor="#fff"
                   showStars={false}
                 />
@@ -2812,13 +2843,13 @@ export default function DepartementsPlay(props: any) {
                 display: "grid",
                 placeItems: "center",
                 overflow: "visible",
-                boxShadow: `0 0 0 1px ${themeColor}66, 0 0 16px ${themeColor}88, 0 0 28px ${themeColor}55`,
+                boxShadow: `0 0 0 1px ${activeColor}66, 0 0 16px ${activeColor}88, 0 0 28px ${activeColor}55`,
               }}
             >
               <ProfileAvatar
                 profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
                 size={82}
-                ringColor={themeColor}
+                ringColor={activeColor}
                 textColor="#fff"
                 showStars={false}
                 noFrame
@@ -2830,8 +2861,8 @@ export default function DepartementsPlay(props: any) {
                 marginTop: 6,
                 fontSize: 14,
                 fontWeight: 950,
-                color: themeColor,
-                textShadow: `0 0 12px ${themeColor}77`,
+                color: activeColor,
+                textShadow: `0 0 12px ${activeColor}77`,
                 textAlign: "center",
                 width: "100%",
                 whiteSpace: "nowrap",
@@ -2846,7 +2877,7 @@ export default function DepartementsPlay(props: any) {
               suggestions={territoryStealSuggestions}
               currentTotal={currentVisitTotal}
               dartsRemaining={dartsRemaining}
-              accentColor={themeColor}
+              accentColor={activeColor}
               players={game.players}
               profileById={profileById}
               onSelect={(territoryId) => {
@@ -2865,8 +2896,8 @@ export default function DepartementsPlay(props: any) {
                 padding: 7,
                 borderRadius: 15,
                 background: "rgba(0,0,0,0.22)",
-                border: `1px solid ${themeColor}55`,
-                boxShadow: `0 0 18px ${themeColor}1f`,
+                border: `1px solid ${activeColor}55`,
+                boxShadow: `0 0 18px ${activeColor}1f`,
                 display: "grid",
                 gap: 5,
                 alignContent: "center",
@@ -2875,13 +2906,13 @@ export default function DepartementsPlay(props: any) {
               <HeaderModeIcons
                 teamMode={Boolean(teams?.length)}
                 fortressMode={gameMode === "fortress"}
-                color={themeColor}
+                color={activeColor}
                 timeRemaining={timeRemaining}
                 compact
               />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
-                <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={themeColor} />
-                <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={themeColor} />
+                <ProfileStatKpi label="Possessions" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
+                <ProfileStatKpi label="Valeur" value={String(possessionValueForActive)} color={activeColor} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 5 }}>
                 <ProfileStatIconKpi icon="darts" title="Fléchettes jouées" value={String(activeStats.darts)} />
@@ -2912,6 +2943,7 @@ export default function DepartementsPlay(props: any) {
         <KpiCard
           title="TERRITOIRE"
           titleColor={themeColor}
+          titleFontSize={9}
           titleGlowColor={`${themeColor}AA`}
           value={territoryNameLabel}
           valueColor="#fff"
@@ -3072,13 +3104,14 @@ export default function DepartementsPlay(props: any) {
                   left: 12,
                   top: 12,
                   width: "min(300px, calc(100% - 24px))",
-                  minHeight: 88,
+                  minHeight: 94,
                   padding: "8px 12px",
                   borderRadius: 18,
                   display: "grid",
-                  gridTemplateColumns: "82px minmax(56px, 74px) minmax(0, 1fr)",
+                  gridTemplateColumns: "minmax(112px, 1fr) 70px minmax(62px, 0.75fr)",
                   alignItems: "center",
-                  gap: 10,
+                  justifyItems: "center",
+                  gap: 8,
                   background: "rgba(5,8,16,0.9)",
                   border: `1px solid ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor}77`,
                   boxShadow: `0 0 18px ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor}33, 0 8px 24px rgba(0,0,0,0.42)`,
@@ -3093,20 +3126,20 @@ export default function DepartementsPlay(props: any) {
                     aria-hidden
                     style={{
                       position: "absolute",
-                      right: -14,
-                      top: -8,
-                      bottom: -8,
-                      width: 108,
+                      right: -18,
+                      top: -12,
+                      bottom: -12,
+                      width: 116,
                       display: "grid",
                       placeItems: "center",
                       opacity: 0.18,
                       filter: `drop-shadow(0 0 14px ${(selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor})`,
                     }}
                   >
-                    <div style={{ transform: "scale(1.74)", transformOrigin: "center" }}>
+                    <div style={{ transform: "scale(1.82)", transformOrigin: "center" }}>
                       <ProfileAvatar
                         profile={(ownerProfilesById[String(selectedTerritory.ownerId)] || [])[0]}
-                        size={68}
+                        size={70}
                         showStars={false}
                         showDartOverlay={false}
                         noFrame
@@ -3115,7 +3148,7 @@ export default function DepartementsPlay(props: any) {
                   </div>
                 ) : null}
 
-                <div style={{ minWidth: 0, display: "grid", justifyItems: "center", gap: 3, position: "relative", zIndex: 1 }}>
+                <div style={{ minWidth: 0, width: "100%", display: "grid", justifyItems: "center", alignContent: "center", gap: 2, position: "relative", zIndex: 1 }}>
                   <TerritorySilhouetteBadge
                     country={country}
                     territoryId={selectedTerritory.id}
@@ -3127,18 +3160,12 @@ export default function DepartementsPlay(props: any) {
                     height={48}
                     showValue={false}
                   />
-                </div>
-                <div style={{ position: "relative", zIndex: 1, display: "grid", justifyItems: "center", gap: 2 }}>
-                  <div style={{ fontSize: 27, lineHeight: 1, fontWeight: 1000, color: (selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor, textShadow: `0 0 12px ${((selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor)}88` }}>
-                    {Number(selectedTerritory.value) || 0}
-                  </div>
-                </div>
-                <div style={{ minWidth: 0, position: "relative", zIndex: 1, paddingRight: 40 }}>
                   <div
                     style={{
-                      textAlign: "left",
-                      fontSize: 12,
-                      lineHeight: 1.08,
+                      width: "100%",
+                      textAlign: "center",
+                      fontSize: 9.5,
+                      lineHeight: 1.05,
                       fontWeight: 950,
                       color: "#fff",
                       display: "-webkit-box",
@@ -3151,6 +3178,12 @@ export default function DepartementsPlay(props: any) {
                     {selectedMapTerritoryName}
                   </div>
                 </div>
+                <div style={{ position: "relative", zIndex: 1, display: "grid", placeItems: "center" }}>
+                  <div style={{ fontSize: 28, lineHeight: 1, fontWeight: 1000, color: (selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor, textShadow: `0 0 12px ${((selectedTerritory.ownerId ? ownerColors[selectedTerritory.ownerId] : themeColor) || themeColor)}88` }}>
+                    {Number(selectedTerritory.value) || 0}
+                  </div>
+                </div>
+                <div aria-hidden style={{ width: "100%", height: "100%", position: "relative", zIndex: 1 }} />
               </div>
             ) : null}
           </div>
@@ -3246,6 +3279,7 @@ function KpiCard(props: {
   valueAddon?: React.ReactNode;
   titleAddon?: React.ReactNode;
   showFortressIcon?: boolean;
+  titleFontSize?: number;
 }) {
   const fittedValueFontSize = props.fitValue
     ? Math.max(8, Math.min(props.valueFontSize ?? 13, 16 - Math.max(0, props.value.length - 10) * 0.22))
@@ -3370,8 +3404,8 @@ function KpiCard(props: {
         <div
           style={{
             minWidth: 0,
-            fontSize: 11,
-            letterSpacing: 1.2,
+            fontSize: props.titleFontSize ?? 11,
+            letterSpacing: props.titleFontSize && props.titleFontSize < 10 ? 0.75 : 1.2,
             fontWeight: 950,
             color: props.titleColor || "rgba(255,255,255,0.78)",
             textShadow: props.titleColor

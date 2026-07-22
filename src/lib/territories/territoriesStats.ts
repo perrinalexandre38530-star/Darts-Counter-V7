@@ -22,6 +22,13 @@ export type TerritoriesPlayerRef = {
   teamIndex?: number; // 0..n-1
 };
 
+export type TerritoriesOwnerRef = {
+  id: string;
+  name?: string;
+  color?: string;
+  teamIndex: number;
+};
+
 export type TerritoriesMatch = {
   // identifiant unique
   id: string;
@@ -62,6 +69,10 @@ export type TerritoriesMatch = {
 
   // ✅ pour le classement (par profil)
   players?: TerritoriesPlayerRef[];
+
+  // ✅ propriétaires/camps réels, utile pour les cartes historiques détaillées
+  owners?: TerritoriesOwnerRef[];
+  mapName?: string;
 };
 
 const KEY = "dc_territories_history_v1";
@@ -144,6 +155,21 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
         .filter(Boolean)
     : undefined;
 
+  const owners: TerritoriesOwnerRef[] | undefined = Array.isArray(raw.owners)
+    ? raw.owners
+        .map((owner: any, index: number) => {
+          const oid = String(owner?.id || owner?.ownerId || `owner-${index}`).trim();
+          if (!oid) return null;
+          return {
+            id: oid,
+            name: owner?.name || owner?.label || owner?.teamName,
+            color: owner?.color,
+            teamIndex: Math.max(0, toNum(owner?.teamIndex, index)),
+          };
+        })
+        .filter(Boolean)
+    : undefined;
+
   return {
     id,
     ts,
@@ -167,6 +193,8 @@ export function normalizeTerritoriesMatch(raw: any): TerritoriesMatch | null {
     maxFortressesPerOwner,
     victory,
     players,
+    owners,
+    mapName: raw.mapName ? String(raw.mapName) : undefined,
   };
 }
 
@@ -194,71 +222,173 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
 
+  const createdAt = Number(m.ts || Date.now());
+  const ownerCount = Math.max(
+    1,
+    Number(m.teams || 0),
+    m.domination?.length || 0,
+    m.dominationValue?.length || 0,
+    m.captured?.length || 0,
+  );
+  const owners = Array.from({ length: ownerCount }, (_, index) => {
+    const explicit = m.owners?.find((owner) => Number(owner.teamIndex) === index) || m.owners?.[index];
+    const members = (m.players || []).filter((player, playerIndex) => Number(player.teamIndex ?? playerIndex) === index);
+    const fallbackName = m.mode === "teams"
+      ? members.map((member) => member.name || member.id).filter(Boolean).join(" + ") || `Équipe ${index + 1}`
+      : members[0]?.name || members[0]?.id || `Joueur ${index + 1}`;
+    return {
+      id: explicit?.id || `owner-${index}`,
+      teamIndex: index,
+      name: explicit?.name || fallbackName,
+      color: explicit?.color,
+      owned: Number(m.domination?.[index] || 0),
+      value: Number(m.dominationValue?.[index] || 0),
+      captures: Number(m.captured?.[index] || 0),
+      darts: Number(m.darts?.[index] || 0),
+      steals: Number(m.steals?.[index] || 0),
+      lost: Number(m.lost?.[index] || 0),
+      fortresses: Number(m.fortresses?.[index] || 0),
+      breaches: Number(m.breaches?.[index] || 0),
+      winner: index === Number(m.winnerTeam || 0),
+      rank: 0,
+    };
+  });
 
-  // ✅ Mirror dans History (IndexedDB) pour que StatsHub voie Territories comme les autres modes
+  const scoreByValue = m.victory === "value";
+  const rankings = [...owners]
+    .sort((a, b) => {
+      if (a.winner !== b.winner) return a.winner ? -1 : 1;
+      return scoreByValue
+        ? b.value - a.value || b.owned - a.owned || b.captures - a.captures
+        : b.owned - a.owned || b.value - a.value || b.captures - a.captures;
+    })
+    .map((owner, index) => ({
+      ...owner,
+      rank: index + 1,
+      score: scoreByValue ? owner.value : owner.owned,
+      points: owner.value,
+      territories: owner.owned,
+      finalScore: scoreByValue ? owner.value : owner.owned,
+    }));
+
+  const winnerOwner = owners[Number(m.winnerTeam || 0)] || rankings[0];
+  const winnerPlayer = (m.players || []).find((player) => Number(player.teamIndex ?? 0) === Number(m.winnerTeam || 0));
+  const winnerId = m.mode === "solo" && winnerPlayer?.id
+    ? String(winnerPlayer.id)
+    : String(winnerOwner?.id || `team-${Number(m.winnerTeam || 0)}`);
+  const winnerName = String(winnerOwner?.name || winnerPlayer?.name || "").trim();
+  const scoreLine = rankings
+    .map((row) => `${row.name}: ${row.owned} terr. · ${row.value}`)
+    .join(" • ");
+
+  // Mirror in the global IndexedDB history. This record is intentionally rich:
+  // HistoryPage can display the full Territories result without depending on the
+  // separate stats-center localStorage key.
   try {
-    const createdAt = Number(m.ts || Date.now());
-    const winnerId = (m as any).winnerTeam != null ? `team-${(m as any).winnerTeam}` : null;
-
     const rec: any = {
       id: String(m.id || `territories-${createdAt}-${Math.random().toString(36).slice(2, 8)}`),
       kind: "territories",
       status: "finished",
       createdAt,
       updatedAt: createdAt,
+      finishedAt: createdAt,
       winnerId,
-      players: Array.isArray((m as any).players)
-        ? (m as any).players.map((p: any) => ({
-            id: String(p.id),
-            name: String(p.name || p.id),
-            avatarDataUrl: p.avatarDataUrl ?? null,
+      winnerName,
+      players: Array.isArray(m.players)
+        ? m.players.map((player: any) => ({
+            id: String(player.id),
+            name: String(player.name || player.id),
+            avatarDataUrl: player.avatarDataUrl ?? null,
+            teamIndex: player.teamIndex,
           }))
         : undefined,
       summary: {
+        kind: "territories",
         mode: "territories",
-        mapId: (m as any).mapId,
-        teams: (m as any).teams,
-        rounds: (m as any).rounds,
-        winnerTeam: (m as any).winnerTeam,
+        title: "Territories",
+        mapId: m.mapId,
+        mapName: m.mapName || m.mapId,
+        teams: m.teams,
+        teamSize: m.teamSize,
+        rounds: m.rounds,
+        objective: m.objective,
+        gameMode: m.gameMode,
+        victory: m.victory,
+        durationMs: m.durationMs,
+        winnerTeam: m.winnerTeam,
+        winnerId,
+        winnerName,
+        scoreLine,
+        players: rankings,
+        rankings,
+        perPlayer: rankings,
       },
       payload: {
         kind: "territories",
         match: m,
+        summary: {
+          kind: "territories",
+          mode: "territories",
+          mapId: m.mapId,
+          mapName: m.mapName || m.mapId,
+          rounds: m.rounds,
+          objective: m.objective,
+          gameMode: m.gameMode,
+          victory: m.victory,
+          durationMs: m.durationMs,
+          winnerTeam: m.winnerTeam,
+          winnerId,
+          winnerName,
+          scoreLine,
+          players: rankings,
+          rankings,
+          perPlayer: rankings,
+        },
         stats: {
           sport: "territories",
           mode: "territories",
           createdAt,
-          players: Array.isArray((m as any).players)
-            ? (m as any).players.map((p: any) => ({
-                id: String(p.id),
-                name: String(p.name || p.id),
-                teamIndex: p.teamIndex,
-              }))
-            : [],
+          players: rankings,
           global: {
-            mapId: (m as any).mapId,
-            teams: (m as any).teams,
-            rounds: (m as any).rounds,
-            winnerTeam: (m as any).winnerTeam,
-            captured: (m as any).captured,
-            domination: (m as any).domination,
-            dominationValue: (m as any).dominationValue,
-            darts: (m as any).darts,
-            steals: (m as any).steals,
-            lost: (m as any).lost,
-            fortresses: (m as any).fortresses,
-            breaches: (m as any).breaches,
-            gameMode: (m as any).gameMode,
-            maxFortressesPerOwner: (m as any).maxFortressesPerOwner,
-            victory: (m as any).victory,
-            durationMs: (m as any).durationMs,
+            mapId: m.mapId,
+            mapName: m.mapName || m.mapId,
+            teams: m.teams,
+            teamSize: m.teamSize,
+            rounds: m.rounds,
+            objective: m.objective,
+            winnerTeam: m.winnerTeam,
+            winnerId,
+            winnerName,
+            captured: m.captured,
+            domination: m.domination,
+            dominationValue: m.dominationValue,
+            darts: m.darts,
+            steals: m.steals,
+            lost: m.lost,
+            fortresses: m.fortresses,
+            breaches: m.breaches,
+            gameMode: m.gameMode,
+            maxFortressesPerOwner: m.maxFortressesPerOwner,
+            victory: m.victory,
+            durationMs: m.durationMs,
           },
         },
       },
     };
 
-    void History.upsert(rec);
+    // Do not notify the global history before IndexedDB has finished writing.
+    // Previously, HistoryPage reloaded too early and the new card was missing.
+    void Promise.resolve(History.upsert(rec))
+      .then(() => emitTerritoriesUpdated())
+      .catch(() => emitTerritoriesUpdated());
+
+    // The dedicated Territories stats page reads localStorage and can refresh now.
+    try {
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-territories-updated"));
+    } catch {}
+    return;
   } catch {}
+
   emitTerritoriesUpdated();
 }
 

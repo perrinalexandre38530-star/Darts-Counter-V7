@@ -1365,6 +1365,172 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
     .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || b.score - a.score || a._idx - b._idx);
 }
 
+function isTerritoriesHistoryEntry(e: SavedEntry): boolean {
+  const anyE: any = e as any;
+  const token = String(
+    baseMode(e)
+      || anyE?.kind
+      || anyE?.summary?.mode
+      || anyE?.payload?.kind
+      || anyE?.payload?.summary?.mode
+      || "",
+  ).toLowerCase();
+  return token.includes("territ") || token.includes("departement");
+}
+
+type TerritoriesHistoryOwnerRow = {
+  id: string;
+  name: string;
+  color: string;
+  rank: number;
+  winner: boolean;
+  owned: number;
+  value: number;
+  captures: number;
+  darts: number;
+  steals: number;
+  lost: number;
+  fortresses: number;
+  breaches: number;
+};
+
+function territoriesHistoryMatch(e: SavedEntry): any {
+  const anyE: any = e as any;
+  return anyE?.payload?.match
+    || anyE?.match
+    || anyE?.payload?.stats?.global
+    || anyE?.summary
+    || {};
+}
+
+function territoriesHistoryOwnerRows(e: SavedEntry): TerritoriesHistoryOwnerRow[] {
+  const anyE: any = e as any;
+  const match = territoriesHistoryMatch(e);
+  const summary = anyE?.summary || anyE?.payload?.summary || {};
+  const explicitRows = Array.isArray(summary?.rankings)
+    ? summary.rankings
+    : Array.isArray(summary?.perPlayer)
+      ? summary.perPlayer
+      : [];
+  const players = Array.isArray(match?.players)
+    ? match.players
+    : Array.isArray(anyE?.players)
+      ? anyE.players
+      : [];
+  const owners = Array.isArray(match?.owners) ? match.owners : [];
+  const arrays = [
+    match?.domination,
+    match?.dominationValue,
+    match?.captured,
+    match?.darts,
+    match?.steals,
+    match?.lost,
+    match?.fortresses,
+    match?.breaches,
+  ];
+  const ownerCount = Math.max(
+    1,
+    Number(match?.teams || summary?.teams || 0),
+    owners.length,
+    explicitRows.length,
+    ...arrays.map((array) => Array.isArray(array) ? array.length : 0),
+  );
+  const palette = ["#ffd05a", "#ff4fb8", "#4ce7f3", "#78ef8f", "#aa7bff", "#ff8a4c", "#51a8ff", "#f4f4f4"];
+  const winnerTeam = Number(match?.winnerTeam ?? summary?.winnerTeam ?? 0) || 0;
+  const victory = String(match?.victory || summary?.victory || "");
+
+  const rows = Array.from({ length: ownerCount }, (_, index) => {
+    const explicit = explicitRows.find((row: any) => Number(row?.teamIndex ?? row?.ownerIndex ?? index) === index) || explicitRows[index] || {};
+    const owner = owners.find((row: any) => Number(row?.teamIndex ?? index) === index) || owners[index] || {};
+    const members = players.filter((player: any, playerIndex: number) => Number(player?.teamIndex ?? playerIndex) === index);
+    const mode = String(match?.mode || summary?.format || "solo");
+    const fallbackName = mode === "teams"
+      ? members.map((member: any) => cleanName(member?.name) || historyPlayerNameById(e, member?.id)).filter(Boolean).join(" + ") || `Équipe ${index + 1}`
+      : cleanName(members[0]?.name) || historyPlayerNameById(e, members[0]?.id) || `Joueur ${index + 1}`;
+    return {
+      id: String(owner?.id || explicit?.id || `owner-${index}`),
+      name: cleanName(owner?.name || explicit?.name) || fallbackName,
+      color: String(owner?.color || explicit?.color || palette[index % palette.length]),
+      rank: Number(explicit?.rank || index + 1) || index + 1,
+      winner: explicit?.winner === true || index === winnerTeam,
+      owned: Number(explicit?.owned ?? explicit?.territories ?? match?.domination?.[index] ?? 0) || 0,
+      value: Number(explicit?.value ?? explicit?.points ?? match?.dominationValue?.[index] ?? 0) || 0,
+      captures: Number(explicit?.captures ?? match?.captured?.[index] ?? 0) || 0,
+      darts: Number(explicit?.darts ?? match?.darts?.[index] ?? 0) || 0,
+      steals: Number(explicit?.steals ?? match?.steals?.[index] ?? 0) || 0,
+      lost: Number(explicit?.lost ?? match?.lost?.[index] ?? 0) || 0,
+      fortresses: Number(explicit?.fortresses ?? match?.fortresses?.[index] ?? 0) || 0,
+      breaches: Number(explicit?.breaches ?? match?.breaches?.[index] ?? 0) || 0,
+    };
+  });
+
+  return rows
+    .sort((a, b) => {
+      if (a.winner !== b.winner) return a.winner ? -1 : 1;
+      return victory === "value"
+        ? b.value - a.value || b.owned - a.owned || b.captures - a.captures
+        : b.owned - a.owned || b.value - a.value || b.captures - a.captures;
+    })
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function formatTerritoriesHistoryDuration(ms: any): string {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  const totalSeconds = Math.max(0, Math.round(value / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function TerritoriesHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
+  const match = territoriesHistoryMatch(e);
+  const rows = territoriesHistoryOwnerRows(e);
+  const mapName = String(match?.mapName || match?.mapId || (e as any)?.summary?.mapName || (e as any)?.summary?.mapId || "Carte");
+  const rounds = Number(match?.rounds || (e as any)?.summary?.rounds || 0) || 0;
+  const duration = formatTerritoriesHistoryDuration(match?.durationMs || (e as any)?.summary?.durationMs);
+  const gameMode = String(match?.gameMode || (e as any)?.summary?.gameMode || "classic") === "fortress" ? "Forteresses" : "Conquête";
+  const victory = String(match?.victory || (e as any)?.summary?.victory || "territories");
+  const victoryLabel = victory === "value" ? "Victoire par valeur" : victory === "conquest" ? "Conquête totale" : victory === "majority" ? "Majorité territoires" : victory;
+
+  if (!rows.length) return null;
+  return (
+    <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            style={{
+              flex: "1 1 190px",
+              minWidth: 0,
+              padding: "6px 8px",
+              borderRadius: 11,
+              background: `linear-gradient(90deg, ${row.color}18, rgba(0,0,0,0.28))`,
+              border: `1px solid ${row.color}66`,
+              boxShadow: row.winner ? `0 0 12px ${row.color}35` : undefined,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+              <span style={{ color: historyRankColor(row.rank), fontWeight: 1000 }}>{row.rank}.</span>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: row.color, fontWeight: 1000 }}>
+                {row.name}{row.winner ? " 🏆" : ""}
+              </span>
+              <span style={{ marginLeft: "auto", color: "#fff", fontWeight: 1000, whiteSpace: "nowrap" }}>{row.owned} terr.</span>
+              <span style={{ color: row.color, fontWeight: 1000, whiteSpace: "nowrap" }}>{row.value}</span>
+            </div>
+            <div style={{ marginTop: 3, color: "rgba(255,255,255,.62)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.2 }}>
+              Fl. {row.darts} • Cap. {row.captures} • Vols {row.steals} • Perdus {row.lost} • Fort. {row.fortresses} • Brèches {row.breaches}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
+        <span style={{ color: theme.primary, fontWeight: 1000 }}>{mapName}</span> • {gameMode} • {victoryLabel} • {rounds} tours • {duration}
+      </div>
+    </div>
+  );
+}
+
 function genericHistoryRankScorePlayers(e: SavedEntry): HistoryScorePlayer[] {
   const anyE: any = e;
   const data: any = anyE.summary || anyE.payload?.summary || anyE.resume?.summary || {};
@@ -1425,6 +1591,9 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
 }
 
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (isTerritoriesHistoryEntry(e)) {
+    return <TerritoriesHistoryScoreBlock e={e} theme={theme} />;
+  }
   if (isBabyFootEntry(e)) {
     const d = babyFootHistoryData(e);
     const hasSets = d.setsA > 0 || d.setsB > 0;
@@ -1639,6 +1808,10 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
 }
 
 function deriveHistoryWinnerName(e: SavedEntry): string {
+  if (isTerritoriesHistoryEntry(e)) {
+    const winner = territoriesHistoryOwnerRows(e).find((row) => row.winner) || territoriesHistoryOwnerRows(e)[0];
+    return winner?.name || "";
+  }
   if (isBabyFootEntry(e)) {
     const d = babyFootHistoryData(e);
     if (d.winnerTeam === "A") return d.teamA;
