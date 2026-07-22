@@ -391,6 +391,16 @@ function botToFakeProfile(b: BotLite) {
   } as any;
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const clean = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(125,255,202,${alpha})`;
+  const n = Number.parseInt(clean, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // ---------- Inline Info (simple modal)
 function InfoMini({
   title,
@@ -408,9 +418,10 @@ function InfoMini({
         width: 18,
         height: 18,
         borderRadius: "50%",
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(0,0,0,0.25)",
-        color: "#fff",
+        border: "1px solid color-mix(in srgb, var(--dc-accent) 58%, transparent)",
+        background: "color-mix(in srgb, var(--dc-accent) 10%, rgba(0,0,0,0.28))",
+        color: "var(--dc-accent)",
+        boxShadow: "0 0 10px color-mix(in srgb, var(--dc-accent) 28%, transparent)",
         fontSize: 12,
         fontWeight: 1000,
         lineHeight: "22px",
@@ -428,7 +439,7 @@ function InfoMini({
 
 export default function DepartementsConfig(props: any) {
   const { t, lang } = useLang();
-  const theme = useTheme();
+  const { theme } = useTheme();
 
   React.useLayoutEffect(() => {
     try {
@@ -443,8 +454,11 @@ export default function DepartementsConfig(props: any) {
     | Partial<TerritoriesConfigPayload>
     | null;
 
-  const primary = (theme as any)?.primary ?? "#7dffca";
-  const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
+  const primary = theme?.primary ?? "#7dffca";
+  const primarySoft = hexToRgba(primary, 0.16);
+  const primarySoftStrong = hexToRgba(primary, 0.24);
+  const primaryGlow = hexToRgba(primary, 0.38);
+  const primaryGlowSoft = hexToRgba(primary, 0.16);
   const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
     try { return localStorage.getItem("dc_territories_config_view_mode") === "complete" ? "complete" : "guided"; }
     catch { return "guided"; }
@@ -1196,7 +1210,7 @@ export default function DepartementsConfig(props: any) {
     if ((props as any)?.setTab) return (props as any).setTab("departements_play", { config: payload });
   }
 
-  const cardBg = "rgba(10, 12, 24, 0.96)";
+  const cardBg = `linear-gradient(180deg, ${hexToRgba(theme.card, 0.96)}, ${hexToRgba(theme.bg, 0.94)})`;
 
   const x01TeamAssignments = React.useMemo(() => {
     const ids = ["gold", "pink", "blue", "green"] as const;
@@ -1241,27 +1255,27 @@ export default function DepartementsConfig(props: any) {
       </div>
 
       <div style={{ padding: "0 8px" }}>
-        <section style={{ background: "rgba(10,12,24,0.94)", borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${primary}33`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
+        <section style={{ background: cardBg, borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${hexToRgba(primary, 0.62)}`, boxShadow: `0 0 24px ${primaryGlowSoft}, 0 14px 34px rgba(0,0,0,.48)` }}>
           <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration Territories</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <X01PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => selectConfigViewMode("guided")} primary={primary} primarySoft={primarySoft} />
             <X01PillButton label="Complète" active={configViewMode === "complete"} onClick={() => selectConfigViewMode("complete")} primary={primary} primarySoft={primarySoft} />
           </div>
-          <div style={{ marginTop: 8, color: "#9298bb", fontSize: 11, lineHeight: 1.35 }}>Guidée : les choix essentiels étape par étape. Complète : tous les paramètres avancés sur une seule page.</div>
+          <div style={{ marginTop: 8, color: theme.textSoft, fontSize: 11, lineHeight: 1.35 }}>Guidée : les choix essentiels étape par étape. Complète : tous les paramètres avancés sur une seule page.</div>
         </section>
 
         {configViewMode === "guided" ? (
-          <section style={{ background: cardBg, borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${primary}33`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
+          <section style={{ background: cardBg, borderRadius: 18, padding: 12, marginBottom: 12, border: `1px solid ${hexToRgba(primary, 0.58)}`, boxShadow: `0 0 22px ${primaryGlowSoft}, 0 14px 34px rgba(0,0,0,.48)` }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
               <div>
                 <div style={{ color: primary, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div>
-                <div style={{ marginTop: 3, color: "#9298bb", fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div>
+                <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div>
               </div>
               <div style={{ display: "flex", gap: 4 }}>
                 {guidedSteps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", color: idx === guidedStep ? primary : "#aeb2d3", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>{idx + 1}</button>)}
               </div>
             </div>
-            <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, #fff2b4)`, transition: "width .18s ease" }} /></div>
+            <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, ${theme.accent2 || primary})`, transition: "width .18s ease" }} /></div>
           </section>
         ) : null}
 
@@ -1285,23 +1299,24 @@ export default function DepartementsConfig(props: any) {
             style={{
               width: "min(520px, 92vw)",
               borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(10,12,24,0.96)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
+              border: `1px solid ${hexToRgba(primary, 0.52)}`,
+              background: cardBg,
+              boxShadow: `0 0 28px ${primaryGlowSoft}, 0 24px 80px rgba(0,0,0,0.55)`,
               padding: 14,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 1100, letterSpacing: 0.6 }}>{infoModal.title}</div>
+              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: primary, textShadow: `0 0 10px ${primaryGlow}` }}>{infoModal.title}</div>
               <button
                 onClick={() => setInfoModal(null)}
                 style={{
                   width: 30,
                   height: 30,
                   borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "#fff",
+                  border: `1px solid ${hexToRgba(primary, 0.55)}`,
+                  background: primarySoft,
+                  color: primary,
+                  boxShadow: `0 0 12px ${primaryGlowSoft}`,
                   fontWeight: 1000,
                   cursor: "pointer",
                 }}
@@ -1379,9 +1394,9 @@ export default function DepartementsConfig(props: any) {
                       style={{
                         borderRadius: 18,
                         overflow: "hidden",
-                        border: selected ? "1px solid rgba(255,255,255,0.20)" : "1px solid rgba(255,255,255,0.10)",
+                        border: selected ? `1px solid ${hexToRgba(primary, 0.72)}` : "1px solid rgba(255,255,255,0.10)",
                         boxShadow: selected
-                          ? "0 0 18px rgba(255,255,255,0.10), 0 0 42px rgba(255,255,255,0.06)"
+                          ? `0 0 18px ${primaryGlow}, 0 0 42px ${primaryGlowSoft}`
                           : "0 10px 24px rgba(0,0,0,0.35)",
                         background: "rgba(0,0,0,0.25)",
                       }}
@@ -1404,8 +1419,9 @@ export default function DepartementsConfig(props: any) {
                               width: 14,
                               height: 14,
                               borderRadius: 4,
-                              border: "1px solid rgba(255,255,255,0.25)",
-                              background: selected ? "rgba(255,255,255,0.18)" : "transparent",
+                              border: `1px solid ${selected ? primary : "rgba(255,255,255,0.25)"}`,
+                              background: selected ? primarySoftStrong : "transparent",
+                              boxShadow: selected ? `0 0 10px ${primaryGlow}` : "none",
                               flexShrink: 0,
                             }}
                           />
@@ -1447,10 +1463,10 @@ export default function DepartementsConfig(props: any) {
                 width: 44,
                 height: 44,
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.16)",
+                border: `1px solid ${hexToRgba(primary, 0.50)}`,
                 background: "rgba(0,0,0,0.55)",
-                boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-                color: "#fff",
+                boxShadow: `0 0 14px ${primaryGlowSoft}, 0 10px 22px rgba(0,0,0,0.45)`,
+                color: primary,
                 fontSize: 22,
                 fontWeight: 900,
                 cursor: "pointer",
@@ -1474,10 +1490,10 @@ export default function DepartementsConfig(props: any) {
                 width: 44,
                 height: 44,
                 borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.16)",
+                border: `1px solid ${hexToRgba(primary, 0.50)}`,
                 background: "rgba(0,0,0,0.55)",
-                boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
-                color: "#fff",
+                boxShadow: `0 0 14px ${primaryGlowSoft}, 0 10px 22px rgba(0,0,0,0.45)`,
+                color: primary,
                 fontSize: 22,
                 fontWeight: 900,
                 cursor: "pointer",
@@ -2001,9 +2017,9 @@ export default function DepartementsConfig(props: any) {
               width: "100%",
               height: 54,
               borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.10)",
+              border: selectionValid ? `1px solid ${hexToRgba(primary, 0.78)}` : "1px solid rgba(255,255,255,0.10)",
               background: selectionValid
-                ? "linear-gradient(90deg, " + primary + ", #ffe9a3)"
+                ? `linear-gradient(90deg, ${primary}, ${theme.accent2 || primary})`
                 : "rgba(255,255,255,0.06)",
               boxShadow: selectionValid
                 ? "0 0 18px " + primary + "66, 0 0 42px " + primary + "30, 0 10px 24px rgba(0,0,0,0.40)"
