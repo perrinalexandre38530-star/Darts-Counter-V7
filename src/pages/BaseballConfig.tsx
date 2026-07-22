@@ -17,6 +17,7 @@ import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
 import type {
+  BaseballBullTargetMode,
   BaseballConfigPayload,
   BaseballParticipantMode,
   BaseballSeventhInningRule,
@@ -138,14 +139,15 @@ function shuffle<T>(items: T[]): T[] {
   return out;
 }
 
-function RulesContent() {
+function RulesContent({ primary = CYAN, accent = GOLD }: { primary?: string; accent?: string }) {
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.45 }}>
-      <div><strong style={{ color: CYAN }}>PRINCIPE</strong><br />La partie classique compte 9 manches. À la manche N, seule la cible N marque des runs.</div>
-      <div><strong style={{ color: GOLD }}>COMPTAGE</strong><br />Simple = 1 run, Double = 2 runs, Triple = 3 runs. Chaque joueur lance 3 fléchettes par manche ; toute autre cible vaut 0.</div>
-      <div><strong style={{ color: GREEN }}>VICTOIRE</strong><br />Le meilleur total à la fin des manches gagne. En cas d’égalité, les manches supplémentaires utilisent les cibles 10, 11, 12… jusqu’à départage ou jusqu’au cap choisi.</div>
+      <div><strong style={{ color: primary }}>PRINCIPE</strong><br />Chaque manche tire une cible aléatoire parmi 1 à 20, sans répétition tant que possible. Seule la cible affichée marque des runs.</div>
+      <div><strong style={{ color: accent }}>COMPTAGE</strong><br />Simple = 1 run, Double = 2 runs, Triple = 3 runs. Chaque joueur lance 3 fléchettes par manche ; toute autre cible vaut 0.</div>
+      <div><strong style={{ color: GREEN }}>VICTOIRE</strong><br />Le meilleur total à la fin des manches gagne. En cas d’égalité, les manches supplémentaires utilisent les prochaines cibles du tirage jusqu’au départage ou au cap choisi.</div>
       <div><strong style={{ color: "#ff9bbf" }}>7e MANCHE</strong><br />La variante optionnelle « score divisé par 2 » sanctionne un joueur qui ne marque aucun run pendant la 7e manche.</div>
-      <div><strong style={{ color: CYAN }}>ÉQUIPES</strong><br />Les runs des joueurs d’une même équipe sont additionnés. Les équipes doivent avoir le même nombre de joueurs pour conserver le même nombre de passages.</div>
+      <div><strong style={{ color: primary }}>BULL / DBULL</strong><br />Le BULL peut être absent, mélangé au tirage ou imposé à la dernière manche. Sur une manche BULL, BULL = 1 run et DBULL = 2 runs, ou 3 runs en variante « Home Run ».</div>
+      <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />Les runs des joueurs d’une même équipe sont additionnés. Les équipes doivent avoir le même nombre de joueurs pour conserver le même nombre de passages.</div>
       <div style={{ color: "#aab1ca" }}>Le sélecteur reprend celui de X01 : profils, équipes enregistrées, brassage temporaire, BOTS IA et jeux de fléchettes.</div>
     </div>
   );
@@ -175,6 +177,8 @@ export default function BaseballConfig(props: any) {
   const [extraInnings, setExtraInnings] = React.useState(saved.extraInnings !== false);
   const [maxExtraInnings, setMaxExtraInnings] = React.useState<number>(Number(saved.maxExtraInnings || 3) || 3);
   const [seventhInningRule, setSeventhInningRule] = React.useState<BaseballSeventhInningRule>(saved.seventhInningRule === "halve_on_zero" ? "halve_on_zero" : "none");
+  const [bullTargetMode, setBullTargetMode] = React.useState<BaseballBullTargetMode>(saved.bullTargetMode === "off" || saved.bullTargetMode === "final" ? saved.bullTargetMode : "random");
+  const [dbullRuns, setDbullRuns] = React.useState<2 | 3>(saved.dbullRuns === 3 ? 3 : 2);
   const [randomOrder, setRandomOrder] = React.useState(Boolean(saved.randomOrder));
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets && typeof saved.playerDartSets === "object" ? saved.playerDartSets : {});
@@ -197,11 +201,11 @@ export default function BaseballConfig(props: any) {
       localStorage.setItem(LS_CFG_KEY, JSON.stringify({
         participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
         selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
-        botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, randomOrder,
+        botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, bullTargetMode, dbullRuns, randomOrder,
         scoreInputMethod, playerDartSets,
       }));
     } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, randomOrder, scoreInputMethod, playerDartSets]);
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, innings, extraInnings, maxExtraInnings, seventhInningRule, bullTargetMode, dbullRuns, randomOrder, scoreInputMethod, playerDartSets]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
@@ -407,8 +411,10 @@ export default function BaseballConfig(props: any) {
       botLevel,
       innings,
       extraInnings,
-      maxExtraInnings: Math.min(Math.max(1, maxExtraInnings), Math.max(1, 20 - innings)),
+      maxExtraInnings: Math.min(10, Math.max(1, maxExtraInnings)),
       seventhInningRule,
+      bullTargetMode,
+      dbullRuns,
       randomOrder,
       scoreInputMethod,
     };
@@ -421,7 +427,7 @@ export default function BaseballConfig(props: any) {
 
   return (
     <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
-      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToGames} color={CYAN} glow="rgba(66,214,255,.58)" title="Retour" />} right={<InfoDot title="Règles du Baseball Darts" color={GOLD} glow="rgba(255,215,106,.55)" content={<RulesContent />} />} />
+      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title="Règles du Baseball Darts" color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} accent={theme?.accent1 || primary} />} />} />
       <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "12px 12px 0", overflowX: "hidden" }}>
         <section style={selectorCard}>
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>Participants</div>
@@ -473,11 +479,13 @@ export default function BaseballConfig(props: any) {
           <div style={panel}>
             <OptionRow label="Nombre de manches"><OptionSelect value={innings} options={[5, 7, 9, 12, 15, 20]} onChange={(value: any) => setInnings(Number(value) || 9)} /></OptionRow>
             <OptionRow label="Manches supplémentaires"><OptionToggle value={extraInnings} onChange={setExtraInnings} /></OptionRow>
-            {extraInnings && innings < 20 ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(maxExtraInnings, Math.max(1, 20 - innings))} options={[1, 2, 3, 5, 10].filter((value) => value <= 20 - innings)} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
+            {extraInnings ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(10, Math.max(1, maxExtraInnings))} options={[1, 2, 3, 5, 10]} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
             {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 run = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
+            <OptionRow label="Cible BULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "random", label: "Dans le tirage aléatoire" }, { value: "final", label: "Dernière manche réglementaire" }]} onChange={setBullTargetMode} /></OptionRow>
+            {bullTargetMode !== "off" ? <OptionRow label="Valeur DBULL"><OptionSelect value={dbullRuns} options={[{ value: 2, label: "2 runs — Standard" }, { value: 3, label: "3 runs — Home Run" }]} onChange={(value: any) => setDbullRuns(Number(value) === 3 ? 3 : 2)} /></OptionRow> : null}
             <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
-            <OptionRow label="Saisie par défaut"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.35 }}>Classique : 9 manches, 3 fléchettes par joueur et par manche. Les manches supplémentaires utilisent les cibles suivantes jusqu’à 20.</div>
+            <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.35 }}>À chaque partie, les cibles sont tirées aléatoirement parmi 1 à 20 sans répétition. Selon le réglage BULL, le centre peut rejoindre le tirage ou devenir la cible de la dernière manche.</div>
           </div>
         </Section>
 

@@ -75,6 +75,7 @@ export type TerritoriesConfigPayload = {
   selectedTeamIds?: string[];
   selectedTeamPlayerIds?: Record<string, string[]>;
   playerDartSets?: Record<string, string | null>;
+  participantProfiles?: Record<string, { name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string | null }>;
 
   // Rules
   gameMode?: "classic" | "fortress";
@@ -88,6 +89,8 @@ export type TerritoriesConfigPayload = {
   winTerritories?: number;
   winRegions?: number;
   timeLimitMin?: number;
+  bullReplayEnabled?: boolean;
+  missPassTurn?: boolean;
   // Valeurs de territoires calibrées automatiquement selon les participants.
   valueSkillAverage3?: number;
   valueTargetMin?: number;
@@ -129,6 +132,11 @@ Règle de capture
 - EXACT : le total doit être strictement égal à la valeur du territoire.
 - GTE (Greater Than or Equal) : le total peut être égal ou supérieur. Exemple : pour une valeur 46, 46, 47 ou 60 réussissent.
 - Le mode FORTERESSES impose toujours EXACT.
+
+Règles spéciales de lancer
+- BULL / DBULL = REJOUER 1X : si activé, un Bull ou Double Bull donne une nouvelle volée au même joueur, une seule fois avant de rendre la main.
+- MISS = PASSE SON TOUR : si activé, une fléchette manquée (0) termine immédiatement le tour.
+- Un joueur peut VALIDER sa volée à tout moment après 1 ou 2 fléchettes : il n'est jamais obligé de lancer ses 3 fléchettes.
 
 Conditions de victoire
 - OBJECTIF TERRITOIRES : victoire immédiate dès le nombre demandé atteint.
@@ -225,6 +233,21 @@ VOLÉE DIRECTE — SANS SÉLECTION
 - En FORTERESSES : ton propre territoire construit une forteresse, une forteresse adverse est brisée, et un territoire adverse non protégé est conquis.
 - Si aucune valeur ne correspond au score réalisé, aucun territoire ne change de propriétaire.`;
 
+
+
+const HELP_SPECIAL_THROWS = `Règles spéciales de lancer
+
+BULL / DBULL = REJOUER 1X
+- Un Bull (25) ou Double Bull (50) validé donne immédiatement une nouvelle volée au même joueur.
+- Ce bonus ne peut être utilisé qu'une seule fois avant de passer au joueur suivant : un second Bull pendant la volée bonus ne redonne pas une troisième volée.
+
+MISS = PASSE SON TOUR
+- Une fléchette manquée (0) termine immédiatement le tour et donne la main au joueur suivant.
+- Les fléchettes déjà saisies dans cette volée sont abandonnées : aucune capture n'est validée sur cette volée interrompue.
+
+ARRÊTER SA VOLÉE
+- Le joueur peut appuyer sur VALIDER après 1, 2 ou 3 fléchettes.
+- Il n'est jamais obligé de lancer les trois fléchettes si son score cible est déjà atteint.`;
 
 const HELP_VALUE_BALANCE = `Valeurs adaptatives des territoires
 
@@ -490,6 +513,8 @@ export default function DepartementsConfig(props: any) {
   const [victoryMode, setVictoryMode] = React.useState<"territories" | "regions" | "time">("territories");
   const [objectiveRegions, setObjectiveRegions] = React.useState<number>(3);
   const [timeLimitMin, setTimeLimitMin] = React.useState<number>(20);
+  const [bullReplayEnabled, setBullReplayEnabled] = React.useState<boolean>(false);
+  const [missPassTurn, setMissPassTurn] = React.useState<boolean>(false);
 
   // Load previously saved config (not only selectedIds)
   React.useEffect(() => {
@@ -542,6 +567,8 @@ export default function DepartementsConfig(props: any) {
       if (objR != null) setObjectiveRegions(Math.max(1, Number(objR) || 3));
 
       if (parsed?.timeLimitMin != null) setTimeLimitMin(Math.max(1, Number(parsed.timeLimitMin) || 20));
+      if (typeof parsed?.bullReplayEnabled === "boolean") setBullReplayEnabled(parsed.bullReplayEnabled);
+      if (typeof parsed?.missPassTurn === "boolean") setMissPassTurn(parsed.missPassTurn);
 
       if (parsed?.teamsById && typeof parsed.teamsById === "object") setTeamsById(parsed.teamsById);
     } catch {
@@ -1112,6 +1139,15 @@ export default function DepartementsConfig(props: any) {
     selectedTeamIds: participantMode === "teams" && teamSourceMode !== "manual" ? selectedTeamIds : undefined,
     selectedTeamPlayerIds: participantMode === "teams" && teamSourceMode !== "manual" ? selectedTeamPlayerIds : undefined,
     playerDartSets,
+    participantProfiles: Object.fromEntries((selectedParticipantProfiles as any[]).map((item: any) => [
+      String(item.id),
+      {
+        name: String(item.name || item.profile?.name || "Joueur"),
+        avatarDataUrl: item.profile?.avatarDataUrl ?? item.profile?.avatarUrl ?? item.profile?.avatar ?? null,
+        isBot: item.kind === "bot",
+        botLevel: item.profile?.botLevel ?? item.profile?.level ?? null,
+      },
+    ])),
     botsEnabled,
     botLevel,
     rounds,
@@ -1130,6 +1166,8 @@ export default function DepartementsConfig(props: any) {
     victoryMode,
     objectiveRegions,
     timeLimitMin,
+    bullReplayEnabled,
+    missPassTurn,
     mapId,
     valueSkillAverage3: territoryValueCalibration.referenceAvg3,
     valueTargetMin: territoryValueCalibration.minTarget,
@@ -1704,6 +1742,24 @@ export default function DepartementsConfig(props: any) {
           />
         </OptionRow>
 
+
+        <OptionRow label={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span>Règles spéciales</span>
+            <InfoMini title="Bull / DBull / Miss / arrêt de volée" content={HELP_SPECIAL_THROWS} onOpen={(title, content) => setInfoModal({ title, content })} />
+          </div>
+        }>
+          <div style={{ display: "grid", gap: 8, minWidth: 190 }}>
+            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 11, fontWeight: 900 }}>
+              <span>BULL / DBULL = rejouer 1×</span>
+              <OptionToggle value={bullReplayEnabled} onChange={setBullReplayEnabled} />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 11, fontWeight: 900 }}>
+              <span>MISS = passe son tour</span>
+              <OptionToggle value={missPassTurn} onChange={setMissPassTurn} />
+            </label>
+          </div>
+        </OptionRow>
 
         <OptionRow label={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

@@ -25,8 +25,10 @@ export function useBaseballEngine(
     extraInnings: rules.extraInnings,
     maxExtraInnings: rules.maxExtraInnings,
     seventhInningRule: rules.seventhInningRule,
+    bullTargetMode: rules.bullTargetMode,
+    dbullRuns: rules.dbullRuns,
     participantMode: rules.participantMode,
-  }), [rules.innings, rules.extraInnings, rules.maxExtraInnings, rules.seventhInningRule, rules.participantMode]);
+  }), [rules.innings, rules.extraInnings, rules.maxExtraInnings, rules.seventhInningRule, rules.bullTargetMode, rules.dbullRuns, rules.participantMode]);
 
   const initial = React.useMemo(
     () => BaseballEngine.initGame(safePlayers, stableRules, teams),

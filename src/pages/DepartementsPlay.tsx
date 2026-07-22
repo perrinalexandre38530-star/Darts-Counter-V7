@@ -52,7 +52,9 @@ import { TERRITORY_MAPS as TERRITORY_MAP_REGISTRY } from "../lib/territories/map
 import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
 import { speak } from "../lib/voice";
 import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
-import { playSound } from "../lib/sound";
+import { x01EnsureAudioUnlocked, x01PlaySfxV3 } from "../lib/x01SfxV3";
+import { loadBotPlayers } from "../lib/bots";
+import targetBgUrl from "../assets/target_bg.png";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -61,6 +63,7 @@ export type TerritoriesConfigPayload = {
   teamCount?: number;
   selectedIds: string[];
   teamsById?: Record<string, number>;
+  participantProfiles?: Record<string, { name: string; avatarDataUrl?: string | null; isBot?: boolean; botLevel?: string | null }>;
   botsEnabled: boolean;
   botLevel: "easy" | "normal" | "hard";
   rounds: number;
@@ -76,6 +79,8 @@ export type TerritoriesConfigPayload = {
   winTerritories?: number;
   winRegions?: number;
   timeLimitMin?: number;
+  bullReplayEnabled?: boolean;
+  missPassTurn?: boolean;
   valueSkillAverage3?: number;
   valueTargetMin?: number;
   valueTargetMax?: number;
@@ -361,9 +366,8 @@ function dartScore(d: UIDart) {
 }
 
 function computeVisitScores(darts: UIDart[]) {
-  const norm: UIDart[] = [...(darts || [])];
-  while (norm.length < 3) norm.push({ v: 0, mult: 1 });
-  return norm.slice(0, 3).map(dartScore);
+  // Une volée peut être validée après 1, 2 ou 3 fléchettes.
+  return [...(darts || [])].slice(0, 3).map(dartScore);
 }
 
 // Totaux réellement disponibles avec une fléchette. Le 0 représente une fléchette
@@ -391,6 +395,46 @@ function canStillReachTerritoryValue(currentTotal: number, targetValue: number, 
   const remaining = Math.max(0, Math.min(3, Math.floor(dartsRemaining)));
   const needed = targetValue - currentTotal;
   return needed >= 0 && TERRITORIES_REACHABLE_ADDITIONAL_TOTALS[remaining]?.has(needed) === true;
+}
+
+const TERRITORIES_BOT_DARTS: UIDart[] = [
+  ...Array.from({ length: 20 }, (_, index) => ({ v: index + 1, mult: 1 as const })),
+  ...Array.from({ length: 20 }, (_, index) => ({ v: index + 1, mult: 2 as const })),
+  ...Array.from({ length: 20 }, (_, index) => ({ v: index + 1, mult: 3 as const })),
+  { v: 25, mult: 1 as const },
+  { v: 25, mult: 2 as const },
+];
+
+const TERRITORIES_BOT_VISIT_BY_TOTAL = (() => {
+  const out = new Map<number, UIDart[]>();
+  const ordered = [...TERRITORIES_BOT_DARTS].sort((a, b) => dartScore(b) - dartScore(a));
+  for (const dart of ordered) {
+    const total = dartScore(dart);
+    if (!out.has(total)) out.set(total, [dart]);
+  }
+  for (const a of ordered) for (const b of ordered) {
+    const total = dartScore(a) + dartScore(b);
+    if (total <= 180 && !out.has(total)) out.set(total, [a, b]);
+  }
+  for (const a of ordered) for (const b of ordered) for (const c of ordered) {
+    const total = dartScore(a) + dartScore(b) + dartScore(c);
+    if (total <= 180 && !out.has(total)) out.set(total, [a, b, c]);
+  }
+  return out;
+})();
+
+function botVisitForTotal(total: number): UIDart[] | null {
+  const visit = TERRITORIES_BOT_VISIT_BY_TOTAL.get(Math.round(total));
+  return visit ? visit.map((dart) => ({ ...dart })) : null;
+}
+
+function randomBotMissVisit(): UIDart[] {
+  const count = 2 + Math.floor(Math.random() * 2);
+  return Array.from({ length: count }, () => {
+    const value = 1 + Math.floor(Math.random() * 20);
+    const roll = Math.random();
+    return { v: value, mult: roll > 0.90 ? 3 : roll > 0.72 ? 2 : 1 } as UIDart;
+  });
 }
 
 type TerritoryStealSuggestion = {
@@ -450,6 +494,10 @@ function HeaderModeIcons(props: {
   timeRemaining?: string | null;
   compact?: boolean;
   roundProgress?: string | null;
+  selectionMode?: "free" | "by_score";
+  captureRule?: "exact" | "gte";
+  victoryKind?: "value" | "territories" | "conquest" | "regions" | "time";
+  onOpenLegend?: () => void;
 }) {
   const iconShell: React.CSSProperties = {
     width: props.compact ? 24 : 28,
@@ -475,6 +523,28 @@ function HeaderModeIcons(props: {
     "aria-hidden": true,
   };
 
+  const clickableShell = (title: string): React.CSSProperties => ({
+    ...iconShell,
+    padding: 0,
+    cursor: props.onOpenLegend ? "pointer" : "default",
+  });
+
+  const wrapClickable = (title: string, child: React.ReactNode) => (
+    <button type="button" onClick={props.onOpenLegend} title={title} aria-label={title} style={clickableShell(title)}>
+      {child}
+    </button>
+  );
+
+  const victoryTitle = props.victoryKind === "value"
+    ? "Victoire : valeur cumulée"
+    : props.victoryKind === "conquest"
+      ? "Victoire : conquête totale"
+      : props.victoryKind === "regions"
+        ? "Victoire : régions"
+        : props.victoryKind === "time"
+          ? "Victoire : temps"
+          : "Victoire : territoires";
+
   return (
     <div
       style={{
@@ -483,83 +553,117 @@ function HeaderModeIcons(props: {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: props.compact ? 6 : 7,
+        gap: props.compact ? 5 : 7,
         minHeight: props.compact ? 24 : 28,
+        flexWrap: "nowrap",
       }}
     >
-      <div style={iconShell} title={props.teamMode ? "Mode équipes" : "Mode solo"} aria-label={props.teamMode ? "Mode équipes" : "Mode solo"}>
-        {props.teamMode ? (
-          <svg {...commonSvg}>
-            <path d="M8.5 11a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
-            <path d="M15.8 10.2a2.6 2.6 0 1 0 0-5.2" />
-            <path d="M3.2 20v-1.6c0-3 2.3-5.2 5.3-5.2s5.3 2.2 5.3 5.2V20" />
-            <path d="M15 13.5c3.2.2 5.8 2 5.8 4.9V20" />
-          </svg>
-        ) : (
-          <svg {...commonSvg}>
-            <circle cx="12" cy="7.5" r="3.4" />
-            <path d="M5.3 20v-1.8c0-3.7 2.8-6.3 6.7-6.3s6.7 2.6 6.7 6.3V20" />
-          </svg>
-        )}
-      </div>
+      {wrapClickable(props.teamMode ? "Mode équipes" : "Mode solo", props.teamMode ? (
+        <svg {...commonSvg}>
+          <path d="M8.5 11a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
+          <path d="M15.8 10.2a2.6 2.6 0 1 0 0-5.2" />
+          <path d="M3.2 20v-1.6c0-3 2.3-5.2 5.3-5.2s5.3 2.2 5.3 5.2V20" />
+          <path d="M15 13.5c3.2.2 5.8 2 5.8 4.9V20" />
+        </svg>
+      ) : (
+        <svg {...commonSvg}>
+          <circle cx="12" cy="7.5" r="3.4" />
+          <path d="M5.3 20v-1.8c0-3.7 2.8-6.3 6.7-6.3s6.7 2.6 6.7 6.3V20" />
+        </svg>
+      ))}
 
-      <div style={iconShell} title={props.fortressMode ? "Mode forteresses" : "Mode conquête"} aria-label={props.fortressMode ? "Mode forteresses" : "Mode conquête"}>
-        {props.fortressMode ? (
-          <svg {...commonSvg}>
-            <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Z" />
-            <path d="M8 20v-5h8v5M4 12h16" />
-          </svg>
-        ) : (
-          <svg {...commonSvg}>
-            <circle cx="12" cy="12" r="7.5" />
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-          </svg>
-        )}
-      </div>
+      {wrapClickable(props.fortressMode ? "Mode forteresses" : "Mode conquête", props.fortressMode ? (
+        <svg {...commonSvg}>
+          <path d="M4 20V9h4V5h3v4h2V5h3v4h4v11H4Z" />
+          <path d="M8 20v-5h8v5M4 12h16" />
+        </svg>
+      ) : (
+        <svg {...commonSvg}>
+          <circle cx="12" cy="12" r="7.5" />
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+        </svg>
+      ))}
+
+      {wrapClickable(props.selectionMode === "by_score" ? "Volée directe" : "Sélection libre", props.selectionMode === "by_score" ? (
+        <svg {...commonSvg}><path d="m13 2-7 11h6l-1 9 7-12h-6l1-8Z" /></svg>
+      ) : (
+        <svg {...commonSvg}><path d="M4 4h6M4 4v6M20 4h-6M20 4v6M4 20h6M4 20v-6M20 20h-6M20 20v-6" /><circle cx="12" cy="12" r="2.5" /></svg>
+      ))}
+
+      {wrapClickable(props.captureRule === "gte" ? "Capture GTE" : "Capture exacte", (
+        <span style={{ fontSize: 13, lineHeight: 1, fontWeight: 1000 }}>{props.captureRule === "gte" ? "≥" : "="}</span>
+      ))}
+
+      {wrapClickable(victoryTitle, props.victoryKind === "value" ? (
+        <svg {...commonSvg}><path d="M12 3 4 8l8 5 8-5-8-5Z" /><path d="m4 12 8 5 8-5M4 16l8 5 8-5" /></svg>
+      ) : props.victoryKind === "conquest" ? (
+        <svg {...commonSvg}><circle cx="12" cy="12" r="8" /><path d="M4 12h16M12 4c2.2 2.3 3.3 4.9 3.3 8S14.2 17.7 12 20M12 4C9.8 6.3 8.7 8.9 8.7 12S9.8 17.7 12 20" /></svg>
+      ) : props.victoryKind === "time" ? (
+        <svg {...commonSvg}><circle cx="12" cy="13" r="7" /><path d="M12 10v4l3 2M9 2h6" /></svg>
+      ) : (
+        <svg {...commonSvg}><path d="M6 21V4" /><path d="M6 5h11l-2.4 3L17 11H6" /></svg>
+      ))}
 
       {props.roundProgress ? (
-        <div
-          title="Tour en cours"
-          style={{
-            minWidth: 42,
-            height: 24,
-            padding: "0 8px",
-            borderRadius: 8,
-            display: "grid",
-            placeItems: "center",
-            color: props.color,
-            background: "rgba(0,0,0,0.30)",
-            border: `1px solid ${props.color}55`,
-            fontSize: 10,
-            fontWeight: 950,
-            boxShadow: `0 0 10px ${props.color}22`,
-          }}
-        >
+        <button type="button" onClick={props.onOpenLegend} title="Tour en cours" style={{ ...clickableShell("Tour en cours"), minWidth: 42, width: "auto", padding: "0 7px", fontSize: 10, fontWeight: 950 }}>
           {props.roundProgress}
-        </div>
+        </button>
       ) : null}
 
       {props.timeRemaining ? (
-        <div
-          title="Temps restant"
-          style={{
-            minWidth: 42,
-            height: 30,
-            padding: "0 7px",
-            borderRadius: 10,
-            display: "grid",
-            placeItems: "center",
-            color: props.color,
-            background: "rgba(0,0,0,0.30)",
-            border: `1px solid ${props.color}55`,
-            fontSize: 10,
-            fontWeight: 950,
-          }}
-        >
+        <div title="Temps restant" style={{ minWidth: 42, height: 24, padding: "0 7px", borderRadius: 8, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,0.30)", border: `1px solid ${props.color}55`, fontSize: 10, fontWeight: 950 }}>
           {props.timeRemaining}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TerritoriesConfigLegend(props: {
+  open: boolean;
+  onClose: () => void;
+  color: string;
+  teamMode: boolean;
+  fortressMode: boolean;
+  selectionMode: "free" | "by_score";
+  captureRule: "exact" | "gte";
+  victoryLabel: string;
+  roundProgress: string;
+  bullReplayEnabled: boolean;
+  missPassTurn: boolean;
+}) {
+  if (!props.open) return null;
+  const rows = [
+    [props.teamMode ? "👥" : "♙", props.teamMode ? "Équipes" : "Solo"],
+    [props.fortressMode ? "♜" : "◎", props.fortressMode ? "Forteresses" : "Conquête classique"],
+    [props.selectionMode === "by_score" ? "⚡" : "⌖", props.selectionMode === "by_score" ? "Volée directe — sans sélection" : "Sélection libre sur la carte"],
+    [props.captureRule === "gte" ? "≥" : "=", props.captureRule === "gte" ? "Capture GTE — supérieur ou égal" : "Capture EXACTE"],
+    ["🏆", props.victoryLabel],
+    ["↻", `Tour ${props.roundProgress}`],
+  ];
+  return (
+    <div
+      onMouseDown={(event) => { if (event.target === event.currentTarget) props.onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 13050, display: "grid", placeItems: "center", padding: 18, background: "rgba(0,0,0,0.62)", backdropFilter: "blur(5px)" }}
+    >
+      <div style={{ width: "min(360px, 94vw)", borderRadius: 20, padding: 14, background: "rgba(7,12,21,0.97)", border: `1px solid ${props.color}88`, boxShadow: `0 0 26px ${props.color}44, 0 18px 54px rgba(0,0,0,.72)` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 11 }}>
+          <div style={{ color: props.color, fontSize: 14, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase", textShadow: `0 0 10px ${props.color}88` }}>Configuration de la partie</div>
+          <button type="button" onClick={props.onClose} aria-label="Fermer" style={{ width: 30, height: 30, borderRadius: 10, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.38)", border: `1px solid ${props.color}66`, fontSize: 18, cursor: "pointer" }}>×</button>
+        </div>
+        <div style={{ display: "grid", gap: 7 }}>
+          {rows.map(([icon, label]) => (
+            <div key={label} style={{ minHeight: 38, display: "grid", gridTemplateColumns: "38px minmax(0,1fr)", alignItems: "center", gap: 9, padding: "6px 9px", borderRadius: 12, background: `${props.color}0d`, border: `1px solid ${props.color}2f` }}>
+              <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color: props.color, background: "rgba(0,0,0,.35)", border: `1px solid ${props.color}55`, fontSize: 16, fontWeight: 1000 }}>{icon}</div>
+              <div style={{ fontSize: 11.5, lineHeight: 1.25, fontWeight: 900, color: "#fff" }}>{label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)", fontSize: 10.5, lineHeight: 1.4, color: "rgba(255,255,255,.78)" }}>
+          <strong style={{ color: props.color }}>Règles de lancer :</strong> Bull/DBull rejoue 1× {props.bullReplayEnabled ? "ACTIF" : "OFF"} · Miss passe le tour {props.missPassTurn ? "ACTIF" : "OFF"}. Le bouton VALIDER permet toujours d'arrêter la volée après 1, 2 ou 3 fléchettes.
+        </div>
+      </div>
     </div>
   );
 }
@@ -586,8 +690,7 @@ function TerritoryTargetSuggestions(props: {
       || Number(b.fortress) - Number(a.fortress)
       || a.needed - b.needed
       || a.territoryName.localeCompare(b.territoryName, undefined, { sensitivity: "base" })
-    ))
-    .slice(0, 25);
+    ));
   const fillCount = visibleBase.length >= 5 && visibleBase.length % 5 !== 0 ? (5 - (visibleBase.length % 5)) : 0;
   const visible = [...visibleBase, ...Array.from({ length: fillCount }, () => null as any)];
 
@@ -1381,24 +1484,24 @@ function TerritoryCaptureToast(props: {
               </div>
               <div
                 style={{
-                  width: 72,
-                  height: 72,
+                  width: 76,
+                  height: 76,
                   borderRadius: 999,
                   display: "grid",
                   placeItems: "center",
-                  border: `2px solid ${rightColor}`,
-                  background: "rgba(0,0,0,.45)",
-                  boxShadow: `0 0 18px ${rightColor}88`,
+                  background: "transparent",
+                  boxShadow: `0 0 0 1px ${rightColor}66, 0 0 16px ${rightColor}99, 0 0 30px ${rightColor}55`,
                   animation: "territoriesCapturedAvatarPulse 1.1s ease-in-out 2",
                 }}
               >
                 <ProfileAvatar
                   profile={rightProfile}
-                  size={68}
+                  size={76}
                   ringColor={rightColor}
                   textColor="#fff"
                   showStars={false}
                   showDartOverlay={false}
+                  noFrame
                 />
               </div>
               <div
@@ -1477,6 +1580,8 @@ const RULES_TEXT = (cfg: {
   valueTargetMin: number;
   valueTargetMax: number;
   themeColor: string;
+  bullReplayEnabled: boolean;
+  missPassTurn: boolean;
 }) => {
   const {
     gameMode,
@@ -1493,6 +1598,8 @@ const RULES_TEXT = (cfg: {
     valueTargetMin,
     valueTargetMax,
     themeColor,
+    bullReplayEnabled,
+    missPassTurn,
   } = cfg;
 
   const section = (title: string, lines: string[]) => (
@@ -1537,6 +1644,11 @@ const RULES_TEXT = (cfg: {
           "Un territoire protégé nécessite d’abord une réussite exacte pour briser la forteresse, puis une seconde réussite exacte pour le conquérir.",
         ])}
         {section("Cible", [selectionMode === "free" ? "Choix libre sur la carte avant la volée." : "Volée directe : aucune sélection obligatoire, le total de la volée désigne automatiquement le territoire correspondant."])}
+        {section("Lancer", [
+          "Tu peux appuyer sur VALIDER après 1, 2 ou 3 fléchettes : tu n’es jamais obligé de lancer les trois.",
+          bullReplayEnabled ? "Bull / Double Bull : donne une volée supplémentaire au même joueur, une seule fois." : "Bonus Bull / Double Bull : désactivé.",
+          missPassTurn ? "MISS (0) : termine immédiatement le tour et passe au joueur suivant." : "MISS (0) : compte simplement comme une fléchette à zéro.",
+        ])}
         {section("Victoire", [
           fortressVictoryMode === "conquest"
             ? "Conquête totale : posséder toute la carte."
@@ -1559,6 +1671,11 @@ const RULES_TEXT = (cfg: {
       {section("Valeurs des territoires", commonValues)}
       {section("Cible", [selectionMode === "free" ? "Choisis précisément la cible sur la carte avant la volée." : "Volée directe : joue immédiatement, le total de la volée désigne automatiquement le territoire correspondant."])}
       {section("Capture", ["" + cap, "Une volée contient de 1 à 3 fléchettes."])}
+      {section("Lancer", [
+        "Tu peux appuyer sur VALIDER après 1, 2 ou 3 fléchettes : tu n’es jamais obligé de lancer les trois.",
+        bullReplayEnabled ? "Bull / Double Bull : donne une volée supplémentaire au même joueur, une seule fois." : "Bonus Bull / Double Bull : désactivé.",
+        missPassTurn ? "MISS (0) : termine immédiatement le tour et passe au joueur suivant." : "MISS (0) : compte simplement comme une fléchette à zéro.",
+      ])}
       {section("Victoire", [
         victoryMode === "territories"
           ? `Atteindre ${winTerritories} territoires.`
@@ -1619,7 +1736,25 @@ export default function DepartementsPlay(props: any) {
     winTerritories: 10,
     winRegions: 3,
     timeLimitMin: 20,
+    bullReplayEnabled: false,
+    missPassTurn: false,
   };
+
+  const visualProfileById = React.useMemo(() => {
+    const out: Record<string, any> = { ...profileById };
+    for (const [id, meta] of Object.entries(effectiveCfg.participantProfiles || {})) {
+      if (out[id]) continue;
+      out[id] = {
+        id,
+        name: meta?.name || id,
+        avatarDataUrl: meta?.avatarDataUrl || null,
+        avatar: meta?.avatarDataUrl || null,
+        isBot: meta?.isBot === true,
+        botLevel: meta?.botLevel || null,
+      };
+    }
+    return out;
+  }, [profileById, JSON.stringify(effectiveCfg.participantProfiles)]);
 
   const mapId = String(effectiveCfg.mapId || "FR");
   const country = normalizeMapIdToCountry(mapId);
@@ -1662,6 +1797,14 @@ export default function DepartementsPlay(props: any) {
   );
   const winRegions = Math.max(1, Number(effectiveCfg.winRegions || (effectiveCfg as any).objectiveRegions || 3));
   const timeLimitMin = Math.max(1, Number(effectiveCfg.timeLimitMin || 20));
+  const bullReplayEnabled = effectiveCfg.bullReplayEnabled === true;
+  const missPassTurn = effectiveCfg.missPassTurn === true;
+  const victoryConfigKind: "value" | "territories" | "conquest" | "regions" | "time" = gameMode === "fortress"
+    ? fortressVictoryMode === "value" ? "value" : fortressVictoryMode === "conquest" ? "conquest" : "territories"
+    : victoryMode === "regions" ? "regions" : victoryMode === "time" ? "time" : "territories";
+  const victoryConfigLabel = gameMode === "fortress"
+    ? fortressVictoryMode === "value" ? "Victoire : valeur cumulée" : fortressVictoryMode === "conquest" ? "Victoire : conquête totale" : "Victoire : majorité de territoires"
+    : victoryMode === "regions" ? "Victoire : objectif régions" : victoryMode === "time" ? "Victoire : majorité au temps" : "Victoire : objectif territoires";
 
   const territoryValueCalibration = React.useMemo(() => {
     const savedAverage = Number(effectiveCfg.valueSkillAverage3);
@@ -1711,7 +1854,8 @@ export default function DepartementsPlay(props: any) {
         const team = builtTeams[teamIndex] || builtTeams[0]!;
         return {
           id,
-          name: profileById[id]?.name || profileById[id]?.displayName || shortName(id),
+          name: profileById[id]?.name || profileById[id]?.displayName || effectiveCfg.participantProfiles?.[id]?.name || shortName(id),
+          avatar: profileById[id]?.avatarDataUrl || profileById[id]?.avatar || effectiveCfg.participantProfiles?.[id]?.avatarDataUrl || undefined,
           color: team.color,
           teamId: team.id,
           capturedTerritories: [],
@@ -1725,7 +1869,8 @@ export default function DepartementsPlay(props: any) {
 
     const ps: TerritoriesPlayer[] = selected.map((id, i) => ({
       id,
-      name: profileById[id]?.name || profileById[id]?.displayName || shortName(id),
+      name: profileById[id]?.name || profileById[id]?.displayName || effectiveCfg.participantProfiles?.[id]?.name || shortName(id),
+      avatar: profileById[id]?.avatarDataUrl || profileById[id]?.avatar || effectiveCfg.participantProfiles?.[id]?.avatarDataUrl || undefined,
       color: OWNER_COLORS[i % OWNER_COLORS.length] || "#52f7ff",
       capturedTerritories: [],
     }));
@@ -1733,7 +1878,7 @@ export default function DepartementsPlay(props: any) {
     const colors: Record<string, string> = {};
     for (const p of ps) colors[p.id] = p.color;
     return { players: ps, teams: undefined as TerritoriesTeam[] | undefined, ownerColors: colors };
-  }, [effectiveCfg.teamSize, effectiveCfg.teamCount, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), profileById]);
+  }, [effectiveCfg.teamSize, effectiveCfg.teamCount, JSON.stringify(effectiveCfg.selectedIds), JSON.stringify(effectiveCfg.teamsById), JSON.stringify(effectiveCfg.participantProfiles), profileById]);
 
   const victoryCondition: TerritoriesVictoryCondition = React.useMemo(() => {
     if (gameMode === "fortress") {
@@ -1772,6 +1917,8 @@ export default function DepartementsPlay(props: any) {
         maxRounds,
         victoryCondition,
         voiceAnnouncements: false,
+        bullReplayEnabled,
+        missPassTurn,
         valueSkillAverage3: territoryValueCalibration.referenceAvg3,
         valueTargetMin: map.assignedValueMin ?? territoryValueCalibration.minTarget,
         valueTargetMax: map.assignedValueMax ?? territoryValueCalibration.maxTarget,
@@ -1795,7 +1942,7 @@ export default function DepartementsPlay(props: any) {
     // uniques et ignore donc automatiquement les territoires gris/non jouables.
     const distributed = gameMode === "fortress" ? initializeEqualTerritoryOwnership(base) : base;
     return normalizeTerritoriesState(distributed).state;
-  }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams, territoryValueCalibration]);
+  }, [country, gameMode, selectionMode, captureRule, maxRounds, maxFortressesPerOwner, victoryCondition, players, teams, territoryValueCalibration, bullReplayEnabled, missPassTurn]);
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
   const [captureToast, setCaptureToast] = React.useState<TerritoryCaptureToastData | null>(null);
@@ -1803,6 +1950,10 @@ export default function DepartementsPlay(props: any) {
   const submitLockRef = React.useRef(false);
   const backNavigationLockedRef = React.useRef(false);
   const lastCaptureVoiceIndexRef = React.useRef(-1);
+  const bullReplayOwnerRef = React.useRef<string | null>(null);
+  const botActingRef = React.useRef(false);
+  const victorySoundPlayedRef = React.useRef(false);
+  const [showConfigLegend, setShowConfigLegend] = React.useState(false);
 
   // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
@@ -1819,6 +1970,9 @@ export default function DepartementsPlay(props: any) {
     setCurrentThrow([]);
     setMultiplier(1);
     setCaptureToast(null);
+    bullReplayOwnerRef.current = null;
+    botActingRef.current = false;
+    victorySoundPlayedRef.current = false;
     if (captureToastTimerRef.current != null) {
       window.clearTimeout(captureToastTimerRef.current);
       captureToastTimerRef.current = null;
@@ -1836,6 +1990,16 @@ export default function DepartementsPlay(props: any) {
     () => game.players.find((p) => p.id === game.turn.activePlayerId),
     [game.players, game.turn.activePlayerId],
   );
+  const knownBotIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    try { for (const bot of loadBotPlayers()) if (bot?.id) ids.add(String(bot.id)); } catch {}
+    for (const id of effectiveCfg.selectedIds || []) {
+      const value = String(id || "");
+      if (effectiveCfg.participantProfiles?.[value]?.isBot || /^pro_/i.test(value) || /^bot[_:-]/i.test(value) || /^cpu[_:-]/i.test(value)) ids.add(value);
+    }
+    return ids;
+  }, [JSON.stringify(effectiveCfg.selectedIds)]);
+  const activeIsBot = knownBotIds.has(String(game.turn.activePlayerId));
   const themeColor = theme?.primary || "#F6C256";
   const activeColor = activePlayer?.color || themeColor;
   const activeOwnerId = activePlayer?.teamId || activePlayer?.id || "";
@@ -2065,7 +2229,7 @@ export default function DepartementsPlay(props: any) {
       const ownerId = String(player.teamId || player.id);
       if (!out[ownerId]) out[ownerId] = [];
       out[ownerId].push(
-        profileById[player.id] ?? {
+        visualProfileById[player.id] ?? {
           id: player.id,
           name: player.name,
           avatar: player.avatar,
@@ -2073,7 +2237,7 @@ export default function DepartementsPlay(props: any) {
       );
     }
     return out;
-  }, [game.players, profileById]);
+  }, [game.players, visualProfileById]);
 
   const selectedMapTerritoryCountryCode =
     country === "UN" || country === "FR"
@@ -2155,30 +2319,40 @@ export default function DepartementsPlay(props: any) {
     setShowMapModal(false);
   }
 
-  function playKeypadUi(kind: "tap" | "soft" | "confirm" = "tap") {
+  function playTerritoriesSfx(key: "dart_hit" | "triple" | "bull" | "dbull" | "victory") {
     try {
-      unlockAudio();
-      playSound(kind === "confirm" ? "ui-confirm" : kind === "soft" ? "ui-click-soft" : "ui-click");
+      x01EnsureAudioUnlocked();
+      void x01PlaySfxV3(key, { volume: key === "dart_hit" ? 0.58 : 0.82, rateLimitMs: 35 });
     } catch {}
   }
 
-  function validateThrow() {
-    if (submitLockRef.current) return;
-    submitLockRef.current = true;
-    setTimeout(() => (submitLockRef.current = false), 250);
-
+  function handleMissEndsTurn() {
     if (game.status !== "playing") return;
+    const activeId = game.turn.activePlayerId;
+    const dartsUsed = Math.max(1, Math.min(3, currentThrow.length + 1));
+    setPlayerStats((prev) => {
+      const out = { ...prev };
+      const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+      out[activeId] = { ...current, darts: current.darts + dartsUsed };
+      return out;
+    });
+    setCurrentThrow([]);
+    setMultiplier(1);
+    bullReplayOwnerRef.current = null;
+    const ended = endTurn(game).state;
+    setGame(ended);
+  }
 
-    // Free mode requires a selected territory
-    if (game.config.targetSelectionMode === "free" && !game.turn.selectedTerritoryId) return;
+  function resolveTerritoriesVisit(throwDarts: UIDart[], forcedTerritoryId?: string) {
+    if (game.status !== "playing") return;
+    const darts = [...throwDarts].slice(0, 3);
+    if (!darts.length) return;
 
-    const dartScores = computeVisitScores(currentThrow);
-
-    // Snapshot before applying
+    const dartScores = computeVisitScores(darts);
     const activeId = game.turn.activePlayerId;
     const activeOwner = getOwnerIdForPlayer(game, activeId) || activeId;
 
-    const r1 = applyVisit(game, dartScores);
+    const r1 = applyVisit(game, dartScores, forcedTerritoryId ? { territoryId: forcedTerritoryId } : undefined);
     if (r1.error) return;
     const next = r1.state;
 
@@ -2198,12 +2372,9 @@ export default function DepartementsPlay(props: any) {
         ? (UN_REGION_NAMES_FR[String(capturedTid)] || String(capturedTerritory?.name || capturedTid))
         : country === "FR"
           ? String(capturedTerritory?.name || capturedTid)
-          : getLocalizedTerritoryName(
-              capturedCode,
-              lang,
-              capturedTerritory?.name || capturedTid,
-            );
-      const playerName = activeOwnerLabel || activePlayer?.name || "Joueur";
+          : getLocalizedTerritoryName(capturedCode, lang, capturedTerritory?.name || capturedTid);
+      const currentPlayer = game.players.find((player) => player.id === activeId);
+      const currentOwnerLabel = game.teams?.find((team) => String(team.id) === String(activeOwner))?.name || currentPlayer?.name || "Joueur";
       const stolen = Boolean(beforeOwner && beforeOwner !== activeOwner);
       const previousOwnerName = beforeOwner
         ? game.teams?.find((team) => String(team.id) === String(beforeOwner))?.name
@@ -2216,11 +2387,8 @@ export default function DepartementsPlay(props: any) {
         : country === "FR"
           ? getFrenchDepartmentFlagUrl(capturedTid)
           : findTerritoryFlagByCountry(capturedCode);
-      const capturedFlagEmoji = country === "UN"
-        ? undefined
-        : country === "FR"
-          ? "🇫🇷"
-          : isoCodeToFlagEmoji(capturedCode);
+      const capturedFlagEmoji = country === "UN" ? undefined : country === "FR" ? "🇫🇷" : isoCodeToFlagEmoji(capturedCode);
+      const currentColor = currentPlayer?.color || themeColor;
 
       if (captureToastTimerRef.current != null) window.clearTimeout(captureToastTimerRef.current);
       setCaptureToast({
@@ -2230,12 +2398,12 @@ export default function DepartementsPlay(props: any) {
         svgPathId: capturedTerritory?.svgPathId,
         territoryName: capturedName,
         territoryValue: Number(capturedTerritory?.value) || 0,
-        capturerName: playerName,
+        capturerName: currentOwnerLabel,
         capturerPlayerId: activeId,
         previousOwnerName,
         previousOwnerPlayerId,
         stolen,
-        color: activeColor,
+        color: currentColor,
         previousOwnerColor,
         flagSrc: capturedFlagSrc,
         flagEmoji: capturedFlagEmoji,
@@ -2245,26 +2413,22 @@ export default function DepartementsPlay(props: any) {
         captureToastTimerRef.current = null;
       }, 3250);
 
-      try {
-        unlockAudio();
-        playGolfTickerSound("SIMPLE", 0.96);
-      } catch {}
-
-      const phrases = captureAnnouncementPhrases(lang, playerName, capturedName, stolen, previousOwnerName);
-      let phraseIndex = Math.floor(Math.random() * phrases.length);
-      if (phrases.length > 1 && phraseIndex === lastCaptureVoiceIndexRef.current) {
-        phraseIndex = (phraseIndex + 1) % phrases.length;
+      // Le ticker Golf ne sonne QUE lorsqu'un territoire est réellement volé à un adversaire.
+      if (stolen) {
+        try {
+          unlockAudio();
+          playGolfTickerSound("SIMPLE", 0.96);
+        } catch {}
       }
+
+      const phrases = captureAnnouncementPhrases(lang, currentOwnerLabel, capturedName, stolen, previousOwnerName);
+      let phraseIndex = Math.floor(Math.random() * phrases.length);
+      if (phrases.length > 1 && phraseIndex === lastCaptureVoiceIndexRef.current) phraseIndex = (phraseIndex + 1) % phrases.length;
       lastCaptureVoiceIndexRef.current = phraseIndex;
       const phrase = phrases[phraseIndex];
       if (phrase) {
         window.setTimeout(() => {
-          speak(phrase, {
-            lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR",
-            rate: 0.94,
-            pitch: 1.02,
-            interrupt: false,
-          });
+          speak(phrase, { lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR", rate: 0.94, pitch: 1.02, interrupt: false });
         }, 560);
       }
     }
@@ -2274,11 +2438,10 @@ export default function DepartementsPlay(props: any) {
       const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
       out[activeId] = {
         ...current,
-        darts: current.darts + 3,
+        darts: current.darts + darts.length,
         fortresses: current.fortresses + (fortressBuilt ? 1 : 0),
         breaches: current.breaches + (fortressBroken ? 1 : 0),
       };
-
       if (capturedEvent) {
         out[activeId] = {
           ...out[activeId],
@@ -2295,8 +2458,130 @@ export default function DepartementsPlay(props: any) {
 
     setCurrentThrow([]);
     setMultiplier(1);
-    setGame(next.status === "playing" ? endTurn(next).state : next);
+
+    // Toujours vérifier la victoire avant d'accorder une volée bonus Bull/DBull.
+    const endPreview = endTurn(next).state;
+    if (endPreview.status === "game_end") {
+      bullReplayOwnerRef.current = null;
+      setGame(endPreview);
+      return;
+    }
+
+    const hasBull = darts.some((dart) => dart.v === 25);
+    const canReplay = bullReplayEnabled && hasBull && bullReplayOwnerRef.current !== activeId;
+    if (canReplay) {
+      bullReplayOwnerRef.current = activeId;
+      const replayState = normalizeTerritoriesState(next).state;
+      setGame(replayState);
+      window.setTimeout(() => {
+        speak(lang === "fr" ? "Bull ! Tu rejoues une fois." : "Bull! One extra turn.", {
+          lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR",
+          rate: 0.96,
+          pitch: 1.02,
+          interrupt: false,
+        });
+      }, 260);
+      return;
+    }
+
+    bullReplayOwnerRef.current = null;
+    setGame(endPreview);
   }
+
+  function validateThrow() {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    window.setTimeout(() => (submitLockRef.current = false), 250);
+    if (game.status !== "playing" || currentThrow.length === 0) return;
+    if (game.config.targetSelectionMode === "free" && !game.turn.selectedTerritoryId) return;
+    resolveTerritoriesVisit(currentThrow, game.turn.selectedTerritoryId);
+  }
+
+  React.useEffect(() => {
+    if (game.status !== "game_end") {
+      victorySoundPlayedRef.current = false;
+      return;
+    }
+    if (victorySoundPlayedRef.current) return;
+    victorySoundPlayedRef.current = true;
+    try {
+      x01EnsureAudioUnlocked();
+      void x01PlaySfxV3("victory", { volume: 0.92, rateLimitMs: 250 });
+    } catch {}
+  }, [game.status]);
+
+  React.useEffect(() => {
+    if (game.status !== "playing" || !activeIsBot) {
+      botActingRef.current = false;
+      return;
+    }
+    if (botActingRef.current) return;
+    botActingRef.current = true;
+
+    const activeId = game.turn.activePlayerId;
+    const ownerId = getOwnerIdForPlayer(game, activeId) || activeId;
+    const level = /^pro_/i.test(activeId) ? "hard" : effectiveCfg.botLevel || "normal";
+    const successChance = level === "hard" ? 0.92 : level === "easy" ? 0.58 : 0.76;
+
+    const playable = game.map.territories.filter((territory) => territory.playable !== false);
+    const attackable = playable
+      .filter((territory) => territory.ownerId !== ownerId)
+      .filter((territory) => botVisitForTotal(Number(territory.value) || 0))
+      .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
+
+    const ownFortifiable = gameMode === "fortress"
+      ? playable
+          .filter((territory) => territory.ownerId === ownerId && territory.fortressOwnerId !== ownerId)
+          .filter((territory) => botVisitForTotal(Number(territory.value) || 0))
+          .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
+      : [];
+
+    let target = attackable[0];
+    if (ownFortifiable.length && Math.random() < 0.20) target = ownFortifiable[0];
+    const planned = target ? botVisitForTotal(Number(target.value) || 0) : null;
+    const succeeds = Boolean(target && planned && Math.random() <= successChance);
+    const darts = succeeds && planned ? planned : randomBotMissVisit();
+
+    const timers: number[] = [];
+    setCurrentThrow([]);
+    setMultiplier(1);
+
+    darts.forEach((dart, index) => {
+      timers.push(window.setTimeout(() => {
+        setCurrentThrow((prev) => [...prev, { ...dart }].slice(0, 3));
+        if (dart.v === 25 && dart.mult === 2) playTerritoriesSfx("dbull");
+        else if (dart.v === 25) playTerritoriesSfx("bull");
+        else if (dart.mult === 3) playTerritoriesSfx("triple");
+        else playTerritoriesSfx("dart_hit");
+      }, 500 + index * 420));
+    });
+
+    timers.push(window.setTimeout(() => {
+      if (succeeds && target) {
+        resolveTerritoriesVisit(darts, target.id);
+      } else {
+        setPlayerStats((prev) => {
+          const out = { ...prev };
+          const current = out[activeId] || { darts: 0, captures: 0, steals: 0, lost: 0, fortresses: 0, breaches: 0 };
+          out[activeId] = { ...current, darts: current.darts + darts.length };
+          return out;
+        });
+        setCurrentThrow([]);
+        setMultiplier(1);
+        bullReplayOwnerRef.current = null;
+        setGame(endTurn(game).state);
+      }
+      botActingRef.current = false;
+    }, 650 + darts.length * 420 + 420));
+
+    return () => {
+      // Ne pas annuler une animation en cours à cause d'un simple rerender du keypad.
+      // L'effet est réinstallé uniquement au changement de tour / joueur actif.
+      for (const timer of timers) window.clearTimeout(timer);
+      if (game.turn.activePlayerId !== activeId) botActingRef.current = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, activeIsBot]);
 
   const replay = React.useCallback(() => {
     setGame(initialState);
@@ -2627,7 +2912,7 @@ export default function DepartementsPlay(props: any) {
           ownerId={tt.ownerId}
           hasFortress={hasFortress}
           players={game.players}
-          profileById={profileById}
+          profileById={visualProfileById}
           ownerColor={ownerColor}
         />
       </button>
@@ -2757,10 +3042,10 @@ export default function DepartementsPlay(props: any) {
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} title="Retour à la configuration TERRITORIES" />}
-        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax, themeColor })} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT({ gameMode, fortressVictoryMode, selectionMode, captureRule, victoryMode, winTerritories, winRegions, timeLimitMin, maxRounds, maxFortressesPerOwner, valueDifficultyLabel: territoryValueCalibration.label, valueTargetMin: assignedValueMin, valueTargetMax: assignedValueMax, themeColor, bullReplayEnabled, missPassTurn })} />}
       />
 
-      <TerritoryCaptureToast data={captureToast} profileById={profileById} />
+      <TerritoryCaptureToast data={captureToast} profileById={visualProfileById} />
 
       {/* END OF MATCH MODAL */}
       {game.status === "game_end" && (
@@ -2784,7 +3069,7 @@ export default function DepartementsPlay(props: any) {
       <TerritoriesTurnCarousel
         players={game.players}
         activeId={game.turn.activePlayerId}
-        profileById={profileById}
+        profileById={visualProfileById}
         ownedByOwner={ownedByOwner}
         ownedValueByOwner={ownedValueByOwner}
       />
@@ -2831,7 +3116,7 @@ export default function DepartementsPlay(props: any) {
               {/* Same feel as X01V3: much larger, cropped on the right, heavy fade on the left */}
               <div style={{ transform: "scale(2.05)", transformOrigin: "center" }}>
                 <ProfileAvatar
-                  profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
+                  profile={visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar }}
                   size={210}
                   ringColor={activeColor}
                   textColor="#fff"
@@ -2877,7 +3162,7 @@ export default function DepartementsPlay(props: any) {
               }}
             >
               <ProfileAvatar
-                profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
+                profile={visualProfileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name, avatar: activePlayer?.avatar }}
                 size={82}
                 ringColor={activeColor}
                 textColor="#fff"
@@ -2909,7 +3194,7 @@ export default function DepartementsPlay(props: any) {
               dartsRemaining={dartsRemaining}
               accentColor={activeColor}
               players={game.players}
-              profileById={profileById}
+              profileById={visualProfileById}
               onSelect={(territoryId) => {
                 handleMapSelect(territoryId);
               }}
@@ -2940,6 +3225,10 @@ export default function DepartementsPlay(props: any) {
                 timeRemaining={timeRemaining}
                 compact
                 roundProgress={`${Math.max(1, Math.min(maxRounds, game.roundIndex || 1))}/${maxRounds}`}
+                selectionMode={selectionMode}
+                captureRule={captureRule}
+                victoryKind={victoryConfigKind}
+                onOpenLegend={() => setShowConfigLegend(true)}
               />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 5 }}>
                 <ProfileStatKpi label="Territoires" value={`${possessionsForActive}/${possessionsGoal}`} color={activeColor} />
@@ -2969,6 +3258,7 @@ export default function DepartementsPlay(props: any) {
           borderColor={`${activeColor}55`}
           glowColor={`${activeColor}22`}
           centerValue
+          watermarkSrc={targetBgUrl}
           onClick={!selectedTerritory ? () => setShowTerritoryListModal(true) : undefined}
         />
         <KpiCard
@@ -2994,7 +3284,7 @@ export default function DepartementsPlay(props: any) {
               ownerId={displayedTerritory?.ownerId}
               hasFortress={displayedTerritoryHasFortress}
               players={game.players}
-              profileById={profileById}
+              profileById={visualProfileById}
               ownerColor={displayedTerritoryOwnerColor}
               compact
             />
@@ -3221,6 +3511,20 @@ export default function DepartementsPlay(props: any) {
         </TerritoriesMapModal>
       )}
 
+      <TerritoriesConfigLegend
+        open={showConfigLegend}
+        onClose={() => setShowConfigLegend(false)}
+        color={activeColor}
+        teamMode={Boolean(teams?.length)}
+        fortressMode={gameMode === "fortress"}
+        selectionMode={selectionMode}
+        captureRule={captureRule}
+        victoryLabel={victoryConfigLabel}
+        roundProgress={`${Math.max(1, Math.min(maxRounds, game.roundIndex || 1))}/${maxRounds}`}
+        bullReplayEnabled={bullReplayEnabled}
+        missPassTurn={missPassTurn}
+      />
+
       <RulesModal
         open={showTerritoryListModal}
         onClose={() => setShowTerritoryListModal(false)}
@@ -3244,40 +3548,45 @@ export default function DepartementsPlay(props: any) {
           currentThrow={currentThrow}
           multiplier={multiplier}
           onSimple={() => {
-            playKeypadUi("soft");
+            playTerritoriesSfx("dart_hit");
             setMultiplier(1);
           }}
           onDouble={() => {
-            playKeypadUi("soft");
+            playTerritoriesSfx("dart_hit");
             setMultiplier(2);
           }}
           onTriple={() => {
-            playKeypadUi("soft");
+            playTerritoriesSfx("triple");
             setMultiplier(3);
           }}
           onNumber={(n) => {
-            playKeypadUi("tap");
+            playTerritoriesSfx("dart_hit");
+            if (n === 0 && missPassTurn) {
+              handleMissEndsTurn();
+              return;
+            }
             if (currentThrow.length >= 3) return;
             setCurrentThrow((prev) => [...prev, { v: n, mult: multiplier }]);
             setMultiplier(1);
           }}
           onBull={() => {
-            playKeypadUi("tap");
+            if (multiplier === 2) playTerritoriesSfx("dbull");
+            else playTerritoriesSfx("bull");
             if (currentThrow.length >= 3) return;
             setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier === 2 ? 2 : 1 }]);
             setMultiplier(1);
           }}
           onBackspace={() => {
-            playKeypadUi("soft");
+            playTerritoriesSfx("dart_hit");
             setCurrentThrow((prev) => prev.slice(0, -1));
           }}
           onCancel={() => {
-            playKeypadUi("soft");
+            playTerritoriesSfx("dart_hit");
             setCurrentThrow([]);
             setMultiplier(1);
           }}
           onValidate={() => {
-            playKeypadUi("confirm");
+            playTerritoriesSfx("dart_hit");
             validateThrow();
           }}
           // Territories: UI must stay compact; method tabs waste vertical space.

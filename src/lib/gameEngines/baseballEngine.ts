@@ -6,6 +6,7 @@ import type { GameDart, Player } from "../types-game";
 
 export type BaseballParticipantMode = "players" | "teams";
 export type BaseballSeventhInningRule = "none" | "halve_on_zero";
+export type BaseballBullTargetMode = "off" | "random" | "final";
 
 export type BaseballTeamConfig = {
   id: string;
@@ -31,6 +32,8 @@ export type BaseballConfigPayload = {
   extraInnings: boolean;
   maxExtraInnings: number;
   seventhInningRule: BaseballSeventhInningRule;
+  bullTargetMode?: BaseballBullTargetMode;
+  dbullRuns?: 2 | 3;
   randomOrder: boolean;
   scoreInputMethod?: "keypad" | "dartboard";
 };
@@ -41,6 +44,8 @@ export type BaseballRules = {
   extraInnings: boolean;
   maxExtraInnings: number;
   seventhInningRule: BaseballSeventhInningRule;
+  bullTargetMode: BaseballBullTargetMode;
+  dbullRuns: 2 | 3;
   participantMode: BaseballParticipantMode;
 };
 
@@ -99,6 +104,7 @@ export type BaseballState = {
   activePlayerIndex: number;
   inning: number;
   target: number;
+  targetSequence: number[];
   inningScoresByPlayer: Record<string, Record<number, number>>;
   totalsByPlayer: Record<string, number>;
   statsByPlayer: Record<string, BaseballPlayerStats>;
@@ -173,7 +179,7 @@ function emptyStats(): BaseballPlayerStats {
   };
 }
 
-function dartInfo(dart: GameDart, target: number) {
+function dartInfo(dart: GameDart, target: number, dbullRuns: 2 | 3) {
   if (!dart || dart.bed === "MISS") {
     return { label: "MISS", onBoard: false, targetHit: false, runs: 0, multiplier: 0 };
   }
@@ -181,7 +187,7 @@ function dartInfo(dart: GameDart, target: number) {
     return { label: "BULL", onBoard: true, targetHit: target === 25, runs: target === 25 ? 1 : 0, multiplier: 1 };
   }
   if (dart.bed === "IB") {
-    return { label: "DBULL", onBoard: true, targetHit: target === 25, runs: target === 25 ? 2 : 0, multiplier: 2 };
+    return { label: "DBULL", onBoard: true, targetHit: target === 25, runs: target === 25 ? dbullRuns : 0, multiplier: dbullRuns };
   }
   const number = clampInt(dart.number, 1, 20, 0);
   const multiplier = dart.bed === "T" ? 3 : dart.bed === "D" ? 2 : 1;
@@ -202,6 +208,7 @@ function cloneState(state: BaseballState): BaseballState {
     teams: state.teams.map((team) => ({ ...team, playerIds: [...team.playerIds] })),
     teamByPlayer: { ...state.teamByPlayer },
     turnOrder: [...state.turnOrder],
+    targetSequence: [...state.targetSequence],
     inningScoresByPlayer: Object.fromEntries(
       Object.entries(state.inningScoresByPlayer).map(([id, scores]) => [id, { ...scores }])
     ),
@@ -270,8 +277,47 @@ function shouldContinueAfterInning(state: BaseballState): boolean {
   return state.inning < state.rules.innings + state.rules.maxExtraInnings;
 }
 
-function targetForInning(inning: number): number {
-  return inning <= 20 ? inning : 25;
+function shuffled(values: number[]): number[] {
+  const out = [...values];
+  for (let index = out.length - 1; index > 0; index -= 1) {
+    const picked = Math.floor(Math.random() * (index + 1));
+    [out[index], out[picked]] = [out[picked], out[index]];
+  }
+  return out;
+}
+
+function buildTargetSequence(innings: number, maxExtraInnings: number, bullTargetMode: BaseballBullTargetMode): number[] {
+  const totalNeeded = Math.max(1, innings + maxExtraInnings);
+  const numbers = Array.from({ length: 20 }, (_, index) => index + 1);
+
+  if (bullTargetMode === "final") {
+    const regularBeforeBull = Math.max(0, innings - 1);
+    const shuffledNumbers = shuffled(numbers);
+    const regular = shuffledNumbers.slice(0, regularBeforeBull);
+    regular.push(25);
+    const used = new Set(regular);
+    const sequence = [...regular, ...shuffled(numbers.filter((value) => !used.has(value)))];
+    while (sequence.length < totalNeeded) {
+      const refill = shuffled(numbers).filter((value) => value !== sequence[sequence.length - 1]);
+      sequence.push(...refill);
+    }
+    return sequence.slice(0, totalNeeded);
+  }
+
+  const pool = bullTargetMode === "random" ? [...numbers, 25] : numbers;
+  const sequence = shuffled(pool);
+  if (sequence.length >= totalNeeded) return sequence.slice(0, totalNeeded);
+
+  // Sécurité si le format évolue un jour au-delà du nombre de secteurs uniques.
+  while (sequence.length < totalNeeded) {
+    const refill = shuffled(pool).filter((value) => value !== sequence[sequence.length - 1]);
+    sequence.push(...refill);
+  }
+  return sequence.slice(0, totalNeeded);
+}
+
+function targetForInning(state: Pick<BaseballState, "targetSequence">, inning: number): number {
+  return state.targetSequence[Math.max(0, inning - 1)] ?? 25;
 }
 
 export const BaseballEngine = {
@@ -283,6 +329,8 @@ export const BaseballEngine = {
     const players = normalizePlayers(playersInput);
     const innings = clampInt(rulesInput.innings, 1, 20, 9);
     const participantMode: BaseballParticipantMode = rulesInput.participantMode === "teams" ? "teams" : "players";
+    const bullTargetMode: BaseballBullTargetMode = rulesInput.bullTargetMode === "off" || rulesInput.bullTargetMode === "final" ? rulesInput.bullTargetMode : "random";
+    const dbullRuns: 2 | 3 = rulesInput.dbullRuns === 3 ? 3 : 2;
     const teams = participantMode === "teams" ? normalizeTeams(players, teamConfigs) : [];
     const teamByPlayer: Record<string, string> = {};
     teams.forEach((team) => team.playerIds.forEach((id) => { teamByPlayer[id] = team.id; }));
@@ -290,6 +338,8 @@ export const BaseballEngine = {
     const inningScoresByPlayer = Object.fromEntries(players.map((player) => [player.id, {}]));
     const totalsByPlayer = Object.fromEntries(players.map((player) => [player.id, 0]));
     const statsByPlayer = Object.fromEntries(players.map((player) => [player.id, emptyStats()]));
+    const maxExtraInnings = clampInt(rulesInput.maxExtraInnings, 1, 10, 3);
+    const targetSequence = buildTargetSequence(innings, maxExtraInnings, bullTargetMode);
     const state: BaseballState = {
       sport: "darts",
       mode: "baseball",
@@ -297,8 +347,10 @@ export const BaseballEngine = {
         mode: "baseball",
         innings,
         extraInnings: rulesInput.extraInnings !== false,
-        maxExtraInnings: clampInt(rulesInput.maxExtraInnings, 1, Math.max(1, 20 - innings), Math.max(1, 20 - innings)),
+        maxExtraInnings,
         seventhInningRule: rulesInput.seventhInningRule === "halve_on_zero" ? "halve_on_zero" : "none",
+        bullTargetMode,
+        dbullRuns,
         participantMode,
       },
       players,
@@ -307,7 +359,8 @@ export const BaseballEngine = {
       turnOrder,
       activePlayerIndex: 0,
       inning: 1,
-      target: 1,
+      target: targetSequence[0] ?? 1,
+      targetSequence,
       inningScoresByPlayer,
       totalsByPlayer,
       statsByPlayer,
@@ -337,7 +390,7 @@ export const BaseballEngine = {
 
     stats.visits += 1;
     for (const dart of darts) {
-      const info = dartInfo(dart, next.target);
+      const info = dartInfo(dart, next.target, next.rules.dbullRuns);
       labels.push(info.label);
       stats.darts += 1;
       if (info.onBoard) stats.hits += 1;
@@ -405,7 +458,7 @@ export const BaseballEngine = {
     }
 
     next.inning += 1;
-    next.target = targetForInning(next.inning);
+    next.target = targetForInning(next, next.inning);
     next.activePlayerIndex = 0;
     return next;
   },
@@ -419,4 +472,5 @@ export const BaseballEngine = {
   },
 
   targetForInning,
+  buildTargetSequence,
 };

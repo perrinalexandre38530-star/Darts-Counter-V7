@@ -71,6 +71,9 @@ export interface TerritoriesConfig {
   maxRounds: number;
   victoryCondition: TerritoriesVictoryCondition;
   voiceAnnouncements: boolean;
+  // Règles spéciales optionnelles de lancer.
+  bullReplayEnabled?: boolean;
+  missPassTurn?: boolean;
   // Calibration automatique des valeurs selon le niveau du groupe.
   valueSkillAverage3?: number;
   valueTargetMin?: number;

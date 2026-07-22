@@ -11,6 +11,7 @@ import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import { useTheme } from "../contexts/ThemeContext";
 import { useBaseballEngine } from "../hooks/useBaseballEngine";
 import type {
   BaseballConfigPayload,
@@ -21,14 +22,12 @@ import type {
 import tickerBaseball from "../assets/tickers/ticker_baseball.png";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
-type InputMethod = "keypad" | "dartboard";
-
 const T = {
   bg: "#040710",
-  panel: "#101827",
-  stroke: "rgba(255,255,255,.105)",
-  text: "#f8fafc",
-  soft: "rgba(226,232,240,.72)",
+  panel: "var(--dc-card,#101827)",
+  stroke: "var(--stroke,rgba(255,255,255,.105))",
+  text: "var(--dc-text,#f8fafc)",
+  soft: "var(--muted,rgba(226,232,240,.72))",
   cyan: "#42d6ff",
   gold: "#ffd76a",
   green: "#65efb4",
@@ -63,9 +62,9 @@ function dartLabel(dart: UiDart) {
   return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
 }
 
-function visitRuns(darts: UiDart[], target: number) {
+function visitRuns(darts: UiDart[], target: number, dbullRuns: 2 | 3 = 2) {
   return (darts || []).reduce((total, dart) => {
-    if (target === 25 && dart.v === 25) return total + (dart.mult === 2 ? 2 : 1);
+    if (target === 25 && dart.v === 25) return total + (dart.mult === 2 ? dbullRuns : 1);
     if (dart.v !== target) return total;
     return total + (dart.mult === 3 ? 3 : dart.mult === 2 ? 2 : 1);
   }, 0);
@@ -95,14 +94,15 @@ function randomBotVisit(target: number, level: string): UiDart[] {
   });
 }
 
-function RulesContent({ config }: { config: BaseballConfigPayload }) {
+function RulesContent({ config, primary = T.cyan, secondary = T.gold }: { config: BaseballConfigPayload; primary?: string; secondary?: string }) {
   return (
     <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
-      <div><strong style={{ color: T.cyan }}>CIBLE</strong><br />Manche N = cible N. Seuls les impacts sur cette cible comptent.</div>
-      <div><strong style={{ color: T.gold }}>RUNS</strong><br />Simple = 1, Double = 2, Triple = 3. Trois fléchettes par passage.</div>
+      <div><strong style={{ color: primary }}>CIBLE</strong><br />Chaque manche utilise une cible tirée aléatoirement parmi les secteurs disponibles, sans répétition tant que possible.</div>
+      <div><strong style={{ color: secondary }}>RUNS</strong><br />Simple = 1, Double = 2, Triple = 3. Trois fléchettes par passage.</div>
       <div><strong style={{ color: T.green }}>FORMAT</strong><br />{config.innings} manches{config.extraInnings ? `, puis jusqu’à ${config.maxExtraInnings} manche${config.maxExtraInnings > 1 ? "s" : ""} supplémentaire${config.maxExtraInnings > 1 ? "s" : ""} si nécessaire` : " sans manche supplémentaire"}.</div>
+      <div><strong style={{ color: primary }}>BULL / DBULL</strong><br />{config.bullTargetMode === "off" ? "Le BULL est exclu des cibles." : config.bullTargetMode === "final" ? "Le BULL est imposé à la dernière manche réglementaire." : "Le BULL peut sortir dans le tirage aléatoire."} Sur une cible BULL : BULL = 1 run et DBULL = {config.dbullRuns === 3 ? "3 runs (Home Run)" : "2 runs"}.</div>
       {config.seventhInningRule === "halve_on_zero" ? <div><strong style={{ color: T.pink }}>7e MANCHE</strong><br />0 run pendant la 7e manche divise le total du joueur par deux.</div> : null}
-      <div><strong style={{ color: T.cyan }}>ANNULER</strong><br />Avec une volée vide, ANNULER restaure le passage précédent. Avec une volée en cours, il retire la dernière fléchette.</div>
+      <div><strong style={{ color: primary }}>ANNULER</strong><br />Avec une volée vide, ANNULER restaure le passage précédent. Avec une volée en cours, il retire la dernière fléchette.</div>
     </div>
   );
 }
@@ -124,12 +124,15 @@ function normalizeConfig(props: any): BaseballConfigPayload {
     extraInnings: raw?.extraInnings !== false,
     maxExtraInnings: Math.max(1, Number(raw?.maxExtraInnings || 3)),
     seventhInningRule: raw?.seventhInningRule === "halve_on_zero" ? "halve_on_zero" : "none",
+    bullTargetMode: raw?.bullTargetMode === "off" || raw?.bullTargetMode === "final" ? raw.bullTargetMode : "random",
+    dbullRuns: raw?.dbullRuns === 3 ? 3 : 2,
     randomOrder: Boolean(raw?.randomOrder),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
   };
 }
 
 export default function BaseballPlay(props: any) {
+  const { theme } = useTheme();
   const config = React.useMemo(() => normalizeConfig(props), []);
   const store = props?.store;
   const go = props?.go ?? props?.setTab;
@@ -164,11 +167,12 @@ export default function BaseballPlay(props: any) {
     extraInnings: config.extraInnings,
     maxExtraInnings: config.maxExtraInnings,
     seventhInningRule: config.seventhInningRule,
+    bullTargetMode: config.bullTargetMode,
+    dbullRuns: config.dbullRuns,
     participantMode: config.participantMode,
-  }), [config.innings, config.extraInnings, config.maxExtraInnings, config.seventhInningRule, config.participantMode]);
+  }), [config.innings, config.extraInnings, config.maxExtraInnings, config.seventhInningRule, config.bullTargetMode, config.dbullRuns, config.participantMode]);
   const { state, play, undo, reset, canUndo, isFinished } = useBaseballEngine(profiles as any, rules, teamConfigs);
 
-  const [inputMethod, setInputMethod] = React.useState<InputMethod>(config.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
   const [showEnd, setShowEnd] = React.useState(false);
@@ -187,7 +191,12 @@ export default function BaseballPlay(props: any) {
   const activeStats = state?.statsByPlayer?.[String(activePlayer?.id || "")] || emptyStats();
   const activeTeamId = state?.teamByPlayer?.[String(activePlayer?.id || "")] || null;
   const activeTeam = activeTeamId ? teamById.get(activeTeamId) : null;
-  const accent = activeTeam?.color || T.cyan;
+  const primary = theme?.primary || T.cyan;
+  const secondary = theme?.accent1 || primary;
+  const themeText = theme?.text || T.text;
+  const themeSoft = theme?.textSoft || T.soft;
+  const themeStroke = theme?.borderSoft || T.stroke;
+  const accent = activeTeam?.color || primary;
   const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
 
   React.useEffect(() => {
@@ -326,6 +335,7 @@ export default function BaseballPlay(props: any) {
       innings: state.inning,
       regularInnings: state.rules.innings,
       extraInningsPlayed: Math.max(0, state.inning - state.rules.innings),
+      targetSequence: [...state.targetSequence],
       duration: Math.max(0, now - state.startedAt),
       standings: state.standings,
       rankings: state.standings,
@@ -367,6 +377,7 @@ export default function BaseballPlay(props: any) {
         state: {
           inning: state.inning,
           target: state.target,
+          targetSequence: [...state.targetSequence],
           totalsByPlayer: state.totalsByPlayer,
           inningScoresByPlayer: state.inningScoresByPlayer,
           standings: state.standings,
@@ -406,14 +417,14 @@ export default function BaseballPlay(props: any) {
     setShowEnd(false);
   }
 
-  const previewRuns = visitRuns(throwDarts, state.target);
+  const previewRuns = visitRuns(throwDarts, state.target, config.dbullRuns === 3 ? 3 : 2);
   const shownInnings = Array.from({ length: Math.max(state.rules.innings, state.inning) }, (_, index) => index + 1);
 
   return (
-    <div style={{ minHeight: "100dvh", color: T.text, background: "radial-gradient(circle at 50% -5%, #203757 0, #080c17 44%, #020309 100%)", paddingBottom: 34, overflowX: "hidden" }}>
-      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" />} right={<InfoDot title="Règles du Baseball Darts" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent config={config} />} />} />
+    <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 34, overflowX: "hidden" }}>
+      <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" />} right={<InfoDot title="Règles du Baseball Darts" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} secondary={secondary} />} />} />
 
-      <div style={{ padding: "10px 10px 0", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+      <div style={{ padding: "8px 4px 0", width: "100vw", maxWidth: "100vw", marginLeft: "calc(50% - 50vw)", boxSizing: "border-box" }}>
         <section style={{ ...panelStyle(), marginBottom: 10, padding: 12, borderColor: `${accent}77`, boxShadow: `0 0 24px ${accent}24` }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -424,45 +435,48 @@ export default function BaseballPlay(props: any) {
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1 }}>{botThinking ? "BOT EN RÉFLEXION" : "AU LANCER"}</div>
                 <div style={{ marginTop: 2, fontSize: 17, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-                {activeTeam ? <div style={{ marginTop: 2, color: T.soft, fontSize: 10.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeTeam.name}</div> : null}
+                {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 10.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeTeam.name}</div> : null}
               </div>
             </div>
             <div style={{ textAlign: "center", minWidth: 96 }}>
-              <div style={{ color: T.soft, fontSize: 9.5, fontWeight: 1000, letterSpacing: 1 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " • EXTRA" : ""}</div>
-              <div style={{ color: T.gold, fontSize: 38, lineHeight: 1, fontWeight: 1100, textShadow: "0 0 18px rgba(255,215,106,.62)", marginTop: 4 }}>{state.target === 25 ? "BULL" : state.target}</div>
-              <div style={{ color: T.soft, fontSize: 9, fontWeight: 900, marginTop: 3 }}>CIBLE</div>
+              <div style={{ color: themeSoft, fontSize: 9.5, fontWeight: 1000, letterSpacing: 1 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " • EXTRA" : ""}</div>
+              <div style={{ color: secondary, fontSize: 38, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88`, marginTop: 4 }}>{state.target === 25 ? "BULL" : state.target}</div>
+              <div style={{ color: themeSoft, fontSize: 9, fontWeight: 900, marginTop: 3 }}>CIBLE</div>
             </div>
           </div>
         </section>
 
         <section style={{ ...panelStyle(), marginBottom: 10, padding: 10, overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
-            <div style={{ color: T.cyan, fontSize: 11, fontWeight: 1000, letterSpacing: 1 }}>TABLEAU DES MANCHES</div>
-            <div style={{ color: T.soft, fontSize: 9.5 }}>Glisser horizontalement</div>
+            <div style={{ color: primary, fontSize: 11, fontWeight: 1000, letterSpacing: 1 }}>TABLEAU DES MANCHES</div>
+            <div style={{ color: themeSoft, fontSize: 9.5 }}>Glisser horizontalement</div>
           </div>
-          <div style={{ overflowX: "auto", borderRadius: 13, border: `1px solid ${T.stroke}` }} className="dc-scroll-thin">
-            <table style={{ width: "100%", minWidth: Math.max(520, 160 + shownInnings.length * 43), borderCollapse: "collapse", fontSize: 11 }}>
+          <div style={{ overflowX: "auto", borderRadius: 13, border: `1px solid ${themeStroke}` }} className="dc-scroll-thin">
+            <table style={{ width: "100%", minWidth: Math.max(500, 86 + shownInnings.length * 48 + 58), borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
-                <tr style={{ background: "rgba(66,214,255,.08)", color: T.cyan }}>
-                  <th style={{ ...thStyle(), position: "sticky", left: 0, zIndex: 3, background: "#101827", minWidth: 126, textAlign: "left" }}>JOUEUR / ÉQUIPE</th>
-                  {shownInnings.map((inning) => <th key={inning} style={thStyle()}>{inning}</th>)}
-                  <th style={{ ...thStyle(), color: T.gold, minWidth: 54 }}>TOTAL</th>
+                <tr style={{ background: `${primary}12`, color: primary }}>
+                  <th style={{ ...thStyle(), position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#101827", minWidth: 74, width: 74, textAlign: "center" }}>PROFIL</th>
+                  {shownInnings.map((inning) => {
+                    const target = state.targetSequence?.[inning - 1];
+                    return <th key={inning} style={{ ...thStyle(), minWidth: 48 }}><div style={{ fontSize: 8, opacity: .7 }}>M{inning}</div><div style={{ color: secondary, fontSize: 10.5, marginTop: 1 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
+                  })}
+                  <th style={{ ...thStyle(), color: secondary, minWidth: 54 }}>TOTAL</th>
                 </tr>
               </thead>
               <tbody>
                 {state.standings.map((standing) => {
                   const activeEntityId = config.participantMode === "teams" ? activeTeamId : activePlayer?.id;
                   const active = standing.id === activeEntityId;
-                  const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || T.cyan : active ? accent : T.text;
+                  const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || primary : active ? accent : themeText;
                   return (
                     <tr key={standing.id} style={{ background: active ? `${color}12` : "rgba(255,255,255,.018)" }}>
-                      <td style={{ ...tdStyle(), position: "sticky", left: 0, zIndex: 2, background: active ? "#152338" : "#0d1421", color, fontWeight: 1000, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", borderLeft: active ? `3px solid ${color}` : "3px solid transparent" }}>{standing.rank}. {standing.name}</td>
+                      <td style={{ ...tdStyle(), position: "sticky", left: 0, zIndex: 2, background: active ? `${primary}18` : (theme?.card || "#0d1421"), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent" }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
                       {shownInnings.map((inning) => {
                         const value = entityInningScore(standing, inning);
                         const played = standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
                         return <td key={inning} style={{ ...tdStyle(), color: played ? value > 0 ? T.green : "rgba(255,255,255,.46)" : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750 }}>{played ? value : "·"}</td>;
                       })}
-                      <td style={{ ...tdStyle(), color: T.gold, fontSize: 16, fontWeight: 1100 }}>{standing.total}</td>
+                      <td style={{ ...tdStyle(), color: secondary, fontSize: 16, fontWeight: 1100 }}>{standing.total}</td>
                     </tr>
                   );
                 })}
@@ -474,20 +488,22 @@ export default function BaseballPlay(props: any) {
         <section style={{ ...panelStyle(), marginBottom: 10, padding: 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
             <MiniKpi label="RUNS" value={activeStats.runs} color={accent} />
-            <MiniKpi label="BEST" value={activeStats.bestInning} color={T.gold} />
+            <MiniKpi label="BEST" value={activeStats.bestInning} color={secondary} />
             <MiniKpi label="HITS CIBLE" value={activeStats.targetHits} color={T.green} />
-            <MiniKpi label="PRÉCISION" value={`${percent(activeStats.targetHits, activeStats.darts)}%`} color={T.cyan} />
+            <MiniKpi label="PRÉCISION" value={`${percent(activeStats.targetHits, activeStats.darts)}%`} color={primary} />
           </div>
-          <div style={{ marginTop: 7, color: T.soft, fontSize: 10.5, textAlign: "center" }}>Darts {activeStats.darts} • S {activeStats.singles} • D {activeStats.doubles} • T {activeStats.triples} • Hors cible {activeStats.wastedDarts} • Miss {activeStats.misses}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(72px,1fr))", gap: 6, marginTop: 6 }}>
+            <MiniKpi label="DARTS" value={activeStats.darts} color={primary} />
+            <MiniKpi label="SIMPLES" value={activeStats.singles} color={themeText} />
+            <MiniKpi label="DOUBLES" value={activeStats.doubles} color="#31c9ef" />
+            <MiniKpi label="TRIPLES" value={activeStats.triples} color="#c24cff" />
+            <MiniKpi label="HORS CIBLE" value={activeStats.wastedDarts} color={secondary} />
+            <MiniKpi label="MISS" value={activeStats.misses} color={T.red} />
+          </div>
         </section>
 
         <section style={{ ...panelStyle(), padding: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-            <InputTab active={inputMethod === "keypad"} color={T.gold} onClick={() => setInputMethod("keypad")} disabled={state.finished || botThinking}>KEYPAD</InputTab>
-            <InputTab active={inputMethod === "dartboard"} color={T.cyan} onClick={() => setInputMethod("dartboard")} disabled={state.finished || botThinking}>CIBLE</InputTab>
-          </div>
-
-          {inputMethod === "dartboard" ? (
+          {config.scoreInputMethod === "dartboard" ? (
             <div style={{ padding: "2px 0 10px" }}>
               <DartboardClickable multiplier={multiplier} disabled={state.finished || botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
@@ -515,14 +531,14 @@ export default function BaseballPlay(props: any) {
                 onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
                 onValidate={validateVisit}
                 hidePreview={false}
-                centerSlot={<div style={{ color: previewRuns ? T.green : T.soft, fontSize: 19, fontWeight: 1100, whiteSpace: "nowrap" }}>+{previewRuns} R</div>}
+                centerSlot={<div style={{ color: previewRuns ? T.green : themeSoft, fontSize: 19, fontWeight: 1100, whiteSpace: "nowrap" }}>+{previewRuns} R</div>}
               />
             </div>
           )}
         </section>
       </div>
 
-      {showEnd && state.finished ? <EndModal state={state} profilesById={byId} teamById={teamById} onClose={() => setShowEnd(false)} onSave={saveAndQuit} onReplay={saveAndReplay} /> : null}
+      {showEnd && state.finished ? <EndModal state={state} profilesById={byId} teamById={teamById} primary={primary} secondary={secondary} onClose={() => setShowEnd(false)} onSave={saveAndQuit} onReplay={saveAndReplay} /> : null}
     </div>
   );
 }
@@ -543,8 +559,38 @@ function MiniKpi({ label, value, color }: { label: string; value: React.ReactNod
   return <div style={{ padding: "7px 4px", borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${T.stroke}`, minWidth: 0 }}><div style={{ color: T.soft, fontSize: 8.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ color, fontSize: 15, fontWeight: 1000, marginTop: 2 }}>{value}</div></div>;
 }
 
-function InputTab({ active, color, onClick, disabled, children }: any) {
-  return <button type="button" onClick={onClick} disabled={disabled} style={{ height: 40, borderRadius: 999, border: `1px solid ${active ? color : T.stroke}`, background: active ? `${color}18` : "rgba(255,255,255,.035)", color: active ? color : T.text, fontWeight: 1000, letterSpacing: 1, boxShadow: active ? `0 0 14px ${color}38` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .5 : 1 }}>{children}</button>;
+
+function StandingMedallion({ standing, participantMode, profilesById, teamById, color }: any) {
+  const title = standing?.name || "Participant";
+  const badge = (
+    <span style={{ position: "absolute", right: -3, bottom: -2, minWidth: 17, height: 17, padding: "0 4px", display: "grid", placeItems: "center", borderRadius: 999, background: "#05070c", border: `1px solid ${color}`, color, fontSize: 8, fontWeight: 1100, boxShadow: `0 0 8px ${color}55` }}>
+      {standing?.rank || 1}
+    </span>
+  );
+
+  if (participantMode === "teams") {
+    const team = teamById.get(String(standing?.id || ""));
+    const logo = team?.logoDataUrl || team?.logoUrl || team?.logo || null;
+    const initials = String(team?.name || standing?.name || "EQ").split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase();
+    return (
+      <div title={title} aria-label={title} style={{ width: 44, height: 44, margin: "0 auto", position: "relative" }}>
+        <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: `${color}18`, border: `2px solid ${color}`, boxShadow: `0 0 12px ${color}44`, color, fontWeight: 1100, fontSize: 11 }}>
+          {logo ? <img src={logo} alt={title} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : initials || "EQ"}
+        </div>
+        {badge}
+      </div>
+    );
+  }
+
+  const playerId = String(standing?.playerIds?.[0] || standing?.id || "");
+  const profile = profilesById.get(playerId) || { id: playerId, name: title };
+  return (
+    <div title={title} aria-label={title} style={{ width: 46, height: 46, margin: "0 auto", position: "relative" }}>
+      <div style={{ position: "absolute", inset: 5 }}><ProfileAvatar profile={profile} size={36} /></div>
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={profile} size={46} glow /></div>
+      {badge}
+    </div>
+  );
 }
 
 function ModeButton({ label, color, active, onClick, disabled }: any) {
@@ -559,7 +605,7 @@ function VisitStrip({ darts, activeName, runs, color, botThinking }: any) {
   return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, minHeight: 48, padding: "8px 10px", borderRadius: 15, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.20)", marginTop: 9 }}><div style={{ minWidth: 0 }}><div style={{ fontSize: 10, color: T.soft, fontWeight: 900 }}>{botThinking ? "BOT EN RÉFLEXION" : `VOLÉE DE ${activeName}`}</div><div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{botThinking ? "…" : darts.length ? darts.map(dartLabel).join(" • ") : "—"}</div></div><div style={{ color, fontSize: 19, fontWeight: 1100, whiteSpace: "nowrap" }}>+{runs} R</div></div>;
 }
 
-function EndModal({ state, profilesById, teamById, onClose, onSave, onReplay }: any) {
+function EndModal({ state, profilesById, teamById, primary = T.cyan, secondary = T.gold, onClose, onSave, onReplay }: any) {
   const winnerLabel = state.tied ? "ÉGALITÉ" : `${state.standings[0]?.name || "—"} GAGNE`;
   const rows = state.players.map((player: any) => ({
     player,
@@ -576,11 +622,11 @@ function EndModal({ state, profilesById, teamById, onClose, onSave, onReplay }: 
   ];
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px,96vw)", maxHeight: "89dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16283d,#070a12)", border: `1px solid ${state.tied ? T.cyan : T.gold}99`, boxShadow: `0 0 34px ${state.tied ? T.cyan : T.gold}30` }}>
-        <div style={{ textAlign: "center" }}><div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU BASEBALL • {state.inning} MANCHE{state.inning > 1 ? "S" : ""}</div><div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000, color: state.tied ? T.cyan : T.gold, textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div></div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, margin: "14px 0" }}>{state.standings.map((standing: BaseballStanding) => <div key={standing.id} style={{ padding: 11, borderRadius: 15, textAlign: "center", border: `1px solid ${standing.rank === 1 ? T.gold : T.stroke}`, background: standing.rank === 1 ? "rgba(255,215,106,.12)" : "rgba(255,255,255,.035)" }}><div style={{ color: standing.rank === 1 ? T.gold : T.soft, fontSize: 10, fontWeight: 1000 }}>{standing.rank}. {standing.name}</div><div style={{ fontSize: 29, fontWeight: 1100, marginTop: 2 }}>{standing.total}</div><div style={{ color: T.soft, fontSize: 9 }}>RUNS</div></div>)}</div>
-        <div style={{ fontSize: 12, color: T.cyan, fontWeight: 1000, marginBottom: 7 }}>STATISTIQUES COMPLÈTES</div>
-        <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}` }}><table style={{ width: "100%", minWidth: 940, borderCollapse: "collapse", fontSize: 11 }}><thead><tr style={{ color: T.cyan, background: "rgba(66,214,255,.08)", textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead><tbody>{rows.map((row: any) => <tr key={row.player.id}>{columns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Équipe" ? row.team?.color || T.text : T.text }}>{read(row)}</td>)}</tr>)}</tbody></table></div>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px,96vw)", maxHeight: "89dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16283d,#070a12)", border: `1px solid ${state.tied ? primary : secondary}99`, boxShadow: `0 0 34px ${state.tied ? primary : secondary}30` }}>
+        <div style={{ textAlign: "center" }}><div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU BASEBALL • {state.inning} MANCHE{state.inning > 1 ? "S" : ""}</div><div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000, color: state.tied ? primary : secondary, textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, margin: "14px 0" }}>{state.standings.map((standing: BaseballStanding) => <div key={standing.id} style={{ padding: 11, borderRadius: 15, textAlign: "center", border: `1px solid ${standing.rank === 1 ? secondary : T.stroke}`, background: standing.rank === 1 ? `${secondary}18` : "rgba(255,255,255,.035)" }}><div style={{ color: standing.rank === 1 ? secondary : T.soft, fontSize: 10, fontWeight: 1000 }}>{standing.rank}. {standing.name}</div><div style={{ fontSize: 29, fontWeight: 1100, marginTop: 2 }}>{standing.total}</div><div style={{ color: T.soft, fontSize: 9 }}>RUNS</div></div>)}</div>
+        <div style={{ fontSize: 12, color: primary, fontWeight: 1000, marginBottom: 7 }}>STATISTIQUES COMPLÈTES</div>
+        <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}` }}><table style={{ width: "100%", minWidth: 940, borderCollapse: "collapse", fontSize: 11 }}><thead><tr style={{ color: primary, background: `${primary}12`, textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead><tbody>{rows.map((row: any) => <tr key={row.player.id}>{columns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Équipe" ? row.team?.color || T.text : T.text }}>{read(row)}</td>)}</tr>)}</tbody></table></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}><ActionButton label="SAUVER & QUITTER" color={T.red} onClick={onSave} disabled={false} /><ActionButton label="SAUVER & REJOUER" color={T.green} onClick={onReplay} disabled={false} /></div>
         <button type="button" onClick={onClose} style={{ width: "100%", minHeight: 42, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LE TABLEAU</button>
       </div>

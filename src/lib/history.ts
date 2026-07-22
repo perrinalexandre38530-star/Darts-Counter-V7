@@ -1237,14 +1237,73 @@ function parseHistoryLocalStorage(raw: string | null): any[] {
   return [];
 }
 
+function _historyStorageGet(storage: Storage | undefined | null): string | null {
+  try {
+    return storage?.getItem(scopedHistoryLsKey()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function _historyRowsMerge(...groups: SavedMatch[][]): SavedMatch[] {
+  const byId = new Map<string, SavedMatch>();
+  for (const group of groups) {
+    for (const raw of group || []) {
+      const rec: any = raw || {};
+      const id = String(rec?.matchId ?? rec?.id ?? rec?.resumeId ?? "").trim();
+      if (!id) continue;
+      const prev: any = byId.get(id);
+      const nextTs = Number(rec?.updatedAt ?? rec?.createdAt ?? rec?.finishedAt ?? 0);
+      const prevTs = Number(prev?.updatedAt ?? prev?.createdAt ?? prev?.finishedAt ?? 0);
+      if (!prev || nextTs >= prevTs) byId.set(id, rec as SavedMatch);
+    }
+  }
+  return Array.from(byId.values()).sort(
+    (a: any, b: any) =>
+      Number(b?.updatedAt ?? b?.createdAt ?? 0) - Number(a?.updatedAt ?? a?.createdAt ?? 0)
+  );
+}
+
 function readLegacyRowsSafe(): SavedMatch[] {
   try {
-    const raw = localStorage.getItem(scopedHistoryLsKey());
-    const rows = parseHistoryLocalStorage(raw);
-    return Array.isArray(rows) ? (rows as SavedMatch[]) : [];
+    const localRows = parseHistoryLocalStorage(
+      _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null)
+    ) as SavedMatch[];
+    const sessionRows = parseHistoryLocalStorage(
+      _historyStorageGet(typeof sessionStorage !== "undefined" ? sessionStorage : null)
+    ) as SavedMatch[];
+    return _historyRowsMerge(localRows, sessionRows);
   } catch {
     return [];
   }
+}
+
+function writeLegacyRowsSafe(rows: SavedMatch[]): "local" | "session" | "none" {
+  let value = "";
+  try {
+    const json = JSON.stringify(Array.isArray(rows) ? rows : []);
+    value = LZString.compressToUTF16(json) || json;
+  } catch {
+    return "none";
+  }
+
+  try {
+    localStorage.setItem(scopedHistoryLsKey(), value);
+    try { sessionStorage.removeItem(scopedHistoryLsKey()); } catch {}
+    return "local";
+  } catch {}
+
+  try {
+    sessionStorage.setItem(scopedHistoryLsKey(), value);
+    return "session";
+  } catch {}
+
+  return "none";
+}
+
+function clearLegacyRowsSafe() {
+  try { localStorage.removeItem(scopedHistoryLsKey()); } catch {}
+  try { sessionStorage.removeItem(scopedHistoryLsKey()); } catch {}
 }
 
 /* =========================
@@ -1632,8 +1691,9 @@ async function migrateFromLocalStorageOnce() {
   await migrateLegacyIdbOnce().catch(() => {});
 
   try {
-    const raw = localStorage.getItem(scopedHistoryLsKey());
-    if (!raw) return;
+    const rawLocal = _historyStorageGet(typeof localStorage !== "undefined" ? localStorage : null);
+    const rawSession = _historyStorageGet(typeof sessionStorage !== "undefined" ? sessionStorage : null);
+    if (!rawLocal && !rawSession) return;
 
     const rows: SavedMatch[] = readLegacyRowsSafe();
     if (!rows.length) return;
@@ -1665,8 +1725,8 @@ async function migrateFromLocalStorageOnce() {
       }
     });
 
-    localStorage.removeItem(scopedHistoryLsKey());
-    console.info("[history] migration depuis localStorage effectuée");
+    clearLegacyRowsSafe();
+    console.info("[history] migration depuis le stockage de secours effectuée");
   } catch (e) {
     console.warn("[history] migration impossible:", e);
   }
@@ -2754,9 +2814,12 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       } catch {}
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
-      localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(rows));
+      const fallbackTarget = writeLegacyRowsSafe(rows);
+      if (fallbackTarget === "none") {
+        throw new Error("Historique impossible à enregistrer : IndexedDB, localStorage et sessionStorage indisponibles");
+      }
 
-      // Même garde-fou en fallback localStorage : sauvegarde par partie non bloquante.
+      // Même garde-fou en fallback compressé : sauvegarde par partie non bloquante.
       try {
         if (String((trimmed as any)?.status || "").toLowerCase() !== "in_progress") {
           void saveMatchBackupAfterHistoryUpsert({
@@ -2818,7 +2881,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           EventBuffer.syncNow().catch(() => {});
         } catch {}
       }
-    } catch {}
+    } catch (fallbackError) {
+      console.error("[history.upsert] échec total de persistance", fallbackError);
+      throw fallbackError;
+    }
   }
 
   // Auto-backup (centralized) after persisting history
@@ -3034,7 +3100,9 @@ export async function remove(id: string): Promise<void> {
         const candidates = [r?.id, r?.matchId, r?.resumeId, getCanonicalMatchId(r)].filter(Boolean).map(String);
         return !candidates.includes(wanted);
       });
-      localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(out));
+      if (writeLegacyRowsSafe(out) === "none") {
+        throw new Error("Suppression impossible dans le stockage de secours");
+      }
 
       try {
         if (typeof window !== "undefined") {
@@ -3080,7 +3148,7 @@ export async function clear(): Promise<void> {
     try { _resumeIndexWrite([]); } catch {}
   } catch {
     try {
-      localStorage.removeItem(scopedHistoryLsKey());
+      clearLegacyRowsSafe();
 
       try {
         if (typeof window !== "undefined") {
