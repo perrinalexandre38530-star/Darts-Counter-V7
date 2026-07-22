@@ -21,6 +21,7 @@ import {
   type BaseballTeamConfig,
 } from "../lib/gameEngines/baseballEngine";
 import tickerBaseball from "../assets/tickers/ticker_baseball.png";
+import targetBg from "../assets/target_bg.png";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 const T = {
@@ -494,50 +495,48 @@ export default function BaseballPlay(props: any) {
   const specialBullInThrow = throwDarts.some((dart) => dart.v === 25) && (state.rules.bullTargetMode === "attack" || state.rules.bullTargetMode === "defense");
 
   return (
-    <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 34, overflowX: "hidden" }}>
+    <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
       <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" />} right={<InfoDot title="Règles du Baseball Darts" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} secondary={secondary} />} />} />
 
-      <div style={{ padding: "8px 4px 0", width: "100vw", maxWidth: "100vw", marginLeft: "calc(50% - 50vw)", boxSizing: "border-box" }}>
-        <section style={{ ...panelStyle(), marginBottom: 10, padding: 12, borderColor: `${accent}77`, boxShadow: `0 0 24px ${accent}24` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div style={{ width: 58, height: 58, position: "relative", flex: "0 0 auto" }}>
-                <div style={{ position: "absolute", inset: 6 }}><ProfileAvatar profile={activeProfile as any} size={46} /></div>
-                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={activeProfile as any} size={58} glow /></div>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1 }}>{botThinking ? "BOT EN RÉFLEXION" : "AU LANCER"}</div>
-                <div style={{ marginTop: 2, fontSize: 17, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-                {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 10.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeTeam.name}</div> : null}
+      <div style={{ padding: "4px 4px 0", width: "100vw", maxWidth: "100vw", marginLeft: "calc(50% - 50vw)", boxSizing: "border-box" }}>
+        <section style={{ ...panelStyle(), marginBottom: 6, padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20` }}>
+          <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(88px,.82fr) minmax(110px,1fr) minmax(92px,.86fr)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
+            <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))` }} />
+            <div style={{ position: "absolute", left: -18, top: -6, bottom: -6, width: "34%", minWidth: 112, overflow: "hidden", opacity: .16, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -10, top: 8, transform: "scale(2.15)", transformOrigin: "left top", filter: "saturate(.9)" }}>
+                <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
-            <div style={{ textAlign: "center", minWidth: state.rules.gameVariant === "attack_defense" ? 128 : 96 }}>
-              <div style={{ color: themeSoft, fontSize: 9.5, fontWeight: 1000, letterSpacing: 1 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " • EXTRA" : ""}</div>
-              {state.rules.gameVariant === "attack_defense" ? (
-                <>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 7, marginTop: 3 }}>
-                    <span style={{ color: secondary, fontSize: 34, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</span>
-                    <span style={{ color: state.duelPhase === "defense" ? T.green : accent, fontSize: 14, fontWeight: 1100, letterSpacing: .7 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</span>
-                  </div>
-                  <div style={{ color: themeSoft, fontSize: 9, fontWeight: 900, marginTop: 4 }}>CIBLE • VS {playerName(duelOpponent)}</div>
-                </>
-              ) : (
-                <>
-                  <div style={{ color: secondary, fontSize: 38, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88`, marginTop: 4 }}>{state.target === 25 ? "BULL" : state.target}</div>
-                  <div style={{ color: themeSoft, fontSize: 9, fontWeight: 900, marginTop: 3 }}>CIBLE</div>
-                </>
-              )}
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 2 }}>
+              <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1 }}>{botThinking ? "BOT EN RÉFLEXION" : "AU LANCER"}</div>
+              <div style={{ marginTop: 3, color: themeText, fontSize: 14, fontWeight: 1000, lineHeight: 1.05 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
+              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 5, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
+            </div>
+            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, padding: "2px 0" }}>
+              <div style={{ width: 74, height: 74, position: "relative", flex: "0 0 auto" }}>
+                <div style={{ position: "absolute", inset: 7 }}><ProfileAvatar profile={activeProfile as any} size={60} /></div>
+                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={activeProfile as any} size={74} glow /></div>
+              </div>
+              <div style={{ marginTop: 3, fontSize: 15.5, fontWeight: 1000, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{playerName(activeProfile)}</div>
+              {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 9.5, fontWeight: 850, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{activeTeam.name}</div> : null}
+            </div>
+            <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
+              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.28), rgba(4,8,16,.54)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62, borderLeft: `1px solid ${secondary}20` }} />
+              <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
+                <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
+                <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginTop: 2 }}>CIBLE</div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), marginBottom: 10, padding: 10, overflow: "hidden" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 8 }}>
-            <div style={{ color: primary, fontSize: 11, fontWeight: 1000, letterSpacing: 1 }}>TABLEAU DES MANCHES</div>
+        <section style={{ ...panelStyle(), marginBottom: 6, padding: 8, overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 5 }}>
+            <div style={{ color: primary, fontSize: 10.5, fontWeight: 1000, letterSpacing: .9 }}>TABLEAU DES MANCHES</div>
             <div style={{ color: themeSoft, fontSize: 9.5 }}>Glisser horizontalement</div>
           </div>
           <div style={{ overflowX: "auto", borderRadius: 13, border: `1px solid ${themeStroke}` }} className="dc-scroll-thin">
-            <table style={{ width: "100%", minWidth: Math.max(500, 86 + shownInnings.length * 48 + 58), borderCollapse: "collapse", fontSize: 11 }}>
+            <table style={{ width: "100%", minWidth: Math.max(500, 78 + shownInnings.length * 44 + 52), borderCollapse: "collapse", fontSize: 10.5 }}>
               <thead>
                 <tr style={{ background: `${primary}12`, color: primary }}>
                   <th style={{ ...thStyle(), position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#101827", minWidth: 74, width: 74, textAlign: "center" }}>PROFIL</th>
@@ -570,8 +569,8 @@ export default function BaseballPlay(props: any) {
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), marginBottom: 10, padding: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+        <section style={{ ...panelStyle(), marginBottom: 6, padding: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
             {state.rules.gameVariant === "attack_defense" ? (
               <>
                 <MiniKpi label="POINTS" value={activeScore} color={accent} />
@@ -588,18 +587,18 @@ export default function BaseballPlay(props: any) {
               </>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(68px,1fr))", gap: 6, marginTop: 6 }}>
-            <MiniKpi label="DARTS" value={activeStats.darts} color={primary} />
-            <MiniKpi label="SIMPLES" value={activeStats.singles} color={themeText} />
-            <MiniKpi label="DOUBLES" value={activeStats.doubles} color="#31c9ef" />
-            <MiniKpi label="TRIPLES" value={activeStats.triples} color="#c24cff" />
-            <MiniKpi label="BULL" value={activeStats.bulls} color={T.green} />
-            <MiniKpi label="DBULL" value={activeStats.dbulls} color={secondary} />
-            <MiniKpi label="MISS" value={activeStats.misses} color={T.red} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 4, marginTop: 4 }}>
+            <MiniKpi compact label="DARTS" value={activeStats.darts} color={primary} />
+            <MiniKpi compact label="SIMPLES" value={activeStats.singles} color={themeText} />
+            <MiniKpi compact label="DOUBLES" value={activeStats.doubles} color="#31c9ef" />
+            <MiniKpi compact label="TRIPLES" value={activeStats.triples} color="#c24cff" />
+            <MiniKpi compact label="BULL" value={activeStats.bulls} color={T.green} />
+            <MiniKpi compact label="DBULL" value={activeStats.dbulls} color={secondary} />
+            <MiniKpi compact label="MISS" value={activeStats.misses} color={T.red} />
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), padding: 10 }}>
+        <section style={{ ...panelStyle(), padding: 8 }}>
           {config.scoreInputMethod === "dartboard" ? (
             <div style={{ padding: "2px 0 10px" }}>
               <DartboardClickable multiplier={multiplier} disabled={state.finished || botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} />
@@ -629,7 +628,7 @@ export default function BaseballPlay(props: any) {
                 onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
                 onValidate={validateVisit}
                 hidePreview={false}
-                centerSlot={<div style={{ color: (state.rules.gameVariant === "attack_defense" ? previewPower : previewRuns) ? T.green : themeSoft, fontSize: 17, fontWeight: 1100, whiteSpace: "nowrap", textAlign: "center" }}>{state.rules.gameVariant === "attack_defense" ? `PUISS. ${previewPower}` : `+${previewRuns} R`}{specialBullInThrow ? <div style={{ fontSize: 8, color: secondary, marginTop: 2 }}>EFFET BULL</div> : null}</div>}
+                centerSlot={<div style={{ display: "grid", placeItems: "center", minWidth: "clamp(88px,28vw,172px)", width: "100%", minHeight: "clamp(42px,7vw,58px)", padding: "0 10px", borderRadius: 16, background: "linear-gradient(180deg, rgba(255,205,58,.98), rgba(255,175,0,.92))", border: "1px solid rgba(255,221,118,.78)", boxShadow: "0 0 18px rgba(255,175,0,.34), inset 0 1px 0 rgba(255,255,255,.34)" }}><div style={{ color: "#251600", fontSize: "clamp(20px,4vw,34px)", fontWeight: 1100, lineHeight: 1 }}>{state.rules.gameVariant === "attack_defense" ? previewPower : previewRuns}</div></div>}
               />
             </div>
           )}
@@ -642,19 +641,19 @@ export default function BaseballPlay(props: any) {
 }
 
 function panelStyle(): React.CSSProperties {
-  return { borderRadius: 18, border: `1px solid ${T.stroke}`, background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(5,8,16,.72))", boxShadow: "0 14px 30px rgba(0,0,0,.25)", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" };
+  return { borderRadius: 16, border: `1px solid ${T.stroke}`, background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(5,8,16,.72))", boxShadow: "0 10px 22px rgba(0,0,0,.24)", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" };
 }
 
 function thStyle(): React.CSSProperties {
-  return { padding: "8px 7px", borderBottom: `1px solid ${T.stroke}`, textAlign: "center", fontSize: 9.5, fontWeight: 1000, letterSpacing: .4 };
+  return { padding: "6px 5px", borderBottom: `1px solid ${T.stroke}`, textAlign: "center", fontSize: 8.5, fontWeight: 1000, letterSpacing: .35 };
 }
 
 function tdStyle(): React.CSSProperties {
-  return { padding: "8px 7px", borderBottom: "1px solid rgba(255,255,255,.055)", textAlign: "center" };
+  return { padding: "6px 5px", borderBottom: "1px solid rgba(255,255,255,.055)", textAlign: "center" };
 }
 
-function MiniKpi({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
-  return <div style={{ padding: "7px 4px", borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${T.stroke}`, minWidth: 0 }}><div style={{ color: T.soft, fontSize: 8.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ color, fontSize: 15, fontWeight: 1000, marginTop: 2 }}>{value}</div></div>;
+function MiniKpi({ label, value, color, compact = false }: { label: string; value: React.ReactNode; color: string; compact?: boolean }) {
+  return <div style={{ padding: compact ? "5px 2px" : "6px 4px", borderRadius: compact ? 10 : 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${T.stroke}`, minWidth: 0 }}><div style={{ color: T.soft, fontSize: compact ? "clamp(6.2px,1.55vw,7.5px)" : 8.2, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ color, fontSize: compact ? "clamp(10px,3.2vw,14px)" : 14.5, fontWeight: 1000, marginTop: compact ? 1 : 2, lineHeight: 1 }}>{value}</div></div>;
 }
 
 
@@ -671,8 +670,8 @@ function StandingMedallion({ standing, participantMode, profilesById, teamById, 
     const logo = team?.logoDataUrl || team?.logoUrl || team?.logo || null;
     const initials = String(team?.name || standing?.name || "EQ").split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase();
     return (
-      <div title={title} aria-label={title} style={{ width: 44, height: 44, margin: "0 auto", position: "relative" }}>
-        <div style={{ width: 42, height: 42, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: `${color}18`, border: `2px solid ${color}`, boxShadow: `0 0 12px ${color}44`, color, fontWeight: 1100, fontSize: 11 }}>
+      <div title={title} aria-label={title} style={{ width: 38, height: 38, margin: "0 auto", position: "relative" }}>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: `${color}18`, border: `2px solid ${color}`, boxShadow: `0 0 10px ${color}44`, color, fontWeight: 1100, fontSize: 10 }}>
           {logo ? <img src={logo} alt={title} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : initials || "EQ"}
         </div>
         {badge}
@@ -683,9 +682,9 @@ function StandingMedallion({ standing, participantMode, profilesById, teamById, 
   const playerId = String(standing?.playerIds?.[0] || standing?.id || "");
   const profile = profilesById.get(playerId) || { id: playerId, name: title };
   return (
-    <div title={title} aria-label={title} style={{ width: 46, height: 46, margin: "0 auto", position: "relative" }}>
-      <div style={{ position: "absolute", inset: 5 }}><ProfileAvatar profile={profile} size={36} /></div>
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={profile} size={46} glow /></div>
+    <div title={title} aria-label={title} style={{ width: 40, height: 40, margin: "0 auto", position: "relative" }}>
+      <div style={{ position: "absolute", inset: 4 }}><ProfileAvatar profile={profile} size={32} /></div>
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={profile} size={40} glow /></div>
       {badge}
     </div>
   );
