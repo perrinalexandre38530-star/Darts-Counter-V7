@@ -21,6 +21,7 @@ import {
   type BaseballTeamConfig,
 } from "../lib/gameEngines/baseballEngine";
 import tickerBaseball from "../assets/tickers/ticker_baseball.png";
+import targetBg from "../assets/target_bg.png";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 const T = {
@@ -511,16 +512,12 @@ export default function BaseballPlay(props: any) {
               {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 5, marginLeft: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, padding: "2px 0" }}>
-              <div style={{ width: 74, height: 74, position: "relative", flex: "0 0 auto" }}>
-                <div style={{ position: "absolute", inset: 7 }}><ProfileAvatar profile={activeProfile as any} size={60} /></div>
-                <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={activeProfile as any} size={74} glow /></div>
-              </div>
-              <div style={{ marginTop: 3, fontSize: 15.5, fontWeight: 1000, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{playerName(activeProfile)}</div>
-              {activeTeam ? <div style={{ marginTop: 2, color: themeSoft, fontSize: 9.5, fontWeight: 850, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{activeTeam.name}</div> : null}
+              <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textTransform: "uppercase" }}>{playerName(activeProfile)}</div>
+              <div style={{ marginTop: 6, color: themeText, fontSize: 46, fontWeight: 1100, lineHeight: 1, textShadow: `0 0 18px ${primary}30` }}>{activeScore}</div>
             </div>
             <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
-              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, background: "linear-gradient(180deg, rgba(6,10,18,.96), rgba(4,8,16,.90) 58%, rgba(3,6,12,.98) 100%)", opacity: .92 }} />
-              <div style={{ position: "absolute", left: 4, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.96) 0%, rgba(4,8,16,.78) 42%, rgba(4,8,16,.26) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62 }} />
+              <div style={{ position: "absolute", left: 4, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
               <div style={{ position: "absolute", left: 4, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${secondary}66, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${secondary}22`, pointerEvents: "none" }} />
               <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
                 <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
