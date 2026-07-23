@@ -111,10 +111,40 @@ export default function PageHeader(props: {
               inset: 0,
               pointerEvents: "none",
               background: tickerEdgeFade === "strong"
-                ? "linear-gradient(90deg, rgba(2,3,9,.96) 0%, rgba(2,3,9,.68) 7%, rgba(2,3,9,0) 24%, rgba(2,3,9,0) 76%, rgba(2,3,9,.68) 93%, rgba(2,3,9,.96) 100%)"
-                : "linear-gradient(90deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.00) 13%, rgba(0,0,0,0.00) 87%, rgba(0,0,0,0.45) 100%)",
+                ? "linear-gradient(90deg, rgba(2,3,9,.98) 0%, rgba(2,3,9,.92) 6%, rgba(2,3,9,.78) 12%, rgba(2,3,9,.42) 20%, rgba(2,3,9,0) 30%, rgba(2,3,9,0) 70%, rgba(2,3,9,.42) 80%, rgba(2,3,9,.78) 88%, rgba(2,3,9,.92) 94%, rgba(2,3,9,.98) 100%)"
+                : "linear-gradient(90deg, rgba(2,3,9,.74) 0%, rgba(2,3,9,.28) 16%, rgba(2,3,9,0) 30%, rgba(2,3,9,0) 70%, rgba(2,3,9,.28) 84%, rgba(2,3,9,.74) 100%)",
             }}
           />
+          {tickerFit === "contain" ? (
+            <>
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  zIndex: 2,
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: "24%",
+                  pointerEvents: "none",
+                  background: "linear-gradient(90deg, rgba(7,10,18,.98) 0%, rgba(7,10,18,.88) 28%, rgba(7,10,18,.45) 62%, rgba(7,10,18,0) 100%)",
+                }}
+              />
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  zIndex: 2,
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  width: "24%",
+                  pointerEvents: "none",
+                  background: "linear-gradient(270deg, rgba(7,10,18,.98) 0%, rgba(7,10,18,.88) 28%, rgba(7,10,18,.45) 62%, rgba(7,10,18,0) 100%)",
+                }}
+              />
+            </>
+          ) : null}
 
           {(left || right) ? (
             <div
