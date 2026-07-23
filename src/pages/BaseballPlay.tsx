@@ -217,6 +217,7 @@ export default function BaseballPlay(props: any) {
   const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
   const [showEnd, setShowEnd] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
+  const [showInningsModal, setShowInningsModal] = React.useState(false);
   const matchIdRef = React.useRef(`baseball-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const savedRef = React.useRef(new Set<string>());
   const lastBackRef = React.useRef(0);
@@ -511,7 +512,7 @@ export default function BaseballPlay(props: any) {
               {botThinking ? <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
               <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textTransform: "uppercase" }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 64, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
-              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
+              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</div> : null}
             </div>
             <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
               <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62 }} />
@@ -527,44 +528,132 @@ export default function BaseballPlay(props: any) {
         </section>
 
         <section style={{ ...panelStyle(), marginBottom: 8, padding: 8, overflow: "hidden" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 5 }}>
-            <div style={{ color: primary, fontSize: 10.5, fontWeight: 1000, letterSpacing: .9 }}>TABLEAU DES MANCHES</div>
-            <div style={{ color: themeSoft, fontSize: 9.5 }}>Glisser horizontalement</div>
-          </div>
-          <div style={{ overflowX: "auto", borderRadius: 13, border: `1px solid ${themeStroke}` }} className="dc-scroll-thin">
-            <table style={{ width: "100%", minWidth: Math.max(500, 78 + shownInnings.length * 44 + 52), borderCollapse: "collapse", fontSize: 10.5 }}>
-              <thead>
-                <tr style={{ background: `${primary}12`, color: primary }}>
-                  <th style={{ ...thStyle(), position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#101827", minWidth: 74, width: 74, textAlign: "center" }}>PROFIL</th>
-                  {shownInnings.map((inning) => {
-                    const target = state.targetSequence?.[inning - 1];
-                    return <th key={inning} style={{ ...thStyle(), minWidth: 48 }}><div style={{ fontSize: 8, opacity: .7 }}>M{inning}{state.rules.gameVariant === "attack_defense" ? " • A/D" : ""}</div><div style={{ color: secondary, fontSize: 10.5, marginTop: 1 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
-                  })}
-                  <th style={{ ...thStyle(), color: secondary, minWidth: 54 }}>TOTAL</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.standings.map((standing) => {
-                  const activeEntityId = config.participantMode === "teams" ? activeTeamId : activePlayer?.id;
-                  const active = standing.id === activeEntityId;
-                  const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || primary : active ? accent : themeText;
-                  return (
-                    <tr key={standing.id} style={{ background: active ? `${color}12` : "rgba(255,255,255,.018)" }}>
-                      <td style={{ ...tdStyle(), position: "sticky", left: 0, zIndex: 2, background: active ? `${primary}18` : (theme?.card || "#0d1421"), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent" }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
-                      {shownInnings.map((inning) => {
-                        const value = entityInningScore(standing, inning);
-                        const played = standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
-                        return <td key={inning} style={{ ...tdStyle(), color: played ? value > 0 ? T.green : "rgba(255,255,255,.46)" : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750 }}>{played ? value : "·"}</td>;
-                      })}
-                      <td style={{ ...tdStyle(), color: secondary, fontSize: 16, fontWeight: 1100 }}>{standing.total}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+          <button
+            type="button"
+            onClick={() => setShowInningsModal(true)}
+            style={{
+              width: "100%",
+              border: `1px solid ${themeStroke}`,
+              borderRadius: 16,
+              background: `linear-gradient(90deg, ${primary}12, rgba(255,255,255,.03) 36%, rgba(255,255,255,.015) 100%)`,
+              minHeight: 66,
+              padding: "8px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              cursor: "pointer",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ minWidth: 0, textAlign: "left" }}>
+              <div style={{ color: primary, fontSize: 10.5, fontWeight: 1000, letterSpacing: .9 }}>TABLEAU DES MANCHES</div>
+              <div style={{ color: themeSoft, fontSize: 9, marginTop: 3 }}>Appuyer pour afficher le détail</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+              {state.standings.map((standing) => {
+                const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || primary : themeText;
+                return (
+                  <div key={standing.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <div style={{ width: 26, height: 26, flex: "0 0 auto" }}>
+                      <StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} compact />
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", minWidth: 0 }}>
+                      <div style={{ maxWidth: 78, color: themeSoft, fontSize: 8.2, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "uppercase" }}>{standing.name}</div>
+                      <div style={{ color: secondary, fontSize: 19, fontWeight: 1100, lineHeight: 1 }}>{standing.total}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </button>
 
+          {showInningsModal ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setShowInningsModal(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,.64)",
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+                zIndex: 9999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 12,
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  ...panelStyle(),
+                  width: "min(760px, 100%)",
+                  maxHeight: "82vh",
+                  overflow: "hidden",
+                  borderRadius: 20,
+                  position: "relative",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: `1px solid ${themeStroke}` }}>
+                  <div style={{ fontWeight: 1000, color: "rgba(255,255,255,.92)" }}>TABLEAU DES MANCHES</div>
+                  <button
+                    type="button"
+                    onClick={() => setShowInningsModal(false)}
+                    style={{
+                      height: 34,
+                      padding: "0 12px",
+                      borderRadius: 12,
+                      border: `1px solid ${themeStroke}`,
+                      background: "rgba(0,0,0,0.30)",
+                      color: "rgba(255,255,255,0.85)",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    FERMER
+                  </button>
+                </div>
+                <div style={{ padding: 12, overflow: "auto", maxHeight: "calc(82vh - 56px)" }}>
+                  <div style={{ overflowX: "auto", borderRadius: 13, border: `1px solid ${themeStroke}` }} className="dc-scroll-thin">
+                    <table style={{ width: "100%", minWidth: Math.max(500, 78 + shownInnings.length * 44 + 52), borderCollapse: "collapse", fontSize: 10.5 }}>
+                      <thead>
+                        <tr style={{ background: `${primary}12`, color: primary }}>
+                          <th style={{ ...thStyle(), position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#101827", minWidth: 74, width: 74, textAlign: "center" }}>PROFIL</th>
+                          {shownInnings.map((inning) => {
+                            const target = state.targetSequence?.[inning - 1];
+                            return <th key={inning} style={{ ...thStyle(), minWidth: 48 }}><div style={{ fontSize: 8, opacity: .7 }}>M{inning}</div><div style={{ color: secondary, fontSize: 10.5, marginTop: 1 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
+                          })}
+                          <th style={{ ...thStyle(), color: secondary, minWidth: 54 }}>TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {state.standings.map((standing) => {
+                          const activeEntityId = config.participantMode === "teams" ? activeTeamId : activePlayer?.id;
+                          const active = standing.id === activeEntityId;
+                          const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || primary : active ? accent : themeText;
+                          return (
+                            <tr key={standing.id} style={{ background: active ? `${color}12` : "rgba(255,255,255,.018)" }}>
+                              <td style={{ ...tdStyle(), position: "sticky", left: 0, zIndex: 2, background: active ? `${primary}18` : (theme?.card || "#0d1421"), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent" }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
+                              {shownInnings.map((inning) => {
+                                const value = entityInningScore(standing, inning);
+                                const played = standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
+                                return <td key={inning} style={{ ...tdStyle(), color: played ? value > 0 ? T.green : "rgba(255,255,255,.46)" : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750 }}>{played ? value : "·"}</td>;
+                              })}
+                              <td style={{ ...tdStyle(), color: secondary, fontSize: 16, fontWeight: 1100 }}>{standing.total}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
         <section style={{ ...panelStyle(), marginBottom: 8, padding: 8 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
             {state.rules.gameVariant === "attack_defense" ? (
@@ -653,10 +742,10 @@ function MiniKpi({ label, value, color, compact = false }: { label: string; valu
 }
 
 
-function StandingMedallion({ standing, participantMode, profilesById, teamById, color }: any) {
+function StandingMedallion({ standing, participantMode, profilesById, teamById, color, compact = false }: any) {
   const title = standing?.name || "Participant";
   const badge = (
-    <span style={{ position: "absolute", right: -3, bottom: -2, minWidth: 17, height: 17, padding: "0 4px", display: "grid", placeItems: "center", borderRadius: 999, background: "#05070c", border: `1px solid ${color}`, color, fontSize: 8, fontWeight: 1100, boxShadow: `0 0 8px ${color}55` }}>
+    <span style={{ position: "absolute", right: -3, bottom: -2, minWidth: compact ? 14 : 17, height: compact ? 14 : 17, padding: compact ? "0 3px" : "0 4px", display: "grid", placeItems: "center", borderRadius: 999, background: "#05070c", border: `1px solid ${color}`, color, fontSize: compact ? 7 : 8, fontWeight: 1100, boxShadow: `0 0 8px ${color}55` }}>
       {standing?.rank || 1}
     </span>
   );
@@ -665,9 +754,11 @@ function StandingMedallion({ standing, participantMode, profilesById, teamById, 
     const team = teamById.get(String(standing?.id || ""));
     const logo = team?.logoDataUrl || team?.logoUrl || team?.logo || null;
     const initials = String(team?.name || standing?.name || "EQ").split(/\s+/).filter(Boolean).slice(0, 2).map((part: string) => part[0]).join("").toUpperCase();
+    const box = compact ? 26 : 38;
+    const inner = compact ? 24 : 36;
     return (
-      <div title={title} aria-label={title} style={{ width: 38, height: 38, margin: "0 auto", position: "relative" }}>
-        <div style={{ width: 36, height: 36, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: `${color}18`, border: `2px solid ${color}`, boxShadow: `0 0 10px ${color}44`, color, fontWeight: 1100, fontSize: 10 }}>
+      <div title={title} aria-label={title} style={{ width: box, height: box, margin: compact ? "0" : "0 auto", position: "relative" }}>
+        <div style={{ width: inner, height: inner, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center", background: `${color}18`, border: `2px solid ${color}`, boxShadow: `0 0 10px ${color}44`, color, fontWeight: 1100, fontSize: compact ? 8 : 10 }}>
           {logo ? <img src={logo} alt={title} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : initials || "EQ"}
         </div>
         {badge}
@@ -677,10 +768,13 @@ function StandingMedallion({ standing, participantMode, profilesById, teamById, 
 
   const playerId = String(standing?.playerIds?.[0] || standing?.id || "");
   const profile = profilesById.get(playerId) || { id: playerId, name: title };
+  const box = compact ? 26 : 40;
+  const avatarSize = compact ? 20 : 32;
+  const ringSize = compact ? 26 : 40;
   return (
-    <div title={title} aria-label={title} style={{ width: 40, height: 40, margin: "0 auto", position: "relative" }}>
-      <div style={{ position: "absolute", inset: 4 }}><ProfileAvatar profile={profile} size={32} /></div>
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={profile} size={40} glow /></div>
+    <div title={title} aria-label={title} style={{ width: box, height: box, margin: compact ? "0" : "0 auto", position: "relative" }}>
+      <div style={{ position: "absolute", inset: compact ? 3 : 4 }}><ProfileAvatar profile={profile} size={avatarSize} /></div>
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={profile} size={ringSize} glow /></div>
       {badge}
     </div>
   );
