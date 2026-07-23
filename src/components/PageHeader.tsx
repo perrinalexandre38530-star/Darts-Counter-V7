@@ -30,11 +30,12 @@ export default function PageHeader(props: {
     tickerHeight = 92,
     tickerEdgeFade = "default",
     tickerFit = "cover",
-    tickerBottomGap = 0,
+    tickerBottomGap = 10,
     stickyTop = 0,
   } = props;
 
   const hasTicker = !!tickerSrc;
+  const effectiveTickerBottomGap = hasTicker ? Math.max(10, tickerBottomGap) : 0;
   // Correspond au padding de .container (src/index.css)
   const CONTAINER_PAD_TOP = 18;
   const CONTAINER_PAD_X = 16;
@@ -52,11 +53,11 @@ export default function PageHeader(props: {
         marginRight: hasTicker ? -CONTAINER_PAD_X : 0,
         width: hasTicker ? "calc(100% + 32px)" : undefined,
 
-        padding: hasTicker ? `0 0 ${Math.max(0, tickerBottomGap)}px` : "12px 12px 10px",
+        padding: hasTicker ? `0 0 ${effectiveTickerBottomGap}px` : "12px 12px 10px",
         backdropFilter: "blur(10px)",
         background:
           "linear-gradient(180deg, rgba(10,10,18,0.92) 0%, rgba(10,10,18,0.65) 70%, rgba(10,10,18,0.0) 100%)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        borderBottom: hasTicker ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(255,255,255,0.08)",
       }}
     >
       {hasTicker ? (

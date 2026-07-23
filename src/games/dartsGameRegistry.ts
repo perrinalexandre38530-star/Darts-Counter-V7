@@ -1120,6 +1120,7 @@ const READY_IDS = new Set<string>([
   "five_lives",
   "scram",
   "baseball",
+  "bobs_27",
 
   // ✅ UNGRAY CAPITAL (Games > Defis)
   "capital",
