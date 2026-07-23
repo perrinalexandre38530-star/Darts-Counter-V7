@@ -4933,10 +4933,20 @@ case "babyfoot_team_edit":
         break;
 
       case "bobs_27_config":
-        page = <Bobs27Config setTab={go} params={routeParams} />;
+        page = <Bobs27Config store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "bobs_27_play":
-        page = <Bobs27Play setTab={go} params={routeParams} />;
+        page = (
+          <Bobs27Play
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "bobs_27", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "scram_config":

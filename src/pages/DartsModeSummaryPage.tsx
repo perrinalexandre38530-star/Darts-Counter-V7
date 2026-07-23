@@ -11,6 +11,7 @@ type ModeKind =
   | "warfare"
   | "five_lives"
   | "scram"
+  | "bobs_27"
   | "capital"
   | "batard"
   | "territories"
@@ -50,6 +51,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     primary: "Points",
     secondary: "Fermetures",
     tertiary: "Marks",
+  },
+  bobs_27: {
+    title: "BOB’S 27",
+    accent: "#e4c06b",
+    subtitle: "Doubles D1 à D20 puis DBULL : précision, sanctions 0/3 et score final.",
+    primary: "Score final",
+    secondary: "Précision",
+    tertiary: "Doubles",
   },
   capital: {
     title: "Capital",
@@ -106,6 +115,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["warfare", ["warfare"]],
   ["five_lives", ["five_lives", "fivelives", "5vies", "les5vies", "cinqvies"]],
   ["scram", ["scram"]],
+  ["bobs_27", ["bobs_27", "bobs27", "bob27", "bob's27", "bobs27"]],
   ["capital", ["capital"]],
   ["batard", ["batard", "bastard", "batard"]],
   ["territories", ["territories", "territoires", "departements", "departement"]],
@@ -242,6 +252,16 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     if (key === "secondary") return num(pick(row.closed, row.closes, row.closedNumbers), 0);
     return num(pick(row.marks, row.totalMarks), 0);
   }
+  if (mode === "bobs_27") {
+    if (key === "primary") return num(pick(row.finalScore, row.score, row.points), 0);
+    if (key === "secondary") {
+      const darts = num(pick(row.dartsThrown, row.darts), 0);
+      const hits = num(pick(row.targetHits, row.validDoubles, row.validHits), 0);
+      const accuracy = num(pick(row.doubleAccuracy), darts > 0 ? (hits / darts) * 100 : 0);
+      return `${Math.round(accuracy * 10) / 10}%`;
+    }
+    return num(pick(row.targetHits, row.validDoubles, row.validHits), 0);
+  }
   if (mode === "capital") {
     if (key === "primary") return num(pick(row.capital, row.finalCapital, row.score), 0);
     if (key === "secondary") return num(pick(row.points, row.pointsWon, row.score), 0);
@@ -308,16 +328,22 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const meta = MODE_META[mode] || MODE_META.unknown;
   const rows = React.useMemo(() => buildRows(rec, mode), [rec, mode]);
   const winner = rows.find((r) => r.isWinner) || rows[0] || null;
+  const bobsSummary = mode === "bobs_27" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
+  const bobsMatchStats = mode === "bobs_27" ? (pick(bobsSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const capitalSummary = mode === "capital" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const capitalMatchStats = mode === "capital" ? (pick(capitalSummary?.matchStats, capitalSummary?.stats, rec?.payload?.stats?.match, {}) || {}) : {};
   const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : (winner?.name || "—");
   const date = pick(rec?.createdAt, rec?.updatedAt, rec?.summary?.createdAt, rec?.payload?.createdAt);
   const createdLabel = date ? new Date(Number(date) || date).toLocaleString("fr-FR") : "—";
 
-  const totalDarts = rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
+  const totalDarts = mode === "bobs_27"
+    ? num(bobsMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
+    : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
   const totalActions = mode === "capital"
     ? num(capitalMatchStats?.contractsPlayed, rows.reduce((sum, r) => sum + num(r.raw?.contractsPlayed, 0), 0))
-    : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
+    : mode === "bobs_27"
+      ? num(bobsMatchStats?.totalHits, rows.reduce((sum, r) => sum + num(pick(r.raw?.targetHits, r.raw?.validDoubles, r.raw?.validHits), 0), 0))
+      : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   return (
     <div style={pageStyle}>
@@ -341,7 +367,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -366,6 +392,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 
       {mode === "five_lives" ? <FiveLivesSummaryTables rec={rec} rows={rows} accent={meta.accent} /> : mode === "scram" ? (
         <ScramSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "bobs_27" ? (
+        <Bobs27SummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "capital" ? (
         <CapitalSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : (
@@ -381,6 +409,97 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       )}
     </div>
   );
+}
+
+function Bobs27SummaryTables({ rec, accent }: { rec: any; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const matchStats = pick(summary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {};
+  const playerPools = [rec?.payload?.stats?.players, rec?.payload?.summary?.players, rec?.payload?.players, summary?.players, summary?.perPlayer, rec?.players];
+  const byId = new Map<string, any>();
+  for (const pool of playerPools) {
+    for (const row of asArray(pool)) {
+      const id = playerId(row);
+      if (!id) continue;
+      byId.set(id, { ...(byId.get(id) || {}), ...(row || {}), id });
+    }
+  }
+  const players = [...byId.values()].sort((a, b) => num(a?.rank, 999) - num(b?.rank, 999) || num(b?.finalScore ?? b?.score, 0) - num(a?.finalScore ?? a?.score, 0));
+  const standings = asArray(pick(summary?.standings, summary?.rankings, rec?.payload?.state?.standings));
+  const participantMode = String(pick(summary?.participantMode, rec?.payload?.config?.participantMode, "players"));
+  const teams = asArray(pick(summary?.teams, rec?.payload?.teams, rec?.teams));
+  const targetSequence = asArray(pick(summary?.targetSequence, rec?.payload?.state?.targets)).map((v: any) => typeof v === "object" ? num(v?.value ?? v?.target, 0) : num(v, 0)).filter(Boolean);
+  const targetAgg: Record<string, any> = {};
+  for (const player of players) {
+    const targetStats = pick(player?.targetStats, player?.rawStats?.targets, {});
+    if (!targetStats || typeof targetStats !== "object") continue;
+    for (const [key, raw] of Object.entries(targetStats)) {
+      const stat: any = raw || {};
+      const cur = targetAgg[key] || { darts: 0, hits: 0, attempts: 0, pointsWon: 0, penaltyLost: 0, bestHits: 0 };
+      cur.darts += num(stat?.darts); cur.hits += num(stat?.hits); cur.attempts += num(stat?.attempts);
+      cur.pointsWon += num(stat?.pointsWon); cur.penaltyLost += num(stat?.penaltyLost); cur.bestHits = Math.max(cur.bestHits, num(stat?.bestHits));
+      targetAgg[key] = cur;
+    }
+  }
+  const targetRows = Object.entries(targetAgg).map(([key, stat]: any) => ({ key, ...stat, accuracy: stat.darts > 0 ? (stat.hits / stat.darts) * 100 : 0 })).sort((a: any, b: any) => (a.key === "25" ? 25 : num(a.key)) - (b.key === "25" ? 25 : num(b.key)));
+  const totalDarts = num(matchStats?.totalDarts, players.reduce((a, p) => a + num(p?.dartsThrown ?? p?.darts), 0));
+  const totalHits = num(matchStats?.totalHits, players.reduce((a, p) => a + num(p?.targetHits ?? p?.validDoubles), 0));
+  const accuracy = num(matchStats?.doubleAccuracy, totalDarts > 0 ? (totalHits / totalDarts) * 100 : 0);
+  const perfect = num(matchStats?.perfectVisits, players.reduce((a, p) => a + num(p?.perfectVisits), 0));
+  const won = num(matchStats?.totalPointsWon, players.reduce((a, p) => a + num(p?.pointsWon), 0));
+  const lost = num(matchStats?.totalPointsLost, players.reduce((a, p) => a + num(p?.pointsLost), 0));
+  const duration = num(pick(matchStats?.durationMs, summary?.durationMs, summary?.duration), 0);
+  const fmtDuration = (ms: number) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+  const targetLabel = (key: string) => String(key) === "25" ? "DBULL" : `D${key}`;
+
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Performance du match</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <Kpi label="Score de départ" value={num(summary?.startingScore ?? rec?.payload?.config?.startingScore, 27)} accent={accent} />
+        <Kpi label="Parcours" value={`${targetSequence.length || num(matchStats?.targets, 21)} cibles`} accent={accent} />
+        <Kpi label="Précision double" value={`${Math.round(accuracy * 10) / 10}%`} accent={accent} />
+        <Kpi label="Doubles réussis" value={`${totalHits}/${totalDarts}`} accent={accent} />
+        <Kpi label="Perfect 3/3" value={perfect} accent={accent} />
+        <Kpi label="Points +/-" value={`+${won} / -${lost}`} accent={accent} />
+        <Kpi label="Durée" value={duration ? fmtDuration(duration) : "—"} accent={accent} />
+        <Kpi label="Règle sous 0" value={String(rec?.payload?.config?.negativeRule || rec?.payload?.rules?.negativeRule || "eliminate") === "continue" ? "Continuer" : "Élimination"} accent={accent} />
+      </div>
+    </section>
+
+    {participantMode === "teams" && standings.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Classement équipes</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {standings.map((row: any, index: number) => {
+          const meta = teams.find((team: any) => String(team?.id) === String(row?.id));
+          return <div key={String(row?.id || index)} style={{ display: "grid", gridTemplateColumns: "32px 1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: index === 0 ? `${accent}18` : "rgba(255,255,255,.04)", border: `1px solid ${index === 0 ? accent : "rgba(255,255,255,.09)"}` }}>
+            <div style={{ color: index === 0 ? accent : "#d7d9e3", fontWeight: 1000 }}>#{num(row?.rank, index + 1)}</div>
+            <div><div style={{ fontWeight: 1000 }}>{String(row?.name || meta?.name || `Équipe ${index + 1}`)}</div><div style={{ color: "#9da2b4", fontSize: 10.5 }}>{asArray(meta?.playerIds || meta?.players).length || num(row?.members, 0)} joueur(s) • {num(row?.hits, 0)} hits</div></div>
+            <div style={{ color: accent, fontWeight: 1000, fontSize: 18 }}>{num(row?.score, 0)}</div>
+          </div>;
+        })}
+      </div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Statistiques joueurs</div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Score</th><th style={th}>Hits</th><th style={th}>Préc.</th><th style={th}>0/3</th><th style={th}>3/3</th><th style={th}>+ / -</th><th style={th}>Best</th><th style={th}>Série</th><th style={th}>Dernière cible</th></tr></thead>
+          <tbody>{players.map((p: any, index: number) => {
+            const darts = num(p?.dartsThrown ?? p?.darts); const hits = num(p?.targetHits ?? p?.validDoubles ?? p?.validHits); const pAcc = num(p?.doubleAccuracy, darts ? (hits / darts) * 100 : 0);
+            return <tr key={String(p?.id || index)}><td style={td}>{String(p?.name || p?.playerName || `Joueur ${index + 1}`)}{p?.eliminated ? " • ÉLIM." : ""}</td><td style={td}>{num(p?.finalScore ?? p?.score)}</td><td style={td}>{hits}/{darts}</td><td style={td}>{Math.round(pAcc * 10) / 10}%</td><td style={td}>{num(p?.failedVisits ?? p?.penaltyEvents)}</td><td style={td}>{num(p?.perfectVisits ?? p?.threeHitVisits)}</td><td style={td}>+{num(p?.pointsWon)} / -{num(p?.pointsLost)}</td><td style={td}>{num(p?.bestVisit)} ({num(p?.bestVisitHits)}/3)</td><td style={td}>{num(p?.bestSuccessStreak)}</td><td style={td}>{num(p?.lastTargetReached) === 25 ? "DBULL" : `D${num(p?.lastTargetReached)}`}</td></tr>;
+          })}</tbody>
+        </table>
+      </div>
+    </section>
+
+    {targetRows.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Détail D1 → DBULL</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(86px,1fr))", gap: 7 }}>
+        {targetRows.map((row: any) => <div key={row.key} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)", textAlign: "center" }}><div style={{ color: "#b7bbc8", fontSize: 10, fontWeight: 900 }}>{targetLabel(row.key)}</div><div style={{ color: accent, fontSize: 18, fontWeight: 1000, marginTop: 2 }}>{row.hits}/{row.darts}</div><div style={{ color: "#dfe2ea", fontSize: 10 }}>{Math.round(row.accuracy * 10) / 10}%</div><div style={{ color: "#858b9d", fontSize: 9, marginTop: 2 }}>+{row.pointsWon} / -{row.penaltyLost}</div></div>)}
+      </div>
+    </section> : null}
+  </>;
 }
 
 function CapitalSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {

@@ -382,13 +382,13 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     tab: "bobs_27_config",
     popularityRank: 32,
     ready: true,
-    maxPlayers: 1,
-    supportsTeams: false,
-    supportsBots: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
     statsKey: "game:bobs_27",
     infoTitle: "Bob's 27",
     infoBody:
-      "Defi doubles. Tu commences a 27. Chaque round vise un double. Double touche: + points. 0 double touche sur la volee: penalite. A implementer.",
+      "Défi doubles complet : 27 points, D1 à D20 puis DBULL. Chaque double cible touché ajoute sa valeur ; 0/3 retire sa valeur. Joueurs, équipes, bots, historique et statistiques.",
   },
   {
     id: "knockout",

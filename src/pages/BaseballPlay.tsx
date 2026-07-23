@@ -559,18 +559,19 @@ export default function BaseballPlay(props: any) {
     <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}22 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
       <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles du Baseball Darts" color={secondary} glow={`${secondary}77`} content={<RulesContent config={config} primary={primary} secondary={secondary} />} /></div>} />
 
-      <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+      <div style={{ padding: "10px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         <section style={{ ...panelStyle(), marginBottom: 6, padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20` }}>
-          <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(168px,190px)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
+          <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(148px,168px)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))` }} />
-            <div style={{ position: "absolute", left: -24, top: -4, bottom: -4, width: "30%", minWidth: 96, overflow: "hidden", opacity: .12, pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: -22, top: 16, transform: "scale(1.46)", transformOrigin: "left top", filter: "saturate(.84)" }}>
+            <div style={{ position: "absolute", left: -20, top: -4, bottom: -4, width: "24%", minWidth: 82, overflow: "hidden", opacity: .12, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -16, top: 16, transform: "scale(1.22)", transformOrigin: "left top", filter: "saturate(.84)" }}>
                 <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
+            {config.participantMode === "teams" && (activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo) ? <div style={{ position: "absolute", right: "24%", top: -4, bottom: -4, width: "17%", minWidth: 62, overflow: "hidden", opacity: .11, pointerEvents: "none" }}><div style={{ position: "absolute", right: -12, top: 18, transform: "scale(1.12)", transformOrigin: "right top", filter: "saturate(.9)" }}><img src={activeTeam.logoDataUrl || activeTeam.logoUrl || activeTeam.logo} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} /></div></div> : null}
             <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 10px 2px 6px" }}>
               {botThinking ? <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
-              <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textTransform: "uppercase" }}>{playerName(activeProfile)}</div>
+              <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", maxWidth: "100%", textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word" }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 64, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
               {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</div> : null}
             </div>
@@ -617,16 +618,16 @@ export default function BaseballPlay(props: any) {
         </section>
 
         <section style={{ ...panelStyle(), marginBottom: 8, padding: 10, overflow: "hidden" }}>
-          <div style={{ position: "relative", minHeight: 88, borderRadius: 18, border: `1px solid ${themeStroke}`, overflow: "hidden", background: `linear-gradient(90deg, rgba(255,255,255,.03), ${primary}10 45%, rgba(255,255,255,.03) 100%)` }}>
+          <button type="button" onClick={() => setShowInningsModal(true)} style={{ position: "relative", width: "100%", minHeight: 88, borderRadius: 18, border: `1px solid ${themeStroke}`, overflow: "hidden", background: `linear-gradient(90deg, rgba(255,255,255,.03), ${primary}10 45%, rgba(255,255,255,.03) 100%)`, padding: 0, cursor: "pointer", textAlign: "left" }}>
             {scoreBandRows[0] ? <BandBackdrop standing={scoreBandRows[0]} side="left" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
             {scoreBandRows[1] ? <BandBackdrop standing={scoreBandRows[1]} side="right" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
-            <button type="button" onClick={() => setShowInningsModal(true)} title="Afficher le détail" style={{ position: "absolute", right: 10, top: 10, width: 34, height: 34, borderRadius: 999, border: `1px solid ${primary}88`, background: "rgba(0,0,0,.34)", color: primary, display: "grid", placeItems: "center", fontSize: 16, fontWeight: 1000, cursor: "pointer", zIndex: 2 }}>☰</button>
-            <div style={{ position: "relative", zIndex: 1, minHeight: 88, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+            <div style={{ position: "absolute", right: 8, top: 8, width: 36, height: 36, borderRadius: 999, border: `1px solid ${primary}88`, background: "rgba(0,0,0,.26)", color: primary, display: "grid", placeItems: "center", fontSize: 16, fontWeight: 1000, zIndex: 2 }}>☰</div>
+            <div style={{ position: "relative", zIndex: 1, minHeight: 88, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "10px 44px 10px 12px" }}>
               <BandEntity standing={scoreBandRows[0]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="left" />
-              <div style={{ color: secondary, fontSize: 34, fontWeight: 1100, letterSpacing: 1, textShadow: `0 0 18px ${secondary}44`, whiteSpace: "nowrap" }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
+              <div style={{ color: "rgba(255,207,87,.9)", fontSize: 34, fontWeight: 1100, letterSpacing: 1, textShadow: `0 0 18px rgba(255,207,87,.28)`, whiteSpace: "nowrap", background: "transparent" }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
               <BandEntity standing={scoreBandRows[1]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="right" />
             </div>
-          </div>
+          </button>
 
           {showInningsModal ? (
             <div role="dialog" aria-modal="true" onClick={() => setShowInningsModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.64)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
@@ -637,10 +638,12 @@ export default function BaseballPlay(props: any) {
                   <div style={{ width: 34, flex: "0 0 auto" }} />
                 </div>
                 <div style={{ padding: 12, overflowY: "auto", maxHeight: "calc(82vh - 56px)" }}>
-                  <div style={{ ...panelStyle(), padding: 10, marginBottom: 12, borderRadius: 16, background: `linear-gradient(90deg, rgba(255,255,255,.03), ${primary}10 50%, rgba(255,255,255,.03) 100%)` }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
+                  <div style={{ ...panelStyle(), padding: 10, marginBottom: 12, borderRadius: 16, background: `linear-gradient(90deg, rgba(255,255,255,.03), ${primary}10 50%, rgba(255,255,255,.03) 100%)`, position: "relative", overflow: "hidden" }}>
+                    {scoreBandRows[0] ? <BandBackdrop standing={scoreBandRows[0]} side="left" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
+                    {scoreBandRows[1] ? <BandBackdrop standing={scoreBandRows[1]} side="right" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
+                    <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
                       <BandEntity standing={scoreBandRows[0]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="left" compact />
-                      <div style={{ color: secondary, fontSize: 28, fontWeight: 1100, whiteSpace: "nowrap" }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
+                      <div style={{ color: "rgba(255,207,87,.95)", fontSize: 30, fontWeight: 1100, whiteSpace: "nowrap", textShadow: `0 0 16px rgba(255,207,87,.24)` }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
                       <BandEntity standing={scoreBandRows[1]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="right" compact />
                     </div>
                   </div>
@@ -652,10 +655,10 @@ export default function BaseballPlay(props: any) {
                           <table style={{ width: "100%", minWidth: 320, borderCollapse: "collapse", fontSize: 10.5 }}>
                             <thead>
                               <tr style={{ background: `${primary}12`, color: primary }}>
-                                <th style={{ ...thStyle(), minWidth: 74, width: 74, textAlign: "center" }}>PROFIL</th>
+                                <th style={{ ...thStyle(), minWidth: 74, width: 74, textAlign: "center", position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#0d1421" }}>PROFIL</th>
                                 {chunk.map((inning) => {
                                   const target = state.targetSequence?.[inning - 1];
-                                  return <th key={inning} style={{ ...thStyle(), minWidth: 44 }}><div style={{ fontSize: 8, opacity: .7 }}>M{inning}</div><div style={{ color: secondary, fontSize: 10.5, marginTop: 1 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
+                                  return <th key={inning} style={{ ...thStyle(), minWidth: 44 }}><div style={{ fontSize: 8, opacity: .75 }}>M{inning}</div><div style={{ color: "rgba(255,255,255,.96)", fontSize: 10.5, marginTop: 1, fontWeight: 1000 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
                                 })}
                               </tr>
                             </thead>
@@ -666,7 +669,7 @@ export default function BaseballPlay(props: any) {
                                 const color = config.participantMode === "teams" ? teamById.get(standing.id)?.color || primary : active ? accent : themeText;
                                 return (
                                   <tr key={standing.id} style={{ background: active ? `${color}12` : "rgba(255,255,255,.018)" }}>
-                                    <td style={{ ...tdStyle(), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent" }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
+                                    <td style={{ ...tdStyle(), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent", position: "sticky", left: 0, zIndex: 2, background: active ? `${color}14` : (theme?.card || "#0d1421") }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
                                     {chunk.map((inning) => {
                                       const value = entityInningScore(standing, inning);
                                       const played = standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
@@ -760,8 +763,8 @@ function BandBackdrop({ standing, side, participantMode, profilesById, teamById 
   const source = bandEntitySource(standing, participantMode, profilesById, teamById);
   if (!source?.image && !source?.profile) return null;
   return (
-    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "26%", overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", [side]: -16, top: 2, transform: `scale(2.05)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.88)" }}>
+    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "34%", overflow: "hidden", opacity: .18, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", [side]: -16, top: 2, transform: `scale(2.18)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.88)" }}>
         {source.profile ? <ProfileAvatar profile={source.profile} size={82} /> : <img src={source.image} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />}
       </div>
     </div>
@@ -770,26 +773,17 @@ function BandBackdrop({ standing, side, participantMode, profilesById, teamById 
 
 function BandEntity({ standing, participantMode, profilesById, teamById, align = "left", compact = false }: any) {
   const source = bandEntitySource(standing, participantMode, profilesById, teamById);
-  const color = teamById.get(String(standing?.id || ""))?.color || T.cyan;
+  const teamColor = teamById.get(String(standing?.id || ""))?.color || T.cyan;
+  const labelColor = participantMode === "teams" ? teamColor : T.text;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: align === "right" ? "flex-end" : "flex-start", gap: compact ? 6 : 8, minWidth: 0 }}>
-      {align !== "right" ? <EntityPill source={source} color={color} compact={compact} /> : null}
-      <div style={{ minWidth: 0, textAlign: align === "right" ? "right" : "left" }}>
-        <div style={{ color: T.text, fontSize: compact ? 11 : 12.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: "uppercase" }}>{source.name}</div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: align === "right" ? "flex-end" : "flex-start", minWidth: 0 }}>
+      <div style={{ minWidth: 0, maxWidth: "100%", textAlign: align === "right" ? "right" : "left" }}>
+        <div style={{ color: labelColor, fontSize: compact ? 9.5 : 11, fontWeight: 1000, lineHeight: 1.02, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textTransform: "uppercase", wordBreak: "break-word" }}>{source.name}</div>
       </div>
-      {align === "right" ? <EntityPill source={source} color={color} compact={compact} /> : null}
     </div>
   );
 }
 
-function EntityPill({ source, color, compact = false }: any) {
-  const size = compact ? 28 : 34;
-  return (
-    <div style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", border: `2px solid ${color}`, boxShadow: `0 0 12px ${color}44`, background: `${color}18`, display: "grid", placeItems: "center", flex: "0 0 auto" }}>
-      {source?.profile ? <ProfileAvatar profile={source.profile} size={size - 4} /> : source?.image ? <img src={source.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span style={{ fontSize: compact ? 8 : 10, fontWeight: 1100, color }}>{String(source?.name || "?").slice(0,2).toUpperCase()}</span>}
-    </div>
-  );
-}
 
 function StandingMedallion({ standing, participantMode, profilesById, teamById, color, compact = false }: any) {
   const title = standing?.name || "Participant";
