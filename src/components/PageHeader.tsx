@@ -15,6 +15,8 @@ export default function PageHeader(props: {
   tickerEdgeFade?: "default" | "strong";
   /** Espace réservé sous le ticker pour éviter qu'un premier bloc ne vienne le toucher / passer dessous. */
   tickerBottomGap?: number;
+  /** Décalage top du header sticky. Utile avec le full-bleed qui compense le padding haut du container. */
+  stickyTop?: number;
 }) {
   const {
     title = "",
@@ -26,6 +28,7 @@ export default function PageHeader(props: {
     tickerHeight = 92,
     tickerEdgeFade = "default",
     tickerBottomGap = 0,
+    stickyTop = 0,
   } = props;
 
   const hasTicker = !!tickerSrc;
@@ -38,7 +41,7 @@ export default function PageHeader(props: {
     <div
       style={{
         position: "sticky",
-        top: 0,
+        top: stickyTop,
         zIndex: 30,
         // Full-bleed ticker: neutralise le padding du wrapper `.container` (18px top / 16px sides)
         marginTop: hasTicker ? -CONTAINER_PAD_TOP : 0,
