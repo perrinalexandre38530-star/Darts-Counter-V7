@@ -4912,10 +4912,20 @@ case "babyfoot_team_edit":
         break;
 
       case "shooter_config":
-        page = <ShooterConfig setTab={go} params={routeParams} />;
+        page = <ShooterConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "shooter_play":
-        page = <ShooterPlay setTab={go} params={routeParams} />;
+        page = (
+          <ShooterPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "shooter", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "tic_tac_toe_config":

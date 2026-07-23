@@ -266,10 +266,14 @@ function activeBackups(rows: BackupRow[]): BackupRow[] {
 async function retryPendingCleanup(bucket: R2Bucket, manifest: Manifest): Promise<void> {
   const pending = Array.from(new Set((manifest.cleanupKeys || []).filter(Boolean)));
   if (!pending.length) return;
-  const failed: string[] = [];
-  for (const key of pending) {
-    try { await bucket.delete(key); } catch { failed.push(key); }
-  }
+
+  // V7 : ne plus supprimer séquentiellement les anciens objets.
+  // Sur mobile, plusieurs deletes R2 en série pouvaient rallonger chaque requête.
+  const results = await Promise.allSettled(
+    pending.map((key) => bucket.delete(key))
+  );
+  const failed = pending.filter((_, index) => results[index]?.status === "rejected");
+
   if (failed.length !== pending.length) {
     manifest.cleanupKeys = failed;
     await writeManifest(bucket, manifest);
@@ -354,7 +358,8 @@ function founderSet(env: Env): Set<string> {
   return new Set(String(env.FOUNDER_EMAILS || "").split(/[;,\s]+/g).map((v) => v.trim().toLowerCase()).filter(Boolean));
 }
 
-export const onRequest: PagesFunction<Env> = async ({ request, env, params }) => {
+export const onRequest: PagesFunction<Env> = async (context) => {
+  const { request, env, params } = context;
   try {
     const parts = routeParts(params);
     const method = request.method.toUpperCase();
@@ -475,22 +480,34 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       manifest.cleanupKeys = cleanupKeys;
       await writeManifest(bucket, manifest);
 
-      const failedCleanup: string[] = [];
-      for (const key of cleanupKeys) {
-        try { await bucket.delete(key); } catch { failedCleanup.push(key); }
+      // V7 : le point critique est déjà validé ici :
+      // - nouveau snapshot écrit dans R2
+      // - manifeste écrit avec "courante + précédente"
+      //
+      // Les suppressions physiques d'anciens objets et le vieux nettoyage
+      // cloud_sync_v1 ne doivent PLUS retarder la réponse envoyée au téléphone.
+      // Cloudflare poursuivra ce ménage en arrière-plan.
+      try {
+        context.waitUntil((async () => {
+          if (cleanupKeys.length) {
+            await Promise.allSettled(cleanupKeys.map((key) => bucket.delete(key)));
+          }
+          await cleanupLegacyFullBackups(bucket, identity.userId).catch(() => 0);
+        })());
+      } catch {
+        // Si waitUntil n'est pas disponible pour une raison quelconque,
+        // cleanupKeys reste dans le manifeste et retryPendingCleanup le fera
+        // automatiquement lors de la prochaine opération.
       }
-      manifest.cleanupKeys = failedCleanup;
-      await writeManifest(bucket, manifest);
-
-      const legacyCleaned = await cleanupLegacyFullBackups(bucket, identity.userId).catch(() => 0);
 
       return json({
         ok: true,
         backup: { ...row, metadata: { ...(row.metadata || {}), retentionRole: "current" } },
         previousBackup: previous ? { ...previous, metadata: { ...(previous.metadata || {}), retentionRole: "previous" } } : null,
-        cleaned: cleanupKeys.length - failedCleanup.length,
-        cleanupPending: failedCleanup.length,
-        legacyCleaned,
+        cleaned: 0,
+        cleanupPending: cleanupKeys.length,
+        legacyCleaned: 0,
+        cleanupScheduled: true,
         retention: { current: 1, previous: 1, total: R2_BACKUP_RETENTION_TOTAL },
         usage: usagePayload(manifest, plan),
         plan: { planId: plan.planId, billingStatus: plan.billingStatus, billingExempt: plan.billingExempt },

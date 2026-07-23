@@ -414,13 +414,13 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     tab: "shooter_config",
     popularityRank: 34,
     ready: true,
-    maxPlayers: 8,
-    supportsTeams: false,
+    maxPlayers: 12,
+    supportsTeams: true,
     supportsBots: true,
     statsKey: "game:shooter",
     infoTitle: "Shooter",
     infoBody:
-      "Defi precision: sequence de cibles a toucher, points et penalites. Timer possible. A implementer.",
+      "Course de précision sur une séquence de cibles. Marks configurables, zones S/D/T, pénalités, joueurs, équipes, bots, historique et statistiques.",
   },
   {
     id: "baseball",

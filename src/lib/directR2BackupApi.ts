@@ -8,7 +8,10 @@ import type { CloudObjectIndexItem } from "./cloudStorageApi";
  * Une sauvegarde R2 ne doit jamais dépendre du domaine public du NAS.
  */
 const DIRECT_BASE = "/api/storage/backups";
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_READ_MS = 15_000;
+const REQUEST_TIMEOUT_MUTATION_MS = 25_000;
+const REQUEST_TIMEOUT_DOWNLOAD_MS = 45_000;
+const REQUEST_TIMEOUT_UPLOAD_MS = 60_000;
 
 export type DirectBackupSummary = Record<string, any>;
 
@@ -143,14 +146,38 @@ async function readDirectStorageToken(): Promise<DirectStorageToken> {
   return { token: "", kind: "none" };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_READ_MS
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const safeTimeoutMs = Math.max(5_000, Number(timeoutMs) || REQUEST_TIMEOUT_READ_MS);
+  const timer = window.setTimeout(() => controller.abort(), safeTimeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function timeoutForDirectRequest(path: string, init: RequestInit): number {
+  const method = String(init?.method || "GET").toUpperCase();
+  const cleanPath = String(path || "");
+
+  // Une sauvegarde complète peut faire plusieurs Mo et Cloudflare doit ensuite
+  // calculer le checksum + écrire R2 + mettre à jour le manifeste.
+  if (method === "POST" && cleanPath === "") return REQUEST_TIMEOUT_UPLOAD_MS;
+
+  // La restauration télécharge le snapshot complet.
+  if (method === "GET" && /^\/r2b_[^/]+$/i.test(cleanPath)) {
+    return REQUEST_TIMEOUT_DOWNLOAD_MS;
+  }
+
+  // Suppression/restauration depuis corbeille : plus généreux qu'un simple GET.
+  if (method !== "GET") return REQUEST_TIMEOUT_MUTATION_MS;
+
+  return REQUEST_TIMEOUT_READ_MS;
 }
 
 function conciseR2Error(status: number, payload: any, rawText: string, tokenKind: DirectStorageToken["kind"] = "none"): Error {
@@ -192,11 +219,13 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   let response: Response;
+  const timeoutMs = timeoutForDirectRequest(path, init);
   try {
-    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers });
+    response = await fetchWithTimeout(`${DIRECT_BASE}${path}`, { ...init, headers }, timeoutMs);
   } catch (error: any) {
     if (error?.name === "AbortError") {
-      throw new Error("Cloud R2 n'a pas répondu en moins de 8 secondes.");
+      const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+      throw new Error(`Cloud R2 n'a pas répondu en moins de ${seconds} secondes.`);
     }
     throw new Error(`Route Cloudflare Pages R2 inaccessible : ${error?.message || String(error)}`);
   }
@@ -238,7 +267,7 @@ export async function getDirectR2Status(): Promise<DirectR2Status> {
     const response = await fetchWithTimeout(`${DIRECT_BASE}/status`, {
       method: "GET",
       headers: { Accept: "application/json" },
-    });
+    }, REQUEST_TIMEOUT_READ_MS);
     const text = await response.text().catch(() => "");
     const payload = safeJson(text);
     if (payload && typeof payload === "object") return payload as DirectR2Status;
@@ -254,7 +283,7 @@ export async function getDirectR2Status(): Promise<DirectR2Status> {
       ok: false,
       code: error?.name === "AbortError" ? "status_timeout" : "status_unreachable",
       error: error?.name === "AbortError"
-        ? "Le diagnostic Cloudflare Pages/R2 n'a pas répondu en moins de 8 secondes."
+        ? `Le diagnostic Cloudflare Pages/R2 n\'a pas répondu en moins de ${Math.round(REQUEST_TIMEOUT_READ_MS / 1000)} secondes.`
         : String(error?.message || error || "Diagnostic R2 inaccessible."),
     };
   }

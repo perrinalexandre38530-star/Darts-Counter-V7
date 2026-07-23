@@ -272,6 +272,9 @@ const CapitalStatsTabFull = React.lazy(
 const Bobs27StatsTabFull = React.lazy(
   () => import("../components/stats/Bobs27StatsTabFull")
 );
+const ShooterStatsTabFull = React.lazy(
+  () => import("../components/stats/ShooterStatsTabFull")
+);
 const ScramStatsTabFull = React.lazy(
   () => import("../components/stats/ScramStatsTabFull")
 );
@@ -922,7 +925,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "bobs_27", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "bobs_27", "shooter", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
 
       const toHydrate: string[] = [];
       for (const r of arr) {
@@ -1166,6 +1169,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("scram")) return "scram";
   if (tag.includes("baseball")) return "baseball";
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
+  if (tag.includes("shooter")) return "shooter";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
   if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
@@ -4765,6 +4769,7 @@ const modeDefs = React.useMemo(
               { key: "scram", label: "SCRAM" },
               { key: "baseball", label: "Baseball" },
               { key: "bobs_27", label: "Bob’s 27" },
+              { key: "shooter", label: "SHOOTER" },
               { key: "capital", label: "Capital" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
@@ -6096,6 +6101,7 @@ const modeThemeColor: Record<string, string> = {
   scram: "#42d6ff",
   baseball: "#67d4ff",
   bobs_27: "#e4c06b",
+  shooter: "#42d6ff",
   capital: "#6ee36e",
   batard: "#9b5cff",
   default: "#888888",
@@ -6131,12 +6137,13 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     scram: "SCRAM",
     baseball: "Baseball",
     bobs_27: "Bob’s 27",
+    shooter: "SHOOTER",
     capital: "Capital",
     batard: "Bâtard",
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "bobs_27", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "bobs_27", "shooter", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8409,6 +8416,24 @@ return (
               </div>
             )}
 
+{currentMode === "shooter" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement SHOOTER…" />}>
+                    <ShooterStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques SHOOTER.
+                  </div>
+                )}
+              </div>
+            )}
+
 {currentMode === "capital" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -8460,6 +8485,7 @@ return (
                       scram: ["scram"],
                       baseball: ["baseball", "baseball darts"],
                       bobs_27: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"],
+                      shooter: ["shooter"],
                       capital: ["capital"],
                       batard: ["batard", "bâtard", "bastard"],
                       territories: ["territories", "territoires", "territory", "territ"],

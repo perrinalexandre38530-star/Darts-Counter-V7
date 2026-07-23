@@ -352,6 +352,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
     { key: "baseball", label: "Baseball", aliases: ["baseball", "baseball darts"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
+    { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "capital", label: "Capital", aliases: ["capital"] },
     { key: "batard", label: "Bâtard", aliases: ["batard", "bastard", "bâtard"] },
     { key: "clock", label: "Horloge", aliases: ["clock", "tourdelhorloge", "tour_de_lhorloge", "tdh"] },
@@ -448,7 +449,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|bobs_27|bobs27|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|bobs_27|bobs27|shooter|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -466,6 +467,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "baseball",
     "bobs_27",
     "bobs27",
+    "shooter",
     "capital",
     "batard",
     "bastard",
@@ -776,6 +778,7 @@ const modeColor: Record<string, string> = {
   baseball: "#67d4ff",
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
+  shooter: "#42d6ff",
   capital: "#6ee36e",
   batard: "#9b5cff",
   default: "#888",
@@ -1768,6 +1771,74 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </div>
         <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
           {players.slice(0, 3).map((p: any) => `${p.name} : moy. ${Number(p.avg || 0).toFixed(1)} • best ${p.best || 0} • obj. ${p.successRate || 0}% • échecs ${p.failed || 0}`).join("  |  ")}
+        </div>
+      </div>
+    );
+  }
+
+  if (normalizeToken(baseMode(e)) === "shooter" || inferGameFilterKey(e, "darts") === "shooter") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const participantMode = String(summary?.participantMode || anyE?.payload?.config?.participantMode || "players");
+    const sequence = Array.isArray(summary?.targetSequence)
+      ? summary.targetSequence
+      : Array.isArray(anyE?.payload?.state?.sequence)
+      ? anyE.payload.state.sequence
+      : [];
+    const standings = Array.isArray(summary?.standings)
+      ? summary.standings
+      : Array.isArray(summary?.rankings)
+      ? summary.rankings
+      : Array.isArray(anyE?.payload?.state?.standings)
+      ? anyE.payload.state.standings
+      : [];
+    const players = Array.isArray(anyE?.payload?.stats?.players) && anyE.payload.stats.players.length
+      ? anyE.payload.stats.players
+      : Array.isArray(anyE?.payload?.players) && anyE.payload.players.length
+      ? anyE.payload.players
+      : Array.isArray(summary?.players)
+      ? summary.players
+      : [];
+    const matchStats = summary?.matchStats || anyE?.payload?.stats?.match || anyE?.payload?.stats?.global || {};
+    const entityRows = standings.length ? standings : players
+      .map((p: any, index: number) => ({
+        id: p?.id || p?.playerId || index,
+        name: historyScoreName(e, p) || getName(p) || `Joueur ${index + 1}`,
+        score: Number(p?.score ?? p?.points ?? 0),
+        targetsCleared: Number(p?.targetsCleared ?? p?.progressTargetIndex ?? 0),
+        rank: Number(p?.rank || index + 1),
+      }))
+      .sort((a: any, b: any) => Number(b.targetsCleared) - Number(a.targetsCleared) || Number(b.score) - Number(a.score));
+    const playerDetail = players.slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99)).slice(0, 4);
+    const seqLen = Number(summary?.sequenceLength || sequence.length || 0);
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {entityRows.slice(0, 4).map((row: any, index: number) => (
+            <React.Fragment key={String(row?.id || row?.name || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+              <span style={{ color: historyRankColor(Number(row?.rank || index + 1)), fontWeight: 1000 }}>{Number(row?.rank || index + 1)}.</span>
+              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{String(row?.name || `${participantMode === "teams" ? "Équipe" : "Joueur"} ${index + 1}`)}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{Number(row?.targetsCleared ?? row?.targetIndex ?? 0)}/{seqLen || "?"} cibles · {Number(row?.score ?? row?.points ?? 0)} pts</span>
+            </React.Fragment>
+          ))}
+        </div>
+        {playerDetail.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
+          {playerDetail.map((p: any) => {
+            const name = historyScoreName(e, p) || getName(p) || "Joueur";
+            const hits = Number(p?.validDarts ?? p?.validHits ?? p?.targetHits ?? 0) || 0;
+            const darts = Number(p?.darts ?? p?.dartsThrown ?? 0) || 0;
+            const accuracy = Number(p?.accuracy ?? (darts ? (hits / darts) * 100 : 0)) || 0;
+            const failed = Number(p?.failedVisits ?? p?.zeroHitVisits ?? 0) || 0;
+            const perfect = Number(p?.perfectVisits ?? p?.threeHitVisits ?? 0) || 0;
+            return `${name}: précision ${accuracy.toFixed(1)}% • marks ${Number(p?.marks || 0)} • 0/3 ${failed} • 3/3 ${perfect}`;
+          }).join("  |  ")}
+        </div> : null}
+        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
+          {seqLen ? `${seqLen} cibles` : "Parcours SHOOTER"}
+          {Number(matchStats?.totalDarts || 0) ? ` • ${Number(matchStats.totalDarts)} flèches` : ""}
+          {Number(matchStats?.totalDarts || 0) ? ` • précision ${Number(matchStats?.accuracy || matchStats?.precision || 0).toFixed(1)}%` : ""}
+          {Number(matchStats?.perfectVisits || 0) ? ` • 3/3 ${Number(matchStats.perfectVisits)}` : ""}
         </div>
       </div>
     );

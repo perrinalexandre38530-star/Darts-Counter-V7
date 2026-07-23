@@ -12,6 +12,7 @@ type ModeKind =
   | "five_lives"
   | "scram"
   | "bobs_27"
+  | "shooter"
   | "capital"
   | "batard"
   | "territories"
@@ -59,6 +60,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     primary: "Score final",
     secondary: "Précision",
     tertiary: "Doubles",
+  },
+  shooter: {
+    title: "SHOOTER",
+    accent: "#42d6ff",
+    subtitle: "Course de précision sur une séquence de cibles : progression, marks, score et pénalités.",
+    primary: "Cibles",
+    secondary: "Précision",
+    tertiary: "Marks",
   },
   capital: {
     title: "Capital",
@@ -116,6 +125,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["five_lives", ["five_lives", "fivelives", "5vies", "les5vies", "cinqvies"]],
   ["scram", ["scram"]],
   ["bobs_27", ["bobs_27", "bobs27", "bob27", "bob's27", "bobs27"]],
+  ["shooter", ["shooter"]],
   ["capital", ["capital"]],
   ["batard", ["batard", "bastard", "batard"]],
   ["territories", ["territories", "territoires", "departements", "departement"]],
@@ -262,6 +272,20 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     }
     return num(pick(row.targetHits, row.validDoubles, row.validHits), 0);
   }
+  if (mode === "shooter") {
+    if (key === "primary") {
+      const cleared = num(pick(row.targetsCleared, row.progressTargetIndex), 0);
+      const total = num(pick(row.sequenceLength, row.totalTargets), 0);
+      return total > 0 ? `${cleared}/${total}` : cleared;
+    }
+    if (key === "secondary") {
+      const darts = num(pick(row.darts, row.dartsThrown), 0);
+      const hits = num(pick(row.validDarts, row.validHits, row.targetHits), 0);
+      const accuracy = num(row.accuracy, darts > 0 ? (hits / darts) * 100 : 0);
+      return `${Math.round(accuracy * 10) / 10}%`;
+    }
+    return num(pick(row.marks, row.marksApplied), 0);
+  }
   if (mode === "capital") {
     if (key === "primary") return num(pick(row.capital, row.finalCapital, row.score), 0);
     if (key === "secondary") return num(pick(row.points, row.pointsWon, row.score), 0);
@@ -330,6 +354,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const winner = rows.find((r) => r.isWinner) || rows[0] || null;
   const bobsSummary = mode === "bobs_27" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const bobsMatchStats = mode === "bobs_27" ? (pick(bobsSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
+  const shooterSummary = mode === "shooter" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
+  const shooterMatchStats = mode === "shooter" ? (pick(shooterSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const capitalSummary = mode === "capital" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const capitalMatchStats = mode === "capital" ? (pick(capitalSummary?.matchStats, capitalSummary?.stats, rec?.payload?.stats?.match, {}) || {}) : {};
   const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : (winner?.name || "—");
@@ -338,12 +364,16 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 
   const totalDarts = mode === "bobs_27"
     ? num(bobsMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
-    : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
+    : mode === "shooter"
+      ? num(shooterMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
+      : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
   const totalActions = mode === "capital"
     ? num(capitalMatchStats?.contractsPlayed, rows.reduce((sum, r) => sum + num(r.raw?.contractsPlayed, 0), 0))
     : mode === "bobs_27"
       ? num(bobsMatchStats?.totalHits, rows.reduce((sum, r) => sum + num(pick(r.raw?.targetHits, r.raw?.validDoubles, r.raw?.validHits), 0), 0))
-      : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
+      : mode === "shooter"
+        ? num(shooterMatchStats?.totalMarks, rows.reduce((sum, r) => sum + num(pick(r.raw?.marks, r.raw?.marksApplied), 0), 0))
+        : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   return (
     <div style={pageStyle}>
@@ -367,7 +397,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "shooter" ? "Marks" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -394,6 +424,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <ScramSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : mode === "bobs_27" ? (
         <Bobs27SummaryTables rec={rec} accent={meta.accent} />
+      ) : mode === "shooter" ? (
+        <ShooterSummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "capital" ? (
         <CapitalSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : (
@@ -409,6 +441,75 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       )}
     </div>
   );
+}
+
+function ShooterSummaryTables({ rec, accent }: { rec: any; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const matchStats = pick(summary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {};
+  const players = asArray(pick(rec?.payload?.stats?.players, summary?.players, summary?.perPlayer, rec?.payload?.players, rec?.players));
+  const standings = asArray(pick(summary?.standings, summary?.rankings, rec?.payload?.state?.standings));
+  const teams = asArray(pick(summary?.teams, rec?.payload?.teams, rec?.teams));
+  const sequence = asArray(pick(summary?.targetSequence, rec?.payload?.state?.sequence)).map((v: any) => num(typeof v === "object" ? pick(v?.value, v?.target) : v, 0)).filter((v) => v > 0);
+  const totalDarts = num(matchStats?.totalDarts, players.reduce((sum, p) => sum + num(p?.darts ?? p?.dartsThrown), 0));
+  const totalHits = num(matchStats?.totalHits, players.reduce((sum, p) => sum + num(p?.validDarts ?? p?.validHits ?? p?.targetHits), 0));
+  const accuracy = num(matchStats?.accuracy, totalDarts ? (totalHits / totalDarts) * 100 : 0);
+  const duration = num(pick(matchStats?.durationMs, summary?.durationMs, summary?.duration), 0);
+  const fmtDuration = (ms: number) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+  const targetLabel = (target: number) => target === 25 ? "BULL" : String(target);
+
+  const targetAgg = new Map<number, { darts: number; hits: number; marks: number; points: number }>();
+  for (const target of sequence) targetAgg.set(target, { darts: 0, hits: 0, marks: 0, points: 0 });
+  for (const player of players) {
+    const targetStats: any = pick(player?.targetStats, player?.rawStats?.targets, {});
+    if (!targetStats || typeof targetStats !== "object") continue;
+    for (const [key, raw] of Object.entries(targetStats)) {
+      const target = num(key, 0); if (!target) continue;
+      const stat: any = raw || {}; const cur = targetAgg.get(target) || { darts: 0, hits: 0, marks: 0, points: 0 };
+      cur.darts += num(stat?.darts); cur.hits += num(pick(stat?.validDarts, stat?.hits), 0); cur.marks += num(stat?.marks); cur.points += num(stat?.points);
+      targetAgg.set(target, cur);
+    }
+  }
+  const targetRows = [...targetAgg.entries()].map(([target, stat]) => ({ target, ...stat, accuracy: stat.darts ? (stat.hits / stat.darts) * 100 : 0 }));
+
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Performance SHOOTER</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
+        <Kpi label="Parcours" value={`${sequence.length || num(matchStats?.sequenceLength, 0)} cibles`} accent={accent} />
+        <Kpi label="Marks / cible" value={num(pick(summary?.marksToClear, rec?.payload?.rules?.marksToClear), 0) || "—"} accent={accent} />
+        <Kpi label="Précision" value={`${Math.round(accuracy * 10) / 10}%`} accent={accent} />
+        <Kpi label="Touches" value={`${totalHits}/${totalDarts}`} accent={accent} />
+        <Kpi label="Marks" value={num(matchStats?.totalMarks, players.reduce((sum, p) => sum + num(p?.marks), 0))} accent={accent} />
+        <Kpi label="Points" value={num(matchStats?.totalPoints, players.reduce((sum, p) => sum + num(p?.pointsWon ?? p?.points), 0))} accent={accent} />
+        <Kpi label="3/3 parfaits" value={num(matchStats?.perfectVisits, players.reduce((sum, p) => sum + num(p?.perfectVisits), 0))} accent={accent} />
+        <Kpi label="Pénalités" value={num(matchStats?.penaltyEvents, players.reduce((sum, p) => sum + num(p?.penaltyEvents), 0))} accent={accent} />
+        <Kpi label="Rounds" value={num(pick(matchStats?.roundsPlayed, summary?.roundsPlayed), 0)} accent={accent} />
+        <Kpi label="Durée" value={duration ? fmtDuration(duration) : "—"} accent={accent} />
+      </div>
+    </section>
+
+    {String(summary?.participantMode || rec?.payload?.config?.participantMode) === "teams" && standings.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Classement équipes</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {standings.map((row: any, index: number) => { const team = teams.find((t: any) => String(t?.id) === String(row?.id)); return <div key={String(row?.id || index)} style={{ display: "grid", gridTemplateColumns: "32px 1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: index === 0 ? `${accent}18` : "rgba(255,255,255,.04)", border: `1px solid ${index === 0 ? accent : "rgba(255,255,255,.09)"}` }}><div style={{ color: index === 0 ? accent : "#d7d9e3", fontWeight: 1000 }}>#{num(row?.rank, index + 1)}</div><div><div style={{ fontWeight: 1000 }}>{String(row?.name || team?.name || `Équipe ${index + 1}`)}</div><div style={{ color: "#9da2b4", fontSize: 10.5 }}>{num(row?.targetsCleared, 0)}/{sequence.length || "?"} cibles • {num(row?.marksOnTarget, 0)} marks en cours</div></div><div style={{ color: accent, fontWeight: 1000, fontSize: 18 }}>{num(row?.score, 0)} pts</div></div>; })}
+      </div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Statistiques joueurs</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 960, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Joueur","Rang","Cibles","Préc.","Marks","Points","0/3","1/3","2/3","3/3","Best marks","Best pts","Série","Flèches"].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{players.slice().sort((a: any,b: any) => num(a?.rank,99)-num(b?.rank,99)).map((p: any, index: number) => { const darts=num(p?.darts ?? p?.dartsThrown); const hits=num(p?.validDarts ?? p?.validHits ?? p?.targetHits); const acc=num(p?.accuracy,darts?(hits/darts)*100:0); return <tr key={String(p?.id || index)}><td style={td}>{String(p?.name || p?.playerName || `Joueur ${index+1}`)}</td><td style={td}>{num(p?.rank,index+1)}</td><td style={td}>{num(p?.targetsCleared ?? p?.progressTargetIndex)}/{sequence.length || "?"}</td><td style={td}>{Math.round(acc*10)/10}%</td><td style={td}>{num(p?.marks)}</td><td style={td}>{num(p?.pointsWon ?? p?.points)}</td><td style={td}>{num(p?.failedVisits)}</td><td style={td}>{num(p?.oneHitVisits)}</td><td style={td}>{num(p?.twoHitVisits)}</td><td style={td}>{num(p?.threeHitVisits ?? p?.perfectVisits)}</td><td style={td}>{num(p?.bestVisitMarks)}</td><td style={td}>{num(p?.bestVisitPoints)}</td><td style={td}>{num(p?.bestHitStreak)}</td><td style={td}>{darts}</td></tr>; })}</tbody>
+      </table></div>
+    </section>
+
+    {targetRows.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Détail par cible</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(86px,1fr))", gap: 7 }}>
+        {targetRows.map((row) => <div key={row.target} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)", textAlign: "center" }}><div style={{ color: "#b7bbc8", fontSize: 10, fontWeight: 900 }}>{targetLabel(row.target)}</div><div style={{ color: accent, fontSize: 18, fontWeight: 1000, marginTop: 2 }}>{row.hits}/{row.darts}</div><div style={{ color: "#dfe2ea", fontSize: 10 }}>{Math.round(row.accuracy*10)/10}%</div><div style={{ color: "#858b9d", fontSize: 9, marginTop: 2 }}>{row.marks} marks • {row.points} pts</div></div>)}
+      </div>
+    </section> : null}
+  </>;
 }
 
 function Bobs27SummaryTables({ rec, accent }: { rec: any; accent: string }) {
