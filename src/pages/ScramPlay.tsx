@@ -581,9 +581,10 @@ export default function ScramPlay(props: any) {
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
         tickerEdgeFade="strong"
+        tickerFit="contain"
         tickerHeight={tickerHeight}
-        tickerBottomGap={10}
-        stickyTop={-18}
+        tickerBottomGap={8}
+        stickyTop={0}
         left={<div style={{ marginLeft: 9 }}><BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" /></div>}
         right={<div style={{ marginRight: 9 }}><InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} /></div>}
       />

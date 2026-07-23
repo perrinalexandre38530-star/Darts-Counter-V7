@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-07-22-storage-retention-paid-v58";
+const SW_VERSION = "dc-sw-2026-07-23-x01-mobile-import-v6-ref22";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

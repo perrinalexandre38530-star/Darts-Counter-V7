@@ -780,6 +780,24 @@ function markHistoryDeletedIds(ids: Iterable<any>) {
   } catch {}
 }
 
+function unmarkHistoryDeletedIds(ids: Iterable<any>): number {
+  try {
+    if (typeof localStorage === "undefined") return 0;
+    const map = readHistoryDeletedIdsMap();
+    let removed = 0;
+    for (const raw of ids || []) {
+      const id = String(raw ?? "").trim();
+      if (!id || !Object.prototype.hasOwnProperty.call(map, id)) continue;
+      delete map[id];
+      removed += 1;
+    }
+    localStorage.setItem(HISTORY_DELETED_IDS_KEY, JSON.stringify(map));
+    return removed;
+  } catch {
+    return 0;
+  }
+}
+
 function getAllCandidateIdsForDeletion(rec: any): string[] {
   const out: string[] = [];
   const push = (v: any) => {
@@ -808,6 +826,22 @@ function isHistoryDeletedByTombstone(recOrId: any): boolean {
   if (!deleted.size) return false;
   if (typeof recOrId === "string") return deleted.has(recOrId);
   return getAllCandidateIdsForDeletion(recOrId).some((id) => deleted.has(id));
+}
+
+// ✅ IMPORT EXPLICITE MOBILE V6
+// Une partie choisie manuellement puis "Acceptée" doit pouvoir être restaurée
+// même si ce téléphone l'avait supprimée auparavant. Les tombstones restent
+// actifs pour les restaurations cloud/NAS automatiques.
+export function reviveForExplicitImport(recOrId: any): number {
+  try {
+    const ids =
+      typeof recOrId === "string"
+        ? [String(recOrId)]
+        : getAllCandidateIdsForDeletion(recOrId);
+    return unmarkHistoryDeletedIds(ids);
+  } catch {
+    return 0;
+  }
 }
 
 // =========================
@@ -1964,6 +1998,10 @@ export async function getAll(): Promise<SavedMatch[]> {
 
 export async function get(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
+
+  // ✅ MOBILE V6 : get() et list() doivent avoir la même notion de "supprimé".
+  // Sans ceci, get() pouvait retrouver physiquement une ligne que list() masquait.
+  if (isHistoryDeletedByTombstone(String(id || ""))) return null;
 
   try {
     const rec: any = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
@@ -3417,6 +3455,7 @@ export const History = {
   },
   get,
   getAll,
+  reviveForExplicitImport,
   async upsert(rec: SavedMatch) {
     await upsert(rec);
     // V4 FIX : si l'upsert a été ignoré car il tentait de downgrader

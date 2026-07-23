@@ -13,6 +13,8 @@ export default function PageHeader(props: {
   tickerAlt?: string;
   tickerHeight?: number;
   tickerEdgeFade?: "default" | "strong";
+  /** Ajustement de l'image dans la bande ticker. `contain` garantit que l'image complète reste visible. */
+  tickerFit?: "cover" | "contain";
   /** Espace réservé sous le ticker pour éviter qu'un premier bloc ne vienne le toucher / passer dessous. */
   tickerBottomGap?: number;
   /** Décalage top du header sticky. Utile avec le full-bleed qui compense le padding haut du container. */
@@ -27,6 +29,7 @@ export default function PageHeader(props: {
     tickerAlt = "ticker",
     tickerHeight = 92,
     tickerEdgeFade = "default",
+    tickerFit = "cover",
     tickerBottomGap = 0,
     stickyTop = 0,
   } = props;
@@ -67,15 +70,36 @@ export default function PageHeader(props: {
             background: "rgba(0,0,0,0.35)",
           }}
         >
+          {tickerFit === "contain" ? (
+            <img
+              src={tickerSrc!}
+              alt=""
+              aria-hidden
+              draggable={false}
+              style={{
+                position: "absolute",
+                inset: -8,
+                width: "calc(100% + 16px)",
+                height: "calc(100% + 16px)",
+                objectFit: "cover",
+                objectPosition: "center",
+                filter: "blur(5px) saturate(.9) brightness(.52)",
+                opacity: .7,
+                transform: "scale(1.03)",
+              }}
+            />
+          ) : null}
           <img
             src={tickerSrc!}
             alt={tickerAlt}
             draggable={false}
             style={{
+              position: "relative",
+              zIndex: 1,
               display: "block",
               width: "100%",
               height: "100%",
-              objectFit: "cover",
+              objectFit: tickerFit,
               objectPosition: "center",
             }}
           />
@@ -83,6 +107,7 @@ export default function PageHeader(props: {
             aria-hidden
             style={{
               position: "absolute",
+              zIndex: 2,
               inset: 0,
               pointerEvents: "none",
               background: tickerEdgeFade === "strong"
@@ -95,6 +120,7 @@ export default function PageHeader(props: {
             <div
               style={{
                 position: "absolute",
+                zIndex: 3,
                 inset: 0,
                 display: "flex",
                 alignItems: "center",

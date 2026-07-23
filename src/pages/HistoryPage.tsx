@@ -3165,7 +3165,7 @@ export default function HistoryPage({
         throw new Error("la partie a disparu du stockage Reçues après relecture");
       }
 
-      window.alert("Partie importée ✅ Elle est disponible dans l'onglet Reçues pour validation.");
+      window.alert("Partie importée ✅ [correctif mobile V6 actif] — valide-la dans Reçues.");
     } catch (e: any) {
       console.error("[HistoryPage] import fichier impossible", e);
       window.alert(`Import impossible : ${String(e?.message || "fichier illisible ou stockage indisponible")}.`);
@@ -3176,6 +3176,13 @@ export default function HistoryPage({
     const normalizedPacket = isBabyFootShareLike(packet) ? applyBabyFootImportRules(packet) : packet;
     const rec = buildHistoryRecordFromPacket(normalizedPacket as MatchSharePacketV1);
     const finalRec = isBabyFootShareLike(normalizedPacket) ? applyBabyFootImportRules(rec) : rec;
+
+    // ✅ MOBILE V6 — import explicite :
+    // si cette partie avait déjà été supprimée sur CE téléphone, son matchId
+    // reste dans dc-history-deleted-ids-v1 et History.list() la masque.
+    // L'action volontaire "Accepter" lève uniquement les tombstones de CETTE partie.
+    try { History.reviveForExplicitImport(finalRec as any); } catch {}
+
     await History.upsert(finalRec as any);
     await loadHistory();
   }
@@ -3190,21 +3197,18 @@ export default function HistoryPage({
       );
       await acceptPacket(item.packet);
 
-      // ✅ ANDROID / PWA FIX V5
-      // Ne jamais retirer la carte "Reçues" avant de vérifier que la partie
-      // est réellement visible dans l'historique (IDB OU fallback).
+      // ✅ MOBILE V6 : seule History.list() fait foi.
+      // Une partie n'est retirée de "Reçues" que si elle est réellement visible
+      // dans la liste finale, après levée du tombstone + écriture IDB/fallback.
       const wantedMatchId = String(item?.packet?.matchId || "").trim();
-      const stored = wantedMatchId
-        ? await History.get(wantedMatchId).catch(() => null)
-        : null;
       const listedRows = await History.list().catch(() => [] as any[]);
       const listed = Array.isArray(listedRows) && listedRows.some((row: any) => {
         const id = String(row?.matchId || row?.id || row?.resumeId || "").trim();
         return !!wantedMatchId && id === wantedMatchId;
       });
 
-      if (!stored && !listed) {
-        throw new Error("la partie n'est pas retrouvée après enregistrement ; elle reste dans Reçues");
+      if (!listed) {
+        throw new Error("la partie n'est toujours pas visible dans History.list() ; elle reste dans Reçues");
       }
 
       inboxRemoveLocal(item.id);

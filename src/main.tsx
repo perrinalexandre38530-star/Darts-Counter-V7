@@ -650,7 +650,9 @@ async function registerServiceWorkerProd() {
       );
 
       // 2) Enregistre le SW unique
-      const reg = await navigator.serviceWorker.register("/sw.js");
+      const reg = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+      // ✅ MOBILE V6 : demande immédiatement au navigateur de vérifier /sw.js.
+      try { await reg.update(); } catch {}
 
       // 3) Si une nouvelle version est trouvée → skipWaiting
       reg.addEventListener("updatefound", () => {
