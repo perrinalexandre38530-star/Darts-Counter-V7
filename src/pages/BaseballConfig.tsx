@@ -162,6 +162,18 @@ export default function BaseballConfig(props: any) {
   const saved = React.useMemo(readSavedConfig, []);
   const primary = theme?.primary || CYAN;
   const primarySoft = theme?.primarySoft || "rgba(66,214,255,.14)";
+  const themeTextSoft = theme?.textSoft || "#aeb2d3";
+  const [configViewMode, setConfigViewMode] = React.useState<"guided" | "complete">(() => {
+    try { return localStorage.getItem("dc_baseball_config_view_mode") === "complete" ? "complete" : "guided"; }
+    catch { return "guided"; }
+  });
+  const [guidedStep, setGuidedStep] = React.useState(0);
+  const guidedSteps = ["Participants", "Format", "Variante", "Règles", "Résumé"];
+  const guidedMaxStep = guidedSteps.length - 1;
+  const selectConfigViewMode = React.useCallback((mode: "guided" | "complete") => {
+    setConfigViewMode(mode);
+    try { localStorage.setItem("dc_baseball_config_view_mode", mode); } catch {}
+  }, []);
   const storeProfiles: any[] = Array.isArray(store?.profiles) ? store.profiles : [];
   const humanProfiles = React.useMemo(() => storeProfiles.filter((profile) => !isBotLike(profile)), [storeProfiles]);
 
@@ -483,87 +495,221 @@ export default function BaseballConfig(props: any) {
   }
 
   const panel: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", borderRadius: 18, padding: 12, background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(0,0,0,.28))", border: "1px solid rgba(255,255,255,.10)", overflow: "hidden" };
-  const selectorCard: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overflow: "hidden", background: "rgba(10,12,24,.96)", borderRadius: 18, padding: "20px 12px 16px", marginBottom: 16, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: "1px solid rgba(255,255,255,.05)" };
+  const selectorCard: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overflow: "hidden", background: "rgba(10,12,24,.96)", borderRadius: 18, padding: "16px 12px", marginBottom: 12, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33` };
+  const guidedCard: React.CSSProperties = { ...selectorCard, padding: 14, border: `1px solid ${primary}33` };
+  const accent2 = theme?.accent2 || theme?.accent1 || primary;
+  const participantSummary = participantMode === "teams"
+    ? `${activeTeamConfigs.length} équipe${activeTeamConfigs.length > 1 ? "s" : ""} · ${activeUniquePlayerIds.length} joueur${activeUniquePlayerIds.length > 1 ? "s" : ""}`
+    : `${selectedIds.length} joueur${selectedIds.length > 1 ? "s" : ""}`;
+  const variantSummary = gameVariant === "attack_defense" ? "Attaque / Défense" : "Baseball — cibles aléatoires";
+  const bullSummary = bullTargetMode === "off" ? "Jamais" : bullTargetMode === "defense" ? `Défense · ${bullBonusPoints} pts` : bullTargetMode === "attack" ? `Attaque · ${bullBonusPoints} pts` : "Dans le tirage";
+  const inputSummary = scoreInputMethod === "dartboard" ? "Cible interactive" : "Keypad";
+
+  const participantsBlock = (
+    <>
+      <section style={selectorCard}>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, marginBottom: 10 }}>Participants</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} primary={primary} primarySoft={primarySoft} />
+          <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} primary={primary} primarySoft={primarySoft} />
+        </div>
+        {participantMode === "players" ? (
+          <>
+            <SelectedParticipantsCompactBlock items={selectedParticipantItems} accent={primary} onRemove={togglePlayer} playerDartSets={playerDartSets} onDartSetChange={handleChangePlayerDartSet} allProfiles={humanProfiles} />
+            <PlayerPagedSelector usageMode="baseball" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+            <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>{gameVariant === "attack_defense" ? "Duel : 2 profils exactement. Pour jouer à plus de 2, utilise le mode ÉQUIPES." : "1 à 12 profils. Le tri privilégie les profils les plus utilisés en Baseball, puis l’ordre alphabétique."}</p>
+          </>
+        ) : (
+          <TeamsSection
+            profiles={teamProfiles} selectableProfiles={humanProfiles} selectedIds={selectedIds}
+            teamAssignments={teamAssignments} setPlayerTeam={setPlayerTeam} togglePlayer={togglePlayer}
+            playerDartSets={playerDartSets} handleChangePlayerDartSet={handleChangePlayerDartSet}
+            allProfiles={humanProfiles} sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode}
+            storedTeams={storedDartsTeams} selectedStoredTeamIds={selectedStoredTeamIds}
+            toggleStoredTeam={toggleStoredTeam} addStoredTeamSelection={addStoredTeamSelection}
+            removeStoredTeamSelection={removeStoredTeamSelection} botTeams={botDartsTeams}
+            botTeamsPanelEnabled={botTeamsPanelEnabled} setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
+            selectedBotTeamIds={selectedBotTeamIds} toggleBotTeam={toggleBotTeam}
+            removeBotTeamSelection={removeBotTeamSelection} savedTeamMemberSelections={savedTeamMemberSelections}
+            toggleSavedTeamMember={toggleSavedTeamMember} primary={primary} primarySoft={primarySoft}
+          />
+        )}
+        <div style={{ marginTop: 12, borderRadius: 14, padding: "9px 11px", border: `1px solid ${validSelection ? primary + "55" : "rgba(255,120,150,.28)"}`, background: validSelection ? `${primary}0d` : "rgba(255,80,120,.07)" }}>
+          <div style={{ color: validSelection ? primary : "#ffb2c8", fontSize: 11.5, fontWeight: 950 }}>
+            {validSelection ? `Sélection prête · ${participantSummary}` : selectionError}
+          </div>
+        </div>
+      </section>
+
+      {participantMode === "players" ? (
+        <section style={{ ...selectorCard, padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: 0 }}>Bots IA</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" aria-pressed={botsPanelEnabled} onClick={() => setBotsPanelEnabled((value) => !value)} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}88`, background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>{botsPanelEnabled ? "☑ ON" : "☐ OFF"}</button>
+              <button type="button" onClick={() => typeof go === "function" && go("profiles_bots")} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>Gérer les BOTS</button>
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>Ajoute les mêmes BOTS IA prédéfinis ou personnels que dans X01.</p>
+          {botsPanelEnabled ? <BotPagedSelector bots={botProfiles as any} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+          {selectedBotCount > 0 ? <div style={{ marginTop: 10 }}><OptionRow label="Difficulté IA Baseball"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
+        </section>
+      ) : teamsSourceMode !== "auto" ? (
+        <BotTeamsSection botTeams={botDartsTeams} selectedBotTeamIds={selectedBotTeamIds} toggleBotTeam={toggleBotTeam} addBotTeamSelection={addBotTeamSelection} removeBotTeamSelection={removeBotTeamSelection} botTeamsPanelEnabled={botTeamsPanelEnabled} setBotTeamsPanelEnabled={setBotTeamsPanelEnabled} profiles={teamProfiles} savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember} primary={primary} primarySoft={primarySoft} />
+      ) : null}
+    </>
+  );
+
+  const formatBlock = (
+    <section style={guidedCard}>
+      <h3 style={{ margin: "0 0 7px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Format du match</h3>
+      <div style={{ color: themeTextSoft, fontSize: 11.5, lineHeight: 1.4, marginBottom: 10 }}>Définis la durée de la partie et le comportement des manches supplémentaires.</div>
+      <div style={panel}>
+        <OptionRow label="Nombre de manches"><OptionSelect value={innings} options={[5, 7, 9, 12, 15, 20]} onChange={(value: any) => setInnings(Number(value) || 9)} /></OptionRow>
+        <OptionRow label="Manches supplémentaires"><OptionToggle value={extraInnings} onChange={setExtraInnings} /></OptionRow>
+        {extraInnings ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(10, Math.max(1, maxExtraInnings))} options={[1, 2, 3, 5, 10]} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
+        {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 point = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
+      </div>
+    </section>
+  );
+
+  const variantBlock = (
+    <section style={guidedCard}>
+      <h3 style={{ margin: "0 0 7px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Variante de jeu</h3>
+      <div style={{ color: themeTextSoft, fontSize: 11.5, lineHeight: 1.4, marginBottom: 12 }}>Choisis le fonctionnement du Baseball Darts.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
+        <button type="button" onClick={() => setGameVariant("target")} style={{ minHeight: 92, borderRadius: 16, padding: 12, textAlign: "left", cursor: "pointer", border: `1px solid ${gameVariant === "target" ? primary : "rgba(255,255,255,.10)"}`, background: gameVariant === "target" ? primarySoft : "rgba(255,255,255,.035)", color: "#fff" }}>
+          <div style={{ color: primary, fontSize: 14, fontWeight: 950 }}>Baseball classique</div>
+          <div style={{ marginTop: 5, fontSize: 10.5, color: themeTextSoft, lineHeight: 1.35 }}>Une cible aléatoire par manche. S=1, D=2, T=3.</div>
+        </button>
+        <button type="button" onClick={() => setGameVariant("attack_defense")} style={{ minHeight: 92, borderRadius: 16, padding: 12, textAlign: "left", cursor: "pointer", border: `1px solid ${gameVariant === "attack_defense" ? primary : "rgba(255,255,255,.10)"}`, background: gameVariant === "attack_defense" ? primarySoft : "rgba(255,255,255,.035)", color: "#fff" }}>
+          <div style={{ color: primary, fontSize: 14, fontWeight: 950 }}>Attaque / Défense</div>
+          <div style={{ marginTop: 5, fontSize: 10.5, color: themeTextSoft, lineHeight: 1.35 }}>1v1 ou 2 équipes. Chaque camp attaque puis défend la même cible.</div>
+        </button>
+      </div>
+      <div style={{ marginTop: 11 }}><OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow></div>
+      <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.4 }}>
+        {gameVariant === "attack_defense"
+          ? participantMode === "teams"
+            ? "Duel limité à 2 équipes équilibrées. Chaque joueur attaque et défend une fois sur chaque cible."
+            : "Duel limité à 2 joueurs exactement. J1 attaque/J2 défend, puis les rôles s’inversent sur la même cible."
+          : "Les cibles numériques 1 à 20 sont tirées aléatoirement sans répétition tant que possible."}
+      </div>
+    </section>
+  );
+
+  const rulesBlock = (
+    <section style={guidedCard}>
+      <h3 style={{ margin: "0 0 7px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Règles & saisie</h3>
+      <OptionRow label="MISS = fin du tour"><OptionToggle value={missEndsTurn} onChange={setMissEndsTurn} /></OptionRow>
+      <div style={{ margin: "-5px 0 8px", fontSize: 10.5, opacity: .64, lineHeight: 1.35 }}>{missEndsTurn ? "MISS = perte immédiate de la volée en cours et changement de tour/rôle." : "MISS = 0 point, mais la volée continue jusqu’à validation."}</div>
+      <OptionRow label="Règle BULL / DBULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "defense", label: "Défense" }, { value: "attack", label: "Attaque" }, { value: "random", label: "Dans le tirage aléatoire" }]} onChange={setBullTargetMode} /></OptionRow>
+      {(bullTargetMode === "attack" || bullTargetMode === "defense") ? <OptionRow label="Valeur du BULL"><OptionSelect value={bullBonusPoints} options={[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]} onChange={(value: any) => setBullBonusPoints(Math.min(20, Math.max(1, Number(value) || 4)))} /></OptionRow> : null}
+      <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+      <div style={{ marginTop: 9, padding: "9px 10px", borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.4 }}>
+        {bullTargetMode === "random"
+          ? "Le BULL rejoint exceptionnellement le tirage : BULL = 3 points et DBULL = 5 points quand BULL est la cible."
+          : bullTargetMode === "attack"
+            ? `BULL = +${bullBonusPoints} points pour soi ; DBULL = score ×2.`
+            : bullTargetMode === "defense"
+              ? `BULL retire ${bullBonusPoints} points à l’adversaire ; DBULL divise son score par 2 avec arrondi supérieur.`
+              : "BULL / DBULL n’ont aucun effet spécial et le BULL reste hors rotation."}
+      </div>
+    </section>
+  );
+
+  const summaryBlock = (
+    <section style={{ ...guidedCard, border: `1px solid ${validSelection ? primary + "66" : "rgba(255,255,255,.08)"}` }}>
+      <h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Résumé de la partie</h3>
+      <div style={{ display: "grid", gap: 7, padding: 11, borderRadius: 14, background: `${primary}0c`, border: `1px solid ${primary}33`, fontSize: 11.5 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Participants</span><b style={{ textAlign: "right" }}>{participantSummary}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Format</span><b>{innings} manches{extraInnings ? ` + ${maxExtraInnings} max` : ""}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Variante</span><b style={{ textAlign: "right" }}>{variantSummary}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>MISS</span><b>{missEndsTurn ? "Fin du tour" : "0 point"}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>BULL / DBULL</span><b style={{ textAlign: "right" }}>{bullSummary}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Saisie</span><b>{inputSummary}</b></div>
+      </div>
+      {!validSelection ? <div style={{ marginTop: 10, fontSize: 11.5, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
+    </section>
+  );
 
   return (
     <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
       <PageHeader tickerSrc={tickerBaseball} tickerAlt="BASEBALL DARTS" left={<BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" />} right={<InfoDot title="Règles du Baseball Darts" color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent primary={primary} accent={theme?.accent1 || primary} />} />} />
-      <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "12px 12px 0", overflowX: "hidden" }}>
-        <section style={selectorCard}>
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>Participants</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-            <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} primary={primary} primarySoft={primarySoft} />
-            <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} primary={primary} primarySoft={primarySoft} />
+      <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 8px 0", overflowX: "hidden" }}>
+        <section style={{ ...selectorCard, border: `1px solid ${primary}66`, boxShadow: `0 0 24px ${primary}18, 0 14px 34px rgba(0,0,0,.48)` }}>
+          <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration Baseball</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => selectConfigViewMode("guided")} primary={primary} primarySoft={primarySoft} />
+            <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => selectConfigViewMode("complete")} primary={primary} primarySoft={primarySoft} />
           </div>
-          {participantMode === "players" ? (
-            <>
-              <SelectedParticipantsCompactBlock items={selectedParticipantItems} accent={primary} onRemove={togglePlayer} playerDartSets={playerDartSets} onDartSetChange={handleChangePlayerDartSet} allProfiles={humanProfiles} />
-              <PlayerPagedSelector usageMode="baseball" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
-              <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>{gameVariant === "attack_defense" ? "Duel : 2 profils exactement. Pour jouer à plus de 2, utilise le mode ÉQUIPES." : "1 à 12 profils. Le tri privilégie les profils les plus utilisés en Baseball, puis l’ordre alphabétique."}</p>
-            </>
-          ) : (
-            <TeamsSection
-              profiles={teamProfiles} selectableProfiles={humanProfiles} selectedIds={selectedIds}
-              teamAssignments={teamAssignments} setPlayerTeam={setPlayerTeam} togglePlayer={togglePlayer}
-              playerDartSets={playerDartSets} handleChangePlayerDartSet={handleChangePlayerDartSet}
-              allProfiles={humanProfiles} sourceMode={teamsSourceMode} setSourceMode={setTeamsSourceMode}
-              storedTeams={storedDartsTeams} selectedStoredTeamIds={selectedStoredTeamIds}
-              toggleStoredTeam={toggleStoredTeam} addStoredTeamSelection={addStoredTeamSelection}
-              removeStoredTeamSelection={removeStoredTeamSelection} botTeams={botDartsTeams}
-              botTeamsPanelEnabled={botTeamsPanelEnabled} setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
-              selectedBotTeamIds={selectedBotTeamIds} toggleBotTeam={toggleBotTeam}
-              removeBotTeamSelection={removeBotTeamSelection} savedTeamMemberSelections={savedTeamMemberSelections}
-              toggleSavedTeamMember={toggleSavedTeamMember} primary={primary} primarySoft={primarySoft}
-            />
-          )}
+          <div style={{ marginTop: 8, color: themeTextSoft, fontSize: 11, lineHeight: 1.35 }}>Guidée : les choix essentiels étape par étape. Complète : tous les paramètres avancés sur une seule page.</div>
         </section>
 
-        {participantMode === "players" ? (
-          <section style={{ ...selectorCard, padding: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, margin: 0 }}>Bots IA</h3>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" aria-pressed={botsPanelEnabled} onClick={() => setBotsPanelEnabled((value) => !value)} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}88`, background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>{botsPanelEnabled ? "☑ ON" : "☐ OFF"}</button>
-                <button type="button" onClick={() => typeof go === "function" && go("profiles_bots")} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>Gérer les BOTS</button>
+        {configViewMode === "guided" ? (
+          <section style={{ ...selectorCard, border: `1px solid ${primary}55`, boxShadow: `0 0 22px ${primary}16, 0 14px 34px rgba(0,0,0,.48)` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
+              <div>
+                <div style={{ color: primary, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div>
+                <div style={{ marginTop: 3, color: themeTextSoft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {guidedSteps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", color: idx === guidedStep ? primary : "#aeb2d3", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>{idx + 1}</button>)}
               </div>
             </div>
-            <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>Ajoute les mêmes BOTS IA prédéfinis ou personnels que dans X01.</p>
-            {botsPanelEnabled ? <BotPagedSelector bots={botProfiles as any} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
-            {selectedBotCount > 0 ? <div style={{ marginTop: 10 }}><OptionRow label="Difficulté IA Baseball"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow></div> : null}
+            <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, ${accent2})`, transition: "width .18s ease" }} /></div>
           </section>
-        ) : teamsSourceMode !== "auto" ? (
-          <BotTeamsSection botTeams={botDartsTeams} selectedBotTeamIds={selectedBotTeamIds} toggleBotTeam={toggleBotTeam} addBotTeamSelection={addBotTeamSelection} removeBotTeamSelection={removeBotTeamSelection} botTeamsPanelEnabled={botTeamsPanelEnabled} setBotTeamsPanelEnabled={setBotTeamsPanelEnabled} profiles={teamProfiles} savedTeamMemberSelections={savedTeamMemberSelections} toggleSavedTeamMember={toggleSavedTeamMember} primary={primary} primarySoft={primarySoft} />
         ) : null}
 
-        <Section title="FORMAT DU MATCH">
-          <div style={panel}>
-            <OptionRow label="Nombre de manches"><OptionSelect value={innings} options={[5, 7, 9, 12, 15, 20]} onChange={(value: any) => setInnings(Number(value) || 9)} /></OptionRow>
-            <OptionRow label="Manches supplémentaires"><OptionToggle value={extraInnings} onChange={setExtraInnings} /></OptionRow>
-            {extraInnings ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(10, Math.max(1, maxExtraInnings))} options={[1, 2, 3, 5, 10]} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
-            {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 point = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
-            <OptionRow label="Variante de jeu"><OptionSelect value={gameVariant} options={[{ value: "target", label: "Cibles aléatoires — Baseball" }, { value: "attack_defense", label: "Attaque / Défense — Cible par manche" }]} onChange={setGameVariant} /></OptionRow>
-            <OptionRow label="MISS"><OptionToggle value={missEndsTurn} onChange={setMissEndsTurn} /></OptionRow>
-            <div style={{ margin: "-5px 0 5px", fontSize: 10.5, opacity: .62, lineHeight: 1.3 }}>{missEndsTurn ? "MISS = perte immédiate de la volée en cours et changement de tour/rôle." : "MISS = 0 point, mais la volée peut continuer jusqu’à 3 fléchettes."}</div>
-            <OptionRow label="Règle BULL / DBULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "defense", label: "Défense" }, { value: "attack", label: "Attaque" }, { value: "random", label: "Dans le tirage aléatoire" }]} onChange={setBullTargetMode} /></OptionRow>
-            {(bullTargetMode === "attack" || bullTargetMode === "defense") ? <OptionRow label="Valeur du BULL"><OptionSelect value={bullBonusPoints} options={[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]} onChange={(value: any) => setBullBonusPoints(Math.min(20, Math.max(1, Number(value) || 4)))} /></OptionRow> : null}
-            <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
-            <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-            <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.4 }}>
-              {gameVariant === "attack_defense"
-                ? participantMode === "teams"
-                  ? `Duel limité à 2 équipes équilibrées. Sur chaque cible, tous les membres de l'équipe A attaquent d'abord face à leur vis-à-vis de B qui défendent ; ensuite les rôles s'inversent. Chaque joueur attaque et défend donc une fois. Tous les points attaque − défense (minimum 0) sont additionnés pour former le score de l'équipe sur cette cible.`
-                  : `Duel limité à 2 joueurs exactement. Sur chaque cible : J1 attaque/J2 défend, puis J2 attaque/J1 défend. Seules les touches sur la cible comptent : S=1, D=2, T=3. Points = attaque − défense, minimum 0. Pour jouer à plus de 2, passe en mode ÉQUIPES.`
-                : bullTargetMode === "random"
-                  ? "Les cibles sont tirées parmi 1 à 20 + BULL. Quand BULL sort : BULL=3 runs et DBULL=5 runs."
-                  : "Les cibles sont tirées uniquement parmi 1 à 20. Le BULL reste une option spéciale séparée et n’entre pas dans la rotation."}
-            </div>
-          </div>
-        </Section>
+        {configViewMode === "guided" ? (
+          <>
+            {guidedStep === 0 ? participantsBlock : null}
+            {guidedStep === 1 ? formatBlock : null}
+            {guidedStep === 2 ? variantBlock : null}
+            {guidedStep === 3 ? rulesBlock : null}
+            {guidedStep === 4 ? summaryBlock : null}
 
-        <div style={{ padding: "4px 12px 14px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-          <button type="button" className="btn-primary" disabled={!validSelection} onClick={onStart} style={{ width: "100%", minHeight: 48, fontWeight: 1000, letterSpacing: 1.1 }}>DÉMARRER LE BASEBALL</button>
-          {!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
-        </div>
+            <div style={{ display: "flex", gap: 9, margin: "0 0 12px" }}>
+              <button type="button" onClick={() => setGuidedStep((step) => Math.max(0, step - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: guidedStep === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.065)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>
+              <button type="button" onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: guidedStep === guidedMaxStep ? "rgba(255,255,255,.025)" : primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {participantsBlock}
+            <Section title="FORMAT DU MATCH">
+              <div style={panel}>
+                <OptionRow label="Nombre de manches"><OptionSelect value={innings} options={[5, 7, 9, 12, 15, 20]} onChange={(value: any) => setInnings(Number(value) || 9)} /></OptionRow>
+                <OptionRow label="Manches supplémentaires"><OptionToggle value={extraInnings} onChange={setExtraInnings} /></OptionRow>
+                {extraInnings ? <OptionRow label="Maximum supplémentaire"><OptionSelect value={Math.min(10, Math.max(1, maxExtraInnings))} options={[1, 2, 3, 5, 10]} onChange={(value: any) => setMaxExtraInnings(Number(value) || 1)} /></OptionRow> : null}
+                {innings >= 7 ? <OptionRow label="Règle de la 7e manche"><OptionSelect value={seventhInningRule} options={[{ value: "none", label: "Aucune pénalité" }, { value: "halve_on_zero", label: "0 point = score ÷ 2" }]} onChange={setSeventhInningRule} /></OptionRow> : null}
+                <OptionRow label="Variante de jeu"><OptionSelect value={gameVariant} options={[{ value: "target", label: "Cibles aléatoires — Baseball" }, { value: "attack_defense", label: "Attaque / Défense — Cible par manche" }]} onChange={setGameVariant} /></OptionRow>
+                <OptionRow label="MISS"><OptionToggle value={missEndsTurn} onChange={setMissEndsTurn} /></OptionRow>
+                <div style={{ margin: "-5px 0 5px", fontSize: 10.5, opacity: .62, lineHeight: 1.3 }}>{missEndsTurn ? "MISS = perte immédiate de la volée en cours et changement de tour/rôle." : "MISS = 0 point, mais la volée peut continuer jusqu’à 3 fléchettes."}</div>
+                <OptionRow label="Règle BULL / DBULL"><OptionSelect value={bullTargetMode} options={[{ value: "off", label: "Jamais" }, { value: "defense", label: "Défense" }, { value: "attack", label: "Attaque" }, { value: "random", label: "Dans le tirage aléatoire" }]} onChange={setBullTargetMode} /></OptionRow>
+                {(bullTargetMode === "attack" || bullTargetMode === "defense") ? <OptionRow label="Valeur du BULL"><OptionSelect value={bullBonusPoints} options={[1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]} onChange={(value: any) => setBullBonusPoints(Math.min(20, Math.max(1, Number(value) || 4)))} /></OptionRow> : null}
+                <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+                <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
+                <div style={{ marginTop: 9, fontSize: 11.5, opacity: .68, lineHeight: 1.4 }}>
+                  {gameVariant === "attack_defense"
+                    ? participantMode === "teams"
+                      ? "Duel limité à 2 équipes équilibrées. Sur chaque cible, tous les membres de l'équipe A attaquent d'abord face à leur vis-à-vis de B qui défendent ; ensuite les rôles s'inversent. Chaque joueur attaque et défend une fois."
+                      : "Duel limité à 2 joueurs exactement. Sur chaque cible : J1 attaque/J2 défend, puis J2 attaque/J1 défend. Seules les touches sur la cible comptent."
+                    : bullTargetMode === "random"
+                      ? "Les cibles sont tirées parmi 1 à 20 + BULL. Quand BULL sort : BULL=3 runs et DBULL=5 runs."
+                      : "Les cibles sont tirées uniquement parmi 1 à 20. Le BULL reste une option spéciale séparée et n’entre pas dans la rotation."}
+                </div>
+              </div>
+            </Section>
+          </>
+        )}
+
+        {(configViewMode === "complete" || guidedStep === guidedMaxStep) ? (
+          <div style={{ padding: "4px 4px 14px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+            <button type="button" disabled={!validSelection} onClick={onStart} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${primary}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${primary}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${primary}55, 0 10px 24px rgba(0,0,0,.40)` : "0 10px 24px rgba(0,0,0,.40)", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER LE BASEBALL</button>
+            {!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

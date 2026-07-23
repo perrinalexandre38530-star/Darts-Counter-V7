@@ -247,6 +247,17 @@ export default function ScramPlay(props: any) {
     return () => window.removeEventListener("resize", syncViewport);
   }, []);
 
+  // Toujours ouvrir le Play SCRAM tout en haut. Certaines routes/configs
+  // conservent la position de scroll précédente, ce qui faisait passer
+  // le premier bloc sous le header sticky et le rognait visuellement.
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+
   const byId = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
   const teamPlayers = React.useMemo(() => ({
     A: (state?.teams?.A || []).map((id) => byId.get(String(id))).filter(Boolean),
@@ -572,12 +583,12 @@ export default function ScramPlay(props: any) {
         tickerEdgeFade="strong"
         tickerHeight={tickerHeight}
         tickerBottomGap={10}
-        left={<BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" />}
-        right={<InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} />}
+        left={<div style={{ marginLeft: 9 }}><BackDot onClick={backToConfig} color={T.cyan} glow="rgba(66,214,255,.62)" title="Retour à la configuration" /></div>}
+        right={<div style={{ marginRight: 9 }}><InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} /></div>}
       />
 
       <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", marginTop: 0, padding: "2px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto auto auto", alignContent: "start", gap: 6, overflow: "hidden", position: "relative" }}>
-        <section style={{ ...panelStyle(), minWidth: 0, padding: 6, borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
+        <section style={{ ...panelStyle(), minWidth: 0, marginTop: 8, padding: "9px 6px 6px", borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
           <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 106px", gap: 6, alignItems: "stretch" }}>
             <div style={{ minWidth: 0, display: "grid", justifyItems: "center", alignContent: "center", gap: 2, padding: "2px 0" }}>
               <div style={{ width: 52, height: 52, position: "relative", flex: "0 0 auto" }}>
