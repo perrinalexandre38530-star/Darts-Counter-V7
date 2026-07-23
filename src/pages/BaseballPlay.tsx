@@ -762,16 +762,21 @@ function bandEntitySource(standing: any, participantMode: string, profilesById: 
 function BandBackdrop({ standing, side, participantMode, profilesById, teamById }: any) {
   const source = bandEntitySource(standing, participantMode, profilesById, teamById);
   if (!source?.image && !source?.profile) return null;
-  const outward = side === "left" ? -54 : -54;
-  const fade = side === "left"
-    ? "linear-gradient(90deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.06) 52%, rgba(5,9,19,.82) 100%)"
-    : "linear-gradient(270deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.06) 52%, rgba(5,9,19,.82) 100%)";
+  const outward = -54;
+  const fadeBg = side === "left"
+    ? "linear-gradient(90deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.03) 42%, rgba(5,9,19,.16) 66%, rgba(5,9,19,.78) 100%)"
+    : "linear-gradient(270deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.03) 42%, rgba(5,9,19,.16) 66%, rgba(5,9,19,.78) 100%)";
+  const fadeMask = side === "left"
+    ? "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 42%, rgba(0,0,0,.72) 70%, rgba(0,0,0,0) 100%)"
+    : "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 42%, rgba(0,0,0,.72) 70%, rgba(0,0,0,0) 100%)";
   return (
-    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "46%", overflow: "hidden", opacity: .30, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", [side]: outward, top: -8, transform: `scale(2.38)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.92)" }}>
-        {source.profile ? <ProfileAvatar profile={source.profile} size={82} /> : <img src={source.image} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />}
+    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "46%", overflow: "hidden", opacity: .32, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", inset: 0, WebkitMaskImage: fadeMask, maskImage: fadeMask, WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" }}>
+        <div style={{ position: "absolute", [side]: outward, top: -8, transform: `scale(2.38)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.92)" }}>
+          {source.profile ? <ProfileAvatar profile={source.profile} size={82} /> : <img src={source.image} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />}
+        </div>
       </div>
-      <div style={{ position: "absolute", inset: 0, background: fade }} />
+      <div style={{ position: "absolute", inset: 0, background: fadeBg }} />
     </div>
   );
 }
