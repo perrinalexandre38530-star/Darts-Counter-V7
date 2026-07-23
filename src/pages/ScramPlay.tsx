@@ -581,7 +581,7 @@ export default function ScramPlay(props: any) {
         tickerSrc={tickerScram}
         tickerAlt="SCRAM"
         tickerEdgeFade="strong"
-        tickerFit="contain"
+        tickerFit="cover"
         tickerHeight={tickerHeight}
         tickerBottomGap={8}
         stickyTop={0}
