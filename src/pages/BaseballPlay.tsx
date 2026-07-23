@@ -568,17 +568,17 @@ export default function BaseballPlay(props: any) {
                 <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
-            {config.participantMode === "teams" && (activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo) ? <div style={{ position: "absolute", right: "15%", top: -4, bottom: -4, width: "28%", minWidth: 84, overflow: "hidden", opacity: .18, pointerEvents: "none" }}><div style={{ position: "absolute", right: -8, top: 12, transform: "scale(1.34)", transformOrigin: "right top", filter: "saturate(.96)" }}><img src={activeTeam.logoDataUrl || activeTeam.logoUrl || activeTeam.logo} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} /></div></div> : null}
+            {config.participantMode === "teams" && (activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo) ? <div style={{ position: "absolute", right: "calc(128px + 12px)", top: -4, bottom: -4, width: "24%", minWidth: 82, overflow: "hidden", opacity: .16, pointerEvents: "none" }}><div style={{ position: "absolute", right: -16, top: 16, transform: "scale(1.22)", transformOrigin: "right top", filter: "saturate(.92)" }}><img src={activeTeam.logoDataUrl || activeTeam.logoUrl || activeTeam.logo} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} /></div></div> : null}
             <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 10px 2px 6px" }}>
               {botThinking ? <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
               <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", maxWidth: "100%", textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word" }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 64, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
               {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</div> : null}
             </div>
-            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
-              <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62 }} />
-              <div style={{ position: "absolute", left: 4, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
-              <div style={{ position: "absolute", left: 4, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${secondary}66, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${secondary}22`, pointerEvents: "none" }} />
+            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
+              <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: 1 }} />
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${secondary}66, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${secondary}22`, pointerEvents: "none" }} />
               <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
                 <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginBottom: 4 }}>CIBLE</div>
                 <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
@@ -762,11 +762,16 @@ function bandEntitySource(standing: any, participantMode: string, profilesById: 
 function BandBackdrop({ standing, side, participantMode, profilesById, teamById }: any) {
   const source = bandEntitySource(standing, participantMode, profilesById, teamById);
   if (!source?.image && !source?.profile) return null;
+  const outward = side === "left" ? -54 : -54;
+  const fade = side === "left"
+    ? "linear-gradient(90deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.06) 52%, rgba(5,9,19,.82) 100%)"
+    : "linear-gradient(270deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.06) 52%, rgba(5,9,19,.82) 100%)";
   return (
-    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "66%", overflow: "hidden", opacity: .34, pointerEvents: "none" }}>
-      <div style={{ position: "absolute", [side]: -26, top: -4, transform: `scale(2.95)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.88)" }}>
+    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "46%", overflow: "hidden", opacity: .30, pointerEvents: "none" }}>
+      <div style={{ position: "absolute", [side]: outward, top: -8, transform: `scale(2.38)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.92)" }}>
         {source.profile ? <ProfileAvatar profile={source.profile} size={82} /> : <img src={source.image} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />}
       </div>
+      <div style={{ position: "absolute", inset: 0, background: fade }} />
     </div>
   );
 }
