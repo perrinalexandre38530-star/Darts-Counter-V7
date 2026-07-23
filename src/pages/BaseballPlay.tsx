@@ -500,29 +500,27 @@ export default function BaseballPlay(props: any) {
 
       <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         <section style={{ ...panelStyle(), marginBottom: 6, padding: 0, overflow: "hidden", borderColor: `${primary}88`, boxShadow: `0 0 24px ${primary}20` }}>
-          <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(88px,.82fr) minmax(110px,1fr) minmax(92px,.86fr)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
+          <div style={{ position: "relative", minHeight: 126, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(168px,190px)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
             <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(0,0,0,.36), rgba(0,0,0,.18) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))` }} />
             <div style={{ position: "absolute", left: -24, top: -4, bottom: -4, width: "30%", minWidth: 96, overflow: "hidden", opacity: .12, pointerEvents: "none" }}>
               <div style={{ position: "absolute", left: -22, top: 16, transform: "scale(1.46)", transformOrigin: "left top", filter: "saturate(.84)" }}>
                 <ProfileAvatar profile={activeProfile as any} size={82} />
               </div>
             </div>
-            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, paddingLeft: 14 }}>
-              {botThinking ? <div style={{ marginLeft: 4, color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1 }}>BOT EN RÉFLEXION</div> : null}
-              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 5, marginLeft: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6 }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
-            </div>
-            <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, padding: "2px 0" }}>
+            <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 10px 2px 6px" }}>
+              {botThinking ? <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
               <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textTransform: "uppercase" }}>{playerName(activeProfile)}</div>
-              <div style={{ marginTop: 6, color: themeText, fontSize: 46, fontWeight: 1100, lineHeight: 1, textShadow: `0 0 18px ${primary}30` }}>{activeScore}</div>
+              <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 64, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
+              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}{duelOpponent ? ` • VS ${playerName(duelOpponent)}` : ""}</div> : null}
             </div>
-            <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
+            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 1, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0 }}>
               <div style={{ position: "absolute", inset: "0 0 0 4px", borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .62 }} />
               <div style={{ position: "absolute", left: 4, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
               <div style={{ position: "absolute", left: 4, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${secondary}66, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${secondary}22`, pointerEvents: "none" }} />
               <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, width: "100%", padding: "6px 4px" }}>
+                <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginBottom: 4 }}>CIBLE</div>
                 <div style={{ color: secondary, fontSize: state.target === 25 ? 22 : 44, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${secondary}88` }}>{state.target === 25 ? "BULL" : state.target}</div>
-                <div style={{ color: themeSoft, fontSize: 10, fontWeight: 950, marginTop: 2 }}>CIBLE</div>
-                <div style={{ color: themeSoft, fontSize: 8.5, fontWeight: 900, marginTop: 2, letterSpacing: .4 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
+                <div style={{ color: themeSoft, fontSize: 8.5, fontWeight: 900, marginTop: 6, letterSpacing: .4 }}>MANCHE {state.inning}{state.inning > state.rules.innings ? " EXTRA" : ""}</div>
               </div>
             </div>
           </div>
