@@ -520,7 +520,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:prisoner",
     infoTitle: "Prisoner",
     infoBody:
-      "Jeu fun a roles. Un joueur devient prisonnier sur echec, les autres le liberent via une cible. A implementer.",
+      "Course autour du cadran avec fléchettes prisonnières, captures, transferts de fléchettes, éliminations, joueurs/équipes, bots, historique et statistiques.",
   },
   {
     id: "tic_tac_toe",
@@ -1121,6 +1121,8 @@ const READY_IDS = new Set<string>([
   "scram",
   "baseball",
   "bobs_27",
+  "shooter",
+  "prisoner",
 
   // ✅ UNGRAY CAPITAL (Games > Defis)
   "capital",

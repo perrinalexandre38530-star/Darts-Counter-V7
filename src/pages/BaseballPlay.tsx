@@ -306,6 +306,15 @@ export default function BaseballPlay(props: any) {
     return base + Number(state.inningAdjustmentsByEntity?.[standing.id]?.[inning] || 0);
   }
 
+  function entityInningPlayed(standing: BaseballStanding, inning: number) {
+    if (config.participantMode === "teams") {
+      const hasAnyPlayerScore = standing.playerIds.some((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
+      const hasEntityAdjustment = state.inningAdjustmentsByEntity?.[standing.id]?.[inning] !== undefined;
+      return hasAnyPlayerScore || hasEntityAdjustment;
+    }
+    return standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
+  }
+
   function buildHistoryRecord() {
     const now = Date.now();
     const winnerEntityIds = new Set(state.winnerIds || []);
@@ -621,8 +630,9 @@ export default function BaseballPlay(props: any) {
           <button type="button" onClick={() => setShowInningsModal(true)} style={{ position: "relative", width: "100%", minHeight: 88, borderRadius: 18, border: `1px solid ${themeStroke}`, overflow: "hidden", background: "rgba(255,255,255,.02)", padding: 0, cursor: "pointer", textAlign: "left" }}>
             {scoreBandRows[0] ? <BandBackdrop standing={scoreBandRows[0]} side="left" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
             {scoreBandRows[1] ? <BandBackdrop standing={scoreBandRows[1]} side="right" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
+            <ScoreBandCenterFade />
             <div style={{ position: "absolute", right: 4, top: 4, width: 34, height: 34, borderRadius: 999, border: `1px solid ${primary}88`, background: "rgba(0,0,0,.26)", color: primary, display: "grid", placeItems: "center", fontSize: 16, fontWeight: 1000, zIndex: 2 }}>☰</div>
-            <div style={{ position: "relative", zIndex: 1, minHeight: 88, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "10px 38px 10px 10px" }}>
+            <div style={{ position: "relative", zIndex: 2, minHeight: 88, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "10px 38px 10px 10px" }}>
               <BandEntity standing={scoreBandRows[0]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="left" />
               <div style={{ color: "rgba(255,207,87,.9)", fontSize: 34, fontWeight: 1100, letterSpacing: 1, textShadow: `0 0 18px rgba(255,207,87,.28)`, whiteSpace: "nowrap", background: "transparent" }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
               <BandEntity standing={scoreBandRows[1]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="right" />
@@ -641,7 +651,8 @@ export default function BaseballPlay(props: any) {
                   <div style={{ ...panelStyle(), padding: 10, marginBottom: 12, borderRadius: 16, background: "rgba(255,255,255,.02)", position: "relative", overflow: "hidden" }}>
                     {scoreBandRows[0] ? <BandBackdrop standing={scoreBandRows[0]} side="left" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
                     {scoreBandRows[1] ? <BandBackdrop standing={scoreBandRows[1]} side="right" participantMode={config.participantMode} profilesById={byId} teamById={teamById} /> : null}
-                    <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
+                    <ScoreBandCenterFade />
+                    <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
                       <BandEntity standing={scoreBandRows[0]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="left" compact />
                       <div style={{ color: "rgba(255,207,87,.95)", fontSize: 30, fontWeight: 1100, whiteSpace: "nowrap", textShadow: `0 0 16px rgba(255,207,87,.24)` }}>{scoreBandRows[0]?.total ?? 0} - {scoreBandRows[1]?.total ?? 0}</div>
                       <BandEntity standing={scoreBandRows[1]} participantMode={config.participantMode} profilesById={byId} teamById={teamById} align="right" compact />
@@ -672,7 +683,7 @@ export default function BaseballPlay(props: any) {
                                     <td style={{ ...tdStyle(), color, fontWeight: 1000, minWidth: 74, width: 74, padding: "4px 5px", borderLeft: active ? `3px solid ${color}` : "3px solid transparent", position: "sticky", left: 0, zIndex: 2, background: active ? `${color}14` : (theme?.card || "#0d1421") }}><StandingMedallion standing={standing} participantMode={config.participantMode} profilesById={byId} teamById={teamById} color={color} /></td>
                                     {chunk.map((inning) => {
                                       const value = entityInningScore(standing, inning);
-                                      const played = standing.playerIds.every((id) => state.inningScoresByPlayer[id]?.[inning] !== undefined);
+                                      const played = entityInningPlayed(standing, inning);
                                       return <td key={inning} style={{ ...tdStyle(), color: played ? (value > 0 ? "rgba(255,255,255,.96)" : "rgba(255,255,255,.46)") : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750 }}>{played ? value : "·"}</td>;
                                     })}
                                   </tr>
@@ -762,22 +773,45 @@ function bandEntitySource(standing: any, participantMode: string, profilesById: 
 function BandBackdrop({ standing, side, participantMode, profilesById, teamById }: any) {
   const source = bandEntitySource(standing, participantMode, profilesById, teamById);
   if (!source?.image && !source?.profile) return null;
-  const outward = -54;
+  const outward = -72;
   const fadeBg = side === "left"
-    ? "linear-gradient(90deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.03) 42%, rgba(5,9,19,.16) 66%, rgba(5,9,19,.78) 100%)"
-    : "linear-gradient(270deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.03) 42%, rgba(5,9,19,.16) 66%, rgba(5,9,19,.78) 100%)";
+    ? "linear-gradient(90deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.02) 36%, rgba(5,9,19,.10) 58%, rgba(5,9,19,.26) 76%, rgba(5,9,19,.70) 100%)"
+    : "linear-gradient(270deg, rgba(5,9,19,0) 0%, rgba(5,9,19,.02) 36%, rgba(5,9,19,.10) 58%, rgba(5,9,19,.26) 76%, rgba(5,9,19,.70) 100%)";
   const fadeMask = side === "left"
-    ? "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 42%, rgba(0,0,0,.72) 70%, rgba(0,0,0,0) 100%)"
-    : "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 42%, rgba(0,0,0,.72) 70%, rgba(0,0,0,0) 100%)";
+    ? "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 34%, rgba(0,0,0,.88) 52%, rgba(0,0,0,.58) 74%, rgba(0,0,0,.18) 88%, rgba(0,0,0,0) 100%)"
+    : "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,.98) 34%, rgba(0,0,0,.88) 52%, rgba(0,0,0,.58) 74%, rgba(0,0,0,.18) 88%, rgba(0,0,0,0) 100%)";
   return (
-    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "46%", overflow: "hidden", opacity: .32, pointerEvents: "none" }}>
+    <div aria-hidden style={{ position: "absolute", top: 0, bottom: 0, [side]: 0, width: "54%", overflow: "hidden", opacity: .34, pointerEvents: "none" }}>
       <div style={{ position: "absolute", inset: 0, WebkitMaskImage: fadeMask, maskImage: fadeMask, WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat" }}>
-        <div style={{ position: "absolute", [side]: outward, top: -8, transform: `scale(2.38)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.92)" }}>
+        <div style={{ position: "absolute", [side]: outward, top: -14, transform: `scale(2.54)`, transformOrigin: side === "left" ? "left center" : "right center", filter: "saturate(.94)" }}>
           {source.profile ? <ProfileAvatar profile={source.profile} size={82} /> : <img src={source.image} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />}
         </div>
       </div>
       <div style={{ position: "absolute", inset: 0, background: fadeBg }} />
     </div>
+  );
+}
+
+function ScoreBandCenterFade() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: 0,
+        bottom: 0,
+        width: "42%",
+        transform: "translateX(-50%)",
+        pointerEvents: "none",
+        zIndex: 1,
+        background: [
+          "radial-gradient(circle at center, rgba(7,12,22,.82) 0%, rgba(7,12,22,.72) 18%, rgba(7,12,22,.54) 34%, rgba(7,12,22,.28) 56%, rgba(7,12,22,0) 78%)",
+          "linear-gradient(90deg, rgba(7,12,22,0) 0%, rgba(7,12,22,.10) 14%, rgba(7,12,22,.34) 28%, rgba(7,12,22,.62) 42%, rgba(7,12,22,.78) 50%, rgba(7,12,22,.62) 58%, rgba(7,12,22,.34) 72%, rgba(7,12,22,.10) 86%, rgba(7,12,22,0) 100%)"
+        ].join(', '),
+        filter: "blur(8px)",
+      }}
+    />
   );
 }
 

@@ -10,9 +10,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import dartboardPhoto from "../ui_assets/dartboard_photo.png";
 
+export type DartboardHitDetail = {
+  segment: number;
+  mult: 1 | 2 | 3;
+  ring: "miss" | "dbull" | "bull" | "inner_single" | "triple" | "outer_single" | "double";
+};
+
 type Props = {
   /** Callback segment (0..20, 25) + mult (1..3) */
   onHit: (segment: number, mult: 1 | 2 | 3) => void;
+  /** Détail optionnel de la zone physique, utile aux modes comme PRISONER. */
+  onDetailedHit?: (hit: DartboardHitDetail) => void;
   /** Multiplicateur courant venant du parent (boutons S/D/T) */
   multiplier: 1 | 2 | 3;
   /** Dimensions (px). Si non fourni => responsive via container */
@@ -68,26 +76,27 @@ function segmentFromAngle(angle0TopClockwise: number) {
   return WEDGE_ORDER[idx] ?? 20;
 }
 
-function classifyHit(r: number, angle0TopClockwise: number): { seg: number; mul: 1 | 2 | 3 } {
+function classifyHit(r: number, angle0TopClockwise: number): { seg: number; mul: 1 | 2 | 3; ring: DartboardHitDetail["ring"] } {
   // Outside board => miss (0)
-  if (!(r >= 0) || r > 1.02) return { seg: 0, mul: 1 };
+  if (!(r >= 0) || r > 1.02) return { seg: 0, mul: 1, ring: "miss" };
 
   // Bulls
-  if (r <= R.DBULL) return { seg: 25, mul: 2 };
-  if (r <= R.BULL) return { seg: 25, mul: 1 };
+  if (r <= R.DBULL) return { seg: 25, mul: 2, ring: "dbull" };
+  if (r <= R.BULL) return { seg: 25, mul: 1, ring: "bull" };
 
   const seg = segmentFromAngle(angle0TopClockwise);
 
   // Rings
-  if (r >= R.DOUBLE_IN && r <= R.DOUBLE_OUT) return { seg, mul: 2 };
-  if (r >= R.TRIPLE_IN && r <= R.TRIPLE_OUT) return { seg, mul: 3 };
+  if (r >= R.DOUBLE_IN && r <= R.DOUBLE_OUT) return { seg, mul: 2, ring: "double" };
+  if (r >= R.TRIPLE_IN && r <= R.TRIPLE_OUT) return { seg, mul: 3, ring: "triple" };
 
-  // Single
-  return { seg, mul: 1 };
+  // Single : la distinction interne/externe est essentielle pour PRISONER.
+  if (r < R.TRIPLE_IN) return { seg, mul: 1, ring: "inner_single" };
+  return { seg, mul: 1, ring: "outer_single" };
 }
 
 export default function DartboardClickable(props: Props) {
-  const { onHit, multiplier, size, debug, disabled } = props;
+  const { onHit, onDetailedHit, multiplier, size, debug, disabled } = props;
   const ref = useRef<HTMLDivElement | null>(null);
   const [last, setLast] = useState<{ seg: number; mul: 1 | 2 | 3; x: number; y: number } | null>(null);
 
@@ -119,7 +128,7 @@ export default function DartboardClickable(props: Props) {
 
     const radiusPx = Math.max(10, Math.min(rect.width, rect.height) / 2 - INSET_PX);
     const dist = Math.sqrt(x * x + y * y);
-    const r = clamp01(dist / radiusPx);
+    const r = dist / radiusPx;
 
     const ang = normAngle0TopClockwise(x, y);
     const hit = classifyHit(r, ang);
@@ -136,6 +145,7 @@ export default function DartboardClickable(props: Props) {
 
 
     try {
+      onDetailedHit?.({ segment: seg, mult: mul, ring: hit.ring });
       onHit(seg, mul);
     } catch {
       // noop

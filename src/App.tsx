@@ -4898,10 +4898,20 @@ case "babyfoot_team_edit":
         break;
 
       case "prisoner_config":
-        page = <PrisonerConfig setTab={go} params={routeParams} />;
+        page = <PrisonerConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "prisoner_play":
-        page = <PrisonerPlay setTab={go} params={routeParams} />;
+        page = (
+          <PrisonerPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "prisoner", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "super_bull_config":

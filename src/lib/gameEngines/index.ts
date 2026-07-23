@@ -20,3 +20,4 @@ export function getEngine(mode: MatchRules["mode"]): GameEngine<any> {
 }
 
 export { X01Engine, CricketEngine, KillerEngine, ShanghaiEngine, ScramEngine };
+export * from "./prisonerEngine";
