@@ -10,6 +10,7 @@ import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
+import tickerAttrapeMoi from "../assets/tickers/ticker_attrape_moi.png";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -182,6 +183,7 @@ export default function AttrapeMoiPlay(props: any) {
   const [notice, setNotice] = React.useState("");
   const [botThinking, setBotThinking] = React.useState(false);
   const [showEnd, setShowEnd] = React.useState(false);
+  const [openPanel, setOpenPanel] = React.useState<null | "match" | "ranking" | "stats">(null);
   const matchIdRef = React.useRef(`attrape-moi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const autoSavedRef = React.useRef("");
   const lastBackRef = React.useRef(0);
@@ -368,51 +370,91 @@ export default function AttrapeMoiPlay(props: any) {
   const progress = Math.max(0, Math.min(100, runnerScore > 0 ? (chaserScore / runnerScore) * 100 : 100));
   const activeColor = state.phase === "runner" ? C.runner : C.chaser;
 
-  return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${C.runner}16 0, ${theme?.bg || "#080c17"} 48%, #020309 100%)`, overflowX: "hidden", paddingBottom: 8 }}>
+  const rankingRows = state.entityOrder
+    .map((id: string) => ({
+      id,
+      entity: state.entities[id],
+      setWins: Number(state.setWins[id] || 0),
+      legWins: Number(state.legWins[id] || 0),
+      score: Number(state.entityScores[id] || 0),
+      stats: state.entityStats[id] || {},
+    }))
+    .sort((a: any, b: any) => (b.setWins - a.setWins) || (b.legWins - a.legWins) || (b.score - a.score));
+
+  const activeStats = state.playerStats[state.activePlayerId] || emptyCatchMePlayerStats();
+  const activeAvg3 = activeStats.darts ? round1((activeStats.points / activeStats.darts) * 3) : 0;
+  const runnerName = runnerEntity?.name || "Fuyard";
+  const chaserName = chaserEntity?.name || "Chasseur";
+
+  return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}18 0, ${theme?.bg || "#080c17"} 48%, #020309 100%)`, overflowX: "hidden", paddingBottom: 8 }}>
     <PageHeader
-      title="ATTRAPE-MOI SI TU PEUX !"
-      subtitle={`BO${config.legsBestOf} MANCHES • BO${config.setsBestOf} SETS`}
+      tickerSrc={tickerAttrapeMoi}
+      tickerAlt="ATTRAPE-MOI SI TU PEUX !"
+      tickerHeight={92}
+      tickerBottomGap={8}
       left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>}
       right={<div style={{ marginRight: 6 }}><InfoDot title="Règles — Attrape-moi si tu peux !" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} /></div>}
     />
 
     <div style={{ padding: "5px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-      <section style={panelStyle({ padding: 9, marginBottom: 7, borderColor: `${primary}55` })}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-          <MiniKpi label="SET" value={`${state.setNo}`} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)} – ${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
-          <MiniKpi label="MANCHE" value={`${state.legNo}`} sub={`1er à ${legsToWin}`} color={C.gold} />
-          <MiniKpi label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`Avance ${state.rules.headStart}`} color={activeColor} />
+      {/* SCORE / POURSUITE — un seul bloc compact */}
+      <section style={panelStyle({ padding: 9, marginBottom: 7, borderColor: `${primary}66`, boxShadow: `0 0 22px ${primary}14, 0 12px 28px rgba(0,0,0,.32)` })}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginBottom: 7 }}>
+          <CompactMeta label="SET" value={`${state.setNo}`} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)}–${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
+          <CompactMeta label="MANCHE" value={`${state.legNo}`} sub={`1er à ${legsToWin}`} color={C.gold} />
+          <CompactMeta label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`+${state.rules.headStart}`} color={activeColor} />
         </div>
-      </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 7, marginBottom: 7 }}>
-        <EntityCard state={state} entityId={state.runnerEntityId} role="runner" profileById={byId} teamById={teamById} participantMode={config.participantMode} />
-        <EntityCard state={state} entityId={state.chaserEntityId} role="chaser" profileById={byId} teamById={teamById} participantMode={config.participantMode} />
-      </section>
-
-      <section style={panelStyle({ padding: "9px 11px", marginBottom: 7, textAlign: "center", borderColor: distance <= 25 ? `${C.red}88` : `${primary}55` })}>
-        <div style={{ color: themeSoft, fontSize: 9.5, fontWeight: 900, letterSpacing: 1.2 }}>DISTANCE À RATTRAPER</div>
-        <div style={{ marginTop: 1, fontSize: 34, lineHeight: 1, fontWeight: 1100, color: distance <= 25 ? C.red : distance <= 60 ? C.gold : C.runner }}>{distance > 0 ? `+${distance}` : distance}</div>
-        <div style={{ margin: "8px 3px 3px", height: 10, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", position: "relative" }}>
-          <div style={{ height: "100%", width: `${progress}%`, background: `linear-gradient(90deg,${C.chaser},${distance <= 25 ? C.red : C.gold})`, borderRadius: 999, transition: "width .2s ease" }} />
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 96px minmax(0,1fr)", gap: 7, alignItems: "center" }}>
+          <ScoreSide label="🏃 FUYARD" name={runnerName} score={runnerScore} color={C.runner} align="left" />
+          <div style={{ textAlign: "center", minWidth: 0 }}>
+            <div style={{ color: themeSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .7 }}>DISTANCE</div>
+            <div style={{ marginTop: 1, color: distance <= 25 ? C.red : distance <= 60 ? C.gold : primary, fontSize: 27, lineHeight: 1, fontWeight: 1100 }}>{distance > 0 ? `+${distance}` : distance}</div>
+            <div style={{ marginTop: 5, height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}>
+              <div style={{ height: "100%", width: `${progress}%`, borderRadius: 999, background: `linear-gradient(90deg,${C.chaser},${distance <= 25 ? C.red : C.gold})`, transition: "width .2s ease" }} />
+            </div>
+            <div style={{ marginTop: 4, color: distance <= 25 ? C.red : themeSoft, fontSize: 7.5, fontWeight: 950 }}>{distance <= 0 ? "CAPTURE" : distance <= 25 ? "DANGER" : "POURSUITE"}</div>
+          </div>
+          <ScoreSide label="🎯 CHASSEUR" name={chaserName} score={chaserScore} color={C.chaser} align="right" />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 9, color: themeSoft }}><span>🎯 {chaserScore}</span><span>{distance <= 0 ? "CAPTURE !" : distance <= 25 ? "DANGER !" : "POURSUITE"}</span><span>🏃 {runnerScore}</span></div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8 }}>
+          <InfoButton label="MATCH" onClick={() => setOpenPanel("match")} color={primary} />
+          <InfoButton label="CLASSEMENT" onClick={() => setOpenPanel("ranking")} color={primary} />
+          <InfoButton label="STATS" onClick={() => setOpenPanel("stats")} color={primary} />
+        </div>
       </section>
 
       {!state.awaitingNextLeg && !state.finished ? <>
-        <section style={panelStyle({ padding: 9, marginBottom: 7, borderColor: `${activeColor}77`, boxShadow: `0 0 22px ${activeColor}18, 0 14px 34px rgba(0,0,0,.3)` })}>
-          <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
-            <div style={{ display: "grid", placeItems: "center" }}><ProfileAvatar profile={activeProfile as any} size={52} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: activeColor, fontWeight: 1100, fontSize: 10.5, letterSpacing: 1 }}>{roleIcon(state.phase)} {roleLabel(state.phase)} · À TOI</div>
-              <div style={{ fontWeight: 1100, fontSize: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-              <div style={{ color: themeSoft, fontSize: 9.5 }}>{config.participantMode === "teams" ? `${activeEntity?.name || activeTeam?.name || "Équipe"} · joueur ${state.phaseMemberIndex + 1}/${activeEntity?.playerIds?.length || 1}` : `${activeEntity?.name || ""} · round ${state.pursuitRound}/${state.rules.pursuitRounds}`}</div>
-            </div>
-            <div style={{ textAlign: "right" }}><div style={{ color: activeColor, fontSize: 24, fontWeight: 1100 }}>{currentThrowPoints}</div><div style={{ color: themeSoft, fontSize: 8.5 }}>{throwDarts.length}/3 DARTS</div></div>
+        {/* JOUEUR ACTIF — bloc unique */}
+        <section style={panelStyle({ position: "relative", padding: 0, marginBottom: 7, minHeight: 104, overflow: "hidden", borderColor: `${activeColor}77`, boxShadow: `0 0 22px ${activeColor}16, 0 12px 30px rgba(0,0,0,.32)` })}>
+          <div style={{ position: "absolute", left: -18, top: -14, bottom: -14, width: 112, opacity: .13, transform: "scale(1.18)", transformOrigin: "left center", pointerEvents: "none", display: "grid", placeItems: "center" }}>
+            <ProfileAvatar profile={activeProfile as any} size={92} />
           </div>
-          {botThinking ? <div style={{ marginTop: 7, textAlign: "center", color: activeColor, fontSize: 10, fontWeight: 1000, letterSpacing: 1 }}>BOT EN POURSUITE…</div> : null}
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(2,5,12,.16), rgba(2,5,12,.72) 30%, rgba(2,5,12,.82) 100%)`, pointerEvents: "none" }} />
+          <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 9, alignItems: "center", minHeight: 104, padding: "8px 11px" }}>
+            <div style={{ display: "grid", placeItems: "center" }}><ProfileAvatar profile={activeProfile as any} size={54} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: activeColor, fontWeight: 1100, fontSize: 9.5, letterSpacing: 1 }}>{roleIcon(state.phase)} {roleLabel(state.phase)} · À TOI</div>
+              <div style={{ marginTop: 2, fontWeight: 1100, fontSize: 19, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
+              <div style={{ marginTop: 3, display: "flex", gap: 8, flexWrap: "wrap", color: themeSoft, fontSize: 8.8 }}>
+                <span>AVG/3 <b style={{ color: themeText }}>{activeAvg3}</b></span>
+                <span>BEST <b style={{ color: themeText }}>{activeStats.bestVisit || 0}</b></span>
+                <span>DARTS <b style={{ color: themeText }}>{activeStats.darts || 0}</b></span>
+              </div>
+              <div style={{ marginTop: 3, color: themeSoft, fontSize: 8.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {config.participantMode === "teams" ? `${activeEntity?.name || activeTeam?.name || "Équipe"} · joueur ${state.phaseMemberIndex + 1}/${activeEntity?.playerIds?.length || 1}` : `Round ${state.pursuitRound}/${state.rules.pursuitRounds}`}
+              </div>
+            </div>
+            <div style={{ minWidth: 56, textAlign: "right" }}>
+              <div style={{ color: activeColor, fontSize: 30, lineHeight: 1, fontWeight: 1100 }}>{currentThrowPoints}</div>
+              <div style={{ marginTop: 3, color: themeSoft, fontSize: 8 }}>{throwDarts.length}/3 DARTS</div>
+            </div>
+          </div>
+          {botThinking ? <div style={{ position: "absolute", zIndex: 2, left: 0, right: 0, bottom: 3, textAlign: "center", color: activeColor, fontSize: 8.5, fontWeight: 1000, letterSpacing: .8 }}>BOT EN POURSUITE…</div> : null}
         </section>
 
+        {/* SAISIE — immédiatement sous le joueur actif */}
         <section style={panelStyle({ padding: config.scoreInputMethod === "dartboard" ? 7 : 4, overflow: "hidden" })}>
           {config.scoreInputMethod === "dartboard" ? <>
             <DartboardClickable multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} />
@@ -429,8 +471,110 @@ export default function AttrapeMoiPlay(props: any) {
       </> : null}
     </div>
 
+    {openPanel ? <MatchFloatingPanel
+      kind={openPanel}
+      onClose={() => setOpenPanel(null)}
+      primary={primary}
+      state={state}
+      config={config}
+      profileById={byId}
+      teamById={teamById}
+      rankingRows={rankingRows}
+      themeText={themeText}
+      themeSoft={themeSoft}
+    /> : null}
+
     {state.awaitingNextLeg && state.lastLegResult && !state.finished ? <LegResultModal state={state} onContinue={continueLeg} primary={primary} /> : null}
     {showEnd && state.finished ? <EndModal state={state} profilesById={byId} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+  </div>;
+}
+
+function CompactMeta({ label, value, sub, color }: any) {
+  return <div style={{ minWidth: 0, padding: "5px 4px", borderRadius: 10, background: "rgba(255,255,255,.035)", textAlign: "center" }}>
+    <div style={{ fontSize: 7, color: "rgba(255,255,255,.46)", fontWeight: 950, letterSpacing: .5 }}>{label}</div>
+    <div style={{ marginTop: 1, color, fontWeight: 1100, fontSize: 15, lineHeight: 1 }}>{value}</div>
+    <div style={{ marginTop: 2, fontSize: 7.2, opacity: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+  </div>;
+}
+
+function ScoreSide({ label, name, score, color, align = "left" }: any) {
+  return <div style={{ minWidth: 0, textAlign: align }}>
+    <div style={{ color, fontSize: 8.3, fontWeight: 1100, letterSpacing: .55 }}>{label}</div>
+    <div style={{ marginTop: 1, color: "rgba(255,255,255,.92)", fontSize: 10.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+    <div style={{ marginTop: 2, color, fontSize: 29, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 14px ${color}33` }}>{score}</div>
+  </div>;
+}
+
+function InfoButton({ label, onClick, color }: any) {
+  return <button type="button" onClick={onClick} style={{ minHeight: 30, borderRadius: 10, border: `1px solid ${color}55`, background: `${color}0d`, color, fontSize: 8.2, fontWeight: 1050, letterSpacing: .5, cursor: "pointer" }}>{label}</button>;
+}
+
+function MatchFloatingPanel({ kind, onClose, primary, state, config, profileById, teamById, rankingRows, themeText, themeSoft }: any) {
+  const title = kind === "ranking" ? "CLASSEMENT" : kind === "stats" ? "STATISTIQUES" : "MATCH";
+  const runnerId = state.runnerEntityId;
+  const chaserId = state.chaserEntityId;
+  const playerRows = (state.players || []).map((player: any) => {
+    const profile = profileById.get(String(player.id)) || player;
+    const stats = state.playerStats[player.id] || emptyCatchMePlayerStats();
+    const avg3 = stats.darts ? round1((stats.points / stats.darts) * 3) : 0;
+    const runnerAvg = stats.runnerDarts ? round1((stats.runnerPoints / stats.runnerDarts) * 3) : 0;
+    const chaserAvg = stats.chaserDarts ? round1((stats.chaserPoints / stats.chaserDarts) * 3) : 0;
+    return { player, profile, stats, avg3, runnerAvg, chaserAvg };
+  });
+
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9997, background: "rgba(0,0,0,.76)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}>
+    <div onClick={(e) => e.stopPropagation()} style={panelStyle({ width: "min(680px,100%)", maxHeight: "82dvh", overflow: "auto", padding: 12, borderColor: `${primary}77`, boxShadow: `0 0 32px ${primary}20, 0 22px 54px rgba(0,0,0,.55)` })}>
+      <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 36px", alignItems: "center", gap: 8 }}>
+        <div />
+        <div style={{ textAlign: "center", color: primary, fontSize: 12, fontWeight: 1100, letterSpacing: 1 }}>{title}</div>
+        <button type="button" onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18, cursor: "pointer" }}>×</button>
+      </div>
+
+      {kind === "match" ? <>
+        <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
+          <MiniKpi label="SET" value={state.setNo} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)}–${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
+          <MiniKpi label="MANCHE" value={state.legNo} sub={`BO${state.rules.legsBestOf}`} color={C.gold} />
+          <MiniKpi label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`Avance ${state.rules.headStart}`} color={state.phase === "runner" ? C.runner : C.chaser} />
+        </div>
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+          <EntityCard state={state} entityId={runnerId} role="runner" profileById={profileById} teamById={teamById} participantMode={config.participantMode} />
+          <EntityCard state={state} entityId={chaserId} role="chaser" profileById={profileById} teamById={teamById} participantMode={config.participantMode} />
+        </div>
+        <div style={{ marginTop: 8, padding: 9, borderRadius: 12, background: "rgba(255,255,255,.035)", color: themeSoft, fontSize: 10.2, lineHeight: 1.45 }}>
+          <b style={{ color: primary }}>RÈGLE EN COURS</b> · Le Fuyard conserve l’avance jusqu’au dernier round. Le Chasseur gagne immédiatement dès qu’il atteint ou dépasse son score.
+        </div>
+      </> : null}
+
+      {kind === "ranking" ? <div style={{ marginTop: 9, display: "grid", gap: 6 }}>
+        {rankingRows.map((row: any, idx: number) => {
+          const color = row.id === runnerId ? C.runner : row.id === chaserId ? C.chaser : primary;
+          return <div key={row.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) repeat(3,54px)", gap: 6, alignItems: "center", padding: 8, borderRadius: 12, border: `1px solid ${idx === 0 ? color + "66" : "rgba(255,255,255,.08)"}`, background: idx === 0 ? `${color}0c` : "rgba(255,255,255,.025)" }}>
+            <div style={{ width: 28, height: 28, borderRadius: 999, display: "grid", placeItems: "center", background: `${color}18`, color, fontWeight: 1100 }}>{idx + 1}</div>
+            <div style={{ minWidth: 0 }}><div style={{ color: themeText, fontSize: 11.5, fontWeight: 1050, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.entity?.name || row.id}</div><div style={{ marginTop: 1, color, fontSize: 8.2, fontWeight: 950 }}>{row.id === runnerId ? "🏃 FUYARD" : row.id === chaserId ? "🎯 CHASSEUR" : ""}</div></div>
+            <CompactMeta label="SETS" value={row.setWins} sub="" color={C.gold} />
+            <CompactMeta label="M." value={row.legWins} sub="" color={primary} />
+            <CompactMeta label="PTS" value={row.score} sub="" color={color} />
+          </div>;
+        })}
+      </div> : null}
+
+      {kind === "stats" ? <div style={{ marginTop: 9, display: "grid", gap: 7 }}>
+        {playerRows.map((row: any) => {
+          const entityId = state.entityByPlayer[row.player.id];
+          const entityColor = entityId === runnerId ? C.runner : entityId === chaserId ? C.chaser : primary;
+          return <div key={row.player.id} style={{ padding: 9, borderRadius: 13, border: `1px solid ${entityColor}44`, background: "rgba(255,255,255,.028)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={row.profile} size={34} /><div style={{ minWidth: 0, flex: 1 }}><div style={{ color: themeText, fontWeight: 1050, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(row.profile)}</div><div style={{ color: entityColor, fontSize: 8.2, fontWeight: 950 }}>{entityId === runnerId ? "FUYARD ACTUEL" : entityId === chaserId ? "CHASSEUR ACTUEL" : ""}</div></div></div>
+            <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+              <CompactMeta label="AVG/3" value={row.avg3} sub="global" color={primary} />
+              <CompactMeta label="BEST" value={row.stats.bestVisit || 0} sub="volée" color={C.gold} />
+              <CompactMeta label="FUYARD" value={row.runnerAvg} sub="avg/3" color={C.runner} />
+              <CompactMeta label="CHASSEUR" value={row.chaserAvg} sub="avg/3" color={C.chaser} />
+            </div>
+            <div style={{ marginTop: 6, color: themeSoft, fontSize: 8.8, textAlign: "center" }}>{row.stats.captureCredits || 0} capture(s) · {row.stats.escapeCredits || 0} évasion(s) · {row.stats.darts || 0} darts</div>
+          </div>;
+        })}
+      </div> : null}
+    </div>
   </div>;
 }
 

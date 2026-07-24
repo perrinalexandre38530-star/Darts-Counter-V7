@@ -1590,9 +1590,9 @@ export default function CapitalPlay(props: any) {
           <div style={{ position: "relative", minHeight: 112, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(124px,138px)", gap: 4, alignItems: "stretch", padding: "7px 9px" }}>
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.38), rgba(0,0,0,.16) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))" }} />
 
-            <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "25%", minWidth: 82, overflow: "hidden", opacity: .13, pointerEvents: "none" }}>
-              <div style={{ position: "absolute", left: -16, top: 13, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}>
-                {activeProfile ? <ProfileAvatar profile={activeProfile} size={82} showStars={false} /> : null}
+            <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "27%", minWidth: 86, overflow: "hidden", opacity: .34, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -14, top: 11, transform: "scale(1.28)", transformOrigin: "left top", filter: "saturate(.98) brightness(.96) drop-shadow(0 0 8px rgba(53,216,255,.16))" }}>
+                {activeProfile ? <ProfileAvatar profile={activeProfile} size={84} showStars={false} /> : null}
               </div>
             </div>
 
@@ -1660,22 +1660,26 @@ export default function CapitalPlay(props: any) {
             boxShadow: "inset 0 0 18px rgba(0,0,0,.18)",
           }}
         >
-          <div
+          <img
             aria-hidden="true"
+            src={tickerClassements}
+            alt=""
             style={{
               position: "absolute",
-              inset: -12,
-              backgroundImage: `linear-gradient(90deg, rgba(2,7,12,.80), rgba(2,7,12,.34) 48%, rgba(2,7,12,.80)), url(${tickerClassements})`,
-              backgroundPosition: "center",
-              backgroundSize: "cover, 132% auto",
-              backgroundRepeat: "no-repeat",
-              filter: "blur(5px) saturate(1.08)",
-              opacity: .28,
-              transform: "scale(1.08)",
+              left: "50%",
+              top: "50%",
+              width: "150%",
+              height: 76,
+              maxWidth: "none",
+              objectFit: "cover",
+              objectPosition: "center",
+              transform: "translate(-50%, -50%) scale(1.08)",
+              filter: "blur(6px) saturate(1.22) brightness(.78)",
+              opacity: .58,
               pointerEvents: "none",
             }}
           />
-          <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.52), rgba(0,0,0,.12) 50%, rgba(0,0,0,.52))", pointerEvents: "none" }} />
+          <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.22), rgba(0,0,0,.04) 50%, rgba(0,0,0,.22))", pointerEvents: "none" }} />
           <img src={tickerClassements} alt="Classement" style={{ position: "relative", zIndex: 1, display: "block", width: "min(170px,48vw)", height: "auto", objectFit: "contain", opacity: .96, filter: "drop-shadow(0 0 5px rgba(53,216,255,.16))" }} />
           <span style={{ position: "absolute", zIndex: 2, right: 9, top: "50%", transform: "translateY(-50%)", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,207,87,.36)", color: "#ffcf57", fontSize: 12, fontWeight: 1000 }}>›</span>
         </button>

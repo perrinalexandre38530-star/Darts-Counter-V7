@@ -89,7 +89,7 @@ function RulesContent({ config, primary }: any) {
 function TargetCard({ selected, tableTarget, revolution, primary }: { selected: PresidentTarget | null; tableTarget: PresidentTarget | null; revolution: boolean; primary: string }) {
   const label = selected ? presidentTargetLabel(selected) : "—";
   const desc = selected ? presidentTargetDescription(selected) : "AUCUNE CARTE JOUABLE";
-  return <div style={{ width: "min(260px, 67vw)", aspectRatio: "3 / 4", margin: "0 auto", borderRadius: 24, padding: 8, background: "linear-gradient(145deg,#080808,#17120b)", border: `2px solid ${primary}`, boxShadow: `0 0 30px ${primary}32, inset 0 0 0 2px rgba(255,255,255,.035)` }}>
+  return <div style={{ width: "100%", maxWidth: 190, aspectRatio: "3 / 4", margin: "0 auto", borderRadius: 24, padding: 8, background: "linear-gradient(145deg,#080808,#17120b)", border: `2px solid ${primary}`, boxShadow: `0 0 30px ${primary}32, inset 0 0 0 2px rgba(255,255,255,.035)` }}>
     <div style={{ height: "100%", borderRadius: 17, border: `1px solid ${primary}88`, padding: 13, display: "grid", gridTemplateRows: "auto auto 1fr auto", background: "radial-gradient(circle at 50% 55%,rgba(233,197,108,.12),transparent 46%),linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.28))", position: "relative", overflow: "hidden" }}>
       <div style={{ textAlign: "center", color: primary, fontWeight: 1100, letterSpacing: 1.2, fontSize: 17 }}>♛ PRÉSIDENT</div>
       <div style={{ margin: "8px auto 0", padding: "5px 10px", borderRadius: 999, border: `1px solid ${primary}77`, color: "#f8e7b8", fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{tableTarget ? `À BATTRE ${presidentTargetLabel(tableTarget)}` : "OUVERTURE LIBRE"}</div>
@@ -133,6 +133,43 @@ function EndOverlay({ state, profilesById, primary, onReplay, onHistory, onClose
   </div></div>;
 }
 
+
+function MiniKpi({ label, value, color, compact = false }: { label: string; value: React.ReactNode; color: string; compact?: boolean }) {
+  return <div style={{ minWidth:0, padding: compact ? "6px 3px" : "8px 5px", borderRadius: compact ? 10 : 13, border:`1px solid ${color}38`, background:`linear-gradient(180deg,${color}14,rgba(255,255,255,.025))`, textAlign:"center", overflow:"hidden" }}>
+    <div style={{ color:"rgba(255,255,255,.52)", fontSize:compact?7.5:8.5, fontWeight:1000, letterSpacing:.35, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div>
+    <div style={{ color, fontSize:compact?14:20, fontWeight:1100, lineHeight:1.05, marginTop:compact?2:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{value}</div>
+  </div>;
+}
+
+function QuickTile({ label, value, color, icon, onClick, alert = false }: any) {
+  return <button type="button" onClick={onClick} style={{ minWidth:0, minHeight:61, borderRadius:15, padding:"8px 7px", border:`1px solid ${alert ? color : color+"55"}`, background:`linear-gradient(180deg,${color}${alert?"28":"16"},rgba(255,255,255,.025))`, color:"#fff", cursor:"pointer", boxShadow:alert?`0 0 18px ${color}32`:"none", textAlign:"left", overflow:"hidden" }}>
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:5 }}><span style={{ color, fontSize:15, lineHeight:1 }}>{icon}</span><span style={{ color, fontSize:8, fontWeight:1100, letterSpacing:.7 }}>OUVRIR</span></div>
+    <div style={{ marginTop:5, fontSize:10, fontWeight:1100, letterSpacing:.55, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div>
+    <div style={{ color:"rgba(255,255,255,.58)", fontSize:8.5, marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{value}</div>
+  </button>;
+}
+
+function ModalShell({ title, color, onClose, children, wide = false }: any) {
+  return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(0,0,0,.72)", backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)", display:"grid", placeItems:"center", padding:10 }}>
+    <div onClick={(e)=>e.stopPropagation()} style={{ ...panel(), width:wide?"min(860px,100%)":"min(720px,100%)", maxHeight:"88vh", overflow:"hidden", borderColor:`${color}66`, boxShadow:`0 0 34px ${color}1d` }}>
+      <div style={{ display:"grid", gridTemplateColumns:"34px 1fr 34px", alignItems:"center", gap:8, paddingBottom:9, borderBottom:"1px solid rgba(255,255,255,.08)" }}><div/><div style={{ textAlign:"center", color, fontWeight:1100, fontSize:12, letterSpacing:1 }}>{title}</div><button type="button" onClick={onClose} style={{ width:32,height:32,borderRadius:999,border:`1px solid ${color}66`,background:"rgba(0,0,0,.3)",color,fontWeight:1100,cursor:"pointer" }}>×</button></div>
+      <div style={{ maxHeight:"calc(88vh - 54px)", overflowY:"auto", paddingTop:10 }}>{children}</div>
+    </div>
+  </div>;
+}
+
+function TinyTarget({ selected, tableTarget, revolution, primary, onClick }: any) {
+  const label = selected ? presidentTargetLabel(selected) : "—";
+  const desc = selected ? presidentTargetDescription(selected) : "CHOISIR";
+  return <button type="button" onClick={onClick} style={{ position:"relative", width:"100%", height:"100%", minHeight:102, borderRadius:17, border:`1px solid ${primary}66`, background:"radial-gradient(circle at 50% 45%,rgba(233,197,108,.16),transparent 50%),linear-gradient(160deg,#171008,#07090f)", color:"#fff", cursor:"pointer", overflow:"hidden", padding:"7px 5px" }}>
+    <div style={{ color:"rgba(255,255,255,.55)", fontSize:7.5, fontWeight:1000, letterSpacing:.7 }}>{tableTarget?"CIBLE À BATTRE":"OUVERTURE"}</div>
+    <div style={{ color:primary, fontSize:36, fontWeight:1100, lineHeight:1, marginTop:7, textShadow:`0 0 18px ${primary}55` }}>{label}</div>
+    <div style={{ color:"#f7e5b4", fontSize:8.5, fontWeight:1000, marginTop:5, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{desc}</div>
+    {revolution?<div style={{ color:"#ff9b6a", fontSize:7.5, fontWeight:1100, marginTop:4 }}>↕ RÉVOLUTION</div>:null}
+    <div style={{ position:"absolute", right:6, bottom:4, color:`${primary}aa`, fontSize:8, fontWeight:1000 }}>TOUCHER</div>
+  </button>;
+}
+
 export default function PresidentPlay(props: any) {
   const { theme } = useTheme();
   const config = React.useMemo(() => normalizeConfig(props), []);
@@ -168,6 +205,9 @@ export default function PresidentPlay(props: any) {
   const [showRound, setShowRound] = React.useState(false);
   const [showEnd, setShowEnd] = React.useState(false);
   const [showTable, setShowTable] = React.useState(false);
+  const [showHand, setShowHand] = React.useState(false);
+  const [showStats, setShowStats] = React.useState(false);
+  const [showTrick, setShowTrick] = React.useState(false);
   const matchIdRef = React.useRef(`president-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
   const savedRef = React.useRef("");
   const roundCountRef = React.useRef(0);
@@ -282,30 +322,90 @@ export default function PresidentPlay(props: any) {
   }, [state.finished]);
 
   const standingsLive = getPresidentStandings(state);
+  const activeStats = state.statsByPlayer[activeId] || ({} as any);
+  const activeStanding = standingsLive.find((row:any)=>row.id===activeId);
+  const successRate = formatPct(Number(activeStats.successfulPlays||0), Number(activeStats.visits||0));
+  const totalPasses = Number(activeStats.voluntaryPasses||0) + Number(activeStats.automaticPasses||0);
+  const totalTaxes = Number(activeStats.taxesGiven||0) + Number(activeStats.taxesReceived||0);
+  const passedNames = state.passedPlayerIds.map((id)=>playerName(profilesById.get(id))).join(" · ") || "Aucun";
+  const trickEvents = state.history.filter((ev:any)=>ev.roundNo===state.roundNo && ev.trickNo===state.trickNo).slice(-12).reverse();
+  const activeColor = roleColor(currentRole, primary);
+
   return <div style={{ minHeight:"100dvh", color:text, background:`radial-gradient(circle at 50% -5%,${primary}1f 0,${theme?.bg || "#080b14"} 44%,#020309 100%)`, paddingBottom:8, overflowX:"hidden" }}>
-    <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour configuration" />} right={<InfoDot title="Règles Président" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} />} />
-    <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:"0 8px 4px", boxSizing:"border-box" }}>
-      <div style={{ color: primary, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 2 }}>MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds} · PLI {state.trickNo}</div>
-    </div>
-    <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:"6px 8px 8px", boxSizing:"border-box" }}>
-      <section style={{ ...panel(), marginBottom:7, borderColor:`${primary}66`, padding:9 }}>
-        <div style={{ display:"grid", gridTemplateColumns:"54px minmax(0,1fr) auto", gap:9, alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={50} /><div style={{ minWidth:0 }}><div style={{ color:primary, fontSize:9.5, fontWeight:1000, letterSpacing:1 }}>{botThinking?"BOT EN RÉFLEXION":"JOUEUR ACTIF"}</div><div style={{ fontSize:16, fontWeight:1100, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{playerName(activeProfile)}</div><div style={{ color:roleColor(currentRole,primary), fontSize:9.5, fontWeight:1000 }}>{currentRole} · {hand.length} carte{hand.length>1?"s":""}</div></div><button onClick={()=>setShowTable(true)} style={{ minHeight:36, borderRadius:999, border:`1px solid ${primary}55`, background:`${primary}0e`, color:primary, fontWeight:1000, padding:"0 11px" }}>CLASSEMENT</button></div>
+    <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={82} tickerEdgeFade="strong" tickerBottomGap={6} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour configuration" />} right={<InfoDot title="Règles Président" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} />} />
+
+    <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:"5px 8px 8px", boxSizing:"border-box" }}>
+      <section style={{ ...panel(), marginBottom:6, padding:0, overflow:"hidden", borderColor:`${activeColor}70`, boxShadow:`0 0 24px ${activeColor}18` }}>
+        <div style={{ position:"relative", minHeight:124, display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(116px,132px)", gap:5, alignItems:"stretch", padding:"7px 8px" }}>
+          <div style={{ position:"absolute", inset:0, background:`linear-gradient(90deg,${activeColor}10,rgba(0,0,0,.10) 42%,rgba(0,0,0,.30))` }}/>
+          <div style={{ position:"absolute", left:-22, top:-5, bottom:-5, width:"29%", minWidth:105, overflow:"hidden", opacity:.15, pointerEvents:"none" }}><div style={{ position:"absolute", left:-12, top:18, transform:"scale(1.55)", transformOrigin:"left top", filter:"saturate(.85)" }}><ProfileAvatar profile={activeProfile} size={88}/></div></div>
+          <div style={{ position:"relative", zIndex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"3px 4px" }}>
+            <div style={{ color:botThinking?"#67dcff":activeColor, fontSize:8.5, fontWeight:1100, letterSpacing:1 }}>{botThinking?"BOT EN RÉFLEXION":currentRole.toUpperCase()}</div>
+            <div style={{ color:activeColor, fontSize:14, fontWeight:1100, letterSpacing:.75, marginTop:2, maxWidth:"100%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{playerName(activeProfile).toUpperCase()}</div>
+            <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:7, marginTop:4 }}><span style={{ color:"#ffd45c", fontSize:52, fontWeight:1100, lineHeight:1, textShadow:"0 3px 18px rgba(255,205,70,.22)" }}>{hand.length}</span><span style={{ color:"rgba(255,255,255,.55)", fontSize:9, fontWeight:1000 }}>CARTES</span></div>
+            <div style={{ marginTop:4, display:"flex", gap:8, color:"rgba(255,255,255,.60)", fontSize:8.5, fontWeight:900 }}><span>MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds}</span><span>•</span><span>PLI {state.trickNo}</span></div>
+          </div>
+          <div style={{ position:"relative", zIndex:2, minWidth:0 }}><TinyTarget selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary} onClick={()=>setShowHand(true)}/></div>
+        </div>
       </section>
 
-      <section style={{ ...panel(), marginBottom:7, padding:9 }}><div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)", gap:8 }}><div><div style={{ color:softText, fontSize:9, fontWeight:1000 }}>TABLE</div><div style={{ color:state.currentTarget?primary:"#fff", fontSize:21, fontWeight:1100 }}>{state.currentTarget ? presidentTargetLabel(state.currentTarget) : "OUVERTURE"}</div></div><div style={{ textAlign:"right" }}><div style={{ color:softText, fontSize:9, fontWeight:1000 }}>DERNIER JOUEUR</div><div style={{ fontWeight:1000, fontSize:12 }}>{state.lastSuccessfulPlayerId ? playerName(profilesById.get(state.lastSuccessfulPlayerId)) : "—"}</div></div></div>{state.revolutionActive ? <div style={{ marginTop:6, color:"#ff9f70", fontSize:10, fontWeight:1000 }}>↕ RÉVOLUTION : les valeurs les plus basses deviennent les plus fortes.</div> : null}</section>
+      <section style={{ ...panel(), marginBottom:6, padding:6 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:4 }}>
+          <MiniKpi label="CARTES" value={hand.length} color="#ffd45c" />
+          <MiniKpi label="PLIS" value={activeStats.tricksWon||0} color="#43d8ff" />
+          <MiniKpi label="RÉUSSITE" value={`${successRate}%`} color="#72efad" />
+          <MiniKpi label="POUVOIR" value={activeStanding?.powerPoints||0} color="#dc7cff" />
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,1fr))", gap:3, marginTop:4 }}>
+          <MiniKpi compact label="DARTS" value={activeStats.darts||0} color={primary}/>
+          <MiniKpi compact label="SIMPLE" value={activeStats.singlesPlayed||0} color="#f0f3ff"/>
+          <MiniKpi compact label="PAIRES" value={activeStats.pairsPlayed||0} color="#39c9ff"/>
+          <MiniKpi compact label="BRELANS" value={activeStats.triplesPlayed||0} color="#c45cff"/>
+          <MiniKpi compact label="PASS" value={totalPasses} color="#ff9b67"/>
+          <MiniKpi compact label="TAXES" value={totalTaxes} color="#ffcf57"/>
+          <MiniKpi compact label="MISS" value={activeStats.misses||0} color="#ff6f86"/>
+        </div>
+      </section>
 
-      <section style={{ ...panel(), marginBottom:7, padding:10 }}><TargetCard selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary} /></section>
+      <section style={{ ...panel(), marginBottom:6, padding:6 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:5 }}>
+          <QuickTile label="MAIN & COUPS" value={`${hand.length} cartes · ${legalTargets.length} coups`} color="#ffd45c" icon="♠" alert={!selectedTarget} onClick={()=>setShowHand(true)}/>
+          <QuickTile label="TABLE / PLI" value={state.currentTarget?presidentTargetLabel(state.currentTarget):"Ouverture libre"} color="#43d8ff" icon="◎" onClick={()=>setShowTrick(true)}/>
+          <QuickTile label="STATS" value={`${activeStats.cardsPlayed||0} cartes jouées`} color="#c45cff" icon="▥" onClick={()=>setShowStats(true)}/>
+          <QuickTile label="CLASSEMENT" value={`#${Math.max(1,standingsLive.findIndex((x:any)=>x.id===activeId)+1)} · ${activeStanding?.powerPoints||0} pts`} color="#ffb347" icon="♛" onClick={()=>setShowTable(true)}/>
+        </div>
+      </section>
 
-      <section style={{ ...panel(), marginBottom:7 }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:8 }}><div><div style={{ color:primary, fontWeight:1100, fontSize:11, letterSpacing:1 }}>VOTRE MAIN</div><div style={{ color:softText, fontSize:9.5 }}>{hand.length} carte{hand.length>1?"s":""} · {legalTargets.length} combinaison{legalTargets.length>1?"s":""} jouable{legalTargets.length>1?"s":""}</div></div>{!activeCanPlay && state.currentTarget ? <div style={{ color:"#ff9aab", fontSize:10, fontWeight:1000 }}>AUCUN COUP POSSIBLE</div> : null}</div><HandStrip hand={hand} legalTargets={legalTargets} selected={selectedTarget} onSelect={(t:any)=>{setSelectedTarget(t);setThrowDarts([]);setMultiplier(1);setNotice("");}} primary={primary} /></section>
-
-      {!botThinking ? <section style={{ ...panel(), padding:8 }}>
-        {config.scoreInputMethod === "dartboard" ? <><div style={{ opacity:selectedTarget?1:.45, pointerEvents:selectedTarget?"auto":"none" }}><DartboardClickable multiplier={multiplier} onHit={(segment,mult)=>addDart(segment,mult)} size={Math.min(330,Math.max(250,window.innerWidth-40))} /></div><div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:7, marginTop:7 }}><button onClick={undoTurn} style={action(primary)}>ANNULER</button><button disabled={!state.currentTarget} onClick={passTurn} style={action("#ff9a70",!state.currentTarget)}>PASSER</button><button disabled={!throwDarts.length} onClick={validateAttempt} style={action("#6ee7b7",!throwDarts.length)}>VALIDER</button></div></> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={()=>setMultiplier(1)} onDouble={()=>setMultiplier(2)} onTriple={()=>setMultiplier(3)} onCancel={undoTurn} onBackspace={()=>setThrowDarts((d)=>d.slice(0,-1))} onNumber={(n)=>addDart(n)} onBull={()=>addDart(25)} onValidate={validateAttempt} hidePreview hideTotal centerSlot={<div style={{ textAlign:"center" }}><div style={{ color:primary, fontWeight:1100, fontSize:12 }}>{selectedTarget?presidentTargetLabel(selectedTarget):"—"}</div><button disabled={!state.currentTarget} onClick={(e)=>{e.stopPropagation();passTurn();}} style={{ marginTop:2, border:0, background:"transparent", color:state.currentTarget?"#ffae77":"#666", fontSize:8.5, fontWeight:1000 }}>PASSER</button></div>} noticeSlot={notice?<span>{notice}</span>:null} validateAttention={throwDarts.length>0} safeBottomPad />}
-      </section> : <section style={{ ...panel(), textAlign:"center", color:primary, fontWeight:1000, padding:18 }}>♛ LE BOT JOUE…</section>}
+      {!botThinking ? <section style={{ ...panel(), padding:7 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, margin:"0 2px 6px" }}><div><div style={{ color:primary, fontWeight:1100, fontSize:9.5, letterSpacing:.8 }}>COUP SÉLECTIONNÉ</div><div style={{ color:selectedTarget?"#fff":"#ff8a9a", fontSize:11, fontWeight:1000 }}>{selectedTarget?`${presidentTargetLabel(selectedTarget)} · ${presidentTargetDescription(selectedTarget)}`:"CHOISIS UN COUP DANS TA MAIN"}</div></div><button type="button" onClick={()=>setShowHand(true)} style={{ borderRadius:999,border:`1px solid ${primary}66`,background:`${primary}12`,color:primary,fontWeight:1000,fontSize:9,padding:"7px 10px" }}>CHANGER</button></div>
+        {config.scoreInputMethod === "dartboard" ? <><div style={{ opacity:selectedTarget?1:.45, pointerEvents:selectedTarget?"auto":"none" }}><DartboardClickable multiplier={multiplier} onHit={(segment,mult)=>addDart(segment,mult)} size={Math.min(310,Math.max(235,window.innerWidth-42))} /></div><div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:7, marginTop:7 }}><button onClick={undoTurn} style={action(primary)}>ANNULER</button><button disabled={!state.currentTarget} onClick={passTurn} style={action("#ff9a70",!state.currentTarget)}>PASSER</button><button disabled={!throwDarts.length} onClick={validateAttempt} style={action("#6ee7b7",!throwDarts.length)}>VALIDER</button></div></> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={()=>setMultiplier(1)} onDouble={()=>setMultiplier(2)} onTriple={()=>setMultiplier(3)} onCancel={undoTurn} onBackspace={()=>setThrowDarts((d)=>d.slice(0,-1))} onNumber={(n)=>addDart(n)} onBull={()=>addDart(25)} onValidate={validateAttempt} hidePreview hideTotal centerSlot={<div style={{ textAlign:"center" }}><div style={{ color:primary, fontWeight:1100, fontSize:12 }}>{selectedTarget?presidentTargetLabel(selectedTarget):"—"}</div><button disabled={!state.currentTarget} onClick={(e)=>{e.stopPropagation();passTurn();}} style={{ marginTop:2,border:0,background:"transparent",color:state.currentTarget?"#ffae77":"#666",fontSize:8.5,fontWeight:1000 }}>PASSER</button></div>} noticeSlot={notice?<span>{notice}</span>:null} validateAttention={throwDarts.length>0} safeBottomPad />}
+      </section> : <section style={{ ...panel(), textAlign:"center", color:"#43d8ff", fontWeight:1100, padding:16 }}>♛ LE BOT JOUE…</section>}
     </div>
+
+    {showHand ? <ModalShell title="MAIN & COMBINAISONS" color="#ffd45c" onClose={()=>setShowHand(false)} wide>
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(140px,190px)", gap:10, alignItems:"start" }}>
+        <div style={{ ...panel(), padding:9 }}><div style={{ color:"#ffd45c", fontSize:10, fontWeight:1100, marginBottom:7 }}>MAIN DE {playerName(activeProfile).toUpperCase()}</div><HandStrip hand={hand} legalTargets={legalTargets} selected={selectedTarget} onSelect={(t:any)=>{setSelectedTarget(t);setThrowDarts([]);setMultiplier(1);setNotice("");}} primary={primary}/><div style={{ color:"rgba(255,255,255,.5)", fontSize:9, marginTop:9 }}>Choisis la combinaison à tenter. Le panneau se ferme ensuite avec × et tu joues jusqu’à 3 fléchettes.</div></div>
+        <div style={{ ...panel(), padding:7 }}><TargetCard selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary}/></div>
+      </div>
+    </ModalShell>:null}
+
+    {showTrick ? <ModalShell title={`TABLE · MANCHE ${state.roundNo} · PLI ${state.trickNo}`} color="#43d8ff" onClose={()=>setShowTrick(false)}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,minmax(0,1fr))", gap:6 }}><MiniKpi label="À BATTRE" value={state.currentTarget?presidentTargetLabel(state.currentTarget):"LIBRE"} color="#43d8ff"/><MiniKpi label="DERNIER COUP" value={state.lastSuccessfulPlayerId?playerName(profilesById.get(state.lastSuccessfulPlayerId)):"—"} color="#72efad"/><MiniKpi label="PASSÉS" value={state.passedPlayerIds.length} color="#ff9b67"/></div>
+      <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#43d8ff", fontSize:10, fontWeight:1100, marginBottom:6 }}>ÉTAT DES JOUEURS</div>{state.order.map((id:string)=>{const p=profilesById.get(id);const active=id===activeId;const passed=state.passedPlayerIds.includes(id);const done=state.finishedPlayerIds.includes(id);return <div key={id} style={{ display:"grid",gridTemplateColumns:"34px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:"6px 5px",borderBottom:"1px solid rgba(255,255,255,.055)",background:active?`${primary}0d`:"transparent" }}><ProfileAvatar profile={p} size={30}/><div style={{ minWidth:0 }}><div style={{ color:active?primary:"#fff",fontWeight:1000,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{playerName(p)}</div><div style={{ color:"rgba(255,255,255,.45)",fontSize:8.5 }}>{state.previousRoles[id]||"Citoyen"}</div></div><div style={{ color:"#ffd45c",fontWeight:1100 }}>{state.hands[id]?.length||0}</div><div style={{ color:done?"#72efad":passed?"#ff9b67":"rgba(255,255,255,.42)",fontSize:8.5,fontWeight:1000 }}>{done?"FINI":passed?"PASS":"EN JEU"}</div></div>})}</div>
+      <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#43d8ff",fontSize:10,fontWeight:1100,marginBottom:6 }}>DERNIERS COUPS DU PLI</div>{trickEvents.length?trickEvents.map((ev:any)=><div key={ev.id} style={{ display:"grid",gridTemplateColumns:"minmax(0,1fr) auto auto",gap:8,padding:"6px 2px",borderBottom:"1px solid rgba(255,255,255,.05)",fontSize:9.5 }}><b>{playerName(profilesById.get(ev.playerId))}</b><span style={{ color:ev.success?"#72efad":"#ff9b67",fontWeight:1000 }}>{ev.success?presidentTargetLabel(ev.target):"PASS"}</span><span style={{ color:"rgba(255,255,255,.48)" }}>{ev.labels?.join(" · ")||"—"}</span></div>):<div style={{ color:"rgba(255,255,255,.48)",fontSize:10 }}>Aucun coup joué sur ce pli.</div>}</div>
+    </ModalShell>:null}
+
+    {showStats ? <ModalShell title="STATISTIQUES PRÉSIDENT" color="#c45cff" onClose={()=>setShowStats(false)} wide>
+      <div style={{ ...panel(), padding:9, borderColor:`${activeColor}55` }}><div style={{ display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:9,alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={40}/><div><div style={{ color:activeColor,fontWeight:1100 }}>{playerName(activeProfile)}</div><div style={{ color:"rgba(255,255,255,.48)",fontSize:9 }}>{currentRole}</div></div><div style={{ color:"#c45cff",fontSize:22,fontWeight:1100 }}>{activeStanding?.powerPoints||0} pts</div></div></div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:7 }}><MiniKpi label="RÉUSSITE" value={`${successRate}%`} color="#72efad"/><MiniKpi label="CARTES JOUÉES" value={activeStats.cardsPlayed||0} color="#ffd45c"/><MiniKpi label="PLIS GAGNÉS" value={activeStats.tricksWon||0} color="#43d8ff"/><MiniKpi label="PRÉSIDENCES" value={activeStats.president||0} color="#ffb347"/></div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="SIMPLES" value={activeStats.singlesPlayed||0} color="#f0f3ff"/><MiniKpi label="PAIRES" value={activeStats.pairsPlayed||0} color="#39c9ff"/><MiniKpi label="BRELANS" value={activeStats.triplesPlayed||0} color="#c45cff"/><MiniKpi label="ÉCHECS" value={activeStats.failedPlays||0} color="#ff6f86"/></div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="DARTS" value={activeStats.darts||0} color={primary}/><MiniKpi label="PASS" value={totalPasses} color="#ff9b67"/><MiniKpi label="TAXES" value={totalTaxes} color="#ffcf57"/><MiniKpi label="COUPS D'ÉTAT" value={activeStats.coupEtats||0} color="#ff6e55"/></div>
+      <div style={{ ...panel(), marginTop:8, padding:9 }}><div style={{ color:"#c45cff",fontSize:10,fontWeight:1100,marginBottom:6 }}>COMPARATIF JOUEURS</div>{standingsLive.map((row:any,i:number)=>{const st=state.statsByPlayer[row.id];const rate=formatPct(st.successfulPlays,st.visits);return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"24px 32px minmax(0,1fr) repeat(3,auto)",gap:6,alignItems:"center",padding:"6px 2px",borderBottom:"1px solid rgba(255,255,255,.05)" }}><div style={{ color:i===0?"#ffd45c":"rgba(255,255,255,.55)",fontWeight:1100 }}>{i+1}</div><ProfileAvatar profile={profilesById.get(row.id)} size={28}/><div style={{ minWidth:0,fontWeight:1000,fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"#c45cff",fontWeight:1100,fontSize:10 }}>{row.powerPoints}p</div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#72efad",fontWeight:1000,fontSize:9 }}>{rate}%</div></div>})}</div>
+    </ModalShell>:null}
 
     {showRound && latestRound && !state.finished ? <RoundOverlay result={latestRound} state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowRound(false)} /> : null}
     {showEnd && state.finished ? <EndOverlay state={state} profilesById={profilesById} primary={primary} onClose={()=>setShowEnd(false)} onReplay={replay} onHistory={()=>{ try { onFinish?.(buildHistoryRecord(),{navigate:true}); } catch { if(typeof go==="function") go("statsHub",{tab:"history"}); } }} /> : null}
-    {showTable ? <div onClick={()=>setShowTable(false)} style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(0,0,0,.74)", backdropFilter:"blur(7px)", display:"grid", placeItems:"center", padding:10 }}><div onClick={(e)=>e.stopPropagation()} style={{ ...panel(), width:"min(720px,100%)", maxHeight:"88vh", overflow:"auto" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}><b style={{ color:primary, letterSpacing:1 }}>CLASSEMENT DU RÈGNE</b><button onClick={()=>setShowTable(false)} style={{ width:32,height:32,borderRadius:999,border:"1px solid rgba(255,255,255,.12)",background:"rgba(255,255,255,.04)",color:"#fff" }}>×</button></div><div style={{ display:"grid", gap:7, marginTop:10 }}>{standingsLive.map((row:any,i:number)=>{ const s=state.statsByPlayer[row.id]; return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"28px 38px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:13,background:"rgba(255,255,255,.04)" }}><div style={{ fontWeight:1100,color:i===0?"#ffd76a":"#fff" }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={35}/><div><div style={{ fontWeight:1000 }}>{row.name}</div><div style={{ fontSize:9,opacity:.62 }}>{s.president}× Président · {s.tricksWon} plis</div></div><div style={{ color:primary,fontSize:20,fontWeight:1100 }}>{row.powerPoints}</div></div>; })}</div></div></div> : null}
+    {showTable ? <ModalShell title="CLASSEMENT DU RÈGNE" color="#ffb347" onClose={()=>setShowTable(false)}><div style={{ display:"grid", gap:6 }}>{standingsLive.map((row:any,i:number)=>{ const st=state.statsByPlayer[row.id]; const role=state.previousRoles[row.id]||"Citoyen"; return <div key={row.id} style={{ display:"grid",gridTemplateColumns:"26px 36px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:8,borderRadius:12,background:i===0?"rgba(255,179,71,.09)":"rgba(255,255,255,.035)",border:`1px solid ${i===0?"#ffb34755":"rgba(255,255,255,.06)"}` }}><div style={{ color:i===0?"#ffd45c":"#fff",fontWeight:1100 }}>{i+1}.</div><ProfileAvatar profile={profilesById.get(row.id)} size={32}/><div style={{ minWidth:0 }}><div style={{ color:roleColor(role,primary),fontWeight:1100,fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{row.name}</div><div style={{ color:"rgba(255,255,255,.45)",fontSize:8.5 }}>{role} · {state.hands[row.id]?.length||0} cartes</div></div><div style={{ color:"#43d8ff",fontWeight:1000,fontSize:9 }}>{st.tricksWon} plis</div><div style={{ color:"#ffb347",fontSize:18,fontWeight:1100 }}>{row.powerPoints}</div></div>})}</div></ModalShell> : null}
   </div>;
 }
 
