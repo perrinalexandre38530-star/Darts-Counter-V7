@@ -348,7 +348,7 @@ function territoriesTickerKeyForLang(langCode: any): string {
   return `territories_${code}`;
 }
 
-// ✅ Sélection du favori par nombre de parties terminées.
+// ✅ Sélection du favori par nombre de parties lancées/jouées.
 // En cas d'égalité, la partie la plus récente départage les modes : cela évite
 // qu'un ancien favori reste figé uniquement à cause de l'ordre du registry.
 function pickDefaultFavorite(cat: GameCategory): DartsGameDef | null {
@@ -390,7 +390,7 @@ export default function Games({ setTab }: Props) {
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
 
-  // ✅ usage depuis l'historique (parties terminées)
+  // ✅ usage depuis l'historique (parties terminées + parties en cours)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
   const [lastPlayed, setLastPlayed] = React.useState<LastPlayedMap>({});
 
@@ -497,11 +497,33 @@ export default function Games({ setTab }: Props) {
     const loadUsage = async () => {
       const seq = ++requestSeq;
       try {
-        const rows = await History.listFinished();
+        // Un favori représente un mode réellement LANCÉ, pas uniquement un match
+        // arrivé jusqu'à l'écran de fin. C'est important pour les variantes comme
+        // Killer Progressif : dès que le Play crée son autosave in_progress, le mode
+        // doit pouvoir devenir le favori VARIANTES.
+        const [finishedRows, inProgressRows] = await Promise.all([
+          History.listFinished(),
+          History.listInProgress(),
+        ]);
+
+        // Sécurité anti-doublon : un même match peut changer de statut pendant un
+        // rafraîchissement asynchrone. On ne le compte qu'une seule fois.
+        const rowsById = new Map<string, any>();
+        let anonymousRow = 0;
+        for (const rec of [...(finishedRows as any[]), ...(inProgressRows as any[])]) {
+          const rawId = String(rec?.id ?? rec?.matchId ?? '').trim();
+          const key = rawId || `__anonymous_${anonymousRow++}`;
+          const previous = rowsById.get(key);
+          if (!previous || historyPlayedAt(rec) >= historyPlayedAt(previous)) {
+            rowsById.set(key, rec);
+          }
+        }
+        const rows = Array.from(rowsById.values());
+
         const map: PlayCountMap = {};
         const recent: LastPlayedMap = {};
 
-        const resolvedRows = await resolveHistoryGameIds(rows as any[]);
+        const resolvedRows = await resolveHistoryGameIds(rows);
         for (const { rec, gameId } of resolvedRows) {
           if (!gameId) continue;
           map[gameId] = (map[gameId] ?? 0) + 1;

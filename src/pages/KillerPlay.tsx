@@ -3003,8 +3003,20 @@ React.useEffect(() => {
     } catch {}
   }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig, historyGameId, progressiveMode, progressiveTarget]);
 
+  const initialHistorySaveDoneRef = React.useRef(false);
+
   React.useEffect(() => {
-    // ✅ AUTOSAVE in_progress pour reprise (debounce léger après changement d'état)
+    // Dès l'entrée dans KillerPlay, la partie est considérée comme LANCÉE.
+    // On crée donc immédiatement l'enregistrement in_progress : le favori du
+    // menu JEUX peut refléter Killer Progressif même si l'utilisateur revient
+    // au menu avant le premier autosave différé.
+    if (initialHistorySaveDoneRef.current || finishedRef.current) return;
+    initialHistorySaveDoneRef.current = true;
+    saveInProgress();
+  }, [saveInProgress]);
+
+  React.useEffect(() => {
+    // ✅ AUTOSAVE in_progress pour reprise (debounce léger après les changements d'état)
     if (finishedRef.current) return;
     const t = window.setTimeout(() => {
       saveInProgress();
