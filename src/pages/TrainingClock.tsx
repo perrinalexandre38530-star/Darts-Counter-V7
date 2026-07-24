@@ -17,6 +17,7 @@ import TeamPagedSelector from "../components/TeamPagedSelector";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { useTheme } from "../contexts/ThemeContext";
 import ProfileAvatar from "../components/ProfileAvatar";
+import Keypad from "../components/Keypad";
 import { getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc } from "../lib/geoAssets";
 import { getDartSetsForProfile, getPublicDartSetsForSelector, getFavoriteDartSetForProfile, getDartSetById, getDartSetMainImageSrc, getDartSetThumbImageSrc, bumpDartSetUsage } from "../lib/dartSetsStore";
@@ -1040,7 +1041,7 @@ const TrainingClock: React.FC<Props> = (props) => {
         <div
           style={{
             width: "100%",
-            maxWidth: 520,
+            maxWidth: step === "play" ? 760 : 520,
             display: "flex",
             flexDirection: "column",
             gap: 12,
@@ -1948,430 +1949,260 @@ function PlaySection(props: PlaySectionProps) {
     lastThrows,
     lastObjectiveLabel,
     lastObjectiveTimeMs,
-    onAbort,
+    onAbort: _onAbort,
     onThrow,
   } = props;
 
-  // couleurs de l'objectif
-  let objBg =
-    "linear-gradient(180deg,#ffc63a,#ffaf00)";
-  let objShadow = "0 0 12px rgba(255,198,58,.7)";
-  let objColor = "#111";
+  const objectiveColor =
+    objectiveKind === "double"
+      ? "#29c76f"
+      : objectiveKind === "triple"
+      ? "#b16adf"
+      : "#ffc63a";
+  const objectiveSoft =
+    objectiveKind === "double"
+      ? "rgba(41,199,111,.18)"
+      : objectiveKind === "triple"
+      ? "rgba(177,106,223,.18)"
+      : "rgba(255,198,58,.18)";
+  const objectiveGlow =
+    objectiveKind === "double"
+      ? "rgba(41,199,111,.48)"
+      : objectiveKind === "triple"
+      ? "rgba(177,106,223,.48)"
+      : "rgba(255,198,58,.48)";
 
-  // Simple = doré, Double = vert, Triple = violet
-  if (objectiveKind === "double") {
-    objBg = "linear-gradient(180deg,#29c76f,#1e8b4a)";
-    objShadow = "0 0 12px rgba(41,199,111,.7)";
-    objColor = "#03140a";
-  } else if (objectiveKind === "triple") {
-    objBg = "linear-gradient(180deg,#b16adf,#8e44ad)";
-    objShadow = "0 0 12px rgba(177,106,223,.7)";
-    objColor = "#110713";
-  }
+  const [padMultiplier, setPadMultiplier] = React.useState<1 | 2 | 3>(1);
+  const hasPending = isMiss || selectedValue != null;
+  const pendingLabel = hasPending
+    ? formatThrowLabel(isMiss, selectedValue, selectedMult)
+    : "—";
+  const pendingThrow = React.useMemo(() => {
+    if (!hasPending) return [];
+    if (isMiss) return [{ v: 0, mult: 1 as const }];
+    if (selectedValue === "BULL") {
+      return [{ v: 25, mult: selectedMult === 2 ? (2 as const) : (1 as const) }];
+    }
+    return [{ v: Number(selectedValue || 0), mult: selectedMult }];
+  }, [hasPending, isMiss, selectedValue, selectedMult]);
+
+  const clearPending = React.useCallback(() => {
+    setSelectedValue(null);
+    setIsMiss(false);
+    setSelectedMult(1);
+    setPadMultiplier(1);
+  }, [setIsMiss, setSelectedMult, setSelectedValue]);
+
+  const chooseNumber = React.useCallback(
+    (n: number) => {
+      if (n === 0) {
+        setIsMiss(true);
+        setSelectedValue(null);
+        setSelectedMult(1);
+        setPadMultiplier(1);
+        return;
+      }
+      setIsMiss(false);
+      setSelectedValue(n as Target);
+      setSelectedMult(padMultiplier);
+      setPadMultiplier(1);
+    },
+    [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]
+  );
+
+  const chooseBull = React.useCallback(() => {
+    setIsMiss(false);
+    setSelectedValue("BULL");
+    setSelectedMult(padMultiplier === 2 ? 2 : 1);
+    setPadMultiplier(1);
+  }, [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]);
+
+  const validatePending = React.useCallback(() => {
+    if (!hasPending) return;
+    onThrow();
+    clearPending();
+  }, [clearPending, hasPending, onThrow]);
 
   const targetFullLabel = labelTarget(currentTarget, config.mode, stageSDT);
-
+  const progressPct = Math.max(0, Math.min(100, (targetsCompleted / TARGETS.length) * 100));
   const lastObjectiveDisplay =
     lastObjectiveLabel != null && lastObjectiveTimeMs != null
-      ? `${lastObjectiveLabel} à ${formatTime(lastObjectiveTimeMs)}`
+      ? `${lastObjectiveLabel} · ${formatTime(lastObjectiveTimeMs)}`
       : "—";
-  const progressPct = Math.max(0, Math.min(100, (targetsCompleted / TARGETS.length) * 100));
-  const currentTargetPosition = Math.min(TARGETS.length - 1, targetsCompleted);
-  const nearbyTargets = TARGETS.map((target, index) => ({ target, index }))
-    .filter(({ index }) => Math.abs(index - currentTargetPosition) <= 2);
+  const dartsLimitLabel = config.dartLimit != null ? `${dartsThrown}/${config.dartLimit}` : String(dartsThrown);
+  const activeProfile =
+    currentProfile ||
+    ({ id: String(currentPlayer?.id || "clock-player"), name: currentPlayer?.name || "Joueur" } as Profile);
+
+  const panelStyle: React.CSSProperties = {
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,.10)",
+    background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(5,8,16,.80))",
+    boxShadow: "0 10px 22px rgba(0,0,0,.28)",
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Bandeau infos joueur / objectif / stats */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+      {/* Bloc principal compact inspiré du Baseball : joueur à gauche, cible à droite */}
       <section
-        className="card"
         style={{
-          borderRadius: 16,
-          padding: 12,
-          background:
-            "linear-gradient(180deg,#191920,#08080c)",
-          border: "1px solid rgba(255,255,255,.12)",
-          boxShadow: "0 0 18px rgba(0,0,0,.7)",
+          ...panelStyle,
+          padding: 0,
+          overflow: "hidden",
+          borderColor: `${objectiveColor}78`,
+          boxShadow: `0 0 24px ${objectiveSoft}`,
         }}
       >
         <div
           style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
+            position: "relative",
+            minHeight: 122,
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) minmax(126px,142px)",
+            gap: 4,
+            alignItems: "stretch",
+            padding: "8px 10px",
           }}
         >
-          {/* Avatar type X01 avec aura */}
-          <div
-            style={{
-              borderRadius: "50%",
-              padding: 3,
-              background:
-                "radial-gradient(circle, rgba(255,198,58,.9) 0, rgba(255,198,58,.25) 55%, transparent 70%)",
-              boxShadow: "0 0 20px rgba(255,198,58,.65)",
-              width: 64,
-              height: 64,
-              flexShrink: 0,
-            }}
-          >
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                borderRadius: "50%",
-                overflow: "hidden",
-                background: "#222",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "2px solid rgba(0,0,0,.8)",
-              }}
-            >
-              {currentProfile?.avatarDataUrl ? (
-                <img
-                  src={currentProfile.avatarDataUrl}
-                  alt={currentPlayer?.name ?? ""}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <span
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 800,
-                    color: "#f5f5f5",
-                  }}
-                >
-                  {initialsFromName(currentPlayer?.name)}
-                </span>
-              )}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.38), rgba(0,0,0,.16) 46%, rgba(0,0,0,.32))" }} />
+
+          <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "26%", minWidth: 88, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", left: -18, top: 17, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}>
+              <ProfileAvatar profile={activeProfile as any} size={84} />
             </div>
           </div>
 
-          {/* Infos à droite */}
           <div
             style={{
-              flex: 1,
+              gridColumn: "1 / 2",
+              position: "relative",
+              zIndex: 1,
               display: "flex",
               flexDirection: "column",
-              gap: 6,
+              alignItems: "center",
+              justifyContent: "center",
+              minWidth: 0,
+              textAlign: "center",
+              padding: "2px 8px 2px 4px",
             }}
           >
-            {/* Ligne temps + mode */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  opacity: 0.8,
-                }}
-              >
-                <div>{isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}</div>
-                {currentPlayer?.teamName ? <div style={{ color: "#ffc63a", fontWeight: 900, marginTop: 2 }}>Équipe : {currentPlayer.teamName}</div> : null}
-                {currentDartSetName ? <div style={{ color: "#70d8ff", fontWeight: 900, marginTop: 2 }}>Set : {currentDartSetName}</div> : null}
-              </div>
-              {config.showTimer && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "#ffc63a",
-                  }}
-                >
-                  Temps : {formatTime(elapsedNow)}
-                </div>
-              )}
+            <div style={{ color: objectiveColor, fontSize: 13, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.05, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+              {currentPlayer?.name || "Joueur"}
             </div>
-
-            {/* Objectif + cible */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <div style={{ fontSize: 12 }}>
-                Objectif
-                <div
-                  style={{
-                    marginTop: 3,
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background: objBg,
-                    boxShadow: objShadow,
-                    color: objColor,
-                    fontWeight: 800,
-                    fontSize: 14,
-                    minWidth: 64,
-                    textAlign: "center",
-                  }}
-                >
-                  {objectiveLabel}
-                </div>
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  opacity: 0.8,
-                  textAlign: "right",
-                }}
-              >
-                Cible actuelle : {targetFullLabel}
-              </div>
+            <div style={{ marginTop: 2, color: "rgba(255,255,255,.58)", fontSize: 8.5, fontWeight: 900, letterSpacing: .5, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}
+              {currentPlayer?.teamName ? ` · ${currentPlayer.teamName}` : ""}
             </div>
-
-            {/* Stats détaillées + dernier objectif */}
-            <div
-              style={{
-                marginTop: 4,
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-                fontSize: 11,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>
-                  Fléchettes :{" "}
-                  <strong>{dartsThrown}</strong>
-                </span>
-                <span>
-                  Hits : <strong>{hits}</strong>
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>
-                  Précision :{" "}
-                  <strong>{precision}%</strong>
-                </span>
-                <span>
-                  Série / Best :{" "}
-                  <strong>
-                    {currentStreak} / {bestStreak}
-                  </strong>
-                </span>
-              </div>
-              <div
-                style={{
-                  marginTop: 2,
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>Dernier objectif validé :</span>
-                <span
-                  style={{
-                    fontWeight: 600,
-                    textAlign: "right",
-                  }}
-                >
-                  {lastObjectiveDisplay}
-                </span>
-              </div>
+            <div style={{ marginTop: 5, color: objectiveColor, fontSize: objectiveLabel.length > 5 ? 38 : 52, fontWeight: 1000, lineHeight: .96, textShadow: `0 0 18px ${objectiveGlow}` }}>
+              {objectiveLabel}
+            </div>
+            <div style={{ marginTop: 5, color: "rgba(255,255,255,.68)", fontSize: 8.5, fontWeight: 900, letterSpacing: .55, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+              {currentDartSetName ? `Set : ${currentDartSetName}` : "Tour de l'horloge"}
             </div>
           </div>
-        </div>
-      </section>
 
-      <section
-        style={{
-          borderRadius: 22,
-          padding: 14,
-          overflow: "hidden",
-          position: "relative",
-          background: `radial-gradient(circle at 50% 12%, ${objectiveKind === "double" ? "rgba(41,199,111,.24)" : objectiveKind === "triple" ? "rgba(177,106,223,.24)" : "rgba(255,198,58,.24)"}, transparent 56%), linear-gradient(180deg,#1d1d24,#08080c)`,
-          border: `1px solid ${objectiveKind === "double" ? "rgba(41,199,111,.46)" : objectiveKind === "triple" ? "rgba(177,106,223,.46)" : "rgba(255,198,58,.46)"}`,
-          boxShadow: `0 0 26px ${objectiveKind === "double" ? "rgba(41,199,111,.16)" : objectiveKind === "triple" ? "rgba(177,106,223,.16)" : "rgba(255,198,58,.16)"}`,
-        }}
-      >
-        <div style={{ textAlign: "center", fontSize: 9, letterSpacing: 1.6, fontWeight: 1000, opacity: .58 }}>OBJECTIF EN COURS</div>
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
           <div
             style={{
-              width: 118,
-              height: 118,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
+              gridColumn: "2 / 3",
               position: "relative",
-              background: `conic-gradient(${objectiveKind === "double" ? "#29c76f" : objectiveKind === "triple" ? "#b16adf" : "#ffc63a"} ${progressPct}%, rgba(255,255,255,.08) 0)`,
-              boxShadow: objShadow,
+              zIndex: 2,
+              display: "flex",
+              alignItems: "stretch",
+              justifyContent: "center",
+              minWidth: 0,
+              overflow: "hidden",
+              borderRadius: 18,
+              background: "#050913",
+              isolation: "isolate",
+              border: `1px solid ${objectiveColor}3f`,
             }}
           >
-            <div style={{ position: "absolute", inset: 7, borderRadius: "50%", background: "radial-gradient(circle at 50% 35%,#2a2b33,#0a0a0e 72%)", border: "1px solid rgba(255,255,255,.12)" }} />
-            <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: objectiveLabel.length > 4 ? 30 : 42, lineHeight: 1, fontWeight: 1000, color: objectiveKind === "double" ? "#53ee9a" : objectiveKind === "triple" ? "#d49cff" : "#ffd86b", textShadow: objShadow }}>{objectiveLabel}</div>
-              <div style={{ marginTop: 5, fontSize: 9, fontWeight: 900, opacity: .62 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
+            <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 22%, ${objectiveSoft}, transparent 58%), linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.82))` }} />
+            <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${objectiveColor}88, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${objectiveSoft}` }} />
+            <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", padding: "6px 4px" }}>
+              <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9, fontWeight: 950, letterSpacing: .8 }}>CIBLE</div>
+              <div style={{ color: objectiveColor, fontSize: currentTarget === "BULL" ? 22 : 42, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${objectiveGlow}`, marginTop: 3 }}>{targetFullLabel}</div>
+              <div style={{ color: "rgba(255,255,255,.58)", fontSize: 8.5, fontWeight: 900, marginTop: 6 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
+              {config.showTimer ? <div style={{ color: "#ffd86b", fontSize: 10, fontWeight: 1000, marginTop: 6 }}>{formatTime(elapsedNow)}</div> : null}
             </div>
           </div>
         </div>
-
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 12 }}>
-          {nearbyTargets.map(({ target, index }) => {
-            const active = index === currentTargetPosition;
-            const done = index < currentTargetPosition;
-            return (
-              <div key={String(target)} style={{ minWidth: active ? 54 : 34, height: active ? 32 : 27, borderRadius: 999, display: "grid", placeItems: "center", fontSize: active ? 12 : 10, fontWeight: 1000, border: `1px solid ${active ? "rgba(255,198,58,.72)" : done ? "rgba(81,232,147,.42)" : "rgba(255,255,255,.12)"}`, background: active ? "rgba(255,198,58,.14)" : done ? "rgba(81,232,147,.08)" : "rgba(255,255,255,.035)", color: active ? "#ffd86b" : done ? "#51e893" : "rgba(255,255,255,.55)" }}>
-                {done ? "✓" : target === "BULL" ? "BULL" : target}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)", marginTop: 12 }}>
-          <div style={{ width: `${progressPct}%`, height: "100%", borderRadius: 999, background: objectiveKind === "double" ? "linear-gradient(90deg,#14733d,#42e58d)" : objectiveKind === "triple" ? "linear-gradient(90deg,#63307c,#c77dff)" : "linear-gradient(90deg,#9b6900,#ffc63a)", boxShadow: objShadow, transition: "width .25s ease" }} />
+        <div style={{ height: 5, background: "rgba(255,255,255,.055)", overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${progressPct}%`, background: `linear-gradient(90deg, ${objectiveColor}88, ${objectiveColor})`, boxShadow: `0 0 12px ${objectiveGlow}`, transition: "width .2s ease" }} />
         </div>
       </section>
 
-      {/* Ligne d'historique de hits (sous le header, au-dessus du keypad) */}
-      <section
-        className="card"
-        style={{
-          borderRadius: 14,
-          padding: 8,
-          background:
-            "linear-gradient(180deg,#17171d,#09090c)",
-          border: "1px solid rgba(255,255,255,.08)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            opacity: 0.8,
-            marginBottom: 4,
-          }}
-        >
-          Derniers lancers
+      {/* KPIs compacts façon Baseball */}
+      <section style={{ ...panelStyle, padding: 7 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+          {[
+            ["DARTS", dartsLimitLabel, "#ffc63a"],
+            ["HITS", hits, "#51e893"],
+            ["PRÉCISION", `${precision}%`, objectiveColor],
+            ["SÉRIE / BEST", `${currentStreak}/${bestStreak}`, "#d49cff"],
+          ].map(([label, value, color]) => (
+            <div key={String(label)} style={{ minWidth: 0, borderRadius: 11, padding: "6px 3px", textAlign: "center", border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)" }}>
+              <div style={{ color: "rgba(255,255,255,.48)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+              <div style={{ color: String(color), fontSize: 15, lineHeight: 1.05, fontWeight: 1100, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+            </div>
+          ))}
         </div>
-        {lastThrows.length === 0 ? (
-          <div
-            style={{
-              fontSize: 11,
-              opacity: 0.6,
-            }}
-          >
-            En attente des premiers lancers…
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              overflowX: "auto",
-              paddingBottom: 2,
-            }}
-          >
-            {lastThrows.map((t, idx) => {
-              const kind = getThrowKind(t);
-              let bg =
-                "linear-gradient(180deg,#444751,#2c2e35)";
-              let color = "#f5f5f5";
-
-              // Simple = doré, Double = vert, Triple = violet
-              if (kind === "simple") {
-                bg =
-                  "linear-gradient(180deg,#ffc63a,#ffaf00)";
-                color = "#111";
-              } else if (kind === "double") {
-                bg =
-                  "linear-gradient(180deg,#29c76f,#1e8b4a)";
-                color = "#03140a";
-              } else if (kind === "triple") {
-                bg =
-                  "linear-gradient(180deg,#b16adf,#8e44ad)";
-                color = "#110713";
-              } else if (kind === "bull") {
-                bg =
-                  "linear-gradient(180deg,#29c76f,#1e8b4a)";
-                color = "#03140a";
-              }
-
-              return (
-                <div
-                  key={idx}
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    background: bg,
-                    color,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {t}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div style={{ marginTop: 5, minHeight: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 5px", color: "rgba(255,255,255,.58)", fontSize: 9.5 }}>
+          <span style={{ whiteSpace: "nowrap" }}>Dernier objectif validé</span>
+          <strong style={{ color: "rgba(255,255,255,.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{lastObjectiveDisplay}</strong>
+        </div>
       </section>
 
-      {/* Mini keypad Tour de l'horloge */}
-      <ClockPad
-        selectedValue={selectedValue}
-        setSelectedValue={setSelectedValue}
-        selectedMult={selectedMult}
-        setSelectedMult={setSelectedMult}
-        isMiss={isMiss}
-        setIsMiss={setIsMiss}
-      />
+      {/* Historique réduit à une seule bande compacte */}
+      <section style={{ ...panelStyle, padding: "7px 9px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 30 }}>
+          <div style={{ flex: "0 0 auto", color: "rgba(255,255,255,.52)", fontSize: 9, fontWeight: 950, letterSpacing: .45 }}>DERNIERS</div>
+          {lastThrows.length === 0 ? (
+            <div style={{ color: "rgba(255,255,255,.40)", fontSize: 10 }}>En attente…</div>
+          ) : (
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 5, overflowX: "auto", minWidth: 0, paddingBottom: 1 }}>
+              {lastThrows.slice(0, 10).map((t, idx) => {
+                const kind = getThrowKind(t);
+                const tone = kind === "double" || kind === "bull" ? "#29c76f" : kind === "triple" ? "#b16adf" : kind === "simple" ? "#ffc63a" : "#ff4b5c";
+                return (
+                  <span key={`${t}-${idx}`} style={{ flex: "0 0 auto", minWidth: 30, height: 24, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${tone}66`, background: `${tone}16`, color: tone, fontSize: 9.5, fontWeight: 1000 }}>
+                    {t}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
 
-      {/* Actions bas */}
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button
-          type="button"
-          className="btn-ghost"
-          style={{
-            flex: 1,
-            padding: "10px 0",
-            borderRadius: 14,
-            fontSize: 13,
-          }}
-          onClick={onAbort}
-        >
-          Annuler
-        </button>
-        <button
-          type="button"
-          className="btn-primary"
-          style={{
-            flex: 1,
-            padding: "10px 0",
-            borderRadius: 14,
-            fontSize: 13,
-            fontWeight: 700,
-            background:
-              "linear-gradient(180deg,#ffc63a,#ffaf00)",
-            color: "#111",
-            border: "1px solid rgba(0,0,0,.9)",
-            boxShadow: "0 0 16px rgba(255,198,58,.6)",
-          }}
-          onClick={onThrow}
-        >
-          VALIDER · {formatThrowLabel(isMiss, selectedValue, selectedMult)}
-        </button>
-      </div>
+      {/* Keypad commun à tous les modes */}
+      <section style={{ ...panelStyle, padding: 7 }}>
+        <Keypad
+          currentThrow={pendingThrow as any}
+          multiplier={padMultiplier}
+          onSimple={() => setPadMultiplier(1)}
+          onDouble={() => setPadMultiplier(2)}
+          onTriple={() => setPadMultiplier(3)}
+          onBackspace={clearPending}
+          onCancel={clearPending}
+          onNumber={chooseNumber}
+          onBull={chooseBull}
+          onValidate={validatePending}
+          hidePreview
+          hideTotal
+          centerSlot={
+            <div style={{ minWidth: 60, textAlign: "center", lineHeight: 1.02 }}>
+              <div style={{ color: "rgba(255,255,255,.50)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .4 }}>SAISIE</div>
+              <div style={{ color: hasPending ? objectiveColor : "rgba(255,255,255,.32)", fontSize: 13, fontWeight: 1100, marginTop: 2 }}>{pendingLabel}</div>
+            </div>
+          }
+          validateAttention={hasPending}
+          safeBottomPad
+        />
+      </section>
     </div>
   );
 }

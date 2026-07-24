@@ -101,9 +101,131 @@ type InfoGame = {
 };
 
 type PlayCountMap = Record<string, number>;
+type LastPlayedMap = Record<string, number>;
 
 function safeUpper(s: string) {
   return (s || "").toUpperCase();
+}
+
+// Les historiques des modes les plus récents ne portent pas tous exactement
+// le même identifiant que le registry (ex: game_170 -> v170,
+// territories -> departements, clock -> tour_horloge, Cricket + variantId).
+// On canonise ici UNE FOIS pour que les favoris reflètent réellement les parties jouées.
+const GAME_IDS = new Set(DARTS_GAMES.map((g) => String(g.id)));
+const VARIANT_GAME_IDS = new Set(
+  DARTS_GAMES.filter((g) => g.category === "variant").map((g) => String(g.id))
+);
+
+const HISTORY_GAME_ALIASES: Record<string, string> = {
+  // Variantes Cricket
+  enculette_vache: "enculette",
+  vache: "enculette",
+  cut_throat: "cricket_cut_throat",
+  cutthroat: "cricket_cut_throat",
+  cricket_cutthroat: "cricket_cut_throat",
+
+  // Killer progressif
+  progressive: "killer_progressive",
+  killer_progressif: "killer_progressive",
+
+  // 170 : le play historique utilise encore game_170
+  "170": "v170",
+  game_170: "v170",
+  mode_170: "v170",
+
+  // Défis / fun / training avec noms historiques différents du registry
+  territories: "departements",
+  territory: "departements",
+  departments: "departements",
+  batard: "bastard",
+  clock: "tour_horloge",
+  training_clock: "tour_horloge",
+  tour_de_l_horloge: "tour_horloge",
+};
+
+function normalizeHistoryToken(raw: any): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+}
+
+function canonicalGameId(raw: any): string | null {
+  const token = normalizeHistoryToken(raw);
+  if (!token) return null;
+  const aliased = HISTORY_GAME_ALIASES[token] || token;
+  return GAME_IDS.has(aliased) ? aliased : null;
+}
+
+function historyVariantGameId(rec: any): string | null {
+  const rawVariant =
+    rec?.variantId ??
+    rec?.summary?.variantId ??
+    rec?.game?.variantId ??
+    rec?.payload?.variantId ??
+    rec?.payload?.meta?.variantId ??
+    rec?.payload?.config?.variantId ??
+    rec?.payload?.config?.presetVariantId ??
+    null;
+
+  const candidate = canonicalGameId(rawVariant);
+  return candidate && VARIANT_GAME_IDS.has(candidate) ? candidate : null;
+}
+
+function historyRecordGameId(rec: any): string | null {
+  // IMPORTANT : une partie Cricket Enculette/Cut-Throat doit compter dans la
+  // variante correspondante, pas aussi dans le Cricket classique.
+  const variantGameId = historyVariantGameId(rec);
+  if (variantGameId) return variantGameId;
+
+  const candidates = [
+    rec?.kind,
+    rec?.gameId,
+    rec?.modeId,
+    rec?.mode,
+    rec?.game?.id,
+    rec?.game?.gameId,
+    rec?.game?.mode,
+    rec?.summary?.kind,
+    rec?.summary?.gameId,
+    rec?.summary?.modeId,
+    rec?.summary?.mode,
+    rec?.summary?.game?.mode,
+    rec?.payload?.kind,
+    rec?.payload?.gameId,
+    rec?.payload?.modeId,
+    rec?.payload?.mode,
+    rec?.payload?.game?.mode,
+    rec?.payload?.config?.gameId,
+    rec?.payload?.config?.modeId,
+    rec?.payload?.config?.mode,
+  ];
+
+  for (const raw of candidates) {
+    const id = canonicalGameId(raw);
+    if (id) return id;
+  }
+  return null;
+}
+
+function historyPlayedAt(rec: any): number {
+  const values = [
+    rec?.updatedAt,
+    rec?.finishedAt,
+    rec?.summary?.finishedAt,
+    rec?.payload?.finishedAt,
+    rec?.createdAt,
+  ];
+  for (const raw of values) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
 }
 
 // ✅ TERRITORIES: ticker watermark depends on UI language (dc_lang_v1)
@@ -125,56 +247,37 @@ function territoriesTickerKeyForLang(langCode: any): string {
   return `territories_${code}`;
 }
 
-// ✅ derive a “count key” from history records for a given game def
-function matchRecordToGameId(rec: any, gameId: string): boolean {
-  const k = String(rec?.kind || "");
-  const variantId = String(
-    rec?.variantId ||
-      rec?.summary?.variantId ||
-      rec?.payload?.variantId ||
-      rec?.payload?.config?.variantId ||
-      rec?.payload?.config?.gameId ||
-      ""
-  ).toLowerCase();
-  const isProgressiveKiller = variantId === "progressive" || variantId === "killer_progressive";
-
-  if (gameId === "killer_progressive") {
-    return k === "killer_progressive" || isProgressiveKiller;
-  }
-  if (gameId === "killer" && (k === "killer_progressive" || isProgressiveKiller)) {
-    return false;
-  }
-  if (k && k === gameId) return true;
-
-  const m1 = String(rec?.game?.mode || "");
-  const m2 = String(rec?.mode || "");
-  const m3 = String(rec?.summary?.mode || "");
-  const m4 = String(rec?.payload?.mode || "");
-
-  return m1 === gameId || m2 === gameId || m3 === gameId || m4 === gameId;
-}
-
+// ✅ Sélection du favori par nombre de parties terminées.
+// En cas d'égalité, la partie la plus récente départage les modes : cela évite
+// qu'un ancien favori reste figé uniquement à cause de l'ordre du registry.
 function pickDefaultFavorite(cat: GameCategory): DartsGameDef | null {
   const list = DARTS_GAMES.filter((g) => g.category === cat).slice().sort(sortByPopularity);
   return list[0] ?? null;
 }
 
-function pickFavoriteByCounts(cat: GameCategory, counts: PlayCountMap): DartsGameDef | null {
+function pickFavoriteByCounts(
+  cat: GameCategory,
+  counts: PlayCountMap,
+  lastPlayed: LastPlayedMap
+): DartsGameDef | null {
   const list = DARTS_GAMES.filter((g) => g.category === cat).slice().sort(sortByPopularity);
   if (!list.length) return null;
 
   let best: DartsGameDef | null = null;
-  let bestCount = -1;
+  let bestCount = 0;
+  let bestLastPlayed = 0;
 
   for (const g of list) {
     const c = counts[g.id] ?? 0;
-    if (c > bestCount) {
+    const last = lastPlayed[g.id] ?? 0;
+    if (c > bestCount || (c === bestCount && c > 0 && last > bestLastPlayed)) {
       bestCount = c;
+      bestLastPlayed = last;
       best = g;
     }
   }
 
-  if (bestCount <= 0) return pickDefaultFavorite(cat);
+  if (!best || bestCount <= 0) return pickDefaultFavorite(cat);
   return best;
 }
 
@@ -186,8 +289,9 @@ export default function Games({ setTab }: Props) {
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
 
-  // ✅ counts from history (finished matches)
+  // ✅ usage depuis l'historique (parties terminées)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
+  const [lastPlayed, setLastPlayed] = React.useState<LastPlayedMap>({});
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
@@ -280,31 +384,63 @@ export default function Games({ setTab }: Props) {
     />
   );
 
-  // ✅ Load counts once (and keep resilient)
+  // ✅ Recharge les favoris au montage ET dès qu'une partie finit.
+  // Plusieurs modes récents sauvegardent l'historique en asynchrone : auparavant
+  // Games pouvait se monter juste avant la fin du History.upsert et rester figé
+  // jusqu'au prochain remount. L'événement dc-history-updated corrige cette course.
   React.useEffect(() => {
     let alive = true;
+    let requestSeq = 0;
+    let delayedReload: number | null = null;
 
-    (async () => {
+    const loadUsage = async () => {
+      const seq = ++requestSeq;
       try {
         const rows = await History.listFinished();
         const map: PlayCountMap = {};
+        const recent: LastPlayedMap = {};
 
         for (const r of rows as any[]) {
-          for (const g of DARTS_GAMES) {
-            if (matchRecordToGameId(r, g.id)) {
-              map[g.id] = (map[g.id] ?? 0) + 1;
-            }
-          }
+          const gameId = historyRecordGameId(r);
+          if (!gameId) continue;
+          map[gameId] = (map[gameId] ?? 0) + 1;
+          recent[gameId] = Math.max(recent[gameId] ?? 0, historyPlayedAt(r));
         }
 
-        if (alive) setCounts(map);
+        if (alive && seq === requestSeq) {
+          setCounts(map);
+          setLastPlayed(recent);
+        }
       } catch {
-        if (alive) setCounts({});
+        if (alive && seq === requestSeq) {
+          setCounts({});
+          setLastPlayed({});
+        }
       }
-    })();
+    };
+
+    const refresh = () => {
+      void loadUsage();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    refresh();
+    // Filet de sécurité pour un upsert déjà lancé juste avant le montage de Games.
+    delayedReload = window.setTimeout(refresh, 350);
+
+    window.addEventListener("dc-history-updated", refresh as EventListener);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       alive = false;
+      requestSeq += 1;
+      if (delayedReload !== null) window.clearTimeout(delayedReload);
+      window.removeEventListener("dc-history-updated", refresh as EventListener);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -323,11 +459,11 @@ export default function Games({ setTab }: Props) {
   }, [activeCat]);
 
   // Favorites (computed from counts)
-  const favClassic = React.useMemo(() => pickFavoriteByCounts("classic", counts), [counts]);
-  const favTraining = React.useMemo(() => pickFavoriteByCounts("training", counts), [counts]);
-  const favVariant = React.useMemo(() => pickFavoriteByCounts("variant", counts), [counts]);
-  const favChallenge = React.useMemo(() => pickFavoriteByCounts("challenge", counts), [counts]);
-  const favFun = React.useMemo(() => pickFavoriteByCounts("fun", counts), [counts]);
+  const favClassic = React.useMemo(() => pickFavoriteByCounts("classic", counts, lastPlayed), [counts, lastPlayed]);
+  const favTraining = React.useMemo(() => pickFavoriteByCounts("training", counts, lastPlayed), [counts, lastPlayed]);
+  const favVariant = React.useMemo(() => pickFavoriteByCounts("variant", counts, lastPlayed), [counts, lastPlayed]);
+  const favChallenge = React.useMemo(() => pickFavoriteByCounts("challenge", counts, lastPlayed), [counts, lastPlayed]);
+  const favFun = React.useMemo(() => pickFavoriteByCounts("fun", counts, lastPlayed), [counts, lastPlayed]);
 
   // ✅ Routing du favori training : config dédiée quand disponible
   function trainingFavoriteTarget(game: DartsGameDef | null): { tab: string; params?: any } {

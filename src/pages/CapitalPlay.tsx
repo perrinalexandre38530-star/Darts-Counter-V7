@@ -759,6 +759,21 @@ export default function CapitalPlay(props: any) {
   const playerStats = useMemo(() => rankCapitalPlayers(rawPlayerStats, winningPlayerIds), [rawPlayerStats, winningPlayerIds]);
   const teamStats = useMemo(() => buildCapitalTeamStats(normalizedTeams as any, playerStats), [normalizedTeams, playerStats]);
   const matchStats = useMemo(() => buildCapitalMatchStats(playerStats, teamStats, visits), [playerStats, teamStats, visits]);
+  const activeProfile = participants[playerIdx] || null;
+  const activeStats = rawPlayerStats[playerIdx] || {};
+  const activeName = activeProfile?.nickname || activeProfile?.name || `${t("generic.player", "Joueur")} ${playerIdx + 1}`;
+  const activeTeam = normalizedTeams.find((team: any) => (team.players || []).includes(String(activeProfile?.id || ""))) || null;
+  const rankedScoreRows = useMemo(() => scores.map((score, index) => ({
+    index,
+    score: Number(score || 0),
+    name: participants[index]?.nickname || participants[index]?.name || `${t("generic.player", "Joueur")} ${index + 1}`,
+    profile: participants[index],
+  })).sort((a, b) => b.score - a.score || a.index - b.index), [scores, participants, t]);
+  const scoreRankByIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    rankedScoreRows.forEach((row, position) => map.set(row.index, position + 1));
+    return map;
+  }, [rankedScoreRows]);
 
   useEffect(() => {
     if (!isFinished || historySavedRef.current || !visits.length) return;
@@ -1170,45 +1185,73 @@ export default function CapitalPlay(props: any) {
         right={<InfoDot title="Règles CAPITAL" content={INFO_TEXT} />}
       />
 
-      <div style={{ padding: 12 }}>
-        <div
+      <div style={{ padding: "10px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+        <section
           style={{
-            borderRadius: 18,
-            padding: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.05)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+            marginBottom: 8,
+            padding: 0,
+            overflow: "hidden",
+            borderRadius: 20,
+            border: "1px solid rgba(47,216,255,.55)",
+            background: "linear-gradient(180deg, rgba(7,17,24,.94), rgba(3,8,12,.96))",
+            boxShadow: "0 0 24px rgba(47,216,255,.10), 0 18px 40px rgba(0,0,0,.38)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.round", "ROUND")} {Math.min(roundIdx + 1, rounds)}/{rounds}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>
-                Contrat :{" "}
-                <span style={{ color: "rgba(255,230,120,0.95)" }}>{isFinished ? "—" : contractLabel(currentContract)}</span>
-              </div>
-              {!isFinished && (
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>{successNow ? "✅ Contrat validé (si tu valides la volée)" : "—"}</div>
-              )}
-            </div>
-
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>{t("generic.player", "JOUEUR")}</div>
-              <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                {!isFinished ? <ProfileAvatar profile={participants[playerIdx]} size={34} showStars={false} /> : null}
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 1000 }}>{isFinished ? "—" : participants[playerIdx]?.nickname || participants[playerIdx]?.name || `Joueur ${playerIdx + 1}`}</div>
-                  {!isFinished ? <div style={{ fontSize: 10.5, opacity: .66 }}>#{playerIdx + 1}/{playerCount}</div> : null}
+          <div
+            style={{
+              position: "relative",
+              minHeight: 126,
+              display: "grid",
+              gridTemplateColumns: "minmax(0,1fr) minmax(128px,140px)",
+              gap: 4,
+              alignItems: "stretch",
+              padding: "8px 10px",
+            }}
+          >
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,.18) 38%, rgba(0,0,0,.08) 64%, rgba(0,0,0,.34))" }} />
+            {!isFinished && activeProfile ? (
+              <div style={{ position: "absolute", left: -20, top: -4, bottom: -4, width: "25%", minWidth: 84, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", left: -16, top: 16, transform: "scale(1.22)", transformOrigin: "left top", filter: "saturate(.88)" }}>
+                  <ProfileAvatar profile={activeProfile} size={82} showStars={false} />
                 </div>
               </div>
-              {timeLeft > 0 && !isFinished && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>⏱ {timeLeft}s</div>
-              )}
+            ) : null}
+            {activeTeam?.logoDataUrl ? (
+              <div style={{ position: "absolute", right: "calc(128px + 12px)", top: -4, bottom: -4, width: "22%", minWidth: 76, overflow: "hidden", opacity: .13, pointerEvents: "none" }}>
+                <img src={activeTeam.logoDataUrl} alt="" style={{ position: "absolute", right: -10, top: 20, width: 74, height: 74, borderRadius: "50%", objectFit: "cover" }} />
+              </div>
+            ) : null}
+
+            <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 8px 2px 6px" }}>
+              <div style={{ color: "#35d8ff", fontSize: 8.5, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 2 }}>JOUEUR ACTIF</div>
+              <div style={{ color: activeTeam?.color || "#35d8ff", fontSize: 14, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {isFinished ? "—" : activeName}
+              </div>
+              <div style={{ marginTop: 5, color: "#ffcf57", fontSize: 60, fontWeight: 900, lineHeight: 1, textShadow: "0 4px 18px rgba(255,195,26,.24)" }}>
+                {isFinished ? "—" : scores[playerIdx] ?? 0}
+              </div>
+              <div style={{ marginTop: 4, color: "rgba(255,255,255,.56)", fontSize: 8.5, fontWeight: 900, letterSpacing: .55 }}>
+                CAPITAL • #{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}
+              </div>
+              {activeTeam ? <div style={{ marginTop: 3, color: activeTeam.color || "#ffcf57", fontSize: 8.5, fontWeight: 950, textTransform: "uppercase" }}>{activeTeam.name}</div> : null}
+            </div>
+
+            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 18%, rgba(255,207,87,.22), transparent 42%), linear-gradient(180deg, rgba(17,14,5,.86), rgba(4,8,16,.96))" }} />
+              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.62), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.20)" }} />
+              <div style={{ position: "relative", width: "100%", padding: "7px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                <div style={{ color: "rgba(255,255,255,.56)", fontSize: 8.5, fontWeight: 950, letterSpacing: .8 }}>CONTRAT</div>
+                <div style={{ marginTop: 4, color: "#ffcf57", fontSize: 22, lineHeight: 1.02, fontWeight: 1100, textShadow: "0 0 16px rgba(255,207,87,.42)", maxWidth: "100%", wordBreak: "break-word" }}>
+                  {isFinished ? "—" : contractLabel(currentContract)}
+                </div>
+                <div style={{ marginTop: 7, color: "#35d8ff", fontSize: 9, fontWeight: 950 }}>
+                  ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}
+                </div>
+                {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 4, color: "#fff", fontSize: 9, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {teamScores.length ? (
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
@@ -1223,36 +1266,122 @@ export default function CapitalPlay(props: any) {
           </div>
         ) : null}
 
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {scores.length > 2 ? (
+          <div
+            style={{
+              marginTop: 8,
+              display: "grid",
+              gridTemplateColumns: "auto minmax(0,1fr)",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 9px",
+              borderRadius: 15,
+              border: "1px solid rgba(255,207,87,.20)",
+              background: "rgba(255,255,255,.035)",
+            }}
+          >
+            <div style={{ color: "#ffcf57", fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>🏆 CLASSEMENT</div>
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", minWidth: 0, paddingBottom: 1 }}>
+              {rankedScoreRows.map((row, rank) => (
+                <div
+                  key={`rank-${row.index}`}
+                  style={{
+                    flex: "0 0 auto",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "4px 7px",
+                    borderRadius: 999,
+                    border: row.index === playerIdx ? "1px solid rgba(53,216,255,.52)" : "1px solid rgba(255,255,255,.09)",
+                    background: row.index === playerIdx ? "rgba(53,216,255,.10)" : "rgba(0,0,0,.18)",
+                  }}
+                >
+                  <span style={{ color: rank === 0 ? "#ffcf57" : "rgba(255,255,255,.62)", fontSize: 9, fontWeight: 1000 }}>{rank + 1}</span>
+                  <ProfileAvatar profile={row.profile} size={20} showStars={false} />
+                  <span style={{ maxWidth: 74, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: row.index === playerIdx ? "#35d8ff" : "#fff", fontSize: 9.5, fontWeight: 950 }}>{row.name}</span>
+                  <b style={{ color: "#ffcf57", fontSize: 10 }}>{row.score}</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className={scores.length > 2 ? "dc-scroll-thin" : undefined}
+          style={scores.length > 2
+            ? { marginTop: 8, display: "flex", gap: 9, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 3 }
+            : { marginTop: 8, display: "grid", gridTemplateColumns: scores.length === 1 ? "1fr" : "1fr 1fr", gap: 10 }}
+        >
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
             const leader = isFinished ? winningPlayerIds.includes(String(participants[i]?.id)) : false;
+            const rank = scoreRankByIndex.get(i) || i + 1;
             return (
               <div
                 key={i}
                 style={{
+                  flex: scores.length > 2 ? "0 0 min(43vw, 190px)" : undefined,
+                  minWidth: scores.length > 2 ? 148 : 0,
+                  scrollSnapAlign: scores.length > 2 ? "start" : undefined,
                   borderRadius: 16,
-                  padding: 12,
+                  padding: "10px 11px",
                   border: active
-                    ? "1px solid rgba(120,255,200,0.35)"
+                    ? "1px solid rgba(53,216,255,.52)"
                     : leader
-                      ? "1px solid rgba(255,230,120,0.45)"
+                      ? "1px solid rgba(255,207,87,.52)"
                       : "1px solid rgba(255,255,255,0.10)",
                   background: active
-                    ? "rgba(120,255,200,0.10)"
+                    ? "linear-gradient(145deg, rgba(0,112,140,.22), rgba(0,30,42,.24))"
                     : leader
-                      ? "rgba(255,230,120,0.10)"
-                      : "rgba(255,255,255,0.04)",
+                      ? "rgba(255,207,87,.08)"
+                      : "rgba(255,255,255,0.035)",
+                  boxShadow: active ? "0 0 18px rgba(53,216,255,.08)" : "none",
                 }}
               >
-                <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>
-                  {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`} {leader ? "🏆" : ""}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <div style={{ minWidth: 0, fontSize: 11.5, opacity: .9, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`} {leader ? "🏆" : ""}
+                  </div>
+                  <span style={{ flex: "0 0 auto", color: active ? "#35d8ff" : "rgba(255,255,255,.44)", fontSize: 8.5, fontWeight: 950 }}>#{rank}</span>
                 </div>
-                <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{s}</div>
+                <div style={{ marginTop: 5, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+                  <div>
+                    <div style={{ color: active ? "#fff" : "rgba(255,255,255,.90)", fontSize: 25, lineHeight: 1, fontWeight: 1000 }}>{s}</div>
+                    <div style={{ marginTop: 3, color: active ? "#35d8ff" : "rgba(255,255,255,.42)", fontSize: 8.5, fontWeight: 950, letterSpacing: .45 }}>CAPITAL</div>
+                  </div>
+                  <ProfileAvatar profile={participants[i]} size={32} showStars={false} />
+                </div>
               </div>
             );
           })}
         </div>
+
+        {!isFinished ? (
+          <div
+            style={{
+              marginTop: 8,
+              display: "grid",
+              gridTemplateColumns: "repeat(5,minmax(0,1fr))",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.09)",
+              background: "rgba(255,255,255,.028)",
+              overflow: "hidden",
+            }}
+          >
+            {[
+              ["DÉPART", activeStats?.startingCapital ?? 0, "#ffcf57"],
+              ["ACTUEL", scores[playerIdx] ?? 0, "#35d8ff"],
+              ["BEST", activeStats?.bestVisit ?? 0, "#ffcf57"],
+              ["RÉUSSITE", `${activeStats?.successRate ?? 0}%`, "#71e7a6"],
+              ["PÉNAL.", activeStats?.penaltyEvents ?? 0, "#ff7b8d"],
+            ].map(([label, value, color], index) => (
+              <div key={String(label)} style={{ minWidth: 0, padding: "7px 3px 8px", textAlign: "center", borderLeft: index ? "1px solid rgba(255,255,255,.07)" : "none" }}>
+                <div style={{ color: "rgba(255,255,255,.46)", fontSize: 7.2, lineHeight: 1, fontWeight: 950, letterSpacing: .35, whiteSpace: "nowrap" }}>{label}</div>
+                <div style={{ marginTop: 4, color: String(color), fontSize: 13.5, lineHeight: 1, fontWeight: 1000 }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {isFinished ? (
           <div style={{ marginTop: 14, opacity: 0.9 }}>
@@ -1293,12 +1422,8 @@ export default function CapitalPlay(props: any) {
             <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>Appuie sur retour pour rejouer / reconfigurer.</div>
           </div>
         ) : (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 0.8 }}>
-              {t("generic.throw", "VOLÉE")} ({currentThrow.length}/3) — S/D/T/Bull
-            </div>
-
-            <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 8 }}>
+            <div>
               <ScoreInputHub
                 currentThrow={currentThrow as any}
                 multiplier={multiplier as any}
@@ -1330,14 +1455,6 @@ export default function CapitalPlay(props: any) {
               />
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                Total volée : <b>{scoreThrow(currentThrow)}</b>
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                {currentContract === "capital" ? "⚑ Le total devient ton score de départ" : successNow ? "✅ Validé → + total" : "❌ Raté → score /2"}
-              </div>
-            </div>
           </div>
         )}
       </div>

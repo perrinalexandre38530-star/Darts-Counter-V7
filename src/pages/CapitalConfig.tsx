@@ -14,6 +14,7 @@
 import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
+import InfoMini from "../components/InfoMini";
 import PageHeader from "../components/PageHeader";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
 import Section from "../components/Section";
@@ -160,6 +161,66 @@ Liste officielle des contrats :
 14) 14
 15) Centre`;
 
+
+const CAPITAL_OPTION_HELP: Record<string, string> = {
+  botLevel: "Définit la précision générale des bots pendant leurs volées.",
+  botsAutoPlay: "Activé : les bots jouent automatiquement leur tour. Désactivé : tu saisis leurs fléchettes manuellement.",
+  botSpeed: "Règle le délai avant qu’un bot joue automatiquement. Cela ne change pas sa difficulté.",
+  botRisk: "Prudente favorise la sécurité ; Agressive tente davantage de doubles, triples et gros scores.",
+  startOrder: "Aléatoire mélange les participants une seule fois au lancement. Ordre de sélection conserve l’ordre choisi dans le sélecteur.",
+  version: "Officiel utilise la séquence CAPITAL complète de 15 contrats. Custom permet de créer ta propre suite de contrats.",
+  includeCapital: "Ajoute le contrat CAPITAL en première manche afin que chaque joueur construise son capital de départ avec 3 fléchettes.",
+  maxContracts: "Limite le nombre de contrats utilisables dans une partie Custom.",
+  preset: "Officiel applique les règles classiques CAPITAL. Fun conserve une configuration plus libre que tu peux ajuster ensuite.",
+  victory: "Meilleur score (Officiel) : la partie va au bout des contrats et le plus gros capital gagne. Score cible : le premier joueur qui atteint ou dépasse la cible gagne immédiatement.",
+  target: "Score à atteindre ou dépasser pour gagner lorsque le mode Score cible est sélectionné.",
+  tieBreak: "En cas d’égalité finale, compare le total réalisé sur le dernier contrat. Aucun conserve l’égalité.",
+  failHalf: "Activé : un contrat raté divise le capital du joueur par 2, avec arrondi inférieur. C’est la règle officielle.",
+  startingCapital: "Capital donné au départ lorsque le contrat CAPITAL initial est désactivé.",
+  timer: "Temps disponible pour jouer une volée. Off désactive le chrono ; à expiration la volée est traitée comme trois MISS.",
+  input: "Choisit la méthode de saisie des fléchettes : clavier, cible interactive ou valeurs prédéfinies.",
+};
+
+function CapitalOptionCard({
+  label,
+  info,
+  onInfo,
+  children,
+  stacked = false,
+}: {
+  label: string;
+  info: string;
+  onInfo: (title: string, content: string) => void;
+  children: React.ReactNode;
+  stacked?: boolean;
+}) {
+  return (
+    <div
+      className={stacked ? "capital-option-row capital-option-stack" : "capital-option-row"}
+      style={{
+        display: "grid",
+        gridTemplateColumns: stacked ? "1fr" : "minmax(0,1fr) auto",
+        gap: stacked ? 8 : 10,
+        alignItems: stacked ? "stretch" : "center",
+        padding: "10px 12px",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(255,255,255,0.04)",
+      }}
+    >
+      <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ minWidth: 0, fontWeight: 900, fontSize: 12, lineHeight: 1.15, opacity: 0.95 }}>
+          {label}
+        </div>
+        <InfoMini title={label} content={info} onOpen={onInfo} size={18} />
+      </div>
+      <div className="capital-option-control" style={{ minWidth: 0, width: stacked ? "100%" : "auto" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function labelOf(id: CapitalContractID): string {
   switch (id) {
     case "capital":
@@ -273,6 +334,7 @@ export default function CapitalConfig(props: any) {
   const [viewMode, setViewMode] = useState<"guided" | "complete">("guided");
   const [guidedStep, setGuidedStep] = useState<0 | 1 | 2 | 3>(0);
   const [configError, setConfigError] = useState("");
+  const [infoModal, setInfoModal] = useState<{ title: string; content: string } | null>(null);
 
   const activeProfileId = useMemo(() => safeActiveProfileId(store), [store]);
   const locals = useMemo(
@@ -637,6 +699,7 @@ export default function CapitalConfig(props: any) {
     padding: "11px 12px",
     fontWeight: 950,
   });
+  const openOptionInfo = (title: string, content: string) => setInfoModal({ title, content });
 
   return (
     <div className="page">
@@ -646,6 +709,83 @@ export default function CapitalConfig(props: any) {
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles CAPITAL" content={INFO_TEXT} />}
       />
+
+      <style>{`
+        .capital-option-row + .capital-option-row { margin-top: 8px; }
+        .capital-option-control select {
+          max-width: min(52vw, 290px);
+          font-size: 12px !important;
+          font-weight: 850 !important;
+          line-height: 1.15;
+        }
+        .capital-option-stack .capital-option-control select {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0 !important;
+        }
+        @media (max-width: 430px) {
+          .capital-option-control select {
+            max-width: 48vw;
+            padding: 9px 10px !important;
+          }
+          .capital-option-stack .capital-option-control select { max-width: 100%; }
+        }
+      `}</style>
+
+      {infoModal ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setInfoModal(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            background: "rgba(0,0,0,.72)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(520px, 94vw)",
+              borderRadius: 18,
+              border: `1px solid ${accent}88`,
+              background: "linear-gradient(180deg, rgba(8,20,29,.98), rgba(4,10,16,.98))",
+              boxShadow: `0 0 28px ${accent}30, 0 24px 80px rgba(0,0,0,.65)`,
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ color: accent, fontSize: 14, fontWeight: 1000 }}>{infoModal.title}</div>
+              <button
+                type="button"
+                onClick={() => setInfoModal(null)}
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 999,
+                  border: `1px solid ${accent}88`,
+                  background: `${accent}18`,
+                  color: accent,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.45, opacity: .9, whiteSpace: "pre-wrap" }}>
+              {infoModal.content}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ padding: "12px 12px 0" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -678,16 +818,16 @@ export default function CapitalConfig(props: any) {
           />
           {canonicalSelection?.botsEnabled ? (
             <Section title="Comportement des bots">
-              <OptionRow label="Niveau bots"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></OptionRow>
-              <OptionRow label="Bots auto-play"><OptionToggle value={botsAutoPlay} onChange={setBotsAutoPlay} /></OptionRow>
-              <OptionRow label="Vitesse bots"><OptionSelect value={botTurnDelayMs} options={[{ value: 250, label: "Très rapide" }, { value: 450, label: "Rapide" }, { value: 650, label: "Normal" }, { value: 900, label: "Lent" }, { value: 1300, label: "Très lent" }]} onChange={(value: any) => setBotTurnDelayMs(Number(value))} /></OptionRow>
-              <OptionRow label="Prise de risque"><OptionSelect value={botRisk} options={[{ value: "safe", label: "Prudente" }, { value: "normal", label: "Normale" }, { value: "aggressive", label: "Agressive" }]} onChange={(value: any) => setBotRisk(value)} /></OptionRow>
+              <CapitalOptionCard label="Niveau bots" info={CAPITAL_OPTION_HELP.botLevel} onInfo={openOptionInfo}><OptionSelect value={botLevel} options={[{ value: "easy", label: "Facile" }, { value: "normal", label: "Normal" }, { value: "hard", label: "Difficile" }]} onChange={setBotLevel} /></CapitalOptionCard>
+              <CapitalOptionCard label="Bots auto-play" info={CAPITAL_OPTION_HELP.botsAutoPlay} onInfo={openOptionInfo}><OptionToggle value={botsAutoPlay} onChange={setBotsAutoPlay} /></CapitalOptionCard>
+              <CapitalOptionCard label="Vitesse bots" info={CAPITAL_OPTION_HELP.botSpeed} onInfo={openOptionInfo}><OptionSelect value={botTurnDelayMs} options={[{ value: 250, label: "Très rapide" }, { value: 450, label: "Rapide" }, { value: 650, label: "Normal" }, { value: 900, label: "Lent" }, { value: 1300, label: "Très lent" }]} onChange={(value: any) => setBotTurnDelayMs(Number(value))} /></CapitalOptionCard>
+              <CapitalOptionCard label="Prise de risque" info={CAPITAL_OPTION_HELP.botRisk} onInfo={openOptionInfo}><OptionSelect value={botRisk} options={[{ value: "safe", label: "Prudente" }, { value: "normal", label: "Normale" }, { value: "aggressive", label: "Agressive" }]} onChange={(value: any) => setBotRisk(value)} /></CapitalOptionCard>
             </Section>
           ) : null}
           <Section title="Départ">
-            <OptionRow label="Ordre de départ">
+            <CapitalOptionCard label="Ordre de départ" info={CAPITAL_OPTION_HELP.startOrder} onInfo={openOptionInfo}>
               <OptionSelect value={startOrderMode} options={[{ value: "random", label: "Aléatoire" }, { value: "fixed", label: "Ordre de sélection" }]} onChange={(value: any) => setStartOrderMode(value)} />
-            </OptionRow>
+            </CapitalOptionCard>
             <div style={{ marginTop: 9, fontSize: 12, opacity: .72 }}>
               {startOrderMode === "random" ? "L’ordre sera tiré une seule fois au démarrage." : "L’ordre affiché dans le sélecteur X01 sera conservé."}
             </div>
@@ -1221,16 +1361,16 @@ export default function CapitalConfig(props: any) {
       {/* ============================= */}
       {showMode ? (
       <Section title={t("config.mode", "Mode")}>
-        <OptionRow label="Version">
+        <CapitalOptionCard label="Version" info={CAPITAL_OPTION_HELP.version} onInfo={openOptionInfo}>
           <OptionSelect
             value={mode}
             options={[
               { value: "official", label: "Officiel (15 contrats)" },
-              { value: "custom", label: "Custom (personnalisé)" },
+              { value: "custom", label: "Custom" },
             ]}
             onChange={setMode}
           />
-        </OptionRow>
+        </CapitalOptionCard>
 
         {mode === "official" && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, lineHeight: 1.3 }}>
@@ -1250,12 +1390,12 @@ export default function CapitalConfig(props: any) {
 
         {mode === "custom" && (
           <>
-            <OptionRow label={`Inclure le contrat "Capital" en 1er`}>
+            <CapitalOptionCard label="Contrat Capital au départ" info={CAPITAL_OPTION_HELP.includeCapital} onInfo={openOptionInfo}>
               <OptionToggle value={includeCapital} onChange={setIncludeCapital} />
-            </OptionRow>
+            </CapitalOptionCard>
 
             {/* ✅ Ajout : limite nb contrats */}
-            <OptionRow label="Limite nb contrats (custom)">
+            <CapitalOptionCard label="Nb max de contrats" info={CAPITAL_OPTION_HELP.maxContracts} onInfo={openOptionInfo}>
               <OptionSelect
                 value={maxCustomContracts}
                 options={[
@@ -1271,7 +1411,7 @@ export default function CapitalConfig(props: any) {
                 ]}
                 onChange={(v: any) => setMaxCustomContracts(Number(v))}
               />
-            </OptionRow>
+            </CapitalOptionCard>
 
             <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12 }}>
               Ordre actuel ({customList.length} contrats)
@@ -1433,32 +1573,31 @@ export default function CapitalConfig(props: any) {
       {/* ============================= */}
       {showOptions ? (
       <Section title="Victoire / Règles">
-        {/* ✅ Ajout : preset règles */}
-        <OptionRow label="Preset règles">
+        <CapitalOptionCard label="Preset règles" info={CAPITAL_OPTION_HELP.preset} onInfo={openOptionInfo}>
           <OptionSelect
             value={rulesPreset}
             options={[
               { value: "official", label: "Officiel" },
-              { value: "fun", label: "Fun (libre)" },
+              { value: "fun", label: "Fun" },
             ]}
             onChange={(v: any) => setRulesPreset(v)}
           />
-        </OptionRow>
+        </CapitalOptionCard>
 
-        <OptionRow label="Condition de victoire">
+        <CapitalOptionCard label="Condition de victoire" info={CAPITAL_OPTION_HELP.victory} onInfo={openOptionInfo} stacked>
           <OptionSelect
             value={victoryMode}
             options={[
-              { value: "best_after_contracts", label: "Meilleur score après contrats (officiel)" },
-              { value: "first_to_target", label: "Premier à atteindre un score cible" },
+              { value: "best_after_contracts", label: "Meilleur score (Officiel)" },
+              { value: "first_to_target", label: "Score cible" },
             ]}
             onChange={(v: any) => setVictoryMode(v)}
           />
-        </OptionRow>
+        </CapitalOptionCard>
 
         {victoryMode === "first_to_target" && (
-          <OptionRow label="Score cible">
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <CapitalOptionCard label="Score cible" info={CAPITAL_OPTION_HELP.target} onInfo={openOptionInfo}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
                 value={String(targetScore)}
                 onChange={(e) => setTargetScore(Number(e.target.value || 0))}
@@ -1466,37 +1605,38 @@ export default function CapitalConfig(props: any) {
                 min={50}
                 max={5000}
                 style={{
-                  width: 120,
-                  padding: "10px 12px",
+                  width: 104,
+                  padding: "9px 10px",
                   borderRadius: 12,
                   border: "1px solid rgba(255,255,255,0.18)",
                   background: "rgba(0,0,0,0.25)",
                   color: "#f6f2e9",
+                  fontSize: 12,
                   fontWeight: 900,
                 }}
               />
-              <div style={{ fontSize: 12, opacity: 0.75 }}>ex: 500 / 700 / 1000</div>
+              <div style={{ fontSize: 10.5, opacity: 0.68 }}>ex. 500</div>
             </div>
-          </OptionRow>
+          </CapitalOptionCard>
         )}
 
-        <OptionRow label="Tie-break (si égalité)">
+        <CapitalOptionCard label="Tie-break" info={CAPITAL_OPTION_HELP.tieBreak} onInfo={openOptionInfo} stacked>
           <OptionSelect
             value={tieBreaker}
             options={[
-              { value: "last_contract_total", label: "Meilleur total sur le dernier contrat" },
-              { value: "none", label: "Aucun (égalité)" },
+              { value: "last_contract_total", label: "Meilleur total — dernier contrat" },
+              { value: "none", label: "Aucun" },
             ]}
             onChange={(v: any) => setTieBreaker(v)}
           />
-        </OptionRow>
+        </CapitalOptionCard>
 
-        <OptionRow label="Règle /2 en cas d'échec">
+        <CapitalOptionCard label="Échec : division /2" info={CAPITAL_OPTION_HELP.failHalf} onInfo={openOptionInfo}>
           <OptionToggle value={failDivideBy2} onChange={setFailDivideBy2} />
-        </OptionRow>
+        </CapitalOptionCard>
 
         {!includeCapital && (
-          <OptionRow label="Capital de départ (si Capital OFF)">
+          <CapitalOptionCard label="Capital de départ" info={CAPITAL_OPTION_HELP.startingCapital} onInfo={openOptionInfo}>
             <input
               value={String(startingCapital)}
               onChange={(e) => setStartingCapital(Number(e.target.value || 0))}
@@ -1504,20 +1644,20 @@ export default function CapitalConfig(props: any) {
               min={0}
               max={5000}
               style={{
-                width: 140,
-                padding: "10px 12px",
+                width: 104,
+                padding: "9px 10px",
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.18)",
                 background: "rgba(0,0,0,0.25)",
                 color: "#f6f2e9",
+                fontSize: 12,
                 fontWeight: 900,
               }}
             />
-          </OptionRow>
+          </CapitalOptionCard>
         )}
 
-        {/* ✅ Ajout : timer */}
-        <OptionRow label="Timer par tour">
+        <CapitalOptionCard label="Timer par tour" info={CAPITAL_OPTION_HELP.timer} onInfo={openOptionInfo}>
           <OptionSelect
             value={turnTimerSec}
             options={[
@@ -1530,10 +1670,10 @@ export default function CapitalConfig(props: any) {
             ]}
             onChange={(v: any) => setTurnTimerSec(Number(v))}
           />
-        </OptionRow>
+        </CapitalOptionCard>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>
-          ✅ Officiel : Capital ON + /2 ON + Meilleur score après contrats. (Timer OFF)
+          ✅ Officiel : Capital ON + /2 ON + Meilleur score. Timer OFF.
         </div>
       </Section>
       ) : null}
@@ -1543,17 +1683,17 @@ export default function CapitalConfig(props: any) {
       {/* ============================= */}
       {showOptions ? (
       <Section title="Saisie">
-        <OptionRow label="Mode de saisie">
+        <CapitalOptionCard label="Mode de saisie" info={CAPITAL_OPTION_HELP.input} onInfo={openOptionInfo}>
           <OptionSelect
             value={inputMethod}
             options={[
-              { value: "keypad", label: "Keypad (clavier)" },
-              { value: "dartboard", label: "Cible (dartboard)" },
+              { value: "keypad", label: "Keypad" },
+              { value: "dartboard", label: "Cible" },
               { value: "presets", label: "Presets" },
             ]}
             onChange={setInputMethod}
           />
-        </OptionRow>
+        </CapitalOptionCard>
       </Section>
       ) : null}
 
