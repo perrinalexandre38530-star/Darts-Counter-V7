@@ -301,6 +301,51 @@ async function cleanupLegacyFullBackups(bucket: R2Bucket, userId: string): Promi
   return deleted;
 }
 
+function backupTimestampFromObjectKey(key: string): number {
+  const match = String(key || "").match(/\/r2b_(\d{10,})_[a-zA-Z0-9]+\.json$/);
+  const value = Number(match?.[1] || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+async function cleanupOrphanedGenerationalBackups(bucket: R2Bucket, userId: string): Promise<number> {
+  // Filet de sécurité : d'anciens déploiements ou une interruption réseau peuvent
+  // laisser des objets r2b_* qui ne figurent plus dans le manifeste. Ils consomment
+  // alors du quota sans être restaurables. On les purge, mais uniquement s'ils sont
+  // clairement plus anciens que la génération "précédente" du manifeste relu.
+  // Cette borne temporelle évite qu'un waitUntil d'une sauvegarde A ne supprime une
+  // sauvegarde B créée juste après en parallèle.
+  const latestManifest = await readManifest(bucket, userId);
+  const retained = activeBackups(latestManifest.backups).slice(0, R2_BACKUP_RETENTION_TOTAL);
+  const retainedKeys = new Set(retained.map((row) => row.objectKey));
+  const retainedTimes = retained
+    .map((row) => Date.parse(row.updatedAt || row.createdAt || ""))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const safeCutoff = retainedTimes.length ? Math.min(...retainedTimes) : Date.now();
+  const prefix = `users/${safeId(userId)}/backups/`;
+  let cursor: string | undefined = undefined;
+  let deleted = 0;
+
+  for (let page = 0; page < 10; page += 1) {
+    const listed: any = await bucket.list({ prefix, cursor, limit: 1000 });
+    const candidates = (Array.isArray(listed?.objects) ? listed.objects : [])
+      .map((object: any) => String(object?.key || ""))
+      .filter((key: string) => key.startsWith(`${prefix}r2b_`) && key.endsWith(".json"))
+      .filter((key: string) => !retainedKeys.has(key))
+      .filter((key: string) => {
+        const timestamp = backupTimestampFromObjectKey(key);
+        return timestamp > 0 && timestamp < safeCutoff;
+      });
+
+    if (candidates.length) {
+      const results = await Promise.allSettled(candidates.map((key: string) => bucket.delete(key)));
+      deleted += results.filter((result) => result.status === "fulfilled").length;
+    }
+    if (!listed?.truncated || !listed?.cursor) break;
+    cursor = String(listed.cursor);
+  }
+  return deleted;
+}
+
 function usagePayload(manifest: Manifest, plan: any) {
   const backupBytes = activeBackups(manifest.backups).reduce((sum, row) => sum + Number(row.sizeBytes || 0), 0);
   const baseUsedBytes = Math.max(0, Number(plan.baseUsedBytes || 0));
@@ -492,6 +537,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           if (cleanupKeys.length) {
             await Promise.allSettled(cleanupKeys.map((key) => bucket.delete(key)));
           }
+          // Garantie capacité : en plus des clés connues par l'ancien manifeste,
+          // on supprime les éventuels r2b_* orphelins des générations plus vieilles.
+          // Le manifeste relu dans le helper protège les sauvegardes concurrentes.
+          await cleanupOrphanedGenerationalBackups(bucket, identity.userId).catch(() => 0);
           await cleanupLegacyFullBackups(bucket, identity.userId).catch(() => 0);
         })());
       } catch {

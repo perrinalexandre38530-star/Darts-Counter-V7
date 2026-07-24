@@ -883,73 +883,414 @@ function VisitStrip({ darts, activeName, runs, valueLabel = "R", color, botThink
   return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, minHeight: 48, padding: "8px 10px", borderRadius: 15, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.20)", marginTop: 9 }}><div style={{ minWidth: 0 }}><div style={{ fontSize: 10, color: T.soft, fontWeight: 900 }}>{botThinking ? "BOT EN RÉFLEXION" : `VOLÉE DE ${activeName}`}</div><div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{botThinking ? "…" : darts.length ? darts.map(dartLabel).join(" • ") : "—"}</div></div><div style={{ textAlign: "right" }}><div style={{ color, fontSize: 18, fontWeight: 1100, whiteSpace: "nowrap" }}>{valueLabel === "R" ? `+${runs} R` : `${valueLabel} ${runs}`}</div>{specialBull ? <div style={{ color: T.gold, fontSize: 8, fontWeight: 1000 }}>EFFET BULL</div> : null}</div></div>;
 }
 
+
 function EndModal({ state, profilesById, teamById, primary = T.cyan, secondary = T.gold, onClose, onSave, onReplay }: any) {
+  const [tab, setTab] = React.useState<"overview" | "teams" | "players" | "momentum" | "innings">("overview");
   const winnerLabel = state.tied ? "ÉGALITÉ" : `${state.standings[0]?.name || "—"} GAGNE`;
-  const rows = state.players.map((player: any) => ({
+  const scoreLabel = state.rules.gameVariant === "attack_defense" ? "POINTS" : "RUNS";
+  const totalInnings = Math.max(Number(state.rules?.innings || 0), Number(state.inning || 0), Number(state.targetSequence?.length || 0));
+  const innings = React.useMemo(() => Array.from({ length: totalInnings }, (_, index) => index + 1), [totalInnings]);
+
+  const rows = React.useMemo(() => state.players.map((player: any) => ({
     player,
     profile: profilesById.get(String(player.id)) || player,
     team: state.teamByPlayer[player.id] ? teamById.get(state.teamByPlayer[player.id]) : null,
     stats: state.statsByPlayer[player.id] || emptyStats(),
     score: state.totalsByPlayer[player.id] || 0,
-  }));
-  const teamRows = (state.teams || []).map((team: any) => {
-    const members = rows.filter((row) => String(row.team?.id || row.team?.teamId || row.team?.name || "") && String(row.team?.id || row.team?.teamId || "") === String(team.id));
+  })), [state.players, state.teamByPlayer, state.statsByPlayer, state.totalsByPlayer, profilesById, teamById]);
+
+  const entityInningScore = React.useCallback((standing: any, inning: number) => {
+    const memberIds = Array.isArray(standing?.playerIds) ? standing.playerIds : [];
+    const base = memberIds.reduce((total: number, id: string) => total + Number(state.inningScoresByPlayer?.[id]?.[inning] || 0), 0);
+    const adjust = Number(state.inningAdjustmentsByEntity?.[standing?.id]?.[inning] || 0);
+    return base + adjust;
+  }, [state.inningScoresByPlayer, state.inningAdjustmentsByEntity]);
+
+  const teamRows = React.useMemo(() => (state.teams || []).map((team: any) => {
+    const members = rows.filter((row: any) => String(row.team?.id || row.team?.teamId || "") === String(team.id));
     const standing = state.standings.find((row: any) => row.id === team.id);
-    const darts = members.reduce((total, row) => total + Number(row.stats.darts || 0), 0);
-    const targetHits = members.reduce((total, row) => total + Number(row.stats.targetHits || 0), 0);
+    const darts = members.reduce((total: number, row: any) => total + Number(row.stats.darts || 0), 0);
+    const targetHits = members.reduce((total: number, row: any) => total + Number(row.stats.targetHits || 0), 0);
+    const visits = members.reduce((total: number, row: any) => total + Number(row.stats.visits || 0), 0);
+    const misses = members.reduce((total: number, row: any) => total + Number(row.stats.misses || 0), 0);
+    const rawRuns = members.reduce((total: number, row: any) => total + Number(row.stats.rawRuns || 0), 0);
+    const scoreless = members.reduce((total: number, row: any) => total + Number(row.stats.scorelessInnings || 0), 0);
+    const attackPower = members.reduce((total: number, row: any) => total + Number(row.stats.attackPower || 0), 0);
+    const defensePower = members.reduce((total: number, row: any) => total + Number(row.stats.defensePower || 0), 0);
+    const duelPoints = members.reduce((total: number, row: any) => total + Number(row.stats.duelPoints || 0), 0);
+    const runsPrevented = members.reduce((total: number, row: any) => total + Number(row.stats.runsPrevented || 0), 0);
+    const penalties = members.reduce((total: number, row: any) => total + Number(row.stats.penalties || 0), 0);
+    const wastedDarts = members.reduce((total: number, row: any) => total + Number(row.stats.wastedDarts || 0), 0);
+    const bullAttackBonus = members.reduce((total: number, row: any) => total + Number(row.stats.bullAttackBonus || 0), 0);
+    const bullDefenseDamage = members.reduce((total: number, row: any) => total + Number(row.stats.bullDefenseDamage || 0), 0);
+    const dbullAttackDoubles = members.reduce((total: number, row: any) => total + Number(row.stats.dbullAttackDoubles || 0), 0);
+    const dbullDefenseHalves = members.reduce((total: number, row: any) => total + Number(row.stats.dbullDefenseHalves || 0), 0);
+    const turnsLostOnMiss = members.reduce((total: number, row: any) => total + Number(row.stats.turnsLostOnMiss || 0), 0);
     return {
       team,
       standing,
       members,
       score: standing?.total || 0,
       darts,
+      visits,
       targetHits,
-      singles: members.reduce((total, row) => total + Number(row.stats.singles || 0), 0),
-      doubles: members.reduce((total, row) => total + Number(row.stats.doubles || 0), 0),
-      triples: members.reduce((total, row) => total + Number(row.stats.triples || 0), 0),
-      bulls: members.reduce((total, row) => total + Number(row.stats.bulls || 0), 0),
-      dbulls: members.reduce((total, row) => total + Number(row.stats.dbulls || 0), 0),
-      misses: members.reduce((total, row) => total + Number(row.stats.misses || 0), 0),
-      attackPower: members.reduce((total, row) => total + Number(row.stats.attackPower || 0), 0),
-      defensePower: members.reduce((total, row) => total + Number(row.stats.defensePower || 0), 0),
-      duelPoints: members.reduce((total, row) => total + Number(row.stats.duelPoints || 0), 0),
-      runsPrevented: members.reduce((total, row) => total + Number(row.stats.runsPrevented || 0), 0),
-      bestInning: members.reduce((best, row) => Math.max(best, Number(row.stats.bestInning || 0)), 0),
-      penalties: members.reduce((total, row) => total + Number(row.stats.penalties || 0), 0),
-      penaltyRunsLost: members.reduce((total, row) => total + Number(row.stats.penaltyRunsLost || 0), 0),
+      rawRuns,
+      scoreless,
+      wastedDarts,
+      singles: members.reduce((total: number, row: any) => total + Number(row.stats.singles || 0), 0),
+      doubles: members.reduce((total: number, row: any) => total + Number(row.stats.doubles || 0), 0),
+      triples: members.reduce((total: number, row: any) => total + Number(row.stats.triples || 0), 0),
+      bulls: members.reduce((total: number, row: any) => total + Number(row.stats.bulls || 0), 0),
+      dbulls: members.reduce((total: number, row: any) => total + Number(row.stats.dbulls || 0), 0),
+      misses,
+      attackPower,
+      defensePower,
+      duelPoints,
+      runsPrevented,
+      bestInning: members.reduce((best: number, row: any) => Math.max(best, Number(row.stats.bestInning || 0)), 0),
+      bestDart: members.reduce((best: number, row: any) => Math.max(best, Number(row.stats.bestDart || 0)), 0),
+      penalties,
+      penaltyRunsLost: members.reduce((total: number, row: any) => total + Number(row.stats.penaltyRunsLost || 0), 0),
+      bullAttackBonus,
+      bullDefenseDamage,
+      dbullAttackDoubles,
+      dbullDefenseHalves,
+      turnsLostOnMiss,
       accuracy: percent(targetHits, darts),
+      avgPerVisit: percent(standing?.total || 0, visits),
     };
-  });
+  }), [state.teams, rows, state.standings]);
+
+  const entityRows = React.useMemo(() => {
+    if (state.rules.participantMode === "teams" && teamRows.length) {
+      return teamRows.map((row: any) => ({
+        id: row.team.id,
+        name: row.team.name,
+        color: row.team.color || primary,
+        standing: row.standing || { id: row.team.id, name: row.team.name, total: row.score, playerIds: row.team.playerIds || [] },
+        total: row.score,
+        logoDataUrl: row.team.logoDataUrl || null,
+        type: "team",
+      }));
+    }
+    return rows.map((row: any) => ({
+      id: row.player.id,
+      name: playerName(row.profile),
+      color: row.team?.color || primary,
+      standing: { id: row.player.id, name: playerName(row.profile), total: row.score, playerIds: [row.player.id] },
+      total: row.score,
+      profile: row.profile,
+      type: "player",
+    }));
+  }, [state.rules.participantMode, teamRows, rows, primary]);
+
+  const momentum = React.useMemo(() => {
+    const cumulative = new Map<string, number>();
+    entityRows.forEach((entity: any) => cumulative.set(String(entity.id), 0));
+    let previousLeader: string | null = null;
+    let leadChanges = 0;
+    let biggestGap = 0;
+    let biggestGapLabel = "—";
+    let bestInning = { inning: 0, totalDelta: 0, label: "—" };
+    const frames = innings.map((inning) => {
+      const deltas = entityRows.map((entity: any) => {
+        const value = entityInningScore(entity.standing, inning);
+        const total = (cumulative.get(String(entity.id)) || 0) + value;
+        cumulative.set(String(entity.id), total);
+        return { id: entity.id, name: entity.name, color: entity.color, delta: value, total, type: entity.type };
+      });
+      const sorted = [...deltas].sort((a: any, b: any) => b.total - a.total);
+      const leader = sorted[0] || null;
+      const runnerUp = sorted[1] || null;
+      const gap = leader ? Math.max(0, Number(leader.total || 0) - Number(runnerUp?.total || 0)) : 0;
+      if (leader && previousLeader && leader.id !== previousLeader) leadChanges += 1;
+      previousLeader = leader?.id || previousLeader;
+      if (gap > biggestGap) {
+        biggestGap = gap;
+        biggestGapLabel = leader ? `M${inning} • ${leader.name}` : "—";
+      }
+      const totalDelta = deltas.reduce((sum: number, row: any) => sum + Number(row.delta || 0), 0);
+      if (totalDelta > bestInning.totalDelta) {
+        bestInning = { inning, totalDelta, label: `M${inning}` };
+      }
+      return { inning, deltas, leader, gap, totalDelta };
+    });
+    return { frames, leadChanges, biggestGap, biggestGapLabel, bestInning };
+  }, [entityRows, innings, entityInningScore]);
+
+  const totalDarts = rows.reduce((total: number, row: any) => total + Number(row.stats.darts || 0), 0);
+  const totalVisits = rows.reduce((total: number, row: any) => total + Number(row.stats.visits || 0), 0);
+  const totalHits = rows.reduce((total: number, row: any) => total + Number(row.stats.targetHits || 0), 0);
+  const totalPoints = state.standings.reduce((total: number, standing: any) => total + Number(standing.total || 0), 0);
+  const totalMisses = rows.reduce((total: number, row: any) => total + Number(row.stats.misses || 0), 0);
+  const totalBulls = rows.reduce((total: number, row: any) => total + Number(row.stats.bulls || 0), 0);
+  const totalDBulls = rows.reduce((total: number, row: any) => total + Number(row.stats.dbulls || 0), 0);
+  const totalAttack = rows.reduce((total: number, row: any) => total + Number(row.stats.attackPower || 0), 0);
+  const totalDefense = rows.reduce((total: number, row: any) => total + Number(row.stats.defensePower || 0), 0);
+  const totalBlocked = rows.reduce((total: number, row: any) => total + Number(row.stats.runsPrevented || 0), 0);
+  const totalPenalties = rows.reduce((total: number, row: any) => total + Number(row.stats.penalties || 0), 0);
+  const targetAccuracy = percent(totalHits, totalDarts);
+  const extraInnings = Math.max(0, Number(state.inning || 0) - Number(state.rules?.innings || 0));
+  const mvp = [...rows].sort((a: any, b: any) => {
+    const byScore = Number(b.score || 0) - Number(a.score || 0);
+    if (byScore) return byScore;
+    const byTarget = Number(b.stats.targetHits || 0) - Number(a.stats.targetHits || 0);
+    if (byTarget) return byTarget;
+    return Number(b.stats.attackPower || 0) - Number(a.stats.attackPower || 0);
+  })[0] || null;
+  const bestAttacker = [...rows].sort((a: any, b: any) => Number(b.stats.attackPower || 0) - Number(a.stats.attackPower || 0))[0] || null;
+  const bestDefender = [...rows].sort((a: any, b: any) => Number(b.stats.runsPrevented || 0) - Number(a.stats.runsPrevented || 0))[0] || null;
+  const cleanest = [...rows].sort((a: any, b: any) => Number(a.stats.misses || 0) - Number(b.stats.misses || 0))[0] || null;
+
   const teamColumns: Array<[string, (row: any) => React.ReactNode]> = state.rules.gameVariant === "attack_defense" ? [
-    ["Équipe", (row) => row.team?.name || "—"], ["Points", (row) => row.score], ["P.Att", (row) => row.attackPower], ["P.Def", (row) => row.defensePower], ["Duel", (row) => row.duelPoints], ["Bloqués", (row) => row.runsPrevented],
-    ["Darts", (row) => row.darts], ["S", (row) => row.singles], ["D", (row) => row.doubles], ["T", (row) => row.triples], ["Bull", (row) => row.bulls], ["DBull", (row) => row.dbulls], ["Miss", (row) => row.misses],
+    ["Équipe", (row) => row.team?.name || "—"], ["Pts", (row) => row.score], ["P.Att", (row) => row.attackPower], ["P.Def", (row) => row.defensePower], ["Bloq.", (row) => row.runsPrevented],
+    ["Darts", (row) => row.darts], ["Vis.", (row) => row.visits], ["Cible", (row) => row.targetHits], ["Préc.", (row) => `${row.accuracy}%`], ["Moy/vis", (row) => row.avgPerVisit],
+    ["Bull+", (row) => row.bullAttackBonus], ["Bull-", (row) => row.bullDefenseDamage], ["DB+", (row) => row.dbullAttackDoubles], ["DB/2", (row) => row.dbullDefenseHalves],
+    ["S", (row) => row.singles], ["D", (row) => row.doubles], ["T", (row) => row.triples], ["Bull", (row) => row.bulls], ["DB", (row) => row.dbulls], ["Miss", (row) => row.misses], ["Tours MISS", (row) => row.turnsLostOnMiss],
   ] : [
-    ["Équipe", (row) => row.team?.name || "—"], ["Runs", (row) => row.score], ["Best", (row) => row.bestInning], ["Cible", (row) => row.targetHits], ["Préc.", (row) => `${row.accuracy}%`], ["Pén.", (row) => row.penalties], ["Runs perdus", (row) => row.penaltyRunsLost],
-    ["Darts", (row) => row.darts], ["S", (row) => row.singles], ["D", (row) => row.doubles], ["T", (row) => row.triples], ["Bull", (row) => row.bulls], ["DBull", (row) => row.dbulls], ["Miss", (row) => row.misses],
+    ["Équipe", (row) => row.team?.name || "—"], ["Runs", (row) => row.score], ["Bruts", (row) => row.rawRuns], ["Best", (row) => row.bestInning], ["Best dart", (row) => row.bestDart],
+    ["Cible", (row) => row.targetHits], ["Préc.", (row) => `${row.accuracy}%`], ["0 pt", (row) => row.scoreless], ["Pén.", (row) => row.penalties], ["Runs perdus", (row) => row.penaltyRunsLost],
+    ["Darts", (row) => row.darts], ["Vis.", (row) => row.visits], ["Hors cible", (row) => row.wastedDarts], ["S", (row) => row.singles], ["D", (row) => row.doubles], ["T", (row) => row.triples], ["Bull", (row) => row.bulls], ["DB", (row) => row.dbulls], ["Miss", (row) => row.misses],
   ];
-  const columns: Array<[string, (row: any) => React.ReactNode]> = state.rules.gameVariant === "attack_defense" ? [
-    ["Joueur", (row) => playerName(row.profile)], ["Équipe", (row) => row.team?.name || "—"], ["Points", (row) => row.score],
-    ["P.Att", (row) => row.stats.attackPower], ["P.Def", (row) => row.stats.defensePower], ["Duel", (row) => row.stats.duelPoints], ["Bloqués", (row) => row.stats.runsPrevented],
-    ["Darts", (row) => row.stats.darts], ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples], ["Bull", (row) => row.stats.bulls], ["DBull", (row) => row.stats.dbulls], ["Miss", (row) => row.stats.misses],
+
+  const playerColumns: Array<[string, (row: any) => React.ReactNode]> = state.rules.gameVariant === "attack_defense" ? [
+    ["Joueur", (row) => playerName(row.profile)], ["Équipe", (row) => row.team?.name || "—"], ["Pts", (row) => row.score],
+    ["P.Att", (row) => row.stats.attackPower], ["P.Def", (row) => row.stats.defensePower], ["Bloq.", (row) => row.stats.runsPrevented], ["Duel", (row) => row.stats.duelPoints],
+    ["Darts", (row) => row.stats.darts], ["Vis.", (row) => row.stats.visits], ["Cible", (row) => row.stats.targetHits], ["Préc.", (row) => `${percent(row.stats.targetHits, row.stats.darts)}%`],
+    ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples], ["Bull", (row) => row.stats.bulls], ["DB", (row) => row.stats.dbulls], ["Miss", (row) => row.stats.misses],
+    ["Bull+", (row) => row.stats.bullAttackBonus], ["Bull-", (row) => row.stats.bullDefenseDamage], ["DB+", (row) => row.stats.dbullAttackDoubles], ["DB/2", (row) => row.stats.dbullDefenseHalves], ["Tours MISS", (row) => row.stats.turnsLostOnMiss],
   ] : [
-    ["Joueur", (row) => playerName(row.profile)], ["Équipe", (row) => row.team?.name || "—"], ["Runs", (row) => row.score],
-    ["Best", (row) => row.stats.bestInning], ["Cible", (row) => row.stats.targetHits], ["Préc.", (row) => `${percent(row.stats.targetHits, row.stats.darts)}%`],
-    ["Darts", (row) => row.stats.darts], ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples], ["Bull", (row) => row.stats.bulls], ["DBull", (row) => row.stats.dbulls],
-    ["Hors cible", (row) => row.stats.wastedDarts], ["Miss", (row) => row.stats.misses], ["Pénalités", (row) => row.stats.penalties], ["Runs perdus", (row) => row.stats.penaltyRunsLost],
+    ["Joueur", (row) => playerName(row.profile)], ["Équipe", (row) => row.team?.name || "—"], ["Runs", (row) => row.score], ["Bruts", (row) => row.stats.rawRuns], ["Best", (row) => row.stats.bestInning],
+    ["Best dart", (row) => row.stats.bestDart], ["Cible", (row) => row.stats.targetHits], ["Préc.", (row) => `${percent(row.stats.targetHits, row.stats.darts)}%`], ["0 pt", (row) => row.stats.scorelessInnings],
+    ["Darts", (row) => row.stats.darts], ["Vis.", (row) => row.stats.visits], ["Hors cible", (row) => row.stats.wastedDarts], ["S", (row) => row.stats.singles], ["D", (row) => row.stats.doubles], ["T", (row) => row.stats.triples], ["Bull", (row) => row.stats.bulls], ["DB", (row) => row.stats.dbulls], ["Miss", (row) => row.stats.misses], ["Pén.", (row) => row.stats.penalties], ["Runs perdus", (row) => row.stats.penaltyRunsLost],
   ];
+
+  function sectionTitle(label: string, color: string, right?: React.ReactNode) {
+    return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}><div style={{ color, fontSize: 12.5, fontWeight: 1000, letterSpacing: .7 }}>{label}</div>{right}</div>;
+  }
+
+  function tabButton(id: "overview" | "teams" | "players" | "momentum" | "innings", label: string) {
+    const active = tab === id;
+    return <button type="button" onClick={() => setTab(id)} style={{ minHeight: 37, borderRadius: 999, padding: "0 14px", border: `1px solid ${active ? primary : T.stroke}`, background: active ? `linear-gradient(180deg,${primary}44,${primary}14)` : "rgba(255,255,255,.035)", color: active ? primary : T.text, fontWeight: 1000, cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>;
+  }
+
+  function statCard(label: string, value: React.ReactNode, color: string, sub?: React.ReactNode) {
+    return (
+      <div style={{ padding: 11, borderRadius: 15, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", minWidth: 0 }}>
+        <div style={{ color: T.soft, fontSize: 10, fontWeight: 1000, letterSpacing: .4 }}>{label}</div>
+        <div style={{ color, fontSize: 24, fontWeight: 1100, marginTop: 4, lineHeight: 1 }}>{value}</div>
+        {sub ? <div style={{ color: T.soft, fontSize: 9.5, marginTop: 5 }}>{sub}</div> : null}
+      </div>
+    );
+  }
+
+  function topPlayerCard(title: string, row: any, accentColor: string, metricLabel: string, metricValue: React.ReactNode) {
+    return (
+      <div style={{ padding: 12, borderRadius: 16, border: `1px solid ${accentColor}66`, background: `linear-gradient(180deg,${accentColor}18,rgba(255,255,255,.03))`, minWidth: 0 }}>
+        <div style={{ color: accentColor, fontSize: 10, fontWeight: 1000 }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+          <div style={{ position: "relative", width: 38, height: 38, flex: "0 0 auto" }}>
+            <div style={{ position: "absolute", inset: 3 }}><ProfileAvatar profile={row?.profile || { name: "—" }} size={32} /></div>
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={row?.profile || {}} size={38} glow /></div>
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: row?.team?.color || T.text, fontWeight: 1000, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row ? playerName(row.profile) : "—"}</div>
+            <div style={{ color: T.soft, fontSize: 10 }}>{row?.team?.name || "Sans équipe"}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ color: accentColor, fontSize: 20, fontWeight: 1100, lineHeight: 1 }}>{metricValue}</div>
+            <div style={{ color: T.soft, fontSize: 9 }}>{metricLabel}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderTable(columns: Array<[string, (row: any) => React.ReactNode]>, data: any[], kind: "player" | "team") {
+    const minWidth = Math.max(920, columns.length * 82);
+    return (
+      <div style={{ overflowX: "auto", borderRadius: 16, border: `1px solid ${T.stroke}` }}>
+        <table style={{ width: "100%", minWidth, borderCollapse: "collapse", fontSize: 11.2 }}>
+          <thead>
+            <tr style={{ color: kind === "team" ? secondary : primary, background: kind === "team" ? `${secondary}12` : `${primary}12`, textAlign: "left" }}>
+              {columns.map(([label]) => <th key={label} style={{ padding: "9px 8px", borderBottom: `1px solid ${T.stroke}`, whiteSpace: "nowrap" }}>{label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row: any) => (
+              <tr key={kind === "team" ? row.team.id : row.player.id}>
+                {columns.map(([label, read]) => <td key={label} style={{ padding: "9px 8px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" || label === "Équipe" ? 1000 : 800, color: label === "Équipe" ? row.team?.color || T.text : label === "Joueur" ? row.team?.color || T.text : T.text, whiteSpace: label === "Joueur" || label === "Équipe" ? "nowrap" : "normal" }}>{read(row)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  function renderScoreRibbon(sourceStandingA: any, sourceStandingB: any) {
+    if (!sourceStandingA || !sourceStandingB) return null;
+    return (
+      <div style={{ position: "relative", minHeight: 82, borderRadius: 18, overflow: "hidden", border: `1px solid ${T.stroke}`, background: "linear-gradient(90deg, rgba(10,18,34,.96), rgba(16,28,46,.94) 50%, rgba(10,18,34,.96))" }}>
+        <BandBackdrop standing={sourceStandingA} side="left" participantMode={state.rules.participantMode} profilesById={profilesById} teamById={teamById} />
+        <BandBackdrop standing={sourceStandingB} side="right" participantMode={state.rules.participantMode} profilesById={profilesById} teamById={teamById} />
+        <ScoreBandCenterFade />
+        <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 14, alignItems: "center", minHeight: 82, padding: "0 16px" }}>
+          <div style={{ minWidth: 0 }}><div style={{ color: state.rules.participantMode === "teams" ? (teamById.get(String(sourceStandingA.id || ""))?.color || secondary) : T.text, fontSize: 14, fontWeight: 1000, textTransform: "uppercase", lineHeight: 1.05 }}>{sourceStandingA.name}</div></div>
+          <div style={{ color: secondary, fontSize: 36, fontWeight: 1100, letterSpacing: 1.2, textShadow: `0 0 18px ${secondary}44` }}>{Number(sourceStandingA.total || 0)} <span style={{ opacity: .85 }}>–</span> {Number(sourceStandingB.total || 0)}</div>
+          <div style={{ minWidth: 0, textAlign: "right" }}><div style={{ color: state.rules.participantMode === "teams" ? (teamById.get(String(sourceStandingB.id || ""))?.color || primary) : T.text, fontSize: 14, fontWeight: 1000, textTransform: "uppercase", lineHeight: 1.05 }}>{sourceStandingB.name}</div></div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderInningsTables() {
+    const chunkSize = 10;
+    const chunks = [] as number[][];
+    for (let index = 0; index < innings.length; index += chunkSize) chunks.push(innings.slice(index, index + chunkSize));
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {renderScoreRibbon(state.standings[0], state.standings[1])}
+        {chunks.map((chunk, idx) => (
+          <div key={idx} style={{ borderRadius: 18, border: `1px solid ${T.stroke}`, overflow: "hidden", background: "rgba(255,255,255,.03)" }}>
+            <div style={{ padding: "10px 14px", color: primary, fontSize: 14, fontWeight: 1000, borderBottom: `1px solid ${T.stroke}` }}>MANCHES {chunk[0]}–{chunk[chunk.length - 1]}</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", minWidth: 540, borderCollapse: "collapse", fontSize: 11.5 }}>
+                <thead>
+                  <tr style={{ background: `${primary}10`, color: primary }}>
+                    <th style={{ padding: "9px 8px", borderBottom: `1px solid ${T.stroke}`, textAlign: "left", width: 120 }}>PROFIL</th>
+                    {chunk.map((inning) => <th key={inning} style={{ padding: "9px 8px", borderBottom: `1px solid ${T.stroke}` }}>M{inning}</th>)}
+                    <th style={{ padding: "9px 8px", borderBottom: `1px solid ${T.stroke}` }}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entityRows.map((entity: any) => {
+                    const source = bandEntitySource(entity.standing, state.rules.participantMode, profilesById, teamById);
+                    return (
+                      <tr key={entity.id}>
+                        <td style={{ padding: "10px 8px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: 1000, color: entity.color, display: "flex", alignItems: "center", gap: 9 }}>
+                          {state.rules.participantMode === "teams"
+                            ? <div style={{ width: 28, height: 28, borderRadius: "50%", overflow: "hidden", border: `2px solid ${entity.color}`, boxShadow: `0 0 10px ${entity.color}33` }}>{source.image ? <img src={source.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}</div>
+                            : <div style={{ position: "relative", width: 28, height: 28 }}><div style={{ position: "absolute", inset: 3 }}><ProfileAvatar profile={source.profile || {}} size={22} /></div><div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}><ProfileStarRing profile={source.profile || {}} size={28} glow /></div></div>}
+                          <span>{source.name}</span>
+                        </td>
+                        {chunk.map((inning) => {
+                          const value = entityInningScore(entity.standing, inning);
+                          const active = Number(state.inning || 0) === inning;
+                          return <td key={inning} style={{ padding: "10px 8px", borderBottom: "1px solid rgba(255,255,255,.06)", textAlign: "center", color: Number(value || 0) > 0 ? T.text : "rgba(255,255,255,.28)", fontWeight: Number(value || 0) > 0 ? 1000 : 700, outline: active ? `2px solid ${state.duelPhase === "defense" ? T.green : T.red}` : "none", outlineOffset: active ? -2 : 0 }}>{Number(value || 0) > 0 || state.inning > inning ? Number(value || 0) : "·"}</td>;
+                        })}
+                        <td style={{ padding: "10px 8px", borderBottom: "1px solid rgba(255,255,255,.06)", textAlign: "center", color: secondary, fontWeight: 1100 }}>{Number(entity.total || 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderOverview() {
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
+          {state.standings.map((standing: BaseballStanding) => <div key={standing.id} style={{ padding: 12, borderRadius: 16, textAlign: "center", border: `1px solid ${standing.rank === 1 ? secondary : T.stroke}`, background: standing.rank === 1 ? `${secondary}18` : "rgba(255,255,255,.035)" }}><div style={{ color: standing.rank === 1 ? secondary : T.soft, fontSize: 10, fontWeight: 1000 }}>{standing.rank}. {standing.name}</div><div style={{ fontSize: 30, fontWeight: 1100, marginTop: 3 }}>{standing.total}</div><div style={{ color: T.soft, fontSize: 9 }}>{scoreLabel}</div></div>)}
+        </div>
+
+        {sectionTitle("PAGE D’ACCUEIL DU MATCH", primary)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(122px,1fr))", gap: 9 }}>
+          {statCard(scoreLabel, totalPoints, secondary, `${state.inning} manche${state.inning > 1 ? "s" : ""}`)}
+          {statCard("Darts", totalDarts, primary, `${totalVisits} visites`)}
+          {statCard("Précision cible", `${targetAccuracy}%`, T.green, `${totalHits} touches cibles`)}
+          {statCard("Momentum", momentum.leadChanges, T.pink, momentum.leadChanges ? "changements de leader" : "aucun renversement")}
+          {state.rules.gameVariant === "attack_defense" ? statCard("P.Att cumulé", totalAttack, secondary, "puissance d’attaque") : statCard("Bull / DB", `${totalBulls} / ${totalDBulls}`, T.gold, "bonus spéciaux")}
+          {state.rules.gameVariant === "attack_defense" ? statCard("Bloqués", totalBlocked, T.green, `${totalDefense} défense cumulée`) : statCard("Miss", totalMisses, T.red, `${totalPenalties} pénalité${totalPenalties > 1 ? "s" : ""}`)}
+          {statCard("Écart max", momentum.biggestGap, T.cyan, momentum.biggestGapLabel)}
+          {statCard("Extra manches", extraInnings, extraInnings ? T.gold : T.soft, extraInnings ? "prolongation jouée" : "aucune")}
+        </div>
+
+        {sectionTitle("TOPS DU MATCH", secondary)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+          {topPlayerCard("MVP", mvp, secondary, scoreLabel, mvp?.score ?? 0)}
+          {topPlayerCard("MEILLEURE ATTAQUE", bestAttacker, T.red, "P.Att", bestAttacker?.stats?.attackPower ?? bestAttacker?.score ?? 0)}
+          {topPlayerCard("MEILLEURE DÉFENSE", bestDefender, T.green, state.rules.gameVariant === "attack_defense" ? "Bloqués" : "Miss", state.rules.gameVariant === "attack_defense" ? (bestDefender?.stats?.runsPrevented ?? 0) : (cleanest?.stats?.misses ?? 0))}
+        </div>
+
+        {state.rules.participantMode === "teams" && teamRows.length ? <>
+          {sectionTitle("RÉSUMÉ ÉQUIPES", secondary)}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+            {teamRows.map((row: any) => <div key={row.team.id} style={{ padding: 12, borderRadius: 16, border: `1px solid ${(row.team?.color || primary)}66`, background: "rgba(255,255,255,.035)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div style={{ minWidth: 0 }}><div style={{ color: row.team?.color || secondary, fontSize: 13, fontWeight: 1000, textTransform: "uppercase" }}>{row.team?.name}</div><div style={{ color: T.soft, fontSize: 10 }}>{row.members.length} joueur{row.members.length > 1 ? "s" : ""}</div></div><div style={{ color: secondary, fontSize: 26, fontWeight: 1100 }}>{row.score}</div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 7, marginTop: 9 }}>{MiniKpi({ label: scoreLabel, value: row.score, color: secondary, compact: true })}{MiniKpi({ label: "Préc.", value: `${row.accuracy}%`, color: T.green, compact: true })}{MiniKpi({ label: "Darts", value: row.darts, color: primary, compact: true })}{MiniKpi({ label: state.rules.gameVariant === "attack_defense" ? "P.Att" : "Best", value: state.rules.gameVariant === "attack_defense" ? row.attackPower : row.bestInning, color: T.gold, compact: true })}{MiniKpi({ label: state.rules.gameVariant === "attack_defense" ? "Bloq." : "0 pt", value: state.rules.gameVariant === "attack_defense" ? row.runsPrevented : row.scoreless, color: T.red, compact: true })}{MiniKpi({ label: "Bull/DB", value: `${row.bulls}/${row.dbulls}`, color: T.cyan, compact: true })}</div></div>)}
+          </div>
+        </> : null}
+      </div>
+    );
+  }
+
+  function renderMomentum() {
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        {sectionTitle("MOMENTUM & FRISE DE MANCHES", primary, <div style={{ color: T.soft, fontSize: 10 }}>inspiré du tableau Babyfoot • lecture par manche</div>)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 9 }}>
+          {statCard("Leader changes", momentum.leadChanges, T.pink, "changements de leader")}
+          {statCard("Écart maximal", momentum.biggestGap, secondary, momentum.biggestGapLabel)}
+          {statCard("Meilleure manche", momentum.bestInning.label, T.green, `+${momentum.bestInning.totalDelta} au total`)}
+          {statCard("Extra manches", extraInnings, extraInnings ? T.gold : T.soft, extraInnings ? "prolongation" : "aucune")}
+        </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {momentum.frames.map((frame: any) => (
+            <div key={frame.inning} style={{ borderRadius: 16, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.03)", padding: 11 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 7 }}>
+                <div style={{ color: primary, fontWeight: 1000 }}>MANCHE {frame.inning}</div>
+                <div style={{ color: T.soft, fontSize: 10 }}>{frame.leader ? `Leader : ${frame.leader.name} • écart ${frame.gap}` : ""}</div>
+              </div>
+              <div style={{ display: "grid", gap: 7 }}>
+                {frame.deltas.map((item: any) => (
+                  <div key={item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: item.color, fontWeight: 1000, fontSize: 12.5, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+                      <div style={{ marginTop: 5, height: 8, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${Math.max(4, Math.min(100, (item.total / Math.max(1, state.standings[0]?.total || item.total || 1)) * 100))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${item.color}aa, ${item.color}44)` }} /></div>
+                    </div>
+                    <div style={{ color: T.soft, fontSize: 10, minWidth: 66, textAlign: "right" }}>M{frame.inning}: <span style={{ color: item.delta > 0 ? secondary : T.soft, fontWeight: 1000 }}>{item.delta}</span></div>
+                    <div style={{ color: secondary, fontSize: 20, fontWeight: 1100, minWidth: 34, textAlign: "right" }}>{item.total}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 14, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)" }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px,96vw)", maxHeight: "89dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16283d,#070a12)", border: `1px solid ${state.tied ? primary : secondary}99`, boxShadow: `0 0 34px ${state.tied ? primary : secondary}30` }}>
-        <div style={{ textAlign: "center" }}><div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>FIN DU BASEBALL • {state.inning} MANCHE{state.inning > 1 ? "S" : ""}</div><div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000, color: state.tied ? primary : secondary, textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div></div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, margin: "14px 0" }}>{state.standings.map((standing: BaseballStanding) => <div key={standing.id} style={{ padding: 11, borderRadius: 15, textAlign: "center", border: `1px solid ${standing.rank === 1 ? secondary : T.stroke}`, background: standing.rank === 1 ? `${secondary}18` : "rgba(255,255,255,.035)" }}><div style={{ color: standing.rank === 1 ? secondary : T.soft, fontSize: 10, fontWeight: 1000 }}>{standing.rank}. {standing.name}</div><div style={{ fontSize: 29, fontWeight: 1100, marginTop: 2 }}>{standing.total}</div><div style={{ color: T.soft, fontSize: 9 }}>{state.rules.gameVariant === "attack_defense" ? "POINTS" : "RUNS"}</div></div>)}</div>
-        {state.rules.participantMode === "teams" ? <>
-          <div style={{ fontSize: 12, color: secondary, fontWeight: 1000, marginBottom: 7 }}>STATISTIQUES ÉQUIPES</div>
-          <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}`, marginBottom: 12 }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11 }}><thead><tr style={{ color: secondary, background: `${secondary}12`, textAlign: "left" }}>{teamColumns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead><tbody>{teamRows.map((row: any) => <tr key={row.team.id}>{teamColumns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Équipe" ? 1000 : 800, color: label === "Équipe" ? row.team?.color || T.text : T.text }}>{read(row)}</td>)}</tr>)}</tbody></table></div>
-        </> : null}
-        <div style={{ fontSize: 12, color: primary, fontWeight: 1000, marginBottom: 7 }}>STATISTIQUES JOUEURS</div>
-        <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${T.stroke}` }}><table style={{ width: "100%", minWidth: 940, borderCollapse: "collapse", fontSize: 11 }}><thead><tr style={{ color: primary, background: `${primary}12`, textAlign: "left" }}>{columns.map(([label]) => <th key={label} style={{ padding: "8px 7px", borderBottom: `1px solid ${T.stroke}` }}>{label}</th>)}</tr></thead><tbody>{rows.map((row: any) => <tr key={row.player.id}>{columns.map(([label, read]) => <td key={label} style={{ padding: "9px 7px", borderBottom: "1px solid rgba(255,255,255,.06)", fontWeight: label === "Joueur" ? 1000 : 800, color: label === "Équipe" ? row.team?.color || T.text : T.text }}>{read(row)}</td>)}</tr>)}</tbody></table></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 13 }}><ActionButton label="SAUVER & QUITTER" color={T.red} onClick={onSave} disabled={false} /><ActionButton label="SAUVER & REJOUER" color={T.green} onClick={onReplay} disabled={false} /></div>
-        <button type="button" onClick={onClose} style={{ width: "100%", minHeight: 42, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LE TABLEAU</button>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(960px,96vw)", maxHeight: "89dvh", overflowY: "auto", borderRadius: 22, padding: 15, color: T.text, background: "linear-gradient(180deg,#16283d,#070a12)", border: `1px solid ${state.tied ? primary : secondary}99`, boxShadow: `0 0 34px ${state.tied ? primary : secondary}30` }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: T.soft, fontWeight: 1000, letterSpacing: 1.3 }}>APERÇU • FIN DU BASEBALL • {state.inning} MANCHE{state.inning > 1 ? "S" : ""}</div>
+          <div style={{ marginTop: 4, fontSize: 26, fontWeight: 1000, color: state.tied ? primary : secondary, textShadow: "0 0 14px currentColor" }}>{winnerLabel}</div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", margin: "14px 0 16px" }}>
+          {tabButton("overview", "ACCUEIL")}
+          {state.rules.participantMode === "teams" ? tabButton("teams", "ÉQUIPES") : null}
+          {tabButton("players", "JOUEURS")}
+          {tabButton("momentum", "MOMENTUM")}
+          {tabButton("innings", "MANCHES")}
+        </div>
+
+        {tab === "overview" ? renderOverview() : null}
+        {tab === "teams" && state.rules.participantMode === "teams" ? <div style={{ display: "grid", gap: 12 }}><div>{sectionTitle("STATISTIQUES ÉQUIPES", secondary, <div style={{ color: T.soft, fontSize: 10 }}>{teamRows.length} équipe{teamRows.length > 1 ? "s" : ""}</div>)}</div>{renderTable(teamColumns, teamRows, "team")}</div> : null}
+        {tab === "players" ? <div style={{ display: "grid", gap: 12 }}><div>{sectionTitle("STATISTIQUES JOUEURS", primary, <div style={{ color: T.soft, fontSize: 10 }}>{rows.length} joueur{rows.length > 1 ? "s" : ""}</div>)}</div>{renderTable(playerColumns, rows, "player")}</div> : null}
+        {tab === "momentum" ? renderMomentum() : null}
+        {tab === "innings" ? renderInningsTables() : null}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 16 }}>
+          <ActionButton label="SAUVER & QUITTER" color={T.red} onClick={onSave} disabled={false} />
+          <ActionButton label="SAUVER & REJOUER" color={T.green} onClick={onReplay} disabled={false} />
+        </div>
+        <button type="button" onClick={() => setTab("innings")} style={{ width: "100%", minHeight: 42, marginTop: 9, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(255,255,255,.04)", color: T.soft, fontWeight: 900 }}>REVOIR LE TABLEAU DES MANCHES</button>
       </div>
     </div>
   );
