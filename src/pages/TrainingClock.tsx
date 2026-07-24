@@ -26,6 +26,7 @@ import tickerClockClassic from "../assets/tickers/clock_variants/classic.png";
 import tickerClockDoubles from "../assets/tickers/clock_variants/doubles.png";
 import tickerClockTriples from "../assets/tickers/clock_variants/triples.png";
 import tickerClockSDT from "../assets/tickers/clock_variants/sdt.png";
+import targetBg from "../assets/target_bg.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
 type ParticipantMode = "players" | "teams";
@@ -1144,6 +1145,7 @@ const TrainingClock: React.FC<Props> = (props) => {
               isMiss={isMiss}
               setIsMiss={setIsMiss}
               lastThrows={lastThrows}
+              throwLog={throwLog}
               lastObjectiveLabel={lastObjectiveLabel}
               lastObjectiveTimeMs={lastObjectiveTimeMs}
               onAbort={handleAbort}
@@ -1886,6 +1888,7 @@ function SetupSection(props: SetupSectionProps) {
 // SECTION PLAY
 // ============================================
 
+
 type PlaySectionProps = {
   isMulti: boolean;
   currentPlayerIndex: number;
@@ -1913,6 +1916,7 @@ type PlaySectionProps = {
   isMiss: boolean;
   setIsMiss: (v: boolean) => void;
   lastThrows: string[];
+  throwLog: string[];
   lastObjectiveLabel: string | null;
   lastObjectiveTimeMs: number | null;
   onAbort: () => void;
@@ -1947,42 +1951,37 @@ function PlaySection(props: PlaySectionProps) {
     isMiss,
     setIsMiss,
     lastThrows,
+    throwLog,
     lastObjectiveLabel,
     lastObjectiveTimeMs,
     onAbort: _onAbort,
     onThrow,
   } = props;
 
-  const objectiveColor =
-    objectiveKind === "double"
-      ? "#29c76f"
-      : objectiveKind === "triple"
-      ? "#b16adf"
-      : "#ffc63a";
-  const objectiveSoft =
-    objectiveKind === "double"
-      ? "rgba(41,199,111,.18)"
-      : objectiveKind === "triple"
-      ? "rgba(177,106,223,.18)"
-      : "rgba(255,198,58,.18)";
-  const objectiveGlow =
-    objectiveKind === "double"
-      ? "rgba(41,199,111,.48)"
-      : objectiveKind === "triple"
-      ? "rgba(177,106,223,.48)"
-      : "rgba(255,198,58,.48)";
+  const { theme } = useTheme() as any;
+  const themePrimary = (theme?.primary || "#ffc63a") as string;
+  const themeAccent = (theme?.accent1 || themePrimary) as string;
+  const themeAccent2 = (theme?.accent2 || "#b16adf") as string;
+  const themeCard = (theme?.card || "#121420") as string;
+  const themeText = (theme?.text || "#ffffff") as string;
+  const themeTextSoft = (theme?.textSoft || "rgba(255,255,255,.68)") as string;
+  const themeSuccess = (theme?.success || "#29c76f") as string;
+  const themeDanger = "#ff5f73";
+
+  const objectiveColor = objectiveKind === "double" ? themeSuccess : objectiveKind === "triple" ? themeAccent2 : themePrimary;
+  const objectiveSoft = objectiveKind === "double" ? hexToRgba(themeSuccess, 0.18) : objectiveKind === "triple" ? hexToRgba(themeAccent2, 0.18) : hexToRgba(themePrimary, 0.18);
+  const objectiveGlow = objectiveKind === "double" ? hexToRgba(themeSuccess, 0.48) : objectiveKind === "triple" ? hexToRgba(themeAccent2, 0.48) : hexToRgba(themePrimary, 0.48);
 
   const [padMultiplier, setPadMultiplier] = React.useState<1 | 2 | 3>(1);
+  const [statsOpen, setStatsOpen] = React.useState(false);
+  const [statsTab, setStatsTab] = React.useState<"resume" | "performance" | "progression" | "graphs">("resume");
+  const [autoCommitSeq, setAutoCommitSeq] = React.useState(0);
+
   const hasPending = isMiss || selectedValue != null;
-  const pendingLabel = hasPending
-    ? formatThrowLabel(isMiss, selectedValue, selectedMult)
-    : "—";
   const pendingThrow = React.useMemo(() => {
     if (!hasPending) return [];
     if (isMiss) return [{ v: 0, mult: 1 as const }];
-    if (selectedValue === "BULL") {
-      return [{ v: 25, mult: selectedMult === 2 ? (2 as const) : (1 as const) }];
-    }
+    if (selectedValue === "BULL") return [{ v: 25, mult: selectedMult === 2 ? (2 as const) : (1 as const) }];
     return [{ v: Number(selectedValue || 0), mult: selectedMult }];
   }, [hasPending, isMiss, selectedValue, selectedMult]);
 
@@ -1993,6 +1992,13 @@ function PlaySection(props: PlaySectionProps) {
     setPadMultiplier(1);
   }, [setIsMiss, setSelectedMult, setSelectedValue]);
 
+  React.useEffect(() => {
+    if (!autoCommitSeq) return;
+    if (!(isMiss || selectedValue != null)) return;
+    onThrow();
+    clearPending();
+  }, [autoCommitSeq, clearPending, isMiss, onThrow, selectedValue]);
+
   const chooseNumber = React.useCallback(
     (n: number) => {
       if (n === 0) {
@@ -2000,12 +2006,14 @@ function PlaySection(props: PlaySectionProps) {
         setSelectedValue(null);
         setSelectedMult(1);
         setPadMultiplier(1);
+        setAutoCommitSeq((s) => s + 1);
         return;
       }
       setIsMiss(false);
       setSelectedValue(n as Target);
       setSelectedMult(padMultiplier);
       setPadMultiplier(1);
+      setAutoCommitSeq((s) => s + 1);
     },
     [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]
   );
@@ -2015,6 +2023,7 @@ function PlaySection(props: PlaySectionProps) {
     setSelectedValue("BULL");
     setSelectedMult(padMultiplier === 2 ? 2 : 1);
     setPadMultiplier(1);
+    setAutoCommitSeq((s) => s + 1);
   }, [padMultiplier, setIsMiss, setSelectedMult, setSelectedValue]);
 
   const validatePending = React.useCallback(() => {
@@ -2025,20 +2034,95 @@ function PlaySection(props: PlaySectionProps) {
 
   const targetFullLabel = labelTarget(currentTarget, config.mode, stageSDT);
   const progressPct = Math.max(0, Math.min(100, (targetsCompleted / TARGETS.length) * 100));
-  const lastObjectiveDisplay =
-    lastObjectiveLabel != null && lastObjectiveTimeMs != null
-      ? `${lastObjectiveLabel} · ${formatTime(lastObjectiveTimeMs)}`
-      : "—";
+  const lastObjectiveDisplay = lastObjectiveLabel != null && lastObjectiveTimeMs != null
+    ? `${lastObjectiveLabel} · ${formatTime(lastObjectiveTimeMs)}`
+    : "—";
   const dartsLimitLabel = config.dartLimit != null ? `${dartsThrown}/${config.dartLimit}` : String(dartsThrown);
-  const activeProfile =
-    currentProfile ||
-    ({ id: String(currentPlayer?.id || "clock-player"), name: currentPlayer?.name || "Joueur" } as Profile);
+  const activeProfile = currentProfile || ({ id: String(currentPlayer?.id || "clock-player"), name: currentPlayer?.name || "Joueur" } as Profile);
+  const pendingDisplay = isMiss ? "MISS" : selectedValue === "BULL" ? "BULL" : selectedValue != null ? String(selectedValue) : "—";
+
+  const parsedThrows = React.useMemo(() => {
+    return (throwLog || []).map((raw) => {
+      const label = String(raw || "").trim();
+      if (!label || /^miss$/i.test(label)) return { raw: label || "Miss", hit: false, kind: "miss", score: 0, segment: 0, mult: 0 };
+      if (label === "Bull") return { raw: label, hit: true, kind: "bull", score: 25, segment: 25, mult: 1 };
+      if (label === "DBull") return { raw: label, hit: true, kind: "dbull", score: 50, segment: 25, mult: 2 };
+      const m = label.match(/^([SDT])(\d{1,2}|Bull)$/i);
+      if (!m) return { raw: label, hit: false, kind: "miss", score: 0, segment: 0, mult: 0 };
+      const prefix = m[1].toUpperCase();
+      const segment = m[2].toLowerCase() === "bull" ? 25 : Number(m[2]);
+      const mult = prefix === "D" ? 2 : prefix === "T" ? 3 : 1;
+      const kind = prefix === "D" ? "double" : prefix === "T" ? "triple" : "simple";
+      return { raw: label, hit: true, kind, score: segment === 25 ? (mult === 2 ? 50 : 25) : segment * mult, segment, mult };
+    });
+  }, [throwLog]);
+
+  const stats = React.useMemo(() => {
+    const total = parsedThrows.length;
+    const misses = parsedThrows.filter((t) => !t.hit).length;
+    const singles = parsedThrows.filter((t) => t.kind === "simple").length;
+    const doubles = parsedThrows.filter((t) => t.kind === "double").length;
+    const triples = parsedThrows.filter((t) => t.kind === "triple").length;
+    const bulls = parsedThrows.filter((t) => t.kind === "bull").length;
+    const dbulls = parsedThrows.filter((t) => t.kind === "dbull").length;
+    const points = parsedThrows.reduce((sum, t) => sum + t.score, 0);
+    const avgPerDart = total ? Math.round((points / total) * 10) / 10 : 0;
+    const avgPerHit = hits ? Math.round((points / Math.max(1, hits)) * 10) / 10 : 0;
+    const completedPct = Math.round((targetsCompleted / TARGETS.length) * 1000) / 10;
+    const progress = parsedThrows.map((_, idx) => {
+      const slice = parsedThrows.slice(0, idx + 1);
+      const h = slice.filter((x) => x.hit).length;
+      return { x: idx + 1, precision: slice.length ? Math.round((h / slice.length) * 100) : 0, hits: h };
+    });
+    const rounds: { round: number; hits: number; points: number }[] = [];
+    for (let i = 0; i < parsedThrows.length; i += 3) {
+      const slice = parsedThrows.slice(i, i + 3);
+      rounds.push({ round: rounds.length + 1, hits: slice.filter((x) => x.hit).length, points: slice.reduce((s, x) => s + x.score, 0) });
+    }
+    const freq = new Map<string, number>();
+    parsedThrows.filter((t) => t.hit).forEach((t) => freq.set(t.raw, (freq.get(t.raw) || 0) + 1));
+    const best = [...freq.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0];
+    return {
+      total,
+      misses,
+      singles,
+      doubles,
+      triples,
+      bulls,
+      dbulls,
+      points,
+      avgPerDart,
+      avgPerHit,
+      completedPct,
+      progress,
+      rounds,
+      remaining: Math.max(0, TARGETS.length - targetsCompleted),
+      bestSegment: best ? best[0] : "—",
+      bestSegmentHits: best ? best[1] : 0,
+    };
+  }, [parsedThrows, hits, targetsCompleted]);
+
+  const precisionLine = React.useMemo(() => {
+    if (!stats.progress.length) return "8,96 196,96";
+    return stats.progress
+      .map((p, idx) => {
+        const x = stats.progress.length === 1 ? 102 : 8 + idx * (188 / (stats.progress.length - 1));
+        const y = 96 - (p.precision / 100) * 80;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [stats.progress]);
+
+  const bars = React.useMemo(() => {
+    const maxHits = Math.max(1, ...stats.rounds.map((r) => r.hits), 1);
+    return stats.rounds.map((r, idx) => ({ x: 18 + idx * 30, h: (r.hits / maxHits) * 72 }));
+  }, [stats.rounds]);
 
   const panelStyle: React.CSSProperties = {
     borderRadius: 16,
-    border: "1px solid rgba(255,255,255,.10)",
-    background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(5,8,16,.80))",
-    boxShadow: "0 10px 22px rgba(0,0,0,.28)",
+    border: `1px solid ${hexToRgba(themePrimary, 0.22)}`,
+    background: `linear-gradient(180deg, ${hexToRgba(themeCard, 0.98)}, rgba(5,8,16,.94))`,
+    boxShadow: `0 10px 22px rgba(0,0,0,.28), 0 0 0 1px ${hexToRgba(themeAccent, 0.04)} inset`,
     minWidth: 0,
     maxWidth: "100%",
     boxSizing: "border-box",
@@ -2046,7 +2130,6 @@ function PlaySection(props: PlaySectionProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-      {/* Bloc principal compact inspiré du Baseball : joueur à gauche, cible à droite */}
       <section
         style={{
           ...panelStyle,
@@ -2067,8 +2150,7 @@ function PlaySection(props: PlaySectionProps) {
             padding: "8px 10px",
           }}
         >
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.38), rgba(0,0,0,.16) 46%, rgba(0,0,0,.32))" }} />
-
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${hexToRgba(themePrimary, 0.04)}, rgba(0,0,0,.18) 50%, ${hexToRgba(themeAccent2, 0.04)})` }} />
           <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "26%", minWidth: 88, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
             <div style={{ position: "absolute", left: -18, top: 17, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}>
               <ProfileAvatar profile={activeProfile as any} size={84} />
@@ -2092,14 +2174,14 @@ function PlaySection(props: PlaySectionProps) {
             <div style={{ color: objectiveColor, fontSize: 13, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.05, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
               {currentPlayer?.name || "Joueur"}
             </div>
-            <div style={{ marginTop: 2, color: "rgba(255,255,255,.58)", fontSize: 8.5, fontWeight: 900, letterSpacing: .5, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ marginTop: 2, color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .5, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}
               {currentPlayer?.teamName ? ` · ${currentPlayer.teamName}` : ""}
             </div>
             <div style={{ marginTop: 5, color: objectiveColor, fontSize: objectiveLabel.length > 5 ? 38 : 52, fontWeight: 1000, lineHeight: .96, textShadow: `0 0 18px ${objectiveGlow}` }}>
               {objectiveLabel}
             </div>
-            <div style={{ marginTop: 5, color: "rgba(255,255,255,.68)", fontSize: 8.5, fontWeight: 900, letterSpacing: .55, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+            <div style={{ marginTop: 5, color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .55, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
               {currentDartSetName ? `Set : ${currentDartSetName}` : "Tour de l'horloge"}
             </div>
           </div>
@@ -2115,60 +2197,73 @@ function PlaySection(props: PlaySectionProps) {
               minWidth: 0,
               overflow: "hidden",
               borderRadius: 18,
-              background: "#050913",
+              background: themeCard,
               isolation: "isolate",
-              border: `1px solid ${objectiveColor}3f`,
+              border: `1px solid ${hexToRgba(objectiveColor, 0.28)}`,
             }}
           >
-            <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 22%, ${objectiveSoft}, transparent 58%), linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.82))` }} />
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", opacity: 0.18, mixBlendMode: "screen" }} />
+            <div style={{ position: "absolute", inset: 0, background: `linear-gradient(180deg, rgba(4,8,16,.24), rgba(4,8,16,.82))` }} />
             <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: `linear-gradient(180deg, rgba(255,255,255,.02), ${objectiveColor}88, rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${objectiveSoft}` }} />
             <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", padding: "6px 4px" }}>
-              <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9, fontWeight: 950, letterSpacing: .8 }}>CIBLE</div>
+              <div style={{ color: themeTextSoft, fontSize: 9, fontWeight: 950, letterSpacing: .8 }}>CIBLE</div>
               <div style={{ color: objectiveColor, fontSize: currentTarget === "BULL" ? 22 : 42, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${objectiveGlow}`, marginTop: 3 }}>{targetFullLabel}</div>
-              <div style={{ color: "rgba(255,255,255,.58)", fontSize: 8.5, fontWeight: 900, marginTop: 6 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
-              {config.showTimer ? <div style={{ color: "#ffd86b", fontSize: 10, fontWeight: 1000, marginTop: 6 }}>{formatTime(elapsedNow)}</div> : null}
+              <div style={{ color: themeTextSoft, fontSize: 8.5, fontWeight: 900, marginTop: 6 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
+              {config.showTimer ? <div style={{ color: themePrimary, fontSize: 10, fontWeight: 1000, marginTop: 6 }}>{formatTime(elapsedNow)}</div> : null}
             </div>
           </div>
         </div>
         <div style={{ height: 5, background: "rgba(255,255,255,.055)", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${progressPct}%`, background: `linear-gradient(90deg, ${objectiveColor}88, ${objectiveColor})`, boxShadow: `0 0 12px ${objectiveGlow}`, transition: "width .2s ease" }} />
+          <div style={{ height: "100%", width: `${progressPct}%`, background: `linear-gradient(90deg, ${hexToRgba(objectiveColor, 0.6)}, ${objectiveColor})`, boxShadow: `0 0 12px ${objectiveGlow}`, transition: "width .2s ease" }} />
         </div>
       </section>
 
-      {/* KPIs compacts façon Baseball */}
-      <section style={{ ...panelStyle, padding: 7 }}>
+      <section
+        role="button"
+        tabIndex={0}
+        onClick={() => setStatsOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setStatsOpen(true);
+          }
+        }}
+        style={{ ...panelStyle, padding: 7, cursor: "pointer" }}
+      >
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
           {[
-            ["DARTS", dartsLimitLabel, "#ffc63a"],
-            ["HITS", hits, "#51e893"],
+            ["DARTS", dartsLimitLabel, themePrimary],
+            ["HITS", hits, themeSuccess],
             ["PRÉCISION", `${precision}%`, objectiveColor],
-            ["SÉRIE / BEST", `${currentStreak}/${bestStreak}`, "#d49cff"],
+            ["SÉRIE / BEST", `${currentStreak}/${bestStreak}`, themeAccent2],
           ].map(([label, value, color]) => (
             <div key={String(label)} style={{ minWidth: 0, borderRadius: 11, padding: "6px 3px", textAlign: "center", border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)" }}>
-              <div style={{ color: "rgba(255,255,255,.48)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-              <div style={{ color: String(color), fontSize: 15, lineHeight: 1.05, fontWeight: 1100, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+              <div style={{ color: themeTextSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+              <div style={{ color: String(color), fontSize: 15, lineHeight: 1.05, fontWeight: 1100, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value)}</div>
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 5, minHeight: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 5px", color: "rgba(255,255,255,.58)", fontSize: 9.5 }}>
+        <div style={{ marginTop: 5, minHeight: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 5px", color: themeTextSoft, fontSize: 9.5 }}>
           <span style={{ whiteSpace: "nowrap" }}>Dernier objectif validé</span>
-          <strong style={{ color: "rgba(255,255,255,.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{lastObjectiveDisplay}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <strong style={{ color: themeText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{lastObjectiveDisplay}</strong>
+            <span style={{ color: themePrimary, fontSize: 16, lineHeight: 1 }}>›</span>
+          </div>
         </div>
       </section>
 
-      {/* Historique réduit à une seule bande compacte */}
       <section style={{ ...panelStyle, padding: "7px 9px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 30 }}>
-          <div style={{ flex: "0 0 auto", color: "rgba(255,255,255,.52)", fontSize: 9, fontWeight: 950, letterSpacing: .45 }}>DERNIERS</div>
+          <div style={{ flex: "0 0 auto", color: themeTextSoft, fontSize: 9, fontWeight: 950, letterSpacing: .45 }}>DERNIERS</div>
           {lastThrows.length === 0 ? (
             <div style={{ color: "rgba(255,255,255,.40)", fontSize: 10 }}>En attente…</div>
           ) : (
             <div className="dc-scroll-thin" style={{ display: "flex", gap: 5, overflowX: "auto", minWidth: 0, paddingBottom: 1 }}>
               {lastThrows.slice(0, 10).map((t, idx) => {
                 const kind = getThrowKind(t);
-                const tone = kind === "double" || kind === "bull" ? "#29c76f" : kind === "triple" ? "#b16adf" : kind === "simple" ? "#ffc63a" : "#ff4b5c";
+                const tone = kind === "double" || kind === "bull" ? themeSuccess : kind === "triple" ? themeAccent2 : kind === "simple" ? themePrimary : themeDanger;
                 return (
-                  <span key={`${t}-${idx}`} style={{ flex: "0 0 auto", minWidth: 30, height: 24, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${tone}66`, background: `${tone}16`, color: tone, fontSize: 9.5, fontWeight: 1000 }}>
+                  <span key={`${t}-${idx}`} style={{ flex: "0 0 auto", minWidth: 30, height: 24, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${hexToRgba(tone, 0.40)}`, background: hexToRgba(tone, 0.14), color: tone, fontSize: 9.5, fontWeight: 1000 }}>
                     {t}
                   </span>
                 );
@@ -2178,7 +2273,6 @@ function PlaySection(props: PlaySectionProps) {
         </div>
       </section>
 
-      {/* Keypad commun à tous les modes */}
       <section style={{ ...panelStyle, padding: 7 }}>
         <Keypad
           currentThrow={pendingThrow as any}
@@ -2190,19 +2284,238 @@ function PlaySection(props: PlaySectionProps) {
           onCancel={clearPending}
           onNumber={chooseNumber}
           onBull={chooseBull}
-          onValidate={validatePending}
+          onValidate={hasPending ? validatePending : clearPending}
           hidePreview
           hideTotal
           centerSlot={
-            <div style={{ minWidth: 60, textAlign: "center", lineHeight: 1.02 }}>
-              <div style={{ color: "rgba(255,255,255,.50)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .4 }}>SAISIE</div>
-              <div style={{ color: hasPending ? objectiveColor : "rgba(255,255,255,.32)", fontSize: 13, fontWeight: 1100, marginTop: 2 }}>{pendingLabel}</div>
+            <div style={{ display: "flex", justifyContent: "center", minWidth: 82 }}>
+              <div
+                style={{
+                  minWidth: 78,
+                  height: 42,
+                  borderRadius: 14,
+                  display: "grid",
+                  placeItems: "center",
+                  padding: "0 12px",
+                  background: hasPending ? `linear-gradient(180deg, ${hexToRgba(themePrimary, 0.22)}, ${hexToRgba(themePrimary, 0.08)})` : "rgba(255,255,255,.05)",
+                  border: `1px solid ${hasPending ? hexToRgba(themePrimary, 0.55) : "rgba(255,255,255,.10)"}`,
+                  color: hasPending ? themePrimary : "rgba(255,255,255,.34)",
+                  fontSize: pendingDisplay.length > 4 ? 16 : 20,
+                  fontWeight: 1100,
+                  boxShadow: hasPending ? `0 0 16px ${hexToRgba(themePrimary, 0.25)}` : "none",
+                }}
+              >
+                {pendingDisplay}
+              </div>
             </div>
           }
           validateAttention={hasPending}
           safeBottomPad
         />
       </section>
+
+      {statsOpen ? (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.64)", backdropFilter: "blur(5px)", padding: "16px 10px calc(20px + var(--safe-bottom))" }}
+          onClick={() => setStatsOpen(false)}
+        >
+          <div
+            className="dc-scroll-thin"
+            style={{ width: "min(100%, 560px)", maxHeight: "100%", overflowY: "auto", margin: "0 auto", borderRadius: 20, border: `1px solid ${hexToRgba(themePrimary, 0.55)}`, background: `linear-gradient(180deg, ${hexToRgba(themeCard, 0.98)}, rgba(3,6,14,.98))`, boxShadow: `0 20px 50px rgba(0,0,0,.45), 0 0 28px ${hexToRgba(themePrimary, 0.12)}`, padding: 14 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ color: themePrimary, fontSize: 20, fontWeight: 1000, letterSpacing: .5 }}>Statistiques détaillées</div>
+                <div style={{ color: themeTextSoft, fontSize: 11 }}>Bloc flottant ouvrable depuis les KPI</div>
+              </div>
+              <button type="button" onClick={() => setStatsOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${hexToRgba(themePrimary, 0.32)}`, background: "rgba(255,255,255,.04)", color: themePrimary, fontSize: 20, fontWeight: 900 }}>×</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              {([
+                ["RÉSUMÉ", "resume"],
+                ["PERFORMANCE", "performance"],
+                ["PROGRESSION", "progression"],
+                ["GRAPHIQUES", "graphs"],
+              ] as const).map(([label, key]) => {
+                const active = statsTab === key;
+                return (
+                  <button key={key} type="button" onClick={() => setStatsTab(key)} style={{ height: 38, borderRadius: 12, border: `1px solid ${active ? hexToRgba(themePrimary, 0.5) : "rgba(255,255,255,.08)"}`, background: active ? `linear-gradient(180deg, ${hexToRgba(themePrimary, 0.18)}, ${hexToRgba(themePrimary, 0.06)})` : "rgba(255,255,255,.035)", color: active ? themePrimary : themeTextSoft, fontSize: 11, fontWeight: 950, letterSpacing: .35 }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+              {[
+                ["CIBLES TERMINÉES", `${targetsCompleted} / ${TARGETS.length}`],
+                ["CIBLES RESTANTES", String(stats.remaining)],
+                ["TEMPS TOTAL", formatTime(elapsedNow)],
+                ["TEMPS MOYEN / CIBLE", targetsCompleted > 0 ? formatTime(Math.round(elapsedNow / Math.max(1, targetsCompleted))) : "00:00"],
+              ].map(([label, value]) => (
+                <div key={String(label)} style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 10 }}>
+                  <div style={{ color: themeTextSoft, fontSize: 9.5, fontWeight: 900 }}>{label}</div>
+                  <div style={{ color: themeText, fontSize: 22, fontWeight: 1000, marginTop: 4 }}>{String(value)}</div>
+                </div>
+              ))}
+            </div>
+
+            {statsTab === "resume" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 10, marginTop: 12 }}>
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Performance globale</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 8, columnGap: 12, color: themeText }}>
+                    {[
+                      ["Total darts", dartsThrown],
+                      ["Hits", hits],
+                      ["Misses", stats.misses],
+                      ["Précision", `${precision}%`],
+                      ["Points cumulés", stats.points],
+                      ["Série actuelle", currentStreak],
+                      ["Meilleure série", bestStreak],
+                      ["Dernier objectif", lastObjectiveDisplay],
+                    ].map(([l, v]) => (
+                      <React.Fragment key={String(l)}>
+                        <span style={{ color: themeTextSoft }}>{String(l)}</span>
+                        <strong>{String(v)}</strong>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Répartition des hits</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {[
+                      ["Simples", stats.singles, "#4da3ff"],
+                      ["Doubles", stats.doubles, themeSuccess],
+                      ["Triples", stats.triples, themeAccent2],
+                      ["Bulls", stats.bulls + stats.dbulls, themePrimary],
+                    ].map(([label, count, color]) => {
+                      const pct = hits ? Math.round((Number(count) / Math.max(1, hits)) * 100) : 0;
+                      return (
+                        <div key={String(label)}>
+                          <div style={{ display: "flex", justifyContent: "space-between", color: themeTextSoft, fontSize: 11, marginBottom: 4 }}>
+                            <span>{String(label)}</span>
+                            <strong style={{ color: themeText }}>{String(count)} · {pct}%</strong>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+                            <div style={{ width: `${pct}%`, height: "100%", background: String(color) }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ gridColumn: "1 / -1", borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Derniers lancers</div>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                    {(lastThrows.length ? lastThrows : ["—", "—", "—"]).slice(0, 12).map((t, idx) => {
+                      const tone = t === "Miss" ? themeDanger : t.startsWith("D") || t === "Bull" || t === "DBull" ? themeSuccess : t.startsWith("T") ? themeAccent2 : themePrimary;
+                      return (
+                        <span key={`${t}-${idx}`} style={{ minWidth: 40, height: 28, padding: "0 10px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${hexToRgba(String(tone), 0.5)}`, background: hexToRgba(String(tone), 0.14), color: String(tone), fontSize: 11, fontWeight: 1000 }}>
+                          {t}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {statsTab === "performance" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+                {[
+                  ["MOYENNE / DART", stats.avgPerDart],
+                  ["MOYENNE / HIT", stats.avgPerHit],
+                  ["OBJECTIFS VALIDÉS", targetsCompleted],
+                  ["TAUX D'ACHÈVEMENT", `${stats.completedPct}%`],
+                  ["BULLS", stats.bulls],
+                  ["DBULLS", stats.dbulls],
+                  ["DOUBLES", stats.doubles],
+                  ["TRIPLES", stats.triples],
+                  ["SIMPLES", stats.singles],
+                  ["MISSES", stats.misses],
+                ].map(([l, v]) => (
+                  <div key={String(l)} style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 11 }}>
+                    <div style={{ color: themeTextSoft, fontSize: 10, fontWeight: 900 }}>{String(l)}</div>
+                    <div style={{ color: themeText, fontSize: 24, fontWeight: 1000, marginTop: 6 }}>{String(v)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {statsTab === "progression" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 12 }}>
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Historique des cibles</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {[...Array(Math.max(1, targetsCompleted))].map((_, idx) => (
+                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "40px 1fr auto auto", gap: 10, alignItems: "center", color: themeText }}>
+                        <span style={{ color: themeTextSoft }}>#{idx + 1}</span>
+                        <span>{idx + 1 === TARGETS.length ? "Bull" : idx + 1}</span>
+                        <strong style={{ color: themeSuccess }}>HIT</strong>
+                        <span style={{ color: themeTextSoft }}>{formatTime(Math.round((elapsedNow / Math.max(1, targetsCompleted)) * (idx + 1)))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Meilleur segment</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ width: 82, height: 82, borderRadius: "50%", border: `2px solid ${hexToRgba(themePrimary, 0.35)}`, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", boxShadow: `0 0 18px ${hexToRgba(themePrimary, 0.18)}` }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: themePrimary, fontSize: 30, fontWeight: 1100 }}>{stats.bestSegment}</div>
+                      <div style={{ color: themeText, fontWeight: 900 }}>{stats.bestSegmentHits} hit{stats.bestSegmentHits > 1 ? "s" : ""}</div>
+                      <div style={{ color: themeTextSoft, marginTop: 4 }}>Segment le plus fréquent de la session.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {statsTab === "graphs" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Tendance précision</div>
+                  <svg viewBox="0 0 200 100" width="100%" height="140">
+                    <line x1="8" y1="96" x2="196" y2="96" stroke="rgba(255,255,255,.15)" />
+                    <line x1="8" y1="16" x2="8" y2="96" stroke="rgba(255,255,255,.15)" />
+                    <polyline fill="none" stroke={themePrimary} strokeWidth="3" points={precisionLine} />
+                  </svg>
+                </div>
+                <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Hits par round</div>
+                  <svg viewBox="0 0 200 100" width="100%" height="140">
+                    <line x1="8" y1="96" x2="196" y2="96" stroke="rgba(255,255,255,.15)" />
+                    {bars.map((b, idx) => (
+                      <rect key={idx} x={b.x} y={96 - b.h} width="20" height={b.h} rx="6" fill={idx % 2 ? themeAccent2 : themePrimary} opacity="0.92" />
+                    ))}
+                  </svg>
+                </div>
+                <div style={{ gridColumn: "1 / -1", borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 12 }}>
+                  <div style={{ color: themePrimary, fontSize: 15, fontWeight: 900, marginBottom: 10 }}>Courbe de progression</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {stats.progress.length ? stats.progress.map((point) => (
+                      <div key={point.x} style={{ display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 8, alignItems: "center" }}>
+                        <span style={{ color: themeTextSoft }}>#{point.x}</span>
+                        <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+                          <div style={{ width: `${point.precision}%`, height: "100%", background: `linear-gradient(90deg, ${themePrimary}, ${themeAccent2})` }} />
+                        </div>
+                        <strong style={{ color: themeText }}>{point.precision}%</strong>
+                      </div>
+                    )) : <div style={{ color: themeTextSoft }}>Aucune donnée graphique pour le moment.</div>}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -162,19 +162,120 @@ function canonicalGameId(raw: any): string | null {
   return GAME_IDS.has(aliased) ? aliased : null;
 }
 
-function historyVariantGameId(rec: any): string | null {
-  const rawVariant =
+function historyVariantRaw(rec: any): any {
+  return (
     rec?.variantId ??
+    rec?.presetVariantId ??
+    rec?.scoringVariant ??
     rec?.summary?.variantId ??
+    rec?.summary?.presetVariantId ??
+    rec?.summary?.scoringVariant ??
     rec?.game?.variantId ??
+    rec?.game?.presetVariantId ??
+    rec?.game?.scoringVariant ??
     rec?.payload?.variantId ??
+    rec?.payload?.presetVariantId ??
+    rec?.payload?.scoringVariant ??
     rec?.payload?.meta?.variantId ??
+    rec?.payload?.meta?.presetVariantId ??
+    rec?.payload?.meta?.scoringVariant ??
     rec?.payload?.config?.variantId ??
     rec?.payload?.config?.presetVariantId ??
-    null;
+    rec?.payload?.config?.scoringVariant ??
+    null
+  );
+}
 
-  const candidate = canonicalGameId(rawVariant);
+function historyVariantGameId(rec: any): string | null {
+  // Anciennes sauvegardes Cut-Throat n'ont parfois qu'un booléen dédié.
+  const cutThroat =
+    rec?.cutThroat === true ||
+    rec?.isCutThroat === true ||
+    rec?.summary?.cutThroat === true ||
+    rec?.summary?.isCutThroat === true ||
+    rec?.payload?.cutThroat === true ||
+    rec?.payload?.isCutThroat === true;
+  if (cutThroat && VARIANT_GAME_IDS.has("cricket_cut_throat")) return "cricket_cut_throat";
+
+  const candidate = canonicalGameId(historyVariantRaw(rec));
   return candidate && VARIANT_GAME_IDS.has(candidate) ? candidate : null;
+}
+
+function hasVisibleCricketVariantMetadata(rec: any): boolean {
+  // Un scoringVariant générique (ex. "points") ne suffit PAS : les vieux
+  // headers peuvent l'exposer sans variantId alors que le vrai preset est
+  // encore caché dans payload. On ne considère donc comme discriminants que
+  // variantId/presetVariantId ou les flags Cut-Throat visibles.
+  const explicitVariant =
+    rec?.variantId ??
+    rec?.presetVariantId ??
+    rec?.summary?.variantId ??
+    rec?.summary?.presetVariantId ??
+    rec?.game?.variantId ??
+    rec?.game?.presetVariantId ??
+    null;
+  if (explicitVariant != null) return true;
+
+  return (
+    rec?.cutThroat != null ||
+    rec?.isCutThroat != null ||
+    rec?.summary?.cutThroat != null ||
+    rec?.summary?.isCutThroat != null
+  );
+}
+
+// History.listFinished() lit volontairement les headers légers IndexedDB et ne
+// décompresse pas payload. Or les anciennes parties Cricket stockaient variantId
+// uniquement dans payload : elles apparaissaient donc comme Cricket classique et
+// la carte FAVORI — VARIANTES restait sur son fallback (Enculette).
+// On hydrate uniquement ces lignes ambiguës et on mémorise le résultat.
+const HISTORY_GAME_ID_DETAIL_CACHE = new Map<string, { updatedAt: number; gameId: string | null }>();
+
+function historyRecordNeedsDetail(rec: any): boolean {
+  const kind = canonicalGameId(rec?.kind ?? rec?.gameId ?? rec?.modeId ?? rec?.mode);
+  return kind === "cricket" && !hasVisibleCricketVariantMetadata(rec);
+}
+
+async function resolveHistoryRecordGameId(rec: any): Promise<string | null> {
+  const direct = historyRecordGameId(rec);
+  if (!historyRecordNeedsDetail(rec)) return direct;
+
+  const id = String(rec?.id ?? rec?.matchId ?? "").trim();
+  if (!id) return direct;
+
+  const updatedAt = Number(rec?.updatedAt ?? rec?.createdAt ?? 0) || 0;
+  const cached = HISTORY_GAME_ID_DETAIL_CACHE.get(id);
+  if (cached && cached.updatedAt === updatedAt) return cached.gameId;
+
+  try {
+    const full = await History.get(id);
+    const gameId = historyRecordGameId(full || rec);
+    HISTORY_GAME_ID_DETAIL_CACHE.set(id, { updatedAt, gameId });
+    return gameId;
+  } catch {
+    HISTORY_GAME_ID_DETAIL_CACHE.set(id, { updatedAt, gameId: direct });
+    return direct;
+  }
+}
+
+async function resolveHistoryGameIds(rows: any[]): Promise<Array<{ rec: any; gameId: string | null }>> {
+  // Limite les lectures IndexedDB simultanées sur de gros historiques.
+  const out: Array<{ rec: any; gameId: string | null }> = new Array(rows.length);
+  let cursor = 0;
+  const workerCount = Math.min(8, Math.max(1, rows.length));
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= rows.length) return;
+        const rec = rows[idx];
+        out[idx] = { rec, gameId: await resolveHistoryRecordGameId(rec) };
+      }
+    })
+  );
+
+  return out;
 }
 
 function historyRecordGameId(rec: any): string | null {
@@ -400,11 +501,11 @@ export default function Games({ setTab }: Props) {
         const map: PlayCountMap = {};
         const recent: LastPlayedMap = {};
 
-        for (const r of rows as any[]) {
-          const gameId = historyRecordGameId(r);
+        const resolvedRows = await resolveHistoryGameIds(rows as any[]);
+        for (const { rec, gameId } of resolvedRows) {
           if (!gameId) continue;
           map[gameId] = (map[gameId] ?? 0) + 1;
-          recent[gameId] = Math.max(recent[gameId] ?? 0, historyPlayedAt(r));
+          recent[gameId] = Math.max(recent[gameId] ?? 0, historyPlayedAt(rec));
         }
 
         if (alive && seq === requestSeq) {

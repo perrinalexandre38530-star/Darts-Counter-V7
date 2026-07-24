@@ -1663,6 +1663,11 @@ const totalDarts = playersPayload.reduce((a, p) => a + p.hits.length, 0);
 return {
     id: matchIdRef.current,
     kind: "cricket",
+    // Garder la variante dans le HEADER léger History. Sans ceci, listFinished()
+    // ne voit que kind=cricket car payload est stocké séparément/compressé.
+    variantId,
+    scoringVariant,
+    cutThroat: isCutThroatRoute,
     status: finishedFlag ? "finished" : "in_progress",
     players: playersLite,
     winnerId: state.winnerId ?? null,
@@ -1671,6 +1676,10 @@ return {
     summary: {
       legs: 1,
       darts: totalDarts,
+      mode: "cricket",
+      variantId,
+      scoringVariant,
+      cutThroat: isCutThroatRoute,
     },
     payload: {
       mode: "cricket",
