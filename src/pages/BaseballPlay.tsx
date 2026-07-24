@@ -557,6 +557,9 @@ export default function BaseballPlay(props: any) {
   const activeScore = activeStanding?.total || 0;
   const specialBullInThrow = throwDarts.some((dart) => dart.v === 25) && (state.rules.bullTargetMode === "attack" || state.rules.bullTargetMode === "defense");
   const scoreBandRows = state.standings.slice(0, 2);
+  const isTeamDuel = state.rules.gameVariant === "attack_defense" && config.participantMode === "teams";
+  const duelPhaseColor = state.duelPhase === "defense" ? T.green : T.red;
+  const teamAttackPressure = Math.max(0, Number(state.pendingAttackPower || 0));
   const inningChunks = React.useMemo(() => {
     const source = Array.from({ length: Math.max(shownInnings.length, 1) }, (_, index) => index + 1);
     const chunks: number[][] = [];
@@ -580,9 +583,9 @@ export default function BaseballPlay(props: any) {
             {config.participantMode === "teams" && (activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo) ? <div style={{ position: "absolute", right: "calc(128px + 12px)", top: -4, bottom: -4, width: "24%", minWidth: 82, overflow: "hidden", opacity: .16, pointerEvents: "none" }}><div style={{ position: "absolute", right: -16, top: 16, transform: "scale(1.22)", transformOrigin: "right top", filter: "saturate(.92)" }}><img src={activeTeam.logoDataUrl || activeTeam.logoUrl || activeTeam.logo} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} /></div></div> : null}
             <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 10px 2px 6px" }}>
               {botThinking ? <div style={{ color: accent, fontSize: 11.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
-              <div style={{ color: primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", maxWidth: "100%", textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word" }}>{playerName(activeProfile)}</div>
+              <div style={{ color: activeTeam?.color || primary, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, textAlign: "center", maxWidth: "100%", textTransform: "uppercase", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word" }}>{playerName(activeProfile)}</div>
               <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 64, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)" }}>{activeScore}</div>
-              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : secondary, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</div> : null}
+              {state.rules.gameVariant === "attack_defense" ? <div style={{ marginTop: 4, color: state.duelPhase === "defense" ? T.green : T.red, fontSize: 8.5, fontWeight: 950, letterSpacing: .6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{state.duelPhase === "defense" ? "DÉFENSE" : "ATTAQUE"}</div> : null}
             </div>
             <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
               <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: 1 }} />
@@ -602,7 +605,7 @@ export default function BaseballPlay(props: any) {
             {state.rules.gameVariant === "attack_defense" ? (
               <>
                 <MiniKpi label="POINTS" value={activeScore} color={accent} />
-                <MiniKpi label="PUISS. ATT" value={activeStats.attackPower} color={secondary} />
+                <MiniKpi label={isTeamDuel ? (state.duelPhase === "defense" ? "À CONTRER" : "ATTAQUE CUM.") : "PUISS. ATT"} value={isTeamDuel ? teamAttackPressure : activeStats.attackPower} color={state.duelPhase === "defense" ? T.green : T.red} />
                 <MiniKpi label="PUISS. DEF" value={activeStats.defensePower} color={T.green} />
                 <MiniKpi label="BLOQUÉS" value={activeStats.runsPrevented} color={primary} />
               </>
@@ -669,7 +672,7 @@ export default function BaseballPlay(props: any) {
                                 <th style={{ ...thStyle(), minWidth: 74, width: 74, textAlign: "center", position: "sticky", left: 0, zIndex: 3, background: theme?.card || "#0d1421" }}>PROFIL</th>
                                 {chunk.map((inning) => {
                                   const target = state.targetSequence?.[inning - 1];
-                                  return <th key={inning} style={{ ...thStyle(), minWidth: 44 }}><div style={{ fontSize: 8, opacity: .75 }}>M{inning}</div><div style={{ color: "rgba(255,255,255,.96)", fontSize: 10.5, marginTop: 1, fontWeight: 1000 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
+                                  return <th key={inning} style={{ ...thStyle(), minWidth: 44, boxShadow: state.rules.gameVariant === "attack_defense" && inning === state.inning ? `inset 0 0 0 2px ${duelPhaseColor}` : "none", borderRadius: state.rules.gameVariant === "attack_defense" && inning === state.inning ? 6 : 0 }}><div style={{ fontSize: 8, opacity: .75 }}>M{inning}</div><div style={{ color: "rgba(255,255,255,.96)", fontSize: 10.5, marginTop: 1, fontWeight: 1000 }}>{target === 25 ? "BULL" : target || "—"}</div></th>;
                                 })}
                               </tr>
                             </thead>
@@ -684,7 +687,8 @@ export default function BaseballPlay(props: any) {
                                     {chunk.map((inning) => {
                                       const value = entityInningScore(standing, inning);
                                       const played = entityInningPlayed(standing, inning);
-                                      return <td key={inning} style={{ ...tdStyle(), color: played ? (value > 0 ? "rgba(255,255,255,.96)" : "rgba(255,255,255,.46)") : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750 }}>{played ? value : "·"}</td>;
+                                      const currentRoleCell = state.rules.gameVariant === "attack_defense" && inning === state.inning && standing.id === activeEntityId;
+                                      return <td key={inning} style={{ ...tdStyle(), color: played ? (value > 0 ? "rgba(255,255,255,.96)" : "rgba(255,255,255,.46)") : "rgba(255,255,255,.20)", fontWeight: value > 0 ? 1000 : 750, boxShadow: currentRoleCell ? `inset 0 0 0 2px ${duelPhaseColor}` : "none" }}>{played ? value : "·"}</td>;
                                     })}
                                   </tr>
                                 );

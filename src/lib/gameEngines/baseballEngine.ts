@@ -529,26 +529,22 @@ function finishOrAdvanceInning(next: BaseballState): BaseballState {
 
 function duelPairs(state: BaseballState): Array<{ attackerId: string; defenderId: string }> {
   if (state.rules.participantMode === "teams") {
-    // Le duel d'équipes oppose toujours exactement 2 équipes de même taille.
-    // Pour chaque cible, on joue deux demi-manches :
-    // 1) tous les joueurs de l'équipe A attaquent face à leur vis-à-vis de B ;
-    // 2) les rôles s'inversent et tous les joueurs de B attaquent face à A.
-    // Chaque joueur attaque ET défend donc exactement une fois sur la cible.
+    // Mode équipes : on ne fait plus A1 attaque/B1 défense puis A2/B2.
+    // Pour chaque cible, toute l'équipe A attaque d'abord, puis toute l'équipe B défend
+    // le total cumulé. Ensuite B attaque au complet, puis A défend au complet.
     const teamA = state.teams[0];
     const teamB = state.teams[1];
     if (!teamA || !teamB) return [];
     const count = Math.min(teamA.playerIds.length, teamB.playerIds.length);
     const pairs: Array<{ attackerId: string; defenderId: string }> = [];
-    for (let memberIndex = 0; memberIndex < count; memberIndex += 1) {
-      const a = teamA.playerIds[memberIndex];
-      const b = teamB.playerIds[memberIndex];
-      if (a && b) pairs.push({ attackerId: a, defenderId: b });
-    }
-    for (let memberIndex = 0; memberIndex < count; memberIndex += 1) {
-      const a = teamA.playerIds[memberIndex];
-      const b = teamB.playerIds[memberIndex];
-      if (a && b) pairs.push({ attackerId: b, defenderId: a });
-    }
+    // 0..n-1 : attaques de A
+    for (let i = 0; i < count; i += 1) pairs.push({ attackerId: teamA.playerIds[i], defenderId: teamB.playerIds[i] });
+    // n..2n-1 : défenses de B sur le score cumulé de A
+    for (let i = 0; i < count; i += 1) pairs.push({ attackerId: teamA.playerIds[i], defenderId: teamB.playerIds[i] });
+    // 2n..3n-1 : attaques de B
+    for (let i = 0; i < count; i += 1) pairs.push({ attackerId: teamB.playerIds[i], defenderId: teamA.playerIds[i] });
+    // 3n..4n-1 : défenses de A sur le score cumulé de B
+    for (let i = 0; i < count; i += 1) pairs.push({ attackerId: teamB.playerIds[i], defenderId: teamA.playerIds[i] });
     return pairs;
   }
 
@@ -675,7 +671,213 @@ function playClassicTurn(state: BaseballState, dartsInput: GameDart[]): Baseball
   return finishOrAdvanceInning(next);
 }
 
+function ensureEntityInningScore(state: BaseballState, entityId: string, inning: number) {
+  if (!state.inningAdjustmentsByEntity[entityId]) state.inningAdjustmentsByEntity[entityId] = {};
+  if (state.inningAdjustmentsByEntity[entityId][inning] === undefined) state.inningAdjustmentsByEntity[entityId][inning] = 0;
+}
+
+function teamDuelCount(state: BaseballState): number {
+  const teamA = state.teams[0];
+  const teamB = state.teams[1];
+  return teamA && teamB ? Math.min(teamA.playerIds.length, teamB.playerIds.length) : 0;
+}
+
+function teamForDuelIndex(state: BaseballState, pairIndex: number): { attackingTeam: BaseballTeamConfig | null; defendingTeam: BaseballTeamConfig | null; phase: BaseballDuelRole } {
+  const teamA = state.teams[0] || null;
+  const teamB = state.teams[1] || null;
+  const count = teamDuelCount(state);
+  if (!teamA || !teamB || count <= 0) return { attackingTeam: teamA, defendingTeam: teamB, phase: "attack" };
+  if (pairIndex < count) return { attackingTeam: teamA, defendingTeam: teamB, phase: "attack" };
+  if (pairIndex < count * 2) return { attackingTeam: teamA, defendingTeam: teamB, phase: "defense" };
+  if (pairIndex < count * 3) return { attackingTeam: teamB, defendingTeam: teamA, phase: "attack" };
+  return { attackingTeam: teamB, defendingTeam: teamA, phase: "defense" };
+}
+
+function finalizeTeamHalfInning(next: BaseballState, attackingTeam: BaseballTeamConfig, representativePlayerId: string, finalPoints: number): number {
+  const points = Math.max(0, Math.floor(Number(finalPoints) || 0));
+  ensureEntityInningScore(next, attackingTeam.id, next.inning);
+  if (points > 0) applyEntityDelta(next, attackingTeam.id, points, next.inning);
+  const scoredOwnPoints = points > 0 || next.pendingAttackHadOwnScore;
+  applySeventhInningPenalty(next, representativePlayerId, scoredOwnPoints);
+  refreshPlayerRunStats(next);
+  return points;
+}
+
+function advanceTeamDuelAfterHalf(next: BaseballState, attackingTeamIndex: 0 | 1): BaseballState {
+  const count = teamDuelCount(next);
+  next.pendingAttackPower = 0;
+  next.pendingAttackerId = null;
+  next.pendingDefenderId = null;
+  next.pendingAttackHadOwnScore = false;
+
+  if (attackingTeamIndex === 0) {
+    // L'équipe B attaque maintenant sur la même cible.
+    next.duelPairIndex = count * 2;
+    next.duelPhase = "attack";
+    const ids = currentDuelIds(next);
+    setActivePlayer(next, ids.attackerId);
+    next.standings = computeStandings(next);
+    return next;
+  }
+
+  // Les deux équipes ont terminé leur attaque/défense sur cette cible.
+  return finishOrAdvanceInning(next);
+}
+
+function playTeamDuelTurn(state: BaseballState, dartsInput: GameDart[]): BaseballState {
+  const next = cloneState(state);
+  const count = teamDuelCount(next);
+  if (count <= 0) return state;
+
+  const index = Math.max(0, Math.min(count * 4 - 1, next.duelPairIndex));
+  const context = teamForDuelIndex(next, index);
+  const attackingTeam = context.attackingTeam;
+  const defendingTeam = context.defendingTeam;
+  if (!attackingTeam || !defendingTeam) return state;
+
+  const pair = currentDuelIds(next);
+  const role: BaseballDuelRole = context.phase;
+  next.duelPhase = role;
+  const playerId = role === "attack" ? pair.attackerId : pair.defenderId;
+  const opponentPlayerId = role === "attack" ? pair.defenderId : pair.attackerId;
+  const player = next.players.find((candidate) => candidate.id === playerId);
+  if (!player) return state;
+
+  const { darts, endedByMiss } = effectiveDarts(dartsInput, next.rules.missEndsTurn);
+  const stats = next.statsByPlayer[playerId] || (next.statsByPlayer[playerId] = emptyStats());
+  const labels = darts.map(dartLabel);
+  let power = 0;
+  let ownBullDelta = 0;
+  let opponentDelta = 0;
+
+  stats.visits += 1;
+  if (role === "attack") stats.attackVisits += 1;
+  else stats.defenseVisits += 1;
+  if (endedByMiss) stats.turnsLostOnMiss += 1;
+
+  for (const dart of darts) {
+    registerDartStats(stats, dart);
+    const dartPower = classicTargetRuns(dart, next.target, next.rules.bullTargetMode);
+    if (dartPower > 0) {
+      stats.targetHits += 1;
+      stats.bestDart = Math.max(stats.bestDart, dartPower);
+      power += dartPower;
+    }
+    const effect = applySpecialBull(next, playerId, dart, role, opponentPlayerId);
+    const bullSpecialIsActive = (dart?.bed === "OB" || dart?.bed === "IB") && (
+      (next.rules.bullTargetMode === "attack" && role === "attack") ||
+      (next.rules.bullTargetMode === "defense" && role === "defense")
+    );
+    if (dartPower <= 0 && isOnBoard(dart) && !bullSpecialIsActive) stats.wastedDarts += 1;
+    ownBullDelta += effect.ownDelta;
+    opponentDelta += effect.opponentDelta;
+    if (effect.ownDelta > 0) {
+      if (dart.bed === "OB") stats.bullAttackBonus += effect.ownDelta;
+      else stats.dbullAttackDoubles += 1;
+    }
+    if (effect.opponentDelta < 0) {
+      stats.bullDefenseDamage += -effect.opponentDelta;
+      if (dart.bed === "IB") stats.dbullDefenseHalves += 1;
+    }
+  }
+
+  if (role === "attack") {
+    stats.attackPower += power;
+    stats.rawRuns += power;
+    stats.bestInning = Math.max(stats.bestInning, power);
+    next.pendingAttackPower = Number(next.pendingAttackPower || 0) + power;
+    next.pendingAttackerId = attackingTeam.id;
+    next.pendingDefenderId = defendingTeam.id;
+    next.pendingAttackHadOwnScore = next.pendingAttackHadOwnScore || ownBullDelta > 0;
+    pushVisit(next, {
+      inning: next.inning,
+      target: next.target,
+      playerId,
+      darts,
+      labels,
+      runs: ownBullDelta,
+      rawRuns: power,
+      penaltyRunsLost: 0,
+      role,
+      opponentPlayerId,
+      power,
+      attackPower: next.pendingAttackPower,
+      bullScoreDelta: ownBullDelta,
+      opponentScoreDelta: opponentDelta,
+      endedByMiss,
+    });
+
+    const isLastAttacker = index === count - 1 || index === count * 3 - 1;
+    if (!isLastAttacker) {
+      next.duelPairIndex += 1;
+      next.duelPhase = "attack";
+      setActivePlayer(next, currentDuelIds(next).attackerId);
+      next.standings = computeStandings(next);
+      return next;
+    }
+
+    const attackingTeamIndex: 0 | 1 = index < count ? 0 : 1;
+    // Si toute l'attaque fait 0, aucune défense inutile : on valide 0 et on passe directement à l'autre attaque.
+    if (next.pendingAttackPower <= 0) {
+      finalizeTeamHalfInning(next, attackingTeam, attackingTeam.playerIds[0] || playerId, 0);
+      return advanceTeamDuelAfterHalf(next, attackingTeamIndex);
+    }
+
+    // Le total d'attaque est connu : l'équipe adverse commence maintenant à défendre ce total.
+    next.duelPairIndex = attackingTeamIndex === 0 ? count : count * 3;
+    next.duelPhase = "defense";
+    setActivePlayer(next, currentDuelIds(next).defenderId);
+    next.standings = computeStandings(next);
+    return next;
+  }
+
+  // DÉFENSE : chaque défenseur retire sa puissance du total d'attaque restant.
+  stats.defensePower += power;
+  const remainingBefore = Math.max(0, Number(next.pendingAttackPower || 0));
+  const prevented = Math.min(remainingBefore, power);
+  stats.runsPrevented += prevented;
+  next.pendingAttackPower = Math.max(0, remainingBefore - power);
+
+  pushVisit(next, {
+    inning: next.inning,
+    target: next.target,
+    playerId,
+    darts,
+    labels,
+    runs: 0,
+    rawRuns: 0,
+    penaltyRunsLost: 0,
+    role,
+    opponentPlayerId,
+    power,
+    attackPower: remainingBefore,
+    defensePower: power,
+    duelPoints: next.pendingAttackPower,
+    bullScoreDelta: ownBullDelta,
+    opponentScoreDelta: opponentDelta,
+    endedByMiss,
+  });
+
+  const attackingTeamIndex: 0 | 1 = index < count * 2 ? 0 : 1;
+  const isLastDefender = index === count * 2 - 1 || index === count * 4 - 1;
+  const defenseHasNeutralizedAttack = next.pendingAttackPower <= 0;
+
+  if (!isLastDefender && !defenseHasNeutralizedAttack) {
+    next.duelPairIndex += 1;
+    next.duelPhase = "defense";
+    setActivePlayer(next, currentDuelIds(next).defenderId);
+    next.standings = computeStandings(next);
+    return next;
+  }
+
+  const finalPoints = finalizeTeamHalfInning(next, attackingTeam, attackingTeam.playerIds[0] || pair.attackerId, next.pendingAttackPower);
+  const attackCaptainStats = next.statsByPlayer[attackingTeam.playerIds[0]] || (next.statsByPlayer[attackingTeam.playerIds[0]] = emptyStats());
+  attackCaptainStats.duelPoints += finalPoints;
+  return advanceTeamDuelAfterHalf(next, attackingTeamIndex);
+}
+
 function playDuelTurn(state: BaseballState, dartsInput: GameDart[]): BaseballState {
+  if (state.rules.participantMode === "teams") return playTeamDuelTurn(state, dartsInput);
   const next = cloneState(state);
   const { attackerId, defenderId } = currentDuelIds(next);
   const role: BaseballDuelRole = next.duelPhase === "defense" ? "defense" : "attack";
