@@ -1616,7 +1616,9 @@ export default function CapitalPlay(props: any) {
               <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.72), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.24)", pointerEvents: "none" }} />
               <div style={{ position: "relative", width: "100%", padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                 <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>CONTRAT</div>
-                <div style={{ marginTop: 1, color: "rgba(255,255,255,.76)", fontSize: 9.6, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isFinished ? "—" : contractLabel(currentContract)}</div>
+                {!isFinished && String(contractLabel(currentContract)).trim().toLowerCase() !== String(capitalContractTarget(currentContract)).trim().toLowerCase() ? (
+                  <div style={{ marginTop: 1, color: "rgba(255,255,255,.76)", fontSize: 9.6, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{contractLabel(currentContract)}</div>
+                ) : null}
                 <div style={{ marginTop: 1, color: "#ffcf57", fontSize: capitalContractTarget(currentContract).length > 4 ? 22 : 46, lineHeight: .92, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.38)" }}>{isFinished ? "—" : capitalContractTarget(currentContract)}</div>
                 <div style={{ marginTop: 3, color: "#35d8ff", fontSize: 8.4, fontWeight: 1000 }}>ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}</div>
                 {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 1, color: "#fff", fontSize: 8.2, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
@@ -1658,8 +1660,24 @@ export default function CapitalPlay(props: any) {
             boxShadow: "inset 0 0 18px rgba(0,0,0,.18)",
           }}
         >
-          <img src={tickerClassements} alt="Classement" style={{ display: "block", width: "min(170px,48vw)", height: "auto", objectFit: "contain", opacity: .95 }} />
-          <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,207,87,.36)", color: "#ffcf57", fontSize: 12, fontWeight: 1000 }}>›</span>
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: -12,
+              backgroundImage: `linear-gradient(90deg, rgba(2,7,12,.80), rgba(2,7,12,.34) 48%, rgba(2,7,12,.80)), url(${tickerClassements})`,
+              backgroundPosition: "center",
+              backgroundSize: "cover, 132% auto",
+              backgroundRepeat: "no-repeat",
+              filter: "blur(5px) saturate(1.08)",
+              opacity: .28,
+              transform: "scale(1.08)",
+              pointerEvents: "none",
+            }}
+          />
+          <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.52), rgba(0,0,0,.12) 50%, rgba(0,0,0,.52))", pointerEvents: "none" }} />
+          <img src={tickerClassements} alt="Classement" style={{ position: "relative", zIndex: 1, display: "block", width: "min(170px,48vw)", height: "auto", objectFit: "contain", opacity: .96, filter: "drop-shadow(0 0 5px rgba(53,216,255,.16))" }} />
+          <span style={{ position: "absolute", zIndex: 2, right: 9, top: "50%", transform: "translateY(-50%)", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,207,87,.36)", color: "#ffcf57", fontSize: 12, fontWeight: 1000 }}>›</span>
         </button>
 
         <div

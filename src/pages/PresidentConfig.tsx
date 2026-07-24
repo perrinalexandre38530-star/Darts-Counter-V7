@@ -11,6 +11,7 @@ import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
+import tickerPresident from "../assets/tickers/ticker_president.png";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
@@ -189,7 +190,7 @@ export default function PresidentConfig(props: any) {
   const blockByStep = [participants, reign, chaos, input, summary];
 
   return <div style={{ minHeight: "100dvh", paddingBottom: 90, overflowX: "hidden" }}>
-    <PageHeader title="♛ PRÉSIDENT" subtitle="Le jeu de cartes adapté aux fléchettes" left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour" />} right={<InfoDot title="Règles du Président" color={primary} glow={`${primary}77`} content={<Rules color={primary} />} />} />
+    <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour" />} right={<InfoDot title="Règles du Président" color={primary} glow={`${primary}77`} content={<Rules color={primary} />} />} />
     <div style={{ padding: "8px 8px 0", maxWidth: 920, margin: "0 auto" }}>
       <section style={{ ...card, border: `1px solid ${primary}68` }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}><div><div style={{ color: primary, fontWeight: 1000, letterSpacing: 1 }}>CONFIGURATION PRÉSIDENT</div><div style={{ color: muted, fontSize: 10.5, marginTop: 4 }}>Main virtuelle · plis · hiérarchie · taxes</div></div><div style={{ display: "flex", gap: 7 }}><PillButton label="Guidée" active={view === "guided"} onClick={() => { setView("guided"); try { localStorage.setItem("dc_president_config_view", "guided"); } catch {} }} primary={primary} primarySoft={soft} /><PillButton label="Complète" active={view === "complete"} onClick={() => { setView("complete"); try { localStorage.setItem("dc_president_config_view", "complete"); } catch {} }} primary={primary} primarySoft={soft} /></div></div></section>
 

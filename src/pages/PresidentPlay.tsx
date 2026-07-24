@@ -10,6 +10,7 @@ import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
+import tickerPresident from "../assets/tickers/ticker_president.png";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -282,7 +283,10 @@ export default function PresidentPlay(props: any) {
 
   const standingsLive = getPresidentStandings(state);
   return <div style={{ minHeight:"100dvh", color:text, background:`radial-gradient(circle at 50% -5%,${primary}1f 0,${theme?.bg || "#080b14"} 44%,#020309 100%)`, paddingBottom:8, overflowX:"hidden" }}>
-    <PageHeader title="♛ PRÉSIDENT" subtitle={`Manche ${Math.min(state.roundNo,config.rounds)}/${config.rounds} · Pli ${state.trickNo}`} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour configuration" />} right={<InfoDot title="Règles Président" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} />} />
+    <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={90} tickerEdgeFade="strong" tickerBottomGap={8} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour configuration" />} right={<InfoDot title="Règles Président" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} />} />
+    <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:"0 8px 4px", boxSizing:"border-box" }}>
+      <div style={{ color: primary, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 2 }}>MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds} · PLI {state.trickNo}</div>
+    </div>
     <div style={{ width:"100%", maxWidth:980, margin:"0 auto", padding:"6px 8px 8px", boxSizing:"border-box" }}>
       <section style={{ ...panel(), marginBottom:7, borderColor:`${primary}66`, padding:9 }}>
         <div style={{ display:"grid", gridTemplateColumns:"54px minmax(0,1fr) auto", gap:9, alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={50} /><div style={{ minWidth:0 }}><div style={{ color:primary, fontSize:9.5, fontWeight:1000, letterSpacing:1 }}>{botThinking?"BOT EN RÉFLEXION":"JOUEUR ACTIF"}</div><div style={{ fontSize:16, fontWeight:1100, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{playerName(activeProfile)}</div><div style={{ color:roleColor(currentRole,primary), fontSize:9.5, fontWeight:1000 }}>{currentRole} · {hand.length} carte{hand.length>1?"s":""}</div></div><button onClick={()=>setShowTable(true)} style={{ minHeight:36, borderRadius:999, border:`1px solid ${primary}55`, background:`${primary}0e`, color:primary, fontWeight:1000, padding:"0 11px" }}>CLASSEMENT</button></div>

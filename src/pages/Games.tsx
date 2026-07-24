@@ -868,34 +868,43 @@ export default function Games({ setTab, params }: Props) {
     );
   }
 
-  // ✅ Ticker du haut: nouveaux modes
+  // ✅ Ticker NEW GAME : les 10 derniers modes réellement ajoutés à l'application.
+  // L'ordre est du plus récent au plus ancien afin que le premier affiché soit
+  // toujours le dernier mode intégré. Le composant les fait ensuite défiler en boucle.
+  const RECENT_GAME_IDS = React.useMemo(
+    () => [
+      "president",
+      "attrape_moi",
+      "prisoner",
+      "shooter",
+      "bobs_27",
+      "baseball",
+      "capital",
+      "departements",
+      "scram",
+      "golf",
+    ],
+    []
+  );
+
   const newModes: NewModeTickerItem[] = React.useMemo(() => {
-    const list = (DARTS_GAMES || []).filter((g: any) => g && g.ready);
+    const byId = new Map((DARTS_GAMES || []).map((g: any) => [String(g.id), g]));
 
-    const explicit = list.filter((g: any) => g.isNew === true);
-    const base = explicit.length
-      ? explicit
-      : list.filter((g: any) => {
-          const id = String(g.id || "");
-          return (
-            id.includes("happy") ||
-            id.includes("t70") ||
-            id.includes("halve") ||
-            id.includes("bobs") ||
-            id.includes("bob") ||
-            id.includes("count") ||
-            id.includes("prison") ||
-            id.includes("encul") ||
-            id.includes("vache")
-          );
-        });
-
-    return (base.length ? base : list.slice(0, 6)).slice(0, 12).map((g: any) => ({
-      id: String(g.id),
-      label: String(g.label),
-      configPath: configPathForGame(g),
-    }));
-  }, []);
+    return RECENT_GAME_IDS
+      .map((id) => byId.get(id))
+      .filter((g: any) => !!g && !!g.ready)
+      .slice(0, 10)
+      .map((g: any) => ({
+        id: String(g.id),
+        label: String(g.label),
+        configPath: configPathForGame(g),
+        // TERRITORIES utilise déjà un ticker localisé dédié.
+        tickerSrc:
+          String(g.id) === "departements"
+            ? findTickerById(territoriesTickerKeyForLang(lang)) || undefined
+            : undefined,
+      }));
+  }, [RECENT_GAME_IDS, lang]);
 
   // ✅ Ticker du bas: tous les modes (random), IMAGE SEULE (sans NEW/PLAY)
   const allTickerPool = React.useMemo(() => {
@@ -1240,10 +1249,27 @@ export default function Games({ setTab, params }: Props) {
           alignItems: "center",
           justifyContent: "center",
           marginBottom: gamesView === "hub" ? 14 : 6,
-          minHeight: gamesView === "hub" ? 70 : 36,
+          minHeight: gamesView === "hub" ? 0 : 36,
+          // Sur le HUB, le ticker JEUX/GAMES sort volontairement du padding de page
+          // pour occuper 100% de la largeur disponible. Le BackDot flotte par-dessus.
+          ...(gamesView === "hub"
+            ? {
+                width: "calc(100% + 32px)",
+                marginLeft: -16,
+                marginRight: -16,
+              }
+            : {}),
         }}
       >
-        <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+        <div
+          style={{
+            position: "absolute",
+            left: gamesView === "hub" ? 12 : 0,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 5,
+          }}
+        >
           <BackDot onClick={backFromGamesView} />
         </div>
 
@@ -1254,10 +1280,13 @@ export default function Games({ setTab, params }: Props) {
               alt={pageTitle}
               draggable={false}
               style={{
-                width: "min(72vw, 360px)",
-                maxHeight: 78,
+                width: "100%",
+                height: "auto",
+                maxWidth: "none",
                 objectFit: "contain",
                 display: "block",
+                position: "relative",
+                zIndex: 1,
                 filter: `drop-shadow(0 0 12px ${theme.primary}55)`,
               }}
             />
@@ -1502,9 +1531,6 @@ export default function Games({ setTab, params }: Props) {
                     const visuallyDisabled = devVisuallyDisabled(ready);
                     const clickable = devClickable(ready, !!dev?.enabled);
                     const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
-                    const isAttrapeMoi = g?.id === "attrape_moi";
-                    const attrapeAccent = "#ff5d9e";
-                    const attrapeGold = "#ffbf52";
 
                     return (
                       <button
@@ -1523,19 +1549,13 @@ export default function Games({ setTab, params }: Props) {
                           paddingRight: 46,
                           textAlign: "left",
                           borderRadius: 16,
-                          border: isAttrapeMoi
-                            ? `1px solid ${attrapeAccent}88`
-                            : `1px solid ${theme.borderSoft}`,
-                          background: isAttrapeMoi
-                            ? "linear-gradient(110deg, rgba(255,191,82,.13) 0%, rgba(15,12,22,.94) 38%, rgba(255,93,158,.12) 100%)"
-                            : CARD_BG,
+                          border: `1px solid ${theme.borderSoft}`,
+                          background: CARD_BG,
                           cursor: "pointer",
                           opacity: visuallyDisabled ? 0.55 : 1,
                           boxShadow: visuallyDisabled
                             ? "none"
-                            : isAttrapeMoi
-                              ? `0 12px 28px rgba(0,0,0,.62), 0 0 22px ${attrapeAccent}2f, inset 0 0 24px rgba(255,191,82,.05)`
-                              : `0 10px 24px rgba(0,0,0,0.55)`,
+                            : `0 10px 24px rgba(0,0,0,0.55)`,
                           overflow: "hidden",
                         }}
                       >
@@ -1549,15 +1569,11 @@ export default function Games({ setTab, params }: Props) {
                               letterSpacing: 0.8,
                               color: visuallyDisabled
                                 ? theme.textSoft
-                                : isAttrapeMoi
-                                  ? attrapeGold
-                                  : theme.primary,
+                                : theme.primary,
                               textTransform: "uppercase",
                               textShadow: visuallyDisabled
                                 ? "none"
-                                : isAttrapeMoi
-                                  ? `0 0 12px ${attrapeGold}55, 0 0 18px ${attrapeAccent}2c`
-                                  : `0 0 12px ${theme.primary}55`,
+                                : `0 0 12px ${theme.primary}55`,
                             }}
                           >
                             {g.label}
@@ -1599,7 +1615,7 @@ export default function Games({ setTab, params }: Props) {
                                 infoBody: g.infoBody,
                               });
                             }}
-                            glow={(isAttrapeMoi ? attrapeAccent : theme.primary) + "88"}
+                            glow={theme.primary + "88"}
                           />
                         </div>
                       </button>
