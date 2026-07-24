@@ -228,6 +228,7 @@ export default function ScramPlay(props: any) {
   const [hitMode, setHitMode] = React.useState<HitMode>("S");
   const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
   const [showEnd, setShowEnd] = React.useState(false);
+  const [showStats, setShowStats] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const [viewport, setViewport] = React.useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 390,
@@ -288,6 +289,16 @@ export default function ScramPlay(props: any) {
   const playableTargets = UI_TARGETS.filter((target) => target !== 25 || state.rules.useBull);
   const stopperMarks = state.marksByTeam[state.stopperTeam];
   const closedCount = playableTargets.filter((target) => stopperMarks[target] >= 3).length;
+  const liveTotals = React.useMemo(() => {
+    const stats = state.players.map((player) => state.statsByPlayer[String(player.id)] || emptyStats());
+    return {
+      visits: stats.reduce((sum, row) => sum + Number(row.visits || 0), 0),
+      darts: stats.reduce((sum, row) => sum + Number(row.darts || 0), 0),
+      points: stats.reduce((sum, row) => sum + Number(row.points || 0), 0),
+      marks: stats.reduce((sum, row) => sum + Number(row.marks || 0), 0),
+      closes: stats.reduce((sum, row) => sum + Number(row.targetsClosed || 0), 0),
+    };
+  }, [state.history.length, state.phase, state.players, state.statsByPlayer]);
 
   React.useEffect(() => {
     if (!activeProfile || state.finished || !isBot(activeProfile, botIds)) {
@@ -589,7 +600,7 @@ export default function ScramPlay(props: any) {
         right={<div style={{ marginRight: 9 }}><InfoDot title="Règles du Scram" color={T.gold} glow="rgba(255,215,106,.58)" content={<RulesContent useBull={state.rules.useBull} maxRounds={state.rules.maxRoundsPerPhase} isSolo={isSolo} />} /></div>}
       />
 
-      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", marginTop: 0, padding: "10px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto auto auto", alignContent: "start", gap: 6, overflow: "hidden", position: "relative" }}>
+      <main style={{ flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", marginTop: 0, padding: "8px 7px max(5px, env(safe-area-inset-bottom))", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto auto", alignContent: "stretch", gap: 6, overflow: "hidden", position: "relative" }}>
         <section style={{ ...panelStyle(), minWidth: 0, marginTop: 0, padding: "9px 6px 6px", borderColor: `${activeColor}66`, boxShadow: `0 0 18px ${activeColor}20, inset 0 0 18px ${activeColor}0c` }}>
           <div style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 106px", gap: 6, alignItems: "stretch" }}>
             <div style={{ minWidth: 0, display: "grid", justifyItems: "center", alignContent: "center", gap: 2, padding: "2px 0" }}>
@@ -640,30 +651,32 @@ export default function ScramPlay(props: any) {
           </div>
         </section>
 
-        <section style={{ ...panelStyle(), minWidth: 0, padding: "5px 6px 6px", overflow: "hidden", borderColor: `${TEAM_COLOR[state.stopperTeam]}45` }}>
+        <section style={{ ...panelStyle(), minWidth: 0, minHeight: 0, padding: "6px 6px 7px", overflow: "hidden", borderColor: `${TEAM_COLOR[state.stopperTeam]}45`, display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 3px 4px" }}>
             <div style={{ fontSize: 10.5, fontWeight: 1000, color: T.gold, letterSpacing: .55 }}>MARQUEURS</div>
             <div style={{ fontSize: 8.5, color: T.soft, fontWeight: 850 }}>{closedCount}/{playableTargets.length} FERMÉ{closedCount > 1 ? "S" : ""}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateRows: `repeat(${playableTargets.length}, clamp(20px, 2.65dvh, 27px))`, gap: 2 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: `repeat(${playableTargets.length}, minmax(28px,1fr))`, gap: 3 }}>
             {playableTargets.map((target) => {
               const markA = state.marksByTeam.A[target] || 0;
               const markB = state.marksByTeam.B[target] || 0;
               const targetColor = TARGET_COLOR[target];
               return (
-                <div key={target} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px minmax(0,1fr)", gap: 4, alignItems: "stretch" }}>
-                  <div style={{ display: "grid", placeItems: "center", borderRadius: 7, border: `1px solid ${markA >= 3 ? TEAM_COLOR.A + "88" : "rgba(255,255,255,.075)"}`, background: markA >= 3 ? `${TEAM_COLOR.A}12` : "rgba(20,31,54,.42)" }}>
-                    <CricketMarkIcon marks={markA} color={TEAM_COLOR.A} size={16} glow />
+                <div key={target} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px minmax(0,1fr)", gap: 5, alignItems: "stretch" }}>
+                  <div style={{ display: "grid", placeItems: "center", borderRadius: 9, border: `1px solid ${markA >= 3 ? TEAM_COLOR.A + "88" : "rgba(255,255,255,.075)"}`, background: markA >= 3 ? `${TEAM_COLOR.A}12` : "rgba(20,31,54,.42)" }}>
+                    <CricketMarkIcon marks={markA} color={TEAM_COLOR.A} size={19} glow />
                   </div>
-                  <div style={{ display: "grid", placeItems: "center", color: targetColor, fontSize: target === 25 ? 10.5 : 14, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 8px ${targetColor}70` }}>{targetLabel(target)}</div>
-                  <div style={{ display: "grid", placeItems: "center", borderRadius: 7, border: `1px solid ${markB >= 3 ? TEAM_COLOR.B + "88" : "rgba(255,255,255,.075)"}`, background: markB >= 3 ? `${TEAM_COLOR.B}12` : "rgba(20,31,54,.42)" }}>
-                    <CricketMarkIcon marks={markB} color={TEAM_COLOR.B} size={16} glow />
+                  <div style={{ display: "grid", placeItems: "center", color: targetColor, fontSize: target === 25 ? 11.5 : 15.5, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 8px ${targetColor}70` }}>{targetLabel(target)}</div>
+                  <div style={{ display: "grid", placeItems: "center", borderRadius: 9, border: `1px solid ${markB >= 3 ? TEAM_COLOR.B + "88" : "rgba(255,255,255,.075)"}`, background: markB >= 3 ? `${TEAM_COLOR.B}12` : "rgba(20,31,54,.42)" }}>
+                    <CricketMarkIcon marks={markB} color={TEAM_COLOR.B} size={19} glow />
                   </div>
                 </div>
               );
             })}
           </div>
         </section>
+
+        <LiveStatsStrip totals={liveTotals} onClick={() => setShowStats(true)} />
 
         <section style={{ ...panelStyle(), minWidth: 0, minHeight: 0, padding: 6, overflow: "hidden" }}>
           <div style={{ minHeight: 0, display: "grid", gridTemplateRows: inputMethod === "dartboard" ? "auto auto auto" : "auto auto auto", alignContent: "start", gap: 6 }}>
@@ -714,6 +727,16 @@ export default function ScramPlay(props: any) {
           onReplay={saveAndReplay}
         />
       ) : null}
+
+      {showStats ? (
+        <LiveStatsModal
+          state={state}
+          profilesById={byId}
+          sideNames={sideNames}
+          isSolo={isSolo}
+          onClose={() => setShowStats(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -732,6 +755,134 @@ function ActionButton({ label, color, disabled, onClick }: any) {
 
 function MiniKpi({ label, value }: { label: string; value: number }) {
   return <div style={{ minWidth: 0, padding: "3px 2px", borderRadius: 8, textAlign: "center", background: "rgba(255,255,255,.042)", border: `1px solid ${T.stroke}` }}><div style={{ color: T.soft, fontSize: 7.5, fontWeight: 1000 }}>{label}</div><div style={{ color: T.cyan, fontSize: 12.5, lineHeight: 1.05, fontWeight: 1000, marginTop: 1 }}>{value}</div></div>;
+}
+
+function LiveStatsStrip({ totals, onClick }: { totals: { visits: number; darts: number; points: number; marks: number; closes: number }; onClick: () => void }) {
+  const kpis = [
+    ["VOLÉES", totals.visits, T.cyan],
+    ["DARTS", totals.darts, "#9ed7ff"],
+    ["POINTS", totals.points, T.gold],
+    ["MARKS", totals.marks, "#ff6ed8"],
+    ["FERM.", totals.closes, T.green],
+  ] as const;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Ouvrir toutes les statistiques de la partie"
+      style={{ ...panelStyle(), width: "100%", minWidth: 0, minHeight: 48, padding: "5px 6px", display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr)) 20px", gap: 4, alignItems: "stretch", color: T.text, cursor: "pointer", borderColor: "rgba(66,214,255,.3)", background: "linear-gradient(180deg,rgba(24,40,66,.96),rgba(7,11,20,.92))", boxSizing: "border-box" }}
+    >
+      {kpis.map(([label, value, color]) => (
+        <div key={label} style={{ minWidth: 0, display: "grid", placeItems: "center", alignContent: "center", borderRadius: 9, border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.035)", padding: "3px 1px" }}>
+          <div style={{ maxWidth: "100%", color: T.soft, fontSize: 6.8, lineHeight: 1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+          <div style={{ marginTop: 2, color, fontSize: 13.5, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 8px ${color}55` }}>{value}</div>
+        </div>
+      ))}
+      <div style={{ display: "grid", placeItems: "center", color: T.cyan, fontSize: 20, fontWeight: 500 }}>›</div>
+    </button>
+  );
+}
+
+function LiveStatsModal({ state, profilesById, sideNames, isSolo, onClose }: any) {
+  const rows = state.players.map((player: any) => {
+    const team: ScramTeam = state.teamByPlayer[player.id];
+    const stats: ScramPlayerStats = state.statsByPlayer[player.id] || emptyStats();
+    const metrics = buildPlayerScramMetrics(state, String(player.id), stats);
+    return { player, profile: profilesById.get(String(player.id)) || player, team, stats, metrics };
+  });
+  const totals = {
+    visits: rows.reduce((sum: number, row: any) => sum + Number(row.stats.visits || 0), 0),
+    darts: rows.reduce((sum: number, row: any) => sum + Number(row.stats.darts || 0), 0),
+    points: rows.reduce((sum: number, row: any) => sum + Number(row.stats.points || 0), 0),
+    marks: rows.reduce((sum: number, row: any) => sum + Number(row.stats.marks || 0), 0),
+    closes: rows.reduce((sum: number, row: any) => sum + Number(row.stats.targetsClosed || 0), 0),
+    hits: rows.reduce((sum: number, row: any) => sum + Number(row.stats.hits || 0), 0),
+    targetDarts: rows.reduce((sum: number, row: any) => sum + Number(row.metrics.onTargetDarts || 0), 0),
+    bestScore: rows.reduce((best: number, row: any) => Math.max(best, Number(row.metrics.bestScoringVisit || 0)), 0),
+    bestMarks: rows.reduce((best: number, row: any) => Math.max(best, Number(row.metrics.bestMarksVisit || 0)), 0),
+  };
+  const globalKpis = [
+    ["VOLÉES", totals.visits], ["DARTS", totals.darts], ["POINTS", totals.points], ["MARKS", totals.marks],
+    ["FERMETURES", totals.closes], ["TOUCHES", totals.hits], ["CIBLE %", `${percent(totals.targetDarts, totals.darts).toFixed(1)}%`],
+    ["BEST SCORE", totals.bestScore], ["BEST MARKS", totals.bestMarks],
+  ];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1100, display: "grid", placeItems: "center", padding: 10, background: "rgba(0,0,0,.8)", backdropFilter: "blur(9px)" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(820px,97vw)", maxHeight: "92dvh", overflowY: "auto", borderRadius: 22, padding: 12, color: T.text, background: "linear-gradient(180deg,#172642,#070a12)", border: "1px solid rgba(66,214,255,.5)", boxShadow: "0 0 38px rgba(66,214,255,.2)" }}>
+        <div style={{ position: "sticky", top: -12, zIndex: 2, margin: "-12px -12px 10px", padding: "12px 12px 9px", display: "grid", gridTemplateColumns: "32px 1fr 32px", alignItems: "center", background: "linear-gradient(180deg,#172642 72%,rgba(23,38,66,0))" }}>
+          <div />
+          <div style={{ textAlign: "center" }}>
+            <div style={{ color: T.cyan, fontSize: 15, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>STATS DE LA PARTIE</div>
+            <div style={{ marginTop: 4, color: T.soft, fontSize: 9.5, fontWeight: 900 }}>PHASE {state.phase}/2 • ROUND {state.round}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fermer les statistiques" style={{ width: 30, height: 30, borderRadius: 999, border: `1px solid ${T.stroke}`, background: "rgba(0,0,0,.25)", color: T.text, fontSize: 18, lineHeight: 1, cursor: "pointer" }}>×</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 7, alignItems: "center", marginBottom: 10 }}>
+          <TeamResult team="A" label={sideNames?.A || (isSolo ? "Joueur A" : "ÉQUIPE A")} score={state.scores.A} winner={false} />
+          <div style={{ color: T.soft, fontWeight: 1000 }}>—</div>
+          <TeamResult team="B" label={sideNames?.B || (isSolo ? "Joueur B" : "ÉQUIPE B")} score={state.scores.B} winner={false} />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginBottom: 12 }}>
+          {globalKpis.map(([label, value]) => <StatCell key={String(label)} label={String(label)} value={value} color={label === "POINTS" || label === "BEST SCORE" ? T.gold : label === "MARKS" || label === "BEST MARKS" ? "#ff6ed8" : T.cyan} />)}
+        </div>
+
+        <div style={{ color: T.gold, fontSize: 11, fontWeight: 1000, letterSpacing: .55, margin: "0 2px 7px" }}>DÉTAIL PAR JOUEUR</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((row: any) => (
+            <div key={row.player.id} style={{ padding: 9, borderRadius: 16, border: `1px solid ${TEAM_COLOR[row.team]}55`, background: `${TEAM_COLOR[row.team]}0b` }}>
+              <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 7, alignItems: "center", marginBottom: 8 }}>
+                <ProfileAvatar profile={row.profile as any} size={38} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(row.profile)}</div>
+                  <div style={{ marginTop: 2, color: TEAM_COLOR[row.team], fontSize: 8.5, fontWeight: 1000 }}>{roleLabel(row.team, state.stopperTeam)}{!isSolo ? ` • ${sideNames?.[row.team] || `ÉQUIPE ${row.team}`}` : ""}</div>
+                </div>
+                <div style={{ color: TEAM_COLOR[row.team], fontSize: 22, fontWeight: 1000 }}>{row.stats.points}</div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+                <StatCell label="POINTS" value={row.stats.points} color={T.gold} />
+                <StatCell label="MARKS" value={row.stats.marks} color="#ff6ed8" />
+                <StatCell label="FERM." value={row.stats.targetsClosed} color={T.green} />
+                <StatCell label="DARTS" value={row.stats.darts} color={T.cyan} />
+                <StatCell label="VOLÉES" value={row.stats.visits} />
+                <StatCell label="TOUCHES %" value={`${row.metrics.hitRate.toFixed(1)}%`} />
+                <StatCell label="CIBLE %" value={`${row.metrics.targetRate.toFixed(1)}%`} />
+                <StatCell label="MPR" value={row.metrics.mpr.toFixed(2)} color="#ff6ed8" />
+                <StatCell label="VOL. BLOQ." value={row.stats.stopperVisits} />
+                <StatCell label="MARKS/VOL." value={row.metrics.marksPerStopperVisit.toFixed(2)} color="#ff6ed8" />
+                <StatCell label="BEST MARKS" value={row.metrics.bestMarksVisit} color="#ff6ed8" />
+                <StatCell label="BLOQUÉES" value={row.stats.blockedDarts} />
+                <StatCell label="VOL. SCORE" value={row.stats.scorerVisits} />
+                <StatCell label="PTS/VOL." value={row.metrics.pointsPerScorerVisit.toFixed(1)} color={T.gold} />
+                <StatCell label="BEST SCORE" value={row.metrics.bestScoringVisit} color={T.gold} />
+                <StatCell label="HORS CIBLE" value={row.stats.wastedDarts} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 3, marginTop: 5 }}>
+                <StatCell label="S" value={row.stats.singles} compact />
+                <StatCell label="D" value={row.stats.doubles} compact />
+                <StatCell label="T" value={row.stats.triples} compact />
+                <StatCell label="BULL" value={row.stats.bulls} compact />
+                <StatCell label="DBULL" value={row.stats.dbulls} compact />
+                <StatCell label="MISS" value={row.stats.misses} compact />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, color = T.cyan, compact = false }: { label: string; value: React.ReactNode; color?: string; compact?: boolean }) {
+  return (
+    <div style={{ minWidth: 0, padding: compact ? "4px 1px" : "5px 2px", borderRadius: compact ? 7 : 9, textAlign: "center", background: "rgba(255,255,255,.04)", border: `1px solid ${T.stroke}` }}>
+      <div style={{ color: T.soft, fontSize: compact ? 6.5 : 7.2, lineHeight: 1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ color, fontSize: compact ? 11 : 12.5, lineHeight: 1.05, fontWeight: 1000, marginTop: 2 }}>{value}</div>
+    </div>
+  );
 }
 
 function ScoreGhostVisual({ logoSrc, fallbackProfile, size = 64 }: { logoSrc?: string | null; fallbackProfile?: any; size?: number }) {
