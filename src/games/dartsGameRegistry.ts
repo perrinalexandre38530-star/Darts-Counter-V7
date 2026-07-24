@@ -30,6 +30,7 @@ export type DartsGameTab =
   | "shooter_config"
   | "baseball_config"
   | "attrape_moi_config"
+  | "president_config"
   | "football_config"
   | "rugby_config"
   | "capital_config"
@@ -457,6 +458,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "ATTRAPE-MOI SI TU PEUX !",
     infoBody:
       "Jeu de poursuite original. Le Fuyard démarre avec une avance configurable et marque en premier. Le Chasseur doit atteindre ou dépasser son score cumulé avant la fin des rounds. Capture = manche au Chasseur ; survie jusqu'au dernier round = manche au Fuyard. Les rôles s'inversent après chaque manche. Formats BO3 / BO5 / BO7, sets, joueurs, équipes et BOTS IA.",
+  },
+  {
+    id: "president",
+    label: "Président",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "president_config",
+    popularityRank: 35.7,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:president",
+    infoTitle: "PRÉSIDENT",
+    infoBody:
+      "Le jeu de cartes adapté aux fléchettes. Chaque joueur reçoit une main virtuelle : S joue une carte, D une paire, T un brelan. Il faut battre la combinaison précédente avec une valeur supérieure, avec 3 fléchettes maximum pour réussir. Le premier sans carte devient Président, le dernier Trou du cul. Les manches suivantes appliquent les taxes Président/Trou du cul. Variante Chaos : BULL joker, DBULL Coup d’État et T20 Révolution.",
   },
   {
     id: "football",
@@ -1141,6 +1160,7 @@ const READY_IDS = new Set<string>([
   "scram",
   "baseball",
   "attrape_moi",
+  "president",
   "bobs_27",
   "shooter",
   "prisoner",

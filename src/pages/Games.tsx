@@ -1153,7 +1153,7 @@ export default function Games({ setTab, params }: Props) {
     );
   }
 
-  // ✅ helper: watermark ticker inside game cards (75% width, 100% height, fades)
+  // ✅ helper: watermark ticker inside game cards (same visual treatment for all cards)
   function renderGameTickerWatermark(gameId: string) {
     const src = gameId === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(gameId);
     if (!src) return null;
@@ -1168,13 +1168,13 @@ export default function Games({ setTab, params }: Props) {
           height: "100%",
           width: "75%",
           pointerEvents: "none",
-          opacity: 0.22, // discret
+          opacity: 0.22,
           zIndex: 0,
-          // dégradé des deux côtés: transparent -> opaque -> transparent
+          // watermark identique aux autres cartes : décalé à droite + fondu sur la gauche
           WebkitMaskImage:
-            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.22) 10%, rgba(0,0,0,.9) 22%, rgba(0,0,0,1) 46%, rgba(0,0,0,1) 100%)",
           maskImage:
-            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.22) 10%, rgba(0,0,0,.9) 22%, rgba(0,0,0,1) 46%, rgba(0,0,0,1) 100%)",
         }}
       >
         <img
@@ -1502,6 +1502,9 @@ export default function Games({ setTab, params }: Props) {
                     const visuallyDisabled = devVisuallyDisabled(ready);
                     const clickable = devClickable(ready, !!dev?.enabled);
                     const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+                    const isAttrapeMoi = g?.id === "attrape_moi";
+                    const attrapeAccent = "#ff5d9e";
+                    const attrapeGold = "#ffbf52";
 
                     return (
                       <button
@@ -1520,11 +1523,19 @@ export default function Games({ setTab, params }: Props) {
                           paddingRight: 46,
                           textAlign: "left",
                           borderRadius: 16,
-                          border: `1px solid ${theme.borderSoft}`,
-                          background: CARD_BG,
+                          border: isAttrapeMoi
+                            ? `1px solid ${attrapeAccent}88`
+                            : `1px solid ${theme.borderSoft}`,
+                          background: isAttrapeMoi
+                            ? "linear-gradient(110deg, rgba(255,191,82,.13) 0%, rgba(15,12,22,.94) 38%, rgba(255,93,158,.12) 100%)"
+                            : CARD_BG,
                           cursor: "pointer",
                           opacity: visuallyDisabled ? 0.55 : 1,
-                          boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+                          boxShadow: visuallyDisabled
+                            ? "none"
+                            : isAttrapeMoi
+                              ? `0 12px 28px rgba(0,0,0,.62), 0 0 22px ${attrapeAccent}2f, inset 0 0 24px rgba(255,191,82,.05)`
+                              : `0 10px 24px rgba(0,0,0,0.55)`,
                           overflow: "hidden",
                         }}
                       >
@@ -1536,9 +1547,17 @@ export default function Games({ setTab, params }: Props) {
                               fontSize: 14,
                               fontWeight: 800,
                               letterSpacing: 0.8,
-                              color: visuallyDisabled ? theme.textSoft : theme.primary,
+                              color: visuallyDisabled
+                                ? theme.textSoft
+                                : isAttrapeMoi
+                                  ? attrapeGold
+                                  : theme.primary,
                               textTransform: "uppercase",
-                              textShadow: visuallyDisabled ? "none" : `0 0 12px ${theme.primary}55`,
+                              textShadow: visuallyDisabled
+                                ? "none"
+                                : isAttrapeMoi
+                                  ? `0 0 12px ${attrapeGold}55, 0 0 18px ${attrapeAccent}2c`
+                                  : `0 0 12px ${theme.primary}55`,
                             }}
                           >
                             {g.label}
@@ -1546,17 +1565,18 @@ export default function Games({ setTab, params }: Props) {
 
                           <div
                             style={{
-                              marginTop: 4,
+                              marginTop: 5,
+                              minHeight: 18,
                               fontSize: 12,
                               color: theme.textSoft,
-                              opacity: 0.9,
+                              opacity: 0.94,
                             }}
                           >
-                            {comingSoon && (
+                            {comingSoon ? (
                               <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
                                 {comingSoon}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
@@ -1579,7 +1599,7 @@ export default function Games({ setTab, params }: Props) {
                                 infoBody: g.infoBody,
                               });
                             }}
-                            glow={theme.primary + "88"}
+                            glow={(isAttrapeMoi ? attrapeAccent : theme.primary) + "88"}
                           />
                         </div>
                       </button>

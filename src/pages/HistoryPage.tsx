@@ -352,6 +352,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
     { key: "baseball", label: "Baseball", aliases: ["baseball", "baseball darts"] },
     { key: "attrape_moi", label: "Attrape-moi", aliases: ["attrape_moi", "attrape moi", "attrape-moi", "catch me", "catchme"] },
+    { key: "president", label: "Président", aliases: ["president", "président"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "prisoner", label: "Prisoner", aliases: ["prisoner"] },
@@ -451,7 +452,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|bobs_27|bobs27|shooter|prisoner|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|prisoner|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -468,6 +469,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "scram",
     "baseball",
     "attrapemoi",
+    "president",
     "bobs_27",
     "bobs27",
     "shooter",
@@ -782,6 +784,7 @@ const modeColor: Record<string, string> = {
   baseball: "#67d4ff",
   attrape_moi: "#ff5d9e",
   attrapemoi: "#ff5d9e",
+  president: "#e9c56c",
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
   shooter: "#42d6ff",
@@ -1970,6 +1973,30 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
           {legs.length ? ` • ${legs.length} manches` : ""} • 💥 {captures} capture{captures > 1 ? "s" : ""} • 🏁 {escapes} évasion{escapes > 1 ? "s" : ""}
         </div>
         {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Vainqueur : {String(summary.winnerName)}</div> : null}
+      </div>
+    );
+  }
+
+  if (normalizeToken(baseMode(e)) === "president" || inferGameFilterKey(e, "darts") === "president") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const standings = Array.isArray(summary?.standings) ? summary.standings : [];
+    const rounds = Array.isArray(summary?.roundResults) ? summary.roundResults : Array.isArray(anyE?.payload?.roundResults) ? anyE.payload.roundResults : [];
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+          {standings.slice(0, 5).map((row: any, index: number) => (
+            <React.Fragment key={String(row?.id || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.32)" }}>•</span> : null}
+              <span style={{ color: index === 0 ? "#ffd76a" : "rgba(255,255,255,.86)", fontWeight: 1000 }}>{index + 1}. {String(row?.name || "Joueur")}{index === 0 ? " 👑" : ""}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000 }}>{Number(row?.powerPoints ?? row?.score ?? 0)} pts</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>
+          {Number(summary?.rounds || anyE?.payload?.config?.rounds || rounds.length || 1)} manche{Number(summary?.rounds || anyE?.payload?.config?.rounds || rounds.length || 1) > 1 ? "s" : ""} • main {Number(summary?.handSize || anyE?.payload?.config?.handSize || 0)} cartes • {String(summary?.variant || anyE?.payload?.config?.variant || "classic").toUpperCase()}
+        </div>
+        {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Président suprême : {String(summary.winnerName)}</div> : null}
       </div>
     );
   }

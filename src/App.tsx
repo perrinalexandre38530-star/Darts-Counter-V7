@@ -332,6 +332,8 @@ import BaseballConfig from "./pages/BaseballConfig";
 import BaseballPlay from "./pages/BaseballPlay";
 import AttrapeMoiConfig from "./pages/AttrapeMoiConfig";
 import AttrapeMoiPlay from "./pages/AttrapeMoiPlay";
+import PresidentConfig from "./pages/PresidentConfig";
+import PresidentPlay from "./pages/PresidentPlay";
 import Game170Config from "./pages/Game170Config";
 import Game170Play from "./pages/Game170Play";
 import FootballConfig from "./pages/FootballConfig";
@@ -906,6 +908,8 @@ type Tab =
   | "baseball_play"
   | "attrape_moi_config"
   | "attrape_moi_play"
+  | "president_config"
+  | "president_play"
   | "game_170_config"
   | "game_170_play"
   | "foot_menu"
@@ -5032,6 +5036,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "president_config":
+        page = <PresidentConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "president_play":
+        page = (
+          <PresidentPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "president", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "game_170_config":
         page = <Game170Config setTab={go} params={routeParams} />;
         break;
@@ -5153,6 +5174,7 @@ case "babyfoot_team_edit":
     "golf_play",
     "baseball_play",
     "attrape_moi_play",
+    "president_play",
     "game_170_play",
     "football_play",
     "batard_play",

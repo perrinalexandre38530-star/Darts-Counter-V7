@@ -928,7 +928,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "bobs_27", "shooter", "prisoner", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const hasPayload = !!(r as any)?.payload;
@@ -1171,6 +1171,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("scram")) return "scram";
   if (tag.includes("baseball")) return "baseball";
   if (tag.includes("attrape_moi") || tag.includes("attrape moi") || tag.includes("attrape-moi") || tag.includes("attrapemoi") || tag.includes("catchme") || tag.includes("catch me")) return "attrape_moi";
+  if (tag.includes("president") || tag.includes("président")) return "president";
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("shooter")) return "shooter";
   if (tag.includes("prisoner")) return "prisoner";
@@ -4773,6 +4774,7 @@ const modeDefs = React.useMemo(
               { key: "scram", label: "SCRAM" },
               { key: "baseball", label: "Baseball" },
               { key: "attrape_moi", label: "Attrape-moi" },
+              { key: "president", label: "Président" },
               { key: "bobs_27", label: "Bob’s 27" },
               { key: "shooter", label: "SHOOTER" },
               { key: "prisoner", label: "Prisoner" },
@@ -6107,6 +6109,7 @@ const modeThemeColor: Record<string, string> = {
   scram: "#42d6ff",
   baseball: "#67d4ff",
   attrape_moi: "#ff5d9e",
+  president: "#e9c56c",
   bobs_27: "#e4c06b",
   shooter: "#42d6ff",
   prisoner: "#e4c06b",
@@ -6145,6 +6148,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     scram: "SCRAM",
     baseball: "Baseball",
     attrape_moi: "Attrape-moi",
+    president: "Président",
     bobs_27: "Bob’s 27",
     shooter: "SHOOTER",
     prisoner: "Prisoner",
@@ -6153,7 +6157,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "bobs_27", "shooter", "prisoner", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8497,7 +8501,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "attrape_moi"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "attrape_moi", "president"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -8513,6 +8517,7 @@ return (
                       scram: ["scram"],
                       baseball: ["baseball", "baseball darts"],
                       attrape_moi: ["attrape_moi", "attrape moi", "attrape-moi", "attrapemoi", "catch me", "catchme"],
+                      president: ["president", "président"],
                       bobs_27: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"],
                       shooter: ["shooter"],
                       prisoner: ["prisoner"],
@@ -8589,12 +8594,57 @@ return (
                     const chaserAvg3 = chaserDarts ? (chaserPoints / chaserDarts) * 3 : 0;
                     const fastestCaptureRound = playerRows.reduce((best: number | null, x: any) => { const n = Number(x.pl?.fastestCaptureRound); return Number.isFinite(n) && n > 0 ? (best == null ? n : Math.min(best, n)) : best; }, null);
                     const maxRunnerLead = playerRows.reduce((best: number, x: any) => Math.max(best, Number(x.pl?.maxRunnerLead ?? 0) || 0), 0);
+                    const powerPoints = sum("powerPoints") || points;
+                    const presidentCount = sum("president");
+                    const vicePresidentCount = sum("vicePresident");
+                    const citizenCount = sum("citizen");
+                    const viceTrouDuCulCount = sum("viceTrouDuCul");
+                    const trouDuCulCount = sum("trouDuCul");
+                    const cardsPlayed = sum("cardsPlayed");
+                    const successfulPlays = sum("successfulPlays");
+                    const failedPlaysPresident = sum("failedPlays");
+                    const pairsPlayed = sum("pairsPlayed");
+                    const triplesPlayedPresident = sum("triplesPlayed");
+                    const tricksWonPresident = sum("tricksWon");
+                    const taxesGiven = sum("taxesGiven");
+                    const taxesReceived = sum("taxesReceived");
+                    const coupEtats = sum("coupEtats");
+                    const revolutions = sum("revolutions");
+                    const presidentAttempts = successfulPlays + failedPlaysPresident;
+                    const presidentSuccessRate = presidentAttempts ? Math.round((successfulPlays / presidentAttempts) * 1000) / 10 : 0;
+                    const avgRankPresident = playerRows.length ? playerRows.reduce((a: number, x: any) => a + (Number(x.pl?.avgRank ?? 0) || 0), 0) / playerRows.length : 0;
                     const averageVisit = visits ? points / visits : 0;
                     const objectiveRate = targetsFaced ? Math.round((successfulVisits / targetsFaced) * 1000) / 10 : 0;
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
                     const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
-                    return currentMode === "attrape_moi" ? (
+                    return currentMode === "president" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Points de pouvoir</div><div style={{ ...value, color: "#e9c56c" }}>{powerPoints}</div></div>
+                          <div style={statBox}><div style={label}>Rang moyen</div><div style={value}>{avgRankPresident ? avgRankPresident.toFixed(2) : "—"}</div></div>
+                          <div style={statBox}><div style={label}>👑 Président</div><div style={{ ...value, color: "#ffd76a" }}>{presidentCount}</div></div>
+                          <div style={statBox}><div style={label}>💩 Trou du cul</div><div style={{ ...value, color: "#ff8b9e" }}>{trouDuCulCount}</div></div>
+                          <div style={statBox}><div style={label}>Vice-Président</div><div style={value}>{vicePresidentCount}</div></div>
+                          <div style={statBox}><div style={label}>Vice-Trou du cul</div><div style={value}>{viceTrouDuCulCount}</div></div>
+                          <div style={statBox}><div style={label}>Cartes jouées</div><div style={value}>{cardsPlayed}</div></div>
+                          <div style={statBox}><div style={label}>Réussite combinaisons</div><div style={value}>{presidentSuccessRate}%</div><div style={{ opacity: .75, fontSize: 11 }}>{successfulPlays} réussies · {failedPlaysPresident} ratées</div></div>
+                          <div style={statBox}><div style={label}>Plis remportés</div><div style={value}>{tricksWonPresident}</div></div>
+                          <div style={statBox}><div style={label}>Paires / Brelans</div><div style={value}>{pairsPlayed} / {triplesPlayedPresident}</div></div>
+                          <div style={statBox}><div style={label}>Taxes données / reçues</div><div style={value}>{taxesGiven} / {taxesReceived}</div></div>
+                          <div style={statBox}><div style={label}>Coups d’État / Révolutions</div><div style={value}>{coupEtats} / {revolutions}</div></div>
+                        </div>
+                        <div style={{ ...softCard, marginTop: 10, padding: 14 }}>
+                          <div style={{ ...label, marginBottom: 9, fontWeight: 950 }}>Répartition des impacts</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                            {[["Simple", singles], ["Double", doubles], ["Triple", triples], ["Bull", bulls], ["DBull", dbulls], ["Miss", misses]].map(([name, n]: any) => <div key={name} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.045)", textAlign: "center" }}><div style={{ fontSize: 10, opacity: .72 }}>{name}</div><div style={{ fontWeight: 1000, fontSize: 17 }}>{n}</div></div>)}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>Hiérarchie cumulée, précision des combinaisons, plis, taxes et événements du mode Président.</div>
+                      </>
+                    ) : currentMode === "attrape_moi" ? (
                       <>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>

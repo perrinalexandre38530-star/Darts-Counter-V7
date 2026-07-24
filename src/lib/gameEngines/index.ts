@@ -23,3 +23,5 @@ export { X01Engine, CricketEngine, KillerEngine, ShanghaiEngine, ScramEngine };
 export * from "./prisonerEngine";
 
 export * from "./attrapeMoiEngine";
+
+export * from "./presidentEngine";
