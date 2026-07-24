@@ -396,65 +396,100 @@ export default function AttrapeMoiPlay(props: any) {
       right={<div style={{ marginRight: 6 }}><InfoDot title="Règles — Attrape-moi si tu peux !" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} /></div>}
     />
 
-    <div style={{ padding: "5px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-      {/* SCORE / POURSUITE — un seul bloc compact */}
-      <section style={panelStyle({ padding: 9, marginBottom: 7, borderColor: `${primary}66`, boxShadow: `0 0 22px ${primary}14, 0 12px 28px rgba(0,0,0,.32)` })}>
+    <div style={{ padding: "9px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+      {/* SCORE MATCH — inspiration BASEBALL : bande claire, compacte, sans mélanger la volée en cours */}
+      <section style={panelStyle({ padding: 8, marginBottom: 8, borderColor: `${primary}66`, boxShadow: `0 0 22px ${primary}14, 0 12px 28px rgba(0,0,0,.32)` })}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginBottom: 7 }}>
           <CompactMeta label="SET" value={`${state.setNo}`} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)}–${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
           <CompactMeta label="MANCHE" value={`${state.legNo}`} sub={`1er à ${legsToWin}`} color={C.gold} />
           <CompactMeta label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`+${state.rules.headStart}`} color={activeColor} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 96px minmax(0,1fr)", gap: 7, alignItems: "center" }}>
-          <ScoreSide label="🏃 FUYARD" name={runnerName} score={runnerScore} color={C.runner} align="left" />
-          <div style={{ textAlign: "center", minWidth: 0 }}>
-            <div style={{ color: themeSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .7 }}>DISTANCE</div>
-            <div style={{ marginTop: 1, color: distance <= 25 ? C.red : distance <= 60 ? C.gold : primary, fontSize: 27, lineHeight: 1, fontWeight: 1100 }}>{distance > 0 ? `+${distance}` : distance}</div>
-            <div style={{ marginTop: 5, height: 6, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}>
-              <div style={{ height: "100%", width: `${progress}%`, borderRadius: 999, background: `linear-gradient(90deg,${C.chaser},${distance <= 25 ? C.red : C.gold})`, transition: "width .2s ease" }} />
+        <div style={{ position: "relative", minHeight: 78, overflow: "hidden", borderRadius: 15, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(90deg,rgba(255,93,158,.055),rgba(4,8,16,.92) 44%,rgba(4,8,16,.92) 56%,rgba(66,214,255,.055))" }}>
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(circle at 50% 50%,rgba(255,215,106,.08),rgba(0,0,0,0) 52%)" }} />
+          <div style={{ position: "relative", zIndex: 1, minHeight: 78, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 8, alignItems: "center", padding: "9px 11px" }}>
+            <div style={{ minWidth: 0, textAlign: "left" }}>
+              <div style={{ color: C.runner, fontSize: 8.4, fontWeight: 1100, letterSpacing: .65 }}>🏃 FUYARD</div>
+              <div style={{ marginTop: 2, color: themeText, fontSize: 11, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{runnerName}</div>
             </div>
-            <div style={{ marginTop: 4, color: distance <= 25 ? C.red : themeSoft, fontSize: 7.5, fontWeight: 950 }}>{distance <= 0 ? "CAPTURE" : distance <= 25 ? "DANGER" : "POURSUITE"}</div>
+            <div style={{ minWidth: 112, textAlign: "center" }}>
+              <div style={{ color: "rgba(255,255,255,.42)", fontSize: 7.4, fontWeight: 1000, letterSpacing: .65 }}>SCORE</div>
+              <div style={{ marginTop: 1, color: C.gold, fontSize: 31, lineHeight: 1, fontWeight: 1100, letterSpacing: -.8, textShadow: "0 0 18px rgba(255,215,106,.24)", whiteSpace: "nowrap" }}>{runnerScore} <span style={{ opacity: .38 }}>–</span> {chaserScore}</div>
+            </div>
+            <div style={{ minWidth: 0, textAlign: "right" }}>
+              <div style={{ color: C.chaser, fontSize: 8.4, fontWeight: 1100, letterSpacing: .65 }}>🎯 CHASSEUR</div>
+              <div style={{ marginTop: 2, color: themeText, fontSize: 11, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{chaserName}</div>
+            </div>
           </div>
-          <ScoreSide label="🎯 CHASSEUR" name={chaserName} score={chaserScore} color={C.chaser} align="right" />
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 8 }}>
-          <InfoButton label="MATCH" onClick={() => setOpenPanel("match")} color={primary} />
-          <InfoButton label="CLASSEMENT" onClick={() => setOpenPanel("ranking")} color={primary} />
-          <InfoButton label="STATS" onClick={() => setOpenPanel("stats")} color={primary} />
         </div>
       </section>
 
       {!state.awaitingNextLeg && !state.finished ? <>
-        {/* JOUEUR ACTIF — bloc unique */}
-        <section style={panelStyle({ position: "relative", padding: 0, marginBottom: 7, minHeight: 104, overflow: "hidden", borderColor: `${activeColor}77`, boxShadow: `0 0 22px ${activeColor}16, 0 12px 30px rgba(0,0,0,.32)` })}>
-          <div style={{ position: "absolute", left: -18, top: -14, bottom: -14, width: 112, opacity: .13, transform: "scale(1.18)", transformOrigin: "left center", pointerEvents: "none", display: "grid", placeItems: "center" }}>
-            <ProfileAvatar profile={activeProfile as any} size={92} />
+        {/* JOUEUR ACTIF — descendu et réorganisé comme CAPITAL / BASEBALL */}
+        <section style={panelStyle({ position: "relative", padding: 0, marginTop: 10, marginBottom: 7, minHeight: 112, overflow: "hidden", borderColor: `${activeColor}88`, boxShadow: `0 0 24px ${activeColor}16, 0 14px 32px rgba(0,0,0,.34)` })}>
+          <div style={{ position: "absolute", left: -24, top: -8, bottom: -8, width: "34%", minWidth: 118, overflow: "hidden", opacity: .29, pointerEvents: "none" }}>
+            <div style={{ position: "absolute", left: -10, top: 12, transform: "scale(1.34)", transformOrigin: "left top", filter: `saturate(.95) brightness(.94) drop-shadow(0 0 10px ${activeColor}25)` }}>
+              <ProfileAvatar profile={activeProfile as any} size={86} />
+            </div>
           </div>
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, rgba(2,5,12,.16), rgba(2,5,12,.72) 30%, rgba(2,5,12,.82) 100%)`, pointerEvents: "none" }} />
-          <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 9, alignItems: "center", minHeight: 104, padding: "8px 11px" }}>
-            <div style={{ display: "grid", placeItems: "center" }}><ProfileAvatar profile={activeProfile as any} size={54} /></div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: activeColor, fontWeight: 1100, fontSize: 9.5, letterSpacing: 1 }}>{roleIcon(state.phase)} {roleLabel(state.phase)} · À TOI</div>
-              <div style={{ marginTop: 2, fontWeight: 1100, fontSize: 19, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-              <div style={{ marginTop: 3, display: "flex", gap: 8, flexWrap: "wrap", color: themeSoft, fontSize: 8.8 }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(1,4,10,.18),rgba(1,4,10,.66) 31%,rgba(1,4,10,.82) 100%)", pointerEvents: "none" }} />
+
+          <div style={{ position: "relative", zIndex: 1, minHeight: 112, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(112px,128px)", gap: 5, alignItems: "stretch", padding: "8px 9px" }}>
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "2px 8px 2px 10px" }}>
+              <div style={{ color: activeColor, fontWeight: 1100, fontSize: 9.2, letterSpacing: .9 }}>{roleIcon(state.phase)} {roleLabel(state.phase)} · À TOI</div>
+              <div style={{ marginTop: 3, color: themeText, fontWeight: 1100, fontSize: 20, lineHeight: 1.02, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
+              <div style={{ marginTop: 7, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap", color: themeSoft, fontSize: 8.6 }}>
                 <span>AVG/3 <b style={{ color: themeText }}>{activeAvg3}</b></span>
                 <span>BEST <b style={{ color: themeText }}>{activeStats.bestVisit || 0}</b></span>
                 <span>DARTS <b style={{ color: themeText }}>{activeStats.darts || 0}</b></span>
               </div>
-              <div style={{ marginTop: 3, color: themeSoft, fontSize: 8.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ marginTop: 5, color: "rgba(255,255,255,.44)", fontSize: 8.1, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {config.participantMode === "teams" ? `${activeEntity?.name || activeTeam?.name || "Équipe"} · joueur ${state.phaseMemberIndex + 1}/${activeEntity?.playerIds?.length || 1}` : `Round ${state.pursuitRound}/${state.rules.pursuitRounds}`}
               </div>
             </div>
-            <div style={{ minWidth: 56, textAlign: "right" }}>
-              <div style={{ color: activeColor, fontSize: 30, lineHeight: 1, fontWeight: 1100 }}>{currentThrowPoints}</div>
-              <div style={{ marginTop: 3, color: themeSoft, fontSize: 8 }}>{throwDarts.length}/3 DARTS</div>
+
+            <div style={{ position: "relative", minWidth: 0, borderRadius: 16, overflow: "hidden", border: `1px solid ${activeColor}44`, background: "linear-gradient(180deg,rgba(7,13,24,.96),rgba(3,7,14,.98))", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "7px 5px" }}>
+              <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at 50% 38%,${activeColor}16,rgba(0,0,0,0) 62%)`, pointerEvents: "none" }} />
+              <div style={{ position: "relative", color: "rgba(255,255,255,.48)", fontSize: 7.6, fontWeight: 1000, letterSpacing: .7 }}>RÔLE</div>
+              <div style={{ position: "relative", marginTop: 2, color: activeColor, fontSize: 25, lineHeight: 1 }}>{roleIcon(state.phase)}</div>
+              <div style={{ position: "relative", marginTop: 2, color: activeColor, fontSize: 10.2, fontWeight: 1100, letterSpacing: .7 }}>{roleLabel(state.phase)}</div>
+              <div style={{ position: "relative", marginTop: 5, color: themeSoft, fontSize: 8.1, fontWeight: 900 }}>ROUND {state.pursuitRound}/{state.rules.pursuitRounds}</div>
             </div>
           </div>
-          {botThinking ? <div style={{ position: "absolute", zIndex: 2, left: 0, right: 0, bottom: 3, textAlign: "center", color: activeColor, fontSize: 8.5, fontWeight: 1000, letterSpacing: .8 }}>BOT EN POURSUITE…</div> : null}
+          {botThinking ? <div style={{ position: "absolute", zIndex: 3, left: 0, right: 0, bottom: 3, textAlign: "center", color: activeColor, fontSize: 8.3, fontWeight: 1000, letterSpacing: .8 }}>BOT EN POURSUITE…</div> : null}
         </section>
 
-        {/* SAISIE — immédiatement sous le joueur actif */}
+        {/* FRISE DE POURSUITE — Fuyard / barre / Chasseur */}
+        <section style={panelStyle({ padding: "7px 9px", marginBottom: 6, borderColor: `${distance <= 25 ? C.red : primary}55`, boxShadow: "0 8px 20px rgba(0,0,0,.22)" })}>
+          <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0,1fr) 58px", gap: 8, alignItems: "center" }}>
+            <div style={{ textAlign: "left", minWidth: 0 }}>
+              <div style={{ color: C.runner, fontSize: 14, lineHeight: 1 }}>🏃</div>
+              <div style={{ marginTop: 2, color: C.runner, fontSize: 7.3, fontWeight: 1100 }}>FUYARD</div>
+            </div>
+            <div style={{ minWidth: 0, textAlign: "center" }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 5, marginBottom: 4 }}>
+                <span style={{ color: "rgba(255,255,255,.43)", fontSize: 7.2, fontWeight: 1000, letterSpacing: .7 }}>DISTANCE</span>
+                <b style={{ color: distance <= 25 ? C.red : distance <= 60 ? C.gold : primary, fontSize: 15, lineHeight: 1 }}>{distance > 0 ? `+${distance}` : distance}</b>
+              </div>
+              <div style={{ position: "relative", height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", boxShadow: "inset 0 1px 4px rgba(0,0,0,.35)" }}>
+                <div style={{ height: "100%", width: `${progress}%`, borderRadius: 999, background: `linear-gradient(90deg,${C.chaser},${distance <= 25 ? C.red : C.gold})`, transition: "width .2s ease" }} />
+              </div>
+              <div style={{ marginTop: 3, color: distance <= 25 ? C.red : "rgba(255,255,255,.45)", fontSize: 7.1, fontWeight: 950 }}>{distance <= 0 ? "CAPTURE" : distance <= 25 ? "DANGER" : "POURSUITE"}</div>
+            </div>
+            <div style={{ textAlign: "right", minWidth: 0 }}>
+              <div style={{ color: C.chaser, fontSize: 14, lineHeight: 1 }}>🎯</div>
+              <div style={{ marginTop: 2, color: C.chaser, fontSize: 7.3, fontWeight: 1100 }}>CHASSEUR</div>
+            </div>
+          </div>
+        </section>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginBottom: 7 }}>
+          <InfoButton label="MATCH" onClick={() => setOpenPanel("match")} color={primary} />
+          <InfoButton label="STATS" onClick={() => setOpenPanel("stats")} color={primary} />
+          <InfoButton label="CLASSEMENT" onClick={() => setOpenPanel("ranking")} color={primary} />
+        </div>
+
+        {/* SAISIE */}
         <section style={panelStyle({ padding: config.scoreInputMethod === "dartboard" ? 7 : 4, overflow: "hidden" })}>
           {config.scoreInputMethod === "dartboard" ? <>
             <DartboardClickable multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} />
@@ -463,9 +498,29 @@ export default function AttrapeMoiPlay(props: any) {
               <button onClick={cancelOrUndo} style={smallButton(C.red)}>ANNULER</button>
               <button disabled={throwDarts.length !== 3} onClick={validateVisit} style={smallButton(throwDarts.length === 3 ? C.gold : "rgba(255,255,255,.18)")}>VALIDER</button>
             </div>
+            <div style={{ marginTop: 7, display: "grid", placeItems: "center" }}>
+              <span style={{ display: "inline-block", minWidth: 72, textAlign: "center", padding: "8px 16px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 1000, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{currentThrowPoints}</span>
+            </div>
             {notice ? <div style={{ marginTop: 6, textAlign: "center", fontSize: 9.5, color: activeColor }}>{notice}</div> : null}
           </> : <div style={{ opacity: botThinking ? .45 : 1, pointerEvents: botThinking ? "none" : "auto" }}>
-            <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={validateVisit} hidePreview hideTotal centerSlot={<div style={{ textAlign: "center", color: activeColor, fontWeight: 1000, fontSize: 10 }}>{roleIcon(state.phase)} {roleLabel(state.phase)}<div style={{ fontSize: 8, color: themeSoft }}>{throwDarts.length}/3 · {currentThrowPoints} pts</div></div>} noticeSlot={notice ? <span>{notice}</span> : null} validateAttention={throwDarts.length === 3} safeBottomPad />
+            <Keypad
+              currentThrow={throwDarts as any}
+              multiplier={multiplier}
+              onSimple={() => setMultiplier(1)}
+              onDouble={() => setMultiplier(2)}
+              onTriple={() => setMultiplier(3)}
+              onCancel={cancelOrUndo}
+              onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))}
+              onNumber={(n) => addDart(n)}
+              onBull={() => addDart(25)}
+              onValidate={validateVisit}
+              hidePreview
+              hideTotal
+              centerSlot={<span style={{ display: "inline-block", minWidth: 68, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 1000, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{currentThrowPoints}</span>}
+              noticeSlot={notice ? <span>{notice}</span> : null}
+              validateAttention={throwDarts.length === 3}
+              safeBottomPad
+            />
           </div>}
         </section>
       </> : null}

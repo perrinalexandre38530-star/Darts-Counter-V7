@@ -1959,24 +1959,26 @@ function PlaySection(props: PlaySectionProps) {
   } = props;
 
   const { theme } = useTheme() as any;
-  const themePrimary = (theme?.primary || "#ffc63a") as string;
-  const themeAccent = (theme?.accent1 || themePrimary) as string;
-  const themeAccent2 = (theme?.accent2 || "#b16adf") as string;
-  const themeCard = (theme?.card || "#121420") as string;
-  const themeText = (theme?.text || "#ffffff") as string;
-  const themeTextSoft = (theme?.textSoft || "rgba(255,255,255,.68)") as string;
-  const themeSuccess = (theme?.success || "#29c76f") as string;
-  const themeDanger = "#ff5f73";
-  const themeBlue = "#48b3ff";
-  const themeOrange = "#ff9957";
-  const themeTeal = "#2fe0ff";
+  const primary = (theme?.primary || "#ffc63a") as string;
+  const accent = (theme?.accent1 || primary) as string;
+  const purple = (theme?.accent2 || "#b16adf") as string;
+  const card = (theme?.card || "#121420") as string;
+  const textMain = (theme?.text || "#ffffff") as string;
+  const textSoft = (theme?.textSoft || "rgba(255,255,255,.68)") as string;
+  const green = (theme?.success || "#2bd98c") as string;
+  const cyan = "#2bdcff";
+  const blue = "#4fa9ff";
+  const orange = "#ff9856";
+  const red = "#ff5f78";
+  const yellow = "#ffd34d";
 
-  const objectiveColor = objectiveKind === "double" ? themeSuccess : objectiveKind === "triple" ? themeAccent2 : themePrimary;
-  const objectiveGlow = objectiveKind === "double" ? hexToRgba(themeSuccess, 0.48) : objectiveKind === "triple" ? hexToRgba(themeAccent2, 0.48) : hexToRgba(themePrimary, 0.48);
+  const objectiveColor = objectiveKind === "double" ? green : objectiveKind === "triple" ? purple : primary;
+  const objectiveGlow = objectiveKind === "double" ? hexToRgba(green, 0.46) : objectiveKind === "triple" ? hexToRgba(purple, 0.46) : hexToRgba(primary, 0.46);
 
   const [padMultiplier, setPadMultiplier] = React.useState<1 | 2 | 3>(1);
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [statsTab, setStatsTab] = React.useState<"resume" | "performance" | "progression" | "graphs">("resume");
+  const [pieFocus, setPieFocus] = React.useState(0);
 
   const hasPending = isMiss || selectedValue != null;
   const pendingThrow = React.useMemo(() => {
@@ -1984,7 +1986,7 @@ function PlaySection(props: PlaySectionProps) {
     if (isMiss) return [{ v: 0, mult: 1 as const }];
     if (selectedValue === "BULL") return [{ v: 25, mult: selectedMult === 2 ? (2 as const) : (1 as const) }];
     return [{ v: Number(selectedValue || 0), mult: selectedMult }];
-  }, [hasPending, isMiss, selectedValue, selectedMult]);
+  }, [hasPending, isMiss, selectedMult, selectedValue]);
 
   const clearPending = React.useCallback(() => {
     setSelectedValue(null);
@@ -2025,7 +2027,6 @@ function PlaySection(props: PlaySectionProps) {
   const dartsLimitLabel = config.dartLimit != null ? `${dartsThrown}/${config.dartLimit}` : String(dartsThrown);
   const activeProfile = currentProfile || ({ id: String(currentPlayer?.id || "clock-player"), name: currentPlayer?.name || "Joueur" } as Profile);
 
-
   const parsedThrows = React.useMemo(() => {
     return (throwLog || []).map((raw) => {
       const label = String(raw || "").trim();
@@ -2054,303 +2055,196 @@ function PlaySection(props: PlaySectionProps) {
     const points = parsedThrows.reduce((sum, t) => sum + t.score, 0);
     const avgPerDart = total ? Math.round((points / total) * 10) / 10 : 0;
     const avgPerHit = hits ? Math.round((points / Math.max(1, hits)) * 10) / 10 : 0;
-    const completedPct = Math.round((targetsCompleted / TARGETS.length) * 1000) / 10;
+    const completion = Math.round((targetsCompleted / TARGETS.length) * 1000) / 10;
     const boardHitPct = total ? Math.round((boardHits / total) * 1000) / 10 : 0;
     const rounds: { round: number; hits: number; points: number; darts: number }[] = [];
     for (let i = 0; i < parsedThrows.length; i += 3) {
       const slice = parsedThrows.slice(i, i + 3);
-      rounds.push({
-        round: rounds.length + 1,
-        hits: slice.filter((x) => x.hit).length,
-        points: slice.reduce((s, x) => s + x.score, 0),
-        darts: slice.length,
-      });
+      rounds.push({ round: rounds.length + 1, hits: slice.filter((x) => x.hit).length, points: slice.reduce((s, x) => s + x.score, 0), darts: slice.length });
     }
-    const cumulative: { x: number; precision: number; score: number }[] = [];
-    let cumScore = 0;
-    let cumBoardHits = 0;
+    const curve: { x: number; precision: number; score: number }[] = [];
+    let runningHits = 0;
+    let runningScore = 0;
     parsedThrows.forEach((t, idx) => {
-      cumScore += t.score;
-      if (t.hit) cumBoardHits += 1;
-      cumulative.push({ x: idx + 1, precision: Math.round((cumBoardHits / (idx + 1)) * 100), score: cumScore });
+      if (t.hit) runningHits += 1;
+      runningScore += t.score;
+      curve.push({ x: idx + 1, precision: Math.round((runningHits / (idx + 1)) * 100), score: runningScore });
     });
     const freq = new Map<string, number>();
     parsedThrows.filter((t) => t.hit).forEach((t) => freq.set(t.raw, (freq.get(t.raw) || 0) + 1));
     const best = [...freq.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0];
     return {
-      total,
-      misses,
-      singles,
-      doubles,
-      triples,
-      bulls,
-      dbulls,
-      boardHits,
-      points,
-      avgPerDart,
-      avgPerHit,
-      completedPct,
-      boardHitPct,
-      rounds,
-      cumulative,
+      total, misses, singles, doubles, triples, bulls, dbulls, boardHits, points, avgPerDart, avgPerHit, completion, boardHitPct, rounds, curve,
       remaining: Math.max(0, TARGETS.length - targetsCompleted),
       bestSegment: best ? best[0] : "—",
       bestSegmentHits: best ? best[1] : 0,
-      avgRoundPoints: rounds.length ? Math.round((rounds.reduce((s, r) => s + r.points, 0) / rounds.length) * 10) / 10 : 0,
+      avgRound: rounds.length ? Math.round((rounds.reduce((s, r) => s + r.points, 0) / rounds.length) * 10) / 10 : 0,
     };
   }, [parsedThrows, hits, targetsCompleted]);
 
-  const throwComposition = React.useMemo(() => [
-    { label: "Simples", value: stats.singles, color: "#2cc7ff" },
-    { label: "Doubles", value: stats.doubles, color: "#31e091" },
-    { label: "Triples", value: stats.triples, color: "#c56cff" },
-    { label: "Bulls", value: stats.bulls + stats.dbulls, color: "#ffd34e" },
-    { label: "Misses", value: stats.misses, color: "#ff6a83" },
-  ].filter((item) => item.value > 0), [stats]);
+  const throwPie = React.useMemo(() => [
+    { label: "Simples", value: stats.singles, color: "#20bff4" },
+    { label: "Doubles", value: stats.doubles, color: "#23d98b" },
+    { label: "Triples", value: stats.triples, color: "#a968ff" },
+    { label: "Bulls", value: stats.bulls + stats.dbulls, color: "#ffd13d" },
+    { label: "Misses", value: stats.misses, color: "#ff5f72" },
+  ].filter((d) => d.value > 0), [stats]);
 
-  const objectiveComposition = React.useMemo(() => [
-    { label: "Validées", value: targetsCompleted, color: "#31e091" },
-    { label: "Restantes", value: Math.max(0, TARGETS.length - targetsCompleted), color: "#2fe0ff" },
+  const targetPie = React.useMemo(() => [
+    { label: "Terminées", value: targetsCompleted, color: "#23d98b" },
+    { label: "Restantes", value: Math.max(0, TARGETS.length - targetsCompleted), color: "#20d9f5" },
   ], [targetsCompleted]);
 
-  const precisionLine = React.useMemo(() => {
-    if (!stats.cumulative.length) return "14,102 194,102";
-    return stats.cumulative.map((point, idx) => {
-      const x = stats.cumulative.length === 1 ? 104 : 14 + idx * (180 / Math.max(1, stats.cumulative.length - 1));
-      const y = 102 - (point.precision / 100) * 84;
+  React.useEffect(() => setPieFocus(0), [statsTab]);
+
+  const curvePoints = React.useMemo(() => {
+    if (!stats.curve.length) return "14,102 194,102";
+    return stats.curve.map((p, idx) => {
+      const x = stats.curve.length === 1 ? 104 : 14 + idx * (180 / Math.max(1, stats.curve.length - 1));
+      const y = 102 - (p.precision / 100) * 84;
       return `${x},${y}`;
     }).join(" ");
-  }, [stats.cumulative]);
+  }, [stats.curve]);
 
-  const roundBars = React.useMemo(() => {
-    const maxPts = Math.max(1, ...stats.rounds.map((r) => r.points), 1);
-    return stats.rounds.map((r, idx) => ({ x: 18 + idx * 34, h: (r.points / maxPts) * 84, color: idx % 3 === 0 ? "#2fe0ff" : idx % 3 === 1 ? "#ffd34e" : "#c56cff" }));
+  const barRows = React.useMemo(() => {
+    const max = Math.max(1, ...stats.rounds.map((r) => r.points), 1);
+    const palette = [cyan, yellow, purple, green, orange, blue];
+    return stats.rounds.map((r, idx) => ({ ...r, height: (r.points / max) * 82, color: palette[idx % palette.length] }));
   }, [stats.rounds]);
 
-  const panelStyle: React.CSSProperties = {
+  const commonPanel: React.CSSProperties = {
     borderRadius: 16,
-    border: `1px solid ${hexToRgba(themePrimary, 0.22)}`,
-    background: `linear-gradient(180deg, ${hexToRgba(themeCard, 0.98)}, rgba(5,8,16,.94))`,
-    boxShadow: `0 10px 22px rgba(0,0,0,.28), 0 0 0 1px ${hexToRgba(themeAccent, 0.04)} inset`,
+    border: `1px solid ${hexToRgba(primary, 0.22)}`,
+    background: `linear-gradient(180deg, ${hexToRgba(card, 0.98)}, rgba(5,8,16,.94))`,
+    boxShadow: `0 10px 22px rgba(0,0,0,.28), 0 0 0 1px ${hexToRgba(accent, 0.04)} inset`,
     minWidth: 0,
     maxWidth: "100%",
     boxSizing: "border-box",
   };
 
-  const overlayCard: React.CSSProperties = {
-    borderRadius: 22,
-    border: `1px solid ${hexToRgba(themePrimary, 0.16)}`,
-    background: `linear-gradient(180deg, rgba(10,18,34,.94), rgba(4,8,16,.98))`,
-    boxShadow: `inset 0 0 0 1px rgba(255,255,255,.02), 0 12px 28px rgba(0,0,0,.28)`,
-    overflow: "hidden",
+  const overlayPanel: React.CSSProperties = {
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,.08)",
+    background: "linear-gradient(180deg, rgba(13,22,38,.92), rgba(5,10,19,.97))",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,.018), 0 12px 30px rgba(0,0,0,.28)",
     minWidth: 0,
+    overflow: "hidden",
   };
 
-  const iconButtonStyle = (active: boolean): React.CSSProperties => ({
-    flex: 1,
-    minWidth: 0,
-    height: 54,
-    borderRadius: 18,
-    border: `1px solid ${active ? hexToRgba(themeTeal, 0.62) : "rgba(255,255,255,.08)"}`,
-    background: active ? `linear-gradient(180deg, ${hexToRgba(themeTeal, 0.16)}, ${hexToRgba(themeBlue, 0.08)})` : "rgba(255,255,255,.03)",
-    display: "grid",
-    placeItems: "center",
-    boxShadow: active ? `0 0 18px ${hexToRgba(themeTeal, 0.15)}` : "none",
-  });
-
-  const miniKpi = (label: string, value: string | number, tone: string, hint?: string) => (
-    <div style={{ ...overlayCard, padding: 12 }}>
-      <div style={{ height: 3, margin: "-12px -12px 10px", background: `linear-gradient(90deg, ${tone}, transparent)` }} />
-      <div style={{ color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .35, textTransform: "uppercase", lineHeight: 1.15 }}>{label}</div>
-      <div style={{ color: tone, fontSize: 15, fontWeight: 1000, lineHeight: 1.05, marginTop: 8 }}>{String(value)}</div>
-      {hint ? <div style={{ color: themeTextSoft, fontSize: 9.5, marginTop: 5, lineHeight: 1.15 }}>{hint}</div> : null}
-    </div>
-  );
-
-  function TabGlyph({ kind, active }: { kind: "resume" | "performance" | "progression" | "graphs"; active: boolean }) {
-    const stroke = active ? themeTeal : "#b3c3d1";
+  function StatIcon({ kind, active }: { kind: "resume" | "performance" | "progression" | "graphs"; active: boolean }) {
+    const stroke = active ? cyan : "#a9bac8";
     const p = { fill: "none", stroke, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
-    if (kind === "resume") return <svg width="22" height="22" viewBox="0 0 24 24"><path {...p} d="M4 20V7" /><path {...p} d="M10 20V4" /><path {...p} d="M16 20v-6" /><path {...p} d="M22 20V9" /></svg>;
-    if (kind === "performance") return <svg width="22" height="22" viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7" /><circle {...p} cx="12" cy="12" r="3.2" /><path {...p} d="M12 5V3" /><path {...p} d="M19 12h2" /><path {...p} d="M12 21v-2" /><path {...p} d="M3 12h2" /></svg>;
-    if (kind === "progression") return <svg width="22" height="22" viewBox="0 0 24 24"><path {...p} d="M4 19h16" /><path {...p} d="M6 17 10 12l3 2 5-7" /><circle {...p} cx="6" cy="17" r="1.4" /><circle {...p} cx="10" cy="12" r="1.4" /><circle {...p} cx="13" cy="14" r="1.4" /><circle {...p} cx="18" cy="7" r="1.4" /></svg>;
-    return <svg width="22" height="22" viewBox="0 0 24 24"><path {...p} d="M4 19V5" /><path {...p} d="M4 19h16" /><path {...p} d="M8 15l3-3 3 2 4-6" /><circle {...p} cx="8" cy="15" r="1.1" /><circle {...p} cx="11" cy="12" r="1.1" /><circle {...p} cx="14" cy="14" r="1.1" /><circle {...p} cx="18" cy="8" r="1.1" /></svg>;
+    if (kind === "resume") return <svg width="21" height="21" viewBox="0 0 24 24"><path {...p} d="M4 20V8" /><path {...p} d="M10 20V4" /><path {...p} d="M16 20v-7" /><path {...p} d="M22 20V10" /></svg>;
+    if (kind === "performance") return <svg width="21" height="21" viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7" /><circle {...p} cx="12" cy="12" r="3.2" /><path {...p} d="M12 5V3" /><path {...p} d="M19 12h2" /><path {...p} d="M12 21v-2" /><path {...p} d="M3 12h2" /></svg>;
+    if (kind === "progression") return <svg width="21" height="21" viewBox="0 0 24 24"><path {...p} d="M4 19h16" /><path {...p} d="M6 17 10 12l3 2 5-7" /><circle {...p} cx="6" cy="17" r="1.3" /><circle {...p} cx="10" cy="12" r="1.3" /><circle {...p} cx="13" cy="14" r="1.3" /><circle {...p} cx="18" cy="7" r="1.3" /></svg>;
+    return <svg width="21" height="21" viewBox="0 0 24 24"><path {...p} d="M4 19V5" /><path {...p} d="M4 19h16" /><path {...p} d="M7 16l4-4 3 2 4-7" /><circle {...p} cx="7" cy="16" r="1.2" /><circle {...p} cx="11" cy="12" r="1.2" /><circle {...p} cx="14" cy="14" r="1.2" /><circle {...p} cx="18" cy="7" r="1.2" /></svg>;
   }
 
-  function Pie3DChart({
-    data,
-    centerValue,
-    centerLabel,
-    size = 230,
-    depth = 22,
-  }: {
-    data: { label: string; value: number; color: string }[];
-    centerValue: string;
-    centerLabel: string;
-    size?: number;
-    depth?: number;
-  }) {
-    const items = data.filter((d) => d.value > 0);
-    const total = items.reduce((s, d) => s + d.value, 0);
-    const [activeIndex, setActiveIndex] = React.useState(0);
-    const activeSafe = Math.min(Math.max(0, activeIndex), Math.max(0, items.length - 1));
-    const activeItem = items[activeSafe] || null;
-    const uid = React.useId().replace(/:/g, "");
+  function Kpi({ label, value, tone, sub }: { label: string; value: React.ReactNode; tone: string; sub?: string }) {
+    return (
+      <div className="clock-stat-kpi" style={{ ...overlayPanel, position: "relative", padding: "11px 12px" }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3, background: `linear-gradient(90deg, ${tone}, transparent 85%)` }} />
+        <div style={{ color: textSoft, fontSize: 9.2, fontWeight: 900, letterSpacing: .35, textTransform: "uppercase", lineHeight: 1.15 }}>{label}</div>
+        <div style={{ color: tone, fontSize: 18, fontWeight: 1000, lineHeight: 1, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+        {sub ? <div style={{ color: textSoft, fontSize: 10.2, lineHeight: 1.15, marginTop: 5 }}>{sub}</div> : null}
+      </div>
+    );
+  }
 
-    const shade = React.useCallback((hex: string, factor: number) => {
-      const raw = String(hex || "#2fe0ff").replace("#", "");
-      const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw.padEnd(6, "0").slice(0, 6);
-      const n = Number.parseInt(full, 16);
-      const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * factor)));
-      const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * factor)));
-      const b = Math.max(0, Math.min(255, Math.round((n & 255) * factor)));
-      return `rgb(${r},${g},${b})`;
-    }, []);
+  function SectionTitle({ children, tone = cyan }: { children: React.ReactNode; tone?: string }) {
+    return <div style={{ color: tone, fontSize: 14.5, fontWeight: 1000, letterSpacing: .15, lineHeight: 1.08 }}>{children}</div>;
+  }
 
-    const cx = 132;
-    const cy = 88;
-    const rx = 101;
-    const ry = 57;
-    const svgH = 178;
-
-    const pointAt = (deg: number, offX = 0, offY = 0) => {
-      const rad = (deg * Math.PI) / 180;
-      return { x: cx + offX + rx * Math.cos(rad), y: cy + offY + ry * Math.sin(rad) };
-    };
-
-    const slicePath = (startDeg: number, endDeg: number, offX: number, offY: number) => {
-      const span = Math.max(0, endDeg - startDeg);
-      const p1 = pointAt(startDeg, offX, offY);
-      if (span >= 359.99) {
-        const pm = pointAt(startDeg + 180, offX, offY);
-        return `M ${cx + offX} ${cy + offY} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 0 1 ${pm.x} ${pm.y} A ${rx} ${ry} 0 0 1 ${p1.x} ${p1.y} Z`;
-      }
-      const p2 = pointAt(endDeg, offX, offY);
-      const large = span > 180 ? 1 : 0;
-      return `M ${cx + offX} ${cy + offY} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
-    };
-
+  function Pie3D({ data, title }: { data: { label: string; value: number; color: string }[]; title: string }) {
+    const safe = data.filter((d) => d.value > 0);
+    const total = safe.reduce((s, d) => s + d.value, 0);
+    const visible = safe.length ? safe : [{ label: "Aucune donnée", value: 1, color: "#244658" }];
+    const denom = safe.length ? total : 1;
+    const rx = 116;
+    const ry = 66;
+    const cx = 175;
+    const cy = 100;
+    const depth = 23;
     let cursor = -90;
-    const slices = items.map((item, idx) => {
-      const span = total ? (item.value / total) * 360 : 0;
-      const startDeg = cursor;
-      const endDeg = cursor + span;
-      const midDeg = startDeg + span / 2;
-      cursor = endDeg;
-      const rad = (midDeg * Math.PI) / 180;
-      const selected = idx === activeSafe;
-      const explode = selected ? 17 : 4;
-      const offX = Math.cos(rad) * explode;
-      const offY = Math.sin(rad) * explode * 0.58;
-      const labelPoint = {
-        x: cx + offX + rx * 0.62 * Math.cos(rad),
-        y: cy + offY + ry * 0.62 * Math.sin(rad),
+    const slices = visible.map((item, idx) => {
+      const span = (item.value / denom) * 360;
+      const start = cursor;
+      const end = cursor + span;
+      cursor = end;
+      const mid = (start + end) / 2;
+      const rad = (mid * Math.PI) / 180;
+      const selected = safe.length > 0 && idx === Math.min(pieFocus, safe.length - 1);
+      const explode = selected ? 15 : 3;
+      const ox = Math.cos(rad) * explode;
+      const oy = Math.sin(rad) * explode * .58;
+      const pt = (deg: number, yDepth = 0) => {
+        const a = (deg * Math.PI) / 180;
+        return { x: cx + ox + Math.cos(a) * rx, y: cy + oy + Math.sin(a) * ry + yDepth };
       };
-      return { item, idx, startDeg, endDeg, midDeg, offX, offY, selected, labelPoint, pct: total ? Math.round((item.value / total) * 100) : 0 };
+      const p1 = pt(start);
+      const p2 = pt(end);
+      const b1 = pt(start, depth);
+      const b2 = pt(end, depth);
+      const cc = { x: cx + ox, y: cy + oy };
+      const cb = { x: cc.x, y: cc.y + depth };
+      const large = span > 180 ? 1 : 0;
+      const topPath = `M ${cc.x} ${cc.y} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
+      const bottomPath = `M ${cb.x} ${cb.y} L ${b1.x} ${b1.y} A ${rx} ${ry} 0 ${large} 1 ${b2.x} ${b2.y} Z`;
+      const wallPath = `M ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} L ${b2.x} ${b2.y} A ${rx} ${ry} 0 ${large} 0 ${b1.x} ${b1.y} Z`;
+      const sideA = `M ${cc.x} ${cc.y} L ${p1.x} ${p1.y} L ${b1.x} ${b1.y} L ${cb.x} ${cb.y} Z`;
+      const sideB = `M ${cc.x} ${cc.y} L ${p2.x} ${p2.y} L ${b2.x} ${b2.y} L ${cb.x} ${cb.y} Z`;
+      const labelX = cc.x + Math.cos(rad) * rx * .58;
+      const labelY = cc.y + Math.sin(rad) * ry * .58;
+      return { item, idx, span, mid, selected, topPath, bottomPath, wallPath, sideA, sideB, labelX, labelY };
     });
-
-    if (!items.length) {
-      return (
-        <div style={{ display: "grid", placeItems: "center", minHeight: 190 }}>
-          <div style={{ width: 170, height: 112, borderRadius: "50%", transform: "perspective(500px) rotateX(58deg)", background: `linear-gradient(135deg, ${hexToRgba(themeBlue, 0.42)}, ${hexToRgba(themeTeal, 0.18)})`, border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 18px 0 rgba(15,42,58,.62), 0 28px 26px rgba(0,0,0,.34)", display: "grid", placeItems: "center" }}>
-            <span style={{ transform: "rotateX(-58deg)", color: themeTextSoft, fontSize: 12 }}>Aucune donnée</span>
-          </div>
-        </div>
-      );
-    }
+    const active = safe.length ? safe[Math.min(pieFocus, safe.length - 1)] : null;
+    const activePct = active && total ? Math.round((active.value / total) * 100) : 0;
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 8, alignItems: "center", minWidth: 0 }}>
-        <div style={{ minWidth: 0 }}>
-          <svg viewBox={`0 0 264 ${svgH}`} width="100%" height={size * 0.72} style={{ overflow: "visible", display: "block" }} aria-label="Camembert 3D interactif">
-            <defs>
-              <filter id={`pieShadow-${uid}`} x="-40%" y="-50%" width="180%" height="220%">
-                <feDropShadow dx="0" dy="12" stdDeviation="8" floodColor="#000" floodOpacity=".46" />
-              </filter>
-              {slices.map((slice) => (
-                <linearGradient key={slice.idx} id={`pieGrad-${uid}-${slice.idx}`} x1="0" y1="0" x2="0.85" y2="1">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity=".24" />
-                  <stop offset="18%" stopColor={slice.item.color} stopOpacity="1" />
-                  <stop offset="72%" stopColor={slice.item.color} stopOpacity="1" />
-                  <stop offset="100%" stopColor={shade(slice.item.color, .72)} stopOpacity="1" />
-                </linearGradient>
-              ))}
-            </defs>
-
-            <ellipse cx={cx} cy={cy + depth + 22} rx={rx * 0.88} ry={19} fill="rgba(0,0,0,.32)" filter={`url(#pieShadow-${uid})`} />
-
-            {Array.from({ length: depth }).map((_, layer) => {
-              const y = depth - layer;
-              return (
-                <g key={`depth-${layer}`} opacity={0.9}>
-                  {slices.map((slice) => (
-                    <path
-                      key={`${slice.idx}-${layer}`}
-                      d={slicePath(slice.startDeg, slice.endDeg, slice.offX, slice.offY + y)}
-                      fill={shade(slice.item.color, 0.48 + (layer / Math.max(1, depth)) * 0.12)}
-                      stroke={shade(slice.item.color, .40)}
-                      strokeWidth=".55"
-                    />
-                  ))}
-                </g>
-              );
-            })}
-
-            {slices.map((slice) => (
-              <g key={`top-${slice.idx}`} onClick={() => setActiveIndex(slice.idx)} style={{ cursor: "pointer" }}>
-                <path
-                  d={slicePath(slice.startDeg, slice.endDeg, slice.offX, slice.offY)}
-                  fill={`url(#pieGrad-${uid}-${slice.idx})`}
-                  stroke={slice.selected ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.46)"}
-                  strokeWidth={slice.selected ? 2.2 : 1.15}
-                  filter={slice.selected ? `url(#pieShadow-${uid})` : undefined}
-                  style={{ transition: "filter .18s ease" }}
-                />
-                {slice.pct >= 8 ? (
-                  <text x={slice.labelPoint.x} y={slice.labelPoint.y + 4} textAnchor="middle" fill="#fff" fontSize={slice.selected ? 14 : 12} fontWeight="900" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.38)", strokeWidth: 2 }}>
-                    {slice.pct}%
-                  </text>
-                ) : null}
+      <div style={{ ...overlayPanel, padding: 14 }}>
+        <SectionTitle>{title}</SectionTitle>
+        <div className="clock-pie-layout" style={{ marginTop: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <svg viewBox="0 0 350 220" width="100%" role="img" aria-label={title} style={{ display: "block", overflow: "visible" }}>
+              <defs>
+                <filter id="clockPieShadow" x="-30%" y="-30%" width="170%" height="190%"><feDropShadow dx="0" dy="10" stdDeviation="9" floodColor="#000" floodOpacity=".46" /></filter>
+                {slices.map((s) => (
+                  <linearGradient key={`grad-${s.idx}`} id={`clockPieTop${s.idx}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ffffff" stopOpacity=".42" />
+                    <stop offset="22%" stopColor={s.item.color} stopOpacity="1" />
+                    <stop offset="100%" stopColor={s.item.color} stopOpacity=".72" />
+                  </linearGradient>
+                ))}
+              </defs>
+              <ellipse cx="175" cy="151" rx="128" ry="38" fill="rgba(0,0,0,.34)" filter="blur(5px)" />
+              <g filter="url(#clockPieShadow)">
+                {slices.map((s) => <path key={`bottom-${s.idx}`} d={s.bottomPath} fill={s.item.color} opacity=".46" />)}
+                {slices.map((s) => <path key={`wall-${s.idx}`} d={s.wallPath} fill={s.item.color} opacity=".58" />)}
+                {slices.map((s) => <path key={`a-${s.idx}`} d={s.sideA} fill={s.item.color} opacity=".46" />)}
+                {slices.map((s) => <path key={`b-${s.idx}`} d={s.sideB} fill={s.item.color} opacity=".38" />)}
+                {slices.map((s) => (
+                  <g key={`top-${s.idx}`} onClick={() => safe.length && setPieFocus(s.idx)} style={{ cursor: safe.length ? "pointer" : "default" }}>
+                    <path d={s.topPath} fill={`url(#clockPieTop${s.idx})`} stroke={s.selected ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.32)"} strokeWidth={s.selected ? 2.3 : 1.1} />
+                    {safe.length && s.span > 20 ? <text x={s.labelX} y={s.labelY} fill="#fff" fontSize={s.span > 55 ? 16 : 12} fontWeight="900" textAnchor="middle" dominantBaseline="middle" style={{ pointerEvents: "none", textShadow: "0 2px 5px rgba(0,0,0,.8)" }}>{Math.round((s.item.value / denom) * 100)}%</text> : null}
+                  </g>
+                ))}
               </g>
-            ))}
-          </svg>
-
-          <div style={{ marginTop: -8, textAlign: "center" }}>
-            <div style={{ color: activeItem?.color || themeTeal, fontSize: 15, fontWeight: 1000 }}>{activeItem?.label || centerLabel}</div>
-            <div style={{ color: themeText, fontSize: 22, fontWeight: 1000, lineHeight: 1.05, marginTop: 2 }}>{activeItem ? activeItem.value : centerValue}</div>
-            <div style={{ color: themeTextSoft, fontSize: 10.5, marginTop: 3 }}>{activeItem ? `${Math.round((activeItem.value / total) * 100)}% du total` : centerLabel}</div>
+            </svg>
           </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, minWidth: 0 }}>
-          {items.map((item, idx) => {
-            const pct = total ? Math.round((item.value / total) * 100) : 0;
-            const active = idx === activeSafe;
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => setActiveIndex(idx)}
-                style={{
-                  width: "100%",
-                  display: "grid",
-                  gridTemplateColumns: "12px minmax(0,1fr) auto",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 12,
-                  border: `1px solid ${active ? hexToRgba(item.color, .62) : "rgba(255,255,255,.06)"}`,
-                  background: active ? `linear-gradient(90deg, ${hexToRgba(item.color, .16)}, rgba(255,255,255,.025))` : "rgba(255,255,255,.025)",
-                  padding: "8px 9px",
-                  color: themeText,
-                  textAlign: "left",
-                  minWidth: 0,
-                }}
-              >
-                <span style={{ width: 12, height: 12, borderRadius: 4, background: item.color, boxShadow: `0 0 9px ${hexToRgba(item.color, .45)}` }} />
-                <span style={{ fontSize: 11.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
-                <strong style={{ color: item.color, fontSize: 11.5 }}>{item.value} · {pct}%</strong>
-              </button>
-            );
-          })}
+          <div style={{ display: "grid", alignContent: "center", gap: 7, minWidth: 0 }}>
+            {safe.length ? safe.map((item, idx) => {
+              const selected = idx === Math.min(pieFocus, safe.length - 1);
+              const pct = total ? Math.round((item.value / total) * 100) : 0;
+              return (
+                <button key={item.label} type="button" onClick={() => setPieFocus(idx)} style={{ border: `1px solid ${selected ? hexToRgba(item.color, .72) : "rgba(255,255,255,.07)"}`, background: selected ? hexToRgba(item.color, .12) : "rgba(255,255,255,.025)", borderRadius: 12, padding: "8px 9px", color: textMain, display: "grid", gridTemplateColumns: "12px minmax(0,1fr) auto", gap: 8, alignItems: "center", textAlign: "left", boxShadow: selected ? `0 0 15px ${hexToRgba(item.color, .15)}` : "none" }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 4, background: item.color, boxShadow: `0 0 9px ${hexToRgba(item.color, .38)}` }} />
+                  <span style={{ fontSize: 11.5, fontWeight: selected ? 900 : 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
+                  <strong style={{ color: item.color, fontSize: 11.5 }}>{item.value} · {pct}%</strong>
+                </button>
+              );
+            }) : <div style={{ color: textSoft, fontSize: 11 }}>Aucune donnée.</div>}
+            {active ? <div style={{ marginTop: 4, borderRadius: 12, padding: "9px 10px", background: "rgba(255,255,255,.035)", border: `1px solid ${hexToRgba(active.color, .28)}` }}><div style={{ color: textSoft, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>Sélection</div><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 3 }}><strong style={{ color: active.color, fontSize: 14 }}>{active.label}</strong><strong style={{ color: textMain, fontSize: 14 }}>{active.value} · {activePct}%</strong></div></div> : null}
+          </div>
         </div>
       </div>
     );
@@ -2362,257 +2256,141 @@ function PlaySection(props: PlaySectionProps) {
     { key: "progression" as const, label: "Progression" },
     { key: "graphs" as const, label: "Graphiques" },
   ];
-  const activeTabLabel = tabs.find((tab) => tab.key === statsTab)?.label || "Résumé";
+  const tabLabel = tabs.find((t) => t.key === statsTab)?.label || "Résumé";
+
+  const kpisByTab: Record<typeof statsTab, { label: string; value: React.ReactNode; tone: string; sub?: string }[]> = {
+    resume: [
+      { label: "Terminées", value: targetsCompleted, tone: green },
+      { label: "Restantes", value: stats.remaining, tone: cyan },
+      { label: "Darts", value: dartsThrown, tone: primary },
+      { label: "Hits", value: hits, tone: green },
+      { label: "Précision", value: `${precision}%`, tone: cyan },
+      { label: "Série", value: currentStreak, tone: purple },
+      { label: "Best série", value: bestStreak, tone: yellow },
+      { label: "Temps", value: formatTime(elapsedNow), tone: blue },
+    ],
+    performance: [
+      { label: "Moy. / dart", value: stats.avgPerDart, tone: cyan },
+      { label: "Moy. / hit", value: stats.avgPerHit, tone: green },
+      { label: "Points", value: stats.points, tone: orange },
+      { label: "Pts / round", value: stats.avgRound, tone: yellow },
+      { label: "Simples", value: stats.singles, tone: "#20bff4" },
+      { label: "Doubles", value: stats.doubles, tone: "#23d98b" },
+      { label: "Triples", value: stats.triples, tone: "#a968ff" },
+      { label: "Bulls", value: stats.bulls + stats.dbulls, tone: "#ffd13d" },
+    ],
+    progression: [
+      { label: "Cible", value: targetFullLabel, tone: objectiveColor },
+      { label: "Terminées", value: targetsCompleted, tone: green },
+      { label: "Restantes", value: stats.remaining, tone: cyan },
+      { label: "Temps / cible", value: targetsCompleted ? formatTime(Math.round(elapsedNow / Math.max(1, targetsCompleted))) : "00:00", tone: blue },
+      { label: "Board hits", value: stats.boardHits, tone: green },
+      { label: "Board %", value: `${stats.boardHitPct}%`, tone: cyan },
+      { label: "Best segment", value: stats.bestSegment, tone: yellow },
+      { label: "Hits best", value: stats.bestSegmentHits, tone: orange },
+    ],
+    graphs: [
+      { label: "Darts", value: stats.total, tone: primary },
+      { label: "Rounds", value: stats.rounds.length, tone: cyan },
+      { label: "Points", value: stats.points, tone: orange },
+      { label: "Pts / round", value: stats.avgRound, tone: yellow },
+      { label: "Board %", value: `${stats.boardHitPct}%`, tone: green },
+      { label: "Misses", value: stats.misses, tone: red },
+      { label: "Série", value: currentStreak, tone: purple },
+      { label: "Best série", value: bestStreak, tone: blue },
+    ],
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-      <section style={{ ...panelStyle, padding: 0, overflow: "hidden", borderColor: `${objectiveColor}78`, boxShadow: `0 0 24px ${hexToRgba(objectiveColor, 0.18)}` }}>
+      <section style={{ ...commonPanel, padding: 0, overflow: "hidden", borderColor: `${objectiveColor}78`, boxShadow: `0 0 24px ${hexToRgba(objectiveColor, .18)}` }}>
         <div style={{ position: "relative", minHeight: 122, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(126px,142px)", gap: 4, alignItems: "stretch", padding: "8px 10px" }}>
-          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${hexToRgba(themePrimary, 0.04)}, rgba(0,0,0,.18) 50%, ${hexToRgba(themeAccent2, 0.04)})` }} />
-          <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "26%", minWidth: 88, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-            <div style={{ position: "absolute", left: -18, top: 17, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}><ProfileAvatar profile={activeProfile as any} size={84} /></div>
-          </div>
-
+          <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg, ${hexToRgba(primary, .04)}, rgba(0,0,0,.18) 50%, ${hexToRgba(purple, .04)})` }} />
+          <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "26%", minWidth: 88, overflow: "hidden", opacity: .14, pointerEvents: "none" }}><div style={{ position: "absolute", left: -18, top: 17, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}><ProfileAvatar profile={activeProfile as any} size={84} /></div></div>
           <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 8px 2px 4px" }}>
             <div style={{ color: objectiveColor, fontSize: 13, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{currentPlayer?.name || "Joueur"}</div>
-            <div style={{ marginTop: 2, color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .45, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}{currentPlayer?.teamName ? ` · ${currentPlayer.teamName}` : ""}</div>
+            <div style={{ marginTop: 2, color: textSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .45, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isMulti ? `Joueur ${currentPlayerIndex + 1}/${players.length}` : "Mode solo"}{currentPlayer?.teamName ? ` · ${currentPlayer.teamName}` : ""}</div>
             <div style={{ marginTop: 5, color: objectiveColor, fontSize: objectiveLabel.length > 5 ? 38 : 52, fontWeight: 1000, lineHeight: .96, textShadow: `0 0 18px ${objectiveGlow}` }}>{objectiveLabel}</div>
-            <div style={{ marginTop: 5, color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .55, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{currentDartSetName ? `Set : ${currentDartSetName}` : "Tour de l'horloge"}</div>
+            <div style={{ marginTop: 5, color: textSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .55, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{currentDartSetName ? `Set : ${currentDartSetName}` : "Tour de l'horloge"}</div>
           </div>
-
-          <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: themeCard, isolation: "isolate", border: `1px solid ${hexToRgba(objectiveColor, 0.28)}` }}>
-            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", opacity: 0.18, mixBlendMode: "screen" }} />
-            <div style={{ position: "absolute", inset: 0, background: `linear-gradient(180deg, rgba(4,8,16,.24), rgba(4,8,16,.82))` }} />
+          <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: card, isolation: "isolate", border: `1px solid ${hexToRgba(objectiveColor, .28)}` }}>
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", opacity: .18, mixBlendMode: "screen" }} />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(4,8,16,.24), rgba(4,8,16,.82))" }} />
             <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", padding: "6px 4px" }}>
-              <div style={{ color: themeTextSoft, fontSize: 9, fontWeight: 950, letterSpacing: .8 }}>CIBLE</div>
+              <div style={{ color: textSoft, fontSize: 9, fontWeight: 950, letterSpacing: .8 }}>CIBLE</div>
               <div style={{ color: objectiveColor, fontSize: currentTarget === "BULL" ? 22 : 42, lineHeight: 1, fontWeight: 1100, textShadow: `0 0 18px ${objectiveGlow}`, marginTop: 3 }}>{targetFullLabel}</div>
-              <div style={{ color: themeTextSoft, fontSize: 8.5, fontWeight: 900, marginTop: 6 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
-              {config.showTimer ? <div style={{ color: themePrimary, fontSize: 10, fontWeight: 1000, marginTop: 6 }}>{formatTime(elapsedNow)}</div> : null}
+              <div style={{ color: textSoft, fontSize: 8.5, fontWeight: 900, marginTop: 6 }}>{targetsCompleted}/{TARGETS.length} CIBLES</div>
+              {config.showTimer ? <div style={{ color: primary, fontSize: 10, fontWeight: 1000, marginTop: 6 }}>{formatTime(elapsedNow)}</div> : null}
             </div>
           </div>
         </div>
-        <div style={{ height: 5, background: "rgba(255,255,255,.055)", overflow: "hidden" }}><div style={{ height: "100%", width: `${progressPct}%`, background: `linear-gradient(90deg, ${hexToRgba(objectiveColor, 0.6)}, ${objectiveColor})`, boxShadow: `0 0 12px ${objectiveGlow}`, transition: "width .2s ease" }} /></div>
+        <div style={{ height: 5, background: "rgba(255,255,255,.055)", overflow: "hidden" }}><div style={{ height: "100%", width: `${progressPct}%`, background: `linear-gradient(90deg, ${hexToRgba(objectiveColor, .6)}, ${objectiveColor})`, boxShadow: `0 0 12px ${objectiveGlow}` }} /></div>
       </section>
 
-      <section role="button" tabIndex={0} onClick={() => setStatsOpen(true)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStatsOpen(true); } }} style={{ ...panelStyle, padding: 7, cursor: "pointer" }}>
+      <section role="button" tabIndex={0} onClick={() => setStatsOpen(true)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStatsOpen(true); } }} style={{ ...commonPanel, padding: 7, cursor: "pointer" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
-          {[
-            ["Darts", dartsLimitLabel, themePrimary],
-            ["Hits", hits, themeSuccess],
-            ["Précision", `${precision}%`, objectiveColor],
-            ["Série / Best", `${currentStreak}/${bestStreak}`, themeAccent2],
-          ].map(([label, value, color]) => (
-            <div key={String(label)} style={{ minWidth: 0, borderRadius: 11, padding: "6px 3px", textAlign: "center", border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)" }}>
-              <div style={{ color: themeTextSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-              <div style={{ color: String(color), fontSize: 15, lineHeight: 1.05, fontWeight: 1100, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value)}</div>
-            </div>
-          ))}
+          {[["DARTS", dartsLimitLabel, primary], ["HITS", hits, green], ["PRÉCISION", `${precision}%`, cyan], ["SÉRIE / BEST", `${currentStreak}/${bestStreak}`, purple]].map(([label, value, tone]) => <div key={String(label)} style={{ minWidth: 0, borderRadius: 11, padding: "6px 3px", textAlign: "center", border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.22)" }}><div style={{ color: textSoft, fontSize: 7.5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ color: String(tone), fontSize: 15, lineHeight: 1.05, fontWeight: 1100, marginTop: 3 }}>{String(value)}</div></div>)}
         </div>
-        <div style={{ marginTop: 5, minHeight: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 5px", color: themeTextSoft, fontSize: 9.5 }}>
-          <span style={{ whiteSpace: "nowrap" }}>Dernier objectif validé</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <strong style={{ color: themeText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{lastObjectiveDisplay}</strong>
-            <span style={{ color: themePrimary, fontSize: 16, lineHeight: 1 }}>›</span>
-          </div>
-        </div>
+        <div style={{ marginTop: 5, minHeight: 22, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 5px", color: textSoft, fontSize: 9.5 }}><span>Dernier objectif validé</span><div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}><strong style={{ color: textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastObjectiveDisplay}</strong><span style={{ color: cyan, fontSize: 16 }}>›</span></div></div>
       </section>
 
-      <section style={{ ...panelStyle, padding: "7px 9px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 30 }}>
-          <div style={{ flex: "0 0 auto", color: themeTextSoft, fontSize: 9, fontWeight: 950, letterSpacing: .45 }}>DERNIERS</div>
-          {lastThrows.length === 0 ? <div style={{ color: "rgba(255,255,255,.40)", fontSize: 10 }}>En attente…</div> : <div className="dc-scroll-thin" style={{ display: "flex", gap: 5, overflowX: "auto", minWidth: 0, paddingBottom: 1 }}>{lastThrows.slice(0, 10).map((t, idx) => {
-            const kind = getThrowKind(t);
-            const tone = kind === "double" || kind === "bull" ? themeSuccess : kind === "triple" ? themeAccent2 : kind === "simple" ? themePrimary : themeDanger;
-            return <span key={`${t}-${idx}`} style={{ flex: "0 0 auto", minWidth: 30, height: 24, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${hexToRgba(tone, 0.40)}`, background: hexToRgba(tone, 0.14), color: tone, fontSize: 9.5, fontWeight: 1000 }}>{t}</span>;
-          })}</div>}
-        </div>
-      </section>
+      <section style={{ ...commonPanel, padding: "7px 9px" }}><div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 30 }}><div style={{ flex: "0 0 auto", color: textSoft, fontSize: 9, fontWeight: 950, letterSpacing: .45 }}>DERNIERS</div>{lastThrows.length === 0 ? <div style={{ color: "rgba(255,255,255,.40)", fontSize: 10 }}>En attente…</div> : <div className="dc-scroll-thin" style={{ display: "flex", gap: 5, overflowX: "auto", minWidth: 0 }}>{lastThrows.slice(0, 10).map((t, idx) => { const kind = getThrowKind(t); const tone = kind === "double" || kind === "bull" ? green : kind === "triple" ? purple : kind === "simple" ? primary : red; return <span key={`${t}-${idx}`} style={{ flex: "0 0 auto", minWidth: 30, height: 24, padding: "0 7px", borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${hexToRgba(tone, .40)}`, background: hexToRgba(tone, .14), color: tone, fontSize: 9.5, fontWeight: 1000 }}>{t}</span>; })}</div>}</div></section>
 
-      <section style={{ ...panelStyle, padding: 7 }}>
-        <Keypad
-          currentThrow={pendingThrow as any}
-          multiplier={padMultiplier}
-          onSimple={() => setPadMultiplier(1)}
-          onDouble={() => setPadMultiplier(2)}
-          onTriple={() => setPadMultiplier(3)}
-          onBackspace={clearPending}
-          onCancel={clearPending}
-          onNumber={chooseNumber}
-          onBull={chooseBull}
-          onValidate={hasPending ? validatePending : clearPending}
-          hidePreview
-          validateAttention={hasPending}
-          safeBottomPad
-        />
+      <section style={{ ...commonPanel, padding: 7 }}>
+        <Keypad currentThrow={pendingThrow as any} multiplier={padMultiplier} onSimple={() => setPadMultiplier(1)} onDouble={() => setPadMultiplier(2)} onTriple={() => setPadMultiplier(3)} onBackspace={clearPending} onCancel={clearPending} onNumber={chooseNumber} onBull={chooseBull} onValidate={hasPending ? validatePending : clearPending} hidePreview={true} safeBottomPad footerGap={18} />
       </section>
 
       {statsOpen ? (
-        <div style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)", padding: "16px 10px calc(20px + var(--safe-bottom))" }} onClick={() => setStatsOpen(false)}>
-          <div className="dc-scroll-thin" style={{ width: "min(100%, 620px)", maxHeight: "100%", overflowY: "auto", margin: "0 auto", borderRadius: 28, border: `1px solid ${hexToRgba(themeTeal, 0.34)}`, background: `radial-gradient(circle at top right, ${hexToRgba(themeAccent2, 0.10)}, transparent 24%), radial-gradient(circle at top left, ${hexToRgba(themeTeal, 0.10)}, transparent 30%), linear-gradient(180deg, rgba(8,14,26,.98), rgba(3,6,14,.99))`, boxShadow: `0 24px 64px rgba(0,0,0,.55), 0 0 36px ${hexToRgba(themeTeal, 0.10)}`, padding: 18, color: themeText, position: "relative", overflowX: "hidden" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `linear-gradient(115deg, transparent 0%, ${hexToRgba(themeBlue, 0.03)} 35%, transparent 65%)` }} />
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, position: "relative" }}>
-              <div>
-                <div style={{ color: themeTeal, fontSize: 23, fontWeight: 1000, lineHeight: 1 }}>Statistiques détaillées</div>
-                <div style={{ color: themeTextSoft, fontSize: 10.5, marginTop: 4, lineHeight: 1.2 }}> <span style={{ color: themeBlue, fontWeight: 900 }}>{activeTabLabel}</span></div>
-              </div>
-              <button type="button" onClick={() => setStatsOpen(false)} style={{ width: 44, height: 44, borderRadius: 999, border: `1px solid ${hexToRgba(themeTeal, 0.35)}`, background: "rgba(255,255,255,.04)", color: themeTeal, fontSize: 28, fontWeight: 900, boxShadow: `0 0 20px ${hexToRgba(themeTeal, 0.08)}` }}>×</button>
+        <div className="clock-stats-backdrop" style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(0,0,0,.72)", backdropFilter: "blur(8px)", padding: "12px 8px calc(18px + var(--safe-bottom))" }} onClick={() => setStatsOpen(false)}>
+          <style>{`
+            .clock-stats-shell{width:min(100%,620px);max-height:100%;overflow-y:auto;margin:0 auto;border-radius:24px;box-sizing:border-box;}
+            .clock-stats-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+            .clock-stats-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+            .clock-stats-grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;}
+            .clock-pie-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(150px,.8fr);gap:10px;align-items:center;}
+            .clock-stat-kpi{min-height:76px;box-sizing:border-box;}
+            @media(max-width:540px){
+              .clock-stats-shell{border-radius:20px!important;padding:13px!important;}
+              .clock-stats-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}
+              .clock-stats-grid2{grid-template-columns:1fr;gap:9px;}
+              .clock-pie-layout{grid-template-columns:1fr;gap:6px;}
+              .clock-stat-kpi{min-height:70px;}
+            }
+          `}</style>
+          <div className="clock-stats-shell dc-scroll-thin" style={{ border: `1px solid ${hexToRgba(cyan, .38)}`, background: `radial-gradient(circle at top left,${hexToRgba(cyan,.10)},transparent 28%),radial-gradient(circle at top right,${hexToRgba(purple,.09)},transparent 30%),linear-gradient(180deg,rgba(8,15,28,.99),rgba(2,6,13,.995))`, boxShadow: `0 24px 64px rgba(0,0,0,.58),0 0 38px ${hexToRgba(cyan,.08)}`, padding: 16, color: textMain, position: "relative" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ minWidth: 0 }}><div style={{ color: cyan, fontSize: 21, fontWeight: 1000, lineHeight: 1 }}>TOUR DE L'HORLOGE · STATS</div><div style={{ color: textSoft, fontSize: 10.5, marginTop: 5 }}>{currentPlayer?.name || "Joueur"} · <span style={{ color: blue, fontWeight: 900 }}>{tabLabel}</span></div></div>
+              <button type="button" onClick={() => setStatsOpen(false)} style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${hexToRgba(cyan,.35)}`, background: "rgba(255,255,255,.035)", color: cyan, fontSize: 24, fontWeight: 900, flex: "0 0 auto" }}>×</button>
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "space-between" }}>
-              {tabs.map((tab) => {
-                const active = statsTab === tab.key;
-                return <button key={tab.key} type="button" title={tab.label} aria-label={tab.label} onClick={() => setStatsTab(tab.key)} style={iconButtonStyle(active)}><TabGlyph kind={tab.key} active={active} /></button>;
-              })}
+            <div className="clock-stats-tabs" style={{ marginTop: 13 }}>
+              {tabs.map((tab) => { const active = tab.key === statsTab; return <button key={tab.key} type="button" title={tab.label} onClick={() => setStatsTab(tab.key)} style={{ height: 48, borderRadius: 15, border: `1px solid ${active ? hexToRgba(cyan,.58) : "rgba(255,255,255,.075)"}`, background: active ? `linear-gradient(180deg,${hexToRgba(cyan,.15)},${hexToRgba(blue,.06)})` : "rgba(255,255,255,.025)", display: "grid", placeItems: "center", boxShadow: active ? `0 0 15px ${hexToRgba(cyan,.12)}` : "none" }}><StatIcon kind={tab.key} active={active} /></button>; })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 16 }}>
-              {miniKpi("Terminées", targetsCompleted, "#31e091", `${stats.completedPct}%`)}
-              {miniKpi("Restantes", stats.remaining, "#2fe0ff", "avant Bull")}
-              {miniKpi("Temps total", formatTime(elapsedNow), "#4aa9ff", "chrono")}
-              {miniKpi("Temps / cible", targetsCompleted > 0 ? formatTime(Math.round(elapsedNow / Math.max(1, targetsCompleted))) : "00:00", "#7de7ff", "moyenne")}
-            </div>
+            <div className="clock-stats-kpis" style={{ marginTop: 12 }}>{kpisByTab[statsTab].map((k) => <Kpi key={k.label} {...k} />)}</div>
 
-            {statsTab === "resume" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Performance globale</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 10, columnGap: 10 }}>
-                    {[
-                      ["Total darts", stats.total, themeText],
-                      ["Objectifs validés", hits, "#31e091"],
-                      ["Précision", `${precision}%`, "#2fe0ff"],
-                      ["Board hits", `${stats.boardHits} · ${stats.boardHitPct}%`, "#4aa9ff"],
-                      ["Points", stats.points, "#ff9a57"],
-                      ["Moy. / dart", stats.avgPerDart, "#ffd34e"],
-                      ["Série", currentStreak, "#c56cff"],
-                      ["Best série", bestStreak, "#31e091"],
-                      ["Dernier obj.", lastObjectiveDisplay, themeText],
-                    ].map(([label, value, tone]) => <React.Fragment key={String(label)}><span style={{ color: themeTextSoft, fontSize: 12 }}>{String(label)}</span><strong style={{ color: String(tone), textAlign: "right", fontSize: 12.5, lineHeight: 1.2 }}>{String(value)}</strong></React.Fragment>)}
-                  </div>
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Répartition des lancers</div>
-                  <Pie3DChart data={throwComposition} centerValue={`${stats.total || 0}`} centerLabel="lancers" />
-                </div>
-              </div>
-            ) : null}
+            {statsTab === "resume" ? <div className="clock-stats-grid2" style={{ marginTop: 10 }}>
+              <Pie3D data={throwPie} title="Répartition 3D des lancers" />
+              <div style={{ ...overlayPanel, padding: 14 }}><SectionTitle tone={yellow}>Derniers lancers</SectionTitle><div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 11 }}>{(lastThrows.length ? lastThrows : ["—","—","—"]).slice(0,18).map((t,idx) => { const kind=getThrowKind(t); const tone=kind==="double"||kind==="bull"?green:kind==="triple"?purple:kind==="simple"?cyan:red; return <span key={`${t}-${idx}`} style={{ minWidth: 38, height: 28, padding: "0 9px", borderRadius: 999, display: "grid", placeItems: "center", border:`1px solid ${hexToRgba(tone,.42)}`, background:hexToRgba(tone,.13), color:tone, fontSize:10.5, fontWeight:1000 }}>{t}</span>; })}</div><div style={{ marginTop: 14, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>{<Kpi label="Points" value={stats.points} tone={orange} />}{<Kpi label="Moy. / dart" value={stats.avgPerDart} tone={cyan} />}{<Kpi label="Best segment" value={stats.bestSegment} tone={yellow} />}{<Kpi label="Hits best" value={stats.bestSegmentHits} tone={green} />}</div></div>
+            </div> : null}
 
-            {statsTab === "performance" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                  {miniKpi("Moyenne / dart", stats.avgPerDart, "#2fe0ff")}
-                  {miniKpi("Moyenne / hit", stats.avgPerHit, "#31e091")}
-                  {miniKpi("Taux d'achèvement", `${stats.completedPct}%`, "#7de7ff")}
-                  {miniKpi("Points / round", stats.avgRoundPoints, "#ff9a57")}
-                  {miniKpi("Bulls / DBulls", `${stats.bulls}/${stats.dbulls}`, "#ffd34e")}
-                  {miniKpi("Triples / Doubles", `${stats.triples}/${stats.doubles}`, "#c56cff")}
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Comparatif des familles</div>
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {[
-                      { label: "Simples", value: stats.singles, color: "#2cc7ff" },
-                      { label: "Doubles", value: stats.doubles, color: "#31e091" },
-                      { label: "Triples", value: stats.triples, color: "#7de7ff" },
-                      { label: "Bulls", value: stats.bulls + stats.dbulls, color: "#ffd34e" },
-                      { label: "Misses", value: stats.misses, color: "#ff6a83" },
-                    ].map((row) => {
-                      const pct = stats.total ? Math.round((row.value / stats.total) * 100) : 0;
-                      return <div key={row.label}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 5 }}><span style={{ color: themeText, fontSize: 12.5 }}>{row.label}</span><strong style={{ color: row.color, fontSize: 12.5 }}>{row.value} · {pct}%</strong></div><div style={{ height: 11, borderRadius: 999, background: "rgba(255,255,255,.05)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, ${hexToRgba(row.color, 0.65)}, ${row.color})`, boxShadow: `0 0 10px ${hexToRgba(row.color, 0.24)}` }} /></div></div>;
-                    })}
-                  </div>
-                </div>
-                <div style={{ ...overlayCard, padding: 16, gridColumn: "1 / -1" }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Camembert d'objectifs</div>
-                  <Pie3DChart data={objectiveComposition} centerValue={`${targetsCompleted}`} centerLabel={`sur ${TARGETS.length}`} />
-                </div>
-              </div>
-            ) : null}
+            {statsTab === "performance" ? <div className="clock-stats-grid2" style={{ marginTop: 10 }}>
+              <Pie3D data={throwPie} title="Familles de touches" />
+              <div style={{ ...overlayPanel, padding: 14 }}><SectionTitle tone={purple}>Comparatif des familles</SectionTitle><div style={{ display:"grid", gap:10, marginTop:12 }}>{[
+                {label:"Simples",value:stats.singles,color:"#20bff4"},{label:"Doubles",value:stats.doubles,color:"#23d98b"},{label:"Triples",value:stats.triples,color:"#a968ff"},{label:"Bulls",value:stats.bulls+stats.dbulls,color:"#ffd13d"},{label:"Misses",value:stats.misses,color:"#ff5f72"}
+              ].map((row)=>{const pct=stats.total?Math.round((row.value/stats.total)*100):0;return <div key={row.label}><div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4,fontSize:11.5}}><span>{row.label}</span><strong style={{color:row.color}}>{row.value} · {pct}%</strong></div><div style={{height:8,borderRadius:999,background:"rgba(255,255,255,.05)",overflow:"hidden"}}><div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${hexToRgba(row.color,.65)},${row.color})`}} /></div></div>})}</div></div>
+            </div> : null}
 
-            {statsTab === "progression" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Historique des cibles</div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {[...Array(Math.max(1, targetsCompleted))].map((_, idx) => <div key={idx} style={{ display: "grid", gridTemplateColumns: "44px 1fr auto auto", gap: 8, alignItems: "center", borderRadius: 14, padding: "10px 12px", background: idx % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.015)", border: "1px solid rgba(255,255,255,.05)" }}><span style={{ color: themeTextSoft, fontWeight: 900 }}>#{idx + 1}</span><span style={{ color: themeText }}>{idx + 1 === TARGETS.length ? "Bull" : idx + 1}</span><strong style={{ color: themeSuccess }}>HIT</strong><span style={{ color: themeBlue, fontWeight: 900 }}>{formatTime(Math.round((elapsedNow / Math.max(1, targetsCompleted)) * (idx + 1)))}</span></div>)}
-                  </div>
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Meilleur segment</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "82px 1fr", gap: 12, alignItems: "center" }}>
-                    <div style={{ width: 82, height: 82, borderRadius: "50%", border: `2px solid ${hexToRgba(themeBlue, 0.45)}`, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", boxShadow: `0 0 18px ${hexToRgba(themeBlue, 0.18)}` }} />
-                    <div>
-                      <div style={{ color: themeBlue, fontSize: 28, fontWeight: 1100, lineHeight: 1 }}>{stats.bestSegment}</div>
-                      <div style={{ color: themeText, fontSize: 14, fontWeight: 900, marginTop: 6 }}>{stats.bestSegmentHits} hit{stats.bestSegmentHits > 1 ? "s" : ""}</div>
-                      <div style={{ color: themeTextSoft, marginTop: 4, fontSize: 12, lineHeight: 1.25 }}>Segment le plus fréquent.</div>
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ color: themeTeal, fontSize: 14, fontWeight: 900, marginBottom: 8 }}>Progression globale</div>
-                    <div style={{ height: 12, borderRadius: 999, background: "rgba(255,255,255,.06)", overflow: "hidden" }}><div style={{ width: `${stats.completedPct}%`, height: "100%", background: `linear-gradient(90deg, #31e091, #2fe0ff, #c56cff)` }} /></div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-                      {miniKpi("Objectifs", targetsCompleted, "#31e091")}
-                      {miniKpi("Board hits", stats.boardHits, "#4aa9ff")}
-                      {miniKpi("Précision brute", `${stats.boardHitPct}%`, "#7de7ff")}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            {statsTab === "progression" ? <div className="clock-stats-grid2" style={{ marginTop: 10 }}>
+              <Pie3D data={targetPie} title="Avancement des cibles" />
+              <div style={{ ...overlayPanel, padding: 14 }}><SectionTitle tone={green}>Historique des cibles</SectionTitle><div style={{display:"grid",gap:7,marginTop:10}}>{targetsCompleted > 0 ? [...Array(targetsCompleted)].slice(-12).reverse().map((_,i)=>{const n=targetsCompleted-i; return <div key={n} style={{display:"grid",gridTemplateColumns:"36px 1fr auto",gap:8,alignItems:"center",borderRadius:11,padding:"8px 9px",background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.05)",fontSize:11}}><span style={{color:textSoft}}>#{n}</span><strong style={{color:textMain}}>{n===21?"Bull":n}</strong><span style={{color:green,fontWeight:900}}>VALIDÉE</span></div>}) : <div style={{color:textSoft,fontSize:11}}>Aucune cible validée.</div>}</div></div>
+            </div> : null}
 
-            {statsTab === "graphs" ? (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 9 }}>Courbe de précision</div>
-                  <svg viewBox="0 0 210 116" width="100%" height="164">
-                    <defs>
-                      <linearGradient id="clockPrecisionLineRefined" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="#2fe0ff" />
-                        <stop offset="55%" stopColor="#ffd34e" />
-                        <stop offset="100%" stopColor="#c56cff" />
-                      </linearGradient>
-                    </defs>
-                    <line x1="14" y1="102" x2="194" y2="102" stroke="rgba(255,255,255,.16)" />
-                    <line x1="14" y1="18" x2="14" y2="102" stroke="rgba(255,255,255,.16)" />
-                    <polyline fill="none" stroke="url(#clockPrecisionLineRefined)" strokeWidth="3.5" points={precisionLine} />
-                    {stats.cumulative.map((point, idx) => {
-                      const x = stats.cumulative.length === 1 ? 104 : 14 + idx * (180 / Math.max(1, stats.cumulative.length - 1));
-                      const y = 102 - (point.precision / 100) * 84;
-                      return <circle key={point.x} cx={x} cy={y} r="4.2" fill={idx % 2 ? "#ffd34e" : "#2fe0ff"} stroke="#07101d" strokeWidth="2" />;
-                    })}
-                  </svg>
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 9 }}>Barres par round</div>
-                  <svg viewBox="0 0 220 116" width="100%" height="164">
-                    <line x1="14" y1="102" x2="206" y2="102" stroke="rgba(255,255,255,.16)" />
-                    {roundBars.length ? roundBars.map((bar, idx) => <rect key={idx} x={bar.x} y={102 - bar.h} width="22" height={bar.h} rx="8" fill={bar.color} opacity="0.95" />) : <text x="20" y="58" fill="rgba(255,255,255,.55)" fontSize="11">Aucun round disponible</text>}
-                  </svg>
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10 }}>Repères</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                    {miniKpi("Darts", stats.total, "#2fe0ff")}
-                    {miniKpi("Points", stats.points, "#ff9957")}
-                    {miniKpi("Board hits", stats.boardHits, "#4aa9ff")}
-                    {miniKpi("Misses", stats.misses, "#ff6a83")}
-                  </div>
-                </div>
-                <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10 }}>Comparaison rapide</div>
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {[
-                      { label: "Hits / ratés", a: hits, b: stats.misses, colorA: "#31e091", colorB: "#ff6a83" },
-                      { label: "Simples / triples", a: stats.singles, b: stats.triples, colorA: "#2fe0ff", colorB: "#c56cff" },
-                      { label: "Bulls / doubles", a: stats.bulls + stats.dbulls, b: stats.doubles, colorA: "#ffd34e", colorB: "#4aa9ff" },
-                    ].map((row) => {
-                      const max = Math.max(1, row.a, row.b);
-                      return <div key={row.label}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}><span style={{ color: themeText, fontSize: 12.5 }}>{row.label}</span><strong style={{ color: themeTextSoft, fontSize: 12.5 }}>{row.a} / {row.b}</strong></div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><div style={{ height: 11, borderRadius: 999, background: "rgba(255,255,255,.05)", overflow: "hidden" }}><div style={{ width: `${(row.a / max) * 100}%`, height: "100%", background: row.colorA }} /></div><div style={{ height: 11, borderRadius: 999, background: "rgba(255,255,255,.05)", overflow: "hidden" }}><div style={{ width: `${(row.b / max) * 100}%`, height: "100%", background: row.colorB }} /></div></div></div>;
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            {statsTab === "graphs" ? <div className="clock-stats-grid2" style={{ marginTop: 10 }}>
+              <div style={{ ...overlayPanel, padding: 14 }}><SectionTitle tone={cyan}>Courbe de précision</SectionTitle><svg viewBox="0 0 210 116" width="100%" height="160" style={{marginTop:8}}><defs><linearGradient id="clockLineFinal" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={cyan}/><stop offset="55%" stopColor={yellow}/><stop offset="100%" stopColor={purple}/></linearGradient></defs><line x1="14" y1="102" x2="194" y2="102" stroke="rgba(255,255,255,.15)"/><line x1="14" y1="18" x2="14" y2="102" stroke="rgba(255,255,255,.15)"/><polyline fill="none" stroke="url(#clockLineFinal)" strokeWidth="3.2" points={curvePoints}/>{stats.curve.map((p,idx)=>{const x=stats.curve.length===1?104:14+idx*(180/Math.max(1,stats.curve.length-1));const y=102-(p.precision/100)*84;return <circle key={p.x} cx={x} cy={y} r="3.8" fill={idx%2?yellow:cyan} stroke="#06101d" strokeWidth="2"/>})}</svg></div>
+              <div style={{ ...overlayPanel, padding: 14 }}><SectionTitle tone={yellow}>Points par round</SectionTitle><svg viewBox="0 0 220 116" width="100%" height="160" style={{marginTop:8}}><line x1="14" y1="102" x2="206" y2="102" stroke="rgba(255,255,255,.15)"/>{barRows.length?barRows.map((b,idx)=><rect key={idx} x={18+idx*34} y={102-b.height} width="22" height={b.height} rx="6" fill={b.color}/>):<text x="20" y="58" fill="rgba(255,255,255,.48)" fontSize="10">Aucun round</text>}</svg></div>
+              <div style={{ ...overlayPanel, padding: 14, gridColumn:"1 / -1" }}><SectionTitle tone={purple}>Comparaison</SectionTitle><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,marginTop:11}}><Kpi label="Hits / Misses" value={`${hits} / ${stats.misses}`} tone={green}/><Kpi label="S / D / T" value={`${stats.singles} / ${stats.doubles} / ${stats.triples}`} tone={cyan}/><Kpi label="Bull / DBull" value={`${stats.bulls} / ${stats.dbulls}`} tone={yellow}/></div></div>
+            </div> : null}
           </div>
         </div>
       ) : null}

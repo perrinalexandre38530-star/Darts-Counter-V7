@@ -35,6 +35,7 @@ import {
 
 const GOLD = "#e9c56c";
 type UiDart = { v: number; mult: 1 | 2 | 3 };
+type KpiIconName = "cards" | "tricks" | "success" | "power" | "darts" | "single" | "pair" | "triple" | "pass" | "taxes" | "miss";
 
 function playerName(p: any) { return p?.name || p?.displayName || p?.display_name || p?.pseudo || "Joueur"; }
 function isBotProfile(p: any, ids: Set<string>) { return ids.has(String(p?.id || "")) || Boolean(p?.isBot || p?.bot || p?.botLevel || p?.kind === "bot"); }
@@ -49,65 +50,138 @@ function dartMatchesUi(config: PresidentConfigPayload, target: PresidentTarget, 
   const expected = target.size;
   return d.v === target.value && d.mult === expected;
 }
-function normalizeConfig(props: any): PresidentConfigPayload {
-  const raw = props?.params?.config || props?.config || props?.params || {};
-  return {
-    mode: "president",
-    players: Math.max(3, Math.min(8, Number(raw?.players || raw?.selectedIds?.length || 3))),
-    selectedIds: Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String).slice(0, 8) : [],
-    playersList: Array.isArray(raw?.playersList) ? raw.playersList : [],
-    playerDartSets: raw?.playerDartSets || {},
-    botIds: Array.isArray(raw?.botIds) ? raw.botIds.map(String) : [],
-    botsEnabled: Boolean(raw?.botsEnabled),
-    botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
-    rounds: ([1,3,5,7,10].includes(Number(raw?.rounds)) ? Number(raw.rounds) : 5) as any,
-    handSize: Math.max(5, Math.min(16, Number(raw?.handSize || 10))),
-    deckCopies: ([3,4,5].includes(Number(raw?.deckCopies)) ? Number(raw.deckCopies) : 4) as any,
-    variant: raw?.variant === "chaos" ? "chaos" : "classic",
-    randomOrder: Boolean(raw?.randomOrder),
-    bullJoker: raw?.variant === "chaos" && raw?.bullJoker !== false,
-    coupEtat: raw?.variant === "chaos" && raw?.coupEtat !== false,
-    revolution: raw?.variant === "chaos" && raw?.revolution !== false,
-    scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
-  };
+function normalizeConfig(props: any): PresidentConfigPayload & {
+    participantMode?: "players" | "teams";
+    teamConfigs?: any[];
+} {
+    const raw = props?.params?.config || props?.config || props?.params || {};
+    return {
+        mode: "president",
+        players: Math.max(3, Math.min(8, Number(raw?.players || raw?.selectedIds?.length || 3))),
+        selectedIds: Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String).slice(0, 8) : [],
+        playersList: Array.isArray(raw?.playersList) ? raw.playersList : [],
+        playerDartSets: raw?.playerDartSets || {},
+        botIds: Array.isArray(raw?.botIds) ? raw.botIds.map(String) : [],
+        botsEnabled: Boolean(raw?.botsEnabled),
+        botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
+        rounds: ([1, 3, 5, 7, 10].includes(Number(raw?.rounds)) ? Number(raw.rounds) : 5) as any,
+        handSize: Math.max(5, Math.min(16, Number(raw?.handSize || 10))),
+        deckCopies: ([3, 4, 5].includes(Number(raw?.deckCopies)) ? Number(raw.deckCopies) : 4) as any,
+        variant: raw?.variant === "chaos" ? "chaos" : "classic",
+        randomOrder: Boolean(raw?.randomOrder),
+        bullJoker: raw?.variant === "chaos" && raw?.bullJoker !== false,
+        coupEtat: raw?.variant === "chaos" && raw?.coupEtat !== false,
+        revolution: raw?.variant === "chaos" && raw?.revolution !== false,
+        scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
+        // Préparation visuelle du futur mode équipes : aucun changement du moteur actuel.
+        participantMode: raw?.participantMode === "teams" ? "teams" : "players",
+        teamConfigs: Array.isArray(raw?.teamConfigs) ? raw.teamConfigs : [],
+    } as any;
 }
 function panel(): React.CSSProperties { return { borderRadius: 18, padding: 11, background: "linear-gradient(180deg,rgba(255,255,255,.058),rgba(0,0,0,.28))", border: "1px solid rgba(255,255,255,.09)", boxShadow: "0 14px 30px rgba(0,0,0,.32)", boxSizing: "border-box", minWidth: 0 }; }
 function roleColor(role: string, primary: string) { if (role === "Président") return "#ffd76a"; if (role === "Trou du cul") return "#ff7a91"; if (role === "Vice-Président") return primary; if (role === "Vice-Trou du cul") return "#ff9f63"; return "#b8c0d9"; }
 function formatPct(a: number, b: number) { return b ? Math.round((a / b) * 1000) / 10 : 0; }
 function fmtTime(ms: number) { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2,"0")}`; }
 
-function RulesContent({ config, primary }: any) {
-  return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
-    <div><b style={{ color: primary }}>S / D / T</b><br />Simple = 1 carte, Double = paire, Triple = brelan. La valeur touchée doit correspondre exactement à la carte choisie.</div>
-    <div><b style={{ color: primary }}>3 ESSAIS MAX</b><br />La combinaison est jouée dès la première fléchette réussie. Trois échecs équivalent à PASSER pour le pli.</div>
-    <div><b style={{ color: primary }}>PLI</b><br />Même combinaison, valeur supérieure. Quand tous les adversaires passent, le dernier joueur ayant réussi ouvre un nouveau pli.</div>
-    <div><b style={{ color: primary }}>TAXES</b><br />Le Trou du cul donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. VP/VTC échangent 1 carte à partir de 4 joueurs.</div>
-    {config.variant === "chaos" ? <div><b style={{ color: "#ffd76a" }}>CHAOS</b><br />BULL joker simple · DBULL Coup d’État · T20 Révolution.</div> : null}
+const SUITS = ["♠", "♥", "♣", "♦"];
+function cardSuit(value: number) { return SUITS[Math.abs(Number(value || 1) - 1) % SUITS.length]; }
+function cardIsRed(value: number) { const s = cardSuit(value); return s === "♥" || s === "♦"; }
+function PlayingCard({ value, mini = false, ghost = false }: {
+    value: number;
+    mini?: boolean;
+    ghost?: boolean;
+}) {
+    const suit = cardSuit(value);
+    const red = cardIsRed(value);
+    const w = mini ? 43 : 58;
+    const h = mini ? 61 : 82;
+    return <div aria-label={`Carte ${value}`} style={{
+            width: w, height: h, borderRadius: mini ? 6 : 8, boxSizing: "border-box", position: "relative", flex: "0 0 auto", overflow: "hidden",
+            background: ghost ? "linear-gradient(155deg,rgba(255,252,242,.92),rgba(220,213,196,.86))" : "linear-gradient(155deg,#fffdf5,#e9e1cf)",
+            border: "1px solid rgba(36,29,19,.72)", boxShadow: ghost ? "none" : "0 4px 10px rgba(0,0,0,.48), inset 0 0 0 1px rgba(255,255,255,.72)",
+            color: red ? "#c92e38" : "#13161d", fontFamily: "Georgia,Times New Roman,serif",
+        }}>
+    <div style={{ position: "absolute", left: mini ? 4 : 5, top: mini ? 3 : 4, fontSize: mini ? 10 : 13, fontWeight: 900, lineHeight: .92, textAlign: "center" }}><div>{value}</div><div style={{ fontSize: mini ? 9 : 12 }}>{suit}</div></div>
+    <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: mini ? 24 : 34, opacity: .9 }}>{suit}</div>
+    <div style={{ position: "absolute", right: mini ? 4 : 5, bottom: mini ? 3 : 4, fontSize: mini ? 10 : 13, fontWeight: 900, lineHeight: .92, textAlign: "center", transform: "rotate(180deg)" }}><div>{value}</div><div style={{ fontSize: mini ? 9 : 12 }}>{suit}</div></div>
+  </div>;
+}
+function HandCardStack({ value, count }: {
+    value: number;
+    count: number;
+}) {
+    const visible = Math.min(3, Math.max(1, count));
+    return <div title={`${count} carte${count > 1 ? "s" : ""} de valeur ${value}`} style={{ position: "relative", height: 72, minWidth: 58, paddingRight: (visible - 1) * 5, flex: "0 0 auto" }}>
+    {Array.from({ length: visible }, (_, i) => <div key={i} style={{ position: "absolute", left: i * 5, top: i * 2, transform: `rotate(${(i - (visible - 1) / 2) * 2.2}deg)`, transformOrigin: "50% 90%" }}><PlayingCard value={value} mini/></div>)}
+    {count > 1 ? <div style={{ position: "absolute", right: -1, top: -5, zIndex: 5, minWidth: 20, height: 20, borderRadius: 999, padding: "0 4px", boxSizing: "border-box", background: "#090b10", border: "1px solid rgba(255,215,106,.72)", color: "#ffd76a", display: "grid", placeItems: "center", fontSize: 9, fontWeight: 1100 }}>×{count}</div> : null}
+  </div>;
+}
+function ComboCardFan({ target, compact = false }: {
+    target: PresidentTarget | null;
+    compact?: boolean;
+}) {
+    if (!target)
+        return null;
+    const count = Math.max(1, Math.min(3, Number(target.size || 1)));
+    const scale = compact ? .77 : 1;
+    const spread = compact ? 19 : 28;
+    return <div aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", opacity: compact ? .14 : .16, pointerEvents: "none", zIndex: 0, filter: "saturate(.72) contrast(.96)" }}>
+    <div style={{ position: "relative", width: (58 + spread * (count - 1)) * scale, height: 82 * scale }}>
+      {Array.from({ length: count }, (_, i) => {
+            const mid = (count - 1) / 2;
+            const dx = (i - mid) * spread * scale;
+            const rot = (i - mid) * (compact ? 7 : 9);
+            return <div key={i} style={{ position: "absolute", left: `calc(50% - ${29 * scale}px)`, top: 0, transform: `translateX(${dx}px) rotate(${rot}deg) scale(${scale})`, transformOrigin: "50% 70%" }}><PlayingCard value={target.value} ghost/></div>;
+        })}
+    </div>
+  </div>;
+}
+function RuleStep({ n, title, color, children }: any) {
+    return <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 9, alignItems: "start" }}>
+    <div style={{ width: 26, height: 26, borderRadius: 999, border: `1px solid ${color}88`, background: `${color}14`, color, display: "grid", placeItems: "center", fontWeight: 1100, fontSize: 11 }}>{n}</div>
+    <div><div style={{ color, fontWeight: 1100, fontSize: 11, letterSpacing: .55 }}>{title}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.78)", fontSize: 11.5, lineHeight: 1.48 }}>{children}</div></div>
   </div>;
 }
 
-function TargetCard({ selected, tableTarget, revolution, primary }: { selected: PresidentTarget | null; tableTarget: PresidentTarget | null; revolution: boolean; primary: string }) {
-  const label = selected ? presidentTargetLabel(selected) : "—";
-  const desc = selected ? presidentTargetDescription(selected) : "AUCUNE CARTE JOUABLE";
-  return <div style={{ width: "100%", maxWidth: 190, aspectRatio: "3 / 4", margin: "0 auto", borderRadius: 24, padding: 8, background: "linear-gradient(145deg,#080808,#17120b)", border: `2px solid ${primary}`, boxShadow: `0 0 30px ${primary}32, inset 0 0 0 2px rgba(255,255,255,.035)` }}>
+function RulesContent({ config, primary }: any) {
+    return <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ padding: 10, borderRadius: 14, border: `1px solid ${primary}45`, background: `${primary}0d`, fontSize: 11.5, lineHeight: 1.5 }}><b style={{ color: primary }}>LE PRINCIPE EN UNE PHRASE :</b><br />Tu possèdes une main de cartes virtuelles numérotées de 1 à 20. Pour poser une carte, une paire ou un brelan, tu dois toucher au dartboard le <b>Simple</b>, le <b>Double</b> ou le <b>Triple</b> correspondant.</div>
+    <RuleStep n="1" title="OBJECTIF" color={primary}>Sois le premier à vider ta main. Le premier sans carte devient <b>Président</b>. Le dernier devient <b>Trou du cul</b>.</RuleStep>
+    <RuleStep n="2" title="COMMENT LIRE S / D / T ?" color="#43d8ff"><b>S7</b> = jouer 1 carte 7 → toucher Simple 7. <b>D7</b> = jouer 2 cartes 7 → toucher Double 7. <b>T7</b> = jouer 3 cartes 7 → toucher Triple 7.</RuleStep>
+    <div style={{ ...panel(), padding: 9, borderColor: "rgba(67,216,255,.28)" }}><div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "center" }}><div style={{ position: "relative", width: 77, height: 66 }}><div style={{ position: "absolute", left: 0, top: 2, transform: "rotate(-7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div><div style={{ position: "absolute", left: 26, top: 2, transform: "rotate(7deg) scale(.72)", transformOrigin: "top left" }}><PlayingCard value={2}/></div></div><div style={{ fontSize: 11.5, lineHeight: 1.45 }}><b style={{ color: "#43d8ff" }}>EXEMPLE — D2</b><br />Ta combinaison est une <b>paire de 2</b>. Tu as jusqu’à 3 fléchettes pour toucher <b>Double 2</b>. Dès que D2 est touché, les 2 cartes « 2 » quittent ta main.</div></div></div>
+    <RuleStep n="3" title="OUVERTURE DU PLI" color="#ffd45c">Quand « OUVERTURE LIBRE » est affiché, choisis n’importe quelle combinaison autorisée par ta main : simple, paire ou brelan.</RuleStep>
+    <RuleStep n="4" title="RÉPONDRE AU COUP PRÉCÉDENT" color="#72efad">Tu dois garder le <b>même type de combinaison</b> et jouer une valeur supérieure. Exemple : après D2, tu peux jouer D3, D7, D18… mais pas S18 ni T18.</RuleStep>
+    <RuleStep n="5" title="3 FLÉCHETTES MAX" color="#c45cff">Le premier impact exact valide immédiatement le coup. Après 3 fléchettes sans réussite, ton tour devient un <b>PASS</b>. Tu peux aussi passer volontairement.</RuleStep>
+    <RuleStep n="6" title="FIN DU PLI" color="#ff9b67">Quand tous les autres joueurs ont passé, le dernier joueur ayant réussi un coup gagne le pli et ouvre le suivant librement.</RuleStep>
+    <RuleStep n="7" title="FIN DE MANCHE & TAXES" color="#ffcf57">Le classement fixe les rôles. À la manche suivante, le Trou du cul donne ses 2 meilleures cartes au Président, qui lui rend ses 2 plus faibles. À partir de 4 joueurs, Vice-Président et Vice-Trou du cul échangent aussi 1 carte.</RuleStep>
+    {config.variant === "chaos" ? <RuleStep n="★" title="VARIANTE CHAOS" color="#ffcf66">BULL = joker simple · DBULL = Coup d’État · T20 = Révolution. La Révolution inverse le sens des valeurs pour la manche.</RuleStep> : null}
+  </div>;
+}
+
+function TargetCard({ selected, tableTarget, revolution, primary }: {
+    selected: PresidentTarget | null;
+    tableTarget: PresidentTarget | null;
+    revolution: boolean;
+    primary: string;
+}) {
+    const label = selected ? presidentTargetLabel(selected) : "—";
+    const desc = selected ? presidentTargetDescription(selected) : "AUCUNE CARTE JOUABLE";
+    return <div style={{ width: "100%", maxWidth: 190, aspectRatio: "3 / 4", margin: "0 auto", borderRadius: 24, padding: 8, background: "linear-gradient(145deg,#080808,#17120b)", border: `2px solid ${primary}`, boxShadow: `0 0 30px ${primary}32,inset 0 0 0 2px rgba(255,255,255,.035)` }}>
     <div style={{ height: "100%", borderRadius: 17, border: `1px solid ${primary}88`, padding: 13, display: "grid", gridTemplateRows: "auto auto 1fr auto", background: "radial-gradient(circle at 50% 55%,rgba(233,197,108,.12),transparent 46%),linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.28))", position: "relative", overflow: "hidden" }}>
-      <div style={{ textAlign: "center", color: primary, fontWeight: 1100, letterSpacing: 1.2, fontSize: 17 }}>♛ PRÉSIDENT</div>
-      <div style={{ margin: "8px auto 0", padding: "5px 10px", borderRadius: 999, border: `1px solid ${primary}77`, color: "#f8e7b8", fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{tableTarget ? `À BATTRE ${presidentTargetLabel(tableTarget)}` : "OUVERTURE LIBRE"}</div>
-      <div style={{ alignSelf: "center", textAlign: "center", minWidth: 0 }}><div style={{ fontFamily: "Georgia,serif", fontSize: 60, lineHeight: .95, fontWeight: 1100, color: primary, textShadow: `0 0 18px ${primary}55` }}>{label}</div><div style={{ marginTop: 9, color: "#f6e5b4", fontWeight: 1000, fontSize: 15, letterSpacing: 1.1 }}>{desc}</div>{revolution ? <div style={{ marginTop: 9, color: "#ff9c6d", fontSize: 10, fontWeight: 1000 }}>↕ RÉVOLUTION ACTIVE</div> : null}</div>
-      <div style={{ textAlign: "center", color: "rgba(255,255,255,.58)", fontSize: 9 }}>S = simple · D = paire · T = brelan</div>
+      <ComboCardFan target={selected}/>
+      <div style={{ position: "relative", zIndex: 2, textAlign: "center", color: primary, fontWeight: 1100, letterSpacing: 1.2, fontSize: 17 }}>♛ PRÉSIDENT</div>
+      <div style={{ position: "relative", zIndex: 2, margin: "8px auto 0", padding: "5px 10px", borderRadius: 999, border: `1px solid ${primary}77`, color: "#f8e7b8", fontSize: 9, fontWeight: 1000, letterSpacing: 1.1 }}>{tableTarget ? `À BATTRE ${presidentTargetLabel(tableTarget)}` : "OUVERTURE LIBRE"}</div>
+      <div style={{ position: "relative", zIndex: 2, alignSelf: "center", textAlign: "center", minWidth: 0 }}><div style={{ fontFamily: "Georgia,serif", fontSize: 60, lineHeight: .95, fontWeight: 1100, color: primary, textShadow: `0 0 18px ${primary}55` }}>{label}</div><div style={{ marginTop: 9, color: "#f6e5b4", fontWeight: 1000, fontSize: 15, letterSpacing: 1.1 }}>{desc}</div>{revolution ? <div style={{ marginTop: 9, color: "#ff9c6d", fontSize: 10, fontWeight: 1000 }}>↕ RÉVOLUTION ACTIVE</div> : null}</div>
+      <div style={{ position: "relative", zIndex: 2, textAlign: "center", color: "rgba(255,255,255,.58)", fontSize: 9 }}>S = simple · D = paire · T = brelan</div>
     </div>
   </div>;
 }
 
 function HandStrip({ hand, legalTargets, selected, onSelect, primary }: any) {
-  const grouped = React.useMemo(() => {
-    const m = new Map<number, number>();
-    (hand || []).forEach((v: number) => m.set(v, (m.get(v) || 0) + 1));
-    return [...m.entries()].sort((a,b) => a[0]-b[0]);
-  }, [hand]);
-  const legalSet = new Set((legalTargets || []).map((t: any) => `${t.size}:${t.value}`));
-  return <div style={{ display: "grid", gap: 8 }}>
-    <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 3 }}>{grouped.map(([value,count]) => <div key={value} style={{ minWidth: 48, padding: "7px 6px", borderRadius: 12, border: `1px solid ${primary}33`, background: "linear-gradient(180deg,rgba(255,255,255,.06),rgba(0,0,0,.24))", textAlign: "center" }}><div style={{ color: primary, fontWeight: 1100, fontSize: 18 }}>{value}</div><div style={{ color: "rgba(255,255,255,.55)", fontSize: 9 }}>×{count}</div></div>)}</div>
+    const grouped = React.useMemo(() => { const m = new Map<number, number>(); (hand || []).forEach((v: number) => m.set(v, (m.get(v) || 0) + 1)); return [...m.entries()].sort((a, b) => a[0] - b[0]); }, [hand]);
+    const legalSet = new Set((legalTargets || []).map((t: any) => `${t.size}:${t.value}`));
+    return <div style={{ display: "grid", gap: 9 }}>
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "5px 3px 8px", alignItems: "flex-start" }}>{grouped.map(([value, count]) => <HandCardStack key={value} value={value} count={count}/>)}</div>
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{legalTargets.map((t: PresidentTarget) => { const active = selected?.value === t.value && selected?.size === t.size; const txt = presidentTargetLabel(t); return <button key={`${t.size}-${t.value}`} onClick={() => onSelect(t)} style={{ minWidth: 54, height: 34, borderRadius: 999, border: `1px solid ${active ? primary : "rgba(255,255,255,.12)"}`, background: active ? `${primary}20` : "rgba(255,255,255,.04)", color: active ? primary : legalSet.has(`${t.size}:${t.value}`) ? "#fff" : "#5f647b", fontWeight: 1000 }}>{txt}</button>; })}</div>
   </div>;
 }
@@ -134,10 +208,38 @@ function EndOverlay({ state, profilesById, primary, onReplay, onHistory, onClose
 }
 
 
-function MiniKpi({ label, value, color, compact = false }: { label: string; value: React.ReactNode; color: string; compact?: boolean }) {
-  return <div style={{ minWidth:0, padding: compact ? "6px 3px" : "8px 5px", borderRadius: compact ? 10 : 13, border:`1px solid ${color}38`, background:`linear-gradient(180deg,${color}14,rgba(255,255,255,.025))`, textAlign:"center", overflow:"hidden" }}>
-    <div style={{ color:"rgba(255,255,255,.52)", fontSize:compact?7.5:8.5, fontWeight:1000, letterSpacing:.35, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div>
-    <div style={{ color, fontSize:compact?14:20, fontWeight:1100, lineHeight:1.05, marginTop:compact?2:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{value}</div>
+function KpiIcon({ name, size = 18 }: {
+    name: KpiIconName;
+    size?: number;
+}) {
+    const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+    const svg = (children: React.ReactNode) => <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{children}</svg>;
+    switch (name) {
+        case "cards": return svg(<><rect {...p} x="6" y="4" width="12" height="16" rx="2"/><path {...p} d="M4 7v10a2 2 0 0 0 2 2"/><path {...p} d="m10 9 2-2 2 2-2 2-2-2Z"/></>);
+        case "tricks": return svg(<><circle {...p} cx="12" cy="12" r="7"/><circle {...p} cx="12" cy="12" r="2.5"/><path {...p} d="M16.5 7.5 20 4"/><path {...p} d="M17 4h3v3"/></>);
+        case "success": return svg(<><circle {...p} cx="12" cy="12" r="8"/><path {...p} d="m8.2 12.2 2.4 2.4 5.4-5.6"/></>);
+        case "power": return svg(<><path {...p} d="m4 9 4 3 4-6 4 6 4-3-2 9H6L4 9Z"/><path {...p} d="M7 18h10"/></>);
+        case "darts": return svg(<><path {...p} d="M4 20 17 7"/><path {...p} d="m14 6 4-2 2 2-2 4"/><path {...p} d="m8 16 3 3"/></>);
+        case "single": return svg(<rect {...p} x="7" y="4" width="10" height="16" rx="2"/>);
+        case "pair": return svg(<><rect {...p} x="5" y="5" width="10" height="15" rx="2"/><rect {...p} x="9" y="4" width="10" height="15" rx="2"/></>);
+        case "triple": return svg(<><rect {...p} x="3" y="6" width="9" height="14" rx="2"/><rect {...p} x="8" y="5" width="9" height="14" rx="2"/><rect {...p} x="12" y="4" width="9" height="14" rx="2"/></>);
+        case "pass": return svg(<><path {...p} d="M4 7h9a5 5 0 0 1 5 5v5"/><path {...p} d="m14 14 4 4 4-4"/></>);
+        case "taxes": return svg(<><path {...p} d="M5 8h13"/><path {...p} d="m15 5 3 3-3 3"/><path {...p} d="M19 16H6"/><path {...p} d="m9 13-3 3 3 3"/></>);
+        case "miss": return svg(<><circle {...p} cx="12" cy="12" r="8"/><path {...p} d="m8.5 8.5 7 7"/><path {...p} d="m15.5 8.5-7 7"/></>);
+        default: return null;
+    }
+}
+
+function MiniKpi({ label, value, color, compact = false, icon }: {
+    label: string;
+    value: React.ReactNode;
+    color: string;
+    compact?: boolean;
+    icon?: KpiIconName;
+}) {
+    return <div title={label} aria-label={`${label} : ${String(value)}`} style={{ minWidth: 0, padding: compact ? "5px 3px" : "7px 5px", borderRadius: compact ? 10 : 13, border: `1px solid ${color}38`, background: `linear-gradient(180deg,${color}14,rgba(255,255,255,.025))`, textAlign: "center", overflow: "hidden" }}>
+    {icon ? <div style={{ color, display: "grid", placeItems: "center", height: compact ? 15 : 19 }}><KpiIcon name={icon} size={compact ? 13 : 17}/></div> : <div style={{ color: "rgba(255,255,255,.52)", fontSize: compact ? 7.5 : 8.5, fontWeight: 1000, letterSpacing: .35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>}
+    <div style={{ color, fontSize: compact ? 14 : 20, fontWeight: 1100, lineHeight: 1.05, marginTop: icon ? (compact ? 2 : 3) : (compact ? 2 : 4), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
   </div>;
 }
 
@@ -159,14 +261,15 @@ function ModalShell({ title, color, onClose, children, wide = false }: any) {
 }
 
 function TinyTarget({ selected, tableTarget, revolution, primary, onClick }: any) {
-  const label = selected ? presidentTargetLabel(selected) : "—";
-  const desc = selected ? presidentTargetDescription(selected) : "CHOISIR";
-  return <button type="button" onClick={onClick} style={{ position:"relative", width:"100%", height:"100%", minHeight:102, borderRadius:17, border:`1px solid ${primary}66`, background:"radial-gradient(circle at 50% 45%,rgba(233,197,108,.16),transparent 50%),linear-gradient(160deg,#171008,#07090f)", color:"#fff", cursor:"pointer", overflow:"hidden", padding:"7px 5px" }}>
-    <div style={{ color:"rgba(255,255,255,.55)", fontSize:7.5, fontWeight:1000, letterSpacing:.7 }}>{tableTarget?"CIBLE À BATTRE":"OUVERTURE"}</div>
-    <div style={{ color:primary, fontSize:36, fontWeight:1100, lineHeight:1, marginTop:7, textShadow:`0 0 18px ${primary}55` }}>{label}</div>
-    <div style={{ color:"#f7e5b4", fontSize:8.5, fontWeight:1000, marginTop:5, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{desc}</div>
-    {revolution?<div style={{ color:"#ff9b6a", fontSize:7.5, fontWeight:1100, marginTop:4 }}>↕ RÉVOLUTION</div>:null}
-    <div style={{ position:"absolute", right:6, bottom:4, color:`${primary}aa`, fontSize:8, fontWeight:1000 }}>TOUCHER</div>
+    const label = selected ? presidentTargetLabel(selected) : "—";
+    const desc = selected ? presidentTargetDescription(selected) : "CHOISIR";
+    return <button type="button" onClick={onClick} style={{ position: "relative", width: "100%", height: "100%", minHeight: 102, borderRadius: 17, border: `1px solid ${primary}66`, background: "radial-gradient(circle at 50% 45%,rgba(233,197,108,.16),transparent 50%),linear-gradient(160deg,#171008,#07090f)", color: "#fff", cursor: "pointer", overflow: "hidden", padding: "7px 5px", isolation: "isolate" }}>
+    <ComboCardFan target={selected} compact/>
+    <div style={{ position: "relative", zIndex: 2, color: "rgba(255,255,255,.55)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .7 }}>{tableTarget ? "CIBLE À BATTRE" : "OUVERTURE"}</div>
+    <div style={{ position: "relative", zIndex: 2, color: primary, fontSize: 36, fontWeight: 1100, lineHeight: 1, marginTop: 7, textShadow: `0 0 18px ${primary}55` }}>{label}</div>
+    <div style={{ position: "relative", zIndex: 2, color: "#f7e5b4", fontSize: 8.5, fontWeight: 1000, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{desc}</div>
+    {revolution ? <div style={{ position: "relative", zIndex: 2, color: "#ff9b6a", fontSize: 7.5, fontWeight: 1100, marginTop: 4 }}>↕ RÉVOLUTION</div> : null}
+    <div style={{ position: "absolute", zIndex: 2, right: 6, bottom: 4, color: `${primary}aa`, fontSize: 8, fontWeight: 1000 }}>TOUCHER</div>
   </button>;
 }
 
@@ -219,6 +322,16 @@ export default function PresidentPlay(props: any) {
   const activeCanPlay = legalTargets.length > 0;
   const currentRole = state.previousRoles[activeId] || (state.roundNo === 1 ? "Citoyen" : "Citoyen");
   const latestRound = state.roundResults[state.roundResults.length - 1] || null;
+
+  const teamConfigs = React.useMemo(
+    () => Array.isArray((config as any).teamConfigs) ? (config as any).teamConfigs : [],
+    [config],
+  );
+  const activeTeam = React.useMemo(
+    () => teamConfigs.find((team: any) => Array.isArray(team?.playerIds) && team.playerIds.map(String).includes(String(activeId))) || null,
+    [teamConfigs, activeId],
+  );
+  const activeTeamLogo = activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo || null;
 
   React.useEffect(() => {
     const first = presidentAutoTarget(state, activeId);
@@ -324,12 +437,13 @@ export default function PresidentPlay(props: any) {
   const standingsLive = getPresidentStandings(state);
   const activeStats = state.statsByPlayer[activeId] || ({} as any);
   const activeStanding = standingsLive.find((row:any)=>row.id===activeId);
+  const activeScore = Number(activeStanding?.powerPoints || 0);
   const successRate = formatPct(Number(activeStats.successfulPlays||0), Number(activeStats.visits||0));
   const totalPasses = Number(activeStats.voluntaryPasses||0) + Number(activeStats.automaticPasses||0);
   const totalTaxes = Number(activeStats.taxesGiven||0) + Number(activeStats.taxesReceived||0);
   const passedNames = state.passedPlayerIds.map((id)=>playerName(profilesById.get(id))).join(" · ") || "Aucun";
   const trickEvents = state.history.filter((ev:any)=>ev.roundNo===state.roundNo && ev.trickNo===state.trickNo).slice(-12).reverse();
-  const activeColor = roleColor(currentRole, primary);
+  const activeColor = activeTeam?.color || roleColor(currentRole, primary);
 
   return <div style={{ minHeight:"100dvh", color:text, background:`radial-gradient(circle at 50% -5%,${primary}1f 0,${theme?.bg || "#080b14"} 44%,#020309 100%)`, paddingBottom:8, overflowX:"hidden" }}>
     <PageHeader tickerSrc={tickerPresident} tickerAlt="PRÉSIDENT" tickerFit="contain" tickerHeight={82} tickerEdgeFade="strong" tickerBottomGap={6} left={<BackDot onClick={back} color={primary} glow={`${primary}77`} title="Retour configuration" />} right={<InfoDot title="Règles Président" color={primary} glow={`${primary}77`} content={<RulesContent config={config} primary={primary} />} />} />
@@ -338,32 +452,53 @@ export default function PresidentPlay(props: any) {
       <section style={{ ...panel(), marginBottom:6, padding:0, overflow:"hidden", borderColor:`${activeColor}70`, boxShadow:`0 0 24px ${activeColor}18` }}>
         <div style={{ position:"relative", minHeight:124, display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(116px,132px)", gap:5, alignItems:"stretch", padding:"7px 8px" }}>
           <div style={{ position:"absolute", inset:0, background:`linear-gradient(90deg,${activeColor}10,rgba(0,0,0,.10) 42%,rgba(0,0,0,.30))` }}/>
-          <div style={{ position:"absolute", left:-22, top:-5, bottom:-5, width:"29%", minWidth:105, overflow:"hidden", opacity:.15, pointerEvents:"none" }}><div style={{ position:"absolute", left:-12, top:18, transform:"scale(1.55)", transformOrigin:"left top", filter:"saturate(.85)" }}><ProfileAvatar profile={activeProfile} size={88}/></div></div>
-          <div style={{ position:"relative", zIndex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"3px 4px" }}>
-            <div style={{ color:botThinking?"#67dcff":activeColor, fontSize:8.5, fontWeight:1100, letterSpacing:1 }}>{botThinking?"BOT EN RÉFLEXION":currentRole.toUpperCase()}</div>
-            <div style={{ color:activeColor, fontSize:14, fontWeight:1100, letterSpacing:.75, marginTop:2, maxWidth:"100%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{playerName(activeProfile).toUpperCase()}</div>
-            <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:7, marginTop:4 }}><span style={{ color:"#ffd45c", fontSize:52, fontWeight:1100, lineHeight:1, textShadow:"0 3px 18px rgba(255,205,70,.22)" }}>{hand.length}</span><span style={{ color:"rgba(255,255,255,.55)", fontSize:9, fontWeight:1000 }}>CARTES</span></div>
-            <div style={{ marginTop:4, display:"flex", gap:8, color:"rgba(255,255,255,.60)", fontSize:8.5, fontWeight:900 }}><span>MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds}</span><span>•</span><span>PLI {state.trickNo}</span></div>
+          <div style={{ position:"absolute", left:-22, top:-5, bottom:-5, width:"29%", minWidth:105, overflow:"hidden", opacity:.18, pointerEvents:"none" }}>
+            <div style={{ position:"absolute", left:-12, top:18, transform:"scale(1.55)", transformOrigin:"left top", filter:"saturate(.88)" }}>
+              <ProfileAvatar profile={activeProfile} size={88}/>
+            </div>
           </div>
-          <div style={{ position:"relative", zIndex:2, minWidth:0 }}><TinyTarget selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary} onClick={()=>setShowHand(true)}/></div>
+          {activeTeamLogo ? (
+            <div style={{ position:"absolute", right:"calc(126px + 10px)", top:-5, bottom:-5, width:"25%", minWidth:88, overflow:"hidden", opacity:.17, pointerEvents:"none" }}>
+              <div style={{ position:"absolute", right:-14, top:18, transform:"scale(1.28)", transformOrigin:"right top", filter:"saturate(.92)" }}>
+                <img src={activeTeamLogo} alt="" style={{ width:82, height:82, borderRadius:"50%", objectFit:"cover", display:"block" }}/>
+              </div>
+            </div>
+          ) : null}
+          <div style={{ position:"relative", zIndex:1, minWidth:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center", padding:"3px 4px" }}>
+            <div style={{ color:botThinking ? "#67dcff" : activeColor, fontSize:8.5, fontWeight:1100, letterSpacing:1 }}>{botThinking ? "BOT EN RÉFLEXION" : currentRole.toUpperCase()}</div>
+            <div style={{ color:activeColor, fontSize:14, fontWeight:1100, letterSpacing:.75, marginTop:2, maxWidth:"100%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{playerName(activeProfile).toUpperCase()}</div>
+            <div style={{ display:"flex", alignItems:"baseline", justifyContent:"center", gap:7, marginTop:3 }}>
+              <span style={{ color:"#ffd45c", fontSize:54, fontWeight:1100, lineHeight:1, textShadow:"0 3px 18px rgba(255,205,70,.22)" }}>{activeScore}</span>
+              <span style={{ color:"rgba(255,255,255,.58)", fontSize:9, fontWeight:1000 }}>PTS</span>
+            </div>
+            <div style={{ marginTop:3, display:"flex", alignItems:"center", justifyContent:"center", gap:6, flexWrap:"wrap", color:"rgba(255,255,255,.65)", fontSize:8, fontWeight:950 }}>
+              <span style={{ padding:"3px 6px", borderRadius:999, border:"1px solid rgba(255,212,92,.22)", color:"#ffd45c" }}>{hand.length} CARTES</span>
+              <span>MANCHE {Math.min(state.roundNo,config.rounds)}/{config.rounds}</span>
+              <span>•</span>
+              <span>PLI {state.trickNo}</span>
+            </div>
+          </div>
+          <div style={{ position:"relative", zIndex:2, minWidth:0 }}>
+            <TinyTarget selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary} onClick={()=>setShowHand(true)}/>
+          </div>
         </div>
       </section>
 
       <section style={{ ...panel(), marginBottom:6, padding:6 }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,minmax(0,1fr))", gap:4 }}>
-          <MiniKpi label="CARTES" value={hand.length} color="#ffd45c" />
-          <MiniKpi label="PLIS" value={activeStats.tricksWon||0} color="#43d8ff" />
-          <MiniKpi label="RÉUSSITE" value={`${successRate}%`} color="#72efad" />
-          <MiniKpi label="POUVOIR" value={activeStanding?.powerPoints||0} color="#dc7cff" />
+          <MiniKpi label="CARTES" icon="cards" value={hand.length} color="#ffd45c" />
+          <MiniKpi label="PLIS" icon="tricks" value={activeStats.tricksWon||0} color="#43d8ff" />
+          <MiniKpi label="RÉUSSITE" icon="success" value={`${successRate}%`} color="#72efad" />
+          <MiniKpi label="POUVOIR" icon="power" value={activeScore} color="#dc7cff" />
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,minmax(0,1fr))", gap:3, marginTop:4 }}>
-          <MiniKpi compact label="DARTS" value={activeStats.darts||0} color={primary}/>
-          <MiniKpi compact label="SIMPLE" value={activeStats.singlesPlayed||0} color="#f0f3ff"/>
-          <MiniKpi compact label="PAIRES" value={activeStats.pairsPlayed||0} color="#39c9ff"/>
-          <MiniKpi compact label="BRELANS" value={activeStats.triplesPlayed||0} color="#c45cff"/>
-          <MiniKpi compact label="PASS" value={totalPasses} color="#ff9b67"/>
-          <MiniKpi compact label="TAXES" value={totalTaxes} color="#ffcf57"/>
-          <MiniKpi compact label="MISS" value={activeStats.misses||0} color="#ff6f86"/>
+          <MiniKpi compact label="DARTS" icon="darts" value={activeStats.darts||0} color={primary}/>
+          <MiniKpi compact label="SIMPLE" icon="single" value={activeStats.singlesPlayed||0} color="#f0f3ff"/>
+          <MiniKpi compact label="PAIRES" icon="pair" value={activeStats.pairsPlayed||0} color="#39c9ff"/>
+          <MiniKpi compact label="BRELANS" icon="triple" value={activeStats.triplesPlayed||0} color="#c45cff"/>
+          <MiniKpi compact label="PASS" icon="pass" value={totalPasses} color="#ff9b67"/>
+          <MiniKpi compact label="TAXES" icon="taxes" value={totalTaxes} color="#ffcf57"/>
+          <MiniKpi compact label="MISS" icon="miss" value={activeStats.misses||0} color="#ff6f86"/>
         </div>
       </section>
 
@@ -372,7 +507,7 @@ export default function PresidentPlay(props: any) {
           <QuickTile label="MAIN & COUPS" value={`${hand.length} cartes · ${legalTargets.length} coups`} color="#ffd45c" icon="♠" alert={!selectedTarget} onClick={()=>setShowHand(true)}/>
           <QuickTile label="TABLE / PLI" value={state.currentTarget?presidentTargetLabel(state.currentTarget):"Ouverture libre"} color="#43d8ff" icon="◎" onClick={()=>setShowTrick(true)}/>
           <QuickTile label="STATS" value={`${activeStats.cardsPlayed||0} cartes jouées`} color="#c45cff" icon="▥" onClick={()=>setShowStats(true)}/>
-          <QuickTile label="CLASSEMENT" value={`#${Math.max(1,standingsLive.findIndex((x:any)=>x.id===activeId)+1)} · ${activeStanding?.powerPoints||0} pts`} color="#ffb347" icon="♛" onClick={()=>setShowTable(true)}/>
+          <QuickTile label="CLASSEMENT" value={`#${Math.max(1,standingsLive.findIndex((x:any)=>x.id===activeId)+1)} · ${activeScore} pts`} color="#ffb347" icon="♛" onClick={()=>setShowTable(true)}/>
         </div>
       </section>
 
@@ -384,7 +519,7 @@ export default function PresidentPlay(props: any) {
 
     {showHand ? <ModalShell title="MAIN & COMBINAISONS" color="#ffd45c" onClose={()=>setShowHand(false)} wide>
       <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(140px,190px)", gap:10, alignItems:"start" }}>
-        <div style={{ ...panel(), padding:9 }}><div style={{ color:"#ffd45c", fontSize:10, fontWeight:1100, marginBottom:7 }}>MAIN DE {playerName(activeProfile).toUpperCase()}</div><HandStrip hand={hand} legalTargets={legalTargets} selected={selectedTarget} onSelect={(t:any)=>{setSelectedTarget(t);setThrowDarts([]);setMultiplier(1);setNotice("");}} primary={primary}/><div style={{ color:"rgba(255,255,255,.5)", fontSize:9, marginTop:9 }}>Choisis la combinaison à tenter. Le panneau se ferme ensuite avec × et tu joues jusqu’à 3 fléchettes.</div></div>
+        <div style={{ ...panel(), padding:9 }}><div style={{ color:"#ffd45c", fontSize:10, fontWeight:1100, marginBottom:7 }}>MAIN DE {playerName(activeProfile).toUpperCase()}</div><HandStrip hand={hand} legalTargets={legalTargets} selected={selectedTarget} onSelect={(t:any)=>{setSelectedTarget(t);setThrowDarts([]);setMultiplier(1);setNotice("");}} primary={primary}/><div style={{ color:"rgba(255,255,255,.55)", fontSize:9, marginTop:9, lineHeight:1.4 }}>Les cartes ci-dessus sont ta vraie main virtuelle. Choisis ensuite S / D / T selon le nombre de cartes identiques que tu veux poser, ferme avec × puis tente la cible en 3 fléchettes maximum.</div></div>
         <div style={{ ...panel(), padding:7 }}><TargetCard selected={selectedTarget} tableTarget={state.currentTarget} revolution={state.revolutionActive} primary={primary}/></div>
       </div>
     </ModalShell>:null}
@@ -396,7 +531,7 @@ export default function PresidentPlay(props: any) {
     </ModalShell>:null}
 
     {showStats ? <ModalShell title="STATISTIQUES PRÉSIDENT" color="#c45cff" onClose={()=>setShowStats(false)} wide>
-      <div style={{ ...panel(), padding:9, borderColor:`${activeColor}55` }}><div style={{ display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:9,alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={40}/><div><div style={{ color:activeColor,fontWeight:1100 }}>{playerName(activeProfile)}</div><div style={{ color:"rgba(255,255,255,.48)",fontSize:9 }}>{currentRole}</div></div><div style={{ color:"#c45cff",fontSize:22,fontWeight:1100 }}>{activeStanding?.powerPoints||0} pts</div></div></div>
+      <div style={{ ...panel(), padding:9, borderColor:`${activeColor}55` }}><div style={{ display:"grid",gridTemplateColumns:"44px minmax(0,1fr) auto",gap:9,alignItems:"center" }}><ProfileAvatar profile={activeProfile} size={40}/><div><div style={{ color:activeColor,fontWeight:1100 }}>{playerName(activeProfile)}</div><div style={{ color:"rgba(255,255,255,.48)",fontSize:9 }}>{currentRole}</div></div><div style={{ color:"#c45cff",fontSize:22,fontWeight:1100 }}>{activeScore} pts</div></div></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:7 }}><MiniKpi label="RÉUSSITE" value={`${successRate}%`} color="#72efad"/><MiniKpi label="CARTES JOUÉES" value={activeStats.cardsPlayed||0} color="#ffd45c"/><MiniKpi label="PLIS GAGNÉS" value={activeStats.tricksWon||0} color="#43d8ff"/><MiniKpi label="PRÉSIDENCES" value={activeStats.president||0} color="#ffb347"/></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="SIMPLES" value={activeStats.singlesPlayed||0} color="#f0f3ff"/><MiniKpi label="PAIRES" value={activeStats.pairsPlayed||0} color="#39c9ff"/><MiniKpi label="BRELANS" value={activeStats.triplesPlayed||0} color="#c45cff"/><MiniKpi label="ÉCHECS" value={activeStats.failedPlays||0} color="#ff6f86"/></div>
       <div style={{ display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5,marginTop:5 }}><MiniKpi label="DARTS" value={activeStats.darts||0} color={primary}/><MiniKpi label="PASS" value={totalPasses} color="#ff9b67"/><MiniKpi label="TAXES" value={totalTaxes} color="#ffcf57"/><MiniKpi label="COUPS D'ÉTAT" value={activeStats.coupEtats||0} color="#ff6e55"/></div>

@@ -20,6 +20,15 @@ type KeypadAuxAction = {
   ariaLabel?: string;
 };
 
+
+type KeypadSingleRingSelector = {
+  value: "outer" | "inner";
+  onOuter: () => void;
+  onInner: () => void;
+  outerLabel?: string;
+  innerLabel?: string;
+};
+
 type Props = {
   /** Volée en cours (0..3 flèches) */
   currentThrow: UIDart[];
@@ -48,6 +57,9 @@ type Props = {
   /** Action compacte à droite d'ANNULER : PRESET ou MICRO selon la méthode choisie */
   auxAction?: KeypadAuxAction | null;
 
+  /** Sélecteur optionnel des deux zones simples physiques (ex: PRISONER). */
+  singleRingSelector?: KeypadSingleRingSelector | null;
+
   /** Petit retour d'état intégré dans le keypad, sans bande séparée au-dessus */
   noticeSlot?: React.ReactNode;
 
@@ -56,6 +68,9 @@ type Props = {
 
   /** Ajoute un padding bas safe-area (par défaut: true) */
   safeBottomPad?: boolean;
+
+  /** Espace horizontal entre BULL, score central et VALIDER. Défaut: 10px. */
+  footerGap?: number;
 };
 
 /* ---------- Helpers ---------- */
@@ -204,9 +219,11 @@ export default function Keypad({
   hideTotal = false,
   centerSlot = null,
   auxAction = null,
+  singleRingSelector = null,
   noticeSlot = null,
   validateAttention = false,
   safeBottomPad = true,
+  footerGap = 10,
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
@@ -246,6 +263,59 @@ export default function Keypad({
           <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
         </div>
       )}
+
+      {singleRingSelector ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 10,
+            marginBottom: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={singleRingSelector.onOuter}
+            aria-pressed={singleRingSelector.value === "outer" && multiplier === 1}
+            style={{
+              ...btnBase,
+              background: singleRingSelector.value === "outer" && multiplier === 1
+                ? "rgba(22,92,66,.35)"
+                : "rgba(255,255,255,.04)",
+              color: singleRingSelector.value === "outer" && multiplier === 1
+                ? "#8be0b8"
+                : "rgba(255,255,255,.82)",
+              borderColor: singleRingSelector.value === "outer" && multiplier === 1
+                ? "rgba(139,224,184,.72)"
+                : "rgba(255,255,255,.08)",
+            }}
+            title="Simple extérieur"
+          >
+            {singleRingSelector.outerLabel || "SIMPLE EXT."}
+          </button>
+
+          <button
+            type="button"
+            onClick={singleRingSelector.onInner}
+            aria-pressed={singleRingSelector.value === "inner" && multiplier === 1}
+            style={{
+              ...btnBase,
+              background: singleRingSelector.value === "inner" && multiplier === 1
+                ? "rgba(179,68,151,.20)"
+                : "rgba(255,255,255,.04)",
+              color: singleRingSelector.value === "inner" && multiplier === 1
+                ? "#ffccff"
+                : "rgba(255,255,255,.82)",
+              borderColor: singleRingSelector.value === "inner" && multiplier === 1
+                ? "rgba(255,208,255,.72)"
+                : "rgba(255,255,255,.08)",
+            }}
+            title="Simple intérieur"
+          >
+            {singleRingSelector.innerLabel || "SIMPLE INT."}
+          </button>
+        </div>
+      ) : null}
 
       {/* DOUBLE / TRIPLE / ANNULER + action compacte PRESET ou MICRO */}
       <div
@@ -377,7 +447,7 @@ export default function Keypad({
           display: "grid",
           gridTemplateColumns: "minmax(88px, .8fr) minmax(50px, .42fr) minmax(118px, 1fr)",
           alignItems: "center",
-          gap: 10,
+          gap: footerGap,
           marginTop: 10,
         }}
       >
