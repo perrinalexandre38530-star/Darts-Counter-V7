@@ -89,8 +89,11 @@ function findTickerById(id: string): string | null {
   return null;
 }
 
+type GamesView = "hub" | "favorites" | "all";
+
 type Props = {
   setTab: (tab: any, params?: any) => void;
+  params?: { gamesView?: string } | null;
 };
 
 type InfoGame = {
@@ -382,13 +385,23 @@ function pickFavoriteByCounts(
   return best;
 }
 
-export default function Games({ setTab }: Props) {
+export default function Games({ setTab, params }: Props) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
   const dev = useDevMode() as any;
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
+
+  // Menu JEUX à 3 niveaux : HUB -> FAVORIS / TOUS LES JEUX / TRAINING.
+  // Le bottom-nav appelle "games" sans params : on retombe donc toujours
+  // sur le HUB intermédiaire, même si on était précédemment dans un sous-menu.
+  const gamesView: GamesView = React.useMemo(() => {
+    const raw = String(params?.gamesView || "").trim().toLowerCase();
+    if (raw === "favorites" || raw === "favoris") return "favorites";
+    if (raw === "all" || raw === "all_games" || raw === "tous") return "all";
+    return "hub";
+  }, [params?.gamesView]);
 
   // ✅ usage depuis l'historique (parties terminées + parties en cours)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
@@ -399,6 +412,15 @@ export default function Games({ setTab }: Props) {
 
   function navigate(tab: string, params?: any) {
     setTab(tab, params);
+  }
+
+  function openGamesView(view: Exclude<GamesView, "hub">) {
+    setTab("games", { gamesView: view });
+  }
+
+  function backFromGamesView() {
+    if (gamesView === "hub") setTab("home");
+    else setTab("games");
   }
 
   // Smart navigation for ticker items
@@ -909,6 +931,132 @@ export default function Games({ setTab }: Props) {
     return () => window.clearInterval(it);
   }, [allTickerPool.length]);
 
+  function renderQuickLaunchTicker() {
+    const current = allTickerPool.length
+      ? allTickerPool[allTickerIdx % allTickerPool.length]
+      : null;
+
+    if (!current) return null;
+
+    return (
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <button
+          type="button"
+          onClick={() => navSmart(current.configPath)}
+          style={{
+            width: "100%",
+            maxWidth: 800,
+            aspectRatio: "800 / 230",
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 18,
+            border: `1px solid ${TINT_STATS.border}`,
+            background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
+            boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
+            padding: 0,
+            cursor: "pointer",
+          }}
+          aria-label={`Lancement rapide : ${current.label}`}
+          title={`Lancement rapide : ${current.label}`}
+        >
+          <img
+            src={current.tickerSrc as any}
+            alt={current.label}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
+              transform: "translateZ(0)",
+              filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))",
+            }}
+            draggable={false}
+          />
+        </button>
+      </div>
+    );
+  }
+
+  function renderHubCard(opts: {
+    title: string;
+    subtitle: string;
+    tint: { border: string; bg: string; title: string; glow: string };
+    onClick: () => void;
+  }) {
+    return (
+      <button
+        type="button"
+        onClick={opts.onClick}
+        style={{
+          position: "relative",
+          width: "100%",
+          minHeight: 94,
+          padding: "18px 52px 18px 18px",
+          textAlign: "left",
+          borderRadius: 18,
+          border: `1px solid ${opts.tint.border}`,
+          background: opts.tint.bg,
+          boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 20px ${opts.tint.glow}`,
+          cursor: "pointer",
+          overflow: "hidden",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: -50,
+            background: `radial-gradient(300px 170px at 18% 0%, ${opts.tint.glow}, rgba(0,0,0,0) 62%)`,
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: 18,
+            top: "50%",
+            width: 28,
+            height: 28,
+            transform: "translateY(-50%) rotate(45deg)",
+            borderTop: `3px solid ${opts.tint.title}`,
+            borderRight: `3px solid ${opts.tint.title}`,
+            filter: `drop-shadow(0 0 8px ${opts.tint.glow})`,
+            opacity: 0.95,
+          }}
+        />
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 950,
+              letterSpacing: 0.9,
+              color: opts.tint.title,
+              textTransform: "uppercase",
+              textShadow: `0 0 12px ${opts.tint.glow}`,
+            }}
+          >
+            {opts.title}
+          </div>
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              color: theme.textSoft,
+              lineHeight: 1.35,
+            }}
+          >
+            {opts.subtitle}
+          </div>
+        </div>
+      </button>
+    );
+  }
+
   // ✅ helper: watermark ticker inside game cards (75% width, 100% height, fades)
   function renderGameTickerWatermark(gameId: string) {
     const src = gameId === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(gameId);
@@ -962,6 +1110,20 @@ export default function Games({ setTab }: Props) {
     );
   }
 
+  const pageTitle =
+    gamesView === "favorites"
+      ? t("games.favorites.pageTitle", "FAVORIS")
+      : gamesView === "all"
+        ? t("games.title", "TOUS LES JEUX")
+        : t("games.hub.title", "JEUX");
+
+  const pageSubtitle =
+    gamesView === "favorites"
+      ? t("games.favorites.subtitle", "Tes modes les plus joués, par catégorie")
+      : gamesView === "all"
+        ? t("games.subtitle", "Choisis un mode de jeu")
+        : t("games.hub.subtitle", "Choisis ce que tu veux lancer");
+
   return (
     <div
       style={{
@@ -972,8 +1134,7 @@ export default function Games({ setTab }: Props) {
         color: theme.text,
       }}
     >
-      
-      {/* Header row: BackDot a gauche + Titre centre (meme ligne) */}
+      {/* Header : retour HOME depuis le hub, retour HUB depuis les sous-menus */}
       <div
         style={{
           position: "relative",
@@ -985,23 +1146,21 @@ export default function Games({ setTab }: Props) {
         }}
       >
         <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)" }}>
-          <BackDot onClick={() => setTab("home")} />
+          <BackDot onClick={backFromGamesView} />
         </div>
 
         <h1
-        style={{
-          margin: 0,
-          
-          fontSize: 24,
-          color: theme.primary,
-          textAlign: "center",
-          textShadow: `0 0 12px ${theme.primary}66`,
-        }}
-      >
-        {t("games.title", "TOUS LES JEUX")}
-      </h1>
+          style={{
+            margin: 0,
+            fontSize: 24,
+            color: theme.primary,
+            textAlign: "center",
+            textShadow: `0 0 12px ${theme.primary}66`,
+          }}
+        >
+          {pageTitle}
+        </h1>
       </div>
-
 
       <div
         style={{
@@ -1011,401 +1170,292 @@ export default function Games({ setTab }: Props) {
           textAlign: "center",
         }}
       >
-        {t("games.subtitle", "Choisis un mode de jeu")}
+        {pageSubtitle}
       </div>
 
-      {/* ✅ Top : ticker + favoris */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-        {/* ✅ TICKER HAUT (NEW + PLAY autorisés) */}
-        <NewModesTicker
-          items={newModes}
-          intervalMs={3000}
-          leftLogoSrc={newGameBadge}
-          playLogoSrc={playBadge}
-          onNavigate={(path) => navSmart(String(path || ""))}
-        />
+      {/* ============================================================
+          HUB JEUX : NEW GAME + 3 cartes + lancement rapide défilant
+         ============================================================ */}
+      {gamesView === "hub" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <NewModesTicker
+            items={newModes}
+            intervalMs={3000}
+            leftLogoSrc={newGameBadge}
+            playLogoSrc={playBadge}
+            onNavigate={(path) => navSmart(String(path || ""))}
+          />
 
-        {renderFavoriteCard({
-          title: t("games.fav.classic.title", "FAVORI — CLASSIQUES"),
-          tint: TINT_CLASSIC,
-          game: favClassic,
-          fallbackTab: "mode_not_ready",
-          kind: "classic",
-        })}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {renderHubCard({
+              title: t("games.hub.favorites", "FAVORIS"),
+              subtitle: t("games.hub.favorites.subtitle", "Retrouve immédiatement tes modes les plus joués."),
+              tint: TINT_CLASSIC,
+              onClick: () => openGamesView("favorites"),
+            })}
 
-        {renderFavoriteCard({
-          title: t("games.fav.training.title", "FAVORI — TRAINING"),
-          tint: TINT_TRAINING,
-          game: favTraining,
-          fallbackTab: "training",
-          kind: "training",
-        })}
+            {renderHubCard({
+              title: t("games.hub.all", "TOUS LES JEUX"),
+              subtitle: t("games.hub.all.subtitle", "Parcours les catégories, variantes, défis et modes fun."),
+              tint: TINT_CHALLENGE,
+              onClick: () => openGamesView("all"),
+            })}
 
-        {renderFavoriteCard({
-          title: t("games.fav.variant.title", "FAVORI — VARIANTES"),
-          tint: TINT_VARIANT,
-          game: favVariant,
-          fallbackTab: "mode_not_ready",
-          kind: "variant",
-        })}
+            {renderHubCard({
+              title: t("games.hub.training", "TRAINING"),
+              subtitle: t("games.hub.training.subtitle", "Accède uniquement aux modes et outils d’entraînement."),
+              tint: TINT_TRAINING,
+              onClick: () => navigate("training"),
+            })}
+          </div>
 
-        {renderFavoriteCard({
-          title: t("games.fav.challenge.title", "FAVORI — DÉFIS"),
-          tint: TINT_CHALLENGE,
-          game: favChallenge,
-          fallbackTab: "mode_not_ready",
-          kind: "challenge",
-        })}
-
-        {renderFavoriteCard({
-          title: t("games.fav.fun.title", "FAVORI — FUN"),
-          tint: TINT_FUN,
-          game: favFun,
-          fallbackTab: "mode_not_ready",
-          kind: "fun",
-        })}
-
-        {separatorBar}
-
-        {/* ✅ TRAINING + TOURNOIS sous favoris */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* ✅ TICKER BAS (IMAGE SEULE) — SANS NEW/PLAY */}
-          {(() => {
-            const current = allTickerPool.length
-              ? allTickerPool[allTickerIdx % allTickerPool.length]
-              : null;
-
-            if (!current) return null;
-
-            return (
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                <button
-                  type="button"
-                  onClick={() => navSmart(current.configPath)}
-                  style={{
-                    width: "100%",
-                    maxWidth: 800, // largeur max = largeur PNG
-                    aspectRatio: "800 / 230",
-                    position: "relative",
-                    overflow: "hidden",
-                    borderRadius: 18,
-                    border: `1px solid ${TINT_STATS.border}`,
-                    background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
-                    boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
-                    padding: 0,
-                    cursor: "pointer",
-                  }}
-                  aria-label={`Ouvrir config ${current.label}`}
-                >
-                  <img
-                    src={current.tickerSrc as any}
-                    alt={current.label}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      display: "block",
-                      transform: "translateZ(0)",
-                      filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))",
-                    }}
-                    draggable={false}
-                  />
-                </button>
-              </div>
-            );
-          })()}
-
-          {/* TRAINING HUB */}
-          <button
-            onClick={() => navigate("training")}
-            style={{
-              position: "relative",
-              width: "100%",
-              padding: 14,
-              paddingRight: 46,
-              textAlign: "left",
-              borderRadius: 16,
-              border: `1px solid ${theme.borderSoft}`,
-              background: CARD_BG,
-              cursor: "pointer",
-              boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 800,
-                letterSpacing: 0.8,
-                color: theme.primary,
-                textTransform: "uppercase",
-                textShadow: `0 0 12px ${theme.primary}55`,
-              }}
-            >
-              {t("games.training.title", "TRAINING")}
-            </div>
-            <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-              {t("games.training.subtitle", "Améliore ta progression.")}
-            </div>
-
-            <div
-              style={{
-                position: "absolute",
-                right: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-              }}
-            >
-              <InfoDot
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  setInfoGame({
-                    label: "Training",
-                    ready: true,
-                    infoTitle: "Training",
-                    infoBody:
-                      "Hub d'entraînement : accès à Training X01, Tour de l'horloge et autres drills (selon implémentation).",
-                  });
-                }}
-                glow={theme.primary + "88"}
-              />
-            </div>
-          </button>
-
-          {/* TOURNOIS */}
-          <button
-            onClick={() => navigate("tournaments")}
-            style={{
-              position: "relative",
-              width: "100%",
-              padding: 14,
-              paddingRight: 46,
-              textAlign: "left",
-              borderRadius: 16,
-              border: `1px solid ${theme.borderSoft}`,
-              background: CARD_BG,
-              cursor: "pointer",
-              boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 800,
-                letterSpacing: 0.8,
-                color: theme.primary,
-                textTransform: "uppercase",
-                textShadow: `0 0 12px ${theme.primary}55`,
-              }}
-            >
-              {t("games.tournaments.title", "TOURNOIS")}
-            </div>
-            <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-              {t("games.tournaments.subtitle", "Crée des tournois en local (poules, élimination…).")}
-            </div>
-
-            <div
-              style={{
-                position: "absolute",
-                right: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-              }}
-            >
-              <InfoDot
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  setInfoGame({
-                    label: "Tournois",
-                    ready: true,
-                    infoTitle: "Tournois (Local)",
-                    infoBody:
-                      "Crée des tournois en local : round-robin, élimination directe, poules + phase finale, byes et paramètres complets selon le mode.",
-                  });
-                }}
-                glow={theme.primary + "88"}
-              />
-            </div>
-          </button>
+          {separatorBar}
+          {renderQuickLaunchTicker()}
         </div>
-      </div>
+      )}
 
-      {/* ✅ Onglets catégories - couleurs liées aux favoris (sans TRAINING) */}
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          flexWrap: "wrap",
-          justifyContent: "center",
-          marginBottom: 12,
-        }}
-      >
-        {visibleCategories.map((c) => {
-          const on = c.id === activeCat;
-          const tint = tintForCategory(c.id);
+      {/* ============================================================
+          FAVORIS : NEW GAME + favoris + lancement rapide défilant
+         ============================================================ */}
+      {gamesView === "favorites" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <NewModesTicker
+            items={newModes}
+            intervalMs={3000}
+            leftLogoSrc={newGameBadge}
+            playLogoSrc={playBadge}
+            onNavigate={(path) => navSmart(String(path || ""))}
+          />
 
-          return (
-            <button
-              key={c.id}
-              onClick={() => setActiveCat(c.id)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: `1px solid ${on ? tint.border : theme.borderSoft}`,
-                background: on ? tint.bg : theme.card,
-                color: on ? tint.title : theme.text,
-                fontWeight: 900,
-                fontSize: 12,
-                cursor: "pointer",
-                boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
-              }}
-            >
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
+          {renderFavoriteCard({
+            title: t("games.fav.classic.title", "FAVORI — CLASSIQUES"),
+            tint: TINT_CLASSIC,
+            game: favClassic,
+            fallbackTab: "mode_not_ready",
+            kind: "classic",
+          })}
 
-      {/* Cartes de jeux (liste) */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {(() => {
-          const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
+          {renderFavoriteCard({
+            title: t("games.fav.training.title", "FAVORI — TRAINING"),
+            tint: TINT_TRAINING,
+            game: favTraining,
+            fallbackTab: "training",
+            kind: "training",
+          })}
 
-          const groups: Record<string, typeof gamesForCat> = {};
-          for (const g of gamesForCat) {
-            const key = (g as any).subCategory ? String((g as any).subCategory) : "other";
-            (groups[key] ||= []).push(g);
-          }
+          {renderFavoriteCard({
+            title: t("games.fav.variant.title", "FAVORI — VARIANTES"),
+            tint: TINT_VARIANT,
+            game: favVariant,
+            fallbackTab: "mode_not_ready",
+            kind: "variant",
+          })}
 
-          const keys = Array.from(new Set([...ordered, ...Object.keys(groups)])).filter(
-            (k) => (groups[k] || []).length > 0
-          );
+          {renderFavoriteCard({
+            title: t("games.fav.challenge.title", "FAVORI — DÉFIS"),
+            tint: TINT_CHALLENGE,
+            game: favChallenge,
+            fallbackTab: "mode_not_ready",
+            kind: "challenge",
+          })}
 
-          const labelFor = (k: string) => {
-            const def = (GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
-            if (def?.label) return def.label;
-            if (k === "other") return t("games.subcat.other", "Autres");
-            return k;
-          };
+          {renderFavoriteCard({
+            title: t("games.fav.fun.title", "FAVORI — FUN"),
+            tint: TINT_FUN,
+            game: favFun,
+            fallbackTab: "mode_not_ready",
+            kind: "fun",
+          })}
 
-          return keys.map((k) => (
-            <div key={k} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div
-                style={{
-                  marginTop: 6,
-                  marginBottom: 2,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  alignSelf: "flex-start",
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.08))`,
-                  color: theme.textSoft,
-                  fontWeight: 900,
-                  fontSize: 11,
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                }}
-              >
-                {labelFor(k)}
-              </div>
+          {separatorBar}
+          {renderQuickLaunchTicker()}
+        </div>
+      )}
 
-              {(groups[k] || []).map((g) => {
-                const forcedReady = (g?.id === "enculette" || g?.id === "cricket_cut_throat");
-                const ready = forcedReady ? true : !!g?.ready;
-                const visuallyDisabled = devVisuallyDisabled(ready);
-                const clickable = devClickable(ready, !!dev?.enabled);
-                const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+      {/* ============================================================
+          TOUS LES JEUX : PAS de NEW GAME ici.
+          Lancement rapide défilant -> onglets -> liste complète.
+         ============================================================ */}
+      {gamesView === "all" && (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
+            {renderQuickLaunchTicker()}
+          </div>
 
-                return (
-                  <button
-                    key={g.id}
-                    onClick={() => {
-                      if (!clickable) return navigate("mode_not_ready");
-                      // Support des variantes via params (ex: Cricket Cut-Throat)
-                      const params = g.variantId ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId } : undefined;
-                      return navigate(g.tab, params);
-                    }}
+          {/* Onglets catégories - couleurs liées aux favoris (sans TRAINING) */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              justifyContent: "center",
+              marginBottom: 12,
+            }}
+          >
+            {visibleCategories.map((c) => {
+              const on = c.id === activeCat;
+              const tint = tintForCategory(c.id);
+
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => setActiveCat(c.id)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: `1px solid ${on ? tint.border : theme.borderSoft}`,
+                    background: on ? tint.bg : theme.card,
+                    color: on ? tint.title : theme.text,
+                    fontWeight: 900,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
+                  }}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Cartes de jeux (liste) */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {(() => {
+              const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
+
+              const groups: Record<string, typeof gamesForCat> = {};
+              for (const g of gamesForCat) {
+                const key = (g as any).subCategory ? String((g as any).subCategory) : "other";
+                (groups[key] ||= []).push(g);
+              }
+
+              const keys = Array.from(new Set([...ordered, ...Object.keys(groups)])).filter(
+                (k) => (groups[k] || []).length > 0
+              );
+
+              const labelFor = (k: string) => {
+                const def = (GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
+                if (def?.label) return def.label;
+                if (k === "other") return t("games.subcat.other", "Autres");
+                return k;
+              };
+
+              return keys.map((k) => (
+                <div key={k} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div
                     style={{
-                      position: "relative",
-                      width: "100%",
-                      padding: 14,
-                      paddingRight: 46,
-                      textAlign: "left",
-                      borderRadius: 16,
+                      marginTop: 6,
+                      marginBottom: 2,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      alignSelf: "flex-start",
                       border: `1px solid ${theme.borderSoft}`,
-                      background: CARD_BG,
-                      cursor: "pointer",
-                      opacity: visuallyDisabled ? 0.55 : 1,
-                      boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
-                      overflow: "hidden",
+                      background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.08))`,
+                      color: theme.textSoft,
+                      fontWeight: 900,
+                      fontSize: 11,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
                     }}
                   >
-                    {/* ✅ Watermark ticker (75% largeur / 100% hauteur, fade) */}
-                    {renderGameTickerWatermark(g.id)}
+                    {labelFor(k)}
+                  </div>
 
-                    {/* ✅ contenu au-dessus */}
-                    <div style={{ position: "relative", zIndex: 1 }}>
-                      <div
+                  {(groups[k] || []).map((g) => {
+                    const forcedReady = (g?.id === "enculette" || g?.id === "cricket_cut_throat");
+                    const ready = forcedReady ? true : !!g?.ready;
+                    const visuallyDisabled = devVisuallyDisabled(ready);
+                    const clickable = devClickable(ready, !!dev?.enabled);
+                    const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => {
+                          if (!clickable) return navigate("mode_not_ready");
+                          const gameParams = g.variantId
+                            ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId }
+                            : undefined;
+                          return navigate(g.tab, gameParams);
+                        }}
                         style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          letterSpacing: 0.8,
-                          color: visuallyDisabled ? theme.textSoft : theme.primary,
-                          textTransform: "uppercase",
-                          textShadow: visuallyDisabled ? "none" : `0 0 12px ${theme.primary}55`,
+                          position: "relative",
+                          width: "100%",
+                          padding: 14,
+                          paddingRight: 46,
+                          textAlign: "left",
+                          borderRadius: 16,
+                          border: `1px solid ${theme.borderSoft}`,
+                          background: CARD_BG,
+                          cursor: "pointer",
+                          opacity: visuallyDisabled ? 0.55 : 1,
+                          boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+                          overflow: "hidden",
                         }}
                       >
-                        {g.label}
-                      </div>
+                        {renderGameTickerWatermark(g.id)}
 
-                      <div
-                        style={{
-                          marginTop: 4,
-                          fontSize: 12,
-                          color: theme.textSoft,
-                          opacity: 0.9,
-                        }}
-                      >
-                        {comingSoon && (
-                          <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
-                            {comingSoon}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                        <div style={{ position: "relative", zIndex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 800,
+                              letterSpacing: 0.8,
+                              color: visuallyDisabled ? theme.textSoft : theme.primary,
+                              textTransform: "uppercase",
+                              textShadow: visuallyDisabled ? "none" : `0 0 12px ${theme.primary}55`,
+                            }}
+                          >
+                            {g.label}
+                          </div>
 
-                    <div
-                      style={{
-                        position: "absolute",
-                        right: 10,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        zIndex: 2,
-                      }}
-                    >
-                      <InfoDot
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          setInfoGame({
-                            label: g.label,
-                            ready: g.ready,
-                            infoTitle: g.infoTitle,
-                            infoBody: g.infoBody,
-                          });
-                        }}
-                        glow={theme.primary + "88"}
-                      />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ));
-        })()}
-      </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 12,
+                              color: theme.textSoft,
+                              opacity: 0.9,
+                            }}
+                          >
+                            {comingSoon && (
+                              <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
+                                {comingSoon}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            zIndex: 2,
+                          }}
+                        >
+                          <InfoDot
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setInfoGame({
+                                label: g.label,
+                                ready: g.ready,
+                                infoTitle: g.infoTitle,
+                                infoBody: g.infoBody,
+                              });
+                            }}
+                            glow={theme.primary + "88"}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+        </>
+      )}
 
       {/* Overlay d'information */}
       {infoGame && (

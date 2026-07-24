@@ -3695,7 +3695,7 @@ try {
           ) : activeSport === "pingpong" ? (
             <PingPongMenuGames go={go} />
           ) : (
-            <Games setTab={(t: any, p?: any) => go(t, p)} />
+            <Games setTab={(t: any, p?: any) => go(t, p)} params={routeParams} />
           );
         break;
 
