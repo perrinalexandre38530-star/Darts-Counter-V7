@@ -979,21 +979,89 @@ export default function Games({ setTab, params }: Props) {
     );
   }
 
+  const menuLanguage = lang === "fr" ? "fr" : "en";
+
+  const HUB_COPY = React.useMemo(() => {
+    if (menuLanguage === "fr") {
+      return {
+        favorites: {
+          title: "FAVORIS",
+          infoTitle: "FAVORIS",
+          infoBody: "Retrouve immédiatement tes modes les plus joués, classés par catégorie.",
+        },
+        all: {
+          title: "TOUS LES JEUX",
+          infoTitle: "TOUS LES JEUX",
+          infoBody: "Parcours l’ensemble des catégories, variantes, défis et modes fun disponibles.",
+        },
+        training: {
+          title: "TRAINING",
+          infoTitle: "TRAINING",
+          infoBody: "Accède uniquement aux modes et outils d’entraînement pour travailler ta progression.",
+        },
+      };
+    }
+
+    return {
+      favorites: {
+        title: "FAVORITES",
+        infoTitle: "FAVORITES",
+        infoBody: "Jump straight to your most-played modes, grouped by category.",
+      },
+      all: {
+        title: "ALL GAMES",
+        infoTitle: "ALL GAMES",
+        infoBody: "Browse every available category, variant, challenge and fun mode.",
+      },
+      training: {
+        title: "TRAINING",
+        infoTitle: "TRAINING",
+        infoBody: "Open training modes and practice tools dedicated to improving your game.",
+      },
+    };
+  }, [menuLanguage]);
+
+  function menuTicker(id: "games" | "favorites" | "all_games" | "training") {
+    return findTickerById(`menu_${id}_${menuLanguage}`);
+  }
+
+  function renderHubInfoContent(body: string) {
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          fontSize: 15,
+          lineHeight: 1.55,
+          fontWeight: 750,
+          color: theme.text,
+          padding: "10px 8px 14px",
+        }}
+      >
+        {body}
+      </div>
+    );
+  }
+
   function renderHubCard(opts: {
     title: string;
-    subtitle: string;
+    infoTitle: string;
+    infoBody: string;
+    tickerId: "favorites" | "all_games" | "training";
     tint: { border: string; bg: string; title: string; glow: string };
     onClick: () => void;
   }) {
+    const tickerSrc = menuTicker(opts.tickerId);
+
     return (
       <button
         type="button"
         onClick={opts.onClick}
+        aria-label={opts.title}
         style={{
           position: "relative",
           width: "100%",
-          minHeight: 94,
-          padding: "18px 52px 18px 18px",
+          minHeight: 106,
+          padding: 0,
           textAlign: "left",
           borderRadius: 18,
           border: `1px solid ${opts.tint.border}`,
@@ -1009,49 +1077,73 @@ export default function Games({ setTab, params }: Props) {
           style={{
             position: "absolute",
             inset: -50,
-            background: `radial-gradient(300px 170px at 18% 0%, ${opts.tint.glow}, rgba(0,0,0,0) 62%)`,
+            background: `radial-gradient(320px 180px at 18% 0%, ${opts.tint.glow}, rgba(0,0,0,0) 62%)`,
             pointerEvents: "none",
           }}
         />
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: 18,
-            top: "50%",
-            width: 28,
-            height: 28,
-            transform: "translateY(-50%) rotate(45deg)",
-            borderTop: `3px solid ${opts.tint.title}`,
-            borderRight: `3px solid ${opts.tint.title}`,
-            filter: `drop-shadow(0 0 8px ${opts.tint.glow})`,
-            opacity: 0.95,
-          }}
-        />
-        <div style={{ position: "relative", zIndex: 1 }}>
+
+        {tickerSrc ? (
+          <img
+            src={tickerSrc}
+            alt=""
+            aria-hidden
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "center",
+              display: "block",
+              pointerEvents: "none",
+              filter: "saturate(1.05) contrast(1.04)",
+            }}
+          />
+        ) : (
           <div
             style={{
-              fontSize: 18,
-              fontWeight: 950,
-              letterSpacing: 0.9,
+              position: "absolute",
+              inset: 0,
+              display: "grid",
+              placeItems: "center",
               color: opts.tint.title,
+              fontSize: 21,
+              fontWeight: 950,
+              letterSpacing: 1,
               textTransform: "uppercase",
-              textShadow: `0 0 12px ${opts.tint.glow}`,
             }}
           >
             {opts.title}
           </div>
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              fontWeight: 700,
-              color: theme.textSoft,
-              lineHeight: 1.35,
-            }}
-          >
-            {opts.subtitle}
-          </div>
+        )}
+
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(90deg, rgba(0,0,0,.08), rgba(0,0,0,0) 60%, rgba(0,0,0,.24))",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            right: 12,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 3,
+          }}
+        >
+          <InfoDot
+            title={opts.infoTitle}
+            size={40}
+            color={opts.tint.title}
+            glow={opts.tint.glow}
+            content={renderHubInfoContent(opts.infoBody)}
+          />
         </div>
       </button>
     );
@@ -1115,14 +1207,16 @@ export default function Games({ setTab, params }: Props) {
       ? t("games.favorites.pageTitle", "FAVORIS")
       : gamesView === "all"
         ? t("games.title", "TOUS LES JEUX")
-        : t("games.hub.title", "JEUX");
+        : menuLanguage === "fr"
+          ? "JEUX"
+          : "GAMES";
 
   const pageSubtitle =
     gamesView === "favorites"
       ? t("games.favorites.subtitle", "Tes modes les plus joués, par catégorie")
       : gamesView === "all"
         ? t("games.subtitle", "Choisis un mode de jeu")
-        : t("games.hub.subtitle", "Choisis ce que tu veux lancer");
+        : "";
 
   return (
     <div
@@ -1134,44 +1228,75 @@ export default function Games({ setTab, params }: Props) {
         color: theme.text,
       }}
     >
-      {/* Header : retour HOME depuis le hub, retour HUB depuis les sous-menus */}
+      {/* Header : ticker JEUX/GAMES sur le hub, titres texte dans les sous-menus */}
       <div
         style={{
           position: "relative",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          marginBottom: 6,
-          minHeight: 36,
+          marginBottom: gamesView === "hub" ? 14 : 6,
+          minHeight: gamesView === "hub" ? 70 : 36,
         }}
       >
-        <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)" }}>
+        <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
           <BackDot onClick={backFromGamesView} />
         </div>
 
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 24,
-            color: theme.primary,
-            textAlign: "center",
-            textShadow: `0 0 12px ${theme.primary}66`,
-          }}
-        >
-          {pageTitle}
-        </h1>
+        {gamesView === "hub" ? (
+          menuTicker("games") ? (
+            <img
+              src={menuTicker("games") as string}
+              alt={pageTitle}
+              draggable={false}
+              style={{
+                width: "min(72vw, 360px)",
+                maxHeight: 78,
+                objectFit: "contain",
+                display: "block",
+                filter: `drop-shadow(0 0 12px ${theme.primary}55)`,
+              }}
+            />
+          ) : (
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 24,
+                color: theme.primary,
+                textAlign: "center",
+                textShadow: `0 0 12px ${theme.primary}66`,
+              }}
+            >
+              {pageTitle}
+            </h1>
+          )
+        ) : (
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 24,
+              color: theme.primary,
+              textAlign: "center",
+              textShadow: `0 0 12px ${theme.primary}66`,
+            }}
+          >
+            {pageTitle}
+          </h1>
+        )}
       </div>
 
-      <div
-        style={{
-          fontSize: 13,
-          color: theme.textSoft,
-          marginBottom: 18,
-          textAlign: "center",
-        }}
-      >
-        {pageSubtitle}
-      </div>
+      {pageSubtitle ? (
+        <div
+          style={{
+            fontSize: 13,
+            color: theme.textSoft,
+            marginBottom: 18,
+            textAlign: "center",
+          }}
+        >
+          {pageSubtitle}
+        </div>
+      ) : null}
 
       {/* ============================================================
           HUB JEUX : NEW GAME + 3 cartes + lancement rapide défilant
@@ -1188,22 +1313,28 @@ export default function Games({ setTab, params }: Props) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {renderHubCard({
-              title: t("games.hub.favorites", "FAVORIS"),
-              subtitle: t("games.hub.favorites.subtitle", "Retrouve immédiatement tes modes les plus joués."),
+              title: HUB_COPY.favorites.title,
+              infoTitle: HUB_COPY.favorites.infoTitle,
+              infoBody: HUB_COPY.favorites.infoBody,
+              tickerId: "favorites",
               tint: TINT_CLASSIC,
               onClick: () => openGamesView("favorites"),
             })}
 
             {renderHubCard({
-              title: t("games.hub.all", "TOUS LES JEUX"),
-              subtitle: t("games.hub.all.subtitle", "Parcours les catégories, variantes, défis et modes fun."),
+              title: HUB_COPY.all.title,
+              infoTitle: HUB_COPY.all.infoTitle,
+              infoBody: HUB_COPY.all.infoBody,
+              tickerId: "all_games",
               tint: TINT_CHALLENGE,
               onClick: () => openGamesView("all"),
             })}
 
             {renderHubCard({
-              title: t("games.hub.training", "TRAINING"),
-              subtitle: t("games.hub.training.subtitle", "Accède uniquement aux modes et outils d’entraînement."),
+              title: HUB_COPY.training.title,
+              infoTitle: HUB_COPY.training.infoTitle,
+              infoBody: HUB_COPY.training.infoBody,
+              tickerId: "training",
               tint: TINT_TRAINING,
               onClick: () => navigate("training"),
             })}
