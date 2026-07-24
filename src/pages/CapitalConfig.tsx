@@ -691,6 +691,7 @@ export default function CapitalConfig(props: any) {
   const showMode = viewMode === "complete" || guidedStep === 1;
   const showOptions = viewMode === "complete" || guidedStep === 2;
   const showRecap = viewMode === "complete" || guidedStep === 3;
+  const canStart = !useCanonicalParticipants || Boolean(canonicalSelection?.valid);
   const pillStyle = (active: boolean): React.CSSProperties => ({
     borderRadius: 14,
     border: `1px solid ${active ? accent : "rgba(255,255,255,.12)"}`,
@@ -1733,27 +1734,40 @@ export default function CapitalConfig(props: any) {
       ) : null}
 
       {showRecap ? (
-      <div style={{ padding: 12 }}>
-        <button
-          onClick={start}
-          style={{
-            width: "100%",
-            borderRadius: 16,
-            padding: "14px 14px",
-            fontSize: 14,
-            fontWeight: 1000,
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(255,255,255,0.10)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
-          }}
-        >
-          {t("config.start", "Démarrer")}
-        </button>
-
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-          Officiel = séquence fixe des 15 contrats. Custom = tu choisis l’ordre et les contrats.
+        <div style={{ padding: "2px 12px 104px" }}>
+          <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.68, lineHeight: 1.35 }}>
+            Officiel = séquence fixe des 15 contrats. Custom = tu choisis l’ordre et les contrats.
+          </div>
         </div>
-      </div>
+      ) : null}
+
+      {showRecap ? (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, zIndex: 80, padding: "6px 12px 8px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto" }}>
+            <button
+              type="button"
+              onClick={start}
+              disabled={!canStart}
+              style={{
+                width: "100%",
+                height: 46,
+                borderRadius: 999,
+                border: "none",
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                background: canStart ? `linear-gradient(90deg, ${accent}, #ffe9a3)` : "rgba(120,120,120,0.5)",
+                color: canStart ? "#151515" : "#2b2b52",
+                boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
+                opacity: canStart ? 1 : 0.6,
+                cursor: canStart ? "pointer" : "default",
+              }}
+            >
+              {t("x01v3.start", "Lancer la partie")}
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );

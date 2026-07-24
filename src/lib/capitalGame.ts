@@ -346,7 +346,7 @@ export function buildCapitalPlayerStats(players: CapitalPlayer[], visits: Capita
     const bulls = count((dart) => dart.v === 25 && dart.mult === 1);
     const dbulls = count((dart) => dart.v === 25 && dart.mult === 2);
     const finalCapital = Number(finalScores[index] || 0);
-    const startingCapital = Number(opening?.scoreAfter || 0);
+    const startingCapital = Number(opening?.scoreAfter ?? scoringRows[0]?.scoreBefore ?? 0);
     const scoreAfterValues = rows.map((visit) => Number(visit.scoreAfter || 0));
     const peakCapital = scoreAfterValues.length ? Math.max(...scoreAfterValues) : finalCapital;
     const lowestCapital = scoreAfterValues.length ? Math.min(...scoreAfterValues) : finalCapital;

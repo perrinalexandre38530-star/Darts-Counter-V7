@@ -7,6 +7,37 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
+import targetBg from "../assets/target_bg.png";
+import euro1Bg from "../assets/capital_money/euro_1.webp";
+import euro2Bg from "../assets/capital_money/euro_2.webp";
+import euro3Bg from "../assets/capital_money/euro_3.webp";
+import money1Bg from "../assets/capital_money/money_1.webp";
+import money2Bg from "../assets/capital_money/money_2.webp";
+import money3Bg from "../assets/capital_money/money_3.webp";
+import money4Bg from "../assets/capital_money/money_4.webp";
+import money5Bg from "../assets/capital_money/money_5.webp";
+import money6Bg from "../assets/capital_money/money_6.webp";
+import money7Bg from "../assets/capital_money/money_7.webp";
+import money8Bg from "../assets/capital_money/money_8.webp";
+import money9Bg from "../assets/capital_money/money_9.webp";
+import money10Bg from "../assets/capital_money/money_10.webp";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  PolarAngleAxis,
+  PolarGrid,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -21,6 +52,12 @@ import {
   rankCapitalPlayers,
   type CapitalVisit,
 } from "../lib/capitalGame";
+
+const CAPITAL_SCORE_BACKGROUNDS = [
+  euro1Bg, euro2Bg, euro3Bg,
+  money1Bg, money2Bg, money3Bg, money4Bg, money5Bg,
+  money6Bg, money7Bg, money8Bg, money9Bg, money10Bg,
+];
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -413,6 +450,154 @@ function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[
   return [miss(), miss(), miss()];
 }
 
+
+function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visits, selectedIndex, onSelectPlayer }: any) {
+  const [tab, setTab] = useState<"resume" | "evolution" | "contrats" | "precision" | "comparatif" | "volees">("resume");
+  if (!open) return null;
+
+  const safeIndex = Math.max(0, Math.min(Number(selectedIndex || 0), Math.max(0, participants.length - 1)));
+  const profile = participants[safeIndex] || {};
+  const stats = playerStats[safeIndex] || {};
+  const playerId = String(stats?.id || stats?.playerId || profile?.id || "");
+  const rows = (visits || []).filter((visit: any) => String(visit?.playerId || "") === playerId);
+  const evolutionData = [
+    { label: "Départ", capital: Number(stats?.startingCapital || 0), volee: 0, delta: 0 },
+    ...rows.map((visit: any, index: number) => ({
+      label: `R${Number(visit?.contractIndex ?? index) + 1}`,
+      capital: Number(visit?.scoreAfter || 0),
+      volee: Number(visit?.visitScore || 0),
+      delta: Number(visit?.delta || 0),
+      contrat: contractLabel(visit?.contractId),
+    })),
+  ];
+  const contractData = Object.entries(stats?.contractStats || {}).map(([id, value]: any) => ({
+    id,
+    contrat: contractLabel(id as CapitalContractID),
+    tentatives: Number(value?.attempts || 0),
+    reussites: Number(value?.successes || 0),
+    echecs: Number(value?.failures || 0),
+    taux: Number(value?.successRate || 0),
+    points: Number(value?.pointsWon || 0),
+    brut: Number(value?.rawPoints || 0),
+    perdu: Number(value?.capitalLost || 0),
+    best: Number(value?.bestVisit || 0),
+    moyenne: Number(value?.averageVisit || 0),
+  })).sort((a: any, b: any) => b.tentatives - a.tentatives || b.points - a.points);
+  const impactsData = [
+    { name: "Simples", value: Number(stats?.singles || 0) },
+    { name: "Doubles", value: Number(stats?.doubles || 0) },
+    { name: "Triples", value: Number(stats?.triples || 0) },
+    { name: "Bull", value: Number(stats?.bulls || 0) },
+    { name: "DBull", value: Number(stats?.dbulls || 0) },
+    { name: "Miss", value: Number(stats?.misses || 0) },
+  ];
+  const radarData = [
+    { metric: "Contrats", value: Number(stats?.successRate || 0) },
+    { metric: "Précision", value: Number(stats?.hitRate || 0) },
+    { metric: "Rétention", value: Math.min(100, Number(stats?.capitalRetentionRate || 0)) },
+    { metric: "60+", value: Math.min(100, Number(stats?.visits60Plus || 0) * 15) },
+    { metric: "Best", value: Math.min(100, (Number(stats?.bestVisit || 0) / 180) * 100) },
+    { metric: "Série", value: Math.min(100, Number(stats?.successStreakMax || 0) * 18) },
+  ];
+  const compareData = (playerStats || []).map((row: any, index: number) => ({
+    name: participants[index]?.nickname || participants[index]?.name || row?.name || `J${index + 1}`,
+    capital: Number(row?.finalCapital || row?.capital || 0),
+    reussite: Number(row?.successRate || 0),
+    precision: Number(row?.hitRate || 0),
+    avg3: Number(row?.avg3 || 0),
+    best: Number(row?.bestVisit || 0),
+  }));
+  const sectors = Object.entries(stats?.sectorHits || {}).map(([sector, hits]: any) => ({ sector, hits: Number(hits || 0), points: Number(stats?.sectorPoints?.[sector] || 0) })).sort((a: any, b: any) => b.hits - a.hits || b.points - a.points).slice(0, 10);
+  const kpis = [
+    ["Capital actuel", stats?.finalCapital ?? stats?.capital ?? 0],
+    ["Capital départ", stats?.startingCapital ?? 0],
+    ["Pic capital", stats?.peakCapital ?? 0],
+    ["Plancher", stats?.lowestCapital ?? 0],
+    ["Gain net", `${Number(stats?.netCapitalChange || 0) >= 0 ? "+" : ""}${Number(stats?.netCapitalChange || 0)}`],
+    ["Rétention", `${stats?.capitalRetentionRate ?? 0}%`],
+    ["Points gagnés", stats?.pointsWon ?? 0],
+    ["Capital perdu", stats?.capitalLost ?? 0],
+    ["Contrats réussis", `${stats?.successfulContracts ?? 0}/${stats?.contractsPlayed ?? 0}`],
+    ["Réussite", `${stats?.successRate ?? 0}%`],
+    ["Best volée", stats?.bestVisit ?? 0],
+    ["Moy. volée", stats?.averageVisit ?? 0],
+    ["AVG / 3", stats?.avg3 ?? 0],
+    ["Précision", `${stats?.hitRate ?? 0}%`],
+    ["Fléchettes", stats?.dartsThrown ?? 0],
+    ["Pénalités", stats?.penaltyEvents ?? 0],
+    ["Pénalité moy.", stats?.avgPenalty ?? 0],
+    ["Série réussie", stats?.successStreakMax ?? 0],
+    ["Série échecs", stats?.failStreakMax ?? 0],
+    ["Secteur favori", stats?.topSector ? `${stats.topSector} (${stats?.topSectorHits || 0})` : "—"],
+  ];
+  const tabs = [
+    ["resume", "Résumé"], ["evolution", "Évolution"], ["contrats", "Contrats"],
+    ["precision", "Précision"], ["comparatif", "Comparatif"], ["volees", "Volées"],
+  ];
+  const chartTooltip = { background: "rgba(4,8,14,.96)", border: "1px solid rgba(53,216,255,.28)", borderRadius: 10, color: "#fff", fontSize: 11 };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 12000, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px, 97vw)", maxHeight: "91dvh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(53,216,255,.42)", background: "linear-gradient(180deg, rgba(7,17,25,.99), rgba(2,7,12,.99))", boxShadow: "0 24px 90px rgba(0,0,0,.74), 0 0 30px rgba(53,216,255,.10)", color: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px 10px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+          <ProfileAvatar profile={profile} size={42} showStars={false} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: "#35d8ff", fontSize: 9, fontWeight: 1000, letterSpacing: .9 }}>STATS LIVE — CAPITAL</div>
+            <div style={{ marginTop: 2, fontSize: 17, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile?.nickname || profile?.name || stats?.name || "Joueur"}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fermer" style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 18, fontWeight: 1000 }}>×</button>
+        </div>
+
+        {participants.length > 1 ? <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 11px 3px" }}>
+          {participants.map((participant: any, index: number) => <button key={String(participant?.id || index)} type="button" onClick={() => onSelectPlayer(index)} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, minHeight: 32, padding: "4px 8px", borderRadius: 999, border: index === safeIndex ? "1px solid rgba(53,216,255,.60)" : "1px solid rgba(255,255,255,.10)", background: index === safeIndex ? "rgba(53,216,255,.12)" : "rgba(255,255,255,.035)", color: index === safeIndex ? "#35d8ff" : "#fff", fontSize: 10, fontWeight: 950 }}><ProfileAvatar profile={participant} size={22} showStars={false} />{participant?.nickname || participant?.name || `Joueur ${index + 1}`}</button>)}
+        </div> : null}
+
+        <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 11px" }}>
+          {tabs.map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as any)} style={{ flex: "0 0 auto", minHeight: 32, padding: "6px 10px", borderRadius: 999, border: tab === id ? "1px solid rgba(255,207,87,.62)" : "1px solid rgba(255,255,255,.10)", background: tab === id ? "rgba(255,207,87,.13)" : "rgba(255,255,255,.03)", color: tab === id ? "#ffcf57" : "rgba(255,255,255,.72)", fontSize: 9.5, fontWeight: 1000 }}>{label}</button>)}
+        </div>
+
+        <div className="dc-scroll-thin" style={{ maxHeight: "calc(91dvh - 138px)", overflowY: "auto", padding: "2px 11px 14px" }}>
+          {tab === "resume" ? <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(112px,1fr))", gap: 6 }}>
+              {kpis.map(([label, value]) => <div key={String(label)} style={{ padding: "9px 8px", borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: "rgba(255,255,255,.48)", fontSize: 8, fontWeight: 950, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 3, color: label === "Capital actuel" || label === "Réussite" ? "#ffcf57" : "#fff", fontSize: 17, fontWeight: 1000 }}>{value}</div></div>)}
+            </div>
+            <div style={{ marginTop: 9, height: 220, padding: "8px 4px 2px", borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)" }}>
+              <div style={{ padding: "0 8px 5px", fontSize: 9.5, fontWeight: 1000, color: "#35d8ff" }}>COURBE DU CAPITAL</div>
+              <ResponsiveContainer width="100%" height="90%"><LineChart data={evolutionData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} /><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }} /><YAxis tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }} width={36} /><Tooltip contentStyle={chartTooltip as any} /><Line type="monotone" dataKey="capital" stroke="#ffcf57" strokeWidth={2.5} dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
+            </div>
+          </> : null}
+
+          {tab === "evolution" ? <div style={{ display: "grid", gap: 9 }}>
+            <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>CAPITAL APRÈS CHAQUE CONTRAT</div><ResponsiveContainer width="100%" height="90%"><AreaChart data={evolutionData}><defs><linearGradient id="capitalArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ffcf57" stopOpacity={.38}/><stop offset="95%" stopColor="#ffcf57" stopOpacity={.02}/></linearGradient></defs><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Area type="monotone" dataKey="capital" stroke="#ffcf57" fill="url(#capitalArea)" strokeWidth={2}/></AreaChart></ResponsiveContainer></div>
+            <div style={{ height: 210, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>VARIATION PAR CONTRAT</div><ResponsiveContainer width="100%" height="90%"><BarChart data={evolutionData.slice(1)}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="delta" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+          </div> : null}
+
+          {tab === "contrats" ? <>
+            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>RÉUSSITE PAR CONTRAT</div><ResponsiveContainer width="100%" height="90%"><BarChart data={contractData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="contrat" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="taux" fill="#ffcf57" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+            <div style={{ marginTop: 8, display: "grid", gap: 5 }}>{contractData.length ? contractData.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(78px,1.4fr) repeat(5,minmax(44px,.7fr))", gap: 4, alignItems: "center", padding: "7px 6px", borderRadius: 10, background: "rgba(255,255,255,.03)", fontSize: 9 }}><b style={{ color: "#35d8ff", overflow: "hidden", textOverflow: "ellipsis" }}>{row.contrat}</b><span>{row.taux}%</span><span>+{row.points}</span><span>-{row.perdu}</span><span>Best {row.best}</span><span>Moy {row.moyenne}</span></div>) : <div style={{ opacity: .55, padding: 12 }}>Aucun contrat joué pour l’instant.</div>}</div>
+          </> : null}
+
+          {tab === "precision" ? <div style={{ display: "grid", gap: 9 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 9 }}>
+              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>PROFIL DE PERFORMANCE</div><ResponsiveContainer width="100%" height="90%"><RadarChart data={radarData}><PolarGrid stroke="rgba(255,255,255,.12)"/><PolarAngleAxis dataKey="metric" tick={{ fill: "rgba(255,255,255,.65)", fontSize: 8 }}/><Radar dataKey="value" stroke="#35d8ff" fill="#35d8ff" fillOpacity={.22}/><Tooltip contentStyle={chartTooltip as any}/></RadarChart></ResponsiveContainer></div>
+              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>IMPACTS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={impactsData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis width={28} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="value" fill="#ffcf57" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+            </div>
+            <div style={{ padding: 10, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff" }}>SECTEURS LES PLUS TOUCHÉS</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{sectors.length ? sectors.map((row: any) => <span key={row.sector} style={{ padding: "6px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.20)", fontSize: 9 }}><b style={{ color: "#ffcf57" }}>{row.sector}</b> · {row.hits} hits · {row.points} pts</span>) : <span style={{ opacity: .5 }}>Aucun impact enregistré.</span>}</div></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{[["60+",stats?.visits60Plus],["100+",stats?.visits100Plus],["140+",stats?.visits140Plus],["180",stats?.visits180]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.035)", textAlign: "center" }}><div style={{ fontSize: 8, opacity: .5 }}>{label}</div><b style={{ color: "#ffcf57", fontSize: 17 }}>{value ?? 0}</b></div>)}</div>
+          </div> : null}
+
+          {tab === "comparatif" ? <div style={{ display: "grid", gap: 9 }}>
+            <div style={{ height: 240, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>CAPITAL / BEST</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="capital" fill="#ffcf57" radius={[4,4,0,0]}/><Bar dataKey="best" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>RÉUSSITE / PRÉCISION</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="reussite" fill="#ffcf57" radius={[4,4,0,0]}/><Bar dataKey="precision" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+          </div> : null}
+
+          {tab === "volees" ? <div style={{ display: "grid", gap: 6 }}>{rows.length ? [...rows].reverse().map((visit: any) => <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, padding: "8px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ minWidth: 0 }}><div style={{ color: "#35d8ff", fontSize: 9, fontWeight: 1000 }}>{contractLabel(visit.contractId)} · R{Number(visit.contractIndex || 0) + 1}</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(visit.darts || []).map((dart: any) => capitalDartLabel(dart)).join(" · ")}</div><div style={{ marginTop: 2, fontSize: 8.5, opacity: .5 }}>{visit.scoreBefore} → {visit.scoreAfter}</div></div><div style={{ textAlign: "right" }}><b style={{ color: visit.success ? "#71e7a6" : "#ff7b8d", fontSize: 15 }}>{visit.success ? `+${visit.visitScore}` : `-${visit.penaltyLost || 0}`}</b><div style={{ fontSize: 8, opacity: .55 }}>{visit.success ? "RÉUSSI" : "ÉCHEC"}</div></div></div>) : <div style={{ opacity: .55, padding: 14 }}>Aucune volée enregistrée.</div>}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CapitalPlay(props: any) {
   const { t } = useLang();
   useTheme();
@@ -462,6 +647,18 @@ export default function CapitalPlay(props: any) {
 
   const playerCount = participants.length || Math.max(1, cfg.players || 2);
 
+  const scoreCardBackgrounds = useMemo(() => {
+    // Toutes les images Euro/Money fournies font partie du pool.
+    // On mélange une seule fois pour cette composition de participants afin
+    // que le visuel reste stable pendant la partie mais change d'une partie à l'autre.
+    const pool = [...CAPITAL_SCORE_BACKGROUNDS];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return participants.map((_: any, index: number) => pool[index % pool.length]);
+  }, [participants]);
+
   const contracts = useMemo<CapitalContractID[]>(() => {
     if (cfg.mode === "official") return OFFICIAL_CONTRACTS;
 
@@ -497,6 +694,8 @@ export default function CapitalPlay(props: any) {
 
   // ✅ Fin de partie: overlay résumé (tableau)
   const [endModalOpen, setEndModalOpen] = useState<boolean>(false);
+  const [liveStatsOpen, setLiveStatsOpen] = useState<boolean>(false);
+  const [liveStatsPlayerIdx, setLiveStatsPlayerIdx] = useState<number>(0);
 
   // ✅ Patch: tie-break + victoire + bots
   const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
@@ -1223,7 +1422,6 @@ export default function CapitalPlay(props: any) {
             ) : null}
 
             <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 8px 2px 6px" }}>
-              <div style={{ color: "#35d8ff", fontSize: 8.5, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 2 }}>JOUEUR ACTIF</div>
               <div style={{ color: activeTeam?.color || "#35d8ff", fontSize: 14, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {isFinished ? "—" : activeName}
               </div>
@@ -1237,8 +1435,9 @@ export default function CapitalPlay(props: any) {
             </div>
 
             <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 18%, rgba(255,207,87,.22), transparent 42%), linear-gradient(180deg, rgba(17,14,5,.86), rgba(4,8,16,.96))" }} />
-              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.62), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.20)" }} />
+              <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: 1 }} />
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.66), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.22)", pointerEvents: "none" }} />
               <div style={{ position: "relative", width: "100%", padding: "7px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                 <div style={{ color: "rgba(255,255,255,.56)", fontSize: 8.5, fontWeight: 950, letterSpacing: .8 }}>CONTRAT</div>
                 <div style={{ marginTop: 4, color: "#ffcf57", fontSize: 22, lineHeight: 1.02, fontWeight: 1100, textShadow: "0 0 16px rgba(255,207,87,.42)", maxWidth: "100%", wordBreak: "break-word" }}>
@@ -1316,12 +1515,16 @@ export default function CapitalPlay(props: any) {
             const active = !isFinished && i === playerIdx;
             const leader = isFinished ? winningPlayerIds.includes(String(participants[i]?.id)) : false;
             const rank = scoreRankByIndex.get(i) || i + 1;
+            const scoreDecoration = scoreCardBackgrounds[i] || CAPITAL_SCORE_BACKGROUNDS[i % CAPITAL_SCORE_BACKGROUNDS.length];
             return (
               <div
                 key={i}
                 style={{
+                  position: "relative",
+                  overflow: "hidden",
                   flex: scores.length > 2 ? "0 0 min(43vw, 190px)" : undefined,
                   minWidth: scores.length > 2 ? 148 : 0,
+                  minHeight: 94,
                   scrollSnapAlign: scores.length > 2 ? "start" : undefined,
                   borderRadius: 16,
                   padding: "10px 11px",
@@ -1338,18 +1541,34 @@ export default function CapitalPlay(props: any) {
                   boxShadow: active ? "0 0 18px rgba(53,216,255,.08)" : "none",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                  <div style={{ minWidth: 0, fontSize: 11.5, opacity: .9, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`} {leader ? "🏆" : ""}
+                <img
+                  src={scoreDecoration}
+                  alt=""
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    right: -14,
+                    bottom: -18,
+                    width: "72%",
+                    height: "116%",
+                    objectFit: "contain",
+                    objectPosition: "right bottom",
+                    opacity: active ? .16 : .105,
+                    filter: active ? "saturate(.92) contrast(1.05)" : "grayscale(.25) saturate(.68)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <div style={{ minWidth: 0, fontSize: 11.5, opacity: .94, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`}{leader ? " 🏆" : ""}
                   </div>
-                  <span style={{ flex: "0 0 auto", color: active ? "#35d8ff" : "rgba(255,255,255,.44)", fontSize: 8.5, fontWeight: 950 }}>#{rank}</span>
+                  <span style={{ flex: "0 0 auto", color: active ? "#35d8ff" : "rgba(255,255,255,.48)", fontSize: 9, fontWeight: 1000 }}>#{rank}</span>
                 </div>
-                <div style={{ marginTop: 5, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
-                  <div>
-                    <div style={{ color: active ? "#fff" : "rgba(255,255,255,.90)", fontSize: 25, lineHeight: 1, fontWeight: 1000 }}>{s}</div>
-                    <div style={{ marginTop: 3, color: active ? "#35d8ff" : "rgba(255,255,255,.42)", fontSize: 8.5, fontWeight: 950, letterSpacing: .45 }}>CAPITAL</div>
+                <div style={{ position: "relative", zIndex: 1, marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ color: active ? "#fff" : "rgba(255,255,255,.90)", fontSize: 28, lineHeight: 1, fontWeight: 1000, textShadow: "0 2px 10px rgba(0,0,0,.55)" }}>{s}</div>
+                  <div style={{ transform: "scale(1.02)", filter: "drop-shadow(0 3px 9px rgba(0,0,0,.55))" }}>
+                    <ProfileAvatar profile={participants[i]} size={46} showStars={false} />
                   </div>
-                  <ProfileAvatar profile={participants[i]} size={32} showStars={false} />
                 </div>
               </div>
             );
@@ -1357,15 +1576,23 @@ export default function CapitalPlay(props: any) {
         </div>
 
         {!isFinished ? (
-          <div
+          <button
+            type="button"
+            onClick={() => { setLiveStatsPlayerIdx(playerIdx); setLiveStatsOpen(true); }}
+            title="Ouvrir les statistiques détaillées"
             style={{
+              width: "100%",
               marginTop: 8,
+              padding: 0,
+              color: "inherit",
               display: "grid",
               gridTemplateColumns: "repeat(5,minmax(0,1fr))",
               borderRadius: 16,
-              border: "1px solid rgba(255,255,255,.09)",
+              border: "1px solid rgba(53,216,255,.18)",
               background: "rgba(255,255,255,.028)",
               overflow: "hidden",
+              cursor: "pointer",
+              boxShadow: "0 0 0 rgba(53,216,255,0)",
             }}
           >
             {[
@@ -1380,7 +1607,7 @@ export default function CapitalPlay(props: any) {
                 <div style={{ marginTop: 4, color: String(color), fontSize: 13.5, lineHeight: 1, fontWeight: 1000 }}>{value}</div>
               </div>
             ))}
-          </div>
+          </button>
         ) : null}
 
         {isFinished ? (
@@ -1459,6 +1686,15 @@ export default function CapitalPlay(props: any) {
         )}
       </div>
 
+      <CapitalLiveStatsModal
+        open={liveStatsOpen}
+        onClose={() => setLiveStatsOpen(false)}
+        participants={participants}
+        playerStats={rawPlayerStats}
+        visits={visits}
+        selectedIndex={liveStatsPlayerIdx}
+        onSelectPlayer={setLiveStatsPlayerIdx}
+      />
       <EndModal />
     </div>
   );
