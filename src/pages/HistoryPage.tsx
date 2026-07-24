@@ -351,6 +351,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
     { key: "scram", label: "SCRAM", aliases: ["scram"] },
     { key: "baseball", label: "Baseball", aliases: ["baseball", "baseball darts"] },
+    { key: "attrape_moi", label: "Attrape-moi", aliases: ["attrape_moi", "attrape moi", "attrape-moi", "catch me", "catchme"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "prisoner", label: "Prisoner", aliases: ["prisoner"] },
@@ -450,7 +451,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|bobs_27|bobs27|shooter|prisoner|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|bobs_27|bobs27|shooter|prisoner|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -466,6 +467,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "les5vies",
     "scram",
     "baseball",
+    "attrapemoi",
     "bobs_27",
     "bobs27",
     "shooter",
@@ -778,6 +780,8 @@ const modeColor: Record<string, string> = {
   five_lives: "#ff4fb8",
   scram: "#42d6ff",
   baseball: "#67d4ff",
+  attrape_moi: "#ff5d9e",
+  attrapemoi: "#ff5d9e",
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
   shooter: "#42d6ff",
@@ -1928,6 +1932,44 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
           {Number(matchStats?.totalHits || 0) || Number(matchStats?.totalDarts || 0) ? ` • précision ${Number(matchStats?.doubleAccuracy || 0).toFixed(1)}%` : ""}
           {Number(matchStats?.perfectVisits || 0) ? ` • 3/3 ${Number(matchStats.perfectVisits)}` : ""}
         </div>
+      </div>
+    );
+  }
+
+  if (normalizeToken(baseMode(e)) === "attrapemoi" || inferGameFilterKey(e, "darts") === "attrape_moi") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const entities = Array.isArray(summary?.entities) && summary.entities.length
+      ? summary.entities
+      : Array.isArray(summary?.standings) && summary.standings.length
+      ? summary.standings
+      : Array.isArray(anyE?.payload?.stats?.entities)
+      ? anyE.payload.stats.entities
+      : [];
+    const legs = Array.isArray(summary?.legResults)
+      ? summary.legResults
+      : Array.isArray(anyE?.payload?.legResults)
+      ? anyE.payload.legResults
+      : [];
+    const captures = legs.filter((r: any) => String(r?.reason || "") === "capture").length;
+    const escapes = legs.filter((r: any) => String(r?.reason || "") === "escape").length;
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {entities.slice(0, 2).map((row: any, index: number) => (
+            <React.Fragment key={String(row?.id || row?.name || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>VS</span> : null}
+              <span style={{ color: row?.winner ? "#ffd76a" : index === 0 ? "#ff5d9e" : "#42d6ff", fontWeight: 1000 }}>{String(row?.name || `Camp ${index + 1}`)}{row?.winner ? " 🏆" : ""}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000 }}>{Number(row?.setWins ?? row?.setsWon ?? 0)} set{Number(row?.setWins ?? row?.setsWon ?? 0) > 1 ? "s" : ""}</span>
+              <span style={{ color: "rgba(255,255,255,.68)", fontWeight: 900 }}>{Number(row?.legsWon ?? 0)} M</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>
+          BO{Number(summary?.legsBestOf || anyE?.payload?.config?.legsBestOf || 3)} manches • BO{Number(summary?.setsBestOf || anyE?.payload?.config?.setsBestOf || 1)} sets • avance {Number(summary?.headStart ?? anyE?.payload?.config?.headStart ?? 100)} pts
+          {legs.length ? ` • ${legs.length} manches` : ""} • 💥 {captures} capture{captures > 1 ? "s" : ""} • 🏁 {escapes} évasion{escapes > 1 ? "s" : ""}
+        </div>
+        {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Vainqueur : {String(summary.winnerName)}</div> : null}
       </div>
     );
   }

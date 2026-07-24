@@ -928,7 +928,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "bobs_27", "shooter", "prisoner", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "bobs_27", "shooter", "prisoner", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const hasPayload = !!(r as any)?.payload;
@@ -1170,6 +1170,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("batard") || tag.includes("bastard")) return "batard";
   if (tag.includes("scram")) return "scram";
   if (tag.includes("baseball")) return "baseball";
+  if (tag.includes("attrape_moi") || tag.includes("attrape moi") || tag.includes("attrape-moi") || tag.includes("attrapemoi") || tag.includes("catchme") || tag.includes("catch me")) return "attrape_moi";
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("shooter")) return "shooter";
   if (tag.includes("prisoner")) return "prisoner";
@@ -4771,6 +4772,7 @@ const modeDefs = React.useMemo(
               { key: "five_lives", label: "Les 5 vies" },
               { key: "scram", label: "SCRAM" },
               { key: "baseball", label: "Baseball" },
+              { key: "attrape_moi", label: "Attrape-moi" },
               { key: "bobs_27", label: "Bob’s 27" },
               { key: "shooter", label: "SHOOTER" },
               { key: "prisoner", label: "Prisoner" },
@@ -6104,6 +6106,7 @@ const modeThemeColor: Record<string, string> = {
   five_lives: "#ff4fb8",
   scram: "#42d6ff",
   baseball: "#67d4ff",
+  attrape_moi: "#ff5d9e",
   bobs_27: "#e4c06b",
   shooter: "#42d6ff",
   prisoner: "#e4c06b",
@@ -6141,6 +6144,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     five_lives: "Les 5 vies",
     scram: "SCRAM",
     baseball: "Baseball",
+    attrape_moi: "Attrape-moi",
     bobs_27: "Bob’s 27",
     shooter: "SHOOTER",
     prisoner: "Prisoner",
@@ -6149,7 +6153,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "bobs_27", "shooter", "prisoner", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "bobs_27", "shooter", "prisoner", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8493,7 +8497,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "attrape_moi"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
@@ -8508,6 +8512,7 @@ return (
                       five_lives: ["five_lives", "five lives", "5 vies", "cinq vies"],
                       scram: ["scram"],
                       baseball: ["baseball", "baseball darts"],
+                      attrape_moi: ["attrape_moi", "attrape moi", "attrape-moi", "attrapemoi", "catch me", "catchme"],
                       bobs_27: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"],
                       shooter: ["shooter"],
                       prisoner: ["prisoner"],
@@ -8570,12 +8575,54 @@ return (
                     const scorerVisits = sum("scorerVisits");
                     const marksPerRound = darts ? (marks / darts) * 3 : 0;
                     const bestMargin = playerRows.reduce((a: number, x: any) => Math.max(a, Number(x.pl?.bestMargin ?? 0) || 0), 0);
+                    const setsWon = sum("setsWon") || sum("setWins");
+                    const legsWon = sum("legsWon") || sum("manchesWon");
+                    const runnerLegWins = sum("runnerLegWins");
+                    const chaserLegWins = sum("chaserLegWins");
+                    const captureCredits = sum("captureCredits");
+                    const escapeCredits = sum("escapeCredits");
+                    const runnerPoints = sum("runnerPoints");
+                    const chaserPoints = sum("chaserPoints");
+                    const runnerDarts = sum("runnerDarts");
+                    const chaserDarts = sum("chaserDarts");
+                    const runnerAvg3 = runnerDarts ? (runnerPoints / runnerDarts) * 3 : 0;
+                    const chaserAvg3 = chaserDarts ? (chaserPoints / chaserDarts) * 3 : 0;
+                    const fastestCaptureRound = playerRows.reduce((best: number | null, x: any) => { const n = Number(x.pl?.fastestCaptureRound); return Number.isFinite(n) && n > 0 ? (best == null ? n : Math.min(best, n)) : best; }, null);
+                    const maxRunnerLead = playerRows.reduce((best: number, x: any) => Math.max(best, Number(x.pl?.maxRunnerLead ?? 0) || 0), 0);
                     const averageVisit = visits ? points / visits : 0;
                     const objectiveRate = targetsFaced ? Math.round((successfulVisits / targetsFaced) * 1000) / 10 : 0;
                     const statBox = { ...softCard, padding: 14 } as React.CSSProperties;
                     const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
                     const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
-                    return currentMode === "five_lives" ? (
+                    return currentMode === "attrape_moi" ? (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>
+                          <div style={statBox}><div style={label}>Victoires</div><div style={value}>{wins}</div><div style={{ opacity: .75, fontSize: 11 }}>{games ? `${Math.round((wins / games) * 100)}%` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Sets gagnés</div><div style={value}>{setsWon}</div></div>
+                          <div style={statBox}><div style={label}>Manches gagnées</div><div style={value}>{legsWon}</div></div>
+                          <div style={statBox}><div style={label}>Victoires comme Fuyard</div><div style={{ ...value, color: "#ff5d9e" }}>{runnerLegWins}</div></div>
+                          <div style={statBox}><div style={label}>Victoires comme Chasseur</div><div style={{ ...value, color: "#42d6ff" }}>{chaserLegWins}</div></div>
+                          <div style={statBox}><div style={label}>Captures décisives</div><div style={{ ...value, color: "#42d6ff" }}>{captureCredits}</div></div>
+                          <div style={statBox}><div style={label}>Évasions</div><div style={{ ...value, color: "#ff5d9e" }}>{escapeCredits}</div></div>
+                          <div style={statBox}><div style={label}>AVG/3 Fuyard</div><div style={{ ...value, color: "#ff5d9e" }}>{runnerAvg3.toFixed(1)}</div><div style={{ opacity: .75, fontSize: 11 }}>{runnerPoints} pts</div></div>
+                          <div style={statBox}><div style={label}>AVG/3 Chasseur</div><div style={{ ...value, color: "#42d6ff" }}>{chaserAvg3.toFixed(1)}</div><div style={{ opacity: .75, fontSize: 11 }}>{chaserPoints} pts</div></div>
+                          <div style={statBox}><div style={label}>Capture la plus rapide</div><div style={value}>{fastestCaptureRound ? `Round ${fastestCaptureRound}` : "—"}</div></div>
+                          <div style={statBox}><div style={label}>Distance max en fuite</div><div style={value}>{maxRunnerLead || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Meilleure volée</div><div style={value}>{bestVisit || "—"}</div></div>
+                          <div style={statBox}><div style={label}>Fléchettes</div><div style={value}>{darts}</div></div>
+                        </div>
+                        <div style={{ ...softCard, marginTop: 10, padding: 14 }}>
+                          <div style={{ ...label, marginBottom: 9, fontWeight: 950 }}>Répartition des impacts</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                            {[["Simple", singles], ["Double", doubles], ["Triple", triples], ["Bull", bulls], ["DBull", dbulls], ["Miss", misses]].map(([name, n]: any) => <div key={name} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.045)", textAlign: "center" }}><div style={{ fontSize: 10, opacity: .72 }}>{name}</div><div style={{ fontWeight: 1000, fontSize: 17 }}>{n}</div></div>)}
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
+                          Comparaison cumulée des performances dans les deux rôles : Fuyard et Chasseur.
+                        </div>
+                      </>
+                    ) : currentMode === "five_lives" ? (
                       <>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                           <div style={statBox}><div style={label}>Parties</div><div style={value}>{games}</div></div>

@@ -29,6 +29,7 @@ export type DartsGameTab =
   | "knockout_config"
   | "shooter_config"
   | "baseball_config"
+  | "attrape_moi_config"
   | "football_config"
   | "rugby_config"
   | "capital_config"
@@ -65,6 +66,7 @@ export type DartsGameDef = {
 
   statsKey: string;
   ready: boolean;
+  isNew?: boolean;
   popularityRank?: number;
 
   infoTitle: string;
@@ -437,6 +439,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "Baseball",
     infoBody:
       "9 manches. Manche N : cible N. Simple = 1 run, Double = 2, Triple = 3. Égalités départagées en manches supplémentaires. Joueurs, équipes et BOTS IA disponibles.",
+  },
+  {
+    id: "attrape_moi",
+    label: "Attrape-moi si tu peux !",
+    category: "challenge",
+    subCategory: "scoring",
+    entry: "games",
+    tab: "attrape_moi_config",
+    popularityRank: 35.5,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:attrape_moi",
+    infoTitle: "ATTRAPE-MOI SI TU PEUX !",
+    infoBody:
+      "Jeu de poursuite original. Le Fuyard démarre avec une avance configurable et marque en premier. Le Chasseur doit atteindre ou dépasser son score cumulé avant la fin des rounds. Capture = manche au Chasseur ; survie jusqu'au dernier round = manche au Fuyard. Les rôles s'inversent après chaque manche. Formats BO3 / BO5 / BO7, sets, joueurs, équipes et BOTS IA.",
   },
   {
     id: "football",
@@ -1120,6 +1140,7 @@ const READY_IDS = new Set<string>([
   "five_lives",
   "scram",
   "baseball",
+  "attrape_moi",
   "bobs_27",
   "shooter",
   "prisoner",

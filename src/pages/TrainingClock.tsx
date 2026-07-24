@@ -2025,15 +2025,6 @@ function PlaySection(props: PlaySectionProps) {
   const dartsLimitLabel = config.dartLimit != null ? `${dartsThrown}/${config.dartLimit}` : String(dartsThrown);
   const activeProfile = currentProfile || ({ id: String(currentPlayer?.id || "clock-player"), name: currentPlayer?.name || "Joueur" } as Profile);
 
-  const pendingVisual = React.useMemo(() => {
-    if (!hasPending) return { main: "—", sub: "SAISIE" };
-    if (isMiss) return { main: "MISS", sub: "ERREUR" };
-    if (selectedValue === "BULL") return { main: selectedMult === 2 ? "DB" : "BULL", sub: selectedMult === 2 ? "DOUBLE" : "SIMPLE" };
-    return {
-      main: String(selectedValue),
-      sub: selectedMult === 3 ? "TRIPLE" : selectedMult === 2 ? "DOUBLE" : "SIMPLE",
-    };
-  }, [hasPending, isMiss, selectedMult, selectedValue]);
 
   const parsedThrows = React.useMemo(() => {
     return (throwLog || []).map((raw) => {
@@ -2170,9 +2161,9 @@ function PlaySection(props: PlaySectionProps) {
   const miniKpi = (label: string, value: string | number, tone: string, hint?: string) => (
     <div style={{ ...overlayCard, padding: 12 }}>
       <div style={{ height: 3, margin: "-12px -12px 10px", background: `linear-gradient(90deg, ${tone}, transparent)` }} />
-      <div style={{ color: themeTextSoft, fontSize: 9.5, fontWeight: 900, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.15 }}>{label}</div>
-      <div style={{ color: tone, fontSize: 16, fontWeight: 1000, lineHeight: 1.05, marginTop: 10 }}>{String(value)}</div>
-      {hint ? <div style={{ color: themeTextSoft, fontSize: 11, marginTop: 6, lineHeight: 1.2 }}>{hint}</div> : null}
+      <div style={{ color: themeTextSoft, fontSize: 8.5, fontWeight: 900, letterSpacing: .35, textTransform: "uppercase", lineHeight: 1.15 }}>{label}</div>
+      <div style={{ color: tone, fontSize: 15, fontWeight: 1000, lineHeight: 1.05, marginTop: 8 }}>{String(value)}</div>
+      {hint ? <div style={{ color: themeTextSoft, fontSize: 9.5, marginTop: 5, lineHeight: 1.15 }}>{hint}</div> : null}
     </div>
   );
 
@@ -2189,8 +2180,8 @@ function PlaySection(props: PlaySectionProps) {
     data,
     centerValue,
     centerLabel,
-    size = 188,
-    depth = 18,
+    size = 230,
+    depth = 22,
   }: {
     data: { label: string; value: number; color: string }[];
     centerValue: string;
@@ -2200,43 +2191,166 @@ function PlaySection(props: PlaySectionProps) {
   }) {
     const items = data.filter((d) => d.value > 0);
     const total = items.reduce((s, d) => s + d.value, 0);
-    const segments = total > 0 ? items.map((item, idx) => {
-      const prev = items.slice(0, idx).reduce((s, d) => s + d.value, 0);
-      const start = (prev / total) * 360;
-      const end = ((prev + item.value) / total) * 360;
-      return `${item.color} ${start}deg ${end}deg`;
-    }).join(", ") : `${hexToRgba(themeBlue, 0.42)} 0deg 360deg`;
-    const darkSegments = total > 0 ? items.map((item, idx) => {
-      const prev = items.slice(0, idx).reduce((s, d) => s + d.value, 0);
-      const start = (prev / total) * 360;
-      const end = ((prev + item.value) / total) * 360;
-      return `${hexToRgba(item.color, 0.78)} ${start}deg ${end}deg`;
-    }).join(", ") : `${hexToRgba(themeBlue, 0.28)} 0deg 360deg`;
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: `${size}px 1fr`, gap: 18, alignItems: "center" }}>
-        <div style={{ position: "relative", width: size, height: size + depth + 28 }}>
-          {[...Array(Math.max(1, depth))].map((_, idx) => (
-            <div key={idx} style={{ position: "absolute", inset: 0, top: 18 + idx * 0.7, borderRadius: "50%", background: `conic-gradient(${darkSegments})`, transform: "perspective(520px) rotateX(60deg)", filter: "brightness(.72)", opacity: idx === depth - 1 ? .95 : .84, boxShadow: idx === depth - 1 ? "0 18px 24px rgba(0,0,0,.28)" : "none" }} />
-          ))}
-          <div style={{ position: "absolute", inset: 0, top: 0, borderRadius: "50%", background: `conic-gradient(${segments})`, transform: "perspective(520px) rotateX(60deg)", boxShadow: `0 12px 30px rgba(0,0,0,.34), 0 0 18px ${hexToRgba(themeTeal, 0.12)}` }} />
-          <div style={{ position: "absolute", left: "50%", top: "50%", width: size * 0.49, height: size * 0.49, borderRadius: "50%", transform: "translate(-50%,-24%)", background: "radial-gradient(circle at 40% 28%, rgba(255,255,255,.16), rgba(7,15,26,.98))", border: "1px solid rgba(255,255,255,.06)", display: "grid", placeItems: "center", textAlign: "center", boxShadow: "inset 0 0 22px rgba(255,255,255,.04)" }}>
-            <div>
-              <div style={{ color: themeText, fontSize: 20, fontWeight: 1000, lineHeight: 1 }}>{centerValue}</div>
-              <div style={{ color: themeTextSoft, fontSize: 10.5, marginTop: 5, lineHeight: 1.15 }}>{centerLabel}</div>
-            </div>
+    const [activeIndex, setActiveIndex] = React.useState(0);
+    const activeSafe = Math.min(Math.max(0, activeIndex), Math.max(0, items.length - 1));
+    const activeItem = items[activeSafe] || null;
+    const uid = React.useId().replace(/:/g, "");
+
+    const shade = React.useCallback((hex: string, factor: number) => {
+      const raw = String(hex || "#2fe0ff").replace("#", "");
+      const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw.padEnd(6, "0").slice(0, 6);
+      const n = Number.parseInt(full, 16);
+      const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * factor)));
+      const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * factor)));
+      const b = Math.max(0, Math.min(255, Math.round((n & 255) * factor)));
+      return `rgb(${r},${g},${b})`;
+    }, []);
+
+    const cx = 132;
+    const cy = 88;
+    const rx = 101;
+    const ry = 57;
+    const svgH = 178;
+
+    const pointAt = (deg: number, offX = 0, offY = 0) => {
+      const rad = (deg * Math.PI) / 180;
+      return { x: cx + offX + rx * Math.cos(rad), y: cy + offY + ry * Math.sin(rad) };
+    };
+
+    const slicePath = (startDeg: number, endDeg: number, offX: number, offY: number) => {
+      const span = Math.max(0, endDeg - startDeg);
+      const p1 = pointAt(startDeg, offX, offY);
+      if (span >= 359.99) {
+        const pm = pointAt(startDeg + 180, offX, offY);
+        return `M ${cx + offX} ${cy + offY} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 0 1 ${pm.x} ${pm.y} A ${rx} ${ry} 0 0 1 ${p1.x} ${p1.y} Z`;
+      }
+      const p2 = pointAt(endDeg, offX, offY);
+      const large = span > 180 ? 1 : 0;
+      return `M ${cx + offX} ${cy + offY} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
+    };
+
+    let cursor = -90;
+    const slices = items.map((item, idx) => {
+      const span = total ? (item.value / total) * 360 : 0;
+      const startDeg = cursor;
+      const endDeg = cursor + span;
+      const midDeg = startDeg + span / 2;
+      cursor = endDeg;
+      const rad = (midDeg * Math.PI) / 180;
+      const selected = idx === activeSafe;
+      const explode = selected ? 17 : 4;
+      const offX = Math.cos(rad) * explode;
+      const offY = Math.sin(rad) * explode * 0.58;
+      const labelPoint = {
+        x: cx + offX + rx * 0.62 * Math.cos(rad),
+        y: cy + offY + ry * 0.62 * Math.sin(rad),
+      };
+      return { item, idx, startDeg, endDeg, midDeg, offX, offY, selected, labelPoint, pct: total ? Math.round((item.value / total) * 100) : 0 };
+    });
+
+    if (!items.length) {
+      return (
+        <div style={{ display: "grid", placeItems: "center", minHeight: 190 }}>
+          <div style={{ width: 170, height: 112, borderRadius: "50%", transform: "perspective(500px) rotateX(58deg)", background: `linear-gradient(135deg, ${hexToRgba(themeBlue, 0.42)}, ${hexToRgba(themeTeal, 0.18)})`, border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 18px 0 rgba(15,42,58,.62), 0 28px 26px rgba(0,0,0,.34)", display: "grid", placeItems: "center" }}>
+            <span style={{ transform: "rotateX(-58deg)", color: themeTextSoft, fontSize: 12 }}>Aucune donnée</span>
           </div>
         </div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {items.length ? items.map((item) => {
+      );
+    }
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 8, alignItems: "center", minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <svg viewBox={`0 0 264 ${svgH}`} width="100%" height={size * 0.72} style={{ overflow: "visible", display: "block" }} aria-label="Camembert 3D interactif">
+            <defs>
+              <filter id={`pieShadow-${uid}`} x="-40%" y="-50%" width="180%" height="220%">
+                <feDropShadow dx="0" dy="12" stdDeviation="8" floodColor="#000" floodOpacity=".46" />
+              </filter>
+              {slices.map((slice) => (
+                <linearGradient key={slice.idx} id={`pieGrad-${uid}-${slice.idx}`} x1="0" y1="0" x2="0.85" y2="1">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity=".24" />
+                  <stop offset="18%" stopColor={slice.item.color} stopOpacity="1" />
+                  <stop offset="72%" stopColor={slice.item.color} stopOpacity="1" />
+                  <stop offset="100%" stopColor={shade(slice.item.color, .72)} stopOpacity="1" />
+                </linearGradient>
+              ))}
+            </defs>
+
+            <ellipse cx={cx} cy={cy + depth + 22} rx={rx * 0.88} ry={19} fill="rgba(0,0,0,.32)" filter={`url(#pieShadow-${uid})`} />
+
+            {Array.from({ length: depth }).map((_, layer) => {
+              const y = depth - layer;
+              return (
+                <g key={`depth-${layer}`} opacity={0.9}>
+                  {slices.map((slice) => (
+                    <path
+                      key={`${slice.idx}-${layer}`}
+                      d={slicePath(slice.startDeg, slice.endDeg, slice.offX, slice.offY + y)}
+                      fill={shade(slice.item.color, 0.48 + (layer / Math.max(1, depth)) * 0.12)}
+                      stroke={shade(slice.item.color, .40)}
+                      strokeWidth=".55"
+                    />
+                  ))}
+                </g>
+              );
+            })}
+
+            {slices.map((slice) => (
+              <g key={`top-${slice.idx}`} onClick={() => setActiveIndex(slice.idx)} style={{ cursor: "pointer" }}>
+                <path
+                  d={slicePath(slice.startDeg, slice.endDeg, slice.offX, slice.offY)}
+                  fill={`url(#pieGrad-${uid}-${slice.idx})`}
+                  stroke={slice.selected ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.46)"}
+                  strokeWidth={slice.selected ? 2.2 : 1.15}
+                  filter={slice.selected ? `url(#pieShadow-${uid})` : undefined}
+                  style={{ transition: "filter .18s ease" }}
+                />
+                {slice.pct >= 8 ? (
+                  <text x={slice.labelPoint.x} y={slice.labelPoint.y + 4} textAnchor="middle" fill="#fff" fontSize={slice.selected ? 14 : 12} fontWeight="900" style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.38)", strokeWidth: 2 }}>
+                    {slice.pct}%
+                  </text>
+                ) : null}
+              </g>
+            ))}
+          </svg>
+
+          <div style={{ marginTop: -8, textAlign: "center" }}>
+            <div style={{ color: activeItem?.color || themeTeal, fontSize: 15, fontWeight: 1000 }}>{activeItem?.label || centerLabel}</div>
+            <div style={{ color: themeText, fontSize: 22, fontWeight: 1000, lineHeight: 1.05, marginTop: 2 }}>{activeItem ? activeItem.value : centerValue}</div>
+            <div style={{ color: themeTextSoft, fontSize: 10.5, marginTop: 3 }}>{activeItem ? `${Math.round((activeItem.value / total) * 100)}% du total` : centerLabel}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, minWidth: 0 }}>
+          {items.map((item, idx) => {
             const pct = total ? Math.round((item.value / total) * 100) : 0;
+            const active = idx === activeSafe;
             return (
-              <div key={item.label} style={{ display: "grid", gridTemplateColumns: "14px 1fr auto", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 14, height: 14, borderRadius: 999, background: item.color, boxShadow: `0 0 12px ${hexToRgba(item.color, 0.42)}` }} />
-                <span style={{ color: themeText, fontSize: 12.5 }}>{item.label}</span>
-                <strong style={{ color: item.color, fontSize: 12.5 }}>{item.value} · {pct}%</strong>
-              </div>
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setActiveIndex(idx)}
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns: "12px minmax(0,1fr) auto",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 12,
+                  border: `1px solid ${active ? hexToRgba(item.color, .62) : "rgba(255,255,255,.06)"}`,
+                  background: active ? `linear-gradient(90deg, ${hexToRgba(item.color, .16)}, rgba(255,255,255,.025))` : "rgba(255,255,255,.025)",
+                  padding: "8px 9px",
+                  color: themeText,
+                  textAlign: "left",
+                  minWidth: 0,
+                }}
+              >
+                <span style={{ width: 12, height: 12, borderRadius: 4, background: item.color, boxShadow: `0 0 9px ${hexToRgba(item.color, .45)}` }} />
+                <span style={{ fontSize: 11.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
+                <strong style={{ color: item.color, fontSize: 11.5 }}>{item.value} · {pct}%</strong>
+              </button>
             );
-          }) : <div style={{ color: themeTextSoft, fontSize: 12 }}>Aucune donnée.</div>}
+          })}
         </div>
       </div>
     );
@@ -2327,8 +2441,6 @@ function PlaySection(props: PlaySectionProps) {
           onBull={chooseBull}
           onValidate={hasPending ? validatePending : clearPending}
           hidePreview
-          hideTotal
-          centerSlot={<div style={{ minWidth: 94, margin: "0 6px", display: "grid", placeItems: "center" }}><div style={{ minWidth: 90, height: 50, borderRadius: 15, padding: "5px 12px 4px", background: `linear-gradient(180deg, ${hexToRgba(themePrimary, 0.22)}, ${hexToRgba(themePrimary, 0.09)})`, border: `1px solid ${hexToRgba(themePrimary, 0.55)}`, boxShadow: `0 0 16px ${hexToRgba(themePrimary, 0.22)}`, display: "grid", alignContent: "center", justifyItems: "center" }}><div style={{ color: "rgba(255,241,198,.78)", fontSize: 8.5, fontWeight: 900, lineHeight: 1, letterSpacing: .55 }}>{pendingVisual.sub}</div><div style={{ color: themePrimary, fontSize: pendingVisual.main.length > 4 ? 17 : 26, fontWeight: 1100, lineHeight: 1, marginTop: 3 }}>{pendingVisual.main}</div></div></div>}
           validateAttention={hasPending}
           safeBottomPad
         />
@@ -2340,8 +2452,8 @@ function PlaySection(props: PlaySectionProps) {
             <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `linear-gradient(115deg, transparent 0%, ${hexToRgba(themeBlue, 0.03)} 35%, transparent 65%)` }} />
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, position: "relative" }}>
               <div>
-                <div style={{ color: themeTeal, fontSize: 28, fontWeight: 1000, lineHeight: .95 }}>Statistiques détaillées</div>
-                <div style={{ color: themeTextSoft, fontSize: 11.5, marginTop: 4, lineHeight: 1.25 }}>Vue active : <span style={{ color: themeBlue, fontWeight: 900 }}>{activeTabLabel}</span></div>
+                <div style={{ color: themeTeal, fontSize: 23, fontWeight: 1000, lineHeight: 1 }}>Statistiques détaillées</div>
+                <div style={{ color: themeTextSoft, fontSize: 10.5, marginTop: 4, lineHeight: 1.2 }}> <span style={{ color: themeBlue, fontWeight: 900 }}>{activeTabLabel}</span></div>
               </div>
               <button type="button" onClick={() => setStatsOpen(false)} style={{ width: 44, height: 44, borderRadius: 999, border: `1px solid ${hexToRgba(themeTeal, 0.35)}`, background: "rgba(255,255,255,.04)", color: themeTeal, fontSize: 28, fontWeight: 900, boxShadow: `0 0 20px ${hexToRgba(themeTeal, 0.08)}` }}>×</button>
             </div>
@@ -2354,16 +2466,16 @@ function PlaySection(props: PlaySectionProps) {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, marginTop: 16 }}>
-              {miniKpi("Cibles terminées", targetsCompleted, "#31e091", `${stats.completedPct}% de la tournée`)}
-              {miniKpi("Cibles restantes", stats.remaining, "#2fe0ff", "jusqu'au Bull final")}
-              {miniKpi("Temps total", formatTime(elapsedNow), "#4aa9ff", "chrono actif")}
-              {miniKpi("Temps moyen / cible", targetsCompleted > 0 ? formatTime(Math.round(elapsedNow / Math.max(1, targetsCompleted))) : "00:00", "#7de7ff", "rythme")}
+              {miniKpi("Terminées", targetsCompleted, "#31e091", `${stats.completedPct}%`)}
+              {miniKpi("Restantes", stats.remaining, "#2fe0ff", "avant Bull")}
+              {miniKpi("Temps total", formatTime(elapsedNow), "#4aa9ff", "chrono")}
+              {miniKpi("Temps / cible", targetsCompleted > 0 ? formatTime(Math.round(elapsedNow / Math.max(1, targetsCompleted))) : "00:00", "#7de7ff", "moyenne")}
             </div>
 
             {statsTab === "resume" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Performance globale</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Performance globale</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 10, columnGap: 10 }}>
                     {[
                       ["Total darts", stats.total, themeText],
@@ -2379,7 +2491,7 @@ function PlaySection(props: PlaySectionProps) {
                   </div>
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Répartition des lancers</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Répartition des lancers</div>
                   <Pie3DChart data={throwComposition} centerValue={`${stats.total || 0}`} centerLabel="lancers" />
                 </div>
               </div>
@@ -2396,7 +2508,7 @@ function PlaySection(props: PlaySectionProps) {
                   {miniKpi("Triples / Doubles", `${stats.triples}/${stats.doubles}`, "#c56cff")}
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Comparatif des familles</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Comparatif des familles</div>
                   <div style={{ display: "grid", gap: 12 }}>
                     {[
                       { label: "Simples", value: stats.singles, color: "#2cc7ff" },
@@ -2411,7 +2523,7 @@ function PlaySection(props: PlaySectionProps) {
                   </div>
                 </div>
                 <div style={{ ...overlayCard, padding: 16, gridColumn: "1 / -1" }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Camembert d'objectifs</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Camembert d'objectifs</div>
                   <Pie3DChart data={objectiveComposition} centerValue={`${targetsCompleted}`} centerLabel={`sur ${TARGETS.length}`} />
                 </div>
               </div>
@@ -2420,13 +2532,13 @@ function PlaySection(props: PlaySectionProps) {
             {statsTab === "progression" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Historique des cibles</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Historique des cibles</div>
                   <div style={{ display: "grid", gap: 8 }}>
                     {[...Array(Math.max(1, targetsCompleted))].map((_, idx) => <div key={idx} style={{ display: "grid", gridTemplateColumns: "44px 1fr auto auto", gap: 8, alignItems: "center", borderRadius: 14, padding: "10px 12px", background: idx % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.015)", border: "1px solid rgba(255,255,255,.05)" }}><span style={{ color: themeTextSoft, fontWeight: 900 }}>#{idx + 1}</span><span style={{ color: themeText }}>{idx + 1 === TARGETS.length ? "Bull" : idx + 1}</span><strong style={{ color: themeSuccess }}>HIT</strong><span style={{ color: themeBlue, fontWeight: 900 }}>{formatTime(Math.round((elapsedNow / Math.max(1, targetsCompleted)) * (idx + 1)))}</span></div>)}
                   </div>
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12, lineHeight: 1.05 }}>Meilleur segment</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10, lineHeight: 1.08 }}>Meilleur segment</div>
                   <div style={{ display: "grid", gridTemplateColumns: "82px 1fr", gap: 12, alignItems: "center" }}>
                     <div style={{ width: 82, height: 82, borderRadius: "50%", border: `2px solid ${hexToRgba(themeBlue, 0.45)}`, backgroundImage: `url(${targetBg})`, backgroundSize: "cover", backgroundPosition: "center", boxShadow: `0 0 18px ${hexToRgba(themeBlue, 0.18)}` }} />
                     <div>
@@ -2451,7 +2563,7 @@ function PlaySection(props: PlaySectionProps) {
             {statsTab === "graphs" ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 10 }}>Courbe de précision</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 9 }}>Courbe de précision</div>
                   <svg viewBox="0 0 210 116" width="100%" height="164">
                     <defs>
                       <linearGradient id="clockPrecisionLineRefined" x1="0" y1="0" x2="1" y2="0">
@@ -2471,18 +2583,23 @@ function PlaySection(props: PlaySectionProps) {
                   </svg>
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 10 }}>Barres par round</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 9 }}>Barres par round</div>
                   <svg viewBox="0 0 220 116" width="100%" height="164">
                     <line x1="14" y1="102" x2="206" y2="102" stroke="rgba(255,255,255,.16)" />
                     {roundBars.length ? roundBars.map((bar, idx) => <rect key={idx} x={bar.x} y={102 - bar.h} width="22" height={bar.h} rx="8" fill={bar.color} opacity="0.95" />) : <text x="20" y="58" fill="rgba(255,255,255,.55)" fontSize="11">Aucun round disponible</text>}
                   </svg>
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12 }}>Camembert composition</div>
-                  <Pie3DChart data={throwComposition} centerValue={`${stats.total || 0}`} centerLabel="darts" />
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10 }}>Repères</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {miniKpi("Darts", stats.total, "#2fe0ff")}
+                    {miniKpi("Points", stats.points, "#ff9957")}
+                    {miniKpi("Board hits", stats.boardHits, "#4aa9ff")}
+                    {miniKpi("Misses", stats.misses, "#ff6a83")}
+                  </div>
                 </div>
                 <div style={{ ...overlayCard, padding: 16 }}>
-                  <div style={{ color: themeTeal, fontSize: 16, fontWeight: 1000, marginBottom: 12 }}>Comparaison rapide</div>
+                  <div style={{ color: themeTeal, fontSize: 14.5, fontWeight: 1000, marginBottom: 10 }}>Comparaison rapide</div>
                   <div style={{ display: "grid", gap: 12 }}>
                     {[
                       { label: "Hits / ratés", a: hits, b: stats.misses, colorA: "#31e091", colorB: "#ff6a83" },

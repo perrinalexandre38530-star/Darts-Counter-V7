@@ -1053,25 +1053,28 @@ export default function Games({ setTab, params }: Props) {
     const tickerSrc = menuTicker(opts.tickerId);
 
     return (
-      <button
-        type="button"
-        onClick={opts.onClick}
-        aria-label={opts.title}
-        style={{
-          position: "relative",
-          width: "100%",
-          minHeight: 106,
-          padding: 0,
-          textAlign: "left",
-          borderRadius: 18,
-          border: `1px solid ${opts.tint.border}`,
-          background: opts.tint.bg,
-          boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 20px ${opts.tint.glow}`,
-          cursor: "pointer",
-          overflow: "hidden",
-          WebkitTapHighlightColor: "transparent",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <button
+          type="button"
+          onClick={opts.onClick}
+          aria-label={opts.title}
+          style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: 800,
+            aspectRatio: "800 / 180",
+            minHeight: 0,
+            padding: 0,
+            textAlign: "left",
+            borderRadius: 20,
+            border: `1px solid ${opts.tint.border}`,
+            background: opts.tint.bg,
+            boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 20px ${opts.tint.glow}`,
+            cursor: "pointer",
+            overflow: "hidden",
+            WebkitTapHighlightColor: "transparent",
+          }}
+        >
         <div
           aria-hidden
           style={{
@@ -1139,13 +1142,14 @@ export default function Games({ setTab, params }: Props) {
         >
           <InfoDot
             title={opts.infoTitle}
-            size={40}
+            size={38}
             color={opts.tint.title}
             glow={opts.tint.glow}
             content={renderHubInfoContent(opts.infoBody)}
           />
         </div>
       </button>
+    </div>
     );
   }
 

@@ -8,6 +8,7 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
 import targetBg from "../assets/target_bg.png";
+import tickerClassements from "../assets/tickers/ticker_classements.webp";
 import euro1Bg from "../assets/capital_money/euro_1.webp";
 import euro2Bg from "../assets/capital_money/euro_2.webp";
 import euro3Bg from "../assets/capital_money/euro_3.webp";
@@ -27,6 +28,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   PolarAngleAxis,
@@ -507,11 +509,21 @@ function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[
 
 function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visits, selectedIndex, onSelectPlayer }: any) {
   const [tab, setTab] = useState<"resume" | "evolution" | "contrats" | "precision" | "comparatif" | "volees">("resume");
+  const [compareSelected, setCompareSelected] = useState<number[]>(() => (participants || []).map((_: any, index: number) => index));
+
+  useEffect(() => {
+    const valid = compareSelected.filter((index) => index >= 0 && index < (participants || []).length);
+    if (valid.length !== compareSelected.length || (!valid.length && (participants || []).length)) {
+      setCompareSelected(valid.length ? valid : (participants || []).map((_: any, index: number) => index));
+    }
+  }, [(participants || []).length]);
+
   if (!open) return null;
 
   const safeIndex = Math.max(0, Math.min(Number(selectedIndex || 0), Math.max(0, participants.length - 1)));
   const profile = participants[safeIndex] || {};
   const stats = playerStats[safeIndex] || {};
+  const currentPlayerColor = capitalPlayerColor(safeIndex);
   const playerId = String(stats?.id || stats?.playerId || profile?.id || "");
   const rows = (visits || []).filter((visit: any) => String(visit?.playerId || "") === playerId);
   const evolutionData = [
@@ -524,6 +536,27 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
       contrat: contractLabel(visit?.contractId),
     })),
   ];
+
+  const evolutionByPlayer = (participants || []).map((participant: any, index: number) => {
+    const rowStats = playerStats[index] || {};
+    const rowId = String(rowStats?.id || rowStats?.playerId || participant?.id || "");
+    const rowVisits = (visits || []).filter((visit: any) => String(visit?.playerId || "") === rowId);
+    return {
+      index,
+      name: participant?.nickname || participant?.name || rowStats?.name || `J${index + 1}`,
+      color: capitalPlayerColor(index),
+      points: [Number(rowStats?.startingCapital || 0), ...rowVisits.map((visit: any) => Number(visit?.scoreAfter || 0))],
+    };
+  });
+  const evolutionMaxPoints = Math.max(1, ...evolutionByPlayer.map((row: any) => row.points.length));
+  const comparisonEvolutionData = Array.from({ length: evolutionMaxPoints }, (_, pointIndex) => {
+    const datum: any = { label: pointIndex === 0 ? "Départ" : `R${pointIndex}` };
+    evolutionByPlayer.forEach((row: any) => {
+      datum[`p${row.index}`] = row.points[pointIndex] ?? null;
+    });
+    return datum;
+  });
+
   const contractData = Object.entries(stats?.contractStats || {}).map(([id, value]: any) => ({
     id,
     contrat: contractLabel(id as CapitalContractID),
@@ -554,7 +587,9 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
     { metric: "Série", value: Math.min(100, Number(stats?.successStreakMax || 0) * 18) },
   ];
   const compareData = (playerStats || []).map((row: any, index: number) => ({
+    index,
     name: participants[index]?.nickname || participants[index]?.name || row?.name || `J${index + 1}`,
+    color: capitalPlayerColor(index),
     capital: Number(row?.finalCapital || row?.capital || 0),
     reussite: Number(row?.successRate || 0),
     precision: Number(row?.hitRate || 0),
@@ -588,7 +623,16 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
     ["resume", "Résumé"], ["evolution", "Évolution"], ["contrats", "Contrats"],
     ["precision", "Précision"], ["comparatif", "Comparatif"], ["volees", "Volées"],
   ];
-  const chartTooltip = { background: "rgba(4,8,14,.96)", border: "1px solid rgba(53,216,255,.28)", borderRadius: 10, color: "#fff", fontSize: 11 };
+  const chartTooltip = { background: "rgba(4,8,14,.96)", border: `1px solid ${currentPlayerColor}55`, borderRadius: 10, color: "#fff", fontSize: 11 };
+  const toggleComparisonPlayer = (index: number) => {
+    setCompareSelected((current) => {
+      if (current.includes(index)) {
+        if (current.length === 1) return current;
+        return current.filter((value) => value !== index);
+      }
+      return [...current, index].sort((a, b) => a - b);
+    });
+  };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 12000, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
@@ -596,7 +640,7 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px 10px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
           <ProfileAvatar profile={profile} size={42} showStars={false} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ color: "#35d8ff", fontSize: 9, fontWeight: 1000, letterSpacing: .9 }}>STATS LIVE — CAPITAL</div>
+            <div style={{ color: currentPlayerColor, fontSize: 9, fontWeight: 1000, letterSpacing: .9 }}>STATS LIVE — CAPITAL</div>
             <div style={{ marginTop: 2, fontSize: 17, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile?.nickname || profile?.name || stats?.name || "Joueur"}</div>
           </div>
           <button type="button" onClick={onClose} aria-label="Fermer" style={{ width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 18, fontWeight: 1000 }}>×</button>
@@ -629,9 +673,9 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
                 gap: 6,
                 border: 0,
                 borderLeft: index ? "1px solid rgba(255,255,255,.06)" : "none",
-                borderBottom: selected ? "2px solid #ffcf57" : "2px solid transparent",
-                background: selected ? "linear-gradient(180deg, rgba(255,207,87,.08), rgba(255,207,87,.015))" : "transparent",
-                color: selected ? "#ffcf57" : "#35d8ff",
+                borderBottom: selected ? `2px solid ${currentPlayerColor}` : "2px solid transparent",
+                background: selected ? `${currentPlayerColor}10` : "transparent",
+                color: selected ? currentPlayerColor : "rgba(255,255,255,.72)",
                 fontSize: 9.5,
                 fontWeight: 1000,
                 whiteSpace: "nowrap",
@@ -650,7 +694,7 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
                 {kpis.map(([label, value], index) => {
                   const col = index % 3;
                   const accent = label === "Capital actuel" || label === "Gain net" || label === "Série réussie"
-                    ? "#35d8ff"
+                    ? currentPlayerColor
                     : label === "Réussite" || label === "Contrats réussis"
                       ? "#ffcf57"
                       : String(label).includes("perdu") || String(label).includes("Pénalit") || String(label).includes("échecs")
@@ -666,40 +710,82 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
               </div>
             </div>
             <div style={{ marginTop: 7, height: 150, padding: "7px 3px 1px", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)" }}>
-              <div style={{ padding: "0 7px 2px", fontSize: 8.8, fontWeight: 1000, color: "#35d8ff" }}>COURBE DU CAPITAL</div>
-              <ResponsiveContainer width="100%" height="88%"><LineChart data={evolutionData} margin={{ top: 3, right: 8, left: -8, bottom: 0 }}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} /><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} /><YAxis tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} width={34} /><Tooltip contentStyle={chartTooltip as any} /><Line type="monotone" dataKey="capital" stroke="#35d8ff" strokeWidth={2.2} dot={{ r: 2.2, fill: "#35d8ff" }} activeDot={{ r: 4 }} /></LineChart></ResponsiveContainer>
+              <div style={{ padding: "0 7px 2px", fontSize: 8.8, fontWeight: 1000, color: currentPlayerColor }}>COURBE DU CAPITAL</div>
+              <ResponsiveContainer width="100%" height="88%"><LineChart data={evolutionData} margin={{ top: 3, right: 8, left: -8, bottom: 0 }}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} /><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} /><YAxis tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} width={34} /><Tooltip contentStyle={chartTooltip as any} /><Line type="monotone" dataKey="capital" stroke={currentPlayerColor} strokeWidth={2.2} dot={{ r: 2.2, fill: currentPlayerColor }} activeDot={{ r: 4 }} /></LineChart></ResponsiveContainer>
             </div>
           </> : null}
 
-          {tab === "evolution" ? <div style={{ display: "grid", gap: 9 }}>
-            <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>CAPITAL APRÈS CHAQUE CONTRAT</div><ResponsiveContainer width="100%" height="90%"><AreaChart data={evolutionData}><defs><linearGradient id="capitalArea" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#ffcf57" stopOpacity={.38}/><stop offset="95%" stopColor="#ffcf57" stopOpacity={.02}/></linearGradient></defs><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Area type="monotone" dataKey="capital" stroke="#ffcf57" fill="url(#capitalArea)" strokeWidth={2}/></AreaChart></ResponsiveContainer></div>
-            <div style={{ height: 210, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>VARIATION PAR CONTRAT</div><ResponsiveContainer width="100%" height="90%"><BarChart data={evolutionData.slice(1)}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="delta" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+          {tab === "evolution" ? <div style={{ display: "grid", gap: 8 }}>
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 5, overflowX: "auto", padding: "1px 1px 2px" }}>
+              {evolutionByPlayer.map((row: any) => {
+                const enabled = compareSelected.includes(row.index);
+                return <button key={`compare-player-${row.index}`} type="button" onClick={() => toggleComparisonPlayer(row.index)} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, minHeight: 28, padding: "3px 7px", borderRadius: 999, border: `1px solid ${enabled ? row.color : "rgba(255,255,255,.09)"}`, background: enabled ? `${row.color}16` : "rgba(255,255,255,.02)", color: enabled ? row.color : "rgba(255,255,255,.50)", fontSize: 8.5, fontWeight: 950 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: enabled ? row.color : "rgba(255,255,255,.22)", boxShadow: enabled ? `0 0 8px ${row.color}66` : "none" }} />{row.name}</button>;
+              })}
+            </div>
+            <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}>
+              <div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor, marginBottom: 5 }}>CAPITAUX COMPARÉS — APRÈS CHAQUE CONTRAT</div>
+              <ResponsiveContainer width="100%" height="90%"><LineChart data={comparisonEvolutionData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/>{evolutionByPlayer.filter((row: any) => compareSelected.includes(row.index)).map((row: any) => <Line key={`line-${row.index}`} type="monotone" dataKey={`p${row.index}`} name={row.name} connectNulls stroke={row.color} strokeWidth={2.2} dot={{ r: 2.2, fill: row.color }} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer>
+            </div>
+            <div style={{ height: 185, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor, marginBottom: 5 }}>VARIATION — {profile?.nickname || profile?.name || `Joueur ${safeIndex + 1}`}</div><ResponsiveContainer width="100%" height="90%"><BarChart data={evolutionData.slice(1)}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="delta" fill={currentPlayerColor} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
           </div> : null}
 
           {tab === "contrats" ? <>
-            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>RÉUSSITE PAR CONTRAT</div><ResponsiveContainer width="100%" height="90%"><BarChart data={contractData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="contrat" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="taux" fill="#ffcf57" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
-            <div style={{ marginTop: 8, display: "grid", gap: 5 }}>{contractData.length ? contractData.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(78px,1.4fr) repeat(5,minmax(44px,.7fr))", gap: 4, alignItems: "center", padding: "7px 6px", borderRadius: 10, background: "rgba(255,255,255,.03)", fontSize: 9 }}><b style={{ color: "#35d8ff", overflow: "hidden", textOverflow: "ellipsis" }}>{row.contrat}</b><span>{row.taux}%</span><span>+{row.points}</span><span>-{row.perdu}</span><span>Best {row.best}</span><span>Moy {row.moyenne}</span></div>) : <div style={{ opacity: .55, padding: 12 }}>Aucun contrat joué pour l’instant.</div>}</div>
+            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor, marginBottom: 5 }}>RÉUSSITE PAR CONTRAT</div><ResponsiveContainer width="100%" height="90%"><BarChart data={contractData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="contrat" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="taux" fill={currentPlayerColor} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+            <div style={{ marginTop: 8, display: "grid", gap: 5 }}>{contractData.length ? contractData.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(78px,1.4fr) repeat(5,minmax(44px,.7fr))", gap: 4, alignItems: "center", padding: "7px 6px", borderRadius: 10, background: "rgba(255,255,255,.03)", fontSize: 9 }}><b style={{ color: currentPlayerColor, overflow: "hidden", textOverflow: "ellipsis" }}>{row.contrat}</b><span>{row.taux}%</span><span>+{row.points}</span><span>-{row.perdu}</span><span>Best {row.best}</span><span>Moy {row.moyenne}</span></div>) : <div style={{ opacity: .55, padding: 12 }}>Aucun contrat joué pour l’instant.</div>}</div>
           </> : null}
 
           {tab === "precision" ? <div style={{ display: "grid", gap: 9 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 9 }}>
-              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>PROFIL DE PERFORMANCE</div><ResponsiveContainer width="100%" height="90%"><RadarChart data={radarData}><PolarGrid stroke="rgba(255,255,255,.12)"/><PolarAngleAxis dataKey="metric" tick={{ fill: "rgba(255,255,255,.65)", fontSize: 8 }}/><Radar dataKey="value" stroke="#35d8ff" fill="#35d8ff" fillOpacity={.22}/><Tooltip contentStyle={chartTooltip as any}/></RadarChart></ResponsiveContainer></div>
-              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>IMPACTS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={impactsData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis width={28} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="value" fill="#ffcf57" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor, marginBottom: 5 }}>PROFIL DE PERFORMANCE</div><ResponsiveContainer width="100%" height="90%"><RadarChart data={radarData}><PolarGrid stroke="rgba(255,255,255,.12)"/><PolarAngleAxis dataKey="metric" tick={{ fill: "rgba(255,255,255,.65)", fontSize: 8 }}/><Radar dataKey="value" stroke={currentPlayerColor} fill={currentPlayerColor} fillOpacity={.22}/><Tooltip contentStyle={chartTooltip as any}/></RadarChart></ResponsiveContainer></div>
+              <div style={{ height: 230, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor, marginBottom: 5 }}>IMPACTS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={impactsData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 7 }}/><YAxis width={28} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="value" fill={currentPlayerColor} radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
             </div>
-            <div style={{ padding: 10, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff" }}>SECTEURS LES PLUS TOUCHÉS</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{sectors.length ? sectors.map((row: any) => <span key={row.sector} style={{ padding: "6px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.20)", fontSize: 9 }}><b style={{ color: "#ffcf57" }}>{row.sector}</b> · {row.hits} hits · {row.points} pts</span>) : <span style={{ opacity: .5 }}>Aucun impact enregistré.</span>}</div></div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{[["60+",stats?.visits60Plus],["100+",stats?.visits100Plus],["140+",stats?.visits140Plus],["180",stats?.visits180]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.035)", textAlign: "center" }}><div style={{ fontSize: 8, opacity: .5 }}>{label}</div><b style={{ color: "#ffcf57", fontSize: 17 }}>{value ?? 0}</b></div>)}</div>
+            <div style={{ padding: 10, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: currentPlayerColor }}>SECTEURS LES PLUS TOUCHÉS</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>{sectors.length ? sectors.map((row: any) => <span key={row.sector} style={{ padding: "6px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.20)", fontSize: 9 }}><b style={{ color: currentPlayerColor }}>{row.sector}</b> · {row.hits} hits · {row.points} pts</span>) : <span style={{ opacity: .5 }}>Aucun impact enregistré.</span>}</div></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{[["60+",stats?.visits60Plus],["100+",stats?.visits100Plus],["140+",stats?.visits140Plus],["180",stats?.visits180]].map(([label,value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, background: "rgba(255,255,255,.035)", textAlign: "center" }}><div style={{ fontSize: 8, opacity: .5 }}>{label}</div><b style={{ color: currentPlayerColor, fontSize: 17 }}>{value ?? 0}</b></div>)}</div>
           </div> : null}
 
           {tab === "comparatif" ? <div style={{ display: "grid", gap: 9 }}>
-            <div style={{ height: 240, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#ffcf57", marginBottom: 5 }}>CAPITAL / BEST</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="capital" fill="#ffcf57" radius={[4,4,0,0]}/><Bar dataKey="best" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
-            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "#35d8ff", marginBottom: 5 }}>RÉUSSITE / PRÉCISION</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="reussite" fill="#ffcf57" radius={[4,4,0,0]}/><Bar dataKey="precision" fill="#35d8ff" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div>
+            <div style={{ height: 240, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "rgba(255,255,255,.82)", marginBottom: 5 }}>CAPITAL / BEST — COULEURS JOUEURS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis width={36} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="capital" name="Capital" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`capital-${row.index}`} fill={row.color} fillOpacity={1}/>)}</Bar><Bar dataKey="best" name="Best" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`best-${row.index}`} fill={row.color} fillOpacity={.48}/>)}</Bar></BarChart></ResponsiveContainer></div>
+            <div style={{ height: 220, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)", padding: 8 }}><div style={{ fontSize: 9.5, fontWeight: 1000, color: "rgba(255,255,255,.82)", marginBottom: 5 }}>RÉUSSITE / PRÉCISION — COULEURS JOUEURS</div><ResponsiveContainer width="100%" height="90%"><BarChart data={compareData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false}/><XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,.6)", fontSize: 8 }}/><YAxis domain={[0,100]} width={32} tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }}/><Tooltip contentStyle={chartTooltip as any}/><Bar dataKey="reussite" name="Réussite" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`success-${row.index}`} fill={row.color} fillOpacity={1}/>)}</Bar><Bar dataKey="precision" name="Précision" radius={[4,4,0,0]}>{compareData.map((row: any) => <Cell key={`precision-${row.index}`} fill={row.color} fillOpacity={.48}/>)}</Bar></BarChart></ResponsiveContainer></div>
           </div> : null}
 
-          {tab === "volees" ? <div style={{ display: "grid", gap: 6 }}>{rows.length ? [...rows].reverse().map((visit: any) => <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, padding: "8px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ minWidth: 0 }}><div style={{ color: "#35d8ff", fontSize: 9, fontWeight: 1000 }}>{contractLabel(visit.contractId)} · R{Number(visit.contractIndex || 0) + 1}</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(visit.darts || []).map((dart: any) => capitalDartLabel(dart)).join(" · ")}</div><div style={{ marginTop: 2, fontSize: 8.5, opacity: .5 }}>{visit.scoreBefore} → {visit.scoreAfter}</div></div><div style={{ textAlign: "right" }}><b style={{ color: visit.success ? "#71e7a6" : "#ff7b8d", fontSize: 15 }}>{visit.success ? `+${visit.visitScore}` : `-${visit.penaltyLost || 0}`}</b><div style={{ fontSize: 8, opacity: .55 }}>{visit.success ? "RÉUSSI" : "ÉCHEC"}</div></div></div>) : <div style={{ opacity: .55, padding: 14 }}>Aucune volée enregistrée.</div>}</div> : null}
+          {tab === "volees" ? <div style={{ display: "grid", gap: 6 }}>{rows.length ? [...rows].reverse().map((visit: any) => <div key={visit.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, padding: "8px 9px", borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ minWidth: 0 }}><div style={{ color: currentPlayerColor, fontSize: 9, fontWeight: 1000 }}>{contractLabel(visit.contractId)} · R{Number(visit.contractIndex || 0) + 1}</div><div style={{ marginTop: 3, fontSize: 11, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(visit.darts || []).map((dart: any) => capitalDartLabel(dart)).join(" · ")}</div><div style={{ marginTop: 2, fontSize: 8.5, opacity: .5 }}>{visit.scoreBefore} → {visit.scoreAfter}</div></div><div style={{ textAlign: "right" }}><b style={{ color: visit.success ? "#71e7a6" : "#ff7b8d", fontSize: 15 }}>{visit.success ? `+${visit.visitScore}` : `-${visit.penaltyLost || 0}`}</b><div style={{ fontSize: 8, opacity: .55 }}>{visit.success ? "RÉUSSI" : "ÉCHEC"}</div></div></div>) : <div style={{ opacity: .55, padding: 14 }}>Aucune volée enregistrée.</div>}</div> : null}
         </div>
       </div>
     </div>
   );
+}
+
+
+function CapitalLiveRankingModal({ open, onClose, participants, scores, activeIndex }: any) {
+  if (!open) return null;
+  const ranked = (participants || []).map((profile: any, index: number) => ({
+    index,
+    profile,
+    score: Number(scores?.[index] || 0),
+    name: profile?.nickname || profile?.name || `Joueur ${index + 1}`,
+  })).sort((a: any, b: any) => b.score - a.score || a.index - b.index);
+
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 12100, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+    <div onClick={(event) => event.stopPropagation()} style={{ width: "min(520px,96vw)", maxHeight: "88dvh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(53,216,255,.42)", background: "linear-gradient(180deg,rgba(7,17,25,.99),rgba(2,7,12,.99))", boxShadow: "0 24px 90px rgba(0,0,0,.75),0 0 28px rgba(53,216,255,.10)", color: "#fff" }}>
+      <div style={{ position: "relative", minHeight: 54, display: "grid", placeItems: "center", borderBottom: "1px solid rgba(255,255,255,.08)", padding: "8px 54px" }}>
+        <img src={tickerClassements} alt="Classement" style={{ display: "block", width: "min(220px,70vw)", height: "auto", objectFit: "contain" }} />
+        <button type="button" onClick={onClose} aria-label="Fermer" style={{ position: "absolute", right: 10, top: 9, width: 36, height: 36, borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 18, fontWeight: 1000 }}>×</button>
+      </div>
+      <div className="dc-scroll-thin" style={{ maxHeight: "calc(88dvh - 58px)", overflowY: "auto", padding: 10, display: "grid", gap: 6 }}>
+        {ranked.map((row: any, position: number) => {
+          const playerColor = capitalPlayerColor(row.index);
+          const rankColor = capitalRankColor(position + 1, playerColor);
+          const active = row.index === activeIndex;
+          return <div key={`live-rank-${row.index}`} style={{ display: "grid", gridTemplateColumns: "34px 38px minmax(0,1fr) auto", alignItems: "center", gap: 8, minHeight: 52, padding: "6px 9px", borderRadius: 14, border: `1px solid ${active ? playerColor : "rgba(255,255,255,.08)"}`, background: active ? `${playerColor}10` : "rgba(255,255,255,.025)", boxShadow: active ? `inset 3px 0 0 ${playerColor}` : "none" }}>
+            <span style={{ width: 29, height: 29, borderRadius: "50%", display: "grid", placeItems: "center", border: `1.5px solid ${rankColor}`, background: `${rankColor}18`, color: rankColor, fontSize: 12, fontWeight: 1000 }}>{position + 1}</span>
+            <ProfileAvatar profile={row.profile} size={34} showStars={false} />
+            <div style={{ minWidth: 0 }}><div style={{ color: playerColor, fontSize: 11.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.42)", fontSize: 8.5, fontWeight: 850 }}>{active ? "EN JEU" : "CLASSEMENT LIVE"}</div></div>
+            <div style={{ color: playerColor, fontSize: 20, lineHeight: 1, fontWeight: 1000 }}>{row.score}K</div>
+          </div>;
+        })}
+      </div>
+    </div>
+  </div>;
 }
 
 export default function CapitalPlay(props: any) {
@@ -800,6 +886,7 @@ export default function CapitalPlay(props: any) {
   const [endModalOpen, setEndModalOpen] = useState<boolean>(false);
   const [liveStatsOpen, setLiveStatsOpen] = useState<boolean>(false);
   const [liveStatsPlayerIdx, setLiveStatsPlayerIdx] = useState<number>(0);
+  const [liveRankingOpen, setLiveRankingOpen] = useState<boolean>(false);
 
   // ✅ Patch: tie-break + victoire + bots
   const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
@@ -1491,126 +1578,95 @@ export default function CapitalPlay(props: any) {
       <div style={{ padding: "10px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
         <section
           style={{
-            marginBottom: 8,
+            marginBottom: 5,
             padding: 0,
             overflow: "hidden",
-            borderRadius: 20,
+            borderRadius: 19,
             border: "1px solid rgba(47,216,255,.55)",
             background: "linear-gradient(180deg, rgba(7,17,24,.94), rgba(3,8,12,.96))",
-            boxShadow: "0 0 24px rgba(47,216,255,.10), 0 18px 40px rgba(0,0,0,.38)",
+            boxShadow: "0 0 22px rgba(47,216,255,.09), 0 14px 34px rgba(0,0,0,.34)",
           }}
         >
-          <div
-            style={{
-              position: "relative",
-              minHeight: 132,
-              display: "grid",
-              gridTemplateColumns: "82px minmax(0,1fr) minmax(132px,150px)",
-              gap: 7,
-              alignItems: "stretch",
-              padding: "9px 10px",
-            }}
-          >
-            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 22% 48%, rgba(47,216,255,.09), transparent 34%), linear-gradient(90deg, rgba(0,0,0,.42), rgba(0,0,0,.12) 50%, rgba(0,0,0,.34))" }} />
+          <div style={{ position: "relative", minHeight: 112, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(124px,138px)", gap: 4, alignItems: "stretch", padding: "7px 9px" }}>
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.38), rgba(0,0,0,.16) 36%, rgba(0,0,0,.10) 62%, rgba(0,0,0,.30))" }} />
 
-            <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {!isFinished && activeProfile ? (
-                <div style={{ filter: `drop-shadow(0 0 10px ${capitalPlayerColor(playerIdx)}55)` }}>
-                  <ProfileAvatar profile={activeProfile} size={72} showStars={false} />
-                </div>
-              ) : <div style={{ width: 72, height: 72, borderRadius: "50%", border: "1px solid rgba(255,255,255,.12)" }} />}
-            </div>
-
-            <div style={{ position: "relative", zIndex: 2, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", padding: "2px 2px" }}>
-              <div style={{ color: activeTeam?.color || capitalPlayerColor(playerIdx), fontSize: 13.5, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {isFinished ? "—" : activeName}
-              </div>
-              <div style={{ marginTop: 4, color: "#f5f7fb", fontSize: 48, fontWeight: 1000, lineHeight: .98, letterSpacing: -1.8, textShadow: "0 4px 18px rgba(0,0,0,.48)" }}>
-                {isFinished ? "—" : `${scores[playerIdx] ?? 0}K`}
-              </div>
-              <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,.52)", fontSize: 8.5, fontWeight: 950, letterSpacing: .45 }}>
-                <span>#{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}</span>
-                {activeTeam ? <span style={{ color: activeTeam.color || "#ffcf57", textTransform: "uppercase" }}>• {activeTeam.name}</span> : null}
+            <div style={{ position: "absolute", left: -20, top: -5, bottom: -5, width: "25%", minWidth: 82, overflow: "hidden", opacity: .13, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -16, top: 13, transform: "scale(1.24)", transformOrigin: "left top", filter: "saturate(.86)" }}>
+                {activeProfile ? <ProfileAvatar profile={activeProfile} size={82} showStars={false} /> : null}
               </div>
             </div>
 
-            <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
-              <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.22), rgba(4,8,16,.58)), url(${targetBg})`, backgroundPosition: "center center", backgroundSize: "cover", backgroundRepeat: "no-repeat", opacity: 1 }} />
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 32, background: "linear-gradient(90deg, rgba(4,8,16,.96), rgba(4,8,16,0))", pointerEvents: "none" }} />
-              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.72), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.24)", pointerEvents: "none" }} />
-              <div style={{ position: "relative", width: "100%", padding: "7px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ color: "rgba(255,255,255,.58)", fontSize: 8.3, fontWeight: 950, letterSpacing: .8 }}>CONTRAT</div>
-                <div style={{ marginTop: 1, color: "rgba(255,255,255,.72)", fontSize: 10.5, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {isFinished ? "—" : contractLabel(currentContract)}
+            {cfg?.participantMode === "teams" && (activeTeam?.logoDataUrl || activeTeam?.logoUrl || activeTeam?.logo) ? (
+              <div style={{ position: "absolute", right: "calc(124px + 11px)", top: -5, bottom: -5, width: "24%", minWidth: 82, overflow: "hidden", opacity: .16, pointerEvents: "none" }}>
+                <div style={{ position: "absolute", right: -16, top: 13, transform: "scale(1.24)", transformOrigin: "right top", filter: "saturate(.92)" }}>
+                  <img src={activeTeam.logoDataUrl || activeTeam.logoUrl || activeTeam.logo} alt="" style={{ width: 82, height: 82, borderRadius: "50%", objectFit: "cover", display: "block" }} />
                 </div>
-                <div style={{ marginTop: 2, color: "#ffcf57", fontSize: capitalContractTarget(currentContract).length > 4 ? 22 : 43, lineHeight: .98, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.36)" }}>
-                  {isFinished ? "—" : capitalContractTarget(currentContract)}
-                </div>
-                <div style={{ marginTop: 4, color: "#35d8ff", fontSize: 8.7, fontWeight: 1000 }}>ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}</div>
-                {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 2, color: "#fff", fontSize: 8.5, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
+              </div>
+            ) : null}
+
+            <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 2, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "2px 9px 2px 5px" }}>
+              <div style={{ color: activeTeam?.color || capitalPlayerColor(playerIdx), fontSize: 13.2, fontWeight: 1000, letterSpacing: .75, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isFinished ? "—" : activeName}</div>
+              <div style={{ marginTop: 4, color: "#f5f7fb", fontSize: 51, fontWeight: 1000, lineHeight: .95, letterSpacing: -1.8, textShadow: "0 4px 18px rgba(0,0,0,.52)" }}>{isFinished ? "—" : `${scores[playerIdx] ?? 0}K`}</div>
+              <div style={{ marginTop: 4, color: "rgba(255,255,255,.48)", fontSize: 8.2, fontWeight: 950, letterSpacing: .42, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>#{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}{activeTeam ? ` • ${activeTeam.name}` : ""}</div>
+            </div>
+
+            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 17, background: "#050913", isolation: "isolate" }}>
+              <div style={{ position: "absolute", inset: 0, borderRadius: 17, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.26), rgba(4,8,16,.60)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", backgroundRepeat: "no-repeat" }} />
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 38, background: "linear-gradient(90deg, rgba(4,8,16,.98), rgba(4,8,16,.76) 44%, rgba(4,8,16,0))", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.72), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.24)", pointerEvents: "none" }} />
+              <div style={{ position: "relative", width: "100%", padding: "5px 4px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>CONTRAT</div>
+                <div style={{ marginTop: 1, color: "rgba(255,255,255,.76)", fontSize: 9.6, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isFinished ? "—" : contractLabel(currentContract)}</div>
+                <div style={{ marginTop: 1, color: "#ffcf57", fontSize: capitalContractTarget(currentContract).length > 4 ? 22 : 46, lineHeight: .92, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.38)" }}>{isFinished ? "—" : capitalContractTarget(currentContract)}</div>
+                <div style={{ marginTop: 3, color: "#35d8ff", fontSize: 8.4, fontWeight: 1000 }}>ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}</div>
+                {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 1, color: "#fff", fontSize: 8.2, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
               </div>
             </div>
           </div>
         </section>
 
         {teamScores.length ? (
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+          <div className="dc-scroll-thin" style={{ marginTop: 4, display: "flex", gap: 5, overflowX: "auto", paddingBottom: 1 }}>
             {teamScores.map((team: any) => {
               const active = !isFinished && team.players.includes(String(participants[playerIdx]?.id));
               const winner = isFinished && String(winnerTeam?.id) === String(team.id);
-              return <div key={team.id} style={{ padding: 10, borderRadius: 15, background: `${team.color}12`, border: `1px solid ${active || winner ? team.color : `${team.color}55`}` }}>
-                <div style={{ fontSize: 10.5, opacity: .72, fontWeight: 900 }}>{winner ? "🏆 " : ""}{team.name}</div>
-                <div style={{ marginTop: 4, color: team.color, fontSize: 21, fontWeight: 1000 }}>{team.score}</div>
+              return <div key={team.id} style={{ flex: "1 0 110px", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, padding: "4px 7px", borderRadius: 11, background: `${team.color}0d`, border: `1px solid ${active || winner ? team.color : `${team.color}44`}` }}>
+                <div style={{ minWidth: 0, fontSize: 8.8, opacity: .78, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{winner ? "🏆 " : ""}{team.name}</div>
+                <div style={{ color: team.color, fontSize: 14, fontWeight: 1000 }}>{team.score}</div>
               </div>;
             })}
           </div>
         ) : null}
 
-        {scores.length > 2 ? (
-          <div
-            style={{
-              marginTop: 8,
-              display: "grid",
-              gridTemplateColumns: "auto minmax(0,1fr)",
-              alignItems: "center",
-              gap: 8,
-              padding: "7px 9px",
-              borderRadius: 15,
-              border: "1px solid rgba(255,207,87,.20)",
-              background: "rgba(255,255,255,.035)",
-            }}
-          >
-            <div style={{ color: "#ffcf57", fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>🏆 CLASSEMENT</div>
-            <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", minWidth: 0, paddingBottom: 1 }}>
-              {rankedScoreRows.map((row, rank) => (
-                <div
-                  key={`rank-${row.index}`}
-                  style={{
-                    flex: "0 0 auto",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                    padding: "4px 7px",
-                    borderRadius: 999,
-                    border: row.index === playerIdx ? "1px solid rgba(53,216,255,.52)" : "1px solid rgba(255,255,255,.09)",
-                    background: row.index === playerIdx ? "rgba(53,216,255,.10)" : "rgba(0,0,0,.18)",
-                  }}
-                >
-                  <span style={{ width: 19, height: 19, borderRadius: "50%", display: "grid", placeItems: "center", background: `${capitalRankColor(rank + 1, capitalPlayerColor(row.index))}24`, border: `1px solid ${capitalRankColor(rank + 1, capitalPlayerColor(row.index))}`, color: capitalRankColor(rank + 1, capitalPlayerColor(row.index)), fontSize: 8.5, fontWeight: 1000 }}>{rank + 1}</span>
-                  <ProfileAvatar profile={row.profile} size={20} showStars={false} />
-                  <span style={{ maxWidth: 74, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: capitalPlayerColor(row.index), fontSize: 9.5, fontWeight: 950 }}>{row.name}</span>
-                  <b style={{ color: capitalPlayerColor(row.index), fontSize: 10 }}>{row.score}K</b>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setLiveRankingOpen(true)}
+          title="Afficher le classement live"
+          style={{
+            width: "100%",
+            height: 34,
+            marginTop: 5,
+            padding: "2px 36px",
+            position: "relative",
+            display: "grid",
+            placeItems: "center",
+            overflow: "hidden",
+            borderRadius: 13,
+            border: "1px solid rgba(255,207,87,.18)",
+            background: "linear-gradient(90deg, rgba(255,207,87,.025), rgba(53,216,255,.035), rgba(255,207,87,.025))",
+            cursor: "pointer",
+            boxShadow: "inset 0 0 18px rgba(0,0,0,.18)",
+          }}
+        >
+          <img src={tickerClassements} alt="Classement" style={{ display: "block", width: "min(170px,48vw)", height: "auto", objectFit: "contain", opacity: .95 }} />
+          <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", border: "1px solid rgba(255,207,87,.36)", color: "#ffcf57", fontSize: 12, fontWeight: 1000 }}>›</span>
+        </button>
 
         <div
           className={scores.length > 2 ? "dc-scroll-thin" : undefined}
           style={scores.length > 2
-            ? { marginTop: 8, display: "flex", gap: 9, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 3 }
-            : { marginTop: 8, display: "grid", gridTemplateColumns: scores.length === 1 ? "1fr" : "1fr 1fr", gap: 10 }}
+            ? { marginTop: 5, display: "flex", gap: 7, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 2 }
+            : { marginTop: 5, display: "grid", gridTemplateColumns: scores.length === 1 ? "1fr" : "1fr 1fr", gap: 7 }}
         >
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
@@ -1628,10 +1684,10 @@ export default function CapitalPlay(props: any) {
                   overflow: "hidden",
                   flex: scores.length > 2 ? "0 0 min(46vw, 205px)" : undefined,
                   minWidth: scores.length > 2 ? 160 : 0,
-                  minHeight: 138,
+                  minHeight: 108,
                   scrollSnapAlign: scores.length > 2 ? "start" : undefined,
                   borderRadius: 17,
-                  padding: "9px 9px 8px",
+                  padding: "6px 7px 6px",
                   border: `1px solid ${active || leader ? playerColor : `${playerColor}66`}`,
                   background: `linear-gradient(150deg, ${playerColor}18, rgba(2,7,11,.74) 56%, rgba(0,0,0,.88))`,
                   boxShadow: active ? `0 0 19px ${playerColor}20, inset 0 0 22px ${playerColor}0d` : "none",
@@ -1659,15 +1715,15 @@ export default function CapitalPlay(props: any) {
                 <div style={{ position: "absolute", inset: 0, zIndex: 0, background: `linear-gradient(180deg, rgba(1,5,9,.18), rgba(1,5,9,.45) 58%, ${playerColor}12)` }} />
 
                 <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minWidth: 0 }}>
-                  <span style={{ flex: "0 0 auto", width: 23, height: 23, borderRadius: "50%", display: "grid", placeItems: "center", background: `${rankColor}20`, border: `1.5px solid ${rankColor}`, color: rankColor, boxShadow: `0 0 9px ${rankColor}22`, fontSize: 10.5, fontWeight: 1000 }}>{rank}</span>
-                  <div style={{ minWidth: 0, maxWidth: "calc(100% - 32px)", color: active ? playerColor : "rgba(255,255,255,.95)", fontSize: 11.5, lineHeight: 1, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName}{leader ? " 🏆" : ""}</div>
+                  <span style={{ flex: "0 0 auto", width: 21, height: 21, borderRadius: "50%", display: "grid", placeItems: "center", background: `${rankColor}20`, border: `1.5px solid ${rankColor}`, color: rankColor, boxShadow: `0 0 9px ${rankColor}22`, fontSize: 9.5, fontWeight: 1000 }}>{rank}</span>
+                  <div style={{ minWidth: 0, maxWidth: "calc(100% - 32px)", color: active ? playerColor : "rgba(255,255,255,.95)", fontSize: 10.5, lineHeight: 1, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName}{leader ? " 🏆" : ""}</div>
                 </div>
 
-                <div style={{ position: "relative", zIndex: 1, marginTop: 4, display: "flex", justifyContent: "center", filter: "drop-shadow(0 4px 12px rgba(0,0,0,.55))" }}>
-                  <ProfileAvatar profile={participants[i]} size={62} showStars={false} />
+                <div style={{ position: "relative", zIndex: 1, marginTop: 2, display: "flex", justifyContent: "center", filter: "drop-shadow(0 4px 12px rgba(0,0,0,.55))" }}>
+                  <ProfileAvatar profile={participants[i]} size={48} showStars={false} />
                 </div>
 
-                <div style={{ position: "relative", zIndex: 1, marginTop: 3, textAlign: "center", color: playerColor, fontSize: 25, lineHeight: 1, fontWeight: 1000, letterSpacing: -.8, textShadow: `0 0 12px ${playerColor}2e, 0 2px 8px rgba(0,0,0,.72)` }}>{s}K</div>
+                <div style={{ position: "relative", zIndex: 1, marginTop: 1, textAlign: "center", color: playerColor, fontSize: 22, lineHeight: 1, fontWeight: 1000, letterSpacing: -.8, textShadow: `0 0 12px ${playerColor}2e, 0 2px 8px rgba(0,0,0,.72)` }}>{s}K</div>
               </div>
             );
           })}
@@ -1680,7 +1736,7 @@ export default function CapitalPlay(props: any) {
             title="Ouvrir les statistiques détaillées"
             style={{
               width: "100%",
-              marginTop: 8,
+              marginTop: 5,
               padding: 0,
               color: "inherit",
               display: "grid",
@@ -1700,9 +1756,9 @@ export default function CapitalPlay(props: any) {
               ["RÉUSSITE", `${activeStats?.successRate ?? 0}%`, "#71e7a6"],
               ["PÉNAL.", activeStats?.penaltyEvents ?? 0, "#ff7b8d"],
             ].map(([label, value, color], index) => (
-              <div key={String(label)} style={{ minWidth: 0, padding: "7px 3px 8px", textAlign: "center", borderLeft: index ? "1px solid rgba(255,255,255,.07)" : "none" }}>
+              <div key={String(label)} style={{ minWidth: 0, padding: "5px 3px 6px", textAlign: "center", borderLeft: index ? "1px solid rgba(255,255,255,.07)" : "none" }}>
                 <div style={{ color: "rgba(255,255,255,.46)", fontSize: 7.2, lineHeight: 1, fontWeight: 950, letterSpacing: .35, whiteSpace: "nowrap" }}>{label}</div>
-                <div style={{ marginTop: 4, color: String(color), fontSize: 13.5, lineHeight: 1, fontWeight: 1000 }}>{value}</div>
+                <div style={{ marginTop: 4, color: String(color), fontSize: 12.5, lineHeight: 1, fontWeight: 1000 }}>{value}</div>
               </div>
             ))}
           </button>
@@ -1747,7 +1803,7 @@ export default function CapitalPlay(props: any) {
             <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>Appuie sur retour pour rejouer / reconfigurer.</div>
           </div>
         ) : (
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 5 }}>
             <div>
               <ScoreInputHub
                 currentThrow={currentThrow as any}
@@ -1784,6 +1840,13 @@ export default function CapitalPlay(props: any) {
         )}
       </div>
 
+      <CapitalLiveRankingModal
+        open={liveRankingOpen}
+        onClose={() => setLiveRankingOpen(false)}
+        participants={participants}
+        scores={scores}
+        activeIndex={playerIdx}
+      />
       <CapitalLiveStatsModal
         open={liveStatsOpen}
         onClose={() => setLiveStatsOpen(false)}

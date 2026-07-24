@@ -330,6 +330,8 @@ import GolfConfig from "./pages/GolfConfig";
 import GolfPlay from "./pages/GolfPlay";
 import BaseballConfig from "./pages/BaseballConfig";
 import BaseballPlay from "./pages/BaseballPlay";
+import AttrapeMoiConfig from "./pages/AttrapeMoiConfig";
+import AttrapeMoiPlay from "./pages/AttrapeMoiPlay";
 import Game170Config from "./pages/Game170Config";
 import Game170Play from "./pages/Game170Play";
 import FootballConfig from "./pages/FootballConfig";
@@ -902,6 +904,8 @@ type Tab =
   | "golf_play"
   | "baseball_config"
   | "baseball_play"
+  | "attrape_moi_config"
+  | "attrape_moi_play"
   | "game_170_config"
   | "game_170_play"
   | "foot_menu"
@@ -5011,6 +5015,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "attrape_moi_config":
+        page = <AttrapeMoiConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "attrape_moi_play":
+        page = (
+          <AttrapeMoiPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "attrape_moi", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "game_170_config":
         page = <Game170Config setTab={go} params={routeParams} />;
         break;
@@ -5131,6 +5152,7 @@ case "babyfoot_team_edit":
     "scram_play",
     "golf_play",
     "baseball_play",
+    "attrape_moi_play",
     "game_170_play",
     "football_play",
     "batard_play",

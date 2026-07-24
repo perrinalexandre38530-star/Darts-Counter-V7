@@ -13,6 +13,7 @@ type ModeKind =
   | "scram"
   | "bobs_27"
   | "shooter"
+  | "attrape_moi"
   | "prisoner"
   | "capital"
   | "batard"
@@ -69,6 +70,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     primary: "Cibles",
     secondary: "Précision",
     tertiary: "Marks",
+  },
+  attrape_moi: {
+    title: "ATTRAPE-MOI SI TU PEUX !",
+    accent: "#ff5d9e",
+    subtitle: "Poursuite Fuyard / Chasseur : captures, évasions, manches, sets et comparaison des deux rôles.",
+    primary: "Sets",
+    secondary: "Manches",
+    tertiary: "Captures",
   },
   prisoner: {
     title: "PRISONER",
@@ -135,6 +144,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["scram", ["scram"]],
   ["bobs_27", ["bobs_27", "bobs27", "bob27", "bob's27", "bobs27"]],
   ["shooter", ["shooter"]],
+  ["attrape_moi", ["attrape_moi", "attrapemoi", "attrape-moi", "catchme", "catch_me"]],
   ["prisoner", ["prisoner"]],
   ["capital", ["capital"]],
   ["batard", ["batard", "bastard", "batard"]],
@@ -296,6 +306,11 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     }
     return num(pick(row.marks, row.marksApplied), 0);
   }
+  if (mode === "attrape_moi") {
+    if (key === "primary") return num(pick(row.setsWon, row.setWins), 0);
+    if (key === "secondary") return num(pick(row.legsWon, row.manchesWon), 0);
+    return num(pick(row.captureCredits, row.captures, row.teamCaptures), 0);
+  }
   if (mode === "prisoner") {
     if (key === "primary") return `${num(pick(row.progress, row.targetsCompleted, row.progressHits), 0)}/20`;
     if (key === "secondary") return num(pick(row.captures, row.opponentCaptures), 0);
@@ -371,11 +386,13 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const bobsMatchStats = mode === "bobs_27" ? (pick(bobsSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const shooterSummary = mode === "shooter" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const shooterMatchStats = mode === "shooter" ? (pick(shooterSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
+  const attrapeSummary = mode === "attrape_moi" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
+  const attrapeMatchStats = mode === "attrape_moi" ? (pick(attrapeSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const prisonerSummary = mode === "prisoner" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const prisonerMatchStats = mode === "prisoner" ? (pick(prisonerSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const capitalSummary = mode === "capital" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const capitalMatchStats = mode === "capital" ? (pick(capitalSummary?.matchStats, capitalSummary?.stats, rec?.payload?.stats?.match, {}) || {}) : {};
-  const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : (winner?.name || "—");
+  const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : mode === "attrape_moi" && attrapeSummary?.winnerName ? String(attrapeSummary.winnerName) : (winner?.name || "—");
   const date = pick(rec?.createdAt, rec?.updatedAt, rec?.summary?.createdAt, rec?.payload?.createdAt);
   const createdLabel = date ? new Date(Number(date) || date).toLocaleString("fr-FR") : "—";
 
@@ -383,6 +400,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
     ? num(bobsMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
     : mode === "shooter"
       ? num(shooterMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
+      : mode === "attrape_moi"
+        ? num(attrapeMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
       : mode === "prisoner"
         ? num(prisonerMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
         : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
@@ -392,6 +411,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       ? num(bobsMatchStats?.totalHits, rows.reduce((sum, r) => sum + num(pick(r.raw?.targetHits, r.raw?.validDoubles, r.raw?.validHits), 0), 0))
       : mode === "shooter"
         ? num(shooterMatchStats?.totalMarks, rows.reduce((sum, r) => sum + num(pick(r.raw?.marks, r.raw?.marksApplied), 0), 0))
+        : mode === "attrape_moi"
+          ? num(attrapeMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(pick(r.raw?.captureCredits, r.raw?.captures), 0), 0))
         : mode === "prisoner"
           ? num(prisonerMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(r.raw?.captures, 0), 0))
           : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
@@ -418,7 +439,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "shooter" ? "Marks" : mode === "prisoner" ? "Captures" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "shooter" ? "Marks" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -447,6 +468,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <Bobs27SummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "shooter" ? (
         <ShooterSummaryTables rec={rec} accent={meta.accent} />
+      ) : mode === "attrape_moi" ? (
+        <AttrapeMoiSummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "prisoner" ? (
         <PrisonerSummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "capital" ? (
@@ -464,6 +487,60 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
       )}
     </div>
   );
+}
+
+
+function AttrapeMoiSummaryTables({ rec, accent }: { rec: any; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const matchStats = pick(summary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {};
+  const players = asArray(pick(rec?.payload?.stats?.players, summary?.players, summary?.perPlayer, rec?.payload?.players, rec?.players));
+  const entities = asArray(pick(summary?.entities, summary?.standings, rec?.payload?.stats?.entities));
+  const legs = asArray(pick(summary?.legResults, rec?.payload?.legResults));
+  const headStart = num(pick(summary?.headStart, rec?.payload?.config?.headStart), 100);
+  const pursuitRounds = num(pick(summary?.pursuitRounds, rec?.payload?.config?.pursuitRounds), 10);
+  const legsBestOf = num(pick(summary?.legsBestOf, rec?.payload?.config?.legsBestOf), 3);
+  const setsBestOf = num(pick(summary?.setsBestOf, rec?.payload?.config?.setsBestOf), 1);
+  const captures = num(matchStats?.totalCaptures, legs.filter((r: any) => String(r?.reason) === "capture").length);
+  const escapes = num(matchStats?.totalEscapes, legs.filter((r: any) => String(r?.reason) === "escape").length);
+  const duration = num(pick(matchStats?.durationMs, summary?.durationMs, summary?.duration), 0);
+  const fmtDuration = (ms: number) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Poursuite</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
+        <Kpi label="Avance Fuyard" value={`${headStart} pts`} accent="#ff5d9e" />
+        <Kpi label="Rounds max" value={pursuitRounds} accent={accent} />
+        <Kpi label="Manches" value={`BO${legsBestOf}`} accent="#ffd76a" />
+        <Kpi label="Sets" value={`BO${setsBestOf}`} accent="#ffd76a" />
+        <Kpi label="Captures" value={captures} accent="#42d6ff" />
+        <Kpi label="Évasions" value={escapes} accent="#ff5d9e" />
+        <Kpi label="Manches jouées" value={legs.length} accent={accent} />
+        <Kpi label="Durée" value={duration ? fmtDuration(duration) : "—"} accent={accent} />
+      </div>
+    </section>
+
+    {entities.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Comparaison des camps</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 820, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Camp","Sets","Manches","Victoires Fuyard","Victoires Chasseur","Captures","Évasions","Capture + rapide","Moy. capture","Distance max","Évasion moy."].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{entities.slice().sort((a:any,b:any)=>num(b?.winner)-num(a?.winner)).map((e:any,index:number)=><tr key={String(e?.id||index)}><td style={td}>{String(e?.name||`Camp ${index+1}`)}{e?.winner ? " 🏆" : ""}</td><td style={td}>{num(e?.setWins ?? e?.setsWon)}</td><td style={td}>{num(e?.legsWon)}</td><td style={td}>{num(e?.runnerLegWins)}</td><td style={td}>{num(e?.chaserLegWins)}</td><td style={td}>{num(e?.captures)}</td><td style={td}>{num(e?.escapes)}</td><td style={td}>{e?.fastestCaptureRound ? `R${num(e.fastestCaptureRound)}` : "—"}</td><td style={td}>{e?.avgCaptureRound ? `R${num(e.avgCaptureRound).toFixed(1)}` : "—"}</td><td style={td}>{num(e?.maxRunnerLead)}</td><td style={td}>{num(e?.avgEscapeLead).toFixed(1)}</td></tr>)}</tbody>
+      </table></div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Statistiques joueurs par rôle</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 960, borderCollapse: "collapse", fontSize: 11.5 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Joueur","AVG/3","Best","AVG Fuyard","AVG Chasseur","Pts Fuyard","Pts Chasseur","Captures","Évasions","Darts","S","D","T","Bull","DBull","Miss"].map((h)=><th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{players.map((p:any,index:number)=><tr key={String(p?.id||index)}><td style={td}>{String(p?.name||p?.playerName||`Joueur ${index+1}`)}{p?.winner ? " 🏆" : ""}</td><td style={td}>{num(p?.avg3).toFixed(1)}</td><td style={td}>{num(p?.bestVisit)}</td><td style={td}>{num(p?.runnerAvg3).toFixed(1)}</td><td style={td}>{num(p?.chaserAvg3).toFixed(1)}</td><td style={td}>{num(p?.runnerPoints)}</td><td style={td}>{num(p?.chaserPoints)}</td><td style={td}>{num(p?.captureCredits)}</td><td style={td}>{num(p?.escapeCredits)}</td><td style={td}>{num(p?.darts ?? p?.dartsThrown)}</td><td style={td}>{num(p?.singles)}</td><td style={td}>{num(p?.doubles)}</td><td style={td}>{num(p?.triples)}</td><td style={td}>{num(p?.bulls)}</td><td style={td}>{num(p?.dbulls)}</td><td style={td}>{num(p?.misses)}</td></tr>)}</tbody>
+      </table></div>
+    </section>
+
+    {legs.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Frise des manches</div>
+      <div style={{ display: "grid", gap: 6 }}>{legs.map((r:any,index:number)=><div key={String(r?.globalLegNo||index)} style={{ display: "grid", gridTemplateColumns: "70px 1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 12, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: accent, fontWeight: 1000 }}>S{num(r?.setNo,1)} · M{num(r?.legNo,index+1)}</div><div><div style={{ fontWeight: 1000 }}>{String(r?.winnerName || r?.winnerEntityId || "—")} · {String(r?.reason)==="capture" ? "💥 CAPTURE" : "🏁 ÉVASION"}</div><div style={{ color: "#9da2b4", fontSize: 10 }}>{String(r?.runnerName || r?.runnerEntityId || "Fuyard")} 🏃 {num(r?.runnerScore)} — {num(r?.chaserScore)} 🎯 {String(r?.chaserName || r?.chaserEntityId || "Chasseur")}</div></div><div style={{ color: String(r?.reason)==="capture" ? "#42d6ff" : "#ff5d9e", fontWeight: 1000 }}>R{num(r?.pursuitRound)}</div></div>)}</div>
+    </section> : null}
+  </>;
 }
 
 function ShooterSummaryTables({ rec, accent }: { rec: any; accent: string }) {
