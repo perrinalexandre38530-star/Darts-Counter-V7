@@ -59,6 +59,60 @@ const CAPITAL_SCORE_BACKGROUNDS = [
   money6Bg, money7Bg, money8Bg, money9Bg, money10Bg,
 ];
 
+const CAPITAL_PLAYER_COLORS = [
+  "#2fd8ff",
+  "#e761c4",
+  "#ff9b52",
+  "#8c7dff",
+  "#67e2a1",
+  "#ffcf57",
+  "#ff6f88",
+  "#62d7c9",
+];
+
+function capitalPlayerColor(index: number): string {
+  return CAPITAL_PLAYER_COLORS[Math.max(0, Number(index) || 0) % CAPITAL_PLAYER_COLORS.length];
+}
+
+function capitalRankColor(rank: number, fallback: string): string {
+  if (rank === 1) return "#f5c84b"; // or
+  if (rank === 2) return "#c7ced8"; // argent
+  if (rank === 3) return "#c98245"; // bronze
+  return fallback;
+}
+
+function capitalContractTarget(contract: CapitalContractID): string {
+  switch (contract) {
+    case "n20": return "20";
+    case "n19": return "19";
+    case "n18": return "18";
+    case "n17": return "17";
+    case "n16": return "16";
+    case "n15": return "15";
+    case "n14": return "14";
+    case "exact_57": return "57";
+    case "triple_any": return "TRIPLE";
+    case "double_any": return "DOUBLE";
+    case "center": return "BULL";
+    case "colors_3": return "3 COUL.";
+    case "suite": return "SUITE";
+    case "side": return "SIDE";
+    case "capital":
+    default:
+      return "MAX";
+  }
+}
+
+function CapitalStatsTabIcon({ id, size = 22 }: { id: string; size?: number }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (id === "resume") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 19V11"/><path {...p} d="M10 19V5"/><path {...p} d="M16 19v-9"/><path {...p} d="M22 19V8"/></svg>;
+  if (id === "evolution") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 18 9 12l4 3 7-9"/><path {...p} d="M15 6h5v5"/><path {...p} d="M3 21h18"/></svg>;
+  if (id === "contrats") return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...p} x="5" y="3" width="14" height="18" rx="2"/><path {...p} d="M8 8h8M8 12h8M8 16h5"/><circle {...p} cx="17" cy="18" r="2.5"/></svg>;
+  if (id === "precision") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7"/><circle {...p} cx="12" cy="12" r="3"/><path {...p} d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></svg>;
+  if (id === "comparatif") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M12 4v16M5 7h14M6 7l-3 6h6L6 7ZM18 7l-3 6h6l-3-6ZM8 20h8"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="m5 19 9-9M13 5l6-2-2 6M10 12l2 2M6 16l2 2M14 7l3 3"/><path {...p} d="m4 20 3-1-2-2-1 3Z"/></svg>;
+}
+
 type BotLevel = "easy" | "normal" | "hard";
 
 export type CapitalModeKind = "official" | "custom";
@@ -538,7 +592,7 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 12000, background: "rgba(0,0,0,.78)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
-      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px, 97vw)", maxHeight: "91dvh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(53,216,255,.42)", background: "linear-gradient(180deg, rgba(7,17,25,.99), rgba(2,7,12,.99))", boxShadow: "0 24px 90px rgba(0,0,0,.74), 0 0 30px rgba(53,216,255,.10)", color: "#fff" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(760px, 97vw)", maxHeight: "94dvh", overflow: "hidden", borderRadius: 22, border: "1px solid rgba(53,216,255,.42)", background: "linear-gradient(180deg, rgba(7,17,25,.99), rgba(2,7,12,.99))", boxShadow: "0 24px 90px rgba(0,0,0,.74), 0 0 30px rgba(53,216,255,.10)", color: "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px 10px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
           <ProfileAvatar profile={profile} size={42} showStars={false} />
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -549,21 +603,71 @@ function CapitalLiveStatsModal({ open, onClose, participants, playerStats, visit
         </div>
 
         {participants.length > 1 ? <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 11px 3px" }}>
-          {participants.map((participant: any, index: number) => <button key={String(participant?.id || index)} type="button" onClick={() => onSelectPlayer(index)} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, minHeight: 32, padding: "4px 8px", borderRadius: 999, border: index === safeIndex ? "1px solid rgba(53,216,255,.60)" : "1px solid rgba(255,255,255,.10)", background: index === safeIndex ? "rgba(53,216,255,.12)" : "rgba(255,255,255,.035)", color: index === safeIndex ? "#35d8ff" : "#fff", fontSize: 10, fontWeight: 950 }}><ProfileAvatar profile={participant} size={22} showStars={false} />{participant?.nickname || participant?.name || `Joueur ${index + 1}`}</button>)}
+          {participants.map((participant: any, index: number) => {
+            const participantColor = capitalPlayerColor(index);
+            return <button key={String(participant?.id || index)} type="button" onClick={() => onSelectPlayer(index)} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, minHeight: 32, padding: "4px 8px", borderRadius: 999, border: index === safeIndex ? `1px solid ${participantColor}` : "1px solid rgba(255,255,255,.10)", background: index === safeIndex ? `${participantColor}16` : "rgba(255,255,255,.035)", color: index === safeIndex ? participantColor : "#fff", fontSize: 10, fontWeight: 950 }}><ProfileAvatar profile={participant} size={22} showStars={false} />{participant?.nickname || participant?.name || `Joueur ${index + 1}`}</button>;
+          })}
         </div> : null}
 
-        <div className="dc-scroll-thin" style={{ display: "flex", gap: 6, overflowX: "auto", padding: "8px 11px" }}>
-          {tabs.map(([id, label]) => <button key={id} type="button" onClick={() => setTab(id as any)} style={{ flex: "0 0 auto", minHeight: 32, padding: "6px 10px", borderRadius: 999, border: tab === id ? "1px solid rgba(255,207,87,.62)" : "1px solid rgba(255,255,255,.10)", background: tab === id ? "rgba(255,207,87,.13)" : "rgba(255,255,255,.03)", color: tab === id ? "#ffcf57" : "rgba(255,255,255,.72)", fontSize: 9.5, fontWeight: 1000 }}>{label}</button>)}
+        <div className="dc-scroll-thin" style={{ display: "flex", alignItems: "stretch", gap: 0, overflowX: "auto", margin: "7px 11px 5px", borderTop: "1px solid rgba(255,255,255,.07)", borderBottom: "1px solid rgba(255,255,255,.09)", background: "rgba(0,0,0,.12)" }}>
+          {tabs.map(([id, label], index) => {
+            const selected = tab === id;
+            return <button
+              key={id}
+              type="button"
+              title={label}
+              aria-label={label}
+              onClick={() => setTab(id as any)}
+              style={{
+                flex: selected ? "1 0 auto" : "0 0 42px",
+                minWidth: selected ? 86 : 42,
+                height: 46,
+                padding: selected ? "0 10px" : 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                border: 0,
+                borderLeft: index ? "1px solid rgba(255,255,255,.06)" : "none",
+                borderBottom: selected ? "2px solid #ffcf57" : "2px solid transparent",
+                background: selected ? "linear-gradient(180deg, rgba(255,207,87,.08), rgba(255,207,87,.015))" : "transparent",
+                color: selected ? "#ffcf57" : "#35d8ff",
+                fontSize: 9.5,
+                fontWeight: 1000,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <CapitalStatsTabIcon id={id} size={21} />
+              {selected ? <span>{label}</span> : null}
+            </button>;
+          })}
         </div>
 
-        <div className="dc-scroll-thin" style={{ maxHeight: "calc(91dvh - 138px)", overflowY: "auto", padding: "2px 11px 14px" }}>
+        <div className="dc-scroll-thin" style={{ maxHeight: "calc(94dvh - 150px)", overflowY: "auto", padding: "2px 11px 14px" }}>
           {tab === "resume" ? <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(112px,1fr))", gap: 6 }}>
-              {kpis.map(([label, value]) => <div key={String(label)} style={{ padding: "9px 8px", borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: "rgba(255,255,255,.48)", fontSize: 8, fontWeight: 950, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 3, color: label === "Capital actuel" || label === "Réussite" ? "#ffcf57" : "#fff", fontSize: 17, fontWeight: 1000 }}>{value}</div></div>)}
+            <div style={{ overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.018)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))" }}>
+                {kpis.map(([label, value], index) => {
+                  const col = index % 3;
+                  const accent = label === "Capital actuel" || label === "Gain net" || label === "Série réussie"
+                    ? "#35d8ff"
+                    : label === "Réussite" || label === "Contrats réussis"
+                      ? "#ffcf57"
+                      : String(label).includes("perdu") || String(label).includes("Pénalit") || String(label).includes("échecs")
+                        ? "#ff7189"
+                        : label === "Rétention"
+                          ? "#6de4a1"
+                          : "#f4f7fb";
+                  return <div key={String(label)} style={{ minWidth: 0, minHeight: 45, padding: "6px 7px 5px", borderRight: col < 2 ? "1px solid rgba(255,255,255,.065)" : "none", borderBottom: index < kpis.length - 3 ? "1px solid rgba(255,255,255,.065)" : "none" }}>
+                    <div style={{ color: "rgba(255,255,255,.48)", fontSize: 7.1, lineHeight: 1.05, fontWeight: 950, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+                    <div style={{ marginTop: 3, color: accent, fontSize: 13.2, lineHeight: 1, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+                  </div>;
+                })}
+              </div>
             </div>
-            <div style={{ marginTop: 9, height: 220, padding: "8px 4px 2px", borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)" }}>
-              <div style={{ padding: "0 8px 5px", fontSize: 9.5, fontWeight: 1000, color: "#35d8ff" }}>COURBE DU CAPITAL</div>
-              <ResponsiveContainer width="100%" height="90%"><LineChart data={evolutionData}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} /><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }} /><YAxis tick={{ fill: "rgba(255,255,255,.5)", fontSize: 8 }} width={36} /><Tooltip contentStyle={chartTooltip as any} /><Line type="monotone" dataKey="capital" stroke="#ffcf57" strokeWidth={2.5} dot={{ r: 2 }} /></LineChart></ResponsiveContainer>
+            <div style={{ marginTop: 7, height: 150, padding: "7px 3px 1px", borderRadius: 14, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.18)" }}>
+              <div style={{ padding: "0 7px 2px", fontSize: 8.8, fontWeight: 1000, color: "#35d8ff" }}>COURBE DU CAPITAL</div>
+              <ResponsiveContainer width="100%" height="88%"><LineChart data={evolutionData} margin={{ top: 3, right: 8, left: -8, bottom: 0 }}><CartesianGrid stroke="rgba(255,255,255,.06)" vertical={false} /><XAxis dataKey="label" tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} /><YAxis tick={{ fill: "rgba(255,255,255,.46)", fontSize: 7 }} width={34} /><Tooltip contentStyle={chartTooltip as any} /><Line type="monotone" dataKey="capital" stroke="#35d8ff" strokeWidth={2.2} dot={{ r: 2.2, fill: "#35d8ff" }} activeDot={{ r: 4 }} /></LineChart></ResponsiveContainer>
             </div>
           </> : null}
 
@@ -1399,54 +1503,51 @@ export default function CapitalPlay(props: any) {
           <div
             style={{
               position: "relative",
-              minHeight: 126,
+              minHeight: 132,
               display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) minmax(128px,140px)",
-              gap: 4,
+              gridTemplateColumns: "82px minmax(0,1fr) minmax(132px,150px)",
+              gap: 7,
               alignItems: "stretch",
-              padding: "8px 10px",
+              padding: "9px 10px",
             }}
           >
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,.18) 38%, rgba(0,0,0,.08) 64%, rgba(0,0,0,.34))" }} />
-            {!isFinished && activeProfile ? (
-              <div style={{ position: "absolute", left: -20, top: -4, bottom: -4, width: "25%", minWidth: 84, overflow: "hidden", opacity: .14, pointerEvents: "none" }}>
-                <div style={{ position: "absolute", left: -16, top: 16, transform: "scale(1.22)", transformOrigin: "left top", filter: "saturate(.88)" }}>
-                  <ProfileAvatar profile={activeProfile} size={82} showStars={false} />
-                </div>
-              </div>
-            ) : null}
-            {activeTeam?.logoDataUrl ? (
-              <div style={{ position: "absolute", right: "calc(128px + 12px)", top: -4, bottom: -4, width: "22%", minWidth: 76, overflow: "hidden", opacity: .13, pointerEvents: "none" }}>
-                <img src={activeTeam.logoDataUrl} alt="" style={{ position: "absolute", right: -10, top: 20, width: 74, height: 74, borderRadius: "50%", objectFit: "cover" }} />
-              </div>
-            ) : null}
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 22% 48%, rgba(47,216,255,.09), transparent 34%), linear-gradient(90deg, rgba(0,0,0,.42), rgba(0,0,0,.12) 50%, rgba(0,0,0,.34))" }} />
 
-            <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 8px 2px 6px" }}>
-              <div style={{ color: activeTeam?.color || "#35d8ff", fontSize: 14, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {isFinished ? "—" : activeName}
-              </div>
-              <div style={{ marginTop: 5, color: "#ffcf57", fontSize: 60, fontWeight: 900, lineHeight: 1, textShadow: "0 4px 18px rgba(255,195,26,.24)" }}>
-                {isFinished ? "—" : scores[playerIdx] ?? 0}
-              </div>
-              <div style={{ marginTop: 4, color: "rgba(255,255,255,.56)", fontSize: 8.5, fontWeight: 900, letterSpacing: .55 }}>
-                CAPITAL • #{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}
-              </div>
-              {activeTeam ? <div style={{ marginTop: 3, color: activeTeam.color || "#ffcf57", fontSize: 8.5, fontWeight: 950, textTransform: "uppercase" }}>{activeTeam.name}</div> : null}
+            <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {!isFinished && activeProfile ? (
+                <div style={{ filter: `drop-shadow(0 0 10px ${capitalPlayerColor(playerIdx)}55)` }}>
+                  <ProfileAvatar profile={activeProfile} size={72} showStars={false} />
+                </div>
+              ) : <div style={{ width: 72, height: 72, borderRadius: "50%", border: "1px solid rgba(255,255,255,.12)" }} />}
             </div>
 
-            <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
-              <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.34), rgba(4,8,16,.62)), url(${targetBg})`, backgroundPosition: "center", backgroundSize: "cover", opacity: 1 }} />
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 42, borderTopLeftRadius: 18, borderBottomLeftRadius: 18, background: "linear-gradient(90deg, rgba(4,8,16,.98) 0%, rgba(4,8,16,.82) 42%, rgba(4,8,16,.28) 76%, rgba(4,8,16,0) 100%)", pointerEvents: "none" }} />
-              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.66), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.22)", pointerEvents: "none" }} />
+            <div style={{ position: "relative", zIndex: 2, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", justifyContent: "center", padding: "2px 2px" }}>
+              <div style={{ color: activeTeam?.color || capitalPlayerColor(playerIdx), fontSize: 13.5, fontWeight: 1000, letterSpacing: .7, lineHeight: 1.05, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {isFinished ? "—" : activeName}
+              </div>
+              <div style={{ marginTop: 4, color: "#f5f7fb", fontSize: 48, fontWeight: 1000, lineHeight: .98, letterSpacing: -1.8, textShadow: "0 4px 18px rgba(0,0,0,.48)" }}>
+                {isFinished ? "—" : `${scores[playerIdx] ?? 0}K`}
+              </div>
+              <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,.52)", fontSize: 8.5, fontWeight: 950, letterSpacing: .45 }}>
+                <span>#{Math.max(1, scoreRankByIndex.get(playerIdx) || playerIdx + 1)}/{playerCount}</span>
+                {activeTeam ? <span style={{ color: activeTeam.color || "#ffcf57", textTransform: "uppercase" }}>• {activeTeam.name}</span> : null}
+              </div>
+            </div>
+
+            <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 18, background: "#050913", isolation: "isolate" }}>
+              <div style={{ position: "absolute", inset: 0, borderRadius: 18, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.22), rgba(4,8,16,.58)), url(${targetBg})`, backgroundPosition: "center center", backgroundSize: "cover", backgroundRepeat: "no-repeat", opacity: 1 }} />
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 32, background: "linear-gradient(90deg, rgba(4,8,16,.96), rgba(4,8,16,0))", pointerEvents: "none" }} />
+              <div style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 1, background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,207,87,.72), rgba(255,255,255,.02))", boxShadow: "0 0 12px rgba(255,207,87,.24)", pointerEvents: "none" }} />
               <div style={{ position: "relative", width: "100%", padding: "7px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ color: "rgba(255,255,255,.56)", fontSize: 8.5, fontWeight: 950, letterSpacing: .8 }}>CONTRAT</div>
-                <div style={{ marginTop: 4, color: "#ffcf57", fontSize: 22, lineHeight: 1.02, fontWeight: 1100, textShadow: "0 0 16px rgba(255,207,87,.42)", maxWidth: "100%", wordBreak: "break-word" }}>
+                <div style={{ color: "rgba(255,255,255,.58)", fontSize: 8.3, fontWeight: 950, letterSpacing: .8 }}>CONTRAT</div>
+                <div style={{ marginTop: 1, color: "rgba(255,255,255,.72)", fontSize: 10.5, lineHeight: 1, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {isFinished ? "—" : contractLabel(currentContract)}
                 </div>
-                <div style={{ marginTop: 7, color: "#35d8ff", fontSize: 9, fontWeight: 950 }}>
-                  ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}
+                <div style={{ marginTop: 2, color: "#ffcf57", fontSize: capitalContractTarget(currentContract).length > 4 ? 22 : 43, lineHeight: .98, fontWeight: 1000, letterSpacing: capitalContractTarget(currentContract).length > 4 ? -.4 : -1.2, textShadow: "0 0 18px rgba(255,207,87,.36)" }}>
+                  {isFinished ? "—" : capitalContractTarget(currentContract)}
                 </div>
-                {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 4, color: "#fff", fontSize: 9, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
+                <div style={{ marginTop: 4, color: "#35d8ff", fontSize: 8.7, fontWeight: 1000 }}>ROUND {Math.min(roundIdx + 1, rounds)}/{rounds}</div>
+                {timeLeft > 0 && !isFinished ? <div style={{ marginTop: 2, color: "#fff", fontSize: 8.5, fontWeight: 950 }}>⏱ {timeLeft}s</div> : null}
               </div>
             </div>
           </div>
@@ -1495,10 +1596,10 @@ export default function CapitalPlay(props: any) {
                     background: row.index === playerIdx ? "rgba(53,216,255,.10)" : "rgba(0,0,0,.18)",
                   }}
                 >
-                  <span style={{ color: rank === 0 ? "#ffcf57" : "rgba(255,255,255,.62)", fontSize: 9, fontWeight: 1000 }}>{rank + 1}</span>
+                  <span style={{ width: 19, height: 19, borderRadius: "50%", display: "grid", placeItems: "center", background: `${capitalRankColor(rank + 1, capitalPlayerColor(row.index))}24`, border: `1px solid ${capitalRankColor(rank + 1, capitalPlayerColor(row.index))}`, color: capitalRankColor(rank + 1, capitalPlayerColor(row.index)), fontSize: 8.5, fontWeight: 1000 }}>{rank + 1}</span>
                   <ProfileAvatar profile={row.profile} size={20} showStars={false} />
-                  <span style={{ maxWidth: 74, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: row.index === playerIdx ? "#35d8ff" : "#fff", fontSize: 9.5, fontWeight: 950 }}>{row.name}</span>
-                  <b style={{ color: "#ffcf57", fontSize: 10 }}>{row.score}</b>
+                  <span style={{ maxWidth: 74, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: capitalPlayerColor(row.index), fontSize: 9.5, fontWeight: 950 }}>{row.name}</span>
+                  <b style={{ color: capitalPlayerColor(row.index), fontSize: 10 }}>{row.score}K</b>
                 </div>
               ))}
             </div>
@@ -1515,30 +1616,26 @@ export default function CapitalPlay(props: any) {
             const active = !isFinished && i === playerIdx;
             const leader = isFinished ? winningPlayerIds.includes(String(participants[i]?.id)) : false;
             const rank = scoreRankByIndex.get(i) || i + 1;
+            const playerColor = capitalPlayerColor(i);
+            const rankColor = capitalRankColor(rank, playerColor);
             const scoreDecoration = scoreCardBackgrounds[i] || CAPITAL_SCORE_BACKGROUNDS[i % CAPITAL_SCORE_BACKGROUNDS.length];
+            const playerName = participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`;
             return (
               <div
                 key={i}
                 style={{
                   position: "relative",
                   overflow: "hidden",
-                  flex: scores.length > 2 ? "0 0 min(43vw, 190px)" : undefined,
-                  minWidth: scores.length > 2 ? 148 : 0,
-                  minHeight: 94,
+                  flex: scores.length > 2 ? "0 0 min(46vw, 205px)" : undefined,
+                  minWidth: scores.length > 2 ? 160 : 0,
+                  minHeight: 138,
                   scrollSnapAlign: scores.length > 2 ? "start" : undefined,
-                  borderRadius: 16,
-                  padding: "10px 11px",
-                  border: active
-                    ? "1px solid rgba(53,216,255,.52)"
-                    : leader
-                      ? "1px solid rgba(255,207,87,.52)"
-                      : "1px solid rgba(255,255,255,0.10)",
-                  background: active
-                    ? "linear-gradient(145deg, rgba(0,112,140,.22), rgba(0,30,42,.24))"
-                    : leader
-                      ? "rgba(255,207,87,.08)"
-                      : "rgba(255,255,255,0.035)",
-                  boxShadow: active ? "0 0 18px rgba(53,216,255,.08)" : "none",
+                  borderRadius: 17,
+                  padding: "9px 9px 8px",
+                  border: `1px solid ${active || leader ? playerColor : `${playerColor}66`}`,
+                  background: `linear-gradient(150deg, ${playerColor}18, rgba(2,7,11,.74) 56%, rgba(0,0,0,.88))`,
+                  boxShadow: active ? `0 0 19px ${playerColor}20, inset 0 0 22px ${playerColor}0d` : "none",
+                  isolation: "isolate",
                 }}
               >
                 <img
@@ -1547,29 +1644,30 @@ export default function CapitalPlay(props: any) {
                   aria-hidden
                   style={{
                     position: "absolute",
-                    right: -14,
-                    bottom: -18,
-                    width: "72%",
-                    height: "116%",
-                    objectFit: "contain",
-                    objectPosition: "right bottom",
-                    opacity: active ? .16 : .105,
-                    filter: active ? "saturate(.92) contrast(1.05)" : "grayscale(.25) saturate(.68)",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    objectPosition: "center center",
+                    opacity: active ? .22 : .17,
+                    filter: `saturate(${active ? 1 : .72}) contrast(1.06)`,
+                    transform: "scale(1.02)",
                     pointerEvents: "none",
+                    zIndex: 0,
                   }}
                 />
-                <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                  <div style={{ minWidth: 0, fontSize: 11.5, opacity: .94, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {participants[i]?.nickname || participants[i]?.name || `${t("generic.player", "Joueur")} ${i + 1}`}{leader ? " 🏆" : ""}
-                  </div>
-                  <span style={{ flex: "0 0 auto", color: active ? "#35d8ff" : "rgba(255,255,255,.48)", fontSize: 9, fontWeight: 1000 }}>#{rank}</span>
+                <div style={{ position: "absolute", inset: 0, zIndex: 0, background: `linear-gradient(180deg, rgba(1,5,9,.18), rgba(1,5,9,.45) 58%, ${playerColor}12)` }} />
+
+                <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minWidth: 0 }}>
+                  <span style={{ flex: "0 0 auto", width: 23, height: 23, borderRadius: "50%", display: "grid", placeItems: "center", background: `${rankColor}20`, border: `1.5px solid ${rankColor}`, color: rankColor, boxShadow: `0 0 9px ${rankColor}22`, fontSize: 10.5, fontWeight: 1000 }}>{rank}</span>
+                  <div style={{ minWidth: 0, maxWidth: "calc(100% - 32px)", color: active ? playerColor : "rgba(255,255,255,.95)", fontSize: 11.5, lineHeight: 1, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName}{leader ? " 🏆" : ""}</div>
                 </div>
-                <div style={{ position: "relative", zIndex: 1, marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <div style={{ color: active ? "#fff" : "rgba(255,255,255,.90)", fontSize: 28, lineHeight: 1, fontWeight: 1000, textShadow: "0 2px 10px rgba(0,0,0,.55)" }}>{s}</div>
-                  <div style={{ transform: "scale(1.02)", filter: "drop-shadow(0 3px 9px rgba(0,0,0,.55))" }}>
-                    <ProfileAvatar profile={participants[i]} size={46} showStars={false} />
-                  </div>
+
+                <div style={{ position: "relative", zIndex: 1, marginTop: 4, display: "flex", justifyContent: "center", filter: "drop-shadow(0 4px 12px rgba(0,0,0,.55))" }}>
+                  <ProfileAvatar profile={participants[i]} size={62} showStars={false} />
                 </div>
+
+                <div style={{ position: "relative", zIndex: 1, marginTop: 3, textAlign: "center", color: playerColor, fontSize: 25, lineHeight: 1, fontWeight: 1000, letterSpacing: -.8, textShadow: `0 0 12px ${playerColor}2e, 0 2px 8px rgba(0,0,0,.72)` }}>{s}K</div>
               </div>
             );
           })}
