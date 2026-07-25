@@ -42,6 +42,12 @@ export type { CatchMeConfigPayload } from "../lib/gameEngines/attrapeMoiEngine";
 type BotLevel = "easy" | "normal" | "hard";
 type TeamsSourceMode = "manual" | "saved" | "auto";
 type TeamId = "gold" | "pink" | "blue" | "green";
+type VictoryMode = "best_of" | "first_to";
+const SET_FORMAT_OPTIONS = [1, 3, 5, 7, 9, 11, 13];
+const LEG_BEST_OF_OPTIONS = [1, 3, 5, 7, 9, 11, 13, 15];
+const LEG_FIRST_TO_OPTIONS = [1, 3, 5, 7, 9, 10, 11, 13, 15, 16, 17, 18];
+function totalCountFromFormat(mode: VictoryMode, target: number) { const n = Math.max(1, Math.floor(Number(target) || 1)); return mode === "first_to" ? n * 2 - 1 : n; }
+function formatRuleLabel(mode: VictoryMode, target: number) { return mode === "first_to" ? `FT${target}` : `BO${target}`; }
 type BotLite = { id: string; name: string; avatarDataUrl?: string | null; avatarUrl?: string | null; avatar?: string | null; botLevel?: string; isBot?: boolean };
 
 const LS_CFG_KEY = "dc_modecfg_attrape_moi_v1";
@@ -74,7 +80,7 @@ function RulesContent({ primary }: { primary: string }) {
     <div><strong style={{ color: ACCENT }}>FUYARD</strong><br />Il joue en premier à chaque round de poursuite. S’il n’est jamais rattrapé après le nombre de rounds configuré, il remporte la manche par ÉVASION.</div>
     <div><strong style={{ color: CHASER }}>CHASSEUR</strong><br />Il joue après le Fuyard. Dès que son score cumulé atteint ou dépasse celui du Fuyard, la manche s’arrête immédiatement : CAPTURE.</div>
     <div><strong style={{ color: primary }}>ALTERNANCE</strong><br />Après chaque manche, les rôles s’inversent automatiquement. Chaque camp est donc tour à tour Fuyard puis Chasseur.</div>
-    <div><strong style={{ color: "#ffd76a" }}>SETS</strong><br />Un set se joue en BO3, BO5 ou BO7 manches. Le match peut lui-même se jouer en BO1, BO3, BO5 ou BO7 sets.</div>
+    <div><strong style={{ color: "#ffd76a" }}>SETS</strong><br />Le format des manches et des sets peut être configuré en Best Of ou First To, comme dans X01.</div>
     <div><strong style={{ color: primary }}>ÉQUIPES</strong><br />Tous les joueurs du camp Fuyard jouent d’abord leur volée, puis tous les joueurs du camp Chasseur. Les scores sont cumulés par équipe, mais les statistiques individuelles sont conservées.</div>
   </div>;
 }
@@ -111,8 +117,12 @@ export default function AttrapeMoiConfig(props: any) {
   const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [headStart, setHeadStart] = React.useState<number>(Math.max(0, Math.min(2000, Number(saved.headStart ?? 100))));
   const [pursuitRounds, setPursuitRounds] = React.useState<number>(Math.max(1, Math.min(30, Number(saved.pursuitRounds ?? 10))));
-  const [legsBestOf, setLegsBestOf] = React.useState<3 | 5 | 7>(([3,5,7].includes(Number(saved.legsBestOf)) ? Number(saved.legsBestOf) : 3) as any);
-  const [setsBestOf, setSetsBestOf] = React.useState<1 | 3 | 5 | 7>(([1,3,5,7].includes(Number(saved.setsBestOf)) ? Number(saved.setsBestOf) : 3) as any);
+  const [legVictoryMode, setLegVictoryMode] = React.useState<VictoryMode>(saved.legVictoryMode === "first_to" ? "first_to" : "best_of");
+  const [legVictoryTarget, setLegVictoryTarget] = React.useState<number>(() => Math.max(1, Number(saved.legVictoryTarget ?? saved.legsBestOf ?? 3) || 3));
+  const [setVictoryMode, setSetVictoryMode] = React.useState<VictoryMode>(saved.setVictoryMode === "first_to" ? "first_to" : "best_of");
+  const [setVictoryTarget, setSetVictoryTarget] = React.useState<number>(() => Math.max(1, Number(saved.setVictoryTarget ?? saved.setsBestOf ?? 3) || 3));
+  const legsBestOf = totalCountFromFormat(legVictoryMode, legVictoryTarget);
+  const setsBestOf = totalCountFromFormat(setVictoryMode, setVictoryTarget);
   const [startingRunner, setStartingRunner] = React.useState<CatchMeStartingRunner>(saved.startingRunner === "second" || saved.startingRunner === "random" ? saved.startingRunner : "first");
   const [scoreInputMethod, setScoreInputMethod] = React.useState<"keypad" | "dartboard">(saved.scoreInputMethod === "dartboard" ? "dartboard" : "keypad");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets && typeof saved.playerDartSets === "object" ? saved.playerDartSets : {});
@@ -127,8 +137,8 @@ export default function AttrapeMoiConfig(props: any) {
   }, []);
   React.useEffect(() => { if (!selectedIds.length && humanProfiles.length) setSelectedIds(humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((p) => String(p.id))); }, [humanProfiles, selectedIds.length]);
   React.useEffect(() => {
-    try { localStorage.setItem(LS_CFG_KEY, JSON.stringify({ participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, headStart, pursuitRounds, legsBestOf, setsBestOf, startingRunner, scoreInputMethod, playerDartSets })); } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, headStart, pursuitRounds, legsBestOf, setsBestOf, startingRunner, scoreInputMethod, playerDartSets]);
+    try { localStorage.setItem(LS_CFG_KEY, JSON.stringify({ participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, headStart, pursuitRounds, legVictoryMode, legVictoryTarget, setVictoryMode, setVictoryTarget, legsBestOf, setsBestOf, startingRunner, scoreInputMethod, playerDartSets })); } catch {}
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, botLevel, headStart, pursuitRounds, legVictoryMode, legVictoryTarget, setVictoryMode, setVictoryTarget, legsBestOf, setsBestOf, startingRunner, scoreInputMethod, playerDartSets]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((p: any) => [String(p.id), p])), [allProfiles]);
@@ -214,7 +224,7 @@ export default function AttrapeMoiConfig(props: any) {
       playersList: orderedProfiles.map((profile: any) => ({ ...profile, id: String(profile.id), name: profile?.name || profile?.displayName || "Joueur", dartSetId: playerDartSets[String(profile.id)] ?? null })),
       teamConfigs: participantMode === "teams" ? activeTeamConfigs.map((team) => ({ ...team, playerIds: [...team.playerIds] })) : undefined,
       playerDartSets, botIds, botsEnabled: botIds.length > 0, botLevel, headStart: Math.max(0, Math.min(2000, Number(headStart) || 0)),
-      pursuitRounds: Math.max(1, Math.min(30, Number(pursuitRounds) || 10)), legsBestOf, setsBestOf, startingRunner, scoreInputMethod,
+      pursuitRounds: Math.max(1, Math.min(30, Number(pursuitRounds) || 10)), legsBestOf, setsBestOf, legVictoryMode, legVictoryTarget, setVictoryMode, setVictoryTarget, startingRunner, scoreInputMethod,
     };
     try { recordProfileUsageForMode("attrape_moi", orderedIds); } catch {}
     if (typeof go === "function") go("attrape_moi_play", payload);
@@ -224,7 +234,7 @@ export default function AttrapeMoiConfig(props: any) {
   const selectorCard: React.CSSProperties = { width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overflow: "hidden", background: "rgba(10,12,24,.96)", borderRadius: 18, padding: "16px 12px", marginBottom: 12, boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33` };
   const guidedCard: React.CSSProperties = { ...selectorCard, padding: 14 };
   const participantSummary = participantMode === "teams" ? `${activeTeamConfigs.length} équipes · ${activeUniquePlayerIds.length} joueurs` : `${selectedIds.length}/2 joueurs`;
-  const formatSummary = `BO${legsBestOf} manches · BO${setsBestOf} set${setsBestOf > 1 ? "s" : ""}`;
+  const formatSummary = `${formatRuleLabel(legVictoryMode, legVictoryTarget)} manches · ${formatRuleLabel(setVictoryMode, setVictoryTarget)} set${setsBestOf > 1 ? "s" : ""}`;
 
   const participantsBlock = <>
     <section style={selectorCard}>
@@ -251,10 +261,20 @@ export default function AttrapeMoiConfig(props: any) {
     <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: `${primary}0d`, border: `1px solid ${primary}30`, color: "#cfd4ea", fontSize: 10.8, lineHeight: 1.45 }}>Départ : Fuyard {headStart} pts, Chasseur 0. Chaque camp cumule le score réel de ses fléchettes. Capture immédiate dès que le Chasseur atteint ou dépasse le Fuyard.</div>
   </div></section>;
 
-  const formatBlock = <section style={guidedCard}><h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Manches & sets</h3><div style={panel}>
-    <OptionRow label="Manches par set"><OptionSelect value={legsBestOf} options={[{ value: 3, label: "BO3 · 2 manches gagnantes" }, { value: 5, label: "BO5 · 3 manches gagnantes" }, { value: 7, label: "BO7 · 4 manches gagnantes" }]} onChange={(v: any) => setLegsBestOf(Number(v) as any)} /></OptionRow>
-    <OptionRow label="Sets du match"><OptionSelect value={setsBestOf} options={[{ value: 1, label: "BO1 · 1 set gagnant" }, { value: 3, label: "BO3 · 2 sets gagnants" }, { value: 5, label: "BO5 · 3 sets gagnants" }, { value: 7, label: "BO7 · 4 sets gagnants" }]} onChange={(v: any) => setSetsBestOf(Number(v) as any)} /></OptionRow>
-    <div style={{ marginTop: 9, padding: 10, borderRadius: 12, background: "rgba(255,215,106,.06)", border: "1px solid rgba(255,215,106,.24)", color: "#e7d9aa", fontSize: 10.8, lineHeight: 1.45 }}>Exemple BO3 : à 0–1, les rôles s’inversent. À 0–2, le camp vainqueur remporte le set. Le set suivant repart à 0–0 manche, tout en conservant le score des sets.</div>
+  const legOptions = legVictoryMode === "first_to" ? LEG_FIRST_TO_OPTIONS : LEG_BEST_OF_OPTIONS;
+  const setOptions = SET_FORMAT_OPTIONS;
+  const formatBlock = <section style={guidedCard}><h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Format du match</h3><div style={panel}>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format des manches</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><PillButton label="Best Of" active={legVictoryMode === "best_of"} onClick={() => { setLegVictoryMode("best_of"); if (!LEG_BEST_OF_OPTIONS.includes(legVictoryTarget)) setLegVictoryTarget(3); }} primary={primary} primarySoft={primarySoft} /><PillButton label="First To" active={legVictoryMode === "first_to"} onClick={() => { setLegVictoryMode("first_to"); if (!LEG_FIRST_TO_OPTIONS.includes(legVictoryTarget)) setLegVictoryTarget(3); }} primary={primary} primarySoft={primarySoft} /></div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{legOptions.map((n) => <PillButton key={`leg-${legVictoryMode}-${n}`} label={String(n)} active={legVictoryTarget === n} onClick={() => setLegVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}</div>
+    </div>
+    <div>
+      <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 7 }}>Format des sets</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}><PillButton label="Best Of" active={setVictoryMode === "best_of"} onClick={() => setSetVictoryMode("best_of")} primary={primary} primarySoft={primarySoft} /><PillButton label="First To" active={setVictoryMode === "first_to"} onClick={() => setSetVictoryMode("first_to")} primary={primary} primarySoft={primarySoft} /></div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{setOptions.map((n) => <PillButton key={`set-${setVictoryMode}-${n}`} label={String(n)} active={setVictoryTarget === n} onClick={() => setSetVictoryTarget(n)} primary={primary} primarySoft={primarySoft} compact />)}</div>
+    </div>
+    <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,215,106,.06)", border: "1px solid rgba(255,215,106,.24)", color: "#e7d9aa", fontSize: 10.8, lineHeight: 1.45 }}>Sélection : <b>{formatRuleLabel(legVictoryMode, legVictoryTarget)}</b> manches / set · <b>{formatRuleLabel(setVictoryMode, setVictoryTarget)}</b> sets / match. Les rôles s’inversent après chaque manche.</div>
   </div></section>;
 
   const inputBlock = <section style={guidedCard}><h3 style={{ margin: "0 0 8px", color: primary, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Saisie</h3><OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad X01" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow><div style={{ marginTop: 10, color: themeTextSoft, fontSize: 10.8, lineHeight: 1.45 }}>Les impacts S/D/T/BULL/DBULL/MISS sont conservés pour l’historique, les moyennes et les statistiques Fuyard / Chasseur.</div></section>;
@@ -270,7 +290,7 @@ export default function AttrapeMoiConfig(props: any) {
 
       {configViewMode === "guided" ? <section style={{ ...selectorCard, border: `1px solid ${primary}55` }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}><div><div style={{ color: primary, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div><div style={{ marginTop: 3, color: themeTextSoft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div></div><div style={{ display: "flex", gap: 4 }}>{guidedSteps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? primarySoft : "rgba(255,255,255,.03)", color: idx === guidedStep ? primary : "#aeb2d3", fontSize: 9.5, fontWeight: 950 }}>{idx + 1}</button>)}</div></div><div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${ACCENT}, ${CHASER})` }} /></div></section> : null}
 
-      {configViewMode === "guided" ? <>{guidedStep === 0 ? participantsBlock : null}{guidedStep === 1 ? pursuitBlock : null}{guidedStep === 2 ? formatBlock : null}{guidedStep === 3 ? inputBlock : null}{guidedStep === 4 ? summaryBlock : null}<div style={{ display: "flex", gap: 9, margin: "0 0 12px" }}><button type="button" onClick={() => setGuidedStep((s) => Math.max(0, s - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" onClick={() => setGuidedStep((s) => Math.min(guidedMaxStep, s + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button></div></> : <>{participantsBlock}<Section title="POURSUITE"><div style={panel}><OptionRow label="Avance du Fuyard"><OptionSelect value={headStart} options={[50,100,150,200,250,300,400,500]} onChange={(v: any) => setHeadStart(Number(v) || 0)} /></OptionRow><OptionRow label="Rounds max / manche"><OptionSelect value={pursuitRounds} options={[3,5,7,10,12,15,20]} onChange={(v: any) => setPursuitRounds(Number(v) || 10)} /></OptionRow><OptionRow label="Premier Fuyard"><OptionSelect value={startingRunner} options={[{ value: "first", label: "1er camp sélectionné" }, { value: "second", label: "2e camp sélectionné" }, { value: "random", label: "Tirage aléatoire" }]} onChange={setStartingRunner} /></OptionRow></div></Section><Section title="FORMAT"><div style={panel}><OptionRow label="Manches par set"><OptionSelect value={legsBestOf} options={[{ value: 3, label: "BO3" }, { value: 5, label: "BO5" }, { value: 7, label: "BO7" }]} onChange={(v: any) => setLegsBestOf(Number(v) as any)} /></OptionRow><OptionRow label="Sets du match"><OptionSelect value={setsBestOf} options={[{ value: 1, label: "BO1" }, { value: 3, label: "BO3" }, { value: 5, label: "BO5" }, { value: 7, label: "BO7" }]} onChange={(v: any) => setSetsBestOf(Number(v) as any)} /></OptionRow><OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad X01" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow></div></Section>{summaryBlock}</>}
+      {configViewMode === "guided" ? <>{guidedStep === 0 ? participantsBlock : null}{guidedStep === 1 ? pursuitBlock : null}{guidedStep === 2 ? formatBlock : null}{guidedStep === 3 ? inputBlock : null}{guidedStep === 4 ? summaryBlock : null}<div style={{ display: "flex", gap: 9, margin: "0 0 12px" }}><button type="button" onClick={() => setGuidedStep((s) => Math.max(0, s - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button><button type="button" onClick={() => setGuidedStep((s) => Math.min(guidedMaxStep, s + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button></div></> : <>{participantsBlock}<Section title="POURSUITE"><div style={panel}><OptionRow label="Avance du Fuyard"><OptionSelect value={headStart} options={[50,100,150,200,250,300,400,500]} onChange={(v: any) => setHeadStart(Number(v) || 0)} /></OptionRow><OptionRow label="Rounds max / manche"><OptionSelect value={pursuitRounds} options={[3,5,7,10,12,15,20]} onChange={(v: any) => setPursuitRounds(Number(v) || 10)} /></OptionRow><OptionRow label="Premier Fuyard"><OptionSelect value={startingRunner} options={[{ value: "first", label: "1er camp sélectionné" }, { value: "second", label: "2e camp sélectionné" }, { value: "random", label: "Tirage aléatoire" }]} onChange={setStartingRunner} /></OptionRow></div></Section>{formatBlock}<Section title="SAISIE"><div style={panel}><OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Keypad X01" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow></div></Section>{summaryBlock}</>}
 
       {(configViewMode === "complete" || guidedStep === guidedMaxStep) ? <div style={{ padding: "4px 4px 14px" }}><button type="button" disabled={!validSelection} onClick={onStart} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${primary}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${ACCENT}, ${CHASER})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${primary}55, 0 10px 24px rgba(0,0,0,.40)` : "none", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER LA POURSUITE</button>{!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}</div> : null}
     </div>

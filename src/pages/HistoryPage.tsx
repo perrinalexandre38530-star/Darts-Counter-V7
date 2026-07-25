@@ -1977,7 +1977,14 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
           })}
         </div>
         <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>
-          BO{Number(summary?.legsBestOf || anyE?.payload?.config?.legsBestOf || 3)} manches • BO{Number(summary?.setsBestOf || anyE?.payload?.config?.setsBestOf || 1)} sets • avance {Number(summary?.headStart ?? anyE?.payload?.config?.headStart ?? 100)} pts
+          {(() => {
+            const cfg = anyE?.payload?.config || {};
+            const legMode = String(summary?.legVictoryMode || cfg?.legVictoryMode || "best_of");
+            const setMode = String(summary?.setVictoryMode || cfg?.setVictoryMode || "best_of");
+            const legTarget = Number(summary?.legVictoryTarget || cfg?.legVictoryTarget || summary?.legsBestOf || cfg?.legsBestOf || 3);
+            const setTarget = Number(summary?.setVictoryTarget || cfg?.setVictoryTarget || summary?.setsBestOf || cfg?.setsBestOf || 1);
+            return `${legMode === "first_to" ? "FT" : "BO"}${legTarget} manches • ${setMode === "first_to" ? "FT" : "BO"}${setTarget} sets • avance ${Number(summary?.headStart ?? cfg?.headStart ?? 100)} pts`;
+          })()}
           {legs.length ? ` • ${legs.length} manches` : ""} • 💥 {captures} capture{captures > 1 ? "s" : ""} • 🏁 {escapes} évasion{escapes > 1 ? "s" : ""}
         </div>
         <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 850 }}>

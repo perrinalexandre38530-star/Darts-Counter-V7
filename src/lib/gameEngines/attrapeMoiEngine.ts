@@ -10,6 +10,7 @@ export type CatchMeScoreInputMethod = "keypad" | "dartboard";
 export type CatchMeBotLevel = "easy" | "normal" | "hard";
 export type CatchMeStartingRunner = "first" | "second" | "random";
 export type CatchMeRole = "runner" | "chaser";
+export type CatchMeVictoryMode = "best_of" | "first_to";
 
 export type CatchMeTeamConfig = {
   id: string;
@@ -33,15 +34,19 @@ export type CatchMeConfigPayload = {
   botLevel: CatchMeBotLevel;
   headStart: number;
   pursuitRounds: number;
-  legsBestOf: 3 | 5 | 7;
-  setsBestOf: 1 | 3 | 5 | 7;
+  legsBestOf: number;
+  setsBestOf: number;
+  legVictoryMode?: CatchMeVictoryMode;
+  legVictoryTarget?: number;
+  setVictoryMode?: CatchMeVictoryMode;
+  setVictoryTarget?: number;
   startingRunner: CatchMeStartingRunner;
   scoreInputMethod: CatchMeScoreInputMethod;
 };
 
 export type CatchMeRules = Pick<
   CatchMeConfigPayload,
-  "participantMode" | "headStart" | "pursuitRounds" | "legsBestOf" | "setsBestOf"
+  "participantMode" | "headStart" | "pursuitRounds" | "legsBestOf" | "setsBestOf" | "legVictoryMode" | "legVictoryTarget" | "setVictoryMode" | "setVictoryTarget"
 >;
 
 export type CatchMePlayerStats = {
@@ -274,6 +279,14 @@ function scoreDistance(state: CatchMeState): number {
 }
 
 function minToWin(bestOf: number): number { return Math.floor(bestOf / 2) + 1; }
+function victoryTarget(mode: CatchMeVictoryMode | undefined, target: number | undefined, fallbackBestOf: number): number {
+  const safeTarget = Math.max(1, Math.floor(Number(target) || fallbackBestOf || 1));
+  return mode === "first_to" ? safeTarget : minToWin(safeTarget);
+}
+function totalCountFromFormat(mode: CatchMeVictoryMode | undefined, target: number | undefined, fallbackBestOf: number): number {
+  const safeTarget = Math.max(1, Math.floor(Number(target) || fallbackBestOf || 1));
+  return mode === "first_to" ? safeTarget * 2 - 1 : safeTarget;
+}
 
 export function createCatchMeState(
   inputPlayers: Player[],
@@ -307,12 +320,20 @@ export function createCatchMeState(
   if (startingRunner === "random") runnerEntityId = Math.random() < .5 ? entityOrder[0] : entityOrder[1];
   const chaserEntityId = runnerEntityId === entityOrder[0] ? entityOrder[1] : entityOrder[0];
 
+  const legVictoryMode: CatchMeVictoryMode = inputRules.legVictoryMode === "first_to" ? "first_to" : "best_of";
+  const setVictoryMode: CatchMeVictoryMode = inputRules.setVictoryMode === "first_to" ? "first_to" : "best_of";
+  const legVictoryTarget = clampInt(inputRules.legVictoryTarget ?? inputRules.legsBestOf, 1, 30, 3);
+  const setVictoryTarget = clampInt(inputRules.setVictoryTarget ?? inputRules.setsBestOf, 1, 20, 3);
   const rules: CatchMeRules = {
     participantMode,
     headStart: clampInt(inputRules.headStart, 0, 2000, 100),
     pursuitRounds: clampInt(inputRules.pursuitRounds, 1, 99, 10),
-    legsBestOf: ([3, 5, 7].includes(Number(inputRules.legsBestOf)) ? Number(inputRules.legsBestOf) : 3) as 3 | 5 | 7,
-    setsBestOf: ([1, 3, 5, 7].includes(Number(inputRules.setsBestOf)) ? Number(inputRules.setsBestOf) : 3) as 1 | 3 | 5 | 7,
+    legVictoryMode,
+    legVictoryTarget,
+    setVictoryMode,
+    setVictoryTarget,
+    legsBestOf: totalCountFromFormat(legVictoryMode, legVictoryTarget, 3),
+    setsBestOf: totalCountFromFormat(setVictoryMode, setVictoryTarget, 3),
   };
 
   const playerStats: Record<string, CatchMePlayerStats> = {};
@@ -373,12 +394,12 @@ function finishLeg(state: CatchMeState, winnerEntityId: string, reason: "capture
 
   let setWonBy: string | null = null;
   let matchWonBy: string | null = null;
-  if (next.legWins[winnerEntityId] >= minToWin(next.rules.legsBestOf)) {
+  if (next.legWins[winnerEntityId] >= victoryTarget(next.rules.legVictoryMode, next.rules.legVictoryTarget, next.rules.legsBestOf)) {
     setWonBy = winnerEntityId;
     next.setWins[winnerEntityId] = Number(next.setWins[winnerEntityId] || 0) + 1;
     next.entityStats[winnerEntityId].setsWon += 1;
     (next.entities[winnerEntityId]?.playerIds || []).forEach((id) => { if (next.playerStats[id]) next.playerStats[id].setsWon += 1; });
-    if (next.setWins[winnerEntityId] >= minToWin(next.rules.setsBestOf)) {
+    if (next.setWins[winnerEntityId] >= victoryTarget(next.rules.setVictoryMode, next.rules.setVictoryTarget, next.rules.setsBestOf)) {
       matchWonBy = winnerEntityId;
       next.finished = true;
       next.winnerEntityId = winnerEntityId;
@@ -501,8 +522,8 @@ export function startNextCatchMeLeg(input: CatchMeState): CatchMeState {
 export function getCatchMeDistance(state: CatchMeState): number { return scoreDistance(state); }
 export function getCatchMeActiveRole(state: CatchMeState): CatchMeRole { return state.phase; }
 export function getCatchMeActiveEntityId(state: CatchMeState): string { return roleEntityId(state, state.phase); }
-export function getCatchMeLegsToWin(state: CatchMeState): number { return minToWin(state.rules.legsBestOf); }
-export function getCatchMeSetsToWin(state: CatchMeState): number { return minToWin(state.rules.setsBestOf); }
+export function getCatchMeLegsToWin(state: CatchMeState): number { return victoryTarget(state.rules.legVictoryMode, state.rules.legVictoryTarget, state.rules.legsBestOf); }
+export function getCatchMeSetsToWin(state: CatchMeState): number { return victoryTarget(state.rules.setVictoryMode, state.rules.setVictoryTarget, state.rules.setsBestOf); }
 
 export function cloneCatchMeState(state: CatchMeState): CatchMeState {
   return {

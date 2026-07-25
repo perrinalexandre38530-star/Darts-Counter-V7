@@ -13,6 +13,7 @@ import PageHeader from "../components/PageHeader";
 import tickerAttrapeMoi from "../assets/tickers/ticker_attrape_moi.png";
 import tickerAttrapeMoiEn from "../assets/tickers/ticker_attrape_moi_en.png";
 import ProfileAvatar from "../components/ProfileAvatar";
+import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
@@ -85,8 +86,12 @@ function dartPoints(dart: UiDart) {
 }
 function normalizeConfig(props: any): CatchMeConfigPayload {
   const raw = props?.params?.config || props?.config || props?.params || {};
-  const legs = [3, 5, 7].includes(Number(raw?.legsBestOf)) ? Number(raw.legsBestOf) : 3;
-  const sets = [1, 3, 5, 7].includes(Number(raw?.setsBestOf)) ? Number(raw.setsBestOf) : 1;
+  const legVictoryMode = raw?.legVictoryMode === "first_to" ? "first_to" : "best_of";
+  const setVictoryMode = raw?.setVictoryMode === "first_to" ? "first_to" : "best_of";
+  const legVictoryTarget = Math.max(1, Math.floor(Number(raw?.legVictoryTarget ?? raw?.legsBestOf ?? 3) || 3));
+  const setVictoryTarget = Math.max(1, Math.floor(Number(raw?.setVictoryTarget ?? raw?.setsBestOf ?? 1) || 1));
+  const legs = legVictoryMode === "first_to" ? legVictoryTarget * 2 - 1 : legVictoryTarget;
+  const sets = setVictoryMode === "first_to" ? setVictoryTarget * 2 - 1 : setVictoryTarget;
   return {
     mode: "attrape_moi",
     participantMode: raw?.participantMode === "teams" ? "teams" : "players",
@@ -100,8 +105,12 @@ function normalizeConfig(props: any): CatchMeConfigPayload {
     botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
     headStart: Math.max(0, Math.min(2000, Number(raw?.headStart ?? 100))),
     pursuitRounds: Math.max(1, Math.min(99, Number(raw?.pursuitRounds ?? 10))),
-    legsBestOf: legs as 3 | 5 | 7,
-    setsBestOf: sets as 1 | 3 | 5 | 7,
+    legsBestOf: legs,
+    setsBestOf: sets,
+    legVictoryMode,
+    legVictoryTarget,
+    setVictoryMode,
+    setVictoryTarget,
     startingRunner: raw?.startingRunner === "second" || raw?.startingRunner === "random" ? raw.startingRunner : "first",
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
   };
@@ -148,7 +157,7 @@ function RulesContent({ config, primary }: { config: CatchMeConfigPayload; prima
     <div><strong style={{ color: primary }}>POURSUITE</strong><br />Une manche dure au maximum {config.pursuitRounds} rounds. Chaque joueur lance 3 fléchettes par passage.</div>
     <div><strong style={{ color: C.gold }}>CAPTURE / ÉVASION</strong><br />Capture immédiate dès que le Chasseur rejoint le Fuyard. Sinon le Fuyard gagne la manche s’il tient jusqu’au dernier round.</div>
     <div><strong style={{ color: C.gold }}>RÔLES ALTERNÉS</strong><br />Après chaque manche, le Fuyard devient Chasseur et inversement. Le duel compare donc les deux joueurs dans les deux rôles.</div>
-    <div><strong style={{ color: primary }}>FORMAT</strong><br />Manches : BO{config.legsBestOf}. Sets : BO{config.setsBestOf}. Un set repart à 0–0 manche ; les sets gagnés restent acquis.</div>
+    <div><strong style={{ color: primary }}>FORMAT</strong><br />Manches : {config.legVictoryMode === "first_to" ? `FT${config.legVictoryTarget}` : `BO${config.legVictoryTarget || config.legsBestOf}`}. Sets : {config.setVictoryMode === "first_to" ? `FT${config.setVictoryTarget}` : `BO${config.setVictoryTarget || config.setsBestOf}`}. Un set repart à 0–0 manche ; les sets gagnés restent acquis.</div>
     {config.participantMode === "teams" ? <div><strong style={{ color: C.gold }}>ÉQUIPES</strong><br />Tous les Fuyards jouent d’abord, puis tous les Chasseurs. La capture peut survenir pendant n’importe quelle volée du camp Chasseur.</div> : null}
   </div>;
 }
@@ -247,6 +256,10 @@ export default function AttrapeMoiPlay(props: any) {
     pursuitRounds: config.pursuitRounds,
     legsBestOf: config.legsBestOf,
     setsBestOf: config.setsBestOf,
+    legVictoryMode: config.legVictoryMode,
+    legVictoryTarget: config.legVictoryTarget,
+    setVictoryMode: config.setVictoryMode,
+    setVictoryTarget: config.setVictoryTarget,
   }), [config]);
 
   const createInitial = React.useCallback(() => createCatchMeState(profiles as any, rules, teamConfigs, config.selectedIds, config.startingRunner), [profiles, rules, teamConfigs, config.selectedIds, config.startingRunner]);
@@ -524,13 +537,13 @@ export default function AttrapeMoiPlay(props: any) {
     const gameInfo = {
       mode: "attrape_moi", participantMode: config.participantMode,
       headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds,
-      legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf,
+      legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf, legVictoryMode: state.rules.legVictoryMode, legVictoryTarget: state.rules.legVictoryTarget, setVictoryMode: state.rules.setVictoryMode, setVictoryTarget: state.rules.setVictoryTarget,
       teams: config.participantMode === "teams" ? entities.map((e) => ({ id: e.id, name: e.name, playerIds: e.playerIds, players: e.playerIds })) : [],
     };
     const summary = {
       kind: "attrape_moi", mode: "attrape_moi", sport: "darts", finished: state.finished, participantMode: config.participantMode,
       winnerId: winnerEntityId, winnerName: winnerEntity?.name || "—", tied: false,
-      headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds, legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf,
+      headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds, legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf, legVictoryMode: state.rules.legVictoryMode, legVictoryTarget: state.rules.legVictoryTarget, setVictoryMode: state.rules.setVictoryMode, setVictoryTarget: state.rules.setVictoryTarget,
       legsToWin, setsToWin, setWins: { ...state.setWins }, legWins: { ...state.legWins }, entities, standings: entities,
       legResults, players: playerRows, perPlayer: playerRows, teams: config.participantMode === "teams" ? entities : [], matchStats,
       duration: matchStats.durationMs, durationMs: matchStats.durationMs,
@@ -676,8 +689,8 @@ export default function AttrapeMoiPlay(props: any) {
                 <div style={{ marginTop: 1, color: distance <= 0 ? C.chaser : C.gold, fontSize: distance <= 0 ? 24 : 34, lineHeight: 1, fontWeight: 1100, letterSpacing: -.8, textShadow: "0 0 18px rgba(255,215,106,.24)", whiteSpace: "nowrap" }}>{distance > 0 ? `+${distance}` : "0"}</div>
                 <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
                   <span style={{ color: "rgba(255,255,255,.54)", fontSize: 7.6, fontWeight: 950 }}>SET {state.setNo} - LEG {state.legNo} - ROUND {state.pursuitRound}</span>
-                  <span style={{ padding: "2px 6px", borderRadius: 999, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: primary, fontSize: 7.2, fontWeight: 1100 }}>BO{state.rules.legsBestOf}</span>
-                  <span style={{ padding: "2px 6px", borderRadius: 999, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: C.gold, fontSize: 7.2, fontWeight: 1100 }}>FT{legsToWin}</span>
+                  <span style={{ padding: "2px 6px", borderRadius: 999, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: primary, fontSize: 7.2, fontWeight: 1100 }}>{state.rules.legVictoryMode === "first_to" ? `FT${state.rules.legVictoryTarget}` : `BO${state.rules.legVictoryTarget || state.rules.legsBestOf}`}</span>
+                  <span style={{ padding: "2px 6px", borderRadius: 999, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: C.gold, fontSize: 7.2, fontWeight: 1100 }}>{state.rules.setVictoryMode === "first_to" ? `FT${state.rules.setVictoryTarget}` : `BO${state.rules.setVictoryTarget || state.rules.setsBestOf}`}</span>
                 </div>
               </div>
               <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px", gap: 6, alignItems: "center" }}>
@@ -738,7 +751,7 @@ export default function AttrapeMoiPlay(props: any) {
     /> : null}
 
     {state.awaitingNextLeg && state.lastLegResult && !state.finished ? <LegResultModal state={state} onContinue={continueLeg} primary={primary} /> : null}
-    {showEnd && state.finished ? <EndModal state={state} profilesById={byId} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showEnd && state.finished ? <EndModal record={buildHistoryRecord()} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
 
@@ -786,7 +799,7 @@ function MatchFloatingPanel({ kind, onClose, primary, state, config, profileById
       {kind === "match" ? <>
         <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
           <MiniKpi label="SET" value={state.setNo} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)}–${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
-          <MiniKpi label="MANCHE" value={state.legNo} sub={`BO${state.rules.legsBestOf}`} color={C.gold} />
+          <MiniKpi label="MANCHE" value={state.legNo} sub={state.rules.legVictoryMode === "first_to" ? `FT${state.rules.legVictoryTarget}` : `BO${state.rules.legVictoryTarget || state.rules.legsBestOf}`} color={C.gold} />
           <MiniKpi label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`Avance ${state.rules.headStart}`} color={state.phase === "runner" ? C.runner : C.chaser} />
         </div>
         <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
@@ -913,80 +926,8 @@ function EndLineChart({ values, color = C.gold, label = "ÉVOLUTION" }: { values
   </div>;
 }
 
-function EndModal({ state, profilesById, participantMode, primary, onClose, onReplay, onHistory }: any) {
-  const [tab, setTab] = React.useState<"resume" | "camps" | "players" | "roles" | "legs" | "impacts">("resume");
-  const winner = state.entities[state.winnerEntityId] || null;
-  const entityRows = state.entityOrder.map((id: string) => ({ entity: state.entities[id], stats: state.entityStats[id], setWins: state.setWins[id] || 0, legWins: state.legWins[id] || state.entityStats[id]?.legsWon || 0, winner: id === state.winnerEntityId }));
-  const playerRows = state.players.map((player: any) => ({ player, profile: profilesById.get(player.id) || player, stats: state.playerStats[player.id] || emptyCatchMePlayerStats(), entityId: state.entityByPlayer[player.id], winner: state.entityByPlayer[player.id] === state.winnerEntityId }));
-  const totalDarts = playerRows.reduce((a: number, r: any) => a + Number(r.stats.darts || 0), 0);
-  const totalPoints = playerRows.reduce((a: number, r: any) => a + Number(r.stats.points || 0), 0);
-  const totalVisits = playerRows.reduce((a: number, r: any) => a + Number(r.stats.visits || 0), 0);
-  const totalCaptures = state.legResults.filter((r: any) => r.reason === "capture").length;
-  const totalEscapes = state.legResults.filter((r: any) => r.reason === "escape").length;
-  const matchAvg3 = totalDarts ? round1((totalPoints / totalDarts) * 3) : 0;
-  const bestVisit = playerRows.reduce((m: number, r: any) => Math.max(m, Number(r.stats.bestVisit || 0)), 0);
-  const captureRounds = state.legResults.filter((r: any) => r.reason === "capture").map((r: any) => Number(r.pursuitRound || 0)).filter(Boolean);
-  const avgCaptureRound = captureRounds.length ? round1(captureRounds.reduce((a: number, n: number) => a + n, 0) / captureRounds.length) : 0;
-  const impacts = playerRows.reduce((acc: any, r: any) => { ["singles","doubles","triples","bulls","dbulls","misses"].forEach((k) => acc[k] += Number(r.stats[k] || 0)); return acc; }, { singles:0,doubles:0,triples:0,bulls:0,dbulls:0,misses:0 });
-  const visitScores = (state.history || []).map((v: any) => Number(v?.score || 0));
-  const visitBuckets = (state.history || []).reduce((b: any, v: any) => { const n=Number(v?.score||0); if(n<=0)b[0]++; else if(n<40)b[1]++; else if(n<60)b[2]++; else if(n<100)b[3]++; else if(n<140)b[4]++; else if(n<180)b[5]++; else b[6]++; return b; }, [0,0,0,0,0,0,0]);
-  const distanceCurve = state.legResults.map((r: any) => Number(r.finalDistance || 0));
-  const duration = fmtDuration((state.finishedAt || Date.now()) - state.startedAt);
-  const tabs = [["resume","RÉSUMÉ"],["camps","CAMPS"],["players","JOUEURS"],["roles","RÔLES"],["legs","MANCHES"],["impacts","IMPACTS"]] as const;
-
-  return <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 9 }}>
-    <div style={panelStyle({ width: "min(980px,100%)", maxHeight: "95vh", overflow: "auto", padding: 12, borderColor: `${primary}77` })}>
-      <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", alignItems: "center", gap: 8 }}><div /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 10.5, fontWeight: 1100, letterSpacing: 1.2 }}>FIN DE POURSUITE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>ATTRAPE-MOI SI TU PEUX !</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
-
-      <div className="dc-scroll-thin" style={{ marginTop: 9, display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>{tabs.map(([id,label]) => <StatTabButton key={id} active={tab===id} label={label} onClick={()=>setTab(id as any)} color={id === "roles" ? C.runner : id === "legs" ? C.chaser : primary} />)}</div>
-
-      {tab === "resume" ? <>
-        <div style={{ marginTop: 9, padding: 11, borderRadius: 16, background: `${C.gold}0d`, border: `1px solid ${C.gold}55`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 9.5, fontWeight: 1100 }}>🏆 VAINQUEUR</div><div style={{ marginTop: 2, fontSize: 24, fontWeight: 1100 }}>{winner?.name || "—"}</div><div style={{ color: primary, fontSize: 13, fontWeight: 1000 }}>{Number(state.setWins[state.winnerEntityId] || 0)} SET{Number(state.setWins[state.winnerEntityId] || 0) > 1 ? "S" : ""} · {Number(state.legWins[state.winnerEntityId] || state.entityStats[state.winnerEntityId]?.legsWon || 0)} MANCHES</div></div>
-        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
-          <MiniKpi label="FORMAT" value={`BO${state.rules.legsBestOf}`} sub={`sets BO${state.rules.setsBestOf}`} color={primary} />
-          <MiniKpi label="SCORE TOTAL" value={totalPoints} sub={`${matchAvg3} avg/3`} color={C.gold} />
-          <MiniKpi label="CAPTURES" value={totalCaptures} sub={`${totalEscapes} évasions`} color={C.chaser} />
-          <MiniKpi label="DURÉE" value={duration} sub={`${totalDarts} darts`} color={C.runner} />
-          <MiniKpi label="BEST VOLÉE" value={bestVisit} sub={`${totalVisits} volées`} color={C.gold} />
-          <MiniKpi label="CAPTURE MOY." value={avgCaptureRound ? `R${avgCaptureRound}` : "—"} sub={captureRounds.length ? `best R${Math.min(...captureRounds)}` : "aucune"} color={C.chaser} />
-          <MiniKpi label="PTS / VOLÉE" value={totalVisits ? round1(totalPoints/totalVisits) : 0} sub="moyenne" color={primary} />
-          <MiniKpi label="DARTS / MANCHE" value={state.legResults.length ? round1(totalDarts/state.legResults.length) : 0} sub={`${state.legResults.length} manches`} color={C.runner} />
-        </div>
-        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-          {entityRows.map(({ entity, stats, setWins, legWins, winner: won }: any) => {
-            const score = Number(stats?.runnerPoints || 0) + Number(stats?.chaserPoints || 0);
-            return <div key={entity.id} style={panelStyle({ padding: 9, borderColor: won ? `${C.gold}77` : "rgba(255,255,255,.09)" })}>
-              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:6 }}><div style={{ fontWeight: 1100, fontSize: 14 }}>{entity.name}{won ? " 🏆" : ""}</div><b style={{ color:C.gold,fontSize:18 }}>{score} pts</b></div>
-              <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
-                <MiniKpi label="SCORE" value={score} sub="points" color={C.gold} />
-                <MiniKpi label="SETS" value={setWins} sub="gagnés" color={primary} />
-                <MiniKpi label="MANCHES" value={legWins} sub="gagnées" color="#fff" />
-                <MiniKpi label="CAPTURES" value={stats?.captures || 0} sub={`${stats?.escapes || 0} évasions`} color={C.chaser} />
-              </div>
-            </div>;
-          })}
-        </div>
-      </> : null}
-
-      {tab === "camps" ? <div style={{ marginTop: 9, display: "grid", gap: 8 }}>{entityRows.map(({entity,stats,setWins,legWins,winner:won}:any) => {
-        const score=Number(stats?.runnerPoints||0)+Number(stats?.chaserPoints||0); const capRate=stats?.chaserLegs ? round1((Number(stats.captures||0)/Number(stats.chaserLegs||1))*100):0; const escRate=stats?.runnerLegs ? round1((Number(stats.escapes||0)/Number(stats.runnerLegs||1))*100):0;
-        return <div key={entity.id} style={panelStyle({ padding:10,borderColor:won?`${C.gold}77`:`${primary}33` })}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:16}}>{entity.name}{won?" 🏆":""}</b><div style={{fontSize:8.5,color:"rgba(255,255,255,.5)"}}>PERFORMANCE DU CAMP</div></div><div style={{color:C.gold,fontSize:25,fontWeight:1100}}>{score}</div></div><div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4}}><MiniKpi label="SETS" value={setWins} sub="gagnés" color={C.gold}/><MiniKpi label="MANCHES" value={legWins} sub="gagnées" color={primary}/><MiniKpi label="FUYARD" value={stats?.runnerLegWins||0} sub={`${stats?.escapes||0} évasions`} color={C.runner}/><MiniKpi label="CHASSEUR" value={stats?.chaserLegWins||0} sub={`${stats?.captures||0} captures`} color={C.chaser}/></div><div style={{marginTop:7,display:"grid",gap:5}}><EndMetricBar label="POINTS" left={stats?.runnerPoints||0} right={stats?.chaserPoints||0}/><EndMetricBar label="TAUX DE SUCCÈS" left={escRate} right={capRate}/></div><div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4}}><MiniKpi label="CAPTURE + RAPIDE" value={stats?.fastestCaptureRound?`R${stats.fastestCaptureRound}`:"—"} sub={stats?.captures?`moy R${round1(stats.captureRoundsTotal/stats.captures)}`:"—"} color={C.chaser}/><MiniKpi label="DISTANCE MAX" value={stats?.maxRunnerLead||0} sub="en fuite" color={C.runner}/><MiniKpi label="ÉVASION MAX" value={stats?.bestEscapeLead||0} sub="écart final" color={C.runner}/><MiniKpi label="PLUS PROCHE" value={stats?.closestChaseGap??"—"} sub="écart chasse" color={C.chaser}/></div></div>;
-      })}</div> : null}
-
-      {tab === "players" ? <div style={{ marginTop: 9, overflowX: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160, fontSize: 9.5 }}><thead><tr style={{ background: "rgba(255,255,255,.05)" }}>{["Joueur","Score","Sets","Manches","AVG/3","Best","AVG Fuyard","Best F.","AVG Chasseur","Best C.","Pts F.","Pts C.","Capt.","Évas.","Darts","Volées","S","D","T","Bull","DBull","Miss"].map((h) => <th key={h} style={{ padding: "7px 5px", textAlign: h === "Joueur" ? "left" : "center", color: "rgba(255,255,255,.68)" }}>{h}</th>)}</tr></thead><tbody>{playerRows.map((row: any) => {
-        const s=row.stats; const avg=s.darts?round1((s.points/s.darts)*3):0; const ravg=s.runnerDarts?round1((s.runnerPoints/s.runnerDarts)*3):0; const cavg=s.chaserDarts?round1((s.chaserPoints/s.chaserDarts)*3):0;
-        return <tr key={row.player.id} style={{ borderTop:"1px solid rgba(255,255,255,.06)" }}><td style={{padding:7,fontWeight:1000}}>{playerName(row.profile)}{row.winner?<span style={{color:C.gold}}> · 🏆</span>:""}</td><td style={td(C.gold)}>{s.points}</td><td style={td(primary)}>{s.setsWon}</td><td style={td()}>{s.legsWon}</td><td style={td(primary)}>{avg}</td><td style={td(C.gold)}>{s.bestVisit}</td><td style={td(C.runner)}>{ravg}</td><td style={td(C.runner)}>{s.runnerBestVisit}</td><td style={td(C.chaser)}>{cavg}</td><td style={td(C.chaser)}>{s.chaserBestVisit}</td><td style={td()}>{s.runnerPoints}</td><td style={td()}>{s.chaserPoints}</td><td style={td(C.chaser)}>{s.captureCredits}</td><td style={td(C.runner)}>{s.escapeCredits}</td><td style={td()}>{s.darts}</td><td style={td()}>{s.visits}</td><td style={td()}>{s.singles}</td><td style={td()}>{s.doubles}</td><td style={td()}>{s.triples}</td><td style={td()}>{s.bulls}</td><td style={td()}>{s.dbulls}</td><td style={td(C.red)}>{s.misses}</td></tr>;
-      })}</tbody></table></div> : null}
-
-      {tab === "roles" ? <div style={{ marginTop: 9, display:"grid", gap:8 }}>{playerRows.map((row:any)=>{const s=row.stats; const ravg=s.runnerDarts?round1((s.runnerPoints/s.runnerDarts)*3):0; const cavg=s.chaserDarts?round1((s.chaserPoints/s.chaserDarts)*3):0; return <div key={row.player.id} style={panelStyle({padding:10,borderColor:`${row.winner?C.gold:primary}44`})}><div style={{display:"flex",alignItems:"center",gap:8}}><ProfileAvatar profile={row.profile} size={34}/><div style={{minWidth:0,flex:1}}><b>{playerName(row.profile)}</b><div style={{fontSize:8.5,color:"rgba(255,255,255,.5)"}}>{row.winner?"VAINQUEUR · ":""}{s.legsWon} manches · {s.setsWon} sets</div></div><b style={{color:C.gold,fontSize:18}}>{s.points} pts</b></div><div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}><div style={{padding:8,borderRadius:12,background:`${C.runner}0d`,border:`1px solid ${C.runner}33`}}><div style={{color:C.runner,fontWeight:1100,fontSize:9}}>FUYARD</div><div style={{marginTop:5,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}><MiniKpi label="AVG/3" value={ravg} sub="" color={C.runner}/><MiniKpi label="BEST" value={s.runnerBestVisit||0} sub="" color={C.gold}/><MiniKpi label="POINTS" value={s.runnerPoints||0} sub={`${s.runnerDarts||0} darts`} color="#fff"/></div></div><div style={{padding:8,borderRadius:12,background:`${C.chaser}0d`,border:`1px solid ${C.chaser}33`}}><div style={{color:C.chaser,fontWeight:1100,fontSize:9}}>CHASSEUR</div><div style={{marginTop:5,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}><MiniKpi label="AVG/3" value={cavg} sub="" color={C.chaser}/><MiniKpi label="BEST" value={s.chaserBestVisit||0} sub="" color={C.gold}/><MiniKpi label="POINTS" value={s.chaserPoints||0} sub={`${s.chaserDarts||0} darts`} color="#fff"/></div></div></div><div style={{marginTop:6,display:"grid",gap:5}}><EndMetricBar label="AVG/3" left={ravg} right={cavg}/><EndMetricBar label="BEST VOLÉE" left={s.runnerBestVisit||0} right={s.chaserBestVisit||0}/><EndMetricBar label="POINTS" left={s.runnerPoints||0} right={s.chaserPoints||0}/></div></div>})}</div> : null}
-
-      {tab === "legs" ? <div style={{ marginTop: 9 }}><EndLineChart values={distanceCurve} color={C.chaser} label="ÉCART FINAL PAR MANCHE"/><div style={{marginTop:7,display:"grid",gap:5}}>{state.legResults.map((r:any,index:number)=><div key={r.globalLegNo||index} style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:8,borderRadius:11,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{color:primary}}>S{r.setNo} M{r.legNo}</b><div style={{minWidth:0}}><div style={{fontWeight:1000,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{state.entities[r.winnerEntityId]?.name} · {r.reason==="capture"?"💥 CAPTURE":"🏁 ÉVASION"}</div><div style={{fontSize:8.5,color:"rgba(255,255,255,.54)"}}>{state.entities[r.runnerEntityId]?.name} {r.runnerScore} — {r.chaserScore} {state.entities[r.chaserEntityId]?.name}</div></div><b style={{color:r.reason==="capture"?C.chaser:C.runner}}>R{r.pursuitRound}</b><b style={{color:C.gold}}>{r.finalDistance>0?`+${r.finalDistance}`:r.finalDistance}</b></div>)}</div></div> : null}
-
-      {tab === "impacts" ? <div style={{marginTop:9}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>{[["SIMPLES",impacts.singles,"#fff"],["DOUBLES",impacts.doubles,"#42d6ff"],["TRIPLES",impacts.triples,"#c967ff"],["BULL",impacts.bulls,"#65efb4"],["DBULL",impacts.dbulls,C.gold],["MISS",impacts.misses,C.red]].map(([l,v,c]:any)=><MiniKpi key={l} label={l} value={v} sub={`${totalDarts?round1((Number(v)/totalDarts)*100):0}%`} color={c}/>)}</div><div style={{marginTop:8,padding:9,borderRadius:13,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><div style={{fontSize:9,fontWeight:1100,color:primary,marginBottom:7}}>DISTRIBUTION DES VOLÉES</div><div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:4}}>{[["0",visitBuckets[0]],["1-39",visitBuckets[1]],["40-59",visitBuckets[2]],["60-99",visitBuckets[3]],["100+",visitBuckets[4]],["140+",visitBuckets[5]],["180",visitBuckets[6]]].map(([l,v]:any)=>{const max=Math.max(...visitBuckets,1);return <div key={l} style={{minWidth:0,textAlign:"center"}}><div style={{height:74,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 3px"}}><div style={{width:"100%",height:`${Math.max(4,(Number(v)/max)*100)}%`,borderRadius:"7px 7px 2px 2px",background:`linear-gradient(180deg,${C.gold},${primary})`}}/></div><b style={{display:"block",marginTop:4,fontSize:9}}>{v}</b><span style={{fontSize:7,color:"rgba(255,255,255,.48)"}}>{l}</span></div>})}</div></div><div style={{marginTop:8}}><EndLineChart values={visitScores.slice(-30)} color={C.gold} label="30 DERNIÈRES VOLÉES"/></div></div> : null}
-
-      <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><button onClick={onReplay} style={actionButton(primary)}>REJOUER</button><button onClick={onHistory} style={{ ...actionButton(C.gold), background: `linear-gradient(90deg,${C.runner},${C.chaser})`, color: "#071018" }}>HISTORIQUE & STATS</button></div>
-    </div>
-  </div>;
+function EndModal({ record, primary, onClose, onReplay, onHistory }: any) {
+  return <AttrapeMoiMatchStatsView record={record} primary={primary} modal onClose={onClose} onReplay={onReplay} onHistory={onHistory} />;
 }
 
 function smallButton(color: string): React.CSSProperties { return { minHeight: 40, borderRadius: 12, border: `1px solid ${color}88`, background: `${color}18`, color, fontWeight: 1000, cursor: "pointer", fontSize: 10 }; }

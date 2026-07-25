@@ -8502,6 +8502,23 @@ return (
               </div>
             )}
 
+{currentMode === "attrape_moi" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement ATTRAPE-MOI…" />}>
+                    <AttrapeMoiStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher les statistiques ATTRAPE-MOI.
+                  </div>
+                )}
+              </div>
+            )}
+
             {["battle_royale", "warfare", "baseball", "president"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>

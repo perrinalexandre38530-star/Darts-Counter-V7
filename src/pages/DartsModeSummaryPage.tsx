@@ -1,4 +1,5 @@
 import * as React from "react";
+import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 
 type Props = {
   store?: any;
@@ -416,6 +417,18 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         : mode === "prisoner"
           ? num(prisonerMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(r.raw?.captures, 0), 0))
           : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
+
+  if (mode === "attrape_moi") {
+    return (
+      <div style={pageStyle}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+          <button onClick={() => go("stats", { tab: "history" })} style={pill(meta.accent, true)}>← Historique</button>
+          <button onClick={() => go("games")} style={pill(meta.accent, false)}>Quitter</button>
+        </div>
+        <AttrapeMoiMatchStatsView record={rec} primary={meta.accent} historyMode />
+      </div>
+    );
+  }
 
   return (
     <div style={pageStyle}>
