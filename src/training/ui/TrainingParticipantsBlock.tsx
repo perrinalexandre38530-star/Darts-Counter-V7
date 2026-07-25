@@ -1,8 +1,3 @@
-// ============================================
-// src/training/ui/TrainingParticipantsBlock.tsx
-// Bloc commun : Joueurs locaux + BOTS IA
-// ============================================
-
 import React from "react";
 import type { Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -17,6 +12,8 @@ export default function TrainingParticipantsBlock({
   setSelectedBotIds,
   maxPlayers = 4,
   maxBots = 4,
+  solo = false,
+  allowBots = true,
 }: {
   profiles?: Profile[];
   selectedPlayerIds: string[];
@@ -25,8 +22,30 @@ export default function TrainingParticipantsBlock({
   setSelectedBotIds: (ids: string[]) => void;
   maxPlayers?: number;
   maxBots?: number;
+  solo?: boolean;
+  allowBots?: boolean;
 }) {
   const { theme } = useTheme();
+  const safeProfiles = Array.isArray(profiles) ? profiles : [];
+  const effectiveMaxPlayers = solo ? 1 : maxPlayers;
+
+  React.useEffect(() => {
+    if (!solo) return;
+    if (selectedPlayerIds.length > 1) {
+      setSelectedPlayerIds(selectedPlayerIds.slice(0, 1));
+    }
+  }, [selectedPlayerIds, setSelectedPlayerIds, solo]);
+
+  React.useEffect(() => {
+    if (!solo || selectedPlayerIds.length > 0 || safeProfiles.length === 0) return;
+    const firstId = String(safeProfiles[0]?.id || "");
+    if (firstId) setSelectedPlayerIds([firstId]);
+  }, [safeProfiles, selectedPlayerIds.length, setSelectedPlayerIds, solo]);
+
+  React.useEffect(() => {
+    if (allowBots || selectedBotIds.length === 0) return;
+    setSelectedBotIds([]);
+  }, [allowBots, selectedBotIds, setSelectedBotIds]);
 
   return (
     <div
@@ -34,31 +53,50 @@ export default function TrainingParticipantsBlock({
         marginBottom: 12,
         borderRadius: 18,
         border: `1px solid ${theme.borderSoft}`,
-        background: "rgba(0,0,0,0.35)",
+        background: "linear-gradient(145deg,rgba(7,25,38,.82),rgba(0,0,0,.50))",
         padding: 12,
+        boxShadow: "0 12px 28px rgba(0,0,0,.24)",
       }}
     >
-      <div style={{ fontWeight: 900, letterSpacing: 0.6, marginBottom: 8, color: theme.primary }}>
-        Participants
+      <div
+        style={{
+          fontWeight: 950,
+          letterSpacing: 0.9,
+          marginBottom: 5,
+          color: "#27dcff",
+          textTransform: "uppercase",
+        }}
+      >
+        {solo ? "Joueur" : "Participants"}
       </div>
 
-      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
-        Sélectionne tes joueurs locaux et/ou des BOTS IA.
+      <div style={{ fontSize: 12, opacity: 0.76, marginBottom: 9 }}>
+        {solo
+          ? "Session d'entraînement solo : sélectionne le profil qui recevra les statistiques."
+          : "Sélectionne les joueurs locaux et, si le mode l'autorise, les BOTS IA."}
       </div>
 
-      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>Joueurs locaux</div>
       <TrainingPlayersCarousel
-        profiles={profiles}
+        profiles={safeProfiles}
         selectedIds={selectedPlayerIds}
-        onChange={setSelectedPlayerIds}
-        max={maxPlayers}
+        onChange={(ids) => setSelectedPlayerIds(solo ? ids.slice(-1) : ids)}
+        max={effectiveMaxPlayers}
         min={1}
       />
 
-      <div style={{ height: 10 }} />
-
-      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>BOTS IA</div>
-      <TrainingBotsCarousel selectedIds={selectedBotIds} onChange={setSelectedBotIds} max={maxBots} />
+      {allowBots && !solo ? (
+        <>
+          <div style={{ height: 10 }} />
+          <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.88, marginBottom: 6 }}>
+            BOTS IA
+          </div>
+          <TrainingBotsCarousel
+            selectedIds={selectedBotIds}
+            onChange={setSelectedBotIds}
+            max={maxBots}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

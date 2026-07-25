@@ -1,71 +1,55 @@
 // =============================================================
 // src/training/lib/trainingCanonical.ts
-// Canonical scoring helpers (LOT 23)
-// - Define which metric drives ranking per mode (time vs score)
-// - Provide formatting + normalization for UI + trends
+// Métrique canonique des classements Training.
 // =============================================================
 
 export type TrainingMetric = "time" | "score";
 
-export function getTrainingModeMetric(modeId: string | null | undefined): TrainingMetric {
-  const id = (modeId || "").toLowerCase();
-  // Time-based modes
-  if (id.includes("time_attack") || id.includes("timeattack") || id === "training_time_attack") return "time";
-  // Default: score-based
+export function getTrainingModeMetric(_modeId: string | null | undefined): TrainingMetric {
+  // Tous les drills Training actuellement jouables utilisent une performance
+  // où "plus haut = meilleur". Time Attack = points max dans un temps fixé.
   return "score";
 }
 
-export function canonicalFromRow(modeId: string | null | undefined, row: { best_score?: any; best_time_ms?: any }) {
+export function canonicalFromRow(
+  modeId: string | null | undefined,
+  row: { best_score?: any; best_time_ms?: any }
+) {
   const metric = getTrainingModeMetric(modeId);
   if (metric === "time") {
-    const t = row.best_time_ms;
-    if (t == null) return null;
-    const ms = Number(t);
-    if (!Number.isFinite(ms) || ms <= 0) return null;
-    return ms;
+    const value = Number(row.best_time_ms);
+    return Number.isFinite(value) && value > 0 ? value : null;
   }
-  const s = row.best_score;
-  if (s == null) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return n;
+
+  const value = Number(row.best_score);
+  return Number.isFinite(value) ? value : null;
 }
 
-export function formatCanonical(modeId: string | null | undefined, row: { best_score?: any; best_time_ms?: any }) {
+export function formatCanonical(
+  modeId: string | null | undefined,
+  row: { best_score?: any; best_time_ms?: any }
+) {
   const metric = getTrainingModeMetric(modeId);
-  if (metric === "time") {
-    const ms = canonicalFromRow(modeId, row);
-    if (ms == null) return "—";
-    const sec = Math.round(ms / 1000);
-    return `${sec}s`;
-  }
-  const v = canonicalFromRow(modeId, row);
-  if (v == null) return "—";
-  return `${Math.round(v)}`;
+  const value = canonicalFromRow(modeId, row);
+  if (value == null) return "—";
+  return metric === "time" ? `${Math.round(value / 1000)}s` : `${Math.round(value)}`;
 }
 
-/** Convert a raw event into a "higher is better" performance number (for sparkline/trends). */
 export function performanceFromEvent(
   modeId: string | null | undefined,
   ev: { score?: any; duration_ms?: any; durationMs?: any }
 ): number | null {
   const metric = getTrainingModeMetric(modeId);
   if (metric === "time") {
-    const d = ev.duration_ms ?? (ev as any).durationMs;
-    if (d == null) return null;
-    const ms = Number(d);
-    if (!Number.isFinite(ms) || ms <= 0) return null;
-    // higher is better: "speed" proxy
-    return 1_000_000 / ms;
+    const duration = Number(ev.duration_ms ?? ev.durationMs);
+    if (!Number.isFinite(duration) || duration <= 0) return null;
+    return 1_000_000 / duration;
   }
-  const s = ev.score;
-  if (s == null) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return n;
+
+  const score = Number(ev.score);
+  return Number.isFinite(score) ? score : null;
 }
 
 export function formatMetricLabel(modeId: string | null | undefined): string {
-  const metric = getTrainingModeMetric(modeId);
-  return metric === "time" ? "Temps (sec)" : "Score";
+  return getTrainingModeMetric(modeId) === "time" ? "Temps (sec)" : "Score";
 }

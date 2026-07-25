@@ -1,109 +1,176 @@
-// ============================================
-// TRAINING — Precision Gauntlet
-// Objectif : suite de cibles, une erreur = fin
-// ============================================
-
-import React, { useMemo, useState } from "react";
-import TrainingHeader from "../../ui/TrainingHeader";
-import TrainingFooter from "../../ui/TrainingFooter";
+import React from "react";
+import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
+import TrainingDartPad from "../../ui/TrainingDartPad";
 import TrainingResultModal from "../../ui/TrainingResultModal";
-import { TrainingEngine } from "../../engine/trainingEngine";
-import { computeTrainingStats } from "../../engine/trainingStats";
-import type { TrainingTarget } from "../../engine/trainingTypes";
-import ScoreInputHub from "../../../components/ScoreInputHub";
+import {
+  makeTrainingStats,
+  trainingDartMatches,
+  type TrainingDart,
+} from "../../lib/trainingDarts";
+import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
-const GAUNTLET: TrainingTarget[] = [
-  { label: "20", value: 20 },
-  { label: "T19", value: 19, multiplier: 3 },
-  { label: "D18", value: 18, multiplier: 2 },
-  { label: "BULL", value: "BULL" },
-  { label: "DBULL", value: "DBULL" },
-];
-import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
-
+const FALLBACK_TARGETS = ["T20", "T19", "D18", "T17", "D16", "DBULL"];
 
 export default function PrecisionGauntletPlay({ config, onExit }: { config: any; onExit: () => void }) {
-  const engine = useMemo(
-    () =>
-      new TrainingEngine({
-        mode: "PRECISION",
-      }),
-    []
+  const targets = (Array.isArray(config?.targets) && config.targets.length
+    ? config.targets
+    : FALLBACK_TARGETS
+  ).map(String);
+  const mistakesAllowed = Math.max(0, Math.floor(Number(config?.mistakesAllowed ?? 3)));
+
+  const startedAtRef = React.useRef(Date.now());
+  const endedRef = React.useRef(false);
+  const dataRef = React.useRef({
+    darts: 0,
+    hits: 0,
+    points: 0,
+    targetIndex: 0,
+    mistakes: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+  });
+  const [, rerender] = React.useReducer((value) => value + 1, 0);
+  const [result, setResult] = React.useState<any>(null);
+
+  const finish = React.useCallback(
+    (success: boolean) => {
+      if (endedRef.current) return;
+      endedRef.current = true;
+      const endedAt = Date.now();
+      const data = dataRef.current;
+      const accuracyPct = data.darts > 0 ? (data.hits / data.darts) * 100 : 0;
+      const completionPct = targets.length > 0 ? (data.targetIndex / targets.length) * 100 : 0;
+      const stats = makeTrainingStats({
+        darts: data.darts,
+        hits: data.hits,
+        points: data.points,
+        startedAt: startedAtRef.current,
+        endedAt,
+      });
+      const metrics = {
+        preset: String(config?.preset || "custom"),
+        targetsTotal: targets.length,
+        targetsCompleted: data.targetIndex,
+        mistakes: data.mistakes,
+        mistakesAllowed,
+        bestStreak: data.bestStreak,
+        accuracyPct,
+        completionPct,
+        dartsPerTarget: data.targetIndex > 0 ? data.darts / data.targetIndex : 0,
+        score: success ? 100 : completionPct,
+      };
+
+      recordSoloTrainingResult({
+        modeId: "training_precision_gauntlet",
+        config,
+        participantIds: config?.selectedPlayerIds,
+        startedAt: startedAtRef.current,
+        endedAt,
+        darts: data.darts,
+        hits: data.hits,
+        points: data.points,
+        success,
+        metrics: { ...metrics, accuracyPercent: accuracyPct },
+      });
+      setResult({ success, stats, metrics });
+    },
+    [config, mistakesAllowed, targets.length]
   );
 
-  const [index, setIndex] = useState(0);
-  const [ended, setEnded] = useState(false);
+  const onVisit = React.useCallback(
+    (darts: TrainingDart[]) => {
+      if (endedRef.current || !darts.length) return;
+      const data = dataRef.current;
 
-  const current = GAUNTLET[index];
+      for (const dart of darts) {
+        if (endedRef.current || data.targetIndex >= targets.length) break;
+        const expected = targets[data.targetIndex];
+        data.darts += 1;
+        data.points += dart.score;
 
-  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
-    if (
-      !hit ||
-      !target ||
-      target.value !== current.value ||
-      target.multiplier !== current.multiplier
-    ) {
-      engine.finish(false);
-      setEnded(true);
-      return;
-    }
+        if (trainingDartMatches(dart, expected)) {
+          data.hits += 1;
+          data.targetIndex += 1;
+          data.currentStreak += 1;
+          data.bestStreak = Math.max(data.bestStreak, data.currentStreak);
 
-    engine.throw(target, hit, score);
+          if (data.targetIndex >= targets.length) {
+            rerender();
+            finish(true);
+            return;
+          }
+        } else {
+          data.mistakes += 1;
+          data.currentStreak = 0;
+          if (data.mistakes > mistakesAllowed) {
+            rerender();
+            finish(false);
+            return;
+          }
+        }
+      }
 
-    if (index + 1 >= GAUNTLET.length) {
-      engine.finish(true);
-      setEnded(true);
-    } else {
-      setIndex(index + 1);
-    }
-  }
+      rerender();
+    },
+    [finish, mistakesAllowed, targets]
+  );
 
-  const stats = computeTrainingStats(engine.state);
+  const data = dataRef.current;
+  const currentTarget = targets[Math.min(data.targetIndex, Math.max(0, targets.length - 1))] || "—";
+  const accuracy = data.darts > 0 ? (data.hits / data.darts) * 100 : 0;
 
-  
-  const recordedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (!ended) return;
-    if (recordedRef.current) return;
-    recordedRef.current = true;
-
-    const darts = (stats as any)?.dartsThrown ?? 0;
-    const points = (stats as any)?.score ?? 0;
-
-    recordTrainingSession("training_precision_gauntlet", darts, points);
-
-    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
-    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
-
-    for (const pid of pIds) recordTrainingParticipantSession("training_precision_gauntlet", pid, "player", darts, points);
-    for (const bid of bIds) recordTrainingParticipantSession("training_precision_gauntlet", bid, "bot", darts, points);
-  }, [ended]);
-return (
+  return (
     <>
-      <TrainingHeader onBack={onExit} 
-        title="ticker_precision"
+      <TrainingPlayLayout
+        title="Precision Gauntlet"
+        tickerId="training_precision_gauntlet"
+        onExit={onExit}
         rules={
           <>
-            <p>Enchaîne les cibles imposées.</p>
-            <p>Une seule erreur met fin à la session.</p>
+            <p>Touche la cible exacte affichée pour avancer au prochain obstacle.</p>
+            <p>Tu peux commettre {mistakesAllowed} erreur{mistakesAllowed > 1 ? "s" : ""}. La suivante termine le parcours.</p>
           </>
         }
-      />
-
-      <div className="training-target">
-        Cible : {current.label}
-      </div>
-
-      <ScoreInputHub
-        onThrow={(t, hit, score) => onThrow(t, hit, score)}
-      />
-
-      <TrainingFooter stats={stats} />
+        eyebrow={`CIBLE ${Math.min(data.targetIndex + 1, targets.length)} / ${targets.length}`}
+        target={currentTarget}
+        targetHint={`Erreurs ${data.mistakes}/${mistakesAllowed} • zone exacte obligatoire`}
+        progress={{ value: data.targetIndex, max: targets.length, label: "PARCOURS" }}
+        kpis={[
+          { label: "VALIDÉS", value: `${data.targetIndex}/${targets.length}` },
+          { label: "PRÉCISION", value: `${Math.round(accuracy)}%` },
+          { label: "ERREURS", value: data.mistakes },
+          { label: "DARTS", value: data.darts },
+        ]}
+      >
+        <TrainingDartPad
+          disabled={!!result}
+          onVisit={onVisit}
+          notice={
+            <div style={{ fontSize: 10.5, textAlign: "center", opacity: 0.68 }}>
+              Le numéro et le multiplicateur doivent correspondre exactement à la cible affichée.
+            </div>
+          }
+        />
+      </TrainingPlayLayout>
 
       <TrainingResultModal
-        open={ended}
-        stats={stats}
-        success={engine.state.success === true}
+        open={!!result}
+        success={!!result?.success}
+        title={result?.success ? "Gauntlet terminé" : "Parcours interrompu"}
+        stats={
+          result?.stats ||
+          makeTrainingStats({ darts: 0, hits: 0, points: 0, startedAt: Date.now() })
+        }
+        metrics={
+          result
+            ? [
+                { label: "CIBLES VALIDÉES", value: `${result.metrics.targetsCompleted}/${result.metrics.targetsTotal}` },
+                { label: "PRÉCISION", value: `${Math.round(result.metrics.accuracyPct)}%` },
+                { label: "ERREURS", value: `${result.metrics.mistakes}/${result.metrics.mistakesAllowed}` },
+                { label: "DARTS / CIBLE", value: result.metrics.dartsPerTarget ? result.metrics.dartsPerTarget.toFixed(2) : "—" },
+              ]
+            : []
+        }
         onClose={onExit}
       />
     </>

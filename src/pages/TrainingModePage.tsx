@@ -1,15 +1,9 @@
-// ============================================
-// src/pages/TrainingModePage.tsx
-// Training custom modes : Config -> Play (persist config)
-// ============================================
-
 import React from "react";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { syncTrainingEvents } from "../training/sync/trainingSyncEngine";
 import type { Profile } from "../lib/types";
 import { getLastConfig, setLastConfig } from "../training/lib/trainingPersist";
 
-// Configs
 import TimeAttackConfig from "../training/modes/timeattack/TimeAttackConfig";
 import DoubleIOConfig from "../training/modes/double/DoubleIOConfig";
 import PrecisionConfig from "../training/modes/precision/PrecisionConfig";
@@ -19,7 +13,6 @@ import RepeatMasterConfig from "../training/modes/repeat/RepeatMasterConfig";
 import ChallengesConfig from "../training/modes/challenges/ChallengesConfig";
 import EvolutionConfig from "../training/modes/evolution/EvolutionConfig";
 
-// Plays
 import TimeAttackPlay from "../training/modes/timeattack/TimeAttackPlay";
 import DoubleInOutPlay from "../training/modes/double/DoubleInOutPlay";
 import PrecisionGauntletPlay from "../training/modes/precision/PrecisionGauntletPlay";
@@ -35,14 +28,24 @@ type Props = {
   profiles?: Profile[];
 };
 
+function canonicalTrainingId(rawId: string) {
+  const id = String(rawId || "").trim().toLowerCase();
+  if (id === "super_bull_training") return "training_super_bull";
+  return id;
+}
+
 export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
   const { user, online } = useAuthOnline();
-  const id = String(modeId || "").trim().toLowerCase();
-
+  const id = canonicalTrainingId(modeId);
   const [phase, setPhase] = React.useState<"config" | "play">("config");
-  const [cfg, setCfg] = React.useState<any>(() => getLastConfig(id));
+  const [config, setConfig] = React.useState<any>(() => getLastConfig(id));
 
-  const exitAndSync = () => {
+  React.useEffect(() => {
+    setPhase("config");
+    setConfig(getLastConfig(id));
+  }, [id]);
+
+  const exitAndSync = React.useCallback(() => {
     try {
       if (user?.id) {
         try {
@@ -53,47 +56,85 @@ export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
         syncTrainingEvents(user.id).catch(() => {});
       }
     } catch {
-      // ignore
+      // Le Training reste entièrement jouable hors-ligne.
     } finally {
       onExit();
     }
-  };
+  }, [onExit, online, user?.id]);
 
+  const start = React.useCallback(
+    (nextConfig: any) => {
+      const next = {
+        ...(nextConfig || {}),
+        modeId: id,
+        training: true,
+        startedFrom: "training_hub",
+      };
+      setConfig(next);
+      setLastConfig(id, next);
+      setPhase("play");
+    },
+    [id]
+  );
 
-  const start = (c: any) => {
-    setCfg(c);
-    setLastConfig(id, c);
-    setPhase("play");
-  };
-
-  const isPrecision = id === "training_precision_gauntlet";
-  const isTimeAttack = id === "training_time_attack";
-  const isRepeat = id === "training_repeat_master";
-  const isGhost = id === "training_ghost";
-  const isDouble = id === "training_doubleio";
-  const isChallenges = id === "training_challenges";
-  const isEvolution = id === "training_evolution";
-  const isSuperBull = id === "training_super_bull";
+  const configProps = { profiles, onStart: start, onExit: exitAndSync };
+  const playProps = { config, onExit: exitAndSync };
 
   if (phase === "config") {
-    if (isPrecision) return <PrecisionConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isTimeAttack) return <TimeAttackConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isRepeat) return <RepeatMasterConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isGhost) return <GhostConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isDouble) return <DoubleIOConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isChallenges) return <ChallengesConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isEvolution) return <EvolutionConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    if (isSuperBull) return <SuperBullConfig profiles={profiles} onStart={start} onExit={exitAndSync} />;
-    return null;
+    switch (id) {
+      case "training_precision_gauntlet":
+        return <PrecisionConfig {...configProps} />;
+      case "training_time_attack":
+        return <TimeAttackConfig {...configProps} />;
+      case "training_repeat_master":
+        return <RepeatMasterConfig {...configProps} />;
+      case "training_ghost":
+        return <GhostConfig {...configProps} />;
+      case "training_doubleio":
+        return <DoubleIOConfig {...configProps} />;
+      case "training_challenges":
+        return <ChallengesConfig {...configProps} />;
+      case "training_super_bull":
+        return <SuperBullConfig {...configProps} />;
+      case "training_evolution":
+        return <EvolutionConfig {...configProps} />;
+      default:
+        return (
+          <div style={{ padding: 18 }}>
+            <button type="button" onClick={exitAndSync}>
+              ← Retour
+            </button>
+            <p>Mode Training inconnu : {id}</p>
+          </div>
+        );
+    }
   }
 
-  if (isPrecision) return <PrecisionGauntletPlay config={cfg} onExit={exitAndSync} />;
-  if (isTimeAttack) return <TimeAttackPlay config={cfg} onExit={exitAndSync} />;
-  if (isRepeat) return <RepeatMasterPlay config={cfg} onExit={exitAndSync} />;
-  if (isGhost) return <GhostModePlay config={cfg} onExit={exitAndSync} />;
-  if (isDouble) return <DoubleInOutPlay config={cfg} onExit={exitAndSync} />;
-  if (isChallenges) return <ChallengesPlay config={cfg} onExit={exitAndSync} />;
-  if (isEvolution) return <EvolutionPlay config={cfg} onExit={exitAndSync} />;
-  if (isSuperBull) return <SuperBullPlay config={cfg} onExit={exitAndSync} />;
-  return null;
+  switch (id) {
+    case "training_precision_gauntlet":
+      return <PrecisionGauntletPlay {...playProps} />;
+    case "training_time_attack":
+      return <TimeAttackPlay {...playProps} />;
+    case "training_repeat_master":
+      return <RepeatMasterPlay {...playProps} />;
+    case "training_ghost":
+      return <GhostModePlay {...playProps} />;
+    case "training_doubleio":
+      return <DoubleInOutPlay {...playProps} />;
+    case "training_challenges":
+      return <ChallengesPlay {...playProps} />;
+    case "training_super_bull":
+      return <SuperBullPlay {...playProps} />;
+    case "training_evolution":
+      return <EvolutionPlay {...playProps} />;
+    default:
+      return (
+        <div style={{ padding: 18 }}>
+          <button type="button" onClick={exitAndSync}>
+            ← Retour
+          </button>
+          <p>Mode Training inconnu : {id}</p>
+        </div>
+      );
+  }
 }

@@ -13,9 +13,13 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import AsyncGuard from "./components/AsyncGuard";
 import BootGuard from "./components/BootGuard";
 import { startMemoryWatchdog } from "./utils/memoryWatchdog";
+import { installPlayerNameTypography } from "./lib/playerNameTypography";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
+
+// Police dédiée aux noms des joueurs, appliquée globalement sur tous les écrans.
+installPlayerNameTypography();
 
 // retire explicitement les anciens HUD flottants injectés par d’anciens patchs
 try {

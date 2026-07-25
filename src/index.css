@@ -1,3 +1,35 @@
+/* ====== Police globale des noms de joueurs ====== */
+@font-face {
+  font-family: "JumboSalePlayer";
+  src:
+    url("/fonts/JumboSale-Trial.otf") format("opentype"),
+    url("/fonts/JumboSale%20Trial.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400 1000;
+  font-display: swap;
+}
+
+:root {
+  --dc-player-name-font: "JumboSalePlayer", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+}
+
+.dc-player-name-jumbo,
+.dc-player-name,
+.player-name,
+.playerName,
+.profile-name,
+.profileName,
+[data-player-name],
+[data-profile-name],
+[class*="player-name"],
+[class*="playerName"],
+[class*="profile-name"],
+[class*="profileName"] {
+  font-family: var(--dc-player-name-font) !important;
+  font-weight: 400 !important;
+  letter-spacing: .02em;
+}
+
 /* ====== Thème “Noir/Or + Verre dépoli” ====== */
 :root{
   --bg:#0b0b0d;

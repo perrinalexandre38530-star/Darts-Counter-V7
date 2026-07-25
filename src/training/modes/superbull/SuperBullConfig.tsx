@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
@@ -6,21 +6,83 @@ import TrainingParticipantsBlock from "../../ui/TrainingParticipantsBlock";
 import TrainingOptionCard from "../../ui/TrainingOptionCard";
 import TrainingStartButton from "../../ui/TrainingStartButton";
 
-export default function SuperBullConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart:(cfg:any)=>void; onExit:()=>void; }) {
-  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(() => (profiles?.[0]?.id ? [profiles[0].id] : []));
-  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
-  const [target, setTarget] = useState(100);
+const sectionLabel: React.CSSProperties = {
+  margin: "14px 2px 8px",
+  color: "#27dcff",
+  fontSize: 10.5,
+  fontWeight: 950,
+  letterSpacing: 1,
+};
+
+export default function SuperBullConfig({
+  profiles,
+  onStart,
+  onExit,
+}: {
+  profiles?: Profile[];
+  onStart: (cfg: any) => void;
+  onExit: () => void;
+}) {
+  const [selectedPlayerIds, setSelectedPlayerIds] = React.useState<string[]>(() =>
+    profiles?.[0]?.id ? [profiles[0].id] : []
+  );
+  const [selectedBotIds, setSelectedBotIds] = React.useState<string[]>([]);
+  const [target, setTarget] = React.useState(100);
+  const [maxDarts, setMaxDarts] = React.useState(30);
 
   return (
     <TrainingShell
-      header={<TrainingHeader title="Super Bull" onBack={onExit} rules={<p>BULL=25, DBULL=50. Atteins le score objectif.</p>} />}
+      header={
+        <TrainingHeader
+          title="Super Bull"
+          tickerId="training_super_bull"
+          onBack={onExit}
+          rules={
+            <>
+              <p>Seuls le BULL et le DBULL marquent : BULL = 25 points, DBULL = 50 points.</p>
+              <p>Une fléchette ailleurs compte comme un raté Training mais ne termine pas la session.</p>
+              <p>Atteins l'objectif de points avant la limite de fléchettes.</p>
+            </>
+          }
+        />
+      }
       body={
-        <div>
-          <TrainingParticipantsBlock profiles={profiles} selectedPlayerIds={selectedPlayerIds} setSelectedPlayerIds={setSelectedPlayerIds} selectedBotIds={selectedBotIds} setSelectedBotIds={setSelectedBotIds} />
-          {[50,100,150].map((v)=>(
-            <TrainingOptionCard key={v} title={`${v} points`} subtitle={v===50?"Rapide":v===100?"Standard":"Long"} active={target===v} onClick={()=>setTarget(v)} />
+        <div style={{ width: "min(680px,100%)", margin: "0 auto" }}>
+          <TrainingParticipantsBlock
+            profiles={profiles}
+            selectedPlayerIds={selectedPlayerIds}
+            setSelectedPlayerIds={setSelectedPlayerIds}
+            selectedBotIds={selectedBotIds}
+            setSelectedBotIds={setSelectedBotIds}
+            solo
+            allowBots={false}
+          />
+
+          <div style={sectionLabel}>OBJECTIF BULL</div>
+          {[50, 100, 150].map((value) => (
+            <TrainingOptionCard
+              key={value}
+              title={`${value} points`}
+              subtitle={value === 50 ? "Rapide" : value === 100 ? "Standard" : "Volume long"}
+              active={target === value}
+              onClick={() => setTarget(value)}
+            />
           ))}
-          <TrainingStartButton onClick={()=>onStart({ target, selectedPlayerIds, selectedBotIds })} />
+
+          <div style={sectionLabel}>LIMITE</div>
+          {[15, 30, 60].map((value) => (
+            <TrainingOptionCard
+              key={value}
+              title={`${value} fléchettes max`}
+              active={maxDarts === value}
+              onClick={() => setMaxDarts(value)}
+            />
+          ))}
+
+          <TrainingStartButton
+            disabled={!selectedPlayerIds.length}
+            onClick={() => onStart({ target, maxDarts, selectedPlayerIds, selectedBotIds: [] })}
+          />
         </div>
       }
     />

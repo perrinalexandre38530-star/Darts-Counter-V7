@@ -60,6 +60,7 @@ export type DartsGameDef = {
 
   baseGame?: "x01" | "cricket";
   variantId?: string;
+  presetVariantId?: string;
 
   maxPlayers: number;
   supportsTeams: boolean;
@@ -943,7 +944,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:precision_gauntlet",
     infoTitle: "Precision Gauntlet",
     infoBody:
-      "Suite de cibles imposees. Tu avances uniquement en reussissant. Score possible: temps + penalites de miss. Excellent drill precision. A implementer.",
+      "Parcours de précision solo. Une cible exacte est imposée à chaque étape (S/D/T/BULL/DBULL). Une touche valide fait avancer ; les erreurs consomment la tolérance choisie. Objectif : terminer le parcours avec le moins de fléchettes possible.",
   },
   {
     id: "training_time_attack",
@@ -960,7 +961,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:time_attack",
     infoTitle: "Time Attack",
     infoBody:
-      "Toucher une liste de cibles le plus vite possible. Miss = penalite temps. Classements locaux/online possibles. A implementer.",
+      "Scoring solo sous chrono. Le temps démarre à la première volée : marque le plus de points possible en 30, 60 ou 120 secondes. Moyenne /3, meilleure volée et paliers 100+/140+/180 sont enregistrés.",
   },
   {
     id: "training_repeat_master",
@@ -977,7 +978,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:repeat_master",
     infoTitle: "Repeat Master",
     infoBody:
-      "Objectif: toucher N fois de suite la meme cible (numero ou numero+multiplicateur). Echec reset la serie. Drill regularite + mental. A implementer.",
+      "Objectif : toucher N fois de suite la même cible exacte. En SOFT, un échec remet la série à zéro ; en HARDCORE, la première erreur termine la session. Meilleure série et précision sont enregistrées.",
   },
   {
     id: "training_ghost",
@@ -994,7 +995,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:ghost",
     infoTitle: "Ghost Mode",
     infoBody:
-      "Affronte ton meilleur score (ou une session enregistree) en parallele. Objectif: battre le 'fantome'. A implementer.",
+      "Affronte un fantôme de moyenne configurable sur un nombre de volées défini. Le score théorique du Ghost avance après chaque volée ; à la fin, ta moyenne /3 doit être au moins égale à la sienne.",
   },
 
   // ===========================================================
@@ -1104,7 +1105,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:doubleio",
     infoTitle: "Double In / Double Out",
     infoBody:
-      "Drill DI/DO. Objectif: fiabiliser tes doubles. Variantes: Double-In, Double-Out ou les deux. Format possible: tentatives ou mini X01. A implementer.",
+      "Drill DI/DO solo. Chaque round impose un double exact à toucher en trois fléchettes maximum. DI travaille une séquence large de doubles, DO privilégie les doubles de checkout, DIDO alterne entrée et sortie.",
   },
   {
     id: "training_challenges",
@@ -1120,11 +1121,11 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:challenges",
     infoTitle: "Challenges (Training)",
     infoBody:
-      "Pack de mini-defis (doubles, bull, triples, regularite). Format court, stats de reussite et series. A implementer.",
+      "Pack de mini-défis solo : trois doubles en neuf fléchettes, séquence BULL → T20 → D20 et checkout 40. Chaque défi conserve réussite, précision et progression dans les stats Training.",
   },
 
   {
-    id: "super_bull_training",
+    id: "training_super_bull",
     label: "Super Bull (Training)",
     category: "training",
     entry: "training",
@@ -1137,7 +1138,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:super_bull",
     infoTitle: "Super Bull (Training)",
     infoBody:
-      "Drill centre. Series de fleches, points Bull/DBull, objectifs progressifs. A implementer.",
+      "Drill centre en solo : BULL = 25, DBULL = 50. Atteins l'objectif de points avant la limite de fléchettes. Les autres zones comptent comme des ratés Training.",
   },
 ];
 
@@ -1147,6 +1148,13 @@ const READY_IDS = new Set<string>([
   "x01",
   "training_x01",
   "tour_horloge",
+  "training_doubleio",
+  "training_challenges",
+  "training_ghost",
+  "training_precision_gauntlet",
+  "training_repeat_master",
+  "training_super_bull",
+  "training_time_attack",
   "cricket",
   "killer",
   "killer_progressive",
