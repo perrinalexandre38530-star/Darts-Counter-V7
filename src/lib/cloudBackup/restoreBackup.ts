@@ -12,6 +12,7 @@ import type { Store } from "../types";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
 import { setAllDartSets, getAllDartSets } from "../dartSetsStore";
 import { isCloudBackup, type CloudBackup } from "./cloudBackupTypes";
+import { importUserMediaFallbackSnapshot } from "../userMediaFallback";
 
 export type RestoreMode = "replace" | "merge";
 
@@ -68,6 +69,10 @@ export async function restoreCloudBackupFromJson(args: {
   }
 
   const backup: CloudBackup = parsed;
+
+  try {
+    await importUserMediaFallbackSnapshot((parsed as any)?.userMediaFallbacks || (parsed as any)?.user_media_fallbacks || null);
+  } catch {}
 
   const storeAny = (await loadStore<any>().catch(() => null)) || {};
 

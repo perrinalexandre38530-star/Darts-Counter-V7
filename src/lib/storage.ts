@@ -14,6 +14,7 @@ import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
+import { captureStoreUserMedia, exportUserMediaFallbackSnapshot, importUserMediaFallbackSnapshot } from "./userMediaFallback";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
@@ -1589,6 +1590,11 @@ type SaveOpts = {
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   const guardedInput = await protectProfilesAgainstEmptyOverwrite(guardStoreShape(store), "saveStore");
+
+  // MEDIA FAILOVER: capture les pixels AVANT que le store principal soit allégé.
+  // Ainsi avatars/photos de sets/logos restent dans un coffre IndexedDB dédié et
+  // sont répliqués vers R2 sans dépendre du NAS.
+  try { captureStoreUserMedia(guardedInput as any); } catch {}
   const startedAt = storageNowMs();
 
   try {
@@ -2416,6 +2422,18 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   try {
     const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
 
+    // MEDIA UTILISATEUR MULTI-SOURCE : le store normal retire volontairement
+    // les gros data:image. On embarque donc aussi le coffre média indépendant
+    // dans TOUT snapshot portable (R2, NAS, Local, fichier/SD/USB).
+    try {
+      const userMediaFallbacks = await exportUserMediaFallbackSnapshot();
+      if (Object.keys(userMediaFallbacks.media || {}).length > 0) {
+        clone.userMediaFallbacks = userMediaFallbacks;
+      }
+    } catch (mediaError) {
+      console.warn("[storage] user media fallback export skipped", mediaError);
+    }
+
     // AVATARS R2 FAILOVER : les profils du store ne conservent volontairement
     // plus les gros base64. On ajoute donc au snapshot cloud un bloc séparé de
     // miniatures compactes (192px), utilisable même si le NAS est hors ligne.
@@ -2465,6 +2483,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   }
 
   await importAll(dump);
+
+  // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
+  // avant même que le NAS soit à nouveau disponible.
+  try {
+    await importUserMediaFallbackSnapshot((dump as any)?.userMediaFallbacks || (dump as any)?.user_media_fallbacks || null);
+  } catch (mediaError) {
+    console.warn("[storage] user media fallback import skipped", mediaError);
+  }
 
   // AVATARS R2 FAILOVER : réhydrate immédiatement le cache local des avatars
   // depuis le bloc compact embarqué dans le snapshot Cloudflare R2.

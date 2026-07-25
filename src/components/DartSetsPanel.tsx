@@ -20,6 +20,8 @@ import { useLang } from "../contexts/LangContext";
 
 import DartSetScannerSheet from "./DartSetScannerSheet";
 import AvatarLite from "./profile/AvatarLite";
+import ResilientUserImage from "./ResilientUserImage";
+import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey } from "../lib/userMediaFallback";
 
 import {
   type DartSet,
@@ -134,6 +136,8 @@ const DartImage: React.FC<{
   fit?: "cover" | "contain";
   bg?: string;
   radius?: number;
+  mediaKey?: string;
+  mediaKind?: "dartset_main" | "dartset_thumb";
 }> = ({
   url,
   width = 72,
@@ -142,6 +146,8 @@ const DartImage: React.FC<{
   fit = "contain",
   bg = "transparent",
   radius = 12,
+  mediaKey,
+  mediaKind = "dartset_main",
 }) => {
   const [broken, setBroken] = React.useState(false);
 
@@ -169,6 +175,22 @@ const DartImage: React.FC<{
         >
           🎯
         </div>
+      ) : mediaKey ? (
+        <ResilientUserImage
+          mediaKey={mediaKey}
+          kind={mediaKind}
+          primarySrc={url}
+          alt=""
+          fallbackNode={<div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontSize: typeof width === "number" ? Math.max(18, Math.round(width * 0.33)) : 22 }}>🎯</div>}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: fit,
+            transform: angleDeg ? `rotate(${angleDeg}deg)` : undefined,
+            transformOrigin: "center center",
+            display: "block",
+          }}
+        />
       ) : (
         <img
           src={url}
@@ -177,7 +199,7 @@ const DartImage: React.FC<{
           style={{
             width: "100%",
             height: "100%",
-            objectFit: fit, // ✅ cover = remplit VRAIMENT le cadre
+            objectFit: fit,
             transform: angleDeg ? `rotate(${angleDeg}deg)` : undefined,
             transformOrigin: "center center",
             display: "block",
@@ -243,6 +265,10 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
         quality: 0.82,
         mime: "image/jpeg",
       });
+
+      // Coffre média local + R2 AVANT toute normalisation vers une URL NAS.
+      void captureUserMediaFallback(dartSetMainMediaKey(dartSet.id), compressed, { kind: "dartset_main" }).catch(() => undefined);
+      void captureUserMediaFallback(dartSetThumbMediaKey(dartSet.id), compressed, { kind: "dartset_thumb" }).catch(() => undefined);
 
       const res = await Promise.resolve(
         updateDartSet(dartSet.id, {
@@ -331,6 +357,8 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
             fit={isPhoto ? "cover" : "contain"}
             bg={dartSet.bgColor || DEFAULT_BG}
             radius={14}
+            mediaKey={dartSetThumbMediaKey(dartSet.id)}
+            mediaKind="dartset_thumb"
           />
         ) : (
           <span style={{ fontSize: 26 }}>🎯</span>
@@ -754,6 +782,14 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       } as any;
 
       const created = await Promise.resolve(createDartSet(payload));
+
+      if (created && kind === "photo" && form.photoDataUrl) {
+        const createdId = String((created as any)?.id || "").trim();
+        if (createdId) {
+          void captureUserMediaFallback(dartSetMainMediaKey(createdId), form.photoDataUrl, { kind: "dartset_main" }).catch(() => undefined);
+          void captureUserMediaFallback(dartSetThumbMediaKey(createdId), form.photoDataUrl, { kind: "dartset_thumb" }).catch(() => undefined);
+        }
+      }
 
       if (!created) {
         alert(lang === "fr" ? "Création impossible (stockage plein ?)" : "Creation failed (storage full?)");
@@ -1856,6 +1892,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                     fit={(activeSet as any)?.kind === "photo" ? "cover" : "contain"}
                     bg={activeSet.bgColor || DEFAULT_BG}
                     radius={24}
+                    mediaKey={dartSetMainMediaKey(activeSet.id)}
+                    mediaKind="dartset_main"
                   />
                 ) : (
                   <span style={{ fontSize: 56 }}>🎯</span>

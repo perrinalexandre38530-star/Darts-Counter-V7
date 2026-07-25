@@ -15,6 +15,17 @@ const REQUEST_TIMEOUT_UPLOAD_MS = 60_000;
 
 export type DirectBackupSummary = Record<string, any>;
 
+
+export type DirectR2MediaFallback = {
+  version?: number;
+  key: string;
+  kind?: string;
+  dataUrl: string;
+  updatedAt?: string | null;
+  updatedAtMs?: number | null;
+  sourceUrl?: string | null;
+};
+
 export type DirectR2AvatarFallback = {
   version?: number;
   profileId: string;
@@ -418,6 +429,54 @@ export async function deleteDirectR2AvatarFallback(profileIdInput: string): Prom
   const profileId = String(profileIdInput || "").trim();
   if (!profileId) return false;
   await requestDirect(`/avatar/${encodeURIComponent(profileId)}`, { method: "DELETE" });
+  return true;
+}
+
+/**
+ * Copie privée générique d'un média utilisateur dans R2.
+ * Sert aux photos de sets, logos, couvertures, etc. sans dépendance au NAS.
+ */
+export async function uploadDirectR2MediaFallback(args: {
+  key: string;
+  kind?: string;
+  dataUrl: string;
+  updatedAt?: number | null;
+  sourceUrl?: string | null;
+}): Promise<DirectR2MediaFallback> {
+  const key = String(args?.key || "").trim();
+  const dataUrl = String(args?.dataUrl || "").trim();
+  if (!key || !dataUrl) throw new Error("Clé ou média R2 manquant.");
+  const payload = await requestDirect(`/media/${encodeURIComponent(key)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      key,
+      kind: args.kind || "user_image",
+      dataUrl,
+      updatedAt: args.updatedAt ?? Date.now(),
+      sourceUrl: args.sourceUrl ?? null,
+    }),
+  });
+  return payload?.media || { key, kind: args.kind || "user_image", dataUrl };
+}
+
+export async function downloadDirectR2MediaFallback(keyInput: string): Promise<DirectR2MediaFallback | null> {
+  const key = String(keyInput || "").trim();
+  if (!key) return null;
+  try {
+    const payload = await requestDirect(`/media/${encodeURIComponent(key)}`, { method: "GET" });
+    const media = payload?.media;
+    if (!media?.dataUrl) return null;
+    return media as DirectR2MediaFallback;
+  } catch (error: any) {
+    if (/introuvable|media_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
+    throw error;
+  }
+}
+
+export async function deleteDirectR2MediaFallback(keyInput: string): Promise<boolean> {
+  const key = String(keyInput || "").trim();
+  if (!key) return false;
+  await requestDirect(`/media/${encodeURIComponent(key)}`, { method: "DELETE" });
   return true;
 }
 

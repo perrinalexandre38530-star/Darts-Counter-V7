@@ -192,6 +192,10 @@ function avatarFallbackKey(userId: string, profileId: string): string {
   return `users/${safeId(userId)}/avatars/${safeId(profileId)}.json`;
 }
 
+function mediaFallbackKey(userId: string, mediaKey: string): string {
+  return `users/${safeId(userId)}/media-fallback/${safeId(mediaKey)}.json`;
+}
+
 function entitlementKey(userId: string): string {
   return `users/${safeId(userId)}/billing/storage-entitlement-v1.json`;
 }
@@ -441,6 +445,61 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }, 503);
 
     const identity = await resolveIdentity(request, env);
+
+    // -----------------------------------------------------------------------
+    // MEDIA FAILOVER R2 GENERIQUE
+    // Photos de sets, logos, couvertures et autres images créées/importées par
+    // l'utilisateur. Un objet par clé stable, totalement indépendant du NAS.
+    // -----------------------------------------------------------------------
+    if (parts.length === 2 && parts[0] === "media") {
+      const mediaKey = safeId(parts[1]);
+      if (!mediaKey) return json({ ok: false, error: "Clé média invalide." }, 400);
+      const key = mediaFallbackKey(identity.userId, mediaKey);
+
+      if (method === "GET") {
+        const object = await bucket.get(key);
+        if (!object) return json({ ok: false, code: "media_fallback_missing", error: "Média R2 introuvable." }, 404);
+        try {
+          const payload: any = JSON.parse(await object.text());
+          return json({ ok: true, media: payload, authMode: identity.authMode });
+        } catch {
+          return json({ ok: false, code: "media_fallback_invalid", error: "Média R2 illisible." }, 500);
+        }
+      }
+
+      if (method === "POST") {
+        const body: any = await request.json();
+        const dataUrl = String(body?.dataUrl || "").trim();
+        if (!/^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(dataUrl)) {
+          return json({ ok: false, error: "Image de secours invalide." }, 400);
+        }
+        const sizeBytes = new TextEncoder().encode(dataUrl).byteLength;
+        const configuredMax = Math.max(180_000, Number(env.CLOUD_OBJECT_MAX_UPLOAD_BYTES || 0));
+        const maxBytes = Math.min(configuredMax || 2_000_000, 2_000_000);
+        if (sizeBytes > maxBytes) {
+          return json({ ok: false, error: `Image de secours trop volumineuse (${sizeBytes} octets, max ${maxBytes}).` }, 413);
+        }
+        const payload = {
+          version: 1,
+          key: mediaKey,
+          kind: String(body?.kind || "user_image").slice(0, 80),
+          dataUrl,
+          updatedAtMs: Number(body?.updatedAt || Date.now()) || Date.now(),
+          sourceUrl: body?.sourceUrl ? String(body.sourceUrl).slice(0, 1600) : null,
+          updatedAt: new Date().toISOString(),
+        };
+        await bucket.put(key, JSON.stringify(payload), {
+          httpMetadata: { contentType: "application/json" },
+          customMetadata: { userId: identity.userId, mediaKey, kind: payload.kind },
+        });
+        return json({ ok: true, media: payload, authMode: identity.authMode }, 201);
+      }
+
+      if (method === "DELETE") {
+        await bucket.delete(key);
+        return json({ ok: true, deleted: true });
+      }
+    }
 
     // -----------------------------------------------------------------------
     // AVATAR FAILOVER R2

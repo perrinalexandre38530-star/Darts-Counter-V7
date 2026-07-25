@@ -39,6 +39,8 @@ import {
 } from "../lib/friendsApi";
 import { markMessageCenterRefreshNeeded, requestMessageNotificationsPermission, showMessageCenterNotification } from "../lib/messageCenterNotify";
 import ProfileStarRing from "../components/ProfileStarRing";
+import ResilientUserImage from "../components/ResilientUserImage";
+import { onlineAvatarMediaKey, captureUserMediaFallback, groupAvatarMediaKey, groupCoverMediaKey } from "../lib/userMediaFallback";
 
 type MsgTab = "messages" | "requests" | "shares" | "links" | "invites" | "system";
 type ChatMode = "messenger" | "group" | "rooms" | "announces";
@@ -274,10 +276,17 @@ function AvatarBubble({
       title={`${name} • ${st.label}`}
     >
       {src ? (
-        <img
-          src={src}
+        <ResilientUserImage
+          mediaKey={onlineAvatarMediaKey(userIdOf(user) || user?.id || name)}
+          kind="online_avatar"
+          primarySrc={src}
           alt={name}
           loading="lazy"
+          fallbackNode={
+            <span style={{ color: "#fff", fontWeight: 1000, fontSize: Math.max(12, Math.round(size * 0.32)), letterSpacing: -0.5 }}>
+              {initialsOfName(name)}
+            </span>
+          }
           style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", display: "block" }}
         />
       ) : (
@@ -1280,6 +1289,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     try {
       const dataUrl = await readFileAsDataUrl(file);
       if (groupId) {
+        void captureUserMediaFallback(kind === "avatar" ? groupAvatarMediaKey(groupId) : groupCoverMediaKey(groupId), dataUrl, { kind: kind === "avatar" ? "group_avatar" : "group_cover" }).catch(() => undefined);
         setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, [kind === "avatar" ? "avatarUrl" : "coverUrl"]: dataUrl } : g));
         setInfo(kind === "avatar" ? "Avatar du groupe mis à jour ✅" : "Couverture du groupe mise à jour ✅");
         updateMessengerGroup(groupId, kind === "avatar" ? { avatarUrl: dataUrl } : { coverUrl: dataUrl }).catch(() => {});

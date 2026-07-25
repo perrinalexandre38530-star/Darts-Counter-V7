@@ -6,6 +6,7 @@ import { History } from "../history";
 import { loadStore, saveStore } from "../storage";
 import type { Store } from "../types";
 import { getAllDartSets, setAllDartSets } from "../dartSetsStore";
+import { exportUserMediaFallbackSnapshot } from "../userMediaFallback";
 
 function getAppVersion(): string {
   const v = (import.meta as any)?.env?.VITE_APP_VERSION;
@@ -135,12 +136,17 @@ export async function exportCloudBackupAsJson(): Promise<{
     }
   } catch {}
 
-  const backup = makeCloudBackup({
+  const backup: any = makeCloudBackup({
     appVersion: getAppVersion(),
     history: Array.isArray(history) ? history : [],
     localProfiles: Array.isArray(localProfiles) ? localProfiles : [],
     dartsets: Array.isArray(dartsets) ? dartsets : [],
   });
+
+  try {
+    const userMediaFallbacks = await exportUserMediaFallbackSnapshot();
+    if (Object.keys(userMediaFallbacks.media || {}).length > 0) backup.userMediaFallbacks = userMediaFallbacks;
+  } catch {}
 
   await yieldToUi();
 

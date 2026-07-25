@@ -76,6 +76,7 @@ import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import { setAvatarCache } from "./lib/avatarCache";
 import { mirrorAvatarFallbackToR2 } from "./lib/avatarR2Fallback";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
+import { hydrateStoreUserMedia } from "./lib/userMediaFallback";
 import BottomNav from "./components/BottomNav";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
@@ -2273,6 +2274,13 @@ useEffect(() => {
           : { ...initialStore };
 
         setStore(next);
+        // MEDIA FAILOVER : réhydrate en arrière-plan les pixels depuis IndexedDB,
+        // cache navigateur puis R2 direct, sans attendre le NAS.
+        void hydrateStoreUserMedia(next).then(({ store: hydrated, changed }) => {
+          if (cancelled || !changed) return;
+          setStore(hydrated as Store);
+          try { if (Array.isArray((hydrated as any)?.dartSets)) replaceAllDartSets((hydrated as any).dartSets); } catch {}
+        }).catch(() => undefined);
         bootStoreLoadedRef.current = true;
       } catch (e) {
         console.warn("[auth-store] reload failed", e);
@@ -2363,6 +2371,15 @@ useEffect(() => {
             ...base,
             profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
           }));
+
+          void hydrateStoreUserMedia(base).then(({ store: hydrated, changed }) => {
+            if (!mounted || !changed) return;
+            setStore((prev) => ({
+              ...(hydrated as Store),
+              profiles: mergeProfilesSafe(prev.profiles ?? [], (hydrated as any)?.profiles ?? []),
+            }));
+            try { if (Array.isArray((hydrated as any)?.dartSets)) replaceAllDartSets((hydrated as any).dartSets); } catch {}
+          }).catch(() => undefined);
 
           const hasProfiles = (base.profiles ?? []).length > 0;
           const hasActive = !!base.activeProfileId;

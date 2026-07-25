@@ -28,6 +28,8 @@ import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarS
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 import { getAvatarCache } from "../lib/avatarCache";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
+import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback, dartSetThumbMediaKey } from "../lib/userMediaFallback";
+import ResilientUserImage from "./ResilientUserImage";
 
 type ProfileLike = {
   id?: string;
@@ -353,15 +355,20 @@ export default function ProfileAvatar(props: Props) {
     if (!effectiveProfileId) return () => { cancelled = true; };
     if (fallbackImg && !fallbackBroken) return () => { cancelled = true; };
 
-    void resolveAvatarFallback(effectiveProfileId).then((src) => {
+    const mediaKey = profileAvatarMediaKey(effectiveProfileId);
+    void (async () => {
+      // 1) coffre média IndexedDB / cache HTTP navigateur / R2 générique
+      let src = await resolveUserMediaFallback(mediaKey, primaryImg || rawImg || "", { kind: "profile_avatar" }).catch(() => "");
+      // 2) compat avec l'ancien coffre avatar dédié + anciens snapshots
+      if (!src) src = await resolveAvatarFallback(effectiveProfileId).catch(() => "");
       if (!cancelled && src) {
         setFallbackBroken(false);
         setFallbackRaw(src);
       }
-    }).catch(() => undefined);
+    })();
 
     return () => { cancelled = true; };
-  }, [effectiveProfileId, fallbackImg, fallbackBroken]);
+  }, [effectiveProfileId, fallbackImg, fallbackBroken, primaryImg, rawImg]);
 
   const useFallback = (!primaryImg || primaryBroken) && !!fallbackImg && !fallbackBroken;
   const img = useFallback ? fallbackImg : (primaryImg && !primaryBroken ? primaryImg : null);
@@ -461,6 +468,11 @@ export default function ProfileAvatar(props: Props) {
                   avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
                   avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,
                 });
+                void captureUserMediaFallback(profileAvatarMediaKey(effectiveProfileId), primaryImg, {
+                  kind: "profile_avatar",
+                  updatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
+                  sourceUrl: primaryImg,
+                }).catch(() => undefined);
               }
             }}
             onError={() => {
@@ -512,8 +524,10 @@ export default function ProfileAvatar(props: Props) {
       {showStars && <ProfileStarRing avg3d={avg3D ?? 0} anchorSize={size} />}
 
       {showDartOverlay && dartSet?.thumbImageUrl && (
-        <img
-          src={dartSet.thumbImageUrl}
+        <ResilientUserImage
+          mediaKey={dartSetThumbMediaKey((dartSet as any)?.id || `${effectiveProfileId}:favorite`)}
+          kind="dartset_thumb"
+          primarySrc={dartSet.thumbImageUrl}
           alt="dart set"
           style={{
             position: "absolute",
