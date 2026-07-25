@@ -33,6 +33,7 @@ export type CatchMeConfigPayload = {
   botsEnabled?: boolean;
   botLevel: CatchMeBotLevel;
   headStart: number;
+  escapeScore: number;
   pursuitRounds: number;
   legsBestOf: number;
   setsBestOf: number;
@@ -46,7 +47,7 @@ export type CatchMeConfigPayload = {
 
 export type CatchMeRules = Pick<
   CatchMeConfigPayload,
-  "participantMode" | "headStart" | "pursuitRounds" | "legsBestOf" | "setsBestOf" | "legVictoryMode" | "legVictoryTarget" | "setVictoryMode" | "setVictoryTarget"
+  "participantMode" | "headStart" | "escapeScore" | "pursuitRounds" | "legsBestOf" | "setsBestOf" | "legVictoryMode" | "legVictoryTarget" | "setVictoryMode" | "setVictoryTarget"
 >;
 
 export type CatchMePlayerStats = {
@@ -70,6 +71,8 @@ export type CatchMePlayerStats = {
   chaserBestVisit: number;
   captureCredits: number;
   escapeCredits: number;
+  scoreEscapeCredits: number;
+  roundEscapeCredits: number;
   legsWon: number;
   setsWon: number;
 };
@@ -84,6 +87,10 @@ export type CatchMeEntityStats = {
   chaserLegWins: number;
   captures: number;
   escapes: number;
+  scoreEscapes: number;
+  roundLimitEscapes: number;
+  fastestEscapeRound: number | null;
+  escapeRoundsTotal: number;
   captureRoundsTotal: number;
   fastestCaptureRound: number | null;
   latestCaptureRound: number | null;
@@ -117,6 +124,7 @@ export type CatchMeVisit = {
   chaserScoreAfter: number;
   distanceAfter: number;
   captured: boolean;
+  escaped: boolean;
 };
 
 export type CatchMeLegResult = {
@@ -128,6 +136,8 @@ export type CatchMeLegResult = {
   winnerEntityId: string;
   winnerRole: CatchMeRole;
   reason: "capture" | "escape";
+  escapeTrigger?: "score_target" | "round_limit" | null;
+  escapeTarget: number;
   pursuitRound: number;
   runnerScore: number;
   chaserScore: number;
@@ -199,7 +209,7 @@ export function emptyCatchMePlayerStats(): CatchMePlayerStats {
     singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0,
     runnerDarts: 0, runnerVisits: 0, runnerPoints: 0, runnerBestVisit: 0,
     chaserDarts: 0, chaserVisits: 0, chaserPoints: 0, chaserBestVisit: 0,
-    captureCredits: 0, escapeCredits: 0, legsWon: 0, setsWon: 0,
+    captureCredits: 0, escapeCredits: 0, scoreEscapeCredits: 0, roundEscapeCredits: 0, legsWon: 0, setsWon: 0,
   };
 }
 
@@ -259,7 +269,7 @@ function buildEntityData(players: Player[], teams: CatchMeTeamConfig[], particip
 function newEntityStats(entity: { id: string; name: string; playerIds: string[] }): CatchMeEntityStats {
   return {
     id: entity.id, name: entity.name, playerIds: [...entity.playerIds], legsWon: 0, setsWon: 0,
-    runnerLegWins: 0, chaserLegWins: 0, captures: 0, escapes: 0, captureRoundsTotal: 0,
+    runnerLegWins: 0, chaserLegWins: 0, captures: 0, escapes: 0, scoreEscapes: 0, roundLimitEscapes: 0, fastestEscapeRound: null, escapeRoundsTotal: 0, captureRoundsTotal: 0,
     fastestCaptureRound: null, latestCaptureRound: null, runnerLegs: 0, chaserLegs: 0,
     runnerPoints: 0, chaserPoints: 0, maxRunnerLead: 0, finalEscapeLeadTotal: 0,
     bestEscapeLead: 0, closestChaseGap: null,
@@ -324,9 +334,12 @@ export function createCatchMeState(
   const setVictoryMode: CatchMeVictoryMode = inputRules.setVictoryMode === "first_to" ? "first_to" : "best_of";
   const legVictoryTarget = clampInt(inputRules.legVictoryTarget ?? inputRules.legsBestOf, 1, 30, 3);
   const setVictoryTarget = clampInt(inputRules.setVictoryTarget ?? inputRules.setsBestOf, 1, 20, 3);
+  const normalizedHeadStart = clampInt(inputRules.headStart, 0, 2000, 100);
+  const normalizedEscapeScore = Math.max(normalizedHeadStart + 1, clampInt(inputRules.escapeScore, 1, 10000, Math.max(300, normalizedHeadStart * 3)));
   const rules: CatchMeRules = {
     participantMode,
-    headStart: clampInt(inputRules.headStart, 0, 2000, 100),
+    headStart: normalizedHeadStart,
+    escapeScore: normalizedEscapeScore,
     pursuitRounds: clampInt(inputRules.pursuitRounds, 1, 99, 10),
     legVictoryMode,
     legVictoryTarget,
@@ -368,7 +381,7 @@ function updateDartBreakdown(stats: CatchMePlayerStats, darts: GameDart[]) {
   }
 }
 
-function finishLeg(state: CatchMeState, winnerEntityId: string, reason: "capture" | "escape", catchingPlayerId?: string | null): CatchMeState {
+function finishLeg(state: CatchMeState, winnerEntityId: string, reason: "capture" | "escape", catchingPlayerId?: string | null, escapeTrigger: "score_target" | "round_limit" | null = null): CatchMeState {
   const next = cloneCatchMeState(state);
   const winnerRole: CatchMeRole = winnerEntityId === next.runnerEntityId ? "runner" : "chaser";
   const runnerScore = Number(next.entityScores[next.runnerEntityId] || 0);
@@ -380,10 +393,14 @@ function finishLeg(state: CatchMeState, winnerEntityId: string, reason: "capture
   es.legsWon += 1;
   if (winnerRole === "runner") {
     es.runnerLegWins += 1; es.escapes += 1;
+    es.escapeRoundsTotal += next.pursuitRound;
+    es.fastestEscapeRound = es.fastestEscapeRound == null ? next.pursuitRound : Math.min(es.fastestEscapeRound, next.pursuitRound);
+    if (escapeTrigger === "score_target") es.scoreEscapes += 1;
+    else es.roundLimitEscapes += 1;
     es.finalEscapeLeadTotal += Math.max(0, finalDistance);
     es.bestEscapeLead = Math.max(es.bestEscapeLead, Math.max(0, finalDistance));
     const members = next.entities[winnerEntityId]?.playerIds || [];
-    members.forEach((id) => { if (next.playerStats[id]) next.playerStats[id].escapeCredits += 1; });
+    members.forEach((id) => { if (next.playerStats[id]) { next.playerStats[id].escapeCredits += 1; if (escapeTrigger === "score_target") next.playerStats[id].scoreEscapeCredits += 1; else next.playerStats[id].roundEscapeCredits += 1; } });
   } else {
     es.chaserLegWins += 1; es.captures += 1; es.captureRoundsTotal += next.pursuitRound;
     es.fastestCaptureRound = es.fastestCaptureRound == null ? next.pursuitRound : Math.min(es.fastestCaptureRound, next.pursuitRound);
@@ -412,7 +429,7 @@ function finishLeg(state: CatchMeState, winnerEntityId: string, reason: "capture
   const result: CatchMeLegResult = {
     setNo: next.setNo, legNo: next.legNo, globalLegNo: next.globalLegNo,
     runnerEntityId: next.runnerEntityId, chaserEntityId: next.chaserEntityId,
-    winnerEntityId, winnerRole, reason, pursuitRound: next.pursuitRound,
+    winnerEntityId, winnerRole, reason, escapeTrigger: reason === "escape" ? (escapeTrigger || "round_limit") : null, escapeTarget: next.rules.escapeScore, pursuitRound: next.pursuitRound,
     runnerScore, chaserScore, finalDistance, headStart: next.rules.headStart,
     dartsInLeg, visitsInLeg, setWonBy, matchWonBy,
   };
@@ -457,15 +474,17 @@ export function playCatchMeVisit(input: CatchMeState, dartsRaw: GameDart[]): Cat
   if (distance > 0) chaserStats.closestChaseGap = chaserStats.closestChaseGap == null ? distance : Math.min(chaserStats.closestChaseGap, distance);
 
   const captured = role === "chaser" && chaserScore >= runnerScore;
+  const escaped = role === "runner" && distance >= state.rules.escapeScore;
   const visit: CatchMeVisit = {
     id: `catch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(), setNo: state.setNo, legNo: state.legNo, globalLegNo: state.globalLegNo,
     pursuitRound: state.pursuitRound, role, entityId, playerId, teamId: state.teamByPlayer[playerId] || null,
     darts: darts.map((d) => ({ ...d })), labels: darts.map(catchMeDartLabel), score,
     entityScoreBefore: before, entityScoreAfter: before + score, runnerScoreAfter: runnerScore,
-    chaserScoreAfter: chaserScore, distanceAfter: distance, captured,
+    chaserScoreAfter: chaserScore, distanceAfter: distance, captured, escaped,
   };
   state.history.push(visit);
+  if (escaped) return finishLeg(state, state.runnerEntityId, "escape", null, "score_target");
   if (captured) return finishLeg(state, state.chaserEntityId, "capture", playerId);
 
   const members = state.entities[entityId]?.playerIds || [];
@@ -483,7 +502,7 @@ export function playCatchMeVisit(input: CatchMeState, dartsRaw: GameDart[]): Cat
   }
 
   if (state.pursuitRound >= state.rules.pursuitRounds) {
-    return finishLeg(state, state.runnerEntityId, "escape", null);
+    return finishLeg(state, state.runnerEntityId, "escape", null, "round_limit");
   }
   state.pursuitRound += 1;
   state.phase = "runner";

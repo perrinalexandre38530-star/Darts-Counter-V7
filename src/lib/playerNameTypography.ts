@@ -3,7 +3,7 @@
 // duplicate font-family declarations across every game/config/stats screen.
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
-const PLAYER_NAME_FONT = '"Jumbo Sale Trial", "JumboSaleTrial", fantasy';
+const PLAYER_NAME_FONT = '"Bangers", "Luckiest Guy", "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif';
 
 const knownNames = new Set<string>();
 let observer: MutationObserver | null = null;
@@ -169,10 +169,6 @@ export function installPlayerNameTypography() {
     installObserver();
     void refreshKnownNames();
     scanDocument();
-    try {
-      document.fonts?.load('32px "Jumbo Sale Trial"').then(() => scanDocument()).catch(() => {});
-      document.fonts?.ready?.then(() => scanDocument()).catch(() => {});
-    } catch {}
 
     window.addEventListener("storage", () => void refreshKnownNames());
     window.addEventListener("dc:profiles-changed", () => void refreshKnownNames() as any);

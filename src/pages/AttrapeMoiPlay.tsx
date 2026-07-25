@@ -104,6 +104,7 @@ function normalizeConfig(props: any): CatchMeConfigPayload {
     botsEnabled: Boolean(raw?.botsEnabled),
     botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
     headStart: Math.max(0, Math.min(2000, Number(raw?.headStart ?? 100))),
+    escapeScore: Math.max(Number(raw?.headStart ?? 100) + 1, Math.min(10000, Number(raw?.escapeScore ?? 300))),
     pursuitRounds: Math.max(1, Math.min(99, Number(raw?.pursuitRounds ?? 10))),
     legsBestOf: legs,
     setsBestOf: sets,
@@ -155,7 +156,7 @@ function RulesContent({ config, primary }: { config: CatchMeConfigPayload; prima
     <div><strong style={{ color: C.runner }}>🏃 FUYARD</strong><br />Il démarre chaque manche avec {config.headStart} points d’avance et joue en premier.</div>
     <div><strong style={{ color: C.chaser }}>🎯 CHASSEUR</strong><br />Il part de 0 et doit atteindre ou dépasser le score cumulé du Fuyard.</div>
     <div><strong style={{ color: primary }}>POURSUITE</strong><br />Une manche dure au maximum {config.pursuitRounds} rounds. Chaque joueur lance 3 fléchettes par passage.</div>
-    <div><strong style={{ color: C.gold }}>CAPTURE / ÉVASION</strong><br />Capture immédiate dès que le Chasseur rejoint le Fuyard. Sinon le Fuyard gagne la manche s’il tient jusqu’au dernier round.</div>
+    <div><strong style={{ color: C.gold }}>CAPTURE / ÉVASION</strong><br />Capture immédiate dès que le Chasseur rejoint le Fuyard. Évasion immédiate si le Fuyard atteint +{config.escapeScore} d’écart ; sinon il gagne aussi s’il tient jusqu’au dernier round.</div>
     <div><strong style={{ color: C.gold }}>RÔLES ALTERNÉS</strong><br />Après chaque manche, le Fuyard devient Chasseur et inversement. Le duel compare donc les deux joueurs dans les deux rôles.</div>
     <div><strong style={{ color: primary }}>FORMAT</strong><br />Manches : {config.legVictoryMode === "first_to" ? `FT${config.legVictoryTarget}` : `BO${config.legVictoryTarget || config.legsBestOf}`}. Sets : {config.setVictoryMode === "first_to" ? `FT${config.setVictoryTarget}` : `BO${config.setVictoryTarget || config.setsBestOf}`}. Un set repart à 0–0 manche ; les sets gagnés restent acquis.</div>
     {config.participantMode === "teams" ? <div><strong style={{ color: C.gold }}>ÉQUIPES</strong><br />Tous les Fuyards jouent d’abord, puis tous les Chasseurs. La capture peut survenir pendant n’importe quelle volée du camp Chasseur.</div> : null}
@@ -253,6 +254,7 @@ export default function AttrapeMoiPlay(props: any) {
   const rules = React.useMemo(() => ({
     participantMode: config.participantMode,
     headStart: config.headStart,
+    escapeScore: config.escapeScore,
     pursuitRounds: config.pursuitRounds,
     legsBestOf: config.legsBestOf,
     setsBestOf: config.setsBestOf,
@@ -287,6 +289,11 @@ export default function AttrapeMoiPlay(props: any) {
   const runnerScore = Number(state.entityScores[state.runnerEntityId] || 0);
   const chaserScore = Number(state.entityScores[state.chaserEntityId] || 0);
   const distance = getCatchMeDistance(state);
+  const escapeTarget = Math.max(state.rules.headStart + 1, Number(state.rules.escapeScore || state.rules.headStart * 3 || 300));
+  const captureProgressPct = distance < state.rules.headStart && state.rules.headStart > 0 ? Math.max(0, Math.min(100, ((state.rules.headStart - distance) / state.rules.headStart) * 100)) : 0;
+  const escapeSpan = Math.max(1, escapeTarget - state.rules.headStart);
+  const escapeProgressPct = distance > state.rules.headStart ? Math.max(0, Math.min(100, ((distance - state.rules.headStart) / escapeSpan) * 100)) : 0;
+  const pursuitLeader: "runner" | "chaser" | "center" = distance > state.rules.headStart ? "runner" : distance < state.rules.headStart ? "chaser" : "center";
   const legsToWin = getCatchMeLegsToWin(state);
   const setsToWin = getCatchMeSetsToWin(state);
   const currentThrowPoints = throwDarts.reduce((a, d) => a + dartPoints(d), 0);
@@ -384,7 +391,7 @@ export default function AttrapeMoiPlay(props: any) {
         logoDataUrl: sourceTeam?.logoDataUrl || sourceTeam?.logoUrl || sourceTeam?.logo || null, color: sourceTeam?.color || null,
         setWins: Number(state.setWins[id] || 0), setsWon: Number(state.setWins[id] || 0), legsWon: es.legsWon,
         score: totalPoints, points: totalPoints, totalPoints,
-        runnerLegWins: es.runnerLegWins, chaserLegWins: es.chaserLegWins, captures: es.captures, escapes: es.escapes,
+        runnerLegWins: es.runnerLegWins, chaserLegWins: es.chaserLegWins, captures: es.captures, escapes: es.escapes, scoreEscapes: es.scoreEscapes || 0, roundLimitEscapes: es.roundLimitEscapes || 0, fastestEscapeRound: es.fastestEscapeRound ?? null, avgEscapeRound: es.escapes ? round1((es.escapeRoundsTotal || 0) / es.escapes) : 0,
         fastestCaptureRound: es.fastestCaptureRound, avgCaptureRound: captureAvg, latestCaptureRound: es.latestCaptureRound,
         runnerLegs: es.runnerLegs, chaserLegs: es.chaserLegs, runnerPoints: es.runnerPoints, chaserPoints: es.chaserPoints,
         captureRate: es.chaserLegs ? round1((es.captures / es.chaserLegs) * 100) : 0,
@@ -452,8 +459,8 @@ export default function AttrapeMoiPlay(props: any) {
         chaserDarts: stats.chaserDarts, chaserVisits: stats.chaserVisits, chaserPoints: stats.chaserPoints, chaserAvg3: stats.chaserDarts ? round1((stats.chaserPoints / stats.chaserDarts) * 3) : 0, chaserBestVisit: stats.chaserBestVisit,
         chaserHitRate, chaserHits: chaserImpact.hits, chaserImpact,
         chaserVisitScores: chaserVisitsRows.map((v: any) => Number(v?.score || 0)),
-        captureCredits: stats.captureCredits, escapeCredits: stats.escapeCredits, legsWon: stats.legsWon, setsWon: stats.setsWon,
-        runnerLegWins: entity?.runnerLegWins || 0, chaserLegWins: entity?.chaserLegWins || 0, teamCaptures: entity?.captures || 0, teamEscapes: entity?.escapes || 0,
+        captureCredits: stats.captureCredits, escapeCredits: stats.escapeCredits, scoreEscapeCredits: stats.scoreEscapeCredits || 0, roundEscapeCredits: stats.roundEscapeCredits || 0, legsWon: stats.legsWon, setsWon: stats.setsWon,
+        runnerLegWins: entity?.runnerLegWins || 0, chaserLegWins: entity?.chaserLegWins || 0, teamCaptures: entity?.captures || 0, teamEscapes: entity?.escapes || 0, teamScoreEscapes: entity?.scoreEscapes || 0, teamRoundEscapes: entity?.roundLimitEscapes || 0,
         runnerLegs: entity?.runnerLegs || 0, chaserLegs: entity?.chaserLegs || 0,
         captureRate: entity?.captureRate || 0, escapeRate: entity?.escapeRate || 0,
         fastestCaptureRound: entity?.fastestCaptureRound ?? null, avgCaptureRound: entity?.avgCaptureRound || 0, latestCaptureRound: entity?.latestCaptureRound ?? null,
@@ -475,6 +482,8 @@ export default function AttrapeMoiPlay(props: any) {
     const winnerEntity = entities.find((e) => e.id === winnerEntityId) || null;
     const captureLegs = legResultsBase.filter((r: any) => r?.reason === 'capture');
     const escapeLegs = legResultsBase.filter((r: any) => r?.reason === 'escape');
+    const scoreEscapeLegs = escapeLegs.filter((r: any) => r?.escapeTrigger === 'score_target');
+    const roundEscapeLegs = escapeLegs.filter((r: any) => r?.escapeTrigger !== 'score_target');
     const matchBuckets = visitBucketTemplate();
     visits.forEach((v: any) => addVisitBucket(matchBuckets, v?.score));
     const impactTotals = playerRows.reduce((acc: any, p: any) => {
@@ -492,9 +501,9 @@ export default function AttrapeMoiPlay(props: any) {
       pointsPerDart: totalDarts ? round1(totalPoints / totalDarts) : 0,
       pointsPerVisit: totalVisits ? round1(totalPoints / totalVisits) : 0,
       bestVisit: playerRows.reduce((best, p) => Math.max(best, Number(p.bestVisit || 0)), 0),
-      totalCaptures, totalEscapes, captureRate: legResultsBase.length ? round1((totalCaptures / legResultsBase.length) * 100) : 0,
+      totalCaptures, totalEscapes, scoreEscapes: scoreEscapeLegs.length, roundLimitEscapes: roundEscapeLegs.length, captureRate: legResultsBase.length ? round1((totalCaptures / legResultsBase.length) * 100) : 0,
       escapeRate: legResultsBase.length ? round1((totalEscapes / legResultsBase.length) * 100) : 0,
-      fastestCaptureRound, slowestCaptureRound, avgCaptureRound,
+      fastestCaptureRound, slowestCaptureRound, avgCaptureRound, fastestScoreEscapeRound: scoreEscapeLegs.length ? Math.min(...scoreEscapeLegs.map((r: any) => Number(r?.pursuitRound || 0)).filter((x: number) => x > 0)) : null, avgScoreEscapeRound: scoreEscapeLegs.length ? round1(scoreEscapeLegs.reduce((a: number, r: any) => a + Number(r?.pursuitRound || 0), 0) / scoreEscapeLegs.length) : 0,
       avgEscapeLead: escapeLeads.length ? round1(escapeLeads.reduce((a, n) => a + n, 0) / escapeLeads.length) : 0,
       bestEscapeLead: escapeLeads.length ? Math.max(...escapeLeads) : 0,
       closestChaseGap: legResultsBase.length ? Math.min(...legResultsBase.map((r: any) => Math.abs(Number(r?.finalDistance || 0)))) : null,
@@ -506,7 +515,7 @@ export default function AttrapeMoiPlay(props: any) {
       runnerAvg3: totalRunnerDarts ? round1((totalRunnerPoints / totalRunnerDarts) * 3) : 0,
       chaserAvg3: totalChaserDarts ? round1((totalChaserPoints / totalChaserDarts) * 3) : 0,
       legsPlayed: legResultsBase.length, setsPlayed: Math.max(1, ...legResultsBase.map((r) => Number(r.setNo || 1))),
-      headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds,
+      headStart: state.rules.headStart, escapeScore: state.rules.escapeScore, pursuitRounds: state.rules.pursuitRounds,
       impacts: impactTotals, visitBuckets: matchBuckets,
       scoreByEntity: Object.fromEntries(entities.map((e: any) => [e.id, Number(e.totalPoints || e.points || 0)])),
       setsByEntity: Object.fromEntries(entities.map((e: any) => [e.id, Number(e.setWins || 0)])),
@@ -530,7 +539,9 @@ export default function AttrapeMoiPlay(props: any) {
         minDistance: distances.length ? Math.min(...distances) : Number(result?.finalDistance || 0),
         maxDistance: distances.length ? Math.max(...distances) : Number(result?.finalDistance || 0),
         avgDistance: distances.length ? round1(distances.reduce((a: number, n: number) => a + n, 0) / distances.length) : Number(result?.finalDistance || 0),
-        chaseProgressPct: result?.headStart ? round1(Math.max(0, Math.min(100, ((Number(result.headStart) - Math.max(Number(result.finalDistance || 0), 0)) / Number(result.headStart)) * 100))) : 0,
+        chaseProgressPct: result?.headStart ? round1(Math.max(0, Math.min(100, ((Number(result.headStart) - Number(result.finalDistance || 0)) / Number(result.headStart)) * 100))) : 0,
+        captureProgressPct: result?.headStart ? round1(Math.max(0, Math.min(100, ((Number(result.headStart) - Number(result.finalDistance || 0)) / Number(result.headStart)) * 100))) : 0,
+        escapeProgressPct: Number(result?.escapeTarget || state.rules.escapeScore) > Number(result?.headStart || state.rules.headStart) ? round1(Math.max(0, Math.min(100, ((Number(result.finalDistance || 0) - Number(result?.headStart || state.rules.headStart)) / (Number(result?.escapeTarget || state.rules.escapeScore) - Number(result?.headStart || state.rules.headStart))) * 100))) : 0,
         visitScores: legVisits.map((v: any) => Number(v?.score || 0)),
         distanceEvolution: distances,
         players: legPlayers,
@@ -538,14 +549,14 @@ export default function AttrapeMoiPlay(props: any) {
     });
     const gameInfo = {
       mode: "attrape_moi", participantMode: config.participantMode,
-      headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds,
+      headStart: state.rules.headStart, escapeScore: state.rules.escapeScore, pursuitRounds: state.rules.pursuitRounds,
       legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf, legVictoryMode: state.rules.legVictoryMode, legVictoryTarget: state.rules.legVictoryTarget, setVictoryMode: state.rules.setVictoryMode, setVictoryTarget: state.rules.setVictoryTarget,
       teams: config.participantMode === "teams" ? entities.map((e) => ({ id: e.id, name: e.name, playerIds: e.playerIds, players: e.playerIds })) : [],
     };
     const summary = {
       kind: "attrape_moi", mode: "attrape_moi", sport: "darts", finished: state.finished, participantMode: config.participantMode,
       winnerId: winnerEntityId, winnerName: winnerEntity?.name || "—", tied: false,
-      headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds, legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf, legVictoryMode: state.rules.legVictoryMode, legVictoryTarget: state.rules.legVictoryTarget, setVictoryMode: state.rules.setVictoryMode, setVictoryTarget: state.rules.setVictoryTarget,
+      headStart: state.rules.headStart, escapeScore: state.rules.escapeScore, pursuitRounds: state.rules.pursuitRounds, legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf, legVictoryMode: state.rules.legVictoryMode, legVictoryTarget: state.rules.legVictoryTarget, setVictoryMode: state.rules.setVictoryMode, setVictoryTarget: state.rules.setVictoryTarget,
       legsToWin, setsToWin, setWins: { ...state.setWins }, legWins: { ...state.legWins }, entities, standings: entities,
       legResults, players: playerRows, perPlayer: playerRows, teams: config.participantMode === "teams" ? entities : [], matchStats,
       duration: matchStats.durationMs, durationMs: matchStats.durationMs,
@@ -643,28 +654,32 @@ export default function AttrapeMoiPlay(props: any) {
           {botThinking ? <div style={{ position: "absolute", zIndex: 3, left: 0, right: 0, bottom: 3, textAlign: "center", color: activeColor, fontSize: 8.3, fontWeight: 1000, letterSpacing: .8 }}>BOT EN POURSUITE…</div> : null}
         </section>
 
-        {/* FRISE DE POURSUITE */}
-        <section style={panelStyle({ padding: "8px 10px", marginBottom: 7, borderColor: `${distance <= 25 ? C.red : primary}55`, boxShadow: "0 8px 20px rgba(0,0,0,.22)" })}>
+        {/* FRISE DE POURSUITE — départ au centre, ÉVASION à gauche / CAPTURE à droite */}
+        <section style={panelStyle({ padding: "8px 10px", marginBottom: 7, borderColor: `${distance <= 25 ? C.red : pursuitLeader === "runner" ? C.runner : primary}55`, boxShadow: "0 8px 20px rgba(0,0,0,.22)" })}>
           <div style={{ display: "grid", gridTemplateColumns: "66px minmax(0,1fr) 66px", gap: 8, alignItems: "center" }}>
             <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-              <RoleMaskIcon role="runner" color={C.runner} size={28} />
+              <RoleMaskIcon role="runner" color={C.runner} size={30} />
               <div style={{ marginTop: 3, color: C.runner, fontSize: 7.6, fontWeight: 1100, letterSpacing: .65 }}>FUYARD</div>
+              <div style={{ marginTop: 1, color: "rgba(255,255,255,.42)", fontSize: 6.6, fontWeight: 900 }}>ÉVASION +{escapeTarget}</div>
             </div>
             <div style={{ minWidth: 0, textAlign: "center" }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 5, marginBottom: 4 }}>
                 <span style={{ color: "rgba(255,255,255,.43)", fontSize: 7.2, fontWeight: 1000, letterSpacing: .7 }}>DISTANCE</span>
-                <b style={{ color: distance <= 25 ? C.red : distance <= 60 ? C.gold : primary, fontSize: 15, lineHeight: 1 }}>{distance > 0 ? `+${distance}` : distance}</b>
+                <b style={{ color: distance <= 0 ? C.chaser : distance >= escapeTarget ? C.runner : C.gold, fontSize: 15, lineHeight: 1 }}>{distance > 0 ? `+${distance}` : distance}</b>
               </div>
-              <div style={{ position: "relative", height: 9, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", boxShadow: "inset 0 1px 4px rgba(0,0,0,.35)" }}>
-                <div style={{ height: "100%", width: `${Math.max(0, Math.min(100, state.rules.headStart > 0 ? ((state.rules.headStart - Math.max(distance, 0)) / state.rules.headStart) * 100 : 0))}%`, borderRadius: 999, background: `linear-gradient(90deg,${C.chaser},${distance <= 25 ? C.red : C.gold})`, transition: "width .2s ease" }} />
+              <div style={{ position: "relative", height: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)", boxShadow: "inset 0 1px 4px rgba(0,0,0,.35)" }}>
+                <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,.52)", zIndex: 3 }} />
+                {escapeProgressPct > 0 ? <div style={{ position: "absolute", right: "50%", top: 0, bottom: 0, width: `${escapeProgressPct / 2}%`, borderRadius: "999px 0 0 999px", background: `linear-gradient(90deg,${C.runner},${C.gold})`, boxShadow: `0 0 10px ${C.runner}88`, transition: "width .2s ease" }} /> : null}
+                {captureProgressPct > 0 ? <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: `${captureProgressPct / 2}%`, borderRadius: "0 999px 999px 0", background: `linear-gradient(90deg,${C.gold},${C.chaser})`, boxShadow: `0 0 10px ${C.chaser}88`, transition: "width .2s ease" }} /> : null}
               </div>
-              <div style={{ marginTop: 3, color: distance <= 25 ? C.red : "rgba(255,255,255,.45)", fontSize: 7.1, fontWeight: 950 }}>
-                {distance <= 0 ? "CAPTURE" : `${Math.round(Math.max(0, Math.min(100, state.rules.headStart > 0 ? ((state.rules.headStart - Math.max(distance, 0)) / state.rules.headStart) * 100 : 0)))}% DE RATTRAPAGE`}
+              <div style={{ marginTop: 3, minHeight: 10, color: pursuitLeader === "runner" ? C.runner : pursuitLeader === "chaser" ? C.chaser : "rgba(255,255,255,.45)", fontSize: 7.1, fontWeight: 950 }}>
+                {distance <= 0 ? "CAPTURE · 100%" : distance >= escapeTarget ? "ÉVASION · 100%" : pursuitLeader === "runner" ? `FUYARD ${Math.round(escapeProgressPct)}% VERS L’ÉVASION` : pursuitLeader === "chaser" ? `CHASSEUR ${Math.round(captureProgressPct)}% VERS LA CAPTURE` : "POINT DE DÉPART"}
               </div>
             </div>
             <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-              <RoleMaskIcon role="chaser" color={C.chaser} size={28} />
+              <RoleMaskIcon role="chaser" color={C.chaser} size={30} />
               <div style={{ marginTop: 3, color: C.chaser, fontSize: 7.6, fontWeight: 1100, letterSpacing: .65 }}>CHASSEUR</div>
+              <div style={{ marginTop: 1, color: "rgba(255,255,255,.42)", fontSize: 6.6, fontWeight: 900 }}>CAPTURE 0</div>
             </div>
           </div>
         </section>
@@ -802,7 +817,7 @@ function MatchFloatingPanel({ kind, onClose, primary, state, config, profileById
         <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
           <MiniKpi label="SET" value={state.setNo} sub={`${Number(state.setWins[state.entityOrder[0]] || 0)}–${Number(state.setWins[state.entityOrder[1]] || 0)}`} color={primary} />
           <MiniKpi label="MANCHE" value={state.legNo} sub={state.rules.legVictoryMode === "first_to" ? `FT${state.rules.legVictoryTarget}` : `BO${state.rules.legVictoryTarget || state.rules.legsBestOf}`} color={C.gold} />
-          <MiniKpi label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`Avance ${state.rules.headStart}`} color={state.phase === "runner" ? C.runner : C.chaser} />
+          <MiniKpi label="ROUND" value={`${state.pursuitRound}/${state.rules.pursuitRounds}`} sub={`Départ +${state.rules.headStart} · Évasion +${state.rules.escapeScore}`} color={state.phase === "runner" ? C.runner : C.chaser} />
         </div>
         <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
           <EntityCard state={state} entityId={runnerId} role="runner" profileById={profileById} teamById={teamById} participantMode={config.participantMode} />
@@ -881,10 +896,10 @@ function LegResultModal({ state, onContinue, primary }: any) {
     <div style={panelStyle({ width: "min(620px,100%)", padding: 14, borderColor: `${captured ? C.chaser : C.runner}88`, textAlign: "center" })}>
       <div style={{ color: captured ? C.chaser : C.runner, fontWeight: 1100, fontSize: 12, letterSpacing: 1.4 }}>{captured ? "💥 CAPTURE !" : "🏁 ÉVASION !"}</div>
       <div style={{ marginTop: 4, fontSize: 25, fontWeight: 1100 }}>{winner?.name || "—"}</div>
-      <div style={{ marginTop: 4, color: "rgba(255,255,255,.68)", fontSize: 11 }}>{captured ? `Rattrapé au round ${result.pursuitRound}/${state.rules.pursuitRounds}` : `A tenu les ${state.rules.pursuitRounds} rounds`}</div>
+      <div style={{ marginTop: 4, color: "rgba(255,255,255,.68)", fontSize: 11 }}>{captured ? `Rattrapé au round ${result.pursuitRound}/${state.rules.pursuitRounds}` : result.escapeTrigger === "score_target" ? `Score d’évasion +${result.escapeTarget || state.rules.escapeScore} atteint au round ${result.pursuitRound}` : `A tenu les ${state.rules.pursuitRounds} rounds`}</div>
       <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
         <MiniKpi label="FUYARD" value={result.runnerScore} sub={state.entities[result.runnerEntityId]?.name} color={C.runner} />
-        <MiniKpi label="DISTANCE" value={result.finalDistance > 0 ? `+${result.finalDistance}` : result.finalDistance} sub={captured ? "capturé" : "conservée"} color={captured ? C.chaser : C.runner} />
+        <MiniKpi label="DISTANCE" value={result.finalDistance > 0 ? `+${result.finalDistance}` : result.finalDistance} sub={captured ? "capturé" : result.escapeTrigger === "score_target" ? `seuil +${result.escapeTarget || state.rules.escapeScore}` : "conservée"} color={captured ? C.chaser : C.runner} />
         <MiniKpi label="CHASSEUR" value={result.chaserScore} sub={state.entities[result.chaserEntityId]?.name} color={C.chaser} />
       </div>
       {result.setWonBy ? <div style={{ marginTop: 9, color: C.gold, fontWeight: 1100, fontSize: 13 }}>🏆 SET POUR {state.entities[result.setWonBy]?.name?.toUpperCase()}</div> : null}

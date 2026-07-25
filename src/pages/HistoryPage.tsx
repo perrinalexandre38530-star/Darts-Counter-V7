@@ -1962,6 +1962,8 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const totalDarts = Number(matchStats?.totalDarts || players.reduce((a: number,p: any)=>a+Number(p?.darts||p?.dartsThrown||0),0)) || 0;
     const avg3 = Number(matchStats?.avg3 || (totalDarts ? (totalPoints / totalDarts) * 3 : 0)) || 0;
     const fastest = Number(matchStats?.fastestCaptureRound || 0) || 0;
+    const escapeTarget = Number(summary?.escapeScore ?? anyE?.payload?.rules?.escapeScore ?? anyE?.payload?.config?.escapeScore ?? 0) || 0;
+    const scoreEscapes = Number(matchStats?.scoreEscapes || legs.filter((r: any) => r?.reason === "escape" && r?.escapeTrigger === "score_target").length) || 0;
     return (
       <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
@@ -1989,6 +1991,9 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </div>
         <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 850 }}>
           {totalPoints} pts • AVG/3 {avg3.toFixed(1)} • {totalDarts} flèches{fastest ? ` • capture la + rapide R${fastest}` : ""}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.2, fontWeight: 850 }}>
+          {escapeTarget ? `Évasion à +${escapeTarget} pts • ` : ""}{scoreEscapes} évasion{scoreEscapes > 1 ? "s" : ""} au score
         </div>
         {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Vainqueur : {String(summary.winnerName)}</div> : null}
       </div>

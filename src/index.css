@@ -1,24 +1,6 @@
-/* ====== Police globale des noms de joueurs ====== */
-/*
- * IMPORTANT : le vrai nom interne de la police fournie est "Jumbo Sale Trial"
- * (PostScript: JumboSaleTrial). On utilise ce nom exact et une fonte statique
- * Regular, sans plage de poids variable qui pouvait provoquer un rendu de secours.
- */
- @font-face {
-  font-family: "Jumbo Sale Trial";
-  src:
-    local("Jumbo Sale Trial"),
-    local("JumboSaleTrial"),
-    url("/fonts/JumboSale%20Trial.otf") format("opentype"),
-    url("/fonts/JumboSale%20Trial(1).otf") format("opentype"),
-    url("/fonts/JumboSale-Trial.otf") format("opentype");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
+/* ====== Police cartoon globale des noms de joueurs ====== */
 :root {
-  --dc-player-name-font: "Jumbo Sale Trial", "JumboSaleTrial", fantasy;
+  --dc-player-name-font: "Bangers", "Luckiest Guy", "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif;
 }
 
 .dc-player-name-jumbo,
@@ -41,10 +23,9 @@ input[name="playerName"],
 input[name="profileName"],
 input[name="displayName"] {
   font-family: var(--dc-player-name-font) !important;
-  font-weight: 400 !important;
+  font-weight: 900 !important;
   font-style: normal !important;
-  font-synthesis: none !important;
-  letter-spacing: 0 !important;
+  letter-spacing: .15px !important;
 }
 
 /* ====== Thème “Noir/Or + Verre dépoli” ====== */
