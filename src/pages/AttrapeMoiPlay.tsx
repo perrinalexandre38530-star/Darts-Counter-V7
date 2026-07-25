@@ -452,8 +452,7 @@ export default function AttrapeMoiPlay(props: any) {
 
   const runnerName = runnerEntity?.name || "Fuyard";
   const chaserName = chaserEntity?.name || "Chasseur";
-  const activeStats = state.playerStats[state.activePlayerId] || emptyCatchMePlayerStats();
-  const activeTotalScore = Number(activeStats.points || 0);
+  const activeTotalScore = Number(state.entityScores[activeEntityId] || 0);
 
   return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}18 0, ${theme?.bg || "#080c17"} 48%, #020309 100%)`, overflowX: "hidden", paddingBottom: 8 }}>
     <PageHeader
@@ -494,9 +493,10 @@ export default function AttrapeMoiPlay(props: any) {
 
         {/* FRISE DE POURSUITE */}
         <section style={panelStyle({ padding: "8px 10px", marginBottom: 7, borderColor: `${distance <= 25 ? C.red : primary}55`, boxShadow: "0 8px 20px rgba(0,0,0,.22)" })}>
-          <div style={{ display: "grid", gridTemplateColumns: "58px minmax(0,1fr) 58px", gap: 8, alignItems: "center" }}>
-            <div style={{ textAlign: "left", minWidth: 0 }}>
-              <div style={{ color: C.runner, display: "inline-flex", alignItems: "center", gap: 4 }}><RoleMaskIcon role="runner" color={C.runner} size={16} /><span style={{ fontSize: 7.3, fontWeight: 1100, letterSpacing: .55 }}>FUYARD</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "66px minmax(0,1fr) 66px", gap: 8, alignItems: "center" }}>
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+              <RoleMaskIcon role="runner" color={C.runner} size={28} />
+              <div style={{ marginTop: 3, color: C.runner, fontSize: 7.6, fontWeight: 1100, letterSpacing: .65 }}>FUYARD</div>
             </div>
             <div style={{ minWidth: 0, textAlign: "center" }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 5, marginBottom: 4 }}>
@@ -510,8 +510,9 @@ export default function AttrapeMoiPlay(props: any) {
                 {distance <= 0 ? "CAPTURE" : `${Math.round(Math.max(0, Math.min(100, state.rules.headStart > 0 ? ((state.rules.headStart - Math.max(distance, 0)) / state.rules.headStart) * 100 : 0)))}% DE RATTRAPAGE`}
               </div>
             </div>
-            <div style={{ textAlign: "right", minWidth: 0 }}>
-              <div style={{ color: C.chaser, display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end", width: "100%" }}><span style={{ fontSize: 7.3, fontWeight: 1100, letterSpacing: .55 }}>CHASSEUR</span><RoleMaskIcon role="chaser" color={C.chaser} size={16} /></div>
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+              <RoleMaskIcon role="chaser" color={C.chaser} size={28} />
+              <div style={{ marginTop: 3, color: C.chaser, fontSize: 7.6, fontWeight: 1100, letterSpacing: .65 }}>CHASSEUR</div>
             </div>
           </div>
         </section>
@@ -529,9 +530,9 @@ export default function AttrapeMoiPlay(props: any) {
             <ScoreBandBackdrop entityId={state.chaserEntityId} entity={chaserEntity} participantMode={config.participantMode} profileById={byId} teamById={teamById} side="right" />
             <ScoreBandCenterFade />
             <div style={{ position: "relative", zIndex: 2, minHeight: 88, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, padding: "10px 10px 10px 10px" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: C.runner, fontSize: 8.3, fontWeight: 1100, letterSpacing: .55, display: "inline-flex", alignItems: "center", gap: 4 }}><RoleMaskIcon role="runner" color={C.runner} size={15} /> FUYARD</div>
-                <div style={{ marginTop: 2, color: themeText, fontSize: 11, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{runnerName}</div>
+              <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 6, alignItems: "center" }}>
+                <div style={{ display: "grid", placeItems: "center", filter: `drop-shadow(0 0 9px ${C.runner}55)` }}><RoleMaskIcon role="runner" color={C.runner} size={38} /></div>
+                <div style={{ minWidth: 0, color: themeText, fontSize: 12, fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>{runnerName}</div>
               </div>
               <div style={{ textAlign: "center", minWidth: 160 }}>
                 <div style={{ color: "rgba(255,255,255,.45)", fontSize: 7.5, fontWeight: 1000, letterSpacing: .65 }}>ÉCART ACTUEL</div>
@@ -542,9 +543,9 @@ export default function AttrapeMoiPlay(props: any) {
                   <span style={{ padding: "2px 6px", borderRadius: 999, background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.12)", color: C.gold, fontSize: 7.2, fontWeight: 1100 }}>FT{legsToWin}</span>
                 </div>
               </div>
-              <div style={{ minWidth: 0, textAlign: "right" }}>
-                <div style={{ color: C.chaser, fontSize: 8.3, fontWeight: 1100, letterSpacing: .55, display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end", width: "100%" }}>CHASSEUR <RoleMaskIcon role="chaser" color={C.chaser} size={15} /></div>
-                <div style={{ marginTop: 2, color: themeText, fontSize: 11, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{chaserName}</div>
+              <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px", gap: 6, alignItems: "center" }}>
+                <div style={{ minWidth: 0, color: themeText, fontSize: 12, fontWeight: 1100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>{chaserName}</div>
+                <div style={{ display: "grid", placeItems: "center", filter: `drop-shadow(0 0 9px ${C.chaser}55)` }}><RoleMaskIcon role="chaser" color={C.chaser} size={38} /></div>
               </div>
             </div>
           </button>
