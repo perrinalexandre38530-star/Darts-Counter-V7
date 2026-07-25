@@ -3,7 +3,7 @@
 // duplicate font-family declarations across every game/config/stats screen.
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
-const PLAYER_NAME_FONT = '"JumboSalePlayer", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif';
+const PLAYER_NAME_FONT = '"Jumbo Sale Trial", "JumboSaleTrial", fantasy';
 
 const knownNames = new Set<string>();
 let observer: MutationObserver | null = null;
@@ -91,12 +91,18 @@ async function refreshKnownNames() {
 
 function isEligibleElement(el: HTMLElement) {
   const tag = el.tagName;
-  if (["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "INPUT", "TEXTAREA", "SELECT", "OPTION"].includes(tag)) return false;
+  if (["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "PATH", "TEXTAREA", "SELECT", "OPTION"].includes(tag)) return false;
   if (el.isContentEditable) return false;
+  if (tag === "INPUT") {
+    const input = el as HTMLInputElement;
+    const key = `${input.name || ""} ${input.id || ""} ${input.className || ""}`.toLowerCase();
+    return /(nickname|player.?name|profile.?name|display.?name|pseudo)/.test(key);
+  }
   return true;
 }
 
 function exactVisibleText(el: HTMLElement): string {
+  if (el instanceof HTMLInputElement) return cleanName(el.value);
   return cleanName(el.textContent);
 }
 
@@ -130,7 +136,7 @@ function tagElement(el: HTMLElement) {
 function scanTree(root: ParentNode | Node) {
   if (root instanceof HTMLElement) tagElement(root);
   if (!(root instanceof Element || root instanceof Document || root instanceof DocumentFragment)) return;
-  const nodes = root.querySelectorAll<HTMLElement>("div,span,b,strong,p,h1,h2,h3,h4,h5,h6,button,a,td,th,label");
+  const nodes = root.querySelectorAll<HTMLElement>("div,span,b,strong,p,h1,h2,h3,h4,h5,h6,button,a,td,th,label,input");
   for (const el of Array.from(nodes)) tagElement(el);
 }
 
@@ -163,6 +169,10 @@ export function installPlayerNameTypography() {
     installObserver();
     void refreshKnownNames();
     scanDocument();
+    try {
+      document.fonts?.load('32px "Jumbo Sale Trial"').then(() => scanDocument()).catch(() => {});
+      document.fonts?.ready?.then(() => scanDocument()).catch(() => {});
+    } catch {}
 
     window.addEventListener("storage", () => void refreshKnownNames());
     window.addEventListener("dc:profiles-changed", () => void refreshKnownNames() as any);

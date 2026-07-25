@@ -1,16 +1,24 @@
 /* ====== Police globale des noms de joueurs ====== */
-@font-face {
-  font-family: "JumboSalePlayer";
+/*
+ * IMPORTANT : le vrai nom interne de la police fournie est "Jumbo Sale Trial"
+ * (PostScript: JumboSaleTrial). On utilise ce nom exact et une fonte statique
+ * Regular, sans plage de poids variable qui pouvait provoquer un rendu de secours.
+ */
+ @font-face {
+  font-family: "Jumbo Sale Trial";
   src:
-    url("/fonts/JumboSale-Trial.otf") format("opentype"),
-    url("/fonts/JumboSale%20Trial.otf") format("opentype");
+    local("Jumbo Sale Trial"),
+    local("JumboSaleTrial"),
+    url("/fonts/JumboSale%20Trial.otf") format("opentype"),
+    url("/fonts/JumboSale%20Trial(1).otf") format("opentype"),
+    url("/fonts/JumboSale-Trial.otf") format("opentype");
   font-style: normal;
-  font-weight: 400 1000;
+  font-weight: 400;
   font-display: swap;
 }
 
 :root {
-  --dc-player-name-font: "JumboSalePlayer", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+  --dc-player-name-font: "Jumbo Sale Trial", "JumboSaleTrial", fantasy;
 }
 
 .dc-player-name-jumbo,
@@ -19,15 +27,24 @@
 .playerName,
 .profile-name,
 .profileName,
+.nickname,
+.player-nickname,
 [data-player-name],
 [data-profile-name],
+[data-nickname],
 [class*="player-name"],
 [class*="playerName"],
 [class*="profile-name"],
-[class*="profileName"] {
+[class*="profileName"],
+input[name="nickname"],
+input[name="playerName"],
+input[name="profileName"],
+input[name="displayName"] {
   font-family: var(--dc-player-name-font) !important;
   font-weight: 400 !important;
-  letter-spacing: .02em;
+  font-style: normal !important;
+  font-synthesis: none !important;
+  letter-spacing: 0 !important;
 }
 
 /* ====== Thème “Noir/Or + Verre dépoli” ====== */
