@@ -374,12 +374,14 @@ export default function AttrapeMoiPlay(props: any) {
     const entities = state.entityOrder.map((id, index) => {
       const entity = state.entities[id];
       const es = state.entityStats[id];
+      const sourceTeam: any = config.participantMode === "teams" ? teamById.get(String(id)) : null;
       const captureAvg = es.captures ? round1(es.captureRoundsTotal / es.captures) : 0;
       const escapeAvgLead = es.escapes ? round1(es.finalEscapeLeadTotal / es.escapes) : 0;
       const totalPoints = Number(es.runnerPoints || 0) + Number(es.chaserPoints || 0);
       const roleLegs = Number(es.runnerLegs || 0) + Number(es.chaserLegs || 0);
       return {
-        id, name: entity?.name || `Camp ${index + 1}`, playerIds: entity?.playerIds || [], players: entity?.playerIds || [],
+        id, name: entity?.name || sourceTeam?.name || `Camp ${index + 1}`, playerIds: entity?.playerIds || [], players: entity?.playerIds || [],
+        logoDataUrl: sourceTeam?.logoDataUrl || sourceTeam?.logoUrl || sourceTeam?.logo || null, color: sourceTeam?.color || null,
         setWins: Number(state.setWins[id] || 0), setsWon: Number(state.setWins[id] || 0), legsWon: es.legsWon,
         score: totalPoints, points: totalPoints, totalPoints,
         runnerLegWins: es.runnerLegWins, chaserLegWins: es.chaserLegWins, captures: es.captures, escapes: es.escapes,
