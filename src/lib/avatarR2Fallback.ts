@@ -1,6 +1,7 @@
 import { buildApiUrl } from "./apiClient";
 import { getAvatarCache, setAvatarCache } from "./avatarCache";
 import { sanitizeAvatarDataUrl } from "./avatarSafe";
+import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { downloadCloudObject, listCloudVaultBackups } from "./cloudStorageApi";
 import { downloadDirectR2AvatarFallback, uploadDirectR2AvatarFallback } from "./directR2BackupApi";
 
@@ -22,10 +23,19 @@ const THUMB_EDGE = 192;
 const THUMB_MAX_CHARS = 120_000;
 const REMOTE_FETCH_TIMEOUT_MS = 2_500;
 const R2_LOAD_COOLDOWN_MS = 15_000;
+const LOCAL_VAULT_COOLDOWN_MS = 5_000;
+const EXTERNAL_FILE_COOLDOWN_MS = 8_000;
 
 let r2HydrationPromise: Promise<void> | null = null;
 let r2HydratedAt = 0;
 let r2HydrationAttempted = false;
+let localVaultHydratedAt = 0;
+let externalFileHydratedAt = 0;
+let localVaultHydrationPromise: Promise<void> | null = null;
+let externalFileHydrationPromise: Promise<void> | null = null;
+const mirrorQueued = new Set<string>();
+const mirrorQueue: Array<() => Promise<void>> = [];
+let mirrorWorkers = 0;
 const directR2AvatarPending = new Map<string, Promise<string>>();
 const directR2AvatarMissAt = new Map<string, number>();
 
@@ -52,6 +62,8 @@ function profileDataUrl(profile: any): string {
       profile?.avatarFullDataUrl ||
       profile?.avatarCastDataUrl ||
       profile?.photoDataUrl ||
+      (typeof profile?.avatarUrl === "string" && profile.avatarUrl.startsWith("data:image/") ? profile.avatarUrl : null) ||
+      (typeof profile?.photoUrl === "string" && profile.photoUrl.startsWith("data:image/") ? profile.photoUrl : null) ||
       (typeof profile?.avatar === "string" && profile.avatar.startsWith("data:image/") ? profile.avatar : null),
     380_000,
   ) || "";
@@ -321,11 +333,14 @@ export function importAvatarFallbackSnapshot(snapshot: any): number {
       const profileId = asString(raw?.profileId || profileIdRaw);
       const dataUrl = sanitizeAvatarDataUrl(raw?.dataUrl || raw?.avatarDataUrl || raw?.avatarThumbDataUrl || null, THUMB_MAX_CHARS);
       if (!profileId || !dataUrl) continue;
+      const incomingUpdatedAt = Number(raw?.avatarUpdatedAt || Date.now()) || Date.now();
+      const existing = getAvatarCache(profileId);
+      if (pickCachedDataUrl(profileId) && Number(existing?.avatarUpdatedAt || 0) > incomingUpdatedAt) continue;
       setAvatarCache({
         profileId,
         avatarDataUrl: dataUrl,
         avatarThumbDataUrl: dataUrl,
-        avatarUpdatedAt: Number(raw?.avatarUpdatedAt || Date.now()) || Date.now(),
+        avatarUpdatedAt: incomingUpdatedAt,
         avatarAssetId: asString(raw?.avatarAssetId) || null,
         avatarUrl: asString(raw?.sourceUrl) || null,
       });
@@ -352,7 +367,12 @@ function tryImportLegacyAvatarCacheFromSnapshot(snapshot: any): number {
     if (!raw) return 0;
     let parsed: any = raw;
     if (typeof raw === "string") {
-      try { parsed = JSON.parse(raw); } catch { return 0; }
+      // Le cache avatar moderne est souvent encapsulé/compressé par
+      // imageStorageCodec. JSON.parse seul ne retrouvait donc aucun avatar.
+      parsed = unpackJsonFromStorage<any>(raw, null);
+      if (!parsed) {
+        try { parsed = JSON.parse(raw); } catch { return 0; }
+      }
     }
     if (!parsed || typeof parsed !== "object") return 0;
     let count = 0;
@@ -362,11 +382,14 @@ function tryImportLegacyAvatarCacheFromSnapshot(snapshot: any): number {
         THUMB_MAX_CHARS,
       );
       if (!dataUrl) continue;
+      const incomingUpdatedAt = Number(entry?.avatarUpdatedAt || Date.now()) || Date.now();
+      const existing = getAvatarCache(String(profileId));
+      if (pickCachedDataUrl(String(profileId)) && Number(existing?.avatarUpdatedAt || 0) > incomingUpdatedAt) continue;
       setAvatarCache({
         profileId: String(profileId),
         avatarDataUrl: dataUrl,
         avatarThumbDataUrl: dataUrl,
-        avatarUpdatedAt: Number(entry?.avatarUpdatedAt || Date.now()),
+        avatarUpdatedAt: incomingUpdatedAt,
         avatarAssetId: asString(entry?.avatarAssetId) || null,
         avatarUrl: asString(entry?.avatarUrl) || null,
       });
@@ -376,6 +399,213 @@ function tryImportLegacyAvatarCacheFromSnapshot(snapshot: any): number {
   } catch {
     return 0;
   }
+}
+
+
+function collectProfileCandidatesFromSnapshot(snapshot: any): any[] {
+  const root = unwrapSnapshot(snapshot);
+  const out: any[] = [];
+  const seen = new Set<string>();
+  const pushProfiles = (value: any) => {
+    if (!Array.isArray(value)) return;
+    for (const profile of value) {
+      const id = asString(profile?.id || profile?.profileId || profile?.playerId);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(profile);
+    }
+  };
+
+  pushProfiles(root?.profiles);
+  pushProfiles(root?.localProfiles);
+  pushProfiles(root?.players);
+  pushProfiles(root?.store?.profiles);
+  pushProfiles(root?.store?.localProfiles);
+  pushProfiles(root?.data?.profiles);
+  pushProfiles(root?.data?.localProfiles);
+
+  const idb = root?.idb && typeof root.idb === "object" ? root.idb : {};
+  for (const value of Object.values<any>(idb)) {
+    if (!value || typeof value !== "object") continue;
+    pushProfiles(value?.profiles);
+    pushProfiles(value?.localProfiles);
+    pushProfiles(value?.players);
+  }
+  return out;
+}
+
+async function importAvatarFallbacksFromAnySnapshot(snapshot: any): Promise<number> {
+  if (!snapshot || typeof snapshot !== "object") return 0;
+  let count = 0;
+  count += importAvatarFallbackSnapshot(snapshot?.avatarFallbacks || snapshot?.avatar_fallbacks || null);
+  count += tryImportLegacyAvatarCacheFromSnapshot(snapshot);
+
+  // Compatibilité avec d'anciens backups qui contenaient encore un avatar
+  // inline dans un profil mais pas encore le bloc avatarFallbacks.
+  const profiles = collectProfileCandidatesFromSnapshot(snapshot);
+  for (const profile of profiles) {
+    const id = asString(profile?.id || profile?.profileId || profile?.playerId);
+    if (!id || pickCachedDataUrl(id)) continue;
+    const inline = profileDataUrl(profile);
+    if (!inline) continue;
+    const compact = await compactAvatarSource(inline);
+    if (!compact) continue;
+    setAvatarCache({
+      profileId: id,
+      avatarDataUrl: compact,
+      avatarThumbDataUrl: compact,
+      avatarUpdatedAt: Number(profile?.avatarUpdatedAt || Date.now()) || Date.now(),
+      avatarAssetId: asString(profile?.avatarAssetId) || null,
+      avatarUrl: profileRemoteUrl(profile) || null,
+    });
+    count += 1;
+  }
+  return count;
+}
+
+
+function hydrateOneAvatarFromBrowserRecoveryStores(profileIdInput: string): string {
+  const profileId = asString(profileIdInput);
+  if (!profileId || typeof window === "undefined") return "";
+  const current = pickCachedDataUrl(profileId);
+  if (current) return current;
+
+  try {
+    // Galerie avatars : elle garde souvent la vignette data:image même quand le
+    // profil persistant a été normalisé vers une URL NAS.
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) || "";
+      if (!key.startsWith("dc_avatar_gallery_v1:")) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      let rows: any[] = [];
+      try { rows = JSON.parse(raw); } catch { rows = []; }
+      if (!Array.isArray(rows)) continue;
+      const item = rows
+        .filter((row: any) => asString(row?.ownerId) === profileId)
+        .sort((a: any, b: any) => Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))[0];
+      const dataUrl = sanitizeAvatarDataUrl(item?.src || null, THUMB_MAX_CHARS) || "";
+      if (!dataUrl) continue;
+      setAvatarCache({
+        profileId,
+        avatarDataUrl: dataUrl,
+        avatarThumbDataUrl: dataUrl,
+        avatarUpdatedAt: Number(item?.updatedAt || Date.now()) || Date.now(),
+      });
+      return dataUrl;
+    }
+  } catch {}
+
+  try {
+    // Cache anti-disparition des profils. Certaines versions y ont conservé la
+    // vignette locale avant que le store principal ne soit allégé.
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) || "";
+      if (!key.startsWith("dc_profiles_safety_cache_v1")) continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      let parsed: any = null;
+      try { parsed = JSON.parse(raw); } catch { parsed = null; }
+      const profiles = Array.isArray(parsed?.profiles) ? parsed.profiles : [];
+      const profile = profiles.find((row: any) => asString(row?.id) === profileId);
+      const dataUrl = profileDataUrl(profile);
+      if (!dataUrl) continue;
+      setAvatarCache({
+        profileId,
+        avatarDataUrl: dataUrl,
+        avatarThumbDataUrl: dataUrl,
+        avatarUpdatedAt: Number(profile?.avatarUpdatedAt || parsed?.updatedAt || Date.now()) || Date.now(),
+        avatarAssetId: asString(profile?.avatarAssetId) || null,
+      });
+      return dataUrl;
+    }
+  } catch {}
+
+  return "";
+}
+
+async function hydrateAvatarCacheFromLocalVault(): Promise<void> {
+  const now = Date.now();
+  if (localVaultHydrationPromise) return localVaultHydrationPromise;
+  if (now - localVaultHydratedAt < LOCAL_VAULT_COOLDOWN_MS) return;
+  localVaultHydratedAt = now;
+
+  localVaultHydrationPromise = (async () => {
+    try {
+      // Import dynamique obligatoire : storageVault -> storage -> avatarR2Fallback.
+      // Cela évite une dépendance circulaire statique au boot.
+      const mod = await import("./storageVault");
+      const slots = await mod.listLocalMemorySlots().catch(() => []);
+      for (const slot of slots || []) {
+        await importAvatarFallbacksFromAnySnapshot(slot?.payload);
+      }
+    } catch {
+      // Le coffre local n'est qu'une source de secours parmi d'autres.
+    } finally {
+      localVaultHydrationPromise = null;
+      localVaultHydratedAt = Date.now();
+    }
+  })();
+  return localVaultHydrationPromise;
+}
+
+async function hydrateAvatarCacheFromExternalFile(): Promise<void> {
+  const now = Date.now();
+  if (externalFileHydrationPromise) return externalFileHydrationPromise;
+  if (now - externalFileHydratedAt < EXTERNAL_FILE_COOLDOWN_MS) return;
+  externalFileHydratedAt = now;
+
+  externalFileHydrationPromise = (async () => {
+    try {
+      // Le handle mémorisé peut pointer indifféremment vers un fichier du PC,
+      // une clé USB ou une carte SD. Aucun sélecteur n'est ouvert ici.
+      const mod = await import("./externalBackupTarget");
+      const snapshot = await mod.readExternalBackupSnapshotIfPermitted();
+      if (snapshot) await importAvatarFallbacksFromAnySnapshot(snapshot);
+    } catch {
+      // Permission non persistée / périphérique absent : on poursuit vers R2.
+    } finally {
+      externalFileHydrationPromise = null;
+      externalFileHydratedAt = Date.now();
+    }
+  })();
+  return externalFileHydrationPromise;
+}
+
+function runMirrorQueue(): void {
+  while (mirrorWorkers < 2 && mirrorQueue.length > 0) {
+    const job = mirrorQueue.shift();
+    if (!job) return;
+    mirrorWorkers += 1;
+    void job().catch(() => undefined).finally(() => {
+      mirrorWorkers = Math.max(0, mirrorWorkers - 1);
+      runMirrorQueue();
+    });
+  }
+}
+
+/**
+ * Dès qu'un avatar distant a réussi à s'afficher (NAS disponible), on le
+ * transforme en miniature locale puis on tente une réplication R2. Ainsi les
+ * anciens profils deviennent progressivement autonomes sans devoir les éditer.
+ */
+export function queueAvatarFallbackMirror(
+  profileIdInput: string,
+  sourceInput: string,
+  meta: { avatarUpdatedAt?: number | null; avatarAssetId?: string | null } = {},
+): void {
+  const profileId = asString(profileIdInput);
+  const source = asString(sourceInput);
+  if (!profileId || !source || pickCachedDataUrl(profileId) || mirrorQueued.has(profileId)) return;
+  mirrorQueued.add(profileId);
+  mirrorQueue.push(async () => {
+    try {
+      await mirrorAvatarFallbackToR2(profileId, source, meta);
+    } finally {
+      mirrorQueued.delete(profileId);
+    }
+  });
+  runMirrorQueue();
 }
 
 async function hydrateAvatarCacheFromLatestR2(): Promise<void> {
@@ -399,9 +629,7 @@ async function hydrateAvatarCacheFromLatestR2(): Promise<void> {
           }
           if (!parsed) continue;
           const snapshot = unwrapSnapshot(parsed);
-          const count = importAvatarFallbackSnapshot(snapshot?.avatarFallbacks || snapshot?.avatar_fallbacks || null);
-          const legacyCount = count > 0 ? 0 : tryImportLegacyAvatarCacheFromSnapshot(snapshot);
-          if (count > 0 || legacyCount > 0) break;
+          await importAvatarFallbacksFromAnySnapshot(snapshot);
         } catch {
           // Essaie la génération précédente si la plus récente est illisible.
         }
@@ -424,15 +652,42 @@ async function hydrateAvatarCacheFromLatestR2(): Promise<void> {
 export async function resolveAvatarFallback(profileId: string): Promise<string> {
   const id = asString(profileId);
   if (!id) return "";
-  const local = pickCachedDataUrl(id);
-  if (local) return local;
 
-  // 1) Objet avatar R2 dédié : très petit, très rapide, totalement indépendant
-  // du NAS et disponible immédiatement après une modification d'avatar.
-  const direct = await hydrateOneAvatarFromDirectR2(id);
-  if (direct) return direct;
+  // 0) Cache avatar de l'appareil : zéro réseau.
+  let found = pickCachedDataUrl(id);
+  if (found) return found;
 
-  // 2) Compatibilité/ceinture de sécurité : tente le dernier snapshot R2 complet.
+  // 0b) Autres caches locaux durables : galerie avatar + cache anti-disparition.
+  found = hydrateOneAvatarFromBrowserRecoveryStores(id);
+  if (found) {
+    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    return found;
+  }
+
+  // 1) Coffre mémoire local IndexedDB : contient les copies de sécurité faites
+  // avant NAS/R2 et les sauvegardes locales manuelles.
+  await hydrateAvatarCacheFromLocalVault();
+  found = pickCachedDataUrl(id);
+  if (found) {
+    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    return found;
+  }
+
+  // 2) Fichier externe mémorisé : PC / téléphone / SD / USB selon le handle
+  // choisi dans Réglages > Sauvegarde. Lecture silencieuse uniquement.
+  await hydrateAvatarCacheFromExternalFile();
+  found = pickCachedDataUrl(id);
+  if (found) {
+    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    return found;
+  }
+
+  // 3) Objet avatar R2 dédié : indépendant de PostgreSQL, Container Station et NAS.
+  found = await hydrateOneAvatarFromDirectR2(id);
+  if (found) return found;
+
+  // 4) Dernières sauvegardes R2 complètes (courante puis précédente), elles aussi
+  // lues directement par la Pages Function, sans /api/backend ni tunnel NAS.
   await hydrateAvatarCacheFromLatestR2();
   return pickCachedDataUrl(id);
 }

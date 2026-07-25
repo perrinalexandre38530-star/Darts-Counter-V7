@@ -27,7 +27,7 @@ import { loadStore } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 import { getAvatarCache } from "../lib/avatarCache";
-import { resolveAvatarFallback } from "../lib/avatarR2Fallback";
+import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 
 type ProfileLike = {
   id?: string;
@@ -345,12 +345,12 @@ export default function ProfileAvatar(props: Props) {
 
   const fallbackImg = React.useMemo(() => normalizeSrc(fallbackRaw), [fallbackRaw]);
 
-  // On ne sollicite R2 que lorsque la source NAS/remote est absente ou vient
-  // réellement d'échouer. Une seule hydratation R2 est mutualisée pour toute la page.
+  // Précharge TOUJOURS le filet de sécurité en parallèle de la source primaire.
+  // Ainsi, une panne NAS ne provoque plus une attente supplémentaire avant de
+  // basculer vers Local -> fichier/SD/USB -> R2.
   React.useEffect(() => {
     let cancelled = false;
     if (!effectiveProfileId) return () => { cancelled = true; };
-    if (primaryImg && !primaryBroken) return () => { cancelled = true; };
     if (fallbackImg && !fallbackBroken) return () => { cancelled = true; };
 
     void resolveAvatarFallback(effectiveProfileId).then((src) => {
@@ -361,7 +361,7 @@ export default function ProfileAvatar(props: Props) {
     }).catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [effectiveProfileId, primaryImg, primaryBroken, fallbackImg, fallbackBroken]);
+  }, [effectiveProfileId, fallbackImg, fallbackBroken]);
 
   const useFallback = (!primaryImg || primaryBroken) && !!fallbackImg && !fallbackBroken;
   const img = useFallback ? fallbackImg : (primaryImg && !primaryBroken ? primaryImg : null);
@@ -453,6 +453,16 @@ export default function ProfileAvatar(props: Props) {
             key={img as string}
             src={img as string}
             alt={name ?? "avatar"}
+            onLoad={() => {
+              // Si le NAS/URL primaire fonctionne aujourd'hui, on fabrique en
+              // arrière-plan la copie de secours qui servira lors de la prochaine panne.
+              if (!useFallback && effectiveProfileId && primaryImg) {
+                queueAvatarFallbackMirror(effectiveProfileId, primaryImg, {
+                  avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
+                  avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,
+                });
+              }
+            }}
             onError={() => {
               if (useFallback) setFallbackBroken(true);
               else setPrimaryBroken(true);

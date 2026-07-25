@@ -211,6 +211,48 @@ export async function getExternalBackupStatus(): Promise<ExternalBackupStatus> {
   return writeStatus({ ...current, configured: true, fileName: String(handle?.name || current.fileName || "backup-multisports.json"), permission });
 }
 
+
+/**
+ * Lit silencieusement la dernière sauvegarde externe mémorisée (fichier local,
+ * clé USB, carte SD...) quand le navigateur possède encore le FileSystemHandle.
+ * Aucun popup n'est déclenché : en cas de permission "prompt"/"denied", on
+ * retourne null et l'UI poursuit vers les autres sources de secours.
+ */
+export async function readExternalBackupSnapshotIfPermitted(): Promise<any | null> {
+  if (!supportsFilePicker()) return null;
+  const handle = await getHandle();
+  if (!handle) return null;
+
+  try {
+    // getFile() peut rester autorisé en lecture alors que readwrite repasse à
+    // "prompt" après un redémarrage du navigateur. On tente donc la lecture
+    // directement, sans requestPermission (interdit hors geste utilisateur).
+    const file = await handle.getFile();
+    const text = await file.text();
+    if (!text || !text.trim()) return null;
+    const parsed = JSON.parse(text);
+    writeStatus({
+      ...readStatus(),
+      configured: true,
+      fileName: String(handle?.name || file?.name || 'multisports-scoring-backup.json'),
+      lastError: null,
+    });
+    return parsed;
+  } catch (error: any) {
+    const permission = await permissionFor(handle, false).catch(() => 'unknown' as const);
+    writeStatus({
+      ...readStatus(),
+      configured: true,
+      fileName: String(handle?.name || 'multisports-scoring-backup.json'),
+      permission,
+      lastError: permission === 'granted'
+        ? String(error?.message || error || 'Lecture du backup externe impossible')
+        : null,
+    });
+    return null;
+  }
+}
+
 export async function chooseExternalBackupFile(): Promise<ExternalBackupStatus> {
   if (!supportsFilePicker()) {
     return writeStatus({ ...readStatus(), supported: false, configured: false, permission: "unsupported", lastError: "Sélecteur de fichier avancé non pris en charge par ce navigateur." });
