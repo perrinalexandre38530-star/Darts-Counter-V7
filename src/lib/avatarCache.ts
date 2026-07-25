@@ -2,7 +2,7 @@ import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 
 const KEY = "dc_avatar_cache_v1";
-const MAX_CACHE_ENTRIES = 40;
+const MAX_CACHE_ENTRIES = 120;
 
 export type AvatarCacheEntry = {
   profileId: string;

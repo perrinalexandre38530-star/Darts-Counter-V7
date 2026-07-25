@@ -74,6 +74,7 @@ import { bootstrapNasRestore } from "./lib/nasBootstrapRestore";
 import { markNasSyncDirty, pushNasSyncDirtyReason } from "./lib/manualNasSync";
 import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import { setAvatarCache } from "./lib/avatarCache";
+import { mirrorAvatarFallbackToR2 } from "./lib/avatarR2Fallback";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import BottomNav from "./components/BottomNav";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
@@ -4823,6 +4824,18 @@ case "babyfoot_team_edit":
               } as any);
             } catch {}
 
+            // R2 AVATAR FAILOVER : réplique aussi une miniature directement dans
+            // Cloudflare R2. Aucun passage par le NAS/PostgreSQL : même si le
+            // QNAP tombe ensuite, ProfileAvatar pourra la relire via Pages/R2.
+            if (finalAvatarDataUrl) {
+              void mirrorAvatarFallbackToR2(String(targetProfile.id), finalAvatarDataUrl, {
+                avatarUpdatedAt: uploadRes?.avatarUpdatedAt || now,
+                avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || null,
+              }).catch((r2Error) => {
+                console.warn("[AvatarUpload] R2 avatar mirror skipped", r2Error);
+              });
+            }
+
             setProfiles((list) =>
               list.map((p) =>
                 p.id === targetProfile.id
@@ -4872,6 +4885,11 @@ case "babyfoot_team_edit":
             setProfiles((list) =>
               list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: finalAvatarDataUrl || pngDataUrl } : p))
             );
+            const r2Source = finalAvatarDataUrl || (typeof pngDataUrl === "string" ? pngDataUrl : "");
+            if (r2Source) {
+              void mirrorAvatarFallbackToR2(String(targetProfile.id), r2Source, { avatarUpdatedAt: now })
+                .catch((r2Error) => console.warn("[AvatarUpload] local-only R2 mirror skipped", r2Error));
+            }
             go(backTo);
           }
         }

@@ -81,6 +81,7 @@ import {
 } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
+import { mirrorAvatarFallbackToR2 } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
 import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
@@ -2112,6 +2113,9 @@ export default function Profiles({
       avatarUpdatedAt: nowTs,
     });
 
+    void mirrorAvatarFallbackToR2(id, src, { avatarUpdatedAt: nowTs })
+      .catch((error) => console.warn("[Profiles] gallery avatar R2 mirror skipped", error));
+
     let nextStoreSnapshot: any = null;
     update((s: any) => {
       const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
@@ -2326,6 +2330,9 @@ export default function Profiles({
       avatarCastDataUrl: castDataUrl,
       avatarUpdatedAt: now,
     });
+
+    void mirrorAvatarFallbackToR2(id, thumbDataUrl, { avatarUpdatedAt: now })
+      .catch((error) => console.warn("[Profiles] avatar R2 mirror skipped", error));
 
     setProfilesSafe((arr) =>
       arr.map((p) =>
@@ -2557,6 +2564,8 @@ ANNULER : créer un nouveau profil distinct portant le même nom.`
         avatarCastDataUrl: avatarVariants?.castDataUrl || avatarDataUrl,
         avatarUpdatedAt: now,
       });
+      void mirrorAvatarFallbackToR2(p.id, avatarVariants?.thumbDataUrl || avatarDataUrl, { avatarUpdatedAt: now })
+        .catch((error) => console.warn("[Profiles] new profile avatar R2 mirror skipped", error));
       try {
         const nextGallery = upsertAvatarGalleryItem(avatarGalleryAccountId, {
           category: (privateInfo as any)?.onlineUserId ? "account" : "local",
@@ -4709,7 +4718,14 @@ function ActiveProfileBlock({
           <AvatarLite
             key={`${active?.id || "profile"}-${avatarRefreshKey}-${(active as any)?.avatarUpdatedAt || ""}`}
             size={AVATAR}
+            profileId={String((active as any)?.id || "")}
             src={avatarSrc}
+            fallbackSrc={String(
+              (activeAvatarCache as any)?.avatarThumbDataUrl ||
+              (activeAvatarCache as any)?.avatarDataUrl ||
+              (activeAvatarCache as any)?.avatarFullDataUrl ||
+              ""
+            )}
             label={displayName?.[0]?.toUpperCase() || "?"}
           />
         </div>
@@ -5270,6 +5286,7 @@ function FriendsMergedBlock({ friends, loading = false, error = null, onRefresh 
 
                       <AvatarLite
                         size={AVA}
+                        profileId={String((f as any)?.id || "")}
                         src={buildAvatarSrc({
                           avatarUrl: (f as any)?.avatarUrl || null,
                           avatarDataUrl: (f as any)?.avatarDataUrl || null,
@@ -7409,6 +7426,7 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                   >
                     <AvatarLite
                       size={AVATAR}
+                      profileId={String((renderedCurrent as any)?.id || "")}
                       src={buildAvatarSrc({
                         avatarUrl: linkedFriendAvatarUrl || (renderedCurrent as any)?.avatarUrl || null,
                         avatarDataUrl: linkedFriendAvatarUrl ? null : ((renderedCurrent as any)?.avatarDataUrl || null),
@@ -7417,6 +7435,12 @@ Ses parties et statistiques historiques resteront enregistrées. Si un profil du
                           ? (Date.parse(String((currentProfileLink as any)?.updatedAt || "")) || Date.now())
                           : ((renderedCurrent as any)?.avatarUpdatedAt ?? null),
                       })}
+                      fallbackSrc={String(
+                        (currentAvatarCache as any)?.avatarThumbDataUrl ||
+                        (currentAvatarCache as any)?.avatarDataUrl ||
+                        (currentAvatarCache as any)?.avatarFullDataUrl ||
+                        ""
+                      )}
                       label={(linkedFriendAvatarUrl ? linkedFriendName : renderedCurrent.name)?.[0]?.toUpperCase() || "?"}
                     />
                   </div>

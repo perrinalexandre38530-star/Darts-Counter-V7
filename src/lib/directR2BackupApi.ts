@@ -15,6 +15,15 @@ const REQUEST_TIMEOUT_UPLOAD_MS = 60_000;
 
 export type DirectBackupSummary = Record<string, any>;
 
+export type DirectR2AvatarFallback = {
+  version?: number;
+  profileId: string;
+  dataUrl: string;
+  avatarUpdatedAt?: number | null;
+  avatarAssetId?: string | null;
+  updatedAt?: string | null;
+};
+
 export type DirectR2Status = {
   ok: boolean;
   route?: string;
@@ -76,7 +85,14 @@ function decodeJwtPayload(token: string): any {
 
 function isJwtLike(token: string): boolean {
   const parts = String(token || "").split(".");
-  return parts.length === 3 && !!decodeJwtPayload(token)?.sub;
+  if (parts.length !== 3) return false;
+  const payload = decodeJwtPayload(token);
+  if (!payload?.sub) return false;
+  // Un JWT NAS expiré ne doit pas bloquer le repli vers une session Supabase
+  // encore valide lorsque le NAS est hors ligne.
+  const expMs = Number(payload?.exp || 0) * 1000;
+  if (expMs > 0 && expMs <= Date.now() + 5_000) return false;
+  return true;
 }
 
 function isSupabaseAccessToken(token: string): boolean {
@@ -356,3 +372,52 @@ export async function restoreDirectR2Backup(id: string): Promise<any> {
 export async function emptyDirectR2Trash(): Promise<any> {
   return requestDirect("/trash", { method: "DELETE" });
 }
+
+/**
+ * Copie privée d'une miniature d'avatar directement dans Cloudflare R2.
+ * Cette route ne traverse jamais le NAS et reste donc disponible pendant une
+ * panne du QNAP tant que la session NAS JWT ou Supabase est encore valide.
+ */
+export async function uploadDirectR2AvatarFallback(args: {
+  profileId: string;
+  dataUrl: string;
+  avatarUpdatedAt?: number | null;
+  avatarAssetId?: string | null;
+}): Promise<DirectR2AvatarFallback> {
+  const profileId = String(args?.profileId || "").trim();
+  const dataUrl = String(args?.dataUrl || "").trim();
+  if (!profileId || !dataUrl) throw new Error("Profil ou avatar R2 manquant.");
+
+  const payload = await requestDirect(`/avatar/${encodeURIComponent(profileId)}`, {
+    method: "POST",
+    body: JSON.stringify({
+      dataUrl,
+      avatarUpdatedAt: args.avatarUpdatedAt ?? Date.now(),
+      avatarAssetId: args.avatarAssetId ?? null,
+    }),
+  });
+  return payload?.avatar || { profileId, dataUrl };
+}
+
+export async function downloadDirectR2AvatarFallback(profileIdInput: string): Promise<DirectR2AvatarFallback | null> {
+  const profileId = String(profileIdInput || "").trim();
+  if (!profileId) return null;
+  try {
+    const payload = await requestDirect(`/avatar/${encodeURIComponent(profileId)}`, { method: "GET" });
+    const avatar = payload?.avatar;
+    if (!avatar || !avatar?.dataUrl) return null;
+    return avatar as DirectR2AvatarFallback;
+  } catch (error: any) {
+    // Un profil qui n'a pas encore été répliqué sur R2 n'est pas une erreur UI.
+    if (/introuvable|avatar_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
+    throw error;
+  }
+}
+
+export async function deleteDirectR2AvatarFallback(profileIdInput: string): Promise<boolean> {
+  const profileId = String(profileIdInput || "").trim();
+  if (!profileId) return false;
+  await requestDirect(`/avatar/${encodeURIComponent(profileId)}`, { method: "DELETE" });
+  return true;
+}
+

@@ -296,10 +296,6 @@ export default function AttrapeMoiMatchStatsView({ record, primary = C.chaser, m
     }
     return b;
   };
-  const impactA = impactSubjects?.[0] || null;
-  const impactB = impactSubjects?.[1] || null;
-  const bucketA = impactA ? bucketCountFor(impactA) : [0,0,0,0,0,0,0];
-  const bucketB = impactB ? bucketCountFor(impactB) : [0,0,0,0,0,0,0];
   const tabs: Array<[TabId, string, string]> = [["resume", "RÉSUMÉ", primary], ["camps", "CAMPS", C.chaser], ["players", "JOUEURS", C.gold], ["roles", "RÔLES", C.runner], ["legs", "MANCHES", C.chaser], ["impacts", "IMPACTS", C.gold]];
   const entityScore = (e: any) => n(e?.totalPoints ?? e?.points ?? e?.score, n(e?.runnerPoints) + n(e?.chaserPoints));
   const entityPlayers = (e: any) => players.filter((p: any) => same(p?.entityId, e?.id) || arr(e?.playerIds).some((id: any) => same(id, playerId(p))));
@@ -313,6 +309,10 @@ export default function AttrapeMoiMatchStatsView({ record, primary = C.chaser, m
       points, avg3: darts ? points / darts * 3 : 0, bestVisit: ps.reduce((m: number, p: any) => Math.max(m, n(p?.bestVisit)), 0),
     };
   }) : players;
+  const impactA = impactSubjects?.[0] || null;
+  const impactB = impactSubjects?.[1] || null;
+  const bucketA = impactA ? bucketCountFor(impactA) : [0, 0, 0, 0, 0, 0, 0];
+  const bucketB = impactB ? bucketCountFor(impactB) : [0, 0, 0, 0, 0, 0, 0];
   const [campTab, setCampTab] = React.useState<string>("duel");
   const [impactPlayerId, setImpactPlayerId] = React.useState<string>(() => participantMode === "teams" ? String(entities?.[0]?.id || "") : playerId(players[0]));
   React.useEffect(() => { if (campTab !== "duel" && !entities.some((e: any) => same(e?.id, campTab))) setCampTab("duel"); }, [entities.length]);

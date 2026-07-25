@@ -188,6 +188,10 @@ function backupKey(userId: string, id: string): string {
   return `users/${safeId(userId)}/backups/${safeId(id)}.json`;
 }
 
+function avatarFallbackKey(userId: string, profileId: string): string {
+  return `users/${safeId(userId)}/avatars/${safeId(profileId)}.json`;
+}
+
 function entitlementKey(userId: string): string {
   return `users/${safeId(userId)}/billing/storage-entitlement-v1.json`;
 }
@@ -437,6 +441,60 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }, 503);
 
     const identity = await resolveIdentity(request, env);
+
+    // -----------------------------------------------------------------------
+    // AVATAR FAILOVER R2
+    // Stockage privé et léger d'une miniature par profil. Cette route reste
+    // totalement indépendante du NAS/PostgreSQL et utilise la même auth que
+    // les sauvegardes R2 directes.
+    // -----------------------------------------------------------------------
+    if (parts.length === 2 && parts[0] === "avatar") {
+      const profileId = safeId(parts[1]);
+      if (!profileId) return json({ ok: false, error: "Profil avatar invalide." }, 400);
+      const key = avatarFallbackKey(identity.userId, profileId);
+
+      if (method === "GET") {
+        const object = await bucket.get(key);
+        if (!object) return json({ ok: false, code: "avatar_fallback_missing", error: "Avatar R2 introuvable." }, 404);
+        try {
+          const payload: any = JSON.parse(await object.text());
+          return json({ ok: true, avatar: payload, authMode: identity.authMode });
+        } catch {
+          return json({ ok: false, code: "avatar_fallback_invalid", error: "Avatar R2 illisible." }, 500);
+        }
+      }
+
+      if (method === "POST") {
+        const body: any = await request.json();
+        const dataUrl = String(body?.dataUrl || "").trim();
+        if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(dataUrl)) {
+          return json({ ok: false, error: "Miniature avatar invalide." }, 400);
+        }
+        const sizeBytes = new TextEncoder().encode(dataUrl).byteLength;
+        if (sizeBytes > 160_000) {
+          return json({ ok: false, error: `Miniature avatar trop volumineuse (${sizeBytes} octets).` }, 413);
+        }
+        const payload = {
+          version: 1,
+          profileId,
+          dataUrl,
+          avatarUpdatedAt: Number(body?.avatarUpdatedAt || Date.now()) || Date.now(),
+          avatarAssetId: body?.avatarAssetId ? String(body.avatarAssetId) : null,
+          updatedAt: new Date().toISOString(),
+        };
+        await bucket.put(key, JSON.stringify(payload), {
+          httpMetadata: { contentType: "application/json" },
+          customMetadata: { userId: identity.userId, profileId, kind: "avatar-fallback-v1" },
+        });
+        return json({ ok: true, avatar: payload, authMode: identity.authMode }, 201);
+      }
+
+      if (method === "DELETE") {
+        await bucket.delete(key);
+        return json({ ok: true, deleted: true });
+      }
+    }
+
     const manifest = await readManifest(bucket, identity.userId);
     await retryPendingCleanup(bucket, manifest).catch(() => undefined);
     const plan = await resolveStoragePlan(bucket, identity, env);

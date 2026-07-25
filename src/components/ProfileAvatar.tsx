@@ -26,6 +26,8 @@ import {
 import { loadStore } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
+import { getAvatarCache } from "../lib/avatarCache";
+import { resolveAvatarFallback } from "../lib/avatarR2Fallback";
 
 type ProfileLike = {
   id?: string;
@@ -47,6 +49,10 @@ type VisualOpts = {
   dartSetId?: string | null;
   showDartOverlay?: boolean;
   noFrame?: boolean; // ✅ NEW : pas de bordure/fond (aucun disque)
+  // Identifiant explicite utile aux wrappers "lite" qui ne passent pas l'objet profil complet.
+  // Il permet de retrouver le cache local puis la copie Cloudflare R2 si le NAS tombe.
+  profileId?: string | null;
+  fallbackDataUrl?: any;
 };
 
 function isDeadRemoteAvatar(src: string) {
@@ -295,10 +301,35 @@ export default function ProfileAvatar(props: Props) {
     return null;
   }, [propDataUrl, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
-  const [imgBroken, setImgBroken] = React.useState(false);
-  React.useEffect(() => setImgBroken(false), [rawImg]);
+  // -------------------------------------------------------------------------
+  // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2
+  // -------------------------------------------------------------------------
+  const effectiveProfileId = String(props.profileId || p?.id || "").trim();
+  const explicitFallback = normalizeImport(props.fallbackDataUrl) || "";
+  const readCachedFallback = React.useCallback(() => {
+    if (!effectiveProfileId) return explicitFallback;
+    const cached: any = getAvatarCache(effectiveProfileId);
+    return (
+      explicitFallback ||
+      normalizeImport(cached?.avatarThumbDataUrl) ||
+      normalizeImport(cached?.avatarDataUrl) ||
+      normalizeImport(cached?.avatarFullDataUrl) ||
+      normalizeImport(cached?.avatarCastDataUrl) ||
+      ""
+    );
+  }, [effectiveProfileId, explicitFallback]);
 
-  const img = React.useMemo(() => {
+  const [fallbackRaw, setFallbackRaw] = React.useState<string>(() => readCachedFallback());
+  const [primaryBroken, setPrimaryBroken] = React.useState(false);
+  const [fallbackBroken, setFallbackBroken] = React.useState(false);
+
+  React.useEffect(() => {
+    setPrimaryBroken(false);
+    setFallbackBroken(false);
+    setFallbackRaw(readCachedFallback());
+  }, [rawImg, effectiveProfileId, readCachedFallback]);
+
+  const primaryImg = React.useMemo(() => {
     const normalized = normalizeSrc(rawImg);
     if (!normalized) return null;
 
@@ -307,12 +338,34 @@ export default function ProfileAvatar(props: Props) {
         typeof (p as any).avatarUpdatedAt === "number" &&
         String((p as any).avatarUpdatedAt)) ||
       (typeof rawImg === "string" ? String(rawImg).slice(-24) : "") ||
-      String(Date.now());
+      "avatar";
 
     return withCacheBust(normalized, salt);
   }, [rawImg, p]);
 
-  const shouldShowImg = !!img && !imgBroken;
+  const fallbackImg = React.useMemo(() => normalizeSrc(fallbackRaw), [fallbackRaw]);
+
+  // On ne sollicite R2 que lorsque la source NAS/remote est absente ou vient
+  // réellement d'échouer. Une seule hydratation R2 est mutualisée pour toute la page.
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!effectiveProfileId) return () => { cancelled = true; };
+    if (primaryImg && !primaryBroken) return () => { cancelled = true; };
+    if (fallbackImg && !fallbackBroken) return () => { cancelled = true; };
+
+    void resolveAvatarFallback(effectiveProfileId).then((src) => {
+      if (!cancelled && src) {
+        setFallbackBroken(false);
+        setFallbackRaw(src);
+      }
+    }).catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [effectiveProfileId, primaryImg, primaryBroken, fallbackImg, fallbackBroken]);
+
+  const useFallback = (!primaryImg || primaryBroken) && !!fallbackImg && !fallbackBroken;
+  const img = useFallback ? fallbackImg : (primaryImg && !primaryBroken ? primaryImg : null);
+  const shouldShowImg = !!img;
 
   // ---------- Dart set overlay ----------
   const [dartSet, setDartSet] = React.useState<DartSet | null>(null);
@@ -400,7 +453,10 @@ export default function ProfileAvatar(props: Props) {
             key={img as string}
             src={img as string}
             alt={name ?? "avatar"}
-            onError={() => setImgBroken(true)}
+            onError={() => {
+              if (useFallback) setFallbackBroken(true);
+              else setPrimaryBroken(true);
+            }}
             style={{
               width: "100%",
               height: "100%",

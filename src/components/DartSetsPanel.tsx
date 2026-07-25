@@ -1881,6 +1881,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                     }}
                   >
                     <AvatarLite
+                      profileId={String((activeOwner as any)?.id || "")}
                       src={(activeOwner as any).avatarDataUrl || (activeOwner as any).avatarUrl || (activeOwner as any).avatar || null}
                       size={32}
                       label={ownerLabel(activeOwner).slice(0, 1)}

@@ -13,6 +13,7 @@ import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
+import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
@@ -2415,6 +2416,21 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   try {
     const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
 
+    // AVATARS R2 FAILOVER : les profils du store ne conservent volontairement
+    // plus les gros base64. On ajoute donc au snapshot cloud un bloc séparé de
+    // miniatures compactes (192px), utilisable même si le NAS est hors ligne.
+    try {
+      const currentStore: any = await loadStore();
+      const avatarFallbacks = await buildAvatarFallbackSnapshot(
+        Array.isArray(currentStore?.profiles) ? currentStore.profiles : []
+      );
+      if (Object.keys(avatarFallbacks.profiles || {}).length > 0) {
+        clone.avatarFallbacks = avatarFallbacks;
+      }
+    } catch (avatarError) {
+      console.warn("[storage] avatar R2 fallback export skipped", avatarError);
+    }
+
     if (clone?.store && typeof clone.store === "object") {
       clone.store = sanitizeStoreForCloud(clone.store);
     }
@@ -2449,6 +2465,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   }
 
   await importAll(dump);
+
+  // AVATARS R2 FAILOVER : réhydrate immédiatement le cache local des avatars
+  // depuis le bloc compact embarqué dans le snapshot Cloudflare R2.
+  try {
+    importAvatarFallbackSnapshot((dump as any)?.avatarFallbacks || (dump as any)?.avatar_fallbacks || null);
+  } catch (avatarError) {
+    console.warn("[storage] avatar R2 fallback import skipped", avatarError);
+  }
 
   // ✅ Important: le cloud peut contenir des doublons (ex: plusieurs profils locaux
   // clonés depuis le profil online). On nettoie systématiquement après import
