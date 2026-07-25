@@ -1956,21 +1956,32 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
       : [];
     const captures = legs.filter((r: any) => String(r?.reason || "") === "capture").length;
     const escapes = legs.filter((r: any) => String(r?.reason || "") === "escape").length;
+    const matchStats = summary?.matchStats || anyE?.payload?.stats?.match || anyE?.payload?.stats?.global || {};
+    const players = Array.isArray(summary?.players) ? summary.players : Array.isArray(anyE?.payload?.stats?.players) ? anyE.payload.stats.players : [];
+    const totalPoints = Number(matchStats?.totalPoints || players.reduce((a: number,p: any)=>a+Number(p?.points||p?.score||0),0)) || 0;
+    const totalDarts = Number(matchStats?.totalDarts || players.reduce((a: number,p: any)=>a+Number(p?.darts||p?.dartsThrown||0),0)) || 0;
+    const avg3 = Number(matchStats?.avg3 || (totalDarts ? (totalPoints / totalDarts) * 3 : 0)) || 0;
+    const fastest = Number(matchStats?.fastestCaptureRound || 0) || 0;
     return (
       <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          {entities.slice(0, 2).map((row: any, index: number) => (
-            <React.Fragment key={String(row?.id || row?.name || index)}>
+          {entities.slice(0, 2).map((row: any, index: number) => {
+            const score = Number(row?.totalPoints ?? row?.points ?? row?.score ?? (Number(row?.runnerPoints||0)+Number(row?.chaserPoints||0))) || 0;
+            return <React.Fragment key={String(row?.id || row?.name || index)}>
               {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>VS</span> : null}
               <span style={{ color: row?.winner ? "#ffd76a" : index === 0 ? "#ff5d9e" : "#42d6ff", fontWeight: 1000 }}>{String(row?.name || `Camp ${index + 1}`)}{row?.winner ? " 🏆" : ""}</span>
+              <span style={{ color: "#ffd76a", fontWeight: 1000 }}>{score} pts</span>
               <span style={{ color: theme.primary, fontWeight: 1000 }}>{Number(row?.setWins ?? row?.setsWon ?? 0)} set{Number(row?.setWins ?? row?.setsWon ?? 0) > 1 ? "s" : ""}</span>
               <span style={{ color: "rgba(255,255,255,.68)", fontWeight: 900 }}>{Number(row?.legsWon ?? 0)} M</span>
-            </React.Fragment>
-          ))}
+            </React.Fragment>;
+          })}
         </div>
         <div style={{ color: "rgba(255,255,255,.62)", fontSize: 10, fontWeight: 850 }}>
           BO{Number(summary?.legsBestOf || anyE?.payload?.config?.legsBestOf || 3)} manches • BO{Number(summary?.setsBestOf || anyE?.payload?.config?.setsBestOf || 1)} sets • avance {Number(summary?.headStart ?? anyE?.payload?.config?.headStart ?? 100)} pts
           {legs.length ? ` • ${legs.length} manches` : ""} • 💥 {captures} capture{captures > 1 ? "s" : ""} • 🏁 {escapes} évasion{escapes > 1 ? "s" : ""}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 850 }}>
+          {totalPoints} pts • AVG/3 {avg3.toFixed(1)} • {totalDarts} flèches{fastest ? ` • capture la + rapide R${fastest}` : ""}
         </div>
         {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Vainqueur : {String(summary.winnerName)}</div> : null}
       </div>

@@ -327,28 +327,88 @@ export default function AttrapeMoiPlay(props: any) {
   function buildHistoryRecord() {
     const now = Date.now();
     const winnerEntityId = state.winnerEntityId;
+    const visits = Array.isArray(state.history) ? state.history : [];
+    const legResultsBase = Array.isArray(state.legResults) ? state.legResults : [];
+    const visitBucketTemplate = () => ({ zero: 0, b1_39: 0, b40_59: 0, b60_99: 0, b100_139: 0, b140_179: 0, b180: 0 });
+    const addVisitBucket = (bucket: any, scoreRaw: any) => {
+      const score = Number(scoreRaw || 0);
+      if (score <= 0) bucket.zero += 1;
+      else if (score < 40) bucket.b1_39 += 1;
+      else if (score < 60) bucket.b40_59 += 1;
+      else if (score < 100) bucket.b60_99 += 1;
+      else if (score < 140) bucket.b100_139 += 1;
+      else if (score < 180) bucket.b140_179 += 1;
+      else bucket.b180 += 1;
+    };
+    const countImpact = (darts: any[]) => {
+      const out = { singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0, hits: 0 };
+      (darts || []).forEach((dart: any) => {
+        const bed = String(dart?.bed || '').toUpperCase();
+        if (!dart || bed === 'MISS') out.misses += 1;
+        else if (bed === 'IB') { out.dbulls += 1; out.hits += 1; }
+        else if (bed === 'OB') { out.bulls += 1; out.hits += 1; }
+        else if (bed === 'T') { out.triples += 1; out.hits += 1; }
+        else if (bed === 'D') { out.doubles += 1; out.hits += 1; }
+        else { out.singles += 1; out.hits += 1; }
+      });
+      return out;
+    };
+
     const entities = state.entityOrder.map((id, index) => {
       const entity = state.entities[id];
       const es = state.entityStats[id];
       const captureAvg = es.captures ? round1(es.captureRoundsTotal / es.captures) : 0;
       const escapeAvgLead = es.escapes ? round1(es.finalEscapeLeadTotal / es.escapes) : 0;
+      const totalPoints = Number(es.runnerPoints || 0) + Number(es.chaserPoints || 0);
+      const roleLegs = Number(es.runnerLegs || 0) + Number(es.chaserLegs || 0);
       return {
         id, name: entity?.name || `Camp ${index + 1}`, playerIds: entity?.playerIds || [], players: entity?.playerIds || [],
         setWins: Number(state.setWins[id] || 0), setsWon: Number(state.setWins[id] || 0), legsWon: es.legsWon,
+        score: totalPoints, points: totalPoints, totalPoints,
         runnerLegWins: es.runnerLegWins, chaserLegWins: es.chaserLegWins, captures: es.captures, escapes: es.escapes,
         fastestCaptureRound: es.fastestCaptureRound, avgCaptureRound: captureAvg, latestCaptureRound: es.latestCaptureRound,
         runnerLegs: es.runnerLegs, chaserLegs: es.chaserLegs, runnerPoints: es.runnerPoints, chaserPoints: es.chaserPoints,
+        captureRate: es.chaserLegs ? round1((es.captures / es.chaserLegs) * 100) : 0,
+        escapeRate: es.runnerLegs ? round1((es.escapes / es.runnerLegs) * 100) : 0,
+        roleWinRate: roleLegs ? round1((es.legsWon / roleLegs) * 100) : 0,
         maxRunnerLead: es.maxRunnerLead, avgEscapeLead: escapeAvgLead, bestEscapeLead: es.bestEscapeLead, closestChaseGap: es.closestChaseGap,
         winner: id === winnerEntityId, win: id === winnerEntityId, rank: id === winnerEntityId ? 1 : 2,
       };
     }).sort((a, b) => a.rank - b.rank);
     const entityById = new Map(entities.map((e) => [e.id, e]));
+
     const playerRows = state.players.map((player: any) => {
       const profile: any = byId.get(String(player.id)) || player;
       const stats = state.playerStats[player.id] || emptyCatchMePlayerStats();
       const entityId = state.entityByPlayer[player.id];
       const entity = entityById.get(entityId);
       const win = entityId === winnerEntityId;
+      const pVisits = visits.filter((v: any) => String(v?.playerId) === String(player.id));
+      const runnerVisitsRows = pVisits.filter((v: any) => v?.role === 'runner');
+      const chaserVisitsRows = pVisits.filter((v: any) => v?.role === 'chaser');
+      const visitBuckets = visitBucketTemplate();
+      pVisits.forEach((v: any) => addVisitBucket(visitBuckets, v?.score));
+      const impact = pVisits.reduce((acc: any, v: any) => {
+        const one = countImpact(v?.darts || []);
+        Object.keys(one).forEach((k) => { acc[k] = Number(acc[k] || 0) + Number((one as any)[k] || 0); });
+        return acc;
+      }, { singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0, hits: 0 });
+      const runnerImpact = runnerVisitsRows.reduce((acc: any, v: any) => {
+        const one = countImpact(v?.darts || []);
+        Object.keys(one).forEach((k) => { acc[k] = Number(acc[k] || 0) + Number((one as any)[k] || 0); });
+        return acc;
+      }, { singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0, hits: 0 });
+      const chaserImpact = chaserVisitsRows.reduce((acc: any, v: any) => {
+        const one = countImpact(v?.darts || []);
+        Object.keys(one).forEach((k) => { acc[k] = Number(acc[k] || 0) + Number((one as any)[k] || 0); });
+        return acc;
+      }, { singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0, hits: 0 });
+      const hitRate = stats.darts ? round1((impact.hits / stats.darts) * 100) : 0;
+      const runnerHitRate = stats.runnerDarts ? round1((runnerImpact.hits / stats.runnerDarts) * 100) : 0;
+      const chaserHitRate = stats.chaserDarts ? round1((chaserImpact.hits / stats.chaserDarts) * 100) : 0;
+      const score60 = visitBuckets.b60_99 + visitBuckets.b100_139 + visitBuckets.b140_179 + visitBuckets.b180;
+      const score100 = visitBuckets.b100_139 + visitBuckets.b140_179 + visitBuckets.b180;
+      const score140 = visitBuckets.b140_179 + visitBuckets.b180;
       return {
         id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile),
         avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
@@ -358,32 +418,105 @@ export default function AttrapeMoiPlay(props: any) {
         entityId, win, winner: win, rank: win ? 1 : 2,
         score: stats.points, points: stats.points, totalScored: stats.points,
         darts: stats.darts, dartsThrown: stats.darts, visits: stats.visits, avg3: stats.darts ? round1((stats.points / stats.darts) * 3) : 0,
-        bestVisit: stats.bestVisit, singles: stats.singles, doubles: stats.doubles, triples: stats.triples, bulls: stats.bulls, dbulls: stats.dbulls, misses: stats.misses,
+        pointsPerDart: stats.darts ? round1(stats.points / stats.darts) : 0,
+        pointsPerVisit: stats.visits ? round1(stats.points / stats.visits) : 0,
+        hitRate, hits: impact.hits,
+        bestVisit: stats.bestVisit, singles: impact.singles, doubles: impact.doubles, triples: impact.triples, bulls: impact.bulls, dbulls: impact.dbulls, misses: impact.misses,
+        zeroVisits: visitBuckets.zero, score1_39: visitBuckets.b1_39, score40_59: visitBuckets.b40_59, score60_99: visitBuckets.b60_99,
+        score100_139: visitBuckets.b100_139, score140_179: visitBuckets.b140_179, score180: visitBuckets.b180,
+        visits60Plus: score60, visits100Plus: score100, visits140Plus: score140, visits180: visitBuckets.b180,
+        visitBuckets,
+        visitScores: pVisits.map((v: any) => Number(v?.score || 0)),
         runnerDarts: stats.runnerDarts, runnerVisits: stats.runnerVisits, runnerPoints: stats.runnerPoints, runnerAvg3: stats.runnerDarts ? round1((stats.runnerPoints / stats.runnerDarts) * 3) : 0, runnerBestVisit: stats.runnerBestVisit,
+        runnerHitRate, runnerHits: runnerImpact.hits, runnerImpact,
+        runnerVisitScores: runnerVisitsRows.map((v: any) => Number(v?.score || 0)),
         chaserDarts: stats.chaserDarts, chaserVisits: stats.chaserVisits, chaserPoints: stats.chaserPoints, chaserAvg3: stats.chaserDarts ? round1((stats.chaserPoints / stats.chaserDarts) * 3) : 0, chaserBestVisit: stats.chaserBestVisit,
+        chaserHitRate, chaserHits: chaserImpact.hits, chaserImpact,
+        chaserVisitScores: chaserVisitsRows.map((v: any) => Number(v?.score || 0)),
         captureCredits: stats.captureCredits, escapeCredits: stats.escapeCredits, legsWon: stats.legsWon, setsWon: stats.setsWon,
         runnerLegWins: entity?.runnerLegWins || 0, chaserLegWins: entity?.chaserLegWins || 0, teamCaptures: entity?.captures || 0, teamEscapes: entity?.escapes || 0,
-        fastestCaptureRound: entity?.fastestCaptureRound ?? null, avgCaptureRound: entity?.avgCaptureRound || 0, maxRunnerLead: entity?.maxRunnerLead || 0, avgEscapeLead: entity?.avgEscapeLead || 0,
+        runnerLegs: entity?.runnerLegs || 0, chaserLegs: entity?.chaserLegs || 0,
+        captureRate: entity?.captureRate || 0, escapeRate: entity?.escapeRate || 0,
+        fastestCaptureRound: entity?.fastestCaptureRound ?? null, avgCaptureRound: entity?.avgCaptureRound || 0, latestCaptureRound: entity?.latestCaptureRound ?? null,
+        maxRunnerLead: entity?.maxRunnerLead || 0, avgEscapeLead: entity?.avgEscapeLead || 0, bestEscapeLead: entity?.bestEscapeLead || 0, closestChaseGap: entity?.closestChaseGap ?? null,
         rawStats: stats,
       };
     });
+
     const totalDarts = playerRows.reduce((a, p) => a + Number(p.darts || 0), 0);
     const totalPoints = playerRows.reduce((a, p) => a + Number(p.points || 0), 0);
+    const totalVisits = playerRows.reduce((a, p) => a + Number(p.visits || 0), 0);
+    const totalHits = playerRows.reduce((a, p) => a + Number(p.hits || 0), 0);
     const totalCaptures = entities.reduce((a, e) => a + Number(e.captures || 0), 0);
     const totalEscapes = entities.reduce((a, e) => a + Number(e.escapes || 0), 0);
+    const totalRunnerPoints = playerRows.reduce((a, p) => a + Number(p.runnerPoints || 0), 0);
+    const totalChaserPoints = playerRows.reduce((a, p) => a + Number(p.chaserPoints || 0), 0);
+    const totalRunnerDarts = playerRows.reduce((a, p) => a + Number(p.runnerDarts || 0), 0);
+    const totalChaserDarts = playerRows.reduce((a, p) => a + Number(p.chaserDarts || 0), 0);
     const winnerEntity = entities.find((e) => e.id === winnerEntityId) || null;
+    const captureLegs = legResultsBase.filter((r: any) => r?.reason === 'capture');
+    const escapeLegs = legResultsBase.filter((r: any) => r?.reason === 'escape');
+    const matchBuckets = visitBucketTemplate();
+    visits.forEach((v: any) => addVisitBucket(matchBuckets, v?.score));
+    const impactTotals = playerRows.reduce((acc: any, p: any) => {
+      ['singles','doubles','triples','bulls','dbulls','misses'].forEach((k) => { acc[k] += Number(p?.[k] || 0); });
+      return acc;
+    }, { singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0 });
+    const fastestCaptureRound = captureLegs.length ? Math.min(...captureLegs.map((r: any) => Number(r?.pursuitRound || 0)).filter((n: number) => n > 0)) : null;
+    const slowestCaptureRound = captureLegs.length ? Math.max(...captureLegs.map((r: any) => Number(r?.pursuitRound || 0))) : null;
+    const avgCaptureRound = captureLegs.length ? round1(captureLegs.reduce((a: number, r: any) => a + Number(r?.pursuitRound || 0), 0) / captureLegs.length) : 0;
+    const escapeLeads = escapeLegs.map((r: any) => Number(r?.finalDistance || 0));
     const matchStats = {
-      durationMs: Math.max(0, (state.finishedAt || now) - state.startedAt), totalDarts, totalPoints,
-      totalVisits: playerRows.reduce((a, p) => a + Number(p.visits || 0), 0), totalCaptures, totalEscapes,
-      legsPlayed: state.legResults.length, setsPlayed: Math.max(1, ...state.legResults.map((r) => Number(r.setNo || 1))),
+      durationMs: Math.max(0, (state.finishedAt || now) - state.startedAt), totalDarts, totalPoints, totalVisits, totalHits,
+      hitRate: totalDarts ? round1((totalHits / totalDarts) * 100) : 0,
+      avg3: totalDarts ? round1((totalPoints / totalDarts) * 3) : 0,
+      pointsPerDart: totalDarts ? round1(totalPoints / totalDarts) : 0,
+      pointsPerVisit: totalVisits ? round1(totalPoints / totalVisits) : 0,
+      bestVisit: playerRows.reduce((best, p) => Math.max(best, Number(p.bestVisit || 0)), 0),
+      totalCaptures, totalEscapes, captureRate: legResultsBase.length ? round1((totalCaptures / legResultsBase.length) * 100) : 0,
+      escapeRate: legResultsBase.length ? round1((totalEscapes / legResultsBase.length) * 100) : 0,
+      fastestCaptureRound, slowestCaptureRound, avgCaptureRound,
+      avgEscapeLead: escapeLeads.length ? round1(escapeLeads.reduce((a, n) => a + n, 0) / escapeLeads.length) : 0,
+      bestEscapeLead: escapeLeads.length ? Math.max(...escapeLeads) : 0,
+      closestChaseGap: legResultsBase.length ? Math.min(...legResultsBase.map((r: any) => Math.abs(Number(r?.finalDistance || 0)))) : null,
+      maxRunnerLead: entities.reduce((best, e) => Math.max(best, Number(e.maxRunnerLead || 0)), 0),
+      avgDartsPerLeg: legResultsBase.length ? round1(totalDarts / legResultsBase.length) : 0,
+      avgVisitsPerLeg: legResultsBase.length ? round1(totalVisits / legResultsBase.length) : 0,
+      runnerPoints: totalRunnerPoints, chaserPoints: totalChaserPoints,
+      runnerDarts: totalRunnerDarts, chaserDarts: totalChaserDarts,
+      runnerAvg3: totalRunnerDarts ? round1((totalRunnerPoints / totalRunnerDarts) * 3) : 0,
+      chaserAvg3: totalChaserDarts ? round1((totalChaserPoints / totalChaserDarts) * 3) : 0,
+      legsPlayed: legResultsBase.length, setsPlayed: Math.max(1, ...legResultsBase.map((r) => Number(r.setNo || 1))),
       headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds,
+      impacts: impactTotals, visitBuckets: matchBuckets,
+      scoreByEntity: Object.fromEntries(entities.map((e: any) => [e.id, Number(e.totalPoints || e.points || 0)])),
+      setsByEntity: Object.fromEntries(entities.map((e: any) => [e.id, Number(e.setWins || 0)])),
+      legsByEntity: Object.fromEntries(entities.map((e: any) => [e.id, Number(e.legsWon || 0)])),
     };
-    const legResults = state.legResults.map((result) => ({
-      ...result,
-      runnerName: state.entities[result.runnerEntityId]?.name || result.runnerEntityId,
-      chaserName: state.entities[result.chaserEntityId]?.name || result.chaserEntityId,
-      winnerName: state.entities[result.winnerEntityId]?.name || result.winnerEntityId,
-    }));
+
+    const legResults = legResultsBase.map((result: any) => {
+      const legVisits = visits.filter((v: any) => Number(v?.globalLegNo) === Number(result?.globalLegNo));
+      const distances = legVisits.map((v: any) => Number(v?.distanceAfter || 0));
+      const legPlayers = state.players.map((player: any) => {
+        const rows = legVisits.filter((v: any) => String(v?.playerId) === String(player.id));
+        const darts = rows.reduce((a: number, v: any) => a + (Array.isArray(v?.darts) ? v.darts.length : 0), 0);
+        const points = rows.reduce((a: number, v: any) => a + Number(v?.score || 0), 0);
+        return { id: player.id, name: playerName(byId.get(String(player.id)) || player), darts, visits: rows.length, points, avg3: darts ? round1((points / darts) * 3) : 0, bestVisit: rows.reduce((m: number, v: any) => Math.max(m, Number(v?.score || 0)), 0) };
+      });
+      return {
+        ...result,
+        runnerName: state.entities[result.runnerEntityId]?.name || result.runnerEntityId,
+        chaserName: state.entities[result.chaserEntityId]?.name || result.chaserEntityId,
+        winnerName: state.entities[result.winnerEntityId]?.name || result.winnerEntityId,
+        minDistance: distances.length ? Math.min(...distances) : Number(result?.finalDistance || 0),
+        maxDistance: distances.length ? Math.max(...distances) : Number(result?.finalDistance || 0),
+        avgDistance: distances.length ? round1(distances.reduce((a: number, n: number) => a + n, 0) / distances.length) : Number(result?.finalDistance || 0),
+        chaseProgressPct: result?.headStart ? round1(Math.max(0, Math.min(100, ((Number(result.headStart) - Math.max(Number(result.finalDistance || 0), 0)) / Number(result.headStart)) * 100))) : 0,
+        visitScores: legVisits.map((v: any) => Number(v?.score || 0)),
+        distanceEvolution: distances,
+        players: legPlayers,
+      };
+    });
     const gameInfo = {
       mode: "attrape_moi", participantMode: config.participantMode,
       headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds,
@@ -394,10 +527,10 @@ export default function AttrapeMoiPlay(props: any) {
       kind: "attrape_moi", mode: "attrape_moi", sport: "darts", finished: state.finished, participantMode: config.participantMode,
       winnerId: winnerEntityId, winnerName: winnerEntity?.name || "—", tied: false,
       headStart: state.rules.headStart, pursuitRounds: state.rules.pursuitRounds, legsBestOf: state.rules.legsBestOf, setsBestOf: state.rules.setsBestOf,
-      legsToWin, setsToWin, setWins: { ...state.setWins }, entities, standings: entities,
+      legsToWin, setsToWin, setWins: { ...state.setWins }, legWins: { ...state.legWins }, entities, standings: entities,
       legResults, players: playerRows, perPlayer: playerRows, teams: config.participantMode === "teams" ? entities : [], matchStats,
       duration: matchStats.durationMs, durationMs: matchStats.durationMs,
-      scoreLine: entities.map((e) => `${e.name} ${e.setWins} set${e.setWins > 1 ? "s" : ""} · ${e.legsWon} manche${e.legsWon > 1 ? "s" : ""}`).join(" • "),
+      scoreLine: entities.map((e) => `${e.name} ${e.totalPoints} pts · ${e.setWins} set${e.setWins > 1 ? "s" : ""} · ${e.legsWon} manche${e.legsWon > 1 ? "s" : ""}`).join(" • "),
       game: gameInfo,
     };
     return {
@@ -407,7 +540,7 @@ export default function AttrapeMoiPlay(props: any) {
       payload: {
         kind: "attrape_moi", mode: "attrape_moi", sport: "darts", winnerId: winnerEntityId, config, rules: state.rules,
         players: playerRows, teams: config.participantMode === "teams" ? entities : [], summary,
-        visits: state.history, visitHistory: state.history, legResults,
+        visits, visitHistory: visits, legResults,
         state: { entityOrder: state.entityOrder, entities: state.entities, setWins: state.setWins, legWins: state.legWins, winnerEntityId },
         stats: { sport: "darts", mode: "attrape_moi", players: playerRows, entities, teams: config.participantMode === "teams" ? entities : [], match: matchStats, global: matchStats },
       },
@@ -742,42 +875,110 @@ function LegResultModal({ state, onContinue, primary }: any) {
   </div>;
 }
 
+function StatTabButton({ active, label, onClick, color }: any) {
+  return <button type="button" onClick={onClick} style={{ flex: "0 0 auto", minHeight: 32, padding: "0 11px", borderRadius: 999, border: `1px solid ${active ? color : "rgba(255,255,255,.11)"}`, background: active ? `${color}18` : "rgba(255,255,255,.035)", color: active ? color : "rgba(255,255,255,.68)", fontSize: 8.5, fontWeight: 1100, letterSpacing: .55 }}>{label}</button>;
+}
+
+function EndMetricBar({ label, left, right, leftColor = C.runner, rightColor = C.chaser, leftLabel = "FUYARD", rightLabel = "CHASSEUR" }: any) {
+  const l = Math.max(0, Number(left || 0));
+  const r = Math.max(0, Number(right || 0));
+  const max = Math.max(l, r, 1);
+  return <div style={{ padding: "7px 8px", borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 8.2, color: "rgba(255,255,255,.55)", fontWeight: 950 }}><span>{leftLabel} {round1(l)}</span><b style={{ color: "rgba(255,255,255,.78)" }}>{label}</b><span>{rightLabel} {round1(r)}</span></div>
+    <div style={{ marginTop: 5, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, height: 8 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", background: "rgba(255,255,255,.035)", borderRadius: "999px 0 0 999px", overflow: "hidden" }}><div style={{ width: `${(l / max) * 100}%`, background: leftColor, borderRadius: "999px 0 0 999px" }} /></div>
+      <div style={{ background: "rgba(255,255,255,.035)", borderRadius: "0 999px 999px 0", overflow: "hidden" }}><div style={{ width: `${(r / max) * 100}%`, height: "100%", background: rightColor, borderRadius: "0 999px 999px 0" }} /></div>
+    </div>
+  </div>;
+}
+
+function EndLineChart({ values, color = C.gold, label = "ÉVOLUTION" }: { values: number[]; color?: string; label?: string }) {
+  const clean = (values || []).map((n) => Number(n || 0));
+  if (!clean.length) return null;
+  const w = 520, h = 120, pad = 12;
+  const min = Math.min(...clean, 0), max = Math.max(...clean, 1), span = max - min || 1;
+  const pts = clean.map((v, i) => ({ x: pad + (clean.length === 1 ? 0 : (i / (clean.length - 1)) * (w - pad * 2)), y: h - pad - ((v - min) / span) * (h - pad * 2) }));
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
+  return <div style={{ padding: 8, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}>
+    <div style={{ color: "rgba(255,255,255,.58)", fontSize: 8, fontWeight: 1000, letterSpacing: .65, marginBottom: 4 }}>{label}</div>
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ display: "block", width: "100%", height: 98 }}>
+      <line x1={pad} y1={h-pad} x2={w-pad} y2={h-pad} stroke="rgba(255,255,255,.12)" strokeWidth="1" />
+      <path d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill={color} stroke="#05070c" strokeWidth="1" />)}
+    </svg>
+  </div>;
+}
+
 function EndModal({ state, profilesById, participantMode, primary, onClose, onReplay, onHistory }: any) {
+  const [tab, setTab] = React.useState<"resume" | "camps" | "players" | "roles" | "legs" | "impacts">("resume");
   const winner = state.entities[state.winnerEntityId] || null;
-  const entityRows = state.entityOrder.map((id: string) => ({ entity: state.entities[id], stats: state.entityStats[id], setWins: state.setWins[id] || 0, winner: id === state.winnerEntityId }));
-  const playerRows = state.players.map((player: any) => ({ player, profile: profilesById.get(player.id) || player, stats: state.playerStats[player.id] || emptyCatchMePlayerStats(), winner: state.entityByPlayer[player.id] === state.winnerEntityId }));
-  const totalDarts = playerRows.reduce((a: number, r: any) => a + r.stats.darts, 0);
+  const entityRows = state.entityOrder.map((id: string) => ({ entity: state.entities[id], stats: state.entityStats[id], setWins: state.setWins[id] || 0, legWins: state.legWins[id] || state.entityStats[id]?.legsWon || 0, winner: id === state.winnerEntityId }));
+  const playerRows = state.players.map((player: any) => ({ player, profile: profilesById.get(player.id) || player, stats: state.playerStats[player.id] || emptyCatchMePlayerStats(), entityId: state.entityByPlayer[player.id], winner: state.entityByPlayer[player.id] === state.winnerEntityId }));
+  const totalDarts = playerRows.reduce((a: number, r: any) => a + Number(r.stats.darts || 0), 0);
+  const totalPoints = playerRows.reduce((a: number, r: any) => a + Number(r.stats.points || 0), 0);
+  const totalVisits = playerRows.reduce((a: number, r: any) => a + Number(r.stats.visits || 0), 0);
+  const totalCaptures = state.legResults.filter((r: any) => r.reason === "capture").length;
+  const totalEscapes = state.legResults.filter((r: any) => r.reason === "escape").length;
+  const matchAvg3 = totalDarts ? round1((totalPoints / totalDarts) * 3) : 0;
+  const bestVisit = playerRows.reduce((m: number, r: any) => Math.max(m, Number(r.stats.bestVisit || 0)), 0);
+  const captureRounds = state.legResults.filter((r: any) => r.reason === "capture").map((r: any) => Number(r.pursuitRound || 0)).filter(Boolean);
+  const avgCaptureRound = captureRounds.length ? round1(captureRounds.reduce((a: number, n: number) => a + n, 0) / captureRounds.length) : 0;
+  const impacts = playerRows.reduce((acc: any, r: any) => { ["singles","doubles","triples","bulls","dbulls","misses"].forEach((k) => acc[k] += Number(r.stats[k] || 0)); return acc; }, { singles:0,doubles:0,triples:0,bulls:0,dbulls:0,misses:0 });
+  const visitScores = (state.history || []).map((v: any) => Number(v?.score || 0));
+  const visitBuckets = (state.history || []).reduce((b: any, v: any) => { const n=Number(v?.score||0); if(n<=0)b[0]++; else if(n<40)b[1]++; else if(n<60)b[2]++; else if(n<100)b[3]++; else if(n<140)b[4]++; else if(n<180)b[5]++; else b[6]++; return b; }, [0,0,0,0,0,0,0]);
+  const distanceCurve = state.legResults.map((r: any) => Number(r.finalDistance || 0));
+  const duration = fmtDuration((state.finishedAt || Date.now()) - state.startedAt);
+  const tabs = [["resume","RÉSUMÉ"],["camps","CAMPS"],["players","JOUEURS"],["roles","RÔLES"],["legs","MANCHES"],["impacts","IMPACTS"]] as const;
+
   return <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.82)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 9 }}>
-    <div style={panelStyle({ width: "min(950px,100%)", maxHeight: "95vh", overflow: "auto", padding: 13, borderColor: `${primary}77` })}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ width: 34 }} /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 10.5, fontWeight: 1100, letterSpacing: 1.2 }}>FIN DE POURSUITE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>ATTRAPE-MOI SI TU PEUX !</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
+    <div style={panelStyle({ width: "min(980px,100%)", maxHeight: "95vh", overflow: "auto", padding: 12, borderColor: `${primary}77` })}>
+      <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", alignItems: "center", gap: 8 }}><div /><div style={{ textAlign: "center" }}><div style={{ color: primary, fontSize: 10.5, fontWeight: 1100, letterSpacing: 1.2 }}>FIN DE POURSUITE</div><div style={{ fontSize: 20, fontWeight: 1100 }}>ATTRAPE-MOI SI TU PEUX !</div></div><button onClick={onClose} style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 18 }}>×</button></div>
 
-      <div style={{ marginTop: 10, padding: 12, borderRadius: 16, background: `${C.gold}0d`, border: `1px solid ${C.gold}55`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 10, fontWeight: 1100 }}>🏆 VAINQUEUR</div><div style={{ marginTop: 2, fontSize: 25, fontWeight: 1100 }}>{winner?.name || "—"}</div><div style={{ color: primary, fontSize: 15, fontWeight: 1000 }}>{Number(state.setWins[state.winnerEntityId] || 0)} SET{Number(state.setWins[state.winnerEntityId] || 0) > 1 ? "S" : ""} GAGNÉ{Number(state.setWins[state.winnerEntityId] || 0) > 1 ? "S" : ""}</div></div>
+      <div className="dc-scroll-thin" style={{ marginTop: 9, display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>{tabs.map(([id,label]) => <StatTabButton key={id} active={tab===id} label={label} onClick={()=>setTab(id as any)} color={id === "roles" ? C.runner : id === "legs" ? C.chaser : primary} />)}</div>
 
-      <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
-        <MiniKpi label="FORMAT" value={`BO${state.rules.legsBestOf}`} sub={`sets BO${state.rules.setsBestOf}`} color={primary} />
-        <MiniKpi label="MANCHES" value={state.legResults.length} sub={`${state.legResults.filter((r: any) => r.reason === "capture").length} captures`} color={C.chaser} />
-        <MiniKpi label="DARTS" value={totalDarts} sub="total" color={C.gold} />
-        <MiniKpi label="DURÉE" value={fmtDuration((state.finishedAt || Date.now()) - state.startedAt)} sub={`${state.rules.headStart} pts d'avance`} color={C.runner} />
-      </div>
+      {tab === "resume" ? <>
+        <div style={{ marginTop: 9, padding: 11, borderRadius: 16, background: `${C.gold}0d`, border: `1px solid ${C.gold}55`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 9.5, fontWeight: 1100 }}>🏆 VAINQUEUR</div><div style={{ marginTop: 2, fontSize: 24, fontWeight: 1100 }}>{winner?.name || "—"}</div><div style={{ color: primary, fontSize: 13, fontWeight: 1000 }}>{Number(state.setWins[state.winnerEntityId] || 0)} SET{Number(state.setWins[state.winnerEntityId] || 0) > 1 ? "S" : ""} · {Number(state.legWins[state.winnerEntityId] || state.entityStats[state.winnerEntityId]?.legsWon || 0)} MANCHES</div></div>
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+          <MiniKpi label="FORMAT" value={`BO${state.rules.legsBestOf}`} sub={`sets BO${state.rules.setsBestOf}`} color={primary} />
+          <MiniKpi label="SCORE TOTAL" value={totalPoints} sub={`${matchAvg3} avg/3`} color={C.gold} />
+          <MiniKpi label="CAPTURES" value={totalCaptures} sub={`${totalEscapes} évasions`} color={C.chaser} />
+          <MiniKpi label="DURÉE" value={duration} sub={`${totalDarts} darts`} color={C.runner} />
+          <MiniKpi label="BEST VOLÉE" value={bestVisit} sub={`${totalVisits} volées`} color={C.gold} />
+          <MiniKpi label="CAPTURE MOY." value={avgCaptureRound ? `R${avgCaptureRound}` : "—"} sub={captureRounds.length ? `best R${Math.min(...captureRounds)}` : "aucune"} color={C.chaser} />
+          <MiniKpi label="PTS / VOLÉE" value={totalVisits ? round1(totalPoints/totalVisits) : 0} sub="moyenne" color={primary} />
+          <MiniKpi label="DARTS / MANCHE" value={state.legResults.length ? round1(totalDarts/state.legResults.length) : 0} sub={`${state.legResults.length} manches`} color={C.runner} />
+        </div>
+        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+          {entityRows.map(({ entity, stats, setWins, legWins, winner: won }: any) => {
+            const score = Number(stats?.runnerPoints || 0) + Number(stats?.chaserPoints || 0);
+            return <div key={entity.id} style={panelStyle({ padding: 9, borderColor: won ? `${C.gold}77` : "rgba(255,255,255,.09)" })}>
+              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",gap:6 }}><div style={{ fontWeight: 1100, fontSize: 14 }}>{entity.name}{won ? " 🏆" : ""}</div><b style={{ color:C.gold,fontSize:18 }}>{score} pts</b></div>
+              <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+                <MiniKpi label="SCORE" value={score} sub="points" color={C.gold} />
+                <MiniKpi label="SETS" value={setWins} sub="gagnés" color={primary} />
+                <MiniKpi label="MANCHES" value={legWins} sub="gagnées" color="#fff" />
+                <MiniKpi label="CAPTURES" value={stats?.captures || 0} sub={`${stats?.escapes || 0} évasions`} color={C.chaser} />
+              </div>
+            </div>;
+          })}
+        </div>
+      </> : null}
 
-      <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-        {entityRows.map(({ entity, stats, setWins, winner: won }: any) => <div key={entity.id} style={panelStyle({ padding: 10, borderColor: won ? `${C.gold}77` : "rgba(255,255,255,.09)" })}>
-          <div style={{ fontWeight: 1100, fontSize: 15 }}>{entity.name}{won ? " 🏆" : ""}</div>
-          <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4 }}>
-            <MiniKpi label="SETS" value={setWins} sub="gagnés" color={C.gold} />
-            <MiniKpi label="FUYARD" value={stats.runnerLegWins} sub={`${stats.escapes} évasions`} color={C.runner} />
-            <MiniKpi label="CHASSEUR" value={stats.chaserLegWins} sub={`${stats.captures} captures`} color={C.chaser} />
-          </div>
-          <div style={{ marginTop: 7, fontSize: 9.5, color: "rgba(255,255,255,.60)", lineHeight: 1.5 }}>Capture la plus rapide : <b>{stats.fastestCaptureRound ? `round ${stats.fastestCaptureRound}` : "—"}</b> · Distance max Fuyard : <b>{stats.maxRunnerLead}</b> · Plus proche chasse : <b>{stats.closestChaseGap ?? "—"}</b></div>
-        </div>)}
-      </div>
+      {tab === "camps" ? <div style={{ marginTop: 9, display: "grid", gap: 8 }}>{entityRows.map(({entity,stats,setWins,legWins,winner:won}:any) => {
+        const score=Number(stats?.runnerPoints||0)+Number(stats?.chaserPoints||0); const capRate=stats?.chaserLegs ? round1((Number(stats.captures||0)/Number(stats.chaserLegs||1))*100):0; const escRate=stats?.runnerLegs ? round1((Number(stats.escapes||0)/Number(stats.runnerLegs||1))*100):0;
+        return <div key={entity.id} style={panelStyle({ padding:10,borderColor:won?`${C.gold}77`:`${primary}33` })}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div><b style={{fontSize:16}}>{entity.name}{won?" 🏆":""}</b><div style={{fontSize:8.5,color:"rgba(255,255,255,.5)"}}>PERFORMANCE DU CAMP</div></div><div style={{color:C.gold,fontSize:25,fontWeight:1100}}>{score}</div></div><div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4}}><MiniKpi label="SETS" value={setWins} sub="gagnés" color={C.gold}/><MiniKpi label="MANCHES" value={legWins} sub="gagnées" color={primary}/><MiniKpi label="FUYARD" value={stats?.runnerLegWins||0} sub={`${stats?.escapes||0} évasions`} color={C.runner}/><MiniKpi label="CHASSEUR" value={stats?.chaserLegWins||0} sub={`${stats?.captures||0} captures`} color={C.chaser}/></div><div style={{marginTop:7,display:"grid",gap:5}}><EndMetricBar label="POINTS" left={stats?.runnerPoints||0} right={stats?.chaserPoints||0}/><EndMetricBar label="TAUX DE SUCCÈS" left={escRate} right={capRate}/></div><div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:4}}><MiniKpi label="CAPTURE + RAPIDE" value={stats?.fastestCaptureRound?`R${stats.fastestCaptureRound}`:"—"} sub={stats?.captures?`moy R${round1(stats.captureRoundsTotal/stats.captures)}`:"—"} color={C.chaser}/><MiniKpi label="DISTANCE MAX" value={stats?.maxRunnerLead||0} sub="en fuite" color={C.runner}/><MiniKpi label="ÉVASION MAX" value={stats?.bestEscapeLead||0} sub="écart final" color={C.runner}/><MiniKpi label="PLUS PROCHE" value={stats?.closestChaseGap??"—"} sub="écart chasse" color={C.chaser}/></div></div>;
+      })}</div> : null}
 
-      <div style={{ marginTop: 9, overflowX: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760, fontSize: 10.2 }}><thead><tr style={{ background: "rgba(255,255,255,.05)" }}>{["Joueur","AVG/3","Best","AVG Fuyard","AVG Chasseur","Pts Fuyard","Pts Chasseur","Captures","Évasions","Darts"].map((h) => <th key={h} style={{ padding: "8px 6px", textAlign: h === "Joueur" ? "left" : "center", color: "rgba(255,255,255,.68)" }}>{h}</th>)}</tr></thead><tbody>{playerRows.map((row: any) => {
-        const s = row.stats; const avg = s.darts ? round1((s.points / s.darts) * 3) : 0; const ravg = s.runnerDarts ? round1((s.runnerPoints / s.runnerDarts) * 3) : 0; const cavg = s.chaserDarts ? round1((s.chaserPoints / s.chaserDarts) * 3) : 0;
-        return <tr key={row.player.id} style={{ borderTop: "1px solid rgba(255,255,255,.06)" }}><td style={{ padding: 7, fontWeight: 1000 }}>{playerName(row.profile)}{row.winner ? <span style={{ color: C.gold }}> · 🏆</span> : ""}</td><td style={td(primary)}>{avg}</td><td style={td(C.gold)}>{s.bestVisit}</td><td style={td(C.runner)}>{ravg}</td><td style={td(C.chaser)}>{cavg}</td><td style={td()}>{s.runnerPoints}</td><td style={td()}>{s.chaserPoints}</td><td style={td(C.chaser)}>{s.captureCredits}</td><td style={td(C.runner)}>{s.escapeCredits}</td><td style={td()}>{s.darts}</td></tr>;
-      })}</tbody></table></div>
+      {tab === "players" ? <div style={{ marginTop: 9, overflowX: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.08)" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160, fontSize: 9.5 }}><thead><tr style={{ background: "rgba(255,255,255,.05)" }}>{["Joueur","Score","Sets","Manches","AVG/3","Best","AVG Fuyard","Best F.","AVG Chasseur","Best C.","Pts F.","Pts C.","Capt.","Évas.","Darts","Volées","S","D","T","Bull","DBull","Miss"].map((h) => <th key={h} style={{ padding: "7px 5px", textAlign: h === "Joueur" ? "left" : "center", color: "rgba(255,255,255,.68)" }}>{h}</th>)}</tr></thead><tbody>{playerRows.map((row: any) => {
+        const s=row.stats; const avg=s.darts?round1((s.points/s.darts)*3):0; const ravg=s.runnerDarts?round1((s.runnerPoints/s.runnerDarts)*3):0; const cavg=s.chaserDarts?round1((s.chaserPoints/s.chaserDarts)*3):0;
+        return <tr key={row.player.id} style={{ borderTop:"1px solid rgba(255,255,255,.06)" }}><td style={{padding:7,fontWeight:1000}}>{playerName(row.profile)}{row.winner?<span style={{color:C.gold}}> · 🏆</span>:""}</td><td style={td(C.gold)}>{s.points}</td><td style={td(primary)}>{s.setsWon}</td><td style={td()}>{s.legsWon}</td><td style={td(primary)}>{avg}</td><td style={td(C.gold)}>{s.bestVisit}</td><td style={td(C.runner)}>{ravg}</td><td style={td(C.runner)}>{s.runnerBestVisit}</td><td style={td(C.chaser)}>{cavg}</td><td style={td(C.chaser)}>{s.chaserBestVisit}</td><td style={td()}>{s.runnerPoints}</td><td style={td()}>{s.chaserPoints}</td><td style={td(C.chaser)}>{s.captureCredits}</td><td style={td(C.runner)}>{s.escapeCredits}</td><td style={td()}>{s.darts}</td><td style={td()}>{s.visits}</td><td style={td()}>{s.singles}</td><td style={td()}>{s.doubles}</td><td style={td()}>{s.triples}</td><td style={td()}>{s.bulls}</td><td style={td()}>{s.dbulls}</td><td style={td(C.red)}>{s.misses}</td></tr>;
+      })}</tbody></table></div> : null}
 
-      <details style={{ marginTop: 9, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><summary style={{ cursor: "pointer", fontWeight: 1000, color: primary }}>DÉTAIL DES MANCHES</summary><div style={{ marginTop: 8, display: "grid", gap: 5 }}>{state.legResults.map((r: any) => <div key={r.globalLegNo} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: 7, borderRadius: 10, background: "rgba(0,0,0,.22)", fontSize: 9.5 }}><b style={{ color: primary }}>S{r.setNo} M{r.legNo}</b><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.reason === "capture" ? "💥 CAPTURE" : "🏁 ÉVASION"} · {state.entities[r.winnerEntityId]?.name}</span><b style={{ color: r.reason === "capture" ? C.chaser : C.runner }}>{r.runnerScore}–{r.chaserScore} · R{r.pursuitRound}</b></div>)}</div></details>
+      {tab === "roles" ? <div style={{ marginTop: 9, display:"grid", gap:8 }}>{playerRows.map((row:any)=>{const s=row.stats; const ravg=s.runnerDarts?round1((s.runnerPoints/s.runnerDarts)*3):0; const cavg=s.chaserDarts?round1((s.chaserPoints/s.chaserDarts)*3):0; return <div key={row.player.id} style={panelStyle({padding:10,borderColor:`${row.winner?C.gold:primary}44`})}><div style={{display:"flex",alignItems:"center",gap:8}}><ProfileAvatar profile={row.profile} size={34}/><div style={{minWidth:0,flex:1}}><b>{playerName(row.profile)}</b><div style={{fontSize:8.5,color:"rgba(255,255,255,.5)"}}>{row.winner?"VAINQUEUR · ":""}{s.legsWon} manches · {s.setsWon} sets</div></div><b style={{color:C.gold,fontSize:18}}>{s.points} pts</b></div><div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}><div style={{padding:8,borderRadius:12,background:`${C.runner}0d`,border:`1px solid ${C.runner}33`}}><div style={{color:C.runner,fontWeight:1100,fontSize:9}}>FUYARD</div><div style={{marginTop:5,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}><MiniKpi label="AVG/3" value={ravg} sub="" color={C.runner}/><MiniKpi label="BEST" value={s.runnerBestVisit||0} sub="" color={C.gold}/><MiniKpi label="POINTS" value={s.runnerPoints||0} sub={`${s.runnerDarts||0} darts`} color="#fff"/></div></div><div style={{padding:8,borderRadius:12,background:`${C.chaser}0d`,border:`1px solid ${C.chaser}33`}}><div style={{color:C.chaser,fontWeight:1100,fontSize:9}}>CHASSEUR</div><div style={{marginTop:5,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:4}}><MiniKpi label="AVG/3" value={cavg} sub="" color={C.chaser}/><MiniKpi label="BEST" value={s.chaserBestVisit||0} sub="" color={C.gold}/><MiniKpi label="POINTS" value={s.chaserPoints||0} sub={`${s.chaserDarts||0} darts`} color="#fff"/></div></div></div><div style={{marginTop:6,display:"grid",gap:5}}><EndMetricBar label="AVG/3" left={ravg} right={cavg}/><EndMetricBar label="BEST VOLÉE" left={s.runnerBestVisit||0} right={s.chaserBestVisit||0}/><EndMetricBar label="POINTS" left={s.runnerPoints||0} right={s.chaserPoints||0}/></div></div>})}</div> : null}
+
+      {tab === "legs" ? <div style={{ marginTop: 9 }}><EndLineChart values={distanceCurve} color={C.chaser} label="ÉCART FINAL PAR MANCHE"/><div style={{marginTop:7,display:"grid",gap:5}}>{state.legResults.map((r:any,index:number)=><div key={r.globalLegNo||index} style={{display:"grid",gridTemplateColumns:"54px minmax(0,1fr) auto auto",gap:7,alignItems:"center",padding:8,borderRadius:11,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}><b style={{color:primary}}>S{r.setNo} M{r.legNo}</b><div style={{minWidth:0}}><div style={{fontWeight:1000,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{state.entities[r.winnerEntityId]?.name} · {r.reason==="capture"?"💥 CAPTURE":"🏁 ÉVASION"}</div><div style={{fontSize:8.5,color:"rgba(255,255,255,.54)"}}>{state.entities[r.runnerEntityId]?.name} {r.runnerScore} — {r.chaserScore} {state.entities[r.chaserEntityId]?.name}</div></div><b style={{color:r.reason==="capture"?C.chaser:C.runner}}>R{r.pursuitRound}</b><b style={{color:C.gold}}>{r.finalDistance>0?`+${r.finalDistance}`:r.finalDistance}</b></div>)}</div></div> : null}
+
+      {tab === "impacts" ? <div style={{marginTop:9}}><div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5}}>{[["SIMPLES",impacts.singles,"#fff"],["DOUBLES",impacts.doubles,"#42d6ff"],["TRIPLES",impacts.triples,"#c967ff"],["BULL",impacts.bulls,"#65efb4"],["DBULL",impacts.dbulls,C.gold],["MISS",impacts.misses,C.red]].map(([l,v,c]:any)=><MiniKpi key={l} label={l} value={v} sub={`${totalDarts?round1((Number(v)/totalDarts)*100):0}%`} color={c}/>)}</div><div style={{marginTop:8,padding:9,borderRadius:13,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)"}}><div style={{fontSize:9,fontWeight:1100,color:primary,marginBottom:7}}>DISTRIBUTION DES VOLÉES</div><div style={{display:"grid",gridTemplateColumns:"repeat(7,minmax(0,1fr))",gap:4}}>{[["0",visitBuckets[0]],["1-39",visitBuckets[1]],["40-59",visitBuckets[2]],["60-99",visitBuckets[3]],["100+",visitBuckets[4]],["140+",visitBuckets[5]],["180",visitBuckets[6]]].map(([l,v]:any)=>{const max=Math.max(...visitBuckets,1);return <div key={l} style={{minWidth:0,textAlign:"center"}}><div style={{height:74,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0 3px"}}><div style={{width:"100%",height:`${Math.max(4,(Number(v)/max)*100)}%`,borderRadius:"7px 7px 2px 2px",background:`linear-gradient(180deg,${C.gold},${primary})`}}/></div><b style={{display:"block",marginTop:4,fontSize:9}}>{v}</b><span style={{fontSize:7,color:"rgba(255,255,255,.48)"}}>{l}</span></div>})}</div></div><div style={{marginTop:8}}><EndLineChart values={visitScores.slice(-30)} color={C.gold} label="30 DERNIÈRES VOLÉES"/></div></div> : null}
 
       <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><button onClick={onReplay} style={actionButton(primary)}>REJOUER</button><button onClick={onHistory} style={{ ...actionButton(C.gold), background: `linear-gradient(90deg,${C.runner},${C.chaser})`, color: "#071018" }}>HISTORIQUE & STATS</button></div>
     </div>

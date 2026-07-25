@@ -16,6 +16,7 @@ import StatsPlayerDashboard, {
 import { useQuickStats } from "../hooks/useQuickStats";
 import { getOrRebuildStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
+import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
@@ -8501,7 +8502,7 @@ return (
               </div>
             )}
 
-            {["battle_royale", "warfare", "baseball", "attrape_moi", "president"].includes(String(currentMode)) && (
+            {["battle_royale", "warfare", "baseball", "president"].includes(String(currentMode)) && (
               <div style={card}>
                 <div style={{ padding: 18 }}>
                   <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
