@@ -390,6 +390,17 @@ export default function Games({ setTab, params }: Props) {
   const { t, lang } = useLang();
   const dev = useDevMode() as any;
 
+  // ATTRAPE-MOI : ticker FR uniquement en français ; l’anglais sert de fallback
+  // universel pour toutes les autres langues de l’application.
+  const gameTickerForLang = React.useCallback((gameId: string): string | null => {
+    const id = String(gameId || "");
+    if (id === "departements") return findTickerById(territoriesTickerKeyForLang(lang));
+    if (id === "attrape_moi" && lang !== "fr") {
+      return findTickerById("attrape_moi_en") || findTickerById("attrape_moi");
+    }
+    return findTickerById(id);
+  }, [lang]);
+
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
 
@@ -900,11 +911,11 @@ export default function Games({ setTab, params }: Props) {
         configPath: configPathForGame(g),
         // TERRITORIES utilise déjà un ticker localisé dédié.
         tickerSrc:
-          String(g.id) === "departements"
-            ? findTickerById(territoriesTickerKeyForLang(lang)) || undefined
+          String(g.id) === "departements" || String(g.id) === "attrape_moi"
+            ? gameTickerForLang(String(g.id)) || undefined
             : undefined,
       }));
-  }, [RECENT_GAME_IDS, lang]);
+  }, [RECENT_GAME_IDS, gameTickerForLang]);
 
   // ✅ Ticker du bas: tous les modes (random), IMAGE SEULE (sans NEW/PLAY)
   const allTickerPool = React.useMemo(() => {
@@ -912,7 +923,7 @@ export default function Games({ setTab, params }: Props) {
       .filter((g: any) => g && g.ready)
       .map((g: any) => {
         const id = String(g.id);
-        const tickerSrc = id === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(id);
+        const tickerSrc = gameTickerForLang(id);
         return {
           id,
           label: String(g.label || id),
@@ -921,7 +932,7 @@ export default function Games({ setTab, params }: Props) {
         };
       })
       .filter((x: any) => !!x.tickerSrc);
-  }, [lang]);
+  }, [gameTickerForLang]);
 
   const [allTickerIdx, setAllTickerIdx] = React.useState(0);
 
@@ -1164,7 +1175,7 @@ export default function Games({ setTab, params }: Props) {
 
   // ✅ helper: watermark ticker inside game cards (same visual treatment for all cards)
   function renderGameTickerWatermark(gameId: string) {
-    const src = gameId === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(gameId);
+    const src = gameTickerForLang(gameId);
     if (!src) return null;
 
     return (

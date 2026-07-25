@@ -11,8 +11,10 @@ import InfoDot from "../components/InfoDot";
 import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import tickerAttrapeMoi from "../assets/tickers/ticker_attrape_moi.png";
+import tickerAttrapeMoiEn from "../assets/tickers/ticker_attrape_moi_en.png";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
 import {
   cloneCatchMeState,
@@ -207,6 +209,8 @@ function ScoreBandCenterFade() {
 
 export default function AttrapeMoiPlay(props: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
+  const tickerAttrapeMoiLocalized = lang === "fr" ? tickerAttrapeMoi : tickerAttrapeMoiEn;
   const config = React.useMemo(() => normalizeConfig(props), []);
   const store = props?.store;
   const go = props?.go ?? props?.setTab;
@@ -589,8 +593,8 @@ export default function AttrapeMoiPlay(props: any) {
 
   return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}18 0, ${theme?.bg || "#080c17"} 48%, #020309 100%)`, overflowX: "hidden", paddingBottom: 8 }}>
     <PageHeader
-      tickerSrc={tickerAttrapeMoi}
-      tickerAlt="ATTRAPE-MOI SI TU PEUX !"
+      tickerSrc={tickerAttrapeMoiLocalized}
+      tickerAlt={lang === "fr" ? "ATTRAPE-MOI SI TU PEUX !" : "CATCH ME IF YOU CAN!"}
       tickerHeight={92}
       tickerBottomGap={8}
       left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>}
