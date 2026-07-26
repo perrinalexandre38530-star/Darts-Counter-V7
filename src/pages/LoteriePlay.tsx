@@ -361,7 +361,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const nextSeed = Date.now();
     setSeed(nextSeed);
     setPlayers(buildPlayerStates(sourcePlayers, config, nextSeed));
-    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setFx(null); setToast(null); setCardsOpen(false); setRankingOpen(false); setBotThinking(false);
+    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setFx(null); setToast(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setBotThinking(false);
     finishSent.current = false;
     createdAtRef.current = Date.now();
   }
@@ -371,6 +371,9 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   function openCards(index = bestIdx) {
     setCardsInitialIndex(index);
     setCardsOpen(true);
+  }
+  function openHistory() {
+    setHistoryOpen(true);
   }
 
   const activeAvatarProfile = active ? { ...active, avatarDataUrl: avatarOf(active), avatarUrl: avatarOf(active) } : null;
@@ -382,6 +385,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         @keyframes lotScratchReveal { 0% { transform: scale(.86) rotate(-4deg); filter: brightness(1.15);} 55% { transform: scale(1.04) rotate(1deg);} 100% { transform: scale(1) rotate(0deg); filter: brightness(1);} }
         @keyframes lotStampPop { 0% { opacity: 0; transform: scale(.35) rotate(-20deg);} 75% { opacity: 1; transform: scale(1.12) rotate(-8deg);} 100% { opacity: 1; transform: scale(1) rotate(-8deg);} }
         @keyframes lotFxBurst { 0% { opacity: 0; transform: translate(-50%,-30%) scale(.72);} 12% { opacity: 1;} 100% { opacity: 0; transform: translate(-50%,-54%) scale(1.08);} }
+        @keyframes lotCardShine { 0% { transform: translateX(-120%); opacity: 0;} 18% { opacity: 1;} 100% { transform: translateX(120%); opacity: 0;} }
       `}</style>
       <PageHeader
         tickerSrc={tickerLoterie}
