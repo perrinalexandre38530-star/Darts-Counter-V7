@@ -57,6 +57,7 @@ export type LoteriePlayerState = LoteriePlayerInput & {
 };
 
 export type LoterieConfig = {
+  participantMode?: "players" | "teams";
   variant: LoterieVariant;
   level: LoterieLevel;
   autoMode: LoterieAutoMode;
@@ -116,7 +117,7 @@ export function resolvePlayerRanges(players: LoteriePlayerInput[], config: Loter
   const out: Record<string, { min: number; max: number; label: string }> = {};
   if (config.variant === "express") {
     for (const p of players) {
-      if (config.expressTarget === "simple") out[p.id] = { min: 1, max: 20, label: "SIMPLE 1–20" };
+      if (config.expressTarget === "simple") out[p.id] = { min: 1, max: 25, label: "SIMPLE S1–S20 + BULL" };
       else if (config.expressTarget === "double") out[p.id] = { min: 2, max: 50, label: "DOUBLES D1–D20 + DBULL" };
       else out[p.id] = { min: 3, max: 60, label: "TRIPLES T1–T20" };
     }
@@ -174,7 +175,9 @@ export function classicPool(min: number, max: number): LoterieCell[] {
 
 export function expressPool(target: LoterieExpressTarget): LoterieCell[] {
   if (target === "simple") {
-    return Array.from({ length: 20 }, (_, i) => ({ key: `S${i + 1}`, value: i + 1, label: String(i + 1), revealed: false }));
+    const singles = Array.from({ length: 20 }, (_, i) => ({ key: `S${i + 1}`, value: i + 1, label: String(i + 1), revealed: false }));
+    singles.push({ key: "BULL", value: 25, label: "25", revealed: false });
+    return singles;
   }
   if (target === "double") {
     const doubles = Array.from({ length: 20 }, (_, i) => ({ key: `D${i + 1}`, value: (i + 1) * 2, label: `D${i + 1}`, revealed: false }));
@@ -259,7 +262,8 @@ export function resultKey(config: LoterieConfig, darts: LoterieDart[]): { key: s
   const d = darts[0];
   if (!d || !d.v || !d.mult) return { key: null, value: 0, label: "MISS" };
   if (config.expressTarget === "simple") {
-    if (d.v < 1 || d.v > 20) return { key: null, value: dartScore(d), label: dartLabel(d) };
+    if (d.v === 25 && d.mult === 1) return { key: "BULL", value: 25, label: "25" };
+    if (d.mult !== 1 || d.v < 1 || d.v > 20) return { key: null, value: dartScore(d), label: dartLabel(d) };
     return { key: `S${d.v}`, value: d.v, label: String(d.v) };
   }
   if (config.expressTarget === "double") {

@@ -9,6 +9,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
+import RulesModal from "../components/RulesModal";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import PageHeader from "../components/PageHeader";
@@ -140,7 +141,45 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 function MiniFieldInfo({ title, children, color }: any) {
-  return <InfoDot size={24} title={title} color={color} glow={`${color}66`} content={<div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{children}</div>} />;
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Info ${title || "option"}`}
+        title="Détails"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        style={{
+          width: 18,
+          height: 18,
+          minWidth: 18,
+          minHeight: 18,
+          padding: 0,
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(255,255,255,0.06)",
+          color: "rgba(255,255,255,0.70)",
+          fontSize: 11,
+          fontWeight: 900,
+          lineHeight: "18px",
+          textAlign: "center",
+          cursor: "pointer",
+          flex: "0 0 18px",
+          boxShadow: "none",
+          WebkitTapHighlightColor: "transparent",
+        }}
+      >
+        i
+      </button>
+      <RulesModal open={open} onClose={() => setOpen(false)} title={title || "Informations"}>
+        <div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{children}</div>
+      </RulesModal>
+    </>
+  );
 }
 function CompactConfigSelect({ label, helpTitle, help, value, options, onChange, color }: any) {
   return (
@@ -163,7 +202,7 @@ function RulesContent() {
       <div><strong style={{ color: PINK }}>LOTERIE EXPRESS</strong><br />Une seule fléchette par tour. SIMPLE recherche le numéro 1–20, DOUBLE exige le double exact, TRIPLE exige le triple exact.</div>
       <div><strong style={{ color: GOLD }}>CARTONS</strong><br />Chaque participant possède 1 à 4 cartons. Les numéros sont uniques dans un même carton mais peuvent apparaître sur plusieurs cartons : un lancer peut donc ouvrir plusieurs cases.</div>
       <div><strong style={{ color: "#6ef3b2" }}>VICTOIRE</strong><br />Le premier joueur — ou la première équipe — qui complète entièrement un de ses cartons gagne immédiatement.</div>
-      <div><strong style={{ color: "#42d6ff" }}>ÉQUIPES</strong><br />En mode ÉQUIPES, chaque équipe possède ses propres cartons partagés. Le nom et le logo de l’équipe deviennent l’identité du participant LOTERIE.</div>
+      <div><strong style={{ color: "#42d6ff" }}>ÉQUIPES</strong><br />En mode ÉQUIPES, chaque équipe possède ses cartons partagés. Les joueurs de l’équipe jouent à tour de rôle sur ces mêmes cartons : chaque découverte compte pour l’équipe, tout en restant attribuée au joueur qui l’a réalisée dans les statistiques.</div>
       <div><strong style={{ color: GOLD }}>BOTS IA</strong><br />Les BOTS sélectionnés comme dans X01 jouent automatiquement leurs volées selon leur niveau.</div>
     </div>
   );
@@ -625,10 +664,20 @@ export default function LoterieConfig(props: any) {
           avatarUrl: team.logoDataUrl || null,
           color: team.color || TEAM_COLOR_CYCLE[index % TEAM_COLOR_CYCLE.length],
           memberIds: [...team.playerIds],
-          members: members.map((m: any) => ({ id: String(m.id), name: nameOf(m), avatarDataUrl: avatarOf(m) })),
+          members: members.map((m: any) => ({
+            id: String(m.id),
+            name: nameOf(m),
+            displayName: nameOf(m),
+            avatarDataUrl: avatarOf(m),
+            avatarUrl: avatarOf(m),
+            avg3: avg3Of(m),
+            isBot: isBotLike(m),
+          })),
           avg3: avgValues.length ? avgValues.reduce((a, b) => a + b, 0) / avgValues.length : 0,
           isTeam: true,
-          isBot: Boolean(team.isBotTeam),
+          // Une équipe mixte reste pilotable manuellement : seul le membre actif décide
+          // si le tour doit être joué automatiquement par un BOT.
+          isBot: Boolean(team.isBotTeam) && members.length > 0 && members.every(isBotLike),
         };
       });
     }

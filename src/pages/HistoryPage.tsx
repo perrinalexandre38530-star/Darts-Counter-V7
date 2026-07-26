@@ -2101,32 +2101,70 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
   if (normalizeToken(baseMode(e)) === "loterie" || inferGameFilterKey(e, "darts") === "loterie") {
     const anyE: any = e as any;
     const summary: any = anyE?.summary || anyE?.payload?.summary || {};
-    const pools = [summary?.rankings, summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.payload?.summary?.players, anyE?.players];
-    const rows: any[] = (pools.find((pool) => Array.isArray(pool) && pool.length) || []).slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
     const cfg: any = summary?.config || anyE?.payload?.config || {};
+    const participantMode = String(summary?.participantMode || anyE?.participantMode || anyE?.payload?.participantMode || cfg?.participantMode || "players") === "teams" ? "teams" : "players";
+    const pools = participantMode === "teams"
+      ? [summary?.rankings, summary?.standings, summary?.teams, anyE?.payload?.stats?.teams, anyE?.teams, summary?.entities]
+      : [summary?.rankings, summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.payload?.summary?.players, anyE?.players];
+    const rows: any[] = (pools.find((pool) => Array.isArray(pool) && pool.length) || []).slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
+    const playerRows: any[] = ([summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.players].find((pool) => Array.isArray(pool) && pool.length) || []);
+    const global: any = summary?.matchStats || anyE?.payload?.stats?.global || {};
+    const variant = String(summary?.variant || cfg?.variant || "classic").toLowerCase();
+    const variantLabel = variant === "express"
+      ? `EXPRESS ${String(summary?.expressTarget || cfg?.expressTarget || "simple").toUpperCase()} · 1 fléchette`
+      : `${String(cfg?.volleyMode || "free") === "strict3" ? "3 fléchettes" : "1–3 fléchettes"} · total de volée`;
+    const durationMs = Number(summary?.durationMs || global?.durationMs || 0);
+    const durationText = durationMs > 0 ? `${Math.max(1, Math.round(durationMs / 60000))} min` : null;
+    const totalVisitsForCard = Number(global?.visits || rows.reduce((n: number,r: any)=>n+Number(r?.visits||0),0));
+    const totalSuccessForCard = Number(global?.successfulVisits || rows.reduce((n: number,r: any)=>n+Number(r?.successfulVisits||0),0));
+    const hitRate = Number(global?.hitRate || (totalVisitsForCard ? totalSuccessForCard / totalVisitsForCard : 0));
     return (
-      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+          {[participantMode === "teams" ? "ÉQUIPES" : "JOUEURS", variantLabel, `${Number(cfg?.cardsPerPlayer || 1)} CARTON${Number(cfg?.cardsPerPlayer || 1) > 1 ? "S" : ""}`, `${Number(cfg?.cellsPerCard || 10)} CASES`].map((label) => <span key={label} style={{ borderRadius: 999, padding: "3px 7px", border: `1px solid ${theme.primary}44`, background: `${theme.primary}12`, color: theme.primary, fontSize: 8.2, fontWeight: 1000, whiteSpace: "nowrap" }}>{label}</span>)}
+        </div>
+        <div style={{ display: "grid", gap: 4 }}>
           {rows.slice(0, 4).map((row: any, index: number) => {
             const rank = Number(row?.rank || index + 1);
-            const name = historyScoreName(e, row) || getName(row) || `Joueur ${index + 1}`;
-            const prog = Number(row?.bestCardProgress ?? row?.score ?? row?.cellsRevealed ?? 0);
+            const name = historyScoreName(e, row) || getName(row) || `${participantMode === "teams" ? "Équipe" : "Joueur"} ${index + 1}`;
+            const prog = Number(row?.bestCardProgress ?? row?.teamBestCardProgress ?? row?.score ?? 0);
             const total = Number(row?.cellsPerCard ?? cfg?.cellsPerCard ?? 10);
-            return <React.Fragment key={`${name}-${index}`}>
-              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
-              <span style={{ color: historyRankColor(rank), fontWeight: 1000 }}>{rank}.</span>
-              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{name}{rank === 1 ? " 🏆" : ""}</span>
-              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{prog}/{total}</span>
-            </React.Fragment>;
+            const visits = Number(row?.visits || 0);
+            const successful = Number(row?.successfulVisits || 0);
+            const pct = visits ? Math.round((successful / visits) * 100) : Math.round(Number(row?.hitRate || 0) * 100);
+            const members = participantMode === "teams" ? playerRows.filter((p: any) => String(p?.teamId || "") === String(row?.id || row?.entityId || "")) : [];
+            return <div key={`${name}-${index}`} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) auto", gap: 6, alignItems: "center", borderRadius: 10, padding: "5px 7px", background: rank === 1 ? `${theme.primary}10` : "rgba(255,255,255,.025)", border: `1px solid ${rank === 1 ? theme.primary + "44" : "rgba(255,255,255,.055)"}` }}>
+              <div style={{ color: historyRankColor(rank), fontWeight: 1000, textAlign: "center" }}>#{rank}</div>
+              <div style={{ minWidth: 0 }}><div style={{ color: "rgba(255,255,255,.94)", fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}{rank === 1 ? " 🏆" : ""}</div><div style={{ marginTop: 1, color: "rgba(255,255,255,.55)", fontSize: 8.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{Number(row?.cellsRevealed || 0)} cases · {successful}/{visits} tours ({pct}%) · {Number(row?.multiHits || 0)} multi · série {Number(row?.bestStreak || 0)}{members.length ? ` · ${members.map((p: any) => `${getName(p) || "J"} ${Number(p?.cellsRevealed || 0)}`).join(" / ")}` : ""}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ color: theme.primary, fontWeight: 1000, fontSize: 15, textShadow: `0 0 9px ${theme.primary}55` }}>{prog}/{total}</div><div style={{ color: "rgba(255,255,255,.42)", fontSize: 7 }}>carton</div></div>
+            </div>;
           })}
         </div>
-        <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
-          {String(summary?.variant || cfg?.variant || "classic").toLowerCase() === "express" ? "EXPRESS · 1 fléchette" : `${String(cfg?.volleyMode || "free") === "strict3" ? "3 fléchettes" : "1–3 fléchettes"} · total de volée`}
-          {` • ${Number(cfg?.cardsPerPlayer || 1)} carton${Number(cfg?.cardsPerPlayer || 1) > 1 ? "s" : ""}/joueur • ${Number(cfg?.cellsPerCard || 10)} cases`}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+          {[["TOURS", totalVisitsForCard, "#42d6ff"], ["DARTS", Number(global?.dartsThrown || rows.reduce((n: number,r: any)=>n+Number(r?.dartsThrown||0),0)), "#42d6ff"], ["HIT", `${Math.round(hitRate * 100 || 0)}%`, "#70efbd"], ["MULTI", Number(global?.multiHits || rows.reduce((n: number,r: any)=>n+Number(r?.multiHits||0),0)), "#ff63b8"]].map(([label,value,color]: any)=><div key={label} style={{ textAlign: "center", borderRadius: 8, padding: "4px 3px", background: `${color}0b`, border: `1px solid ${color}22` }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 6.8, fontWeight: 900 }}>{label}</div><div style={{ color, fontSize: 10, fontWeight: 1000, marginTop: 1 }}>{value}</div></div>)}
         </div>
-        {rows.length ? <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
-          {rows.slice(0, 3).map((row: any) => `${historyScoreName(e, row) || getName(row) || "Joueur"}: ${Number(row?.cellsRevealed || 0)} cases • ${Number(row?.successfulVisits || 0)}/${Number(row?.visits || 0)} tours gagnants • ${Number(row?.multiHits || 0)} multi-hits`).join("  |  ")}
-        </div> : null}
+        {(() => {
+          const hit0 = Number(global?.hit0 ?? global?.emptyVisits ?? 0);
+          const hit1 = Number(global?.hit1 ?? Math.max(0, Number(global?.successfulVisits || 0) - Number(global?.multiHits || 0)));
+          const hit2 = Number(global?.hit2 || 0);
+          const hit3 = Number(global?.hit3plus || 0);
+          const hTotal = Math.max(1, hit0 + hit1 + hit2 + hit3);
+          const dartsTotal = Math.max(1, Number(global?.dartsThrown || 0));
+          const avgCells = Number(global?.avgCellsPerVisit || (totalVisitsForCard ? Number(global?.cellsRevealed || 0) / totalVisitsForCard : 0));
+          const avgVolley = Number(global?.averageVolley || 0);
+          const bestSeries = Number(global?.bestStreak || Math.max(0,...rows.map((r:any)=>Number(r?.bestStreak||0))));
+          const maxHit = Number(global?.maxCellsInVisit || Math.max(0,...rows.map((r:any)=>Number(r?.maxCellsInVisit||0))));
+          const misses = Number(global?.dartMisses || 0);
+          return <>
+            <div style={{ borderRadius: 999, height: 7, overflow: "hidden", display: "flex", background: "rgba(255,255,255,.05)", boxShadow: "inset 0 1px 2px rgba(0,0,0,.3)" }} title="Répartition des découvertes par tour">
+              <span style={{ width: `${(hit1/hTotal)*100}%`, background: "#70efbd" }} /><span style={{ width: `${(hit2/hTotal)*100}%`, background: "#ff63b8" }} /><span style={{ width: `${(hit3/hTotal)*100}%`, background: "#f6c256" }} /><span style={{ width: `${(hit0/hTotal)*100}%`, background: "#ff718a" }} />
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(6,minmax(0,1fr))", gap:3 }}>
+              {[["CASE/T",avgCells.toFixed(2),"#70efbd"],["AVG",avgVolley.toFixed(1),"#42d6ff"],["BEST HIT",maxHit,"#ff63b8"],["SÉRIE",bestSeries,"#70efbd"],["MISS",`${Math.round((misses/dartsTotal)*100)}%`,"#ff718a"],["CARTONS",Number(global?.cardsCompleted||0),"#f6c256"]].map(([l,v,c]:any)=><div key={l} style={{textAlign:"center",padding:"4px 2px",borderRadius:7,background:`${c}09`,border:`1px solid ${c}1d`}}><div style={{color:"rgba(255,255,255,.38)",fontSize:5.8,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l}</div><div style={{color:c,fontSize:8.5,fontWeight:1000,marginTop:1}}>{v}</div></div>)}
+            </div>
+          </>;
+        })()}
+        <div style={{ color: "rgba(255,255,255,.50)", fontSize: 8.5, fontWeight: 850 }}>{summary?.winnerName ? `Vainqueur : ${String(summary.winnerName)}` : "Partie terminée"}{durationText ? ` · ${durationText}` : ""} · meilleure volée {Number(global?.maxVolley || Math.max(0,...rows.map((r:any)=>Number(r?.maxVolley||0))))} · record hit {Number(global?.maxCellsInVisit || Math.max(0,...rows.map((r:any)=>Number(r?.maxCellsInVisit||0))))} case(s)</div>
       </div>
     );
   }
@@ -3970,7 +4008,16 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     // ✅ LOTERIE : panneau dédié dans le centre de statistiques
     if (m === "loterie" || inferredMode === "loterie") {
       const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
-      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
+      const winnerPlayerIds = (e.summary as any)?.winnerPlayerIds || (e as any)?.winnerPlayerIds || (e as any)?.payload?.winnerPlayerIds || [];
+      const realWinnerPlayerId = Array.isArray(winnerPlayerIds) && winnerPlayerIds.length ? String(winnerPlayerIds[0]) : null;
+      const loterieTeamPools = [(e.summary as any)?.teams, (e.summary as any)?.rankings, (e as any)?.teams, (e as any)?.payload?.stats?.teams].filter(Array.isArray) as any[];
+      const winnerTeamRow = loterieTeamPools.flat().find((row: any) => [row?.id, row?.entityId, row?.teamId].map((v: any) => String(v ?? "")).includes(String(wid ?? "")));
+      const legacyWinnerMemberId = winnerTeamRow && Array.isArray(winnerTeamRow?.memberIds || winnerTeamRow?.playerIds || winnerTeamRow?.players)
+        ? String((winnerTeamRow.memberIds || winnerTeamRow.playerIds || winnerTeamRow.players)[0] || "") || null
+        : null;
+      const rawFirstPlayerId = e.players && e.players.length ? getId(e.players[0]) : null;
+      const firstRealPlayerId = rawFirstPlayerId && !String(rawFirstPlayerId).startsWith("team:") ? rawFirstPlayerId : null;
+      const firstPlayerId = realWinnerPlayerId || legacyWinnerMemberId || firstRealPlayerId || (String(wid || "").startsWith("team:") ? null : wid) || null;
       go("statsHub", {
         tab: "stats",
         initialStatsSubTab: "loterie",
