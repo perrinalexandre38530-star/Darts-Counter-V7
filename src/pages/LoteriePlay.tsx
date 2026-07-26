@@ -67,16 +67,62 @@ function compactConfigLabel(config: LoterieConfig, player?: LoteriePlayerState |
 function panelStyle(): React.CSSProperties {
   return { borderRadius: 16, border: `1px solid ${STROKE}`, background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(5,8,16,.72))", boxShadow: "0 10px 22px rgba(0,0,0,.24)", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" };
 }
-function MiniKpi({ label, value, color = GOLD }: any) {
-  return <div style={{ padding: "6px 4px", borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${STROKE}`, minWidth: 0 }}><div style={{ color: SOFT, fontSize: 8.2, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ color, fontSize: 14.5, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{value}</div></div>;
+function MiniKpi({ label, value, color = GOLD, onClick }: any) {
+  const Tag: any = onClick ? "button" : "div";
+  return <Tag type={onClick ? "button" : undefined} onClick={onClick} style={{ padding: "6px 4px", borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.045)", border: `1px solid ${STROKE}`, minWidth: 0, cursor: onClick ? "pointer" : "default" }}><div style={{ color: SOFT, fontSize: 8.2, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ color, fontSize: 14.5, fontWeight: 1000, marginTop: 2, lineHeight: 1 }}>{value}</div></Tag>;
+}
+function modeInfoIcon(kind: string) {
+  if (kind === "darts") return "✦";
+  if (kind === "range") return "◎";
+  if (kind === "cards") return "◫";
+  return "•";
+}
+function InfoPill({ kind, value, accent = GOLD }: any) {
+  return <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 999, border: `1px solid ${accent}33`, background: "rgba(255,255,255,.035)", color: SOFT, fontSize: 9, fontWeight: 900, whiteSpace: "nowrap" }}><span style={{ width: 18, height: 18, borderRadius: 999, border: `1px solid ${accent}55`, display: "grid", placeItems: "center", color: accent, fontSize: 10, lineHeight: 1 }}>{modeInfoIcon(kind)}</span><span>{value}</span></div>;
+}
+function recentScoreItems(events: any[], playerId: string, max = 5) {
+  return [...(events || [])].filter((e: any) => e.playerId === playerId).slice(-max).reverse().map((ev: any, idx: number) => ({
+    id: `${ev.ts}_${idx}`,
+    ok: (ev?.revealed || 0) > 0,
+    label: String(ev?.resultLabel || ev?.volleyScore || 0),
+    detail: ev?.darts?.length ? ev.darts.map((d: any) => d.label).join(" + ") : "—",
+    count: Number(ev?.revealed || 0),
+    total: Number(ev?.volleyScore || 0),
+  }));
+}
+function RecentScoreBadges({ scores, onClick, compact = false }: any) {
+  return <button type="button" onClick={onClick} style={{ width: "100%", minHeight: compact ? 54 : 66, borderRadius: 14, border: `1px dashed rgba(214,166,53,.55)`, background: "rgba(255,248,232,.82)", padding: compact ? 8 : 9, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 6px 15px rgba(0,0,0,.06)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>DERNIERS SCORES</div><div style={{ color: "#b7871e", fontSize: 8.2, fontWeight: 1000 }}>VOIR ▸</div></div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{scores?.length ? scores.map((item: any) => <div key={item.id} style={{ minWidth: 0, borderRadius: 9, border: `1px solid ${item.ok ? "rgba(78,201,145,.38)" : "rgba(255,113,138,.38)"}`, background: item.ok ? "rgba(78,201,145,.16)" : "rgba(255,113,138,.14)", color: item.ok ? "#1d8c62" : "#c54e65", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>{item.label}</div><div style={{ marginTop: 2, fontSize: 7.4, fontWeight: 1000, opacity: .88 }}>{item.ok ? "VALIDÉ" : "RATÉ"}</div></div>) : Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ minWidth: 0, borderRadius: 9, border: "1px dashed rgba(151,124,77,.35)", background: "rgba(255,255,255,.45)", color: "#8e785b", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>—</div><div style={{ marginTop: 2, fontSize: 7.1, fontWeight: 1000, opacity: .88 }}>VIDE</div></div>)}</div><div style={{ marginTop: 5, color: "#8b6d46", fontSize: 8.4, fontWeight: 900 }}>{compact ? "Toucher pour ouvrir l'historique" : "5 dernières volées · vert = validé · rouge = raté"}</div></button>;
+}
+function StatsDetailModal({ player, onClose }: any) {
+  if (!player) return null;
+  const best = bestCardProgress(player);
+  const total = player?.cards?.[0]?.cells?.length || 10;
+  const stats = [
+    ["Meilleur carton", `${best}/${total}`, GOLD],
+    ["Cases restantes", Math.max(0, total - best), GOLD],
+    ["Cases dévoilées", player?.stats?.cellsRevealed || 0, CYAN],
+    ["Tours joués", player?.stats?.visits || 0, CYAN],
+    ["Tours gagnants", player?.stats?.successfulVisits || 0, GOOD],
+    ["Tours ratés", player?.stats?.emptyVisits || 0, BAD],
+    ["Multi-hits", player?.stats?.multiHits || 0, PINK],
+    ["Meilleur hit", `${player?.stats?.maxCellsInVisit || 0} case(s)`, GOLD],
+    ["Série max", player?.stats?.bestStreak || 0, GOOD],
+    ["Volée moyenne", player?.stats?.visits ? ((player?.stats?.totalVolleyScore || 0) / player.stats.visits).toFixed(1) : "0.0", CYAN],
+    ["Meilleure volée", player?.stats?.maxVolley || 0, CYAN],
+    ["Darts lancés", player?.stats?.dartsThrown || 0, SOFT],
+  ];
+  return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10008, background: "rgba(0,0,0,.74)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}><div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px,100%)", maxHeight: "86dvh", overflowY: "auto", borderRadius: 18, border: `1px solid ${CYAN}55`, background: "linear-gradient(180deg,#10141f,#090c13 48%,#07080c)", boxShadow: "0 26px 65px rgba(0,0,0,.55)", padding: 12 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: CYAN, fontWeight: 1000, fontSize: 15 }}>STATISTIQUES LOTERIE</div><div style={{ color: SOFT, fontSize: 10, marginTop: 2 }}>{player?.name} · détails en cours de partie</div></div><button type="button" onClick={onClose} style={carouselBtn}>×</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>{stats.map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 13, padding: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: SOFT, fontSize: 8.5, fontWeight: 1000, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 4, color, fontSize: 19, fontWeight: 1000 }}>{value}</div></div>)}</div></div></div>;
 }
 
 function RulesContent({ config }: any) {
   return (
-    <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.45 }}>
-      {config.variant === "classic" ? <div><strong style={{ color: GOLD }}>TOTAL DE VOLÉE</strong><br />Le total des {config.volleyMode === "strict3" ? "3 fléchettes" : "1 à 3 fléchettes"} est recherché sur tous les cartons. Toutes les occurrences correspondantes sont révélées.</div> : <div><strong style={{ color: PINK }}>EXPRESS</strong><br />Une seule fléchette par tour. {config.expressTarget === "simple" ? "Le numéro 1–20 est recherché quel que soit le multiplicateur." : config.expressTarget === "double" ? "Le double exact est obligatoire, DBULL inclus." : "Le triple exact est obligatoire."}</div>}
-      <div><strong style={{ color: CYAN }}>CARTONS</strong><br />Ouvre le bloc CARTONS pour afficher le carrousel. Le premier carton entièrement révélé gagne.</div>
-      <div><strong style={{ color: GOOD }}>MULTI-HIT</strong><br />Si une valeur apparaît sur plusieurs cartons, une seule volée peut ouvrir plusieurs cases : DOUBLE HIT, TRIPLE HIT ou JACKPOT.</div>
+    <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.5 }}>
+      <div><strong style={{ color: GOLD }}>OBJECTIF</strong><br />Complète entièrement un carton. Le premier joueur qui révèle toutes les cases d'un même carton gagne la partie.</div>
+      <div><strong style={{ color: CYAN }}>DÉROULÉ D'UN TOUR</strong><br />En mode classique, tu lances {config.volleyMode === "strict3" ? "3 fléchettes" : "jusqu'à 3 fléchettes"}. On additionne la volée, puis ce total est recherché sur tous tes cartons. Si le nombre existe, la ou les cases correspondantes se dévoilent automatiquement.</div>
+      <div><strong style={{ color: PINK }}>PLUSIEURS CARTONS</strong><br />Un même score peut apparaître sur plusieurs cartons. Une seule volée peut donc ouvrir plusieurs cases en même temps : hit simple, double hit, triple hit ou jackpot.</div>
+      <div><strong style={{ color: GOOD }}>BLOC CARTONS</strong><br />Le bloc CARTONS affiche chaque carton avec sa progression. Ouvre le carrousel pour voir le détail visuel de chaque ticket.</div>
+      <div><strong style={{ color: BAD }}>DERNIERS SCORES</strong><br />Le bloc DERNIERS SCORES garde les 5 dernières volées : vert = score ayant validé au moins une case, rouge = score joué sans ouvrir de case.</div>
+      {config.variant === "express" ? <div><strong style={{ color: GOLD }}>MODE EXPRESS</strong><br />En express, une seule fléchette est jouée par tour. Selon le réglage, il faut viser soit un simple exact, soit un double exact, soit un triple exact.</div> : null}
     </div>
   );
 }
@@ -114,7 +160,7 @@ function ScratchCell({ cell, idx, recent }: any) {
   );
 }
 
-function TicketCard({ card, index, player, recentRevealKeys, lastVolleyText, onOpenHistory }: any) {
+function TicketCard({ card, index, player, recentRevealKeys, lastVolleyText, onOpenHistory, recentScores }: any) {
   const progress = cardProgress(card);
   const complete = progress === card.cells.length;
   return (
@@ -142,7 +188,7 @@ function TicketCard({ card, index, player, recentRevealKeys, lastVolleyText, onO
           <TicketInfo label={(player as any)?.isTeam ? "ÉQUIPE" : "JOUEUR"} value={player.name} />
           <TicketInfo label="CARTON" value={`${index + 1} / ${player.cards.length}`} />
           <TicketInfo label="PROGRESSION" value={`${progress} / ${card.cells.length}`} progress={progress / Math.max(1, card.cells.length)} />
-          <TicketInfo label="DERNIÈRE VOLÉE" value={lastVolleyText || "—"} small clickable onClick={onOpenHistory} sublabel="Toucher pour voir les scores" />
+          <RecentScoreBadges scores={recentScores} onClick={onOpenHistory} compact />
         </div>
         <div style={{ marginTop: 10, textAlign: "center", color: complete ? "#18784d" : "#ff5a41", fontSize: 11, fontWeight: 1000 }}>Visez juste. Complétez. Gagnez.</div>
       </div>
@@ -174,10 +220,10 @@ function ScoreHistoryModal({ player, config, events, onClose }: any) {
   return (
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position:'fixed', inset:0, zIndex:10005, background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', padding:12 }}>
       <div onClick={(e)=>e.stopPropagation()} style={{ width:'min(560px,100%)', maxHeight:'86dvh', overflowY:'auto', borderRadius:18, border:`1px solid ${GOLD}55`, background:'linear-gradient(180deg,#15120d,#0b0e13 45%,#08090c)', boxShadow:'0 26px 65px rgba(0,0,0,.55)', padding:12 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ color:GOLD, fontWeight:1000, fontSize:14 }}>SCORES JOUÉS · {player?.name}</div><div style={{ color:SOFT, fontSize:10, marginTop:2 }}>{config.variant === 'classic' ? 'Vert = score ayant ouvert au moins une case · Rouge = score refusé' : 'Historique des lancers express'}</div></div><button type='button' onClick={onClose} style={carouselBtn}>×</button></div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ color:GOLD, fontWeight:1000, fontSize:14 }}>DERNIERS SCORES · {player?.name}</div><div style={{ color:SOFT, fontSize:10, marginTop:2 }}>{config.variant === 'classic' ? 'Vert = score ayant ouvert au moins une case · Rouge = score raté' : 'Historique des lancers express'}</div></div><button type='button' onClick={onClose} style={carouselBtn}>×</button></div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:12 }}>
-          <HistoryGroup title='VALIDÉS' color={GOOD} fill='rgba(112,239,189,.12)' items={valides} empty='Aucun score validé' />
-          <HistoryGroup title='REFUSÉS' color={BAD} fill='rgba(255,113,138,.10)' items={refuses} empty='Aucun score refusé' />
+          <HistoryGroup title='SCORES VALIDÉS' color={GOOD} fill='rgba(112,239,189,.12)' items={valides} empty='Aucun score validé' />
+          <HistoryGroup title='SCORES RATÉS' color={BAD} fill='rgba(255,113,138,.10)' items={refuses} empty='Aucun score refusé' />
         </div>
         <div style={{ marginTop:12, borderTop:'1px solid rgba(255,255,255,.07)', paddingTop:10 }}>
           <div style={{ color:SOFT, fontSize:10, fontWeight:1000, marginBottom:8 }}>DERNIÈRES VOLÉES</div>
@@ -196,7 +242,7 @@ function HistoryGroup({ title, color, fill, items, empty }: any) {
   return <div style={{ borderRadius:14, padding:10, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)' }}><div style={{ color, fontSize:11, fontWeight:1000, letterSpacing:.6 }}>{title}</div><div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>{items.length ? items.map((it:any)=><div key={it.label} style={{ minWidth:64, padding:'8px 10px', borderRadius:12, background:fill, border:`1px solid ${color}55`, boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ color:'#fff', fontSize:14, fontWeight:1000, textAlign:'center' }}>{it.label}</div><div style={{ marginTop:3, color, fontSize:9, fontWeight:1000, textAlign:'center' }}>× {it.count}</div></div>) : <div style={{ color:SOFT, fontSize:10 }}>{empty}</div>}</div></div>;
 }
 
-function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, lastVolleyText, onOpenHistory }: any) {
+function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, lastVolleyText, onOpenHistory, recentScores }: any) {
   const [index, setIndex] = React.useState(Math.max(0, Math.min(Number(initialIndex) || 0, player.cards.length - 1)));
   React.useEffect(() => setIndex(Math.max(0, Math.min(Number(initialIndex) || 0, player.cards.length - 1))), [initialIndex, player.id]);
   const prev = () => setIndex((i) => (i - 1 + player.cards.length) % player.cards.length);
@@ -209,7 +255,7 @@ function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, l
           <div style={{ minWidth: 0, textAlign: "center" }}><div style={{ color: GOLD, fontSize: 12, fontWeight: 1000, letterSpacing: .8 }}>CARTONS · {nameOf(player)}</div><div style={{ marginTop: 1, color: SOFT, fontSize: 9.5 }}>Carton {index + 1}/{player.cards.length} · glisse avec les flèches</div></div>
           <button type="button" onClick={onClose} style={{ ...carouselBtn, color: "#fff" }}>×</button>
         </div>
-        <TicketCard card={player.cards[index]} index={index} player={player} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={onOpenHistory} />
+        <TicketCard card={player.cards[index]} index={index} player={player} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={onOpenHistory} recentScores={recentScores} />
         {player.cards.length > 1 ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 9 }}><button type="button" onClick={prev} style={carouselWideBtn}>← PRÉCÉDENT</button><div style={{ display: "flex", gap: 5 }}>{player.cards.map((c: any, i: number) => <button key={c.id} type="button" onClick={() => setIndex(i)} aria-label={`Carton ${i + 1}`} style={{ width: i === index ? 20 : 8, height: 8, borderRadius: 999, border: "none", background: i === index ? GOLD : "rgba(255,255,255,.25)", transition: "width .15s ease", cursor: "pointer" }} />)}</div><button type="button" onClick={next} style={carouselWideBtn}>SUIVANT →</button></div> : null}
       </div>
     </div>
@@ -248,6 +294,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const [cardsInitialIndex, setCardsInitialIndex] = React.useState(0);
   const [rankingOpen, setRankingOpen] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [statsOpen, setStatsOpen] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const finishSent = React.useRef(false);
 
@@ -258,6 +305,8 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const bestProgress = active ? bestCardProgress(active) : 0;
   const cardTotal = active?.cards?.[0]?.cells?.length || config.cellsPerCard;
   const lastPlayerEvent = React.useMemo(() => [...events].reverse().find((e: any) => e.playerId === active?.id) || null, [events, active?.id]);
+  const recentScores = React.useMemo(() => recentScoreItems(events, active?.id, 5), [events, active?.id]);
+  const remainingForWin = Math.max(0, cardTotal - bestProgress);
   const lastVolleyText = config.variant === "classic"
     ? (darts.length ? `${darts.map((d: any) => dartLabel(d)).join(" + ")} = ${volleyScore(darts)}` : (lastPlayerEvent?.darts?.length ? `${lastPlayerEvent.darts.map((d: any) => d.label).join(" + ")} = ${lastPlayerEvent.volleyScore}` : "—"))
     : (darts[0] ? dartLabel(darts[0]) : (lastPlayerEvent?.darts?.[0]?.label || "—"));
@@ -363,7 +412,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const nextSeed = Date.now();
     setSeed(nextSeed);
     setPlayers(buildPlayerStates(sourcePlayers, config, nextSeed));
-    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setFx(null); setToast(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setBotThinking(false);
+    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setFx(null); setToast(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setStatsOpen(false); setBotThinking(false);
     finishSent.current = false;
     createdAtRef.current = Date.now();
   }
@@ -396,7 +445,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         tickerFit="cover"
         tickerBottomGap={10}
         left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} title="Retour à la configuration" /></div>}
-        right={<div style={{ marginRight: 6 }}><InfoDot title="Règles LOTERIE" color={PINK} glow={`${PINK}77`} content={<RulesContent config={config} />} /></div>}
+        right={<div style={{ marginRight: 6 }}><InfoDot title="Règles LOTERIE" color={GOLD} glow={`${GOLD}77`} content={<RulesContent config={config} />} /></div>}
       />
 
       <div style={{ padding: "8px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
@@ -409,8 +458,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
             <div style={{ gridColumn: "1 / 2", position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 0, textAlign: "center", padding: "2px 10px 2px 6px" }}>
               {botThinking ? <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
               <div style={{ color: accent, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(active)}</div>
-              <div style={{ marginTop: 6, color: "#ffcf57", fontSize: 55, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)", whiteSpace: "nowrap" }}>{bestProgress}<span style={{ fontSize: 25, opacity: .62 }}>/{cardTotal}</span></div>
-              <div style={{ marginTop: 3, color: SOFT, fontSize: 8.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{compactConfigLabel(config, active)}</div>
+              <div style={{ marginTop: 2, color: "#c8d0df", fontSize: 8.8, fontWeight: 900, letterSpacing: .8, textTransform: "uppercase" }}>Cases restantes pour gagner</div>
+              <div style={{ marginTop: 4, color: "#ffcf57", fontSize: 55, fontWeight: 900, lineHeight: 1.02, textShadow: "0 4px 18px rgba(255,195,26,.25)", whiteSpace: "nowrap" }}>{remainingForWin}<span style={{ fontSize: 19, opacity: .58, marginLeft: 4 }}>rest.</span></div>
+              <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", justifyContent: "center" }}>
+                <InfoPill kind="darts" value={config.variant === "classic" ? "3 darts" : "express"} accent={accent} />
+                <InfoPill kind="range" value={config.variant === "classic" ? `${active?.targetMin}–${active?.targetMax}` : config.expressTarget.toUpperCase()} accent={accent} />
+                <InfoPill kind="cards" value={`${config.cardsPerPlayer} carton${config.cardsPerPlayer > 1 ? "s" : ""}`} accent={accent} />
+              </div>
             </div>
             <button type="button" onClick={() => openCards(bestIdx)} style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, border: `1px solid ${GOLD}44`, background: "#080b12", cursor: "pointer", padding: 0, color: "#fff" }}>
               <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.32), rgba(4,8,16,.78)), url(${scratchTicketPreview})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .72 }} />
@@ -426,17 +480,17 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
         <section style={{ ...panelStyle(), padding: 8, marginBottom: 7 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
-            <MiniKpi label="CASES" value={active?.stats?.cellsRevealed || 0} color={GOLD} />
-            <MiniKpi label="TOURS" value={active?.stats?.visits || 0} color={CYAN} />
-            <MiniKpi label="HITS" value={active?.stats?.successfulVisits || 0} color={GOOD} />
-            <MiniKpi label="MULTI" value={active?.stats?.multiHits || 0} color={PINK} />
+            <MiniKpi label="CASES" value={active?.stats?.cellsRevealed || 0} color={GOLD} onClick={() => setStatsOpen(true)} />
+            <MiniKpi label="TOURS" value={active?.stats?.visits || 0} color={CYAN} onClick={() => setStatsOpen(true)} />
+            <MiniKpi label="HITS" value={active?.stats?.successfulVisits || 0} color={GOOD} onClick={() => setStatsOpen(true)} />
+            <MiniKpi label="MULTI" value={active?.stats?.multiHits || 0} color={PINK} onClick={() => setStatsOpen(true)} />
           </div>
         </section>
 
         <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 7 }}>
           <button type="button" onClick={() => openCards(bestIdx)} style={{ ...panelStyle(), minHeight: 76, padding: "8px 10px", cursor: "pointer", color: "#fff", textAlign: "left", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={{ color: GOLD, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>🎟️ CARTONS</span><span style={{ color: SOFT, fontSize: 9 }}>OUVRIR ›</span></div>
-            <div style={{ display: "flex", gap: 5, marginTop: 8, overflow: "hidden" }}>{active?.cards?.map((card: any, i: number) => <span key={card.id} style={{ flex: "1 1 0", minWidth: 0, textAlign: "center", padding: "5px 3px", borderRadius: 999, border: `1px solid ${i === bestIdx ? GOLD + "66" : "rgba(255,255,255,.09)"}`, color: i === bestIdx ? GOLD : SOFT, fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap" }}>C{i + 1} {cardProgress(card)}/{card.cells.length}</span>)}</div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, active?.cards?.length || 1)}, minmax(0,1fr))`, gap: 5, marginTop: 8, overflow: "hidden" }}>{active?.cards?.map((card: any, i: number) => <div key={card.id} style={{ minWidth: 0, textAlign: "center", padding: "6px 4px", borderRadius: 12, border: `1px solid ${i === bestIdx ? GOLD + "66" : "rgba(255,255,255,.09)"}`, background: i === bestIdx ? "rgba(246,194,86,.08)" : "rgba(255,255,255,.03)" }}><div style={{ color: i === bestIdx ? GOLD : SOFT, fontSize: 8.1, fontWeight: 1000, whiteSpace: "nowrap" }}>C{i + 1}</div><div style={{ marginTop: 3, color: i === bestIdx ? "#fff4c0" : "#fff", fontSize: 13, fontWeight: 1000 }}>{cardProgress(card)}</div><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 900 }}>cases</div></div>)}</div>
           </button>
           <button type="button" onClick={() => setRankingOpen(true)} style={{ ...panelStyle(), minHeight: 76, padding: "8px 10px", cursor: "pointer", color: "#fff", textAlign: "left", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={{ color: CYAN, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>🏆 CLASSEMENT</span><span style={{ color: SOFT, fontSize: 9 }}>DÉTAIL ›</span></div>
@@ -459,21 +513,22 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
               onValidate={validateVisit}
               hidePreview={false}
               centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{config.variant === "classic" ? volleyScore(darts) : (darts[0] ? dartLabel(darts[0]) : 0)}</span>}
-              noticeSlot={config.variant === "classic" ? <span style={{ color: SOFT, fontSize: 9, fontWeight: 900 }}>{config.volleyMode === "strict3" ? "3 DARTS OBLIGATOIRES · validation automatique à la 3e" : "VOLÉE LIBRE · VALIDER après 1, 2 ou 3 darts"}</span> : <span style={{ color: PINK, fontSize: 9, fontWeight: 900 }}>EXPRESS · 1 DART · validation automatique</span>}
+              noticeSlot={null}
             />
           </div>
         </section>
       </div>
 
-      {cardsOpen && active ? <FloatingCardsModal player={active} initialIndex={cardsInitialIndex} onClose={() => setCardsOpen(false)} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={openHistory} /> : null}
+      {cardsOpen && active ? <FloatingCardsModal player={active} initialIndex={cardsInitialIndex} onClose={() => setCardsOpen(false)} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={openHistory} recentScores={recentScores} /> : null}
       {historyOpen && active ? <ScoreHistoryModal player={active} config={config} events={events} onClose={() => setHistoryOpen(false)} /> : null}
+      {statsOpen && active ? <StatsDetailModal player={active} onClose={() => setStatsOpen(false)} /> : null}
 
       {rankingOpen ? <div role="dialog" aria-modal="true" onClick={() => setRankingOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 14 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(520px,100%)", maxHeight: "78dvh", overflowY: "auto", padding: 13, borderColor: `${CYAN}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div style={{ color: CYAN, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT LOTERIE</div><button type="button" onClick={() => setRankingOpen(false)} style={carouselBtn}>×</button></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{ranking.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: p.id === active?.id ? "rgba(246,194,86,.08)" : "rgba(255,255,255,.035)", border: `1px solid ${p.id === active?.id ? GOLD + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: i === 0 ? GOLD : SOFT, fontSize: 16, fontWeight: 1000, textAlign: "center" }}>{i + 1}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 9 }}>{p.stats.cellsRevealed} cases · {p.stats.visits} tours</div></div><div style={{ color: GOLD, fontSize: 18, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</div></div>)}</div></div></div> : null}
 
       {fx ? <div style={{ position: "fixed", left: "50%", top: "45%", transform: "translate(-50%,-50%)", zIndex: 10020, pointerEvents: "none", animation: "lotFxBurst 1.15s ease-out both", textAlign: "center", padding: "12px 20px", borderRadius: 18, border: `1px solid ${fx.tone === "red" ? BAD : fx.tone === "green" ? GOOD : GOLD}`, background: "rgba(10,10,12,.9)", color: fx.tone === "red" ? BAD : fx.tone === "green" ? GOOD : GOLD, fontWeight: 1000, fontSize: 20, letterSpacing: .7, boxShadow: "0 16px 45px rgba(0,0,0,.42)" }}>{fx.text}</div> : null}
       {toast ? <div style={{ position: "fixed", left: "50%", top: 104, transform: "translateX(-50%)", zIndex: 120, minWidth: "min(360px,88vw)", textAlign: "center", padding: "10px 14px", borderRadius: 16, border: `1px solid ${toast.good ? GOOD : BAD}90`, background: "rgba(9,10,13,.96)", color: toast.good ? GOOD : BAD, fontWeight: 1000, fontSize: 11.5, boxShadow: "0 12px 35px rgba(0,0,0,.4)" }}>{toast.text}</div> : null}
 
-      {winner ? <div style={{ position: "fixed", inset: 0, zIndex: 10030, background: "rgba(0,0,0,.84)", display: "grid", placeItems: "center", padding: 16 }}><div style={{ width: "min(520px,96vw)", maxHeight: "90dvh", overflowY: "auto", borderRadius: 23, border: `1px solid ${GOLD}80`, background: "linear-gradient(180deg,#17130b,#0b0c10 38%,#07080b)", padding: 18, textAlign: "center", boxShadow: "0 30px 90px rgba(0,0,0,.65)" }}><div style={{ fontSize: 42 }}>🏆</div><div style={{ color: GOLD, fontSize: 12, fontWeight: 1000, letterSpacing: 1.7 }}>JACKPOT — CARTON COMPLET</div><div style={{ marginTop: 5, fontSize: 25, fontWeight: 1000 }}>{winner.name}</div><div style={{ marginTop: 5, color: SOFT, fontSize: 11 }}>{winner.stats.completedOnVisit} tours · {winner.stats.dartsThrown} darts · {winner.stats.cellsRevealed} cases révélées</div><div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 7 }}>{[["Taux découverte", winner.stats.visits ? `${Math.round((winner.stats.successfulVisits / winner.stats.visits) * 100)}%` : "0%"], ["Multi-hits", winner.stats.multiHits], ["Meilleur hit", `${winner.stats.maxCellsInVisit} case${winner.stats.maxCellsInVisit > 1 ? "s" : ""}`], ["Meilleure série", winner.stats.bestStreak], ["Volée moyenne", winner.stats.visits ? (winner.stats.totalVolleyScore / winner.stats.visits).toFixed(1) : "0"], ["Meilleure volée", winner.stats.maxVolley]].map(([l, v]: any) => <div key={l} style={{ padding: 10, borderRadius: 13, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ color: SOFT, fontSize: 8.5 }}>{l}</div><div style={{ marginTop: 2, color: GOLD, fontSize: 18, fontWeight: 1000 }}>{v}</div></div>)}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 14 }}><button onClick={resetGame} style={{ minHeight: 45, borderRadius: 13, border: `1px solid ${GOLD}`, background: "rgba(246,194,86,.12)", color: GOLD, fontWeight: 1000 }}>REJOUER</button><button onClick={() => (go || setTab)?.("statsHub", { initialPlayerId: winner.id, initialStatsSubTab: "loterie" })} style={{ minHeight: 45, borderRadius: 13, border: `1px solid ${CYAN}70`, background: "rgba(69,216,255,.08)", color: CYAN, fontWeight: 1000 }}>STATS</button><button onClick={() => (go || setTab)?.("games")} style={{ minHeight: 45, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1000 }}>MENU</button></div></div></div> : null}
+      {winner ? <div style={{ position: "fixed", inset: 0, zIndex: 10030, background: "rgba(0,0,0,.84)", display: "grid", placeItems: "center", padding: 16 }}><div style={{ width: "min(520px,96vw)", maxHeight: "90dvh", overflowY: "auto", borderRadius: 23, border: `1px solid ${GOLD}80`, background: "linear-gradient(180deg,#17130b,#0b0c10 38%,#07080b)", padding: 18, textAlign: "center", boxShadow: "0 30px 90px rgba(0,0,0,.65)" }}><div style={{ fontSize: 42 }}>🏆</div><div style={{ color: GOLD, fontSize: 12, fontWeight: 1000, letterSpacing: 1.7 }}>JACKPOT — CARTON COMPLET</div><div style={{ marginTop: 5, fontSize: 25, fontWeight: 1000 }}>{winner.name}</div><div style={{ marginTop: 5, color: SOFT, fontSize: 11 }}>{winner.stats.completedOnVisit} tours · {winner.stats.dartsThrown} darts · {winner.stats.cellsRevealed} cases révélées</div><div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 7 }}>{[["Taux découverte", winner.stats.visits ? `${Math.round((winner.stats.successfulVisits / winner.stats.visits) * 100)}%` : "0%"], ["Multi-hits", winner.stats.multiHits], ["Meilleur hit", `${winner.stats.maxCellsInVisit} case${winner.stats.maxCellsInVisit > 1 ? "s" : ""}`], ["Meilleure série", winner.stats.bestStreak], ["Volée moyenne", winner.stats.visits ? (winner.stats.totalVolleyScore / winner.stats.visits).toFixed(1) : "0"], ["Meilleure volée", winner.stats.maxVolley], ["Tours ratés", winner.stats.emptyVisits], ["Darts lancés", winner.stats.dartsThrown]].map(([l, v]: any) => <div key={l} style={{ padding: 10, borderRadius: 13, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ color: SOFT, fontSize: 8.5 }}>{l}</div><div style={{ marginTop: 2, color: GOLD, fontSize: 18, fontWeight: 1000 }}>{v}</div></div>)}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 14 }}><button onClick={resetGame} style={{ minHeight: 45, borderRadius: 13, border: `1px solid ${GOLD}`, background: "rgba(246,194,86,.12)", color: GOLD, fontWeight: 1000 }}>REJOUER</button><button onClick={() => (go || setTab)?.("statsHub", { initialPlayerId: winner.id, initialStatsSubTab: "loterie" })} style={{ minHeight: 45, borderRadius: 13, border: `1px solid ${CYAN}70`, background: "rgba(69,216,255,.08)", color: CYAN, fontWeight: 1000 }}>STATS</button><button onClick={() => (go || setTab)?.("games")} style={{ minHeight: 45, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1000 }}>MENU</button></div></div></div> : null}
     </div>
   );
 }

@@ -887,6 +887,7 @@ export default function Games({ setTab, params }: Props) {
   // toujours le dernier mode intégré. Le composant les fait ensuite défiler en boucle.
   const RECENT_GAME_IDS = React.useMemo(
     () => [
+      "halve_it",
       "mario_kart",
       "president",
       "attrape_moi",
@@ -897,7 +898,6 @@ export default function Games({ setTab, params }: Props) {
       "capital",
       "departements",
       "scram",
-      "golf",
     ],
     []
   );

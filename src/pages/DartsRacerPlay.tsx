@@ -419,8 +419,8 @@ export default function DartsRacerPlay(props: any) {
 
           <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 17, background: "#050913", isolation: "isolate" }}>
             <div style={{ position: "absolute", inset: 0, background: "#050913", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${dartsRacerChecker})`, backgroundPosition: "center", backgroundSize: "118px 118px", opacity: .075, filter: "grayscale(1) contrast(1.12)", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(5,9,19,.70),rgba(5,9,19,.90))", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${dartsRacerChecker})`, backgroundPosition: "center", backgroundSize: "cover", backgroundRepeat: "no-repeat", opacity: .34, filter: "grayscale(1) contrast(1.42) brightness(.82)", mixBlendMode: "screen", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(5,9,19,.38),rgba(5,9,19,.62))", pointerEvents: "none" }} />
             <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: `linear-gradient(180deg,rgba(255,255,255,.02),${primary},rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${primary}66` }} />
             <div style={{ position: "relative", width: "100%", padding: "6px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
               <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>TOUR</div>

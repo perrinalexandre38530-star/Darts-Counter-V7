@@ -373,13 +373,14 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     tab: "halve_it_config",
     popularityRank: 31,
     ready: true,
-    maxPlayers: 8,
-    supportsTeams: false,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: true,
     supportsBots: true,
     statsKey: "game:halve_it",
-    infoTitle: "Halve-It",
+    infoTitle: "HALVE-IT",
     infoBody:
-      "Cible imposee par manche (20, 19, 18... Bull). Si tu ne touches pas la cible du round: ton total est divise par 2. A implementer.",
+      "Chaque manche impose une cible. Seules les touches valides ajoutent leur valeur au score ; une volée sans aucune touche valide divise le total courant par deux. Après la dernière cible, le meilleur score gagne. Jouable en solo, multi, équipes et avec bots.",
   },
   {
     id: "bobs_27",

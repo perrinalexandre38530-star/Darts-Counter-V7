@@ -13,6 +13,7 @@ type ModeKind =
   | "five_lives"
   | "scram"
   | "bobs_27"
+  | "halve_it"
   | "shooter"
   | "darts_racer"
   | "attrape_moi"
@@ -64,6 +65,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     primary: "Score final",
     secondary: "Précision",
     tertiary: "Doubles",
+  },
+  halve_it: {
+    title: "HALVE-IT",
+    accent: "#ffd76a",
+    subtitle: "Contrats successifs, points marqués et divisions par deux.",
+    primary: "Score final",
+    secondary: "Précision",
+    tertiary: "HALVE",
   },
   shooter: {
     title: "SHOOTER",
@@ -153,6 +162,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["five_lives", ["five_lives", "fivelives", "5vies", "les5vies", "cinqvies"]],
   ["scram", ["scram"]],
   ["bobs_27", ["bobs_27", "bobs27", "bob27", "bob's27", "bobs27"]],
+  ["halve_it", ["halve_it", "halve-it", "halveit", "half-it"]],
   ["shooter", ["shooter"]],
   ["darts_racer", ["darts_racer", "dartsracer", "darts racer", "mario_kart", "mariokart"]],
   ["attrape_moi", ["attrape_moi", "attrapemoi", "attrape-moi", "catchme", "catch_me"]],
@@ -303,6 +313,16 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     }
     return num(pick(row.targetHits, row.validDoubles, row.validHits), 0);
   }
+  if (mode === "halve_it") {
+    if (key === "primary") return num(pick(row.finalScore, row.score, row.points), 0);
+    if (key === "secondary") {
+      const darts = num(pick(row.dartsThrown, row.darts), 0);
+      const hits = num(pick(row.validHits, row.targetHits), 0);
+      const accuracy = num(row.accuracy, darts > 0 ? (hits / darts) * 100 : 0);
+      return `${Math.round(accuracy * 10) / 10}%`;
+    }
+    return num(pick(row.halvingEvents, row.penaltyEvents), 0);
+  }
   if (mode === "shooter") {
     if (key === "primary") {
       const cleared = num(pick(row.targetsCleared, row.progressTargetIndex), 0);
@@ -438,6 +458,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
     ? num(capitalMatchStats?.contractsPlayed, rows.reduce((sum, r) => sum + num(r.raw?.contractsPlayed, 0), 0))
     : mode === "bobs_27"
       ? num(bobsMatchStats?.totalHits, rows.reduce((sum, r) => sum + num(pick(r.raw?.targetHits, r.raw?.validDoubles, r.raw?.validHits), 0), 0))
+      : mode === "halve_it"
+        ? rows.reduce((sum, r) => sum + num(pick(r.raw?.validHits, r.raw?.targetHits), 0), 0)
       : mode === "shooter"
         ? num(shooterMatchStats?.totalMarks, rows.reduce((sum, r) => sum + num(pick(r.raw?.marks, r.raw?.marksApplied), 0), 0))
         : mode === "darts_racer"
@@ -482,7 +504,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 

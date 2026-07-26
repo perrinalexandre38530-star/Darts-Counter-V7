@@ -276,6 +276,9 @@ const Bobs27StatsTabFull = React.lazy(
 const BowlingStatsTabFull = React.lazy(
   () => import("../components/stats/BowlingStatsTabFull")
 );
+const HalveItStatsTabFull = React.lazy(
+  () => import("../components/stats/HalveItStatsTabFull")
+);
 const ShooterStatsTabFull = React.lazy(
   () => import("../components/stats/ShooterStatsTabFull")
 );
@@ -576,6 +579,7 @@ type Props = {
     | "territories"
     | "loterie"
     | "bowling"
+    | "halve_it"
     | "darts_racer"
     | "leaderboards"
     | "history";
@@ -941,7 +945,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const hasPayload = !!(r as any)?.payload;
@@ -1187,6 +1191,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("president") || tag.includes("président")) return "president";
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("bowling")) return "bowling";
+  if (tag.includes("halve_it") || tag.includes("halve-it") || tag.includes("halve it") || tag.includes("half-it")) return "halve_it";
   if (tag.includes("darts_racer") || tag.includes("darts racer") || tag.includes("dartsracer") || tag.includes("mario_kart")) return "darts_racer";
   if (tag.includes("shooter")) return "shooter";
   if (tag.includes("prisoner")) return "prisoner";
@@ -4793,6 +4798,7 @@ const modeDefs = React.useMemo(
               { key: "president", label: "Président" },
               { key: "bobs_27", label: "Bob’s 27" },
               { key: "bowling", label: "Bowling" },
+              { key: "halve_it", label: "HALVE-IT" },
               { key: "shooter", label: "SHOOTER" },
               { key: "darts_racer", label: "DARTS RACER" },
               { key: "prisoner", label: "Prisoner" },
@@ -6131,6 +6137,7 @@ const modeThemeColor: Record<string, string> = {
   president: "#e9c56c",
   bobs_27: "#e4c06b",
   bowling: "#f6c256",
+  halve_it: "#ffd76a",
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
   prisoner: "#e4c06b",
@@ -6172,6 +6179,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     president: "Président",
     bobs_27: "Bob’s 27",
     bowling: "Bowling",
+    halve_it: "HALVE-IT",
     shooter: "SHOOTER",
     darts_racer: "DARTS RACER",
     prisoner: "Prisoner",
@@ -6181,7 +6189,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "shooter", "darts_racer", "prisoner", "loterie", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -8484,6 +8492,24 @@ return (
               </div>
             )}
 
+{currentMode === "halve_it" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement HALVE-IT…" />}>
+                    <HalveItStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques HALVE-IT.
+                  </div>
+                )}
+              </div>
+            )}
+
 {currentMode === "shooter" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -8627,6 +8653,7 @@ return (
                       president: ["president", "président"],
                       bobs_27: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"],
                       bowling: ["bowling"],
+                      halve_it: ["halve_it", "halve-it", "halve it", "half-it"],
                       shooter: ["shooter"],
                       darts_racer: ["darts_racer", "darts racer", "dartsracer", "mario_kart"],
                       prisoner: ["prisoner"],

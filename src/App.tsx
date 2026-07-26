@@ -4939,10 +4939,20 @@ case "babyfoot_team_edit":
       // - Les Config poussent vers "<mode>_play" avec { config }
       // ============================================================
       case "halve_it_config":
-        page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "halve_it" }} />;
+        page = <HalveItConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "halve_it_play":
-        page = <DefiPlay setTab={go} params={{ ...routeParams, modeId: "halve_it" }} />;
+        page = (
+          <HalveItPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "halve_it", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "count_up_config":

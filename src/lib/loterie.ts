@@ -189,12 +189,17 @@ export function generateCards(config: LoterieConfig, range: { min: number; max: 
   const rng = mulberry32(seed);
   const cardCount = clamp(config.cardsPerPlayer, 1, 4);
   const cells = clamp(config.cellsPerCard, 5, Math.min(15, pool.length));
-  return Array.from({ length: cardCount }, (_, i) => ({
-    id: `card_${i + 1}`,
-    // Chaque carton échantillonne indépendamment : aucun doublon DANS le carton,
-    // mais le même numéro peut apparaître sur plusieurs cartons comme à la loterie.
-    cells: sampleUnique(pool, cells, rng).map((c) => ({ ...c, revealed: false })),
-  }));
+  return Array.from({ length: cardCount }, (_, i) => {
+    const picked = sampleUnique(pool, cells, rng).map((c) => ({ ...c, revealed: false }));
+    const positioned = picked.map((cell) => ({ cell, sort: rng() })).sort((a, b) => a.sort - b.sort).map((x) => x.cell);
+    return {
+      id: `card_${i + 1}`,
+      // Chaque carton échantillonne indépendamment : aucun doublon DANS le carton,
+      // mais le même numéro peut apparaître sur plusieurs cartons comme à la loterie.
+      // On remélange ensuite les positions pour éviter une impression de suite trop linéaire.
+      cells: positioned,
+    };
+  });
 }
 
 export function makeInitialStats(): LoteriePlayerStats {

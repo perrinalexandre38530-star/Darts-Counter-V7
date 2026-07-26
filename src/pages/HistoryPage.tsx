@@ -354,6 +354,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "attrape_moi", label: "Attrape-moi", aliases: ["attrape_moi", "attrape moi", "attrape-moi", "catch me", "catchme"] },
     { key: "president", label: "Président", aliases: ["president", "président"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
+    { key: "halve_it", label: "HALVE-IT", aliases: ["halve_it", "halve-it", "halve it", "half-it"] },
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "darts_racer", label: "DARTS RACER", aliases: ["darts_racer", "darts racer", "dartsracer", "mario_kart", "mario kart"] },
     { key: "prisoner", label: "Prisoner", aliases: ["prisoner"] },
@@ -454,7 +455,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|darts_racer|dartsracer|mario_kart|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -474,6 +475,8 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "president",
     "bobs_27",
     "bobs27",
+    "halve_it",
+    "halveit",
     "shooter",
     "dartsracer",
     "darts_racer",
@@ -794,6 +797,8 @@ const modeColor: Record<string, string> = {
   president: "#e9c56c",
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
+  halve_it: "#ffd76a",
+  halveit: "#ffd76a",
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
   dartsracer: "#42d6ff",
@@ -1921,6 +1926,37 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         {players.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
           {players.slice(0, 3).map((p: any) => `${historyScoreName(e, p) || getName(p) || "Joueur"} : ${Number(p?.captures || 0)} captures • ${Number(p?.prisonersCreated || 0)} prisonniers • ${Number(p?.finalDartsOwned ?? p?.dartsOwned ?? 0)} 🎯 • ${Number(p?.offboardMisses ?? p?.misses ?? 0)} MISS`).join("  |  ")}
         </div> : null}
+      </div>
+    );
+  }
+
+  if (["halve_it", "halveit"].includes(normalizeToken(baseMode(e))) || inferGameFilterKey(e, "darts") === "halve_it") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const standings = Array.isArray(summary?.standings) ? summary.standings : Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(anyE?.payload?.state?.standings) ? anyE.payload.state.standings : [];
+    const players = Array.isArray(anyE?.payload?.stats?.players) && anyE.payload.stats.players.length ? anyE.payload.stats.players : Array.isArray(summary?.players) ? summary.players : Array.isArray(anyE?.payload?.players) ? anyE.payload.players : [];
+    const rows = standings.length ? standings : players.slice().sort((a: any, b: any) => Number(b?.finalScore ?? b?.score ?? 0) - Number(a?.finalScore ?? a?.score ?? 0));
+    const matchStats = summary?.matchStats || anyE?.payload?.stats?.match || anyE?.payload?.stats?.global || {};
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {rows.slice(0, 4).map((row: any, index: number) => (
+            <React.Fragment key={String(row?.id || row?.playerId || row?.name || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+              <span style={{ color: historyRankColor(Number(row?.rank || index + 1)), fontWeight: 1000 }}>{Number(row?.rank || index + 1)}.</span>
+              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{String(row?.name || historyScoreName(e, row) || getName(row) || `Joueur ${index + 1}`)}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{Number(row?.score ?? row?.finalScore ?? row?.points ?? 0)} pts</span>
+            </React.Fragment>
+          ))}
+        </div>
+        {players.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
+          {players.slice(0, 3).map((pl: any) => { const name = historyScoreName(e, pl) || getName(pl) || "Joueur"; const hits = Number(pl?.validHits ?? pl?.targetHits ?? 0) || 0; const darts = Number(pl?.dartsThrown ?? pl?.darts ?? 0) || 0; const halves = Number(pl?.halvingEvents ?? pl?.penaltyEvents ?? 0) || 0; const loss = Number(pl?.pointsLostByHalving ?? pl?.pointsLost ?? 0) || 0; return `${name}: ${hits}/${darts} hits • ${halves} halve • −${loss} pts`; }).join("  |  ")}
+        </div> : null}
+        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850 }}>
+          {Number(summary?.targetsPlayed || matchStats?.targets || 0) ? `${Number(summary?.targetsPlayed || matchStats?.targets)} cibles` : "HALVE-IT"}
+          {Number(matchStats?.totalDarts || 0) ? ` • ${Number(matchStats.totalDarts)} flèches` : ""}
+          {Number(matchStats?.totalHalves || 0) ? ` • ${Number(matchStats.totalHalves)} divisions` : ""}
+        </div>
       </div>
     );
   }
