@@ -5266,6 +5266,7 @@ case "babyfoot_team_edit":
     "super_bull_play",
     "shooter_play",
     "darts_racer_play",
+    "loterie_play",
     "tic_tac_toe_play",
     "knockout_play",
     "bobs_27_play",

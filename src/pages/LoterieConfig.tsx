@@ -11,7 +11,6 @@ import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
-import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
@@ -140,6 +139,23 @@ function shuffle<T>(items: T[]): T[] {
   return out;
 }
 
+function MiniFieldInfo({ title, children, color }: any) {
+  return <InfoDot size={24} title={title} color={color} glow={`${color}66`} content={<div style={{ fontSize: 12.5, lineHeight: 1.5 }}>{children}</div>} />;
+}
+function CompactConfigSelect({ label, helpTitle, help, value, options, onChange, color }: any) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(84px,.72fr) minmax(0,1.28fr)", gap: 10, alignItems: "center", padding: "10px 11px", borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)", minWidth: 0 }}>
+      <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontWeight: 950, fontSize: 12.5, whiteSpace: "nowrap" }}>{label}</span>
+        <MiniFieldInfo title={helpTitle || label} color={color}>{help}</MiniFieldInfo>
+      </div>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: "100%", minWidth: 0, maxWidth: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.25)", color: "#fff", padding: "10px 11px", fontWeight: 900, fontSize: 12.5, outline: "none", boxSizing: "border-box" }}>
+        {options.map((opt: any) => <option key={String(opt.value)} value={opt.value}>{opt.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function RulesContent() {
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.48 }}>
@@ -192,7 +208,7 @@ export default function LoterieConfig(props: any) {
   const [expressTarget, setExpressTarget] = React.useState<LoterieExpressTarget>(saved.expressTarget || "simple");
   const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(saved.cardsPerPlayer || 2) as any);
   const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(saved.cellsPerCard || 10) as any);
-  const [randomOrder, setRandomOrder] = React.useState(saved.startOrderMode !== "fixed");
+  const [randomOrder, setRandomOrder] = React.useState(saved.startOrderMode === "random");
 
   React.useLayoutEffect(() => { try { window.scrollTo(0, 0); } catch {} }, []);
   React.useEffect(() => {
@@ -466,19 +482,60 @@ export default function LoterieConfig(props: any) {
 
   const modeBlock = (
     <Section title="MODE DE JEU">
-      <div style={panel}>
-        <OptionRow label="Mode LOTERIE">
-          <OptionSelect value={variant} options={[{ value: "classic", label: "LOTERIE — total de volée" }, { value: "express", label: "LOTERIE EXPRESS — 1 dart" }]} onChange={setVariant} />
-        </OptionRow>
-        {variant === "classic" ? (
-          <>
-            <OptionRow label="Niveau / plage"><OptionSelect value={level} options={[{ value: "auto", label: "AUTO — selon AVG/3D" }, ...Object.entries(LOTERIE_LEVELS).map(([value, range]: any) => ({ value, label: `${range.label} · ${range.min}–${range.max}` }))]} onChange={setLevel} /></OptionRow>
-            {level === "auto" ? <OptionRow label="AUTO"><OptionSelect value={autoMode} options={[{ value: "balanced", label: "Équilibré — plage par participant" }, { value: "common", label: "Identique — plage commune" }]} onChange={setAutoMode} /></OptionRow> : null}
-            <OptionRow label="Volée"><OptionSelect value={volleyMode} options={[{ value: "strict3", label: "3 darts obligatoires" }, { value: "free", label: "Libre — valider après 1, 2 ou 3" }]} onChange={setVolleyMode} /></OptionRow>
-          </>
-        ) : (
-          <OptionRow label="Cible Express"><OptionSelect value={expressTarget} options={[{ value: "simple", label: "Simple · numéro 1–20" }, { value: "double", label: "Double exact · D1–D20 + DBULL" }, { value: "triple", label: "Triple exact · T1–T20" }]} onChange={setExpressTarget} /></OptionRow>
-        )}
+      <div style={{ ...panel, display: "grid", gap: 7 }}>
+        <CompactConfigSelect
+          label="Mode"
+          helpTitle="Mode LOTERIE"
+          help={<> <b>Volée</b> : le total de 1 à 3 fléchettes est recherché sur les cartons. <b>1 Dart</b> : une seule fléchette par tour.</>}
+          value={variant}
+          options={[{ value: "classic", label: "Volée" }, { value: "express", label: "1 Dart" }]}
+          onChange={(value: any) => setVariant(value as LoterieVariant)}
+          color={primary}
+        />
+        {variant === "classic" ? <>
+          <CompactConfigSelect
+            label="Niveau"
+            helpTitle="Niveau / plage"
+            help={<>Détermine le score maximum pouvant apparaître sur les cartons. <b>AUTO</b> utilise l'AVG3D du participant.</>}
+            value={level}
+            options={[
+              { value: "auto", label: "AUTO (AVG3D)" },
+              { value: "beginner", label: "★ (45)" },
+              { value: "leisure", label: "★★ (60)" },
+              { value: "intermediate", label: "★★★ (80)" },
+              { value: "confirmed", label: "★★★★ (100)" },
+              { value: "expert", label: "★★★★★ (120)" },
+            ]}
+            onChange={(value: any) => setLevel(value as LoterieLevel)}
+            color={primary}
+          />
+          {level === "auto" ? <CompactConfigSelect
+            label="AUTO"
+            helpTitle="Réglage AUTO"
+            help={<><b>Équilibré</b> : chaque participant obtient une plage adaptée à son AVG3D. <b>Identique</b> : tous utilisent la même plage calculée pour le groupe.</>}
+            value={autoMode}
+            options={[{ value: "balanced", label: "Équilibré" }, { value: "common", label: "Identique" }]}
+            onChange={(value: any) => setAutoMode(value as LoterieAutoMode)}
+            color={primary}
+          /> : null}
+          <CompactConfigSelect
+            label="Volée"
+            helpTitle="Validation de la volée"
+            help={<><b>3 darts</b> : trois fléchettes obligatoires, validation automatique à la 3e. <b>Libre</b> : possibilité de valider après 1, 2 ou 3 fléchettes.</>}
+            value={volleyMode}
+            options={[{ value: "strict3", label: "3 darts" }, { value: "free", label: "Libre" }]}
+            onChange={(value: any) => setVolleyMode(value as LoterieVolleyMode)}
+            color={primary}
+          />
+        </> : <CompactConfigSelect
+          label="Cible"
+          helpTitle="Cible 1 Dart"
+          help={<>Choisis ce qui valide une case en mode 1 Dart : numéro simple, double exact ou triple exact.</>}
+          value={expressTarget}
+          options={[{ value: "simple", label: "Simple" }, { value: "double", label: "Double" }, { value: "triple", label: "Triple" }]}
+          onChange={(value: any) => setExpressTarget(value as LoterieExpressTarget)}
+          color={primary}
+        />}
       </div>
     </Section>
   );
@@ -495,9 +552,16 @@ export default function LoterieConfig(props: any) {
 
   const rulesBlock = (
     <Section title="RÈGLES DE PARTIE">
-      <div style={panel}>
-        <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
-        <div style={{ marginTop: 7, color: textSoft, fontSize: 10.5, lineHeight: 1.4 }}>{randomOrder ? "L’ordre des participants est mélangé au lancement." : "L’ordre du sélecteur est conservé."}</div>
+      <div style={{ ...panel, display: "grid", gap: 7 }}>
+        <CompactConfigSelect
+          label="Ordre"
+          helpTitle="Ordre de départ"
+          help={<><b>Défini</b> conserve exactement l'ordre de sélection des joueurs. <b>Aléatoire</b> mélange les participants au lancement.</>}
+          value={randomOrder ? "random" : "fixed"}
+          options={[{ value: "fixed", label: "Défini" }, { value: "random", label: "Aléatoire" }]}
+          onChange={(value: any) => setRandomOrder(value === "random")}
+          color={primary}
+        />
       </div>
     </Section>
   );

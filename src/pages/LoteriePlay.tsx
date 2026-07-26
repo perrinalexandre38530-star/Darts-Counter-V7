@@ -286,6 +286,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [darts, setDarts] = React.useState<LoterieDart[]>([]);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+  const multiplierRef = React.useRef<1 | 2 | 3>(1);
   const [toast, setToast] = React.useState<any>(null);
   const [winnerId, setWinnerId] = React.useState<string | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
@@ -327,6 +328,11 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const id = window.setTimeout(() => setFx(null), 1200);
     return () => window.clearTimeout(id);
   }, [fx]);
+
+  React.useEffect(() => {
+    multiplierRef.current = 1;
+    setMultiplier(1);
+  }, [activeIndex]);
 
   React.useEffect(() => {
     if (!active || winnerId || !isBotLike(active) || botThinking) return;
@@ -385,18 +391,31 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     setActiveIndex((activeIndex + 1) % nextPlayers.length);
   }
 
+  function selectMultiplier(next: 1 | 2 | 3) {
+    multiplierRef.current = next;
+    setMultiplier(next);
+  }
+  function resetMultiplier() {
+    multiplierRef.current = 1;
+    setMultiplier(1);
+  }
+
   function addDart(value: number, forcedMult?: number) {
     if (winnerId || botThinking) return;
-    const mult = value === 0 ? 1 : (forcedMult || multiplier);
+    const mult = value === 0 ? 1 : (forcedMult || multiplierRef.current);
     const dart: LoterieDart = { v: Number(value) || 0, mult: mult as any };
     if (config.variant === "express") {
       setDarts([dart]);
+      // Même comportement que X01 : D/T ne vaut que pour la fléchette saisie.
+      resetMultiplier();
       window.setTimeout(() => commitTurn([dart]), 70);
       return;
     }
     if (darts.length >= 3) return;
     const next = [...darts, dart];
     setDarts(next);
+    // X01 repasse toujours en SIMPLE après chaque hit.
+    resetMultiplier();
     if (config.volleyMode === "strict3" && next.length === 3) window.setTimeout(() => commitTurn(next), 70);
   }
   function validateVisit() {
@@ -408,6 +427,8 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   function cancelInput() {
     if (botThinking || winnerId) return;
     setDarts((previous) => previous.slice(0, -1));
+    // Comme X01 : une annulation remet aussi la saisie sur SIMPLE.
+    resetMultiplier();
   }
   function resetGame() {
     const nextSeed = Date.now();
@@ -504,13 +525,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
             <Keypad
               currentThrow={darts as any}
               multiplier={multiplier}
-              onSimple={() => setMultiplier(1)}
-              onDouble={() => setMultiplier(2)}
-              onTriple={() => setMultiplier(3)}
+              onSimple={() => selectMultiplier(1)}
+              onDouble={() => selectMultiplier(2)}
+              onTriple={() => selectMultiplier(3)}
               onBackspace={cancelInput}
               onCancel={cancelInput}
-              onNumber={(number) => addDart(number)}
-              onBull={() => addDart(25, multiplier === 2 ? 2 : 1)}
+              onNumber={(number) => { const selected = multiplierRef.current; addDart(number, selected); }}
+              onBull={() => { const selected = multiplierRef.current === 2 ? 2 : 1; addDart(25, selected); }}
               onValidate={validateVisit}
               hidePreview={false}
               centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{config.variant === "classic" ? volleyScore(darts) : (darts[0] ? dartLabel(darts[0]) : 0)}</span>}
