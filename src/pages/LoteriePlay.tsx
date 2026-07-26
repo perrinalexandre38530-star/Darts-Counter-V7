@@ -15,6 +15,7 @@ import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
+import victoryImage from "../assets/victory.webp";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
 import bestCardBackgroundClassic from "../assets-webp/games/loterie-best-card-bg-classic.webp";
 import bestCardBackgroundSimple from "../assets-webp/games/loterie-best-card-bg-simple.png";
@@ -488,59 +489,169 @@ function EndCompareBars({ rows, total }: any) {
   return <div style={{display:"grid",gap:6}}>{(rows || []).map((r:any)=><div key={r.id}><div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:7.8}}><span style={{color:"#e7e9ef",fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span><span style={{color:r.win?GOOD:GOLD,fontWeight:1000}}>{Number(r.cellsRevealed||0)} cases · {Math.round(Number(r.hitRate||0)*100)}%</span></div><div style={{height:6,marginTop:3,borderRadius:999,background:"rgba(255,255,255,.06)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(Number(r.cellsRevealed||0)/max)*100)}%`,borderRadius:999,background:r.win?GOOD:GOLD,boxShadow:`0 0 10px ${r.win?GOOD:GOLD}44`}}/></div></div>)}</div>;
 }
 
+function EndTabIcon({ name, size = 21 }: any) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  if (name === "summary") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 11.5 12 4l9 7.5"/><path {...p} d="M5 10.5V20h14v-9.5"/></svg>;
+  if (name === "ranking") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M8 5h8v3a4 4 0 0 1-8 0V5Z"/><path {...p} d="M6 5H4v2a4 4 0 0 0 4 4"/><path {...p} d="M18 5h2v2a4 4 0 0 1-4 4"/><path {...p} d="M12 12v3"/><path {...p} d="M9 20h6"/><path {...p} d="M10 15h4"/></svg>;
+  if (name === "performance") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 20V11"/><path {...p} d="M10 20V5"/><path {...p} d="M16 20v-8"/><path {...p} d="M22 20V8"/></svg>;
+  if (name === "darts") return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="7"/><circle {...p} cx="12" cy="12" r="3.2"/><path {...p} d="M12 5V3"/><path {...p} d="M19 12h2"/><path {...p} d="M12 21v-2"/><path {...p} d="M3 12h2"/></svg>;
+  if (name === "charts") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 19V5"/><path {...p} d="M4 19h16"/><path {...p} d="m7 15 4-4 3 2 5-6"/><circle cx="7" cy="15" r="1" fill="currentColor"/><circle cx="11" cy="11" r="1" fill="currentColor"/><circle cx="14" cy="13" r="1" fill="currentColor"/><circle cx="19" cy="7" r="1" fill="currentColor"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="9" cy="8" r="3"/><circle {...p} cx="17" cy="9" r="2.5"/><path {...p} d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path {...p} d="M14 16.5a4.5 4.5 0 0 1 6.5 3.5"/></svg>;
+}
+
+function EndTabNav({ active, setActive, participantMode, accent }: any) {
+  const tabs = [
+    { id: "summary", label: "Résumé" },
+    { id: "ranking", label: "Classement" },
+    { id: "performance", label: "Performance" },
+    { id: "darts", label: "Darts" },
+    { id: "charts", label: "Graphiques" },
+    ...(participantMode === "teams" ? [{ id: "teams", label: "Équipes" }] : []),
+  ];
+  return <div style={{ marginTop: 11, borderTop: "1px solid rgba(255,255,255,.07)", borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(5,8,14,.72)", overflowX: "auto", scrollbarWidth: "none" }}>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${tabs.length},minmax(62px,1fr))`, minWidth: tabs.length > 5 ? 372 : 320 }}>
+      {tabs.map((tab: any) => {
+        const selected = active === tab.id;
+        return <button key={tab.id} type="button" onClick={() => setActive(tab.id)} style={{ position: "relative", minWidth: 0, minHeight: 57, padding: "7px 3px 8px", border: 0, background: selected ? `linear-gradient(180deg,color-mix(in srgb, ${accent} 10%, transparent),transparent)` : "transparent", color: selected ? accent : "rgba(226,232,240,.70)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <span style={{ display: "grid", placeItems: "center", filter: selected ? `drop-shadow(0 0 7px ${accent}66)` : "none" }}><EndTabIcon name={tab.id} size={21}/></span>
+          <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "clamp(6.7px,1.75vw,8.6px)", fontWeight: selected ? 1000 : 850, lineHeight: 1 }}>{tab.label}</span>
+          <span style={{ position: "absolute", left: "18%", right: "18%", bottom: 0, height: 2, borderRadius: 999, background: selected ? accent : "transparent", boxShadow: selected ? `0 0 8px ${accent}88` : "none" }}/>
+        </button>;
+      })}
+    </div>
+  </div>;
+}
+
 function LoterieEndPanel({ finalPlayers, winnerId, events, config, accent, onReplay, onStats, onMenu }: any) {
   const built = React.useMemo(() => buildLoterieSummaries(finalPlayers || [], winnerId, events || [], config || {}), [finalPlayers, winnerId, events, config]);
   const participantMode = config?.participantMode === "teams" ? "teams" : "players";
   const rows = participantMode === "teams" ? built.teamRows : built.entityRows;
   const winnerRow = rows.find((row: any) => row.win) || rows[0] || null;
-  const winnerPlayers = participantMode === "teams" ? built.playerRows.filter((row: any) => row.win) : built.playerRows.filter((row: any) => row.win);
+  const winnerPlayers = built.playerRows.filter((row: any) => row.win);
   const variantLabel = config?.variant === "express" ? `1 FLÉCHETTE · ${String(config?.expressTarget || "simple").toUpperCase()}` : `${config?.volleyMode === "strict3" ? "3 FLÉCHETTES" : "1–3 FLÉCHETTES"} · VOLÉE`;
+  const [activeTab, setActiveTab] = React.useState("summary");
+  const statsFocusId = winnerPlayers?.[0]?.id || winnerRow?.id;
+
   return <div style={{ position: "fixed", inset: 0, zIndex: 10030, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}>
     <div style={{ width: "min(760px,98vw)", maxHeight: "94dvh", overflowY: "auto", borderRadius: 23, border: `1px solid ${accent}80`, background: "linear-gradient(180deg,#17130b,#0b0c10 34%,#07080b)", padding: 13, boxShadow: "0 30px 90px rgba(0,0,0,.65)" }} className="dc-scroll-thin">
-      <div style={{ textAlign: "center" }}><div style={{ fontSize: 34 }}>🏆</div><div style={{ color: accent, fontSize: 12, fontWeight: 1000, letterSpacing: 1.6 }}>JACKPOT — CARTON COMPLET</div><div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000 }}>{winnerRow?.name || "Vainqueur"}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>{participantMode === "teams" ? "MODE ÉQUIPES" : "MODE JOUEURS"} · {variantLabel} · {config?.cardsPerPlayer || 1} carton{Number(config?.cardsPerPlayer || 1) > 1 ? "s" : ""} · {config?.cellsPerCard || 10} cases</div></div>
-
-      <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
-        <EndStat label="Tours" value={built.matchStats.visits} tone={CYAN} />
-        <EndStat label="Darts" value={built.matchStats.dartsThrown} tone={CYAN} />
-        <EndStat label="Découverte" value={`${Math.round((built.matchStats.hitRate || 0) * 100)}%`} tone={GOOD} />
-        <EndStat label="Multi-hits" value={built.matchStats.multiHits} tone={PINK} />
+      <div style={{ textAlign: "center" }}>
+        <img src={victoryImage} alt="Victoire" style={{ width: 66, height: 66, objectFit: "contain", display: "block", margin: "-3px auto -5px", filter: `drop-shadow(0 0 14px ${accent}44)` }} />
+        <div style={{ color: accent, fontSize: 12, fontWeight: 1000, letterSpacing: 1.6 }}>JACKPOT — CARTON COMPLET</div>
+        <div style={{ marginTop: 4, fontSize: 23, fontWeight: 1000 }}>{winnerRow?.name || "Vainqueur"}</div>
+        <div style={{ marginTop: 4, color: SOFT, fontSize: 9.5 }}>{participantMode === "teams" ? "MODE ÉQUIPES" : "MODE JOUEURS"} · {variantLabel} · {config?.cardsPerPlayer || 1} carton{Number(config?.cardsPerPlayer || 1) > 1 ? "s" : ""} · {config?.cellsPerCard || 10} cases</div>
       </div>
 
-      <div style={{ marginTop: 11, color: accent, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Classement final</div>
-      <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-        {rows.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1.35fr) repeat(5,minmax(42px,.55fr))", gap: 5, alignItems: "center", padding: "8px 7px", borderRadius: 13, border: `1px solid ${row.win ? `${accent}70` : "rgba(255,255,255,.07)"}`, background: row.win ? `color-mix(in srgb, ${accent} 9%, transparent)` : "rgba(255,255,255,.025)" }}>
-          <div style={{ color: row.rank === 1 ? accent : SOFT, fontWeight: 1000, textAlign: "center" }}>#{row.rank}</div>
-          <div style={{ minWidth: 0 }}><div style={{ fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}{row.win ? " 🏆" : ""}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 8.2 }}>{Number(row.bestCardProgress || 0)}/{Number(row.cellsPerCard || config?.cellsPerCard || 10)} meilleur carton</div></div>
-          {[["CASES", row.cellsRevealed], ["HIT%", `${Math.round(Number(row.hitRate || 0) * 100)}%`], ["MULTI", row.multiHits], ["SÉRIE", row.bestStreak], ["BEST", row.maxVolley]].map(([label, value]: any) => <div key={label} style={{ minWidth: 0, textAlign: "center" }}><div style={{ color: SOFT, fontSize: 6.7, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 2, color: label === "HIT%" ? GOOD : accent, fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap" }}>{value}</div></div>)}
-        </div>)}
+      <EndTabNav active={activeTab} setActive={setActiveTab} participantMode={participantMode} accent={accent}/>
+
+      <div style={{ minHeight: 330, paddingTop: 11 }}>
+        {activeTab === "summary" ? <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Tours" value={built.matchStats.visits} tone={CYAN} />
+            <EndStat label="Darts" value={built.matchStats.dartsThrown} tone={CYAN} />
+            <EndStat label="Découverte" value={`${Math.round((built.matchStats.hitRate || 0) * 100)}%`} tone={GOOD} />
+            <EndStat label="Multi-hits" value={built.matchStats.multiHits} tone={PINK} />
+          </div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Cases / tour" value={Number(built.matchStats.avgCellsPerVisit || 0).toFixed(2)} tone={GOOD} />
+            <EndStat label="Volée moy." value={Number(built.matchStats.averageVolley || 0).toFixed(1)} tone={CYAN} />
+            <EndStat label="Meilleure volée" value={built.matchStats.maxVolley} tone={accent} />
+            <EndStat label="Meilleur hit" value={`${built.matchStats.maxCellsInVisit} case${built.matchStats.maxCellsInVisit > 1 ? "s" : ""}`} tone={PINK} />
+          </div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+            <EndStat label="1 CASE" value={built.matchStats.hit1 || 0} tone={GOOD}/>
+            <EndStat label="2 CASES" value={built.matchStats.hit2 || 0} tone={PINK}/>
+            <EndStat label="3+ JACKPOT" value={built.matchStats.hit3plus || 0} tone={accent}/>
+            <EndStat label="SÉRIE VIDE" value={built.matchStats.longestEmptyStreak || 0} tone={BAD}/>
+          </div>
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: `1px solid ${accent}33`, background: `color-mix(in srgb, ${accent} 5%, transparent)` }}>
+            <div style={{ color: accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .6 }}>VAINQUEUR</div>
+            <div style={{ marginTop: 5, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}><strong style={{ fontSize: 17 }}>{winnerRow?.name || "—"}</strong><span style={{ color: GOOD, fontWeight: 1000, fontSize: 11 }}>{Number(winnerRow?.bestCardProgress || 0)}/{Number(winnerRow?.cellsPerCard || config?.cellsPerCard || 10)} · {Number(winnerRow?.cellsRevealed || 0)} cases</span></div>
+          </div>
+        </> : null}
+
+        {activeTab === "ranking" ? <>
+          <div style={{ color: accent, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Classement final</div>
+          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+            {rows.map((row: any) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1.35fr) repeat(5,minmax(42px,.55fr))", gap: 5, alignItems: "center", padding: "8px 7px", borderRadius: 13, border: `1px solid ${row.win ? `${accent}70` : "rgba(255,255,255,.07)"}`, background: row.win ? `color-mix(in srgb, ${accent} 9%, transparent)` : "rgba(255,255,255,.025)" }}>
+              <div style={{ color: row.rank === 1 ? accent : SOFT, fontWeight: 1000, textAlign: "center" }}>#{row.rank}</div>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}{row.win ? " · WIN" : ""}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 8.2 }}>{Number(row.bestCardProgress || 0)}/{Number(row.cellsPerCard || config?.cellsPerCard || 10)} meilleur carton</div></div>
+              {[["CASES", row.cellsRevealed], ["HIT%", `${Math.round(Number(row.hitRate || 0) * 100)}%`], ["MULTI", row.multiHits], ["SÉRIE", row.bestStreak], ["BEST", row.maxVolley]].map(([label, value]: any) => <div key={label} style={{ minWidth: 0, textAlign: "center" }}><div style={{ color: SOFT, fontSize: 6.7, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 2, color: label === "HIT%" ? GOOD : accent, fontSize: 11, fontWeight: 1000, whiteSpace: "nowrap" }}>{value}</div></div>)}
+            </div>)}
+          </div>
+          <div style={{ marginTop: 11, padding: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.022)" }}><div style={{ color: accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .6, marginBottom: 7 }}>COMPARATEUR DES PARTICIPANTS</div><EndCompareBars rows={rows}/></div>
+        </> : null}
+
+        {activeTab === "performance" ? <>
+          <div style={{ color: GOOD, fontSize: 10, fontWeight: 1000, letterSpacing: .8 }}>RENDEMENT & CARTONS</div>
+          <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Tours trouvés" value={built.matchStats.successfulVisits} tone={GOOD}/>
+            <EndStat label="Tours vides" value={built.matchStats.emptyVisits} tone={BAD}/>
+            <EndStat label="Cases / 100 darts" value={Number(built.matchStats.cellsPer100Darts || 0).toFixed(1)} tone={CYAN}/>
+            <EndStat label="Multi rate" value={`${Math.round(Number(built.matchStats.multiRate || 0) * 100)}%`} tone={PINK}/>
+          </div>
+          <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Cartons joués" value={built.matchStats.cardsPlayed || 0} tone={accent}/>
+            <EndStat label="Cartons finis" value={built.matchStats.cardsCompleted || 0} tone={GOOD}/>
+            <EndStat label="Progression moy." value={Number(built.matchStats.averageCardProgress || 0).toFixed(1)} tone={CYAN}/>
+            <EndStat label="Presque finis" value={built.matchStats.nearCompleteCards || 0} tone={PINK}/>
+          </div>
+          <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Série positive" value={built.matchStats.bestStreak || 0} tone={GOOD}/>
+            <EndStat label="Série vide" value={built.matchStats.longestEmptyStreak || 0} tone={BAD}/>
+            <EndStat label="Volée hit moy." value={Number(built.matchStats.avgSuccessfulVolley || 0).toFixed(1)} tone={CYAN}/>
+            <EndStat label="Volée miss moy." value={Number(built.matchStats.avgMissedVolley || 0).toFixed(1)} tone={BAD}/>
+          </div>
+          <div style={{ marginTop: 10 }}><EndPie3D title="TOURS · DÉCOUVERTE" center={`${Math.round(Number(built.matchStats.hitRate||0)*100)}%`} centerLabel="HIT RATE" items={[{label:"Avec découverte",value:built.matchStats.successfulVisits,color:GOOD},{label:"À vide",value:built.matchStats.emptyVisits,color:BAD}]}/></div>
+        </> : null}
+
+        {activeTab === "darts" ? <>
+          <div style={{ color: CYAN, fontSize: 10, fontWeight: 1000, letterSpacing: .8 }}>IMPACTS & QUALITÉ DES DARTS</div>
+          <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
+            <EndStat label="S" value={built.matchStats.singles} tone={CYAN} />
+            <EndStat label="D" value={built.matchStats.doubles} tone={GOOD} />
+            <EndStat label="T" value={built.matchStats.triples} tone={PINK} />
+            <EndStat label="BULL" value={built.matchStats.bulls} tone={accent} />
+            <EndStat label="DBULL" value={built.matchStats.dbulls} tone={accent} />
+            <EndStat label="MISS" value={built.matchStats.dartMisses} tone={BAD} />
+          </div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Pts darts" value={built.matchStats.dartPoints || 0} tone={accent}/>
+            <EndStat label="Score / dart" value={Number(built.matchStats.averageDartScore || 0).toFixed(1)} tone={CYAN}/>
+            <EndStat label="Darts cible" value={`${Math.round(Number(built.matchStats.dartOnBoardRate || 0) * 100)}%`} tone={GOOD}/>
+            <EndStat label="Scores uniques" value={built.matchStats.uniqueScores || 0} tone={PINK}/>
+          </div>
+          <div style={{ marginTop: 10 }}><EndPie3D title="IMPACTS DE DARTS" center={built.matchStats.dartsThrown} centerLabel="DARTS" items={[{label:"Simple",value:built.matchStats.singles,color:CYAN},{label:"Double",value:built.matchStats.doubles,color:GOOD},{label:"Triple",value:built.matchStats.triples,color:PINK},{label:"Bull",value:Number(built.matchStats.bulls||0)+Number(built.matchStats.dbulls||0),color:accent},{label:"Miss",value:built.matchStats.dartMisses,color:BAD}]}/></div>
+        </> : null}
+
+        {activeTab === "charts" ? <>
+          <div style={{ color: accent, fontSize: 10, fontWeight: 1000, letterSpacing: .8 }}>GRAPHIQUES DU MATCH</div>
+          <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+            <EndPie3D title="TOURS · DÉCOUVERTE" center={`${Math.round(Number(built.matchStats.hitRate||0)*100)}%`} centerLabel="HIT RATE" items={[{label:"Avec découverte",value:built.matchStats.successfulVisits,color:GOOD},{label:"À vide",value:built.matchStats.emptyVisits,color:BAD}]}/>
+            <EndPie3D title="IMPACTS DE DARTS" center={built.matchStats.dartsThrown} centerLabel="DARTS" items={[{label:"Simple",value:built.matchStats.singles,color:CYAN},{label:"Double",value:built.matchStats.doubles,color:GOOD},{label:"Triple",value:built.matchStats.triples,color:PINK},{label:"Bull",value:Number(built.matchStats.bulls||0)+Number(built.matchStats.dbulls||0),color:accent},{label:"Miss",value:built.matchStats.dartMisses,color:BAD}]}/>
+          </div>
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.022)" }}><div style={{ color: accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .6, marginBottom: 7 }}>CASES DÉCOUVERTES PAR PARTICIPANT</div><EndCompareBars rows={rows}/></div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}><EndStat label="0 CASE" value={built.matchStats.hit0 || 0} tone={BAD}/><EndStat label="1 CASE" value={built.matchStats.hit1 || 0} tone={GOOD}/><EndStat label="2 CASES" value={built.matchStats.hit2 || 0} tone={PINK}/><EndStat label="3+ JACKPOT" value={built.matchStats.hit3plus || 0} tone={accent}/></div>
+        </> : null}
+
+        {activeTab === "teams" && participantMode === "teams" ? <>
+          <div style={{ color: CYAN, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Contributions des joueurs</div>
+          <div style={{ marginTop: 6, display: "grid", gap: 5 }}>{[...built.playerRows].sort((a: any,b: any)=>a.rank-b.rank || b.cellsRevealed-a.cellsRevealed).map((row: any) => <div key={`${row.teamId}:${row.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.3fr) repeat(5,minmax(38px,.55fr))", gap: 5, alignItems: "center", padding: "7px 8px", borderRadius: 12, background: row.win ? `color-mix(in srgb, ${accent} 7%, transparent)` : "rgba(255,255,255,.025)", border: `1px solid ${row.win ? `${accent}44` : "rgba(255,255,255,.06)"}` }}><div style={{ minWidth: 0 }}><div style={{ fontWeight: 950, fontSize: 9.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div><div style={{ color: SOFT, fontSize: 7.5 }}>{row.teamName}</div></div>{[["CASES",row.cellsRevealed],["TOURS",row.visits],["DARTS",row.dartsThrown],["HIT%",`${Math.round(Number(row.hitRate||0)*100)}%`],["AVG",Number(row.averageVolley||0).toFixed(1)]].map(([l,v]:any)=><div key={l} style={{textAlign:"center"}}><div style={{color:SOFT,fontSize:6.5,fontWeight:900}}>{l}</div><div style={{color:l==="HIT%"?GOOD:CYAN,fontSize:10,fontWeight:1000,marginTop:1}}>{v}</div></div>)}</div>)}</div>
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+            <EndStat label="Équipes" value={built.matchStats.teamCount || rows.length} tone={accent}/>
+            <EndStat label="Joueurs" value={built.matchStats.playerCount || built.playerRows.length} tone={CYAN}/>
+            <EndStat label="Cases équipe" value={built.matchStats.cellsRevealed || 0} tone={GOOD}/>
+            <EndStat label="Multi équipe" value={built.matchStats.multiHits || 0} tone={PINK}/>
+          </div>
+        </> : null}
       </div>
 
-      {participantMode === "teams" ? <><div style={{ marginTop: 12, color: CYAN, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Contributions des joueurs</div><div style={{ marginTop: 6, display: "grid", gap: 5 }}>{built.playerRows.sort((a: any,b: any)=>a.rank-b.rank || b.cellsRevealed-a.cellsRevealed).map((row: any) => <div key={`${row.teamId}:${row.id}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.3fr) repeat(5,minmax(38px,.55fr))", gap: 5, alignItems: "center", padding: "7px 8px", borderRadius: 12, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ minWidth: 0 }}><div style={{ fontWeight: 950, fontSize: 9.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div><div style={{ color: SOFT, fontSize: 7.5 }}>{row.teamName}</div></div>{[["CASES",row.cellsRevealed],["TOURS",row.visits],["DARTS",row.dartsThrown],["HIT%",`${Math.round(Number(row.hitRate||0)*100)}%`],["AVG",Number(row.averageVolley||0).toFixed(1)]].map(([l,v]:any)=><div key={l} style={{textAlign:"center"}}><div style={{color:SOFT,fontSize:6.5,fontWeight:900}}>{l}</div><div style={{color:l==="HIT%"?GOOD:CYAN,fontSize:10,fontWeight:1000,marginTop:1}}>{v}</div></div>)}</div>)}</div></> : null}
-
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
-        <EndStat label="Cases / tour" value={Number(built.matchStats.avgCellsPerVisit || 0).toFixed(2)} tone={GOOD} />
-        <EndStat label="Volée moy." value={Number(built.matchStats.averageVolley || 0).toFixed(1)} tone={CYAN} />
-        <EndStat label="Meilleure volée" value={built.matchStats.maxVolley} tone={accent} />
-        <EndStat label="Meilleur hit" value={`${built.matchStats.maxCellsInVisit} case${built.matchStats.maxCellsInVisit > 1 ? "s" : ""}`} tone={PINK} />
+      <div style={{ position: "sticky", bottom: -13, zIndex: 4, margin: "12px -3px -3px", padding: "9px 3px 3px", background: "linear-gradient(180deg,rgba(7,8,11,0),#07080b 30%)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 7 }}>
+          <button onClick={onReplay} style={{ minHeight: 43, borderRadius: 13, border: `1px solid ${accent}`, background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent, fontWeight: 1000 }}>REJOUER</button>
+          <button onClick={() => onStats?.(statsFocusId)} style={{ minHeight: 43, borderRadius: 13, border: `1px solid ${CYAN}70`, background: "rgba(69,216,255,.08)", color: CYAN, fontWeight: 1000 }}>STATS</button>
+          <button onClick={onMenu} style={{ minHeight: 43, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1000 }}>MENU</button>
+        </div>
       </div>
-
-      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
-        <EndStat label="S" value={built.matchStats.singles} tone={CYAN} />
-        <EndStat label="D" value={built.matchStats.doubles} tone={GOOD} />
-        <EndStat label="T" value={built.matchStats.triples} tone={PINK} />
-        <EndStat label="BULL" value={built.matchStats.bulls} tone={accent} />
-        <EndStat label="DBULL" value={built.matchStats.dbulls} tone={accent} />
-        <EndStat label="MISS" value={built.matchStats.dartMisses} tone={BAD} />
-      </div>
-
-      <div style={{marginTop:11,display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:7}}>
-        <EndPie3D title="TOURS · DÉCOUVERTE" center={`${Math.round(Number(built.matchStats.hitRate||0)*100)}%`} centerLabel="HIT RATE" items={[{label:"Avec découverte",value:built.matchStats.successfulVisits,color:GOOD},{label:"À vide",value:built.matchStats.emptyVisits,color:BAD}]}/>
-        <EndPie3D title="IMPACTS DE DARTS" center={built.matchStats.dartsThrown} centerLabel="DARTS" items={[{label:"Simple",value:built.matchStats.singles,color:CYAN},{label:"Double",value:built.matchStats.doubles,color:GOOD},{label:"Triple",value:built.matchStats.triples,color:PINK},{label:"Bull",value:Number(built.matchStats.bulls||0)+Number(built.matchStats.dbulls||0),color:accent},{label:"Miss",value:built.matchStats.dartMisses,color:BAD}]}/>
-      </div>
-      <div style={{marginTop:11,padding:10,borderRadius:14,border:"1px solid rgba(255,255,255,.06)",background:"rgba(255,255,255,.022)"}}><div style={{color:accent,fontSize:8.5,fontWeight:1000,letterSpacing:.6,marginBottom:7}}>COMPARATEUR DES PARTICIPANTS</div><EndCompareBars rows={rows}/></div>
-      <div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:5}}><EndStat label="1 CASE" value={built.matchStats.hit1 || 0} tone={GOOD}/><EndStat label="2 CASES" value={built.matchStats.hit2 || 0} tone={PINK}/><EndStat label="3+ JACKPOT" value={built.matchStats.hit3plus || 0} tone={accent}/><EndStat label="SÉRIE VIDE" value={built.matchStats.longestEmptyStreak || 0} tone={BAD}/></div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 7, marginTop: 13 }}><button onClick={onReplay} style={{ minHeight: 43, borderRadius: 13, border: `1px solid ${accent}`, background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent, fontWeight: 1000 }}>REJOUER</button><button onClick={() => onStats?.(winnerPlayers?.[0]?.id || winnerRow?.id)} style={{ minHeight: 43, borderRadius: 13, border: `1px solid ${CYAN}70`, background: "rgba(69,216,255,.08)", color: CYAN, fontWeight: 1000 }}>STATS</button><button onClick={onMenu} style={{ minHeight: 43, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.05)", color: "#fff", fontWeight: 1000 }}>MENU</button></div>
     </div>
   </div>;
 }
