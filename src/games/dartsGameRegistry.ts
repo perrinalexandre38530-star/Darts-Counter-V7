@@ -697,10 +697,10 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "Le leader lance une vollee. Les suivants doivent reproduire exactement (numero + multiplicateur) ou partiellement (numero seulement) selon config. Echec = penalite (vie, points, elimination). Variante 'Chase/Copycat'. A implementer.",
   },
 
-  // 🏎️ MARIO KART (Darts Racing)
+  // 🏎️ DARTS RACER
   {
     id: "mario_kart",
-    label: "Mario Kart",
+    label: "Darts Racer",
     category: "fun",
     subCategory: "arcade",
     entry: "games",
@@ -711,9 +711,9 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     supportsTeams: true,
     supportsBots: true,
     statsKey: "game:mario_kart",
-    infoTitle: "Mario Kart",
+    infoTitle: "Darts Racer",
     infoBody:
-      "Course sur piste (cases) pilotee par les hits. Triples = boost, doubles = mini-boost, Bull = turbo / item. Des cases declenchent des objets (attaque, bouclier, ralentissement). Premier a franchir l'arrivee gagne. A implementer.",
+      "Course de flechettes sur piste (cases) pilotee par les hits. Triples = boost, doubles = mini-boost, Bull = turbo / bonus. Des cases declenchent des effets (attaque, bouclier, ralentissement). Premier a franchir l'arrivee gagne. A implementer.",
   },
 
   // 🚢 BATAILLE NAVALE (Darts Battleship)
@@ -1191,6 +1191,9 @@ const READY_IDS = new Set<string>([
   "bobs_27",
   "shooter",
   "prisoner",
+
+  // ✅ LOTERIE — mode PARTY disponible
+  "loterie",
 
   // ✅ UNGRAY CAPITAL (Games > Defis)
   "capital",

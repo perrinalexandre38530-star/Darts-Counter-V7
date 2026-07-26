@@ -398,6 +398,9 @@ export default function Games({ setTab, params }: Props) {
     if (id === "attrape_moi" && lang !== "fr") {
       return findTickerById("attrape_moi_en") || findTickerById("attrape_moi");
     }
+    // L'identifiant technique historique reste "mario_kart" pour ne casser
+    // ni le routing ni les stats, mais la carte est désormais DARTS RACER.
+    if (id === "mario_kart") return findTickerById("darts_racer");
     return findTickerById(id);
   }, [lang]);
 
