@@ -43,6 +43,7 @@ const GOOD = "#70efbd";
 const BAD = "#ff718a";
 const STROKE = "rgba(255,255,255,.105)";
 const SOFT = "rgba(226,232,240,.72)";
+const SCORE_REVEAL_MS = 2700;
 
 // Cartes de résultat 10→120. Les fichiers sont servis depuis /public afin de ne
 // charger qu'une seule carte à la fin d'une volée au lieu d'embarquer les 111
@@ -162,19 +163,37 @@ function ScoreResultOverlay({ result }: any) {
   const good = Boolean(result?.good);
   const status = good ? GOOD : BAD;
   const cardNumbers = Array.isArray(result?.cardNumbers) ? result.cardNumbers : [];
+  const animationMs = `${SCORE_REVEAL_MS}ms`;
   return (
-    <div aria-live="assertive" style={{ position: "fixed", inset: 0, zIndex: 10030, display: "grid", placeItems: "center", pointerEvents: "none", background: "radial-gradient(circle at 50% 46%, rgba(0,0,0,.18), rgba(0,0,0,.58) 68%, rgba(0,0,0,.72))", backdropFilter: "blur(2px)", animation: "lotScoreBackdrop 1.9s ease both" }}>
-      <div style={{ display: "grid", justifyItems: "center", gap: 9, transformOrigin: "center", animation: "lotScoreCardReveal 1.9s cubic-bezier(.2,.8,.2,1) both" }}>
+    <div
+      aria-live="assertive"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10030,
+        display: "grid",
+        placeItems: "center",
+        pointerEvents: "auto",
+        background: "radial-gradient(circle at 50% 46%, rgba(0,0,0,.18), rgba(0,0,0,.58) 68%, rgba(0,0,0,.72))",
+        backdropFilter: "blur(2px)",
+        animation: `lotScoreBackdrop ${animationMs} ease both`,
+      }}
+    >
+      <div style={{ display: "grid", justifyItems: "center", gap: 9, transformOrigin: "center", animation: `lotScoreCardReveal ${animationMs} cubic-bezier(.2,.8,.2,1) both` }}>
         <div style={{ position: "relative", width: "min(248px,58vw)", maxHeight: "64dvh", display: "grid", placeItems: "center" }}>
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: material.aura, opacity: .52, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
-            <img src={src} alt={`Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `drop-shadow(0 0 14px ${material.aura}) drop-shadow(0 0 30px ${material.aura}) drop-shadow(0 0 9px ${status})`, boxShadow: `0 0 0 2px ${status}66, 0 18px 42px rgba(0,0,0,.54)` }} />
+            <>
+              <img src={src} alt={`Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.82) brightness(.94) "}drop-shadow(0 0 14px ${material.aura}) drop-shadow(0 0 30px ${material.aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              {!good ? <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.18), rgba(92,6,22,.14))", boxShadow: `inset 0 0 0 2px ${BAD}b0, inset 0 0 28px rgba(255,49,91,.28), 0 0 26px rgba(255,49,91,.12)` }} /> : null}
+            </>
           ) : (
-            <div style={{ position: "relative", zIndex: 2, width: "min(220px,54vw)", aspectRatio: "2 / 3", borderRadius: 20, border: `2px solid ${material.aura}`, background: "linear-gradient(145deg,#ead9b8,#f8efd9 50%,#d4bd91)", display: "grid", placeItems: "center", color: "#251a0e", fontSize: 68, fontWeight: 1000, boxShadow: `0 0 24px ${material.aura}, 0 0 0 2px ${status}66, 0 18px 42px rgba(0,0,0,.54)` }}>{result?.label || score}</div>
+            <div style={{ position: "relative", zIndex: 2, width: "min(220px,54vw)", aspectRatio: "2 / 3", borderRadius: 20, border: `2px solid ${material.aura}`, background: "linear-gradient(145deg,#ead9b8,#f8efd9 50%,#d4bd91)", display: "grid", placeItems: "center", color: good ? "#251a0e" : BAD, fontSize: 68, fontWeight: 1000, boxShadow: `0 0 24px ${material.aura}, 0 0 0 2px ${status}66, 0 18px 42px rgba(0,0,0,.54)` }}>{result?.label || score}</div>
           )}
         </div>
-        <div style={{ minWidth: "min(270px,78vw)", padding: "8px 12px 9px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
+        <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
           <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : "RATÉ"}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${result?.label || score} découvert` : `Score ${result?.label || score} non validé`}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
@@ -777,7 +796,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
   React.useEffect(() => {
     if (!scoreReveal) return;
-    const id = window.setTimeout(() => setScoreReveal(null), 1900);
+    const id = window.setTimeout(() => setScoreReveal(null), SCORE_REVEAL_MS);
     return () => window.clearTimeout(id);
   }, [scoreReveal]);
   React.useEffect(() => {
@@ -792,7 +811,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   }, [activeIndex]);
 
   React.useEffect(() => {
-    if (!active || winnerId || !isBotLike(activeTurnActor) || botThinking) return;
+    if (!active || winnerId || scoreReveal || !isBotLike(activeTurnActor) || botThinking) return;
     let cancelled = false;
     setBotThinking(true);
     const timer = window.setTimeout(() => {
@@ -802,7 +821,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       setBotThinking(false);
     }, 720);
     return () => { cancelled = true; window.clearTimeout(timer); setBotThinking(false); };
-  }, [activeIndex, winnerId, active?.id, activeMember?.id, events.length]);
+  }, [activeIndex, winnerId, scoreReveal, active?.id, activeMember?.id, events.length]);
 
   function finish(finalPlayers: LoteriePlayerState[], winId: string, finalEvents: any[]) {
     if (finishSent.current) return;
@@ -1040,7 +1059,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         </section>
 
         <section style={{ ...panelStyle(), padding: 8 }}>
-          <div style={{ opacity: botThinking ? .45 : 1, pointerEvents: botThinking || !!winnerId ? "none" : "auto" }}>
+          <div style={{ opacity: botThinking || !!scoreReveal ? .45 : 1, pointerEvents: botThinking || !!winnerId || !!scoreReveal ? "none" : "auto" }}>
             <Keypad
               currentThrow={darts as any}
               multiplier={multiplier}
