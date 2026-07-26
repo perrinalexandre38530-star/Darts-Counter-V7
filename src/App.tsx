@@ -346,6 +346,8 @@ import FunGagesPlay from "./pages/FunGagesPlay";
 import BatardPlay from "./pages/batard/BatardPlay";
 import CapitalConfig from "./pages/CapitalConfig";
 import CapitalPlay from "./pages/CapitalPlay";
+import LoterieConfig from "./pages/LoterieConfig";
+import LoteriePlay from "./pages/LoteriePlay";
 import HappyMilleConfig from "./pages/HappyMilleConfig";
 import HappyMillePlay from "./pages/HappyMillePlay";
 import RugbyConfig from "./pages/RugbyConfig";
@@ -925,6 +927,8 @@ type Tab =
   | "fun_gages_play"
   | "capital_config"
   | "capital_play"
+  | "loterie_config"
+  | "loterie_play"
   | "happy_mille_config"
   | "happy_mille_play"
   | "rugby_config"
@@ -5123,6 +5127,13 @@ case "babyfoot_team_edit":
         break;
       case "capital_play":
         page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "capital", routeParams), { navigate: false })} />;
+        break;
+
+      case "loterie_config":
+        page = <LoterieConfig setTab={go} go={go} store={store} params={routeParams} />;
+        break;
+      case "loterie_play":
+        page = <LoteriePlay setTab={go} go={go} store={store} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "loterie", routeParams), { navigate: false })} />;
         break;
 
       case "happy_mille_config":

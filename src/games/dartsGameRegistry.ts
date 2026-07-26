@@ -34,6 +34,7 @@ export type DartsGameTab =
   | "football_config"
   | "rugby_config"
   | "capital_config"
+  | "loterie_config"
   | "departements_config"
   | "prisoner_config"
   | "tic_tac_toe_config"
@@ -546,6 +547,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   // ===========================================================
   // FUN / APERO
   // ===========================================================
+  {
+    id: "loterie",
+    label: "Loterie",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "loterie_config",
+    popularityRank: 49,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "game:loterie",
+    infoTitle: "LOTERIE",
+    infoBody:
+      "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : une seule fléchette cherche un numéro, un double exact ou un triple exact. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
+  },
   {
     id: "prisoner",
     label: "Prisoner",

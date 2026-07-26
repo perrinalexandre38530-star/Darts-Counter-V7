@@ -279,6 +279,9 @@ const ShooterStatsTabFull = React.lazy(
 const PrisonerStatsTabFull = React.lazy(
   () => import("../components/stats/PrisonerStatsTabFull")
 );
+const LoterieStatsTabFull = React.lazy(
+  () => import("../components/stats/LoterieStatsTabFull")
+);
 const ScramStatsTabFull = React.lazy(
   () => import("../components/stats/ScramStatsTabFull")
 );
@@ -565,6 +568,7 @@ type Props = {
     | "shanghai"
     | "killer"
     | "territories"
+    | "loterie"
     | "leaderboards"
     | "history";
 
@@ -929,7 +933,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const hasPayload = !!(r as any)?.payload;
@@ -1176,6 +1180,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("shooter")) return "shooter";
   if (tag.includes("prisoner")) return "prisoner";
+  if (tag.includes("loterie")) return "loterie";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("five_lives") || tag.includes("five lives") || tag.includes("5 vies") || tag.includes("cinq vies")) return "five_lives";
   if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour de")) return "clock";
@@ -4780,6 +4785,7 @@ const modeDefs = React.useMemo(
               { key: "shooter", label: "SHOOTER" },
               { key: "prisoner", label: "Prisoner" },
               { key: "capital", label: "Capital" },
+              { key: "loterie", label: "LOTERIE" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
               { key: "tour_de_l_horloge", label: "Tour de l’Horloge" },
@@ -6153,12 +6159,13 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     bobs_27: "Bob’s 27",
     shooter: "SHOOTER",
     prisoner: "Prisoner",
+    loterie: "LOTERIE",
     capital: "Capital",
     batard: "Bâtard",
     territories: "Territories",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "shooter", "prisoner", "loterie", "capital", "batard", "territories", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -6736,6 +6743,18 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
         marksTotal > 0 ? Math.min(9, marksTotal) : 0
       );
       mergeFavMap(a.favMap, crCounts.favMap);
+    }
+
+    if (mode === "loterie") {
+      const lo = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : pl;
+      darts = pickNum(darts, lo?.dartsThrown, lo?.darts);
+      hits = pickNum(hits, lo?.successfulVisits, lo?.hitCount, lo?.hits);
+      miss = pickNum(miss, lo?.emptyVisits, lo?.misses);
+      score = pickNum(score, lo?.cellsRevealed, lo?.bestCardProgress, lo?.points);
+      a.captures = Number(a.captures || 0) + n(lo?.cellsRevealed);
+      a.extra = Number(a.extra || 0) + n(lo?.multiHits);
+      a.bestRound = Math.max(Number(a.bestRound || 0), n(lo?.maxCellsInVisit));
+      a.best = Math.max(Number(a.best || 0), n(lo?.bestCardProgress));
     }
 
     if (mode === "golf") {
@@ -8462,6 +8481,24 @@ return (
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>
                     Sélectionne un joueur pour afficher ses statistiques PRISONER.
+                  </div>
+                )}
+              </div>
+            )}
+
+{currentMode === "loterie" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement LOTERIE…" />}>
+                    <LoterieStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques LOTERIE.
                   </div>
                 )}
               </div>

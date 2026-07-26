@@ -357,6 +357,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
     { key: "prisoner", label: "Prisoner", aliases: ["prisoner"] },
     { key: "capital", label: "Capital", aliases: ["capital"] },
+    { key: "loterie", label: "LOTERIE", aliases: ["loterie", "lottery"] },
     { key: "batard", label: "Bâtard", aliases: ["batard", "bastard", "bâtard"] },
     { key: "clock", label: "Horloge", aliases: ["clock", "tourdelhorloge", "tour_de_lhorloge", "tdh"] },
     { key: "training", label: "Training", aliases: ["training", "entrainement", "practice"] },
@@ -452,7 +453,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|prisoner|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -789,6 +790,7 @@ const modeColor: Record<string, string> = {
   bobs27: "#e4c06b",
   shooter: "#42d6ff",
   prisoner: "#e4c06b",
+  loterie: "#f6c256",
   capital: "#6ee36e",
   batard: "#9b5cff",
   default: "#888",
@@ -1962,8 +1964,6 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const totalDarts = Number(matchStats?.totalDarts || players.reduce((a: number,p: any)=>a+Number(p?.darts||p?.dartsThrown||0),0)) || 0;
     const avg3 = Number(matchStats?.avg3 || (totalDarts ? (totalPoints / totalDarts) * 3 : 0)) || 0;
     const fastest = Number(matchStats?.fastestCaptureRound || 0) || 0;
-    const escapeTarget = Number(summary?.escapeScore ?? anyE?.payload?.rules?.escapeScore ?? anyE?.payload?.config?.escapeScore ?? 0) || 0;
-    const scoreEscapes = Number(matchStats?.scoreEscapes || legs.filter((r: any) => r?.reason === "escape" && r?.escapeTrigger === "score_target").length) || 0;
     return (
       <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
@@ -1992,9 +1992,6 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, fontWeight: 850 }}>
           {totalPoints} pts • AVG/3 {avg3.toFixed(1)} • {totalDarts} flèches{fastest ? ` • capture la + rapide R${fastest}` : ""}
         </div>
-        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.2, fontWeight: 850 }}>
-          {escapeTarget ? `Évasion à +${escapeTarget} pts • ` : ""}{scoreEscapes} évasion{scoreEscapes > 1 ? "s" : ""} au score
-        </div>
         {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Vainqueur : {String(summary.winnerName)}</div> : null}
       </div>
     );
@@ -2020,6 +2017,39 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
           {Number(summary?.rounds || anyE?.payload?.config?.rounds || rounds.length || 1)} manche{Number(summary?.rounds || anyE?.payload?.config?.rounds || rounds.length || 1) > 1 ? "s" : ""} • main {Number(summary?.handSize || anyE?.payload?.config?.handSize || 0)} cartes • {String(summary?.variant || anyE?.payload?.config?.variant || "classic").toUpperCase()}
         </div>
         {summary?.winnerName ? <div style={{ color: "#ffd76a", fontSize: 10, fontWeight: 1000 }}>Président suprême : {String(summary.winnerName)}</div> : null}
+      </div>
+    );
+  }
+
+  if (normalizeToken(baseMode(e)) === "loterie" || inferGameFilterKey(e, "darts") === "loterie") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const pools = [summary?.rankings, summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.payload?.summary?.players, anyE?.players];
+    const rows: any[] = (pools.find((pool) => Array.isArray(pool) && pool.length) || []).slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
+    const cfg: any = summary?.config || anyE?.payload?.config || {};
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {rows.slice(0, 4).map((row: any, index: number) => {
+            const rank = Number(row?.rank || index + 1);
+            const name = historyScoreName(e, row) || getName(row) || `Joueur ${index + 1}`;
+            const prog = Number(row?.bestCardProgress ?? row?.score ?? row?.cellsRevealed ?? 0);
+            const total = Number(row?.cellsPerCard ?? cfg?.cellsPerCard ?? 10);
+            return <React.Fragment key={`${name}-${index}`}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+              <span style={{ color: historyRankColor(rank), fontWeight: 1000 }}>{rank}.</span>
+              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{name}{rank === 1 ? " 🏆" : ""}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{prog}/{total}</span>
+            </React.Fragment>;
+          })}
+        </div>
+        <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
+          {String(summary?.variant || cfg?.variant || "classic").toLowerCase() === "express" ? "EXPRESS · 1 fléchette" : `${String(cfg?.volleyMode || "free") === "strict3" ? "3 fléchettes" : "1–3 fléchettes"} · total de volée`}
+          {` • ${Number(cfg?.cardsPerPlayer || 1)} carton${Number(cfg?.cardsPerPlayer || 1) > 1 ? "s" : ""}/joueur • ${Number(cfg?.cellsPerCard || 10)} cases`}
+        </div>
+        {rows.length ? <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
+          {rows.slice(0, 3).map((row: any) => `${historyScoreName(e, row) || getName(row) || "Joueur"}: ${Number(row?.cellsRevealed || 0)} cases • ${Number(row?.successfulVisits || 0)}/${Number(row?.visits || 0)} tours gagnants • ${Number(row?.multiHits || 0)} multi-hits`).join("  |  ")}
+        </div> : null}
       </div>
     );
   }
@@ -3855,6 +3885,22 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         focusMatchId: matchId,
         matchPayload: full,
         rec: full,
+        from: "history",
+      });
+      return;
+    }
+
+    // ✅ LOTERIE : panneau dédié dans le centre de statistiques
+    if (m === "loterie" || inferredMode === "loterie") {
+      const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
+      go("statsHub", {
+        tab: "stats",
+        initialStatsSubTab: "loterie",
+        initialPlayerId: firstPlayerId,
+        playerId: firstPlayerId,
+        matchId: e.id,
+        resumeId,
         from: "history",
       });
       return;

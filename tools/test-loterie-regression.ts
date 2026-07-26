@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { autoLevelFromAvg3, buildPlayerStates, expressPool, generateCards, hasWon, resultKey, revealResult, type LoterieConfig } from "../src/lib/loterie.ts";
+
+const base: LoterieConfig = { variant: "classic", level: "auto", autoMode: "balanced", volleyMode: "free", expressTarget: "simple", cardsPerPlayer: 4, cellsPerCard: 10, startOrderMode: "fixed" };
+assert.equal(autoLevelFromAvg3(20), "beginner");
+assert.equal(autoLevelFromAvg3(30), "leisure");
+assert.equal(autoLevelFromAvg3(45), "intermediate");
+assert.equal(autoLevelFromAvg3(60), "confirmed");
+assert.equal(autoLevelFromAvg3(80), "expert");
+const states = buildPlayerStates([{id:"a",name:"A",avg3:25},{id:"b",name:"B",avg3:85}], base, 1234);
+assert.equal(states[0].targetMax,45);
+assert.equal(states[1].targetMax,120);
+assert.equal(states[0].cards.length,4);
+for (const card of states[0].cards) assert.equal(new Set(card.cells.map(c=>c.key)).size, card.cells.length);
+assert.equal(expressPool("double").some(c=>c.key==="DBULL"), true);
+assert.deepEqual(resultKey({...base,variant:"express",expressTarget:"double"},[{v:10,mult:2}]).key,"D10");
+assert.equal(resultKey({...base,variant:"express",expressTarget:"double"},[{v:20,mult:1}]).key,null);
+assert.deepEqual(resultKey(base,[{v:20,mult:3},{v:18,mult:1},{v:11,mult:2}]).value,100);
+const forced = structuredClone(states[0]);
+forced.cards[0].cells = forced.cards[0].cells.map((c,i)=>({...c,key:i===0?"N60":c.key,revealed:i!==0}));
+const r = revealResult(forced, base, [{v:20,mult:3}]);
+assert.equal(r.revealed >= 1,true);
+assert.equal(hasWon(r.player),true);
+console.log("LOTERIE regression: OK");
