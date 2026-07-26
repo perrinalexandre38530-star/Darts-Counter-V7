@@ -25,3 +25,6 @@ export * from "./prisonerEngine";
 export * from "./attrapeMoiEngine";
 
 export * from "./presidentEngine";
+
+export * from "./dartsRacerEngine";
+export * from "./bowlingEngine";

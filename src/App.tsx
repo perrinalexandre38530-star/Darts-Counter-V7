@@ -320,12 +320,16 @@ import SuperBullConfig from "./pages/SuperBullConfig";
 import SuperBullPlay from "./pages/SuperBullPlay";
 import ShooterConfig from "./pages/ShooterConfig";
 import ShooterPlay from "./pages/ShooterPlay";
+import DartsRacerConfig from "./pages/DartsRacerConfig";
+import DartsRacerPlay from "./pages/DartsRacerPlay";
 import TicTacToeConfig from "./pages/TicTacToeConfig";
 import TicTacToePlay from "./pages/TicTacToePlay";
 import KnockoutConfig from "./pages/KnockoutConfig";
 import KnockoutPlay from "./pages/KnockoutPlay";
 import Bobs27Config from "./pages/Bobs27Config";
 import Bobs27Play from "./pages/Bobs27Play";
+import BowlingConfig from "./pages/BowlingConfig";
+import BowlingPlay from "./pages/BowlingPlay";
 import ScramConfig from "./pages/ScramConfig";
 import ScramPlay from "./pages/ScramPlay";
 import GolfConfig from "./pages/GolfConfig";
@@ -898,12 +902,16 @@ type Tab =
   | "super_bull_play"
   | "shooter_config"
   | "shooter_play"
+  | "darts_racer_config"
+  | "darts_racer_play"
   | "tic_tac_toe_config"
   | "tic_tac_toe_play"
   | "knockout_config"
   | "knockout_play"
   | "bobs_27_config"
   | "bobs_27_play"
+  | "bowling_config"
+  | "bowling_play"
   | "scram_config"
   | "scram_play"
   | "golf_config"
@@ -4985,6 +4993,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "darts_racer_config":
+        page = <DartsRacerConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "darts_racer_play":
+        page = (
+          <DartsRacerPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "darts_racer", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "tic_tac_toe_config":
         page = <TicTacToeConfig setTab={go} params={routeParams} />;
         break;
@@ -5011,6 +5036,23 @@ case "babyfoot_team_edit":
             params={routeParams}
             onFinish={(m: any, options?: { navigate?: boolean }) =>
               pushHistory(enrichOnlineMatchForHistory(m, "bobs_27", routeParams), options)
+            }
+          />
+        );
+        break;
+
+      case "bowling_config":
+        page = <BowlingConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "bowling_play":
+        page = (
+          <BowlingPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "bowling", routeParams), options)
             }
           />
         );
@@ -5213,9 +5255,11 @@ case "babyfoot_team_edit":
     "prisoner_play",
     "super_bull_play",
     "shooter_play",
+    "darts_racer_play",
     "tic_tac_toe_play",
     "knockout_play",
     "bobs_27_play",
+    "bowling_play",
     "scram_play",
     "golf_play",
     "baseball_play",

@@ -355,6 +355,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "president", label: "Président", aliases: ["president", "président"] },
     { key: "bobs_27", label: "Bob’s 27", aliases: ["bobs_27", "bobs27", "bob's 27", "bob’s 27"] },
     { key: "shooter", label: "SHOOTER", aliases: ["shooter"] },
+    { key: "darts_racer", label: "DARTS RACER", aliases: ["darts_racer", "darts racer", "dartsracer", "mario_kart", "mario kart"] },
     { key: "prisoner", label: "Prisoner", aliases: ["prisoner"] },
     { key: "capital", label: "Capital", aliases: ["capital"] },
     { key: "loterie", label: "LOTERIE", aliases: ["loterie", "lottery"] },
@@ -453,7 +454,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|shooter|darts_racer|dartsracer|mario_kart|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -474,6 +475,10 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "bobs_27",
     "bobs27",
     "shooter",
+    "dartsracer",
+    "darts_racer",
+    "mariokart",
+    "mario_kart",
     "prisoner",
     "capital",
     "batard",
@@ -595,6 +600,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "killer_progressive" || m === "killer-progressive" || m === "killerprogressive") {
     return "KILLER PROGRESSIF";
   }
+  if (m === "darts_racer" || m === "dartsracer" || m === "mario_kart" || m === "mariokart") return "DARTS RACER";
   if (m === "x01") {
     const sc = getStartScore(e);
     const raw = [
@@ -789,6 +795,10 @@ const modeColor: Record<string, string> = {
   bobs_27: "#e4c06b",
   bobs27: "#e4c06b",
   shooter: "#42d6ff",
+  darts_racer: "#42d6ff",
+  dartsracer: "#42d6ff",
+  mario_kart: "#42d6ff",
+  mariokart: "#42d6ff",
   prisoner: "#e4c06b",
   loterie: "#f6c256",
   capital: "#6ee36e",
@@ -1783,6 +1793,37 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         </div>
         <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.25 }}>
           {players.slice(0, 3).map((p: any) => `${p.name} : moy. ${Number(p.avg || 0).toFixed(1)} • best ${p.best || 0} • obj. ${p.successRate || 0}% • échecs ${p.failed || 0}`).join("  |  ")}
+        </div>
+      </div>
+    );
+  }
+
+  if (normalizeToken(baseMode(e)) === "dartsracer" || normalizeToken(baseMode(e)) === "mariokart" || inferGameFilterKey(e, "darts") === "darts_racer") {
+    const anyE: any = e as any;
+    const summary: any = anyE?.summary || anyE?.payload?.summary || {};
+    const standings = Array.isArray(summary?.standings) ? summary.standings : Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(anyE?.payload?.state?.standings) ? anyE.payload.state.standings : [];
+    const players = Array.isArray(anyE?.payload?.stats?.players) && anyE.payload.stats.players.length ? anyE.payload.stats.players : Array.isArray(summary?.players) ? summary.players : Array.isArray(anyE?.payload?.players) ? anyE.payload.players : [];
+    const matchStats = summary?.matchStats || anyE?.payload?.stats?.match || anyE?.payload?.stats?.global || {};
+    const totalDistance = Number(summary?.totalDistance || matchStats?.totalDistance || anyE?.payload?.state?.totalDistance || 0) || 0;
+    const style = String(summary?.raceStyle || anyE?.payload?.config?.raceStyle || "arcade").toUpperCase();
+    const entityRows = standings.length ? standings : players.slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
+    return (
+      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          {entityRows.slice(0, 4).map((row: any, index: number) => (
+            <React.Fragment key={String(row?.id || row?.name || index)}>
+              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
+              <span style={{ color: historyRankColor(Number(row?.rank || index + 1)), fontWeight: 1000 }}>{Number(row?.rank || index + 1)}.</span>
+              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{String(row?.name || `Kart ${index + 1}`)}</span>
+              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{Number(row?.position ?? row?.distance ?? 0)}/{totalDistance || "?"}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        {players.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
+          {players.slice().sort((a: any,b: any)=>Number(a?.rank||99)-Number(b?.rank||99)).slice(0,4).map((p:any)=>{const name=historyScoreName(e,p)||getName(p)||"Joueur";const darts=Number(p?.darts??p?.dartsThrown??0)||0;const hits=Number(p?.hits??0)||0;const accuracy=Number(p?.accuracy??(darts?(hits/darts)*100:0))||0;return `${name}: précision ${accuracy.toFixed(1)}% • dist. ${Number(p?.netDistance||0)} • best +${Number(p?.bestVisitDistance||0)} • ⚡ ${Number(p?.specialBoosts||0)} • 💥 ${Number(p?.attacksLanded||0)}`;}).join("  |  ")}
+        </div> : null}
+        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
+          {style}{totalDistance ? ` • ${totalDistance} cases` : ""}{Number(summary?.laps||0) ? ` • ${Number(summary.laps)} tour${Number(summary.laps)>1?"s":""}` : ""}{Number(matchStats?.totalDarts||0) ? ` • ${Number(matchStats.totalDarts)} flèches` : ""}{Number(matchStats?.leadChanges||0) ? ` • ${Number(matchStats.leadChanges)} changements de leader` : ""}
         </div>
       </div>
     );

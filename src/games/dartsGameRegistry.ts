@@ -26,8 +26,10 @@ export type DartsGameTab =
   | "game_170_config"
   | "halve_it_config"
   | "bobs_27_config"
+  | "bowling_config"
   | "knockout_config"
   | "shooter_config"
+  | "darts_racer_config"
   | "baseball_config"
   | "attrape_moi_config"
   | "president_config"
@@ -647,7 +649,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     category: "fun",
     subCategory: "arcade",
     entry: "games",
-    tab: "mode_not_ready",
+    tab: "bowling_config",
     popularityRank: 54,
     ready: true,
     maxPlayers: 8,
@@ -656,7 +658,7 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:bowling",
     infoTitle: "Bowling",
     infoBody:
-      "Adapte le bowling aux flechettes. Format 10 frames. Chaque frame: 1 (ou 2) vollee(s) selon STRIKE/SPARE. Variante simple: Bull/DBull = strike, doubles = spare, sinon tu marques des quilles selon une table de conversion. A implementer.",
+      "Bowling Darts complet sur 10 frames. Une volée de 3 fléchettes correspond à un lancer : BULL/DBULL peut donner STRIKE, un DOUBLE au second lancer peut donner SPARE, sinon les impacts sont convertis en quilles. Scoring bowling officiel, 10e frame bonus, BO1/BO3/BO5, joueurs, équipes et BOTS IA.",
   },
 
   // 🔢 BINGO
@@ -704,16 +706,16 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     category: "fun",
     subCategory: "arcade",
     entry: "games",
-    tab: "mode_not_ready",
+    tab: "darts_racer_config",
     popularityRank: 57,
     ready: true,
-    maxPlayers: 8,
+    maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
-    statsKey: "game:mario_kart",
-    infoTitle: "Darts Racer",
+    statsKey: "game:darts_racer",
+    infoTitle: "DARTS RACER",
     infoBody:
-      "Course de flechettes sur piste (cases) pilotee par les hits. Triples = boost, doubles = mini-boost, Bull = turbo / bonus. Des cases declenchent des effets (attaque, bouclier, ralentissement). Premier a franchir l'arrivee gagne. A implementer.",
+      "Course arcade de fléchettes sur une piste à plusieurs tours. Simple = +1 case, Double = +2, Triple = +3, BULL = +4 et DBULL = +5. En ARCADE/CHAOS, des cases déclenchent boosts, attaques, boucliers et pièges. Jouable en solo ou en équipes, avec joueurs locaux et bots.",
   },
 
   // 🚢 BATAILLE NAVALE (Darts Battleship)
@@ -1189,7 +1191,9 @@ const READY_IDS = new Set<string>([
   "attrape_moi",
   "president",
   "bobs_27",
+  "bowling",
   "shooter",
+  "mario_kart", // DARTS RACER (identifiant technique historique conservé)
   "prisoner",
 
   // ✅ LOTERIE — mode PARTY disponible

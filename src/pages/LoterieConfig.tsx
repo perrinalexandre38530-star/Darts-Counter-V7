@@ -1,9 +1,25 @@
 // @ts-nocheck
+// =============================================================
+// LOTERIE — configuration V5
+// Structure guidée / complète + sélecteurs JOUEURS / ÉQUIPES / BOTS
+// calqués sur X01ConfigV3 / BaseballConfig.
+// =============================================================
+
 import React from "react";
 import BackDot from "../components/BackDot";
+import BotPagedSelector from "../components/BotPagedSelector";
 import InfoDot from "../components/InfoDot";
+import OptionRow from "../components/OptionRow";
+import OptionSelect from "../components/OptionSelect";
+import OptionToggle from "../components/OptionToggle";
+import PageHeader from "../components/PageHeader";
+import PlayerPagedSelector from "../components/PlayerPagedSelector";
+import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
-import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
+import { loadBotPlayers } from "../lib/bots";
+import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
+import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
+import { recordProfileUsageForMode } from "../lib/profileUsage";
 import { resolveProfileStarScore } from "../lib/profileStarScore";
 import {
   LOTERIE_LEVELS,
@@ -15,271 +31,615 @@ import {
   type LoterieVariant,
   type LoterieVolleyMode,
 } from "../lib/loterie";
+import {
+  PillButton,
+  SelectedParticipantsCompactBlock,
+  TeamsSection,
+  X01_PRO_BOTS,
+  buildX01DartsBotTeams,
+} from "./X01ConfigV3";
+import tickerLoterie from "../assets/tickers/ticker_loterie.png";
+import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
 
+type ParticipantMode = "players" | "teams";
+type ConfigViewMode = "guided" | "complete";
+type TeamsSourceMode = "manual" | "saved" | "auto";
+type TeamId = "gold" | "pink" | "blue" | "green";
+type BotLite = {
+  id: string;
+  name: string;
+  avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
+  botLevel?: string;
+  isBot?: boolean;
+  [key: string]: any;
+};
+type LoterieTeamConfig = {
+  id: string;
+  name: string;
+  color: string;
+  logoDataUrl?: string | null;
+  playerIds: string[];
+  isBotTeam?: boolean;
+};
+
+const LS_CFG_KEY = "dc_modecfg_loterie_v5";
 const GOLD = "#f6c256";
-const TEXT2 = "rgba(255,255,255,.68)";
-const PANEL = "linear-gradient(180deg,rgba(24,24,28,.96),rgba(9,10,13,.98))";
+const PINK = "#ff63b8";
+const TEAM_IDS: TeamId[] = ["gold", "pink", "blue", "green"];
+const TEAM_LABELS: Record<TeamId, string> = {
+  gold: "Team Gold",
+  pink: "Team Pink",
+  blue: "Team Blue",
+  green: "Team Green",
+};
+const TEAM_COLORS: Record<TeamId, string> = {
+  gold: "#f6c256",
+  pink: "#ff63b8",
+  blue: "#42d6ff",
+  green: "#6ef3b2",
+};
+const TEAM_COLOR_CYCLE = ["#f6c256", "#ff63b8", "#42d6ff", "#6ef3b2"];
 
-function safeProfiles(store: any): any[] {
-  const raw = store?.profiles ?? store?.profilesStore?.profiles ?? store?.profileStore?.profiles ?? [];
-  return Array.isArray(raw) ? raw : [];
-}
-
-function activeProfileId(store: any): string | null {
-  const id = store?.activeProfileId ?? store?.profilesStore?.activeProfileId ?? store?.profileStore?.activeProfileId ?? store?.activeProfile?.id;
-  return id == null ? null : String(id);
-}
-
-function nameOf(p: any): string {
+function nameOf(p: any) {
   return String(p?.displayName ?? p?.name ?? p?.nickname ?? p?.username ?? "Joueur");
 }
-
-function avatarOf(p: any): string | null {
+function avatarOf(p: any) {
   return p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? null;
 }
-
 function avg3Of(p: any): number {
   const direct = normalizeAvg3(p);
   if (direct > 0) return direct;
   const shared = Number(resolveProfileStarScore(p) || 0);
   return Number.isFinite(shared) && shared > 0 ? shared : 0;
 }
+function isBotLike(profile: any) {
+  return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel);
+}
+function loadUserBots(): BotLite[] {
+  try {
+    return loadBotPlayers().map((bot: any) => ({
+      ...bot,
+      id: String(bot.id),
+      name: bot?.name || "BOT",
+      avatarDataUrl: bot?.avatarDataUrl ?? bot?.avatarUrl ?? bot?.avatar ?? null,
+      avatarUrl: bot?.avatarUrl ?? bot?.avatar ?? null,
+      avatar: bot?.avatar ?? bot?.avatarUrl ?? bot?.avatarDataUrl ?? null,
+      botLevel: bot?.botLevel ?? bot?.level ?? "",
+      isBot: true,
+    })).filter((bot: BotLite) => Boolean(bot.id));
+  } catch {
+    return [];
+  }
+}
+function readSavedConfig() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS_CFG_KEY) || "null");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function teamBaseId(value: any): string {
+  return String(value?.baseTeamId || value?.sourceTeamId || value?.id || value || "").split("__slot_")[0];
+}
+function teamSuffix(index: number): string {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return index < letters.length ? letters[index] : `#${index + 1}`;
+}
+function uniqueIds(ids: any[]) {
+  return Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+}
+function shuffle<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
-function Avatar({ p, size = 48 }: any) {
-  const src = avatarOf(p);
-  const n = nameOf(p);
+function RulesContent() {
   return (
-    <div style={{ width: size, height: size, borderRadius: "50%", overflow: "hidden", flex: "0 0 auto", border: `1px solid ${GOLD}70`, background: "rgba(255,255,255,.06)", display: "grid", placeItems: "center", color: GOLD, fontWeight: 1000 }}>
-      {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : n.slice(0, 2).toUpperCase()}
+    <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.48 }}>
+      <div><strong style={{ color: GOLD }}>LOTERIE — 3 FLÉCHETTES</strong><br />Le total de la volée est recherché sur tous les cartons du participant. Toutes les cases correspondantes sont révélées. En volée libre, tu peux valider après 1, 2 ou 3 darts ; en mode strict, les 3 darts sont obligatoires.</div>
+      <div><strong style={{ color: PINK }}>LOTERIE EXPRESS</strong><br />Une seule fléchette par tour. SIMPLE recherche le numéro 1–20, DOUBLE exige le double exact, TRIPLE exige le triple exact.</div>
+      <div><strong style={{ color: GOLD }}>CARTONS</strong><br />Chaque participant possède 1 à 4 cartons. Les numéros sont uniques dans un même carton mais peuvent apparaître sur plusieurs cartons : un lancer peut donc ouvrir plusieurs cases.</div>
+      <div><strong style={{ color: "#6ef3b2" }}>VICTOIRE</strong><br />Le premier joueur — ou la première équipe — qui complète entièrement un de ses cartons gagne immédiatement.</div>
+      <div><strong style={{ color: "#42d6ff" }}>ÉQUIPES</strong><br />En mode ÉQUIPES, chaque équipe possède ses propres cartons partagés. Le nom et le logo de l’équipe deviennent l’identité du participant LOTERIE.</div>
+      <div><strong style={{ color: GOLD }}>BOTS IA</strong><br />Les BOTS sélectionnés comme dans X01 jouent automatiquement leurs volées selon leur niveau.</div>
     </div>
   );
 }
 
-function Segmented({ value, onChange, items }: any) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length},minmax(0,1fr))`, gap: 6 }}>
-      {items.map((it: any) => {
-        const active = value === it.value;
-        return (
-          <button key={it.value} type="button" onClick={() => onChange(it.value)} style={{ minHeight: 42, borderRadius: 12, padding: "7px 8px", border: `1px solid ${active ? GOLD : "rgba(255,255,255,.09)"}`, background: active ? "linear-gradient(180deg,rgba(246,194,86,.25),rgba(246,194,86,.08))" : "rgba(255,255,255,.035)", color: active ? "#ffe7a7" : "rgba(255,255,255,.75)", fontWeight: 950, fontSize: 11, cursor: "pointer", boxShadow: active ? "0 0 16px rgba(246,194,86,.14)" : "none" }}>
-            <div>{it.label}</div>
-            {it.sub ? <div style={{ marginTop: 2, opacity: .62, fontSize: 8.5, fontWeight: 800 }}>{it.sub}</div> : null}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Section({ title, hint, children }: any) {
-  return (
-    <section style={{ border: "1px solid rgba(255,255,255,.08)", borderRadius: 18, background: PANEL, padding: 13, boxShadow: "0 10px 28px rgba(0,0,0,.22)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-        <div style={{ color: GOLD, fontWeight: 1000, fontSize: 11.5, letterSpacing: .8 }}>{title}</div>
-        {hint ? <div style={{ color: TEXT2, fontSize: 9.5, textAlign: "right" }}>{hint}</div> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-export default function LoterieConfig({ setTab, go, store, params }: any) {
+export default function LoterieConfig(props: any) {
   const { theme } = useTheme();
-  const profiles = React.useMemo(() => safeProfiles(store), [store]);
-  const activeId = activeProfileId(store);
-  const [info, setInfo] = React.useState(false);
+  const store = props?.store ?? props?.params?.store ?? null;
+  const go = props?.go ?? props?.setTab ?? props?.params?.go;
+  const saved = React.useMemo(readSavedConfig, []);
+  const primary = theme?.primary || GOLD;
+  const primarySoft = theme?.primarySoft || "rgba(246,194,86,.14)";
+  const textSoft = theme?.textSoft || "#aeb2d3";
+  const accent2 = theme?.accent2 || theme?.accent1 || PINK;
 
-  const initialSelected = React.useMemo(() => {
-    if (Array.isArray(params?.selectedIds) && params.selectedIds.length) return params.selectedIds.map(String);
-    if (activeId) return [activeId];
-    return profiles[0]?.id != null ? [String(profiles[0].id)] : [];
+  const [configViewMode, setConfigViewMode] = React.useState<ConfigViewMode>(() => {
+    try { return localStorage.getItem("dc_loterie_config_view_mode") === "complete" ? "complete" : "guided"; }
+    catch { return "guided"; }
+  });
+  const [guidedStep, setGuidedStep] = React.useState(0);
+  const guidedSteps = ["Participants", "Mode", "Cartons", "Règles", "Résumé"];
+  const guidedMaxStep = guidedSteps.length - 1;
+
+  const storeProfiles: any[] = Array.isArray(store?.profiles) ? store.profiles : [];
+  const humanProfiles = React.useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
+
+  const [participantMode, setParticipantMode] = React.useState<ParticipantMode>(saved.participantMode === "teams" ? "teams" : "players");
+  const [teamsSourceMode, setTeamsSourceMode] = React.useState<TeamsSourceMode>(saved.teamsSourceMode === "saved" || saved.teamsSourceMode === "auto" ? saved.teamsSourceMode : "manual");
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(Array.isArray(saved.selectedIds) ? saved.selectedIds.slice(0, 12).map(String) : []);
+  const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>(saved.teamAssignments && typeof saved.teamAssignments === "object" ? saved.teamAssignments : {});
+  const [selectedStoredTeamIds, setSelectedStoredTeamIds] = React.useState<string[]>(Array.isArray(saved.selectedStoredTeamIds) ? saved.selectedStoredTeamIds.map(String) : []);
+  const [selectedBotTeamIds, setSelectedBotTeamIds] = React.useState<string[]>(Array.isArray(saved.selectedBotTeamIds) ? saved.selectedBotTeamIds.map(String) : []);
+  const [savedTeamMemberSelections, setSavedTeamMemberSelections] = React.useState<Record<string, string[]>>(saved.savedTeamMemberSelections && typeof saved.savedTeamMemberSelections === "object" ? saved.savedTeamMemberSelections : {});
+  const [botsPanelEnabled, setBotsPanelEnabled] = React.useState(saved.botsPanelEnabled === true);
+  const [botTeamsPanelEnabled, setBotTeamsPanelEnabled] = React.useState(saved.botTeamsPanelEnabled === true);
+  const [botProfiles, setBotProfiles] = React.useState<BotLite[]>([]);
+
+  const [variant, setVariant] = React.useState<LoterieVariant>(saved.variant === "express" ? "express" : "classic");
+  const [level, setLevel] = React.useState<LoterieLevel>(saved.level || "auto");
+  const [autoMode, setAutoMode] = React.useState<LoterieAutoMode>(saved.autoMode || "balanced");
+  const [volleyMode, setVolleyMode] = React.useState<LoterieVolleyMode>(saved.volleyMode || "strict3");
+  const [expressTarget, setExpressTarget] = React.useState<LoterieExpressTarget>(saved.expressTarget || "simple");
+  const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(saved.cardsPerPlayer || 2) as any);
+  const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(saved.cellsPerCard || 10) as any);
+  const [randomOrder, setRandomOrder] = React.useState(saved.startOrderMode !== "fixed");
+
+  React.useLayoutEffect(() => { try { window.scrollTo(0, 0); } catch {} }, []);
+  React.useEffect(() => {
+    const map = new Map<string, BotLite>();
+    (X01_PRO_BOTS || []).forEach((bot: any) => map.set(String(bot.id), { ...bot, id: String(bot.id), isBot: true }));
+    loadUserBots().forEach((bot) => map.set(String(bot.id), { ...bot, isBot: true }));
+    setBotProfiles([...map.values()]);
   }, []);
+  React.useEffect(() => {
+    if (selectedIds.length || !humanProfiles.length) return;
+    const activeId = String(store?.activeProfileId || "");
+    const initial = activeId && humanProfiles.some((p) => String(p.id) === activeId)
+      ? [activeId]
+      : humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((p) => String(p.id));
+    setSelectedIds(initial);
+  }, [humanProfiles, selectedIds.length, store?.activeProfileId]);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(initialSelected);
-  const [variant, setVariant] = React.useState<LoterieVariant>(params?.variant === "express" ? "express" : "classic");
-  const [level, setLevel] = React.useState<LoterieLevel>(params?.level || "auto");
-  const [autoMode, setAutoMode] = React.useState<LoterieAutoMode>(params?.autoMode || "balanced");
-  const [volleyMode, setVolleyMode] = React.useState<LoterieVolleyMode>(params?.volleyMode || "strict3");
-  const [expressTarget, setExpressTarget] = React.useState<LoterieExpressTarget>(params?.expressTarget || "simple");
-  const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(params?.cardsPerPlayer || 2) as any);
-  const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(params?.cellsPerCard || 10) as any);
-  const [startOrderMode, setStartOrderMode] = React.useState<"random" | "fixed">(params?.startOrderMode || "random");
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(LS_CFG_KEY, JSON.stringify({
+        participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
+        selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
+        variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard,
+        startOrderMode: randomOrder ? "random" : "fixed",
+      }));
+    } catch {}
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard, randomOrder]);
 
-  const selectedPlayers = React.useMemo(() => selectedIds.map((id) => profiles.find((p) => String(p?.id) === id)).filter(Boolean), [profiles, selectedIds]);
+  const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
+  const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
+  const selectedProfiles = selectedIds.map((id) => byId.get(String(id))).filter(Boolean) as any[];
+  const selectedParticipantItems = selectedProfiles.map((profile: any) => ({
+    id: String(profile.id),
+    kind: isBotLike(profile) ? "bot" : "player",
+    name: nameOf(profile),
+    profile,
+  }));
+  const teamProfiles = React.useMemo(() => [...new Map(allProfiles.map((profile: any) => [String(profile.id), profile])).values()], [allProfiles]);
 
-  function togglePlayer(id: string) {
-    setSelectedIds((prev) => {
-      const exists = prev.includes(id);
-      if (exists) return prev.filter((x) => x !== id);
-      if (prev.length >= 12) return prev;
-      return [...prev, id];
+  const storedDartsTeams: TeamEntity[] = React.useMemo(() => {
+    try { return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0); }
+    catch { return []; }
+  }, [storeProfiles.length]);
+  const botDartsTeams = React.useMemo(() => buildX01DartsBotTeams(botProfiles), [botProfiles]);
+  const selectableDartsTeams = React.useMemo(() => [...storedDartsTeams, ...botDartsTeams], [storedDartsTeams, botDartsTeams]);
+
+  const selectedStoredTeams = React.useMemo(() => (selectedStoredTeamIds || []).map((rawId: any, index: number) => {
+    const baseId = teamBaseId(rawId);
+    const occurrence = (selectedStoredTeamIds || []).slice(0, index).filter((id: any) => teamBaseId(id) === baseId).length;
+    const team = storedDartsTeams.find((candidate: any) => String(candidate.id) === baseId) || findRememberedGeneratedTeam(baseId);
+    if (!team) return null;
+    const suffix = teamSuffix(occurrence);
+    return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, teamSlotLabel: suffix, name: team.name };
+  }).filter(Boolean), [storedDartsTeams, selectedStoredTeamIds]);
+
+  const selectedBotTeams = React.useMemo(() => {
+    if (!botTeamsPanelEnabled) return [];
+    return (selectedBotTeamIds || []).map((rawId: any, index: number) => {
+      const baseId = teamBaseId(rawId);
+      const occurrence = (selectedBotTeamIds || []).slice(0, index).filter((id: any) => teamBaseId(id) === baseId).length;
+      const team = botDartsTeams.find((candidate: any) => String(candidate.id) === baseId);
+      if (!team) return null;
+      const suffix = teamSuffix(occurrence);
+      return { ...team, id: occurrence > 0 ? `${baseId}__slot_${suffix}` : baseId, baseTeamId: baseId, sourceTeamId: baseId, teamSlotLabel: suffix, name: team.name };
+    }).filter(Boolean);
+  }, [botDartsTeams, selectedBotTeamIds, botTeamsPanelEnabled]);
+  const selectedSavedTeams = React.useMemo(() => [...selectedStoredTeams, ...selectedBotTeams], [selectedStoredTeams, selectedBotTeams]);
+
+  function togglePlayer(idRaw: string) {
+    const id = String(idRaw || "");
+    if (!id) return;
+    setSelectedIds((previous) => {
+      if (previous.includes(id)) {
+        setTeamAssignments((assignments) => { const next = { ...assignments }; delete next[id]; return next; });
+        return previous.filter((value) => value !== id);
+      }
+      if (previous.length >= 12) return previous;
+      return [...previous, id];
     });
   }
-
-  function launch() {
-    if (!selectedPlayers.length) return;
-    const config: LoterieConfigType = {
-      variant,
-      level,
-      autoMode,
-      volleyMode,
-      expressTarget,
-      cardsPerPlayer,
-      cellsPerCard,
-      startOrderMode,
-    };
-    const players = selectedPlayers.map((p: any) => ({
-      ...p,
-      id: String(p.id),
-      name: nameOf(p),
-      avatarDataUrl: avatarOf(p),
-      avg3: avg3Of(p),
-    }));
-    const ordered = startOrderMode === "random" ? [...players].sort(() => Math.random() - .5) : players;
-    (go || setTab)?.("loterie_play", { config, players: ordered, createdAt: Date.now() });
+  function setPlayerTeam(playerId: string, teamId: TeamId) {
+    setTeamAssignments((previous) => ({ ...previous, [playerId]: previous[playerId] === teamId ? null : teamId }));
+  }
+  function toggleSavedTeamMember(teamIdRaw: string, playerIdRaw: string) {
+    const instanceId = String(teamIdRaw || "");
+    const baseId = teamBaseId(instanceId);
+    const playerId = String(playerIdRaw || "");
+    const team = selectableDartsTeams.find((candidate: any) => String(candidate.id) === baseId) || findRememberedGeneratedTeam(baseId);
+    const allIds = uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []);
+    setSavedTeamMemberSelections((previous) => {
+      const current = Array.isArray(previous[instanceId]) ? previous[instanceId].map(String) : allIds;
+      return { ...previous, [instanceId]: current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId] };
+    });
+  }
+  function ensureTeamMembers(instanceId: string, teams: any[]) {
+    setSavedTeamMemberSelections((previous) => {
+      if (Array.isArray(previous[instanceId])) return previous;
+      const baseId = teamBaseId(instanceId);
+      const team = teams.find((candidate: any) => String(candidate.id || candidate.baseTeamId) === baseId) || findRememberedGeneratedTeam(baseId);
+      return { ...previous, [instanceId]: uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []) };
+    });
+  }
+  function addStoredTeamSelection(teamIdRaw: string, playerIds: string[]) {
+    const baseId = String(teamIdRaw || "");
+    const picked = uniqueIds(playerIds);
+    if (!baseId || !picked.length) return;
+    setSelectedStoredTeamIds((previous) => {
+      if (previous.length >= 4) return previous;
+      const same = previous.filter((id) => teamBaseId(id) === baseId);
+      const instanceId = same.length ? `${baseId}__slot_${teamSuffix(same.length)}` : baseId;
+      setSavedTeamMemberSelections((old) => ({ ...old, [instanceId]: picked }));
+      return [...previous, instanceId];
+    });
+  }
+  function removeStoredTeamSelection(instanceIdRaw: string) {
+    const instanceId = String(instanceIdRaw || "");
+    setSelectedStoredTeamIds((previous) => previous.filter((id) => String(id) !== instanceId));
+    setSavedTeamMemberSelections((previous) => { const next = { ...previous }; delete next[instanceId]; return next; });
+  }
+  function toggleStoredTeam(teamIdRaw: string) {
+    const baseId = String(teamIdRaw || "");
+    const team = storedDartsTeams.find((candidate: any) => String(candidate.id) === baseId);
+    const allIds = uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []);
+    addStoredTeamSelection(baseId, allIds);
+    ensureTeamMembers(baseId, storedDartsTeams);
+  }
+  function addBotTeamSelection(teamIdRaw: string, playerIds: string[]) {
+    const baseId = String(teamIdRaw || "");
+    const picked = uniqueIds(playerIds);
+    if (!baseId || !picked.length) return;
+    setSelectedBotTeamIds((previous) => {
+      if (previous.length >= 4) return previous;
+      const same = previous.filter((id) => teamBaseId(id) === baseId);
+      const instanceId = same.length ? `${baseId}__slot_${teamSuffix(same.length)}` : baseId;
+      setSavedTeamMemberSelections((old) => ({ ...old, [instanceId]: picked }));
+      return [...previous, instanceId];
+    });
+  }
+  function removeBotTeamSelection(instanceIdRaw: string) {
+    const instanceId = String(instanceIdRaw || "");
+    setSelectedBotTeamIds((previous) => previous.filter((id) => String(id) !== instanceId));
+    setSavedTeamMemberSelections((previous) => { const next = { ...previous }; delete next[instanceId]; return next; });
+  }
+  function toggleBotTeam(teamIdRaw: string) {
+    const baseId = String(teamIdRaw || "");
+    const team = botDartsTeams.find((candidate: any) => String(candidate.id) === baseId);
+    addBotTeamSelection(baseId, uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []).slice(0, 4));
   }
 
-  const levelItems = [
-    { value: "auto", label: "AUTO", sub: "Selon AVG/3D" },
-    ...Object.entries(LOTERIE_LEVELS).map(([value, r]: any) => ({ value, label: r.label, sub: `${r.min}–${r.max}` })),
-  ];
+  function externalTeamConfig(team: any, index: number): LoterieTeamConfig {
+    const instanceId = String(team?.id || `team-${index}`);
+    const allIds = uniqueIds(Array.isArray(team?.playerIds) ? team.playerIds : []);
+    const playerIds = uniqueIds(Array.isArray(savedTeamMemberSelections[instanceId]) ? savedTeamMemberSelections[instanceId] : allIds).filter((id) => byId.has(id));
+    return {
+      id: instanceId,
+      name: String(team?.name || `Équipe ${index + 1}`),
+      color: team?.color || TEAM_COLOR_CYCLE[index % TEAM_COLOR_CYCLE.length],
+      logoDataUrl: team?.logoDataUrl ?? team?.logoUrl ?? team?.avatarDataUrl ?? null,
+      playerIds,
+      isBotTeam: Boolean(team?.isBotTeam),
+    };
+  }
 
-  return (
-    <div style={{ minHeight: "100vh", color: theme?.text || "#fff", background: theme?.bg || "radial-gradient(circle at 50% -10%,#291f0c,#08090c 38%,#050609)", paddingBottom: 32 }}>
-      <header style={{ position: "sticky", top: 0, zIndex: 20, height: 94, overflow: "hidden", borderBottom: `1px solid ${GOLD}35`, background: "linear-gradient(180deg,#090a0d 0%,#08090ccc 100%)", backdropFilter: "blur(14px)" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 30%,rgba(246,194,86,.22),transparent 60%)" }} />
-        <div style={{ position: "absolute", left: 10, top: 12 }}><BackDot onClick={() => (go || setTab)?.("games")} color={GOLD} glow="rgba(246,194,86,.55)" title="Retour" /></div>
-        <div style={{ position: "absolute", right: 10, top: 12 }}><InfoDot onClick={() => setInfo(true)} color={GOLD} glow="rgba(246,194,86,.55)" title="Règles" /></div>
-        <div style={{ position: "relative", height: "100%", display: "grid", placeItems: "center", textAlign: "center", pointerEvents: "none" }}>
-          <div>
-            <div style={{ fontSize: 23, fontWeight: 1000, letterSpacing: 2.8, color: GOLD, textShadow: "0 0 18px rgba(246,194,86,.4)" }}>🎰 LOTERIE</div>
-            <div style={{ fontSize: 9.5, letterSpacing: 1.1, color: "rgba(255,255,255,.58)", marginTop: 3 }}>CHOISIS TES CARTONS • TROUVE LES NUMÉROS • COMPLÈTE UNE GRILLE</div>
-          </div>
+  const manualTeamConfigs = React.useMemo(() => {
+    const manual = TEAM_IDS.map((teamId) => ({
+      id: teamId,
+      name: TEAM_LABELS[teamId],
+      color: TEAM_COLORS[teamId],
+      playerIds: selectedIds.filter((playerId) => teamAssignments[playerId] === teamId),
+    })).filter((team) => team.playerIds.length > 0);
+    const bots = selectedBotTeams.map(externalTeamConfig).filter((team) => team.playerIds.length > 0);
+    return [...manual, ...bots];
+  }, [selectedIds, teamAssignments, selectedBotTeams, savedTeamMemberSelections, byId]);
+  const savedTeamConfigs = React.useMemo(() => (teamsSourceMode === "auto" ? selectedStoredTeams : selectedSavedTeams).map(externalTeamConfig).filter((team) => team.playerIds.length > 0), [teamsSourceMode, selectedStoredTeams, selectedSavedTeams, savedTeamMemberSelections, byId]);
+  const activeTeamConfigs: LoterieTeamConfig[] = teamsSourceMode === "manual" ? manualTeamConfigs : savedTeamConfigs;
+  const teamPlayerIds = activeTeamConfigs.flatMap((team) => team.playerIds);
+  const uniqueTeamPlayerIds = uniqueIds(teamPlayerIds);
+  const validPlayers = selectedIds.length >= 1 && selectedIds.length <= 12;
+  const validTeams = activeTeamConfigs.length >= 2 && activeTeamConfigs.length <= 4 && activeTeamConfigs.every((team) => team.playerIds.length >= 1 && team.playerIds.length <= 4) && uniqueTeamPlayerIds.length === teamPlayerIds.length;
+  const validSelection = participantMode === "players" ? validPlayers : validTeams;
+  const selectedBotCount = selectedProfiles.filter(isBotLike).length;
+
+  const selectionError = participantMode === "players"
+    ? "Sélectionne entre 1 et 12 joueurs ou BOTS IA."
+    : activeTeamConfigs.length < 2
+      ? "Sélectionne ou compose au moins 2 équipes."
+      : activeTeamConfigs.length > 4
+        ? "LOTERIE accepte jusqu’à 4 équipes."
+        : uniqueTeamPlayerIds.length !== teamPlayerIds.length
+          ? "Un même profil ne peut pas jouer dans plusieurs équipes."
+          : "Chaque équipe doit contenir de 1 à 4 membres.";
+
+  const selectorCard: React.CSSProperties = {
+    width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", overflow: "hidden",
+    background: "rgba(10,12,24,.96)", borderRadius: 18, padding: "16px 12px", marginBottom: 12,
+    boxShadow: "0 16px 40px rgba(0,0,0,.55)", border: `1px solid ${primary}33`,
+  };
+  const panel: React.CSSProperties = {
+    width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", borderRadius: 18,
+    padding: 12, background: "linear-gradient(180deg, rgba(255,255,255,.065), rgba(0,0,0,.28))",
+    border: "1px solid rgba(255,255,255,.10)", overflow: "hidden",
+  };
+
+  const participantsBlock = (
+    <>
+      <section style={selectorCard}>
+        <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, marginBottom: 10 }}>Participants</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <PillButton label="Joueurs" active={participantMode === "players"} onClick={() => setParticipantMode("players")} primary={primary} primarySoft={primarySoft} />
+          <PillButton label="Équipes" active={participantMode === "teams"} onClick={() => setParticipantMode("teams")} primary={primary} primarySoft={primarySoft} />
         </div>
-      </header>
-
-      <main style={{ width: "min(760px,calc(100% - 20px))", margin: "12px auto 0", display: "grid", gap: 10 }}>
-
-        <Section title="APERÇU DU CARTON" hint="DA validée · style ticket / grattage loterie">
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,160px) minmax(0,1fr)", gap: 12, alignItems: "center" }}>
-            <div style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${GOLD}55`, background: "rgba(255,255,255,.04)", boxShadow: "0 10px 28px rgba(0,0,0,.22)" }}>
-              <img src={scratchTicketPreview} alt="Carton LOTERIE" style={{ width: "100%", display: "block" }} />
-            </div>
-            <div>
-              <div style={{ color: GOLD, fontSize: 12, fontWeight: 1000 }}>Carte LOTERIE validée</div>
-              <div style={{ marginTop: 6, color: TEXT2, fontSize: 10.5, lineHeight: 1.55 }}>
-                Cette V2 utilise le visuel de carton que tu as validé : un <b>ticket de loterie à gratter</b> avec cases couvertes, chiffres révélés, tampons <b>VALIDÉ</b> et bandeau d'information en bas. Le rendu Play reprend cet esprit sur chaque carton joueur, avec en plus des effets de révélation, tampons validés animés et feedback JACKPOT / DOUBLE HIT.
-              </div>
-              <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[
-                  'Ticket vintage',
-                  'Effet grattage',
-                  'Tampons validés',
-                  'Progression intégrée',
-                  'FX jackpot / hit',
-                ].map((lab) => (
-                  <span key={lab} style={{ fontSize: 9.5, color: GOLD, padding: '4px 8px', borderRadius: 999, border: `1px solid ${GOLD}40`, background: 'rgba(246,194,86,.08)' }}>{lab}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Section>
-        <Section title="JOUEURS" hint={`${selectedIds.length}/12 sélectionné${selectedIds.length > 1 ? "s" : ""}`}>
-          {!profiles.length ? <div style={{ color: TEXT2, fontSize: 12 }}>Aucun profil local disponible.</div> : (
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-              {profiles.map((p: any) => {
-                const id = String(p.id);
-                const active = selectedIds.includes(id);
-                return (
-                  <button key={id} onClick={() => togglePlayer(id)} style={{ minWidth: 112, maxWidth: 128, borderRadius: 15, padding: 9, border: `1px solid ${active ? GOLD : "rgba(255,255,255,.09)"}`, background: active ? "rgba(246,194,86,.11)" : "rgba(255,255,255,.035)", color: "#fff", cursor: "pointer", textAlign: "center" }}>
-                    <div style={{ display: "flex", justifyContent: "center" }}><Avatar p={p} /></div>
-                    <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(p)}</div>
-                    <div style={{ marginTop: 2, fontSize: 8.5, color: active ? GOLD : TEXT2 }}>AVG3 {avg3Of(p) ? avg3Of(p).toFixed(1) : "—"}</div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </Section>
-
-        <Section title="MODE" hint={variant === "classic" ? "Le TOTAL de la volée cherche une case" : "Une seule fléchette cherche une cible exacte"}>
-          <Segmented value={variant} onChange={setVariant} items={[
-            { value: "classic", label: "LOTERIE", sub: "1–3 darts · total de volée" },
-            { value: "express", label: "EXPRESS", sub: "1 dart · cible directe" },
-          ]} />
-        </Section>
-
-        {variant === "classic" ? (
+        {participantMode === "players" ? (
           <>
-            <Section title="NIVEAU / PLAGE DE SCORES" hint="Maximum absolu : 120">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
-                {levelItems.map((it: any) => {
-                  const active = level === it.value;
-                  return <button key={it.value} onClick={() => setLevel(it.value)} style={{ minHeight: 46, borderRadius: 12, border: `1px solid ${active ? GOLD : "rgba(255,255,255,.08)"}`, background: active ? "rgba(246,194,86,.12)" : "rgba(255,255,255,.03)", color: active ? GOLD : "rgba(255,255,255,.75)", fontWeight: 950, cursor: "pointer" }}><div style={{ fontSize: 10.5 }}>{it.label}</div><div style={{ fontSize: 8.5, opacity: .65 }}>{it.sub}</div></button>;
-                })}
-              </div>
-              {level === "auto" ? <div style={{ marginTop: 8 }}><Segmented value={autoMode} onChange={setAutoMode} items={[
-                { value: "balanced", label: "ÉQUILIBRÉ", sub: "Plage propre à chaque joueur" },
-                { value: "common", label: "IDENTIQUE", sub: "Plage commune calculée sur le groupe" },
-              ]} /></div> : null}
-            </Section>
-            <Section title="VOLÉE" hint="LIBRE permet de sécuriser un bon total après 1 ou 2 darts">
-              <Segmented value={volleyMode} onChange={setVolleyMode} items={[
-                { value: "free", label: "LIBRE", sub: "Valider après 1, 2 ou 3 darts" },
-                { value: "strict3", label: "3 DARTS", sub: "Trois fléchettes obligatoires" },
-              ]} />
-            </Section>
+            <SelectedParticipantsCompactBlock items={selectedParticipantItems} accent={primary} onRemove={togglePlayer} allProfiles={humanProfiles} />
+            <PlayerPagedSelector usageMode="loterie" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} pageSize={9} modalTitle="Choisir des joueurs" showSelectedSummary={false} />
+            <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>1 à 12 profils. Même sélecteur de profils que X01.</p>
           </>
         ) : (
-          <Section title="CIBLE EXPRESS" hint="Le multiplicateur exact est obligatoire en Double / Triple">
-            <Segmented value={expressTarget} onChange={setExpressTarget} items={[
-              { value: "simple", label: "SIMPLE", sub: "1–20 · S/D/T valident le numéro" },
-              { value: "double", label: "DOUBLE", sub: "D1–D20 + DBULL" },
-              { value: "triple", label: "TRIPLE", sub: "T1–T20" },
-            ]} />
-          </Section>
+          <TeamsSection
+            profiles={teamProfiles}
+            selectableProfiles={humanProfiles}
+            selectedIds={selectedIds}
+            teamAssignments={teamAssignments}
+            setPlayerTeam={setPlayerTeam}
+            togglePlayer={togglePlayer}
+            playerDartSets={{}}
+            handleChangePlayerDartSet={undefined}
+            allProfiles={humanProfiles}
+            sourceMode={teamsSourceMode}
+            setSourceMode={setTeamsSourceMode}
+            storedTeams={storedDartsTeams}
+            selectedStoredTeamIds={selectedStoredTeamIds}
+            toggleStoredTeam={toggleStoredTeam}
+            addStoredTeamSelection={addStoredTeamSelection}
+            removeStoredTeamSelection={removeStoredTeamSelection}
+            botTeams={botDartsTeams}
+            botTeamsPanelEnabled={botTeamsPanelEnabled}
+            setBotTeamsPanelEnabled={setBotTeamsPanelEnabled}
+            selectedBotTeamIds={selectedBotTeamIds}
+            toggleBotTeam={toggleBotTeam}
+            removeBotTeamSelection={removeBotTeamSelection}
+            savedTeamMemberSelections={savedTeamMemberSelections}
+            toggleSavedTeamMember={toggleSavedTeamMember}
+            primary={primary}
+            primarySoft={primarySoft}
+          />
         )}
-
-        <Section title="CARTONS" hint="Le premier carton entièrement révélé gagne">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 9, color: TEXT2, marginBottom: 5 }}>CARTONS / JOUEUR</div>
-              <Segmented value={cardsPerPlayer} onChange={(v: any) => setCardsPerPlayer(Number(v) as any)} items={[1,2,3,4].map((v) => ({ value: v, label: String(v) }))} />
-            </div>
-            <div>
-              <div style={{ fontSize: 9, color: TEXT2, marginBottom: 5 }}>CASES / CARTON</div>
-              <Segmented value={cellsPerCard} onChange={(v: any) => setCellsPerCard(Number(v) as any)} items={[5,10,15].map((v) => ({ value: v, label: String(v) }))} />
-            </div>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 10, color: TEXT2 }}>Les numéros sont uniques dans un même carton, mais peuvent se répéter entre plusieurs cartons. Un seul résultat peut donc ouvrir plusieurs cases.</div>
-        </Section>
-
-        <Section title="ORDRE DE DÉPART">
-          <Segmented value={startOrderMode} onChange={setStartOrderMode} items={[
-            { value: "random", label: "ALÉATOIRE" },
-            { value: "fixed", label: "ORDRE SÉLECTION" },
-          ]} />
-        </Section>
-
-        <button disabled={!selectedPlayers.length} onClick={launch} style={{ minHeight: 58, borderRadius: 17, border: `1px solid ${GOLD}`, background: selectedPlayers.length ? "linear-gradient(135deg,#f6c256,#ffd978 55%,#b67c18)" : "rgba(255,255,255,.08)", color: selectedPlayers.length ? "#171008" : "rgba(255,255,255,.35)", fontWeight: 1000, letterSpacing: 1.2, fontSize: 14, cursor: selectedPlayers.length ? "pointer" : "default", boxShadow: selectedPlayers.length ? "0 0 26px rgba(246,194,86,.18)" : "none" }}>
-          🎰 LANCER LA LOTERIE
-        </button>
-      </main>
-
-      {info ? (
-        <div onClick={() => setInfo(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.74)", display: "grid", placeItems: "center", padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px,96vw)", maxHeight: "86vh", overflowY: "auto", borderRadius: 20, border: `1px solid ${GOLD}70`, background: "#0d0e12", padding: 17, boxShadow: "0 22px 70px rgba(0,0,0,.55)" }}>
-            <div style={{ color: GOLD, fontSize: 18, fontWeight: 1000 }}>RÈGLES — LOTERIE</div>
-            <div style={{ marginTop: 10, color: "rgba(255,255,255,.82)", fontSize: 12, lineHeight: 1.6 }}>
-              <b>LOTERIE :</b> chaque joueur reçoit 1 à 4 cartons. Une volée produit un total : si ce total existe sur tes cartons, toutes les cases correspondantes sont révélées. En mode Libre tu peux valider après 1, 2 ou 3 fléchettes ; en mode 3 Darts les trois lancers sont obligatoires.<br/><br/>
-              <b>NIVEAU :</b> la plage des numéros dépend du niveau. AUTO peut adapter la plage individuellement selon l’AVG/3D, ou utiliser une plage commune calculée sur le groupe.<br/><br/>
-              <b>EXPRESS :</b> une seule fléchette par tour. SIMPLE valide le numéro 1–20 quel que soit S/D/T ; DOUBLE exige le double exact ; TRIPLE exige le triple exact.<br/><br/>
-              <b>VICTOIRE :</b> le premier joueur à révéler toutes les cases d’un seul de ses cartons gagne immédiatement.
-            </div>
-            <button onClick={() => setInfo(false)} style={{ width: "100%", marginTop: 14, minHeight: 44, borderRadius: 13, border: `1px solid ${GOLD}`, background: "rgba(246,194,86,.12)", color: GOLD, fontWeight: 1000 }}>FERMER</button>
+        <div style={{ marginTop: 12, borderRadius: 14, padding: "9px 11px", border: `1px solid ${validSelection ? primary + "55" : "rgba(255,120,150,.28)"}`, background: validSelection ? `${primary}0d` : "rgba(255,80,120,.07)" }}>
+          <div style={{ color: validSelection ? primary : "#ffb2c8", fontSize: 11.5, fontWeight: 950 }}>
+            {validSelection ? (participantMode === "teams" ? `Sélection prête · ${activeTeamConfigs.length} équipes` : `Sélection prête · ${selectedIds.length} participant${selectedIds.length > 1 ? "s" : ""}`) : selectionError}
           </div>
         </div>
+      </section>
+
+      {participantMode === "players" ? (
+        <section style={{ ...selectorCard, padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 950, color: primary, margin: 0 }}>Bots IA</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" aria-pressed={botsPanelEnabled} onClick={() => setBotsPanelEnabled((value) => !value)} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}88`, background: botsPanelEnabled ? `${primary}18` : "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>{botsPanelEnabled ? "☑ ON" : "☐ OFF"}</button>
+              <button type="button" onClick={() => typeof go === "function" && go("profiles_bots")} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>Gérer les BOTS</button>
+            </div>
+          </div>
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>Ajoute les mêmes BOTS IA prédéfinis ou personnels que dans X01.</p>
+          {botsPanelEnabled ? <BotPagedSelector bots={botProfiles as any} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+          {selectedBotCount > 0 ? <div style={{ marginTop: 10, color: textSoft, fontSize: 10.5 }}>Les BOTS jouent automatiquement pendant la partie LOTERIE.</div> : null}
+        </section>
       ) : null}
+    </>
+  );
+
+  const modeBlock = (
+    <Section title="MODE DE JEU">
+      <div style={panel}>
+        <OptionRow label="Mode LOTERIE">
+          <OptionSelect value={variant} options={[{ value: "classic", label: "LOTERIE — total de volée" }, { value: "express", label: "LOTERIE EXPRESS — 1 dart" }]} onChange={setVariant} />
+        </OptionRow>
+        {variant === "classic" ? (
+          <>
+            <OptionRow label="Niveau / plage"><OptionSelect value={level} options={[{ value: "auto", label: "AUTO — selon AVG/3D" }, ...Object.entries(LOTERIE_LEVELS).map(([value, range]: any) => ({ value, label: `${range.label} · ${range.min}–${range.max}` }))]} onChange={setLevel} /></OptionRow>
+            {level === "auto" ? <OptionRow label="AUTO"><OptionSelect value={autoMode} options={[{ value: "balanced", label: "Équilibré — plage par participant" }, { value: "common", label: "Identique — plage commune" }]} onChange={setAutoMode} /></OptionRow> : null}
+            <OptionRow label="Volée"><OptionSelect value={volleyMode} options={[{ value: "strict3", label: "3 darts obligatoires" }, { value: "free", label: "Libre — valider après 1, 2 ou 3" }]} onChange={setVolleyMode} /></OptionRow>
+          </>
+        ) : (
+          <OptionRow label="Cible Express"><OptionSelect value={expressTarget} options={[{ value: "simple", label: "Simple · numéro 1–20" }, { value: "double", label: "Double exact · D1–D20 + DBULL" }, { value: "triple", label: "Triple exact · T1–T20" }]} onChange={setExpressTarget} /></OptionRow>
+        )}
+      </div>
+    </Section>
+  );
+
+  const cardsBlock = (
+    <Section title="CARTONS">
+      <div style={panel}>
+        <OptionRow label="Cartons / participant"><OptionSelect value={cardsPerPlayer} options={[1, 2, 3, 4]} onChange={(value: any) => setCardsPerPlayer(Number(value) as any)} /></OptionRow>
+        <OptionRow label="Cases / carton"><OptionSelect value={cellsPerCard} options={[5, 10, 15]} onChange={(value: any) => setCellsPerCard(Number(value) as any)} /></OptionRow>
+        <div style={{ marginTop: 8, color: textSoft, fontSize: 10.5, lineHeight: 1.4 }}>Le premier carton entièrement découvert gagne. Un même résultat peut ouvrir plusieurs cartons s’il y apparaît plusieurs fois.</div>
+      </div>
+    </Section>
+  );
+
+  const rulesBlock = (
+    <Section title="RÈGLES DE PARTIE">
+      <div style={panel}>
+        <OptionRow label="Ordre de passage aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
+        <div style={{ marginTop: 7, color: textSoft, fontSize: 10.5, lineHeight: 1.4 }}>{randomOrder ? "L’ordre des participants est mélangé au lancement." : "L’ordre du sélecteur est conservé."}</div>
+      </div>
+    </Section>
+  );
+
+  const summaryBlock = (
+    <section style={{ ...selectorCard, border: `1px solid ${primary}55` }}>
+      <div style={{ display: "grid", gridTemplateColumns: "96px minmax(0,1fr)", gap: 12, alignItems: "center" }}>
+        <div style={{ borderRadius: 14, overflow: "hidden", border: `1px solid ${primary}55`, background: "rgba(255,255,255,.03)" }}><img src={scratchTicketPreview} alt="Carton LOTERIE" style={{ display: "block", width: "100%" }} /></div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: primary, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Résumé LOTERIE</div>
+          <div style={{ display: "grid", gap: 6, marginTop: 9, fontSize: 11.5 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Participants</span><b style={{ textAlign: "right" }}>{participantMode === "teams" ? `${activeTeamConfigs.length} équipes` : `${selectedIds.length} joueurs/BOTS`}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Mode</span><b style={{ textAlign: "right" }}>{variant === "classic" ? (volleyMode === "strict3" ? "LOTERIE · 3 darts" : "LOTERIE · volée libre") : `EXPRESS · ${expressTarget.toUpperCase()}`}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Cartons</span><b>{cardsPerPlayer} × {cellsPerCard} cases</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Niveau</span><b style={{ textAlign: "right" }}>{variant === "classic" ? String(level).toUpperCase() : "CIBLE EXACTE"}</b></div>
+          </div>
+        </div>
+      </div>
+      {!validSelection ? <div style={{ marginTop: 10, fontSize: 11.5, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
+    </section>
+  );
+
+  function selectConfigViewMode(mode: ConfigViewMode) {
+    setConfigViewMode(mode);
+    try { localStorage.setItem("dc_loterie_config_view_mode", mode); } catch {}
+  }
+
+  function backToGames() {
+    if (typeof props?.onBack === "function") return props.onBack();
+    if (typeof go === "function") go("games");
+  }
+
+  function startGame() {
+    if (!validSelection) return;
+    const config: LoterieConfigType & any = {
+      variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard,
+      startOrderMode: randomOrder ? "random" : "fixed",
+      participantMode,
+    };
+
+    let participants: any[] = [];
+    if (participantMode === "players") {
+      participants = selectedProfiles.map((profile: any) => ({
+        ...profile,
+        id: String(profile.id),
+        name: nameOf(profile),
+        avatarDataUrl: avatarOf(profile),
+        avg3: avg3Of(profile),
+        isBot: isBotLike(profile),
+      }));
+    } else {
+      participants = activeTeamConfigs.map((team: LoterieTeamConfig, index: number) => {
+        const members = team.playerIds.map((id) => byId.get(String(id))).filter(Boolean);
+        const avgValues = members.map(avg3Of).filter((v) => v > 0);
+        return {
+          id: `team:${team.id}`,
+          teamId: team.id,
+          name: team.name,
+          displayName: team.name,
+          avatarDataUrl: team.logoDataUrl || null,
+          avatarUrl: team.logoDataUrl || null,
+          color: team.color || TEAM_COLOR_CYCLE[index % TEAM_COLOR_CYCLE.length],
+          memberIds: [...team.playerIds],
+          members: members.map((m: any) => ({ id: String(m.id), name: nameOf(m), avatarDataUrl: avatarOf(m) })),
+          avg3: avgValues.length ? avgValues.reduce((a, b) => a + b, 0) / avgValues.length : 0,
+          isTeam: true,
+          isBot: Boolean(team.isBotTeam),
+        };
+      });
+    }
+
+    const ordered = randomOrder ? shuffle(participants) : participants;
+    try { recordProfileUsageForMode("loterie", participantMode === "players" ? selectedIds : uniqueIds(activeTeamConfigs.flatMap((team) => team.playerIds))); } catch {}
+    if (typeof go === "function") go("loterie_play", { config, players: ordered, participantMode, teamConfigs: activeTeamConfigs, createdAt: Date.now() });
+  }
+
+  return (
+    <div style={{ minHeight: "100dvh", width: "100%", maxWidth: "100%", overflowX: "hidden", paddingBottom: 92 }}>
+      <PageHeader
+        tickerSrc={tickerLoterie}
+        tickerAlt="LOTERIE"
+        tickerHeight={92}
+        tickerFit="cover"
+        tickerBottomGap={10}
+        left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToGames} color={primary} glow={`${primary}88`} title="Retour" /></div>}
+        right={<div style={{ marginRight: 6 }}><InfoDot title="Règles LOTERIE" color={theme?.accent1 || primary} glow={`${theme?.accent1 || primary}77`} content={<RulesContent />} /></div>}
+      />
+
+      <div style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 8px 0", overflowX: "hidden" }}>
+        <section style={{ ...selectorCard, border: `1px solid ${primary}66`, boxShadow: `0 0 24px ${primary}18, 0 14px 34px rgba(0,0,0,.48)` }}>
+          <div style={{ color: primary, fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Configuration LOTERIE</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PillButton label="Guidée" active={configViewMode === "guided"} onClick={() => selectConfigViewMode("guided")} primary={primary} primarySoft={primarySoft} />
+            <PillButton label="Complète" active={configViewMode === "complete"} onClick={() => selectConfigViewMode("complete")} primary={primary} primarySoft={primarySoft} />
+          </div>
+          <div style={{ marginTop: 8, color: textSoft, fontSize: 11, lineHeight: 1.35 }}>Guidée : les choix essentiels étape par étape. Complète : tous les paramètres sur une seule page.</div>
+        </section>
+
+        {configViewMode === "guided" ? (
+          <section style={{ ...selectorCard, border: `1px solid ${primary}55`, boxShadow: `0 0 22px ${primary}16, 0 14px 34px rgba(0,0,0,.48)` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 9 }}>
+              <div>
+                <div style={{ color: primary, fontSize: 12.5, fontWeight: 950, textTransform: "uppercase", letterSpacing: 1 }}>Configuration guidée</div>
+                <div style={{ marginTop: 3, color: textSoft, fontSize: 10.5 }}>Étape {guidedStep + 1}/{guidedSteps.length} · {guidedSteps[guidedStep]}</div>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {guidedSteps.map((label, idx) => <button key={label} type="button" onClick={() => setGuidedStep(idx)} title={label} style={{ width: 25, height: 25, borderRadius: 999, border: `1px solid ${idx === guidedStep ? primary : "rgba(255,255,255,.10)"}`, background: idx === guidedStep ? primarySoft : idx < guidedStep ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.03)", color: idx === guidedStep ? primary : "#aeb2d3", fontSize: 9.5, fontWeight: 950, cursor: "pointer" }}>{idx + 1}</button>)}
+              </div>
+            </div>
+            <div style={{ height: 4, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}><div style={{ width: `${((guidedStep + 1) / guidedSteps.length) * 100}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${primary}, ${accent2})`, transition: "width .18s ease" }} /></div>
+          </section>
+        ) : null}
+
+        {configViewMode === "guided" ? (
+          <>
+            {guidedStep === 0 ? participantsBlock : null}
+            {guidedStep === 1 ? modeBlock : null}
+            {guidedStep === 2 ? cardsBlock : null}
+            {guidedStep === 3 ? rulesBlock : null}
+            {guidedStep === 4 ? summaryBlock : null}
+            <div style={{ display: "flex", gap: 9, margin: "0 0 12px" }}>
+              <button type="button" onClick={() => setGuidedStep((step) => Math.max(0, step - 1))} disabled={guidedStep === 0} style={{ flex: 1, height: 42, borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: guidedStep === 0 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.065)", color: guidedStep === 0 ? "#565b76" : "#fff", fontWeight: 950 }}>← Précédent</button>
+              <button type="button" onClick={() => setGuidedStep((step) => Math.min(guidedMaxStep, step + 1))} disabled={guidedStep === guidedMaxStep} style={{ flex: 1, height: 42, borderRadius: 999, border: `1px solid ${primary}`, background: guidedStep === guidedMaxStep ? "rgba(255,255,255,.025)" : primarySoft, color: guidedStep === guidedMaxStep ? "#565b76" : primary, fontWeight: 950 }}>Suivant →</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {participantsBlock}
+            {modeBlock}
+            {cardsBlock}
+            {rulesBlock}
+            {summaryBlock}
+          </>
+        )}
+
+        {(configViewMode === "complete" || guidedStep === guidedMaxStep) ? (
+          <div style={{ padding: "4px 4px 14px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+            <button type="button" disabled={!validSelection} onClick={startGame} style={{ width: "100%", minHeight: 52, borderRadius: 999, border: validSelection ? `1px solid ${primary}cc` : "1px solid rgba(255,255,255,.10)", background: validSelection ? `linear-gradient(90deg, ${primary}, ${accent2})` : "rgba(255,255,255,.06)", color: validSelection ? "#071018" : "rgba(255,255,255,.48)", boxShadow: validSelection ? `0 0 20px ${primary}55, 0 10px 24px rgba(0,0,0,.40)` : "0 10px 24px rgba(0,0,0,.40)", fontWeight: 1100, letterSpacing: 1.1, cursor: validSelection ? "pointer" : "not-allowed" }}>DÉMARRER LOTERIE</button>
+            {!validSelection ? <div style={{ marginTop: 9, fontSize: 12, color: "#ff9aa7", fontWeight: 850, textAlign: "center" }}>{selectionError}</div> : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
