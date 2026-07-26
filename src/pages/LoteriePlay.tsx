@@ -14,6 +14,7 @@ import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { playGolfTickerSound } from "../lib/sfx";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import victoryImage from "../assets/victory.webp";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
@@ -42,6 +43,55 @@ const GOOD = "#70efbd";
 const BAD = "#ff718a";
 const STROKE = "rgba(255,255,255,.105)";
 const SOFT = "rgba(226,232,240,.72)";
+
+// Cartes de résultat 10→120. Les fichiers sont servis depuis /public afin de ne
+// charger qu'une seule carte à la fin d'une volée au lieu d'embarquer les 111
+// visuels dans le chunk JavaScript.
+const LOTERIE_SCORE_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/score-cards/`;
+function loterieScoreCardUrl(score: number) {
+  const n = Math.round(Number(score) || 0);
+  return n >= 10 && n <= 120 ? `${LOTERIE_SCORE_CARD_BASE}${n}.webp` : null;
+}
+function loterieScoreMaterial(score: number) {
+  const n = Math.round(Number(score) || 0);
+  if (n >= 110) return { name: "DIAMANT", aura: "#d9f7ff" };
+  if (n >= 100) return { name: "ÉMERAUDE", aura: "#24d58a" };
+  if (n >= 90) return { name: "RUBIS", aura: "#ff335b" };
+  if (n >= 80) return { name: "SAPHIR", aura: "#3b7cff" };
+  if (n >= 70) return { name: "PLATINE", aura: "#d8e1ea" };
+  if (n >= 60) return { name: "OR BLANC", aura: "#fff7d6" };
+  if (n >= 50) return { name: "OR", aura: "#ffd447" };
+  if (n >= 40) return { name: "ARGENT", aura: "#d7dde5" };
+  if (n >= 30) return { name: "LAITON", aura: "#cfad49" };
+  if (n >= 20) return { name: "CUIVRE POLI", aura: "#e17846" };
+  return { name: "BRONZE VIEILLI", aura: "#b87343" };
+}
+// Le Golf joue un petit blip WebAudio au même instant que son ticker de perf.
+// On reprend ce comportement ici en plus du hook audio PAR/MISS du Golf.
+function playLoterieGolfTickerSfx(found: boolean) {
+  try {
+    playGolfTickerSound(found ? "PAR" : "MISS", 0.95);
+  } catch {}
+  try {
+    if (typeof window === "undefined") return;
+    const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 880;
+    gain.gain.value = 0.0001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const t0 = ctx.currentTime;
+    osc.start(t0);
+    gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+    osc.stop(t0 + 0.085);
+    osc.onended = () => { try { ctx.close(); } catch {} };
+  } catch {}
+}
 const SCRATCH_CELL_TEXTURE = "data:image/webp;base64,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";
 
 const DEFAULT_CONFIG: LoterieConfig & any = {
@@ -104,6 +154,34 @@ function recentScoreItems(events: any[], playerId: string, max = 5) {
 function RecentScoreBadges({ scores, onClick, compact = false }: any) {
   return <button type="button" onClick={onClick} style={{ width: "100%", minHeight: compact ? 54 : 66, borderRadius: 14, border: `1px dashed rgba(214,166,53,.55)`, background: "rgba(255,248,232,.82)", padding: compact ? 8 : 9, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 6px 15px rgba(0,0,0,.06)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>DERNIERS SCORES</div><div style={{ color: "#b7871e", fontSize: 8.2, fontWeight: 1000 }}>VOIR ▸</div></div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{scores?.length ? scores.map((item: any) => <div key={item.id} style={{ minWidth: 0, borderRadius: 9, border: `1px solid ${item.ok ? "rgba(78,201,145,.38)" : "rgba(255,113,138,.38)"}`, background: item.ok ? "rgba(78,201,145,.16)" : "rgba(255,113,138,.14)", color: item.ok ? "#1d8c62" : "#c54e65", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>{item.label}</div><div style={{ marginTop: 2, fontSize: 7.4, fontWeight: 1000, opacity: .88 }}>{item.ok ? "VALIDÉ" : "RATÉ"}</div></div>) : Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ minWidth: 0, borderRadius: 9, border: "1px dashed rgba(151,124,77,.35)", background: "rgba(255,255,255,.45)", color: "#8e785b", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>—</div><div style={{ marginTop: 2, fontSize: 7.1, fontWeight: 1000, opacity: .88 }}>VIDE</div></div>)}</div><div style={{ marginTop: 5, color: "#8b6d46", fontSize: 8.4, fontWeight: 900 }}>{compact ? "Toucher pour ouvrir l'historique" : "5 dernières volées · vert = validé · rouge = raté"}</div></button>;
 }
+function ScoreResultOverlay({ result }: any) {
+  if (!result) return null;
+  const score = Math.round(Number(result?.score) || 0);
+  const material = loterieScoreMaterial(score);
+  const src = loterieScoreCardUrl(score);
+  const good = Boolean(result?.good);
+  const status = good ? GOOD : BAD;
+  const cardNumbers = Array.isArray(result?.cardNumbers) ? result.cardNumbers : [];
+  return (
+    <div aria-live="assertive" style={{ position: "fixed", inset: 0, zIndex: 10030, display: "grid", placeItems: "center", pointerEvents: "none", background: "radial-gradient(circle at 50% 46%, rgba(0,0,0,.18), rgba(0,0,0,.58) 68%, rgba(0,0,0,.72))", backdropFilter: "blur(2px)", animation: "lotScoreBackdrop 1.9s ease both" }}>
+      <div style={{ display: "grid", justifyItems: "center", gap: 9, transformOrigin: "center", animation: "lotScoreCardReveal 1.9s cubic-bezier(.2,.8,.2,1) both" }}>
+        <div style={{ position: "relative", width: "min(248px,58vw)", maxHeight: "64dvh", display: "grid", placeItems: "center" }}>
+          <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: material.aura, opacity: .52, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
+          {src ? (
+            <img src={src} alt={`Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `drop-shadow(0 0 14px ${material.aura}) drop-shadow(0 0 30px ${material.aura}) drop-shadow(0 0 9px ${status})`, boxShadow: `0 0 0 2px ${status}66, 0 18px 42px rgba(0,0,0,.54)` }} />
+          ) : (
+            <div style={{ position: "relative", zIndex: 2, width: "min(220px,54vw)", aspectRatio: "2 / 3", borderRadius: 20, border: `2px solid ${material.aura}`, background: "linear-gradient(145deg,#ead9b8,#f8efd9 50%,#d4bd91)", display: "grid", placeItems: "center", color: "#251a0e", fontSize: 68, fontWeight: 1000, boxShadow: `0 0 24px ${material.aura}, 0 0 0 2px ${status}66, 0 18px 42px rgba(0,0,0,.54)` }}>{result?.label || score}</div>
+          )}
+        </div>
+        <div style={{ minWidth: "min(270px,78vw)", padding: "8px 12px 9px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
+          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : "RATÉ"}</div>
+          {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatsDetailModal({ player, onClose, accent = GOLD }: any) {
   if (!player) return null;
   const best = bestCardProgress(player);
@@ -667,11 +745,10 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const [darts, setDarts] = React.useState<LoterieDart[]>([]);
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const multiplierRef = React.useRef<1 | 2 | 3>(1);
-  const [toast, setToast] = React.useState<any>(null);
+  const [scoreReveal, setScoreReveal] = React.useState<any>(null);
   const [winnerId, setWinnerId] = React.useState<string | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
   const [recentRevealKeys, setRecentRevealKeys] = React.useState<string[]>([]);
-  const [fx, setFx] = React.useState<any>(null);
   const [cardsOpen, setCardsOpen] = React.useState(false);
   const [cardsInitialIndex, setCardsInitialIndex] = React.useState(0);
   const [rankingOpen, setRankingOpen] = React.useState(false);
@@ -699,20 +776,15 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     : (darts[0] ? dartLabel(darts[0]) : (lastPlayerEvent?.darts?.[0]?.label || "—"));
 
   React.useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 1500);
+    if (!scoreReveal) return;
+    const id = window.setTimeout(() => setScoreReveal(null), 1900);
     return () => window.clearTimeout(id);
-  }, [toast]);
+  }, [scoreReveal]);
   React.useEffect(() => {
     if (!recentRevealKeys.length) return;
     const id = window.setTimeout(() => setRecentRevealKeys([]), 1200);
     return () => window.clearTimeout(id);
   }, [recentRevealKeys]);
-  React.useEffect(() => {
-    if (!fx) return;
-    const id = window.setTimeout(() => setFx(null), 1200);
-    return () => window.clearTimeout(id);
-  }, [fx]);
 
   React.useEffect(() => {
     multiplierRef.current = 1;
@@ -783,6 +855,9 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       const prevCard = current.cards[cardIdx];
       return card.cells.filter((cell: any, ci: number) => cell.revealed && !prevCard?.cells?.[ci]?.revealed).map((cell: any) => `${card.id}:${cell.key}`);
     });
+    const revealedCardNumbers = resolved.player.cards
+      .map((card: any, cardIdx: number) => changedKeys.some((key: string) => key.startsWith(`${card.id}:`)) ? cardIdx + 1 : null)
+      .filter((n: number | null): n is number => n != null);
     const currentMember = participantMode === "teams" && Array.isArray((current as any)?.members) && (current as any).members.length
       ? (current as any).members[(Number(current?.stats?.visits || 0)) % (current as any).members.length]
       : null;
@@ -796,16 +871,26 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       actorName: currentMember?.name || current.name, memberName: currentMember?.name || null,
       darts: turnDarts.map((d) => ({ ...d, label: dartLabel(d), score: dartScore(d) })),
       volleyScore: volleyScore(turnDarts), resultKey: resolved.result.key, resultLabel: resolved.result.label,
-      revealed: resolved.revealed, completedCardIds: resolved.completedCardIds,
+      revealed: resolved.revealed, revealedCardNumbers, completedCardIds: resolved.completedCardIds,
     };
     const nextEvents = [...events, ev];
     setEvents(nextEvents);
     setPlayers(nextPlayers);
     setDarts([]);
     setRecentRevealKeys(changedKeys);
-    const hitLabel = resolved.revealed >= 3 ? `🎰 JACKPOT · ${resolved.revealed} CASES !` : resolved.revealed === 2 ? "✨ DOUBLE HIT · 2 CASES !" : resolved.revealed === 1 ? "✅ TROUVÉ · 1 CASE !" : `❌ ${resolved.result.label || "0"} · AUCUNE CASE`;
-    setToast({ good: resolved.revealed > 0, text: hitLabel });
-    setFx({ text: hitLabel, tone: resolved.revealed >= 2 ? "gold" : resolved.revealed === 1 ? "green" : "red" });
+    const resultScore = Math.round(Number(resolved?.result?.value ?? volleyScore(turnDarts)) || 0);
+    const found = resolved.revealed > 0;
+    setScoreReveal({
+      score: resultScore,
+      label: resolved?.result?.label || String(resultScore),
+      good: found,
+      revealed: resolved.revealed,
+      cardNumbers: revealedCardNumbers,
+      ts: Date.now(),
+    });
+    // Réutilise exactement les sons des tickers GOLF demandés : MISS si aucune
+    // case n'est trouvée, PAR dès qu'au moins un numéro est découvert.
+    playLoterieGolfTickerSfx(found);
     if (didWin) {
       finish(nextPlayers, current.id, nextEvents);
       return;
@@ -856,7 +941,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const nextSeed = Date.now();
     setSeed(nextSeed);
     setPlayers(buildPlayerStates(sourcePlayers, config, nextSeed));
-    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setFx(null); setToast(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setStatsOpen(false); setBotThinking(false);
+    setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setScoreReveal(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setStatsOpen(false); setBotThinking(false);
     finishSent.current = false;
     createdAtRef.current = Date.now();
   }
@@ -888,6 +973,9 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         @keyframes lotScratchReveal { 0% { transform: scale(.86) rotate(-4deg); filter: brightness(1.15);} 55% { transform: scale(1.04) rotate(1deg);} 100% { transform: scale(1) rotate(0deg); filter: brightness(1);} }
         @keyframes lotStampPop { 0% { opacity: 0; transform: scale(.35) rotate(-20deg);} 75% { opacity: 1; transform: scale(1.12) rotate(-8deg);} 100% { opacity: 1; transform: scale(1) rotate(-8deg);} }
         @keyframes lotFxBurst { 0% { opacity: 0; transform: translate(-50%,-30%) scale(.72);} 12% { opacity: 1;} 100% { opacity: 0; transform: translate(-50%,-54%) scale(1.08);} }
+        @keyframes lotScoreBackdrop { 0% { opacity: 0; } 10% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes lotScoreCardReveal { 0% { opacity: 0; transform: translateY(22px) scale(.68) rotate(-3deg); } 14% { opacity: 1; transform: translateY(0) scale(1.06) rotate(1deg); } 28% { transform: scale(.99) rotate(0deg); } 82% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.035); } }
+        @keyframes lotMaterialAura { from { opacity: .34; transform: scale(.96); } to { opacity: .68; transform: scale(1.12); } }
         @keyframes lotCardShine { 0% { transform: translateX(-120%); opacity: 0;} 18% { opacity: 1;} 100% { transform: translateX(120%); opacity: 0;} }
       `}</style>
       <PageHeader
@@ -978,8 +1066,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
       {rankingOpen ? <div role="dialog" aria-modal="true" onClick={() => setRankingOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 14 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(520px,100%)", maxHeight: "78dvh", overflowY: "auto", padding: 13, borderColor: `${themeAccent}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div style={{ color: themeAccent, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT LOTERIE</div><button type="button" onClick={() => setRankingOpen(false)} style={carouselBtnStyle(themeAccent)}>×</button></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{ranking.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: p.id === active?.id ? `color-mix(in srgb, ${themeAccent} 9%, transparent)` : "rgba(255,255,255,.035)", border: `1px solid ${p.id === active?.id ? themeAccent + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: i === 0 ? themeAccent : SOFT, fontSize: 16, fontWeight: 1000, textAlign: "center" }}>{i + 1}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 9 }}>{p.stats.cellsRevealed} cases · {p.stats.visits} tours</div></div><div style={{ color: themeAccent, fontSize: 18, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</div></div>)}</div></div></div> : null}
 
-      {fx ? <div style={{ position: "fixed", left: "50%", top: "45%", transform: "translate(-50%,-50%)", zIndex: 10020, pointerEvents: "none", animation: "lotFxBurst 1.15s ease-out both", textAlign: "center", padding: "12px 20px", borderRadius: 18, border: `1px solid ${fx.tone === "red" ? BAD : fx.tone === "green" ? GOOD : themeAccent}`, background: "rgba(10,10,12,.9)", color: fx.tone === "red" ? BAD : fx.tone === "green" ? GOOD : themeAccent, fontWeight: 1000, fontSize: 20, letterSpacing: .7, boxShadow: "0 16px 45px rgba(0,0,0,.42)" }}>{fx.text}</div> : null}
-      {toast ? <div style={{ position: "fixed", left: "50%", top: 104, transform: "translateX(-50%)", zIndex: 120, minWidth: "min(360px,88vw)", textAlign: "center", padding: "10px 14px", borderRadius: 16, border: `1px solid ${toast.good ? GOOD : BAD}90`, background: "rgba(9,10,13,.96)", color: toast.good ? GOOD : BAD, fontWeight: 1000, fontSize: 11.5, boxShadow: "0 12px 35px rgba(0,0,0,.4)" }}>{toast.text}</div> : null}
+      <ScoreResultOverlay result={scoreReveal} />
 
       {winner ? <LoterieEndPanel finalPlayers={players} winnerId={winnerId} events={events} config={{ ...config, participantMode }} accent={themeAccent} onReplay={resetGame} onStats={(focusId: string) => (go || setTab)?.("statsHub", { tab: "stats", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "loterie" })} onMenu={() => (go || setTab)?.("games")} /> : null}
     </div>
