@@ -7,12 +7,19 @@ import {
 
 export type UserMediaKind =
   | "profile_avatar"
+  | "local_profile_avatar"
+  | "bot_avatar"
   | "dartset_main"
   | "dartset_thumb"
   | "team_logo"
+  | "team_cover"
   | "group_avatar"
   | "group_cover"
+  | "club_logo"
+  | "club_cover"
   | "online_avatar"
+  | "gallery_item"
+  | "avatar_ai_gallery"
   | "user_image";
 
 export type UserMediaFallbackEntry = {
@@ -31,8 +38,8 @@ export type UserMediaFallbackSnapshot = {
 
 const DB_NAME = "dc_user_media_fallback_v1";
 const STORE_NAME = "media";
-const MAX_LOCAL_ENTRIES = 360;
-const MAX_SNAPSHOT_ENTRIES = 260;
+const MAX_LOCAL_ENTRIES = 1200;
+const MAX_SNAPSHOT_ENTRIES = 500;
 const MAX_SNAPSHOT_CHARS = 14_000_000;
 const REMOTE_TIMEOUT_MS = 4_000;
 
@@ -55,6 +62,18 @@ export function profileAvatarMediaKey(profileId: unknown): string {
   return cleanKey(`profile_avatar:${String(profileId || "").trim()}`);
 }
 
+export function botAvatarMediaKey(botId: unknown): string {
+  return cleanKey(`bot_avatar:${String(botId || "").trim()}`);
+}
+
+export function galleryItemMediaKey(itemId: unknown): string {
+  return cleanKey(`gallery_item:${String(itemId || "").trim()}`);
+}
+
+export function avatarAiGalleryMediaKey(itemId: unknown): string {
+  return cleanKey(`avatar_ai_gallery:${String(itemId || "").trim()}`);
+}
+
 export function onlineAvatarMediaKey(userId: unknown): string {
   return cleanKey(`online_avatar:${String(userId || "").trim()}`);
 }
@@ -71,6 +90,10 @@ export function teamLogoMediaKey(teamId: unknown): string {
   return cleanKey(`team_logo:${String(teamId || "").trim()}`);
 }
 
+export function teamCoverMediaKey(teamId: unknown): string {
+  return cleanKey(`team_cover:${String(teamId || "").trim()}`);
+}
+
 export function groupAvatarMediaKey(groupId: unknown): string {
   return cleanKey(`group_avatar:${String(groupId || "").trim()}`);
 }
@@ -79,12 +102,12 @@ export function groupCoverMediaKey(groupId: unknown): string {
   return cleanKey(`group_cover:${String(groupId || "").trim()}`);
 }
 
-function isImageDataUrl(value: unknown): value is string {
+function isImageDataUrl(value: unknown): boolean {
   return typeof value === "string" && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value.trim());
 }
 
 function imagePolicy(kind: string) {
-  if (kind === "profile_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo") {
+  if (kind === "profile_avatar" || kind === "local_profile_avatar" || kind === "bot_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo" || kind === "gallery_item" || kind === "avatar_ai_gallery") {
     return { maxEdge: 320, quality: 0.82, maxChars: 260_000 };
   }
   if (kind === "dartset_thumb") return { maxEdge: 420, quality: 0.82, maxChars: 420_000 };
@@ -226,6 +249,29 @@ async function browserCachedBlob(src: string): Promise<Blob | null> {
   }
 }
 
+async function blobToExactDataUrl(blob: Blob): Promise<string> {
+  if (!blob || !blob.size) return "";
+  return await new Promise<string>((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve("");
+    }
+  });
+}
+
+async function exactSourceDataUrl(source: string): Promise<string> {
+  const value = String(source || "").trim();
+  if (!value) return "";
+  if (isImageDataUrl(value)) return value;
+  const blob = await browserCachedBlob(value);
+  if (!blob) return "";
+  return blobToExactDataUrl(blob);
+}
+
 async function compactBlob(blob: Blob, kind: string): Promise<string> {
   if (typeof document === "undefined") return "";
   const policy = imagePolicy(kind);
@@ -320,20 +366,27 @@ export async function captureUserMediaFallback(
 
   const task = (async () => {
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
-    const compact = await compactSource(source, kind);
-    if (!compact) return "";
+    // Miroir exact : si l'original est encore accessible, on conserve ses octets
+    // (via DataURL) sans canvas ni recompression. Le compactage ne sert qu'en
+    // dernier recours pour une ancienne URL que le navigateur ne peut plus relire.
+    let mirrored = await exactSourceDataUrl(source);
+    if (!mirrored) mirrored = await compactSource(source, kind);
+    if (!mirrored) return "";
     const entry: UserMediaFallbackEntry = {
       key,
       kind,
-      dataUrl: compact,
+      dataUrl: mirrored,
       updatedAt: Number(opts.updatedAt || Date.now()) || Date.now(),
       sourceUrl: opts.sourceUrl || (!isImageDataUrl(source) ? source : null),
     };
     await storeEntry(entry);
     if (opts.mirrorR2 !== false) {
-      void uploadDirectR2MediaFallback(entry).catch(() => undefined);
+      // Ici on attend l'écriture R2 : quand captureUserMediaFallback se résout,
+      // la copie distante existe réellement (ou l'appel rejette et sera retenté
+      // par le prochain audit/export).
+      await uploadDirectR2MediaFallback(entry);
     }
-    return compact;
+    return mirrored;
   })().finally(() => pendingCapture.delete(key));
 
   pendingCapture.set(key, task);
@@ -381,6 +434,18 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
       }
     }
 
+    const botLists = [root?.bots, root?.cpuBots, root?.botPlayers].filter(Array.isArray) as any[][];
+    for (const list of botLists) {
+      for (const bot of list) {
+        const id = String(bot?.id || bot?.botId || "").trim();
+        if (!id) continue;
+        const src = firstImage(bot?.avatarDataUrl, bot?.avatarFullDataUrl, bot?.avatarThumbDataUrl, bot?.photoDataUrl, bot?.imageDataUrl, bot?.avatar, bot?.avatarUrl);
+        if (!src) continue;
+        const saved = await captureUserMediaFallback(botAvatarMediaKey(id), src, { kind: "bot_avatar" }).catch(() => "");
+        if (saved) count += 1;
+      }
+    }
+
     const dartLists = [root?.dartSets, root?.dartsets].filter(Array.isArray) as any[][];
     for (const list of dartLists) {
       for (const set of list) {
@@ -404,9 +469,15 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
       const id = String(team?.id || team?.teamId || "").trim();
       if (!id) continue;
       const logo = firstImage(team?.logoDataUrl, team?.avatarDataUrl, team?.imageDataUrl, team?.regionLogoDataUrl, team?.logoUrl);
-      if (!isImageDataUrl(logo)) continue;
-      const saved = await captureUserMediaFallback(teamLogoMediaKey(id), logo, { kind: "team_logo" }).catch(() => "");
-      if (saved) count += 1;
+      const cover = firstImage(team?.coverDataUrl, team?.coverUrl, team?.bannerDataUrl, team?.bannerUrl);
+      if (logo) {
+        const saved = await captureUserMediaFallback(teamLogoMediaKey(id), logo, { kind: "team_logo" }).catch(() => "");
+        if (saved) count += 1;
+      }
+      if (cover) {
+        const saved = await captureUserMediaFallback(teamCoverMediaKey(id), cover, { kind: "team_cover" }).catch(() => "");
+        if (saved) count += 1;
+      }
     }
   }
   return count;
@@ -546,36 +617,110 @@ function firstImage(...values: any[]): string {
   return "";
 }
 
-export function captureStoreUserMedia(store: any): void {
+export async function captureStoreUserMedia(store: any): Promise<void> {
+  const jobs: Promise<any>[] = [];
+  const enqueue = (key: string, source: string, kind: UserMediaKind | string, updatedAt?: number) => {
+    if (!key || !source) return;
+    jobs.push(captureUserMediaFallback(key, source, { kind, updatedAt }).catch(() => ""));
+  };
+
   try {
     const profileLists = [store?.profiles, store?.localProfiles, store?.players].filter(Array.isArray) as any[][];
     for (const list of profileLists) {
       for (const p of list) {
         const id = String(p?.id || p?.profileId || p?.playerId || "").trim();
         if (!id) continue;
-        const src = firstImage(p?.avatarThumbDataUrl, p?.avatarDataUrl, p?.avatarFullDataUrl, p?.avatarCastDataUrl, p?.photoDataUrl);
-        if (isImageDataUrl(src)) void captureUserMediaFallback(profileAvatarMediaKey(id), src, { kind: "profile_avatar" });
+        const src = firstImage(p?.avatarFullDataUrl, p?.avatarDataUrl, p?.avatarThumbDataUrl, p?.avatarCastDataUrl, p?.photoDataUrl, p?.avatarUrl, p?.avatar);
+        if (src) enqueue(profileAvatarMediaKey(id), src, "profile_avatar", Number(p?.avatarUpdatedAt || p?.updatedAt || Date.now()));
       }
+    }
+
+    const bots = [store?.bots, store?.cpuBots, store?.botPlayers].find(Array.isArray) || [];
+    for (const bot of bots) {
+      const id = String(bot?.id || bot?.botId || "").trim();
+      if (!id) continue;
+      const src = firstImage(bot?.avatarFullDataUrl, bot?.avatarDataUrl, bot?.avatarThumbDataUrl, bot?.photoDataUrl, bot?.imageDataUrl, bot?.avatarUrl, bot?.avatar);
+      if (src) enqueue(botAvatarMediaKey(id), src, "bot_avatar", Number(bot?.avatarUpdatedAt || bot?.updatedAt || Date.now()));
     }
 
     const dartSets = Array.isArray(store?.dartSets) ? store.dartSets : [];
     for (const set of dartSets) {
       const id = String(set?.id || "").trim();
       if (!id) continue;
-      const main = firstImage(set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl, set?.mainImageUrl);
-      const thumb = firstImage(set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl, main);
-      if (isImageDataUrl(main)) void captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main" });
-      if (isImageDataUrl(thumb)) void captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb" });
+      const main = firstImage(set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl, set?.mainImageUrl, set?.photoUrl, set?.imageUrl);
+      const thumb = firstImage(set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl, set?.photoThumbUrl, main);
+      if (main) enqueue(dartSetMainMediaKey(id), main, "dartset_main", Number(set?.updatedAt || Date.now()));
+      if (thumb) enqueue(dartSetThumbMediaKey(id), thumb, "dartset_thumb", Number(set?.updatedAt || Date.now()));
     }
 
     const teams = Array.isArray(store?.teams) ? store.teams : [];
     for (const team of teams) {
       const id = String(team?.id || team?.teamId || "").trim();
       if (!id) continue;
-      const logo = firstImage(team?.logoDataUrl, team?.avatarDataUrl, team?.imageDataUrl, team?.regionLogoDataUrl);
-      if (isImageDataUrl(logo)) void captureUserMediaFallback(teamLogoMediaKey(id), logo, { kind: "team_logo" });
+      const logo = firstImage(team?.logoDataUrl, team?.avatarDataUrl, team?.imageDataUrl, team?.regionLogoDataUrl, team?.logoUrl, team?.avatarUrl, team?.imageUrl);
+      const cover = firstImage(team?.coverDataUrl, team?.coverUrl, team?.bannerDataUrl, team?.bannerUrl);
+      if (logo) enqueue(teamLogoMediaKey(id), logo, "team_logo", Number(team?.updatedAt || Date.now()));
+      if (cover) enqueue(teamCoverMediaKey(id), cover, "team_cover", Number(team?.updatedAt || Date.now()));
     }
+
+    // Galerie centrale + ancienne galerie Avatar IA : elles vivent en localStorage
+    // et n'étaient pas toutes présentes dans le store React.
+    if (typeof window !== "undefined") {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const lsKey = window.localStorage.key(i) || "";
+        if (!lsKey.startsWith("dc_avatar_gallery_v1:")) continue;
+        try {
+          const rows = JSON.parse(window.localStorage.getItem(lsKey) || "[]");
+          if (!Array.isArray(rows)) continue;
+          for (const item of rows) {
+            const id = String(item?.id || item?.hash || "").trim();
+            const src = firstImage(item?.src, item?.dataUrl, item?.imageDataUrl);
+            if (id && src) enqueue(galleryItemMediaKey(id), src, "gallery_item", Number(item?.updatedAt || item?.createdAt || Date.now()));
+          }
+        } catch {}
+      }
+      try {
+        const rows = JSON.parse(window.localStorage.getItem("msc_avatar_ia_gallery_v1") || "[]");
+        if (Array.isArray(rows)) {
+          for (const item of rows) {
+            const id = String(item?.id || item?.galleryId || "").trim();
+            const src = firstImage(item?.dataUrl, item?.src, item?.imageDataUrl);
+            if (id && src) enqueue(avatarAiGalleryMediaKey(id), src, "avatar_ai_gallery", Date.parse(item?.updatedAt || item?.createdAt || "") || Date.now());
+          }
+        }
+      } catch {}
+    }
+
+    // Dernier filet : toute image inline encore présente dans le store est
+    // dédupliquée par son contenu et envoyée à R2. Cela couvre les futurs types
+    // de données sans devoir attendre une nouvelle liste de catégories.
+    const seen = new WeakSet<object>();
+    const seenHashes = new Set<string>();
+    const hashText = (text: string) => {
+      let h = 2166136261;
+      for (let i = 0; i < text.length; i += 1) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(16);
+    };
+    const walk = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (seen.has(node)) return;
+      seen.add(node);
+      if (Array.isArray(node)) { for (const item of node) walk(item); return; }
+      for (const value of Object.values(node)) {
+        if (isImageDataUrl(value)) {
+          const imageValue = String(value);
+          const hash = hashText(imageValue);
+          if (!seenHashes.has(hash)) {
+            seenHashes.add(hash);
+            enqueue(cleanKey(`user_image:${hash}`), imageValue, "user_image");
+          }
+        } else if (value && typeof value === "object") walk(value);
+      }
+    };
+    walk(store);
   } catch {}
+
+  if (jobs.length) await Promise.allSettled(jobs);
 }
 
 async function mapWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -594,7 +739,7 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
   const store = { ...storeInput };
   let changed = false;
 
-  const profiles = Array.isArray(store.profiles) ? store.profiles.map((p: any) => ({ ...p })) : [];
+  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles.map((p: any) => ({ ...p })) : [];
   await mapWithConcurrency(profiles, 4, async (p) => {
     const id = String(p?.id || "").trim();
     if (!id) return;
@@ -607,7 +752,20 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
   });
   if (profiles.length) store.profiles = profiles;
 
-  const dartSets = Array.isArray(store.dartSets) ? store.dartSets.map((d: any) => ({ ...d })) : [];
+  const bots: any[] = Array.isArray(store.bots) ? store.bots.map((b: any) => ({ ...b })) : [];
+  await mapWithConcurrency(bots, 4, async (b) => {
+    const id = String(b?.id || b?.botId || "").trim();
+    if (!id) return;
+    const primary = firstImage(b?.avatarDataUrl, b?.avatarFullDataUrl, b?.avatarThumbDataUrl, b?.avatarUrl, b?.avatar, b?.photoDataUrl);
+    const fallback = await resolveUserMediaFallback(botAvatarMediaKey(id), primary, { kind: "bot_avatar" });
+    if (fallback && b.avatarDataUrl !== fallback) {
+      b.avatarDataUrl = fallback;
+      changed = true;
+    }
+  });
+  if (bots.length) store.bots = bots;
+
+  const dartSets: any[] = Array.isArray(store.dartSets) ? store.dartSets.map((d: any) => ({ ...d })) : [];
   await mapWithConcurrency(dartSets, 3, async (d) => {
     const id = String(d?.id || "").trim();
     if (!id) return;
@@ -622,13 +780,18 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
   });
   if (dartSets.length) store.dartSets = dartSets;
 
-  const teams = Array.isArray(store.teams) ? store.teams.map((t: any) => ({ ...t })) : [];
+  const teams: any[] = Array.isArray(store.teams) ? store.teams.map((t: any) => ({ ...t })) : [];
   await mapWithConcurrency(teams, 3, async (t) => {
     const id = String(t?.id || t?.teamId || "").trim();
     if (!id) return;
     const primary = firstImage(t?.logoDataUrl, t?.logoUrl, t?.avatarUrl, t?.imageUrl, t?.logo);
-    const logo = await resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo" });
+    const coverPrimary = firstImage(t?.coverDataUrl, t?.coverUrl, t?.bannerDataUrl, t?.bannerUrl);
+    const [logo, cover] = await Promise.all([
+      resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo" }),
+      resolveUserMediaFallback(teamCoverMediaKey(id), coverPrimary, { kind: "team_cover" }),
+    ]);
     if (logo && t.logoDataUrl !== logo) { t.logoDataUrl = logo; changed = true; }
+    if (cover && t.coverDataUrl !== cover) { t.coverDataUrl = cover; changed = true; }
   });
   if (teams.length) store.teams = teams;
 

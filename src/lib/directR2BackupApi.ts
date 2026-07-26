@@ -35,6 +35,23 @@ export type DirectR2AvatarFallback = {
   updatedAt?: string | null;
 };
 
+export type DirectR2NasUserMirror = {
+  version?: number;
+  kind?: string;
+  createdAt?: string | null;
+  user?: any;
+  profile?: any;
+  storeSnapshot?: { payload?: any; data?: any; version?: number; updatedAt?: string | null; store?: string } | null;
+  relatedTables?: Record<string, any[]>;
+};
+
+export type DirectR2MediaManifest = {
+  version?: number;
+  userId?: string;
+  updatedAt?: string | null;
+  media?: Record<string, { key: string; kind?: string; sizeBytes?: number; checksum?: string; updatedAtMs?: number; sourceUrl?: string | null }>;
+};
+
 export type DirectR2Status = {
   ok: boolean;
   route?: string;
@@ -382,6 +399,24 @@ export async function restoreDirectR2Backup(id: string): Promise<any> {
 
 export async function emptyDirectR2Trash(): Promise<any> {
   return requestDirect("/trash", { method: "DELETE" });
+}
+
+export async function downloadDirectR2NasUserMirror(): Promise<DirectR2NasUserMirror | null> {
+  try {
+    const payload = await requestDirect("/mirror/user", { method: "GET" });
+    return payload?.mirror && typeof payload.mirror === "object" ? payload.mirror as DirectR2NasUserMirror : null;
+  } catch (error: any) {
+    if (/introuvable|nas_user_mirror_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
+    throw error;
+  }
+}
+
+export async function getDirectR2MediaManifest(): Promise<{ manifest: DirectR2MediaManifest; audit?: any }> {
+  const payload = await requestDirect("/media-manifest", { method: "GET" });
+  return {
+    manifest: (payload?.manifest || { version: 2, media: {} }) as DirectR2MediaManifest,
+    audit: payload?.audit || undefined,
+  };
 }
 
 /**

@@ -26,7 +26,7 @@ const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
 const NAS_AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
 
-const NAS_RESTORE_TIMEOUT_MS = 1800;
+const NAS_RESTORE_TIMEOUT_MS = 5000;
 const NAS_RESTORE_ERROR_BACKOFF_MS = 60000;
 let nasLastRestoreErrorAt = 0;
 let nasLastRestoreErrorKey = "";
@@ -170,6 +170,85 @@ function isAuthFailureMessage(message: string): boolean {
 function getCachedNasSession(): AuthSession | null {
   const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
   return cached && String(cached?.token || "").trim() ? cached : null;
+}
+
+const R2_DIRECT_BASE = "/api/storage/backups";
+const R2_MIRROR_TIMEOUT_MS = 12_000;
+let r2MirrorLastPushAt = 0;
+let r2MirrorPushInFlight: Promise<any> | null = null;
+const R2_MIRROR_PUSH_MIN_INTERVAL_MS = 30_000;
+
+async function r2DirectFetch(path: string, init: RequestInit = {}, timeoutMs = R2_MIRROR_TIMEOUT_MS): Promise<any> {
+  const token = authToken() || String(getCachedNasSession()?.token || "").trim();
+  if (!token) throw new Error("Token NAS manquant pour le miroir R2.");
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), Math.max(5_000, timeoutMs));
+  try {
+    const headers = new Headers(init.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Accept", "application/json");
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    const response = await fetch(`${R2_DIRECT_BASE}${path}`, { ...init, headers, signal: controller.signal, cache: "no-store" });
+    const text = await response.text().catch(() => "");
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok || json?.ok === false) {
+      const err: any = new Error(json?.message || json?.error || `R2 HTTP ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    return json;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function readR2NasUserMirror(): Promise<any | null> {
+  try {
+    const json = await r2DirectFetch("/mirror/user", { method: "GET" });
+    return json?.mirror && typeof json.mirror === "object" ? json.mirror : null;
+  } catch (error: any) {
+    if (Number(error?.status || 0) === 404) return null;
+    throw error;
+  }
+}
+
+async function readLatestR2PortableSnapshot(): Promise<any | null> {
+  try {
+    const list = await r2DirectFetch("?limit=1&includeDeleted=0", { method: "GET" });
+    const row = Array.isArray(list?.backups) ? list.backups[0] : null;
+    if (!row?.id) return null;
+    const downloaded = await r2DirectFetch(`/${encodeURIComponent(String(row.id))}`, { method: "GET" }, 45_000);
+    const raw = String(downloaded?.snapshotJson || "");
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  } catch {
+    return null;
+  }
+}
+
+async function mirrorPortableSnapshotDirectToR2(payload: any, reason = "nas_sync", force = false): Promise<void> {
+  const nowTs = Date.now();
+  if (!force && r2MirrorLastPushAt && nowTs - r2MirrorLastPushAt < R2_MIRROR_PUSH_MIN_INTERVAL_MS) return;
+  if (r2MirrorPushInFlight) {
+    if (!force) return;
+    try { await r2MirrorPushInFlight; } catch {}
+  }
+  const task = (async () => {
+    const snapshotJson = JSON.stringify(payload ?? null);
+    await r2DirectFetch("", {
+      method: "POST",
+      body: JSON.stringify({
+        snapshotJson,
+        title: `Miroir automatique NAS/R2 — ${new Date().toLocaleString("fr-FR")}`,
+        summary: summarizeSnapshotForDiag(payload),
+        metadata: { source: reason, engine: "nas-r2-mirror-v2", automatic: true },
+      }),
+    }, 60_000);
+    r2MirrorLastPushAt = Date.now();
+  })();
+  r2MirrorPushInFlight = task;
+  try { await task; } finally { if (r2MirrorPushInFlight === task) r2MirrorPushInFlight = null; }
 }
 
 export type NasMediaUploadPayload = {
@@ -603,6 +682,32 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number; force?: boo
 
     nasLastRestoreErrorAt = Date.now();
     nasLastRestoreErrorKey = message.slice(0, 120);
+
+    // NAS/PostgreSQL indisponible : Cloudflare Pages lit directement le miroir
+    // utilisateur R2 créé par le backend. La session reste donc complète (profil
+    // inclus) au lieu de dépendre uniquement du cache du navigateur.
+    try {
+      const mirror = await readR2NasUserMirror();
+      if (mirror?.user) {
+        const r2Session = buildSessionFromResponse({
+          ok: true,
+          token,
+          refreshToken: readLs(NAS_REFRESH_KEY) || cached?.refreshToken || "",
+          user: mirror.user,
+          profile: mirror.profile || cached?.profile || null,
+          degradedMode: true,
+          authProvider: "r2_nas_mirror",
+        }, mirror.user?.email);
+        if (r2Session?.token) {
+          saveNasTokens(r2Session, { silent: true });
+          console.warn("[nasApi] restoreSession NAS unavailable -> R2 mirror reused", { status, message });
+          return r2Session;
+        }
+      }
+    } catch (r2Error) {
+      runtimeDiag("nas:restoreSession:r2_mirror_error", { message: String((r2Error as any)?.message || r2Error) });
+    }
+
     console.warn("[nasApi] restoreSession soft-failed -> cached auth reused", { status, message });
     if (cached?.token) {
       try {
@@ -630,20 +735,27 @@ export async function nasGetProfile(): Promise<OnlineProfile | null> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
 
-  const json = await apiFetch("/profiles/me", { method: "GET" }).catch(async () => {
-    const fallback = await apiFetch("/auth/me", { method: "GET" });
-    return fallback;
-  });
-  const session = buildSessionFromResponse(
-    {
-      ...json,
-      token: authToken(),
-      refreshToken: readLs(NAS_REFRESH_KEY),
-    },
-    json?.user?.email
-  );
-  if (session?.token) saveNasTokens(session, { silent: true });
-  return session.profile;
+  try {
+    const json = await apiFetch("/profiles/me", { method: "GET" }).catch(async () => {
+      const fallback = await apiFetch("/auth/me", { method: "GET" });
+      return fallback;
+    });
+    const session = buildSessionFromResponse(
+      {
+        ...json,
+        token: authToken(),
+        refreshToken: readLs(NAS_REFRESH_KEY),
+      },
+      json?.user?.email
+    );
+    if (session?.token) saveNasTokens(session, { silent: true });
+    return session.profile;
+  } catch (error) {
+    const mirror = await readR2NasUserMirror().catch(() => null);
+    if (mirror?.profile) return normalizeProfile(mirror.profile, normalizeUser(mirror.user || {}, mirror.user?.email));
+    if (session0?.profile) return session0.profile;
+    throw error;
+  }
 }
 
 export async function nasUpdateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
@@ -942,8 +1054,27 @@ export async function nasPullStoreSnapshot(): Promise<{
     try { console.log("[nasSync] pull success", { updatedAt: result.updatedAt, version: result.version, summary: summarizeSnapshotForDiag(payload) }); } catch {}
     return result;
   } catch (e) {
-    try { console.warn("[nasSync] pull failed", e); } catch {}
+    try { console.warn("[nasSync] pull failed -> R2 failover", e); } catch {}
     runtimeDiag("nas:pull:error", { message: String((e as any)?.message || e), status: Number((e as any)?.status || 0) || null });
+
+    // 1) Miroir serveur : correspond au dernier user_store PostgreSQL exporté.
+    const mirror = await readR2NasUserMirror().catch(() => null);
+    const mirroredStore = mirror?.storeSnapshot?.payload ?? mirror?.storeSnapshot?.data ?? null;
+    if (mirroredStore != null) {
+      return {
+        status: "ok",
+        payload: mirroredStore,
+        updatedAt: mirror?.storeSnapshot?.updatedAt || mirror?.createdAt || null,
+        version: Number(mirror?.storeSnapshot?.version || 1),
+      };
+    }
+
+    // 2) Snapshot portable R2 courant : il est écrit directement par le frontend
+    // et peut donc être plus récent que le dernier cycle serveur.
+    const portable = await readLatestR2PortableSnapshot();
+    if (portable != null) {
+      return { status: "ok", payload: portable, updatedAt: null, version: 1 };
+    }
     return { status: "error", error: e };
   }
 }
@@ -986,6 +1117,13 @@ export async function nasPushStoreSnapshot(
 
   nasPushInFlight = true;
   nasPushLastAttemptAt = Date.now();
+
+  // R2 est un miroir, pas une destination alternative choisie dans les réglages :
+  // chaque snapshot NAS est aussi écrit directement dans Cloudflare Pages/R2.
+  // Cette écriture ne traverse jamais le QNAP.
+  const r2MirrorPromise = mirrorPortableSnapshotDirectToR2(payload, opts?.reason || "nas_sync_push", force)
+    .catch((r2Error) => console.warn("[nasSync] direct R2 mirror failed", r2Error));
+
   try {
     const session0 = await nasRestoreSession();
     if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
@@ -1022,6 +1160,7 @@ export async function nasPushStoreSnapshot(
         verify,
       });
     } catch {}
+    await r2MirrorPromise;
     return {
       ok: true,
       version,
@@ -1033,6 +1172,7 @@ export async function nasPushStoreSnapshot(
     const backoffMs = Math.min(NAS_PUSH_MAX_BACKOFF_MS, Math.max(NAS_PUSH_MIN_INTERVAL_MS, 5000 * (2 ** Math.max(0, nasPushFailureCount - 1))));
     nasPushBlockedUntil = Date.now() + backoffMs;
     console.warn("[nasSync] /sync/push failed -> backoff", { failures: nasPushFailureCount, backoffMs, error: e });
+    await r2MirrorPromise;
     throw e;
   } finally {
     nasPushInFlight = false;

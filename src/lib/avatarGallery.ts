@@ -5,6 +5,9 @@
 // - Compatible profils locaux, bots CPU, teams, Avatar IA, profil actif
 // =============================================================
 
+import { captureUserMediaFallback, galleryItemMediaKey } from "./userMediaFallback";
+import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+
 export type AvatarGalleryCategory = "account" | "local" | "bot" | "team" | "ia";
 
 export type AvatarGalleryItem = {
@@ -129,6 +132,16 @@ export function writeAvatarGallery(accountId: string | null | undefined, items: 
       } catch {}
     }
   }
+  // Chaque élément de galerie est aussi un objet R2 autonome. On ne dépend donc
+  // plus du localStorage ni du NAS pour retrouver l'image originale.
+  for (const item of safe) {
+    const src = String(item?.src || "").trim();
+    if (!src) continue;
+    void captureUserMediaFallback(galleryItemMediaKey(item.id), src, {
+      kind: "gallery_item",
+      updatedAt: Number(item.updatedAt || Date.now()),
+    }).catch(() => undefined);
+  }
   return safe;
 }
 
@@ -143,6 +156,7 @@ export function deleteAvatarGalleryItem(accountId: string | null | undefined, it
   const id = String(itemId || "").trim();
   if (!id) return readAvatarGallery(accountId);
   const next = readAvatarGallery(accountId).filter((item) => String(item.id || "") !== id);
+  void deleteDirectR2MediaFallback(galleryItemMediaKey(id)).catch(() => undefined);
   return writeAvatarGallery(accountId, next);
 }
 

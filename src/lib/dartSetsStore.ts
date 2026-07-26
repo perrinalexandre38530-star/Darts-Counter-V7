@@ -1,6 +1,7 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
 import { dartPresets } from "./dartPresets";
 import { getNasApiUrl } from "./serverConfig";
+import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey } from "./userMediaFallback";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -70,6 +71,7 @@ export interface DartSet {
 const STORAGE_KEY = "dc_dart_sets_v1";
 const META_KEY = "dc_dart_sets_v1_meta";
 const IMAGE_BANK_KEY = "dc_dart_sets_image_bank_v1";
+const r2BackfilledDartSetIds = new Set<string>();
 const LEGACY_DARTSET_STORAGE_KEYS = [
   "dc-dartsets-v1",
   "dc-dartSets-v1",
@@ -1398,6 +1400,17 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   writeMeta({ ...meta, initialized: true });
   invalidateLoadAllCache();
 
+  // Les images exactes sont répliquées immédiatement vers R2, indépendamment
+  // de l'auto-save React/NAS et même si le store principal doit être allégé.
+  for (const set of sanitized) {
+    const id = String(set?.id || "").trim();
+    if (!id) continue;
+    const main = String(set?.photoDataUrl || set?.imageDataUrl || set?.mainImageDataUrl || set?.dartSetImageDataUrl || set?.mainImageUrl || "").trim();
+    const thumb = String(set?.photoThumbDataUrl || set?.thumbDataUrl || set?.thumbImageDataUrl || set?.thumbImageUrl || main || "").trim();
+    if (main) void captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main", updatedAt: Number(set?.updatedAt || Date.now()) }).catch(() => undefined);
+    if (thumb) void captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb", updatedAt: Number(set?.updatedAt || Date.now()) }).catch(() => undefined);
+  }
+
   try {
     if (typeof window !== "undefined") {
       const w: any = window as any;
@@ -1880,17 +1893,38 @@ export function isDartSetFavoriteForProfile(set: any, profileId: string): boolea
   return Array.from(aliases).some((id) => favorites.has(id));
 }
 
+function backfillDartSetMediaToR2(list: DartSet[]): void {
+  for (const set of list || []) {
+    const id = String(set?.id || "").trim();
+    if (!id || r2BackfilledDartSetIds.has(id)) continue;
+    const main = String(getDartSetMainImageSrc(set) || "").trim();
+    const thumb = String(getDartSetThumbImageSrc(set) || main || "").trim();
+    if (!main && !thumb) continue;
+    r2BackfilledDartSetIds.add(id);
+    const jobs: Promise<any>[] = [];
+    if (main) jobs.push(captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main", updatedAt: Number(set.updatedAt || Date.now()) }));
+    if (thumb) jobs.push(captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb", updatedAt: Number(set.updatedAt || Date.now()) }));
+    void Promise.allSettled(jobs).then((rows) => {
+      if (rows.some((row) => row.status === "rejected" || !String((row as PromiseFulfilledResult<any>)?.value || ""))) r2BackfilledDartSetIds.delete(id);
+    });
+  }
+}
+
 export function getAllDartSets(): DartSet[] {
-  return loadAll();
+  const list = loadAll();
+  backfillDartSetMediaToR2(list);
+  return list;
 }
 
 export function getAllSelectableDartSets(): DartSet[] {
   // MES FLÉCHETTES = bibliothèque officielle créée par l'utilisateur.
   // On accepte aussi les dartsets explicites présents dans appStore/anciennes clés
   // pour réparer les publics perdus, mais jamais les presets inventés / profils / teams / URLs.
-  return dedupeVisibleDartSets(
+  const list = dedupeVisibleDartSets(
     loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set))
   );
+  backfillDartSetMediaToR2(list);
+  return list;
 }
 
 export function setAllDartSets(list: DartSet[]) {

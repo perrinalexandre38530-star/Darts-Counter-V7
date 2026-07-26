@@ -5,6 +5,8 @@
 // =============================================================
 
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
+import { captureUserMediaFallback, teamLogoMediaKey } from "./userMediaFallback";
+import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
 
 export type TeamSport = "petanque" | "darts" | string;
 
@@ -19,6 +21,7 @@ export type Team = {
 };
 
 const KEY = "dc-teams-v1";
+const r2BackfilledTeamIds = new Set<string>();
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -39,7 +42,7 @@ function safeStringify(v: any) {
 export function loadTeams(): Team[] {
   const arr = safeParse<any[]>(localStorage.getItem(KEY), []);
   if (!Array.isArray(arr)) return [];
-  return arr
+  const teams = arr
     .filter(Boolean)
     .map((t) => ({
       id: String(t.id || ""),
@@ -51,6 +54,14 @@ export function loadTeams(): Team[] {
       updatedAt: Number(t.updatedAt || Date.now()),
     }))
     .filter((t) => !!t.id);
+  for (const team of teams) {
+    const src = String(team.logoDataUrl || team.logoUrl || "").trim();
+    if (!src || r2BackfilledTeamIds.has(team.id)) continue;
+    r2BackfilledTeamIds.add(team.id);
+    void captureUserMediaFallback(teamLogoMediaKey(team.id), src, { kind: "team_logo", updatedAt: team.updatedAt })
+      .catch(() => r2BackfilledTeamIds.delete(team.id));
+  }
+  return teams;
 }
 
 export function saveTeams(next: Team[]) {
@@ -58,6 +69,16 @@ export function saveTeams(next: Team[]) {
   setJsonWithQuotaRecovery(KEY, clean, (list: any[]) =>
     (list || []).map((t: any) => ({ ...t, logoDataUrl: undefined }))
   );
+  // Le logo utilisateur est écrit séparément dans R2 AVANT qu'une future
+  // récupération de quota localStorage puisse supprimer son DataURL local.
+  for (const team of next || []) {
+    const src = String((team as any)?.logoDataUrl || (team as any)?.logoUrl || "").trim();
+    if (!team?.id || !src) continue;
+    void captureUserMediaFallback(teamLogoMediaKey(team.id), src, {
+      kind: "team_logo",
+      updatedAt: Number(team.updatedAt || Date.now()),
+    }).catch((error) => console.warn("[teamsStore] R2 team logo mirror failed", error));
+  }
 }
 
 export function loadTeamsBySport(sport: TeamSport): Team[] {
@@ -120,6 +141,7 @@ export function updateTeam(
 export function deleteTeam(id: string) {
   const prev = loadTeams();
   saveTeams(prev.filter((t) => t.id !== id));
+  void deleteDirectR2MediaFallback(teamLogoMediaKey(id)).catch(() => undefined);
 }
 
 // ---------------------------

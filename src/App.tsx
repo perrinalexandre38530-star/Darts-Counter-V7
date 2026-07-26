@@ -76,7 +76,7 @@ import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import { setAvatarCache } from "./lib/avatarCache";
 import { mirrorAvatarFallbackToR2 } from "./lib/avatarR2Fallback";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
-import { hydrateStoreUserMedia } from "./lib/userMediaFallback";
+import { botAvatarMediaKey, captureUserMediaFallback, hydrateStoreUserMedia, profileAvatarMediaKey } from "./lib/userMediaFallback";
 import BottomNav from "./components/BottomNav";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
@@ -4788,6 +4788,12 @@ case "babyfoot_team_edit":
               alert("Enregistrement avatar BOT impossible (stockage plein ?)");
               return;
             }
+            if (finalAvatarDataUrl) {
+              void captureUserMediaFallback(botAvatarMediaKey(latestTarget.id), finalAvatarDataUrl, {
+                kind: "bot_avatar",
+                updatedAt: Date.now(),
+              }).catch((error) => console.warn("[AvatarUpload] bot R2 mirror failed", error));
+            }
             try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
             try {
               const w: any = window as any;
@@ -4857,11 +4863,20 @@ case "babyfoot_team_edit":
             // Cloudflare R2. Aucun passage par le NAS/PostgreSQL : même si le
             // QNAP tombe ensuite, ProfileAvatar pourra la relire via Pages/R2.
             if (finalAvatarDataUrl) {
+              // Deux miroirs complémentaires :
+              // 1) miniature historique pour compatibilité,
+              // 2) copie EXACTE dans le coffre média R2 v2.
               void mirrorAvatarFallbackToR2(String(targetProfile.id), finalAvatarDataUrl, {
                 avatarUpdatedAt: uploadRes?.avatarUpdatedAt || now,
                 avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || null,
               }).catch((r2Error) => {
                 console.warn("[AvatarUpload] R2 avatar mirror skipped", r2Error);
+              });
+              void captureUserMediaFallback(profileAvatarMediaKey(targetProfile.id), finalAvatarDataUrl, {
+                kind: isMainAccountProfile ? "profile_avatar" : "local_profile_avatar",
+                updatedAt: now,
+              }).catch((r2Error) => {
+                console.warn("[AvatarUpload] exact R2 avatar mirror failed", r2Error);
               });
             }
 
@@ -4918,6 +4933,10 @@ case "babyfoot_team_edit":
             if (r2Source) {
               void mirrorAvatarFallbackToR2(String(targetProfile.id), r2Source, { avatarUpdatedAt: now })
                 .catch((r2Error) => console.warn("[AvatarUpload] local-only R2 mirror skipped", r2Error));
+              void captureUserMediaFallback(profileAvatarMediaKey(targetProfile.id), r2Source, {
+                kind: "local_profile_avatar",
+                updatedAt: now,
+              }).catch((r2Error) => console.warn("[AvatarUpload] local-only exact R2 mirror failed", r2Error));
             }
             go(backTo);
           }

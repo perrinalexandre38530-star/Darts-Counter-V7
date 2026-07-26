@@ -1594,7 +1594,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   // MEDIA FAILOVER: capture les pixels AVANT que le store principal soit allégé.
   // Ainsi avatars/photos de sets/logos restent dans un coffre IndexedDB dédié et
   // sont répliqués vers R2 sans dépendre du NAS.
-  try { captureStoreUserMedia(guardedInput as any); } catch {}
+  void captureStoreUserMedia(guardedInput as any).catch(() => undefined);
   const startedAt = storageNowMs();
 
   try {
@@ -2419,6 +2419,15 @@ function sanitizeStoreForCloud(store: any) {
 
 export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   const dump = await exportAll();
+  // Avant de supprimer les gros data:image du snapshot portable, on scelle
+  // toutes les images originales connues dans les objets média R2 dédiés.
+  // Ainsi le snapshot peut rester léger sans perdre le moindre média.
+  try {
+    const currentStore: any = await loadStore();
+    if (currentStore) await captureStoreUserMedia(currentStore);
+  } catch (mediaMirrorError) {
+    console.warn("[storage] exact R2 media mirror preflight incomplete", mediaMirrorError);
+  }
   try {
     const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
 

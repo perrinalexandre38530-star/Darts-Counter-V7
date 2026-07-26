@@ -11,6 +11,8 @@
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import { getTeamLogoTemplateBySrc, resolveTeamLogoSrc } from "../assets/teamLogoLibrary";
 import { fileToCompressedImageDataUrl, sanitizeStoredImage, setJsonWithQuotaRecovery } from "./teamImageStorage";
+import { captureUserMediaFallback, teamCoverMediaKey, teamLogoMediaKey } from "./userMediaFallback";
+import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
 
 export type TeamSport = string;
 
@@ -109,6 +111,7 @@ export type PetanqueTeam = {
 // ---------------------------------------------------------------------
 // Store unique Teams partagé par Profiles > Teams ET PetanqueConfig.
 const STORAGE_KEY = "dc-teams-v1";
+const r2BackfilledSharedTeamIds = new Set<string>();
 
 // (Optionnel) Ancienne clé si tu avais un store Pétanque dédié auparavant.
 // Mets-la à une valeur réelle si tu veux activer la migration au premier load.
@@ -314,7 +317,21 @@ export function loadTeams(): TeamEntity[] {
     .map(normalizeTeamEntity)
     .filter(Boolean) as TeamEntity[];
 
-  return dedupeById(normalized);
+  const teams = dedupeById(normalized);
+  for (const team of teams) {
+    if (r2BackfilledSharedTeamIds.has(team.id)) continue;
+    const logo = String(team.logoDataUrl || team.logoUrl || team.avatarUrl || team.imageUrl || "").trim();
+    const cover = String(team.coverDataUrl || team.coverUrl || "").trim();
+    if (!logo && !cover) continue;
+    r2BackfilledSharedTeamIds.add(team.id);
+    const jobs: Promise<any>[] = [];
+    if (logo) jobs.push(captureUserMediaFallback(teamLogoMediaKey(team.id), logo, { kind: "team_logo", updatedAt: team.updatedAt }));
+    if (cover) jobs.push(captureUserMediaFallback(teamCoverMediaKey(team.id), cover, { kind: "team_cover", updatedAt: team.updatedAt }));
+    void Promise.allSettled(jobs).then((rows) => {
+      if (rows.some((row) => row.status === "rejected" || !String((row as PromiseFulfilledResult<any>)?.value || ""))) r2BackfilledSharedTeamIds.delete(team.id);
+    });
+  }
+  return teams;
 }
 
 export function saveTeams(list: TeamEntity[]) {
@@ -327,6 +344,17 @@ export function saveTeams(list: TeamEntity[]) {
       coverDataUrl: null,
     }))
   );
+  // Chaque média personnalisé d'équipe a sa copie R2 exacte et indépendante
+  // du snapshot général. Les URLs NAS déjà chargées sont capturées depuis le
+  // cache navigateur ; les DataURL sont conservés octet pour octet.
+  for (const team of clean) {
+    const logo = String((team as any).logoDataUrl || (team as any).logoUrl || (team as any).avatarUrl || (team as any).imageUrl || "").trim();
+    const cover = String((team as any).coverDataUrl || (team as any).coverUrl || "").trim();
+    if (logo) void captureUserMediaFallback(teamLogoMediaKey(team.id), logo, { kind: "team_logo", updatedAt: Number(team.updatedAt || Date.now()) })
+      .catch((error) => console.warn("[teams] R2 logo mirror failed", error));
+    if (cover) void captureUserMediaFallback(teamCoverMediaKey(team.id), cover, { kind: "team_cover", updatedAt: Number(team.updatedAt || Date.now()) })
+      .catch((error) => console.warn("[teams] R2 cover mirror failed", error));
+  }
   try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
   try { window.dispatchEvent(new Event("dc:teams-changed")); } catch {}
 }
@@ -444,6 +472,10 @@ export function updateTeam(
 export function deleteTeam(teamId: string) {
   const list = loadTeams().filter((t) => t.id !== teamId);
   saveTeams(list);
+  void Promise.allSettled([
+    deleteDirectR2MediaFallback(teamLogoMediaKey(teamId)),
+    deleteDirectR2MediaFallback(teamCoverMediaKey(teamId)),
+  ]);
   return list;
 }
 

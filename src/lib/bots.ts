@@ -4,9 +4,11 @@ import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 import { getNasApiUrl } from "./serverConfig";
+import { botAvatarMediaKey, captureUserMediaFallback } from "./userMediaFallback";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
+const r2BackfilledBotIds = new Set<string>();
 const LS_BOT_AVATAR_ITEM_PREFIX = "dc_bot_avatar_v1:";
 const BOTS_STORAGE_VERSION = 2;
 const BOTS_CHANGED_EVENT = "dc:bots-changed";
@@ -519,9 +521,20 @@ export function loadBots(): BotRecord[] {
     };
   });
 
-  if (merged.length > 0) return normalizeBotsList(merged);
-
-  return readLegacyInlineBots();
+  const result = merged.length > 0 ? normalizeBotsList(merged) : readLegacyInlineBots();
+  // Backfill automatique des BOT déjà existants avant ce patch. Une seule
+  // tentative par BOT et par session suffit ; les sauvegardes suivantes passent
+  // par saveBots() et réécrivent la copie R2 si l'avatar change.
+  for (const bot of result) {
+    const src = String(bot?.avatarDataUrl || bot?.avatar || bot?.avatarUrl || "").trim();
+    if (!bot?.id || !src || r2BackfilledBotIds.has(bot.id)) continue;
+    r2BackfilledBotIds.add(bot.id);
+    void captureUserMediaFallback(botAvatarMediaKey(bot.id), src, {
+      kind: "bot_avatar",
+      updatedAt: Date.parse(String(bot?.updatedAt || "")) || Date.now(),
+    }).catch(() => { r2BackfilledBotIds.delete(bot.id); });
+  }
+  return result;
 }
 
 function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStore?: boolean; dispatch?: boolean }): boolean {
@@ -577,11 +590,23 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
 }
 
 export function saveBots(list: any[]): boolean {
-  return persistBots(list, {
+  const ok = persistBots(list, {
     triggerCloud: true,
     updateAppStore: true,
     dispatch: true,
   });
+  if (ok) {
+    for (const raw of Array.isArray(list) ? list : []) {
+      const bot = normalizeBotRecord(raw);
+      const src = String(bot?.avatarDataUrl || (raw as any)?.avatarDataUrl || (raw as any)?.avatar || (raw as any)?.avatarUrl || "").trim();
+      if (!bot?.id || !src) continue;
+      void captureUserMediaFallback(botAvatarMediaKey(bot.id), src, {
+        kind: "bot_avatar",
+        updatedAt: Date.parse(String(bot?.updatedAt || "")) || Date.now(),
+      }).catch(() => undefined);
+    }
+  }
+  return ok;
 }
 
 export function restoreBotsFromSnapshot(list: any[]): boolean {

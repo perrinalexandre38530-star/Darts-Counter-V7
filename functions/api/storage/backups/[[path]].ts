@@ -196,8 +196,46 @@ function mediaFallbackKey(userId: string, mediaKey: string): string {
   return `users/${safeId(userId)}/media-fallback/${safeId(mediaKey)}.json`;
 }
 
+function mediaFallbackManifestKey(userId: string): string {
+  return `users/${safeId(userId)}/media-fallback/manifest-v2.json`;
+}
+
+function nasUserMirrorKey(userId: string): string {
+  return `users/${safeId(userId)}/nas-mirror/user-v1.json`;
+}
+
 function entitlementKey(userId: string): string {
   return `users/${safeId(userId)}/billing/storage-entitlement-v1.json`;
+}
+
+type MediaMirrorManifest = {
+  version: 2;
+  userId: string;
+  updatedAt: string;
+  media: Record<string, { key: string; kind: string; sizeBytes: number; checksum: string; updatedAtMs: number; sourceUrl?: string | null }>;
+};
+
+async function readMediaMirrorManifest(bucket: R2Bucket, userId: string): Promise<MediaMirrorManifest> {
+  const object = await bucket.get(mediaFallbackManifestKey(userId));
+  if (!object) return { version: 2, userId, updatedAt: new Date(0).toISOString(), media: {} };
+  try {
+    const parsed: any = JSON.parse(await object.text());
+    return {
+      version: 2,
+      userId,
+      updatedAt: String(parsed?.updatedAt || ""),
+      media: parsed?.media && typeof parsed.media === "object" ? parsed.media : {},
+    };
+  } catch {
+    return { version: 2, userId, updatedAt: new Date(0).toISOString(), media: {} };
+  }
+}
+
+async function writeMediaMirrorManifest(bucket: R2Bucket, manifest: MediaMirrorManifest): Promise<void> {
+  manifest.updatedAt = new Date().toISOString();
+  await bucket.put(mediaFallbackManifestKey(manifest.userId), JSON.stringify(manifest), {
+    httpMetadata: { contentType: "application/json" },
+  });
 }
 
 async function readStorageEntitlement(bucket: R2Bucket, userId: string): Promise<StorageEntitlement | null> {
@@ -446,6 +484,32 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     const identity = await resolveIdentity(request, env);
 
+    // Miroir serveur NAS publié automatiquement par le backend Node.
+    // Lecture indépendante du NAS/PostgreSQL : permet de restaurer profil + store
+    // lorsque le QNAP est indisponible.
+    if (method === "GET" && parts.length === 2 && parts[0] === "mirror" && parts[1] === "user") {
+      const object = await bucket.get(nasUserMirrorKey(identity.userId));
+      if (!object) return json({ ok: false, code: "nas_user_mirror_missing", error: "Miroir utilisateur R2 introuvable." }, 404);
+      try {
+        const mirror = JSON.parse(await object.text());
+        return json({ ok: true, mirror, authMode: identity.authMode });
+      } catch {
+        return json({ ok: false, code: "nas_user_mirror_invalid", error: "Miroir utilisateur R2 illisible." }, 500);
+      }
+    }
+
+    if (method === "GET" && parts.length === 1 && parts[0] === "media-manifest") {
+      const manifest = await readMediaMirrorManifest(bucket, identity.userId);
+      const rows = Object.values(manifest.media || {});
+      const totalBytes = rows.reduce((sum: number, row: any) => sum + Number(row?.sizeBytes || 0), 0);
+      return json({
+        ok: true,
+        manifest,
+        audit: { total: rows.length, totalBytes, updatedAt: manifest.updatedAt },
+        authMode: identity.authMode,
+      });
+    }
+
     // -----------------------------------------------------------------------
     // MEDIA FAILOVER R2 GENERIQUE
     // Photos de sets, logos, couvertures et autres images créées/importées par
@@ -474,30 +538,48 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           return json({ ok: false, error: "Image de secours invalide." }, 400);
         }
         const sizeBytes = new TextEncoder().encode(dataUrl).byteLength;
-        const configuredMax = Math.max(180_000, Number(env.CLOUD_OBJECT_MAX_UPLOAD_BYTES || 0));
-        const maxBytes = Math.min(configuredMax || 2_000_000, 2_000_000);
+        // Le miroir doit conserver l'image originale, pas une miniature recompressée.
+        // 32 MiB par défaut, ou la limite Cloud configurée si elle est supérieure.
+        const configuredMax = Math.max(32 * 1024 * 1024, Number(env.CLOUD_OBJECT_MAX_UPLOAD_BYTES || 0));
+        const maxBytes = configuredMax;
         if (sizeBytes > maxBytes) {
-          return json({ ok: false, error: `Image de secours trop volumineuse (${sizeBytes} octets, max ${maxBytes}).` }, 413);
+          return json({ ok: false, error: `Image miroir trop volumineuse (${sizeBytes} octets, max ${maxBytes}).` }, 413);
         }
+        const checksum = await sha256Hex(dataUrl);
         const payload = {
-          version: 1,
+          version: 2,
           key: mediaKey,
           kind: String(body?.kind || "user_image").slice(0, 80),
           dataUrl,
+          sizeBytes,
+          checksum,
           updatedAtMs: Number(body?.updatedAt || Date.now()) || Date.now(),
           sourceUrl: body?.sourceUrl ? String(body.sourceUrl).slice(0, 1600) : null,
           updatedAt: new Date().toISOString(),
         };
         await bucket.put(key, JSON.stringify(payload), {
           httpMetadata: { contentType: "application/json" },
-          customMetadata: { userId: identity.userId, mediaKey, kind: payload.kind },
+          customMetadata: { userId: identity.userId, mediaKey, kind: payload.kind, checksum },
         });
-        return json({ ok: true, media: payload, authMode: identity.authMode }, 201);
+        const mediaManifest = await readMediaMirrorManifest(bucket, identity.userId);
+        mediaManifest.media[mediaKey] = {
+          key: mediaKey,
+          kind: payload.kind,
+          sizeBytes,
+          checksum,
+          updatedAtMs: payload.updatedAtMs,
+          sourceUrl: payload.sourceUrl,
+        };
+        await writeMediaMirrorManifest(bucket, mediaManifest);
+        return json({ ok: true, media: payload, audit: { total: Object.keys(mediaManifest.media).length }, authMode: identity.authMode }, 201);
       }
 
       if (method === "DELETE") {
         await bucket.delete(key);
-        return json({ ok: true, deleted: true });
+        const mediaManifest = await readMediaMirrorManifest(bucket, identity.userId);
+        delete mediaManifest.media[mediaKey];
+        await writeMediaMirrorManifest(bucket, mediaManifest);
+        return json({ ok: true, deleted: true, audit: { total: Object.keys(mediaManifest.media).length } });
       }
     }
 
