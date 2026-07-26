@@ -61,8 +61,15 @@ export default function BowlingStatsTabFull({ records = [], playerId, playerName
   const bulls = sum(rows, "bulls") + sum(rows, "dbulls");
   const doubles = sum(rows, "doubles");
   const triples = sum(rows, "triples");
-  const frameOpportunities = Math.max(1, gamesPlayed * 10);
-  const spareOpportunities = Math.max(1, frameOpportunities - strikes);
+  const framesPlayed = sum(rows, "framesPlayed") || gamesPlayed * 10;
+  const strikeFrames = sum(rows, "strikeFrames") || Math.min(strikes, framesPlayed);
+  const spareFrames = sum(rows, "spareFrames") || Math.min(spares, Math.max(0, framesPlayed - strikeFrames));
+  const cleanFrames = sum(rows, "cleanFrames") || strikeFrames + spareFrames;
+  const spareOpportunities = sum(rows, "spareOpportunities") || Math.max(0, framesPlayed - strikeFrames);
+  const firstBallAvg = framesPlayed ? rows.reduce((total, row) => total + n(row?.firstBallAvg) * Math.max(0, n(row?.framesPlayed, n(row?.gamesPlayed) * 10)), 0) / Math.max(1, rows.reduce((total,row)=>total+Math.max(0,n(row?.framesPlayed,n(row?.gamesPlayed)*10)),0)) : 0;
+  const perfectGames = sum(rows, "perfectGames");
+  const games250 = sum(rows, "games250");
+  const games200 = sum(rows, "games200");
   const avgGame = gamesPlayed ? matches.reduce((total, { row }) => {
     const scores = Array.isArray(row?.gameScores) ? row.gameScores.map((v: any) => n(v)) : [];
     return total + scores.reduce((a: number, b: number) => a + b, 0);
@@ -79,15 +86,30 @@ export default function BowlingStatsTabFull({ records = [], playerId, playerName
         <Kpi label="Parties jouées" value={gamesPlayed} detail={`${gamesWon} gagnée${gamesWon > 1 ? "s" : ""}`} color={GOOD} />
         <Kpi label="High game" value={highGame} detail={highGame === 300 ? "PERFECT GAME" : "record personnel enregistré"} color={GOLD} />
         <Kpi label="Score moyen" value={avgGame ? avgGame.toFixed(1) : "—"} detail="moyenne par partie de 10 frames" color={CYAN} />
-        <Kpi label="Strikes" value={strikes} detail={`${pct(strikes, frameOpportunities)} des frames`} color={GOLD} />
-        <Kpi label="Spares" value={spares} detail={`${pct(spares, spareOpportunities)} des opportunités`} color={PINK} />
-        <Kpi label="Open frames" value={opens} detail={`${pct(opens, frameOpportunities)} des frames`} />
+        <Kpi label="Strikes" value={strikes} detail={`${pct(strikeFrames, Math.max(1, framesPlayed))} des frames · ${strikeFrames} frames X`} color={GOLD} />
+        <Kpi label="Spares" value={spares} detail={`${pct(spareFrames, Math.max(1, spareOpportunities))} de conversion · ${spareFrames} frames /`} color={PINK} />
+        <Kpi label="Clean frames" value={`${pct(cleanFrames, Math.max(1, framesPlayed))}`} detail={`${cleanFrames}/${framesPlayed} frames fermées X ou /`} color={GOOD} />
+        <Kpi label="Open frames" value={opens} detail={`${pct(opens, Math.max(1, framesPlayed))} des frames`} />
         <Kpi label="Gutters" value={gutters} detail={`${pct(gutters, rolls)} des lancers`} color={BAD} />
         <Kpi label="Meilleure série X" value={bestStrikeStreak} detail="strikes consécutifs" color={GOLD} />
         <Kpi label="Quilles / lancer" value={rolls ? (pins / rolls).toFixed(2) : "0"} detail={`${pins} quilles · ${rolls} lancers`} color={CYAN} />
         <Kpi label="Meilleur lancer" value={`${bestRoll}/10`} detail={`${darts} fléchettes enregistrées`} />
+        <Kpi label="1re boule moyenne" value={firstBallAvg ? firstBallAvg.toFixed(2) : "—"} detail="quilles abattues sur la première boule" color={CYAN} />
+        <Kpi label="Parties 200+" value={games200} detail={`${games250} à 250+ · ${perfectGames} perfect game`} color={GOLD} />
         <Kpi label="Impacts spéciaux" value={bulls + doubles + triples} detail={`${bulls} BULL · ${doubles} D · ${triples} T`} color={GOOD} />
       </div>
+
+      <section style={{ marginTop: 12, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 11 }}>
+        <div style={{ color: CYAN, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", marginBottom: 7 }}>Profil Bowling</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+          {[
+            ["Clean frames", cleanFrames, framesPlayed, GOOD],
+            ["Strike frames", strikeFrames, framesPlayed, GOLD],
+            ["Spare conversion", spareFrames, spareOpportunities, PINK],
+            ["Gutter rate", gutters, Math.max(1, rolls), BAD],
+          ].map(([label,value,total,color]: any) => { const ratio = total > 0 ? Math.min(100, Math.max(0, (n(value) / n(total)) * 100)) : 0; return <div key={label} style={{ padding: 9, borderRadius: 13, background: "rgba(0,0,0,.18)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontSize: 8.5, fontWeight: 900 }}><span style={{ color: "#aab0c1" }}>{label}</span><span style={{ color }}>{ratio.toFixed(1)}%</span></div><div style={{ marginTop: 6, height: 5, borderRadius: 99, background: "rgba(255,255,255,.07)", overflow: "hidden" }}><div style={{ width: `${ratio}%`, height: "100%", background: color, borderRadius: 99 }} /></div><div style={{ marginTop: 4, color: "#8f96a8", fontSize: 8 }}>{n(value)}/{n(total)}</div></div>; })}
+        </div>
+      </section>
 
       <section style={{ marginTop: 12, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", padding: 11 }}>
         <div style={{ color: GOLD, fontSize: 10, fontWeight: 1000, textTransform: "uppercase", marginBottom: 7 }}>Parties récentes</div>

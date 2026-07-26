@@ -90,6 +90,9 @@ export type BowlingVisit = {
   labels: string[];
   pins: number;
   maxPins: number;
+  pinsStandingBefore: number;
+  pinsStandingAfter: number;
+  result: "strike" | "spare" | "gutter" | "open" | "pins";
   strike: boolean;
   spare: boolean;
   bullStrike: boolean;
@@ -115,6 +118,10 @@ export type BowlingCompletedGame = {
   winnerIds: string[];
   tied: boolean;
   completedAt: number;
+  // Instantané de la feuille de score avant remise à zéro pour la partie suivante.
+  // Utilisé par le rapport de fin de série, l'historique et le centre de statistiques.
+  framesByPlayer: Record<string, BowlingFrame[]>;
+  visits: BowlingVisit[];
 };
 
 export type BowlingState = {
@@ -454,7 +461,22 @@ function closeGame(state: BowlingState) {
     } else if (state.statsByPlayer[winner]) state.statsByPlayer[winner].gamesWon += 1;
   }
 
-  state.completedGames.push({ gameNo: state.gameNo, scoresByPlayer, entityScores, winnerIds: winners, tied, completedAt: Date.now() });
+  const framesSnapshot: Record<string, BowlingFrame[]> = {};
+  state.players.forEach((player) => {
+    framesSnapshot[player.id] = (state.framesByPlayer[player.id] || []).map((frame) => ({
+      ...frame,
+      rolls: [...(frame.rolls || [])],
+      visitIds: [...(frame.visitIds || [])],
+    }));
+  });
+  const gameVisits = state.history
+    .filter((visit) => visit.gameNo === state.gameNo)
+    .map((visit) => ({ ...visit, darts: (visit.darts || []).map((dart) => ({ ...dart })), labels: [...(visit.labels || [])] }));
+
+  state.completedGames.push({
+    gameNo: state.gameNo, scoresByPlayer, entityScores, winnerIds: winners, tied, completedAt: Date.now(),
+    framesByPlayer: framesSnapshot, visits: gameVisits,
+  });
   const matchWinners = ids.filter((id) => Number(state.setWinsByEntity[id] || 0) >= state.rules.setsToWin);
   if (matchWinners.length) {
     state.finished = true;
@@ -525,10 +547,21 @@ export function playBowlingRoll(stateInput: BowlingState, playerId: string, dart
     else if (frame.complete && frame.open) stats.openFrames += 1;
   }
 
+  const result: BowlingVisit["result"] = justStrike
+    ? "strike"
+    : justSpare
+      ? "spare"
+      : calc.pins === 0
+        ? "gutter"
+        : frame.complete && frame.open
+          ? "open"
+          : "pins";
+
   state.history.push({
     id: visitId, createdAt: new Date().toISOString(), gameNo: state.gameNo, playerId,
     teamId: state.teamByPlayer[playerId] || null, frame: frame.index, roll: rollIndex,
     darts, labels: darts.map(bowlingDartLabel), pins: calc.pins, maxPins: calc.maxPins,
+    pinsStandingBefore: calc.maxPins, pinsStandingAfter: Math.max(0, calc.maxPins - calc.pins), result,
     strike: justStrike, spare: justSpare, bullStrike: calc.bullStrike, doubleSpare: calc.doubleSpare,
   });
 

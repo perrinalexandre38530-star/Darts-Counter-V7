@@ -16,6 +16,10 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
+import bestCardBackgroundClassic from "../assets-webp/games/loterie-best-card-bg-classic.webp";
+import bestCardBackgroundSimple from "../assets-webp/games/loterie-best-card-bg-simple.png";
+import bestCardBackgroundDouble from "../assets-webp/games/loterie-best-card-bg-double.png";
+import bestCardBackgroundTriple from "../assets-webp/games/loterie-best-card-bg-triple.png";
 import {
   bestCardProgress,
   buildPlayerStates,
@@ -73,13 +77,18 @@ function MiniKpi({ label, value, color = GOLD, onClick }: any) {
 }
 function ModeInlineInfo({ kind, value, accent }: any) {
   const icon = kind === "darts" ? (
-    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><path d="M5 19 19 5M12.5 5H19v6.5M4.5 13.5l6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    <svg width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><path d="M5 19 19 5M12.5 5H19v6.5M4.5 13.5l6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
   ) : kind === "range" ? (
-    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+    <svg width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.7"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
   ) : (
-    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><rect x="5" y="6" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" strokeWidth="1.4" opacity=".8"/></svg>
+    <svg width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><rect x="5" y="6" width="14" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.7"/><path d="M9 6v12M15 6v12" fill="none" stroke="currentColor" strokeWidth="1.4" opacity=".8"/></svg>
   );
-  return <div style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#fff", minWidth: 0 }}><span style={{ color: accent, display: "grid", placeItems: "center", flex: "0 0 auto" }}>{icon}</span><span style={{ fontSize: 9.2, fontWeight: 950, whiteSpace: "nowrap" }}>{value}</span></div>;
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: "clamp(2px, .8vw, 5px)", color: "#fff", minWidth: 0, flex: "0 1 auto", whiteSpace: "nowrap" }}>
+      <span style={{ color: accent, display: "grid", placeItems: "center", flex: "0 0 auto", fontSize: "clamp(11px, 3.4vw, 17px)" }}>{icon}</span>
+      <span style={{ fontSize: "clamp(6.6px, 2.3vw, 9.2px)", fontWeight: 950, lineHeight: 1, whiteSpace: "nowrap" }}>{value}</span>
+    </div>
+  );
 }
 function recentScoreItems(events: any[], playerId: string, max = 5) {
   return [...(events || [])].filter((e: any) => e.playerId === playerId).slice(-max).reverse().map((ev: any, idx: number) => ({
@@ -452,6 +461,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const activeAvatarProfile = active ? { ...active, avatarDataUrl: avatarOf(active), avatarUrl: avatarOf(active) } : null;
   const themeAccent = theme?.primary || GOLD;
   const accent = themeAccent;
+  const bestCardBackground = React.useMemo(() => {
+    if (config?.variant !== "express") return bestCardBackgroundClassic;
+    if (config?.expressTarget === "simple") return bestCardBackgroundSimple;
+    if (config?.expressTarget === "double") return bestCardBackgroundDouble;
+    if (config?.expressTarget === "triple") return bestCardBackgroundTriple;
+    return bestCardBackgroundClassic;
+  }, [config?.variant, config?.expressTarget]);
 
   return (
     <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -5%, color-mix(in srgb, ${themeAccent} 14%, transparent) 0, ${theme?.bg || "#080c17"} 46%, #020309 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
@@ -482,14 +498,15 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
               {botThinking ? <div style={{ color: accent, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1, marginBottom: 2 }}>BOT EN RÉFLEXION</div> : null}
               <div style={{ color: accent, fontSize: 14, fontWeight: 1000, letterSpacing: .8, lineHeight: 1.02, maxWidth: "100%", textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(active)}</div>
               <div style={{ marginTop: 5, color: "#ffcf57", fontSize: 58, fontWeight: 900, lineHeight: 1, textShadow: "0 4px 18px rgba(255,195,26,.25)", whiteSpace: "nowrap" }}>{remainingForWin}</div>
-              <div style={{ marginTop: "auto", display: "flex", gap: 13, alignItems: "center", justifyContent: "center", flexWrap: "wrap", width: "100%" }}>
+              <div style={{ marginTop: "auto", display: "flex", gap: "clamp(4px, 1.6vw, 13px)", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", width: "100%", minWidth: 0, overflow: "hidden" }}>
                 <ModeInlineInfo kind="darts" value={config.variant === "classic" ? "3 darts" : "Express"} accent={accent} />
                 <ModeInlineInfo kind="range" value={config.variant === "classic" ? `${active?.targetMin}–${active?.targetMax}` : config.expressTarget.toUpperCase()} accent={accent} />
                 <ModeInlineInfo kind="cards" value={`${config.cardsPerPlayer} carton${config.cardsPerPlayer > 1 ? "s" : ""}`} accent={accent} />
               </div>
             </div>
             <button type="button" onClick={() => openCards(bestIdx)} style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, minWidth: 0, overflow: "hidden", borderRadius: 18, border: `1px solid ${themeAccent}55`, background: "#080b12", cursor: "pointer", padding: 0, color: "#fff" }}>
-              <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.32), rgba(4,8,16,.78)), url(${scratchTicketPreview})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .72 }} />
+              <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg, rgba(4,8,16,.20), rgba(4,8,16,.66)), url(${bestCardBackground})`, backgroundPosition: "center 48%", backgroundSize: "cover", opacity: .92, filter: "saturate(.9) contrast(1.04)" }} />
+              <div style={{ position: "absolute", inset: 0, boxShadow: `inset 0 0 28px rgba(0,0,0,.62), inset 0 0 0 1px ${themeAccent}18`, pointerEvents: "none" }} />
               <div style={{ position: "relative", display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px 4px" }}>
                 <div style={{ color: SOFT, fontSize: 9.5, fontWeight: 950 }}>MEILLEUR CARTON</div>
                 <div style={{ color: themeAccent, fontSize: 28, lineHeight: 1, fontWeight: 1100, marginTop: 5 }}>C{bestIdx + 1}</div>
