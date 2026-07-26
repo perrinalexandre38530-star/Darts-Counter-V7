@@ -14,6 +14,7 @@ import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import { playGolfTickerSound } from "../lib/sfx";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import victoryImage from "../assets/victory.webp";
@@ -49,9 +50,13 @@ const SCORE_REVEAL_MS = 3200;
 // charger qu'une seule carte à la fin d'une volée au lieu d'embarquer les 111
 // visuels dans le chunk JavaScript.
 const LOTERIE_SCORE_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/score-cards/`;
+const LOTERIE_SPECIAL_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/special-cards/`;
 function loterieScoreCardUrl(score: number) {
   const n = Math.round(Number(score) || 0);
   return n >= 10 && n <= 120 ? `${LOTERIE_SCORE_CARD_BASE}${n}.webp` : null;
+}
+function loterieOutOfDrawCardUrl(lang?: string) {
+  return `${LOTERIE_SPECIAL_CARD_BASE}${lang === "fr" ? "hors-lot-fr" : "out-of-draw-en"}.webp`;
 }
 function isHorsLoterieScore(score: number) {
   const n = Math.round(Number(score) || 0);
@@ -141,12 +146,12 @@ function recentScoreItems(events: any[], playerId: string, max = 5) {
 function RecentScoreBadges({ scores, onClick, compact = false }: any) {
   return <button type="button" onClick={onClick} style={{ width: "100%", minHeight: compact ? 54 : 66, borderRadius: 14, border: `1px dashed rgba(214,166,53,.55)`, background: "rgba(255,248,232,.82)", padding: compact ? 8 : 9, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 6px 15px rgba(0,0,0,.06)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>DERNIERS SCORES</div><div style={{ color: "#b7871e", fontSize: 8.2, fontWeight: 1000 }}>VOIR ▸</div></div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{scores?.length ? scores.map((item: any) => <div key={item.id} style={{ minWidth: 0, borderRadius: 9, border: `1px solid ${item.ok ? "rgba(78,201,145,.38)" : "rgba(255,113,138,.38)"}`, background: item.ok ? "rgba(78,201,145,.16)" : "rgba(255,113,138,.14)", color: item.ok ? "#1d8c62" : "#c54e65", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>{item.label}</div><div style={{ marginTop: 2, fontSize: 7.4, fontWeight: 1000, opacity: .88 }}>{item.ok ? "VALIDÉ" : "RATÉ"}</div></div>) : Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ minWidth: 0, borderRadius: 9, border: "1px dashed rgba(151,124,77,.35)", background: "rgba(255,255,255,.45)", color: "#8e785b", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>—</div><div style={{ marginTop: 2, fontSize: 7.1, fontWeight: 1000, opacity: .88 }}>VIDE</div></div>)}</div><div style={{ marginTop: 5, color: "#8b6d46", fontSize: 8.4, fontWeight: 900 }}>{compact ? "Toucher pour ouvrir l'historique" : "5 dernières volées · vert = validé · rouge = raté"}</div></button>;
 }
-function ScoreResultOverlay({ result }: any) {
+function ScoreResultOverlay({ result, lang = "fr" }: any) {
   if (!result) return null;
   const score = Math.round(Number(result?.score) || 0);
   const material = loterieScoreMaterial(score);
   const outOfRange = isHorsLoterieScore(score);
-  const src = outOfRange ? null : loterieScoreCardUrl(score);
+  const src = outOfRange ? loterieOutOfDrawCardUrl(lang) : loterieScoreCardUrl(score);
   const good = Boolean(result?.good) && !outOfRange;
   const status = good ? GOOD : BAD;
   const cardNumbers = Array.isArray(result?.cardNumbers) ? result.cardNumbers : [];
@@ -173,7 +178,7 @@ function ScoreResultOverlay({ result }: any) {
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: aura, opacity: .58, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
             <>
-              <img src={src} alt={`Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              <img src={src} alt={outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
@@ -208,8 +213,8 @@ function ScoreResultOverlay({ result }: any) {
           )}
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
-          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : (outOfRange ? "HORS LOTERIE" : "RATÉ")}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${scoreLabel} découvert` : (outOfRange ? `Score ${scoreLabel} hors loterie` : `Score ${scoreLabel} non validé`)}</div>
+          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${scoreLabel} découvert` : (outOfRange ? (lang === "fr" ? `Score ${scoreLabel} hors lot` : `Score ${scoreLabel} out of draw`) : `Score ${scoreLabel} non validé`)}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
@@ -771,6 +776,7 @@ function LoterieEndPanel({ finalPlayers, winnerId, events, config, accent, onRep
 
 export default function LoteriePlay({ setTab, go, store, params, onFinish }: any) {
   const { theme } = useTheme();
+  const { lang } = useLang();
   const config: LoterieConfig & any = { ...DEFAULT_CONFIG, ...(params?.config || {}) };
   const sourcePlayers = Array.isArray(params?.players) && params.players.length ? params.players : makeFallbackPlayers(store);
   const createdAtRef = React.useRef(Number(params?.createdAt) || Date.now());
@@ -1101,7 +1107,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
       {rankingOpen ? <div role="dialog" aria-modal="true" onClick={() => setRankingOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 14 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(520px,100%)", maxHeight: "78dvh", overflowY: "auto", padding: 13, borderColor: `${themeAccent}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div style={{ color: themeAccent, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT LOTERIE</div><button type="button" onClick={() => setRankingOpen(false)} style={carouselBtnStyle(themeAccent)}>×</button></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{ranking.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: p.id === active?.id ? `color-mix(in srgb, ${themeAccent} 9%, transparent)` : "rgba(255,255,255,.035)", border: `1px solid ${p.id === active?.id ? themeAccent + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: i === 0 ? themeAccent : SOFT, fontSize: 16, fontWeight: 1000, textAlign: "center" }}>{i + 1}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 9 }}>{p.stats.cellsRevealed} cases · {p.stats.visits} tours</div></div><div style={{ color: themeAccent, fontSize: 18, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</div></div>)}</div></div></div> : null}
 
-      <ScoreResultOverlay result={scoreReveal} />
+      <ScoreResultOverlay result={scoreReveal} lang={lang === "fr" ? "fr" : "en"} />
 
       {winner ? <LoterieEndPanel finalPlayers={players} winnerId={winnerId} events={events} config={{ ...config, participantMode }} accent={themeAccent} onReplay={resetGame} onStats={(focusId: string) => (go || setTab)?.("statsHub", { tab: "stats", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "loterie" })} onMenu={() => (go || setTab)?.("games")} /> : null}
     </div>
