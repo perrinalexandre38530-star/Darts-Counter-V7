@@ -182,7 +182,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
-                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>NON VALIDÉ</div>
+                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>NON POSSÉDÉ</div>
                 </>
               ) : null}
             </>
@@ -193,7 +193,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
               <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateRows: "auto 1fr auto", alignItems: "center", justifyItems: "center", padding: "16px 14px 18px" }}>
                 <div style={{ width: "100%", textAlign: "center" }}>
                   <div style={{ color: BAD, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>HORS LOTERIE</div>
-                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>SCORE NON PRÉSENT SUR LES CARTONS</div>
+                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>SCORE NON POSSÉDÉ SUR LES CARTONS</div>
                 </div>
                 <div style={{ display: "grid", justifyItems: "center", gap: 8 }}>
                   <div style={{ color: BAD, fontSize: 72, fontWeight: 1000, lineHeight: .92, textShadow: `0 0 18px ${aura}` }}>{scoreLabel}</div>
@@ -204,7 +204,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
                   <div style={{ color: "#ae854f", fontSize: 17, lineHeight: 1 }}>★</div>
                   <div style={{ width: "72%", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, color: BAD }}>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
-                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>NON VALIDÉ</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>NON POSSÉDÉ</div>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
                   </div>
                 </div>
@@ -214,7 +214,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
           <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${scoreLabel} découvert` : (outOfRange ? (lang === "fr" ? `Score ${scoreLabel} hors lot` : `Score ${scoreLabel} out of draw`) : `Score ${scoreLabel} non validé`)}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${scoreLabel} découvert` : (outOfRange ? (lang === "fr" ? `Score ${scoreLabel} hors lot` : `Score ${scoreLabel} out of draw`) : `Score ${scoreLabel} non possédé`)}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
