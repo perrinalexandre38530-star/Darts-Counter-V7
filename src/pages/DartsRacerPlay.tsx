@@ -29,6 +29,8 @@ import {
   type DartsRacerTeamConfig,
 } from "../lib/gameEngines/dartsRacerEngine";
 import tickerDartsRacer from "../assets/tickers/ticker_darts_racer.png";
+import dartsRacerRaceBackground from "../assets/games/darts_racer_race_bg.png";
+import dartsRacerChecker from "../assets/games/darts_racer_checker.jpg";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -401,7 +403,9 @@ export default function DartsRacerPlay(props: any) {
     <div style={{ padding: "6px 8px 8px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
       <section style={{ marginBottom: 6, padding: 0, overflow: "hidden", borderRadius: 19, border: `1px solid ${activeColor}88`, background: "linear-gradient(180deg,rgba(7,17,24,.94),rgba(3,8,12,.96))", boxShadow: `0 0 22px ${activeColor}18,0 14px 34px rgba(0,0,0,.34)` }}>
         <div style={{ position: "relative", minHeight: 116, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(126px,145px)", gap: 4, alignItems: "stretch", padding: "7px 9px" }}>
-          <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(90deg,rgba(0,0,0,.52),rgba(0,0,0,.18) 55%,rgba(0,0,0,.40)),url(${tickerDartsRacer})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .22, filter: "saturate(.8) blur(.2px)" }} />
+          <div style={{ position: "absolute", inset: 0, background: "#03070d", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${dartsRacerRaceBackground})`, backgroundPosition: "center 58%", backgroundSize: "cover", opacity: .38, filter: "saturate(.92) contrast(1.03)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(2,6,11,.70) 0%,rgba(2,6,11,.38) 43%,rgba(2,6,11,.54) 69%,rgba(2,6,11,.74) 100%)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", left: -18, top: -5, bottom: -5, width: "27%", minWidth: 86, overflow: "hidden", opacity: .42, pointerEvents: "none" }}><div style={{ position: "absolute", left: -13, top: 11, transform: "scale(1.28)", transformOrigin: "left top", filter: `drop-shadow(0 0 8px ${activeColor}44)` }}><ProfileAvatar profile={activeProfile as any} size={84} showStars={false} /></div></div>
           {activeTeam?.logoDataUrl ? <div style={{ position: "absolute", right: "calc(126px + 12px)", top: 6, opacity: .16, pointerEvents: "none" }}><img src={activeTeam.logoDataUrl} alt="" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover" }} /></div> : null}
 
@@ -414,7 +418,9 @@ export default function DartsRacerPlay(props: any) {
           </div>
 
           <div style={{ gridColumn: "2 / 3", position: "relative", zIndex: 2, display: "flex", alignItems: "stretch", justifyContent: "center", minWidth: 0, overflow: "hidden", borderRadius: 17, background: "#050913", isolation: "isolate" }}>
-            <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(180deg,rgba(4,8,16,.30),rgba(4,8,16,.70)),url(${tickerDartsRacer})`, backgroundPosition: "center", backgroundSize: "cover", opacity: .72 }} />
+            <div style={{ position: "absolute", inset: 0, background: "#050913", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${dartsRacerChecker})`, backgroundPosition: "center", backgroundSize: "118px 118px", opacity: .075, filter: "grayscale(1) contrast(1.12)", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(5,9,19,.70),rgba(5,9,19,.90))", pointerEvents: "none" }} />
             <div style={{ position: "absolute", left: 0, top: 9, bottom: 9, width: 1, background: `linear-gradient(180deg,rgba(255,255,255,.02),${primary},rgba(255,255,255,.02))`, boxShadow: `0 0 12px ${primary}66` }} />
             <div style={{ position: "relative", width: "100%", padding: "6px 5px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
               <div style={{ color: "rgba(255,255,255,.62)", fontSize: 8.2, fontWeight: 950, letterSpacing: .75 }}>TOUR</div>

@@ -16,6 +16,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
+import scratchCellTexture from "../assets-webp/games/loterie-scratch-cell-texture.png";
 import {
   bestCardProgress,
   buildPlayerStates,
@@ -105,49 +106,95 @@ function ScratchCell({ cell, idx, recent }: any) {
   const covered = !cell?.revealed;
   return (
     <div style={{ position: "relative", minHeight: 76, animation: recent ? "lotScratchReveal .55s ease both" : undefined }}>
-      <div style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", width: 25, height: 25, borderRadius: "50%", background: "#15120d", color: "#f8edd0", border: "2px solid #c79c3d", display: "grid", placeItems: "center", fontWeight: 1000, fontSize: 9, zIndex: 2 }}>{idx + 1}</div>
-      <div style={{ height: "100%", borderRadius: 13, border: `1px solid ${covered ? "#9f8860" : "#d1a84d"}`, background: covered ? "linear-gradient(145deg,#c7c9ce,#a7adb3 45%,#8d9399)" : "linear-gradient(180deg,#fff4dc,#efddb6)", boxShadow: recent ? "0 0 0 2px rgba(246,194,86,.24), 0 8px 18px rgba(0,0,0,.16)" : "inset 0 1px 0 rgba(255,255,255,.25)", overflow: "hidden", display: "grid", placeItems: "center", position: "relative", padding: 6 }}>
-        {covered ? <><div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(-25deg, rgba(255,255,255,.10) 0 3px, rgba(0,0,0,.04) 3px 8px)" }} /><div style={{ fontSize: 25, opacity: .16 }}>🎯</div></> : <><div style={{ color: "#20160c", fontWeight: 1000, fontSize: cell.label.length > 4 ? 17 : 26, lineHeight: 1, whiteSpace: "nowrap" }}>{cell.label}</div><div style={{ position: "absolute", right: 4, bottom: 4, transform: "rotate(-8deg)", padding: "2px 5px", borderRadius: 999, border: `1px solid ${idx % 3 === 0 ? "#b8322b" : "#b98a1f"}`, color: idx % 3 === 0 ? "#b8322b" : "#a87816", background: "rgba(255,255,255,.38)", fontSize: 7.2, fontWeight: 1000, whiteSpace: "nowrap", animation: recent ? "lotStampPop .48s ease .12s both" : undefined }}>{idx % 3 === 0 ? "VALIDÉ" : "✓"}</div></>}
+      <div style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", width: 25, height: 25, borderRadius: "50%", background: "#15120d", color: "#f8edd0", border: "2px solid #c79c3d", display: "grid", placeItems: "center", fontWeight: 1000, fontSize: 9, zIndex: 2, boxShadow: recent ? "0 0 0 4px rgba(246,194,86,.14)" : "0 3px 10px rgba(0,0,0,.18)" }}>{idx + 1}</div>
+      <div style={{ height: "100%", borderRadius: 13, border: `1px solid ${covered ? "#b8954b" : "#b79147"}`, background: covered ? `linear-gradient(180deg,rgba(255,255,255,.06),rgba(0,0,0,.04)), url(${scratchCellTexture}) center/cover no-repeat, linear-gradient(145deg,#c9c7c4,#a9adb1 45%,#90969c)` : "linear-gradient(180deg,#f6eacb,#ead8ae)", boxShadow: covered ? "inset 0 2px 0 rgba(255,255,255,.18), inset 0 -8px 14px rgba(0,0,0,.08), 0 3px 8px rgba(0,0,0,.08)" : (recent ? "0 0 0 2px rgba(246,194,86,.24), 0 8px 18px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.34)" : "inset 0 1px 0 rgba(255,255,255,.34), 0 3px 8px rgba(0,0,0,.06)"), overflow: "hidden", display: "grid", placeItems: "center", position: "relative", padding: 6 }}>
+        {covered ? <><div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(255,255,255,.14), transparent 35%, rgba(0,0,0,.08) 100%)", mixBlendMode: "screen" }} /><div style={{ position: "absolute", inset: 2, borderRadius: 11, boxShadow: "inset 0 0 0 1px rgba(255,255,255,.08)" }} /></> : <><div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 25%,rgba(255,255,255,.16),transparent 40%), radial-gradient(circle at 70% 78%,rgba(0,0,0,.05),transparent 36%)" }} />{recent ? <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent)", animation: "lotCardShine .7s ease .08s both" }} /> : null}<div style={{ color: "#20160c", fontWeight: 1000, fontSize: cell.label.length > 4 ? 17 : 26, lineHeight: 1, whiteSpace: "nowrap", textShadow: "0 1px 0 rgba(255,255,255,.18)" }}>{cell.label}</div><div style={{ position: "absolute", right: 4, bottom: 4, transform: "rotate(-8deg)", padding: "2px 6px", borderRadius: 999, border: `1px solid ${idx % 3 === 0 ? "#b8322b" : "#b98a1f"}`, color: idx % 3 === 0 ? "#b8322b" : "#a87816", background: "rgba(255,255,255,.44)", fontSize: 7.4, fontWeight: 1000, whiteSpace: "nowrap", boxShadow: "0 2px 5px rgba(0,0,0,.08)", animation: recent ? "lotStampPop .48s ease .12s both" : undefined }}>{idx % 3 === 0 ? "VALIDÉ" : "✓ VALIDÉ"}</div></>}
       </div>
     </div>
   );
 }
 
-function TicketCard({ card, index, player, recentRevealKeys, lastVolleyText }: any) {
+function TicketCard({ card, index, player, recentRevealKeys, lastVolleyText, onOpenHistory }: any) {
   const progress = cardProgress(card);
   const complete = progress === card.cells.length;
   return (
-    <div style={{ position: "relative", width: "100%", maxWidth: 540, margin: "0 auto", borderRadius: 24, padding: "14px 12px 13px", border: `1px solid ${complete ? "#8f7b3c" : "#c39b45"}`, background: "linear-gradient(180deg,#f3e1bd,#e4cc99 60%,#d9ba7d)", color: "#20160b", boxShadow: "0 24px 70px rgba(0,0,0,.46)", overflow: "hidden", boxSizing: "border-box" }}>
-      <img src={scratchTicketPreview} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .045, pointerEvents: "none" }} />
+    <div style={{ position: "relative", width: "100%", maxWidth: 540, margin: "0 auto", borderRadius: 28, padding: "14px 12px 13px", border: `2px solid ${complete ? "#8f7b3c" : "#c39b45"}`, background: "linear-gradient(180deg,#f1e3c2,#e7d4a6 62%,#dcc38f)", color: "#20160b", boxShadow: "0 24px 70px rgba(0,0,0,.46), inset 0 0 0 1px rgba(93,56,18,.12)", overflow: "hidden", boxSizing: "border-box" }}>
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 20% 15%, rgba(255,255,255,.18), transparent 24%), radial-gradient(circle at 80% 88%, rgba(0,0,0,.05), transparent 26%), repeating-linear-gradient(0deg, rgba(86,61,22,.028) 0 2px, transparent 2px 7px), repeating-linear-gradient(90deg, rgba(86,61,22,.022) 0 3px, transparent 3px 9px)" }} />
+      <img src={scratchTicketPreview} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .03, filter: "grayscale(1) sepia(.55) saturate(.55)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 6, borderRadius: 22, border: "1px solid rgba(123,87,27,.18)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.16), inset 0 0 25px rgba(123,87,27,.04)" }} />
+      <div style={{ position: "absolute", left: 10, right: 10, top: -1, height: 11, background: "radial-gradient(circle at 6px 7px, transparent 0 6px, rgba(255,255,255,.65) 6px 7px, transparent 7px 100%) 0 0/28px 11px repeat-x" }} />
       <div style={{ position: "relative" }}>
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: "clamp(29px,8vw,42px)", lineHeight: .98, fontWeight: 1000, color: "#1b1208", letterSpacing: 1 }}>LOTERIE</div>
-          <div style={{ display: "inline-block", marginTop: 6, borderRadius: 999, padding: "5px 12px", background: "linear-gradient(180deg,#ca4d35,#a82b20)", color: "#fff5df", fontSize: 10.5, fontWeight: 1000 }}>{(player as any)?.isTeam ? "Carton équipe" : "Carton joueur"} · {index + 1}/{player.cards.length}</div>
-          <div style={{ marginTop: 7, fontSize: 9.5, fontWeight: 900, lineHeight: 1.25 }}>DÉCOUVREZ LES CIBLES ET COMPLÉTEZ VOTRE CARTON</div>
+          <div style={{ fontSize: "clamp(29px,8vw,42px)", lineHeight: .98, fontWeight: 1000, color: "#4b2f12", letterSpacing: 1, textShadow: "0 1px 0 rgba(255,255,255,.22)" }}>LOTERIE</div>
+          <div style={{ display: "inline-block", marginTop: 6, borderRadius: 999, padding: "5px 12px", background: "linear-gradient(180deg,#ff7f57,#ff5737)", color: "#fff5df", fontSize: 10.5, fontWeight: 1000, boxShadow: "0 8px 16px rgba(170,58,24,.18)" }}>{(player as any)?.isTeam ? "Carton équipe" : "Carton joueur"} · {index + 1}/{player.cards.length}</div>
+          <div style={{ marginTop: 10, fontSize: 9.5, fontWeight: 1000, lineHeight: 1.25, color: "#4f3719" }}>DÉCOUVREZ LES CIBLES ET COMPLÉTEZ VOTRE CARTON</div>
         </div>
 
-        <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>
+        <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 8 }}>
           {card.cells.map((cell: any, idx: number) => <ScratchCell key={cell.key} cell={cell} idx={idx} recent={recentRevealKeys?.includes(`${card.id}:${cell.key}`)} />)}
         </div>
 
-        <div style={{ margin: "12px auto 0", width: "fit-content", maxWidth: "100%", padding: "5px 13px", borderRadius: 999, background: "#241b0e", color: "#edc660", fontWeight: 1000, fontSize: 9.5, whiteSpace: "nowrap" }}>{card.cells.length} CIBLES À DÉCOUVRIR · {progress}/{card.cells.length}</div>
+        <div style={{ margin: "14px auto 0", width: "fit-content", maxWidth: "100%", padding: "6px 15px", borderRadius: 999, background: "#5a3d19", color: "#ffe98b", fontWeight: 1000, fontSize: 10, whiteSpace: "nowrap", boxShadow: "inset 0 1px 0 rgba(255,255,255,.12)" }}>{card.cells.length} CIBLES À DÉCOUVRIR · {progress}/{card.cells.length}</div>
 
-        <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+        <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
           <TicketInfo label={(player as any)?.isTeam ? "ÉQUIPE" : "JOUEUR"} value={player.name} />
           <TicketInfo label="CARTON" value={`${index + 1} / ${player.cards.length}`} />
           <TicketInfo label="PROGRESSION" value={`${progress} / ${card.cells.length}`} progress={progress / Math.max(1, card.cells.length)} />
-          <TicketInfo label="DERNIÈRE VOLÉE" value={lastVolleyText || "—"} small />
+          <TicketInfo label="DERNIÈRE VOLÉE" value={lastVolleyText || "—"} small clickable onClick={onOpenHistory} sublabel="Toucher pour voir les scores" />
         </div>
-        <div style={{ marginTop: 10, textAlign: "center", color: complete ? "#18784d" : "#a43227", fontSize: 11, fontWeight: 1000 }}>Visez juste. Complétez. Gagnez.</div>
+        <div style={{ marginTop: 10, textAlign: "center", color: complete ? "#18784d" : "#ff5a41", fontSize: 11, fontWeight: 1000 }}>Visez juste. Complétez. Gagnez.</div>
       </div>
     </div>
   );
 }
-function TicketInfo({ label, value, progress, small }: any) {
-  return <div style={{ minWidth: 0, minHeight: 62, borderRadius: 14, border: "1px dashed rgba(80,51,18,.24)", background: "rgba(255,248,232,.72)", padding: 8, overflow: "hidden" }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ marginTop: 5, color: "#171008", fontWeight: 1000, fontSize: small ? 11.5 : 18, lineHeight: 1.15, whiteSpace: small ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis", overflowWrap: "break-word", wordBreak: "normal" }}>{value}</div>{typeof progress === "number" ? <div style={{ marginTop: 7, height: 7, borderRadius: 999, background: "#17120c", overflow: "hidden" }}><div style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%`, height: "100%", background: "linear-gradient(90deg,#c18b1c,#f3cc6f)" }} /></div> : null}</div>;
+function TicketInfo({ label, value, progress, small, clickable, onClick, sublabel }: any) {
+  const Tag: any = clickable ? 'button' : 'div';
+  return <Tag type={clickable ? 'button' : undefined} onClick={clickable ? onClick : undefined} style={{ minWidth: 0, minHeight: 62, borderRadius: 14, border: `1px dashed ${clickable ? 'rgba(214,166,53,.55)' : 'rgba(80,51,18,.24)'}`, background: clickable ? 'rgba(255,248,232,.82)' : 'rgba(255,248,232,.72)', padding: 8, overflow: 'hidden', textAlign: 'left', cursor: clickable ? 'pointer' : 'default', boxShadow: clickable ? '0 6px 15px rgba(0,0,0,.06)' : 'none' }}><div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}><div style={{ color: '#655039', fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>{clickable ? <div style={{ color:'#b7871e', fontSize: 8.2, fontWeight:1000 }}>VOIR ▸</div> : null}</div><div style={{ marginTop: 5, color: '#171008', fontWeight: 1000, fontSize: small ? 11.5 : 18, lineHeight: 1.15, whiteSpace: small ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'break-word', wordBreak: 'normal' }}>{value}</div>{sublabel ? <div style={{ marginTop: 5, color:'#8b6d46', fontSize: 8.4, fontWeight:900 }}>{sublabel}</div> : null}{typeof progress === 'number' ? <div style={{ marginTop: 7, height: 10, borderRadius: 999, background: '#2b2014', overflow: 'hidden', boxShadow:'inset 0 1px 2px rgba(255,255,255,.1)' }}><div style={{ width: `${Math.max(0, Math.min(100, progress * 100))}%`, height: '100%', background: 'linear-gradient(90deg,#f8e52a,#e9c553 36%,#3a2e1d 36%,#3a2e1d 100%)' }} /></div> : null}</Tag>;
 }
 
-function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, lastVolleyText }: any) {
+function ScoreHistoryModal({ player, config, events, onClose }: any) {
+  const playerEvents = [...(events || [])].filter((e: any) => e.playerId === player?.id).reverse();
+  const grouped = (wantHits: boolean) => {
+    const map = new Map();
+    for (const ev of playerEvents) {
+      const ok = (ev?.revealed || 0) > 0;
+      if (ok !== wantHits) continue;
+      const label = config.variant === 'classic' ? String(ev?.volleyScore ?? ev?.resultLabel ?? 0) : String(ev?.resultLabel ?? 'MISS');
+      const cur = map.get(label) || { label, count: 0, last: ev };
+      cur.count += 1;
+      cur.last = ev;
+      map.set(label, cur);
+    }
+    return [...map.values()].sort((a,b)=> Number(b.count)-Number(a.count) || String(a.label).localeCompare(String(b.label), 'fr'));
+  };
+  const valides = grouped(true);
+  const refuses = grouped(false);
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position:'fixed', inset:0, zIndex:10005, background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', padding:12 }}>
+      <div onClick={(e)=>e.stopPropagation()} style={{ width:'min(560px,100%)', maxHeight:'86dvh', overflowY:'auto', borderRadius:18, border:`1px solid ${GOLD}55`, background:'linear-gradient(180deg,#15120d,#0b0e13 45%,#08090c)', boxShadow:'0 26px 65px rgba(0,0,0,.55)', padding:12 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ color:GOLD, fontWeight:1000, fontSize:14 }}>SCORES JOUÉS · {player?.name}</div><div style={{ color:SOFT, fontSize:10, marginTop:2 }}>{config.variant === 'classic' ? 'Vert = score ayant ouvert au moins une case · Rouge = score refusé' : 'Historique des lancers express'}</div></div><button type='button' onClick={onClose} style={carouselBtn}>×</button></div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:12 }}>
+          <HistoryGroup title='VALIDÉS' color={GOOD} fill='rgba(112,239,189,.12)' items={valides} empty='Aucun score validé' />
+          <HistoryGroup title='REFUSÉS' color={BAD} fill='rgba(255,113,138,.10)' items={refuses} empty='Aucun score refusé' />
+        </div>
+        <div style={{ marginTop:12, borderTop:'1px solid rgba(255,255,255,.07)', paddingTop:10 }}>
+          <div style={{ color:SOFT, fontSize:10, fontWeight:1000, marginBottom:8 }}>DERNIÈRES VOLÉES</div>
+          <div style={{ display:'grid', gap:7 }}>
+            {playerEvents.slice(0,12).map((ev: any, idx: number) => {
+              const ok = (ev?.revealed || 0) > 0;
+              return <div key={`${ev.ts}_${idx}`} style={{ borderRadius:12, padding:'8px 10px', background:'rgba(255,255,255,.04)', border:`1px solid ${ok ? 'rgba(112,239,189,.25)' : 'rgba(255,113,138,.2)'}`, display:'grid', gridTemplateColumns:'auto 1fr auto', gap:8, alignItems:'center' }}><div style={{ width:8, height:8, borderRadius:999, background: ok ? GOOD : BAD }} /><div style={{ minWidth:0 }}><div style={{ color:'#fff', fontSize:11.5, fontWeight:1000, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{config.variant === 'classic' ? `${ev?.darts?.map((d:any)=>d.label).join(' + ')} = ${ev?.volleyScore}` : (ev?.darts?.[0]?.label || ev?.resultLabel || 'MISS')}</div><div style={{ marginTop:2, color:SOFT, fontSize:9 }}>{ok ? `${ev?.revealed || 0} case${(ev?.revealed || 0) > 1 ? 's' : ''} ouverte${(ev?.revealed || 0) > 1 ? 's' : ''}` : 'Aucune case'}</div></div><div style={{ color: ok ? GOOD : BAD, fontSize:10, fontWeight:1000 }}>{ok ? 'VALIDÉ' : 'REFUSÉ'}</div></div>;
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+function HistoryGroup({ title, color, fill, items, empty }: any) {
+  return <div style={{ borderRadius:14, padding:10, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)' }}><div style={{ color, fontSize:11, fontWeight:1000, letterSpacing:.6 }}>{title}</div><div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>{items.length ? items.map((it:any)=><div key={it.label} style={{ minWidth:64, padding:'8px 10px', borderRadius:12, background:fill, border:`1px solid ${color}55`, boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ color:'#fff', fontSize:14, fontWeight:1000, textAlign:'center' }}>{it.label}</div><div style={{ marginTop:3, color, fontSize:9, fontWeight:1000, textAlign:'center' }}>× {it.count}</div></div>) : <div style={{ color:SOFT, fontSize:10 }}>{empty}</div>}</div></div>;
+}
+
+function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, lastVolleyText, onOpenHistory }: any) {
   const [index, setIndex] = React.useState(Math.max(0, Math.min(Number(initialIndex) || 0, player.cards.length - 1)));
   React.useEffect(() => setIndex(Math.max(0, Math.min(Number(initialIndex) || 0, player.cards.length - 1))), [initialIndex, player.id]);
   const prev = () => setIndex((i) => (i - 1 + player.cards.length) % player.cards.length);
@@ -160,7 +207,7 @@ function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, l
           <div style={{ minWidth: 0, textAlign: "center" }}><div style={{ color: GOLD, fontSize: 12, fontWeight: 1000, letterSpacing: .8 }}>CARTONS · {nameOf(player)}</div><div style={{ marginTop: 1, color: SOFT, fontSize: 9.5 }}>Carton {index + 1}/{player.cards.length} · glisse avec les flèches</div></div>
           <button type="button" onClick={onClose} style={{ ...carouselBtn, color: "#fff" }}>×</button>
         </div>
-        <TicketCard card={player.cards[index]} index={index} player={player} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} />
+        <TicketCard card={player.cards[index]} index={index} player={player} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={onOpenHistory} />
         {player.cards.length > 1 ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 9 }}><button type="button" onClick={prev} style={carouselWideBtn}>← PRÉCÉDENT</button><div style={{ display: "flex", gap: 5 }}>{player.cards.map((c: any, i: number) => <button key={c.id} type="button" onClick={() => setIndex(i)} aria-label={`Carton ${i + 1}`} style={{ width: i === index ? 20 : 8, height: 8, borderRadius: 999, border: "none", background: i === index ? GOLD : "rgba(255,255,255,.25)", transition: "width .15s ease", cursor: "pointer" }} />)}</div><button type="button" onClick={next} style={carouselWideBtn}>SUIVANT →</button></div> : null}
       </div>
     </div>
@@ -198,6 +245,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const [cardsOpen, setCardsOpen] = React.useState(false);
   const [cardsInitialIndex, setCardsInitialIndex] = React.useState(0);
   const [rankingOpen, setRankingOpen] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const finishSent = React.useRef(false);
 
@@ -411,7 +459,8 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         </section>
       </div>
 
-      {cardsOpen && active ? <FloatingCardsModal player={active} initialIndex={cardsInitialIndex} onClose={() => setCardsOpen(false)} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} /> : null}
+      {cardsOpen && active ? <FloatingCardsModal player={active} initialIndex={cardsInitialIndex} onClose={() => setCardsOpen(false)} recentRevealKeys={recentRevealKeys} lastVolleyText={lastVolleyText} onOpenHistory={openHistory} /> : null}
+      {historyOpen && active ? <ScoreHistoryModal player={active} config={config} events={events} onClose={() => setHistoryOpen(false)} /> : null}
 
       {rankingOpen ? <div role="dialog" aria-modal="true" onClick={() => setRankingOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 14 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(520px,100%)", maxHeight: "78dvh", overflowY: "auto", padding: 13, borderColor: `${CYAN}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div style={{ color: CYAN, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT LOTERIE</div><button type="button" onClick={() => setRankingOpen(false)} style={carouselBtn}>×</button></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{ranking.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: p.id === active?.id ? "rgba(246,194,86,.08)" : "rgba(255,255,255,.035)", border: `1px solid ${p.id === active?.id ? GOLD + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: i === 0 ? GOLD : SOFT, fontSize: 16, fontWeight: 1000, textAlign: "center" }}>{i + 1}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 9 }}>{p.stats.cellsRevealed} cases · {p.stats.visits} tours</div></div><div style={{ color: GOLD, fontSize: 18, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</div></div>)}</div></div></div> : null}
 
