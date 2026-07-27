@@ -13,7 +13,7 @@
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
-    "test:ci": "npm run typecheck && npm run build && npm run test:auth && npm run test:sync && npm run test:monetization && npm run test:android-bootstrap",
+    "test:ci": "npm run typecheck && npm run build && npm run test:auth && npm run test:sync && npm run test:monetization && npm run test:android-bootstrap && npm run test:admob-native && npm run test:play-billing",
     "compress-images": "node ./src/tools/compress-images.js",
     "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs",
     "test:territories-maps": "node ./src/tools/audit-territories-maps.mjs",
@@ -27,7 +27,12 @@
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
-    "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs"
+    "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs",
+    "android:configure-admob": "node ./tools/configure-android-admob.mjs",
+    "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
+    "android:release-check": "node ./tools/android-release-check.mjs",
+    "test:play-billing": "node ./tools/test-play-billing.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

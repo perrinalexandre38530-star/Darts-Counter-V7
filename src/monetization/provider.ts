@@ -1,9 +1,15 @@
 import type { AdShowResult } from "./types";
 import { loadMonetizationPrefs } from "./prefs";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { showNativeInterstitial, showNativeRewarded } from "./nativeAdMob";
+import { purchaseNativeProduct, restoreNativePurchases } from "./nativeBilling";
 
 export type PurchaseResult = {
-  status: "purchased" | "restored" | "cancelled" | "unavailable" | "error";
+  status: "purchased" | "verification_required" | "restored" | "cancelled" | "unavailable" | "error";
   productId?: string;
+  purchaseToken?: string;
+  acknowledged?: boolean;
+  restoredPurchases?: number;
   error?: string;
 };
 
@@ -65,6 +71,17 @@ function testInterstitial(title: string): Promise<AdShowResult> {
 }
 
 export async function showInterstitialAd(reason = "end_game", forceTest = false): Promise<AdShowResult> {
+  if (isCapacitorNativeRuntime()) {
+    try {
+      const shown = await showNativeInterstitial(forceTest);
+      return shown
+        ? { status: "shown", provider: "android-admob" }
+        : { status: "unavailable", provider: "android-admob" };
+    } catch (e: any) {
+      return { status: "error", provider: "android-admob", error: String(e?.message || e || "AdMob error") };
+    }
+  }
+
   const bridge = nativeBridge();
   if (bridge?.showInterstitial) {
     try {
@@ -81,6 +98,17 @@ export async function showInterstitialAd(reason = "end_game", forceTest = false)
 }
 
 export async function showRewardedAd(rewardId: string): Promise<AdShowResult> {
+  if (isCapacitorNativeRuntime()) {
+    try {
+      const reward = await showNativeRewarded();
+      return reward
+        ? { status: "shown", provider: "android-admob" }
+        : { status: "unavailable", provider: "android-admob" };
+    } catch (e: any) {
+      return { status: "error", provider: "android-admob", error: String(e?.message || e || "Rewarded error") };
+    }
+  }
+
   const bridge = nativeBridge();
   if (bridge?.showRewarded) {
     try {
@@ -96,6 +124,27 @@ export async function showRewardedAd(rewardId: string): Promise<AdShowResult> {
 }
 
 export async function purchaseProduct(productId: string): Promise<PurchaseResult> {
+  if (isCapacitorNativeRuntime()) {
+    const result = await purchaseNativeProduct(productId);
+    if (result.status === "purchased") {
+      // Le reçu natif est seulement collecté ici. L'entitlement doit être vérifié côté serveur
+      // puis l'achat acknowledged avant de devenir Premium/possédé.
+      return {
+        status: "verification_required",
+        productId: result.productId || productId,
+        purchaseToken: result.purchaseToken,
+        acknowledged: result.acknowledged,
+      };
+    }
+    return {
+      status: result.status === "pending" ? "unavailable" : result.status,
+      productId: result.productId || productId,
+      purchaseToken: result.purchaseToken,
+      acknowledged: result.acknowledged,
+      error: result.status === "pending" ? "Paiement Google Play en attente de confirmation." : result.error,
+    };
+  }
+
   const bridge = nativeBridge();
   if (!bridge?.purchase) return { status: "unavailable", productId };
   try {
@@ -107,6 +156,11 @@ export async function purchaseProduct(productId: string): Promise<PurchaseResult
 }
 
 export async function restorePurchases(): Promise<PurchaseResult> {
+  if (isCapacitorNativeRuntime()) {
+    const purchases = await restoreNativePurchases();
+    return { status: "restored", restoredPurchases: purchases.length };
+  }
+
   const bridge = nativeBridge();
   if (!bridge?.restorePurchases) return { status: "unavailable" };
   try {

@@ -184,7 +184,9 @@ export default function GlobalMessengerCallBridge() {
       if (stopped) return;
       try {
         es?.close();
-        es = new EventSource(buildPrivateMessagesStreamUrl());
+        const streamUrl = buildPrivateMessagesStreamUrl();
+        if (!streamUrl) return;
+        es = new EventSource(streamUrl);
         es.onopen = () => { reconnectDelayMs = 2500; };
         const handle = (event: MessageEvent) => {
           try {

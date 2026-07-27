@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import { isNasDataSyncEnabled } from "./serverConfig";
+import { isNasProviderEnabled } from "./serverConfig";
 import { onlineApi } from "./onlineApi";
 
 export type LobbyRow = {
@@ -54,7 +54,7 @@ function mapMatchToRow(match: any): MatchRow {
    A) Lobbies list
 ------------------------------- */
 export async function listActiveLobbies(limit = 50): Promise<LobbyRow[]> {
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     const rows = await onlineApi.listActiveLobbies(limit);
     return (Array.isArray(rows) ? rows : []).map(mapLobbyToRow);
   }
@@ -71,7 +71,7 @@ export async function listActiveLobbies(limit = 50): Promise<LobbyRow[]> {
 }
 
 export function subscribeLobbies(onChange: () => void) {
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     // En mode NAS/hybride, la page spectateur se rafraîchit par polling UI.
     // On ne branche pas le websocket Supabase navigateur, qui provoquait des ERR_NAME_NOT_RESOLVED.
     return async () => {};
@@ -98,7 +98,7 @@ export async function fetchMatchByCode(lobbyCode: string): Promise<MatchRow | nu
   const code = safeUpper(lobbyCode);
   if (!code) return null;
 
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     const row = await onlineApi.fetchMatchByCode(code);
     return row ? mapMatchToRow(row) : null;
   }
@@ -118,7 +118,7 @@ export async function fetchMatchByCode(lobbyCode: string): Promise<MatchRow | nu
 export function subscribeMatchState(lobbyCode: string, onUpsert: (row: MatchRow) => void) {
   const code = safeUpper(lobbyCode);
 
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     const stop = onlineApi.subscribeOnlineStream(code, {
       onMatch: (row: any) => onUpsert(mapMatchToRow(row)),
     });

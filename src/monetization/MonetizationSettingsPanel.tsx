@@ -4,16 +4,47 @@ import { GOOGLE_PLAY_CORE_PRODUCTS, STORE_PACKS } from "./catalog";
 import { getMonetizationRuntimeSnapshot, previewEndGameInterstitial } from "./MonetizationManager";
 import { getVerifiedPremiumState, loadMonetizationPrefs, saveMonetizationPrefs, subscribeMonetizationPrefs } from "./prefs";
 import type { EndGameAdTiming, MonetizationPrefs } from "./types";
+import { getNativeAdMobStatus, showNativePrivacyOptions, type NativeAdMobStatus } from "./nativeAdMob";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { getNativeBillingStatus, type NativeBillingStatus } from "./nativeBilling";
 
 export default function MonetizationSettingsPanel() {
   const { theme } = useTheme() as any;
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [runtimeTick, setRuntimeTick] = React.useState(0);
+  const [nativeStatus, setNativeStatus] = React.useState<NativeAdMobStatus | null>(null);
+  const [billingStatus, setBillingStatus] = React.useState<NativeBillingStatus | null>(null);
+  const [nativeBusy, setNativeBusy] = React.useState(false);
   const premium = getVerifiedPremiumState();
   const runtime = React.useMemo(() => getMonetizationRuntimeSnapshot(), [runtimeTick]);
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
+  React.useEffect(() => {
+    if (!isCapacitorNativeRuntime()) return;
+    void getNativeAdMobStatus().then(setNativeStatus);
+    void getNativeBillingStatus().then(setBillingStatus);
+  }, []);
   const patch = (next: Partial<MonetizationPrefs>) => setPrefs(saveMonetizationPrefs(next));
+
+  const refreshNativeStatus = async () => {
+    if (!isCapacitorNativeRuntime()) return;
+    setNativeBusy(true);
+    try {
+      const [ads, billing] = await Promise.all([getNativeAdMobStatus(), getNativeBillingStatus()]);
+      setNativeStatus(ads);
+      setBillingStatus(billing);
+    } finally { setNativeBusy(false); }
+  };
+
+  const openPrivacyOptions = async () => {
+    setNativeBusy(true);
+    try {
+      await showNativePrivacyOptions();
+      setNativeStatus(await getNativeAdMobStatus());
+    } finally {
+      setNativeBusy(false);
+    }
+  };
 
   const card: React.CSSProperties = {
     borderRadius: 18,
@@ -126,12 +157,64 @@ export default function MonetizationSettingsPanel() {
         </div>
       </section>
 
+
       <section style={card}>
-        <div style={{ color: theme.primary, fontWeight: 950 }}>ANDROID / ADMOB — PRÊT À BRANCHER</div>
+        <div style={{ color: theme.primary, fontWeight: 950 }}>GOOGLE PLAY BILLING</div>
         <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.5, marginTop: 5 }}>
-          Le projet React actuel ne contient pas encore de shell Android natif/Capacitor. Le patch expose donc un pont <b>DCNativeMonetization</b> : lors de la migration Play Store, AdMob, UMP et Google Play Billing se brancheront derrière ce pont sans réécrire les écrans.
+          Le bridge Android est préparé pour Google Play Billing 9.1.0. Les achats restent volontairement verrouillés tant que la vérification serveur des purchaseToken n&apos;est pas raccordée.
         </div>
-        <Toggle label="Aperçu des emplacements" help="Affiche les faux emplacements publicitaires de test. Aucun revenu et aucun réseau réel en mode aperçu." value={prefs.testMode} onChange={(v) => patch({ testMode: v })} />
+
+        {isCapacitorNativeRuntime() ? (
+          <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.borderSoft}`, padding: 10, background: "rgba(255,255,255,.025)" }}>
+            <div style={{ fontSize: 11, fontWeight: 950, color: billingStatus?.connected ? theme.primary : theme.text }}>
+              {billingStatus?.connected ? "GOOGLE PLAY BILLING CONNECTÉ" : "GOOGLE PLAY BILLING — CONTRÔLE"}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 10, color: theme.textSoft, lineHeight: 1.5 }}>
+              Plugin : {billingStatus?.pluginAvailable ? "OK" : "—"} · Bibliothèque : {billingStatus?.billingLibrary || "9.1.0"} · Achats : {billingStatus?.purchasesEnabled ? "ACTIVÉS" : "VERROUILLÉS"} · Vérification serveur : OBLIGATOIRE
+            </div>
+            {billingStatus?.error ? <div style={{ marginTop: 6, color: "#ff8b8b", fontSize: 10 }}>{billingStatus.error}</div> : null}
+            <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={{ ...smallBtn(true), width: "100%", marginTop: 9 }}>
+              {nativeBusy ? "…" : "↻ Vérifier Google Play"}
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 10, lineHeight: 1.45 }}>
+            PWA détectée : Google Play Billing n&apos;est chargé que dans l&apos;application Android.
+          </div>
+        )}
+
+        <div style={{ marginTop: 9, borderRadius: 12, padding: 9, background: "rgba(255,180,0,.07)", border: "1px solid rgba(255,180,0,.22)", color: theme.textSoft, fontSize: 10, lineHeight: 1.45 }}>
+          Aucun achat ne déverrouille Premium localement. Le reçu Google Play devra d&apos;abord être vérifié par le backend MULTISPORTS SCORING, puis acknowledged.
+        </div>
+      </section>
+
+      <section style={card}>
+        <div style={{ color: theme.primary, fontWeight: 950 }}>ANDROID / ADMOB + CONFIDENTIALITÉ UMP</div>
+        <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.5, marginTop: 5 }}>
+          Le runtime Android est maintenant câblé vers AdMob natif. Tant que les identifiants de production ne sont pas configurés, seuls les blocs de démonstration Google sont utilisés.
+        </div>
+
+        {isCapacitorNativeRuntime() ? (
+          <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.borderSoft}`, padding: 10, background: "rgba(255,255,255,.025)" }}>
+            <div style={{ fontSize: 11, fontWeight: 950, color: nativeStatus?.initialized ? theme.primary : theme.text }}>
+              {nativeStatus?.initialized ? "ADMOB NATIF INITIALISÉ" : "ADMOB NATIF — CONTRÔLE"}
+            </div>
+            <div style={{ marginTop: 5, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
+              Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"} · Mode : {nativeStatus?.testMode === false ? "PRODUCTION" : "TEST"}
+            </div>
+            {nativeStatus?.error ? <div style={{ marginTop: 6, color: "#ff8b8b", fontSize: 10 }}>{nativeStatus.error}</div> : null}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
+              <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={smallBtn(true)}>{nativeBusy ? "…" : "↻ Vérifier AdMob"}</button>
+              <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={smallBtn(false)}>Confidentialité</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 10, lineHeight: 1.45 }}>
+            PWA détectée : aucun SDK AdMob natif n'est chargé ici. Les vraies annonces de test apparaîtront dans l'application Android Capacitor.
+          </div>
+        )}
+
+        <Toggle label="Aperçu PWA des emplacements" help="Sur le web uniquement, affiche les faux emplacements visuels. Sur Android, les blocs Google de démonstration sont utilisés à la place." value={prefs.testMode} onChange={(v) => patch({ testMode: v })} />
       </section>
     </div>
   );

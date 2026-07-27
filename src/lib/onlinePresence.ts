@@ -1,11 +1,11 @@
 import { supabase } from "./supabaseClient";
-import { isNasDataSyncEnabled } from "./serverConfig";
+import { isNasProviderEnabled } from "./serverConfig";
 
 export type PresenceState = "online" | "away" | "offline";
 export type PresencePayload = { userId: string; name?: string; state: PresenceState; ts: number };
 
 export function makePresenceChannel() {
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     return { on: () => makePresenceChannel(), subscribe: () => makePresenceChannel(), presenceState: () => ({}) } as any;
   }
   return supabase.channel("online:presence", { config: { presence: { key: "anon" } } });
@@ -17,7 +17,7 @@ export async function joinPresence(opts: {
   state: PresenceState;
   onChange: (map: Record<string, PresencePayload>) => void;
 }) {
-  if (isNasDataSyncEnabled()) {
+  if (isNasProviderEnabled()) {
     try { opts.onChange({}); } catch {}
     return {
       channel: null as any,

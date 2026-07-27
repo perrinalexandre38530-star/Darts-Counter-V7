@@ -15,9 +15,18 @@ import BootGuard from "./components/BootGuard";
 import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 import { installPlayerNameTypography } from "./lib/playerNameTypography";
 import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
+import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
+
+// Android uniquement : initialise AdMob + UMP tôt dans la session.
+// Aucun SDK publicitaire n'est appelé dans la PWA/web.
+if (isCapacitorNativeRuntime()) {
+  void ensureNativeAdMobReady().then((status) => {
+    try { (window as any).__mscAdMobStatus = status; } catch {}
+  });
+}
 
 // Police dédiée aux noms des joueurs, appliquée globalement sur tous les écrans.
 installPlayerNameTypography();

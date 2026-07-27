@@ -7,6 +7,7 @@ const root = process.cwd();
 const CAP_VERSION = "8.4.2";
 const APP_ID = "com.multisportsscoring.app";
 const APP_NAME = "MULTISPORTS SCORING";
+const ADMOB_PLUGIN_VERSION = "8.0.0";
 
 function fail(message) {
   console.error(`\n[ANDROID BOOTSTRAP] ${message}\n`);
@@ -37,7 +38,7 @@ if (nodeMajor < 22) {
   console.warn(`⚠️ Node ${process.versions.node} détecté. Pour le chantier Android V8, utilise de préférence Node 22 LTS ou plus récent.`);
 }
 
-run("npm", ["install", `@capacitor/core@${CAP_VERSION}`, `@capacitor/android@${CAP_VERSION}`]);
+run("npm", ["install", `@capacitor/core@${CAP_VERSION}`, `@capacitor/android@${CAP_VERSION}`, `@capacitor-community/admob@${ADMOB_PLUGIN_VERSION}`]);
 run("npm", ["install", "--save-dev", `@capacitor/cli@${CAP_VERSION}`]);
 
 const androidDir = path.join(root, "android");
@@ -46,9 +47,14 @@ else console.log("\n✓ Dossier android/ déjà présent : cap add ignoré.");
 
 run("npm", ["run", "build"]);
 run("npx", ["cap", "sync", "android"]);
+run("node", ["./tools/configure-android-admob.mjs"]);
+run("node", ["./tools/configure-android-play-billing.mjs"]);
+run("npx", ["cap", "sync", "android"]);
 
 console.log("\n✅ Shell Android Capacitor prêt.");
 console.log(`   App : ${APP_NAME}`);
 console.log(`   Package : ${APP_ID}`);
 console.log(`   Capacitor : ${CAP_VERSION}`);
+console.log(`   AdMob plugin : ${ADMOB_PLUGIN_VERSION} (Google TEST par défaut)`);
+console.log("   Play Billing : 9.1.0 / achats verrouillés jusqu’à vérification serveur");
 console.log("   Étape locale suivante : npm run android:open");

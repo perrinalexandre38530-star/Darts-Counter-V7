@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const read = p => fs.readFileSync(path.join(root, p), "utf8");
+const checks = [];
+const check = (label, ok, detail = "") => checks.push({ label, ok: !!ok, detail });
+
+if (!fs.existsSync(path.join(root, "android"))) {
+  console.error("❌ android/ absent. Lance d'abord npm run android:bootstrap.");
+  process.exit(1);
+}
+
+const vars = read("android/variables.gradle");
+const gradle = read("android/app/build.gradle");
+const manifest = read("android/app/src/main/AndroidManifest.xml");
+const main = read("android/app/src/main/java/com/multisportsscoring/app/MainActivity.java");
+const plugin = read("android/app/src/main/java/com/multisportsscoring/app/PlayBillingPlugin.java");
+const strings = read("android/app/src/main/res/values/strings.xml");
+
+check("compileSdkVersion 36", /compileSdkVersion\s*=\s*36/.test(vars));
+check("targetSdkVersion 36", /targetSdkVersion\s*=\s*36/.test(vars));
+check("Billing Library 9.1.0", gradle.includes("com.android.billingclient:billing:9.1.0"));
+check("Permission com.android.vending.BILLING", manifest.includes('android:name="com.android.vending.BILLING"'));
+check("PlayBilling plugin registered", main.includes("registerPlugin(PlayBillingPlugin.class)"));
+check("No automatic entitlement", plugin.includes("aucun entitlement") && !plugin.includes("grantEntitlement("));
+const purchaseCallback = plugin.match(/onPurchasesUpdated[\\s\\S]*?(?=\\n    private void queryOwned)/)?.[0] || "";
+check("No automatic acknowledge on purchase callback", !purchaseCallback.includes("billingClient.acknowledgePurchase("));
+check("AdMob App ID present", strings.includes('name="admob_app_id"'));
+
+const admobMatch = strings.match(/<string\s+name="admob_app_id">([^<]+)<\/string>/);
+const admobId = admobMatch?.[1] || "";
+const googleTest = admobId === "ca-app-pub-3940256099942544~3347511713";
+check("AdMob mode identified", !!admobId, googleTest ? "GOOGLE TEST" : "PRODUCTION/PERSONNALISÉ");
+
+for (const c of checks) console.log(`${c.ok ? "✅" : "❌"} ${c.label}${c.detail ? ` — ${c.detail}` : ""}`);
+const failed = checks.filter(c => !c.ok);
+if (failed.length) process.exit(1);
+
+console.log("\n✅ Android Play release guard OK.");
+if (googleTest) {
+  console.log("ℹ️ AdMob est encore en mode Google TEST : parfait pour le test interne, pas pour la production.");
+}
+console.log("ℹ️ Les achats restent à tester via une installation provenant du Google Play Internal Testing.");

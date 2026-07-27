@@ -50,6 +50,7 @@ import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import { apiGet, apiPost, buildApiUrl, getApiUrl, readNasAccessToken } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
+import { loadStoragePrefs } from "./storagePlans";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -238,7 +239,16 @@ export type OnlineMatchRow = {
 // --------------------------------------------
 const USE_MOCK = false;
 function useNasOnlineBackend(): boolean {
-  return isNasProviderEnabled() || isNasDataSyncEnabled();
+  // L'ONLINE grand public ne doit jamais dépendre du NAS.
+  // VITE_NAS_DATA_SYNC autorise uniquement les sauvegardes privées / le bridge compte,
+  // pas les salons, matchs, présence ou fonctions sociales publiques.
+  return isNasProviderEnabled();
+}
+
+function shouldUsePrivateNasDataSync(): boolean {
+  if (isNasProviderEnabled()) return true;
+  if (!isNasDataSyncEnabled()) return false;
+  try { return loadStoragePrefs().selectedDestination === "founder_nas"; } catch { return false; }
 }
 
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
@@ -465,32 +475,22 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
 }
 
 type SupabaseLobbyRow = {
-  id: string;
-  code: string;
-  mode: string;
-  max_players: number;
-  host_user_id: string;
-  host_nickname: string;
-  settings: any;
-  status: string;
-  created_at: string;
+  id: string; code: string; mode: string; max_players: number; host_user_id: string; host_nickname: string; settings: any; status: string; created_at: string; updated_at?: string | null;
 };
-
-function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
-  return {
-    id: String(row.id),
-    code: String(row.code).toUpperCase(),
-    mode: row.mode || "x01",
-    maxPlayers: Number(row.max_players ?? 2),
-    hostUserId: String(row.host_user_id),
-    hostNickname: row.host_nickname || "Hôte",
-    settings: (row.settings as OnlineLobbySettings) || {
-      start: 501,
-      doubleOut: true,
-    },
-    status: row.status || "waiting",
-    createdAt: row.created_at || new Date().toISOString(),
-  };
+function mapSupabaseLobbyPlayer(row: any) {
+  return { id: String(row?.id || ""), userId: String(row?.user_id || ""), nickname: row?.nickname || row?.display_name || "Joueur", displayName: row?.display_name || row?.nickname || "Joueur", avatarUrl: row?.avatar_url || null, role: row?.role || "player", status: row?.status || "online", ready: String(row?.status || "").toLowerCase() === "ready", readyAt: row?.ready_at || null, joinedAt: row?.joined_at || null, updatedAt: row?.updated_at || null };
+}
+function mapLobbyRow(row: SupabaseLobbyRow, players: any[] = []): OnlineLobby {
+  const mappedPlayers = (players || []).map(mapSupabaseLobbyPlayer).filter((p) => p.userId);
+  return { id: String(row.id), code: String(row.code).toUpperCase(), mode: row.mode || "x01", maxPlayers: Number(row.max_players ?? 2), hostUserId: String(row.host_user_id), hostNickname: row.host_nickname || "Hôte", settings: (row.settings as OnlineLobbySettings) || { start: 501, doubleOut: true }, status: row.status || "waiting", createdAt: row.created_at || new Date().toISOString(), updatedAt: row.updated_at || undefined, players: mappedPlayers, playersCount: mappedPlayers.length, isFull: mappedPlayers.filter((p) => p.role !== "spectator").length >= Number(row.max_players ?? 2) };
+}
+async function loadSupabaseLobbyWithPlayers(codeInput: string): Promise<OnlineLobby | null> {
+  const code = safeUpper(codeInput); if (!code) return null;
+  const { data: lobby, error: lobbyError } = await supabase.from("online_lobbies").select("*").eq("code", code).limit(1).maybeSingle();
+  if (lobbyError) throw new Error(lobbyError.message || "Impossible de lire ce salon."); if (!lobby) return null;
+  const { data: players, error: playersError } = await supabase.from("online_lobby_players").select("*").eq("lobby_code", code).order("joined_at", { ascending: true });
+  if (playersError) throw new Error(playersError.message || "Impossible de lire les joueurs du salon.");
+  return mapLobbyRow(lobby as any, players || []);
 }
 
 // ============================================================
@@ -687,11 +687,11 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
   return null;
 }
 
-async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, profile: OnlineProfile | null): Promise<AuthSession | null> {
+async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, profile: OnlineProfile | null, force = false): Promise<AuthSession | null> {
   // En mode public/hybride, Supabase authentifie l’utilisateur, mais le backend NAS
   // reste l’API de contrôle des quotas et des objets R2. On échange donc le token
   // Supabase contre une session NAS interne, sans stocker les données lourdes dans Supabase.
-  if (!isNasDataSyncEnabled()) return null;
+  if (!force && !shouldUsePrivateNasDataSync()) return null;
   const accessToken = String(session?.access_token || "").trim();
   if (!accessToken) return null;
 
@@ -898,10 +898,7 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
       return bridged;
     }
   } catch (bridgeError) {
-    console.warn("[onlineApi] Supabase -> NAS/R2 bridge failed", bridgeError);
-    if (isNasDataSyncEnabled() && !opts?.allowNasFailure) {
-      throw bridgeError instanceof Error ? bridgeError : new Error(String(bridgeError || "Bridge Supabase/NAS impossible."));
-    }
+    console.warn("[onlineApi] private NAS bridge unavailable; keeping Supabase session", bridgeError);
   }
 
   const canonicalUserId = resolveCanonicalUserId(user) || supabaseUserId;
@@ -917,8 +914,8 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
       id: canonicalUserId,
     },
     profile,
-    authProvider: isNasDataSyncEnabled() ? "supabase_failover" : "supabase",
-    degradedMode: isNasDataSyncEnabled(),
+    authProvider: "supabase",
+    degradedMode: false,
     supabaseUserId,
   };
 
@@ -980,91 +977,47 @@ function normalizeAuthErrorMessage(msg: string) {
 async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
-  const nickname = payload.nickname?.trim() || email || "Player";
-
-  if (!email || !password) {
-    throw new Error("Pour créer un compte public, email et mot de passe sont requis.");
-  }
-
-  // Mode public stabilisé : le navigateur ne contacte plus Supabase directement pour créer
-  // la session principale. Le backend NAS/R2 crée/authentifie le compte Supabase côté serveur,
-  // puis renvoie une session NAS interne persistante. Cela évite les erreurs mobiles
-  // "Failed to fetch" vers *.supabase.co et les conflits de cache d'ancien projet Supabase.
+  const nickname = payload.nickname?.trim() || (email ? email.split("@")[0] : "Player");
+  if (!email || !password) throw new Error("Pour créer un compte public, email et mot de passe sont requis.");
+  if (!__SUPABASE_ENV__.hasEnv) throw new Error("Backend public Supabase non configuré sur cette version de l'application.");
   try {
-    return await publicSupabaseViaBackend("register", { email, password, nickname });
-  } catch (backendError: any) {
-    const msg = String(backendError?.message || backendError || "");
-    if (/already registered|user already registered|already exists|existe déjà/i.test(msg)) {
-      throw new Error("Un compte public existe déjà avec cet email. Utilise “J’ai déjà un compte”, ou supprime complètement le compte depuis Réglages > Compte avant de le recréer.");
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { nickname, displayName: nickname } } });
+    if (error) throw error;
+    if (!data?.session) {
+      if (data?.user) throw new Error("Compte public créé. Confirme ton adresse e-mail avec le message envoyé par MULTISPORTS SCORING, puis connecte-toi.");
+      throw new Error("Compte public créé mais aucune session Supabase n'a été retournée.");
     }
-    throw backendError instanceof Error ? backendError : new Error(msg || "Création du compte public impossible.");
+    const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+    if (!session) throw new Error("Compte créé, mais impossible d'ouvrir la session publique.");
+    return session;
+  } catch (error: any) {
+    const msg = String(error?.message || error || "");
+    if (/already registered|user already registered|already exists|existe déjà/i.test(msg)) throw new Error("Un compte public existe déjà avec cet email. Utilise “J’ai déjà un compte”.");
+    throw error instanceof Error ? error : new Error(msg || "Création du compte public impossible.");
   }
 }
 
 async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
+  if (!email || !password) throw new Error("Email et mot de passe requis pour se connecter.");
+  if (!__SUPABASE_ENV__.hasEnv) throw new Error("Backend public Supabase non configuré sur cette version de l'application.");
 
-  if (!email || !password) {
-    throw new Error("Email et mot de passe requis pour se connecter.");
-  }
-
-  let nasError: any = null;
-  let directError: any = null;
-  let publicError: any = null;
-
-  // 1) NAS prioritaire pour les comptes privés/fondateur, avec timeout court.
-  try {
-    const nasSession = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
-    if (nasSession) return nasSession;
-  } catch (error: any) {
-    nasError = error;
-    console.warn("[onlineApi] NAS-first login failed -> trying Supabase failover", error);
-  }
-
-  // 2) Secours direct Supabase AVANT le backend NAS : c'est ce qui garantit
-  // que le compte admin reste connectable lorsque le NAS ou son tunnel est coupé.
-  if (__SUPABASE_ENV__.hasEnv) {
-    try {
-      const signInResult: any = await Promise.race([
-        supabase.auth.signInWithPassword({ email, password }),
-        new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
-      ]);
-      const { error } = signInResult || {};
-      if (error) throw new Error(normalizeAuthErrorMessage(error.message));
-      const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
-      if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
-      markAuthReady(true);
-      return session;
-    } catch (error: any) {
-      directError = error;
-      console.warn("[onlineApi] direct Supabase login failed -> trying server bridge", error);
-    }
-  }
-
-  // 3) Compatibilité anciens comptes publics : bridge serveur si l'accès direct
-  // Supabase est filtré par le navigateur/réseau mais que le backend reste joignable.
-  try {
-    return await publicSupabaseViaBackend("login", { email, password, nickname: payload.nickname });
-  } catch (error: any) {
-    publicError = error;
-    console.warn("[onlineApi] public backend login failed", error);
-  }
-
-  const nasMsg = String(nasError?.message || "");
-  const directMsg = String(directError?.message || "");
-  const publicMsg = String(publicError?.message || "");
-
-  if (directError && !/Invalid login credentials|Identifiants invalides/i.test(directMsg)) {
-    throw directError instanceof Error ? directError : new Error(directMsg);
-  }
-  if (publicError && !/Invalid login credentials|Identifiants invalides/i.test(publicMsg)) {
-    throw publicError instanceof Error ? publicError : new Error(publicMsg);
-  }
-  if (nasError && !/Compte introuvable|Mot de passe invalide|401|Invalid login credentials|Backend NAS|timeout|injoignable/i.test(nasMsg)) {
-    throw nasError instanceof Error ? nasError : new Error(nasMsg);
-  }
-  throw new Error("Identifiants invalides ou compte introuvable. Vérifie l’email et le mot de passe.");
+  // Chemin public strict : aucune requête NAS, même en cas d'identifiants invalides.
+  // Le NAS privé s'ouvre uniquement via l'accès privé ou via switchAccountInfrastructure("nas").
+  const signInResult: any = await Promise.race([
+    supabase.auth.signInWithPassword({ email, password }),
+    new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
+  ]);
+  const { error } = signInResult || {};
+  if (error) throw new Error(normalizeAuthErrorMessage(error.message));
+  const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+  if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
+  session.authProvider = "supabase";
+  session.degradedMode = false;
+  saveAuthToLS(session);
+  markAuthReady(true);
+  return session;
 }
 
 async function ensureNasAccountFailoverCopy(session: AuthSession, payload: LoginPayload | SignupPayload): Promise<void> {
@@ -1117,6 +1070,29 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   // Les écrans V7 utilisent désormais explicitement loginPublic ou loginWithInvitation.
   if (isNasProviderEnabled()) return loginWithInvitation(payload);
   return loginPublic(payload);
+}
+
+async function switchAccountInfrastructure(target: "public" | "nas"): Promise<AuthSession> {
+  if (target === "public") {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw new Error(error.message || "Session Supabase publique indisponible.");
+    if (!data?.session?.user) throw new Error("Aucune session publique Supabase disponible. Reconnecte le compte public avant de quitter le mode NAS privé.");
+    const publicSession = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+    if (!publicSession) throw new Error("Impossible d'activer le mode public Supabase.");
+    publicSession.authProvider = "supabase"; publicSession.degradedMode = false; saveAuthToLS(publicSession); markAuthReady(true); return publicSession;
+  }
+  const cached = loadAuthFromLS();
+  if (String(cached?.authProvider || "") === "nas" && cached?.token) return cached;
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw new Error(error.message || "Session Supabase publique indisponible.");
+  const session = data?.session; const user = session?.user;
+  if (!session || !user) throw new Error("Aucune session publique disponible pour ouvrir le NAS privé.");
+  const meta = (user.user_metadata || {}) as any; const nickname = meta?.nickname || meta?.displayName || user.email || "Player";
+  const userAuth: UserAuth = { id: String(user.id), email: user.email ?? undefined, nickname, createdAt: user.created_at ? Date.parse(user.created_at) : now() };
+  const profile = await getOrCreateProfile(String(user.id), nickname);
+  const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile, true);
+  if (!bridged?.token) throw new Error("Le NAS privé n'a pas pu être activé pour ce compte.");
+  bridged.authProvider = "nas"; bridged.degradedMode = false; saveAuthToLS(bridged); markAuthReady(true); return bridged;
 }
 
 // ============================================================
@@ -1350,7 +1326,7 @@ async function updateEmail(newEmail: string): Promise<void> {
 
 
 async function deletePublicSupabaseAccountThroughNas(): Promise<boolean> {
-  if (!isNasDataSyncEnabled()) return false;
+  if (!shouldUsePrivateNasDataSync()) return false;
   let accessToken = "";
   try {
     const { data } = await supabase.auth.getSession();
@@ -1546,7 +1522,7 @@ async function pullStoreSnapshot(): Promise<StoreSnapshotPullResult> {
     };
   }
 
-  if (!isNasDataSyncEnabled()) {
+  if (!shouldUsePrivateNasDataSync()) {
     return {
       status: "not_found",
       payload: null,
@@ -1573,7 +1549,7 @@ async function pushStoreSnapshot(payload: any, version = 8, opts?: { force?: boo
 
   // Garde-fou absolu : jamais de snapshot, partie, historique ou sauvegarde
   // dans Supabase, même lorsque le NAS est en panne.
-  if (failoverSession || !isNasDataSyncEnabled()) {
+  if (failoverSession || !shouldUsePrivateNasDataSync()) {
     return {
       ok: false,
       skipped: true,
@@ -1598,7 +1574,7 @@ async function ping(): Promise<PingResult> {
   // passent par le backend NAS. Le statut affiché dans ONLINE doit donc tester
   // /health du NAS, pas seulement Supabase. Sinon l’écran peut dire "hors ligne"
   // alors que l’API utilisée par les associations est un autre serveur.
-  if (isNasProviderEnabled() || isNasDataSyncEnabled()) {
+  if (useNasOnlineBackend()) {
     const health = await apiGet("/health");
     if (health?.ok === false) {
       throw new Error(health?.error || "Backend NAS joignable mais base de données indisponible.");
@@ -1662,7 +1638,12 @@ async function createLobby(args: { mode: string; maxPlayers: number; settings: O
       .select("*")
       .single();
 
-    if (!error && data) return mapLobbyRow(data as any);
+    if (!error && data) {
+      const avatarUrl = meta.avatar_url || meta.avatarUrl || null;
+      const { error: playerError } = await supabase.from("online_lobby_players").upsert({ lobby_id: (data as any).id, lobby_code: code, user_id: user.id, nickname, display_name: nickname, avatar_url: avatarUrl, role: "player", status: "online", updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+      if (playerError) throw new Error(playerError.message || "Salon créé, mais inscription de l'hôte impossible.");
+      return (await loadSupabaseLobbyWithPlayers(code)) || mapLobbyRow(data as any);
+    }
 
     lastError = error;
     if (error && (error as any).code === "23505") continue;
@@ -1685,17 +1666,17 @@ async function joinLobby(args: { code: string; [k: string]: any }): Promise<Onli
     return (res?.lobby || res) as OnlineLobby;
   }
 
-  const { data, error } = await supabase
-    .from("online_lobbies")
-    .select("*")
-    .eq("code", codeUpper)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message || "Impossible de rejoindre ce salon pour le moment.");
-  if (!data) throw new Error("Aucun salon trouvé avec ce code.");
-  return mapLobbyRow(data as any);
+  const { user } = await ensureAuthedUser();
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper);
+  if (!lobby) throw new Error("Aucun salon trouvé avec ce code.");
+  if (["closed", "ended"].includes(String(lobby.status || "").toLowerCase())) throw new Error("Ce salon est terminé.");
+  const role = String(args.role || "player").trim().toLowerCase() === "spectator" ? "spectator" : "player";
+  const alreadyJoined = (lobby.players || []).some((p: any) => String(p?.userId || p?.user_id || "") === user.id);
+  if (!alreadyJoined && role !== "spectator" && lobby.isFull) throw new Error("Ce salon est complet.");
+  const meta = (user.user_metadata || {}) as any; const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
+  const { error: joinError } = await supabase.from("online_lobby_players").upsert({ lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname, avatar_url: meta.avatar_url || meta.avatarUrl || null, role, status: "online", updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+  if (joinError) throw new Error(joinError.message || "Impossible de rejoindre ce salon pour le moment.");
+  return (await loadSupabaseLobbyWithPlayers(codeUpper)) || lobby;
 }
 
 async function setLobbyReady(args: { code: string; ready: boolean; nickname?: string; role?: string }): Promise<OnlineLobby> {
@@ -1715,24 +1696,11 @@ async function setLobbyReady(args: { code: string; ready: boolean; nickname?: st
   const { user } = await ensureAuthedUser();
   const status = args.ready ? "ready" : "online";
 
-  const { data: lobby, error: lobbyError } = await supabase
-    .from("online_lobbies")
-    .select("*")
-    .eq("code", codeUpper)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (lobbyError) throw new Error(lobbyError.message || "Impossible de lire le salon.");
-  if (!lobby) throw new Error("Salon introuvable.");
-
-  await supabase
-    .from("online_lobby_players")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("lobby_code", codeUpper)
-    .eq("user_id", user.id);
-
-  return mapLobbyRow(lobby as any);
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper); if (!lobby) throw new Error("Salon introuvable.");
+  const meta = (user.user_metadata || {}) as any; const nickname = String(args.nickname || meta.nickname || meta.displayName || user.email || "Joueur").trim();
+  const { error: readyError } = await supabase.from("online_lobby_players").upsert({ lobby_id: lobby.id, lobby_code: codeUpper, user_id: user.id, nickname, display_name: nickname, avatar_url: meta.avatar_url || meta.avatarUrl || null, role: String(args.role || "player").trim().toLowerCase() === "spectator" ? "spectator" : "player", status, ready_at: args.ready ? new Date().toISOString() : null, updated_at: new Date().toISOString() }, { onConflict: "lobby_id,user_id" });
+  if (readyError) throw new Error(readyError.message || "Impossible de modifier l'état du joueur.");
+  return (await loadSupabaseLobbyWithPlayers(codeUpper)) || lobby;
 }
 
 async function getLobby(code: string): Promise<OnlineLobby> {
@@ -1743,16 +1711,7 @@ async function getLobby(code: string): Promise<OnlineLobby> {
     return (res?.lobby || res) as OnlineLobby;
   }
 
-  const { data, error } = await supabase
-    .from("online_lobbies")
-    .select("*")
-    .eq("code", codeUpper)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message || "Impossible de lire ce salon.");
-  if (!data) throw new Error("Salon introuvable.");
-  return mapLobbyRow(data as any);
+  const lobby = await loadSupabaseLobbyWithPlayers(codeUpper); if (!lobby) throw new Error("Salon introuvable."); return lobby;
 }
 
 // ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
@@ -1771,7 +1730,11 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
     .limit(limit);
 
   if (error) throw new Error(error.message);
-  return (data || []).map((r: any) => mapLobbyRow(r));
+  const lobbies = (data || []) as any[]; const codes = lobbies.map((r: any) => safeUpper(r?.code)).filter(Boolean); if (!codes.length) return [];
+  const { data: players, error: playersError } = await supabase.from("online_lobby_players").select("*").in("lobby_code", codes).order("joined_at", { ascending: true });
+  if (playersError) throw new Error(playersError.message || "Impossible de lire les joueurs des salons.");
+  const byCode = new Map<string, any[]>(); for (const player of players || []) { const key=safeUpper((player as any)?.lobby_code); if (!key) continue; const bucket=byCode.get(key)||[]; bucket.push(player); byCode.set(key,bucket); }
+  return lobbies.map((r: any) => mapLobbyRow(r, byCode.get(safeUpper(r?.code)) || []));
 }
 
 // ============================================================
@@ -1806,7 +1769,7 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
     .select("*")
     .single();
 
-  if (!error && data) return data as any;
+  if (!error && data) { await supabase.from("online_lobbies").update({ status: "started", updated_at: new Date().toISOString() }).eq("code", code); return data as any; }
 
   const { data: upd, error: updErr } = await supabase
     .from("online_matches")
@@ -1819,6 +1782,7 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 
   if (updErr) throw new Error(updErr.message || error?.message || "Impossible de démarrer le match.");
   if (!upd) throw new Error("Impossible de démarrer le match (row introuvable).");
+  await supabase.from("online_lobbies").update({ status: "started", updated_at: new Date().toISOString() }).eq("code", code);
   return upd as any;
 }
 
@@ -1866,6 +1830,7 @@ async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<
 
   const { error } = await supabase.from("online_matches").update(patch).eq("lobby_code", code);
   if (error) throw new Error(error.message || "Impossible de terminer le match.");
+  await supabase.from("online_lobbies").update({ status: "closed", updated_at: new Date().toISOString() }).eq("code", code);
 }
 
 async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | null> {
@@ -1900,10 +1865,58 @@ type OnlineStreamHandlers = {
 
 function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers = {}) {
   const code = safeUpper(lobbyCode);
-  if (!code || !useNasOnlineBackend() || typeof window === "undefined" || typeof EventSource === "undefined") {
-    return () => {};
+  if (!code || typeof window === "undefined") return () => {};
+
+  // ONLINE public : Supabase Realtime. Aucun SSE / NAS.
+  if (!useNasOnlineBackend()) {
+    let stopped = false;
+    const emitLobby = async () => {
+      if (stopped) return;
+      try {
+        const lobby = await loadSupabaseLobbyWithPlayers(code);
+        if (lobby && !stopped) handlers.onLobby?.(lobby as any);
+      } catch (error) {
+        if (!stopped) handlers.onError?.(error);
+      }
+    };
+    const channel = supabase
+      .channel(`ms-online:${code}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "online_matches", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+        const row = payload?.new || payload?.old || null;
+        if (row) handlers.onMatch?.(row as OnlineMatchRow);
+        handlers.onEvent?.({ type: "match:update", code, match: row, realtime: true } as any);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "online_lobbies", filter: `code=eq.${code}` }, (payload: any) => {
+        handlers.onEvent?.({ type: "lobby:update", code, lobby: payload?.new || payload?.old || null, realtime: true } as any);
+        void emitLobby();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "online_lobby_players", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+        handlers.onEvent?.({ type: "lobby:players", code, player: payload?.new || payload?.old || null, realtime: true } as any);
+        void emitLobby();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "online_messages", filter: `lobby_code=eq.${code}` }, (payload: any) => {
+        const message = payload?.new || null;
+        if (message) handlers.onMessage?.(message);
+        handlers.onEvent?.({ type: "lobby:message", code, message, realtime: true } as any);
+      })
+      .subscribe((status: any) => {
+        if (status === "SUBSCRIBED") {
+          handlers.onOpen?.();
+          void emitLobby();
+          void fetchMatchByCode(code).then((match) => {
+            if (match && !stopped) handlers.onMatch?.(match);
+          }).catch((error) => { if (!stopped) handlers.onError?.(error); });
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") handlers.onError?.(new Error(`Supabase Realtime: ${status}`));
+      });
+
+    return () => {
+      stopped = true;
+      try { void supabase.removeChannel(channel); } catch {}
+    };
   }
 
+  if (typeof EventSource === "undefined") return () => {};
   const token = readNasAccessToken();
   const url = buildApiUrl(`/online/stream/${encodeURIComponent(code)}`, token ? { token } : undefined);
   let closed = false;
@@ -2075,6 +2088,7 @@ export const onlineApi = {
   loginPublic,
   signupWithInvitation,
   loginWithInvitation,
+  switchAccountInfrastructure,
   restoreSession,
   ensureAnonymousSession,
   ensureAutoSession,

@@ -34,6 +34,7 @@ import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import OnlineStatsCleanupPanel from "../components/OnlineStatsCleanupPanel";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, computeNasSyncSummary } from "../lib/manualNasSync";
 import { getApiUrl } from "../lib/apiClient";
+import { onlineApi } from "../lib/onlineApi";
 import { exportCloudBackupAsJson, restoreCloudBackupFromJson } from "../lib/cloudBackup";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
@@ -1480,11 +1481,33 @@ function AccountPages({
     }
   }
 
-  function persistStoragePrefs(next: Partial<typeof storagePrefs>, msg?: string) {
+  async function persistStoragePrefs(next: Partial<typeof storagePrefs>, msg?: string) {
+    const previous = storagePrefs;
     const saved = saveStoragePrefs(next);
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
-    void syncStoragePrefsToBackend(saved);
+    try {
+      if (saved.selectedDestination === "founder_nas" && previous.selectedDestination !== "founder_nas") {
+        await onlineApi.switchAccountInfrastructure("nas");
+        setMessage("Mode privé NAS activé pour tes sauvegardes. ONLINE, amis et proximité restent sur le cloud public.");
+      } else if (saved.selectedDestination !== "founder_nas" && previous.selectedDestination === "founder_nas") {
+        await onlineApi.switchAccountInfrastructure("public");
+        setMessage(saved.selectedDestination === "cloud_r2" ? "Mode public activé : session Supabase + sauvegardes Cloudflare R2." : "Mode public activé : session Supabase, avec la destination locale sélectionnée.");
+      }
+    } catch (e: any) {
+      const rolledBack = saveStoragePrefs(previous);
+      setStoragePrefs(rolledBack);
+      setCloudUsageError(e?.message || "Impossible de basculer l'infrastructure du compte.");
+      return;
+    }
+    // Quand le fondateur quitte le NAS privé, le passage au cloud doit être
+    // immédiatement autonome : aucune requête NAS n'est nécessaire pour valider
+    // cette bascule. Le backend NAS n'est synchronisé que lorsqu'il est réellement
+    // la destination active, ou pour les comptes publics qui utilisaient déjà la
+    // gestion de plans historique.
+    if (saved.selectedDestination === "founder_nas" || previous.selectedDestination !== "founder_nas") {
+      void syncStoragePrefsToBackend(saved);
+    }
   }
 
   async function runExternalBackupAction(action: "choose" | "save" | "download" | "forget") {
@@ -2494,7 +2517,7 @@ function AccountPages({
                     selectedDestination: "founder_nas",
                     keepLocalSafetyCopy: true,
                   },
-                  "NAS fondateur sélectionné avec copie locale et authentification Supabase de secours."
+                  "NAS fondateur sélectionné pour les sauvegardes privées. L'ONLINE public reste sur Supabase/Cloudflare."
                 )}
                 style={{
                   textAlign: "left",
@@ -2508,11 +2531,11 @@ function AccountPages({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <b style={{ color: theme.primary }}>NAS fondateur + connexion Supabase de secours</b>
+                  <b style={{ color: theme.primary }}>NAS fondateur — sauvegardes privées</b>
                   {storagePrefs.selectedDestination === "founder_nas" && <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 950, color: "#9cffaa" }}>ACTIF</span>}
                 </div>
                 <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
-                  Réservé au compte admin : le NAS reste la destination principale et IndexedDB garde une copie locale. Supabase ne reçoit que l’authentification et le profil léger, jamais les parties ni les sauvegardes.
+                  Réservé au compte admin : le NAS peut rester la destination privée de tes sauvegardes, avec copie locale de sécurité. Le réseau public (ONLINE, amis, présence, joueurs à proximité et salons) reste indépendant sur Supabase/Cloudflare. Tu peux revenir au Cloud R2 public à tout moment.
                 </div>
               </button>
             </div>

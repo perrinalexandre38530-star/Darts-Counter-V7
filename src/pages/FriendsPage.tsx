@@ -68,6 +68,7 @@ import { History } from "../lib/history";
 import { loadOnlineX01SamplesForActiveProfile, loadAllOnlineX01Samples, aggregateX01Samples } from "../lib/x01StatsSource";
 import { getTicker } from "../lib/tickers";
 import OnlineClubsPanel from "../components/OnlineClubsPanel";
+import NearbyPlayersPanel from "../components/NearbyPlayersPanel";
 import {
   filterOnlineStatsHardDeleted,
   listOnlineStatsCleanupSessions,
@@ -963,7 +964,7 @@ function ShareDetailsModal({
    Objectif: conserver la page historique et restructurer l'affichage
    sans supprimer les blocs existants.
 --------------------------------------------------*/
-type OnlineMainTab = "hub" | "friends" | "requests" | "shares" | "play" | "activity" | "official" | "clubs";
+type OnlineMainTab = "hub" | "friends" | "nearby" | "requests" | "shares" | "play" | "activity" | "official" | "clubs";
 
 type OnlineTabSpec = {
   id: OnlineMainTab;
@@ -3504,6 +3505,14 @@ const doLogout = React.useCallback(async () => {
         tone: "green",
       },
       {
+        id: "nearby",
+        label: "À proximité",
+        icon: "📍",
+        hint: "",
+        badge: "LOCAL",
+        tone: "gold",
+      },
+      {
         id: "clubs",
         label: "Clubs",
         icon: "🏟️",
@@ -3550,6 +3559,7 @@ const doLogout = React.useCallback(async () => {
 
   const showHubTab = activeOnlineTab === "hub";
   const showFriendsTab = activeOnlineTab === "friends";
+  const showNearbyTab = activeOnlineTab === "nearby";
   const showRequestsTab = activeOnlineTab === "requests";
   const showSharesTab = activeOnlineTab === "shares";
   const showPlayTab = activeOnlineTab === "play";
@@ -4014,6 +4024,25 @@ const doLogout = React.useCallback(async () => {
           onRegister={registerOfficialLeague}
           goPlay={() => setShowOfficialLeaguePage(true)}
         />
+      ) : null}
+
+      {showNearbyTab ? (
+        <>
+          <SectionTitle
+            title="Joueurs à proximité"
+            subtitle="Trouve des joueurs autour de toi sans révéler ta position exacte"
+            right={<Pill label="LOCAL" tone="gold" />}
+          />
+          <div style={{ marginTop: 10 }}>
+            <NearbyPlayersPanel
+              signedIn={isSignedIn}
+              accent={onlineAccent}
+              activeSportId={activeSportId}
+              activeProfile={activeProfile as any}
+              onOpenMessages={() => go("messages" as any)}
+            />
+          </div>
+        </>
       ) : null}
 
       {showClubsTab ? (

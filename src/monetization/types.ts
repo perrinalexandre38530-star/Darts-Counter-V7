@@ -6,7 +6,7 @@ export type AdShowStatus = "shown" | "unavailable" | "skipped" | "error";
 
 export type AdShowResult = {
   status: AdShowStatus;
-  provider: "android" | "web-test" | "none";
+  provider: "android" | "android-admob" | "web-test" | "none";
   error?: string;
 };
 

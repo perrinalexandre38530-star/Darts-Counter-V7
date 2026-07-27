@@ -2,6 +2,8 @@ import React from "react";
 import { getVerifiedPremiumState, loadMonetizationPrefs, subscribeMonetizationPrefs } from "./prefs";
 import { STORE_PACKS } from "./catalog";
 import type { AdPlacement, MonetizationPrefs } from "./types";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { removeNativeBanner, showNativeBanner } from "./nativeAdMob";
 
 export function resolveBannerPlacementForRoute(tab: string, params?: any): AdPlacement | null {
   const route = String(tab || "");
@@ -25,7 +27,24 @@ export default function AdSlot({ placement }: { placement: AdPlacement | null })
     return () => window.clearInterval(id);
   }, [prefs.houseAdsEnabled]);
 
-  if (!placement || !prefs.adsEnabled || !prefs.bannersEnabled || getVerifiedPremiumState().active) return null;
+  const premiumActive = getVerifiedPremiumState().active;
+  const nativeRuntime = isCapacitorNativeRuntime();
+  const nativeEligible = !!placement && prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+
+  React.useEffect(() => {
+    if (!nativeRuntime) return;
+    if (!nativeEligible || !placement) {
+      void removeNativeBanner();
+      return;
+    }
+    void showNativeBanner(placement);
+    return () => { void removeNativeBanner(); };
+  }, [nativeRuntime, nativeEligible, placement]);
+
+  // Sous Android, la bannière est une vraie vue native AdMob placée au-dessus de BottomNav.
+  if (nativeRuntime) return null;
+
+  if (!placement || !prefs.adsEnabled || !prefs.bannersEnabled || premiumActive) return null;
 
   const pack = STORE_PACKS[packIndex % STORE_PACKS.length];
   const isPreview = prefs.testMode;
