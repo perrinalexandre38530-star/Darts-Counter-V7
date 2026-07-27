@@ -48,6 +48,16 @@ jobs:
       - name: Validate release registry
         run: npm run test:release
 
+      - name: Guard direct R2 Android restore
+        shell: bash
+        run: |
+          if grep -q 'readNasAccessToken' src/lib/cloudAutoRestore.ts; then
+            echo 'cloudAutoRestore must not depend on a NAS JWT: direct R2 accepts Supabase or NAS auth.'
+            exit 1
+          fi
+          grep -q 'Capacitor.isNativePlatform' src/lib/cloudAutoRestore.ts
+          grep -q 'hydrateStoreUserMedia' src/lib/cloudAutoRestore.ts
+
       - name: TypeScript
         run: npm run typecheck
 
