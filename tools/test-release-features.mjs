@@ -35,33 +35,38 @@ for (const [id, status] of Object.entries(config?.darts || {})) {
   }
 }
 
-const knownWorkInProgress = [
-  "scram",
-  "halve_it",
-  "bobs_27",
-  "shooter",
-  "attrape_moi",
-  "president",
+const expectedStableSports = ["darts", "babyfoot", "petanque"];
+const expectedStableDarts = [
+  "x01",
+  "killer",
+  "shanghai",
+  "five_lives",
+  "golf",
+  "departements",
+  "capital",
   "loterie",
-  "prisoner",
-  "bowling",
-  "mario_kart",
+  "attrape_moi",
+  "killer_progressive",
+  "baseball",
 ];
 
-for (const id of knownWorkInProgress) {
-  if (config?.darts?.[id] === "stable") errors.push(`${id}: known work-in-progress must not be stable`);
-}
+const actualStableSports = Object.entries(config?.sports || {})
+  .filter(([, status]) => status === "stable")
+  .map(([id]) => id)
+  .sort();
+const actualStableDarts = Object.entries(config?.darts || {})
+  .filter(([, status]) => status === "stable")
+  .map(([id]) => id)
+  .sort();
 
-for (const requiredStable of ["x01", "cricket", "killer", "shanghai"]) {
-  if (config?.darts?.[requiredStable] !== "stable") {
-    errors.push(`${requiredStable}: core Store mode must remain stable`);
-  }
-}
+const expectedSportsSorted = [...expectedStableSports].sort();
+const expectedDartsSorted = [...expectedStableDarts].sort();
 
-for (const requiredSport of ["darts", "petanque", "pingpong"]) {
-  if (config?.sports?.[requiredSport] !== "stable") {
-    errors.push(`${requiredSport}: initial MULTISPORTS Store sport must remain stable until explicitly demoted`);
-  }
+if (JSON.stringify(actualStableSports) !== JSON.stringify(expectedSportsSorted)) {
+  errors.push(`stable sports mismatch: expected ${expectedSportsSorted.join(", ")} got ${actualStableSports.join(", ")}`);
+}
+if (JSON.stringify(actualStableDarts) !== JSON.stringify(expectedDartsSorted)) {
+  errors.push(`stable darts mismatch: expected ${expectedDartsSorted.join(", ")} got ${actualStableDarts.join(", ")}`);
 }
 
 if (errors.length) {
