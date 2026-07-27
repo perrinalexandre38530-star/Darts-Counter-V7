@@ -46,10 +46,13 @@ if (!fs.existsSync(androidDir)) run("npx", ["cap", "add", "android"]);
 else console.log("\n✓ Dossier android/ déjà présent : cap add ignoré.");
 
 run("npm", ["run", "build"]);
+
+// Pipeline natif sûr : UN seul sync, puis injections AdMob + Billing.
+// Ne jamais relancer cap sync après, sinon les fichiers Gradle/Manifest peuvent être régénérés.
 run("npx", ["cap", "sync", "android"]);
 run("node", ["./tools/configure-android-admob.mjs"]);
 run("node", ["./tools/configure-android-play-billing.mjs"]);
-run("npx", ["cap", "sync", "android"]);
+run("node", ["./tools/android-release-check.mjs"]);
 
 console.log("\n✅ Shell Android Capacitor prêt.");
 console.log(`   App : ${APP_NAME}`);
@@ -57,4 +60,4 @@ console.log(`   Package : ${APP_ID}`);
 console.log(`   Capacitor : ${CAP_VERSION}`);
 console.log(`   AdMob plugin : ${ADMOB_PLUGIN_VERSION} (Google TEST par défaut)`);
 console.log("   Play Billing : 9.1.0 / achats verrouillés jusqu’à vérification serveur");
-console.log("   Étape locale suivante : npm run android:open");
+console.log("   Lancement sûr : npm run android:run");
