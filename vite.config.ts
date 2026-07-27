@@ -40,16 +40,16 @@ function releaseFeatureGate(mode: string): Plugin | null {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
 
       if (normalizedId.endsWith("/src/games/dartsGameRegistry.ts")) {
-        const needle = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({\n  ...g,\n  ready: READY_IDS.has(g.id),\n}));`;
+        // Keep the complete internal registry for history/stats compatibility.
+        // Only the UI-facing DARTS_GAMES export is filtered for beta/store.
+        const needle = "export const DARTS_GAMES = dartsGameRegistry;";
         if (!code.includes(needle)) {
-          this.error("MULTISPORTS release gate: dartsGameRegistry export shape changed; refusing an unfiltered beta/store build.");
+          this.error("MULTISPORTS release gate: DARTS_GAMES export changed; refusing an unfiltered beta/store build.");
         }
 
         const allowedLiteral = JSON.stringify(allowedDartsIds);
-        const replacement = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry\n  .map((g) => ({\n    ...g,\n    ready: READY_IDS.has(g.id),\n  }))\n  .filter((g) => ${allowedLiteral}.includes(g.id));`;
-
         return {
-          code: code.replace(needle, replacement),
+          code: code.replace(needle, `export const DARTS_GAMES = dartsGameRegistry.filter((game) => ${allowedLiteral}.includes(game.id));`),
           map: null,
         };
       }
