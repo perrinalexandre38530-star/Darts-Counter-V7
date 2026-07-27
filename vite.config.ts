@@ -13,6 +13,7 @@ type ReleaseFeaturesFile = {
   channels: Record<ReleaseChannel, FeatureStatus[]>;
   sports: Record<string, FeatureStatus>;
   darts: Record<string, FeatureStatus>;
+  platformFeatures: Record<string, FeatureStatus>;
 };
 
 const releaseFeatures = JSON.parse(
@@ -30,6 +31,7 @@ function releaseFeatureGate(mode: string): Plugin | null {
   const allowedDartsIds = Object.entries(releaseFeatures.darts)
     .filter(([, status]) => allowedStatuses.has(status))
     .map(([id]) => id);
+  const platformEnabled = (id: string) => allowedStatuses.has(releaseFeatures.platformFeatures?.[id] || "development");
 
   return {
     name: `multisports-release-gate-${channel}`,
@@ -62,6 +64,22 @@ function releaseFeatureGate(mode: string): Plugin | null {
           code: code.replace(needle, `const copy = items.filter((item) => ${allowedLiteral}.includes(item.id));`),
           map: null,
         };
+      }
+
+      if (normalizedId.endsWith("/src/components/BottomNav.tsx")) {
+        let next = code;
+
+        if (!platformEnabled("online")) {
+          next = next.replaceAll("...(hideOnline ? [] : [", "...(true ? [] : [");
+        }
+        if (!platformEnabled("competitions")) {
+          next = next.replace('    { k: "tournaments", label: "Compétitions", icon: <Icon name="tournaments" /> },\n', "");
+        }
+        if (!platformEnabled("cast")) {
+          next = next.replace('    { k: "cast_host", label: "Écrans", icon: <Icon name="cast_host" /> },\n', "");
+        }
+
+        return next === code ? null : { code: next, map: null };
       }
 
       return null;
