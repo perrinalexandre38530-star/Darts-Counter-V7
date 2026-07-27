@@ -85,18 +85,25 @@ jobs:
           PY
           npx cap sync android
 
-      - name: Build Android App Bundle
+      - name: Build Android AAB and debug APK
         shell: bash
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew bundleRelease --stacktrace
+          ./gradlew bundleRelease assembleDebug --stacktrace
 
       - name: Upload unsigned Android AAB
         uses: actions/upload-artifact@v4
         with:
           name: multisports-scoring-android-unsigned-aab
           path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+      - name: Upload installable Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: multisports-scoring-android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
       - name: Commit generated Android project
