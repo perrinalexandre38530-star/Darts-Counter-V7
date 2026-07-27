@@ -15,7 +15,7 @@ import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { playGolfTickerSound } from "../lib/sfx";
+import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import victoryImage from "../assets/victory.webp";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
@@ -96,6 +96,7 @@ const DEFAULT_CONFIG: LoterieConfig & any = {
   cellsPerCard: 10,
   startOrderMode: "random",
   participantMode: "players",
+  revealMode: "self",
 };
 
 function nameOf(p: any) { return String(p?.displayName ?? p?.name ?? p?.nickname ?? "Joueur"); }
@@ -108,8 +109,8 @@ function makeFallbackPlayers(store: any): any[] {
   return active ? [{ ...active, id: String(active.id), name: nameOf(active), avatarDataUrl: avatarOf(active) }] : [{ id: "player_1", name: "Joueur 1" }];
 }
 function compactConfigLabel(config: LoterieConfig, player?: LoteriePlayerState | null) {
-  if (config.variant === "express") return `EXPRESS · ${config.expressTarget.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}`;
-  return `${config.volleyMode === "strict3" ? "3 DARTS" : "VOLÉE LIBRE"} · ${player ? `${player.targetMin}–${player.targetMax}` : config.level.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}`;
+  if (config.variant === "express") return `EXPRESS · ${config.expressTarget.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}${config?.revealMode === "all" ? " · COMMUNE" : ""}`;
+  return `${config.volleyMode === "strict3" ? "3 DARTS" : "VOLÉE LIBRE"} · ${player ? `${player.targetMin}–${player.targetMax}` : config.level.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}${config?.revealMode === "all" ? " · COMMUNE" : ""}`;
 }
 function panelStyle(): React.CSSProperties {
   return { borderRadius: 16, border: `1px solid ${STROKE}`, background: "linear-gradient(180deg, rgba(255,255,255,.07), rgba(5,8,16,.72))", boxShadow: "0 10px 22px rgba(0,0,0,.24)", minWidth: 0, maxWidth: "100%", boxSizing: "border-box" };
@@ -182,7 +183,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
-                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>NON POSSÉDÉ</div>
+                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
                 </>
               ) : null}
             </>
@@ -192,8 +193,8 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
               <div aria-hidden style={{ position: "absolute", inset: "10% 10% auto", height: "44%", background: `radial-gradient(circle at 50% 68%, ${aura}55, transparent 70%)` }} />
               <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateRows: "auto 1fr auto", alignItems: "center", justifyItems: "center", padding: "16px 14px 18px" }}>
                 <div style={{ width: "100%", textAlign: "center" }}>
-                  <div style={{ color: BAD, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>HORS LOTERIE</div>
-                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>SCORE NON POSSÉDÉ SUR LES CARTONS</div>
+                  <div style={{ color: BAD, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>{lang === "fr" ? "HORS LOT" : "OUT OF DRAW"}</div>
+                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>{lang === "fr" ? "SCORE HORS LOT" : "OUT OF DRAW SCORE"}</div>
                 </div>
                 <div style={{ display: "grid", justifyItems: "center", gap: 8 }}>
                   <div style={{ color: BAD, fontSize: 72, fontWeight: 1000, lineHeight: .92, textShadow: `0 0 18px ${aura}` }}>{scoreLabel}</div>
@@ -204,7 +205,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
                   <div style={{ color: "#ae854f", fontSize: 17, lineHeight: 1 }}>★</div>
                   <div style={{ width: "72%", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, color: BAD }}>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
-                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>NON POSSÉDÉ</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
                   </div>
                 </div>
@@ -886,19 +887,71 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     try { onFinish?.(record); } catch (e) { console.warn("[Loterie] onFinish failed", e); }
   }
 
+  function revealForPlayerWithoutVisit(player: LoteriePlayerState, result: any) {
+    let revealed = 0;
+    const cards = player.cards.map((card: any) => ({
+      ...card,
+      cells: card.cells.map((cell: any) => {
+        if (!cell.revealed && result?.key && cell.key === result.key) {
+          revealed += 1;
+          return { ...cell, revealed: true };
+        }
+        return cell;
+      }),
+    }));
+    const completedCardIds = cards.filter((c: any) => c.cells.length > 0 && c.cells.every((x: any) => x.revealed)).map((c: any) => c.id);
+    return { player: { ...player, cards }, revealed, completedCardIds, result };
+  }
+
   function commitTurn(turnDarts: LoterieDart[]) {
     if (!active || winnerId || !turnDarts.length) return;
+    try { unlockAudio(); } catch {}
     const current = players[activeIndex];
+    const revealMode = config?.revealMode === "all" ? "all" : "self";
     const resolved = revealResult(current, config, turnDarts);
-    const nextPlayers = players.map((p, i) => i === activeIndex ? resolved.player : p);
-    const didWin = hasWon(resolved.player);
-    const changedKeys = resolved.player.cards.flatMap((card: any, cardIdx: number) => {
+    const baseResult = resolved.result;
+    const resolvedById = new Map<string, any>();
+    let nextPlayers: LoteriePlayerState[] = [];
+
+    if (revealMode === "all") {
+      nextPlayers = players.map((p, i) => {
+        const entry = i === activeIndex ? resolved : revealForPlayerWithoutVisit(p, baseResult);
+        resolvedById.set(p.id, entry);
+        return entry.player;
+      });
+    } else {
+      nextPlayers = players.map((p, i) => i === activeIndex ? resolved.player : p);
+      resolvedById.set(current.id, resolved);
+    }
+
+    const currentResolved = resolvedById.get(current.id) || resolved;
+    const didWinCurrent = hasWon(currentResolved.player);
+    const winnerCandidate = didWinCurrent
+      ? current.id
+      : (() => {
+          const winners = nextPlayers.filter((p) => hasWon(p));
+          if (!winners.length) return null;
+          const ranked = [...winners].sort((a, b) => bestCardProgress(b) - bestCardProgress(a) || b.stats.cellsRevealed - a.stats.cellsRevealed || players.findIndex((p) => p.id === a.id) - players.findIndex((p) => p.id === b.id));
+          return ranked[0]?.id || null;
+        })();
+
+    const changedKeys = currentResolved.player.cards.flatMap((card: any, cardIdx: number) => {
       const prevCard = current.cards[cardIdx];
-      return card.cells.filter((cell: any, ci: number) => cell.revealed && !prevCard?.cells?.[ci]?.revealed).map((cell: any) => `${card.id}:${cell.key}`);
+      return card.cells.filter((cell: any) => cell.revealed && !prevCard?.cells?.find((x: any) => x.key === cell.key)?.revealed).map((cell: any) => `${card.id}:${cell.key}`);
     });
-    const revealedCardNumbers = resolved.player.cards
+    const revealedCardNumbers = currentResolved.player.cards
       .map((card: any, cardIdx: number) => changedKeys.some((key: string) => key.startsWith(`${card.id}:`)) ? cardIdx + 1 : null)
       .filter((n: number | null): n is number => n != null);
+    const totalRevealed = revealMode === "all"
+      ? nextPlayers.reduce((sum: number, p: any, idx: number) => {
+          const prev = players[idx];
+          const next = p;
+          const prevRevealed = prev.cards.reduce((n: number, c: any) => n + c.cells.filter((cell: any) => cell.revealed).length, 0);
+          const nextRevealed = next.cards.reduce((n: number, c: any) => n + c.cells.filter((cell: any) => cell.revealed).length, 0);
+          return sum + Math.max(0, nextRevealed - prevRevealed);
+        }, 0)
+      : currentResolved.revealed;
+    const found = totalRevealed > 0;
     const currentMember = participantMode === "teams" && Array.isArray((current as any)?.members) && (current as any).members.length
       ? (current as any).members[(Number(current?.stats?.visits || 0)) % (current as any).members.length]
       : null;
@@ -911,29 +964,27 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       actorId: currentMember?.id || current.id, memberId: currentMember?.id || null,
       actorName: currentMember?.name || current.name, memberName: currentMember?.name || null,
       darts: turnDarts.map((d) => ({ ...d, label: dartLabel(d), score: dartScore(d) })),
-      volleyScore: volleyScore(turnDarts), resultKey: resolved.result.key, resultLabel: resolved.result.label,
-      revealed: resolved.revealed, revealedCardNumbers, completedCardIds: resolved.completedCardIds,
+      volleyScore: volleyScore(turnDarts), resultKey: baseResult.key, resultLabel: baseResult.label,
+      revealed: totalRevealed, revealedCardNumbers, completedCardIds: currentResolved.completedCardIds,
+      revealMode,
     };
     const nextEvents = [...events, ev];
     setEvents(nextEvents);
     setPlayers(nextPlayers);
     setDarts([]);
     setRecentRevealKeys(changedKeys);
-    const resultScore = Math.round(Number(resolved?.result?.value ?? volleyScore(turnDarts)) || 0);
-    const found = resolved.revealed > 0;
+    const resultScore = Math.round(Number(baseResult?.value ?? volleyScore(turnDarts)) || 0);
     setScoreReveal({
       score: resultScore,
-      label: resolved?.result?.label || String(resultScore),
+      label: baseResult?.label || String(resultScore),
       good: found,
-      revealed: resolved.revealed,
+      revealed: totalRevealed,
       cardNumbers: revealedCardNumbers,
       ts: Date.now(),
     });
-    // Réutilise exactement les sons des tickers GOLF demandés : MISS si aucune
-    // case n'est trouvée, PAR dès qu'au moins un numéro est découvert.
     playLoterieGolfTickerSfx(found);
-    if (didWin) {
-      finish(nextPlayers, current.id, nextEvents);
+    if (winnerCandidate) {
+      finish(nextPlayers, winnerCandidate, nextEvents);
       return;
     }
     setActiveIndex((activeIndex + 1) % nextPlayers.length);
@@ -950,6 +1001,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
   function addDart(value: number, forcedMult?: number) {
     if (winnerId || botThinking) return;
+    try { unlockAudio(); } catch {}
     const mult = value === 0 ? 1 : (forcedMult || multiplierRef.current);
     const dart: LoterieDart = { v: Number(value) || 0, mult: mult as any };
     if (config.variant === "express") {
@@ -968,6 +1020,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   }
   function validateVisit() {
     if (winnerId || botThinking || !darts.length) return;
+    try { unlockAudio(); } catch {}
     if (config.variant === "express") return;
     if (config.volleyMode === "strict3" && darts.length !== 3) return;
     commitTurn(darts);

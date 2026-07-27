@@ -20,6 +20,7 @@ import { loadBotPlayers } from "../lib/bots";
 import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { unlockAudio } from "../lib/sfx";
 import { resolveProfileStarScore } from "../lib/profileStarScore";
 import {
   LOTERIE_LEVELS,
@@ -30,6 +31,7 @@ import {
   type LoterieLevel,
   type LoterieVariant,
   type LoterieVolleyMode,
+  type LoterieRevealMode,
 } from "../lib/loterie";
 import {
   PillButton,
@@ -245,6 +247,7 @@ export default function LoterieConfig(props: any) {
   const [autoMode, setAutoMode] = React.useState<LoterieAutoMode>(saved.autoMode || "balanced");
   const [volleyMode, setVolleyMode] = React.useState<LoterieVolleyMode>(saved.volleyMode || "strict3");
   const [expressTarget, setExpressTarget] = React.useState<LoterieExpressTarget>(saved.expressTarget || "simple");
+  const [revealMode, setRevealMode] = React.useState<LoterieRevealMode>(saved.revealMode === "all" ? "all" : "self");
   const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(saved.cardsPerPlayer || 2) as any);
   const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(saved.cellsPerCard || 10) as any);
   const [randomOrder, setRandomOrder] = React.useState(saved.startOrderMode === "random");
@@ -270,11 +273,11 @@ export default function LoterieConfig(props: any) {
       localStorage.setItem(LS_CFG_KEY, JSON.stringify({
         participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
         selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
-        variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard,
+        variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard,
         startOrderMode: randomOrder ? "random" : "fixed",
       }));
     } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard, randomOrder]);
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard, randomOrder]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
@@ -601,6 +604,15 @@ export default function LoterieConfig(props: any) {
           onChange={(value: any) => setRandomOrder(value === "random")}
           color={primary}
         />
+        <CompactConfigSelect
+          label="Attribution"
+          helpTitle="Attribution des scores"
+          help={<><b>Personnelle</b> : le score découvert ne compte que pour le joueur ou l'équipe active. <b>Commune</b> : chaque score réalisé compte pour tous les joueurs / équipes, pour une version encore plus loterie.</>}
+          value={revealMode}
+          options={[{ value: "self", label: "Personnelle" }, { value: "all", label: "Commune · pour tous" }]}
+          onChange={(value: any) => setRevealMode(value as LoterieRevealMode)}
+          color={primary}
+        />
       </div>
     </Section>
   );
@@ -616,6 +628,7 @@ export default function LoterieConfig(props: any) {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Mode</span><b style={{ textAlign: "right" }}>{variant === "classic" ? (volleyMode === "strict3" ? "LOTERIE · 3 darts" : "LOTERIE · volée libre") : `EXPRESS · ${expressTarget.toUpperCase()}`}</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Cartons</span><b>{cardsPerPlayer} × {cellsPerCard} cases</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Niveau</span><b style={{ textAlign: "right" }}>{variant === "classic" ? String(level).toUpperCase() : "CIBLE EXACTE"}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Attribution</span><b style={{ textAlign: "right" }}>{revealMode === "all" ? "COMMUNE" : "PERSONNELLE"}</b></div>
           </div>
         </div>
       </div>
@@ -636,7 +649,7 @@ export default function LoterieConfig(props: any) {
   function startGame() {
     if (!validSelection) return;
     const config: LoterieConfigType & any = {
-      variant, level, autoMode, volleyMode, expressTarget, cardsPerPlayer, cellsPerCard,
+      variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard,
       startOrderMode: randomOrder ? "random" : "fixed",
       participantMode,
     };
@@ -684,6 +697,7 @@ export default function LoterieConfig(props: any) {
 
     const ordered = randomOrder ? shuffle(participants) : participants;
     try { recordProfileUsageForMode("loterie", participantMode === "players" ? selectedIds : uniqueIds(activeTeamConfigs.flatMap((team) => team.playerIds))); } catch {}
+    try { unlockAudio(); } catch {}
     if (typeof go === "function") go("loterie_play", { config, players: ordered, participantMode, teamConfigs: activeTeamConfigs, createdAt: Date.now() });
   }
 

@@ -913,11 +913,10 @@ export default function Games({ setTab, params }: Props) {
         id: String(g.id),
         label: String(g.label),
         configPath: configPathForGame(g),
-        // TERRITORIES utilise déjà un ticker localisé dédié.
-        tickerSrc:
-          String(g.id) === "departements" || String(g.id) === "attrape_moi"
-            ? gameTickerForLang(String(g.id)) || undefined
-            : undefined,
+        // Utiliser le même résolveur de ticker que le carrousel rapide du bas.
+        // C'est indispensable pour les identifiants techniques historiques
+        // (ex. mario_kart -> ticker_darts_racer.png) et les tickers localisés.
+        tickerSrc: gameTickerForLang(String(g.id)) || undefined,
       }));
   }, [RECENT_GAME_IDS, gameTickerForLang]);
 

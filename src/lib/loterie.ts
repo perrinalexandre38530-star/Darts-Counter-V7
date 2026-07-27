@@ -3,6 +3,7 @@ export type LoterieLevel = "auto" | "beginner" | "leisure" | "intermediate" | "c
 export type LoterieAutoMode = "balanced" | "common";
 export type LoterieVolleyMode = "free" | "strict3";
 export type LoterieExpressTarget = "simple" | "double" | "triple";
+export type LoterieRevealMode = "self" | "all";
 
 export type LoterieDart = {
   v: number;
@@ -63,6 +64,7 @@ export type LoterieConfig = {
   autoMode: LoterieAutoMode;
   volleyMode: LoterieVolleyMode;
   expressTarget: LoterieExpressTarget;
+  revealMode?: LoterieRevealMode;
   cardsPerPlayer: 1 | 2 | 3 | 4;
   cellsPerCard: 5 | 10 | 15;
   startOrderMode: "random" | "fixed";
