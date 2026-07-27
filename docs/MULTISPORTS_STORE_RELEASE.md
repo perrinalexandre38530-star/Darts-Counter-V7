@@ -29,8 +29,11 @@ Sports marked `stable` for the first public version:
 Darts modes marked `stable`:
 
 - X01
+- Cricket
 - Killer
 - Shanghai
+- Training X01
+- Tour de l'horloge
 - Les 5 vies
 - Golf
 - Territories
@@ -40,7 +43,7 @@ Darts modes marked `stable`:
 - Killer Progressif
 - Baseball
 
-Everything else remains available to development and can be promoted later after validation. In particular, Ping-Pong and Cricket are not part of the initial Store whitelist at this stage.
+Everything else remains available to development and can be promoted later after validation. Ping-Pong is not part of the initial Store whitelist at this stage.
 
 Global surfaces currently kept out of the Store channel include Online, competitions, Camera Scoring, Cast/Viewer and the future TV Viewer until they pass their own audit.
 
