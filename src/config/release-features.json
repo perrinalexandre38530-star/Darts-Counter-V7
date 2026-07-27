@@ -71,8 +71,8 @@
   },
   "platformFeatures": {
     "competitions": "stable",
-    "online": "stable",
-    "messages": "stable",
+    "online": "beta",
+    "messages": "beta",
     "camera_scoring": "development",
     "cast": "stable",
     "viewer": "stable",
