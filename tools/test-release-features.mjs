@@ -58,8 +58,6 @@ const expectedStableDarts = [
 ];
 const expectedStablePlatformFeatures = [
   "competitions",
-  "online",
-  "messages",
   "cast",
   "viewer",
 ];
