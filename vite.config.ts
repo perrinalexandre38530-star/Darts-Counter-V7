@@ -84,14 +84,31 @@ function releaseFeatureGate(mode: string): Plugin | null {
       }
 
       if (nativeStoreMode && normalizedId.endsWith("/src/main.tsx")) {
-        const needle = "if (import.meta.env.PROD) await registerServiceWorkerProd();";
-        if (!code.includes(needle)) {
-          this.error("MULTISPORTS native build: service worker boot line changed; refusing a native build with uncertain cache behavior.");
+        // Native WebViews do not need the PWA Service Worker. More importantly,
+        // do not run devUnregisterSW() either: awaiting CacheStorage/SW cleanup
+        // before the first React render can hang Android WebView on a black screen.
+        const swNeedle = `if (import.meta.env.PROD) await registerServiceWorkerProd();\n    else await devUnregisterSW();`;
+        if (!code.includes(swNeedle)) {
+          this.error("MULTISPORTS native build: SW boot block changed; refusing a native build with uncertain cache behavior.");
         }
-        return {
-          code: code.replace(needle, "if (false) await registerServiceWorkerProd();"),
-          map: null,
-        };
+
+        let next = code.replace(
+          swNeedle,
+          `// Native build: no PWA Service Worker registration or cache purge before first render.`
+        );
+
+        // Keep a visible native boot marker until React takes over. If a future
+        // runtime issue happens before App renders, the device won't show a
+        // featureless black screen and diagnosis remains possible.
+        const containerNeedle = `const container = document.getElementById("root");\n    if (!container) throw new Error("❌ Élément #root introuvable dans index.html");`;
+        if (next.includes(containerNeedle)) {
+          next = next.replace(
+            containerNeedle,
+            `${containerNeedle}\n    container.innerHTML = '<div id="ms-native-boot" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0b10;color:#fff;font:700 16px Inter,system-ui,sans-serif;text-align:center;padding:24px">MULTISPORTS SCORING<br><span style="opacity:.65;font-size:12px;font-weight:600;margin-left:8px">Démarrage Android…</span></div>';`
+          );
+        }
+
+        return { code: next, map: null };
       }
 
       return null;
