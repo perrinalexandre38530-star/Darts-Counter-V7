@@ -1,0 +1,37 @@
+name: MULTISPORTS Store Foundation CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate-store-foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate release registry
+        run: npm run test:release
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Build Beta
+        run: npm run build:beta
+
+      - name: Build Store
+        run: npm run build:store
