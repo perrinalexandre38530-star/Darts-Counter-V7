@@ -6,6 +6,9 @@ const events = fs.readFileSync(new URL("../src/lib/cloudEvents.ts", import.meta.
 const tournaments = fs.readFileSync(new URL("../src/lib/tournaments/storeLocal.ts", import.meta.url), "utf8");
 const babyfoot = fs.readFileSync(new URL("../src/lib/babyfootLeagueStore.ts", import.meta.url), "utf8");
 const directR2 = fs.readFileSync(new URL("../src/lib/directR2BackupApi.ts", import.meta.url), "utf8");
+const configuredBackup = fs.readFileSync(new URL("../src/lib/configuredBackupNow.ts", import.meta.url), "utf8");
+const dartSetsStore = fs.readFileSync(new URL("../src/lib/dartSetsStore.ts", import.meta.url), "utf8");
+const userMedia = fs.readFileSync(new URL("../src/lib/userMediaFallback.ts", import.meta.url), "utf8");
 const cors = fs.readFileSync(new URL("../functions/api/storage/backups/_middleware.ts", import.meta.url), "utf8");
 
 const checks = [
@@ -23,6 +26,11 @@ const checks = [
   [tournaments.includes('emitCloudChange("tournaments:changed")'), "tournament changes must queue cloud backup"],
   [babyfoot.includes('emitCloudChange("babyfoot:leagues:changed")'), "baby-foot league changes must queue cloud backup"],
   [directR2.includes("https://darts-counter-v7.pages.dev/api/storage/backups"), "native R2 must use the Cloudflare Pages origin"],
+  [directR2.includes("isDirectR2MediaFresh") && userMedia.includes("isDirectR2MediaFresh"), "unchanged media must be skipped before image conversion/upload"],
+  [configuredBackup.includes('mediaMirror: "background"') && configuredBackup.includes("prepareSnapshotForDirectR2"), "manual R2 save must use the non-blocking slim path"],
+  [storage.includes('mediaMirror?: "await" | "background" | "skip"'), "snapshot export must support non-blocking media mirroring"],
+  [storage.includes("r2MainMediaKey") && storage.includes("r2ThumbMediaKey"), "portable dartsets must expose explicit R2 image references"],
+  [dartSetsStore.includes("mirrorOneDartSetMediaToR2") && dartSetsStore.includes("mediaUpdatedAt"), "imported dartset photos must be mirrored independently from metadata changes"],
   [cors.includes("https://localhost") && cors.includes("Access-Control-Allow-Origin"), "R2 Pages Function must allow the native WebView origin"],
 ];
 

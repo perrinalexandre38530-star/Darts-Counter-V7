@@ -21,12 +21,15 @@ const REQUEST_TIMEOUT_MUTATION_MS = 25_000;
 const REQUEST_TIMEOUT_DOWNLOAD_MS = 45_000;
 const REQUEST_TIMEOUT_UPLOAD_MS = 60_000;
 
-// Une sauvegarde de compte peut contenir plusieurs centaines de médias. Ils ne
-// doivent jamais partir tous en parallèle : chaque POST met aussi à jour le même
-// manifeste R2. Une file FIFO évite les rafales HTTP 500 et les écritures perdues.
+// Les médias sont nombreux et partagent un manifeste R2 unique. On évite les
+// rafales, et surtout on ne ré-uploade pas un média déjà à jour.
 const MEDIA_UPLOAD_MAX_ATTEMPTS = 4;
 const MEDIA_UPLOAD_RETRY_BASE_MS = 350;
+const MEDIA_MANIFEST_CACHE_MS = 30_000;
 let mediaUploadTail: Promise<void> = Promise.resolve();
+let mediaManifestCache: DirectR2MediaManifest | null = null;
+let mediaManifestCacheAt = 0;
+let mediaManifestPromise: Promise<DirectR2MediaManifest | null> | null = null;
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
@@ -44,6 +47,7 @@ function transientR2Status(error: any): boolean {
 }
 
 export type DirectBackupSummary = Record<string, any>;
+
 
 export type DirectR2MediaFallback = {
   version?: number;
@@ -145,6 +149,8 @@ function isJwtLike(token: string): boolean {
   if (parts.length !== 3) return false;
   const payload = decodeJwtPayload(token);
   if (!payload?.sub) return false;
+  // Un JWT NAS expiré ne doit pas bloquer le repli vers une session Supabase
+  // encore valide lorsque le NAS est hors ligne.
   const expMs = Number(payload?.exp || 0) * 1000;
   if (expMs > 0 && expMs <= Date.now() + 5_000) return false;
   return true;
@@ -187,7 +193,18 @@ function tokenFromStoredSupabaseSession(): string {
   return "";
 }
 
+/**
+ * R2 accepte deux modes d'authentification indépendants :
+ * - JWT Supabase, vérifié directement par la Pages Function ;
+ * - JWT NAS, vérifié localement dans la Pages Function avec JWT_SECRET.
+ *
+ * Le second mode permet au compte fondateur de sauvegarder sur R2 même si
+ * PostgreSQL, l'API NAS ou le tunnel sont indisponibles.
+ */
 async function readDirectStorageToken(): Promise<DirectStorageToken> {
+  // Pour un compte NAS/fondateur, le JWT NAS est prioritaire : son `sub`
+  // correspond directement à l'identifiant canonique du compte et évite toute
+  // confusion avec une ancienne session Supabase d'un autre utilisateur.
   const nasToken = String(readNasAccessToken() || "").trim();
   if (nasToken && isJwtLike(nasToken)) return { token: nasToken, kind: "nas" };
 
@@ -224,9 +241,19 @@ async function fetchWithTimeout(
 function timeoutForDirectRequest(path: string, init: RequestInit): number {
   const method = String(init?.method || "GET").toUpperCase();
   const cleanPath = String(path || "");
+
+  // Une sauvegarde complète peut faire plusieurs Mo et Cloudflare doit ensuite
+  // calculer le checksum + écrire R2 + mettre à jour le manifeste.
   if (method === "POST" && cleanPath === "") return REQUEST_TIMEOUT_UPLOAD_MS;
-  if (method === "GET" && /^\/r2b_[^/]+$/i.test(cleanPath)) return REQUEST_TIMEOUT_DOWNLOAD_MS;
+
+  // La restauration télécharge le snapshot complet.
+  if (method === "GET" && /^\/r2b_[^/]+$/i.test(cleanPath)) {
+    return REQUEST_TIMEOUT_DOWNLOAD_MS;
+  }
+
+  // Suppression/restauration depuis corbeille : plus généreux qu'un simple GET.
   if (method !== "GET") return REQUEST_TIMEOUT_MUTATION_MS;
+
   return REQUEST_TIMEOUT_READ_MS;
 }
 
@@ -289,6 +316,54 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
   throw error;
 }
 
+async function readCachedMediaManifest(): Promise<DirectR2MediaManifest | null> {
+  const now = Date.now();
+  if (mediaManifestCache && now - mediaManifestCacheAt < MEDIA_MANIFEST_CACHE_MS) return mediaManifestCache;
+  if (mediaManifestPromise) return mediaManifestPromise;
+  mediaManifestPromise = (async () => {
+    try {
+      const payload = await requestDirect("/media-manifest", { method: "GET" });
+      mediaManifestCache = (payload?.manifest || { version: 2, media: {} }) as DirectR2MediaManifest;
+      mediaManifestCacheAt = Date.now();
+      return mediaManifestCache;
+    } catch {
+      return mediaManifestCache;
+    } finally {
+      mediaManifestPromise = null;
+    }
+  })();
+  return mediaManifestPromise;
+}
+
+function updateCachedMediaManifest(row: any) {
+  try {
+    const key = String(row?.key || "").trim();
+    if (!key) return;
+    if (!mediaManifestCache) mediaManifestCache = { version: 2, media: {} };
+    if (!mediaManifestCache.media) mediaManifestCache.media = {};
+    mediaManifestCache.media[key] = {
+      key,
+      kind: String(row?.kind || "user_image"),
+      sizeBytes: Number(row?.sizeBytes || 0) || undefined,
+      checksum: row?.checksum ? String(row.checksum) : undefined,
+      updatedAtMs: Number(row?.updatedAtMs || 0) || undefined,
+      sourceUrl: row?.sourceUrl ? String(row.sourceUrl) : null,
+    };
+    mediaManifestCacheAt = Date.now();
+  } catch {}
+}
+
+export async function isDirectR2MediaFresh(args: { key: string; updatedAt?: number | null }): Promise<boolean> {
+  const manifest = await readCachedMediaManifest();
+  const row = manifest?.media?.[String(args.key || "")];
+  if (!row) return false;
+  // user_image:* est adressé par le hash de son contenu : même clé = même image.
+  if (String(args.key || "").startsWith("user_image:")) return true;
+  const localUpdatedAt = Number(args.updatedAt || 0);
+  const remoteUpdatedAt = Number(row?.updatedAtMs || 0);
+  return localUpdatedAt > 0 && remoteUpdatedAt >= localUpdatedAt;
+}
+
 function toCloudItem(item: DirectBackupRecord): CloudObjectIndexItem {
   return {
     id: String(item.id || ""),
@@ -336,7 +411,7 @@ export async function getDirectR2Status(): Promise<DirectR2Status> {
       ok: false,
       code: error?.name === "AbortError" ? "status_timeout" : "status_unreachable",
       error: error?.name === "AbortError"
-        ? `Le diagnostic Cloudflare Pages/R2 n'a pas répondu en moins de ${Math.round(REQUEST_TIMEOUT_READ_MS / 1000)} secondes.`
+        ? `Le diagnostic Cloudflare Pages/R2 n\'a pas répondu en moins de ${Math.round(REQUEST_TIMEOUT_READ_MS / 1000)} secondes.`
         : String(error?.message || error || "Diagnostic R2 inaccessible."),
     };
   }
@@ -421,13 +496,15 @@ export async function downloadDirectR2NasUserMirror(): Promise<DirectR2NasUserMi
 }
 
 export async function getDirectR2MediaManifest(): Promise<{ manifest: DirectR2MediaManifest; audit?: any }> {
-  const payload = await requestDirect("/media-manifest", { method: "GET" });
-  return {
-    manifest: (payload?.manifest || { version: 2, media: {} }) as DirectR2MediaManifest,
-    audit: payload?.audit || undefined,
-  };
+  const manifest = await readCachedMediaManifest();
+  return { manifest: manifest || { version: 2, media: {} } };
 }
 
+/**
+ * Copie privée d'une miniature d'avatar directement dans Cloudflare R2.
+ * Cette route ne traverse jamais le NAS et reste donc disponible pendant une
+ * panne du QNAP tant que la session NAS JWT ou Supabase est encore valide.
+ */
 export async function uploadDirectR2AvatarFallback(args: {
   profileId: string;
   dataUrl: string;
@@ -458,6 +535,7 @@ export async function downloadDirectR2AvatarFallback(profileIdInput: string): Pr
     if (!avatar || !avatar?.dataUrl) return null;
     return avatar as DirectR2AvatarFallback;
   } catch (error: any) {
+    // Un profil qui n'a pas encore été répliqué sur R2 n'est pas une erreur UI.
     if (/introuvable|avatar_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
     throw error;
   }
@@ -470,6 +548,10 @@ export async function deleteDirectR2AvatarFallback(profileIdInput: string): Prom
   return true;
 }
 
+/**
+ * Copie privée générique d'un média utilisateur dans R2.
+ * Sert aux photos de sets, logos, couvertures, etc. sans dépendance au NAS.
+ */
 export async function uploadDirectR2MediaFallback(args: {
   key: string;
   kind?: string;
@@ -481,7 +563,19 @@ export async function uploadDirectR2MediaFallback(args: {
   const dataUrl = String(args?.dataUrl || "").trim();
   if (!key || !dataUrl) throw new Error("Clé ou média R2 manquant.");
 
+  // Une seule lecture du manifeste suffit pour des centaines de médias. Si R2
+  // possède déjà la même version, zéro POST : les sauvegardes suivantes deviennent
+  // quasi instantanées côté médias.
+  if (await isDirectR2MediaFresh({ key, updatedAt: args.updatedAt })) {
+    return { key, kind: args.kind || "user_image", dataUrl, updatedAtMs: args.updatedAt ?? null, sourceUrl: args.sourceUrl ?? null };
+  }
+
   return enqueueR2MediaUpload(async () => {
+    // Un média a pu être écrit par une tâche précédente pendant l'attente FIFO.
+    if (await isDirectR2MediaFresh({ key, updatedAt: args.updatedAt })) {
+      return { key, kind: args.kind || "user_image", dataUrl, updatedAtMs: args.updatedAt ?? null, sourceUrl: args.sourceUrl ?? null };
+    }
+
     let lastError: any = null;
     for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
       try {
@@ -495,7 +589,9 @@ export async function uploadDirectR2MediaFallback(args: {
             sourceUrl: args.sourceUrl ?? null,
           }),
         });
-        return payload?.media || { key, kind: args.kind || "user_image", dataUrl };
+        const media = payload?.media || { key, kind: args.kind || "user_image", dataUrl, updatedAtMs: args.updatedAt ?? Date.now(), sourceUrl: args.sourceUrl ?? null };
+        updateCachedMediaManifest(media);
+        return media;
       } catch (error: any) {
         lastError = error;
         if (!transientR2Status(error) || attempt >= MEDIA_UPLOAD_MAX_ATTEMPTS) throw error;
@@ -526,3 +622,4 @@ export async function deleteDirectR2MediaFallback(keyInput: string): Promise<boo
   await requestDirect(`/media/${encodeURIComponent(key)}`, { method: "DELETE" });
   return true;
 }
+

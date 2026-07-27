@@ -22,6 +22,8 @@ import {
   resolveUserMediaFallback,
   galleryItemMediaKey,
   avatarAiGalleryMediaKey,
+  dartSetMainMediaKey,
+  dartSetThumbMediaKey,
 } from "./userMediaFallback";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
@@ -2429,6 +2431,19 @@ async function exportPortableAccountData(): Promise<any> {
   const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
   const gallery = exportAvatarGalleryMetadata();
   const sanitizedCollections = sanitizeStoreForCloud({ profiles, dartSets, bots, teams });
+  const portableDartSets = (Array.isArray(sanitizedCollections?.dartSets) ? sanitizedCollections.dartSets : dartSets).map((set: any) => {
+    const id = String(set?.id || "").trim();
+    if (!id) return set;
+    const customPhoto = set?.kind === "photo" || Boolean(set?.photoAssetId || set?.mainImageAssetId);
+    return {
+      ...(set || {}),
+      ...(customPhoto ? {
+        r2MainMediaKey: dartSetMainMediaKey(id),
+        r2ThumbMediaKey: dartSetThumbMediaKey(id),
+        mediaUpdatedAt: Number(set?.mediaUpdatedAt || set?.createdAt || set?.updatedAt || 0) || undefined,
+      } : {}),
+    };
+  });
   return {
     _v: PORTABLE_ACCOUNT_DATA_VERSION,
     exportedAt: new Date().toISOString(),
@@ -2436,7 +2451,7 @@ async function exportPortableAccountData(): Promise<any> {
     activeProfileId: currentStore?.activeProfileId ?? null,
     profiles: Array.isArray(sanitizedCollections?.profiles) ? sanitizedCollections.profiles : profiles,
     bots: Array.isArray(sanitizedCollections?.bots) ? sanitizedCollections.bots : bots,
-    dartSets: Array.isArray(sanitizedCollections?.dartSets) ? sanitizedCollections.dartSets : dartSets,
+    dartSets: portableDartSets,
     teams: Array.isArray(sanitizedCollections?.teams) ? sanitizedCollections.teams : teams,
     avatarGalleries: gallery.galleries,
     legacyAiGallery: gallery.legacyAiGallery,
@@ -2661,14 +2676,32 @@ function sanitizeStoreForCloud(store: any) {
   return clone;
 }
 
-export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
+export type CloudSnapshotExportOptions = {
+  /**
+   * await      = comportement historique : attend la réplication média R2 ;
+   * background = lance la réplication sans bloquer le snapshot ;
+   * skip       = ne déclenche aucune réplication média depuis cet export.
+   */
+  mediaMirror?: "await" | "background" | "skip";
+  /** Les destinations R2 directes n'ont pas besoin de réembarquer le coffre base64. */
+  includeEmbeddedMedia?: boolean;
+  /** Les avatars ont déjà leurs objets R2 dédiés dans le chemin R2 rapide. */
+  includeAvatarFallbacks?: boolean;
+};
+
+export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {}): Promise<CloudSnapshot> {
   const dump = await exportAll();
-  // Avant de supprimer les gros data:image du snapshot portable, on scelle
-  // toutes les images originales connues dans les objets média R2 dédiés.
-  // Ainsi le snapshot peut rester léger sans perdre le moindre média.
+  const mediaMirror = opts.mediaMirror ?? "await";
+  // Pour R2 direct, la réplication des médias ne doit JAMAIS bloquer le bouton
+  // Sauver pendant plusieurs minutes. Elle peut continuer en arrière-plan pendant
+  // que l'utilisateur reprend immédiatement l'application.
   try {
     const currentStore: any = await loadStore();
-    if (currentStore) await captureStoreUserMedia(currentStore);
+    if (currentStore && mediaMirror !== "skip") {
+      const job = captureStoreUserMedia(currentStore);
+      if (mediaMirror === "await") await job;
+      else void job.catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
+    }
   } catch (mediaMirrorError) {
     console.warn("[storage] exact R2 media mirror preflight incomplete", mediaMirrorError);
   }
@@ -2687,28 +2720,32 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
     // MEDIA UTILISATEUR MULTI-SOURCE : le store normal retire volontairement
     // les gros data:image. On embarque donc aussi le coffre média indépendant
     // dans TOUT snapshot portable (R2, NAS, Local, fichier/SD/USB).
-    try {
-      const userMediaFallbacks = await exportUserMediaFallbackSnapshot();
-      if (Object.keys(userMediaFallbacks.media || {}).length > 0) {
-        clone.userMediaFallbacks = userMediaFallbacks;
+    if (opts.includeEmbeddedMedia !== false) {
+      try {
+        const userMediaFallbacks = await exportUserMediaFallbackSnapshot();
+        if (Object.keys(userMediaFallbacks.media || {}).length > 0) {
+          clone.userMediaFallbacks = userMediaFallbacks;
+        }
+      } catch (mediaError) {
+        console.warn("[storage] user media fallback export skipped", mediaError);
       }
-    } catch (mediaError) {
-      console.warn("[storage] user media fallback export skipped", mediaError);
     }
 
     // AVATARS R2 FAILOVER : les profils du store ne conservent volontairement
     // plus les gros base64. On ajoute donc au snapshot cloud un bloc séparé de
     // miniatures compactes (192px), utilisable même si le NAS est hors ligne.
-    try {
-      const currentStore: any = await loadStore();
-      const avatarFallbacks = await buildAvatarFallbackSnapshot(
-        Array.isArray(currentStore?.profiles) ? currentStore.profiles : []
-      );
-      if (Object.keys(avatarFallbacks.profiles || {}).length > 0) {
-        clone.avatarFallbacks = avatarFallbacks;
+    if (opts.includeAvatarFallbacks !== false) {
+      try {
+        const currentStore: any = await loadStore();
+        const avatarFallbacks = await buildAvatarFallbackSnapshot(
+          Array.isArray(currentStore?.profiles) ? currentStore.profiles : []
+        );
+        if (Object.keys(avatarFallbacks.profiles || {}).length > 0) {
+          clone.avatarFallbacks = avatarFallbacks;
+        }
+      } catch (avatarError) {
+        console.warn("[storage] avatar R2 fallback export skipped", avatarError);
       }
-    } catch (avatarError) {
-      console.warn("[storage] avatar R2 fallback export skipped", avatarError);
     }
 
     if (clone?.store && typeof clone.store === "object") {
