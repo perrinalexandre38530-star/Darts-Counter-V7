@@ -80,6 +80,9 @@ import { botAvatarMediaKey, captureUserMediaFallback, hydrateStoreUserMedia, pro
 import BottomNav from "./components/BottomNav";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
+// MONETIZATION_V1
+import AdSlot, { resolveBannerPlacementForRoute } from "./monetization/AdSlot";
+import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
@@ -2174,6 +2177,18 @@ useEffect(() => {
 
   /* Navigation */
   function go(next: Tab, params?: any) {
+    const intercepted = interceptMonetizedNavigation({
+      fromTab: String(tab || ""),
+      fromParams: routeParams,
+      toTab: String(next || ""),
+      toParams: params,
+      navigate: () => commitGo(next, params),
+    });
+    if (intercepted) return;
+    commitGo(next, params);
+  }
+
+  function commitGo(next: Tab, params?: any) {
     const nextParams = mergeOnlineRouteContext(routeParams, next, params);
     setRouteParams(nextParams ?? null);
     profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: nextParams ?? null });
@@ -2810,6 +2825,8 @@ useEffect(() => {
   function pushHistory(m: MatchRecord, options?: { navigate?: boolean }) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushHistory
+    try { markCompletedMatchForAds(String(id), String((m as any)?.kind || (m as any)?.payload?.kind || "game")); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3081,6 +3098,8 @@ useEffect(() => {
   function pushPetanqueHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `petanque-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushPetanqueHistory
+    try { markCompletedMatchForAds(String(id), "petanque"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3154,6 +3173,8 @@ useEffect(() => {
   function pushBabyFootHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `babyfoot-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushBabyFootHistory
+    try { markCompletedMatchForAds(String(id), "baby_foot"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3321,6 +3342,8 @@ try {
   function pushPingPongHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `pingpong-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushPingPongHistory
+    try { markCompletedMatchForAds(String(id), "ping_pong"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3427,6 +3450,8 @@ try {
   function pushMolkkyHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `molkky-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushMolkkyHistory
+    try { markCompletedMatchForAds(String(id), "molkky"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3536,6 +3561,8 @@ try {
   function pushDiceHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `dice-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    // MONETIZATION_COMPLETE:pushDiceHistory
+    try { markCompletedMatchForAds(String(id), "dice"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
@@ -5332,6 +5359,7 @@ case "babyfoot_team_edit":
   ] as any);
 
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab);
+  const adBannerPlacement = resolveBannerPlacementForRoute(String(tab || ""), routeParams);
 
 
   return (
@@ -5348,13 +5376,15 @@ case "babyfoot_team_edit":
           />
         )}
 
-        <div className="container" style={{ paddingBottom: 88 }}>
+        <div className="container" style={{ paddingBottom: adBannerPlacement ? 154 : 88 }}>
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
               {page}
             </React.Suspense>
           </AppGate>
         </div>
+
+        {adBannerPlacement && <AdSlot placement={adBannerPlacement} />}
 
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}

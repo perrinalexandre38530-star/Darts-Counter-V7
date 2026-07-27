@@ -40,6 +40,8 @@ import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 import { simulateDevMatchesAllGames } from "../lib/devMatchSimulator";
 import { injectDevX01ReferenceMatch } from "../lib/devInjectX01TestMatch";
 import { useSport } from "../contexts/SportContext";
+// MONETIZATION_V1
+import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -1188,7 +1190,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
+type SettingsTab = "menu" | "account" | "monetization" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
@@ -4166,6 +4168,8 @@ export function Settings({ go }: Props) {
       ? t("settings.title", "Réglages")
       : tab === "account"
       ? t("settings.menu.account", "Compte")
+      : tab === "monetization"
+      ? "Publicité & Boutique"
       : tab === "theme"
       ? t("settings.menu.theme", "Thème")
       : tab === "lang"
@@ -4183,6 +4187,8 @@ export function Settings({ go }: Props) {
       ? t("settings.subtitle", "Personnalise le thème et la langue de l’application.")
       : tab === "account"
       ? t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")
+      : tab === "monetization"
+      ? "Bannières, vidéo de fin de partie, Premium et packs additionnels."
       : tab === "theme"
       ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
       : tab === "lang"
@@ -4281,6 +4287,13 @@ export function Settings({ go }: Props) {
               onClick={() => setTab("account")}
             />
             <SettingsMenuCard
+              title="Publicité & Boutique"
+              subtitle="Bannières, vidéo fin de partie, Premium sans pub et packs avatars/logos/sets/thèmes/bots IA."
+              theme={theme}
+              rightHint="FREE / PREMIUM"
+              onClick={() => setTab("monetization")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.theme", "Thème")}
               subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
               theme={theme}
@@ -4325,6 +4338,7 @@ export function Settings({ go }: Props) {
         )}
 
         {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} onFullReset={handleFullReset} />}
+        {tab === "monetization" && <MonetizationSettingsPanel />}
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}

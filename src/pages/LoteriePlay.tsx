@@ -594,15 +594,131 @@ function EndStat({ label, value, tone = GOLD }: any) {
 function EndPie3D({ title, items, center, centerLabel }: any) {
   const clean = (items || []).filter((x: any) => Number(x?.value || 0) > 0);
   const total = clean.reduce((s: number, x: any) => s + Number(x.value || 0), 0);
-  let at = 0;
-  const stops = clean.map((x: any) => {
-    const from = at;
-    at += total ? (Number(x.value || 0) / total) * 100 : 0;
-    return `${x.color} ${from}% ${at}%`;
+  const uid = React.useId();
+  const cx = 72;
+  const cy = 46;
+  const rx = 52;
+  const ry = 28;
+  const depth = 15;
+  const explode = 8;
+
+  const darken = (color: string, amt = 0.38) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(color || ""));
+    if (!m) return color;
+    const hex = m[1];
+    const n = (i: number) => parseInt(hex.slice(i, i + 2), 16);
+    const mix = (v: number) => Math.max(0, Math.min(255, Math.round(v * (1 - amt))));
+    return `rgb(${mix(n(0))}, ${mix(n(2))}, ${mix(n(4))})`;
+  };
+
+  const pt = (a: number, ox = 0, oy = 0) => ({
+    x: cx + ox + rx * Math.cos(a),
+    y: cy + oy + ry * Math.sin(a),
   });
-  const grad = stops.length ? `conic-gradient(${stops.join(",")})` : "conic-gradient(rgba(255,255,255,.1) 0 100%)";
-  return <div style={{ minWidth:0, borderRadius:14, padding:9, border:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }}><div style={{color:GOLD,fontSize:8.5,fontWeight:1000,letterSpacing:.5}}>{title}</div><div style={{display:"grid",gridTemplateColumns:"105px minmax(0,1fr)",gap:7,alignItems:"center",marginTop:5}}><div style={{position:"relative",height:82}}><div style={{position:"absolute",left:8,right:8,top:17,height:58,borderRadius:"50%",background:grad,transform:"rotateX(58deg) translateY(8px)",filter:"brightness(.38)",boxShadow:"0 10px 16px rgba(0,0,0,.4)"}}/><div style={{position:"absolute",left:8,right:8,top:8,height:58,borderRadius:"50%",background:grad,transform:"rotateX(58deg)",boxShadow:"inset 0 0 0 1px rgba(255,255,255,.12)"}}/><div style={{position:"absolute",left:36,right:36,top:27,height:26,borderRadius:"50%",background:"#0c0d11",transform:"rotateX(58deg)"}}/><div style={{position:"absolute",inset:0,display:"grid",placeItems:"center",paddingTop:3,textAlign:"center"}}><div><div style={{color:GOLD,fontSize:14,fontWeight:1000,lineHeight:1}}>{center ?? total}</div><div style={{color:SOFT,fontSize:6.3,fontWeight:900,marginTop:2}}>{centerLabel || "TOTAL"}</div></div></div></div><div style={{display:"grid",gap:4}}>{clean.map((x:any)=><div key={x.label} style={{display:"grid",gridTemplateColumns:"7px minmax(0,1fr) auto",gap:5,alignItems:"center"}}><span style={{width:7,height:7,borderRadius:999,background:x.color}}/><span style={{color:SOFT,fontSize:7.2,fontWeight:850,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{x.label}</span><span style={{color:x.color,fontSize:8,fontWeight:1000}}>{x.value}</span></div>)}</div></div></div>;
+
+  const sectorPath = (startA: number, endA: number, ox = 0, oy = 0) => {
+    const p1 = pt(startA, ox, oy);
+    const p2 = pt(endA, ox, oy);
+    const large = endA - startA > Math.PI ? 1 : 0;
+    return `M ${cx + ox} ${cy + oy} L ${p1.x} ${p1.y} A ${rx} ${ry} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
+  };
+
+  const sidePath = (startA: number, endA: number, ox = 0, oy = 0) => {
+    const span = endA - startA;
+    const steps = Math.max(18, Math.ceil((span / (Math.PI * 2)) * 72));
+    const topPts: { x: number; y: number }[] = [];
+    const bottomPts: { x: number; y: number }[] = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const a = startA + (span * i) / steps;
+      if (Math.sin(a) >= 0) {
+        const p = pt(a, ox, oy);
+        topPts.push(p);
+        bottomPts.push({ x: p.x, y: p.y + depth });
+      }
+    }
+    if (topPts.length < 2) return "";
+    return `M ${topPts[0].x} ${topPts[0].y} ${topPts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(" ")} ${bottomPts.slice().reverse().map((p) => `L ${p.x} ${p.y}`).join(" ")} Z`;
+  };
+
+  let angle = -Math.PI / 2;
+  const slices = clean.map((item: any, idx: number) => {
+    const value = Number(item?.value || 0);
+    const part = total > 0 ? value / total : 1 / Math.max(clean.length, 1);
+    const startA = angle;
+    const endA = idx === clean.length - 1 ? -Math.PI / 2 + Math.PI * 2 : angle + part * Math.PI * 2;
+    angle = endA;
+    const mid = (startA + endA) / 2;
+    const ox = Math.cos(mid) * explode;
+    const oy = Math.sin(mid) * explode * 0.72;
+    return { ...item, value, startA, endA, mid, ox, oy, top: sectorPath(startA, endA, ox, oy), side: sidePath(startA, endA, ox, oy), sideColor: darken(String(item?.color || "#888")) };
+  });
+
+  return (
+    <div style={{ minWidth: 0, borderRadius: 14, padding: 10, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.025)" }}>
+      <div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1000, letterSpacing: .5 }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "140px minmax(0,1fr)", gap: 8, alignItems: "center", marginTop: 5 }}>
+        <div style={{ position: "relative", height: 104 }}>
+          <svg viewBox="0 0 155 120" width="100%" height="100%" aria-hidden="true" style={{ overflow: "visible" }}>
+            <defs>
+              <filter id={`${uid}-shadow`} x="-30%" y="-30%" width="160%" height="180%">
+                <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="rgba(0,0,0,.35)" />
+              </filter>
+              <linearGradient id={`${uid}-shine`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(255,255,255,.55)" />
+                <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+              </linearGradient>
+            </defs>
+
+            <ellipse cx={cx + 6} cy={cy + depth + 20} rx={rx + 24} ry={11} fill="rgba(0,0,0,.28)" />
+
+            {slices.map((slice: any) =>
+              slice.side ? (
+                <path
+                  key={`side-${slice.label}`}
+                  d={slice.side}
+                  fill={slice.sideColor}
+                  stroke="rgba(0,0,0,.18)"
+                  strokeWidth="1"
+                />
+              ) : null
+            )}
+
+            {slices.map((slice: any) => (
+              <path
+                key={`top-${slice.label}`}
+                d={slice.top}
+                fill={slice.color}
+                stroke="rgba(255,255,255,.32)"
+                strokeWidth="1.1"
+                filter={`url(#${uid}-shadow)`}
+              />
+            ))}
+
+            <ellipse cx={cx + 1} cy={cy - 8} rx={rx * 0.8} ry={ry * 0.34} fill={`url(#${uid}-shine)`} opacity=".38" />
+          </svg>
+
+          <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "end center", paddingBottom: 8, textAlign: "center", pointerEvents: "none" }}>
+            <div>
+              <div style={{ color: GOLD, fontSize: 18, fontWeight: 1000, lineHeight: 1 }}>{center ?? total}</div>
+              <div style={{ color: SOFT, fontSize: 6.8, fontWeight: 900, marginTop: 2 }}>{centerLabel || "TOTAL"}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 5 }}>
+          {clean.map((x: any) => (
+            <div key={x.label} style={{ display: "grid", gridTemplateColumns: "9px minmax(0,1fr) auto", gap: 6, alignItems: "center" }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: x.color, boxShadow: `0 0 0 1px ${String(x.color)}55` }} />
+              <span style={{ color: SOFT, fontSize: 7.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.label}</span>
+              <span style={{ color: x.color, fontSize: 8.4, fontWeight: 1000 }}>{x.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
+
 function EndCompareBars({ rows, total }: any) {
   const max = Math.max(1, ...(rows || []).map((r: any) => Number(r?.cellsRevealed || 0)));
   return <div style={{display:"grid",gap:6}}>{(rows || []).map((r:any)=><div key={r.id}><div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:7.8}}><span style={{color:"#e7e9ef",fontWeight:950,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</span><span style={{color:r.win?GOOD:GOLD,fontWeight:1000}}>{Number(r.cellsRevealed||0)} cases · {Math.round(Number(r.hitRate||0)*100)}%</span></div><div style={{height:6,marginTop:3,borderRadius:999,background:"rgba(255,255,255,.06)",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(Number(r.cellsRevealed||0)/max)*100)}%`,borderRadius:999,background:r.win?GOOD:GOLD,boxShadow:`0 0 10px ${r.win?GOOD:GOLD}44`}}/></div></div>)}</div>;
