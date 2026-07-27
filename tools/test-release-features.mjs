@@ -35,6 +35,10 @@ for (const [id, status] of Object.entries(config?.darts || {})) {
   }
 }
 
+for (const [id, status] of Object.entries(config?.platformFeatures || {})) {
+  if (!validStatuses.has(status)) errors.push(`platformFeatures.${id}: invalid status ${status}`);
+}
+
 const expectedStableSports = ["darts", "babyfoot", "petanque"];
 const expectedStableDarts = [
   "x01",
@@ -52,6 +56,13 @@ const expectedStableDarts = [
   "killer_progressive",
   "baseball",
 ];
+const expectedStablePlatformFeatures = [
+  "competitions",
+  "online",
+  "messages",
+  "cast",
+  "viewer",
+];
 
 const actualStableSports = Object.entries(config?.sports || {})
   .filter(([, status]) => status === "stable")
@@ -61,15 +72,23 @@ const actualStableDarts = Object.entries(config?.darts || {})
   .filter(([, status]) => status === "stable")
   .map(([id]) => id)
   .sort();
+const actualStablePlatformFeatures = Object.entries(config?.platformFeatures || {})
+  .filter(([, status]) => status === "stable")
+  .map(([id]) => id)
+  .sort();
 
 const expectedSportsSorted = [...expectedStableSports].sort();
 const expectedDartsSorted = [...expectedStableDarts].sort();
+const expectedPlatformSorted = [...expectedStablePlatformFeatures].sort();
 
 if (JSON.stringify(actualStableSports) !== JSON.stringify(expectedSportsSorted)) {
   errors.push(`stable sports mismatch: expected ${expectedSportsSorted.join(", ")} got ${actualStableSports.join(", ")}`);
 }
 if (JSON.stringify(actualStableDarts) !== JSON.stringify(expectedDartsSorted)) {
   errors.push(`stable darts mismatch: expected ${expectedDartsSorted.join(", ")} got ${actualStableDarts.join(", ")}`);
+}
+if (JSON.stringify(actualStablePlatformFeatures) !== JSON.stringify(expectedPlatformSorted)) {
+  errors.push(`stable platform features mismatch: expected ${expectedPlatformSorted.join(", ")} got ${actualStablePlatformFeatures.join(", ")}`);
 }
 
 if (errors.length) {
@@ -87,4 +106,5 @@ const countStatuses = (source) =>
 console.log("[release-features] OK", {
   sports: countStatuses(config.sports),
   darts: countStatuses(config.darts),
+  platformFeatures: countStatuses(config.platformFeatures),
 });
