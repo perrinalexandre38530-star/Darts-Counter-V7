@@ -70,6 +70,7 @@
     "mario_kart": "development"
   },
   "platformFeatures": {
+    "competitions": "beta",
     "online": "beta",
     "camera_scoring": "development",
     "cast": "development",
