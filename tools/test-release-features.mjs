@@ -38,8 +38,11 @@ for (const [id, status] of Object.entries(config?.darts || {})) {
 const expectedStableSports = ["darts", "babyfoot", "petanque"];
 const expectedStableDarts = [
   "x01",
+  "cricket",
   "killer",
   "shanghai",
+  "training_x01",
+  "tour_horloge",
   "five_lives",
   "golf",
   "departements",
