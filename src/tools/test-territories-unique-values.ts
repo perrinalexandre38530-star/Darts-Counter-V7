@@ -2,9 +2,9 @@ import {
   MAX_PLAYABLE_TERRITORIES,
   buildUniqueTerritoryValues,
   selectPlayableTerritoryIds,
-} from "../src/territories/territoryValueRules.ts";
-import { initializeEqualTerritoryOwnership } from "../src/territories/engine.ts";
-import type { TerritoriesGameState, Territory } from "../src/territories/types.ts";
+} from "../territories/territoryValueRules.ts";
+import { initializeEqualTerritoryOwnership } from "../territories/engine.ts";
+import type { TerritoriesGameState, Territory } from "../territories/types.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);

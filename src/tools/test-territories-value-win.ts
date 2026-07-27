@@ -2,8 +2,8 @@ import {
   endTurn,
   initializeEqualTerritoryOwnership,
   sumOwnedValueByOwnerId,
-} from "../src/territories/engine.ts";
-import type { TerritoriesGameState } from "../src/territories/types.ts";
+} from "../territories/engine.ts";
+import type { TerritoriesGameState } from "../territories/types.ts";
 
 const baseConfig = {
   country: "FR" as const,
