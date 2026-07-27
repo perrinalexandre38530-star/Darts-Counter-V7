@@ -14,7 +14,15 @@ import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./avatarR2Fallback";
-import { captureStoreUserMedia, exportUserMediaFallbackSnapshot, importUserMediaFallbackSnapshot } from "./userMediaFallback";
+import {
+  captureStoreUserMedia,
+  exportUserMediaFallbackSnapshot,
+  importUserMediaFallbackSnapshot,
+  hydrateStoreUserMedia,
+  resolveUserMediaFallback,
+  galleryItemMediaKey,
+  avatarAiGalleryMediaKey,
+} from "./userMediaFallback";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
@@ -966,6 +974,12 @@ const LS_EXCLUDE = new Set<string>([
   "dc_nas_profile_onboarding_uid",
   "dc_user_id",
   "dc_storage_user_id_v1",
+  // état technique de synchronisation : ne doit jamais déclencher une nouvelle
+  // sauvegarde via le hook localStorage, sinon boucle dirty -> backup -> dirty.
+  "dc_nas_sync_dirty_v1",
+  "dc_nas_sync_dirty_reason_v1",
+  "dc_nas_sync_last_push_v1",
+  "dc_nas_sync_last_pull_v1",
 
   // historique / caches legacy désormais gérés hors localStorage
   "dc-history-v1",
@@ -2323,6 +2337,236 @@ function extractBotsFromSnapshot(snap: any) {
 
 export type CloudSnapshot = any;
 
+const PORTABLE_ACCOUNT_DATA_VERSION = 2;
+const LEGACY_AI_GALLERY_KEY = "msc_avatar_ia_gallery_v1";
+const AVATAR_GALLERY_PREFIX = "dc_avatar_gallery_v1:";
+const CRITICAL_LOCAL_STORAGE_KEYS = [
+  "babyfoot_league_store_v1",
+  "settings_x01",
+  "cloudStatsEnabled",
+  "dc-active-dartset-id",
+  "dc-active-dartSet-id",
+  "dc_dartset_active",
+] as const;
+
+function sanitizePortableProfile(profile: any): any {
+  const out = stripInlineProfileAvatar(profile || {});
+  try {
+    if (out?.privateInfo && typeof out.privateInfo === "object") {
+      const pi = { ...(out.privateInfo as any) };
+      delete pi.password;
+      delete pi.passwordHash;
+      delete pi.confirmPassword;
+      out.privateInfo = pi;
+    }
+  } catch {}
+  return out;
+}
+
+function durableGalleryMetadataItem(raw: any, legacyAi = false): any | null {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw?.id || raw?.galleryId || "").trim();
+  if (!id) return null;
+  const src = String(raw?.src || raw?.dataUrl || raw?.avatarDataUrl || raw?.imageDataUrl || raw?.url || "").trim();
+  const isInline = src.startsWith("data:image/");
+  const mediaKey = legacyAi ? avatarAiGalleryMediaKey(id) : galleryItemMediaKey(id);
+  const out: any = { ...(raw || {}), id, mediaKey };
+  if (isInline) {
+    delete out.src;
+    delete out.dataUrl;
+    delete out.avatarDataUrl;
+    delete out.imageDataUrl;
+    delete out.url;
+  } else if (src) {
+    out.src = src;
+  }
+  return out;
+}
+
+function exportAvatarGalleryMetadata(): { galleries: Record<string, any[]>; legacyAiGallery: any[]; count: number } {
+  const galleries: Record<string, any[]> = {};
+  let count = 0;
+  if (typeof window !== "undefined") {
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i) || "";
+        if (!key.startsWith(AVATAR_GALLERY_PREFIX)) continue;
+        const rows = safeJsonParse<any[]>(localStorage.getItem(key), []);
+        const safeRows = (Array.isArray(rows) ? rows : []).map((row) => durableGalleryMetadataItem(row, false)).filter(Boolean);
+        if (safeRows.length) {
+          galleries[key] = safeRows;
+          count += safeRows.length;
+        }
+      }
+    } catch {}
+  }
+  const legacyRows = typeof window !== "undefined"
+    ? safeJsonParse<any[]>(localStorage.getItem(LEGACY_AI_GALLERY_KEY), [])
+    : [];
+  const legacyAiGallery = (Array.isArray(legacyRows) ? legacyRows : []).map((row) => durableGalleryMetadataItem(row, true)).filter(Boolean);
+  count += legacyAiGallery.length;
+  return { galleries, legacyAiGallery, count };
+}
+
+function exportCriticalLocalStorageValues(): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (typeof window === "undefined") return out;
+  for (const key of CRITICAL_LOCAL_STORAGE_KEYS) {
+    try {
+      const value = localStorage.getItem(key);
+      if (value != null) out[key] = value;
+    } catch {}
+  }
+  return out;
+}
+
+async function exportPortableAccountData(): Promise<any> {
+  const currentStore: any = await loadStore().catch(() => null);
+  const profiles = Array.isArray(currentStore?.profiles) ? currentStore.profiles.map(sanitizePortableProfile) : [];
+  const dartSets = getAllDartSets();
+  const bots = loadStoredBots();
+  const teams = loadStoredTeams();
+  const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
+  const gallery = exportAvatarGalleryMetadata();
+  const sanitizedCollections = sanitizeStoreForCloud({ profiles, dartSets, bots, teams });
+  return {
+    _v: PORTABLE_ACCOUNT_DATA_VERSION,
+    exportedAt: new Date().toISOString(),
+    userId: getStorageUser(),
+    activeProfileId: currentStore?.activeProfileId ?? null,
+    profiles: Array.isArray(sanitizedCollections?.profiles) ? sanitizedCollections.profiles : profiles,
+    bots: Array.isArray(sanitizedCollections?.bots) ? sanitizedCollections.bots : bots,
+    dartSets: Array.isArray(sanitizedCollections?.dartSets) ? sanitizedCollections.dartSets : dartSets,
+    teams: Array.isArray(sanitizedCollections?.teams) ? sanitizedCollections.teams : teams,
+    avatarGalleries: gallery.galleries,
+    legacyAiGallery: gallery.legacyAiGallery,
+    criticalLocalStorage: exportCriticalLocalStorageValues(),
+    tournaments,
+    counts: {
+      profiles: profiles.length,
+      bots: Array.isArray(bots) ? bots.length : 0,
+      dartSets: Array.isArray(dartSets) ? dartSets.length : 0,
+      teams: Array.isArray(teams) ? teams.length : 0,
+      galleryItems: gallery.count,
+      tournaments: Number(tournaments?.counts?.tournaments || tournaments?.tournaments?.length || 0) || 0,
+    },
+  };
+}
+
+async function restoreGalleryMetadata(portable: any): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  let restored = 0;
+  const restoreRows = async (rowsInput: any, legacyAi: boolean) => {
+    const rows = Array.isArray(rowsInput) ? rowsInput : [];
+    const out: any[] = [];
+    for (const raw of rows) {
+      if (!raw || typeof raw !== "object") continue;
+      const id = String(raw?.id || raw?.galleryId || "").trim();
+      if (!id) continue;
+      let src = String(raw?.src || raw?.dataUrl || raw?.avatarDataUrl || raw?.imageDataUrl || raw?.url || "").trim();
+      if (!src) {
+        const mediaKey = String(raw?.mediaKey || (legacyAi ? avatarAiGalleryMediaKey(id) : galleryItemMediaKey(id)));
+        src = await resolveUserMediaFallback(mediaKey, "", { kind: legacyAi ? "avatar_ai_gallery" : "gallery_item" }).catch(() => "");
+      }
+      if (!src) continue;
+      const next = { ...(raw || {}), id, src };
+      if (legacyAi) {
+        next.dataUrl = src;
+      }
+      delete next.mediaKey;
+      out.push(next);
+    }
+    restored += out.length;
+    return out;
+  };
+
+  const galleries = portable?.avatarGalleries && typeof portable.avatarGalleries === "object" ? portable.avatarGalleries : {};
+  for (const [key, rows] of Object.entries<any>(galleries)) {
+    if (!String(key).startsWith(AVATAR_GALLERY_PREFIX)) continue;
+    const next = await restoreRows(rows, false);
+    if (next.length) {
+      try { localStorage.setItem(String(key), safeJsonStringify(next)); } catch {}
+    }
+  }
+  const legacy = await restoreRows(portable?.legacyAiGallery, true);
+  if (legacy.length) {
+    try { localStorage.setItem(LEGACY_AI_GALLERY_KEY, safeJsonStringify(legacy)); } catch {}
+  }
+  if (restored > 0) {
+    try { window.dispatchEvent(new CustomEvent("dc:avatar-gallery-changed", { detail: { restored } })); } catch {}
+  }
+  return restored;
+}
+
+async function restorePortableAccountData(portable: any): Promise<void> {
+  if (!portable || typeof portable !== "object") return;
+
+  try {
+    const current: any = (await loadStore().catch(() => null)) || {};
+    const remoteProfiles = Array.isArray(portable.profiles) ? portable.profiles : [];
+    const byId = new Map<string, any>();
+    for (const profile of Array.isArray(current?.profiles) ? current.profiles : []) {
+      const id = String(profile?.id || "").trim();
+      if (id) byId.set(id, profile);
+    }
+    for (const remote of remoteProfiles) {
+      const id = String(remote?.id || "").trim();
+      if (!id) continue;
+      const local = byId.get(id) || {};
+      byId.set(id, {
+        ...(local || {}),
+        ...(remote || {}),
+        privateInfo: { ...((local as any)?.privateInfo || {}), ...((remote as any)?.privateInfo || {}) },
+        preferences: { ...((local as any)?.preferences || {}), ...((remote as any)?.preferences || {}) },
+      });
+    }
+    let mergedStore: any = {
+      ...(current || {}),
+      profiles: Array.from(byId.values()),
+      activeProfileId: portable?.activeProfileId || current?.activeProfileId || null,
+    };
+    if (Array.isArray(portable?.bots)) mergedStore.bots = portable.bots;
+    if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
+    if (Array.isArray(portable?.teams)) mergedStore.teams = portable.teams;
+
+    const hydrated = await hydrateStoreUserMedia(mergedStore).catch(() => ({ store: mergedStore, changed: false }));
+    mergedStore = hydrated?.store || mergedStore;
+    await saveStore(mergedStore as any, { skipAsyncNormalize: true });
+  } catch (error) {
+    console.warn("[storage] portable account store restore failed", error);
+  }
+
+  try {
+    if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
+  } catch (error) { console.warn("[storage] portable bots restore failed", error); }
+  try {
+    if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
+  } catch (error) { console.warn("[storage] portable dartsets restore failed", error); }
+  try {
+    if (Array.isArray(portable?.teams)) saveStoredTeams(portable.teams as any[]);
+  } catch (error) { console.warn("[storage] portable teams restore failed", error); }
+  try {
+    const critical = portable?.criticalLocalStorage && typeof portable.criticalLocalStorage === "object" ? portable.criticalLocalStorage : {};
+    for (const [key, value] of Object.entries<any>(critical)) {
+      if (!CRITICAL_LOCAL_STORAGE_KEYS.includes(key as any)) continue;
+      if (typeof value === "string") localStorage.setItem(key, value);
+    }
+  } catch (error) { console.warn("[storage] portable critical localStorage restore failed", error); }
+  try {
+    await restoreGalleryMetadata(portable);
+  } catch (error) { console.warn("[storage] portable gallery restore failed", error); }
+  try {
+    if (portable?.tournaments && typeof portable.tournaments === "object") {
+      await importLocalTournamentsSnapshot(portable.tournaments, { replace: false });
+    }
+  } catch (error) { console.warn("[storage] portable competitions restore failed", error); }
+
+  try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+  try { window.dispatchEvent(new Event("dc-dartsets-updated")); } catch {}
+  try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
+  try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+}
+
 // ============================================================
 // ✅ Nettoyage du snapshot avant envoi vers une destination distante ou un fichier
 // - Avoid pushing huge base64 blobs (data:...)
@@ -2431,6 +2675,15 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   try {
     const clone: any = safeJsonParse(safeJsonStringify(dump || {}), dump || {});
 
+    // DONNÉES DE COMPTE CRITIQUES : copie canonique indépendante des clés
+    // IndexedDB/localStorage historiques. Elle garantit le retour des profils
+    // locaux, préférences, bots, dartsets, galeries et compétitions sur un nouvel appareil.
+    try {
+      clone.portableAccountData = await exportPortableAccountData();
+    } catch (portableError) {
+      console.warn("[storage] portable account data export skipped", portableError);
+    }
+
     // MEDIA UTILISATEUR MULTI-SOURCE : le store normal retire volontairement
     // les gros data:image. On embarque donc aussi le coffre média indépendant
     // dans TOUT snapshot portable (R2, NAS, Local, fichier/SD/USB).
@@ -2485,13 +2738,15 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
 export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<void> {
   dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
+  try { sessionStorage.setItem("dc_cloud_restore_in_progress_v2", "1"); } catch {}
 
-  if (mode === "replace") {
-    await nukeAll();
-    clearLocalStorageDc();
-  }
+  try {
+    if (mode === "replace") {
+      await nukeAll();
+      clearLocalStorageDc();
+    }
 
-  await importAll(dump);
+    await importAll(dump);
 
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.
@@ -2507,6 +2762,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
     importAvatarFallbackSnapshot((dump as any)?.avatarFallbacks || (dump as any)?.avatar_fallbacks || null);
   } catch (avatarError) {
     console.warn("[storage] avatar R2 fallback import skipped", avatarError);
+  }
+
+  // BLOC CANONIQUE DES DONNÉES DE COMPTE : restaure explicitement les
+  // catégories que les anciens snapshots pouvaient laisser vides.
+  try {
+    await restorePortableAccountData((dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null);
+  } catch (portableError) {
+    console.warn("[storage] portable account data import skipped", portableError);
   }
 
   // ✅ Important: le cloud peut contenir des doublons (ex: plusieurs profils locaux
@@ -2545,6 +2808,9 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
     } catch (e) {
       console.warn("[storage] restore teams from snapshot failed", e);
     }
+  }
+  } finally {
+    try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
   }
 }
 

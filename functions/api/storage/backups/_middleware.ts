@@ -1,33 +1,31 @@
-// CORS bridge for native MULTISPORTS SCORING WebViews.
-// Browser/PWA calls remain same-origin. Capacitor Android/iOS runs from
-// https://localhost and needs explicit cross-origin permission to call the
-// Cloudflare Pages R2 Functions. Authentication is still Bearer-token based;
-// no cookies or credentialed cross-origin requests are enabled here.
+// CORS minimal pour la WebView native Capacitor (https://localhost).
+const ALLOWED_ORIGINS = new Set([
+  "https://localhost",
+  "http://localhost",
+  "capacitor://localhost",
+  "https://darts-counter-v7.pages.dev",
+]);
 
-const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Max-Age": "86400",
-};
+function corsHeaders(origin: string | null): HeadersInit {
+  const allowOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://darts-counter-v7.pages.dev";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,Accept",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
 
 export const onRequest: PagesFunction = async (context) => {
+  const origin = context.request.headers.get("Origin");
   if (context.request.method.toUpperCase() === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: CORS_HEADERS,
-    });
+    return new Response(null, { status: 204, headers: corsHeaders(origin) });
   }
 
   const response = await context.next();
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(CORS_HEADERS)) {
-    headers.set(key, value);
-  }
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  const next = new Response(response.body, response);
+  const headers = corsHeaders(origin);
+  for (const [key, value] of Object.entries(headers)) next.headers.set(key, String(value));
+  return next;
 };

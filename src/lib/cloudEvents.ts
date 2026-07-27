@@ -13,6 +13,11 @@ export function emitCloudChange(reason: string) {
     void import("./externalBackupTarget")
       .then((mod) => mod.queueExternalBackup(why))
       .catch(() => undefined);
+    // R2 est aussi une destination de compte : toute donnée utilisateur modifiée
+    // doit programmer un snapshot complet, pas seulement les fins de partie.
+    void import("./cloudAccountBackup")
+      .then((mod) => mod.queueCloudR2AccountBackup(why))
+      .catch(() => undefined);
   } catch {}
 }
 

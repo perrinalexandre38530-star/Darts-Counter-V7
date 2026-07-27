@@ -7,6 +7,7 @@
 
 import { captureUserMediaFallback, galleryItemMediaKey } from "./userMediaFallback";
 import { deleteDirectR2MediaFallback } from "./directR2BackupApi";
+import { emitCloudChange } from "./cloudEvents";
 
 export type AvatarGalleryCategory = "account" | "local" | "bot" | "team" | "ia";
 
@@ -132,6 +133,8 @@ export function writeAvatarGallery(accountId: string | null | undefined, items: 
       } catch {}
     }
   }
+  try { emitCloudChange("avatar-gallery:changed"); } catch {}
+
   // Chaque élément de galerie est aussi un objet R2 autonome. On ne dépend donc
   // plus du localStorage ni du NAS pour retrouver l'image originale.
   for (const item of safe) {

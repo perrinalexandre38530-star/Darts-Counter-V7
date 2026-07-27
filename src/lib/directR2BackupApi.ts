@@ -7,7 +7,15 @@ import type { CloudObjectIndexItem } from "./cloudStorageApi";
  * IMPORTANT : aucune solution de repli vers le NAS n'est autorisée ici.
  * Une sauvegarde R2 ne doit jamais dépendre du domaine public du NAS.
  */
-const DIRECT_BASE = "/api/storage/backups";
+const DIRECT_BASE = (() => {
+  if (typeof window === "undefined") return "/api/storage/backups";
+  const host = String(window.location.hostname || "").toLowerCase();
+  const protocol = String(window.location.protocol || "").toLowerCase();
+  const isNativeWebView = host === "localhost" || host === "127.0.0.1" || protocol === "capacitor:";
+  return isNativeWebView
+    ? "https://darts-counter-v7.pages.dev/api/storage/backups"
+    : "/api/storage/backups";
+})();
 const REQUEST_TIMEOUT_READ_MS = 15_000;
 const REQUEST_TIMEOUT_MUTATION_MS = 25_000;
 const REQUEST_TIMEOUT_DOWNLOAD_MS = 45_000;

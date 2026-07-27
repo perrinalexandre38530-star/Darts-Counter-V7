@@ -1,8 +1,6 @@
-import { readNasAccessToken } from "./apiClient";
 import { importCloudSnapshot, loadStore, setStorageUser } from "./storage";
 import {
   downloadCloudObject,
-  getAccountStorageUsage,
   listCloudVaultBackups,
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
@@ -10,7 +8,7 @@ import { restoreCloudBackupFromJson } from "./cloudBackup";
 import { History } from "./history";
 import LZString from "lz-string";
 
-const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v1";
+const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v2";
 const AUTO_RESTORE_DECLINED_PREFIX = "dc_cloud_auto_restore_declined_v1";
 const DECLINE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
@@ -92,10 +90,7 @@ let historySyncUserId = "";
 
 async function syncLatestCloudHistory(userId: string): Promise<number> {
   const uid = String(userId || "").trim();
-  if (!uid || !readNasAccessToken()) return 0;
-
-  const usage = await getAccountStorageUsage().catch(() => null);
-  if (String(usage?.preference?.storage_provider || "").trim() !== "cloud_r2") return 0;
+  if (!uid) return 0;
 
   const cloudItems = await listCloudVaultBackups(20, false).catch(() => []);
   const latest = pickLatestUsefulCloudSlot(cloudItems);
@@ -302,7 +297,7 @@ async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectInd
 export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | null): Promise<void> {
   if (typeof window === "undefined") return;
   const uid = String(userId || "").trim();
-  if (!uid || !readNasAccessToken()) return;
+  if (!uid) return;
 
   const now = Date.now();
   if (now - lastRunAt < 10_000) return;
@@ -314,51 +309,37 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
       try { setStorageUser(uid); } catch {}
       try { window.localStorage.setItem("dc_user_id", uid); } catch {}
 
-      const usage = await getAccountStorageUsage().catch(() => null);
-      const provider = String(usage?.preference?.storage_provider || "").trim();
-      if (provider !== "cloud_r2") return;
-
-      // Multi-appareils : fusionne toujours l'historique R2 le plus récent,
-      // même si ce navigateur possède déjà des profils ou des parties.
+      // R2 direct est indépendant du NAS. Une session Supabase valide suffit.
+      // On fusionne d'abord l'historique, puis le snapshot COMPLET le plus récent.
       ensureCloudHistoryAutoSync(uid);
       await syncLatestCloudHistory(uid).catch((error) => {
         console.warn("[cloudAutoRestore] immediate R2 history sync skipped", error);
       });
 
-      const local = await summarizeLocalState();
-      const localIsEmpty = local.profiles <= 0 && local.matches <= 0;
-      if (!localIsEmpty) return;
-
-      const declinedRaw = readStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
-      const declinedAt = Number(declinedRaw || "0") || 0;
-      if (declinedAt > 0 && now - declinedAt < DECLINE_COOLDOWN_MS) return;
-
       const cloudItems = await listCloudVaultBackups(10, false).catch(() => []);
       const latest = pickLatestUsefulCloudSlot(cloudItems);
       if (!latest?.id) return;
-      if (readStorageKey(`${AUTO_RESTORE_PREFIX}:imported:${String(latest.id)}`)) return;
+
+      const updated = String(latest.updated_at || latest.created_at || "");
+      const signature = `${String(latest.id)}|${updated}`;
+      const markerKey = `${AUTO_RESTORE_PREFIX}:imported:${uid}`;
+      if (readStorageKey(markerKey) === signature) return;
 
       const payload = await fetchCloudSlotPayload(latest);
       const remoteSummary = summarizeSnapshot(payload);
-      if (remoteSummary.profiles <= 0 && remoteSummary.matches <= 0) return;
+      const portable = unwrapSnapshotEnvelope(payload)?.portableAccountData || {};
+      const hasCriticalAccountData =
+        Number(portable?.counts?.profiles || 0) > 0 ||
+        Number(portable?.counts?.bots || 0) > 0 ||
+        Number(portable?.counts?.dartSets || 0) > 0 ||
+        Number(portable?.counts?.galleryItems || 0) > 0 ||
+        Number(portable?.counts?.tournaments || 0) > 0;
+      if (remoteSummary.profiles <= 0 && remoteSummary.matches <= 0 && !hasCriticalAccountData) return;
 
-      const label = String(latest.title || "Sauvegarde cloud");
-      const ok = window.confirm(
-        `Une sauvegarde Cloudflare R2 existe pour ce compte.\n\n` +
-        `${label}\n` +
-        `${remoteSummary.matches} partie(s) • ${remoteSummary.profiles} profil(s)\n\n` +
-        `Ce navigateur semble vide pour ce compte. Restaurer maintenant en fusion ?`
-      );
-      if (!ok) {
-        writeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`, String(Date.now()));
-        return;
-      }
       removeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
-      const restoredSummary = await restoreDownloadedCloudSnapshot(payload, latest);
+      await restoreDownloadedCloudSnapshot(payload, latest);
+      writeStorageKey(markerKey, signature);
       window.setTimeout(() => {
-        try {
-          window.alert(`Restauration cloud terminée : ${restoredSummary.matches} partie(s), ${restoredSummary.profiles} profil(s). L’application va se recharger.`);
-        } catch {}
         try { window.location.reload(); } catch {}
       }, 250);
     } catch (error) {

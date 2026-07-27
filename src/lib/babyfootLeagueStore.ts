@@ -6,6 +6,8 @@
 // ✅ Local-only: aucune écriture NAS, aucune migration DB
 // =============================================================
 
+import { emitCloudChange } from "./cloudEvents";
+
 export type BabyFootLeagueScope = "solo" | "team";
 export type BabyFootLeagueKind = "season" | "infinite";
 export type BabyFootLeagueFormat = "single" | "double";
@@ -175,6 +177,7 @@ export function loadBabyFootLeagues(): BabyFootLeague[] {
 export function saveBabyFootLeagues(leagues: BabyFootLeague[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(LS_KEY, JSON.stringify(leagues.map(normalizeLeague).filter(Boolean)));
+  try { emitCloudChange("babyfoot:leagues:changed"); } catch {}
 }
 
 export function upsertBabyFootLeague(league: BabyFootLeague) {

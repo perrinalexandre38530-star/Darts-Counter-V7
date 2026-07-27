@@ -43,7 +43,8 @@
     "test:linked-history": "node ./tools/run-ts-regressions.mjs --only tools/test-linked-profile-history.ts",
     "test:regressions": "node ./tools/run-ts-regressions.mjs",
     "test:auto": "npm run test:ci",
-    "test:release": "npm run test:auto && npm run test:live"
+    "test:release": "npm run test:auto && npm run test:live",
+    "test:r2-account-data": "node ./tools/test-r2-account-data.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",

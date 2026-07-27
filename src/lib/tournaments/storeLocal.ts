@@ -10,6 +10,8 @@
 //   - dc_tournament_matches_v1  (map: Record<id, matches[]>)
 // =============================================================
 
+import { emitCloudChange } from "../cloudEvents";
+
 type AnyObj = any;
 
 /** --- LocalStorage legacy keys --- */
@@ -82,6 +84,7 @@ function notifyTournamentsUpdated() {
   try {
     window.dispatchEvent(new CustomEvent(TOURNAMENTS_UPDATED_EVENT));
   } catch {}
+  try { emitCloudChange("tournaments:changed"); } catch {}
 }
 
 /* ---------------------- IDB tiny wrapper ---------------------- */

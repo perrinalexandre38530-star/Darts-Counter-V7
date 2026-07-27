@@ -58,6 +58,12 @@ export function markNasSyncDirty(reason = "change") {
     localStorage.setItem(DIRTY_REASON_KEY, String(reason || "change"));
   } catch {}
   emit();
+  // Le nom historique de cette fonction reste "NAS", mais elle représente en
+  // pratique un changement de données utilisateur. Si R2 est la destination
+  // choisie, on programme également le snapshot cloud complet.
+  void import("./cloudAccountBackup")
+    .then((mod) => mod.queueCloudR2AccountBackup(`dirty:${String(reason || "change")}`))
+    .catch(() => undefined);
 }
 
 export function clearNasSyncDirty() {
