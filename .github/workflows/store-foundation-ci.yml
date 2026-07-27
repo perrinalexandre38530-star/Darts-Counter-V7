@@ -49,6 +49,12 @@ jobs:
       - name: Validate release registry
         run: npm run test:release
 
+      - name: Verify MULTISPORTS launcher source icons
+        shell: bash
+        run: |
+          echo 'faf045b9a798c8c8ebe60b402a443aa33ec0fdff6819926a976534fd1d9e95e8  public/app-192.png' | sha256sum -c -
+          echo '46f072fa71d34f4c48dd98c91c52f74e847df8b0d04a22f05b7f64588345099d  public/app-512.png' | sha256sum -c -
+
       - name: Guard direct R2 Android restore
         shell: bash
         run: |
@@ -104,6 +110,46 @@ jobs:
           PY
           npx cap sync android
 
+      - name: Apply official MULTISPORTS SCORING Android icon
+        shell: bash
+        run: |
+          if ! command -v convert >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+          fi
+
+          declare -A LEGACY=(
+            [mdpi]=48
+            [hdpi]=72
+            [xhdpi]=96
+            [xxhdpi]=144
+            [xxxhdpi]=192
+          )
+          declare -A FOREGROUND=(
+            [mdpi]=108
+            [hdpi]=162
+            [xhdpi]=216
+            [xxhdpi]=324
+            [xxxhdpi]=432
+          )
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            dir="android/app/src/main/res/mipmap-${density}"
+            mkdir -p "$dir"
+            convert public/app-192.png -resize "${LEGACY[$density]}x${LEGACY[$density]}" "$dir/ic_launcher.png"
+            cp "$dir/ic_launcher.png" "$dir/ic_launcher_round.png"
+            convert public/app-512.png -resize "${FOREGROUND[$density]}x${FOREGROUND[$density]}" "$dir/ic_launcher_foreground.png"
+          done
+
+          cat > android/app/src/main/res/values/ic_launcher_background.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="ic_launcher_background">#000000</color>
+          </resources>
+          EOF
+
+          echo 'Official MULTISPORTS SCORING launcher icon applied.'
+
       - name: Build Android AAB and debug APK
         shell: bash
         run: |
@@ -130,11 +176,11 @@ jobs:
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
           git add package-lock.json android
           if git diff --cached --quiet; then
             echo "No generated Android changes to commit."
             exit 0
           fi
-          git commit -m "chore(android): generate Capacitor project [skip ci]"
+          git commit -m "chore(android): sync official launcher icon and native project [skip ci]"
           git push origin HEAD:${{ github.head_ref }}
