@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "application": "MULTISPORTS SCORING",
+  "channels": {
+    "dev": ["stable", "beta", "development"],
+    "beta": ["stable", "beta"],
+    "store": ["stable"]
+  },
+  "darts": {
+    "x01": "stable",
+    "cricket": "stable",
+    "killer": "stable",
+    "shanghai": "stable",
+    "training_x01": "stable",
+    "tour_horloge": "stable",
+
+    "enculette": "beta",
+    "cricket_cut_throat": "beta",
+    "killer_progressive": "beta",
+    "super_bull": "beta",
+    "happy_mille": "beta",
+    "v170": "beta",
+    "count_up": "beta",
+    "battle_royale": "beta",
+    "warfare": "beta",
+    "five_lives": "beta",
+    "golf": "beta",
+    "baseball": "beta",
+    "capital": "beta",
+    "departements": "beta",
+    "bastard": "beta",
+    "training_doubleio": "beta",
+    "training_challenges": "beta",
+    "training_ghost": "beta",
+    "training_precision_gauntlet": "beta",
+    "training_repeat_master": "beta",
+    "training_super_bull": "beta",
+    "training_time_attack": "beta",
+
+    "scram": "development",
+    "halve_it": "development",
+    "bobs_27": "development",
+    "shooter": "development",
+    "attrape_moi": "development",
+    "president": "development",
+    "loterie": "development",
+    "prisoner": "development",
+    "bowling": "development",
+    "mario_kart": "development"
+  },
+  "platformFeatures": {
+    "online": "beta",
+    "camera_scoring": "development",
+    "cast": "development",
+    "viewer": "development",
+    "tv_viewer": "development"
+  }
+}
