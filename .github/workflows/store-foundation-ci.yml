@@ -57,6 +57,7 @@ jobs:
       - name: Build Store
         run: npm run build:store
 
+      # Android regression gate: native boot must skip all PWA SW/cache work.
       - name: Build Android web bundle
         run: npm run build:android
 
