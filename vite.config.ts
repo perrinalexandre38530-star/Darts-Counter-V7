@@ -21,7 +21,8 @@ const releaseFeatures = JSON.parse(
 ) as ReleaseFeaturesFile;
 
 function releaseFeatureGate(mode: string): Plugin | null {
-  const channel: ReleaseChannel = mode === "store" ? "store" : mode === "beta" ? "beta" : "dev";
+  const nativeStoreMode = mode === "android" || mode === "ios" || mode === "tv";
+  const channel: ReleaseChannel = mode === "store" || nativeStoreMode ? "store" : mode === "beta" ? "beta" : "dev";
   if (channel === "dev") return null;
 
   const allowedStatuses = new Set<FeatureStatus>(releaseFeatures.channels[channel] || []);
@@ -34,7 +35,7 @@ function releaseFeatureGate(mode: string): Plugin | null {
   const platformEnabled = (id: string) => allowedStatuses.has(releaseFeatures.platformFeatures?.[id] || "development");
 
   return {
-    name: `multisports-release-gate-${channel}`,
+    name: `multisports-release-gate-${channel}-${mode}`,
     enforce: "pre",
     transform(code, id) {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
@@ -80,6 +81,17 @@ function releaseFeatureGate(mode: string): Plugin | null {
         }
 
         return next === code ? null : { code: next, map: null };
+      }
+
+      if (nativeStoreMode && normalizedId.endsWith("/src/main.tsx")) {
+        const needle = "if (import.meta.env.PROD) await registerServiceWorkerProd();";
+        if (!code.includes(needle)) {
+          this.error("MULTISPORTS native build: service worker boot line changed; refusing a native build with uncertain cache behavior.");
+        }
+        return {
+          code: code.replace(needle, "if (false) await registerServiceWorkerProd();"),
+          map: null,
+        };
       }
 
       return null;
