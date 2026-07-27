@@ -70,11 +70,12 @@
     "mario_kart": "development"
   },
   "platformFeatures": {
-    "competitions": "beta",
-    "online": "beta",
+    "competitions": "stable",
+    "online": "stable",
+    "messages": "stable",
     "camera_scoring": "development",
-    "cast": "development",
-    "viewer": "development",
+    "cast": "stable",
+    "viewer": "stable",
     "tv_viewer": "development"
   }
 }
