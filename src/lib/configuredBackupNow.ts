@@ -49,12 +49,13 @@ export async function saveConfiguredBackupNow(reason = "manual-match-end"): Prom
     }
 
     // R2 doit rester rapide et indépendant des centaines d'images utilisateur.
-    // Les médias sont déjà des objets /media/* dédiés et leur réplication continue
-    // en arrière-plan. Le POST principal ne contient donc que les données métier,
-    // l'historique, les stats, portableAccountData et les références médias.
+    // Le clic SAUVER ne déclenche AUCUN scan/mirror média : les médias disposent
+    // déjà de leurs objets /media/* et de leurs événements de réplication dédiés.
+    // Le POST principal contient uniquement les données métier, historique/stats,
+    // portableAccountData et les références nécessaires à la restauration.
     if (destination === "cloud_r2") {
       const snapshot = await exportCloudSnapshot({
-        mediaMirror: "background",
+        mediaMirror: "skip",
         includeEmbeddedMedia: false,
         includeAvatarFallbacks: false,
       });
@@ -79,7 +80,7 @@ export async function saveConfiguredBackupNow(reason = "manual-match-end"): Prom
           engine: "match-end-save-button-v2-fast-r2",
           snapshotBytes,
           portableAccountDataVersion: Number((snapshot as any)?.portableAccountData?._v || 0),
-          mediaMirror: "background",
+          mediaMirror: "skip-during-manual-save",
         },
       });
 
@@ -98,7 +99,7 @@ export async function saveConfiguredBackupNow(reason = "manual-match-end"): Prom
         ok: true,
         destination,
         destinationLabel,
-        message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(snapshotBytes / 1024 / 1024))} Mo). Médias synchronisés en arrière-plan.`,
+        message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(snapshotBytes / 1024 / 1024))} Mo).`,
       };
     }
 
