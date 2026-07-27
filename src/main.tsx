@@ -14,6 +14,7 @@ import AsyncGuard from "./components/AsyncGuard";
 import BootGuard from "./components/BootGuard";
 import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 import { installPlayerNameTypography } from "./lib/playerNameTypography";
+import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
@@ -759,8 +760,17 @@ async function devUnregisterSW() {
       } catch {}
     }
 
-    if (import.meta.env.PROD) await registerServiceWorkerProd();
-    else await devUnregisterSW();
+    // Capacitor embarque déjà le bundle web dans l'APK/AAB. Un Service Worker PWA
+    // dans la WebView native peut conserver d'anciens chunks après une mise à jour.
+    // On garde donc le SW uniquement pour la vraie PWA Web/Cloudflare.
+    if (isCapacitorNativeRuntime()) {
+      await disableAllServiceWorkersAndCaches();
+      console.log("✅ Native Capacitor: Service Worker désactivé");
+    } else if (import.meta.env.PROD) {
+      await registerServiceWorkerProd();
+    } else {
+      await devUnregisterSW();
+    }
 
     const container = document.getElementById("root");
     if (!container) throw new Error("❌ Élément #root introuvable dans index.html");

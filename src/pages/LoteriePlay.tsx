@@ -205,7 +205,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
                   <div style={{ color: "#ae854f", fontSize: 17, lineHeight: 1 }}>★</div>
                   <div style={{ width: "72%", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, color: BAD }}>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
-                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
                   </div>
                 </div>

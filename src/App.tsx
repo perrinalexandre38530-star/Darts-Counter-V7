@@ -2819,14 +2819,29 @@ useEffect(() => {
     };
   }, [loading, showSplash]);
 
+  // ============================================================
+  // MONETIZATION / HISTORY FINALIZATION
+  // Une partie ne compte pour la publicité qu'après un History.upsert réussi.
+  // Cela garantit que l'interstitiel ne récompense jamais une sauvegarde échouée
+  // et évite les doubles écritures IndexedDB observées sur certains sports.
+  // ============================================================
+  async function persistFinishedMatchForAds(saved: any, mode: string): Promise<boolean> {
+    try {
+      await History.upsert(saved);
+      try { markCompletedMatchForAds(String(saved?.id || ""), String(mode || saved?.kind || "game")); } catch {}
+      return true;
+    } catch (error) {
+      try { console.warn("[history] final match persistence failed", { id: saved?.id, mode, error }); } catch {}
+      return false;
+    }
+  }
+
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
   -------------------------------------------- */
   function pushHistory(m: MatchRecord, options?: { navigate?: boolean }) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushHistory
-    try { markCompletedMatchForAds(String(id), String((m as any)?.kind || (m as any)?.payload?.kind || "game")); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -2915,13 +2930,10 @@ useEffect(() => {
     });
 
     // ================================
-    // ✅ Persist in History (IndexedDB) then navigate
-    // (avoid opening StatsHub before the match is indexed)
+    // ✅ Persist in History (IndexedDB), puis seulement compter la partie pour les pubs.
+    // La navigation attend la fin de cette écriture afin que l'Historique reste la source de vérité.
     // ================================
-    let upsertPromise: any = null;
-    try {
-      upsertPromise = (History as any)?.upsert?.(saved);
-    } catch {}
+    const upsertPromise = persistFinishedMatchForAds(saved, String(saved.kind || "game"));
 
     try {
       const payloadAny: any = saved.payload ?? {};
@@ -3054,12 +3066,8 @@ useEffect(() => {
       if (shouldNavigate) go("statsHub", { tab: "history" });
     };
 
-    if (upsertPromise && typeof (upsertPromise as any).then === "function") {
-      if (shouldNavigate) (upsertPromise as any).finally(() => nav());
-      else (upsertPromise as any).catch(() => {});
-    } else if (shouldNavigate) {
-      nav();
-    }
+    if (shouldNavigate) void upsertPromise.finally(() => nav());
+    else void upsertPromise;
 
   }
 
@@ -3098,8 +3106,6 @@ useEffect(() => {
   function pushPetanqueHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `petanque-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushPetanqueHistory
-    try { markCompletedMatchForAds(String(id), "petanque"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3157,12 +3163,11 @@ useEffect(() => {
       return next;
     });
 
-    try {
-      (History as any)?.upsert?.(saved);
-    } catch {}
+    const persistPromise = persistFinishedMatchForAds(saved, "petanque");
 
-    // ✅ Pétanque: pas d'upload match (pour l'instant) — uniquement stats locales
-    go("petanque_stats_history", { focusMatchId: id });
+    // ✅ Pétanque: pas d'upload match (pour l'instant) — uniquement stats locales.
+    // On n'ouvre le résultat qu'après la tentative de persistance.
+    void persistPromise.finally(() => go("petanque_stats_history", { focusMatchId: id }));
   }
 
   /* --------------------------------------------
@@ -3173,8 +3178,6 @@ useEffect(() => {
   function pushBabyFootHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `babyfoot-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushBabyFootHistory
-    try { markCompletedMatchForAds(String(id), "baby_foot"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3267,12 +3270,6 @@ const unifiedStats = (() => {
     };
 
 
-// ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
-try {
-  void History.upsert(saved);
-} catch {}
-
-
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
@@ -3283,9 +3280,7 @@ try {
       return next;
     });
 
-    try {
-      (History as any)?.upsert?.(saved);
-    } catch {}
+    const persistPromise = persistFinishedMatchForAds(saved, "baby_foot");
 
     try {
       const payloadAny: any = saved.payload ?? {};
@@ -3330,8 +3325,11 @@ try {
       }
     } catch {}
 
-    if ((m as any)?.stayOnBabyFootPlayAfterFinish) return;
-    go("babyfoot_stats_history", { focusMatchId: id });
+    if ((m as any)?.stayOnBabyFootPlayAfterFinish) {
+      void persistPromise;
+      return;
+    }
+    void persistPromise.finally(() => go("babyfoot_stats_history", { focusMatchId: id }));
   }
 
   /* --------------------------------------------
@@ -3342,8 +3340,6 @@ try {
   function pushPingPongHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `pingpong-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushPingPongHistory
-    try { markCompletedMatchForAds(String(id), "ping_pong"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3419,12 +3415,6 @@ const unifiedStats = (() => {
     };
 
 
-// ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
-try {
-  void History.upsert(saved);
-} catch {}
-
-
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
@@ -3435,11 +3425,8 @@ try {
       return next;
     });
 
-    try {
-      (History as any)?.upsert?.(saved);
-    } catch {}
-
-    go("pingpong_stats_history", { focusMatchId: id });
+    const persistPromise = persistFinishedMatchForAds(saved, "ping_pong");
+    void persistPromise.finally(() => go("pingpong_stats_history", { focusMatchId: id }));
   }
 
   /* --------------------------------------------
@@ -3450,8 +3437,6 @@ try {
   function pushMolkkyHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `molkky-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushMolkkyHistory
-    try { markCompletedMatchForAds(String(id), "molkky"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const teamAProfileIds = Array.isArray((m as any)?.teamAProfileIds)
@@ -3531,11 +3516,6 @@ try {
       payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "molkky", sport: "molkky", stats: unifiedStats },
     };
 
-    // ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
-    try {
-      void History.upsert(saved);
-    } catch {}
-
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
@@ -3546,11 +3526,8 @@ try {
       return next;
     });
 
-    try {
-      (History as any)?.upsert?.(saved);
-    } catch {}
-
-    go("statsHub", { tab: "history" });
+    const persistPromise = persistFinishedMatchForAds(saved, "molkky");
+    void persistPromise.finally(() => go("statsHub", { tab: "history" }));
   }
 
   /* --------------------------------------------
@@ -3561,8 +3538,6 @@ try {
   function pushDiceHistory(m: any) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `dice-${now}-${Math.random().toString(36).slice(2, 8)}`;
-    // MONETIZATION_COMPLETE:pushDiceHistory
-    try { markCompletedMatchForAds(String(id), "dice"); } catch {}
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
@@ -3627,10 +3602,6 @@ try {
       payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "dicegame", sport: "dicegame", stats: unifiedStats },
     };
 
-    try {
-      void History.upsert(saved);
-    } catch {}
-
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
@@ -3641,16 +3612,16 @@ try {
       return next;
     });
 
-    try {
-      (History as any)?.upsert?.(saved);
-    } catch {}
+    const persistPromise = persistFinishedMatchForAds(saved, "dice");
 
     // Pas encore de stats dédiées Dice → on ouvre l'historique global (ou Games)
-    try {
-      go("history");
-    } catch {
-      go("games");
-    }
+    void persistPromise.finally(() => {
+      try {
+        go("history");
+      } catch {
+        go("games");
+      }
+    });
   }
 
   const handleSplashFinish = React.useCallback(() => {
