@@ -2,7 +2,7 @@
 
 ## Release channels
 
-The application now has three explicit publication channels driven by `src/config/release-features.json`.
+The application has three explicit publication channels driven by `src/config/release-features.json`.
 
 - `dev`: stable + beta + development. Keeps the current internal application experience.
 - `beta`: stable + beta. Hides work-in-progress entries.
@@ -18,26 +18,29 @@ npm run build:store
 
 A beta/store build fails deliberately if the build-time gate can no longer recognize the Darts registry or sport selector. This prevents an accidental unfiltered Store artifact after a future refactor.
 
-## Current initial Store surface
+## User-approved V1 Store scope
 
-Sports currently marked `stable`:
+Sports marked `stable` for the first public version:
 
 - Darts
+- Baby-foot
 - Pétanque
-- Ping-Pong
 
-Darts modes currently marked `stable`:
+Darts modes marked `stable`:
 
 - X01
-- Cricket
 - Killer
 - Shanghai
-- Training X01
-- Tour de l'horloge
+- Les 5 vies
+- Golf
+- Territories
+- Capital
+- Loterie
+- Attrape-moi si tu peux
+- Killer Progressif
+- Baseball
 
-This is an intentionally conservative initial whitelist. Promotion to `stable` should happen only after the corresponding Store audit is green.
-
-Known recent work-in-progress modes are explicitly `development`, including Scram, Halve-It, Bob's 27, Shooter, Attrape-moi si tu peux, Président, Loterie, Prisoner, Bowling and Darts Racer.
+Everything else remains available to development and can be promoted later after validation. In particular, Ping-Pong and Cricket are not part of the initial Store whitelist at this stage.
 
 Global surfaces currently kept out of the Store channel include Online, competitions, Camera Scoring, Cast/Viewer and the future TV Viewer until they pass their own audit.
 
