@@ -11,6 +11,7 @@ type FeatureStatus = "stable" | "beta" | "development" | "disabled";
 
 type ReleaseFeaturesFile = {
   channels: Record<ReleaseChannel, FeatureStatus[]>;
+  sports: Record<string, FeatureStatus>;
   darts: Record<string, FeatureStatus>;
 };
 
@@ -23,6 +24,9 @@ function releaseFeatureGate(mode: string): Plugin | null {
   if (channel === "dev") return null;
 
   const allowedStatuses = new Set<FeatureStatus>(releaseFeatures.channels[channel] || []);
+  const allowedSportsIds = Object.entries(releaseFeatures.sports)
+    .filter(([, status]) => allowedStatuses.has(status))
+    .map(([id]) => id);
   const allowedDartsIds = Object.entries(releaseFeatures.darts)
     .filter(([, status]) => allowedStatuses.has(status))
     .map(([id]) => id);
@@ -32,20 +36,35 @@ function releaseFeatureGate(mode: string): Plugin | null {
     enforce: "pre",
     transform(code, id) {
       const normalizedId = id.replace(/\\/g, "/").split("?")[0];
-      if (!normalizedId.endsWith("/src/games/dartsGameRegistry.ts")) return null;
 
-      const needle = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({\n  ...g,\n  ready: READY_IDS.has(g.id),\n}));`;
-      if (!code.includes(needle)) {
-        this.error("MULTISPORTS release gate: dartsGameRegistry export shape changed; refusing an unfiltered beta/store build.");
+      if (normalizedId.endsWith("/src/games/dartsGameRegistry.ts")) {
+        const needle = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({\n  ...g,\n  ready: READY_IDS.has(g.id),\n}));`;
+        if (!code.includes(needle)) {
+          this.error("MULTISPORTS release gate: dartsGameRegistry export shape changed; refusing an unfiltered beta/store build.");
+        }
+
+        const allowedLiteral = JSON.stringify(allowedDartsIds);
+        const replacement = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry\n  .map((g) => ({\n    ...g,\n    ready: READY_IDS.has(g.id),\n  }))\n  .filter((g) => ${allowedLiteral}.includes(g.id));`;
+
+        return {
+          code: code.replace(needle, replacement),
+          map: null,
+        };
       }
 
-      const allowedLiteral = JSON.stringify(allowedDartsIds);
-      const replacement = `export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry\n  .map((g) => ({\n    ...g,\n    ready: READY_IDS.has(g.id),\n  }))\n  .filter((g) => ${allowedLiteral}.includes(g.id));`;
+      if (normalizedId.endsWith("/src/pages/GameSelect.tsx")) {
+        const needle = "const copy = [...items];";
+        if (!code.includes(needle)) {
+          this.error("MULTISPORTS release gate: GameSelect item sorting changed; refusing a build that could expose unfinished sports.");
+        }
+        const allowedLiteral = JSON.stringify(allowedSportsIds);
+        return {
+          code: code.replace(needle, `const copy = items.filter((item) => ${allowedLiteral}.includes(item.id));`),
+          map: null,
+        };
+      }
 
-      return {
-        code: code.replace(needle, replacement),
-        map: null,
-      };
+      return null;
     },
   };
 }
