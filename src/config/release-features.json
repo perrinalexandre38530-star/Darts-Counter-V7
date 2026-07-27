@@ -29,11 +29,11 @@
   },
   "darts": {
     "x01": "stable",
-    "cricket": "beta",
+    "cricket": "stable",
     "killer": "stable",
     "shanghai": "stable",
-    "training_x01": "beta",
-    "tour_horloge": "beta",
+    "training_x01": "stable",
+    "tour_horloge": "stable",
 
     "enculette": "beta",
     "cricket_cut_throat": "beta",
