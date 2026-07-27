@@ -1,0 +1,8 @@
+{
+  "appId": "com.multisportsscoring.app",
+  "appName": "MULTISPORTS SCORING",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
