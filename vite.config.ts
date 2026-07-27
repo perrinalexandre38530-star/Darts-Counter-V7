@@ -70,8 +70,16 @@ function releaseFeatureGate(mode: string, pagesOrigin: string): Plugin | null {
       if (normalizedId.endsWith("/src/components/BottomNav.tsx")) {
         let next = code;
 
-        if (!platformEnabled("online")) {
-          next = next.replaceAll("...(hideOnline ? [] : [", "...(true ? [] : [");
+        // IMPORTANT: do not rewrite the JSX array/spread structure here. The V4
+        // Android regression was introduced when the build transform replaced
+        // `...(hideOnline ? [] : [...])` directly. Keep the source structure intact
+        // and only force its already-existing boolean gate for public Store builds.
+        if (!platformEnabled("online") || !platformEnabled("messages")) {
+          const onlineNeedle = 'const hideOnline = sportLc === "petanque" || sportLc === "pingpong";';
+          if (!next.includes(onlineNeedle)) {
+            this.error("MULTISPORTS release gate: BottomNav hideOnline gate changed; refusing an unsafe Store transform.");
+          }
+          next = next.replace(onlineNeedle, "const hideOnline = true;");
         }
         if (!platformEnabled("competitions")) {
           next = next.replace('    { k: "tournaments", label: "Compétitions", icon: <Icon name="tournaments" /> },\n', "");
@@ -119,7 +127,7 @@ function releaseFeatureGate(mode: string, pagesOrigin: string): Plugin | null {
         if (next.includes(containerNeedle)) {
           next = next.replace(
             containerNeedle,
-            `${containerNeedle}\n    container.innerHTML = '<div id="ms-native-boot" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0b10;color:#fff;font:700 16px Inter,system-ui,sans-serif;text-align:center;padding:24px">MULTISPORTS SCORING<br><span style="opacity:.65;font-size:12px;font-weight:600;margin-left:8px">Démarrage Android…</span></div>';`
+            `${containerNeedle}\n    container.innerHTML = '<div id="ms-native-boot" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0b0b10;color:#fff;font:700 16px Inter,system-ui,sans-serif;text-align:center;padding:24px;white-space:pre-wrap">MULTISPORTS SCORING\\nDémarrage Android…</div>';\n    window.setTimeout(() => {\n      const boot = document.getElementById("ms-native-boot");\n      if (!boot) return;\n      let diag = "";\n      try { diag = localStorage.getItem("dc_last_runtime_error_v1") || ""; } catch {}\n      boot.textContent = "MULTISPORTS SCORING\\n\\nReact n’a pas démarré après 12 secondes." + (diag ? "\\n\\nDernière erreur :\\n" + diag.slice(0, 1400) : "\\n\\nAucune erreur JavaScript capturée.");\n    }, 12000);`
           );
         }
 
