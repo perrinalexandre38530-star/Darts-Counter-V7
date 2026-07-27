@@ -21,8 +21,29 @@ const REQUEST_TIMEOUT_MUTATION_MS = 25_000;
 const REQUEST_TIMEOUT_DOWNLOAD_MS = 45_000;
 const REQUEST_TIMEOUT_UPLOAD_MS = 60_000;
 
-export type DirectBackupSummary = Record<string, any>;
+// Une sauvegarde de compte peut contenir plusieurs centaines de médias. Ils ne
+// doivent jamais partir tous en parallèle : chaque POST met aussi à jour le même
+// manifeste R2. Une file FIFO évite les rafales HTTP 500 et les écritures perdues.
+const MEDIA_UPLOAD_MAX_ATTEMPTS = 4;
+const MEDIA_UPLOAD_RETRY_BASE_MS = 350;
+let mediaUploadTail: Promise<void> = Promise.resolve();
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
+}
+
+function enqueueR2MediaUpload<T>(task: () => Promise<T>): Promise<T> {
+  const run = mediaUploadTail.then(task, task);
+  mediaUploadTail = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function transientR2Status(error: any): boolean {
+  const status = Number(error?.status || 0);
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+export type DirectBackupSummary = Record<string, any>;
 
 export type DirectR2MediaFallback = {
   version?: number;
@@ -124,8 +145,6 @@ function isJwtLike(token: string): boolean {
   if (parts.length !== 3) return false;
   const payload = decodeJwtPayload(token);
   if (!payload?.sub) return false;
-  // Un JWT NAS expiré ne doit pas bloquer le repli vers une session Supabase
-  // encore valide lorsque le NAS est hors ligne.
   const expMs = Number(payload?.exp || 0) * 1000;
   if (expMs > 0 && expMs <= Date.now() + 5_000) return false;
   return true;
@@ -168,18 +187,7 @@ function tokenFromStoredSupabaseSession(): string {
   return "";
 }
 
-/**
- * R2 accepte deux modes d'authentification indépendants :
- * - JWT Supabase, vérifié directement par la Pages Function ;
- * - JWT NAS, vérifié localement dans la Pages Function avec JWT_SECRET.
- *
- * Le second mode permet au compte fondateur de sauvegarder sur R2 même si
- * PostgreSQL, l'API NAS ou le tunnel sont indisponibles.
- */
 async function readDirectStorageToken(): Promise<DirectStorageToken> {
-  // Pour un compte NAS/fondateur, le JWT NAS est prioritaire : son `sub`
-  // correspond directement à l'identifiant canonique du compte et évite toute
-  // confusion avec une ancienne session Supabase d'un autre utilisateur.
   const nasToken = String(readNasAccessToken() || "").trim();
   if (nasToken && isJwtLike(nasToken)) return { token: nasToken, kind: "nas" };
 
@@ -216,19 +224,9 @@ async function fetchWithTimeout(
 function timeoutForDirectRequest(path: string, init: RequestInit): number {
   const method = String(init?.method || "GET").toUpperCase();
   const cleanPath = String(path || "");
-
-  // Une sauvegarde complète peut faire plusieurs Mo et Cloudflare doit ensuite
-  // calculer le checksum + écrire R2 + mettre à jour le manifeste.
   if (method === "POST" && cleanPath === "") return REQUEST_TIMEOUT_UPLOAD_MS;
-
-  // La restauration télécharge le snapshot complet.
-  if (method === "GET" && /^\/r2b_[^/]+$/i.test(cleanPath)) {
-    return REQUEST_TIMEOUT_DOWNLOAD_MS;
-  }
-
-  // Suppression/restauration depuis corbeille : plus généreux qu'un simple GET.
+  if (method === "GET" && /^\/r2b_[^/]+$/i.test(cleanPath)) return REQUEST_TIMEOUT_DOWNLOAD_MS;
   if (method !== "GET") return REQUEST_TIMEOUT_MUTATION_MS;
-
   return REQUEST_TIMEOUT_READ_MS;
 }
 
@@ -285,7 +283,10 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
   const text = await response.text().catch(() => "");
   const payload = safeJson(text);
   if (response.ok && payload?.ok === true) return payload;
-  throw conciseR2Error(response.status, payload, text, auth.kind);
+  const error = conciseR2Error(response.status, payload, text, auth.kind);
+  (error as any).status = response.status;
+  (error as any).code = String(payload?.code || "");
+  throw error;
 }
 
 function toCloudItem(item: DirectBackupRecord): CloudObjectIndexItem {
@@ -335,7 +336,7 @@ export async function getDirectR2Status(): Promise<DirectR2Status> {
       ok: false,
       code: error?.name === "AbortError" ? "status_timeout" : "status_unreachable",
       error: error?.name === "AbortError"
-        ? `Le diagnostic Cloudflare Pages/R2 n\'a pas répondu en moins de ${Math.round(REQUEST_TIMEOUT_READ_MS / 1000)} secondes.`
+        ? `Le diagnostic Cloudflare Pages/R2 n'a pas répondu en moins de ${Math.round(REQUEST_TIMEOUT_READ_MS / 1000)} secondes.`
         : String(error?.message || error || "Diagnostic R2 inaccessible."),
     };
   }
@@ -427,11 +428,6 @@ export async function getDirectR2MediaManifest(): Promise<{ manifest: DirectR2Me
   };
 }
 
-/**
- * Copie privée d'une miniature d'avatar directement dans Cloudflare R2.
- * Cette route ne traverse jamais le NAS et reste donc disponible pendant une
- * panne du QNAP tant que la session NAS JWT ou Supabase est encore valide.
- */
 export async function uploadDirectR2AvatarFallback(args: {
   profileId: string;
   dataUrl: string;
@@ -462,7 +458,6 @@ export async function downloadDirectR2AvatarFallback(profileIdInput: string): Pr
     if (!avatar || !avatar?.dataUrl) return null;
     return avatar as DirectR2AvatarFallback;
   } catch (error: any) {
-    // Un profil qui n'a pas encore été répliqué sur R2 n'est pas une erreur UI.
     if (/introuvable|avatar_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
     throw error;
   }
@@ -475,10 +470,6 @@ export async function deleteDirectR2AvatarFallback(profileIdInput: string): Prom
   return true;
 }
 
-/**
- * Copie privée générique d'un média utilisateur dans R2.
- * Sert aux photos de sets, logos, couvertures, etc. sans dépendance au NAS.
- */
 export async function uploadDirectR2MediaFallback(args: {
   key: string;
   kind?: string;
@@ -489,17 +480,30 @@ export async function uploadDirectR2MediaFallback(args: {
   const key = String(args?.key || "").trim();
   const dataUrl = String(args?.dataUrl || "").trim();
   if (!key || !dataUrl) throw new Error("Clé ou média R2 manquant.");
-  const payload = await requestDirect(`/media/${encodeURIComponent(key)}`, {
-    method: "POST",
-    body: JSON.stringify({
-      key,
-      kind: args.kind || "user_image",
-      dataUrl,
-      updatedAt: args.updatedAt ?? Date.now(),
-      sourceUrl: args.sourceUrl ?? null,
-    }),
+
+  return enqueueR2MediaUpload(async () => {
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const payload = await requestDirect(`/media/${encodeURIComponent(key)}`, {
+          method: "POST",
+          body: JSON.stringify({
+            key,
+            kind: args.kind || "user_image",
+            dataUrl,
+            updatedAt: args.updatedAt ?? Date.now(),
+            sourceUrl: args.sourceUrl ?? null,
+          }),
+        });
+        return payload?.media || { key, kind: args.kind || "user_image", dataUrl };
+      } catch (error: any) {
+        lastError = error;
+        if (!transientR2Status(error) || attempt >= MEDIA_UPLOAD_MAX_ATTEMPTS) throw error;
+        await sleepMs(MEDIA_UPLOAD_RETRY_BASE_MS * Math.pow(2, attempt - 1));
+      }
+    }
+    throw lastError || new Error("Écriture média R2 impossible.");
   });
-  return payload?.media || { key, kind: args.kind || "user_image", dataUrl };
 }
 
 export async function downloadDirectR2MediaFallback(keyInput: string): Promise<DirectR2MediaFallback | null> {
@@ -522,4 +526,3 @@ export async function deleteDirectR2MediaFallback(keyInput: string): Promise<boo
   await requestDirect(`/media/${encodeURIComponent(key)}`, { method: "DELETE" });
   return true;
 }
-
