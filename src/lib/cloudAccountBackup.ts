@@ -61,6 +61,60 @@ function snapshotSummary(snapshot: any) {
   };
 }
 
+/**
+ * R2 possède déjà chaque image utilisateur comme objet dédié /media/*.
+ * Le snapshot JSON ne doit donc pas réembarquer les mêmes base64 dans
+ * userMediaFallbacks/avatarFallbacks : cette duplication faisait dépasser la
+ * limite HTTP (413) alors que les données métier elles-mêmes sont légères.
+ *
+ * On conserve portableAccountData (profils/bots/dartsets/galerie/compétitions)
+ * et toutes les clés nécessaires pour reconstruire les médias depuis R2.
+ */
+function prepareSnapshotForDirectR2(snapshot: any): {
+  snapshot: any;
+  audit: { embeddedMediaRemoved: number; embeddedAvatarFallbacksRemoved: number; galleryLocalStorageRemoved: number };
+} {
+  if (!snapshot || typeof snapshot !== "object") {
+    return { snapshot, audit: { embeddedMediaRemoved: 0, embeddedAvatarFallbacksRemoved: 0, galleryLocalStorageRemoved: 0 } };
+  }
+
+  const next: any = { ...snapshot };
+  const embeddedMediaRemoved = Object.keys(snapshot?.userMediaFallbacks?.media || snapshot?.user_media_fallbacks?.media || {}).length;
+  const embeddedAvatarFallbacksRemoved = Object.keys(snapshot?.avatarFallbacks?.profiles || snapshot?.avatar_fallbacks?.profiles || {}).length;
+
+  delete next.userMediaFallbacks;
+  delete next.user_media_fallbacks;
+  delete next.avatarFallbacks;
+  delete next.avatar_fallbacks;
+
+  let galleryLocalStorageRemoved = 0;
+  if (snapshot?.localStorage && typeof snapshot.localStorage === "object") {
+    const localStorageCopy: Record<string, any> = { ...snapshot.localStorage };
+    for (const key of Object.keys(localStorageCopy)) {
+      if (key.startsWith("dc_avatar_gallery_v1:") || key === "msc_avatar_ia_gallery_v1") {
+        delete localStorageCopy[key];
+        galleryLocalStorageRemoved += 1;
+      }
+    }
+    next.localStorage = localStorageCopy;
+  }
+
+  next.r2MediaStrategy = {
+    _v: 1,
+    mode: "dedicated-r2-media-objects",
+    embeddedMediaRemoved,
+    embeddedAvatarFallbacksRemoved,
+    galleryLocalStorageRemoved,
+    portableAccountDataVersion: Number(snapshot?.portableAccountData?._v || 0),
+    preparedAt: new Date().toISOString(),
+  };
+
+  return {
+    snapshot: next,
+    audit: { embeddedMediaRemoved, embeddedAvatarFallbacksRemoved, galleryLocalStorageRemoved },
+  };
+}
+
 async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
   if (typeof window === "undefined") return;
   if (restoreInProgress()) return;
@@ -81,9 +135,15 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
 
   inFlight = (async () => {
     try {
-      const snapshot = await exportCloudSnapshot();
-      const snapshotJson = JSON.stringify(snapshot);
-      const summary = snapshotSummary(snapshot);
+      const fullSnapshot = await exportCloudSnapshot();
+      const summary = snapshotSummary(fullSnapshot);
+      const portableVersion = Number(fullSnapshot?.portableAccountData?._v || 0);
+      if (portableVersion < 2) {
+        throw new Error("Snapshot R2 incomplet : portableAccountData v2 absent.");
+      }
+
+      const prepared = prepareSnapshotForDirectR2(fullSnapshot);
+      const snapshotJson = JSON.stringify(prepared.snapshot);
       await uploadCloudVaultSnapshotJson({
         snapshotJson,
         title: `Sauvegarde compte automatique — ${new Date().toLocaleString("fr-FR")}`,
@@ -91,8 +151,11 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
         metadata: {
           summary,
           source: reason || "account-data-change",
-          engine: "account-auto-backup-r2-v2",
-          portableAccountDataVersion: Number(snapshot?.portableAccountData?._v || 0),
+          engine: "account-auto-backup-r2-v3",
+          portableAccountDataVersion: portableVersion,
+          r2MediaStrategy: prepared.snapshot?.r2MediaStrategy,
+          r2MediaAudit: prepared.audit,
+          snapshotBytes: new Blob([snapshotJson]).size,
           exportedAt: new Date().toISOString(),
         },
       });
@@ -102,6 +165,9 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
           at: new Date().toISOString(),
           reason,
           summary,
+          portableAccountDataVersion: portableVersion,
+          r2MediaAudit: prepared.audit,
+          snapshotBytes: new Blob([snapshotJson]).size,
         }));
       } catch {}
     } catch (error: any) {
