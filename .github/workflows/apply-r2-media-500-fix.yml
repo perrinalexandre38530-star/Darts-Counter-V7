@@ -1,0 +1,39 @@
+name: Apply R2 media 500 fix
+
+on:
+  push:
+    branches:
+      - agent/r2-media-500-queue-fix
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/r2-media-500-queue-fix
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply patch
+        run: node tools/apply-r2-media-500-fix.mjs
+      - name: Validate TypeScript
+        run: |
+          npm ci
+          npm run typecheck
+      - name: Remove one-shot helper
+        run: |
+          rm tools/apply-r2-media-500-fix.mjs
+          rm .github/workflows/apply-r2-media-500-fix.yml
+      - name: Commit source fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/directR2BackupApi.ts functions/api/storage/backups/'[[path]].ts' tools/apply-r2-media-500-fix.mjs .github/workflows/apply-r2-media-500-fix.yml
+          git commit -m "fix(r2): serialize media uploads and tolerate manifest contention"
+          git push origin HEAD:agent/r2-media-500-queue-fix
