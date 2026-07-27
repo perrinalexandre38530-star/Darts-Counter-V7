@@ -6,6 +6,27 @@
     "beta": ["stable", "beta"],
     "store": ["stable"]
   },
+  "sports": {
+    "darts": "stable",
+    "petanque": "stable",
+    "pingpong": "stable",
+    "babyfoot": "beta",
+    "molkky": "beta",
+    "dicegame": "beta",
+    "foot": "development",
+    "archery": "development",
+    "padel": "development",
+    "pickleball": "development",
+    "frisbee": "development",
+    "billard": "development",
+    "badminton": "development",
+    "basket": "development",
+    "cornhole": "development",
+    "rugby": "development",
+    "volley": "development",
+    "tennis": "development",
+    "chess": "development"
+  },
   "darts": {
     "x01": "stable",
     "cricket": "stable",
