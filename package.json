@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:beta": "vite build --mode beta",
+    "build:store": "vite build --mode store",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:release": "node ./tools/test-release-features.mjs",
     "deploy:online": "wrangler deploy --config wrangler.online.toml",
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
