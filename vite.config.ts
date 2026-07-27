@@ -3,7 +3,7 @@
 // + MULTISPORTS SCORING release-channel gate
 // ============================================
 import { readFileSync } from "node:fs";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 type ReleaseChannel = "dev" | "beta" | "store";
@@ -20,7 +20,7 @@ const releaseFeatures = JSON.parse(
   readFileSync(new URL("./src/config/release-features.json", import.meta.url), "utf8")
 ) as ReleaseFeaturesFile;
 
-function releaseFeatureGate(mode: string): Plugin | null {
+function releaseFeatureGate(mode: string, pagesOrigin: string): Plugin | null {
   const nativeStoreMode = mode === "android" || mode === "ios" || mode === "tv";
   const channel: ReleaseChannel = mode === "store" || nativeStoreMode ? "store" : mode === "beta" ? "beta" : "dev";
   if (channel === "dev") return null;
@@ -83,6 +83,21 @@ function releaseFeatureGate(mode: string): Plugin | null {
         return next === code ? null : { code: next, map: null };
       }
 
+      if (nativeStoreMode && normalizedId.endsWith("/src/lib/directR2BackupApi.ts")) {
+        // Capacitor serves the bundled app from https://localhost. A relative /api
+        // path would therefore hit the WebView itself instead of Cloudflare Pages.
+        // Inject the public Pages origin only for native builds; Web/PWA stays same-origin.
+        const needle = 'const DIRECT_BASE = "/api/storage/backups";';
+        if (!code.includes(needle)) {
+          this.error("MULTISPORTS native build: direct R2 base changed; refusing a native build that may point to localhost.");
+        }
+        const absoluteBase = `${pagesOrigin}/api/storage/backups`;
+        return {
+          code: code.replace(needle, `const DIRECT_BASE = ${JSON.stringify(absoluteBase)};`),
+          map: null,
+        };
+      }
+
       if (nativeStoreMode && normalizedId.endsWith("/src/main.tsx")) {
         // Native WebViews do not need the PWA Service Worker. More importantly,
         // do not run devUnregisterSW() either: awaiting CacheStorage/SW cleanup
@@ -116,21 +131,32 @@ function releaseFeatureGate(mode: string): Plugin | null {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  base: "/", // important pour Cloudflare Pages et Capacitor webDir
-  plugins: [react(), releaseFeatureGate(mode)].filter(Boolean) as Plugin[],
-  build: {
-    outDir: "dist",
-    sourcemap: false,
-    emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: undefined,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const pagesOrigin = String(
+    env.VITE_CLOUDFLARE_PAGES_ORIGIN || "https://darts-counter-v7.pages.dev"
+  ).trim().replace(/\/+$/, "");
+
+  if (!/^https:\/\//i.test(pagesOrigin)) {
+    throw new Error("VITE_CLOUDFLARE_PAGES_ORIGIN must be an absolute HTTPS origin for native builds.");
+  }
+
+  return {
+    base: "/", // important pour Cloudflare Pages et Capacitor webDir
+    plugins: [react(), releaseFeatureGate(mode, pagesOrigin)].filter(Boolean) as Plugin[],
+    build: {
+      outDir: "dist",
+      sourcemap: false,
+      emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
       },
     },
-  },
-  server: {
-    host: true,
-    port: 5173,
-  },
-}));
+    server: {
+      host: true,
+      port: 5173,
+    },
+  };
+});
