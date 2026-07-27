@@ -1,5 +1,5 @@
 {
-  "name": "darts-counter-v5",
+  "name": "multisports-scoring",
   "private": true,
   "version": "5.3.0",
   "type": "module",
@@ -8,10 +8,14 @@
     "build": "vite build",
     "build:beta": "vite build --mode beta",
     "build:store": "vite build --mode store",
+    "build:android": "vite build --mode android",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:release": "node ./tools/test-release-features.mjs",
+    "cap:sync:android": "npm run build:android && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:bundle": "npm run cap:sync:android && cd android && ./gradlew bundleRelease",
     "deploy:online": "wrangler deploy --config wrangler.online.toml",
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
@@ -27,6 +31,8 @@
     "test:storage": "npm run test:r2-backups && node ./tools/test-storage-destinations.mjs"
   },
   "dependencies": {
+    "@capacitor/android": "8.4.2",
+    "@capacitor/core": "8.4.2",
     "@supabase/supabase-js": "^2.48.0",
     "fflate": "^0.8.2",
     "jsqr": "^1.4.0",
@@ -41,6 +47,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.4.2",
     "@eslint/js": "^9.38.0",
     "@types/node": "^24.8.1",
     "@types/react": "^18.3.11",
