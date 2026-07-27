@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - agent/multisports-store-foundation
   workflow_dispatch:
 
 permissions:
@@ -57,6 +58,8 @@ jobs:
           fi
           grep -q 'Capacitor.isNativePlatform' src/lib/cloudAutoRestore.ts
           grep -q 'hydrateStoreUserMedia' src/lib/cloudAutoRestore.ts
+          grep -q 'VITE_CLOUDFLARE_PAGES_ORIGIN' vite.config.ts
+          grep -q 'Access-Control-Allow-Origin' functions/api/storage/backups/_middleware.ts
 
       - name: TypeScript
         run: npm run typecheck
@@ -70,6 +73,11 @@ jobs:
       # Android regression gate: native boot must skip all PWA SW/cache work.
       - name: Build Android web bundle
         run: npm run build:android
+
+      - name: Verify Android bundle uses Cloudflare R2 origin
+        shell: bash
+        run: |
+          grep -R -q 'darts-counter-v7.pages.dev/api/storage/backups' dist
 
       - name: Create or sync Capacitor Android project
         shell: bash
@@ -118,7 +126,7 @@ jobs:
           if-no-files-found: error
 
       - name: Commit generated Android project
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.base_ref == 'main'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
