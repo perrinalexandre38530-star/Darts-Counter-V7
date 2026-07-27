@@ -1,13 +1,14 @@
-import { readNasAccessToken } from "./apiClient";
-import { importCloudSnapshot, loadStore, setStorageUser } from "./storage";
+import { Capacitor } from "@capacitor/core";
+import { importCloudSnapshot, loadStore, saveStore, setStorageUser } from "./storage";
 import {
   downloadCloudObject,
-  getAccountStorageUsage,
   listCloudVaultBackups,
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 import { restoreCloudBackupFromJson } from "./cloudBackup";
 import { History } from "./history";
+import { hydrateStoreMediaUrls } from "./mediaSync";
+import { hydrateStoreUserMedia } from "./userMediaFallback";
 import LZString from "lz-string";
 
 const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v1";
@@ -32,7 +33,6 @@ function rowsFrom(value: any): any[] {
   if (value && typeof value === "object") return Object.values(value);
   return [];
 }
-
 
 function decodeHistoryPayloadCompressed(value: any): any {
   try {
@@ -86,17 +86,16 @@ async function mergeHistoryOnlyFromCloudSnapshot(snapshot: any, sourceId: string
   return imported;
 }
 
-const HISTORY_SYNC_PREFIX = "dc_cloud_r2_history_sync_v3";
+const HISTORY_SYNC_PREFIX = "dc_cloud_r2_history_sync_v4";
 let historySyncTimer: number | null = null;
 let historySyncUserId = "";
 
 async function syncLatestCloudHistory(userId: string): Promise<number> {
   const uid = String(userId || "").trim();
-  if (!uid || !readNasAccessToken()) return 0;
+  if (!uid) return 0;
 
-  const usage = await getAccountStorageUsage().catch(() => null);
-  if (String(usage?.preference?.storage_provider || "").trim() !== "cloud_r2") return 0;
-
+  // R2 direct est volontairement indépendant du NAS. listCloudVaultBackups()
+  // s'authentifie avec un JWT Supabase OU NAS via la Pages Function Cloudflare.
   const cloudItems = await listCloudVaultBackups(20, false).catch(() => []);
   const latest = pickLatestUsefulCloudSlot(cloudItems);
   if (!latest?.id) return 0;
@@ -240,10 +239,13 @@ function summarizeSnapshot(snapshot: any) {
 
 async function summarizeLocalState() {
   try {
-    const store = await loadStore<any>();
+    const [store, history] = await Promise.all([
+      loadStore<any>(),
+      History.list().catch(() => []),
+    ]);
     return {
       profiles: countProfilesFromStore(store),
-      matches: 0,
+      matches: Array.isArray(history) ? history.length : 0,
     };
   } catch {
     return { profiles: 0, matches: 0 };
@@ -252,8 +254,15 @@ async function summarizeLocalState() {
 
 function cloudSlotScore(slot: CloudObjectIndexItem): number {
   const meta: any = slot?.metadata && typeof slot.metadata === "object" ? slot.metadata : {};
-  const history = Number(meta.historyCount || meta.historyRows || meta.matches || 0) || 0;
-  const profiles = Number(meta.profilesCount || meta.profiles || 0) || 0;
+  const summary: any = meta?.summary && typeof meta.summary === "object" ? meta.summary : {};
+  const history = Number(
+    meta.historyCount || meta.historyRows || meta.matches ||
+    summary.historyCount || summary.historyRows || summary.matches || 0
+  ) || 0;
+  const profiles = Number(
+    meta.profilesCount || meta.profiles ||
+    summary.profilesCount || summary.profiles || 0
+  ) || 0;
   const time = Date.parse(String(slot.updated_at || slot.created_at || "")) || 0;
   return history * 10000 + profiles * 1000 + time / 1_000_000;
 }
@@ -279,21 +288,56 @@ async function fetchCloudSlotPayload(slot: CloudObjectIndexItem): Promise<any> {
   return content;
 }
 
+async function rehydrateRestoredMedia(): Promise<void> {
+  try {
+    let store = await loadStore<any>();
+
+    // 1) Résout d'abord les media_assets quand le backend public répond.
+    try {
+      store = await hydrateStoreMediaUrls(store);
+    } catch {}
+
+    // 2) Puis applique le filet R2 direct : avatars, bots, dartsets, logos,
+    // galerie et images utilisateur. Cette étape ne dépend pas du NAS.
+    try {
+      const hydrated = await hydrateStoreUserMedia(store);
+      if (hydrated?.store) store = hydrated.store;
+    } catch {}
+
+    await saveStore(store);
+  } catch (error) {
+    console.warn("[cloudAutoRestore] media hydration skipped", error);
+  }
+}
+
 async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectIndexItem): Promise<{ profiles: number; matches: number }> {
   const restoreAuth = rememberAuthKeys();
   const normalized = unwrapSnapshotEnvelope(payload);
   const summary = summarizeSnapshot(normalized);
 
-  if (!looksLikeCloudSnapshot(normalized)) {
-    // Ancien format cloud backup : on le délègue au restaurateur dédié.
-    const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(payload), mode: "merge", rebuild: true });
-    if (!restored.ok) throw new Error(restored.error || "Restauration cloud impossible.");
-  } else {
-    await importCloudSnapshot(normalized, { mode: "merge" });
+  try {
+    if (!looksLikeCloudSnapshot(normalized)) {
+      // Ancien format cloud backup : on le délègue au restaurateur dédié.
+      const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(payload), mode: "merge", rebuild: true });
+      if (!restored.ok) throw new Error(restored.error || "Restauration cloud impossible.");
+    } else {
+      await importCloudSnapshot(normalized, { mode: "merge" });
+    }
+  } finally {
+    // Une restauration ne doit jamais casser la session active Android/Web.
+    restoreAuth();
   }
 
-  restoreAuth();
+  await rehydrateRestoredMedia();
+
   writeStorageKey(`${AUTO_RESTORE_PREFIX}:imported:${String(slot.id || "")}`, String(Date.now()));
+  writeStorageKey("dc_cloud_auto_restore_last_success_v1", JSON.stringify({
+    at: new Date().toISOString(),
+    slotId: String(slot.id || ""),
+    profiles: summary.profiles,
+    matches: summary.matches,
+    native: Capacitor.isNativePlatform(),
+  }));
   try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason: "cloud-auto-restore" } })); } catch {}
   try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason: "cloud-auto-restore" } })); } catch {}
   return summary;
@@ -302,7 +346,7 @@ async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectInd
 export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | null): Promise<void> {
   if (typeof window === "undefined") return;
   const uid = String(userId || "").trim();
-  if (!uid || !readNasAccessToken()) return;
+  if (!uid) return;
 
   const now = Date.now();
   if (now - lastRunAt < 10_000) return;
@@ -314,51 +358,67 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
       try { setStorageUser(uid); } catch {}
       try { window.localStorage.setItem("dc_user_id", uid); } catch {}
 
-      const usage = await getAccountStorageUsage().catch(() => null);
-      const provider = String(usage?.preference?.storage_provider || "").trim();
-      if (provider !== "cloud_r2") return;
+      // IMPORTANT : le coffre R2 direct accepte la session Supabase OU le JWT NAS.
+      // Ne jamais bloquer la restauration simplement parce que le NAS est absent.
+      const cloudItems = await listCloudVaultBackups(10, false).catch((error) => {
+        console.warn("[cloudAutoRestore] direct R2 list unavailable", error);
+        return [] as CloudObjectIndexItem[];
+      });
+      const latest = pickLatestUsefulCloudSlot(cloudItems);
+      if (!latest?.id) return;
 
-      // Multi-appareils : fusionne toujours l'historique R2 le plus récent,
-      // même si ce navigateur possède déjà des profils ou des parties.
+      // Multi-appareils : l'historique courant est toujours fusionné en premier.
       ensureCloudHistoryAutoSync(uid);
       await syncLatestCloudHistory(uid).catch((error) => {
         console.warn("[cloudAutoRestore] immediate R2 history sync skipped", error);
       });
 
+      if (readStorageKey(`${AUTO_RESTORE_PREFIX}:imported:${String(latest.id)}`)) {
+        // Même si le snapshot complet a déjà été importé, on retente les médias :
+        // une ancienne URL NAS peut désormais être récupérée depuis R2.
+        await rehydrateRestoredMedia();
+        return;
+      }
+
       const local = await summarizeLocalState();
-      const localIsEmpty = local.profiles <= 0 && local.matches <= 0;
-      if (!localIsEmpty) return;
+      // Sur un nouvel Android la connexion crée d'abord un profil local "pont".
+      // Un téléphone avec 0 partie et <=1 profil reste donc considéré comme neuf.
+      const localLooksFresh = local.matches <= 0 && local.profiles <= 1;
+      if (!localLooksFresh) return;
 
       const declinedRaw = readStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
       const declinedAt = Number(declinedRaw || "0") || 0;
-      if (declinedAt > 0 && now - declinedAt < DECLINE_COOLDOWN_MS) return;
-
-      const cloudItems = await listCloudVaultBackups(10, false).catch(() => []);
-      const latest = pickLatestUsefulCloudSlot(cloudItems);
-      if (!latest?.id) return;
-      if (readStorageKey(`${AUTO_RESTORE_PREFIX}:imported:${String(latest.id)}`)) return;
+      if (!Capacitor.isNativePlatform() && declinedAt > 0 && now - declinedAt < DECLINE_COOLDOWN_MS) return;
 
       const payload = await fetchCloudSlotPayload(latest);
       const remoteSummary = summarizeSnapshot(payload);
       if (remoteSummary.profiles <= 0 && remoteSummary.matches <= 0) return;
 
-      const label = String(latest.title || "Sauvegarde cloud");
-      const ok = window.confirm(
-        `Une sauvegarde Cloudflare R2 existe pour ce compte.\n\n` +
-        `${label}\n` +
-        `${remoteSummary.matches} partie(s) • ${remoteSummary.profiles} profil(s)\n\n` +
-        `Ce navigateur semble vide pour ce compte. Restaurer maintenant en fusion ?`
-      );
+      let ok = true;
+      if (!Capacitor.isNativePlatform()) {
+        const label = String(latest.title || "Sauvegarde cloud");
+        ok = window.confirm(
+          `Une sauvegarde Cloudflare R2 existe pour ce compte.\n\n` +
+          `${label}\n` +
+          `${remoteSummary.matches} partie(s) • ${remoteSummary.profiles} profil(s)\n\n` +
+          `Cet appareil semble vide pour ce compte. Restaurer maintenant en fusion ?`
+        );
+      }
+
       if (!ok) {
         writeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`, String(Date.now()));
         return;
       }
+
       removeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
       const restoredSummary = await restoreDownloadedCloudSnapshot(payload, latest);
+
       window.setTimeout(() => {
-        try {
-          window.alert(`Restauration cloud terminée : ${restoredSummary.matches} partie(s), ${restoredSummary.profiles} profil(s). L’application va se recharger.`);
-        } catch {}
+        if (!Capacitor.isNativePlatform()) {
+          try {
+            window.alert(`Restauration cloud terminée : ${restoredSummary.matches} partie(s), ${restoredSummary.profiles} profil(s). L’application va se recharger.`);
+          } catch {}
+        }
         try { window.location.reload(); } catch {}
       }, 250);
     } catch (error) {
