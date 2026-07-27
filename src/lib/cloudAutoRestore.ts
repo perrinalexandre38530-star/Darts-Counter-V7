@@ -5,6 +5,8 @@ import {
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 import { restoreCloudBackupFromJson } from "./cloudBackup";
+import { downloadDirectR2NasUserMirror } from "./directR2BackupApi";
+import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "./remoteSnapshotRestore";
 import { History } from "./history";
 import LZString from "lz-string";
 
@@ -12,7 +14,7 @@ const AUTO_RESTORE_PREFIX = "dc_cloud_auto_restore_v2";
 const AUTO_RESTORE_DECLINED_PREFIX = "dc_cloud_auto_restore_declined_v1";
 const DECLINE_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
-let inFlight: Promise<void> | null = null;
+let inFlight: Promise<boolean> | null = null;
 let lastRunAt = 0;
 
 function safeJsonParse<T = any>(value: any, fallback: T): T {
@@ -294,16 +296,53 @@ async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectInd
   return summary;
 }
 
-export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | null): Promise<void> {
-  if (typeof window === "undefined") return;
+async function restoreFromR2NasMirrorFallback(userId: string, force = false): Promise<boolean> {
   const uid = String(userId || "").trim();
-  if (!uid) return;
+  if (!uid) return false;
+  try {
+    // Le miroir vit dans R2 et accepte le JWT Supabase : aucune disponibilité NAS n'est requise.
+    const mirror = await downloadDirectR2NasUserMirror();
+    const payload = mirror?.storeSnapshot?.payload ?? mirror?.storeSnapshot?.data ?? null;
+    if (!hasMeaningfulRemoteSnapshotPayload(payload)) return false;
 
+    const signature = `${String(mirror?.createdAt || "")}|${String(mirror?.storeSnapshot?.updatedAt || "")}|${Number(mirror?.storeSnapshot?.version || 0)}`;
+    const markerKey = `${AUTO_RESTORE_PREFIX}:mirror:${uid}`;
+    if (!force && signature && readStorageKey(markerKey) === signature) return true;
+
+    const restoreAuth = rememberAuthKeys();
+    const restored = await restoreRemoteSnapshotIntoLocalApp(payload);
+    restoreAuth();
+    if (!restored) return false;
+
+    if (signature) writeStorageKey(markerKey, signature);
+    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason: "r2-nas-mirror-auto-restore" } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason: "r2-nas-mirror-auto-restore" } })); } catch {}
+    window.setTimeout(() => {
+      try { window.location.reload(); } catch {}
+    }, 250);
+    return true;
+  } catch (error) {
+    console.warn("[cloudAutoRestore] R2 NAS mirror fallback skipped", error);
+    return false;
+  }
+}
+
+export async function maybeAutoRestoreCloudForSignedInUser(
+  userId?: string | null,
+  opts?: { force?: boolean }
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const uid = String(userId || "").trim();
+  if (!uid) return false;
+
+  // L'écran de connexion et le hook auth peuvent déclencher la restauration en même temps.
+  if (inFlight) return inFlight;
+
+  const force = opts?.force === true;
   const now = Date.now();
-  if (now - lastRunAt < 10_000) return;
+  if (!force && now - lastRunAt < 10_000) return false;
   lastRunAt = now;
 
-  if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
       try { setStorageUser(uid); } catch {}
@@ -316,14 +355,21 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
         console.warn("[cloudAutoRestore] immediate R2 history sync skipped", error);
       });
 
-      const cloudItems = await listCloudVaultBackups(10, false).catch(() => []);
+      const cloudItems = await listCloudVaultBackups(10, false).catch((error) => {
+        console.warn("[cloudAutoRestore] R2 backup list unavailable", error);
+        return [];
+      });
       const latest = pickLatestUsefulCloudSlot(cloudItems);
-      if (!latest?.id) return;
+      if (!latest?.id) {
+        // Compat anciens comptes : si aucun snapshot portable n'existe encore,
+        // restaure le dernier miroir NAS déjà conservé dans R2.
+        return await restoreFromR2NasMirrorFallback(uid, force);
+      }
 
       const updated = String(latest.updated_at || latest.created_at || "");
       const signature = `${String(latest.id)}|${updated}`;
       const markerKey = `${AUTO_RESTORE_PREFIX}:imported:${uid}`;
-      if (readStorageKey(markerKey) === signature) return;
+      if (!force && readStorageKey(markerKey) === signature) return true;
 
       const payload = await fetchCloudSlotPayload(latest);
       const remoteSummary = summarizeSnapshot(payload);
@@ -334,7 +380,9 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
         Number(portable?.counts?.dartSets || 0) > 0 ||
         Number(portable?.counts?.galleryItems || 0) > 0 ||
         Number(portable?.counts?.tournaments || 0) > 0;
-      if (remoteSummary.profiles <= 0 && remoteSummary.matches <= 0 && !hasCriticalAccountData) return;
+      if (remoteSummary.profiles <= 0 && remoteSummary.matches <= 0 && !hasCriticalAccountData) {
+        return await restoreFromR2NasMirrorFallback(uid, force);
+      }
 
       removeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
       await restoreDownloadedCloudSnapshot(payload, latest);
@@ -342,11 +390,13 @@ export async function maybeAutoRestoreCloudForSignedInUser(userId?: string | nul
       window.setTimeout(() => {
         try { window.location.reload(); } catch {}
       }, 250);
+      return true;
     } catch (error) {
       try {
         window.localStorage.setItem("dc_cloud_auto_restore_last_error_v1", JSON.stringify({ at: new Date().toISOString(), message: (error as any)?.message || String(error) }));
       } catch {}
       console.warn("[cloudAutoRestore] skipped", error);
+      return false;
     } finally {
       inFlight = null;
     }

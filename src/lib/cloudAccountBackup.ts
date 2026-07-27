@@ -39,7 +39,7 @@ function restoreInProgress(): boolean {
   try { return sessionStorage.getItem(RESTORE_GUARD_KEY) === "1"; } catch { return false; }
 }
 
-function snapshotSummary(snapshot: any) {
+export function snapshotSummary(snapshot: any) {
   const store = (() => {
     const idb = snapshot?.idb && typeof snapshot.idb === "object" ? snapshot.idb : {};
     const rows = Object.entries<any>(idb);
@@ -62,20 +62,32 @@ function snapshotSummary(snapshot: any) {
 }
 
 /**
- * R2 possède déjà chaque image utilisateur comme objet dédié /media/*.
- * Le snapshot JSON ne doit donc pas réembarquer les mêmes base64 dans
- * userMediaFallbacks/avatarFallbacks : cette duplication faisait dépasser la
- * limite HTTP (413) alors que les données métier elles-mêmes sont légères.
- *
- * On conserve portableAccountData (profils/bots/dartsets/galerie/compétitions)
- * et toutes les clés nécessaires pour reconstruire les médias depuis R2.
+ * Prépare le snapshot destiné spécifiquement à R2.
+ * Les images sont déjà stockées comme objets /media/* dédiés : on ne les remet
+ * pas une seconde fois en base64 dans le gros JSON. Cela évite les 413 et
+ * accélère fortement l'upload du snapshot principal.
  */
-function prepareSnapshotForDirectR2(snapshot: any): {
+export function prepareSnapshotForDirectR2(snapshot: any): {
   snapshot: any;
-  audit: { embeddedMediaRemoved: number; embeddedAvatarFallbacksRemoved: number; galleryLocalStorageRemoved: number };
+  audit: {
+    embeddedMediaRemoved: number;
+    embeddedAvatarFallbacksRemoved: number;
+    galleryLocalStorageRemoved: number;
+    transientLocalStorageRemoved: number;
+    duplicateCompetitionsRemoved: number;
+  };
 } {
   if (!snapshot || typeof snapshot !== "object") {
-    return { snapshot, audit: { embeddedMediaRemoved: 0, embeddedAvatarFallbacksRemoved: 0, galleryLocalStorageRemoved: 0 } };
+    return {
+      snapshot,
+      audit: {
+        embeddedMediaRemoved: 0,
+        embeddedAvatarFallbacksRemoved: 0,
+        galleryLocalStorageRemoved: 0,
+        transientLocalStorageRemoved: 0,
+        duplicateCompetitionsRemoved: 0,
+      },
+    };
   }
 
   const next: any = { ...snapshot };
@@ -88,30 +100,68 @@ function prepareSnapshotForDirectR2(snapshot: any): {
   delete next.avatar_fallbacks;
 
   let galleryLocalStorageRemoved = 0;
+  let transientLocalStorageRemoved = 0;
   if (snapshot?.localStorage && typeof snapshot.localStorage === "object") {
     const localStorageCopy: Record<string, any> = { ...snapshot.localStorage };
     for (const key of Object.keys(localStorageCopy)) {
       if (key.startsWith("dc_avatar_gallery_v1:") || key === "msc_avatar_ia_gallery_v1") {
         delete localStorageCopy[key];
         galleryLocalStorageRemoved += 1;
+        continue;
+      }
+      // Caches/diagnostics/états de session : inutiles pour reconstruire le compte
+      // et très coûteux dans un snapshot R2 répété.
+      if (
+        key === "dc_avatar_cache_v1" ||
+        key.startsWith("dc_avatar_cache_v1:") ||
+        key.startsWith("dc_diag_") ||
+        key.startsWith("dc_crash_") ||
+        key.startsWith("dc_online_resume_") ||
+        key.startsWith("dc_bot_avatar_v1:") ||
+        key.startsWith("dc_profiles_safety_cache_v1:") ||
+        key === "dc-profiles-cache-v1" ||
+        key.startsWith("dc_boot_diag_")
+      ) {
+        delete localStorageCopy[key];
+        transientLocalStorageRemoved += 1;
       }
     }
     next.localStorage = localStorageCopy;
   }
 
+  // `competitions` est un alias de compatibilité de `tournaments` dans exportAll().
+  // R2 n'a pas besoin de stocker deux fois les mêmes 2 tournois + leurs matchs.
+  let duplicateCompetitionsRemoved = 0;
+  if (next.tournaments && next.competitions) {
+    try {
+      if (JSON.stringify(next.tournaments) === JSON.stringify(next.competitions)) {
+        delete next.competitions;
+        duplicateCompetitionsRemoved = 1;
+      }
+    } catch {}
+  }
+
   next.r2MediaStrategy = {
-    _v: 1,
+    _v: 2,
     mode: "dedicated-r2-media-objects",
     embeddedMediaRemoved,
     embeddedAvatarFallbacksRemoved,
     galleryLocalStorageRemoved,
+    transientLocalStorageRemoved,
+    duplicateCompetitionsRemoved,
     portableAccountDataVersion: Number(snapshot?.portableAccountData?._v || 0),
     preparedAt: new Date().toISOString(),
   };
 
   return {
     snapshot: next,
-    audit: { embeddedMediaRemoved, embeddedAvatarFallbacksRemoved, galleryLocalStorageRemoved },
+    audit: {
+      embeddedMediaRemoved,
+      embeddedAvatarFallbacksRemoved,
+      galleryLocalStorageRemoved,
+      transientLocalStorageRemoved,
+      duplicateCompetitionsRemoved,
+    },
   };
 }
 
@@ -135,12 +185,10 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
 
   inFlight = (async () => {
     try {
-      const fullSnapshot = await exportCloudSnapshot();
+      const fullSnapshot = await exportCloudSnapshot({ mediaMirror: "background", includeEmbeddedMedia: false, includeAvatarFallbacks: false });
       const summary = snapshotSummary(fullSnapshot);
       const portableVersion = Number(fullSnapshot?.portableAccountData?._v || 0);
-      if (portableVersion < 2) {
-        throw new Error("Snapshot R2 incomplet : portableAccountData v2 absent.");
-      }
+      if (portableVersion < 2) throw new Error("Snapshot R2 incomplet : portableAccountData v2 absent.");
 
       const prepared = prepareSnapshotForDirectR2(fullSnapshot);
       const snapshotJson = JSON.stringify(prepared.snapshot);
@@ -151,7 +199,7 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
         metadata: {
           summary,
           source: reason || "account-data-change",
-          engine: "account-auto-backup-r2-v3",
+          engine: "account-auto-backup-r2-v4",
           portableAccountDataVersion: portableVersion,
           r2MediaStrategy: prepared.snapshot?.r2MediaStrategy,
           r2MediaAudit: prepared.audit,

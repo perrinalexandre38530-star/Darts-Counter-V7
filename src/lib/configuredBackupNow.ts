@@ -48,6 +48,63 @@ export async function saveConfiguredBackupNow(reason = "manual-match-end"): Prom
       return { ok: true, destination, destinationLabel, message: "Sauvegarde NAS créée." };
     }
 
+    // R2 doit rester rapide et indépendant des centaines d'images utilisateur.
+    // Le clic SAUVER ne déclenche AUCUN scan/mirror média : les médias disposent
+    // déjà de leurs objets /media/* et de leurs événements de réplication dédiés.
+    // Le POST principal contient uniquement les données métier, historique/stats,
+    // portableAccountData et les références nécessaires à la restauration.
+    if (destination === "cloud_r2") {
+      const snapshot = await exportCloudSnapshot({
+        mediaMirror: "skip",
+        includeEmbeddedMedia: false,
+        includeAvatarFallbacks: false,
+      });
+      const summary = summarizeVaultPayload(snapshot);
+      const snapshotJson = JSON.stringify(snapshot);
+      const snapshotBytes = new Blob([snapshotJson]).size;
+
+      // Garde-fou : ne jamais repartir silencieusement vers le vieux snapshot
+      // de ~27 Mo qui déclenchait un HTTP 413.
+      if (snapshotBytes > 20_000_000) {
+        throw new Error(`Snapshot R2 encore trop volumineux (${snapshotBytes} octets).`);
+      }
+
+      await uploadCloudVaultSnapshotJson({
+        snapshotJson,
+        title: `Sauvegarde fin de partie — ${nowLabel}`,
+        sourceDestination: "cloud_r2",
+        metadata: {
+          summary,
+          exportedAt: new Date().toISOString(),
+          source: reason,
+          engine: "match-end-save-button-v2-fast-r2",
+          snapshotBytes,
+          portableAccountDataVersion: Number((snapshot as any)?.portableAccountData?._v || 0),
+          mediaMirror: "skip-during-manual-save",
+        },
+      });
+
+      // La copie de sécurité locale ne doit jamais rallonger le temps du bouton
+      // Sauver. Elle est écrite après coup, sans bloquer l'utilisateur.
+      if (prefs.keepLocalSafetyCopy) {
+        void createLocalMemorySlotFromSnapshot(
+          snapshot,
+          `Sécurité locale après R2 — ${nowLabel}`,
+          "manual",
+          summary
+        ).catch(() => null);
+      }
+
+      return {
+        ok: true,
+        destination,
+        destinationLabel,
+        message: `Sauvegarde Cloud R2 créée (${Math.max(1, Math.round(snapshotBytes / 1024 / 1024))} Mo).`,
+      };
+    }
+
+    // Les destinations locales/fichier doivent rester auto-contenues et conservent
+    // donc les médias embarqués dans leur snapshot portable.
     const snapshot = await exportCloudSnapshot();
     const summary = summarizeVaultPayload(snapshot);
     const snapshotJson = JSON.stringify(snapshot);
@@ -79,29 +136,6 @@ export async function saveConfiguredBackupNow(reason = "manual-match-end"): Prom
         ).catch(() => null);
       }
       return { ok: true, destination, destinationLabel, message: "Sauvegarde fichier créée." };
-    }
-
-    if (destination === "cloud_r2") {
-      if (prefs.keepLocalSafetyCopy) {
-        await createLocalMemorySlotFromSnapshot(
-          snapshot,
-          `Sécurité locale avant R2 — ${nowLabel}`,
-          "manual",
-          summary
-        ).catch(() => null);
-      }
-      await uploadCloudVaultSnapshotJson({
-        snapshotJson,
-        title: `Sauvegarde fin de partie — ${nowLabel}`,
-        sourceDestination: "cloud_r2",
-        metadata: {
-          summary,
-          exportedAt: new Date().toISOString(),
-          source: reason,
-          engine: "match-end-save-button-v1",
-        },
-      });
-      return { ok: true, destination, destinationLabel, message: "Sauvegarde Cloud R2 créée." };
     }
 
     throw new Error(`Destination non prise en charge : ${destinationLabel}`);

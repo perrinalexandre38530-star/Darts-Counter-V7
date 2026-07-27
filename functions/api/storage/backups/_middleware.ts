@@ -1,13 +1,22 @@
-// CORS minimal pour la WebView native Capacitor (https://localhost).
-const ALLOWED_ORIGINS = new Set([
-  "https://localhost",
-  "http://localhost",
-  "capacitor://localhost",
-  "https://darts-counter-v7.pages.dev",
-]);
+// CORS Cloudflare Pages/R2 : production + WebView Capacitor + développement local.
+const PROD_ORIGIN = "https://darts-counter-v7.pages.dev";
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  if (origin === PROD_ORIGIN || origin === "capacitor://localhost") return true;
+  try {
+    const url = new URL(origin);
+    const host = String(url.hostname || "").toLowerCase();
+    // Vite/preview utilisent des ports variables (5173, 4173...).
+    return (url.protocol === "http:" || url.protocol === "https:") &&
+      (host === "localhost" || host === "127.0.0.1" || host === "::1");
+  } catch {
+    return false;
+  }
+}
 
 function corsHeaders(origin: string | null): HeadersInit {
-  const allowOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://darts-counter-v7.pages.dev";
+  const allowOrigin = isAllowedOrigin(origin) ? String(origin) : PROD_ORIGIN;
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",

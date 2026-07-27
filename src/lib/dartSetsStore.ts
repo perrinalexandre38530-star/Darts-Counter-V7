@@ -66,6 +66,8 @@ export interface DartSet {
 
   createdAt: number;
   updatedAt: number;
+  /** Version du visuel uniquement : ne change pas pour un favori/usage/nom. */
+  mediaUpdatedAt?: number;
 }
 
 const STORAGE_KEY = "dc_dart_sets_v1";
@@ -1400,16 +1402,11 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   writeMeta({ ...meta, initialized: true });
   invalidateLoadAllCache();
 
-  // Les images exactes sont répliquées immédiatement vers R2, indépendamment
-  // de l'auto-save React/NAS et même si le store principal doit être allégé.
-  for (const set of sanitized) {
-    const id = String(set?.id || "").trim();
-    if (!id) continue;
-    const main = String(set?.photoDataUrl || set?.imageDataUrl || set?.mainImageDataUrl || set?.dartSetImageDataUrl || set?.mainImageUrl || "").trim();
-    const thumb = String(set?.photoThumbDataUrl || set?.thumbDataUrl || set?.thumbImageDataUrl || set?.thumbImageUrl || main || "").trim();
-    if (main) void captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main", updatedAt: Number(set?.updatedAt || Date.now()) }).catch(() => undefined);
-    if (thumb) void captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb", updatedAt: Number(set?.updatedAt || Date.now()) }).catch(() => undefined);
-  }
+  // IMPORTANT PERF : savePrimary() peut être appelé pour un simple favori, un
+  // compteur d'utilisation ou une édition de texte. On ne doit surtout pas
+  // reprogrammer les images de TOUS les dartsets à chaque écriture. Les créations
+  // et modifications de photo appellent mirrorOneDartSetMediaToR2() ci-dessous ;
+  // le backfill legacy reste asynchrone et non bloquant.
 
   try {
     if (typeof window !== "undefined") {
@@ -1893,20 +1890,43 @@ export function isDartSetFavoriteForProfile(set: any, profileId: string): boolea
   return Array.from(aliases).some((id) => favorites.has(id));
 }
 
+function dartSetNeedsDedicatedR2Media(set: any): boolean {
+  if (!set || typeof set !== "object") return false;
+  const main = String(readMainImage(set) || "").trim();
+  const thumb = String(readThumbImage(set) || main || "").trim();
+  // Les presets du catalogue sont déjà embarqués dans /assets et n'ont aucun
+  // intérêt à être recopiés dans le R2 utilisateur. En revanche une photo choisie
+  // depuis la galerie du téléphone doit TOUJOURS avoir ses objets dédiés.
+  if (set?.kind === "photo") return Boolean(main || thumb);
+  return [main, thumb, set?.photoDataUrl, set?.mainImageDataUrl, set?.photoThumbDataUrl]
+    .some((value) => {
+      const raw = String(value || "").trim();
+      return raw.startsWith("data:image/") || raw.startsWith("blob:");
+    });
+}
+
+function mirrorOneDartSetMediaToR2(set: DartSet | null | undefined): void {
+  if (!set || !dartSetNeedsDedicatedR2Media(set)) return;
+  const id = String(set.id || "").trim();
+  if (!id) return;
+  const main = String(readMainImage(set) || "").trim();
+  const thumb = String(readThumbImage(set) || main || "").trim();
+  const updatedAt = Number(set.mediaUpdatedAt || set.createdAt || set.updatedAt || Date.now()) || Date.now();
+  if (main) void captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main", updatedAt }).catch(() => undefined);
+  if (thumb) void captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb", updatedAt }).catch(() => undefined);
+}
+
 function backfillDartSetMediaToR2(list: DartSet[]): void {
   for (const set of list || []) {
     const id = String(set?.id || "").trim();
     if (!id || r2BackfilledDartSetIds.has(id)) continue;
-    const main = String(getDartSetMainImageSrc(set) || "").trim();
-    const thumb = String(getDartSetThumbImageSrc(set) || main || "").trim();
-    if (!main && !thumb) continue;
+    if (!dartSetNeedsDedicatedR2Media(set)) continue;
     r2BackfilledDartSetIds.add(id);
-    const jobs: Promise<any>[] = [];
-    if (main) jobs.push(captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main", updatedAt: Number(set.updatedAt || Date.now()) }));
-    if (thumb) jobs.push(captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb", updatedAt: Number(set.updatedAt || Date.now()) }));
-    void Promise.allSettled(jobs).then((rows) => {
-      if (rows.some((row) => row.status === "rejected" || !String((row as PromiseFulfilledResult<any>)?.value || ""))) r2BackfilledDartSetIds.delete(id);
-    });
+    try {
+      mirrorOneDartSetMediaToR2(set);
+    } catch {
+      r2BackfilledDartSetIds.delete(id);
+    }
   }
 }
 
@@ -2201,6 +2221,7 @@ export function createDartSet(input: {
     id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
     createdAt: now,
     updatedAt: now,
+    mediaUpdatedAt: input.mainImageUrl || input.photoDataUrl || input.mainImageDataUrl ? now : undefined,
     scope: wantedScope,
   }));
   if (!payload) return undefined;
@@ -2219,12 +2240,22 @@ export function createDartSet(input: {
 
   const next = [...all, payload];
   if (!savePrimary(next, "create")) return undefined;
+  const created = getDartSetById(payload.id) || payload;
+  mirrorOneDartSetMediaToR2(created);
   diag("create:ok", { id: payload.id, name: payload.name, profileId: payload.profileId, scope: payload.scope });
-  return getDartSetById(payload.id) || payload;
+  return created;
 }
 
 export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" | "createdAt">>): DartSet | undefined {
   const mutationPatch = normalizeDartSetMutationPatch(patch);
+  const imagePatchKeys = [
+    "mainImageUrl", "thumbImageUrl", "photoDataUrl", "imageDataUrl",
+    "mainImageDataUrl", "dartSetImageDataUrl", "photoThumbDataUrl",
+    "thumbDataUrl", "thumbImageDataUrl", "mainImageAssetId",
+    "thumbImageAssetId", "photoAssetId", "presetId", "kind",
+  ];
+  const mediaChanged = imagePatchKeys.some((key) => Object.prototype.hasOwnProperty.call(mutationPatch, key));
+  if (mediaChanged) mutationPatch.mediaUpdatedAt = Date.now();
   const all = loadAll();
   const target = findDartSetByIdIn(all, id);
   if (!target) {
@@ -2255,6 +2286,10 @@ export function updateDartSet(id: DartSetId, patch: Partial<Omit<DartSet, "id" |
   const saved = savePrimary(next, "update");
   if (!saved) return undefined;
   const updated = getDartSetById(target.id);
+  // Une photo importée depuis la galerie/fichier est scellée immédiatement sous
+  // dartset_main:<id> et dartset_thumb:<id>. Les modifications purement textuelles
+  // ne rechargent rien si le manifeste R2 indique déjà la même version.
+  mirrorOneDartSetMediaToR2(updated);
   diag("update:ok", { id, canonicalId: target.id, name: updated?.name, profileId: updated?.profileId, scope: updated?.scope, isFavorite: updated?.isFavorite });
   return updated;
 }

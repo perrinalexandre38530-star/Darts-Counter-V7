@@ -5,7 +5,7 @@
 // ============================================
 import React from "react";
 import { onlineApi } from "../lib/onlineApi";
-import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "../lib/remoteSnapshotRestore";
+import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -29,27 +29,6 @@ function armNasProfileOnboarding(userId?: string | null) {
     if (!uid) return;
     localStorage.setItem("dc_nas_profile_onboarding_uid", uid);
   } catch {}
-}
-
-async function hasRemoteSnapshot(): Promise<boolean> {
-  try {
-    const res: any = await onlineApi.pullStoreSnapshot();
-    if (res?.status !== "ok") return false;
-    return hasMeaningfulRemoteSnapshotPayload(res?.payload ?? null);
-  } catch {
-    return false;
-  }
-}
-
-async function restoreRemoteSnapshotIntoLocalStore(): Promise<boolean> {
-  try {
-    const res: any = await onlineApi.pullStoreSnapshot();
-    if (res?.status !== "ok") return false;
-    return await restoreRemoteSnapshotIntoLocalApp(res?.payload ?? null);
-  } catch (e) {
-    console.warn("[AuthV7Login] restoreRemoteSnapshotIntoLocalStore failed", e);
-    return false;
-  }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -137,20 +116,21 @@ export default function AuthV7Login({ go }: Props) {
         "Connexion"
       );
       const uid = String((session as any)?.user?.id || "").trim();
-      const degraded = (session as any)?.degradedMode === true || String((session as any)?.authProvider || "") === "supabase_failover";
 
       if (uid) {
-        // Une connexion Supabase valide ne doit jamais rester bloquée parce que
-        // le NAS/R2 est momentanément inaccessible. La restauration distante est
-        // bornée et pourra être relancée depuis la page Sauvegarde.
-        const restored = degraded
-          ? false
-          : await withTimeout(restoreRemoteSnapshotIntoLocalStore(), 8000, "Restauration distante").catch(() => false);
+        // Connexion publique = Supabase Auth + données Cloudflare R2.
+        // Ne jamais exiger de token NAS ici : le QNAP privé peut être hors ligne.
+        const remote = await withTimeout(
+          maybeAutoRestoreCloudForSignedInUser(uid, { force: true }),
+          15000,
+          "Restauration Cloud R2"
+        ).catch(() => false);
+
+        // Une restauration effective déclenche son propre reload après import.
+        if (remote) return;
+
         const linked = hasLinkedLocalProfile(uid);
-        const remote = restored || (degraded
-          ? false
-          : await withTimeout(hasRemoteSnapshot(), 5000, "Vérification sauvegarde distante").catch(() => false));
-        if (!linked && !remote) {
+        if (!linked) {
           armNasProfileOnboarding(uid);
           go("profiles", {
             view: "locals",

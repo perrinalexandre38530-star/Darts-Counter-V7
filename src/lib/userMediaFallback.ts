@@ -1,6 +1,7 @@
 import {
   downloadDirectR2MediaFallback,
   uploadDirectR2MediaFallback,
+  isDirectR2MediaFresh,
   listDirectR2Backups,
   downloadDirectR2Backup,
 } from "./directR2BackupApi";
@@ -366,9 +367,21 @@ export async function captureUserMediaFallback(
 
   const task = (async () => {
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
-    // Miroir exact : si l'original est encore accessible, on conserve ses octets
-    // (via DataURL) sans canvas ni recompression. Le compactage ne sert qu'en
-    // dernier recours pour une ancienne URL que le navigateur ne peut plus relire.
+    const updatedAt = Number(opts.updatedAt || Date.now()) || Date.now();
+
+    // Chemin ultra-rapide des sauvegardes suivantes : si R2 possède déjà cette
+    // version, on ne relit PAS l'image, on ne crée PAS de canvas et on ne refait
+    // aucun POST. Une seule lecture du manifeste couvre des centaines de médias.
+    if (opts.mirrorR2 !== false) {
+      try {
+        if (await isDirectR2MediaFresh({ key, updatedAt })) {
+          const local = await readLocalUserMediaFallback(key);
+          return local || source;
+        }
+      } catch {}
+    }
+
+    // Nouveau média ou média modifié : on capture alors seulement son contenu.
     let mirrored = await exactSourceDataUrl(source);
     if (!mirrored) mirrored = await compactSource(source, kind);
     if (!mirrored) return "";
@@ -376,14 +389,11 @@ export async function captureUserMediaFallback(
       key,
       kind,
       dataUrl: mirrored,
-      updatedAt: Number(opts.updatedAt || Date.now()) || Date.now(),
+      updatedAt,
       sourceUrl: opts.sourceUrl || (!isImageDataUrl(source) ? source : null),
     };
     await storeEntry(entry);
     if (opts.mirrorR2 !== false) {
-      // Ici on attend l'écriture R2 : quand captureUserMediaFallback se résout,
-      // la copie distante existe réellement (ou l'appel rejette et sera retenté
-      // par le prochain audit/export).
       await uploadDirectR2MediaFallback(entry);
     }
     return mirrored;
@@ -617,11 +627,31 @@ function firstImage(...values: any[]): string {
   return "";
 }
 
+function mediaTimestamp(value: any, fallback = Date.now()): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string" && value.trim()) {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber) && asNumber > 0) return asNumber;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return fallback;
+}
+
+function fastImageHash(text: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(16);
+}
+
 export async function captureStoreUserMedia(store: any): Promise<void> {
-  const jobs: Promise<any>[] = [];
+  type MediaJob = { key: string; source: string; kind: UserMediaKind | string; updatedAt?: number };
+  const jobs: MediaJob[] = [];
+  const knownInlineHashes = new Set<string>();
   const enqueue = (key: string, source: string, kind: UserMediaKind | string, updatedAt?: number) => {
     if (!key || !source) return;
-    jobs.push(captureUserMediaFallback(key, source, { kind, updatedAt }).catch(() => ""));
+    if (isImageDataUrl(source)) knownInlineHashes.add(fastImageHash(source));
+    jobs.push({ key, source, kind, updatedAt });
   };
 
   try {
@@ -631,7 +661,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
         const id = String(p?.id || p?.profileId || p?.playerId || "").trim();
         if (!id) continue;
         const src = firstImage(p?.avatarFullDataUrl, p?.avatarDataUrl, p?.avatarThumbDataUrl, p?.avatarCastDataUrl, p?.photoDataUrl, p?.avatarUrl, p?.avatar);
-        if (src) enqueue(profileAvatarMediaKey(id), src, "profile_avatar", Number(p?.avatarUpdatedAt || p?.updatedAt || Date.now()));
+        if (src) enqueue(profileAvatarMediaKey(id), src, "profile_avatar", mediaTimestamp(p?.avatarUpdatedAt || p?.updatedAt));
       }
     }
 
@@ -640,7 +670,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
       const id = String(bot?.id || bot?.botId || "").trim();
       if (!id) continue;
       const src = firstImage(bot?.avatarFullDataUrl, bot?.avatarDataUrl, bot?.avatarThumbDataUrl, bot?.photoDataUrl, bot?.imageDataUrl, bot?.avatarUrl, bot?.avatar);
-      if (src) enqueue(botAvatarMediaKey(id), src, "bot_avatar", Number(bot?.avatarUpdatedAt || bot?.updatedAt || Date.now()));
+      if (src) enqueue(botAvatarMediaKey(id), src, "bot_avatar", mediaTimestamp(bot?.avatarUpdatedAt || bot?.updatedAt));
     }
 
     const dartSets = Array.isArray(store?.dartSets) ? store.dartSets : [];
@@ -649,8 +679,17 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
       if (!id) continue;
       const main = firstImage(set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl, set?.mainImageUrl, set?.photoUrl, set?.imageUrl);
       const thumb = firstImage(set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl, set?.photoThumbUrl, main);
-      if (main) enqueue(dartSetMainMediaKey(id), main, "dartset_main", Number(set?.updatedAt || Date.now()));
-      if (thumb) enqueue(dartSetThumbMediaKey(id), thumb, "dartset_thumb", Number(set?.updatedAt || Date.now()));
+      // Les visuels du catalogue (/assets/...) sont déjà dans l'application. R2
+      // doit sauvegarder les photos PERSONNELLES choisies depuis la galerie/fichier.
+      const customPhoto = set?.kind === "photo" || [main, thumb, set?.photoDataUrl, set?.mainImageDataUrl]
+        .some((value) => {
+          const raw = String(value || "").trim();
+          return raw.startsWith("data:image/") || raw.startsWith("blob:");
+        });
+      if (!customPhoto) continue;
+      const mediaAt = mediaTimestamp(set?.mediaUpdatedAt || set?.createdAt || set?.updatedAt);
+      if (main) enqueue(dartSetMainMediaKey(id), main, "dartset_main", mediaAt);
+      if (thumb) enqueue(dartSetThumbMediaKey(id), thumb, "dartset_thumb", mediaAt);
     }
 
     const teams = Array.isArray(store?.teams) ? store.teams : [];
@@ -659,8 +698,8 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
       if (!id) continue;
       const logo = firstImage(team?.logoDataUrl, team?.avatarDataUrl, team?.imageDataUrl, team?.regionLogoDataUrl, team?.logoUrl, team?.avatarUrl, team?.imageUrl);
       const cover = firstImage(team?.coverDataUrl, team?.coverUrl, team?.bannerDataUrl, team?.bannerUrl);
-      if (logo) enqueue(teamLogoMediaKey(id), logo, "team_logo", Number(team?.updatedAt || Date.now()));
-      if (cover) enqueue(teamCoverMediaKey(id), cover, "team_cover", Number(team?.updatedAt || Date.now()));
+      if (logo) enqueue(teamLogoMediaKey(id), logo, "team_logo", mediaTimestamp(team?.updatedAt));
+      if (cover) enqueue(teamCoverMediaKey(id), cover, "team_cover", mediaTimestamp(team?.updatedAt));
     }
 
     // Galerie centrale + ancienne galerie Avatar IA : elles vivent en localStorage
@@ -675,7 +714,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
           for (const item of rows) {
             const id = String(item?.id || item?.hash || "").trim();
             const src = firstImage(item?.src, item?.dataUrl, item?.imageDataUrl);
-            if (id && src) enqueue(galleryItemMediaKey(id), src, "gallery_item", Number(item?.updatedAt || item?.createdAt || Date.now()));
+            if (id && src) enqueue(galleryItemMediaKey(id), src, "gallery_item", mediaTimestamp(item?.updatedAt || item?.createdAt));
           }
         } catch {}
       }
@@ -685,7 +724,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
           for (const item of rows) {
             const id = String(item?.id || item?.galleryId || "").trim();
             const src = firstImage(item?.dataUrl, item?.src, item?.imageDataUrl);
-            if (id && src) enqueue(avatarAiGalleryMediaKey(id), src, "avatar_ai_gallery", Date.parse(item?.updatedAt || item?.createdAt || "") || Date.now());
+            if (id && src) enqueue(avatarAiGalleryMediaKey(id), src, "avatar_ai_gallery", mediaTimestamp(item?.updatedAt || item?.createdAt));
           }
         }
       } catch {}
@@ -695,12 +734,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
     // dédupliquée par son contenu et envoyée à R2. Cela couvre les futurs types
     // de données sans devoir attendre une nouvelle liste de catégories.
     const seen = new WeakSet<object>();
-    const seenHashes = new Set<string>();
-    const hashText = (text: string) => {
-      let h = 2166136261;
-      for (let i = 0; i < text.length; i += 1) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
-      return (h >>> 0).toString(16);
-    };
+    const seenHashes = new Set<string>(knownInlineHashes);
     const walk = (node: any) => {
       if (!node || typeof node !== "object") return;
       if (seen.has(node)) return;
@@ -709,7 +743,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
       for (const value of Object.values(node)) {
         if (isImageDataUrl(value)) {
           const imageValue = String(value);
-          const hash = hashText(imageValue);
+          const hash = fastImageHash(imageValue);
           if (!seenHashes.has(hash)) {
             seenHashes.add(hash);
             enqueue(cleanKey(`user_image:${hash}`), imageValue, "user_image");
@@ -720,7 +754,16 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
     walk(store);
   } catch {}
 
-  if (jobs.length) await Promise.allSettled(jobs);
+  if (jobs.length) {
+    // Trois captures maximum en parallèle : assez rapide pour rattraper un ancien
+    // compte, sans lancer 200 FileReader/canvas/fetch en même temps dans la WebView.
+    await mapWithConcurrency(jobs, 3, async (job) => {
+      await captureUserMediaFallback(job.key, job.source, {
+        kind: job.kind,
+        updatedAt: job.updatedAt,
+      }).catch(() => "");
+    });
+  }
 }
 
 async function mapWithConcurrency<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -772,8 +815,8 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
     const mainPrimary = firstImage(d?.photoDataUrl, d?.imageDataUrl, d?.mainImageDataUrl, d?.mainImageUrl, d?.photoUrl, d?.imageUrl);
     const thumbPrimary = firstImage(d?.photoThumbDataUrl, d?.thumbDataUrl, d?.thumbImageDataUrl, d?.thumbImageUrl, mainPrimary);
     const [main, thumb] = await Promise.all([
-      resolveUserMediaFallback(dartSetMainMediaKey(id), mainPrimary, { kind: "dartset_main" }),
-      resolveUserMediaFallback(dartSetThumbMediaKey(id), thumbPrimary, { kind: "dartset_thumb" }),
+      resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main" }),
+      resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb" }),
     ]);
     if (main && d.mainImageUrl !== main) { d.mainImageUrl = main; changed = true; }
     if (thumb && d.thumbImageUrl !== thumb) { d.thumbImageUrl = thumb; changed = true; }
