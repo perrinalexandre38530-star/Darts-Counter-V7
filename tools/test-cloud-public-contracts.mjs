@@ -19,6 +19,10 @@ const serverConfig = read("src/lib/serverConfig.ts");
 const onlineApi = read("src/lib/onlineApi.ts");
 const nearbyApi = read("src/lib/nearbyPlayersApi.ts");
 const socialApi = read("src/lib/publicSocialApi.ts");
+const apiClient = read("src/lib/apiClient.ts");
+const friendsApi = read("src/lib/friendsApi.ts");
+const linkedProfileSync = read("src/lib/linkedProfileSync.ts");
+const messageCenterNotify = read("src/lib/messageCenterNotify.ts");
 const settings = read("src/pages/Settings.tsx");
 const friends = read("src/pages/FriendsPage.tsx");
 const migration = read("supabase/migrations/20260727_public_online_nearby.sql");
@@ -69,6 +73,25 @@ expect(
 expect(
   "Aucune URL NAS n'est codée dans la couche sociale publique",
   !/multisports-api\.fr|VITE_NAS_API_URL/i.test(socialApi),
+);
+expect(
+  "apiClient bloque les routes /online legacy NAS en public/hybride",
+  /normalizedPath\.startsWith\(["']\/online\/["']\)[\s\S]{0,180}!isNasProviderEnabled\(\)/.test(apiClient),
+);
+expect(
+  "Les associations de profils n'appellent plus le NAS en public/hybride",
+  /loadLinkedProfileProjection[\s\S]{0,500}!isNasProviderEnabled\(\)[\s\S]{0,180}snapshots:\s*\[\]/.test(linkedProfileSync),
+);
+expect(
+  "Les listes legacy sociales renvoient un fallback local en public/hybride",
+  /listProfileFriendLinks[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
+  && /listSharedMatches[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi)
+  && /listMessengerGroups[\s\S]{0,180}publicBackendActive\(\)[\s\S]{0,80}return \[\]/.test(friendsApi),
+);
+expect(
+  "Le centre de messages utilise Supabase en public/hybride",
+  /canUseMessageCenterPolling[\s\S]{0,260}!isNasProviderEnabled\(\)/.test(messageCenterNotify)
+  && /if \(isNasProviderEnabled\(\)\)[\s\S]{0,220}online\/messages\/summary/.test(messageCenterNotify),
 );
 expect("Le panneau Joueurs à proximité est monté dans FriendsPage", /<NearbyPlayersPanel\b/.test(friends));
 

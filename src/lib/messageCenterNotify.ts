@@ -9,6 +9,7 @@ import {
   type SharedMatchItem,
 } from "./friendsApi";
 import { apiGet, apiPost, readNasAccessToken } from "./apiClient";
+import { isNasProviderEnabled } from "./serverConfig";
 
 export type MessageCenterUnreadSummary = {
   unreadMessages: number;
@@ -73,7 +74,10 @@ function isAuthenticationRoute(): boolean {
 }
 
 export function canUseMessageCenterPolling() {
-  return !isAuthenticationRoute() && !!readNasAccessToken();
+  if (isAuthenticationRoute()) return false;
+  // Public/hybride : amis + messages privés sont lus directement depuis Supabase.
+  // NAS pur : on conserve l'exigence du JWT NAS.
+  return !isNasProviderEnabled() || !!readNasAccessToken();
 }
 
 export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUnreadSummary> {
@@ -81,31 +85,34 @@ export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUn
     return { unreadMessages: 0, friendRequests: 0, profileLinks: 0, sharedMatches: 0, system: 0, invites: 0, total: 0, newestLabel: "", newestKey: "" };
   }
 
-  // Source de vérité NAS si disponible : évite les badges qui restent bloqués
-  // après lecture/suppression locale d'un message.
-  try {
-    const serverSummary = await apiGet("/online/messages/summary");
-    const counters = serverSummary?.counters || {};
-    const unreadMessages = Number(counters.privateMessages ?? counters.messages ?? 0) || 0;
-    const friendRequests = Number(counters.friendRequests || 0) || 0;
-    const profileLinks = Number(counters.profileLinks || 0) || 0;
-    const sharedMatches = Number(counters.sharedMatches || 0) || 0;
-    const system = Number(counters.system || 0) || 0;
-    const invites = Number(counters.invites || 0) || 0;
-    const total = Math.max(0, unreadMessages + friendRequests + profileLinks + sharedMatches + system + invites);
-    return {
-      unreadMessages,
-      friendRequests,
-      profileLinks,
-      sharedMatches,
-      system,
-      invites,
-      total,
-      newestLabel: total > 0 ? `${total} élément(s) à traiter` : "",
-      newestKey: total > 0 ? `summary:${total}` : "",
-    };
-  } catch {
-    // Fallback ancien : garde la compat si le backend NAS n'a pas encore été redémarré.
+  // Source de vérité NAS uniquement lorsque le provider est explicitement NAS.
+  // En public/hybride, cette route legacy ne doit jamais être appelée : le résumé
+  // est calculé avec les RPC Supabase juste en dessous.
+  if (isNasProviderEnabled()) {
+    try {
+      const serverSummary = await apiGet("/online/messages/summary");
+      const counters = serverSummary?.counters || {};
+      const unreadMessages = Number(counters.privateMessages ?? counters.messages ?? 0) || 0;
+      const friendRequests = Number(counters.friendRequests || 0) || 0;
+      const profileLinks = Number(counters.profileLinks || 0) || 0;
+      const sharedMatches = Number(counters.sharedMatches || 0) || 0;
+      const system = Number(counters.system || 0) || 0;
+      const invites = Number(counters.invites || 0) || 0;
+      const total = Math.max(0, unreadMessages + friendRequests + profileLinks + sharedMatches + system + invites);
+      return {
+        unreadMessages,
+        friendRequests,
+        profileLinks,
+        sharedMatches,
+        system,
+        invites,
+        total,
+        newestLabel: total > 0 ? `${total} élément(s) à traiter` : "",
+        newestKey: total > 0 ? `summary:${total}` : "",
+      };
+    } catch {
+      // Fallback Supabase ci-dessous.
+    }
   }
 
   const [messages, requests, links, shares] = await Promise.all([

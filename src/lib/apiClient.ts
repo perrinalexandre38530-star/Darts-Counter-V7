@@ -1,4 +1,4 @@
-import { getNasApiUrl, isNasDataSyncEnabled } from "./serverConfig";
+import { getNasApiUrl, isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
 import { nasRestoreSession } from "./nasApi";
 
 const LEGACY_BAD_HOSTS = [
@@ -406,6 +406,28 @@ async function doFetch(path: string, init?: RequestInit) {
   const isAutomaticRead = isAutomaticBackendRead(normalizedPath, requestMethod);
   const requestTimeoutMs = requestTimeoutFor(normalizedPath, requestMethod);
   const proxyBase = sameOriginApiProxyBase();
+
+  // Invariant d'architecture : en mode public/hybride, AUCUNE route /online/*
+  // ne doit retomber sur l'API NAS. Les fonctions publiques migrées parlent
+  // directement à Supabase. Les anciennes lectures encore non migrées sont
+  // neutralisées localement afin d'éviter les rafales 401/timeout au boot.
+  if (normalizedPath.startsWith("/online/") && !isNasProviderEnabled()) {
+    if (requestMethod === "GET") {
+      return {
+        ok: true,
+        skipped: true,
+        provider: "supabase",
+        code: "legacy_nas_online_read_disabled",
+      };
+    }
+
+    const error: any = new Error(
+      `${requestMethod} ${normalizedPath} non disponible via le backend NAS en mode public/hybride.`
+    );
+    error.status = 409;
+    error.code = "legacy_nas_online_write_disabled";
+    throw error;
+  }
 
   // Les badges/messages/appels ne doivent jamais lancer une rafale réseau sur
   // l'écran de connexion, même si un ancien JWT NAS traîne encore en cache.

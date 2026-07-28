@@ -51,6 +51,17 @@ function qs(value: string) {
   return encodeURIComponent(String(value || "").trim());
 }
 
+function publicBackendActive(): boolean {
+  return !isNasProviderEnabled();
+}
+
+function legacyPublicFeatureUnavailable(feature: string): never {
+  const error: any = new Error(`${feature} n'est pas encore migré vers le backend public Supabase.`);
+  error.code = "public_feature_not_migrated";
+  error.status = 409;
+  throw error;
+}
+
 export async function searchUsers(query: string): Promise<OnlineFriendUser[]> {
   if (!isNasProviderEnabled()) return (await cloudSearchUsers(query)) as OnlineFriendUser[];
   const res = await apiGet(`/online/users/search?q=${qs(query)}`);
@@ -102,16 +113,19 @@ export async function shareWithFriend(input: {
   matchId?: string;
   payload?: any;
 }) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le partage générique");
   const res = await apiPost("/online/share", input);
   return res?.item ?? res;
 }
 
 export async function listSharedItems(): Promise<SharedOnlineItem[]> {
+  if (publicBackendActive()) return [];
   const res = await apiGet("/online/shared");
   return Array.isArray(res?.items) ? res.items : [];
 }
 
 export async function markSharedItemRead(id: string) {
+  if (publicBackendActive()) return null;
   const res = await apiPut(`/online/shared/${qs(id)}/read`, {});
   return res?.item ?? res;
 }
@@ -143,34 +157,41 @@ export async function shareMatchToFriend(input: {
   message?: string;
   payload: any;
 }) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le partage de partie");
   const res = await apiPost("/online/share-match", input);
   return res?.item ?? res;
 }
 
 export async function listSharedMatches(): Promise<SharedMatchItem[]> {
+  if (publicBackendActive()) return [];
   const res = await apiGet("/online/shared-matches");
   return Array.isArray(res?.items) ? res.items : [];
 }
 
 export async function countPendingSharedMatches(): Promise<number> {
+  if (publicBackendActive()) return 0;
   const res = await apiGet("/online/shared-matches/count");
   return Number(res?.pending || 0);
 }
 
 export async function markSharedMatchRead(id: string) {
+  if (publicBackendActive()) return null;
   const res = await apiPut(`/online/shared-matches/${qs(id)}/read`, {});
   return res?.item ?? res;
 }
 
 export async function acceptSharedMatch(id: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'acceptation de partie partagée");
   return apiPost(`/online/shared-matches/${qs(id)}/accept`, {});
 }
 
 export async function importSharedMatch(id: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'import de partie partagée");
   return apiPost(`/online/shared-matches/${qs(id)}/import`, {});
 }
 
 export async function refuseSharedMatch(id: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le refus de partie partagée");
   const res = await apiPost(`/online/shared-matches/${qs(id)}/refuse`, {});
   return res?.item ?? res;
 }
@@ -194,11 +215,13 @@ export type ProfileFriendLink = {
 };
 
 export async function listProfileFriendLinks(): Promise<ProfileFriendLink[]> {
+  if (publicBackendActive()) return [];
   const res = await apiGet("/online/profile-links");
   return Array.isArray(res?.links) ? res.links : [];
 }
 
 export async function countPendingProfileFriendLinks(): Promise<number> {
+  if (publicBackendActive()) return 0;
   const res = await apiGet("/online/profile-links/count");
   return Number(res?.pending || 0);
 }
@@ -210,21 +233,25 @@ export async function requestProfileFriendLink(input: {
   localProfileAvatarUrl?: string | null;
   statsMeta?: any;
 }) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'association de profil ami");
   const res = await apiPost("/online/profile-links", input);
   return res?.link ?? res;
 }
 
 export async function respondProfileFriendLink(id: string, status: "accepted" | "refused") {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("L'association de profil ami");
   const res = await apiPost(`/online/profile-links/${qs(id)}/respond`, { status });
   return res?.link ?? res;
 }
 
 export async function deleteProfileFriendLink(id: string) {
+  if (publicBackendActive()) return null;
   const res = await apiDelete(`/online/profile-links/${qs(id)}`);
   return res?.link ?? res;
 }
 
 export async function updateProfileFriendLinkStats(id: string, statsMeta: any) {
+  if (publicBackendActive()) return null;
   const res = await apiPut(`/online/profile-links/${qs(id)}/stats`, { statsMeta });
   return res?.link ?? res;
 }
@@ -245,6 +272,7 @@ export type MessengerGroup = {
 };
 
 export async function listMessengerGroups(): Promise<MessengerGroup[]> {
+  if (publicBackendActive()) return [];
   const res = await apiGet("/online/messenger-groups");
   return Array.isArray(res?.groups) ? res.groups : [];
 }
@@ -255,16 +283,19 @@ export async function createMessengerGroup(input: {
   avatarUrl?: string | null;
   coverUrl?: string | null;
 }) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Les groupes de messagerie");
   const res = await apiPost("/online/messenger-groups", input);
   return res?.group as MessengerGroup;
 }
 
 export async function updateMessengerGroup(id: string, input: Partial<Pick<MessengerGroup, "name" | "memberIds" | "avatarUrl" | "coverUrl">>) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Les groupes de messagerie");
   const res = await apiPut(`/online/messenger-groups/${qs(id)}`, input);
   return res?.group as MessengerGroup;
 }
 
 export async function deleteMessengerGroup(id: string) {
+  if (publicBackendActive()) return null;
   return apiDelete(`/online/messenger-groups/${qs(id)}`);
 }
 
@@ -364,6 +395,7 @@ export function buildMessengerCallStreamUrl(callId: string): string {
 }
 
 export async function startMessengerCall(toUserId: string, callType: "audio" | "video", metadata?: any) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Les appels audio/vidéo");
   const res = await apiPost("/online/calls", { toUserId, calleeUserId: toUserId, callType, type: callType, metadata: metadata || {} });
   return { call: res?.call as MessengerCall, message: res?.message as PrivateMessageItem };
 }
@@ -381,45 +413,54 @@ export async function listActiveMessengerCalls(): Promise<MessengerCall[]> {
 }
 
 export async function getMessengerCall(callId: string) {
+  if (publicBackendActive()) return null as any;
   const res = await apiGet(`/online/calls/${qs(callId)}`);
   return res?.call as MessengerCall;
 }
 
 export async function acceptMessengerCall(callId: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Les appels audio/vidéo");
   const res = await apiPost(`/online/calls/${qs(callId)}/accept`, {});
   return res?.call as MessengerCall;
 }
 
 export async function declineMessengerCall(callId: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Les appels audio/vidéo");
   const res = await apiPost(`/online/calls/${qs(callId)}/decline`, {});
   return res?.call as MessengerCall;
 }
 
 export async function endMessengerCall(callId: string) {
+  if (publicBackendActive()) return null as any;
   const res = await apiPost(`/online/calls/${qs(callId)}/end`, {});
   return res?.call as MessengerCall;
 }
 
 export async function sendMessengerCallSignal(callId: string, signalType: string, payload: any) {
+  if (publicBackendActive()) return null as any;
   const res = await apiPost(`/online/calls/${qs(callId)}/signal`, { signalType, type: signalType, payload: payload || {} });
   return res?.signal as MessengerCallSignal;
 }
 
 export async function listMessengerCallSignals(callId: string, after?: string): Promise<MessengerCallSignal[]> {
+  if (publicBackendActive()) return [];
   const query = after ? `?after=${encodeURIComponent(after)}` : "";
   const res = await apiGet(`/online/calls/${qs(callId)}/signals${query}`);
   return Array.isArray(res?.signals) ? res.signals : [];
 }
 
 export async function blockOnlineUser(userId: string, reason?: string) {
+  if (publicBackendActive()) return legacyPublicFeatureUnavailable("Le blocage utilisateur");
   return apiPost(`/online/users/${qs(userId)}/block`, { reason: reason || "" });
 }
 
 export async function unblockOnlineUser(userId: string) {
+  if (publicBackendActive()) return null;
   return apiDelete(`/online/users/${qs(userId)}/block`);
 }
 
 export async function listBlockedUsers(): Promise<OnlineFriendUser[]> {
+  if (publicBackendActive()) return [];
   const res = await apiGet("/online/blocked-users");
   return Array.isArray(res?.users) ? res.users : [];
 }

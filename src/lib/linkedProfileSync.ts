@@ -8,6 +8,7 @@
 // sans écraser les données locales.
 // =============================================================
 import { apiGet, apiPost } from "./apiClient";
+import { isNasProviderEnabled } from "./serverConfig";
 import { History } from "./history";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
@@ -805,6 +806,13 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
 }
 
 export async function loadLinkedProfileProjection(localProfiles: any[] = []): Promise<LinkedProfileProjection> {
+  // L'association de profils est encore un module legacy NAS. En mode public/hybride
+  // on ne doit jamais déclencher /online/profile-links vers le NAS en arrière-plan.
+  // Les profils locaux/restaurés R2 restent évidemment disponibles normalement.
+  if (!isNasProviderEnabled()) {
+    return { profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] };
+  }
+
   const ids = arr(localProfiles).map((p: any) => s(p?.id || p?.profileId || p?.playerId)).filter(Boolean).sort();
   const nextKey = ids.join("|");
   const now = Date.now();

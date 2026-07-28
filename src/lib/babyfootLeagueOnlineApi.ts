@@ -5,6 +5,7 @@
 // =============================================================
 
 import { apiDelete, apiGet, apiPost, apiPut } from "./apiClient";
+import { listFriends } from "./friendsApi";
 import type { BabyFootLeague, BabyFootLeagueFixture } from "./babyfootLeagueStore";
 
 export type BabyFootLeagueVisibility = "private" | "public";
@@ -20,8 +21,7 @@ export type BabyFootOnlineFriend = {
 };
 
 export async function listBabyFootOnlineFriends(): Promise<BabyFootOnlineFriend[]> {
-  const res = await apiGet("/online/friends");
-  const list = Array.isArray(res?.friends) ? res.friends : [];
+  const list = await listFriends();
   return list.map((f: any) => ({
     id: String(f?.userId || f?.id || ""),
     userId: String(f?.userId || f?.id || ""),
