@@ -7,8 +7,7 @@
 // l'affichage local peut utiliser les stats, l'avatar et l'historique du compte ami
 // sans écraser les données locales.
 // =============================================================
-import { apiGet, apiPost } from "./apiClient";
-import { isNasProviderEnabled } from "./serverConfig";
+import { apiGet, apiPost, canUseNasOnlineApi } from "./apiClient";
 import { History } from "./history";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
@@ -809,7 +808,7 @@ export async function loadLinkedProfileProjection(localProfiles: any[] = []): Pr
   // L'association de profils est encore un module legacy NAS. En mode public/hybride
   // on ne doit jamais déclencher /online/profile-links vers le NAS en arrière-plan.
   // Les profils locaux/restaurés R2 restent évidemment disponibles normalement.
-  if (!isNasProviderEnabled()) {
+  if (!canUseNasOnlineApi()) {
     return { profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] };
   }
 

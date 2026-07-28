@@ -18,7 +18,7 @@ function sanitizeUrl(raw: unknown): string {
 }
 
 function normalizeProvider(raw: unknown): "supabase" | "hybrid" | "nas" {
-  const value = String(raw || "nas").trim().toLowerCase();
+  const value = String(raw || "supabase").trim().toLowerCase();
   if (value === "nas") return "nas";
   if (value === "hybrid" || value === "supabase+nas") return "hybrid";
   return "supabase";

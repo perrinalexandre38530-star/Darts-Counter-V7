@@ -1,5 +1,4 @@
-import { apiDelete, apiGet, apiPost, apiPut, buildApiUrl, readNasAccessToken } from "./apiClient";
-import { isNasProviderEnabled } from "./serverConfig";
+import { apiDelete, apiGet, apiPost, apiPut, buildApiUrl, canUseNasOnlineApi, readNasAccessToken } from "./apiClient";
 import {
   cloudDeletePrivateMessage, cloudEditPrivateMessage, cloudListFriendRequests, cloudListFriends, cloudListPrivateMessages,
   cloudMarkPrivateMessageRead, cloudMarkPrivateThreadRead, cloudRemoveFriend, cloudRespondFriendRequest, cloudSearchUsers,
@@ -52,7 +51,7 @@ function qs(value: string) {
 }
 
 function publicBackendActive(): boolean {
-  return !isNasProviderEnabled();
+  return !canUseNasOnlineApi();
 }
 
 function legacyPublicFeatureUnavailable(feature: string): never {
@@ -63,19 +62,19 @@ function legacyPublicFeatureUnavailable(feature: string): never {
 }
 
 export async function searchUsers(query: string): Promise<OnlineFriendUser[]> {
-  if (!isNasProviderEnabled()) return (await cloudSearchUsers(query)) as OnlineFriendUser[];
+  if (!canUseNasOnlineApi()) return (await cloudSearchUsers(query)) as OnlineFriendUser[];
   const res = await apiGet(`/online/users/search?q=${qs(query)}`);
   return Array.isArray(res?.users) ? res.users : [];
 }
 
 export async function sendFriendRequest(toUserId: string, message?: string) {
-  if (!isNasProviderEnabled()) return cloudSendFriendRequest(toUserId, message);
+  if (!canUseNasOnlineApi()) return cloudSendFriendRequest(toUserId, message);
   const res = await apiPost("/online/friend-requests", { toUserId, message });
   return res?.request ?? res;
 }
 
 export async function listFriendRequests(): Promise<FriendRequest[]> {
-  if (!isNasProviderEnabled()) return (await cloudListFriendRequests()) as FriendRequest[];
+  if (!canUseNasOnlineApi()) return (await cloudListFriendRequests()) as FriendRequest[];
   const res = await apiGet("/online/friend-requests");
   return Array.isArray(res?.requests) ? res.requests : [];
 }
@@ -84,24 +83,24 @@ export async function respondFriendRequest(
   requestId: string,
   status: "accepted" | "rejected"
 ) {
-  if (!isNasProviderEnabled()) return cloudRespondFriendRequest(requestId, status);
+  if (!canUseNasOnlineApi()) return cloudRespondFriendRequest(requestId, status);
   const res = await apiPost(`/online/friend-requests/${qs(requestId)}/respond`, { status });
   return res?.request ?? res;
 }
 
 export async function listFriends(): Promise<OnlineFriendUser[]> {
-  if (!isNasProviderEnabled()) return (await cloudListFriends()) as OnlineFriendUser[];
+  if (!canUseNasOnlineApi()) return (await cloudListFriends()) as OnlineFriendUser[];
   const res = await apiGet("/online/friends");
   return Array.isArray(res?.friends) ? res.friends : [];
 }
 
 export async function removeFriend(userId: string) {
-  if (!isNasProviderEnabled()) return cloudRemoveFriend(userId);
+  if (!canUseNasOnlineApi()) return cloudRemoveFriend(userId);
   return apiDelete(`/online/friends/${qs(userId)}`);
 }
 
 export async function updatePresence(status: "online" | "away" | "offline") {
-  if (!isNasProviderEnabled()) return cloudUpdatePresence(status);
+  if (!canUseNasOnlineApi()) return cloudUpdatePresence(status);
   return apiPut("/online/presence", { status });
 }
 
@@ -315,38 +314,38 @@ export type PrivateMessageItem = {
 };
 
 export async function listPrivateMessages(): Promise<PrivateMessageItem[]> {
-  if (!isNasProviderEnabled()) return (await cloudListPrivateMessages()) as PrivateMessageItem[];
+  if (!canUseNasOnlineApi()) return (await cloudListPrivateMessages()) as PrivateMessageItem[];
   const res = await apiGet("/online/private-messages");
   return Array.isArray(res?.messages) ? res.messages : [];
 }
 
 export async function sendPrivateMessage(toUserId: string, text: string, metadata?: any) {
-  if (!isNasProviderEnabled()) return cloudSendPrivateMessage(toUserId, text, metadata);
+  if (!canUseNasOnlineApi()) return cloudSendPrivateMessage(toUserId, text, metadata);
   const res = await apiPost("/online/private-messages", { toUserId, text, metadata: metadata || {} });
   return res?.message ?? res;
 }
 
 export async function editPrivateMessage(id: string, text: string) {
-  if (!isNasProviderEnabled()) return cloudEditPrivateMessage(id, text);
+  if (!canUseNasOnlineApi()) return cloudEditPrivateMessage(id, text);
   const res = await apiPut(`/online/private-messages/${qs(id)}`, { text });
   return res?.message ?? res;
 }
 
 export async function markPrivateMessageRead(id: string) {
-  if (!isNasProviderEnabled()) return cloudMarkPrivateMessageRead(id);
+  if (!canUseNasOnlineApi()) return cloudMarkPrivateMessageRead(id);
   // Backend accepte PUT + POST : on garde PUT pour compat avec le frontend existant.
   const res = await apiPut(`/online/private-messages/${qs(id)}/read`, {});
   return res?.message ?? res;
 }
 
 export async function markPrivateThreadRead(friendUserId: string) {
-  if (!isNasProviderEnabled()) return cloudMarkPrivateThreadRead(friendUserId);
+  if (!canUseNasOnlineApi()) return cloudMarkPrivateThreadRead(friendUserId);
   const res = await apiPost(`/online/private-messages/thread/${qs(friendUserId)}/read`, {});
   return res?.messages ?? res?.items ?? res;
 }
 
 export async function deletePrivateMessage(id: string) {
-  if (!isNasProviderEnabled()) return cloudDeletePrivateMessage(id);
+  if (!canUseNasOnlineApi()) return cloudDeletePrivateMessage(id);
   const res = await apiDelete(`/online/private-messages/${qs(id)}`);
   return res?.message ?? res;
 }
@@ -383,13 +382,13 @@ export type MessengerCallSignal = {
 };
 
 export function buildPrivateMessagesStreamUrl(): string {
-  if (!isNasProviderEnabled()) return "";
+  if (!canUseNasOnlineApi()) return "";
   const token = readNasAccessToken();
   return buildApiUrl("/online/private-messages/stream", token ? { token } : undefined);
 }
 
 export function buildMessengerCallStreamUrl(callId: string): string {
-  if (!isNasProviderEnabled()) return "";
+  if (!canUseNasOnlineApi()) return "";
   const token = readNasAccessToken();
   return buildApiUrl(`/online/calls/${qs(callId)}/stream`, token ? { token } : undefined);
 }
@@ -401,13 +400,13 @@ export async function startMessengerCall(toUserId: string, callType: "audio" | "
 }
 
 export async function listIncomingMessengerCalls(): Promise<MessengerCall[]> {
-  if (!isNasProviderEnabled()) return [];
+  if (!canUseNasOnlineApi()) return [];
   const res = await apiGet("/online/calls/incoming");
   return Array.isArray(res?.calls) ? res.calls : [];
 }
 
 export async function listActiveMessengerCalls(): Promise<MessengerCall[]> {
-  if (!isNasProviderEnabled()) return [];
+  if (!canUseNasOnlineApi()) return [];
   const res = await apiGet("/online/calls/active");
   return Array.isArray(res?.calls) ? res.calls : [];
 }

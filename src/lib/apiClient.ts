@@ -88,13 +88,18 @@ let lastAnnouncedAccessToken = "";
  */
 export function setApiAccessToken(rawToken: string | null | undefined): void {
   const token = String(rawToken || "").trim();
-  volatileAccessToken = token;
-  if (!token) {
+
+  // Cette fonction est appelée depuis le provider d'auth React avec le JWT
+  // Supabase. Ce JWT ne doit JAMAIS être réutilisé comme JWT du backend NAS.
+  // En mode public/hybride on vide donc le token volatile NAS.
+  volatileAccessToken = isNasProviderEnabled() ? token : "";
+
+  if (!volatileAccessToken) {
     lastAnnouncedAccessToken = "";
     return;
   }
-  if (token === lastAnnouncedAccessToken || typeof window === "undefined") return;
-  lastAnnouncedAccessToken = token;
+  if (volatileAccessToken === lastAnnouncedAccessToken || typeof window === "undefined") return;
+  lastAnnouncedAccessToken = volatileAccessToken;
   try { window.dispatchEvent(new CustomEvent("dc-api-auth-token-ready")); } catch {}
 }
 
@@ -118,35 +123,43 @@ function tokenFromStoredValue(raw: string): string {
 }
 
 export function readNasAccessToken(): string {
-  const directKeys = [
-    "dc_nas_access_token_v1",
-    "auth_token",
-    "access_token",
-  ];
+  // Source canonique : seule la clé NAS dédiée est fiable.
+  const directNas = (safeReadLocalStorage("dc_nas_access_token_v1") || safeReadSessionStorage("dc_nas_access_token_v1")).trim();
+  if (directNas && looksLikeBearerToken(directNas)) return directNas;
 
-  for (const key of directKeys) {
-    const direct = (safeReadLocalStorage(key) || safeReadSessionStorage(key)).trim();
-    if (direct) return direct;
+  // Compatibilité avec les anciennes sessions NAS enregistrées dans la clé
+  // historique dc_online_auth_supabase_v1. On refuse explicitement toute
+  // session marquée Supabase pour ne jamais envoyer son JWT au backend NAS.
+  const legacySessionRaw = (
+    safeReadLocalStorage("dc_online_auth_supabase_v1") ||
+    safeReadSessionStorage("dc_online_auth_supabase_v1")
+  ).trim();
+
+  if (legacySessionRaw) {
+    const parsed = safeParseJson<any>(legacySessionRaw, null);
+    const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
+    const isPublicSupabase =
+      provider === "supabase" ||
+      provider === "supabase_failover" ||
+      parsed?.degradedMode === true;
+
+    if (!isPublicSupabase) {
+      const legacyNasToken = String(parsed?.token || "").trim();
+      if (legacyNasToken && looksLikeBearerToken(legacyNasToken)) return legacyNasToken;
+    }
   }
 
-  const sessionKeys = [
-    "dc_online_auth_supabase_v1",
-    "auth_session",
-    "dc_session",
-    "current_user",
-    "supabase.auth.token",
-  ];
-
-  for (const key of sessionKeys) {
-    const raw = (safeReadLocalStorage(key) || safeReadSessionStorage(key)).trim();
-    if (!raw) continue;
-    const token = tokenFromStoredValue(raw);
-    if (token) return token;
+  // Le token volatile n'est accepté que lorsque le provider est explicitement NAS.
+  if (isNasProviderEnabled() && volatileAccessToken && looksLikeBearerToken(volatileAccessToken)) {
+    return volatileAccessToken;
   }
 
-  return volatileAccessToken;
+  return "";
 }
 
+export function canUseNasOnlineApi(): boolean {
+  return isNasProviderEnabled() && !!readNasAccessToken();
+}
 const envUrl = sanitizeApiUrl(getNasApiUrl());
 const PUBLIC_HTTPS_API_URL = "https://api.multisports-api.fr";
 const LEGACY_HTTP_API_URL = "http://api.multisports-api.fr:3000";
@@ -411,7 +424,7 @@ async function doFetch(path: string, init?: RequestInit) {
   // ne doit retomber sur l'API NAS. Les fonctions publiques migrées parlent
   // directement à Supabase. Les anciennes lectures encore non migrées sont
   // neutralisées localement afin d'éviter les rafales 401/timeout au boot.
-  if (normalizedPath.startsWith("/online/") && !isNasProviderEnabled()) {
+  if (normalizedPath.startsWith("/online/") && !canUseNasOnlineApi()) {
     if (requestMethod === "GET") {
       return {
         ok: true,

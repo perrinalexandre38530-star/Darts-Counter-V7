@@ -76,11 +76,11 @@ expect(
 );
 expect(
   "apiClient bloque les routes /online legacy NAS en public/hybride",
-  /normalizedPath\.startsWith\(["']\/online\/["']\)[\s\S]{0,180}!isNasProviderEnabled\(\)/.test(apiClient),
+  /normalizedPath\.startsWith\(["']\/online\/["']\)[\s\S]{0,180}!canUseNasOnlineApi\(\)/.test(apiClient),
 );
 expect(
   "Les associations de profils n'appellent plus le NAS en public/hybride",
-  /loadLinkedProfileProjection[\s\S]{0,500}!isNasProviderEnabled\(\)[\s\S]{0,180}snapshots:\s*\[\]/.test(linkedProfileSync),
+  /loadLinkedProfileProjection[\s\S]{0,500}!canUseNasOnlineApi\(\)[\s\S]{0,180}snapshots:\s*\[\]/.test(linkedProfileSync),
 );
 expect(
   "Les listes legacy sociales renvoient un fallback local en public/hybride",
@@ -90,8 +90,22 @@ expect(
 );
 expect(
   "Le centre de messages utilise Supabase en public/hybride",
-  /canUseMessageCenterPolling[\s\S]{0,260}!isNasProviderEnabled\(\)/.test(messageCenterNotify)
-  && /if \(isNasProviderEnabled\(\)\)[\s\S]{0,220}online\/messages\/summary/.test(messageCenterNotify),
+  /canUseMessageCenterPolling[\s\S]{0,260}canUseNasOnlineApi\(\)/.test(messageCenterNotify)
+  && /if \(canUseNasOnlineApi\(\)\)[\s\S]{0,220}online\/messages\/summary/.test(messageCenterNotify),
+);
+expect(
+  "Le JWT Supabase n'est jamais recyclé comme JWT NAS",
+  apiClient.includes('provider === "supabase"')
+  && apiClient.includes('provider === "supabase_failover"')
+  && apiClient.includes('volatileAccessToken = isNasProviderEnabled() ? token : ""'),
+);
+expect(
+  "Une route ONLINE NAS exige un provider NAS et un vrai token NAS",
+  /export function canUseNasOnlineApi\(\)[\s\S]{0,120}isNasProviderEnabled\(\)[\s\S]{0,120}readNasAccessToken\(\)/.test(apiClient),
+);
+expect(
+  "Une session Supabase n'est pas considérée comme session NAS",
+  /function isValidNasSession[\s\S]{0,260}provider !== ["']supabase["']/.test(onlineApi),
 );
 expect("Le panneau Joueurs à proximité est monté dans FriendsPage", /<NearbyPlayersPanel\b/.test(friends));
 

@@ -8,7 +8,7 @@ import {
   type ProfileFriendLink,
   type SharedMatchItem,
 } from "./friendsApi";
-import { apiGet, apiPost, readNasAccessToken } from "./apiClient";
+import { apiGet, apiPost, canUseNasOnlineApi, readNasAccessToken } from "./apiClient";
 import { isNasProviderEnabled } from "./serverConfig";
 
 export type MessageCenterUnreadSummary = {
@@ -77,7 +77,7 @@ export function canUseMessageCenterPolling() {
   if (isAuthenticationRoute()) return false;
   // Public/hybride : amis + messages privés sont lus directement depuis Supabase.
   // NAS pur : on conserve l'exigence du JWT NAS.
-  return !isNasProviderEnabled() || !!readNasAccessToken();
+  return !isNasProviderEnabled() || canUseNasOnlineApi();
 }
 
 export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUnreadSummary> {
@@ -88,7 +88,7 @@ export async function fetchMessageCenterUnreadSummary(): Promise<MessageCenterUn
   // Source de vérité NAS uniquement lorsque le provider est explicitement NAS.
   // En public/hybride, cette route legacy ne doit jamais être appelée : le résumé
   // est calculé avec les RPC Supabase juste en dessous.
-  if (isNasProviderEnabled()) {
+  if (canUseNasOnlineApi()) {
     try {
       const serverSummary = await apiGet("/online/messages/summary");
       const counters = serverSummary?.counters || {};
@@ -195,7 +195,7 @@ export async function ensureMessagePushSubscription(): Promise<boolean> {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return false;
   if (Notification.permission !== "granted") return false;
-  if (!readNasAccessToken()) return false;
+  if (!canUseNasOnlineApi()) return false;
 
   if (pushSubscriptionPromise) return pushSubscriptionPromise;
   pushSubscriptionPromise = (async () => {

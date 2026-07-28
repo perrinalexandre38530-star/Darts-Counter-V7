@@ -365,7 +365,12 @@ function saveAuthToLS(session: AuthSession | null) {
 }
 
 function shouldUseNasForCurrentSession(): boolean {
-  return useNasOnlineBackend() && !isSupabaseFailoverSession(loadAuthFromLS());
+  // Une session Supabase sauvegardée dans la clé historique ne doit jamais
+  // être prise pour une session NAS. Le backend NAS n'est autorisé que si
+  // le provider est explicitement NAS ET qu'un vrai JWT NAS dédié existe.
+  return useNasOnlineBackend()
+    && !!readNasAccessToken()
+    && !isSupabaseFailoverSession(loadAuthFromLS());
 }
 
 function safeUpper(code: string) {
@@ -514,7 +519,10 @@ function warnNasOnce(label: string, extra?: any) {
 }
 
 function isValidNasSession(session: AuthSession | null | undefined): session is AuthSession {
+  const provider = String(session?.authProvider || "").trim().toLowerCase();
   return !!session
+    && provider !== "supabase"
+    && provider !== "supabase_failover"
     && !isSupabaseFailoverSession(session)
     && !!String(session?.token || "").trim()
     && !!String(session?.user?.id || session?.userId || "").trim();

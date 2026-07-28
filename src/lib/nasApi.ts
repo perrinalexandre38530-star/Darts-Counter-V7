@@ -169,6 +169,10 @@ function isAuthFailureMessage(message: string): boolean {
 
 function getCachedNasSession(): AuthSession | null {
   const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
+  const provider = String((cached as any)?.authProvider || "").trim().toLowerCase();
+  if (provider === "supabase" || provider === "supabase_failover" || (cached as any)?.degradedMode === true) {
+    return null;
+  }
   return cached && String(cached?.token || "").trim() ? cached : null;
 }
 
