@@ -561,12 +561,12 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     ready: true,
     isNew: true,
     maxPlayers: 12,
-    supportsTeams: false,
-    supportsBots: false,
+    supportsTeams: true,
+    supportsBots: true,
     statsKey: "game:loterie",
     infoTitle: "LOTERIE",
     infoBody:
-      "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : une seule fléchette cherche un numéro, un double exact ou un triple exact. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
+      "Chaque joueur reçoit 1 à 4 cartons. LOTERIE : une volée de 1 à 3 fléchettes produit un total à retrouver sur les cartons, avec une plage adaptée au niveau (10 à 120 max). EXPRESS : vise un simple, un double exact ou un triple exact avec 1 essai ou jusqu’à 3 essais ; le tour s’arrête dès que la cible demandée est touchée et l’option MISS peut faire passer immédiatement le tour. Toutes les occurrences correspondantes sont révélées. Le premier joueur qui complète entièrement un carton gagne.",
   },
   {
     id: "prisoner",

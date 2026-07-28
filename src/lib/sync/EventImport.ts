@@ -9,6 +9,7 @@
 import { supabase } from "../supabaseClient";
 import type { SavedMatch } from "../history";
 import { upsertFromCloud } from "../history";
+import { isSupabaseEventSyncEnabled } from "./cloudEventSyncPolicy";
 
 type RawEventRow = {
   id?: string;
@@ -82,6 +83,8 @@ export async function importHistoryFromCloud(opts?: {
   sinceDays?: number;
 }): Promise<{ imported: number }>
 {
+  if (!isSupabaseEventSyncEnabled()) return { imported: 0 };
+
   const limit = Number(opts?.limit ?? 400);
   const pageSize = Math.min(300, Math.max(50, opts?.pageSize ?? Math.min(200, limit || 200)));
   const maxPages = Math.min(10, Math.max(1, opts?.maxPages ?? Math.ceil((limit || pageSize) / pageSize)));

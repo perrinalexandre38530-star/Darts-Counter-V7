@@ -28,6 +28,7 @@ import {
   type LoterieAutoMode,
   type LoterieConfig as LoterieConfigType,
   type LoterieExpressTarget,
+  type LoterieExpressAttempts,
   type LoterieLevel,
   type LoterieVariant,
   type LoterieVolleyMode,
@@ -201,7 +202,7 @@ function RulesContent() {
   return (
     <div style={{ display: "grid", gap: 12, fontSize: 13, lineHeight: 1.48 }}>
       <div><strong style={{ color: GOLD }}>LOTERIE — 3 FLÉCHETTES</strong><br />Le total de la volée est recherché sur tous les cartons du participant. Toutes les cases correspondantes sont révélées. En volée libre, tu peux valider après 1, 2 ou 3 darts ; en mode strict, les 3 darts sont obligatoires.</div>
-      <div><strong style={{ color: PINK }}>LOTERIE EXPRESS</strong><br />Une seule fléchette par tour. SIMPLE recherche le numéro 1–20, DOUBLE exige le double exact, TRIPLE exige le triple exact.</div>
+      <div><strong style={{ color: PINK }}>LOTERIE EXPRESS</strong><br />Choisis SIMPLE, DOUBLE ou TRIPLE puis joue avec 1 fléchette ou jusqu’à 3 essais. En mode 3 essais, le tour s’arrête dès que la bonne zone est touchée. L’option MISS peut également terminer immédiatement le tour.</div>
       <div><strong style={{ color: GOLD }}>CARTONS</strong><br />Chaque participant possède 1 à 4 cartons. Les numéros sont uniques dans un même carton mais peuvent apparaître sur plusieurs cartons : un lancer peut donc ouvrir plusieurs cases.</div>
       <div><strong style={{ color: "#6ef3b2" }}>VICTOIRE</strong><br />Le premier joueur — ou la première équipe — qui complète entièrement un de ses cartons gagne immédiatement.</div>
       <div><strong style={{ color: "#42d6ff" }}>ÉQUIPES</strong><br />En mode ÉQUIPES, chaque équipe possède ses cartons partagés. Les joueurs de l’équipe jouent à tour de rôle sur ces mêmes cartons : chaque découverte compte pour l’équipe, tout en restant attribuée au joueur qui l’a réalisée dans les statistiques.</div>
@@ -247,6 +248,8 @@ export default function LoterieConfig(props: any) {
   const [autoMode, setAutoMode] = React.useState<LoterieAutoMode>(saved.autoMode || "balanced");
   const [volleyMode, setVolleyMode] = React.useState<LoterieVolleyMode>(saved.volleyMode || "strict3");
   const [expressTarget, setExpressTarget] = React.useState<LoterieExpressTarget>(saved.expressTarget || "simple");
+  const [expressAttempts, setExpressAttempts] = React.useState<LoterieExpressAttempts>(saved.expressAttempts === "up_to_3" ? "up_to_3" : "one");
+  const [missEndsTurn, setMissEndsTurn] = React.useState(saved.missEndsTurn === true);
   const [revealMode, setRevealMode] = React.useState<LoterieRevealMode>(saved.revealMode === "all" ? "all" : "self");
   const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(saved.cardsPerPlayer || 2) as any);
   const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(saved.cellsPerCard || 10) as any);
@@ -273,11 +276,11 @@ export default function LoterieConfig(props: any) {
       localStorage.setItem(LS_CFG_KEY, JSON.stringify({
         participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
         selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
-        variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard,
+        variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard,
         startOrderMode: randomOrder ? "random" : "fixed",
       }));
     } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard, randomOrder]);
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard, randomOrder]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
@@ -528,9 +531,9 @@ export default function LoterieConfig(props: any) {
         <CompactConfigSelect
           label="Mode"
           helpTitle="Mode LOTERIE"
-          help={<> <b>Volée</b> : le total de 1 à 3 fléchettes est recherché sur les cartons. <b>1 Dart</b> : une seule fléchette par tour.</>}
+          help={<> <b>Volée</b> : le total de 1 à 3 fléchettes est recherché sur les cartons. <b>EXPRESS</b> : vise un Simple, Double ou Triple exact avec 1 essai ou jusqu'à 3 essais.</>}
           value={variant}
-          options={[{ value: "classic", label: "Volée" }, { value: "express", label: "1 Dart" }]}
+          options={[{ value: "classic", label: "Volée" }, { value: "express", label: "EXPRESS" }]}
           onChange={(value: any) => setVariant(value as LoterieVariant)}
           color={primary}
         />
@@ -569,15 +572,35 @@ export default function LoterieConfig(props: any) {
             onChange={(value: any) => setVolleyMode(value as LoterieVolleyMode)}
             color={primary}
           />
-        </> : <CompactConfigSelect
-          label="Cible"
-          helpTitle="Cible 1 Dart"
-          help={<>Choisis ce qui valide une case en mode 1 Dart : numéro simple, double exact ou triple exact.</>}
-          value={expressTarget}
-          options={[{ value: "simple", label: "Simple" }, { value: "double", label: "Double" }, { value: "triple", label: "Triple" }]}
-          onChange={(value: any) => setExpressTarget(value as LoterieExpressTarget)}
-          color={primary}
-        />}
+        </> : <>
+          <CompactConfigSelect
+            label="Cible"
+            helpTitle="Cible EXPRESS"
+            help={<>Choisis ce qui valide une case en mode <b>EXPRESS</b> : simple exact, double exact ou triple exact.</>}
+            value={expressTarget}
+            options={[{ value: "simple", label: "Simple" }, { value: "double", label: "Double" }, { value: "triple", label: "Triple" }]}
+            onChange={(value: any) => setExpressTarget(value as LoterieExpressTarget)}
+            color={primary}
+          />
+          <CompactConfigSelect
+            label="Essais"
+            helpTitle="Nombre d'essais EXPRESS"
+            help={<><b>1 fléchette</b> : un seul essai puis joueur suivant. <b>Jusqu'à 3</b> : tu rejoues tant que la cible S / D / T demandée n'est pas touchée ; le tour s'arrête immédiatement dès qu'elle est réussie.</>}
+            value={expressAttempts}
+            options={[{ value: "one", label: "1 fléchette" }, { value: "up_to_3", label: "Jusqu'à 3 essais" }]}
+            onChange={(value: any) => setExpressAttempts(value as LoterieExpressAttempts)}
+            color={primary}
+          />
+          <CompactConfigSelect
+            label="MISS"
+            helpTitle="MISS = fin de tour"
+            help={<>Si activé, un <b>MISS</b> affiche la carte MISS et fait passer immédiatement au joueur suivant, même lorsqu'il restait des essais.</>}
+            value={missEndsTurn ? "yes" : "no"}
+            options={[{ value: "no", label: "Consomme un essai" }, { value: "yes", label: "Passe le tour immédiatement" }]}
+            onChange={(value: any) => setMissEndsTurn(value === "yes")}
+            color={primary}
+          />
+        </>}
       </div>
     </Section>
   );
@@ -625,10 +648,11 @@ export default function LoterieConfig(props: any) {
           <div style={{ color: primary, fontSize: 12.5, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .8 }}>Résumé LOTERIE</div>
           <div style={{ display: "grid", gap: 6, marginTop: 9, fontSize: 11.5 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Participants</span><b style={{ textAlign: "right" }}>{participantMode === "teams" ? `${activeTeamConfigs.length} équipes` : `${selectedIds.length} joueurs/BOTS`}</b></div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Mode</span><b style={{ textAlign: "right" }}>{variant === "classic" ? (volleyMode === "strict3" ? "LOTERIE · 3 darts" : "LOTERIE · volée libre") : `EXPRESS · ${expressTarget.toUpperCase()}`}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Mode</span><b style={{ textAlign: "right" }}>{variant === "classic" ? (volleyMode === "strict3" ? "LOTERIE · 3 darts" : "LOTERIE · volée libre") : `EXPRESS · ${expressTarget.toUpperCase()} · ${expressAttempts === "up_to_3" ? "3 ESSAIS" : "1 ESSAI"}`}</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Cartons</span><b>{cardsPerPlayer} × {cellsPerCard} cases</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Niveau</span><b style={{ textAlign: "right" }}>{variant === "classic" ? String(level).toUpperCase() : "CIBLE EXACTE"}</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Attribution</span><b style={{ textAlign: "right" }}>{revealMode === "all" ? "COMMUNE" : "PERSONNELLE"}</b></div>
+            {variant === "express" ? <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>MISS</span><b style={{ textAlign: "right" }}>{missEndsTurn ? "PASSE LE TOUR" : "CONTINUE"}</b></div> : null}
           </div>
         </div>
       </div>
@@ -649,7 +673,7 @@ export default function LoterieConfig(props: any) {
   function startGame() {
     if (!validSelection) return;
     const config: LoterieConfigType & any = {
-      variant, level, autoMode, volleyMode, expressTarget, revealMode, cardsPerPlayer, cellsPerCard,
+      variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard,
       startOrderMode: randomOrder ? "random" : "fixed",
       participantMode,
     };

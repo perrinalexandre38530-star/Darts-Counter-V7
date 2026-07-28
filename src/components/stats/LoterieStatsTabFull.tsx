@@ -50,11 +50,18 @@ function variantKey(r: any) {
   return `express_${txt(r?.summary?.expressTarget ?? r?.payload?.config?.expressTarget ?? "simple").toLowerCase()}`;
 }
 function variantLabel(key: string) {
-  if (key === "classic") return "3 DARTS";
+  if (key === "classic") return "VOLÉE";
   if (key === "express_simple") return "SIMPLE";
   if (key === "express_double") return "DOUBLE";
   if (key === "express_triple") return "TRIPLE";
   return key.toUpperCase();
+}
+function expressAttemptMode(r: any) {
+  const raw = txt(r?.summary?.expressAttempts ?? r?.payload?.config?.expressAttempts ?? r?.summary?.config?.expressAttempts ?? r?.config?.expressAttempts).toLowerCase();
+  return raw === "up_to_3" ? "up_to_3" : "one";
+}
+function expressMissEndsTurn(r: any) {
+  return Boolean(r?.summary?.missEndsTurn ?? r?.payload?.config?.missEndsTurn ?? r?.summary?.config?.missEndsTurn ?? r?.config?.missEndsTurn);
 }
 function playerPools(r: any) {
   return [r?.payload?.stats?.players, r?.payload?.players, r?.payload?.summary?.players, r?.summary?.players, r?.summary?.perPlayer, r?.players].filter(Array.isArray);
@@ -311,6 +318,28 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
   const dartOnBoardRate = pctNum(Math.max(0,dartTotal-dartMissTotal),dartTotal);
   const S = derivedDarts.total ? derivedDarts.single : singles, D = derivedDarts.total ? derivedDarts.double : doubles, T = derivedDarts.total ? derivedDarts.triple : triples, B = derivedDarts.total ? derivedDarts.bull : bulls, DB = derivedDarts.total ? derivedDarts.dbull : dbulls;
 
+  const expressMatches = matches.filter(({record}) => variantKey(record).startsWith("express_"));
+  const expressRows = expressMatches.map((x:any)=>x.row);
+  const expressEvents = allPlayerEvents.filter((ev:any)=>ev?.variant === "express" || ev?.expressAttemptMode === "one" || ev?.expressAttemptMode === "up_to_3");
+  const expressTurns = expressEvents.length || sum(expressRows,"expressTurns");
+  const expressTargetHits = expressEvents.length ? expressEvents.filter((ev:any)=>ev?.targetMatched === true).length : sum(expressRows,"expressTargetHits");
+  const expressTargetMisses = expressTurns ? Math.max(0, expressTurns - expressTargetHits) : sum(expressRows,"expressTargetMisses");
+  const expressWrongRingDarts = expressEvents.length ? expressEvents.reduce((a:number,ev:any)=>a+n(ev?.wrongTargetDarts),0) : sum(expressRows,"expressWrongRingDarts");
+  const expressMissDarts = expressEvents.length ? expressEvents.reduce((a:number,ev:any)=>a+(Array.isArray(ev?.darts)?ev.darts.filter((d:any)=>!n(d?.v)||!n(d?.mult)).length:0),0) : sum(expressRows,"expressMissDarts");
+  const expressMissPassTurns = expressEvents.length ? expressEvents.filter((ev:any)=>ev?.endedByMiss).length : sum(expressRows,"expressMissPassTurns");
+  const expressAttemptsExhausted = expressEvents.length ? expressEvents.filter((ev:any)=>ev?.attemptsExhausted).length : sum(expressRows,"expressAttemptsExhausted");
+  const expressAttemptsUsed = expressEvents.length ? expressEvents.reduce((a:number,ev:any)=>a+n(ev?.attemptsUsed || (Array.isArray(ev?.darts)?ev.darts.length:0)),0) : sum(expressRows,"expressAttemptsUsed");
+  const expressSuccessOnDart1 = expressEvents.length ? expressEvents.filter((ev:any)=>n(ev?.targetMatchDart)===1).length : sum(expressRows,"expressSuccessOnDart1");
+  const expressSuccessOnDart2 = expressEvents.length ? expressEvents.filter((ev:any)=>n(ev?.targetMatchDart)===2).length : sum(expressRows,"expressSuccessOnDart2");
+  const expressSuccessOnDart3 = expressEvents.length ? expressEvents.filter((ev:any)=>n(ev?.targetMatchDart)===3).length : sum(expressRows,"expressSuccessOnDart3");
+  const expressSuccessDartTotal = expressSuccessOnDart1 + expressSuccessOnDart2*2 + expressSuccessOnDart3*3;
+  const expressTargetHitRate = pctNum(expressTargetHits, expressTurns);
+  const expressAverageAttempts = expressTurns ? expressAttemptsUsed / expressTurns : 0;
+  const expressAverageDartsToSuccess = expressTargetHits ? expressSuccessDartTotal / expressTargetHits : 0;
+  const expressOneAttemptGames = expressMatches.filter(({record})=>expressAttemptMode(record)==="one").length;
+  const expressThreeAttemptGames = expressMatches.filter(({record})=>expressAttemptMode(record)==="up_to_3").length;
+  const expressMissRuleGames = expressMatches.filter(({record})=>expressMissEndsTurn(record)).length;
+
   const hitHistogram = { zero:0, one:0, two:0, three:0 };
   const scoreMap = new Map<string,{label:string,attempts:number,hits:number,reveals:number,misses:number}>();
   if (allPlayerEvents.length) {
@@ -466,6 +495,29 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
         <div style={{marginTop:10,display:"grid",gridTemplateColumns:`repeat(${Math.min(4,Math.max(1,variantStats.length))},minmax(0,1fr))`,gap:6}}>{variantStats.map((v:any)=><div key={v.key} style={{padding:8,borderRadius:12,background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.055)",textAlign:"center"}}><div style={{color:GOLD,fontSize:8,fontWeight:1000}}>{v.label}</div><div style={{color:CYAN,fontSize:14,fontWeight:1000,marginTop:3}}>{fmt2(v.cellsPerVisit)}</div><div style={{color:SOFT,fontSize:6.8}}>cases / tour</div><div style={{color:ORANGE,fontSize:10,fontWeight:1000,marginTop:3}}>{fmt1(v.cellsPer100Darts)}</div><div style={{color:SOFT,fontSize:6.5}}>cases / 100 darts</div></div>)}</div>
       </Section>
 
+      {expressMatches.length ? <Section title="EXPRESS — précision & gestion des essais" subtitle="Cible S / D / T exacte, réussite par fléchette, essais consommés, mauvaise zone et règle MISS.">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:7}}>
+          <Kpi label="Taux cible valide" value={`${fmt1(expressTargetHitRate)}%`} detail={`${expressTargetHits} tours valides · ${expressTargetMisses} sans cible`} color={GOOD}/>
+          <Kpi label="Essais / tour" value={fmt2(expressAverageAttempts)} detail={`${expressAttemptsUsed} essais sur ${expressTurns} tours`} color={CYAN}/>
+          <Kpi label="Darts / cible réussie" value={expressTargetHits?fmt2(expressAverageDartsToSuccess):"—"} detail="uniquement les tours avec cible S/D/T valide" color={GOLD}/>
+          <Kpi label="Mauvaise zone" value={expressWrongRingDarts} detail="S / D / T ne correspondant pas à la cible" color={BAD}/>
+          <Kpi label="MISS EXPRESS" value={expressMissDarts} detail={`${expressMissPassTurns} ont terminé immédiatement le tour`} color={BAD}/>
+          <Kpi label="MISS → tour" value={expressMissPassTurns} detail={`${expressMissRuleGames} partie${expressMissRuleGames>1?"s":""} avec règle active`} color={BAD}/>
+          <Kpi label="3 essais épuisés" value={expressAttemptsExhausted} detail="aucune cible valide après 3 darts" color={ORANGE}/>
+        </div>
+        <div style={{marginTop:10,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>
+          <Kpi compact label="Réussi au 1er" value={expressSuccessOnDart1} detail={pct(expressSuccessOnDart1,expressTargetHits)} color={GOOD}/>
+          <Kpi compact label="Réussi au 2e" value={expressSuccessOnDart2} detail={pct(expressSuccessOnDart2,expressTargetHits)} color={CYAN}/>
+          <Kpi compact label="Réussi au 3e" value={expressSuccessOnDart3} detail={pct(expressSuccessOnDart3,expressTargetHits)} color={PINK}/>
+        </div>
+        <div style={{marginTop:10,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7}}>
+          <Kpi compact label="EXPRESS 1 essai" value={expressOneAttemptGames} color={CYAN}/>
+          <Kpi compact label="EXPRESS 3 essais" value={expressThreeAttemptGames} color={PINK}/>
+          <Kpi compact label="MISS passe tour" value={expressMissRuleGames} color={BAD}/>
+        </div>
+        <div style={{marginTop:10}}><Pie3D size={144} centerTop={`${fmt1(expressTargetHitRate)}%`} centerBottom="CIBLE" data={[{label:"Cible valide",value:expressTargetHits,color:GOOD},{label:"Sans cible",value:expressTargetMisses,color:BAD}]}/></div>
+      </Section> : null}
+
       <Section title="Cibles & scores — intelligence de jeu" subtitle="Quels scores ouvrent le plus de cases et lesquels génèrent le plus de tours ratés ? Disponible avec l'historique détaillé des nouvelles parties.">
         {productiveScores.length ? <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:7,marginBottom:10}}><Kpi label="Score le + productif" value={mostProductive?.label || "—"} detail={`${mostProductive?.reveals||0} cases · ${mostProductive?.hits||0} hits`} color={GOOD}/><Kpi label="Score le + raté" value={mostMissed?.label || "—"} detail={`${mostMissed?.misses||0} ratés / ${mostMissed?.attempts||0}`} color={BAD}/></div>
@@ -498,6 +550,7 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
           ["Tours",visits],["Tours positifs",success],["Tours à vide",empty],["Taux découverte",`${fmt1(successRate)}%`],["Cases révélées",cells],["Cases / tour",fmt2(avgCells)],["Cases / hit",fmt2(cellsPerSuccess)],["Cases / 100 darts",fmt1(cellsPer100Darts)],
           ["Multi-hits",multi],["Multi rate",`${fmt1(multiRate)}%`],["Double hits",doubleHits],["Jackpots 3+",jackpots],["Record cases / tour",maxHit],["Meilleure série découverte",bestStreak],["Régularité",`${Math.round(regularity)}/100`],["Médiane HIT",`${fmt1(medianHit)}%`],
           ["Darts",darts],["Darts / tour",fmt2(avgDartsPerVisit)],["Darts sur cible",`${fmt1(dartOnBoardRate)}%`],["Score / dart",fmt1(avgDartScore)],["Points cumulés",dartPointTotal],["Simples",S],["Doubles",D],["Triples",T],["Bull",B],["DBull",DB],["MISS",dartMissTotal],
+          ["EXPRESS parties",expressMatches.length],["EXPRESS 1 essai",expressOneAttemptGames],["EXPRESS 3 essais",expressThreeAttemptGames],["EXPRESS cible valide",expressTargetHits],["EXPRESS sans cible",expressTargetMisses],["EXPRESS taux cible",`${fmt1(expressTargetHitRate)}%`],["EXPRESS essais / tour",fmt2(expressAverageAttempts)],["EXPRESS darts / réussite",expressTargetHits?fmt2(expressAverageDartsToSuccess):"—"],["EXPRESS mauvaise zone",expressWrongRingDarts],["EXPRESS MISS",expressMissDarts],["EXPRESS MISS → tour",expressMissPassTurns],["EXPRESS 3 essais épuisés",expressAttemptsExhausted],["EXPRESS réussite dart 1",expressSuccessOnDart1],["EXPRESS réussite dart 2",expressSuccessOnDart2],["EXPRESS réussite dart 3",expressSuccessOnDart3],
           ["Volée moyenne",fmt1(avgVolley)],["Meilleure volée",maxVolley],["Cartons joués",cardsPlayed],["Cartons complétés",cardsCompleted],["Progression globale / carton",fmt1(avgAllCardProgress)],["Meilleur carton moyen",fmt1(avgProgress)],["Progression meilleur carton",`${fmt1(progressPct)}%`],["Cartons ≥80%",nearCompleteCards],["Cartons intacts",untouchedCards],["Complétion moyenne",avgFinish?fmt1(avgFinish):"—"],["Meilleure complétion",bestFinish||"—"],["Complétion la + longue",worstFinish||"—"],
           ["Matchs équipes",teamMatches.length],["Victoires équipes",teamWins],["Win rate équipes",pct(teamWins,teamMatches.length)],["Matchs solo",soloMatches.length]
         ].map(([label,value]:any)=><tr key={label}><td style={{padding:"7px 6px",color:"#aeb3c3",borderBottom:"1px solid rgba(255,255,255,.055)"}}>{label}</td><td style={{padding:"7px 6px",color:GOLD,fontWeight:1000,textAlign:"right",borderBottom:"1px solid rgba(255,255,255,.055)"}}>{value}</td></tr>)}</tbody></table></div>
@@ -506,7 +559,7 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
       <Section title="Historique détaillé" subtitle="Les 20 dernières parties avec résultat, variante, mode, carton, rendement et statistiques clés.">
         <div style={{display:"grid",gap:7}}>{matches.slice(0,20).map(({record,row,team}:any,i:number)=>{
           const won=didWin(record,row,String(playerId)); const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"}):"—"; const vk=variantKey(record); const teamMode=participantMode(record)==="teams"; const total=n(row?.cellsPerCard||record?.payload?.config?.cellsPerCard||10); const hit=pctNum(n(row?.successfulVisits),n(row?.visits)); const eff=n(row?.visits)?n(row?.cellsRevealed)/n(row?.visits):0;
-          return <div key={record?.id||i} style={{display:"grid",gridTemplateColumns:"45px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:14,background:won?"rgba(246,194,86,.07)":"rgba(255,255,255,.025)",border:`1px solid ${won?GOLD+"55":"rgba(255,255,255,.06)"}`}}><div style={{width:40,height:40,borderRadius:12,display:"grid",placeItems:"center",background:won?GOLD:"rgba(255,255,255,.06)",color:won?"#171008":"#c4c8d5",fontWeight:1000,fontSize:9}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</div><div style={{minWidth:0}}><div style={{fontWeight:1000,fontSize:10.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{date} · {variantLabel(vk)} · {teamMode?"TEAMS":"SOLO"}{teamMode?` · ${row?.teamName||team?.name||"Équipe"}`:""}</div><div style={{marginTop:3,display:"flex",gap:7,flexWrap:"wrap",color:"#9fa5b7",fontSize:7.8,fontWeight:850}}><span style={{color:CYAN}}>HIT {fmt1(hit)}%</span><span>CASES {n(row?.cellsRevealed)}</span><span style={{color:GOOD}}>{fmt2(eff)}/tour</span><span style={{color:PINK}}>MULTI {n(row?.multiHits)}</span><span>SÉRIE {n(row?.bestStreak)}</span><span style={{color:ORANGE}}>AVG {fmt1(row?.averageVolley)}</span></div></div><div style={{textAlign:"right"}}><div style={{color:GOLD,fontWeight:1000,fontSize:16}}>{n(row?.bestCardProgress)}/{total}</div><div style={{color:"#9298aa",fontSize:7}}>carton</div></div></div>;
+          return <div key={record?.id||i} style={{display:"grid",gridTemplateColumns:"45px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:14,background:won?"rgba(246,194,86,.07)":"rgba(255,255,255,.025)",border:`1px solid ${won?GOLD+"55":"rgba(255,255,255,.06)"}`}}><div style={{width:40,height:40,borderRadius:12,display:"grid",placeItems:"center",background:won?GOLD:"rgba(255,255,255,.06)",color:won?"#171008":"#c4c8d5",fontWeight:1000,fontSize:9}}>{won?"WIN":`#${n(row?.rank)||"—"}`}</div><div style={{minWidth:0}}><div style={{fontWeight:1000,fontSize:10.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{date} · {variantLabel(vk)}{vk.startsWith("express_") ? ` · ${expressAttemptMode(record)==="up_to_3"?"3 ESSAIS":"1 ESSAI"}${expressMissEndsTurn(record)?" · MISS=TOUR":""}` : ""} · {teamMode?"TEAMS":"SOLO"}{teamMode?` · ${row?.teamName||team?.name||"Équipe"}`:""}</div><div style={{marginTop:3,display:"flex",gap:7,flexWrap:"wrap",color:"#9fa5b7",fontSize:7.8,fontWeight:850}}><span style={{color:CYAN}}>HIT {fmt1(hit)}%</span><span>CASES {n(row?.cellsRevealed)}</span><span style={{color:GOOD}}>{fmt2(eff)}/tour</span><span style={{color:PINK}}>MULTI {n(row?.multiHits)}</span><span>SÉRIE {n(row?.bestStreak)}</span><span style={{color:ORANGE}}>AVG {fmt1(row?.averageVolley)}</span></div></div><div style={{textAlign:"right"}}><div style={{color:GOLD,fontWeight:1000,fontSize:16}}>{n(row?.bestCardProgress)}/{total}</div><div style={{color:"#9298aa",fontSize:7}}>carton</div></div></div>;
         })}</div>
       </Section>
     </>}

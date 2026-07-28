@@ -1,8 +1,12 @@
 // =============================================================
 // src/lib/sync/SyncService.ts
-// Deterministic sync engine (push + pull)
+// Legacy event-table sync compatibility layer.
+//
+// History + R2 are authoritative in the current architecture. Supabase
+// `events` / `stats_events` are opt-in legacy tables only.
 // =============================================================
-import { supabase } from "../supabaseClient";
+
+import { isSupabaseEventSyncEnabled } from "./cloudEventSyncPolicy";
 import {
   getPendingEvents,
   markConfirmed,
@@ -11,6 +15,7 @@ import {
   setLastSync,
   getLastSync,
 } from "./EventBuffer";
+import { supabase } from "../supabaseClient";
 
 export async function syncEvents(): Promise<{
   sent: number;
@@ -18,6 +23,10 @@ export async function syncEvents(): Promise<{
   ignored: number;
   errors: number;
 }> {
+  if (!isSupabaseEventSyncEnabled()) {
+    return { sent: 0, received: 0, ignored: 0, errors: 0 };
+  }
+
   let sent = 0;
   let received = 0;
   let ignored = 0;
@@ -54,15 +63,10 @@ export async function syncEvents(): Promise<{
     .order("created_at", { ascending: true });
 
   for (const evt of data ?? []) {
-    if (!(await eventExists(evt.event_id))) {
-      // Application réelle des events à brancher ici
-      received++;
-    } else {
-      ignored++;
-    }
+    if (!(await eventExists(evt.event_id))) received++;
+    else ignored++;
   }
 
   await setLastSync(new Date().toISOString());
-
   return { sent, received, ignored, errors };
 }

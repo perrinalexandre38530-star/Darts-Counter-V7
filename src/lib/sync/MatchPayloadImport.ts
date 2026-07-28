@@ -10,6 +10,7 @@ import { supabase } from "../supabaseClient";
 import type { SavedMatch } from "../history";
 import { upsertFromCloud } from "../history";
 import { joinChunks } from "./PayloadChunk";
+import { isSupabaseEventSyncEnabled } from "./cloudEventSyncPolicy";
 
 type RawRow = {
   event_type?: string;
@@ -95,6 +96,10 @@ export async function importMatchPayloadsFromCloud(opts?: {
   maxPages?: number;
 }): Promise<{ imported: number; assembled: number; skipped: number }>
 {
+  if (!isSupabaseEventSyncEnabled()) {
+    return { imported: 0, assembled: 0, skipped: 0 };
+  }
+
   const pageSize = Math.min(1000, Math.max(50, opts?.pageSize ?? 500));
   const maxPages = Math.min(30, Math.max(1, opts?.maxPages ?? 8));
 

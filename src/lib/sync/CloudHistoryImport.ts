@@ -11,6 +11,7 @@
 import { supabase } from "../supabaseClient";
 import { History, type SavedMatch } from "../history";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
+import { isSupabaseEventSyncEnabled } from "./cloudEventSyncPolicy";
 
 const CHECKPOINT_KEY = "dc_cloud_history_last_pull_iso_v1";
 
@@ -135,6 +136,13 @@ export async function importHistoryFromCloud(opts?: {
   maxPages?: number;
   hardReset?: boolean;
 }): Promise<{ imported: number; conflicts: number; last?: string }> {
+  // Current architecture: History/R2 is authoritative. The old Supabase
+  // events/stats_events pipeline is opt-in only because these tables are not
+  // provisioned in the current public Supabase schema.
+  if (!isSupabaseEventSyncEnabled()) {
+    return { imported: 0, conflicts: 0 };
+  }
+
   const pageSize = Math.min(500, Math.max(50, opts?.pageSize ?? 200));
   const maxPages = Math.min(10, Math.max(1, opts?.maxPages ?? 3));
 

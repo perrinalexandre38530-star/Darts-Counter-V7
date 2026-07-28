@@ -3,6 +3,7 @@ export type LoterieLevel = "auto" | "beginner" | "leisure" | "intermediate" | "c
 export type LoterieAutoMode = "balanced" | "common";
 export type LoterieVolleyMode = "free" | "strict3";
 export type LoterieExpressTarget = "simple" | "double" | "triple";
+export type LoterieExpressAttempts = "one" | "up_to_3";
 export type LoterieRevealMode = "self" | "all";
 
 export type LoterieDart = {
@@ -48,6 +49,19 @@ export type LoteriePlayerStats = {
   maxVolley: number;
   cardsCompleted: number;
   completedOnVisit: number | null;
+  // EXPRESS — statistiques de précision / tentatives.
+  expressTurns: number;
+  expressTargetHits: number;
+  expressTargetMisses: number;
+  expressWrongRingDarts: number;
+  expressMissDarts: number;
+  expressMissPassTurns: number;
+  expressAttemptsExhausted: number;
+  expressAttemptsUsed: number;
+  expressSuccessDartTotal: number;
+  expressSuccessOnDart1: number;
+  expressSuccessOnDart2: number;
+  expressSuccessOnDart3: number;
 };
 
 export type LoteriePlayerState = LoteriePlayerInput & {
@@ -64,6 +78,8 @@ export type LoterieConfig = {
   autoMode: LoterieAutoMode;
   volleyMode: LoterieVolleyMode;
   expressTarget: LoterieExpressTarget;
+  expressAttempts?: LoterieExpressAttempts;
+  missEndsTurn?: boolean;
   revealMode?: LoterieRevealMode;
   cardsPerPlayer: 1 | 2 | 3 | 4;
   cellsPerCard: 5 | 10 | 15;
@@ -222,6 +238,18 @@ export function makeInitialStats(): LoteriePlayerStats {
     maxVolley: 0,
     cardsCompleted: 0,
     completedOnVisit: null,
+    expressTurns: 0,
+    expressTargetHits: 0,
+    expressTargetMisses: 0,
+    expressWrongRingDarts: 0,
+    expressMissDarts: 0,
+    expressMissPassTurns: 0,
+    expressAttemptsExhausted: 0,
+    expressAttemptsUsed: 0,
+    expressSuccessDartTotal: 0,
+    expressSuccessOnDart1: 0,
+    expressSuccessOnDart2: 0,
+    expressSuccessOnDart3: 0,
   };
 }
 
@@ -256,24 +284,47 @@ export function dartLabel(d: LoterieDart): string {
   return `${d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S"}${d.v}`;
 }
 
+export function expressDartMatchesTarget(target: LoterieExpressTarget, d: LoterieDart | null | undefined): boolean {
+  if (!d || !d.v || !d.mult) return false;
+  if (target === "simple") return (d.v === 25 && d.mult === 1) || (d.mult === 1 && d.v >= 1 && d.v <= 20);
+  if (target === "double") return (d.v === 25 && d.mult === 2) || (d.mult === 2 && d.v >= 1 && d.v <= 20);
+  return d.mult === 3 && d.v >= 1 && d.v <= 20;
+}
+
+export function expressMatchingDartIndex(config: LoterieConfig, darts: LoterieDart[]): number {
+  if (config.variant !== "express") return -1;
+  return (Array.isArray(darts) ? darts : []).findIndex((d) => expressDartMatchesTarget(config.expressTarget, d));
+}
+
+export function expressTurnShouldEnd(config: LoterieConfig, darts: LoterieDart[]): boolean {
+  if (config.variant !== "express") return false;
+  const list = Array.isArray(darts) ? darts : [];
+  if (!list.length) return false;
+  const maxAttempts = config.expressAttempts === "up_to_3" ? 3 : 1;
+  if (expressMatchingDartIndex(config, list) >= 0) return true;
+  const last = list[list.length - 1];
+  if (config.missEndsTurn === true && (!last?.v || !last?.mult)) return true;
+  return list.length >= maxAttempts;
+}
+
 export function resultKey(config: LoterieConfig, darts: LoterieDart[]): { key: string | null; value: number; label: string } {
   if (config.variant === "classic") {
     const total = volleyScore(darts);
     return { key: total > 0 ? `N${total}` : null, value: total, label: String(total) };
   }
-  const d = darts[0];
+  const list = Array.isArray(darts) ? darts : [];
+  const matchIndex = expressMatchingDartIndex(config, list);
+  const d = matchIndex >= 0 ? list[matchIndex] : list[list.length - 1];
   if (!d || !d.v || !d.mult) return { key: null, value: 0, label: "MISS" };
+  if (matchIndex < 0) return { key: null, value: dartScore(d), label: dartLabel(d) };
   if (config.expressTarget === "simple") {
     if (d.v === 25 && d.mult === 1) return { key: "BULL", value: 25, label: "25" };
-    if (d.mult !== 1 || d.v < 1 || d.v > 20) return { key: null, value: dartScore(d), label: dartLabel(d) };
     return { key: `S${d.v}`, value: d.v, label: String(d.v) };
   }
   if (config.expressTarget === "double") {
     if (d.v === 25 && d.mult === 2) return { key: "DBULL", value: 50, label: "DBULL" };
-    if (d.mult !== 2 || d.v < 1 || d.v > 20) return { key: null, value: dartScore(d), label: dartLabel(d) };
     return { key: `D${d.v}`, value: d.v * 2, label: `D${d.v}` };
   }
-  if (d.mult !== 3 || d.v < 1 || d.v > 20) return { key: null, value: dartScore(d), label: dartLabel(d) };
   return { key: `T${d.v}`, value: d.v * 3, label: `T${d.v}` };
 }
 
@@ -294,6 +345,14 @@ export function revealResult(player: LoteriePlayerState, config: LoterieConfig, 
   const score = config.variant === "classic" ? result.value : volleyScore(darts);
   const visits = player.stats.visits + 1;
   const nextStreak = revealed > 0 ? player.stats.currentStreak + 1 : 0;
+  const isExpress = config.variant === "express";
+  const expressMatchIndex = isExpress ? expressMatchingDartIndex(config, darts) : -1;
+  const expressTargetHit = isExpress && expressMatchIndex >= 0;
+  const expressMissDarts = isExpress ? darts.filter((d) => !d?.v || !d?.mult).length : 0;
+  const expressWrongRingDarts = isExpress ? darts.filter((d, index) => index <= (expressMatchIndex >= 0 ? expressMatchIndex : darts.length - 1) && !!d?.v && !!d?.mult && !expressDartMatchesTarget(config.expressTarget, d)).length : 0;
+  const expressMissPass = isExpress && config.missEndsTurn === true && !expressTargetHit && darts.length > 0 && (!darts[darts.length - 1]?.v || !darts[darts.length - 1]?.mult);
+  const expressExhausted = isExpress && (config.expressAttempts || "one") === "up_to_3" && !expressTargetHit && darts.length >= 3;
+  const successDart = expressTargetHit ? expressMatchIndex + 1 : 0;
   const stats: LoteriePlayerStats = {
     ...player.stats,
     visits,
@@ -309,6 +368,18 @@ export function revealResult(player: LoteriePlayerState, config: LoterieConfig, 
     maxVolley: Math.max(player.stats.maxVolley, score),
     cardsCompleted: Math.max(player.stats.cardsCompleted, completedCardIds.length),
     completedOnVisit: completedCardIds.length && player.stats.completedOnVisit == null ? visits : player.stats.completedOnVisit,
+    expressTurns: player.stats.expressTurns + (isExpress ? 1 : 0),
+    expressTargetHits: player.stats.expressTargetHits + (expressTargetHit ? 1 : 0),
+    expressTargetMisses: player.stats.expressTargetMisses + (isExpress && !expressTargetHit ? 1 : 0),
+    expressWrongRingDarts: player.stats.expressWrongRingDarts + expressWrongRingDarts,
+    expressMissDarts: player.stats.expressMissDarts + expressMissDarts,
+    expressMissPassTurns: player.stats.expressMissPassTurns + (expressMissPass ? 1 : 0),
+    expressAttemptsExhausted: player.stats.expressAttemptsExhausted + (expressExhausted ? 1 : 0),
+    expressAttemptsUsed: player.stats.expressAttemptsUsed + (isExpress ? darts.length : 0),
+    expressSuccessDartTotal: player.stats.expressSuccessDartTotal + successDart,
+    expressSuccessOnDart1: player.stats.expressSuccessOnDart1 + (successDart === 1 ? 1 : 0),
+    expressSuccessOnDart2: player.stats.expressSuccessOnDart2 + (successDart === 2 ? 1 : 0),
+    expressSuccessOnDart3: player.stats.expressSuccessOnDart3 + (successDart === 3 ? 1 : 0),
   };
   return { player: { ...player, cards, stats }, revealed, completedCardIds, result };
 }

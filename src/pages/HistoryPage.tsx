@@ -2110,8 +2110,10 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const playerRows: any[] = ([summary?.players, summary?.perPlayer, anyE?.payload?.stats?.players, anyE?.players].find((pool) => Array.isArray(pool) && pool.length) || []);
     const global: any = summary?.matchStats || anyE?.payload?.stats?.global || {};
     const variant = String(summary?.variant || cfg?.variant || "classic").toLowerCase();
+    const expressAttempts = String(summary?.expressAttempts || cfg?.expressAttempts || "one") === "up_to_3" ? "up_to_3" : "one";
+    const missEndsTurn = Boolean(summary?.missEndsTurn ?? cfg?.missEndsTurn);
     const variantLabel = variant === "express"
-      ? `EXPRESS ${String(summary?.expressTarget || cfg?.expressTarget || "simple").toUpperCase()} · 1 fléchette`
+      ? `EXPRESS ${String(summary?.expressTarget || cfg?.expressTarget || "simple").toUpperCase()} · ${expressAttempts === "up_to_3" ? "3 essais" : "1 essai"}${missEndsTurn ? " · MISS=TOUR" : ""}`
       : `${String(cfg?.volleyMode || "free") === "strict3" ? "3 fléchettes" : "1–3 fléchettes"} · total de volée`;
     const durationMs = Number(summary?.durationMs || global?.durationMs || 0);
     const durationText = durationMs > 0 ? `${Math.max(1, Math.round(durationMs / 60000))} min` : null;
@@ -2143,6 +2145,9 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
           {[["TOURS", totalVisitsForCard, "#42d6ff"], ["DARTS", Number(global?.dartsThrown || rows.reduce((n: number,r: any)=>n+Number(r?.dartsThrown||0),0)), "#42d6ff"], ["HIT", `${Math.round(hitRate * 100 || 0)}%`, "#70efbd"], ["MULTI", Number(global?.multiHits || rows.reduce((n: number,r: any)=>n+Number(r?.multiHits||0),0)), "#ff63b8"]].map(([label,value,color]: any)=><div key={label} style={{ textAlign: "center", borderRadius: 8, padding: "4px 3px", background: `${color}0b`, border: `1px solid ${color}22` }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 6.8, fontWeight: 900 }}>{label}</div><div style={{ color, fontSize: 10, fontWeight: 1000, marginTop: 1 }}>{value}</div></div>)}
         </div>
+        {variant === "express" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 4 }}>
+          {[["CIBLE", `${Math.round(Number(global?.expressTargetHitRate || 0) * 100)}%`, "#70efbd"], ["ESSAIS/T", Number(global?.expressAverageAttempts || 0).toFixed(2), "#42d6ff"], ["MAUV. ZONE", Number(global?.expressWrongRingDarts || 0), "#ff718a"], ["MISS→TOUR", Number(global?.expressMissPassTurns || 0), "#ff718a"], ["3 ESSAIS KO", Number(global?.expressAttemptsExhausted || 0), "#ff9b52"]].map(([label,value,color]: any)=><div key={label} style={{ textAlign: "center", borderRadius: 8, padding: "4px 3px", background: `${color}0b`, border: `1px solid ${color}22` }}><div style={{ color: "rgba(255,255,255,.42)", fontSize: 5.9, fontWeight: 900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</div><div style={{ color, fontSize: 9.2, fontWeight: 1000, marginTop: 1 }}>{value}</div></div>)}
+        </div> : null}
         {(() => {
           const hit0 = Number(global?.hit0 ?? global?.emptyVisits ?? 0);
           const hit1 = Number(global?.hit1 ?? Math.max(0, Number(global?.successfulVisits || 0) - Number(global?.multiHits || 0)));

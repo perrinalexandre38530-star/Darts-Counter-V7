@@ -11,6 +11,7 @@
 
 import { supabase } from "../supabaseClient";
 import { getDeviceId } from "../device";
+import { isSupabaseEventSyncEnabled } from "./cloudEventSyncPolicy";
 
 export type GameEventSport =
   | "darts"
@@ -262,7 +263,9 @@ export const EventBuffer = {
         event_type: input.event_type,
         payload: input.payload ?? null,
         created_at: nowIso(),
-        synced: false,
+        // When the legacy Supabase event pipeline is disabled, keep the event
+        // locally but do not accumulate a permanent unsynced queue.
+        synced: !isSupabaseEventSyncEnabled(),
       };
 
       await idbPut(ev);
@@ -303,6 +306,7 @@ export const EventBuffer = {
    */
   async syncNow(opts?: { limit?: number }): Promise<void> {
     try {
+      if (!isSupabaseEventSyncEnabled()) return;
       if (!isOnline()) return;
 
       const uid = await getAuthedUserId();
@@ -394,6 +398,7 @@ export const EventBuffer = {
    */
   async pullNow(): Promise<void> {
     try {
+      if (!isSupabaseEventSyncEnabled()) return;
       if (!isOnline()) return;
 
       const uid = await getAuthedUserId();
@@ -438,7 +443,7 @@ export const EventBuffer = {
   },
 
   installAutoSync(opts?: { intervalMs?: number }) {
-    if (!canUseWindow()) return () => {};
+    if (!canUseWindow() || !isSupabaseEventSyncEnabled()) return () => {};
 
     const onOnline = () => {
       EventBuffer.syncNow().catch(() => {});

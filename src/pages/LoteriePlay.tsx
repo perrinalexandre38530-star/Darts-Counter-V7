@@ -29,6 +29,9 @@ import {
   cardProgress,
   dartLabel,
   dartScore,
+  expressDartMatchesTarget,
+  expressMatchingDartIndex,
+  expressTurnShouldEnd,
   hasWon,
   revealResult,
   volleyScore,
@@ -42,6 +45,7 @@ const PINK = "#ff63b8";
 const CYAN = "#42d6ff";
 const GOOD = "#70efbd";
 const BAD = "#ff718a";
+const ORANGE = "#ff9b52";
 const STROKE = "rgba(255,255,255,.105)";
 const SOFT = "rgba(226,232,240,.72)";
 const SCORE_REVEAL_MS = 3200;
@@ -51,9 +55,26 @@ const SCORE_REVEAL_MS = 3200;
 // visuels dans le chunk JavaScript.
 const LOTERIE_SCORE_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/score-cards/`;
 const LOTERIE_SPECIAL_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/special-cards/`;
+const LOTERIE_EXPRESS_CARD_BASE = `${import.meta.env.BASE_URL || "/"}images/loterie/express-cards/`;
 function loterieScoreCardUrl(score: number) {
   const n = Math.round(Number(score) || 0);
-  return n >= 10 && n <= 120 ? `${LOTERIE_SCORE_CARD_BASE}${n}.webp` : null;
+  return n >= 1 && n <= 120 ? `${LOTERIE_SCORE_CARD_BASE}${n}.webp` : null;
+}
+function loterieExpressCardUrl(target: string, resultKey: string | null, label?: string | null) {
+  const key = String(resultKey || "").toUpperCase();
+  if (key === "DBULL") return `${LOTERIE_EXPRESS_CARD_BASE}DB.webp`;
+  if (key === "BULL") return loterieScoreCardUrl(25);
+  if (target === "double" && /^D([1-9]|1[0-9]|20)$/.test(key)) return `${LOTERIE_EXPRESS_CARD_BASE}${key}.webp`;
+  if (target === "triple" && /^T([1-9]|1[0-9]|20)$/.test(key)) return `${LOTERIE_EXPRESS_CARD_BASE}${key}.webp`;
+  if (target === "simple" && /^S([1-9]|1[0-9]|20)$/.test(key)) return loterieScoreCardUrl(Number(key.slice(1)));
+  if (target === "simple") {
+    const n = Math.round(Number(label) || 0);
+    if (n >= 1 && n <= 20) return loterieScoreCardUrl(n);
+  }
+  return null;
+}
+function loterieMissCardUrl() {
+  return `${LOTERIE_EXPRESS_CARD_BASE}miss.webp`;
 }
 function loterieOutOfDrawCardUrl(lang?: string) {
   return `${LOTERIE_SPECIAL_CARD_BASE}${lang === "fr" ? "hors-lot-fr" : "out-of-draw-en"}.webp`;
@@ -92,6 +113,8 @@ const DEFAULT_CONFIG: LoterieConfig & any = {
   autoMode: "balanced",
   volleyMode: "strict3",
   expressTarget: "simple",
+  expressAttempts: "one",
+  missEndsTurn: false,
   cardsPerPlayer: 2,
   cellsPerCard: 10,
   startOrderMode: "random",
@@ -109,7 +132,7 @@ function makeFallbackPlayers(store: any): any[] {
   return active ? [{ ...active, id: String(active.id), name: nameOf(active), avatarDataUrl: avatarOf(active) }] : [{ id: "player_1", name: "Joueur 1" }];
 }
 function compactConfigLabel(config: LoterieConfig, player?: LoteriePlayerState | null) {
-  if (config.variant === "express") return `EXPRESS · ${config.expressTarget.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}${config?.revealMode === "all" ? " · COMMUNE" : ""}`;
+  if (config.variant === "express") return `EXPRESS · ${config.expressTarget.toUpperCase()} · ${config.expressAttempts === "up_to_3" ? "3 ESSAIS" : "1 ESSAI"}${config.missEndsTurn ? " · MISS=TOUR" : ""} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}${config?.revealMode === "all" ? " · COMMUNE" : ""}`;
   return `${config.volleyMode === "strict3" ? "3 DARTS" : "VOLÉE LIBRE"} · ${player ? `${player.targetMin}–${player.targetMax}` : config.level.toUpperCase()} · ${config.cardsPerPlayer} CARTON${config.cardsPerPlayer > 1 ? "S" : ""}${config?.revealMode === "all" ? " · COMMUNE" : ""}`;
 }
 function panelStyle(): React.CSSProperties {
@@ -151,14 +174,16 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
   if (!result) return null;
   const score = Math.round(Number(result?.score) || 0);
   const material = loterieScoreMaterial(score);
-  const outOfRange = isHorsLoterieScore(score);
-  const src = outOfRange ? loterieOutOfDrawCardUrl(lang) : loterieScoreCardUrl(score);
-  const good = Boolean(result?.good) && !outOfRange;
+  const isExpress = result?.variant === "express";
+  const isMiss = Boolean(result?.isMiss);
+  const outOfRange = typeof result?.outOfDraw === "boolean" ? result.outOfDraw : (!isExpress && isHorsLoterieScore(score));
+  const src = result?.cardSrc || (isMiss ? loterieMissCardUrl() : (outOfRange ? loterieOutOfDrawCardUrl(lang) : loterieScoreCardUrl(score)));
+  const good = Boolean(result?.good) && !outOfRange && !isMiss;
   const status = good ? GOOD : BAD;
   const cardNumbers = Array.isArray(result?.cardNumbers) ? result.cardNumbers : [];
   const animationMs = `${SCORE_REVEAL_MS}ms`;
   const scoreLabel = String(result?.label || score || 0);
-  const aura = outOfRange ? "#ff5a72" : material.aura;
+  const aura = isMiss ? "#ff718a" : (outOfRange ? "#ff5a72" : material.aura);
   return (
     <div
       aria-live="assertive"
@@ -179,11 +204,11 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: aura, opacity: .58, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
             <>
-              <img src={src} alt={outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Score ${score}`} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Résultat ${scoreLabel}`)} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
-                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
+                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{isMiss ? (result?.endedByMiss ? "MISS · TOUR TERMINÉ" : "MISS") : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ")}</div>
                 </>
               ) : null}
             </>
@@ -214,8 +239,8 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           )}
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
-          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Score ${scoreLabel} découvert` : (outOfRange ? (lang === "fr" ? `Score ${scoreLabel} hors lot` : `Score ${scoreLabel} out of draw`) : `Score ${scoreLabel} non possédé`)}</div>
+          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : isMiss ? "MISS" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Résultat ${scoreLabel} découvert` : isMiss ? (result?.endedByMiss ? "MISS · tour terminé" : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : `Result ${scoreLabel} out of draw`) : `Résultat ${scoreLabel} non possédé`)}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
@@ -227,6 +252,8 @@ function StatsDetailModal({ player, onClose, accent = GOLD }: any) {
   if (!player) return null;
   const best = bestCardProgress(player);
   const total = player?.cards?.[0]?.cells?.length || 10;
+  const expressTurns = Number(player?.stats?.expressTurns || 0);
+  const expressTargetHits = Number(player?.stats?.expressTargetHits || 0);
   const stats = [
     ["Meilleur carton", `${best}/${total}`, accent],
     ["Cases restantes", Math.max(0, total - best), accent],
@@ -240,6 +267,19 @@ function StatsDetailModal({ player, onClose, accent = GOLD }: any) {
     ["Volée moyenne", player?.stats?.visits ? ((player?.stats?.totalVolleyScore || 0) / player.stats.visits).toFixed(1) : "0.0", CYAN],
     ["Meilleure volée", player?.stats?.maxVolley || 0, CYAN],
     ["Darts lancés", player?.stats?.dartsThrown || 0, SOFT],
+    ...(expressTurns ? [
+      ["EXPRESS cible", `${Math.round((expressTargetHits / Math.max(1, expressTurns)) * 100)}%`, GOOD],
+      ["Cibles valides", expressTargetHits, GOOD],
+      ["Tours sans cible", player?.stats?.expressTargetMisses || 0, BAD],
+      ["Mauvaise zone", player?.stats?.expressWrongRingDarts || 0, BAD],
+      ["MISS → tour", player?.stats?.expressMissPassTurns || 0, BAD],
+      ["3 essais épuisés", player?.stats?.expressAttemptsExhausted || 0, ORANGE],
+      ["Essais / tour", (Number(player?.stats?.expressAttemptsUsed || 0) / Math.max(1, expressTurns)).toFixed(2), CYAN],
+      ["Darts / cible", expressTargetHits ? (Number(player?.stats?.expressSuccessDartTotal || 0) / expressTargetHits).toFixed(2) : "—", CYAN],
+      ["Validé au 1er", player?.stats?.expressSuccessOnDart1 || 0, GOOD],
+      ["Validé au 2e", player?.stats?.expressSuccessOnDart2 || 0, CYAN],
+      ["Validé au 3e", player?.stats?.expressSuccessOnDart3 || 0, PINK],
+    ] : []),
   ];
   return <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10008, background: "rgba(0,0,0,.74)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}><div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px,100%)", maxHeight: "86dvh", overflowY: "auto", borderRadius: 18, border: `1px solid ${accent}55`, background: "linear-gradient(180deg,#10141f,#090c13 48%,#07080c)", boxShadow: "0 26px 65px rgba(0,0,0,.55)", padding: 12 }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: accent, fontWeight: 1000, fontSize: 15 }}>STATISTIQUES LOTERIE</div><div style={{ color: SOFT, fontSize: 10, marginTop: 2 }}>{player?.name} · détails en cours de partie</div></div><button type="button" onClick={onClose} style={carouselBtnStyle(accent)}>×</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>{stats.map(([label, value, color]: any) => <div key={label} style={{ borderRadius: 13, padding: 10, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: SOFT, fontSize: 8.5, fontWeight: 1000, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 4, color, fontSize: 19, fontWeight: 1000 }}>{value}</div></div>)}</div></div></div>;
 }
@@ -252,7 +292,7 @@ function RulesContent({ config, accent = GOLD }: any) {
       <div><strong style={{ color: PINK }}>PLUSIEURS CARTONS</strong><br />Un même score peut apparaître sur plusieurs cartons. Une seule volée peut donc ouvrir plusieurs cases en même temps : hit simple, double hit, triple hit ou jackpot.</div>
       <div><strong style={{ color: GOOD }}>BLOC CARTONS</strong><br />Le bloc CARTONS affiche chaque carton avec sa progression. Ouvre le carrousel pour voir le détail visuel de chaque ticket.</div>
       <div><strong style={{ color: BAD }}>DERNIERS SCORES</strong><br />Le bloc DERNIERS SCORES garde les 5 dernières volées : vert = score ayant validé au moins une case, rouge = score joué sans ouvrir de case.</div>
-      {config.variant === "express" ? <div><strong style={{ color: accent }}>MODE EXPRESS</strong><br />En express, une seule fléchette est jouée par tour. Selon le réglage, il faut viser soit un simple exact, soit un double exact, soit un triple exact.</div> : null}
+      {config.variant === "express" ? <div><strong style={{ color: accent }}>MODE EXPRESS</strong><br />Vise un simple, un double ou un triple exact selon la configuration. Tu disposes de {config.expressAttempts === "up_to_3" ? "jusqu’à 3 essais : les tirs non conformes laissent rejouer et le premier tir valide arrête immédiatement le tour" : "1 seul essai"}. {config.missEndsTurn ? "MISS termine immédiatement le tour." : "MISS consomme un essai sans terminer le tour."}</div> : null}
       {config.participantMode === "teams" ? <div><strong style={{ color: CYAN }}>MODE ÉQUIPES</strong><br />Les cartons sont partagés par équipe. À chaque passage de l’équipe, le joueur suivant de sa composition devient le joueur actif. Ses découvertes alimentent le carton commun et ses statistiques personnelles.</div> : null}
     </div>
   );
@@ -263,6 +303,7 @@ function eventStats(items: any[]) {
   let streak = 0, bestStreak = 0, emptyStreak = 0, longestEmptyStreak = 0;
   let singles = 0, doubles = 0, triples = 0, bulls = 0, dbulls = 0, dartMisses = 0, dartPoints = 0;
   let hit0 = 0, hit1 = 0, hit2 = 0, hit3plus = 0, successfulVolleyScore = 0, missedVolleyScore = 0;
+  let expressTurns = 0, expressTargetHits = 0, expressTargetMisses = 0, expressWrongRingDarts = 0, expressMissDarts = 0, expressMissPassTurns = 0, expressAttemptsExhausted = 0, expressAttemptsUsed = 0, expressSuccessDartTotal = 0, expressSuccessOnDart1 = 0, expressSuccessOnDart2 = 0, expressSuccessOnDart3 = 0;
   const scoreMap: Record<string, { attempts: number; hits: number; misses: number; reveals: number }> = {};
   const segmentCounts: Record<string, number> = {};
   for (const ev of ordered) {
@@ -285,6 +326,22 @@ function eventStats(items: any[]) {
     bucket.reveals += revealed;
     if (ok) bucket.hits += 1; else bucket.misses += 1;
     scoreMap[resultLabel] = bucket;
+    if (ev?.variant === "express" || ev?.expressAttemptMode === "one" || ev?.expressAttemptMode === "up_to_3") {
+      expressTurns += 1;
+      const matched = ev?.targetMatched === true;
+      expressTargetHits += matched ? 1 : 0;
+      expressTargetMisses += matched ? 0 : 1;
+      expressWrongRingDarts += Number(ev?.wrongTargetDarts || 0);
+      expressMissDarts += (Array.isArray(ev?.darts) ? ev.darts : []).filter((d:any) => !d?.v || !d?.mult).length;
+      expressMissPassTurns += ev?.endedByMiss ? 1 : 0;
+      expressAttemptsExhausted += ev?.attemptsExhausted ? 1 : 0;
+      expressAttemptsUsed += Number(ev?.attemptsUsed || (Array.isArray(ev?.darts) ? ev.darts.length : 0));
+      const successDart = Number(ev?.targetMatchDart || 0);
+      expressSuccessDartTotal += successDart;
+      if (successDart === 1) expressSuccessOnDart1 += 1;
+      else if (successDart === 2) expressSuccessOnDart2 += 1;
+      else if (successDart === 3) expressSuccessOnDart3 += 1;
+    }
     for (const d of Array.isArray(ev?.darts) ? ev.darts : []) {
       const v = Number(d?.v || 0);
       const mult = Number(d?.mult || 0);
@@ -323,6 +380,11 @@ function eventStats(items: any[]) {
     avgMissedVolley: emptyVisits ? missedVolleyScore / emptyVisits : 0,
     uniqueScores: Object.keys(scoreMap).length,
     scoreMap, segmentCounts,
+    expressTurns, expressTargetHits, expressTargetMisses, expressWrongRingDarts, expressMissDarts, expressMissPassTurns, expressAttemptsExhausted, expressAttemptsUsed,
+    expressTargetHitRate: expressTurns ? expressTargetHits / expressTurns : 0,
+    expressAverageAttempts: expressTurns ? expressAttemptsUsed / expressTurns : 0,
+    expressAverageDartsToSuccess: expressTargetHits ? expressSuccessDartTotal / expressTargetHits : 0,
+    expressSuccessOnDart1, expressSuccessOnDart2, expressSuccessOnDart3,
   };
 }
 
@@ -350,6 +412,12 @@ function playerSummary(p: LoteriePlayerState, winnerId: string | null, rank = 1)
     multiHits: p.stats.multiHits, maxCellsInVisit: p.stats.maxCellsInVisit, bestStreak: p.stats.bestStreak,
     totalVolleyScore: p.stats.totalVolleyScore, averageVolley: visits ? p.stats.totalVolleyScore / visits : 0,
     maxVolley: p.stats.maxVolley, completedOnVisit: p.stats.completedOnVisit,
+    expressTurns: p.stats.expressTurns, expressTargetHits: p.stats.expressTargetHits, expressTargetMisses: p.stats.expressTargetMisses,
+    expressWrongRingDarts: p.stats.expressWrongRingDarts, expressMissDarts: p.stats.expressMissDarts, expressMissPassTurns: p.stats.expressMissPassTurns, expressAttemptsExhausted: p.stats.expressAttemptsExhausted, expressAttemptsUsed: p.stats.expressAttemptsUsed,
+    expressTargetHitRate: p.stats.expressTurns ? p.stats.expressTargetHits / p.stats.expressTurns : 0,
+    expressAverageAttempts: p.stats.expressTurns ? p.stats.expressAttemptsUsed / p.stats.expressTurns : 0,
+    expressAverageDartsToSuccess: p.stats.expressTargetHits ? p.stats.expressSuccessDartTotal / p.stats.expressTargetHits : 0,
+    expressSuccessOnDart1: p.stats.expressSuccessOnDart1, expressSuccessOnDart2: p.stats.expressSuccessOnDart2, expressSuccessOnDart3: p.stats.expressSuccessOnDart3,
     targetMin: p.targetMin, targetMax: p.targetMax,
     isTeam: Boolean((p as any).isTeam), teamId: (p as any).teamId || null, memberIds: (p as any).memberIds || [], members: (p as any).members || [],
     cards: p.cards.map((c) => ({ id: c.id, progress: cardProgress(c), total: c.cells.length, cells: c.cells.map((x) => ({ key: x.key, value: x.value, label: x.label, revealed: x.revealed })) })),
@@ -401,6 +469,7 @@ function buildLoterieSummaries(finalPlayers: LoteriePlayerState[], winnerId: str
           totalVolleyScore: st.totalVolleyScore, averageVolley: st.averageVolley, maxVolley: st.maxVolley, avgSuccessfulVolley: st.avgSuccessfulVolley, avgMissedVolley: st.avgMissedVolley,
           singles: st.singles, doubles: st.doubles, triples: st.triples, bulls: st.bulls, dbulls: st.dbulls, dartMisses: st.dartMisses, dartPoints: st.dartPoints, dartOnBoardRate: st.dartOnBoardRate, averageDartScore: st.averageDartScore,
           hit0: st.hit0, hit1: st.hit1, hit2: st.hit2, hit3plus: st.hit3plus, uniqueScores: st.uniqueScores, scoreMap: st.scoreMap, segmentCounts: st.segmentCounts,
+          expressTurns: st.expressTurns, expressTargetHits: st.expressTargetHits, expressTargetMisses: st.expressTargetMisses, expressWrongRingDarts: st.expressWrongRingDarts, expressMissDarts: st.expressMissDarts, expressMissPassTurns: st.expressMissPassTurns, expressAttemptsExhausted: st.expressAttemptsExhausted, expressAttemptsUsed: st.expressAttemptsUsed, expressTargetHitRate: st.expressTargetHitRate, expressAverageAttempts: st.expressAverageAttempts, expressAverageDartsToSuccess: st.expressAverageDartsToSuccess, expressSuccessOnDart1: st.expressSuccessOnDart1, expressSuccessOnDart2: st.expressSuccessOnDart2, expressSuccessOnDart3: st.expressSuccessOnDart3,
           cardsCount: team.cards?.length || 0, cardsCompleted: team.stats?.cardsCompleted || 0,
           cards: (team.cards || []).map((c: any) => ({ id: c.id, progress: cardProgress(c), total: c.cells?.length || 0, cells: (c.cells || []).map((x: any) => ({ key: x.key, value: x.value, label: x.label, revealed: x.revealed })) })),
           bestCardProgress: bestCardProgress(team), teamBestCardProgress: bestCardProgress(team), cellsPerCard: team.cards?.[0]?.cells?.length || config?.cellsPerCard || 0,
@@ -433,6 +502,7 @@ function buildLoterieSummaries(finalPlayers: LoteriePlayerState[], winnerId: str
     participantMode,
     variant: config?.variant || "classic",
     expressTarget: config?.expressTarget || null,
+    expressAttempts: config?.expressAttempts || "one", missEndsTurn: config?.missEndsTurn === true,
     cardsPerPlayer: Number(config?.cardsPerPlayer || 1), cellsPerCard: Number(config?.cellsPerCard || 10),
     participants: aggregateRows.length, playerCount: playerRows.length, teamCount: teamRows.length,
     visits, dartsThrown, cellsRevealed, successfulVisits, emptyVisits,
@@ -450,6 +520,7 @@ function buildLoterieSummaries(finalPlayers: LoteriePlayerState[], winnerId: str
     avgSuccessfulVolley: eventGlobal.avgSuccessfulVolley, avgMissedVolley: eventGlobal.avgMissedVolley,
     singles: eventGlobal.singles, doubles: eventGlobal.doubles, triples: eventGlobal.triples, bulls: eventGlobal.bulls, dbulls: eventGlobal.dbulls,
     dartMisses: eventGlobal.dartMisses, dartPoints: eventGlobal.dartPoints, dartOnBoardRate: eventGlobal.dartOnBoardRate, averageDartScore: eventGlobal.averageDartScore,
+    expressTurns: eventGlobal.expressTurns, expressTargetHits: eventGlobal.expressTargetHits, expressTargetMisses: eventGlobal.expressTargetMisses, expressWrongRingDarts: eventGlobal.expressWrongRingDarts, expressMissDarts: eventGlobal.expressMissDarts, expressMissPassTurns: eventGlobal.expressMissPassTurns, expressAttemptsExhausted: eventGlobal.expressAttemptsExhausted, expressAttemptsUsed: eventGlobal.expressAttemptsUsed, expressTargetHitRate: eventGlobal.expressTargetHitRate, expressAverageAttempts: eventGlobal.expressAverageAttempts, expressAverageDartsToSuccess: eventGlobal.expressAverageDartsToSuccess, expressSuccessOnDart1: eventGlobal.expressSuccessOnDart1, expressSuccessOnDart2: eventGlobal.expressSuccessOnDart2, expressSuccessOnDart3: eventGlobal.expressSuccessOnDart3,
     hit0: eventGlobal.hit0, hit1: eventGlobal.hit1, hit2: eventGlobal.hit2, hit3plus: eventGlobal.hit3plus,
     uniqueScores: eventGlobal.uniqueScores, scoreMap: eventGlobal.scoreMap, segmentCounts: eventGlobal.segmentCounts,
     cardsPlayed: allCardRows.length, cardsCompleted: totalCardsCompleted, averageCardProgress,
@@ -584,6 +655,19 @@ function randomBotDart(bot: any): LoterieDart {
   const roll = Math.random();
   const mult = roll < quality * .18 ? 3 : roll < quality * .4 ? 2 : 1;
   return { v, mult } as any;
+}
+
+function buildExpressBotTurn(bot: any, config: LoterieConfig): LoterieDart[] {
+  const maxAttempts = config?.expressAttempts === "up_to_3" ? 3 : 1;
+  const out: LoterieDart[] = [];
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const dart = randomBotDart(bot);
+    out.push(dart);
+    const isMiss = !dart?.v || !dart?.mult;
+    if (expressDartMatchesTarget(config.expressTarget, dart)) break;
+    if (isMiss && config?.missEndsTurn === true) break;
+  }
+  return out;
 }
 
 
@@ -763,7 +847,7 @@ function LoterieEndPanel({ finalPlayers, winnerId, events, config, accent, onRep
   const rows = participantMode === "teams" ? built.teamRows : built.entityRows;
   const winnerRow = rows.find((row: any) => row.win) || rows[0] || null;
   const winnerPlayers = built.playerRows.filter((row: any) => row.win);
-  const variantLabel = config?.variant === "express" ? `1 FLÉCHETTE · ${String(config?.expressTarget || "simple").toUpperCase()}` : `${config?.volleyMode === "strict3" ? "3 FLÉCHETTES" : "1–3 FLÉCHETTES"} · VOLÉE`;
+  const variantLabel = config?.variant === "express" ? `EXPRESS · ${String(config?.expressTarget || "simple").toUpperCase()} · ${config?.expressAttempts === "up_to_3" ? "3 ESSAIS" : "1 ESSAI"}${config?.missEndsTurn ? " · MISS=TOUR" : ""}` : `${config?.volleyMode === "strict3" ? "3 FLÉCHETTES" : "1–3 FLÉCHETTES"} · VOLÉE`;
   const [activeTab, setActiveTab] = React.useState("summary");
   const statsFocusId = winnerPlayers?.[0]?.id || winnerRow?.id;
 
@@ -836,6 +920,22 @@ function LoterieEndPanel({ finalPlayers, winnerId, events, config, accent, onRep
             <EndStat label="Volée hit moy." value={Number(built.matchStats.avgSuccessfulVolley || 0).toFixed(1)} tone={CYAN}/>
             <EndStat label="Volée miss moy." value={Number(built.matchStats.avgMissedVolley || 0).toFixed(1)} tone={BAD}/>
           </div>
+          {config?.variant === "express" ? <>
+            <div style={{ marginTop: 9, color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7 }}>EXPRESS · PRÉCISION DE CIBLE</div>
+            <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+              <EndStat label="Cible valide" value={`${Math.round(Number(built.matchStats.expressTargetHitRate || 0) * 100)}%`} tone={GOOD}/>
+              <EndStat label="Essais / tour" value={Number(built.matchStats.expressAverageAttempts || 0).toFixed(2)} tone={CYAN}/>
+              <EndStat label="Darts / réussite" value={built.matchStats.expressTargetHits ? Number(built.matchStats.expressAverageDartsToSuccess || 0).toFixed(2) : "—"} tone={accent}/>
+              <EndStat label="Mauvaise zone" value={built.matchStats.expressWrongRingDarts || 0} tone={BAD}/>
+            </div>
+            <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+              <EndStat label="1er essai" value={built.matchStats.expressSuccessOnDart1 || 0} tone={GOOD}/>
+              <EndStat label="2e essai" value={built.matchStats.expressSuccessOnDart2 || 0} tone={CYAN}/>
+              <EndStat label="3e essai" value={built.matchStats.expressSuccessOnDart3 || 0} tone={PINK}/>
+              <EndStat label="MISS → tour" value={built.matchStats.expressMissPassTurns || 0} tone={BAD}/>
+              <EndStat label="3 essais KO" value={built.matchStats.expressAttemptsExhausted || 0} tone={ORANGE}/>
+            </div>
+          </> : null}
           <div style={{ marginTop: 10 }}><EndPie3D title="TOURS · DÉCOUVERTE" center={`${Math.round(Number(built.matchStats.hitRate||0)*100)}%`} centerLabel="HIT RATE" items={[{label:"Avec découverte",value:built.matchStats.successfulVisits,color:GOOD},{label:"À vide",value:built.matchStats.emptyVisits,color:BAD}]}/></div>
         </> : null}
 
@@ -931,7 +1031,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const remainingForWin = Math.max(0, cardTotal - bestProgress);
   const lastVolleyText = config.variant === "classic"
     ? (darts.length ? `${darts.map((d: any) => dartLabel(d)).join(" + ")} = ${volleyScore(darts)}` : (lastPlayerEvent?.darts?.length ? `${lastPlayerEvent.darts.map((d: any) => d.label).join(" + ")} = ${lastPlayerEvent.volleyScore}` : "—"))
-    : (darts[0] ? dartLabel(darts[0]) : (lastPlayerEvent?.darts?.[0]?.label || "—"));
+    : (darts.length ? darts.map((d: any) => dartLabel(d)).join(" · ") : (lastPlayerEvent?.darts?.length ? lastPlayerEvent.darts.map((d: any) => d.label).join(" · ") : "—"));
 
   React.useEffect(() => {
     if (!scoreReveal) return;
@@ -955,7 +1055,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     setBotThinking(true);
     const timer = window.setTimeout(() => {
       if (cancelled) return;
-      const turn = config.variant === "express" ? [randomBotDart(activeTurnActor)] : Array.from({ length: config.volleyMode === "strict3" ? 3 : 1 + Math.floor(Math.random() * 3) }, () => randomBotDart(activeTurnActor));
+      const turn = config.variant === "express" ? buildExpressBotTurn(activeTurnActor, config) : Array.from({ length: config.volleyMode === "strict3" ? 3 : 1 + Math.floor(Math.random() * 3) }, () => randomBotDart(activeTurnActor));
       commitTurn(turn);
       setBotThinking(false);
     }, 720);
@@ -975,7 +1075,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const durationMs = Math.max(0, finishedAt - createdAtRef.current);
     const summary = {
       kind: "loterie", mode: "loterie", sport: "darts", finished: true,
-      statisticsVersion: 3, participantMode, variant: config.variant, expressTarget: config.expressTarget,
+      statisticsVersion: 4, participantMode, variant: config.variant, expressTarget: config.expressTarget, expressAttempts: config.expressAttempts || "one", missEndsTurn: config.missEndsTurn === true,
       winnerId: winId, winnerEntityId: winId, winnerPlayerIds, winnerName: win?.name || "",
       config: { ...config, participantMode },
       players: built.playerRows, perPlayer: built.playerRows,
@@ -993,7 +1093,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       createdAt: createdAtRef.current, startedAt: createdAtRef.current, updatedAt: finishedAt, finishedAt, endedAt: finishedAt,
       summary,
       payload: {
-        kind: "loterie", mode: "loterie", sport: "darts", gameId: "loterie", statisticsVersion: 3,
+        kind: "loterie", mode: "loterie", sport: "darts", gameId: "loterie", statisticsVersion: 4,
         participantMode, winnerId: winId, winnerEntityId: winId, winnerPlayerIds,
         config: { ...config, participantMode }, players: built.playerRows, teams: built.teamRows, entities: built.entityRows,
         stats: { mode: "loterie", sport: "darts", participantMode, variant: config.variant, players: built.playerRows, teams: built.teamRows, entities: built.entityRows, global: { ...built.matchStats, durationMs } },
@@ -1026,6 +1126,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const revealMode = config?.revealMode === "all" ? "all" : "self";
     const resolved = revealResult(current, config, turnDarts);
     const baseResult = resolved.result;
+    const isExpressTurn = config.variant === "express";
+    const targetMatchIndex = isExpressTurn ? expressMatchingDartIndex(config, turnDarts) : -1;
+    const targetMatched = targetMatchIndex >= 0;
+    const attemptsUsed = turnDarts.length;
+    const endedByMiss = isExpressTurn && config?.missEndsTurn === true && !targetMatched && attemptsUsed > 0 && (!turnDarts[attemptsUsed - 1]?.v || !turnDarts[attemptsUsed - 1]?.mult);
+    const attemptsExhausted = isExpressTurn && config?.expressAttempts === "up_to_3" && !targetMatched && attemptsUsed >= 3;
+    const wrongTargetDarts = isExpressTurn ? turnDarts.filter((d, index) => index <= (targetMatchIndex >= 0 ? targetMatchIndex : attemptsUsed - 1) && !!d?.v && !!d?.mult && !expressDartMatchesTarget(config.expressTarget, d)).length : 0;
     const resolvedById = new Map<string, any>();
     let nextPlayers: LoteriePlayerState[] = [];
 
@@ -1081,6 +1188,8 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       actorName: currentMember?.name || current.name, memberName: currentMember?.name || null,
       darts: turnDarts.map((d) => ({ ...d, label: dartLabel(d), score: dartScore(d) })),
       volleyScore: volleyScore(turnDarts), resultKey: baseResult.key, resultLabel: baseResult.label,
+      variant: config.variant, expressTarget: isExpressTurn ? config.expressTarget : null, expressAttemptMode: isExpressTurn ? (config.expressAttempts || "one") : null, missEndsTurn: isExpressTurn ? config.missEndsTurn === true : false,
+      targetMatched: isExpressTurn ? targetMatched : null, targetMatchDart: isExpressTurn && targetMatched ? targetMatchIndex + 1 : 0, attemptsUsed, attemptsAllowed: isExpressTurn ? (config.expressAttempts === "up_to_3" ? 3 : 1) : Math.max(1, turnDarts.length), wrongTargetDarts: isExpressTurn ? wrongTargetDarts : 0, endedByMiss: isExpressTurn ? endedByMiss : false, attemptsExhausted: isExpressTurn ? attemptsExhausted : false,
       revealed: totalRevealed, revealedCardNumbers, completedCardIds: currentResolved.completedCardIds,
       revealMode,
     };
@@ -1090,12 +1199,25 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     setDarts([]);
     setRecentRevealKeys(changedKeys);
     const resultScore = Math.round(Number(baseResult?.value ?? volleyScore(turnDarts)) || 0);
+    const lastDart = turnDarts[turnDarts.length - 1];
+    const isMissResult = isExpressTurn && !targetMatched && !!lastDart && (!lastDart.v || !lastDart.mult);
+    const expressCardSrc = isExpressTurn && targetMatched ? loterieExpressCardUrl(config.expressTarget, baseResult?.key || null, baseResult?.label) : null;
     setScoreReveal({
       score: resultScore,
-      label: baseResult?.label || String(resultScore),
+      label: isMissResult ? "MISS" : (baseResult?.label || String(resultScore)),
       good: found,
       revealed: totalRevealed,
       cardNumbers: revealedCardNumbers,
+      variant: config.variant,
+      expressTarget: isExpressTurn ? config.expressTarget : null,
+      targetMatched,
+      targetMatchDart: targetMatched ? targetMatchIndex + 1 : 0,
+      attemptsUsed,
+      endedByMiss,
+      attemptsExhausted,
+      isMiss: isMissResult,
+      outOfDraw: isExpressTurn ? (!targetMatched && !isMissResult) : isHorsLoterieScore(resultScore),
+      cardSrc: isMissResult ? loterieMissCardUrl() : expressCardSrc,
       ts: Date.now(),
     });
     playLoterieGolfTickerSfx(found);
@@ -1121,10 +1243,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const mult = value === 0 ? 1 : (forcedMult || multiplierRef.current);
     const dart: LoterieDart = { v: Number(value) || 0, mult: mult as any };
     if (config.variant === "express") {
-      setDarts([dart]);
+      const maxAttempts = config?.expressAttempts === "up_to_3" ? 3 : 1;
+      if (darts.length >= maxAttempts) return;
+      const next = [...darts, dart];
+      setDarts(next);
       // Même comportement que X01 : D/T ne vaut que pour la fléchette saisie.
       resetMultiplier();
-      window.setTimeout(() => commitTurn([dart]), 70);
+      if (expressTurnShouldEnd(config, next)) window.setTimeout(() => commitTurn(next), 70);
       return;
     }
     if (darts.length >= 3) return;
@@ -1137,7 +1262,11 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   function validateVisit() {
     if (winnerId || botThinking || !darts.length) return;
     try { unlockAudio(); } catch {}
-    if (config.variant === "express") return;
+    if (config.variant === "express") {
+      // En EXPRESS 3 essais, VALIDER permet aussi d'abandonner les essais restants.
+      if (config?.expressAttempts === "up_to_3") commitTurn(darts);
+      return;
+    }
     if (config.volleyMode === "strict3" && darts.length !== 3) return;
     commitTurn(darts);
   }
@@ -1211,7 +1340,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
               {participantMode === "teams" && activeMember ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.2, fontWeight: 900, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(active)} · joueur {(Number(active?.stats?.visits || 0) % Math.max(1, (active as any)?.members?.length || 1)) + 1}/{Math.max(1, (active as any)?.members?.length || 1)}</div> : null}
               <div style={{ marginTop: 5, color: "#ffcf57", fontSize: 58, fontWeight: 900, lineHeight: 1, textShadow: "0 4px 18px rgba(255,195,26,.25)", whiteSpace: "nowrap" }}>{remainingForWin}</div>
               <div style={{ marginTop: "auto", display: "flex", gap: "clamp(4px, 1.6vw, 13px)", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", width: "100%", minWidth: 0, overflow: "hidden" }}>
-                <ModeInlineInfo kind="darts" value={config.variant === "classic" ? "3 darts" : "Express"} accent={accent} />
+                <ModeInlineInfo kind="darts" value={config.variant === "classic" ? "3 darts" : (config.expressAttempts === "up_to_3" ? "Express · 3 essais" : "Express · 1 essai")} accent={accent} />
                 <ModeInlineInfo kind="range" value={config.variant === "classic" ? `${active?.targetMin}–${active?.targetMax}` : config.expressTarget.toUpperCase()} accent={accent} />
                 <ModeInlineInfo kind="cards" value={`${config.cardsPerPlayer} carton${config.cardsPerPlayer > 1 ? "s" : ""}`} accent={accent} />
               </div>
@@ -1263,7 +1392,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
               onBull={() => { const selected = multiplierRef.current === 2 ? 2 : 1; addDart(25, selected); }}
               onValidate={validateVisit}
               hidePreview={false}
-              centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{config.variant === "classic" ? volleyScore(darts) : (darts[0] ? dartLabel(darts[0]) : 0)}</span>}
+              centerSlot={<span style={{ display: "inline-block", minWidth: 58, textAlign: "center", padding: "8px 14px", borderRadius: 14, background: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.4)", color: "#ffc63a", fontWeight: 900, fontSize: 22, lineHeight: 1, boxShadow: "0 0 16px rgba(255,170,0,.22)" }}>{config.variant === "classic" ? volleyScore(darts) : (darts.length ? darts.map((d:any) => dartLabel(d)).join(" · ") : 0)}</span>}
               noticeSlot={null}
             />
           </div>

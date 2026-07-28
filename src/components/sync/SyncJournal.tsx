@@ -15,7 +15,7 @@ export default function SyncJournal() {
     setMsg("Synchronisation en cours...");
     try {
       await EventBuffer.syncNow({ limit: 500 });
-      setMsg("✔ Synchronisation terminée");
+      setMsg("✔ Historique local/R2 actif — pipeline events Supabase legacy ignoré");
     } catch {
       setMsg("⛔ Erreur pendant la synchronisation");
     } finally {
@@ -28,7 +28,7 @@ export default function SyncJournal() {
     setMsg("Reconstruction des stats...");
     try {
       await rebuildStatsFromEvents();
-      setMsg("✔ Stats reconstruites depuis les events");
+      setMsg("✔ Stats reconstruites depuis l’historique");
     } catch {
       setMsg("⛔ Erreur reconstruction stats");
     } finally {
@@ -39,6 +39,7 @@ export default function SyncJournal() {
   return (
     <div style={{ padding: 16 }}>
       <h3>Synchronisation multi‑appareils</h3>
+      <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>Historique local + sauvegarde/restauration R2. Le pipeline Supabase events legacy est désactivé par défaut.</div>
 
       <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
         <button onClick={doSync} disabled={running}>
