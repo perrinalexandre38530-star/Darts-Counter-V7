@@ -3,7 +3,11 @@ import { getAvatarCache, setAvatarCache } from "./avatarCache";
 import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { downloadCloudObject, listCloudVaultBackups } from "./cloudStorageApi";
-import { downloadDirectR2AvatarFallback, uploadDirectR2AvatarFallback } from "./directR2BackupApi";
+import {
+  canAttemptDirectR2FromStoredSession,
+  downloadDirectR2AvatarFallback,
+  uploadDirectR2AvatarFallback,
+} from "./directR2BackupApi";
 
 export type AvatarFallbackItem = {
   profileId: string;
@@ -261,8 +265,10 @@ export async function mirrorAvatarFallbackToR2(
     avatarAssetId,
   });
 
-  await uploadDirectR2AvatarFallback({ profileId, dataUrl, avatarUpdatedAt, avatarAssetId });
-  directR2AvatarMissAt.delete(profileId);
+  if (canAttemptDirectR2FromStoredSession()) {
+    await uploadDirectR2AvatarFallback({ profileId, dataUrl, avatarUpdatedAt, avatarAssetId });
+    directR2AvatarMissAt.delete(profileId);
+  }
   return true;
 }
 
@@ -272,6 +278,7 @@ async function hydrateOneAvatarFromDirectR2(profileIdInput: string): Promise<str
 
   const cached = pickCachedDataUrl(profileId);
   if (cached) return cached;
+  if (!canAttemptDirectR2FromStoredSession()) return "";
 
   const lastMiss = Number(directR2AvatarMissAt.get(profileId) || 0);
   if (lastMiss && Date.now() - lastMiss < R2_LOAD_COOLDOWN_MS) return "";
@@ -609,6 +616,7 @@ export function queueAvatarFallbackMirror(
 }
 
 async function hydrateAvatarCacheFromLatestR2(): Promise<void> {
+  if (!canAttemptDirectR2FromStoredSession()) return;
   const now = Date.now();
   if (r2HydrationPromise) return r2HydrationPromise;
   if (r2HydrationAttempted && now - r2HydratedAt < R2_LOAD_COOLDOWN_MS) return;
@@ -660,7 +668,9 @@ export async function resolveAvatarFallback(profileId: string): Promise<string> 
   // 0b) Autres caches locaux durables : galerie avatar + cache anti-disparition.
   found = hydrateOneAvatarFromBrowserRecoveryStores(id);
   if (found) {
-    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    if (canAttemptDirectR2FromStoredSession()) {
+      void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    }
     return found;
   }
 
@@ -669,7 +679,9 @@ export async function resolveAvatarFallback(profileId: string): Promise<string> 
   await hydrateAvatarCacheFromLocalVault();
   found = pickCachedDataUrl(id);
   if (found) {
-    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    if (canAttemptDirectR2FromStoredSession()) {
+      void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    }
     return found;
   }
 
@@ -678,7 +690,9 @@ export async function resolveAvatarFallback(profileId: string): Promise<string> 
   await hydrateAvatarCacheFromExternalFile();
   found = pickCachedDataUrl(id);
   if (found) {
-    void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    if (canAttemptDirectR2FromStoredSession()) {
+      void uploadDirectR2AvatarFallback({ profileId: id, dataUrl: found, avatarUpdatedAt: Date.now() }).catch(() => undefined);
+    }
     return found;
   }
 

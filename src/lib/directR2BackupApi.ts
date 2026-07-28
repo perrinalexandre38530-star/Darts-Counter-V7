@@ -1,6 +1,10 @@
 import { supabase } from "./supabaseClient";
 import { readNasAccessToken } from "./apiClient";
 import type { CloudObjectIndexItem } from "./cloudStorageApi";
+import {
+  isFreshSupabaseAccessToken,
+  isJwtFresh,
+} from "./authSessionGuard";
 
 /**
  * Route Cloudflare Pages Function, liée directement au bucket R2.
@@ -133,33 +137,12 @@ function safeJson(raw: string): any {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
 
-function decodeJwtPayload(token: string): any {
-  try {
-    const part = String(token || "").split(".")[1] || "";
-    if (!part) return null;
-    const base64 = part.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (part.length % 4)) % 4);
-    return JSON.parse(decodeURIComponent(Array.from(atob(base64)).map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`).join("")));
-  } catch {
-    return null;
-  }
-}
-
 function isJwtLike(token: string): boolean {
-  const parts = String(token || "").split(".");
-  if (parts.length !== 3) return false;
-  const payload = decodeJwtPayload(token);
-  if (!payload?.sub) return false;
-  // Un JWT NAS expiré ne doit pas bloquer le repli vers une session Supabase
-  // encore valide lorsque le NAS est hors ligne.
-  const expMs = Number(payload?.exp || 0) * 1000;
-  if (expMs > 0 && expMs <= Date.now() + 5_000) return false;
-  return true;
+  return isJwtFresh(String(token || ""), 5_000);
 }
 
 function isSupabaseAccessToken(token: string): boolean {
-  const payload = decodeJwtPayload(token);
-  const issuer = String(payload?.iss || "").toLowerCase();
-  return !!payload?.sub && (issuer.includes("supabase.co/auth/v1") || String(payload?.role || "") === "authenticated");
+  return isFreshSupabaseAccessToken(String(token || ""), 30_000);
 }
 
 function tokenFromStoredSupabaseSession(): string {
@@ -170,12 +153,14 @@ function tokenFromStoredSupabaseSession(): string {
     "dc-supabase-auth-v2:rckbdaqksujehszafior",
   ];
 
-  try {
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i) || "";
-      if ((/^sb-.*-auth-token$/i.test(key) || /^dc-supabase-auth-v2:/i.test(key)) && !keys.includes(key)) keys.push(key);
-    }
-  } catch {}
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    try {
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i) || "";
+        if ((/^sb-.*-auth-token$/i.test(key) || /^dc-supabase-auth-v2:/i.test(key)) && !keys.includes(key)) keys.push(key);
+      }
+    } catch {}
+  }
 
   for (const key of keys) {
     try {
@@ -193,6 +178,48 @@ function tokenFromStoredSupabaseSession(): string {
   return "";
 }
 
+const DIRECT_AUTH_REJECT_COOLDOWN_MS = 60_000;
+let directAuthRejectedUntil = 0;
+let directAuthRejectedFingerprint = "";
+let directTokenPromise: Promise<DirectStorageToken> | null = null;
+
+function tokenFingerprint(token: string): string {
+  const value = String(token || "");
+  return value ? `${value.slice(0, 10)}:${value.slice(-12)}` : "";
+}
+
+function markDirectAuthRejected(auth: DirectStorageToken): void {
+  directAuthRejectedFingerprint = tokenFingerprint(auth.token);
+  directAuthRejectedUntil = Date.now() + DIRECT_AUTH_REJECT_COOLDOWN_MS;
+}
+
+function isDirectAuthRejected(auth: DirectStorageToken): boolean {
+  if (!auth.token || Date.now() >= directAuthRejectedUntil) return false;
+  return tokenFingerprint(auth.token) === directAuthRejectedFingerprint;
+}
+
+function clearDirectAuthRejectionForNewToken(auth: DirectStorageToken): void {
+  if (!auth.token) return;
+  if (directAuthRejectedFingerprint && tokenFingerprint(auth.token) !== directAuthRejectedFingerprint) {
+    directAuthRejectedFingerprint = "";
+    directAuthRejectedUntil = 0;
+  }
+}
+
+export function canAttemptDirectR2FromStoredSession(): boolean {
+  const nasToken = String(readNasAccessToken() || "").trim();
+  if (nasToken && isJwtLike(nasToken)) {
+    const auth = { token: nasToken, kind: "nas" as const };
+    if (!isDirectAuthRejected(auth)) return true;
+  }
+  const storedSupabase = tokenFromStoredSupabaseSession();
+  if (storedSupabase) {
+    const auth = { token: storedSupabase, kind: "supabase" as const };
+    return !isDirectAuthRejected(auth);
+  }
+  return false;
+}
+
 /**
  * R2 accepte deux modes d'authentification indépendants :
  * - JWT Supabase, vérifié directement par la Pages Function ;
@@ -202,25 +229,48 @@ function tokenFromStoredSupabaseSession(): string {
  * PostgreSQL, l'API NAS ou le tunnel sont indisponibles.
  */
 async function readDirectStorageToken(): Promise<DirectStorageToken> {
-  // Pour un compte NAS/fondateur, le JWT NAS est prioritaire : son `sub`
-  // correspond directement à l'identifiant canonique du compte et évite toute
-  // confusion avec une ancienne session Supabase d'un autre utilisateur.
-  const nasToken = String(readNasAccessToken() || "").trim();
-  if (nasToken && isJwtLike(nasToken)) return { token: nasToken, kind: "nas" };
+  if (directTokenPromise) return directTokenPromise;
 
-  try {
-    const result = await Promise.race([
-      supabase.auth.getSession(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 900)),
-    ]);
-    const token = String((result as any)?.data?.session?.access_token || "").trim();
-    if (token && isSupabaseAccessToken(token)) return { token, kind: "supabase" };
-  } catch {}
+  directTokenPromise = (async () => {
+    // Pour un compte NAS/fondateur, le JWT NAS valide reste prioritaire.
+    const nasToken = String(readNasAccessToken() || "").trim();
+    if (nasToken && isJwtLike(nasToken)) {
+      const auth = { token: nasToken, kind: "nas" as const };
+      if (!isDirectAuthRejected(auth)) {
+        clearDirectAuthRejectionForNewToken(auth);
+        return auth;
+      }
+    }
 
-  const storedSupabase = tokenFromStoredSupabaseSession();
-  if (storedSupabase) return { token: storedSupabase, kind: "supabase" };
+    // Évite de réveiller le SDK Supabase (et son refresh réseau) si un access token
+    // frais est déjà persisté localement.
+    const storedSupabase = tokenFromStoredSupabaseSession();
+    if (storedSupabase) {
+      const auth = { token: storedSupabase, kind: "supabase" as const };
+      clearDirectAuthRejectionForNewToken(auth);
+      return auth;
+    }
 
-  return { token: "", kind: "none" };
+    // Un seul getSession/refresh à la fois pour toute l'application.
+    try {
+      const result = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
+      ]);
+      const token = String((result as any)?.data?.session?.access_token || "").trim();
+      if (token && isSupabaseAccessToken(token)) {
+        const auth = { token, kind: "supabase" as const };
+        clearDirectAuthRejectionForNewToken(auth);
+        return auth;
+      }
+    } catch {}
+
+    return { token: "", kind: "none" as const };
+  })().finally(() => {
+    directTokenPromise = null;
+  });
+
+  return directTokenPromise;
 }
 
 async function fetchWithTimeout(
@@ -287,7 +337,15 @@ function conciseR2Error(status: number, payload: any, rawText: string, tokenKind
 async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous = false): Promise<any> {
   const auth = allowAnonymous ? { token: "", kind: "none" as const } : await readDirectStorageToken();
   if (!allowAnonymous && !auth.token) {
-    throw new Error("Aucune session Cloud ou NAS exploitable. Reconnecte le compte une fois. Les sauvegardes Local et Fichier restent disponibles hors ligne.");
+    const error = new Error("Aucune session Cloud ou NAS exploitable. Reconnecte le compte une fois. Les sauvegardes Local et Fichier restent disponibles hors ligne.");
+    (error as any).code = "cloud_session_missing";
+    throw error;
+  }
+  if (!allowAnonymous && isDirectAuthRejected(auth)) {
+    const error = new Error("Session Cloud temporairement suspendue après refus d'authentification. Reconnecte le compte.");
+    (error as any).status = 401;
+    (error as any).code = "cloud_session_rejected";
+    throw error;
   }
 
   const headers = new Headers(init.headers || {});
@@ -310,6 +368,7 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
   const text = await response.text().catch(() => "");
   const payload = safeJson(text);
   if (response.ok && payload?.ok === true) return payload;
+  if (response.status === 401 && !allowAnonymous) markDirectAuthRejected(auth);
   const error = conciseR2Error(response.status, payload, text, auth.kind);
   (error as any).status = response.status;
   (error as any).code = String(payload?.code || "");
@@ -318,7 +377,7 @@ async function requestDirect(path = "", init: RequestInit = {}, allowAnonymous =
 
 async function readCachedMediaManifest(): Promise<DirectR2MediaManifest | null> {
   const now = Date.now();
-  if (mediaManifestCache && now - mediaManifestCacheAt < MEDIA_MANIFEST_CACHE_MS) return mediaManifestCache;
+  if (mediaManifestCacheAt > 0 && now - mediaManifestCacheAt < MEDIA_MANIFEST_CACHE_MS) return mediaManifestCache;
   if (mediaManifestPromise) return mediaManifestPromise;
   mediaManifestPromise = (async () => {
     try {
@@ -327,6 +386,8 @@ async function readCachedMediaManifest(): Promise<DirectR2MediaManifest | null> 
       mediaManifestCacheAt = Date.now();
       return mediaManifestCache;
     } catch {
+      // Un échec d'auth ne doit pas relancer /media-manifest pour chaque image.
+      mediaManifestCacheAt = Date.now();
       return mediaManifestCache;
     } finally {
       mediaManifestPromise = null;
@@ -535,8 +596,9 @@ export async function downloadDirectR2AvatarFallback(profileIdInput: string): Pr
     if (!avatar || !avatar?.dataUrl) return null;
     return avatar as DirectR2AvatarFallback;
   } catch (error: any) {
-    // Un profil qui n'a pas encore été répliqué sur R2 n'est pas une erreur UI.
-    if (/introuvable|avatar_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
+    // Un profil absent OU une session cloud indisponible ne doit jamais casser l'UI.
+    if (/introuvable|avatar_fallback_missing|HTTP 404|session cloud|aucune session cloud|cloud_session_/i.test(String(error?.message || error || ""))) return null;
+    if (Number(error?.status || 0) === 401) return null;
     throw error;
   }
 }
@@ -611,7 +673,8 @@ export async function downloadDirectR2MediaFallback(keyInput: string): Promise<D
     if (!media?.dataUrl) return null;
     return media as DirectR2MediaFallback;
   } catch (error: any) {
-    if (/introuvable|media_fallback_missing|HTTP 404/i.test(String(error?.message || error || ""))) return null;
+    if (/introuvable|media_fallback_missing|HTTP 404|session cloud|aucune session cloud|cloud_session_/i.test(String(error?.message || error || ""))) return null;
+    if (Number(error?.status || 0) === 401) return null;
     throw error;
   }
 }

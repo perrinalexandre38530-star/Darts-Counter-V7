@@ -1,6 +1,7 @@
 import { exportCloudSnapshot, getCachedLocalProfilesForSafety, getStorageUser } from "./storage";
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
+import { canAttemptDirectR2FromStoredSession } from "./directR2BackupApi";
 
 const RESTORE_GUARD_KEY = "dc_cloud_restore_in_progress_v2";
 const MIN_INTERVAL_MS = 15_000;
@@ -170,6 +171,9 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
   if (restoreInProgress()) return;
   if (!signedInUserId()) return;
   if (!cloudR2Selected()) return;
+  // Un userId local ne suffit pas : sans JWT frais, aucune tentative R2.
+  // Cela évite les boucles 401 quand une session Supabase a expiré.
+  if (!canAttemptDirectR2FromStoredSession()) return;
 
   if (inFlight) {
     queuedAfterFlight = true;
@@ -257,7 +261,10 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
 export function queueCloudR2AccountBackup(reason = "account-data-change", delayMs = DEFAULT_DEBOUNCE_MS): void {
   if (typeof window === "undefined") return;
   if (restoreInProgress()) return;
-  queuedReason = String(reason || "account-data-change");
+  const normalizedReason = String(reason || "account-data-change");
+  // Les rotations de tokens/session sont techniques et ne sont pas des données utilisateur.
+  if (/auth|refresh[_:-]?token|supabase-auth|dc-supabase-auth/i.test(normalizedReason)) return;
+  queuedReason = normalizedReason;
   if (timer != null) window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     timer = null;

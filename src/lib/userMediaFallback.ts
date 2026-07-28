@@ -4,6 +4,7 @@ import {
   isDirectR2MediaFresh,
   listDirectR2Backups,
   downloadDirectR2Backup,
+  canAttemptDirectR2FromStoredSession,
 } from "./directR2BackupApi";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 
@@ -376,11 +377,12 @@ export async function captureUserMediaFallback(
   const task = (async () => {
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
     const updatedAt = Number(opts.updatedAt || Date.now()) || Date.now();
+    const mirrorR2 = opts.mirrorR2 !== false && canAttemptDirectR2FromStoredSession();
 
     // Chemin ultra-rapide des sauvegardes suivantes : si R2 possède déjà cette
     // version, on ne relit PAS l'image, on ne crée PAS de canvas et on ne refait
     // aucun POST. Une seule lecture du manifeste couvre des centaines de médias.
-    if (opts.mirrorR2 !== false) {
+    if (mirrorR2) {
       try {
         if (await isDirectR2MediaFresh({ key, updatedAt })) {
           const local = await readLocalUserMediaFallback(key);
@@ -401,7 +403,7 @@ export async function captureUserMediaFallback(
       sourceUrl: opts.sourceUrl || (!isImageDataUrl(source) ? source : null),
     };
     await storeEntry(entry);
-    if (opts.mirrorR2 !== false) {
+    if (mirrorR2) {
       await uploadDirectR2MediaFallback(entry);
     }
     return mirrored;
@@ -534,6 +536,7 @@ async function hydrateFromExternalFileOnce(): Promise<void> {
 }
 
 async function hydrateFromR2BackupsOnce(): Promise<void> {
+  if (!canAttemptDirectR2FromStoredSession()) return;
   const now = Date.now();
   if (r2BackupHydration) return r2BackupHydration;
   if (now - r2BackupHydratedAt < SOURCE_SCAN_COOLDOWN_MS) return;
@@ -583,7 +586,7 @@ export async function resolveUserMediaFallback(
     found = await readLocalUserMediaFallback(key);
     if (found) return found;
 
-    if (opts.allowR2 !== false) {
+    if (opts.allowR2 !== false && canAttemptDirectR2FromStoredSession()) {
       // 3) Objet média R2 dédié : chemin normal à partir de ce patch.
       try {
         const remote = await downloadDirectR2MediaFallback(key);
@@ -614,7 +617,7 @@ export async function resolveUserMediaFallback(
       found = await compactSource(primary, kind);
       if (found) {
         await storeEntry({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary });
-        if (opts.mirrorRecoveredToR2 !== false) {
+        if (opts.mirrorRecoveredToR2 !== false && canAttemptDirectR2FromStoredSession()) {
           void uploadDirectR2MediaFallback({ key, kind, dataUrl: found, updatedAt: Date.now(), sourceUrl: primary }).catch(() => undefined);
         }
         return found;
@@ -652,7 +655,10 @@ function fastImageHash(text: string): string {
   return (h >>> 0).toString(16);
 }
 
-export async function captureStoreUserMedia(store: any): Promise<void> {
+export async function captureStoreUserMedia(
+  store: any,
+  opts: { mirrorR2?: boolean } = {},
+): Promise<void> {
   type MediaJob = { key: string; source: string; kind: UserMediaKind | string; updatedAt?: number };
   const jobs: MediaJob[] = [];
   const knownInlineHashes = new Set<string>();
@@ -769,6 +775,7 @@ export async function captureStoreUserMedia(store: any): Promise<void> {
       await captureUserMediaFallback(job.key, job.source, {
         kind: job.kind,
         updatedAt: job.updatedAt,
+        mirrorR2: opts.mirrorR2 !== false,
       }).catch(() => "");
     });
   }

@@ -9,6 +9,7 @@
 
 import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
+import { isSensitiveAuthStorageKey } from "./authSessionGuard";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { runtimeDiag } from "./runtimeDiag";
@@ -1039,7 +1040,7 @@ export function installLocalStorageDcHook() {
     ls.setItem = (key: string, value: string) => {
       originalSetItem(key, value);
       try {
-        if (key && isDcKey(key) && !LS_EXCLUDE.has(key)) {
+        if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
           emitCloudChange(`ls:set:${key}`);
         }
       } catch {}
@@ -1048,7 +1049,7 @@ export function installLocalStorageDcHook() {
     ls.removeItem = (key: string) => {
       originalRemoveItem(key);
       try {
-        if (key && isDcKey(key) && !LS_EXCLUDE.has(key)) {
+        if (key && isDcKey(key) && !LS_EXCLUDE.has(key) && !isSensitiveAuthStorageKey(key)) {
           emitCloudChange(`ls:del:${key}`);
         }
       } catch {}
@@ -1215,7 +1216,9 @@ export async function storageEstimate() {
 }
 
 function shouldExportLocalStorageDcKey(key: string, value: string | null): boolean {
-  if (!key || !isAppUserCreatedLocalStorageKey(key) || LS_EXCLUDE.has(key)) return false;
+  // Les tokens/session Supabase-NAS ne font JAMAIS partie d'une sauvegarde.
+  // Cette règle s'applique aussi aux anciens snapshots à l'import.
+  if (!key || !isAppUserCreatedLocalStorageKey(key) || LS_EXCLUDE.has(key) || isSensitiveAuthStorageKey(key)) return false;
   const lower = key.toLowerCase();
   if (
     lower.includes("history") ||
@@ -1610,7 +1613,9 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   // MEDIA FAILOVER: capture les pixels AVANT que le store principal soit allégé.
   // Ainsi avatars/photos de sets/logos restent dans un coffre IndexedDB dédié et
   // sont répliqués vers R2 sans dépendre du NAS.
-  void captureStoreUserMedia(guardedInput as any).catch(() => undefined);
+  // Sauvegarde locale uniquement à chaque mutation du store. La réplication R2
+  // est déclenchée par le pipeline cloud dédié, jamais par un simple rendu/navigation.
+  void captureStoreUserMedia(guardedInput as any, { mirrorR2: false }).catch(() => undefined);
   const startedAt = storageNowMs();
 
   try {
@@ -2698,7 +2703,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   try {
     const currentStore: any = await loadStore();
     if (currentStore && mediaMirror !== "skip") {
-      const job = captureStoreUserMedia(currentStore);
+      const job = captureStoreUserMedia(currentStore, { mirrorR2: true });
       if (mediaMirror === "await") await job;
       else void job.catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
     }

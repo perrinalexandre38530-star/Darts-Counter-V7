@@ -17,6 +17,8 @@ const backendServer = fs.readFileSync(new URL("../server.js", import.meta.url), 
 const profileAvatar = fs.readFileSync(new URL("../src/components/ProfileAvatar.tsx", import.meta.url), "utf8");
 const avatarR2Fallback = fs.readFileSync(new URL("../src/lib/avatarR2Fallback.ts", import.meta.url), "utf8");
 const bots = fs.readFileSync(new URL("../src/lib/bots.ts", import.meta.url), "utf8");
+const authGuard = fs.readFileSync(new URL("../src/lib/authSessionGuard.ts", import.meta.url), "utf8");
+const onlineSessionFix = fs.readFileSync(new URL("../src/lib/onlineSessionFix.ts", import.meta.url), "utf8");
 
 const checks = [
   [storage.includes("portableAccountData"), "snapshot must include portableAccountData"],
@@ -48,6 +50,13 @@ const checks = [
   [backendServer.includes("localhost|127\\.0\\.0\\.1") || backendServer.includes("localhost|127\.0\.0\.1"), "legacy backend CORS must tolerate local diagnostic ports"],
   [cloudAccountBackup.includes("getCachedLocalProfilesForSafety") && cloudAccountBackup.includes("Sauvegarde R2 automatique bloquée"), "automatic R2 backup must refuse a partial/empty local profile state"],
   [avatarR2Fallback.includes("resolveRuntimeMediaUrl") && avatarR2Fallback.includes("fetch(runtimeValue"), "avatar R2 recovery must not fetch legacy NAS media cross-origin"],
+  [authGuard.includes("isSensitiveAuthStorageKey") && authGuard.includes("dc-supabase-auth-v2:") && authGuard.includes("sb-.*-auth-token"), "Supabase/NAS auth keys must be classified as non-backup data"],
+  [storage.includes("isSensitiveAuthStorageKey(key)") && storage.includes("mirrorR2: false") && storage.includes("mirrorR2: true"), "routine store saves must stay local while cloud export owns R2 media mirroring"],
+  [directR2.includes("isFreshSupabaseAccessToken") && directR2.includes("directTokenPromise") && directR2.includes("DIRECT_AUTH_REJECT_COOLDOWN_MS"), "R2 requests must reject expired tokens and coalesce/cool down auth failures"],
+  [userMedia.includes("canAttemptDirectR2FromStoredSession") && userMedia.includes("opts: { mirrorR2?: boolean }"), "media fallback must not hammer R2 without a fresh cloud session"],
+  [cloudAccountBackup.includes("canAttemptDirectR2FromStoredSession") && cloudAccountBackup.includes("sans JWT frais"), "automatic account backup must not run from a stale local user id alone"],
+  [restore.includes("/^dc-supabase-auth-v2:/i") && restore.includes("/^sb-.*-auth-token$/i"), "cloud restore must preserve the current dynamic Supabase session keys"],
+  [onlineSessionFix.includes("isInvalidRefreshSessionError") && onlineSessionFix.includes("clearSupabaseBrowserAuthStorage"), "invalid refresh tokens must be purged instead of rehydrated forever"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

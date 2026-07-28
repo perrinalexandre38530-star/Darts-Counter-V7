@@ -5,7 +5,10 @@ import {
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 import { restoreCloudBackupFromJson } from "./cloudBackup";
-import { downloadDirectR2NasUserMirror } from "./directR2BackupApi";
+import {
+  canAttemptDirectR2FromStoredSession,
+  downloadDirectR2NasUserMirror,
+} from "./directR2BackupApi";
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "./remoteSnapshotRestore";
 import { History } from "./history";
 import LZString from "lz-string";
@@ -92,7 +95,7 @@ let historySyncUserId = "";
 
 async function syncLatestCloudHistory(userId: string): Promise<number> {
   const uid = String(userId || "").trim();
-  if (!uid) return 0;
+  if (!uid || !canAttemptDirectR2FromStoredSession()) return 0;
 
   const cloudItems = await listCloudVaultBackups(20, false).catch(() => []);
   const latest = pickLatestUsefulCloudSlot(cloudItems);
@@ -112,7 +115,7 @@ async function syncLatestCloudHistory(userId: string): Promise<number> {
 
 function ensureCloudHistoryAutoSync(userId: string): void {
   const uid = String(userId || "").trim();
-  if (!uid || typeof window === "undefined") return;
+  if (!uid || typeof window === "undefined" || !canAttemptDirectR2FromStoredSession()) return;
   historySyncUserId = uid;
 
   if (historySyncTimer == null) {
@@ -173,25 +176,61 @@ function removeStorageKey(key: string): void {
 }
 
 function rememberAuthKeys(): () => void {
-  const keys = [
+  // Une restauration de données ne doit jamais remplacer la session courante
+  // par des JWT/refresh tokens présents dans un ancien snapshot.
+  const exactKeys = new Set([
     "dc_online_auth_supabase_v1",
     "dc_nas_access_token_v1",
     "dc_nas_refresh_token_v1",
     "dc_user_id",
     "dc_storage_user_id_v1",
     "dc_api_url",
-  ];
-  const saved: Record<string, string> = {};
-  try {
-    for (const key of keys) {
-      const value = window.localStorage.getItem(key);
-      if (value != null) saved[key] = value;
-    }
-  } catch {}
-  return () => {
+  ]);
+  const savedLocal: Record<string, string> = {};
+  const savedSession: Record<string, string> = {};
+
+  const capture = (storage: Storage, target: Record<string, string>) => {
     try {
-      for (const [key, value] of Object.entries(saved)) window.localStorage.setItem(key, value);
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i) || "";
+        if (!key) continue;
+        if (
+          exactKeys.has(key) ||
+          /^dc-supabase-auth-v2:/i.test(key) ||
+          /^sb-.*-auth-token$/i.test(key) ||
+          key === "supabase.auth.token" ||
+          key === "sb-auth-token"
+        ) {
+          const value = storage.getItem(key);
+          if (value != null) target[key] = value;
+        }
+      }
     } catch {}
+  };
+
+  capture(window.localStorage, savedLocal);
+  capture(window.sessionStorage, savedSession);
+
+  return () => {
+    const restore = (storage: Storage, saved: Record<string, string>) => {
+      try {
+        // Supprime uniquement les clés de session créées par le snapshot pendant l'import.
+        const toRemove: string[] = [];
+        for (let i = 0; i < storage.length; i += 1) {
+          const key = storage.key(i) || "";
+          if (
+            /^dc-supabase-auth-v2:/i.test(key) ||
+            /^sb-.*-auth-token$/i.test(key) ||
+            key === "supabase.auth.token" ||
+            key === "sb-auth-token"
+          ) toRemove.push(key);
+        }
+        for (const key of toRemove) storage.removeItem(key);
+        for (const [key, value] of Object.entries(saved)) storage.setItem(key, value);
+      } catch {}
+    };
+    restore(window.localStorage, savedLocal);
+    restore(window.sessionStorage, savedSession);
   };
 }
 
@@ -340,6 +379,8 @@ export async function maybeAutoRestoreCloudForSignedInUser(
   if (typeof window === "undefined") return false;
   const uid = String(userId || "").trim();
   if (!uid) return false;
+  // Un identifiant local conservé n'est pas une session Cloud.
+  if (!canAttemptDirectR2FromStoredSession()) return false;
 
   // L'écran de connexion et le hook auth peuvent déclencher la restauration en même temps.
   if (inFlight) return inFlight;

@@ -20,6 +20,10 @@ let __authBootstrapPromise: Promise<void> | null = null;
 // ============================================================
 
 import { supabase, __SUPABASE_ENV__ } from "./supabaseClient";
+import {
+  clearSupabaseBrowserAuthStorage,
+  isInvalidRefreshSessionError,
+} from "./authSessionGuard";
 import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
 import {
   ensureSupabaseAuthBackup,
@@ -1200,10 +1204,18 @@ async function restoreSession(): Promise<AuthSession | null> {
     const cached = loadAuthFromLS();
     if (cached?.token && cached.refreshToken) {
       try {
-        await supabase.auth.setSession({
+        const restored = await supabase.auth.setSession({
           access_token: cached.token,
           refresh_token: cached.refreshToken,
         });
+        if (restored?.error) {
+          if (isInvalidRefreshSessionError(restored.error)) {
+            clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
+            markAuthReady(false);
+            return null;
+          }
+          throw restored.error;
+        }
         const retry = await buildAuthSessionFromSupabase({ allowNasFailure: true });
         if (retry) {
           try {
