@@ -47,6 +47,9 @@
     "test:r2-account-data": "node ./tools/test-r2-account-data.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
     "@supabase/supabase-js": "^2.48.0",
     "fflate": "^0.8.2",
     "jsqr": "^1.4.0",
@@ -61,6 +64,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "@eslint/js": "^9.38.0",
     "@types/node": "^24.8.1",
     "@types/react": "^18.3.11",

@@ -1186,7 +1186,7 @@ function buildSessionFromSummary(
   const pidStr = String(pid);
 
   // Ligne perPlayer qui correspond à ce joueur
-  const row =
+  const perPlayerRow =
     perPlayer.find((p) => {
       const candidates = [
         p.playerId,
@@ -1199,6 +1199,14 @@ function buildSessionFromSummary(
         .map((x: any) => String(x));
       return candidates.includes(pidStr);
     }) || {};
+
+  // IMPORT/RÉCUPÉRATION : certains X01 MULTI compacts ont un tableau `players`
+  // minimal (id/name/avatar), mais toutes les valeurs utiles sont dans ranking /
+  // finalRanking / standings. On fusionne la ligne la plus riche avant extraction.
+  const rankingRow = collectX01RankingRows(match).find((r: any) =>
+    x01RowMatchesPid(r, pidStr, perPlayerRow?.name ?? perPlayerRow?.playerName)
+  ) || {};
+  const row = { ...rankingRow, ...perPlayerRow };
 
   // Détail V3 (lookup exact + lookup loose : certains historiques gardent profileId/id mélangés)
   const detail: any = getLooseObjectValue(detailedByPlayer, [pid, row.playerId, row.selectedPlayerId, row.profileId, row.id, row.pid]) || {};
@@ -1216,12 +1224,19 @@ function buildSessionFromSummary(
   }
 
   // ---------- Moyennes ----------
+  const mappedAvg3 = getLooseMapValue(
+    summary.avg3d ?? summary.avg3D ?? summary.avg3ByPlayer ?? summary.average3ByPlayer,
+    [pidStr, row.id, row.playerId, row.profileId, row.pid, row.name, row.playerName]
+  );
   const avg3D = numOr0(
     summary.avg3ByPlayer?.[pidStr],
     detail.avg3,
     detail.avg3D,
+    detail.avg3d,
     row.avg3,
     row.avg3D,
+    row.avg3d,
+    mappedAvg3,
     dartFallback?.avg3D
   );
 
@@ -1448,7 +1463,6 @@ function buildSessionFromSummary(
     .filter(Boolean)
     .map((x: any) => String(x));
 
-  const rankingRow = collectX01RankingRows(match).find((r) => x01RowMatchesPid(r, pidStr, row?.name || row?.playerName));
 
   function lookupValueInMaps(maps: any[]): number {
     for (const map of maps) {

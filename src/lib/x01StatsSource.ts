@@ -178,23 +178,52 @@ export function profileMatchesPlayer(profile: any, playerLike: any, key?: any): 
 }
 
 export function collectPlayers(rec: any): any[] {
-  const out: any[] = [];
-  const push = (arr: any) => { if (Array.isArray(arr)) arr.forEach((p) => p && out.push(p)); };
-  for (const obj of walkObjects(rec, 5)) {
-    push(obj?.players);
-    push(obj?.rankings);
-    push(obj?.perPlayer);
+  // Un match restauré/compact peut avoir `players` = simple annuaire (id/name/avatar)
+  // et les VRAIES stats dans ranking/finalRanking/standings. On fusionne donc toutes
+  // les représentations du même joueur au lieu de garder la première ligne rencontrée.
+  const byKey = new Map<string, any>();
+  const mergeOne = (row: any) => {
+    if (!row || typeof row !== "object") return;
+    const id = String(row?.id ?? row?.profileId ?? row?.playerId ?? row?.pid ?? row?.uid ?? "").trim();
+    const name = String(row?.name ?? row?.playerName ?? row?.displayName ?? "").trim();
+    const key = id ? `id:${id}` : name ? `name:${normText(name)}` : "";
+    if (!key) return;
+    byKey.set(key, { ...(byKey.get(key) || {}), ...row });
+  };
+  const push = (arr: any) => { if (Array.isArray(arr)) arr.forEach(mergeOne); };
+  for (const obj of walkObjects(rec, 6)) {
+    for (const key of [
+      "players", "rankings", "ranking", "finalRanking", "multiRanking",
+      "classification", "standings", "leaderboard", "playersRanking", "perPlayer",
+    ]) push(obj?.[key]);
     if (obj?.pn && Array.isArray(obj?.p)) {
       push(Object.entries(obj.pn).map(([i, name]) => ({ id: obj.p?.[Number(i)], name })));
     }
   }
-  const seen = new Set<string>();
-  return out.filter((p) => {
-    const k = String(p?.id ?? p?.profileId ?? p?.playerId ?? p?.pid ?? p?.uid ?? p?.name ?? p?.playerName ?? JSON.stringify(p));
-    if (!k || seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  return Array.from(byKey.values());
+}
+
+function metricMapValueForPlayer(rec: any, mapKeys: string[], playerId: string, playerName: string): number {
+  const wanted = new Set(mapKeys.map((k) => String(k).toLowerCase()));
+  const pid = String(playerId || "").trim();
+  const pname = normText(playerName);
+  for (const obj of walkObjects(rec, 6)) {
+    for (const [key, map] of Object.entries(obj || {})) {
+      if (!wanted.has(String(key).toLowerCase()) || !map || typeof map !== "object" || Array.isArray(map)) continue;
+      if (pid && Object.prototype.hasOwnProperty.call(map, pid)) {
+        const n = Number((map as any)[pid]);
+        if (Number.isFinite(n)) return n;
+      }
+      for (const [k, v] of Object.entries(map as any)) {
+        const keyText = String(k);
+        if ((pid && idLooseMatch(keyText, pid)) || (pname && normText(keyText) === pname)) {
+          const n = Number(v);
+          if (Number.isFinite(n)) return n;
+        }
+      }
+    }
+  }
+  return 0;
 }
 
 export function findProfileForPlayer(profiles: any[], playerLike: any, key?: any): any | null {
@@ -449,29 +478,33 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
   const found = findStatsForProfile(rec, profile);
   if (!found) return null;
   const s: any = found.stats || {};
-  const h = hitsObj(s);
-  const scores = (s.scorePerVisit || s.scorepervisit || s.visitsScores || s.visits || []).map((x: any) => num(x));
-  const thresholds = countVisitsFromScores(scores);
   const player = found.player || s;
   const playerId = String(player?.id ?? player?.profileId ?? player?.playerId ?? found.key ?? profile?.id ?? "");
   const playerName = String(player?.name ?? player?.playerName ?? s?.name ?? profile?.name ?? "");
   const winnerId = rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? deepFirst(rec, ["winnerId", "lastWinnerId", "lastLegWinnerId", "winner"] ) ?? null;
   const winnerName = rec?.winnerName ?? rec?.summary?.winnerName ?? rec?.payload?.winnerName ?? rec?.payload?.summary?.winnerName ?? deepFirst(rec, ["winnerName"] ) ?? null;
   const ranked = findRankingRow(rec, playerId, playerName);
+  // Les exports de récupération X01 MULTI stockent avg3d/scored/rank dans ranking,
+  // alors que `players` ne contient que l'identité et l'avatar. Fusion indispensable.
+  const merged: any = { ...(ranked?.row || {}), ...s };
+  const h = hitsObj(merged);
+  const scores = (merged.scorePerVisit || merged.scorepervisit || merged.visitsScores || merged.visits || []).map((x: any) => num(x));
+  const thresholds = countVisitsFromScores(scores);
   const rank = ranked?.rank ?? findPlayerRank(rec, playerId, playerName);
   const won = (rank === 1) || (winnerId && idLooseMatch(winnerId, playerId)) || (winnerName && normText(winnerName) === normText(playerName));
-  const darts = num(s.darts, num(s.dartsThrown, num(s.dt, num(s.totalDarts))));
-  const totalScore = num(s.totalScore, num(s.totalscore, num(s.points)));
-  const avg3 = num(s.avg3, num(s.avg3D, num(s.moy3, darts ? (totalScore / darts) * 3 : 0)));
-  const single = num(h.S, num(h.s, num(h.single, num(h.singles, num(s.hitsSingle, num(s.hitssingle))))));
-  const dbl = num(h.D, num(h.d, num(h.double, num(h.doubles, num(s.hitsDouble, num(s.hitsdouble))))));
-  const tri = num(h.T, num(h.t, num(h.triple, num(h.triples, num(s.hitsTriple, num(s.hitstriple))))));
-  const bull25 = num(h.Bull, num(h.bull, num(s.bull, num(s.bull25))));
-  const bull50 = num(h.DBull, num(h.dbull, num(s.dBull, num(s.bull50))));
-  const miss = num(h.M, num(h.m, num(h.miss, num(s.miss, num(s.misses)))));
-  const bust = num(h.bust, num(s.bust, num(s.busts)));
-  const coAttempts = num(s.coAttempts, num(s.checkoutAttempts, num(s.checkoutattempts, num(h.coAttempts, num(h.checkoutAttempts)))));
-  const coSuccess = num(s.coSuccess, num(s.coHits, num(s.checkoutHits, num(s.checkoutSuccess, num(h.coSuccess)))));
+  const darts = num(merged.darts, num(merged.dartsThrown, num(merged.dt, num(merged.totalDarts))));
+  const totalScore = num(merged.totalScore, num(merged.totalscore, num(merged.points, num(merged.scored, num(merged.score)))));
+  const mappedAvg3 = metricMapValueForPlayer(rec, ["avg3d", "avg3", "avg3ByPlayer", "average3ByPlayer", "moy3ByPlayer"], playerId, playerName);
+  const avg3 = num(merged.avg3, num(merged.avg3D, num(merged.avg3d, num(merged.moy3, mappedAvg3 || (darts ? (totalScore / darts) * 3 : 0)))));
+  const single = num(h.S, num(h.s, num(h.single, num(h.singles, num(merged.hitsSingle, num(merged.hitssingle))))));
+  const dbl = num(h.D, num(h.d, num(h.double, num(h.doubles, num(merged.hitsDouble, num(merged.hitsdouble))))));
+  const tri = num(h.T, num(h.t, num(h.triple, num(h.triples, num(merged.hitsTriple, num(merged.hitstriple))))));
+  const bull25 = num(h.Bull, num(h.bull, num(merged.bull, num(merged.bull25))));
+  const bull50 = num(h.DBull, num(h.dbull, num(merged.dBull, num(merged.bull50))));
+  const miss = num(h.M, num(h.m, num(h.miss, num(merged.miss, num(merged.misses)))));
+  const bust = num(h.bust, num(merged.bust, num(merged.busts)));
+  const coAttempts = num(merged.coAttempts, num(merged.checkoutAttempts, num(merged.checkoutattempts, num(h.coAttempts, num(h.checkoutAttempts)))));
+  const coSuccess = num(merged.coSuccess, num(merged.coHits, num(merged.checkoutHits, num(merged.checkoutSuccess, num(h.coSuccess)))));
   const x01Ctx = getX01StatsContext(rec);
   return {
     id: String(rec?.id ?? rec?.matchId ?? rec?.payload?.id ?? `${playerId}-${rec?.createdAt ?? Date.now()}`),
@@ -488,27 +521,27 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
     rank: rank ?? null,
     playerCount: countFinishedPlayers(rec),
     legsWon: num(
-      s.legsWon,
-      num(s.lw, num(s.legs_won, num(ranked?.row?.legsWon, num(ranked?.row?.lw, num(ranked?.row?.legs, mapValueLoose(scoreMapsFor(rec, "legs")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
+      merged.legsWon,
+      num(merged.lw, num(merged.legs_won, num(ranked?.row?.legsWon, num(ranked?.row?.lw, num(ranked?.row?.legs, mapValueLoose(scoreMapsFor(rec, "legs")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
     ),
     setsWon: num(
-      s.setsWon,
-      num(s.sw, num(s.sets_won, num(ranked?.row?.setsWon, num(ranked?.row?.sw, num(ranked?.row?.sets, mapValueLoose(scoreMapsFor(rec, "sets")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
+      merged.setsWon,
+      num(merged.sw, num(merged.sets_won, num(ranked?.row?.setsWon, num(ranked?.row?.sw, num(ranked?.row?.sets, mapValueLoose(scoreMapsFor(rec, "sets")[0], [playerId, found.key, player?.profileId, player?.playerId]))))))
     ),
     darts,
     totalScore,
     avg3,
-    bestVisit: num(s.bestVisit, num(s.bv, num(s.best_visit))),
-    bestCheckout: num(s.bestCheckout, num(s.bc, num(s.bestCo, num(s.best_co)))) || num((rec?.summary?.bestCheckoutByPlayer || rec?.payload?.summary?.bestCheckoutByPlayer || {})[found.key]),
-    best9Score: num(s.best9Score, num(s.best9, best9FromScores(scores))),
+    bestVisit: num(merged.bestVisit, num(merged.bv, num(merged.best_visit))),
+    bestCheckout: num(merged.bestCheckout, num(merged.bc, num(merged.bestCo, num(merged.best_co)))) || num((rec?.summary?.bestCheckoutByPlayer || rec?.payload?.summary?.bestCheckoutByPlayer || {})[found.key]),
+    best9Score: num(merged.best9Score, num(merged.best9, best9FromScores(scores))),
     scorePerVisit: scores,
-    h50: num(s.h50, thresholds.h50),
-    h60: num(s.h60, thresholds.h60),
-    h80: num(s.h80, thresholds.h80),
-    h100: num(s.h100, thresholds.h100),
-    h120: num(s.h120, thresholds.h120),
-    h140: num(s.h140, thresholds.h140),
-    h180: num(s.h180, thresholds.h180),
+    h50: num(merged.h50, thresholds.h50),
+    h60: num(merged.h60, thresholds.h60),
+    h80: num(merged.h80, thresholds.h80),
+    h100: num(merged.h100, thresholds.h100),
+    h120: num(merged.h120, thresholds.h120),
+    h140: num(merged.h140, thresholds.h140),
+    h180: num(merged.h180, thresholds.h180),
     miss,
     singleHits: single,
     doubleHits: dbl,
@@ -528,6 +561,10 @@ export function sampleFromRec(rec: any, profile: any): X01PlayerSample | null {
 
 export function aggregateX01Samples(samples: X01PlayerSample[]): X01Agg {
   const out: X01Agg = { count: 0, matchesPlayed: 0, matchesWon: 0, legsWon: 0, setsWon: 0, darts: 0, totalScore: 0, avg3: 0, bestVisit: 0, bestCheckout: 0, best9Score: 0, h50: 0, h60: 0, h80: 0, h100: 0, h120: 0, h140: 0, h180: 0, miss: 0, singleHits: 0, doubleHits: 0, tripleHits: 0, bull25: 0, bull50: 0, bust: 0, coAttempts: 0, coSuccess: 0 };
+  let avgWeightPoints = 0;
+  let avgWeightDarts = 0;
+  let directAvgSum = 0;
+  let directAvgCount = 0;
   for (const s of samples || []) {
     out.count++;
     out.matchesPlayed += num(s.matchesPlayed);
@@ -536,13 +573,31 @@ export function aggregateX01Samples(samples: X01PlayerSample[]): X01Agg {
     out.setsWon += num(s.setsWon);
     out.darts += num(s.darts);
     out.totalScore += num(s.totalScore);
+    const sd = num(s.darts);
+    const sp = num(s.totalScore);
+    const sa = num(s.avg3);
+    if (sd > 0) {
+      avgWeightDarts += sd;
+      avgWeightPoints += sp;
+    } else if (sa > 0 && sp > 0) {
+      // Exports compacts récupérés : darts absents, mais scored + avg3d conservés.
+      avgWeightDarts += (sp * 3) / sa;
+      avgWeightPoints += sp;
+    } else if (sa > 0) {
+      directAvgSum += sa;
+      directAvgCount += 1;
+    }
     out.bestVisit = Math.max(out.bestVisit, num(s.bestVisit));
     out.bestCheckout = Math.max(out.bestCheckout, num(s.bestCheckout));
     out.best9Score = Math.max(out.best9Score, num(s.best9Score));
     out.h50 += num(s.h50); out.h60 += num(s.h60); out.h80 += num(s.h80); out.h100 += num(s.h100); out.h120 += num(s.h120); out.h140 += num(s.h140); out.h180 += num(s.h180);
     out.miss += num(s.miss); out.singleHits += num(s.singleHits); out.doubleHits += num(s.doubleHits); out.tripleHits += num(s.tripleHits); out.bull25 += num(s.bull25); out.bull50 += num(s.bull50); out.bust += num(s.bust); out.coAttempts += num(s.coAttempts); out.coSuccess += num(s.coSuccess);
   }
-  out.avg3 = out.darts > 0 ? (out.totalScore / out.darts) * 3 : 0;
+  out.avg3 = avgWeightDarts > 0
+    ? (avgWeightPoints / avgWeightDarts) * 3
+    : directAvgCount > 0
+      ? directAvgSum / directAvgCount
+      : 0;
   return out;
 }
 
@@ -641,7 +696,7 @@ export async function buildOnlineX01Leaderboard(profiles: any[] = []): Promise<a
   const all = await loadAllHistoryRecords();
   const map = new Map<string, any>();
   const ensure = (id: string, name: string, avatar?: string | null) => {
-    const existing = map.get(id) || { playerId: id, name, avatarDataUrl: avatar || null, matches: 0, wins: 0, darts: 0, totalScore: 0, avg3: 0, bestVisit: 0, bestCheckout: 0 };
+    const existing = map.get(id) || { playerId: id, name, avatarDataUrl: avatar || null, matches: 0, wins: 0, darts: 0, totalScore: 0, avg3: 0, bestVisit: 0, bestCheckout: 0, _avg3Sum: 0, _avg3Count: 0 };
     if (name && (!existing.name || existing.name === "Player")) existing.name = name;
     if (avatar && !existing.avatarDataUrl) existing.avatarDataUrl = avatar;
     map.set(id, existing);
@@ -661,9 +716,17 @@ export async function buildOnlineX01Leaderboard(profiles: any[] = []): Promise<a
       row.wins += smp.matchesWon;
       row.darts += smp.darts;
       row.totalScore += smp.totalScore;
+      if (num(smp.avg3) > 0) { row._avg3Sum += num(smp.avg3); row._avg3Count += 1; }
       row.bestVisit = Math.max(row.bestVisit, smp.bestVisit);
       row.bestCheckout = Math.max(row.bestCheckout, smp.bestCheckout);
     }
   }
-  return Array.from(map.values()).map((r) => ({ ...r, avg3: r.darts > 0 ? (r.totalScore / r.darts) * 3 : 0, winRate: r.matches ? (r.wins / r.matches) * 100 : 0 })).sort((a, b) => b.wins - a.wins || b.avg3 - a.avg3 || b.bestVisit - a.bestVisit);
+  return Array.from(map.values()).map((r) => {
+    const { _avg3Sum, _avg3Count, ...clean } = r;
+    return {
+      ...clean,
+      avg3: r.darts > 0 ? (r.totalScore / r.darts) * 3 : _avg3Count > 0 ? _avg3Sum / _avg3Count : 0,
+      winRate: r.matches ? (r.wins / r.matches) * 100 : 0,
+    };
+  }).sort((a, b) => b.wins - a.wins || b.avg3 - a.avg3 || b.bestVisit - a.bestVisit);
 }

@@ -398,9 +398,32 @@ function bumpPlayer(idx: StatsIndex, playerId: string, patch: Partial<PlayerAgg>
     }
     p.buckets = nxt;
   }
-  const darts = Number(p.dartsThrown || 0) || 0;
-  const points = Number(p.pointsScored || 0) || 0;
-  p.avg3 = darts > 0 ? (points / darts) * 3 : 0;
+  // Moyenne robuste : les exports compacts de récupération peuvent conserver
+  // `scored + avg3d` sans le nombre exact de fléchettes. On garde les vrais totaux
+  // affichés intacts, mais on utilise un poids virtuel uniquement pour calculer AVG3.
+  const patchDarts = Number(patch.dartsThrown || 0) || 0;
+  const patchPoints = Number(patch.pointsScored || 0) || 0;
+  const patchAvg3 = Number(patch.avg3 || 0) || 0;
+  const internal = p as any;
+  internal.__avg3WeightDarts = Number(internal.__avg3WeightDarts || 0) || 0;
+  internal.__avg3WeightPoints = Number(internal.__avg3WeightPoints || 0) || 0;
+  internal.__avg3DirectSum = Number(internal.__avg3DirectSum || 0) || 0;
+  internal.__avg3DirectCount = Number(internal.__avg3DirectCount || 0) || 0;
+  if (patchDarts > 0) {
+    internal.__avg3WeightDarts += patchDarts;
+    internal.__avg3WeightPoints += patchPoints;
+  } else if (patchAvg3 > 0 && patchPoints > 0) {
+    internal.__avg3WeightDarts += (patchPoints * 3) / patchAvg3;
+    internal.__avg3WeightPoints += patchPoints;
+  } else if (patchAvg3 > 0) {
+    internal.__avg3DirectSum += patchAvg3;
+    internal.__avg3DirectCount += 1;
+  }
+  p.avg3 = internal.__avg3WeightDarts > 0
+    ? (internal.__avg3WeightPoints / internal.__avg3WeightDarts) * 3
+    : internal.__avg3DirectCount > 0
+      ? internal.__avg3DirectSum / internal.__avg3DirectCount
+      : 0;
   if (ts && (!p.lastMatchAt || ts > p.lastMatchAt)) p.lastMatchAt = ts;
 
   idx.byPlayer[playerId] = p;
@@ -442,7 +465,7 @@ function extractX01QuickMetrics(pl: any): { dartsThrown: number; pointsScored: n
     if (!pointsScored && total) pointsScored = total;
   }
 
-  if (!Object.keys(buckets).length) buckets = makeVisitBuckets(bestVisit);
+  if (!Object.keys(buckets).length && bestVisit > 0) buckets = makeVisitBuckets(bestVisit);
   return { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets };
 }
 
@@ -556,15 +579,51 @@ function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undef
 
 const extractors: Partial<Record<GameKey, Extractor>> = {
   x01: ({ payload, ts, idx }) => {
-    const players = payload?.players || payload?.state?.players || payload?.snapshot?.players || payload?.match?.players || [];
-    const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.winner?.id;
+    const byId = new Map<string, any>();
+    const mergePool = (pool: any) => {
+      if (Array.isArray(pool)) {
+        for (const row of pool) {
+          const pid = String(row?.id || row?.playerId || row?.uid || row?.profileId || row?.pid || "").trim();
+          if (!pid) continue;
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
+        }
+      } else if (pool && typeof pool === "object") {
+        for (const [key, row] of Object.entries(pool)) {
+          if (!row || typeof row !== "object") continue;
+          const pid = String((row as any)?.id || (row as any)?.playerId || (row as any)?.uid || (row as any)?.profileId || key || "").trim();
+          if (!pid) continue;
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row as any), id: pid, playerId: pid });
+        }
+      }
+    };
 
-    for (const pl of Array.isArray(players) ? players : []) {
-      const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
+    for (const pool of [
+      payload?.players, payload?.state?.players, payload?.snapshot?.players, payload?.match?.players,
+      payload?.summary?.players, payload?.summary?.perPlayer, payload?.summary?.ranking,
+      payload?.summary?.rankings, payload?.summary?.finalRanking, payload?.summary?.multiRanking,
+      payload?.summary?.classification, payload?.summary?.standings,
+    ]) mergePool(pool);
+
+    const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.winner?.id || payload?.summary?.winnerId || payload?.summary?.winner?.id;
+    const avg3Map = payload?.summary?.avg3d || payload?.summary?.avg3D || payload?.summary?.avg3ByPlayer || {};
+    const avgFor = (pl: any, pid: string) => {
+      const direct = Number(pl?.avg3 ?? pl?.avg3D ?? pl?.avg3d ?? pl?.stats?.avg3 ?? pl?.stats?.avg3D);
+      if (Number.isFinite(direct) && direct > 0) return direct;
+      for (const key of [pid, pl?.name, pl?.displayName]) {
+        if (key != null && Object.prototype.hasOwnProperty.call(avg3Map, String(key))) {
+          const n = Number(avg3Map[String(key)]);
+          if (Number.isFinite(n) && n > 0) return n;
+        }
+      }
+      return 0;
+    };
+
+    for (const pl of byId.values()) {
+      const pid = String(pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "");
       if (!pid) continue;
       const name = pl?.name || pl?.displayName;
       const { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets } = extractX01QuickMetrics(pl);
-      const isWinner = winnerId && pid === String(winnerId);
+      const isWinner = !!winnerId && pid === String(winnerId);
 
       bumpPlayer(
         idx,
@@ -576,6 +635,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           losses: winnerId ? (isWinner ? 0 : 1) : 0,
           dartsThrown,
           pointsScored,
+          avg3: avgFor(pl, pid),
           bestVisit,
           bestCheckout,
           buckets,
