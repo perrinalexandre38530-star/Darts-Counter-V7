@@ -1,6 +1,8 @@
 // ============================================
 // src/lib/sync/CloudHistoryImport.ts
-// Import incrémental des matchs depuis Supabase (stats_events)
+// Import incrémental des matchs depuis Supabase.
+// - Schéma courant : public.events
+// - Fallback legacy : public.stats_events uniquement si public.events n'existe pas
 // - Lit les events MATCH_SAVED (payload light)
 // - Reconstruit des entrées History "light" (ou payload si présent)
 // - Utilise History.upsertFromCloud() (anti-boucle + conflits)
@@ -11,6 +13,13 @@ import { History, type SavedMatch } from "../history";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
 
 const CHECKPOINT_KEY = "dc_cloud_history_last_pull_iso_v1";
+
+type NormalizedEventRow = {
+  id: string;
+  event_type: string;
+  payload: any;
+  created_at: string;
+};
 
 function canUseWindow(): boolean {
   return typeof window !== "undefined";
@@ -52,6 +61,75 @@ function normalizeFromMatchSaved(payload: any): SavedMatch | null {
   return rec;
 }
 
+function missingRelation(error: any): boolean {
+  const code = String(error?.code || "").toUpperCase();
+  const text = `${String(error?.message || "")} ${String(error?.details || "")} ${String(error?.hint || "")}`.toLowerCase();
+  return code === "PGRST205" || code === "42P01" || text.includes("could not find the table") || text.includes("relation") && text.includes("does not exist");
+}
+
+async function fetchMatchSavedPage(args: {
+  uid: string;
+  checkpoint: string;
+  pageSize: number;
+}): Promise<{ rows: NormalizedEventRow[]; error?: any }> {
+  const { uid, checkpoint, pageSize } = args;
+
+  // 1) Schéma courant : EventBuffer écrit dans public.events.
+  let modern = supabase
+    .from("events")
+    .select("event_id,type,payload,created_at")
+    .eq("user_id", uid)
+    .like("type", "%:MATCH_SAVED")
+    .order("created_at", { ascending: true })
+    .limit(pageSize);
+
+  if (checkpoint) modern = modern.gt("created_at", checkpoint);
+
+  const modernResult = await modern;
+  if (!modernResult.error) {
+    const rows = ((modernResult.data || []) as any[]).map((r) => ({
+      id: String(r?.event_id || ""),
+      event_type: "MATCH_SAVED",
+      // public.events enveloppe le payload applicatif dans { meta, data }.
+      payload: r?.payload?.data ?? r?.payload ?? null,
+      created_at: String(r?.created_at || ""),
+    }));
+    return { rows };
+  }
+
+  // Une vraie erreur sur le schéma courant doit rester visible.
+  if (!missingRelation(modernResult.error)) {
+    return { rows: [], error: modernResult.error };
+  }
+
+  // 2) Anciennes installations seulement : public.stats_events.
+  let legacy = supabase
+    .from("stats_events")
+    .select("id,event_type,payload,created_at")
+    .eq("event_type", "MATCH_SAVED")
+    .order("created_at", { ascending: true })
+    .limit(pageSize);
+
+  if (checkpoint) legacy = legacy.gt("created_at", checkpoint);
+
+  const legacyResult = await legacy;
+  if (legacyResult.error) {
+    // Si les deux tables n'existent pas, il n'y a simplement aucun flux d'events cloud à importer.
+    // Ne pas polluer la console à chaque montage de page.
+    if (missingRelation(legacyResult.error)) return { rows: [] };
+    return { rows: [], error: legacyResult.error };
+  }
+
+  return {
+    rows: ((legacyResult.data || []) as any[]).map((r) => ({
+      id: String(r?.id || ""),
+      event_type: String(r?.event_type || "MATCH_SAVED"),
+      payload: r?.payload ?? null,
+      created_at: String(r?.created_at || ""),
+    })),
+  };
+}
+
 export async function importHistoryFromCloud(opts?: {
   pageSize?: number;
   maxPages?: number;
@@ -62,7 +140,8 @@ export async function importHistoryFromCloud(opts?: {
 
   // Session requise
   const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } } as any));
-  if (!data?.user?.id) return { imported: 0, conflicts: 0 };
+  const uid = String(data?.user?.id || "");
+  if (!uid) return { imported: 0, conflicts: 0 };
 
   if (opts?.hardReset) setCheckpoint("");
   let checkpoint = getCheckpoint();
@@ -76,35 +155,25 @@ export async function importHistoryFromCloud(opts?: {
   } catch {}
 
   for (let page = 0; page < maxPages; page++) {
-    let q = supabase
-      .from("stats_events")
-      .select("id,event_type,payload,created_at", { count: "exact" } as any)
-      .eq("event_type", "MATCH_SAVED")
-      .order("created_at", { ascending: true })
-      .limit(pageSize);
-
-    if (checkpoint) {
-      q = q.gt("created_at", checkpoint);
-    }
-
-    const { data: rows, error } = await q;
-    if (error) {
-      console.warn("[CloudHistoryImport] fetch failed", error);
+    const result = await fetchMatchSavedPage({ uid, checkpoint, pageSize });
+    if (result.error) {
+      console.warn("[CloudHistoryImport] fetch failed", result.error);
       break;
     }
 
-    if (!rows || rows.length === 0) break;
+    const rows = result.rows;
+    if (!rows.length) break;
 
     for (const r of rows) {
-      const rec = normalizeFromMatchSaved((r as any).payload);
+      const rec = normalizeFromMatchSaved(r.payload);
       if (!rec) continue;
 
       // eslint-disable-next-line no-await-in-loop
-      const res = await History.upsertFromCloud(rec, { cloudEventId: String((r as any).id || ""), cloudCreatedAt: String((r as any).created_at || "") });
+      const res = await History.upsertFromCloud(rec, { cloudEventId: r.id, cloudCreatedAt: r.created_at });
       if (res.applied === "cloud") imported++;
       if (res.conflictId) conflicts++;
 
-      const ca = String((r as any).created_at || "");
+      const ca = r.created_at;
       if (ca && (!lastSeen || ca > lastSeen)) lastSeen = ca;
     }
 

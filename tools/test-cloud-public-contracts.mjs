@@ -23,6 +23,7 @@ const apiClient = read("src/lib/apiClient.ts");
 const friendsApi = read("src/lib/friendsApi.ts");
 const linkedProfileSync = read("src/lib/linkedProfileSync.ts");
 const messageCenterNotify = read("src/lib/messageCenterNotify.ts");
+const cloudHistoryImport = read("src/lib/sync/CloudHistoryImport.ts");
 const settings = read("src/pages/Settings.tsx");
 const friends = read("src/pages/FriendsPage.tsx");
 const migration = read("supabase/migrations/20260727_public_online_nearby.sql");
@@ -107,6 +108,17 @@ expect(
   "Une session Supabase n'est pas considérée comme session NAS",
   /function isValidNasSession[\s\S]{0,260}provider !== ["']supabase["']/.test(onlineApi),
 );
+
+expect(
+  "L'import historique utilise public.events avant le fallback stats_events",
+  /from\(["']events["']\)[\s\S]{0,500}like\(["']type["'],\s*["']%:MATCH_SAVED["']\)/.test(cloudHistoryImport)
+  && cloudHistoryImport.indexOf('.from("events")') < cloudHistoryImport.indexOf('.from("stats_events")'),
+);
+expect(
+  "L'absence de stats_events legacy ne spamme plus la console",
+  /if \(missingRelation\(legacyResult\.error\)\) return \{ rows: \[\] \}/.test(cloudHistoryImport),
+);
+
 expect("Le panneau Joueurs à proximité est monté dans FriendsPage", /<NearbyPlayersPanel\b/.test(friends));
 
 expect("La migration active PostGIS", /create\s+extension\s+if\s+not\s+exists\s+postgis/i.test(migration));
