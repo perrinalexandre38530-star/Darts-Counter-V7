@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { autoLevelFromAvg3, buildPlayerStates, expressDartMatchesTarget, expressPool, expressTurnShouldEnd, generateCards, hasWon, resultKey, revealResult, type LoterieConfig } from "../src/lib/loterie.ts";
 
 const base: LoterieConfig = { variant: "classic", level: "auto", autoMode: "balanced", volleyMode: "free", expressTarget: "simple", cardsPerPlayer: 4, cellsPerCard: 10, startOrderMode: "fixed" };
@@ -21,6 +21,23 @@ for (let i = 1; i <= 20; i++) {
 }
 assert.equal(existsSync("public/images/loterie/express-cards/DB.webp"), true, "carte DB manquante");
 assert.equal(existsSync("public/images/loterie/express-cards/miss.webp"), true, "carte MISS manquante");
+
+// Les sons de révélation LOTERIE réutilisent PAR/MISS du Golf : les fichiers ne doivent
+// jamais redevenir des placeholders 0 octet (Chrome répond alors 416 Range Not Satisfiable).
+for (const sound of ["par", "miss"]) {
+  const path = `src/assets/sounds/golf_ticker_${sound}.wav`;
+  assert.equal(existsSync(path), true, `son ${sound} manquant`);
+  assert.equal(statSync(path).size > 44, true, `son ${sound} vide`);
+  const head = readFileSync(path).subarray(0, 12).toString("ascii");
+  assert.equal(head.startsWith("RIFF") && head.includes("WAVE"), true, `son ${sound} WAV invalide`);
+}
+
+// Reprise : LOTERIE doit autosauvegarder un snapshot et l'Historique doit router vers loterie_play.
+const loteriePlaySource = readFileSync("src/pages/LoteriePlay.tsx", "utf8");
+const historyPageSource = readFileSync("src/pages/HistoryPage.tsx", "utf8");
+assert.match(loteriePlaySource, /const snapshot = buildInProgressRecord\(\);[\s\S]*History\.upsert\(snapshot\)/, "autosave LOTERIE manquant");
+assert.match(loteriePlaySource, /const state = \{\s*players, activeIndex, darts, seed, events/, "snapshot de reprise LOTERIE incomplet");
+assert.match(historyPageSource, /loterie_play/, "route de reprise LOTERIE manquante");
 
 // EXPRESS : les simples 1..9 sont de vrais résultats, plus jamais "hors lot" par construction.
 assert.deepEqual(resultKey({...base,variant:"express",expressTarget:"simple"},[{v:3,mult:1}]).key,"S3");

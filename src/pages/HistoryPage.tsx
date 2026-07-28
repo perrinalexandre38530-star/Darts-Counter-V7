@@ -3919,6 +3919,21 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
     }
 
     const inferredMode = inferGameFilterKey(e, "darts");
+
+    // LOTERIE : une partie `in_progress` possède désormais un snapshot complet
+    // (cartons révélés, tour actif, darts en cours, événements et config). Elle doit
+    // revenir dans LoteriePlay, jamais dans le résumé générique / X01.
+    if (normalizeToken(baseMode(e)) === "loterie" || normalizeToken(inferredMode) === "loterie") {
+      const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null);
+      const config = payload?.config || (e as any)?.resume?.config || (e as any)?.summary?.config || null;
+      const ok = safeGo(["loterie_play"], {
+        rec: e, resumeId, config, mode: "loterie",
+        from: preview ? "history_preview" : "history", preview: !!preview,
+      });
+      if (!ok) go("loterie_play", { rec: e, resumeId, config, mode: "loterie", from: preview ? "history_preview" : "history", preview: !!preview });
+      return;
+    }
+
     if (!preview && (isGenericDartsSummaryMode(baseMode(e)) || isGenericDartsSummaryMode(inferredMode))) {
       go("darts_mode_summary", { rec: e, resumeId, from: "history", mode: inferredMode || baseMode(e) });
       return;

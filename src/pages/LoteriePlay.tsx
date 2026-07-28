@@ -16,6 +16,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { playGolfTickerSound, unlockAudio } from "../lib/sfx";
+import { History, type SavedMatch } from "../lib/history";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
 import victoryImage from "../assets/victory.webp";
 import scratchTicketPreview from "../assets-webp/games/loterie-ticket-scratch-v2.png";
@@ -994,10 +995,19 @@ function LoterieEndPanel({ finalPlayers, winnerId, events, config, accent, onRep
 export default function LoteriePlay({ setTab, go, store, params, onFinish }: any) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const config: LoterieConfig & any = { ...DEFAULT_CONFIG, ...(params?.config || {}) };
+  const initialRouteRecord = params?.rec && typeof params.rec === "object" ? params.rec : null;
+  const initialRoutePayload = initialRouteRecord?.decoded || (initialRouteRecord?.payload && typeof initialRouteRecord.payload === "object" ? initialRouteRecord.payload : null);
+  const initialResumeId = String(params?.resumeId || initialRouteRecord?.resumeId || initialRouteRecord?.matchId || initialRouteRecord?.id || "").trim();
+  const [config, setConfig] = React.useState<LoterieConfig & any>(() => ({ ...DEFAULT_CONFIG, ...(initialRoutePayload?.config || {}), ...(params?.config || {}) }));
   const sourcePlayers = Array.isArray(params?.players) && params.players.length ? params.players : makeFallbackPlayers(store);
-  const createdAtRef = React.useRef(Number(params?.createdAt) || Date.now());
-  const [seed, setSeed] = React.useState(() => Date.now());
+  const createdAtRef = React.useRef(Number(params?.createdAt || initialRouteRecord?.createdAt) || Date.now());
+  const matchIdRef = React.useRef(initialResumeId || `loterie_${createdAtRef.current}`);
+  const hasLoadedResumeRef = React.useRef(!initialResumeId);
+  const [resumeLoading, setResumeLoading] = React.useState(Boolean(initialResumeId));
+  const autosaveTimerRef = React.useRef<any>(null);
+  const lastAutosaveSigRef = React.useRef("");
+  const latestAutosaveRecordRef = React.useRef<SavedMatch | null>(null);
+  const [seed, setSeed] = React.useState(() => Number(initialRoutePayload?.state?.seed) || Date.now());
   const [players, setPlayers] = React.useState<LoteriePlayerState[]>(() => buildPlayerStates(sourcePlayers, config, seed));
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [darts, setDarts] = React.useState<LoterieDart[]>([]);
@@ -1014,6 +1024,53 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   const [statsOpen, setStatsOpen] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const finishSent = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!initialResumeId) {
+      hasLoadedResumeRef.current = true;
+      setResumeLoading(false);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const rec: any = await History.get(initialResumeId).catch(() => null);
+        if (!alive) return;
+        const payload: any = rec?.payload || initialRoutePayload || null;
+        const resume: any = rec?.resume || null;
+        const savedConfig: any = payload?.config || resume?.config || initialRoutePayload?.config || params?.config || null;
+        const state: any = payload?.state || resume?.state || null;
+        if (savedConfig && typeof savedConfig === "object") setConfig({ ...DEFAULT_CONFIG, ...savedConfig });
+        if (rec) {
+          matchIdRef.current = String(rec?.matchId || rec?.id || initialResumeId);
+          createdAtRef.current = Number(rec?.createdAt || createdAtRef.current) || createdAtRef.current;
+        }
+        if (state && typeof state === "object") {
+          if (Array.isArray(state.players) && state.players.length) setPlayers(state.players);
+          if (Number.isFinite(Number(state.activeIndex))) setActiveIndex(Math.max(0, Number(state.activeIndex) || 0));
+          if (Array.isArray(state.darts)) setDarts(state.darts.slice(0, 3));
+          if (Array.isArray(state.events)) setEvents(state.events);
+          if (Number.isFinite(Number(state.seed))) setSeed(Number(state.seed));
+          if ([1, 2, 3].includes(Number(state.multiplier))) {
+            multiplierRef.current = Number(state.multiplier) as 1 | 2 | 3;
+            setMultiplier(Number(state.multiplier) as 1 | 2 | 3);
+          }
+          setWinnerId(null);
+          finishSent.current = false;
+        }
+      } catch (e) {
+        console.warn("[Loterie] reprise historique impossible", e);
+      } finally {
+        if (alive) {
+          hasLoadedResumeRef.current = true;
+          setResumeLoading(false);
+        }
+      }
+    })();
+    return () => { alive = false; };
+  // La reprise est volontairement chargée une seule fois pour cet id.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialResumeId]);
 
   const participantMode = config?.participantMode === "teams" || params?.participantMode === "teams" ? "teams" : "players";
   const active = players[activeIndex] || players[0];
@@ -1050,6 +1107,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   }, [activeIndex]);
 
   React.useEffect(() => {
+    if (!hasLoadedResumeRef.current || resumeLoading) return;
     if (!active || winnerId || scoreReveal || !isBotLike(activeTurnActor) || botThinking) return;
     let cancelled = false;
     setBotThinking(true);
@@ -1062,9 +1120,93 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     return () => { cancelled = true; window.clearTimeout(timer); setBotThinking(false); };
   }, [activeIndex, winnerId, scoreReveal, active?.id, activeMember?.id, events.length]);
 
+  function buildInProgressRecord(): SavedMatch {
+    const now = Date.now();
+    const built = buildLoterieSummaries(players, null, events, { ...config, participantMode });
+    const state = {
+      players, activeIndex, darts, seed, events, winnerId: null, multiplier,
+      statisticsVersion: 4,
+    };
+    const playersLite = built.playerRows.map((row: any) => ({
+      id: String(row?.playerId || row?.id || ""),
+      name: String(row?.name || "Joueur"),
+      avatarDataUrl: row?.avatarDataUrl || null,
+      teamId: row?.teamId || null,
+    }));
+    // IMPORTANT : pas de `rankings` dans un autosave. history.ts considère une
+    // liste de rankings comme un marqueur de partie terminée.
+    const summary: any = {
+      kind: "loterie", mode: "loterie", sport: "darts", finished: false,
+      statisticsVersion: 4, participantMode, variant: config.variant,
+      expressTarget: config.expressTarget, expressAttempts: config.expressAttempts || "one",
+      missEndsTurn: config.missEndsTurn === true, config: { ...config, participantMode },
+      players: built.playerRows, perPlayer: built.playerRows,
+      matchStats: built.matchStats,
+      scoreLine: built.entityRows.map((row: any) => `${row.name} ${row.bestCardProgress}/${row.cellsPerCard} · ${row.cellsRevealed} cases`).join(" • "),
+    };
+    const id = String(matchIdRef.current || `loterie_${createdAtRef.current}`);
+    return {
+      id, matchId: id, resumeId: id,
+      kind: "loterie", mode: "loterie", sport: "darts", variant: config.variant, status: "in_progress",
+      participantMode, players: playersLite, winnerId: null,
+      createdAt: createdAtRef.current, startedAt: createdAtRef.current, updatedAt: now,
+      game: { mode: "loterie", variant: config.variant, participantMode },
+      summary,
+      resume: { config: { ...config, participantMode }, state },
+      payload: {
+        kind: "loterie", mode: "loterie", sport: "darts", gameId: "loterie", statisticsVersion: 4,
+        participantMode, config: { ...config, participantMode }, state, events, visitHistory: events,
+        players: built.playerRows, teams: built.teamRows, entities: built.entityRows,
+        stats: { mode: "loterie", sport: "darts", participantMode, variant: config.variant, players: built.playerRows, teams: built.teamRows, entities: built.entityRows, global: built.matchStats },
+        summary,
+      },
+    } as SavedMatch;
+  }
+
+  React.useEffect(() => {
+    if (!hasLoadedResumeRef.current || resumeLoading || winnerId) return;
+    if (!events.length && !darts.length) return;
+    const sig = [
+      matchIdRef.current, events.length, activeIndex, darts.map((d: any) => `${d?.v || 0}:${d?.mult || 0}`).join(","),
+      players.map((p: any) => `${p.id}:${p?.stats?.visits || 0}:${p?.stats?.cellsRevealed || 0}:${bestCardProgress(p)}`).join("|"),
+      config.variant, config.expressTarget, config.expressAttempts, config.missEndsTurn ? 1 : 0,
+    ].join("#");
+    if (sig === lastAutosaveSigRef.current) return;
+    lastAutosaveSigRef.current = sig;
+    const snapshot = buildInProgressRecord();
+    latestAutosaveRecordRef.current = snapshot;
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      History.upsert(snapshot).catch((e: any) => console.warn("[Loterie] autosave historique impossible", e));
+    }, 40);
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  // Le snapshot doit suivre chaque dart et chaque changement de tour.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, activeIndex, darts, events, seed, config, winnerId, resumeLoading]);
+
+  React.useEffect(() => {
+    const flush = () => {
+      const rec = latestAutosaveRecordRef.current;
+      if (!rec) return;
+      History.upsert(rec).catch(() => {});
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
   function finish(finalPlayers: LoteriePlayerState[], winId: string, finalEvents: any[]) {
     if (finishSent.current) return;
     finishSent.current = true;
+    latestAutosaveRecordRef.current = null;
     setWinnerId(winId);
     const finishedAt = Date.now();
     const built = buildLoterieSummaries(finalPlayers, winId, finalEvents, { ...config, participantMode });
@@ -1085,8 +1227,9 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       scoreLine: built.entityRows.map((row: any) => `${row.name} ${row.bestCardProgress}/${row.cellsPerCard} · ${row.cellsRevealed} cases`).join(" • "),
     };
     const record = {
-      id: `loterie_${createdAtRef.current}_${Math.random().toString(36).slice(2, 8)}`,
-      matchId: `loterie_${createdAtRef.current}`,
+      id: String(matchIdRef.current || `loterie_${createdAtRef.current}`),
+      matchId: String(matchIdRef.current || `loterie_${createdAtRef.current}`),
+      resumeId: String(matchIdRef.current || `loterie_${createdAtRef.current}`),
       kind: "loterie", mode: "loterie", sport: "darts", variant: config.variant, status: "finished",
       participantMode, players: built.playerRows, teams: built.teamRows,
       winnerId: winId, winnerEntityId: winId, winnerPlayerIds, winnerName: win?.name || "",
@@ -1098,8 +1241,12 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         config: { ...config, participantMode }, players: built.playerRows, teams: built.teamRows, entities: built.entityRows,
         stats: { mode: "loterie", sport: "darts", participantMode, variant: config.variant, players: built.playerRows, teams: built.teamRows, entities: built.entityRows, global: { ...built.matchStats, durationMs } },
         summary, events: finalEvents, visitHistory: finalEvents,
+        state: { players: finalPlayers, activeIndex, darts: [], seed, events: finalEvents, winnerId: winId, multiplier: 1, statisticsVersion: 4 },
       },
     };
+    // Écrase immédiatement l'autosave `in_progress` avec LE MÊME id stable.
+    // onFinish garde ensuite le pipeline global (store, stats, cloud, pubs).
+    History.upsert(record as any).catch((e: any) => console.warn("[Loterie] sauvegarde finale historique impossible", e));
     try { onFinish?.(record); } catch (e) { console.warn("[Loterie] onFinish failed", e); }
   }
 
@@ -1238,7 +1385,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   }
 
   function addDart(value: number, forcedMult?: number) {
-    if (winnerId || botThinking) return;
+    if (resumeLoading || !hasLoadedResumeRef.current || winnerId || botThinking) return;
     try { unlockAudio(); } catch {}
     const mult = value === 0 ? 1 : (forcedMult || multiplierRef.current);
     const dart: LoterieDart = { v: Number(value) || 0, mult: mult as any };
@@ -1260,7 +1407,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     if (config.volleyMode === "strict3" && next.length === 3) window.setTimeout(() => commitTurn(next), 70);
   }
   function validateVisit() {
-    if (winnerId || botThinking || !darts.length) return;
+    if (resumeLoading || !hasLoadedResumeRef.current || winnerId || botThinking || !darts.length) return;
     try { unlockAudio(); } catch {}
     if (config.variant === "express") {
       // En EXPRESS 3 essais, VALIDER permet aussi d'abandonner les essais restants.
@@ -1271,7 +1418,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     commitTurn(darts);
   }
   function cancelInput() {
-    if (botThinking || winnerId) return;
+    if (resumeLoading || !hasLoadedResumeRef.current || botThinking || winnerId) return;
     setDarts((previous) => previous.slice(0, -1));
     // Comme X01 : une annulation remet aussi la saisie sur SIMPLE.
     resetMultiplier();
@@ -1283,6 +1430,10 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     setActiveIndex(0); setDarts([]); setWinnerId(null); setEvents([]); setRecentRevealKeys([]); setScoreReveal(null); setCardsOpen(false); setRankingOpen(false); setHistoryOpen(false); setStatsOpen(false); setBotThinking(false);
     finishSent.current = false;
     createdAtRef.current = Date.now();
+    matchIdRef.current = `loterie_${createdAtRef.current}`;
+    hasLoadedResumeRef.current = true;
+    lastAutosaveSigRef.current = "";
+    latestAutosaveRecordRef.current = null;
   }
   function backToConfig() {
     (go || setTab)?.("loterie_config");
