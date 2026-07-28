@@ -1,4 +1,4 @@
-import { exportCloudSnapshot, getStorageUser } from "./storage";
+import { exportCloudSnapshot, getCachedLocalProfilesForSafety, getStorageUser } from "./storage";
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
 
@@ -189,6 +189,19 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
       const summary = snapshotSummary(fullSnapshot);
       const portableVersion = Number(fullSnapshot?.portableAccountData?._v || 0);
       if (portableVersion < 2) throw new Error("Snapshot R2 incomplet : portableAccountData v2 absent.");
+
+      // GARDE-FOU ANTI-DESTRUCTION R2 : un changement d'origine locale
+      // (ex: localhost:5173 -> 5174) ou un rehydrate partiel peut produire un
+      // store temporaire avec 0/1 profil alors que le cache sûr en connaît 58.
+      // Une sauvegarde automatique ne doit jamais transformer cet état transitoire
+      // en nouveau snapshot de référence.
+      const safeProfiles = getCachedLocalProfilesForSafety()?.profiles || [];
+      const safeProfileCount = Array.isArray(safeProfiles) ? safeProfiles.length : 0;
+      if (summary.profiles <= 0 || (safeProfileCount > 0 && summary.profiles < safeProfileCount)) {
+        throw new Error(
+          `Sauvegarde R2 automatique bloquée : profils locaux incomplets (${summary.profiles}/${safeProfileCount || "?"}).`
+        );
+      }
 
       const prepared = prepareSnapshotForDirectR2(fullSnapshot);
       const snapshotJson = JSON.stringify(prepared.snapshot);

@@ -247,6 +247,12 @@ async function summarizeLocalState() {
   }
 }
 
+
+function profileCountFromCloudSlot(slot: CloudObjectIndexItem | null | undefined): number {
+  const meta: any = slot?.metadata && typeof slot.metadata === "object" ? slot.metadata : {};
+  return Number(meta.profilesCount || meta.profiles || meta.localProfiles || 0) || 0;
+}
+
 function cloudSlotScore(slot: CloudObjectIndexItem): number {
   const meta: any = slot?.metadata && typeof slot.metadata === "object" ? slot.metadata : {};
   const history = Number(meta.historyCount || meta.historyRows || meta.matches || 0) || 0;
@@ -369,7 +375,23 @@ export async function maybeAutoRestoreCloudForSignedInUser(
       const updated = String(latest.updated_at || latest.created_at || "");
       const signature = `${String(latest.id)}|${updated}`;
       const markerKey = `${AUTO_RESTORE_PREFIX}:imported:${uid}`;
-      if (!force && readStorageKey(markerKey) === signature) return true;
+      if (!force && readStorageKey(markerKey) === signature) {
+        const localSummary = await summarizeLocalState();
+        const expectedProfiles = profileCountFromCloudSlot(latest);
+        const localLooksHealthy = localSummary.profiles > 0 &&
+          (expectedProfiles <= 0 || localSummary.profiles >= expectedProfiles);
+        if (localLooksHealthy) return true;
+
+        // Auto-réparation : un ancien marqueur ne doit jamais empêcher le retour
+        // des profils si le store local a été vidé/corrompu ou si l'utilisateur
+        // a changé d'origine de développement.
+        console.warn("[cloudAutoRestore] marqueur ignoré : état local incomplet", {
+          localProfiles: localSummary.profiles,
+          expectedProfiles,
+          slotId: String(latest.id || ""),
+        });
+        removeStorageKey(markerKey);
+      }
 
       const payload = await fetchCloudSlotPayload(latest);
       const remoteSummary = summarizeSnapshot(payload);
@@ -386,6 +408,23 @@ export async function maybeAutoRestoreCloudForSignedInUser(
 
       removeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
       await restoreDownloadedCloudSnapshot(payload, latest);
+
+      // Ne jamais mémoriser "restauré" si les données critiques attendues ne
+      // sont pas réellement relisibles après import. Sinon une panne partielle
+      // devient permanente au prochain boot.
+      const localAfterRestore = await summarizeLocalState();
+      const expectedProfiles = Math.max(
+        Number(remoteSummary.profiles || 0),
+        Number(portable?.counts?.profiles || 0),
+        profileCountFromCloudSlot(latest),
+      );
+      if (expectedProfiles > 0 && localAfterRestore.profiles <= 0) {
+        removeStorageKey(markerKey);
+        const mirrorRecovered = await restoreFromR2NasMirrorFallback(uid, true);
+        if (mirrorRecovered) return true;
+        throw new Error(`Restauration R2 incomplète : ${expectedProfiles} profil(s) attendu(s), 0 relu localement.`);
+      }
+
       writeStorageKey(markerKey, signature);
       window.setTimeout(() => {
         try { window.location.reload(); } catch {}

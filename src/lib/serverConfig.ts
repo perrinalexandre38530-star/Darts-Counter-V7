@@ -65,3 +65,56 @@ export function isSupabaseHardDisabledInNasMode(): boolean {
     .toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
+
+
+// ---------------------------------------------------------------------------
+// MEDIA / BACKEND ROUTING
+// ---------------------------------------------------------------------------
+// Les anciennes sauvegardes contiennent encore des URL du type
+// https://api.multisports-api.fr/media/<id> ou /media/<id>. Les charger
+// directement depuis le navigateur recrée un problème CORS et rend l'app
+// dépendante du tunnel NAS. En web, on passe par la Function Pages same-origin
+// /api/backend/*. En Capacitor, on utilise l'origine Pages publique.
+export const PUBLIC_PAGES_ORIGIN =
+  sanitizeUrl((import.meta as any)?.env?.VITE_PUBLIC_PAGES_ORIGIN) ||
+  "https://darts-counter-v7.pages.dev";
+
+function absoluteNasMediaPath(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    const nas = new URL(NAS_API_URL);
+    if (url.origin !== nas.origin || !url.pathname.startsWith("/media/")) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+export function backendProxyUrl(pathInput: unknown): string {
+  const raw = String(pathInput || "").trim();
+  if (!raw) return "";
+
+  let path = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    const nasPath = absoluteNasMediaPath(raw);
+    if (!nasPath) return raw;
+    path = nasPath;
+  }
+  if (!path.startsWith("/")) path = `/${path}`;
+  if (path.startsWith("/api/backend/")) return path;
+
+  const proxyPath = `/api/backend${path}`;
+  if (typeof window !== "undefined") {
+    const protocol = String(window.location?.protocol || "").toLowerCase();
+    if (protocol === "http:" || protocol === "https:") return proxyPath;
+  }
+  return `${PUBLIC_PAGES_ORIGIN}${proxyPath}`;
+}
+
+export function resolveRuntimeMediaUrl(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("/media/")) return backendProxyUrl(raw);
+  const nasPath = /^https?:\/\//i.test(raw) ? absoluteNasMediaPath(raw) : null;
+  return nasPath ? backendProxyUrl(nasPath) : raw;
+}

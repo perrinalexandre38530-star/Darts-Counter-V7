@@ -30,6 +30,7 @@ import { getAvatarCache } from "../lib/avatarCache";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback, dartSetThumbMediaKey } from "../lib/userMediaFallback";
 import ResilientUserImage from "./ResilientUserImage";
+import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
 
 type ProfileLike = {
   id?: string;
@@ -121,11 +122,11 @@ function normalizeSrc(raw: any): string | null {
   if (s.startsWith("blob:")) return s;
 
   if (s.startsWith("http://") || s.startsWith("https://"))
-    return s.replace(/ /g, "%20");
+    return resolveRuntimeMediaUrl(s).replace(/ /g, "%20");
 
   if (s.startsWith("/assets/")) return s.replace(/ /g, "%20");
   if (s.startsWith("/images/")) return s.replace(/ /g, "%20");
-  if (s.startsWith("/media/")) return s.replace(/ /g, "%20");
+  if (s.startsWith("/media/")) return resolveRuntimeMediaUrl(s).replace(/ /g, "%20");
 
   if (s.startsWith("./") || s.startsWith("../")) return s.replace(/ /g, "%20");
   if (/\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i.test(s))

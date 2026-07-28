@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
-import { getNasApiUrl } from "./serverConfig";
+import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { botAvatarMediaKey, captureUserMediaFallback } from "./userMediaFallback";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
@@ -624,28 +624,13 @@ function firstNonEmptyString(...values: any[]): string | null {
   return null;
 }
 
-function getRuntimeNasApiBase(): string {
-  try {
-    return String(getNasApiUrl() || "").trim().replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
-
 function normalizeRuntimeMediaSrc(src: any): string | null {
   const value = typeof src === "string" ? src.trim() : "";
   if (!value) return null;
-  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/") || value.startsWith("blob:")) return value;
-
-  // IMPORTANT CONFIG BOTS:
-  // Les avatars créés côté NAS peuvent être stockés sous forme "/media/<assetId>".
-  // Sur Cloudflare Pages, "/media/..." pointe vers le frontend et casse l'image.
-  // On le rebase donc explicitement vers l'API NAS.
-  if (value.startsWith("/media/")) {
-    const base = getRuntimeNasApiBase();
-    return base ? `${base}${value}` : value;
+  if (value.startsWith("data:image/") || value.startsWith("blob:")) return value;
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/media/")) {
+    return resolveRuntimeMediaUrl(value) || null;
   }
-
   if (value.startsWith("/images/") || value.startsWith("/assets/")) return value;
   if (/\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i.test(value)) return value;
   return null;
@@ -658,9 +643,7 @@ export function botAssetIdToMediaUrl(assetId: any): string | null {
   const alreadySrc = normalizeRuntimeMediaSrc(id);
   if (alreadySrc) return alreadySrc;
 
-  const base = getRuntimeNasApiBase();
-  const path = `/media/${encodeURIComponent(id)}`;
-  return base ? `${base}${path}` : path;
+  return resolveRuntimeMediaUrl(`/media/${encodeURIComponent(id)}`) || null;
 }
 
 export function resolveBotAvatarSrc(input: any): string | null {

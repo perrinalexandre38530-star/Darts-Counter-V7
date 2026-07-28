@@ -34,7 +34,11 @@ let lastDbError = null;
 // -----------------------------------------------------------------------------
 const corsAllowedOrigins = [
   "https://darts-counter-v7.pages.dev",
-  "http://localhost:5173",
+  // Développement local : Vite peut être lancé sur une machine différente ou
+  // un port de preview. Même si le frontend force maintenant 5173, le backend
+  // reste tolérant pour les outils de diagnostic et les WebViews locales.
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i,
+  /^capacitor:\/\/localhost$/i,
   /\.pages\.dev$/i,
 ];
 

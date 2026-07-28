@@ -5,6 +5,7 @@ import {
   listDirectR2Backups,
   downloadDirectR2Backup,
 } from "./directR2BackupApi";
+import { resolveRuntimeMediaUrl } from "./serverConfig";
 
 export type UserMediaKind =
   | "profile_avatar"
@@ -219,25 +220,32 @@ async function browserCachedBlob(src: string): Promise<Blob | null> {
     try { return await responseToImageBlob(await fetch(value)); } catch { return null; }
   }
 
+  // Les URLs historiques https://api.multisports-api.fr/media/* sont réécrites
+  // vers /api/backend/media/* : même origine côté navigateur, donc aucun CORS.
+  const runtimeValue = resolveRuntimeMediaUrl(value) || value;
+  const cacheCandidates = Array.from(new Set([value, runtimeValue].filter(Boolean)));
+
   // 1) Cache Storage/PWA : aucune requête NAS nécessaire.
   try {
     if (typeof caches !== "undefined") {
-      const direct = await caches.match(value, { ignoreSearch: false });
-      const directBlob = await responseToImageBlob(direct);
-      if (directBlob) return directBlob;
-      const loose = await caches.match(value, { ignoreSearch: true });
-      const looseBlob = await responseToImageBlob(loose);
-      if (looseBlob) return looseBlob;
+      for (const candidate of cacheCandidates) {
+        const direct = await caches.match(candidate, { ignoreSearch: false });
+        const directBlob = await responseToImageBlob(direct);
+        if (directBlob) return directBlob;
+        const loose = await caches.match(candidate, { ignoreSearch: true });
+        const looseBlob = await responseToImageBlob(loose);
+        if (looseBlob) return looseBlob;
+      }
     }
   } catch {}
 
-  // 2) Cache HTTP du navigateur. force-cache permet de récupérer une image déjà
-  // vue même si le NAS vient de tomber. Si elle n'est pas en cache, le timeout
-  // évite de bloquer l'UI.
+  // 2) Cache HTTP / proxy same-origin. Si l'image n'existe pas en R2/local, ce
+  // dernier filet peut encore récupérer l'ancien média sans exposer le browser
+  // au CORS du backend historique.
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS);
   try {
-    const response = await fetch(value, {
+    const response = await fetch(runtimeValue, {
       method: "GET",
       cache: "force-cache",
       signal: controller.signal,

@@ -7,9 +7,16 @@ const tournaments = fs.readFileSync(new URL("../src/lib/tournaments/storeLocal.t
 const babyfoot = fs.readFileSync(new URL("../src/lib/babyfootLeagueStore.ts", import.meta.url), "utf8");
 const directR2 = fs.readFileSync(new URL("../src/lib/directR2BackupApi.ts", import.meta.url), "utf8");
 const configuredBackup = fs.readFileSync(new URL("../src/lib/configuredBackupNow.ts", import.meta.url), "utf8");
+const cloudAccountBackup = fs.readFileSync(new URL("../src/lib/cloudAccountBackup.ts", import.meta.url), "utf8");
 const dartSetsStore = fs.readFileSync(new URL("../src/lib/dartSetsStore.ts", import.meta.url), "utf8");
 const userMedia = fs.readFileSync(new URL("../src/lib/userMediaFallback.ts", import.meta.url), "utf8");
 const cors = fs.readFileSync(new URL("../functions/api/storage/backups/_middleware.ts", import.meta.url), "utf8");
+const viteConfig = fs.readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+const serverConfig = fs.readFileSync(new URL("../src/lib/serverConfig.ts", import.meta.url), "utf8");
+const backendServer = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const profileAvatar = fs.readFileSync(new URL("../src/components/ProfileAvatar.tsx", import.meta.url), "utf8");
+const avatarR2Fallback = fs.readFileSync(new URL("../src/lib/avatarR2Fallback.ts", import.meta.url), "utf8");
+const bots = fs.readFileSync(new URL("../src/lib/bots.ts", import.meta.url), "utf8");
 
 const checks = [
   [storage.includes("portableAccountData"), "snapshot must include portableAccountData"],
@@ -32,6 +39,15 @@ const checks = [
   [storage.includes("r2MainMediaKey") && storage.includes("r2ThumbMediaKey"), "portable dartsets must expose explicit R2 image references"],
   [dartSetsStore.includes("mirrorOneDartSetMediaToR2") && dartSetsStore.includes("mediaUpdatedAt"), "imported dartset photos must be mirrored independently from metadata changes"],
   [cors.includes("capacitor://localhost") && cors.includes("host === \"localhost\"") && cors.includes("url.protocol === \"http:\"") && cors.includes("url.protocol === \"https:\"") && cors.includes("Access-Control-Allow-Origin"), "R2 Pages Function must allow Capacitor and local Vite/WebView origins"],
+  [viteConfig.includes("strictPort: true"), "Vite must refuse a silent fallback from localhost:5173 to another storage origin"],
+  [viteConfig.includes('"/api/backend"') && viteConfig.includes("api.multisports-api.fr"), "Vite must proxy legacy backend/media calls same-origin in development"],
+  [serverConfig.includes("resolveRuntimeMediaUrl") && serverConfig.includes("/api/backend"), "legacy /media URLs must be rewritten through the Pages/backend proxy"],
+  [userMedia.includes("resolveRuntimeMediaUrl(value)") && userMedia.includes("fetch(runtimeValue"), "media fallback capture must not fetch the NAS media origin directly"],
+  [dartSetsStore.includes("resolveRuntimeMediaUrl") && bots.includes("resolveRuntimeMediaUrl") && profileAvatar.includes("resolveRuntimeMediaUrl"), "dartsets, bots and profile avatars must share the resilient media route"],
+  [restore.includes("marqueur ignoré : état local incomplet") && restore.includes("localAfterRestore") && restore.includes("expectedProfiles"), "R2 auto restore marker must self-heal when local profiles are missing"],
+  [backendServer.includes("localhost|127\\.0\\.0\\.1") || backendServer.includes("localhost|127\.0\.0\.1"), "legacy backend CORS must tolerate local diagnostic ports"],
+  [cloudAccountBackup.includes("getCachedLocalProfilesForSafety") && cloudAccountBackup.includes("Sauvegarde R2 automatique bloquée"), "automatic R2 backup must refuse a partial/empty local profile state"],
+  [avatarR2Fallback.includes("resolveRuntimeMediaUrl") && avatarR2Fallback.includes("fetch(runtimeValue"), "avatar R2 recovery must not fetch legacy NAS media cross-origin"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);

@@ -1,6 +1,6 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
 import { dartPresets } from "./dartPresets";
-import { getNasApiUrl } from "./serverConfig";
+import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey } from "./userMediaFallback";
 
 // =============================================================
@@ -344,31 +344,17 @@ function isImageUrlLike(value: any): boolean {
   );
 }
 
-function nasBase(): string {
-  try {
-    return s(getNasApiUrl()).replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
-
 function normalizeRuntimeImageUrl(value: any): string {
   const v = s(value);
   if (!v) return "";
-  if (v.startsWith("/media/")) {
-    const base = nasBase();
-    return base ? `${base}${v}` : v;
-  }
-  return v;
+  return resolveRuntimeMediaUrl(v);
 }
 
 function mediaUrlFromAssetId(assetId: any): string {
   const id = s(assetId);
   if (!id) return "";
   if (isImageUrlLike(id)) return normalizeRuntimeImageUrl(id);
-  const base = nasBase();
-  const path = `/media/${encodeURIComponent(id)}`;
-  return base ? `${base}${path}` : path;
+  return resolveRuntimeMediaUrl(`/media/${encodeURIComponent(id)}`);
 }
 
 function sanitizeDartSetImageUrl(value: any): string | undefined {

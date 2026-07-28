@@ -1,4 +1,4 @@
-import { buildApiUrl } from "./apiClient";
+import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { getAvatarCache, setAvatarCache } from "./avatarCache";
 import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
@@ -77,10 +77,9 @@ function profileRemoteUrl(profile: any): string {
       profile?.avatarPath,
   );
   if (!raw) return "";
-  if (/^https?:\/\//i.test(raw) || raw.startsWith("blob:")) return raw;
-  if (raw.startsWith("/media/")) {
-    try { return buildApiUrl(raw); } catch { return raw; }
-  }
+  if (/^https?:\/\//i.test(raw)) return resolveRuntimeMediaUrl(raw);
+  if (raw.startsWith("blob:")) return raw;
+  if (raw.startsWith("/media/")) return resolveRuntimeMediaUrl(raw);
   if (raw.startsWith("/")) {
     try { return new URL(raw, window.location.origin).toString(); } catch { return raw; }
   }
@@ -110,10 +109,11 @@ async function fetchBlobWithTimeout(src: string): Promise<Blob | null> {
     try { return await fetch(value).then((r) => (r.ok ? r.blob() : null)); } catch { return null; }
   }
 
+  const runtimeValue = resolveRuntimeMediaUrl(value) || value;
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), REMOTE_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(value, {
+    const response = await fetch(runtimeValue, {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
