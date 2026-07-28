@@ -27,11 +27,11 @@ const checks = [
   [babyfoot.includes('emitCloudChange("babyfoot:leagues:changed")'), "baby-foot league changes must queue cloud backup"],
   [directR2.includes("https://darts-counter-v7.pages.dev/api/storage/backups"), "native R2 must use the Cloudflare Pages origin"],
   [directR2.includes("isDirectR2MediaFresh") && userMedia.includes("isDirectR2MediaFresh"), "unchanged media must be skipped before image conversion/upload"],
-  [configuredBackup.includes('mediaMirror: "background"') && configuredBackup.includes("prepareSnapshotForDirectR2"), "manual R2 save must use the non-blocking slim path"],
+  [configuredBackup.includes('mediaMirror: "skip"') && configuredBackup.includes('includeEmbeddedMedia: false') && configuredBackup.includes('includeAvatarFallbacks: false') && configuredBackup.includes('uploadCloudVaultSnapshotJson'), "manual R2 save must use the fast non-blocking data-only path"],
   [storage.includes('mediaMirror?: "await" | "background" | "skip"'), "snapshot export must support non-blocking media mirroring"],
   [storage.includes("r2MainMediaKey") && storage.includes("r2ThumbMediaKey"), "portable dartsets must expose explicit R2 image references"],
   [dartSetsStore.includes("mirrorOneDartSetMediaToR2") && dartSetsStore.includes("mediaUpdatedAt"), "imported dartset photos must be mirrored independently from metadata changes"],
-  [cors.includes("https://localhost") && cors.includes("Access-Control-Allow-Origin"), "R2 Pages Function must allow the native WebView origin"],
+  [cors.includes("capacitor://localhost") && cors.includes("host === \"localhost\"") && cors.includes("url.protocol === \"http:\"") && cors.includes("url.protocol === \"https:\"") && cors.includes("Access-Control-Allow-Origin"), "R2 Pages Function must allow Capacitor and local Vite/WebView origins"],
 ];
 
 const failed = checks.filter(([ok]) => !ok);
