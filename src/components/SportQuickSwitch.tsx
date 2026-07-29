@@ -1,5 +1,6 @@
 import React from "react";
 import { useSport, type SportId } from "../contexts/SportContext";
+import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 
 import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
@@ -49,10 +50,11 @@ function readStoredSport(): QuickSportId {
 
 export default function SportQuickSwitch({ onAfterSwitch }: { onAfterSwitch?: () => void }) {
   const sportApi = useSport() as any;
+  const availableSports = React.useMemo(() => filterSportsForCurrentRuntime(SPORTS), []);
   const currentSport = normalizeSport(sportApi?.sport ?? readStoredSport());
-  const currentIndex = Math.max(0, SPORTS.findIndex((sport) => sport.id === currentSport));
-  const current = SPORTS[currentIndex] || SPORTS[0];
-  const next = SPORTS[(currentIndex + 1) % SPORTS.length] || SPORTS[0];
+  const currentIndex = Math.max(0, availableSports.findIndex((sport) => sport.id === currentSport));
+  const current = availableSports[currentIndex] || availableSports[0] || SPORTS[0];
+  const next = availableSports[(currentIndex + 1) % Math.max(1, availableSports.length)] || current;
 
   const switchSport = React.useCallback(() => {
     const nextSport = next.id;

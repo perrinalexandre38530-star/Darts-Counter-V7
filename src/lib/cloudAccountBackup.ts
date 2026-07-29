@@ -1,7 +1,7 @@
 import { exportCloudSnapshot, getCachedLocalProfilesForSafety, getStorageUser } from "./storage";
 import { uploadCloudVaultSnapshotJson } from "./cloudStorageApi";
 import { loadStoragePrefs } from "./storagePlans";
-import { canAttemptDirectR2FromStoredSession } from "./directR2BackupApi";
+import { canAttemptDirectR2FromStoredSession, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 
 const RESTORE_GUARD_KEY = "dc_cloud_restore_in_progress_v2";
 const MIN_INTERVAL_MS = 15_000;
@@ -174,6 +174,12 @@ async function flushQueuedCloudR2AccountBackup(reason: string): Promise<void> {
   // Un userId local ne suffit pas : sans JWT frais, aucune tentative R2.
   // Cela évite les boucles 401 quand une session Supabase a expiré.
   if (!canAttemptDirectR2FromStoredSession()) return;
+
+  // Ne construit même pas le gros snapshot si R2 est verrouillé. Avant ce
+  // garde, chaque événement dirty pouvait sérialiser plusieurs Mo puis finir
+  // en premium_required / 413, ce qui donnait une impression de lenteur.
+  const r2Usage = await getDirectR2Usage().catch(() => null);
+  if (!isDirectR2PremiumWriteAllowed(r2Usage)) return;
 
   if (inFlight) {
     queuedAfterFlight = true;

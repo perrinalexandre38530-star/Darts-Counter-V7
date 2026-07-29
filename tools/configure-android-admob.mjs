@@ -6,6 +6,7 @@ const root = process.cwd();
 const androidRoot = path.join(root, "android");
 const manifestPath = path.join(androidRoot, "app", "src", "main", "AndroidManifest.xml");
 const stringsPath = path.join(androidRoot, "app", "src", "main", "res", "values", "strings.xml");
+const appGradlePath = path.join(androidRoot, "app", "build.gradle");
 const envPath = path.join(root, ".env");
 
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
@@ -44,6 +45,7 @@ function fail(message) {
 if (!fs.existsSync(androidRoot)) fail("android/ introuvable. Lance d'abord npm run android:bootstrap.");
 if (!fs.existsSync(manifestPath)) fail(`AndroidManifest.xml introuvable: ${manifestPath}`);
 if (!fs.existsSync(stringsPath)) fail(`strings.xml introuvable: ${stringsPath}`);
+if (!fs.existsSync(appGradlePath)) fail(`build.gradle introuvable: ${appGradlePath}`);
 
 let manifest = fs.readFileSync(manifestPath, "utf8");
 const meta = `        <meta-data\n            android:name="com.google.android.gms.ads.APPLICATION_ID"\n            android:value="@string/admob_app_id" />`;
@@ -71,6 +73,19 @@ if (/<string\s+name="admob_app_id">[\s\S]*?<\/string>/.test(strings)) {
   strings = `${strings.slice(0, idx)}${line}\n${strings.slice(idx)}`;
 }
 fs.writeFileSync(stringsPath, strings);
+
+// InlineAdMobPlugin.java utilise directement le SDK Google Mobile Ads.
+// cap sync ne doit jamais laisser le module app sans cette dépendance.
+let appGradle = fs.readFileSync(appGradlePath, "utf8");
+const gmaDependency = '    implementation "com.google.android.gms:play-services-ads:${rootProject.ext.playServicesAdsVersion}"';
+if (!appGradle.includes("com.google.android.gms:play-services-ads:")) {
+  const depIndex = appGradle.indexOf("dependencies {");
+  if (depIndex < 0) fail("Bloc dependencies introuvable dans android/app/build.gradle");
+  const insertAt = depIndex + "dependencies {".length;
+  appGradle = `${appGradle.slice(0, insertAt)}\n${gmaDependency}${appGradle.slice(insertAt)}`;
+  fs.writeFileSync(appGradlePath, appGradle);
+}
+
 
 const isGoogleTest = appId === GOOGLE_TEST_APP_ID;
 console.log("\n✅ Configuration Android AdMob appliquée.");

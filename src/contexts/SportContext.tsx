@@ -6,6 +6,7 @@
 // ============================================
 
 import React from "react";
+import { isAndroidStoreV1Runtime, isAndroidStoreV1SportAllowed } from "../config/androidStoreV1";
 
 // ✅ Ajout MÖLKKY + DICE GAME (sports locaux)
 export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot";
@@ -14,14 +15,18 @@ const LS_KEY = "dc-start-game"; // on réutilise ta clé existante
 
 function normalizeSport(x: any): SportId {
   const s = String(x || "").toLowerCase().trim();
-  if (s === "petanque") return "petanque";
-  if (s === "pingpong") return "pingpong";
-  if (s === "babyfoot") return "babyfoot";
-  if (s === "molkky") return "molkky";
-  if (s === "dicegame" || s === "dice" || s === "dice_game") return "dicegame";
+  let next: SportId = "darts";
+  if (s === "petanque") next = "petanque";
+  else if (s === "pingpong") next = "pingpong";
+  else if (s === "babyfoot") next = "babyfoot";
+  else if (s === "molkky") next = "molkky";
+  else if (s === "dicegame" || s === "dice" || s === "dice_game") next = "dicegame";
   // FOOT = sport football. Ne pas confondre avec le mode darts "football".
-  if (s === "foot" || s === "soccer") return "foot";
-  return "darts";
+  else if (s === "foot" || s === "soccer") next = "foot";
+
+  // Une ancienne préférence Web ne doit pas rouvrir un sport BETA dans l'APK V1.
+  if (isAndroidStoreV1Runtime() && !isAndroidStoreV1SportAllowed(next)) return "darts";
+  return next;
 }
 
 function readSport(): SportId {

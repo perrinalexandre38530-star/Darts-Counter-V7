@@ -16,10 +16,10 @@ assert.match(plans, /personal_cloud_manual/);
 assert.match(vault, /device_file.*external_sd_manual.*personal_cloud_manual/s);
 assert.match(vault, /Google Drive \/ OneDrive \/ Dropbox \/ Nextcloud/);
 
-// NAS : compression côté client + timeout court + décompression côté backend.
+// NAS : compression côté client + timeout réaliste + décompression côté backend.
 assert.match(vault, /gzipSync/);
 assert.match(vault, /_format:\s*"gzip\+store-v2"/);
-assert.match(vault, /setTimeout\(\(\) => controller\.abort\(\), 5_000\)/);
+assert.match(vault, /NAS_PUSH_TIMEOUT_MS\s*=\s*30_000/);
 assert.match(server, /decodeIncomingSyncPayload/);
 assert.match(server, /format === "gzip\+store-v2"/);
 assert.match(server, /payload_too_large/);
@@ -42,6 +42,7 @@ const savePrefEnd = cloudApi.indexOf('export async function listCloudObjects', s
 const savePrefBlock = cloudApi.slice(savePrefStart, savePrefEnd);
 assert.doesNotMatch(savePrefBlock, /apiPost\("\/account\/storage-preferences"/);
 assert.match(auto, /isDirectR2PremiumWriteAllowed/);
-assert.match(auto, /uploadCloudVaultSnapshotJson/);
+assert.match(auto, /uploadCloudObject/);
+assert.match(cloudApi, /isDirectR2PremiumWriteAllowed/);
 
 console.log('Destinations: NAS compressé + Local/USB/SD/cloud perso + R2 PREMIUM verrouillé: OK');

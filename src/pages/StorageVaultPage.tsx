@@ -1128,12 +1128,14 @@ function encodeNasTransportSnapshot(snapshot: any): { payload: any; rawBytes: nu
   };
 }
 
-async function pushSnapshotToNasFast(payload: any, reason: string, token: string): Promise<any> {
+const NAS_PUSH_TIMEOUT_MS = 30_000;
+
+async function pushSnapshotToNasFast(payload: any, reason: string, token: string, summary?: any): Promise<any> {
   const snapshot = unwrapSnapshotEnvelope(payload);
   const version = Number(snapshot?._v || snapshot?.v || 2) || 2;
   const transport = encodeNasTransportSnapshot(snapshot);
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 5_000);
+  const timer = window.setTimeout(() => controller.abort(), NAS_PUSH_TIMEOUT_MS);
   try {
     const response = await fetch(buildApiUrl("/sync/push"), {
       method: "POST",
@@ -1147,6 +1149,7 @@ async function pushSnapshotToNasFast(payload: any, reason: string, token: string
         reason,
         transport: "gzip+store-v2",
         transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
+        summary: summary || undefined,
       }),
       signal: controller.signal,
       cache: "no-store",
@@ -1165,7 +1168,7 @@ async function pushSnapshotToNasFast(payload: any, reason: string, token: string
     }
     return { ...data, transportStats: data?.transportStats || { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes } };
   } catch (error: any) {
-    if (error?.name === "AbortError") throw new Error("Le NAS n’a pas répondu en moins de 5 secondes.");
+    if (error?.name === "AbortError") throw new Error(`Le NAS n’a pas confirmé la sauvegarde après ${Math.round(NAS_PUSH_TIMEOUT_MS / 1000)} secondes. La copie locale de sécurité est conservée ; vérifie le NAS puis relance sans supprimer les données locales.`);
     throw error;
   } finally {
     window.clearTimeout(timer);
@@ -2087,7 +2090,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
       setAccountScopeId(getVaultCurrentUserId());
       if (!token) throw new Error("Token NAS introuvable. La copie locale a été créée, mais l'envoi NAS nécessite une reconnexion au compte NAS.");
-      const response = await pushSnapshotToNasFast(prepared.snapshot, "storage-vault-instant", token);
+      const response = await pushSnapshotToNasFast(prepared.snapshot, "storage-vault-instant", token, prepared.summary);
       const slotId = String(response?.slotId || response?.id || `nas_${Date.now()}`);
       const nasSlot: NasSlot = {
         id: slotId,

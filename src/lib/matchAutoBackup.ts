@@ -3,6 +3,7 @@ import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
 import { queueExternalBackup } from "./externalBackupTarget";
+import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
   deleteCloudObjectRemote,
@@ -158,7 +159,9 @@ async function getActiveStorageProviderCached(): Promise<string> {
 
 async function shouldUseCloudR2(): Promise<boolean> {
   try {
-    return (await getActiveStorageProviderCached()) === "cloud_r2";
+    if ((await getActiveStorageProviderCached()) !== "cloud_r2") return false;
+    const usage = await getDirectR2Usage();
+    return isDirectR2PremiumWriteAllowed(usage);
   } catch {
     return false;
   }

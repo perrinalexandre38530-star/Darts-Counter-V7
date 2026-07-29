@@ -10,6 +10,7 @@ import {
   verifyDirectR2StorageCheckout,
   getDirectR2BillingStatus,
   isDirectR2BackupId,
+  isDirectR2PremiumWriteAllowed,
   listDirectR2Backups,
   restoreDirectR2Backup,
 } from "./directR2BackupApi";
@@ -388,6 +389,15 @@ export async function uploadCloudObject(args: {
   cloudCopyOnly?: boolean;
   sourceDestination?: string;
 }): Promise<{ ok: boolean; object: CloudObjectIndexItem; usage: AccountStorageUsage; error?: string; missingEnv?: string[]; objectKey?: string }> {
+  // Verrou central : aucune ancienne route /account/cloud-storage/upload ne doit
+  // contourner le paywall R2 direct. Cela évite aussi les gros POST/413 inutiles.
+  const usage = await getDirectR2Usage().catch(() => null);
+  if (!isDirectR2PremiumWriteAllowed(usage)) {
+    const error: any = new Error("Sauvegarde Cloud R2 réservée aux offres PREMIUM. Aucune donnée n'a été envoyée vers R2.");
+    error.code = "premium_required";
+    error.status = 402;
+    throw error;
+  }
   return apiPost("/account/cloud-storage/upload", args) as any;
 }
 

@@ -26,6 +26,9 @@ import { isOnlineRecord } from "../lib/x01StatsSource";
 
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { importRecoveredHistoryJson } from "../lib/importRecoveredHistory";
+import { exportHistoryDump, importHistoryDump } from "../lib/historyCloud";
+import { buildFullHistoryBackup, extractHistoryDumpFromJson, saveFullHistoryBackupFile } from "../lib/historyFileTransfer";
+import { scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
@@ -88,6 +91,11 @@ const Icon = {
   Upload: (p: any) => (
     <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
       <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18 5 5h-3v6h-4V7H7l5-5Z" />
+    </svg>
+  ),
+  Download: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18-5 5h3v6h4V7h3l-5-5Z" />
     </svg>
   ),
   Refresh: (p: any) => (
@@ -3120,6 +3128,7 @@ export default function HistoryPage({
   const [filterMode, setFilterMode] = useState<"games" | "players">("games");
   const [items, setItems] = useState<SavedEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [historyTransferBusy, setHistoryTransferBusy] = useState<null | "export" | "import">(null);
 
   // FIX HISTORIQUE/FIREFOX:
   // - le store passé par StatsHub peut changer de référence très souvent ; on ne le met pas
@@ -3464,13 +3473,98 @@ export default function HistoryPage({
   }, [tab]);
 
   async function handleImportClick() {
+    if (historyTransferBusy) return;
     fileRef.current?.click();
   }
 
+  async function handleExportAllHistory() {
+    if (historyTransferBusy) return;
+    setHistoryTransferBusy("export");
+    try {
+      // Force la migration éventuelle de l'ancien dc-history-v1 avant le dump.
+      await History.list().catch(() => [] as any[]);
+      const dump = await exportHistoryDump();
+      const backup = buildFullHistoryBackup(dump);
+      if (backup.matchCount <= 0) {
+        window.alert("Aucune partie à exporter dans l'historique.");
+        return;
+      }
+
+      const saved = await saveFullHistoryBackupFile(backup);
+      if (!saved.ok) throw saved.error || new Error("création du fichier impossible");
+      if (!saved.cancelled) {
+        window.alert(`Export terminé ✅\n${backup.matchCount} partie(s) réunie(s) dans un seul fichier JSON.`);
+      }
+    } catch (e: any) {
+      console.error("[HistoryPage] export historique complet impossible", e);
+      window.alert(`Export impossible : ${String(e?.message || "erreur inconnue")}.`);
+    } finally {
+      setHistoryTransferBusy(null);
+    }
+  }
+
+  async function restoreFullHistoryDump(dump: any) {
+    const rows = dump?.rows && typeof dump.rows === "object" ? Object.values(dump.rows) : [];
+    if (!rows.length) {
+      window.alert("Ce fichier d'historique ne contient aucune partie.");
+      return;
+    }
+
+    const before = await History.list().catch(() => [] as any[]);
+
+    // Import volontaire : contrairement aux restaurations automatiques NAS/R2,
+    // une partie précédemment supprimée sur cet appareil doit pouvoir être remise.
+    for (const row of rows) {
+      try { History.reviveForExplicitImport(row as any); } catch {}
+    }
+
+    // Merge par matchId : aucune duplication, et le garde anti-régression de
+    // historyCloud conserve toujours la version la plus riche d'un match existant.
+    await importHistoryDump(dump, { replace: false });
+
+    try {
+      if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
+      localStorage.setItem("dc-history-refresh", String(Date.now()));
+    } catch {}
+
+    try {
+      void scheduleStatsIndexRefresh({
+        reason: "history-manual-full-import",
+        debounceMs: 80,
+        includeNonFinished: true,
+        persist: true,
+      });
+    } catch {}
+
+    await loadHistory();
+    const after = await History.list().catch(() => [] as any[]);
+    const added = Math.max(0, (Array.isArray(after) ? after.length : 0) - (Array.isArray(before) ? before.length : 0));
+    const merged = Math.max(0, rows.length - added);
+
+    setGameFilter("all");
+    setPlayerFilter("all");
+    setFilterOpen(false);
+    setTab("all");
+    const newestImportedAt = rows.reduce((max: number, row: any) => Math.max(max, Number(row?.updatedAt || row?.createdAt || row?.finishedAt || 0) || 0), 0);
+    setSub(newestImportedAt > 0 && newestImportedAt < startOf("year") ? "archives" : "year");
+
+    window.alert(
+      `Historique restauré ✅\n${rows.length} partie(s) traitée(s) en une seule fois.\n${added} ajoutée(s) • ${merged} déjà présente(s) / mise(s) à jour.`
+    );
+  }
+
   async function handleImportFile(file: File) {
+    if (historyTransferBusy) return;
+    setHistoryTransferBusy("import");
     try {
       const text = await file.text();
       const json = JSON.parse(text);
+
+      const fullHistoryDump = extractHistoryDumpFromJson(json);
+      if (fullHistoryDump) {
+        await restoreFullHistoryDump(fullHistoryDump);
+        return;
+      }
 
       if (!isMatchSharePacketV1(json)) {
         // ✅ PATCH RÉCUPÉRATION HISTORIQUE
@@ -3520,6 +3614,8 @@ export default function HistoryPage({
     } catch (e: any) {
       console.error("[HistoryPage] import fichier impossible", e);
       window.alert(`Import impossible : ${String(e?.message || "fichier illisible ou stockage indisponible")}.`);
+    } finally {
+      setHistoryTransferBusy(null);
     }
   }
 
@@ -4249,12 +4345,24 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
         <button
           type="button"
-          aria-label="Importer une partie"
-          title="Importer une partie (.json)"
-          style={S.toolIconBtn(false, false)}
+          aria-label="Importer une partie ou restaurer tout l'historique"
+          title="Importer / restaurer (.json)"
+          style={S.toolIconBtn(false, historyTransferBusy === "import")}
           onClick={handleImportClick}
+          disabled={!!historyTransferBusy}
         >
           <Icon.Upload />
+        </button>
+
+        <button
+          type="button"
+          aria-label="Exporter tout l'historique"
+          title="Exporter tout l'historique dans un fichier"
+          style={S.toolIconBtn(false, historyTransferBusy === "export")}
+          onClick={handleExportAllHistory}
+          disabled={!!historyTransferBusy}
+        >
+          <Icon.Download />
         </button>
 
         {tab !== "inbox" && (

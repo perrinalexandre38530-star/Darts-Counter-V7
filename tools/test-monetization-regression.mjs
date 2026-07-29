@@ -8,6 +8,8 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const app = read("src/App.tsx");
 const prefs = read("src/monetization/prefs.ts");
 const adSlot = read("src/monetization/AdSlot.tsx");
+const nativeAdMob = read("src/monetization/nativeAdMob.ts");
+const inlineAdMob = read("src/monetization/inlineAdMob.ts");
 const catalog = read("src/monetization/catalog.ts");
 const manager = read("src/monetization/MonetizationManager.ts");
 
@@ -62,7 +64,9 @@ for (const allowed of [
   assert.ok(adSlot.includes(`"${allowed}"`), `Route bannière attendue absente : ${allowed}`);
 }
 assert.ok(!/route\s*===\s*"[^"]*_play"/.test(adSlot), "Un écran PLAY est éligible aux bannières.");
-assert.ok(adSlot.includes("Aucun banner AdMob natif flottant"), "Le garde-fou banner natif flottant est absent.");
+assert.ok(nativeAdMob.includes("aucun banner AdMob natif ne doit flotter") && nativeAdMob.includes("removeBanner"), "Le garde-fou banner natif flottant est absent.");
+assert.ok(adSlot.includes("PaidInlineSurface") && adSlot.includes("showInlineGoogleAd"), "Le chemin AdMob intégré au flux React est absent.");
+assert.ok(inlineAdMob.includes('registerPlugin("InlineAdMob")'), "Le pont Capacitor InlineAdMob est absent.");
 assert.ok(app.includes('adBannerPlacement !== "home"'), "Home doit gérer ses deux pubs directement dans Home.tsx.");
 assert.ok(app.includes('<AdSlot placement={adBannerPlacement} />'), "Les pages BottomNav hors Home doivent recevoir leur bloc pub intégré.");
 

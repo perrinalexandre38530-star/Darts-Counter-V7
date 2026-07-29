@@ -143,13 +143,23 @@ function wrapPreparedSnapshotJson(snapshotJson: string, reason: string): string 
 
 export async function chooseExternalBackupFileWithJson(snapshotJson: string, reason = "manual"): Promise<ExternalBackupStatus> {
   if (!supportsFilePicker()) return downloadExternalBackupJson(snapshotJson, reason);
-  const handle = await (window as any).showSaveFilePicker({
-    suggestedName: "multisports-scoring-backup.json",
-    types: [{ description: "Sauvegarde Multisports", accept: { "application/json": [".json", ".dcbackup"] } }],
-  });
-  await putHandle(handle);
-  writeStatus({ ...readStatus(), configured: true, fileName: String(handle?.name || "multisports-scoring-backup.json"), permission: "granted", lastError: null });
-  return writeExternalBackupJsonNow(snapshotJson, reason, { requestPermission: true });
+  try {
+    const handle = await (window as any).showSaveFilePicker({
+      suggestedName: "multisports-scoring-backup.json",
+      types: [{ description: "Sauvegarde Multisports", accept: { "application/json": [".json", ".dcbackup"] } }],
+    });
+    await putHandle(handle);
+    writeStatus({ ...readStatus(), configured: true, fileName: String(handle?.name || "multisports-scoring-backup.json"), permission: "granted", lastError: null });
+    return writeExternalBackupJsonNow(snapshotJson, reason, { requestPermission: true });
+  } catch (error: any) {
+    // Certains WebView / navigateurs refusent File System Access même lorsqu'ils
+    // exposent showSaveFilePicker(). Dans ce cas la sauvegarde ne doit JAMAIS
+    // être bloquée : on bascule immédiatement vers un téléchargement JSON.
+    if (String(error?.name || "") === "AbortError") {
+      return writeStatus({ ...readStatus(), lastError: null });
+    }
+    return downloadExternalBackupJson(snapshotJson, `${reason}:picker-fallback`);
+  }
 }
 
 export async function downloadExternalBackupJson(snapshotJson: string, reason = "manual-download"): Promise<ExternalBackupStatus> {

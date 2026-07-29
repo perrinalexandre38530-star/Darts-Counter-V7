@@ -2,6 +2,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
 import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
+import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 
 /**
  * BottomNav
@@ -221,7 +222,7 @@ export default function BottomNav({
   // Online masqué uniquement pour les sports sans salon en ligne dédié.
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
-  const hideOnline = sportLc === "petanque" || sportLc === "pingpong";
+  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -233,6 +234,11 @@ export default function BottomNav({
   const messageBadge = Math.max(0, Number(messageSummary?.total || 0));
 
   React.useEffect(() => {
+    if (hideOnline) {
+      setMessageSummary(null);
+      return;
+    }
+
     let alive = true;
     let timer: number | undefined;
 
@@ -263,7 +269,7 @@ export default function BottomNav({
       window.removeEventListener("dc-message-center-refresh", onManual as any);
       window.removeEventListener("dc-message-center-count", onCount as any);
     };
-  }, []);
+  }, [hideOnline]);
 
   const tabs: NavItem[] = [
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },

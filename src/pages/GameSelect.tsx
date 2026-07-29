@@ -13,6 +13,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
+import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.png";
@@ -253,7 +254,7 @@ export default function GameSelect({ go }: Props) {
   // 2) sports grisés ensuite
   // 3) ordre alphabétique FR dans chaque groupe
   const sortedItems = React.useMemo(() => {
-    const copy = [...items];
+    const copy = filterSportsForCurrentRuntime(items);
     copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
     copy.sort((a, b) => Number(b.enabled) - Number(a.enabled));
     return copy;

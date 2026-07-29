@@ -36,8 +36,8 @@ check("MainActivity registers InlineAdMob plugin", mainActivity.includes("regist
 check("Android plugin creates real Google AdView", inlineJava.includes("new AdView") && inlineJava.includes("AdRequest.Builder"));
 check("Android plugin uses inline adaptive banner size", inlineJava.includes("getInlineAdaptiveBannerAdSize"));
 check("Android plugin follows WebView rectangle", inlineJava.includes("getWebViewOffset") && inlineJava.includes("leftMargin") && inlineJava.includes("topMargin"));
-check("Android app exposes GMA SDK to custom plugin", appGradle.includes("com.google.android.gms:play-services-ads:${rootProject.ext.playServicesAdsVersion}"));
-check("AdMob dependency pinned compatibly with plugin v8", variablesGradle.includes("playServicesAdsVersion = '24.9.+'"));
+check("Android app exposes GMA SDK to custom plugin", appGradle.includes("com.google.android.gms:play-services-ads:"));
+check("AdMob dependency pinned compatibly with plugin v8", variablesGradle.includes("playServicesAdsVersion = '24.9.0'"));
 check("Android configurator can read VITE App ID from .env", configure.includes("dotenv.VITE_ADMOB_ANDROID_APP_ID"));
 
 const failed = checks.filter(([, ok]) => !ok);

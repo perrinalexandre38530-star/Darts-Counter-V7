@@ -45,6 +45,7 @@ import {
 } from "../games/dartsGameRegistry";
 import { History } from "../lib/history";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
+import { filterDartsGamesForCurrentRuntime } from "../config/androidStoreV1";
 
 // ✅ NEW ticker component (haut seulement)
 import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTicker";
@@ -355,7 +356,7 @@ function territoriesTickerKeyForLang(langCode: any): string {
 // En cas d'égalité, la partie la plus récente départage les modes : cela évite
 // qu'un ancien favori reste figé uniquement à cause de l'ordre du registry.
 function pickDefaultFavorite(cat: GameCategory): DartsGameDef | null {
-  const list = DARTS_GAMES.filter((g) => g.category === cat).slice().sort(sortByPopularity);
+  const list = filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((g) => g.category === cat).slice().sort(sortByPopularity);
   return list[0] ?? null;
 }
 
@@ -364,7 +365,7 @@ function pickFavoriteByCounts(
   counts: PlayCountMap,
   lastPlayed: LastPlayedMap
 ): DartsGameDef | null {
-  const list = DARTS_GAMES.filter((g) => g.category === cat).slice().sort(sortByPopularity);
+  const list = filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((g) => g.category === cat).slice().sort(sortByPopularity);
   if (!list.length) return null;
 
   let best: DartsGameDef | null = null;
@@ -614,7 +615,7 @@ export default function Games({ setTab, params }: Props) {
   }, [activeCat]);
 
   const gamesForCat = React.useMemo(() => {
-    return DARTS_GAMES.filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
+    return filterDartsGamesForCurrentRuntime(DARTS_GAMES).filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
   }, [activeCat]);
 
   // Favorites (computed from counts)
@@ -903,7 +904,7 @@ export default function Games({ setTab, params }: Props) {
   );
 
   const newModes: NewModeTickerItem[] = React.useMemo(() => {
-    const byId = new Map((DARTS_GAMES || []).map((g: any) => [String(g.id), g]));
+    const byId = new Map(filterDartsGamesForCurrentRuntime(DARTS_GAMES || []).map((g: any) => [String(g.id), g]));
 
     return RECENT_GAME_IDS
       .map((id) => byId.get(id))
@@ -922,7 +923,7 @@ export default function Games({ setTab, params }: Props) {
 
   // ✅ Ticker du bas: tous les modes (random), IMAGE SEULE (sans NEW/PLAY)
   const allTickerPool = React.useMemo(() => {
-    return (DARTS_GAMES || [])
+    return filterDartsGamesForCurrentRuntime(DARTS_GAMES || [])
       .filter((g: any) => g && g.ready)
       .map((g: any) => {
         const id = String(g.id);
