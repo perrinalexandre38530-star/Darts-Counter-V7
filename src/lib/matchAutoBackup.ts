@@ -2,6 +2,7 @@ import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
+import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import { queueExternalBackup } from "./externalBackupTarget";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
@@ -10,6 +11,7 @@ import {
   getAccountStorageUsage,
   listCloudObjects,
   uploadCloudObject,
+  uploadCloudVaultSnapshotJson,
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 
@@ -133,7 +135,7 @@ async function getActiveStorageProviderCached(): Promise<string> {
   if (localPrefs.updatedAt > 0) {
     if (localPrefs.selectedDestination === "cloud_r2") return "cloud_r2";
     if (localPrefs.selectedDestination === "founder_nas") return "nas_founder";
-    if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual") return "external_file";
+    if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual" || localPrefs.selectedDestination === "personal_cloud_manual") return "external_file";
     return "local_device";
   }
 
@@ -158,7 +160,9 @@ async function getActiveStorageProviderCached(): Promise<string> {
 
 async function shouldUseCloudR2(): Promise<boolean> {
   try {
-    return (await getActiveStorageProviderCached()) === "cloud_r2";
+    if ((await getActiveStorageProviderCached()) !== "cloud_r2") return false;
+    const usage = await getDirectR2Usage();
+    return isDirectR2PremiumWriteAllowed(usage);
   } catch {
     return false;
   }
@@ -581,24 +585,18 @@ export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<voi
 }
 
 async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
-  if (!readNasAccessToken()) return;
   if (!(await shouldUseCloudR2())) return;
   const now = Date.now();
   try {
     const last = Number(localStorage.getItem("dc_cloud_auto_full_backup_last_at_v1") || "0") || 0;
     if (last > 0 && now - last < CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS) return;
-    localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now));
   } catch {}
   const snapshot = await exportCloudSnapshot();
   const json = JSON.stringify(snapshot);
-  await uploadCloudObject({
-    objectType: CLOUD_VAULT_OBJECT_TYPE,
-    sport: "system",
+  await uploadCloudVaultSnapshotJson({
+    snapshotJson: json,
     title: `Sauvegarde cloud automatique — ${new Date().toLocaleString("fr-FR")}`,
-    objectKey: CLOUD_MATCH_FULL_SNAPSHOT_KEY,
-    mimeType: "application/json",
-    content: json,
-    gzip: true,
+    sourceDestination: "cloud_r2",
     metadata: {
       source: "match_auto_backup_cloud_r2",
       backupKind: "auto_full_snapshot",
@@ -607,6 +605,7 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
       rawSizeBytes: json.length,
     },
   });
+  try { localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now)); } catch {}
 }
 
 export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void> {
@@ -706,11 +705,10 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   if (provider === "local_device") return;
 
   if (provider === "cloud_r2") {
-    await pushMatchBackupToCloud(item).catch((error) => {
-      try {
-        localStorage.setItem("dc_match_backup_last_cloud_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
-      } catch {}
-    });
+    // R2 n'est utilisé qu'avec un abonnement PREMIUM actif. On ne crée plus un
+    // objet R2 supplémentaire pour chaque partie : le snapshot complet direct
+    // conserve uniquement la génération courante + la précédente.
+    if (!(await shouldUseCloudR2())) return;
     void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
       try {
         localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));

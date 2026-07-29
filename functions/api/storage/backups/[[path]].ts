@@ -9,6 +9,21 @@ interface Env {
   FOUNDER_EMAILS?: string;
   FREE_CLOUD_QUOTA_BYTES?: string;
   CLOUD_OBJECT_MAX_UPLOAD_BYTES?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET_STORAGE?: string;
+  STRIPE_STORAGE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_STORAGE_STARTER_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_STARTER_YEARLY?: string;
+  STRIPE_PRICE_STORAGE_PLAYER_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_PLAYER_YEARLY?: string;
+  STRIPE_PRICE_STORAGE_PLUS_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_PLUS_YEARLY?: string;
+  STRIPE_PRICE_STORAGE_PRO_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_PRO_YEARLY?: string;
+  STRIPE_PRICE_STORAGE_CLUB_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_CLUB_YEARLY?: string;
+  STRIPE_PRICE_STORAGE_TITAN_MONTHLY?: string;
+  STRIPE_PRICE_STORAGE_TITAN_YEARLY?: string;
 }
 
 type BackupRow = {
@@ -47,7 +62,7 @@ type StorageEntitlement = {
 };
 
 const R2_BACKUP_RETENTION_TOTAL = 2; // courante + précédente
-const DEFAULT_FREE_QUOTA_BYTES = 100 * 1024 * 1024;
+const DEFAULT_FREE_QUOTA_BYTES = 0;
 
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -265,21 +280,13 @@ async function readStorageEntitlement(bucket: R2Bucket, userId: string): Promise
 function isEntitlementActive(entitlement: StorageEntitlement | null): boolean {
   if (!entitlement) return false;
   if (entitlement.billingExempt) return true;
-  return ["free", "active", "trialing"].includes(String(entitlement.billingStatus || "").toLowerCase());
+  return ["active", "trialing"].includes(String(entitlement.billingStatus || "").toLowerCase());
 }
 
 async function resolveStoragePlan(bucket: R2Bucket, identity: { userId: string; email: string }, env: Env) {
-  const founders = founderSet(env);
-  if (founders.has(identity.email)) {
-    return {
-      planId: "founder_nas",
-      quotaBytes: Number.MAX_SAFE_INTEGER,
-      billingStatus: "active",
-      baseUsedBytes: 0,
-      billingExempt: true,
-      source: "founder" as const,
-    };
-  }
+  // R2 est une option PREMIUM pour tout le monde, y compris le compte fondateur.
+  // Le statut fondateur donne accès au NAS privé, jamais un passe-droit R2 qui
+  // pourrait générer une facture Cloudflare à l'insu de l'utilisateur.
   const entitlement = await readStorageEntitlement(bucket, identity.userId);
   if (isEntitlementActive(entitlement)) {
     return {
@@ -293,12 +300,131 @@ async function resolveStoragePlan(bucket: R2Bucket, identity: { userId: string; 
   }
   return {
     planId: "free_test_100mb",
-    quotaBytes: Math.max(1024, Number(env.FREE_CLOUD_QUOTA_BYTES || DEFAULT_FREE_QUOTA_BYTES)),
-    billingStatus: "free",
+    quotaBytes: 0,
+    billingStatus: "locked",
     baseUsedBytes: 0,
     billingExempt: false,
     source: "fallback_free" as const,
   };
+}
+
+
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
+const TB = 1024 * GB;
+const STORAGE_BILLING_PLANS: Record<string, { id: string; label: string; quotaBytes: number; monthlyEnv: keyof Env; yearlyEnv: keyof Env }> = {
+  starter_500mb: { id: "starter_500mb", label: "Starter 500 Mo", quotaBytes: 500 * MB, monthlyEnv: "STRIPE_PRICE_STORAGE_STARTER_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_STARTER_YEARLY" },
+  player_5gb: { id: "player_5gb", label: "Player 5 Go", quotaBytes: 5 * GB, monthlyEnv: "STRIPE_PRICE_STORAGE_PLAYER_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_PLAYER_YEARLY" },
+  plus_25gb: { id: "plus_25gb", label: "Plus 25 Go", quotaBytes: 25 * GB, monthlyEnv: "STRIPE_PRICE_STORAGE_PLUS_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_PLUS_YEARLY" },
+  pro_100gb: { id: "pro_100gb", label: "Pro 100 Go", quotaBytes: 100 * GB, monthlyEnv: "STRIPE_PRICE_STORAGE_PRO_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_PRO_YEARLY" },
+  club_500gb: { id: "club_500gb", label: "Club 500 Go", quotaBytes: 500 * GB, monthlyEnv: "STRIPE_PRICE_STORAGE_CLUB_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_CLUB_YEARLY" },
+  titan_2tb: { id: "titan_2tb", label: "Titan 2 To", quotaBytes: 2 * TB, monthlyEnv: "STRIPE_PRICE_STORAGE_TITAN_MONTHLY", yearlyEnv: "STRIPE_PRICE_STORAGE_TITAN_YEARLY" },
+};
+const PAID_STORAGE_PLAN_IDS = new Set(Object.keys(STORAGE_BILLING_PLANS));
+
+function canWritePaidR2(plan: any): boolean {
+  return PAID_STORAGE_PLAN_IDS.has(String(plan?.planId || "")) && ["active", "trialing"].includes(String(plan?.billingStatus || "").toLowerCase());
+}
+
+async function writeStorageEntitlement(bucket: R2Bucket, args: {
+  userId: string; planId: string; billingStatus: string; currentPeriodEnd?: string | null; billingExempt?: boolean;
+}): Promise<StorageEntitlement> {
+  const plan = STORAGE_BILLING_PLANS[String(args.planId || "")];
+  if (!plan && !args.billingExempt) throw new Error("Plan stockage inconnu.");
+  const entitlement: StorageEntitlement = {
+    version: 1,
+    userId: args.userId,
+    planId: args.billingExempt ? "founder_nas" : plan.id,
+    quotaBytes: args.billingExempt ? Number.MAX_SAFE_INTEGER : plan.quotaBytes,
+    baseUsedBytes: 0,
+    billingStatus: String(args.billingStatus || "locked"),
+    billingExempt: args.billingExempt === true,
+    storageProvider: "cloud_r2",
+    updatedAt: new Date().toISOString(),
+    currentPeriodEnd: args.currentPeriodEnd || null,
+  };
+  await bucket.put(entitlementKey(args.userId), JSON.stringify(entitlement), {
+    httpMetadata: { contentType: "application/json" },
+    customMetadata: { userId: args.userId, planId: entitlement.planId, billingStatus: entitlement.billingStatus },
+  });
+  return entitlement;
+}
+
+async function stripeRequest(env: Env, pathname: string, init?: { method?: string; form?: URLSearchParams }): Promise<any> {
+  const secret = String(env.STRIPE_SECRET_KEY || "").trim();
+  if (!secret) throw Object.assign(new Error("STRIPE_SECRET_KEY absent dans Cloudflare Pages."), { status: 503, code: "stripe_secret_missing" });
+  const response = await fetch(`https://api.stripe.com${pathname}`, {
+    method: init?.method || "GET",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      ...(init?.form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+    },
+    body: init?.form || undefined,
+  });
+  const text = await response.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+  if (!response.ok) {
+    const err: any = new Error(String(data?.error?.message || text || `Stripe HTTP ${response.status}`));
+    err.status = 502;
+    err.code = String(data?.error?.code || "stripe_request_failed");
+    throw err;
+  }
+  return data;
+}
+
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyStripeWebhook(rawBody: string, header: string, env: Env): Promise<boolean> {
+  const secret = String(env.STRIPE_WEBHOOK_SECRET_STORAGE || env.STRIPE_STORAGE_WEBHOOK_SECRET || "").trim();
+  if (!secret || !header) return false;
+  const fields = header.split(",").map((v) => v.trim());
+  const timestamp = fields.find((v) => v.startsWith("t="))?.slice(2) || "";
+  const signatures = fields.filter((v) => v.startsWith("v1=")).map((v) => v.slice(3));
+  if (!timestamp || !signatures.length) return false;
+  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (!Number.isFinite(age) || age > 300) return false;
+  const expected = await hmacSha256Hex(secret, `${timestamp}.${rawBody}`);
+  return signatures.some((sig) => timingSafeEqualHex(expected, sig));
+}
+
+async function activateEntitlementFromStripeSession(bucket: R2Bucket, session: any, env: Env, expectedUserId?: string): Promise<{ entitlement: StorageEntitlement; subscription?: any }> {
+  const metadata = session?.metadata || {};
+  const userId = String(metadata.userId || metadata.user_id || session?.client_reference_id || "").trim();
+  const planId = String(metadata.planId || metadata.plan_id || "").trim();
+  if (!userId || !STORAGE_BILLING_PLANS[planId]) throw Object.assign(new Error("Session Stripe sans utilisateur/plan stockage valide."), { status: 400, code: "stripe_session_metadata_invalid" });
+  if (expectedUserId && userId !== expectedUserId) throw Object.assign(new Error("Cette session Stripe n'appartient pas au compte connecté."), { status: 403, code: "stripe_session_user_mismatch" });
+  let subscription: any = null;
+  const subscriptionId = typeof session?.subscription === "string" ? session.subscription : session?.subscription?.id;
+  if (subscriptionId) subscription = await stripeRequest(env, `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+  const billingStatus = String(subscription?.status || (session?.payment_status === "paid" ? "active" : "pending"));
+  if (!["active", "trialing"].includes(billingStatus)) throw Object.assign(new Error(`Abonnement Stripe non actif (${billingStatus}).`), { status: 402, code: "premium_not_active" });
+  const periodEnd = subscription?.current_period_end ? new Date(Number(subscription.current_period_end) * 1000).toISOString() : null;
+  const entitlement = await writeStorageEntitlement(bucket, { userId, planId, billingStatus, currentPeriodEnd: periodEnd });
+  return { entitlement, subscription };
+}
+
+async function syncEntitlementFromStripeSubscription(bucket: R2Bucket, subscription: any): Promise<StorageEntitlement | null> {
+  const metadata = subscription?.metadata || {};
+  const userId = String(metadata.userId || metadata.user_id || "").trim();
+  const planId = String(metadata.planId || metadata.plan_id || "").trim();
+  if (!userId || !STORAGE_BILLING_PLANS[planId]) return null;
+  const billingStatus = String(subscription?.status || "canceled").toLowerCase();
+  const periodEnd = subscription?.current_period_end
+    ? new Date(Number(subscription.current_period_end) * 1000).toISOString()
+    : null;
+  return writeStorageEntitlement(bucket, { userId, planId, billingStatus, currentPeriodEnd: periodEnd });
 }
 
 function sortBackupsNewestFirst(rows: BackupRow[]): BackupRow[] {
@@ -407,6 +533,8 @@ function usagePayload(manifest: Manifest, plan: any) {
     planId: String(plan.planId || "free_test_100mb"),
     billingStatus: String(plan.billingStatus || "free"),
     billingExempt: plan.billingExempt === true,
+    writeAllowed: ["active", "trialing"].includes(String(plan.billingStatus || "").toLowerCase()) && PAID_STORAGE_PLAN_IDS.has(String(plan.planId || "")),
+    premiumRequired: !(["active", "trialing"].includes(String(plan.billingStatus || "").toLowerCase()) && PAID_STORAGE_PLAN_IDS.has(String(plan.planId || ""))),
     planSource: String(plan.source || "unknown"),
     retainedBackups: activeBackups(manifest.backups).length,
     retentionTotal: R2_BACKUP_RETENTION_TOTAL,
@@ -445,9 +573,6 @@ function routeParts(params: any): string[] {
   return raw.split("/").map((v) => v.trim()).filter(Boolean);
 }
 
-function founderSet(env: Env): Set<string> {
-  return new Set(String(env.FOUNDER_EMAILS || "").split(/[;,\s]+/g).map((v) => v.trim().toLowerCase()).filter(Boolean));
-}
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env, params } = context;
@@ -467,7 +592,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         bucketReady: !!bucket,
         ...auth,
         retention: { current: 1, previous: 1, total: R2_BACKUP_RETENTION_TOTAL, autoCleanup: true },
-        paidPlans: { supported: true, entitlementSource: "R2 private entitlement written after Stripe confirmation" },
+        paidPlans: { supported: true, writePolicy: "premium_required", freeWriteQuotaBytes: 0, entitlementSource: "R2 private entitlement written after Stripe confirmation" },
         code: bucket ? undefined : "r2_binding_missing",
         message: bucket
           ? "Pages Function R2 prête."
@@ -482,7 +607,119 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       message: "Le projet Cloudflare Pages doit lier USER_DATA_BUCKET au bucket multisports-user-data puis être redéployé.",
     }, 503);
 
+    // Stripe appelle ce webhook sans session utilisateur. La signature Stripe
+    // est donc vérifiée AVANT toute résolution d'identité applicative.
+    if (method === "POST" && parts.length === 2 && parts[0] === "billing" && parts[1] === "webhook") {
+      const rawBody = await request.text();
+      const signature = String(request.headers.get("stripe-signature") || "");
+      const verified = await verifyStripeWebhook(rawBody, signature, env);
+      if (!verified) return json({ ok: false, code: "stripe_webhook_signature_invalid", error: "Signature Stripe invalide." }, 400);
+
+      let event: any = null;
+      try { event = JSON.parse(rawBody); } catch { return json({ ok: false, code: "stripe_webhook_json_invalid", error: "Webhook Stripe illisible." }, 400); }
+      const eventType = String(event?.type || "");
+      const object = event?.data?.object || {};
+
+      try {
+        if (eventType === "checkout.session.completed" || eventType === "checkout.session.async_payment_succeeded") {
+          await activateEntitlementFromStripeSession(bucket, object, env).catch(async (error: any) => {
+            // Une session peut être confirmée avant que l'abonnement soit actif.
+            // On enregistre alors un état non-écrivable; un événement subscription.updated
+            // activera automatiquement le droit R2 quelques instants plus tard.
+            const metadata = object?.metadata || {};
+            const userId = String(metadata.userId || object?.client_reference_id || "").trim();
+            const planId = String(metadata.planId || "").trim();
+            if (userId && STORAGE_BILLING_PLANS[planId]) {
+              await writeStorageEntitlement(bucket, { userId, planId, billingStatus: "pending" });
+              return;
+            }
+            throw error;
+          });
+        } else if (eventType === "customer.subscription.updated" || eventType === "customer.subscription.created" || eventType === "customer.subscription.deleted") {
+          await syncEntitlementFromStripeSubscription(bucket, object);
+        }
+      } catch (error: any) {
+        // Réponse 200 intentionnelle : l'état reste verrouillé si la synchro est
+        // incomplète et on évite une tempête de retries Stripe coûteuse/inutile.
+        return json({ ok: true, received: true, eventType, synchronized: false, warning: String(error?.message || error || "sync_failed") });
+      }
+      return json({ ok: true, received: true, eventType, synchronized: true });
+    }
+
     const identity = await resolveIdentity(request, env);
+
+    if (parts.length === 2 && parts[0] === "billing" && parts[1] === "status" && method === "GET") {
+      const allPriceEnv = Object.values(STORAGE_BILLING_PLANS).flatMap((plan) => [plan.monthlyEnv, plan.yearlyEnv]);
+      const missingEnv = allPriceEnv.filter((key) => !String(env[key] || "").trim()).map(String);
+      const secret = String(env.STRIPE_SECRET_KEY || "").trim();
+      const webhookSecret = String(env.STRIPE_WEBHOOK_SECRET_STORAGE || env.STRIPE_STORAGE_WEBHOOK_SECRET || "").trim();
+      let verified = false;
+      let verifyError = "";
+      if (new URL(request.url).searchParams.get("verify") === "1" && secret) {
+        try { await stripeRequest(env, "/v1/account"); verified = true; } catch (error: any) { verifyError = String(error?.message || error || "Stripe inaccessible"); }
+      }
+      return json({
+        ok: true,
+        configured: !!secret && missingEnv.length === 0,
+        provider: "stripe",
+        mode: secret.startsWith("sk_live_") ? "live" : secret.startsWith("sk_test_") ? "test" : secret ? "unknown" : "missing",
+        secretKeyConfigured: !!secret,
+        priceCount: allPriceEnv.length,
+        configuredPriceCount: allPriceEnv.length - missingEnv.length,
+        missingEnv,
+        webhookStorageConfigured: !!webhookSecret,
+        webhookSecretEnvName: env.STRIPE_WEBHOOK_SECRET_STORAGE ? "STRIPE_WEBHOOK_SECRET_STORAGE" : env.STRIPE_STORAGE_WEBHOOK_SECRET ? "STRIPE_STORAGE_WEBHOOK_SECRET" : null,
+        webhookEndpoint: "/api/storage/backups/billing/webhook",
+        checkoutEndpoint: "/api/storage/backups/billing/checkout",
+        verified: new URL(request.url).searchParams.get("verify") === "1" ? verified : undefined,
+        verifyError: verifyError || undefined,
+      });
+    }
+
+    if (parts.length === 2 && parts[0] === "billing" && parts[1] === "checkout" && method === "POST") {
+      const body: any = await request.json().catch(() => ({}));
+      const planId = String(body?.planId || "").trim();
+      const interval = String(body?.interval || "monthly").trim() === "yearly" ? "yearly" : "monthly";
+      const plan = STORAGE_BILLING_PLANS[planId];
+      if (!plan) return json({ ok: false, code: "premium_plan_required", error: "Choisis une offre Cloud R2 PREMIUM." }, 400);
+      const priceEnv = interval === "yearly" ? plan.yearlyEnv : plan.monthlyEnv;
+      const priceId = String(env[priceEnv] || "").trim();
+      if (!priceId) return json({ ok: false, code: "stripe_price_missing", missingEnv: String(priceEnv), error: `Prix Stripe non configuré (${String(priceEnv)}).` }, 503);
+
+      const requestUrl = new URL(request.url);
+      const origin = requestUrl.origin;
+      const successUrl = String(body?.successUrl || `${origin}/#/settings?account=storage&storage_checkout=success&session_id={CHECKOUT_SESSION_ID}`);
+      const cancelUrl = String(body?.cancelUrl || `${origin}/#/settings?account=storage&storage_checkout=cancel`);
+      const form = new URLSearchParams();
+      form.set("mode", "subscription");
+      form.set("success_url", successUrl);
+      form.set("cancel_url", cancelUrl);
+      form.set("line_items[0][price]", priceId);
+      form.set("line_items[0][quantity]", "1");
+      form.set("client_reference_id", identity.userId);
+      form.set("allow_promotion_codes", "true");
+      form.set("metadata[feature]", "storage_r2");
+      form.set("metadata[userId]", identity.userId);
+      form.set("metadata[planId]", planId);
+      form.set("metadata[interval]", interval);
+      form.set("subscription_data[metadata][feature]", "storage_r2");
+      form.set("subscription_data[metadata][userId]", identity.userId);
+      form.set("subscription_data[metadata][planId]", planId);
+      if (identity.email) form.set("customer_email", identity.email);
+      const session = await stripeRequest(env, "/v1/checkout/sessions", { method: "POST", form });
+      await writeStorageEntitlement(bucket, { userId: identity.userId, planId, billingStatus: "pending" });
+      return json({ ok: true, url: session?.url, sessionId: session?.id, planId, interval, stripeMode: String(env.STRIPE_SECRET_KEY || "").startsWith("sk_live_") ? "live" : "test", priceId });
+    }
+
+    if (parts.length === 2 && parts[0] === "billing" && parts[1] === "verify" && method === "GET") {
+      const sessionId = String(new URL(request.url).searchParams.get("session_id") || "").trim();
+      if (!sessionId) return json({ ok: false, code: "stripe_session_missing", error: "session_id Stripe manquant." }, 400);
+      const session = await stripeRequest(env, `/v1/checkout/sessions/${encodeURIComponent(sessionId)}`);
+      const activated = await activateEntitlementFromStripeSession(bucket, session, env, identity.userId);
+      const manifest = await readManifest(bucket, identity.userId);
+      const plan = await resolveStoragePlan(bucket, identity, env);
+      return json({ ok: true, activated: true, entitlement: activated.entitlement, plan, usage: usagePayload(manifest, plan) });
+    }
 
     // Miroir serveur NAS publié automatiquement par le backend Node.
     // Lecture indépendante du NAS/PostgreSQL : permet de restaurer profil + store
@@ -532,6 +769,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
 
       if (method === "POST") {
+        const mediaPlan = await resolveStoragePlan(bucket, identity, env);
+        if (!canWritePaidR2(mediaPlan)) return json({
+          ok: false,
+          code: "premium_required",
+          error: "Cloud R2 verrouillé : une offre PREMIUM active est requise pour toute nouvelle écriture.",
+          usage: usagePayload(await readManifest(bucket, identity.userId), mediaPlan),
+        }, 402);
         const body: any = await request.json();
         const dataUrl = String(body?.dataUrl || "").trim();
         if (!/^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(dataUrl)) {
@@ -606,6 +850,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
 
       if (method === "POST") {
+        const avatarPlan = await resolveStoragePlan(bucket, identity, env);
+        if (!canWritePaidR2(avatarPlan)) return json({
+          ok: false,
+          code: "premium_required",
+          error: "Cloud R2 verrouillé : une offre PREMIUM active est requise pour toute nouvelle écriture.",
+          usage: usagePayload(await readManifest(bucket, identity.userId), avatarPlan),
+        }, 402);
         const body: any = await request.json();
         const dataUrl = String(body?.dataUrl || "").trim();
         if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(dataUrl)) {
@@ -663,6 +914,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     if (method === "POST" && parts.length === 0) {
+      if (!canWritePaidR2(plan)) return json({
+        ok: false,
+        code: "premium_required",
+        error: "Cloud R2 verrouillé : une offre PREMIUM active est requise pour sauvegarder sur Cloudflare R2.",
+        message: "Le stockage Local / fichier / USB / SD / cloud personnel reste gratuit. R2 n'écrit rien sans abonnement actif.",
+        usage: usagePayload(manifest, plan),
+      }, 402);
       const body: any = await request.json();
       const snapshotJson = String(body?.snapshotJson || "");
       if (!snapshotJson) return json({ ok: false, error: "Snapshot vide." }, 400);

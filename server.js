@@ -82,6 +82,20 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ limit: JSON_LIMIT, extended: true }));
+// Toujours renvoyer une erreur JSON exploitable : un proxy ou un ancien client
+// peut encore envoyer un corps trop gros, mais l'UI ne doit jamais afficher une
+// page HTML brute ni sembler figée pendant plusieurs minutes.
+app.use((error, _req, res, next) => {
+  if (error?.type === "entity.too.large" || Number(error?.status || error?.statusCode || 0) === 413) {
+    return res.status(413).json({
+      ok: false,
+      code: "payload_too_large",
+      error: "Sauvegarde trop volumineuse pour le transport HTTP courant.",
+      message: "Utilise la version de l'application qui compresse la sauvegarde NAS avant l'envoi.",
+    });
+  }
+  return next(error);
+});
 
 const pool = new Pool({
   host: process.env.PGHOST || "multisports-postgres",
@@ -1252,6 +1266,27 @@ async function decodeSnapshotText(text, encoding) {
   return parsePossiblyJsonString(raw);
 }
 
+async function decodeIncomingSyncPayload(payload) {
+  if (payload == null || typeof payload !== "object") return payload;
+  const format = String(payload?._format || "").trim().toLowerCase();
+  const encoding = String(payload?.encoding || "").trim().toLowerCase();
+  const data = typeof payload?.data === "string" ? payload.data : "";
+
+  if ((format === "gzip+store-v2" || format === "gzip-store-v2") && payload?.compressed === true && data) {
+    const compressed = Buffer.from(data, encoding === "base64" || !encoding ? "base64" : encoding);
+    const json = (await gunzipAsync(compressed)).toString("utf8");
+    return JSON.parse(json);
+  }
+
+  if ((format === "lz-string+store-v2" || format === "lz-string-store-v2") && payload?.compressed === true && data) {
+    const json = LZString.decompressFromBase64(data) || LZString.decompressFromUTF16(data) || "";
+    if (!json) throw new Error("Payload LZ-String illisible");
+    return JSON.parse(json);
+  }
+
+  return payload;
+}
+
 async function loadUserStoreSnapshot(userId) {
   const result = await pool.query(`
     SELECT payload, data, payload_text, data_text, payload_encoding, data_encoding, version, updated_at
@@ -2266,10 +2301,19 @@ app.get("/sync/pull", authRequired, async (req, res) => {
 
 app.post("/sync/push", authRequired, async (req, res) => {
   try {
-    const payload = req.body?.payload ?? null;
-    const version = Number(req.body?.version || 8);
+    const incomingPayload = req.body?.payload ?? null;
+    const payload = await decodeIncomingSyncPayload(incomingPayload);
+    if (payload == null) return res.status(400).json({ ok: false, error: "Payload de sauvegarde manquant" });
+    const version = Number(req.body?.version || payload?._v || payload?.v || 8) || 8;
     const saved = await saveUserStoreSnapshot(req.user.id, payload, version, String(req.body?.reason || "push"));
-    res.json({ ok: true, version, updatedAt: nowIso(), slotId: saved?.slotId || null });
+    res.json({
+      ok: true,
+      version,
+      updatedAt: nowIso(),
+      slotId: saved?.slotId || null,
+      transport: String(req.body?.transport || incomingPayload?._format || "json"),
+      transportStats: req.body?.transportStats || incomingPayload?.meta || null,
+    });
   } catch (error) {
     console.error("POST /sync/push error:", error);
     res.status(500).json({ error: error.message || "Erreur sync push" });
@@ -2281,7 +2325,7 @@ app.post("/sync/slots", authRequired, async (req, res) => {
     const body = req.body || {};
     const incomingPayload = body.payload ?? body.snapshot ?? body.data ?? null;
     const reason = String(body.reason || body.label || "manual-slot").trim().slice(0, 160) || "manual-slot";
-    let payload = incomingPayload;
+    let payload = incomingPayload == null ? null : await decodeIncomingSyncPayload(incomingPayload);
     let version = Number(body.version || 0);
 
     if (payload == null) {
@@ -5181,12 +5225,13 @@ app.post("/backup/full", async (req, res) => {
       return res.status(400).json({ error: "ownerId manquant pour le backup NAS" });
     }
 
-    const payload = req.body?.payload ?? null;
+    const incomingPayload = req.body?.payload ?? null;
+    const payload = await decodeIncomingSyncPayload(incomingPayload);
     if (!payload) {
       return res.status(400).json({ error: "payload manquant pour le backup NAS" });
     }
 
-    const version = Number(req.body?.version || 2);
+    const version = Number(req.body?.version || payload?._v || payload?.v || 2) || 2;
     const saved = await saveUserStoreSnapshot(ownerId, payload, version, String(req.body?.reason || "legacy-backup-full"));
 
     res.json({

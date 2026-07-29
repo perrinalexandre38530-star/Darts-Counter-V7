@@ -6,6 +6,9 @@ import {
   downloadDirectR2Backup,
   emptyDirectR2Trash,
   getDirectR2Usage,
+  createDirectR2StorageCheckout,
+  verifyDirectR2StorageCheckout,
+  getDirectR2BillingStatus,
   isDirectR2BackupId,
   listDirectR2Backups,
   restoreDirectR2Backup,
@@ -62,7 +65,7 @@ export type CloudObjectIndexItem = {
 
 export function storageDestinationToProvider(destination: StorageDestinationId | string) {
   const raw = String(destination || "").trim();
-  if (raw === "device_file" || raw === "external_sd_manual") return "external_manual";
+  if (raw === "device_file" || raw === "external_sd_manual" || raw === "personal_cloud_manual") return "external_manual";
   if (raw === "cloud_r2") return "cloud_r2";
   if (raw === "founder_nas") return "nas_founder";
   return "local_device";
@@ -79,13 +82,45 @@ export async function getAccountStoragePreferences(): Promise<AccountStoragePref
 }
 
 export async function getAccountStorageUsage(): Promise<AccountStorageUsage> {
-  const res: any = await apiGet("/account/storage-usage");
-  const preference = res?.preference || {};
-  const usedBytes = toNumber(res?.usedBytes ?? preference.used_bytes, 0);
-  const quotaBytes = toNumber(res?.quotaBytes ?? preference.quota_bytes, 0);
-  const remainingBytes = Math.max(0, toNumber(res?.remainingBytes, quotaBytes - usedBytes));
-  const percentUsed = quotaBytes > 0 ? Math.min(100, Math.max(0, (usedBytes / quotaBytes) * 100)) : 0;
-  return { ...res, ok: !!res?.ok, preference, usedBytes, quotaBytes, remainingBytes, percentUsed };
+  // R2 direct est désormais la source canonique du droit PREMIUM et du quota.
+  // Cela supprime toute dépendance au NAS pour savoir si un utilisateur peut écrire dans R2.
+  try {
+    const direct = await getDirectR2Usage();
+    const preference: AccountStoragePreference = {
+      plan_id: direct.planId,
+      storage_provider: "cloud_r2",
+      quota_bytes: direct.quotaBytes,
+      used_bytes: direct.usedBytes,
+      billing_status: direct.billingStatus,
+      billing_exempt: direct.billingExempt,
+    };
+    return {
+      ok: true, preference,
+      usedBytes: direct.usedBytes, quotaBytes: direct.quotaBytes,
+      remainingBytes: direct.remainingBytes, percentUsed: direct.percentUsed,
+      requiresPayment: direct.premiumRequired === true,
+    };
+  } catch {
+    // Ne jamais retomber sur le NAS pour déterminer un droit R2 : si la route
+    // directe n'est pas joignable, on verrouille par sécurité sans générer de 502 NAS.
+    const preference: AccountStoragePreference = {
+      plan_id: "free_test_100mb",
+      storage_provider: "cloud_r2",
+      quota_bytes: 0,
+      used_bytes: 0,
+      billing_status: "locked",
+      billing_exempt: false,
+    };
+    return {
+      ok: false,
+      preference,
+      usedBytes: 0,
+      quotaBytes: 0,
+      remainingBytes: 0,
+      percentUsed: 0,
+      requiresPayment: true,
+    };
+  }
 }
 
 export async function saveAccountStoragePreferences(args: {
@@ -93,16 +128,26 @@ export async function saveAccountStoragePreferences(args: {
   storageDestination: StorageDestinationId | string;
   metadata?: Record<string, any>;
 }): Promise<{ ok: boolean; preference: AccountStoragePreference; requiresPayment?: boolean; desiredPlanId?: string; paymentMessage?: string; plan?: any }> {
+  // La destination est une préférence locale de l'appareil. Ne plus appeler le
+  // proxy NAS ici : cela supprimait de la réactivité et générait des 502 inutiles.
   const storageProvider = storageDestinationToProvider(args.storageDestination);
-  return apiPost("/account/storage-preferences", {
-    planId: args.planId,
-    storageProvider,
-    metadata: {
-      ...(args.metadata || {}),
-      selectedDestination: args.storageDestination,
-      selectedAt: new Date().toISOString(),
-    },
-  }) as any;
+  let direct: any = null;
+  if (storageProvider === "cloud_r2") direct = await getDirectR2Usage().catch(() => null);
+  const requiresPayment = storageProvider === "cloud_r2" && direct?.writeAllowed !== true;
+  const preference: AccountStoragePreference = {
+    plan_id: direct?.planId || args.planId,
+    desired_plan_id: args.planId,
+    storage_provider: storageProvider,
+    quota_bytes: Number(direct?.quotaBytes || 0),
+    used_bytes: Number(direct?.usedBytes || 0),
+    billing_status: String(direct?.billingStatus || (requiresPayment ? "locked" : "local")),
+    billing_exempt: direct?.billingExempt === true,
+    metadata: { ...(args.metadata || {}), selectedDestination: args.storageDestination, selectedAt: new Date().toISOString() },
+  };
+  return {
+    ok: true, preference, requiresPayment, desiredPlanId: String(args.planId || ""),
+    paymentMessage: requiresPayment ? "Cloud R2 verrouillé : active une offre PREMIUM avant toute sauvegarde cloud." : undefined,
+  };
 }
 
 export async function listCloudObjects(filters?: { objectType?: string; sport?: string; includeDeleted?: boolean; limit?: number }): Promise<CloudObjectIndexItem[]> {
@@ -158,7 +203,7 @@ export async function createStorageCheckoutSession(args: {
   successUrl?: string;
   cancelUrl?: string;
 }): Promise<{ ok: boolean; url?: string; sessionId?: string; plan?: any; interval?: StorageBillingInterval; error?: string; missingEnv?: string; message?: string; stripeMode?: string; priceId?: string; stripeErrorCode?: string; stripeErrorType?: string }> {
-  return apiPost("/account/storage/checkout", {
+  return createDirectR2StorageCheckout({
     planId: args.planId,
     interval: args.interval,
     successUrl: args.successUrl,
@@ -193,20 +238,16 @@ export function submitStorageCheckoutRedirect(args: {
 }
 
 export async function verifyStorageCheckoutSession(sessionId: string): Promise<{ ok: boolean; activated?: boolean; plan?: any; preference?: AccountStoragePreference; usage?: AccountStorageUsage; message?: string; error?: string }> {
-  const id = encodeURIComponent(String(sessionId || ""));
-  const res: any = await apiGet(`/account/storage/checkout/verify?session_id=${id}`);
-  const rawUsage = res?.usage;
-  if (rawUsage?.preference) {
-    const preference = rawUsage.preference;
-    const usedBytes = toNumber(rawUsage.usedBytes ?? preference.used_bytes, 0);
-    const quotaBytes = toNumber(rawUsage.quotaBytes ?? preference.quota_bytes, 0);
+  const res: any = await verifyDirectR2StorageCheckout(sessionId);
+  if (res?.usage) {
+    const direct = res.usage;
     res.usage = {
-      ...rawUsage,
-      preference,
-      usedBytes,
-      quotaBytes,
-      remainingBytes: Math.max(0, toNumber(rawUsage.remainingBytes, quotaBytes - usedBytes)),
-      percentUsed: quotaBytes > 0 ? Math.min(100, Math.max(0, (usedBytes / quotaBytes) * 100)) : 0,
+      ok: true,
+      preference: {
+        plan_id: direct.planId, storage_provider: "cloud_r2", quota_bytes: direct.quotaBytes, used_bytes: direct.usedBytes,
+        billing_status: direct.billingStatus, billing_exempt: direct.billingExempt,
+      },
+      usedBytes: direct.usedBytes, quotaBytes: direct.quotaBytes, remainingBytes: direct.remainingBytes, percentUsed: direct.percentUsed,
     };
   }
   return res;
@@ -244,7 +285,7 @@ export type StorageStripeStatus = {
 };
 
 export async function getStorageStripeStatus(verify = false): Promise<StorageStripeStatus> {
-  return apiGet(`/account/storage/stripe-status${verify ? "?verify=1" : ""}`) as any;
+  return getDirectR2BillingStatus(verify) as any;
 }
 
 
@@ -431,6 +472,7 @@ export async function uploadCloudVaultSnapshotJson(args: {
     title: args.title || `Sauvegarde cloud ${now.toLocaleString("fr-FR")}`,
     summary: (metadata as any)?.summary || metadata,
     metadata,
+    allowExplicitCloudCopy: args.cloudCopyOnly === true,
   });
   const directUsage: any = direct.usage || await getDirectR2Usage().catch(() => null);
   const quotaBytes = Number(directUsage?.quotaBytes || 0);
@@ -444,7 +486,7 @@ export async function uploadCloudVaultSnapshotJson(args: {
         storage_provider: "cloud_r2",
         quota_bytes: quotaBytes,
         used_bytes: usedBytes,
-        billing_status: String(directUsage.billingStatus || "free"),
+        billing_status: String(directUsage.billingStatus || "locked"),
         billing_exempt: directUsage.billingExempt === true,
       },
       usedBytes,

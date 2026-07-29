@@ -40,14 +40,14 @@ export type StoragePlan = {
 export const CLOUD_STORAGE_PLANS: StoragePlan[] = [
   {
     id: "free_test_100mb",
-    label: "Free Test",
-    shortLabel: "100 Mo",
-    quotaBytes: 100 * MB,
+    label: "Sans abonnement cloud",
+    shortLabel: "R2 verrouillé",
+    quotaBytes: 0,
     priceMonthlyCents: 0,
-    public: true,
-    badge: "Test",
-    description: "Petit espace gratuit pour tester la sauvegarde cloud sans ouvrir un vrai stockage permanent.",
-    features: ["100 Mo cloud", "avatars compressés", "quelques sauvegardes / parties", "upgrade requis au-delà"],
+    public: false,
+    badge: "Local gratuit",
+    description: "Compatibilité legacy uniquement. Aucune nouvelle écriture Cloudflare R2 n'est autorisée sans offre cloud payante active.",
+    features: ["sauvegarde locale gratuite", "export fichier gratuit", "restauration d'anciens backups R2", "aucun upload R2 sans abonnement"],
   },
   {
     id: "starter_500mb",
@@ -142,10 +142,25 @@ export const CLOUD_STORAGE_PLANS: StoragePlan[] = [
   },
 ];
 
+
+export const PAID_CLOUD_PLAN_IDS: StoragePlanId[] = [
+  "starter_500mb",
+  "player_5gb",
+  "plus_25gb",
+  "pro_100gb",
+  "club_500gb",
+  "titan_2tb",
+];
+
+export function isPaidCloudPlanId(value: StoragePlanId | string | null | undefined): boolean {
+  return PAID_CLOUD_PLAN_IDS.includes(String(value || "") as StoragePlanId);
+}
+
 export type StorageDestinationId =
   | "app_local"
   | "device_file"
   | "external_sd_manual"
+  | "personal_cloud_manual"
   | "cloud_r2"
   | "founder_nas";
 
@@ -186,12 +201,22 @@ export const STORAGE_DESTINATIONS: StorageDestination[] = [
     warning: "Sur PWA navigateur, l'accès direct SD dépend du système. L'export fichier reste le fallback sûr.",
   },
   {
+    id: "personal_cloud_manual",
+    label: "Cloud personnel / dossier synchronisé",
+    shortLabel: "Cloud perso",
+    cloud: false,
+    public: true,
+    description: "Écrit dans un fichier que tu choisis dans Google Drive, OneDrive, Dropbox, Nextcloud, un partage réseau ou tout dossier synchronisé exposé par ton appareil.",
+    warning: "Selon le navigateur ou Android, le fournisseur cloud apparaît dans le sélecteur système. Sinon, utilise un dossier local déjà synchronisé par ton application cloud.",
+  },
+  {
     id: "cloud_r2",
-    label: "Cloud Multisports (Cloudflare R2)",
+    label: "Cloud Multisports PREMIUM (Cloudflare R2)",
     shortLabel: "Cloud R2",
     cloud: true,
     public: true,
-    description: "Stockage cloud payant contrôlé par quota : historiques, stats, avatars, compétitions et backups compressés.",
+    description: "Stockage cloud PREMIUM. Toute nouvelle écriture R2 est bloquée côté serveur tant qu'aucun abonnement cloud payant n'est actif.",
+    warning: "Sans abonnement : aucune sauvegarde, aucun média et aucun backup automatique ne sont envoyés sur ton compte Cloudflare R2.",
   },
   {
     id: "founder_nas",

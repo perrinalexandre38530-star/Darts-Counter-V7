@@ -327,7 +327,7 @@ export async function writeExternalBackupNow(reason = "manual", opts?: { request
 
 export function queueExternalBackup(reason = "auto"): void {
   const prefs = loadStoragePrefs();
-  if (prefs.selectedDestination !== "device_file" && prefs.selectedDestination !== "external_sd_manual") return;
+  if (prefs.selectedDestination !== "device_file" && prefs.selectedDestination !== "external_sd_manual" && prefs.selectedDestination !== "personal_cloud_manual") return;
   if (typeof window === "undefined") return;
   if (queuedTimer) window.clearTimeout(queuedTimer);
   const delay = Math.max(3000, MIN_AUTO_WRITE_MS - (Date.now() - lastAutoWriteAt));

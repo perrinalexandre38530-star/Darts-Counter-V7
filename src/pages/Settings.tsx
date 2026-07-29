@@ -109,7 +109,7 @@ import {
   type StorageBillingInterval,
   type StorageStripeStatus,
 } from "../lib/cloudStorageApi";
-import { getDirectR2Status, getDirectR2Usage } from "../lib/directR2BackupApi";
+import { getDirectR2Status, getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "../lib/directR2BackupApi";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1449,7 +1449,7 @@ function AccountPages({
       if (status.configured) {
         setMessage("Stripe stockage est configuré : les paiements peuvent être testés.");
       } else if (!status.secretKeyConfigured) {
-        setCloudUsageError("STRIPE_SECRET_KEY est manquant côté NAS.");
+        setCloudUsageError("STRIPE_SECRET_KEY est manquant dans Cloudflare Pages.");
       } else {
         setCloudUsageError(`Stripe stockage incomplet : ${status.missingEnv?.length || 0} price IDs à renseigner dans le .env.`);
       }
@@ -1590,7 +1590,7 @@ function AccountPages({
 
   async function runCloudStorageSmokeTest() {
     if (!isSignedIn) {
-      safeAlert("Connecte-toi avant de tester le stockage cloud.");
+      safeAlert("Connecte-toi avant de vérifier le stockage cloud.");
       openAccountLogin();
       return;
     }
@@ -1599,68 +1599,32 @@ function AccountPages({
     setMessage(null);
     setCloudStorageTestResult({
       status: "info",
-      title: "Test R2 en cours…",
-      detail: "Envoi d’un petit JSON compressé vers Cloudflare R2.",
+      title: "Vérification R2 en cours…",
+      detail: "Diagnostic lecture seule : aucun objet test ne sera écrit ni facturé.",
     });
     try {
-      const smokePayload = {
-        ok: true,
-        type: "storage_smoke_test",
-        createdAt: new Date().toISOString(),
-        app: "Darts Counter V7",
-      };
-      const result = await uploadCloudObject({
-        objectType: "storage_smoke_test",
-        sport: "system",
-        title: "Test stockage R2",
-        payload: smokePayload,
-        gzip: true,
-        metadata: { source: "settings_smoke_test" },
+      const [status, usage] = await Promise.all([getDirectR2Status(), getDirectR2Usage()]);
+      setCloudStorageStatus({
+        ok: status.ok,
+        configured: status.ok === true,
+        provider: "cloudflare-pages-r2-direct",
+        canUpload: isDirectR2PremiumWriteAllowed(usage),
+        message: status.message || status.error || "Cloudflare Pages/R2 direct",
       });
+      if (!status.ok) throw new Error(status.message || status.error || "La route Cloudflare Pages/R2 n'est pas prête.");
 
-      const objectId = result?.object?.id;
-      const objectKey = result?.object?.object_key || result?.objectKey || "clé inconnue";
-      let downloadOk = false;
-      if (objectId) {
-        const downloaded = await downloadCloudObject(objectId);
-        const content = downloaded?.content as any;
-        downloadOk = !!downloaded?.ok && content?.type === smokePayload.type && content?.app === smokePayload.app;
-        if (!downloadOk) {
-          throw new Error("Upload R2 OK, mais vérification lecture R2 impossible.");
-        }
-        try {
-          const deleted = await deleteCloudObjectRemote(objectId);
-          if (deleted?.usage) setCloudUsage(deleted.usage);
-        } catch (deleteError: any) {
-          setCloudStorageTestResult({
-            status: "ok",
-            title: "R2 fonctionne, mais l’objet test n’a pas été supprimé automatiquement.",
-            detail: deleteError?.message || "Tu peux supprimer manuellement l’objet de test dans Cloudflare R2 si besoin.",
-            objectKey,
-          });
-          return;
-        }
-      }
-
-      if (result?.usage) setCloudUsage(result.usage);
+      const premium = isDirectR2PremiumWriteAllowed(usage);
       setCloudStorageTestResult({
-        status: "ok",
-        title: "Test R2 réussi",
-        detail: "Upload OK · Lecture OK · Nettoyage OK. Le stockage Cloudflare R2 est opérationnel.",
-        objectKey,
+        status: premium ? "ok" : "info",
+        title: premium ? "R2 prêt et PREMIUM actif" : "R2 prêt — écritures verrouillées",
+        detail: premium
+          ? `Route R2 OK · offre ${usage.planId} active · ${formatStorageBytes(usage.remainingBytes)} disponibles. Aucun objet de test n'a été créé.`
+          : "Route R2 OK. Aucune offre PREMIUM active : les nouvelles écritures R2 sont bloquées côté application ET côté serveur. Aucun objet de test n'a été créé.",
       });
-      setMessage(null);
     } catch (e: any) {
-      const missing = e?.missingEnv || e?.data?.missingEnv;
-      const detail = Array.isArray(missing) && missing.length
-        ? `Cloudflare R2 non configuré dans le .env : ${missing.join(", ")}`
-        : e?.message || "Test stockage cloud impossible.";
+      const detail = e?.message || "Diagnostic stockage cloud impossible.";
       setCloudUsageError(detail);
-      setCloudStorageTestResult({
-        status: "error",
-        title: "Test R2 échoué",
-        detail,
-      });
+      setCloudStorageTestResult({ status: "error", title: "Vérification R2 échouée", detail });
     } finally {
       setCloudStorageTestLoading(false);
       void refreshCloudUsage();
@@ -1799,10 +1763,8 @@ function AccountPages({
       return;
     }
 
-    // Méthode volontairement identique à Avatar IA :
-    // 1) POST JSON vers le NAS
-    // 2) le NAS renvoie url Stripe
-    // 3) window.location.href ouvre Checkout.
+    // Checkout stockage direct via Cloudflare Pages : aucun passage par le NAS.
+    // La Pages Function crée la session Stripe puis renvoie l'URL Checkout.
     // Si Stripe refuse le price_, on affiche le vrai message au lieu de laisser
     // la carte bloquée sur EN ATTENTE.
     const saved = saveStoragePrefs({ selectedCloudPlan: planId, selectedDestination: "cloud_r2" });
@@ -2086,7 +2048,7 @@ function AccountPages({
 
           <SettingsMenuCard
             title="Stockage & abonnements"
-            subtitle={`Destination actuelle : ${storagePrefs.selectedDestination === "cloud_r2" ? "Cloud R2" : storagePrefs.selectedDestination === "founder_nas" ? "NAS fondateur" : "local / appareil"}. Offre cloud : ${getPublicStoragePlans().find((p) => p.id === storagePrefs.selectedCloudPlan)?.shortLabel || "100 Mo"}.`}
+            subtitle={`Destination actuelle : ${storagePrefs.selectedDestination === "cloud_r2" ? "Cloud R2" : storagePrefs.selectedDestination === "founder_nas" ? "NAS fondateur" : "local / appareil"}. Offre cloud : ${getPublicStoragePlans().find((p) => p.id === storagePrefs.selectedCloudPlan)?.shortLabel || "R2 verrouillé"}.`}
             theme={theme}
             onClick={() => setPage("account_storage")}
             rightHint={storagePrefs.selectedDestination === "cloud_r2" ? "☁" : "↧"}
@@ -2119,7 +2081,7 @@ function AccountPages({
 
           <p style={{ margin: 0, marginBottom: 12, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
             Chaque compte choisit sa destination : mémoire locale gratuite, fichier placé sur ordinateur/HDD/USB/NAS monté,
-            cloud Cloudflare R2, ou NAS fondateur. Supabase reste limité à l’authentification et aux données légères du profil ;
+            cloud personnel synchronisé, Cloudflare R2 PREMIUM, ou NAS fondateur. Supabase reste limité à l’authentification et aux données légères du profil ;
             les parties, historiques, statistiques, sauvegardes et médias ne sont jamais enregistrés dans Supabase.
           </p>
 
@@ -2214,7 +2176,7 @@ function AccountPages({
                   <div style={{ width: `${Math.min(100, Math.max(0, cloudUsage.percentUsed))}%`, height: "100%", background: theme.primary }} />
                 </div>
                 <div style={{ marginTop: 6, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
-                  Plan actif : <b>{String(cloudUsage.preference?.plan_id || "free_test_100mb")}</b> · Restant : <b>{formatStorageBytes(cloudUsage.remainingBytes)}</b>
+                  Plan actif : <b>{String(cloudUsage.preference?.plan_id || "r2_locked")}</b> · Restant : <b>{formatStorageBytes(cloudUsage.remainingBytes)}</b>
                   {cloudUsage.requiresPayment && (
                     <span style={{ color: "#ffcc66" }}> · paiement requis pour activer {String(cloudUsage.desiredPlanId || "l'offre choisie")}</span>
                   )}
@@ -2223,7 +2185,7 @@ function AccountPages({
             )}
             {cloudUsageError && <div style={{ marginTop: 6, fontSize: 11, color: "#ff6b6b", lineHeight: 1.35 }}>{cloudUsageError}</div>}
             <div style={{ marginTop: 6, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.35 }}>
-              Sécurité : sélectionner une offre payante ne donne pas le quota tant que Stripe n'a pas confirmé l'abonnement. Le gratuit reste limité à 100 Mo.
+              Sécurité : sélectionner une offre payante ne donne pas le quota tant que Stripe n'a pas confirmé l'abonnement. Sans abonnement, les nouvelles écritures R2 sont totalement bloquées (0 octet). Les sauvegardes locales / fichier / USB / SD / cloud personnel restent gratuites.
             </div>
           </div>
 
@@ -2253,11 +2215,11 @@ function AccountPages({
                   opacity: cloudStorageTestLoading || !isSignedIn ? 0.65 : 1,
                 }}
               >
-                {cloudStorageTestLoading ? "Test…" : "Tester R2"}
+                {cloudStorageTestLoading ? "Vérification…" : "Vérifier R2 sans écrire"}
               </button>
             </div>
             <div style={{ marginTop: 8, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
-              {cloudStorageStatus?.message || "Ce test envoie un petit JSON compressé vers R2. Il échouera normalement tant que R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY ne sont pas remplis dans le .env."}
+              {cloudStorageStatus?.message || "Diagnostic lecture seule de la Pages Function R2. Il ne crée aucun objet et ne consomme donc pas de stockage supplémentaire."}
               {cloudStorageStatus?.bucket ? ` Bucket : ${cloudStorageStatus.bucket}.` : ""}
             </div>
             {cloudStorageTestResult && (
@@ -2415,7 +2377,7 @@ function AccountPages({
             </div>
             <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 6 }}>
               <div
-                title={supabaseBridgeStatus?.message || "Le bridge permettra aux comptes publics Supabase d’utiliser les quotas/R2 via le backend NAS."}
+                title={supabaseBridgeStatus?.message || "Les comptes publics Supabase utilisent directement la Pages Function pour les droits PREMIUM/R2, sans dépendre du NAS."}
                 style={{
                   borderRadius: 10,
                   border: `1px solid ${supabaseBridgeStatus?.linked ? "rgba(98,210,111,0.45)" : "rgba(0,245,255,0.35)"}`,
@@ -2429,7 +2391,7 @@ function AccountPages({
                   whiteSpace: "nowrap",
                 }}
               >
-                Bridge Supabase → NAS/R2 : {supabaseBridgeStatus?.linked ? "lié" : "prêt"}
+                Bridge Supabase / stockage : {supabaseBridgeStatus?.linked ? "lié" : "prêt"}
               </div>
             </div>
             {supabaseStatusResult && (
@@ -2642,7 +2604,7 @@ function AccountPages({
             {storageStripeStatus && !storageStripeStatus.webhookStorageConfigured && (
               <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: "1px solid rgba(255,204,102,0.35)", background: "rgba(255,204,102,0.08)", color: "#ffe0a3", fontSize: 10.5, lineHeight: 1.35 }}>
                 <b>Webhook stockage à créer :</b><br />
-                lance <code>npm run stripe:storage:setup</code> côté backend NAS ou crée le webhook vers <code>/account/storage/stripe-webhook</code>, puis renseigne <code>STRIPE_WEBHOOK_SECRET_STORAGE</code>.
+                crée le webhook Stripe vers <code>/api/storage/backups/billing/webhook</code> sur le domaine Cloudflare Pages, puis renseigne <code>STRIPE_WEBHOOK_SECRET_STORAGE</code> dans les secrets Pages.
               </div>
             )}
           </div>
@@ -2700,7 +2662,7 @@ function AccountPages({
                           persistStoragePrefs(
                             {
                               selectedCloudPlan: plan.id as StoragePlanId,
-                              selectedDestination: plan.id === "free_test_100mb" ? storagePrefs.selectedDestination : "cloud_r2",
+                              selectedDestination: "cloud_r2",
                             },
                             `${plan.label} sélectionné (${plan.shortLabel}).`
                           )
@@ -2716,7 +2678,7 @@ function AccountPages({
                           cursor: "pointer",
                         }}
                       >
-                        {paid ? "Préparer cette offre" : "Activer gratuit"}
+                        Préparer cette offre
                       </button>
 
                       {paid && (

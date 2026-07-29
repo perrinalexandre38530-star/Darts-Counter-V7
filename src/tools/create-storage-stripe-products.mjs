@@ -7,7 +7,9 @@
  *   node tools/create-storage-stripe-products.mjs --write-env
  *   node tools/create-storage-stripe-products.mjs --write-env --create-webhook
  *
- * La commande --write-env met à jour le .env et crée un backup .env.bak-YYYYMMDD-HHMMSS.
+ * La commande --write-env met à jour le .env local et crée un backup .env.bak-YYYYMMDD-HHMMSS.
+ * IMPORTANT : les mêmes variables doivent ensuite être configurées dans Cloudflare Pages (Functions),
+ * car le checkout stockage ne passe plus par le NAS.
  * La commande --create-webhook crée le webhook stockage vers STRIPE_STORAGE_WEBHOOK_URL
  * et remplit STRIPE_WEBHOOK_SECRET_STORAGE si Stripe retourne le secret.
  */
@@ -139,7 +141,7 @@ async function createStorageWebhook() {
     console.log("✅ STRIPE_WEBHOOK_SECRET_STORAGE existe déjà dans .env : création webhook ignorée.");
     return null;
   }
-  const webhookUrl = String(process.env.STRIPE_STORAGE_WEBHOOK_URL || "https://api.multisports-api.fr/account/storage/stripe-webhook").trim();
+  const webhookUrl = String(process.env.STRIPE_STORAGE_WEBHOOK_URL || "https://darts-counter-v7.pages.dev/api/storage/backups/billing/webhook").trim();
   if (!webhookUrl.startsWith("https://")) {
     throw new Error(`Webhook URL invalide : ${webhookUrl}. Stripe exige une URL HTTPS publique.`);
   }

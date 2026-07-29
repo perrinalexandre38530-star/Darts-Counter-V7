@@ -1,4 +1,5 @@
 import * as React from "react";
+import { gzipSync, strToU8 } from "fflate";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, readNasAccessToken } from "../lib/apiClient";
@@ -55,7 +56,13 @@ import {
   type CloudObjectIndexItem,
 } from "../lib/cloudStorageApi";
 import { restoreCloudBackupFromJson } from "../lib/cloudBackup";
-import { getDirectR2Status, getDirectR2Usage, type DirectR2Status, type DirectR2Usage } from "../lib/directR2BackupApi";
+import {
+  getDirectR2Status,
+  getDirectR2Usage,
+  isDirectR2PremiumWriteAllowed,
+  type DirectR2Status,
+  type DirectR2Usage,
+} from "../lib/directR2BackupApi";
 import {
   estimateBrowserStorage,
   formatStorageBytes,
@@ -174,6 +181,13 @@ function StorageDestinationIcon({ id, size = 31 }: { id: StorageDestinationId; s
           <path {...p} d="M7 2.5h8l4 4v15H7Z" />
           <path {...p} d="M15 2.5v5h4" />
           <path {...p} d="M9.5 12v4M12.5 12v4M15.5 12v4" />
+        </svg>
+      );
+    case "personal_cloud_manual":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+          <path {...p} d="M3.5 7h6l2 2H20.5v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7Z" />
+          <path {...p} d="M7.5 15.5h1a3 3 0 0 1 .5-5.95A4.6 4.6 0 0 1 17.9 11a3.2 3.2 0 0 1-.4 6.35h-1" />
         </svg>
       );
     case "cloud_r2":
@@ -1084,9 +1098,40 @@ async function withFastFallback<T>(promise: Promise<T>, fallback: T, timeoutMs =
   ]);
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize)));
+  }
+  return btoa(binary);
+}
+
+function encodeNasTransportSnapshot(snapshot: any): { payload: any; rawBytes: number; compressedBytes: number } {
+  const json = JSON.stringify(snapshot);
+  const raw = strToU8(json);
+  const compressed = gzipSync(raw, { level: 6 });
+  return {
+    rawBytes: raw.byteLength,
+    compressedBytes: compressed.byteLength,
+    payload: {
+      _format: "gzip+store-v2",
+      compressed: true,
+      encoding: "base64",
+      data: bytesToBase64(compressed),
+      meta: {
+        rawBytes: raw.byteLength,
+        compressedBytes: compressed.byteLength,
+        compressedAt: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 async function pushSnapshotToNasFast(payload: any, reason: string, token: string): Promise<any> {
   const snapshot = unwrapSnapshotEnvelope(payload);
   const version = Number(snapshot?._v || snapshot?.v || 2) || 2;
+  const transport = encodeNasTransportSnapshot(snapshot);
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 5_000);
   try {
@@ -1096,15 +1141,29 @@ async function pushSnapshotToNasFast(payload: any, reason: string, token: string
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ payload: snapshot, version, reason }),
+      body: JSON.stringify({
+        payload: transport.payload,
+        version,
+        reason,
+        transport: "gzip+store-v2",
+        transportStats: { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes },
+      }),
       signal: controller.signal,
       cache: "no-store",
     });
     const text = await response.text().catch(() => "");
     let data: any = null;
     try { data = text ? JSON.parse(text) : null; } catch {}
-    if (!response.ok) throw new Error(String(data?.message || data?.error || text || `NAS HTTP ${response.status}`));
-    return data;
+    if (!response.ok) {
+      if (response.status === 413) {
+        throw new Error("Le proxy/NAS refuse encore le paquet malgré la compression. Déploie aussi le backend NAS corrigé : l'app ne restera plus bloquée et la copie locale est conservée.");
+      }
+      const readable = /<!doctype|<html/i.test(text)
+        ? `NAS HTTP ${response.status} (réponse HTML du proxy)`
+        : String(data?.message || data?.error || text || `NAS HTTP ${response.status}`);
+      throw new Error(readable);
+    }
+    return { ...data, transportStats: data?.transportStats || { rawBytes: transport.rawBytes, compressedBytes: transport.compressedBytes } };
   } catch (error: any) {
     if (error?.name === "AbortError") throw new Error("Le NAS n’a pas répondu en moins de 5 secondes.");
     throw error;
@@ -1755,7 +1814,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
   const selectStorageDestination = async (destination: StorageDestinationId) => {
     const saved = saveStoragePrefs({
       selectedDestination: destination,
-      preferExternalStorage: destination === "device_file" || destination === "external_sd_manual",
+      preferExternalStorage: destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual",
       keepLocalSafetyCopy: true,
     });
     setStoragePrefs(saved);
@@ -1930,6 +1989,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     setMessage(`Préparation de la sauvegarde vers ${destinationLabel}…`);
 
     try {
+      // Aucun octet R2 n'est généré ni envoyé tant que le compte n'a pas un
+      // abonnement Cloud PREMIUM actif (sauf compte explicitement exempté).
+      if (destination === "cloud_r2") {
+        const usage = directR2Usage || await getDirectR2Usage();
+        setDirectR2Usage(usage);
+        if (!isDirectR2PremiumWriteAllowed(usage)) {
+          throw new Error("Cloud R2 est verrouillé sans offre PREMIUM active. Local, fichier, USB, SD et cloud personnel restent gratuits.");
+        }
+      }
+
       // Le snapshot complet n'est construit qu'une seule fois, puis le même
       // objet est écrit vers la destination choisie.
       const prepared = await prepareCurrentBackupOnce();
@@ -1946,7 +2015,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         return;
       }
 
-      if (destination === "device_file" || destination === "external_sd_manual") {
+      if (destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual") {
         let status: ExternalBackupStatus;
         if (!externalBackupStatus.configured && externalBackupStatus.supported) {
           status = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-instant");
@@ -1994,9 +2063,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             usedBytes: Number(u.usedBytes || 0), quotaBytes: Number(u.quotaBytes || 0),
             remainingBytes: Number(u.remainingBytes || 0), percentUsed: Number(u.percentUsed || 0),
             planId: String(u.preference?.plan_id || u.planId || "free_test_100mb"),
-            billingStatus: String(u.preference?.billing_status || u.billingStatus || "free"),
+            billingStatus: String(u.preference?.billing_status || u.billingStatus || "locked"),
             billingExempt: u.preference?.billing_exempt === true || u.billingExempt === true,
             retainedBackups: Number(u.retainedBackups || 1), retentionTotal: Number(u.retentionTotal || 2),
+            writeAllowed: u.writeAllowed === true,
+            premiumRequired: u.premiumRequired !== false,
           });
         }
         setMessage(`Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · conservation automatique : courante + précédente uniquement.`);
@@ -2242,20 +2313,23 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       ? (externalBackupStatus.configured ? "Sauvegarder dans le fichier" : "Choisir un fichier")
       : selectedDestination === "external_sd_manual"
         ? (externalBackupStatus.configured ? "Sauvegarder sur le support externe" : "Choisir le support externe")
-        : selectedDestination === "cloud_r2"
+        : selectedDestination === "personal_cloud_manual"
+          ? (externalBackupStatus.configured ? "Sauvegarder dans le cloud personnel" : "Choisir le dossier cloud")
+          : selectedDestination === "cloud_r2"
           ? "Créer sauvegarde Cloud R2"
           : "Créer sauvegarde NAS";
 
   const destinationStatValue = selectedDestination === "app_local"
     ? localEntries.length
-    : selectedDestination === "device_file" || selectedDestination === "external_sd_manual"
+    : selectedDestination === "device_file" || selectedDestination === "external_sd_manual" || selectedDestination === "personal_cloud_manual"
       ? (externalBackupStatus.configured ? 1 : 0)
       : selectedDestination === "cloud_r2"
         ? cloudEntries.length
         : nasEntries.length;
 
   const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas";
-  const primaryBackupDisabled = busy || externalBackupBusy !== null || (remoteDestinationNeedsAccount && !hasConnectedAccount);
+  const cloudR2WriteLocked = selectedDestination === "cloud_r2" && directR2Usage !== null && !isDirectR2PremiumWriteAllowed(directR2Usage);
+  const primaryBackupDisabled = busy || externalBackupBusy !== null || cloudR2WriteLocked || (remoteDestinationNeedsAccount && !hasConnectedAccount);
 
   return (
     <div style={{ ...pageStyle, ...themeVars }}>
@@ -2524,7 +2598,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 </div>
               )}
 
-              {(selectedDestination === "device_file" || selectedDestination === "external_sd_manual") && (
+              {(selectedDestination === "device_file" || selectedDestination === "external_sd_manual" || selectedDestination === "personal_cloud_manual") && (
                 <div style={{ marginTop: 12, padding: 11, borderRadius: 14, border: `1px solid ${externalBackupStatus.configured ? "rgba(52,211,153,.34)" : "rgba(251,191,36,.34)"}`, background: "rgba(255,255,255,.025)" }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <strong style={{ color: externalBackupStatus.configured ? green : amber }}>
@@ -2535,7 +2609,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                     </span>
                   </div>
                   <div style={{ marginTop: 5, color: muted, fontSize: 11.5, lineHeight: 1.4 }}>
-                    Le fichier peut se trouver sur le PC, un HDD, une clé USB, une carte SD ou un partage NAS déjà monté dans le système.
+                    Le fichier peut se trouver sur le PC, un HDD, une clé USB, une carte SD, un partage NAS monté ou un dossier synchronisé Google Drive / OneDrive / Dropbox / Nextcloud.
                   </div>
                   {externalBackupStatus.lastSavedAt && (
                     <div style={{ marginTop: 5, color: green, fontSize: 10.5 }}>
@@ -2569,6 +2643,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   <div style={{ marginTop: 5 }}>
                     Les parties, historiques, statistiques, sauvegardes et médias sont envoyés dans <b style={{ color: neon }}>Cloudflare R2</b>. Supabase reste limité à l’authentification et au profil léger.
                   </div>
+                  {directR2Usage && !isDirectR2PremiumWriteAllowed(directR2Usage) && (
+                    <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: "1px solid rgba(251,191,36,.48)", background: "rgba(251,191,36,.08)", color: amber, fontWeight: 900 }}>
+                      🔒 PREMIUM REQUIS — aucune nouvelle écriture R2 n'est autorisée. Les sauvegardes Local / USB / SD / fichier / cloud personnel restent gratuites.
+                    </div>
+                  )}
                   <div style={{ marginTop: 6, color: green, fontSize: 10.8, fontWeight: 900 }}>
                     Rétention automatique : 2 sauvegardes maximum — la courante + la précédente. Toute génération plus ancienne est supprimée physiquement de R2 après chaque nouvelle sauvegarde.
                   </div>
@@ -2588,7 +2667,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                             onClick={() => { window.location.hash = "#/settings?account=storage"; }}
                             style={{ ...btn, marginTop: 8, borderColor: gold, color: gold }}
                           >
-                            Gérer / passer à une offre cloud payante
+                            Gérer / souscrire à une offre Cloud PREMIUM
                           </button>
                         )}
                       </div>
@@ -2605,7 +2684,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
               {selectedDestination === "founder_nas" && (
                 <div style={{ marginTop: 12, color: "#cbd5e1", fontSize: 11.5, lineHeight: 1.42 }}>
-                  Le NAS reçoit la sauvegarde complète. Une sécurité locale est créée avant l’envoi. Supabase sert uniquement de connexion de secours et ne reçoit aucune partie.
+                  Le NAS reçoit la sauvegarde complète sous forme compressée pour éviter les erreurs « Payload Too Large ». Une sécurité locale est créée avant l’envoi. Tant que NAS est la destination active, aucune écriture R2 automatique n'est effectuée.
                 </div>
               )}
             </div>

@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { readNasAccessToken } from "./apiClient";
 import type { CloudObjectIndexItem } from "./cloudStorageApi";
+import { isPaidCloudPlanId, loadStoragePrefs, type StoragePlanId } from "./storagePlans";
 import {
   isFreshSupabaseAccessToken,
   isJwtFresh,
@@ -113,6 +114,18 @@ export type DirectR2Usage = {
   planSource?: string;
   retainedBackups: number;
   retentionTotal: number;
+  writeAllowed?: boolean;
+  premiumRequired?: boolean;
+};
+
+export type DirectR2CheckoutResult = {
+  ok: boolean;
+  url?: string;
+  sessionId?: string;
+  planId?: string;
+  interval?: "monthly" | "yearly" | string;
+  message?: string;
+  error?: string;
 };
 
 type DirectBackupRecord = {
@@ -132,6 +145,60 @@ type DirectStorageToken = {
   token: string;
   kind: "supabase" | "nas" | "none";
 };
+
+const DIRECT_R2_USAGE_CACHE_KEY = "dc_direct_r2_usage_v2";
+const DIRECT_R2_USAGE_CACHE_MS = 60_000;
+
+function isActiveBillingStatus(value: any): boolean {
+  return ["active", "trialing"].includes(String(value || "").toLowerCase());
+}
+
+export function isDirectR2PremiumWriteAllowed(usage: DirectR2Usage | null | undefined): boolean {
+  if (!usage) return false;
+  return isPaidCloudPlanId(usage.planId) && isActiveBillingStatus(usage.billingStatus);
+}
+
+function readCachedDirectR2Usage(): DirectR2Usage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DIRECT_R2_USAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.usage || Date.now() - Number(parsed.at || 0) > DIRECT_R2_USAGE_CACHE_MS) return null;
+    return parsed.usage as DirectR2Usage;
+  } catch { return null; }
+}
+
+function cacheDirectR2Usage(usage: DirectR2Usage): DirectR2Usage {
+  const normalized = {
+    ...usage,
+    writeAllowed: isDirectR2PremiumWriteAllowed(usage),
+    premiumRequired: !isDirectR2PremiumWriteAllowed(usage),
+  };
+  try {
+    if (typeof window !== "undefined") window.localStorage.setItem(DIRECT_R2_USAGE_CACHE_KEY, JSON.stringify({ at: Date.now(), usage: normalized }));
+  } catch {}
+  return normalized;
+}
+
+async function ensureDirectR2WriteAllowed(opts?: { requireCloudDestination?: boolean }): Promise<DirectR2Usage> {
+  if (opts?.requireCloudDestination !== false) {
+    const selected = loadStoragePrefs().selectedDestination;
+    if (selected !== "cloud_r2") {
+      const error = new Error("Cloud R2 n'est pas la destination active : aucune écriture R2 n'a été effectuée.");
+      (error as any).code = "r2_destination_inactive";
+      throw error;
+    }
+  }
+  const usage = readCachedDirectR2Usage() || await getDirectR2Usage();
+  if (!isDirectR2PremiumWriteAllowed(usage)) {
+    const error = new Error("Sauvegarde Cloud R2 réservée aux offres PREMIUM. Choisis une offre cloud payante ou utilise Local / fichier / USB / SD / cloud personnel gratuitement.");
+    (error as any).code = "premium_required";
+    (error as any).status = 402;
+    throw error;
+  }
+  return usage;
+}
 
 function safeJson(raw: string): any {
   try { return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -320,6 +387,9 @@ function conciseR2Error(status: number, payload: any, rawText: string, tokenKind
   if (code === "supabase_auth_not_configured") {
     return new Error("Les variables SUPABASE_URL et SUPABASE_ANON_KEY manquent dans Cloudflare Pages.");
   }
+  if (status === 402 || code === "premium_required") {
+    return new Error(message || "Cloud R2 est verrouillé : une offre PREMIUM active est obligatoire pour toute nouvelle écriture.");
+  }
   if (status === 401) {
     return new Error(tokenKind === "nas"
       ? "Le JWT NAS a été refusé par Cloudflare Pages. Vérifie que le secret JWT_SECRET de Pages est identique à celui du backend NAS."
@@ -483,7 +553,10 @@ export async function createDirectR2Backup(args: {
   title?: string;
   summary?: DirectBackupSummary;
   metadata?: Record<string, any>;
+  /** Autorise une copie R2 explicitement demandée même si la destination principale reste locale/NAS. */
+  allowExplicitCloudCopy?: boolean;
 }): Promise<{ ok: boolean; object: CloudObjectIndexItem; previousObject?: CloudObjectIndexItem | null; usage?: DirectR2Usage; cleaned?: number; cleanupPending?: number; plan?: any }> {
+  await ensureDirectR2WriteAllowed({ requireCloudDestination: args.allowExplicitCloudCopy !== true });
   const payload = await requestDirect("", {
     method: "POST",
     body: JSON.stringify({
@@ -497,7 +570,7 @@ export async function createDirectR2Backup(args: {
     ok: true,
     object: toCloudItem(payload?.backup || payload?.object || {}),
     previousObject: payload?.previousBackup ? toCloudItem(payload.previousBackup) : null,
-    usage: payload?.usage || undefined,
+    usage: payload?.usage ? cacheDirectR2Usage(payload.usage) : undefined,
     cleaned: Number(payload?.cleaned || 0),
     cleanupPending: Number(payload?.cleanupPending || 0),
     plan: payload?.plan || undefined,
@@ -506,11 +579,33 @@ export async function createDirectR2Backup(args: {
 
 export async function getDirectR2Usage(): Promise<DirectR2Usage> {
   const payload = await requestDirect("/usage", { method: "GET" });
-  return payload?.usage || {
+  return cacheDirectR2Usage(payload?.usage || {
     usedBytes: 0, quotaBytes: 0, remainingBytes: 0, percentUsed: 0,
-    planId: "free_test_100mb", billingStatus: "free", billingExempt: false,
-    retainedBackups: 0, retentionTotal: 2,
-  };
+    planId: "free_test_100mb", billingStatus: "locked", billingExempt: false,
+    retainedBackups: 0, retentionTotal: 2, writeAllowed: false, premiumRequired: true,
+  });
+}
+
+export async function createDirectR2StorageCheckout(args: {
+  planId: StoragePlanId | string;
+  interval: "monthly" | "yearly";
+  successUrl?: string;
+  cancelUrl?: string;
+}): Promise<DirectR2CheckoutResult> {
+  return requestDirect("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function verifyDirectR2StorageCheckout(sessionId: string): Promise<any> {
+  const payload = await requestDirect(`/billing/verify?session_id=${encodeURIComponent(String(sessionId || ""))}`, { method: "GET" });
+  if (payload?.usage) payload.usage = cacheDirectR2Usage(payload.usage);
+  return payload;
+}
+
+export async function getDirectR2BillingStatus(verify = false): Promise<any> {
+  return requestDirect(`/billing/status${verify ? "?verify=1" : ""}`, { method: "GET" });
 }
 
 export async function listDirectR2Backups(limit = 30, includeDeleted = false): Promise<CloudObjectIndexItem[]> {
@@ -572,6 +667,7 @@ export async function uploadDirectR2AvatarFallback(args: {
   avatarUpdatedAt?: number | null;
   avatarAssetId?: string | null;
 }): Promise<DirectR2AvatarFallback> {
+  await ensureDirectR2WriteAllowed({ requireCloudDestination: true });
   const profileId = String(args?.profileId || "").trim();
   const dataUrl = String(args?.dataUrl || "").trim();
   if (!profileId || !dataUrl) throw new Error("Profil ou avatar R2 manquant.");
@@ -621,6 +717,7 @@ export async function uploadDirectR2MediaFallback(args: {
   updatedAt?: number | null;
   sourceUrl?: string | null;
 }): Promise<DirectR2MediaFallback> {
+  await ensureDirectR2WriteAllowed({ requireCloudDestination: true });
   const key = String(args?.key || "").trim();
   const dataUrl = String(args?.dataUrl || "").trim();
   if (!key || !dataUrl) throw new Error("Clé ou média R2 manquant.");
