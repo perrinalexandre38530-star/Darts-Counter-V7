@@ -199,6 +199,7 @@ const StorageVaultPage = React.lazy(() => import("./pages/StorageVaultPage"));
 // StatsOnline en import statique : évite les crashs de chunk dynamique après déploiement/cache
 
 const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
+const CricketMatchDetail = React.lazy(() => import("./pages/CricketMatchDetail"));
 const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
 import SyncCenter from "./pages/SyncCenter";
 const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
@@ -858,6 +859,7 @@ type Tab =
   | "statsHub"
   | "stats_online"
   | "cricket_stats"
+  | "cricket_match_detail"
   | "statsDetail"
   | "stats_leaderboards"
   | "x01setup"
@@ -4111,6 +4113,10 @@ case "babyfoot_team_edit":
 
       case "cricket_stats":
         page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
+        break;
+
+      case "cricket_match_detail":
+        page = <CricketMatchDetail store={store} go={go} params={routeParams} />;
         break;
 
       case "statsDetail":

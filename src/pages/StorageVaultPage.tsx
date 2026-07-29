@@ -1365,11 +1365,31 @@ export default function StorageVaultPage({ go }: Props) {
   const matchBackupEntries = React.useMemo(() => {
     const byId = new Map<string, MatchBackupItem>();
     const priority = (origin?: string) => origin === "cloud" ? 3 : origin === "nas" ? 2 : 1;
+    const savedMs = (item: MatchBackupItem) => Date.parse(String(item.savedAt || "")) || Number(item.updatedAt || item.createdAt || 0) || 0;
     for (const item of matchBackups || []) {
       const id = String(item.matchId || item.id || "").trim();
       if (!id) continue;
       const existing = byId.get(id);
-      if (!existing || priority(item.origin) >= priority(existing.origin)) byId.set(id, item);
+      if (!existing) {
+        byId.set(id, item);
+        continue;
+      }
+      const pNext = priority(item.origin);
+      const pPrev = priority(existing.origin);
+      if (pNext > pPrev) {
+        byId.set(id, item);
+        continue;
+      }
+      if (pNext < pPrev) continue;
+
+      // Anti-corruption: among revisions from the same destination, expose the
+      // richest surviving payload. Never let a newer 423 B record hide an older
+      // 18 KB detailed Cricket match.
+      const nextBytes = Number(item.payloadBytes || 0);
+      const prevBytes = Number(existing.payloadBytes || 0);
+      if (nextBytes > prevBytes || (nextBytes === prevBytes && savedMs(item) > savedMs(existing))) {
+        byId.set(id, item);
+      }
     }
     return Array.from(byId.values()).sort((a, b) => {
       const ta = Number(a.updatedAt || a.createdAt || Date.parse(a.savedAt || "") || 0);
@@ -1580,7 +1600,7 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
     setBusy(true);
     try {
       const full = item.origin === "nas"
-        ? await pullNasMatchBackup(item.matchId || item.id)
+        ? await pullNasMatchBackup(item.id || item.matchId)
         : item.origin === "cloud"
           ? await pullCloudMatchBackup(item)
           : item;
@@ -1599,7 +1619,7 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
   const exportSingleMatch = async (item: MatchBackupItem) => {
     try {
       const full = item.origin === "nas"
-        ? await pullNasMatchBackup(item.matchId || item.id)
+        ? await pullNasMatchBackup(item.id || item.matchId)
         : item.origin === "cloud"
           ? await pullCloudMatchBackup(item)
           : item;
@@ -1615,7 +1635,7 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
 ${label}`)) return;
     setBusy(true);
     try {
-      if (item.origin === "nas") await deleteNasMatchBackup(item.matchId || item.id);
+      if (item.origin === "nas") await deleteNasMatchBackup(item.id || item.matchId);
       if (item.origin === "cloud") await deleteCloudMatchBackup(item);
       await deleteLocalMatchBackup(item.matchId || item.id).catch(() => undefined);
       setMessage("Sauvegarde de partie supprimée.");

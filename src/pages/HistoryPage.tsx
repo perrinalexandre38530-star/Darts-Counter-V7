@@ -10,7 +10,7 @@
 // ✅ NEW: “Voir stats” ouvre une page dédiée pour SHANGHAI
 //    -> SHANGHAI : go("shanghai_end", { rec })
 // ✅ NEW: Reprendre/Voir en cours route aussi SHANGHAI vers "shanghai_play" / "shanghai"
-// ✅ FIX CRICKET: “Voir stats” ouvre BIEN StatsHub (route = "statsHub") + fallback "cricket_stats"
+// ✅ FIX CRICKET: “Voir stats” ouvre la fiche détaillée du match Cricket sélectionné
 // ✅ DEBUG: logs RAW + logs AFTER FILTER (pour comprendre "Aucune partie ici")
 // ✅ FIX BUILD: aucune dépendance npm "lz-string" (fallback via window.LZString si présent)
 // ============================================
@@ -4050,28 +4050,17 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
-    // ✅ VARIANTES CRICKET : stats dans Cricket, pas X01
+    // ✅ VARIANTES CRICKET : Historique -> vraie fiche du match joué.
     if (isCricketVariantMode(m) || isCricketVariantMode(inferredMode)) {
-      const wid =
-        (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
-      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
-      try {
-        go("statsHub", {
-          tab: "cricket",
-          initialStatsSubTab: "cricket",
-          initialPlayerId: firstPlayerId,
-          playerId: firstPlayerId,
-          matchId: e.id,
-          resumeId,
-          from: "history",
-          cricketVariant: inferredMode || m,
-        });
-        return;
-      } catch {}
-      try {
-        go("cricket_stats", { profileId: firstPlayerId, from: "history", cricketVariant: inferredMode || m });
-        return;
-      } catch {}
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("cricket_match_detail", {
+        matchId,
+        rec: full,
+        resumeId,
+        from: "history",
+        cricketVariant: inferredMode || m,
+      });
       return;
     }
 
@@ -4104,34 +4093,16 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
-    // ✅ CRICKET
+    // ✅ CRICKET : ouvrir le détail de CETTE partie, pas le dashboard global.
     if (m === "cricket") {
-      const wid =
-        (e.summary && (e.summary.winnerId || e.summary?.result?.winnerId)) || (e as any)?.winnerId || null;
-
-      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
-
-      try {
-        go("statsHub", {
-          tab: "cricket",
-          initialStatsSubTab: "cricket",
-          initialPlayerId: firstPlayerId,
-          playerId: firstPlayerId,
-          matchId: e.id,
-          resumeId,
-          from: "history",
-        });
-        return;
-      } catch {}
-
-      try {
-        go("cricket_stats", { profileId: firstPlayerId, from: "history" });
-        return;
-      } catch {}
-
-      try {
-        go("stats", { tab: "cricket", profileId: firstPlayerId });
-      } catch {}
+      const full = await hydrateSavedEntry(e);
+      const matchId = String((full as any)?.id || (full as any)?.matchId || e.id || resumeId || "");
+      go("cricket_match_detail", {
+        matchId,
+        rec: full,
+        resumeId,
+        from: "history",
+      });
       return;
     }
 

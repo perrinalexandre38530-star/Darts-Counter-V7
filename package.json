@@ -44,7 +44,8 @@
     "test:regressions": "node ./tools/run-ts-regressions.mjs",
     "test:auto": "npm run test:ci",
     "test:release": "npm run test:auto && npm run test:live",
-    "test:r2-account-data": "node ./tools/test-r2-account-data.mjs"
+    "test:r2-account-data": "node ./tools/test-r2-account-data.mjs",
+    "test:history-integrity": "node --experimental-strip-types ./tools/test-history-integrity-regression.ts"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

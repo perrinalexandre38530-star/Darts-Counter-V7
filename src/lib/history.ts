@@ -96,6 +96,7 @@ import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
 import { recordProfileUsageFromMatch } from "./profileUsage";
+import { protectFinishedHistoryPayload } from "./historyIntegrity";
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
@@ -2378,6 +2379,102 @@ export async function upsert(rec: SavedMatch): Promise<void> {
   // payload effectif (on le mutera si on ajoute des infos sets)
   let payloadEffective = stripAvatarDataFromPayload(rec.payload);
 
+  // ==========================================================
+  // 🛡️ HISTORY DETAIL PRESERVATION
+  // Un évènement cloud MATCH_SAVED ne contient volontairement qu'un header léger
+  // (summary + players). Avant ce correctif, un upsert de ce header relisait par
+  // erreur `payloadCompressed` dans STORE_HEADERS au lieu de STORE_DETAILS, puis
+  // réécrivait le détail avec une chaîne vide. Résultat observé : le match restait
+  // visible dans Historique, mais Cricket/X01 perdaient toutes leurs stats détaillées.
+  //
+  // On charge donc UNE fois l'ancien header + détail, et on conserve le payload
+  // existant tant que l'upsert entrant n'apporte pas réellement un payload plus riche.
+  // ==========================================================
+  let previousHeaderForMerge: any = null;
+  let previousPayloadCompressedForMerge = "";
+  let previousPayloadForMerge: any = null;
+  try {
+    const previous = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
+      const header = await new Promise<any>((resolve) => {
+        const req = stores[STORE_HEADERS].get(String(safe.id));
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      const detail = await new Promise<any>((resolve) => {
+        const req = stores[STORE_DETAILS].get(String(safe.id));
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+      return { header, detail };
+    });
+    previousHeaderForMerge = previous?.header || null;
+    previousPayloadCompressedForMerge = String(previous?.detail?.payloadCompressed || "");
+    if (previousPayloadCompressedForMerge) {
+      previousPayloadForMerge = decodePayloadCompressedBestEffort(
+        previousPayloadCompressedForMerge,
+        { id: String(safe.id), stage: "upsert:previous_detail" }
+      );
+    }
+  } catch {}
+
+  // 🔒 MATCH TERMINÉ = DONNÉES MONOTONES.
+  // Une écriture ultérieure peut enrichir le match, jamais supprimer son détail.
+  // Cela protège TOUS les modes (Cricket, X01, Baseball, Capital, etc.), y compris
+  // contre un MATCH_SAVED léger, une synchro tardive ou un import incomplet.
+  try {
+    const previousStatus = previousHeaderForMerge ? inferHistoryStatus(previousHeaderForMerge) : null;
+    const mustProtectFinishedPayload =
+      !!previousPayloadForMerge &&
+      (previousStatus === "finished" || String((safe as any)?.status || "").toLowerCase() === "finished");
+
+    if (mustProtectFinishedPayload) {
+      const integrity = protectFinishedHistoryPayload(previousPayloadForMerge, payloadEffective);
+      payloadEffective = stripAvatarDataFromPayload(integrity.payload);
+      if (integrity.regressionPrevented) {
+        const prevSummary = (safe.summary && typeof safe.summary === "object") ? safe.summary : {};
+        safe.summary = {
+          ...prevSummary,
+          integrityGuard: {
+            version: 1,
+            protectedAt: Date.now(),
+            previousBytes: integrity.previous.jsonBytes,
+            incomingBytes: integrity.incoming.jsonBytes,
+            mergedBytes: integrity.merged.jsonBytes,
+            previousSignals: integrity.previous.detailedSignals,
+            incomingSignals: integrity.incoming.detailedSignals,
+          },
+        };
+        console.warn(
+          `[history.integrity] destructive write blocked for ${String(safe.id)} ` +
+          `(${integrity.previous.jsonBytes}B -> ${integrity.incoming.jsonBytes}B; kept ${integrity.merged.jsonBytes}B)`
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("[history.integrity] guard failed open; normal persistence continues", e);
+  }
+
+  // Header cloud léger : fusionner les métadonnées sans jeter celles déjà connues.
+  try {
+    if (previousHeaderForMerge && typeof previousHeaderForMerge === "object") {
+      if (!safe.game && previousHeaderForMerge.game) safe.game = previousHeaderForMerge.game;
+      if (!safe.winnerId && previousHeaderForMerge.winnerId) safe.winnerId = previousHeaderForMerge.winnerId;
+      if ((!Array.isArray(safe.players) || !safe.players.length) && Array.isArray(previousHeaderForMerge.players)) {
+        safe.players = previousHeaderForMerge.players;
+      }
+      safe.summary = {
+        ...((previousHeaderForMerge.summary && typeof previousHeaderForMerge.summary === "object") ? previousHeaderForMerge.summary : {}),
+        ...((safe.summary && typeof safe.summary === "object") ? safe.summary : {}),
+      };
+    }
+  } catch {}
+
+  // Le cas le plus important : upsert sans payload (sync cloud / metadata refresh).
+  // Le payload détaillé IndexedDB reste la source de vérité.
+  if (payloadEffective == null && previousPayloadForMerge && typeof previousPayloadForMerge === "object") {
+    payloadEffective = stripAvatarDataFromPayload(previousPayloadForMerge);
+  }
+
   // ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
   try {
     const cfgPlayers: any[] =
@@ -2550,22 +2647,53 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ✅ IMPORTANT: ne jamais écraser un payload existant par "" si rec.payload est absent.
     // Cas réel: certains callers font History.upsert(matchId) avec seulement summary/status,
     // ce qui wipe config/darts et casse la reprise.
-    let prevPayloadCompressed = "";
-    let prevPayloadObj: any = null;
+    let prevPayloadCompressed = previousPayloadCompressedForMerge || "";
+    let prevPayloadObj: any = previousPayloadForMerge || null;
 
-    // ✅ Merge "reprise" : certains callers font des upserts partiels (ex: payload sans darts / sans config)
-    // et écrasent le payload complet. On conserve alors les champs critiques depuis l'ancien payload.
-    const needsMerge =
+    const isX01Payload =
+      safe.kind === "x01" ||
+      (payloadEffective as any)?.variant === "x01_v3" ||
+      (payloadEffective as any)?.game === "x01";
+
+    const isCricketPayload =
+      String(safe.kind || "").toLowerCase() === "cricket" ||
+      String((payloadEffective as any)?.mode || "").toLowerCase().includes("cricket");
+
+    const cricketPlayerLooksRich = (p: any) => !!(
+      p && typeof p === "object" && (
+        (Array.isArray(p.hits) && p.hits.length > 0) ||
+        (p.legStats && typeof p.legStats === "object") ||
+        (p.cricketStats && typeof p.cricketStats === "object") ||
+        (p.marks && typeof p.marks === "object" && Object.keys(p.marks).length > 0)
+      )
+    );
+    const cricketPayloadLooksRich = (p: any) => !!(
+      p && typeof p === "object" && (
+        (Array.isArray(p.players) && p.players.some(cricketPlayerLooksRich)) ||
+        (Array.isArray(p.cricketEvents) && p.cricketEvents.length > 0) ||
+        (Array.isArray(p.cricketDartLog) && p.cricketDartLog.length > 0)
+      )
+    );
+
+    // ✅ Merge "reprise/détail" : certains callers font des upserts partiels.
+    // X01 protège config+darts ; Cricket protège joueurs enrichis + journal fléchette.
+    const needsX01Merge =
       !!payloadEffective &&
-      (safe.kind === "x01" ||
-        (payloadEffective as any)?.variant === "x01_v3" ||
-        (payloadEffective as any)?.game === "x01") &&
+      isX01Payload &&
       (((payloadEffective as any)?.config ?? null) == null ||
         !Array.isArray((payloadEffective as any)?.darts));
+    const needsCricketMerge =
+      !!payloadEffective &&
+      isCricketPayload &&
+      !!prevPayloadObj &&
+      cricketPayloadLooksRich(prevPayloadObj) &&
+      !cricketPayloadLooksRich(payloadEffective);
+    const needsMerge = needsX01Merge || needsCricketMerge;
 
     try {
-      if (!payloadEffective || needsMerge) {
-        prevPayloadCompressed = await withStore("readonly", async (st) => {
+      // Correctif critique : payloadCompressed vit dans STORE_DETAILS, jamais dans STORE_HEADERS.
+      if ((!payloadEffective || needsMerge) && !prevPayloadCompressed) {
+        prevPayloadCompressed = await withStoreName(STORE_DETAILS, "readonly", async (st) => {
           return await new Promise<string>((resolve) => {
             const req = st.get(String(safe.id));
             req.onsuccess = () =>
@@ -2575,30 +2703,60 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         });
       }
 
-      if (needsMerge && prevPayloadCompressed) {
+      if (!prevPayloadObj && prevPayloadCompressed) {
         prevPayloadObj = decodePayloadCompressedBestEffort(
           prevPayloadCompressed,
           { id: String(safe.id), stage: "upsert:merge_prev" }
         );
+      }
 
-        if (prevPayloadObj && typeof prevPayloadObj === "object") {
-          const merged: any = {
-            ...stripAvatarDataFromPayload(prevPayloadObj),
-            ...(payloadEffective as any),
-          };
+      if (needsMerge && prevPayloadObj && typeof prevPayloadObj === "object") {
+        const incoming: any = payloadEffective && typeof payloadEffective === "object" ? payloadEffective : {};
+        const merged: any = {
+          ...stripAvatarDataFromPayload(prevPayloadObj),
+          ...incoming,
+        };
 
-          if (((payloadEffective as any)?.config ?? null) == null && (prevPayloadObj as any)?.config) {
+        if (needsX01Merge) {
+          if ((incoming?.config ?? null) == null && (prevPayloadObj as any)?.config) {
             merged.config = (prevPayloadObj as any).config;
           }
-
-          if (
-            !Array.isArray((payloadEffective as any)?.darts) &&
-            Array.isArray((prevPayloadObj as any)?.darts)
-          ) {
+          if (!Array.isArray(incoming?.darts) && Array.isArray((prevPayloadObj as any)?.darts)) {
             merged.darts = (prevPayloadObj as any).darts;
           }
+        }
 
-          payloadEffective = stripAvatarDataFromPayload(merged);
+        if (needsCricketMerge) {
+          if (!Array.isArray(incoming?.players) || !incoming.players.some(cricketPlayerLooksRich)) {
+            merged.players = Array.isArray((prevPayloadObj as any)?.players) ? (prevPayloadObj as any).players : incoming?.players;
+          }
+          if (!Array.isArray(incoming?.cricketEvents) && Array.isArray((prevPayloadObj as any)?.cricketEvents)) {
+            merged.cricketEvents = (prevPayloadObj as any).cricketEvents;
+          }
+          if (!Array.isArray(incoming?.cricketDartLog) && Array.isArray((prevPayloadObj as any)?.cricketDartLog)) {
+            merged.cricketDartLog = (prevPayloadObj as any).cricketDartLog;
+          }
+          if (!incoming?.stats && (prevPayloadObj as any)?.stats) merged.stats = (prevPayloadObj as any).stats;
+        }
+
+        payloadEffective = stripAvatarDataFromPayload(merged);
+      }
+    } catch {}
+
+    // Si un payload partiel a dû être fusionné après le premier passage du compacteur,
+    // régénérer le compact depuis le payload réellement conservé.
+    try {
+      if (needsMerge && payloadEffective && typeof payloadEffective === "object") {
+        const compactMerged = encodeCompactMatch({ ...safe, payload: payloadEffective });
+        if (compactMerged) {
+          (safe as any).compact = compactMerged;
+          (safe as any).compactBytes = estimateCompactBytes(compactMerged);
+          safe.summary = {
+            ...((safe.summary && typeof safe.summary === "object") ? safe.summary : {}),
+            compact: true,
+            compactBytes: (safe as any).compactBytes,
+            playersCount: Array.isArray(compactMerged.p) ? compactMerged.p.length : 0,
+          };
         }
       }
     } catch {}
@@ -2838,6 +2996,22 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ================================
     try {
       if (!isCloudImporting() && String((safe as any)?.status || "").toLowerCase() !== "in_progress") {
+        // Archive aussi la version PRECEDENTE. Le stockage de sauvegardes est
+        // content-addressed/dédupliqué : si elle existe déjà, aucun doublon utile
+        // n'est créé. Si une vraie modification arrive, on conserve donc bien
+        // l'état avant écriture + l'état après écriture.
+        if (previousHeaderForMerge && previousPayloadForMerge) {
+          void saveMatchBackupAfterHistoryUpsert({
+            header: {
+              ...previousHeaderForMerge,
+              players: stripAvatarDataFromPlayers(previousHeaderForMerge?.players) || [],
+            },
+            payload: previousPayloadForMerge,
+            payloadCompressed: previousPayloadCompressedForMerge,
+            source: "history-prewrite-revision",
+          });
+        }
+
         void saveMatchBackupAfterHistoryUpsert({
           header: { ...safe, players: stripAvatarDataFromPlayers(safe.players) || [] },
           payload: payloadEffective,
@@ -3097,6 +3271,28 @@ export async function upsertFromCloud(
 
     const localHash = _payloadHashLite((local as any)?.payload);
     const cloudHash = _payloadHashLite((rec as any)?.payload);
+
+    // MATCH_SAVED cloud est volontairement un enregistrement léger (sans payload détaillé).
+    // Ce n'est PAS une divergence métier : il ne doit jamais remplacer ni mettre en conflit
+    // le détail local d'une partie. On fusionne seulement ses métadonnées, en conservant
+    // explicitement le payload local et la date la plus récente.
+    if (local && ((rec as any)?.payload == null)) {
+      const normalizedLight = {
+        ...(local as any),
+        ...(rec as any),
+        id: baseId,
+        matchId: baseId,
+        payload: (local as any)?.payload ?? null,
+        createdAt: Number((local as any)?.createdAt || 0) || (rec as any)?.createdAt,
+        updatedAt: Math.max(localUpdated || 0, cloudUpdated || 0) || (rec as any)?.updatedAt || (local as any)?.updatedAt,
+        summary: {
+          ...(((local as any)?.summary && typeof (local as any).summary === "object") ? (local as any).summary : {}),
+          ...(((rec as any)?.summary && typeof (rec as any).summary === "object") ? (rec as any).summary : {}),
+        },
+      } as SavedMatch;
+      await upsert(normalizedLight);
+      return { applied: "cloud", baseId, reason: "light_metadata_merged_payload_preserved" };
+    }
 
     // Si local existe et est plus récent -> on garde local, mais on garde la version cloud en "conflict" si elle diffère
     if (local && localUpdated && cloudUpdated && localUpdated > cloudUpdated) {

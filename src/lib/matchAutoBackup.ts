@@ -14,9 +14,10 @@ import {
 } from "./cloudStorageApi";
 
 const DB_NAME = "dc-match-backups-v1";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "matches";
-const MAX_LOCAL_MATCH_BACKUPS = 500;
+const MAX_LOCAL_MATCH_BACKUPS = 1000;
+const MAX_LOCAL_REVISIONS_PER_MATCH = 5;
 const CLOUD_MATCH_BACKUP_OBJECT_TYPE = "cloud_match_backup_v1";
 const CLOUD_MATCH_FULL_SNAPSHOT_KEY = "backups/cloud_vault_v1/auto_latest.json";
 const CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS = 90_000;
@@ -48,12 +49,30 @@ export type MatchBackupItem = {
   payloadEncoding: "lz-string-utf16";
   payloadBytes: number;
   source?: string;
+  revisionId?: string | null;
+  payloadFingerprint?: string | null;
   cloudObjectId?: string | null;
   cloudObjectKey?: string | null;
 };
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function hashString(value: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function revisionIdFor(matchId: string, _savedAt: string, payloadCompressed: string): string {
+  // Content-addressed revision: identical payload => identical revision/object key.
+  // A real content change creates a new immutable revision without cloud spam.
+  const fingerprint = hashString(payloadCompressed || "");
+  return `${matchId}__rev__${fingerprint}`;
 }
 
 function currentOwnerId(): string | null {
@@ -148,7 +167,10 @@ async function shouldUseCloudR2(): Promise<boolean> {
 function cloudMatchObjectKey(item: MatchBackupItem): string {
   const sport = safeSegment(item.sport || "darts", "darts");
   const matchId = safeSegment(item.matchId || item.id, "match");
-  return `backups/matches_v1/${sport}/${matchId}.json`;
+  const revision = safeSegment(item.revisionId || item.id || revisionIdFor(item.matchId || item.id, item.savedAt || nowIso(), item.payloadCompressed || ""), "revision");
+  // V2 is intentionally immutable: every distinct finished-match payload gets its
+  // own R2 object instead of overwriting backups/matches_v1/<matchId>.json.
+  return `backups/matches_v2/${sport}/${matchId}/${revision}.json`;
 }
 
 function cloudMatchMetadata(item: MatchBackupItem): Record<string, any> {
@@ -167,6 +189,8 @@ function cloudMatchMetadata(item: MatchBackupItem): Record<string, any> {
     playersCount: Array.isArray(item.players) ? item.players.length : 0,
     winnerId: item.winnerId ?? null,
     payloadBytes: item.payloadBytes || 0,
+    revisionId: item.revisionId || item.id || null,
+    payloadFingerprint: item.payloadFingerprint || null,
     summary: item.summary || {},
   };
 }
@@ -196,7 +220,9 @@ function hydrateMatchBackupFromCloudIndex(row: CloudObjectIndexItem): MatchBacku
     header: metadata.header || {},
     payloadCompressed: "",
     payloadEncoding: "lz-string-utf16",
-    payloadBytes: Number(row.size_bytes || metadata.payloadBytes || 0) || 0,
+    payloadBytes: Number(metadata.payloadBytes || row.size_bytes || 0) || 0,
+    revisionId: metadata.revisionId ? String(metadata.revisionId) : null,
+    payloadFingerprint: metadata.payloadFingerprint ? String(metadata.payloadFingerprint) : null,
     source: "cloud-index",
   };
 }
@@ -338,8 +364,14 @@ export function buildMatchBackupItem(args: {
     players,
   });
 
+  const savedAt = nowIso();
+  const payloadFingerprint = hashString(encoded.payloadCompressed);
+  const revisionId = revisionIdFor(matchId, savedAt, encoded.payloadCompressed);
+
   return {
-    id: matchId,
+    id: revisionId,
+    revisionId,
+    payloadFingerprint,
     matchId,
     sport: inferSport(header),
     kind: safeString(header?.kind || header?.game?.mode || header?.summary?.mode, "match"),
@@ -347,7 +379,7 @@ export function buildMatchBackupItem(args: {
     status: safeString(header?.status, "finished"),
     createdAt,
     updatedAt,
-    savedAt: nowIso(),
+    savedAt,
     players,
     winnerId: header?.winnerId ?? header?.summary?.winnerId ?? null,
     summary: stripAvatarData(header?.summary || null),
@@ -375,6 +407,7 @@ function openDb(): Promise<IDBDatabase> {
       try { store.createIndex("by_savedAt", "savedAt", { unique: false }); } catch {}
       try { store.createIndex("by_updatedAt", "updatedAt", { unique: false }); } catch {}
       try { store.createIndex("by_sport", "sport", { unique: false }); } catch {}
+      try { store.createIndex("by_matchId", "matchId", { unique: false }); } catch {}
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error || new Error("Ouverture sauvegardes parties impossible"));
@@ -405,18 +438,60 @@ async function trimLocalMatchBackups(): Promise<void> {
       req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
       req.onerror = () => resolve([]);
     });
-    const sorted = rows.sort((a, b) => Date.parse(b.savedAt || "") - Date.parse(a.savedAt || ""));
-    const overflow = sorted.slice(MAX_LOCAL_MATCH_BACKUPS);
-    for (const item of overflow) {
+
+    // Keep at most 5 immutable revisions per logical match. A buggy later write can
+    // therefore never destroy the only recoverable copy of an earlier rich payload.
+    const byMatch = new Map<string, MatchBackupItem[]>();
+    for (const row of rows) {
+      const matchId = String(row?.matchId || row?.id || "").trim();
+      if (!matchId) continue;
+      const list = byMatch.get(matchId) || [];
+      list.push(row);
+      byMatch.set(matchId, list);
+    }
+    const deleted = new Set<string>();
+    for (const list of byMatch.values()) {
+      list.sort((a, b) => Date.parse(b.savedAt || "") - Date.parse(a.savedAt || ""));
+      for (const item of list.slice(MAX_LOCAL_REVISIONS_PER_MATCH)) {
+        try { store.delete(item.id); deleted.add(String(item.id)); } catch {}
+      }
+    }
+
+    const remaining = rows
+      .filter((row) => !deleted.has(String(row.id)))
+      .sort((a, b) => Date.parse(b.savedAt || "") - Date.parse(a.savedAt || ""));
+    for (const item of remaining.slice(MAX_LOCAL_MATCH_BACKUPS)) {
       try { store.delete(item.id); } catch {}
     }
   }).catch(() => undefined);
 }
 
 export async function saveLocalMatchBackup(item: MatchBackupItem): Promise<void> {
+  const fingerprint = item.payloadFingerprint || hashString(item.payloadCompressed || "");
+  const revisionId = item.revisionId || revisionIdFor(item.matchId || item.id, item.savedAt || nowIso(), item.payloadCompressed || "");
+  const revision: MatchBackupItem = {
+    ...item,
+    id: revisionId,
+    revisionId,
+    payloadFingerprint: fingerprint,
+    ownerId: item.ownerId || currentOwnerId(),
+    origin: "local",
+  };
+
   await txStore("readwrite", async (store) => {
+    const rows: MatchBackupItem[] = await new Promise((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+    });
+    const duplicate = rows.find((row) =>
+      String(row?.matchId || "") === String(revision.matchId || "") &&
+      String(row?.payloadFingerprint || hashString(String(row?.payloadCompressed || ""))) === fingerprint
+    );
+    if (duplicate) return;
+
     await new Promise<void>((resolve, reject) => {
-      const req = store.put({ ...item, ownerId: item.ownerId || currentOwnerId(), origin: "local" });
+      const req = store.put(revision);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -439,23 +514,45 @@ export async function listLocalMatchBackups(): Promise<MatchBackupItem[]> {
 }
 
 export async function getLocalMatchBackup(id: string): Promise<MatchBackupItem | null> {
+  const wanted = String(id || "").trim();
   return txStore("readonly", async (store) => {
-    return await new Promise<MatchBackupItem | null>((resolve) => {
-      const req = store.get(String(id || ""));
-      req.onsuccess = () => {
-        const row = req.result;
-        resolve(row && backupBelongsToCurrentUser(row) ? { ...row, origin: "local" } : null);
-      };
-      req.onerror = () => resolve(null);
+    const rows: MatchBackupItem[] = await new Promise((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
     });
+    const candidates = rows.filter((row) =>
+      backupBelongsToCurrentUser(row) &&
+      (String(row?.id || "") === wanted || String(row?.matchId || "") === wanted)
+    );
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => {
+      // Recovery must prefer the richest surviving revision, not blindly the latest
+      // one (the exact Cricket incident was a rich 18KB payload overwritten by 423B).
+      const bytes = Number(b.payloadBytes || 0) - Number(a.payloadBytes || 0);
+      if (bytes) return bytes;
+      return Date.parse(b.savedAt || "") - Date.parse(a.savedAt || "");
+    });
+    return { ...candidates[0], origin: "local" as const };
   }).catch(() => null);
 }
 
 export async function deleteLocalMatchBackup(id: string): Promise<void> {
+  const wanted = String(id || "").trim();
   await txStore("readwrite", async (store) => {
-    store.delete(String(id || ""));
+    const rows: MatchBackupItem[] = await new Promise((resolve) => {
+      const req = store.getAll();
+      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+      req.onerror = () => resolve([]);
+    });
+    for (const row of rows) {
+      if (String(row?.id || "") === wanted || String(row?.matchId || "") === wanted) {
+        try { store.delete(row.id); } catch {}
+      }
+    }
   }).catch(() => undefined);
 }
+
 
 
 export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<void> {
@@ -513,6 +610,9 @@ export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void>
   // la sauvegarde locale suffit et on évite un 401/timeout inutile en fin de partie.
   if (!readNasAccessToken()) return;
   await apiPost("/sync/match-backups", {
+    backupId: item.revisionId || item.id,
+    revisionId: item.revisionId || item.id,
+    payloadFingerprint: item.payloadFingerprint || null,
     matchId: item.matchId,
     sport: item.sport,
     kind: item.kind,

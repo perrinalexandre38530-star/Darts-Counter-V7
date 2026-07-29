@@ -11,6 +11,7 @@ const allTests = [
   "tools/test-shooter-regression.ts",
   "tools/test-loterie-regression.ts",
   "tools/test-linked-profile-history.ts",
+  "tools/test-history-integrity-regression.ts",
   "src/tools/test-territories-value-win.ts",
   "src/tools/test-territories-unique-values.ts",
 ];
