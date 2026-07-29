@@ -3,14 +3,18 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import {
   getTrainingDetailedSessions,
+  getTrainingGroupSessions,
   getTrainingStats,
   type TrainingDetailedSession,
+  type TrainingGroupSession,
   type TrainingStatsRow,
 } from "../../training/stats/trainingStatsHub";
+import { trainingConfigSummary } from "../../training/lib/trainingConfigSummary";
 
 type ModeDef = { id: string; label: string; short: string };
 
 const MODES: ModeDef[] = [
+  { id: "training_x01", label: "Training X01", short: "X01" },
   { id: "training_doubleio", label: "Double In / Double Out", short: "DI / DO" },
   { id: "training_challenges", label: "Challenges", short: "Défis" },
   { id: "training_ghost", label: "Ghost Mode", short: "Ghost" },
@@ -82,7 +86,8 @@ export default function StatsTrainingModesLocal() {
     return {
       global: (stats?.global || EMPTY_ROW) as TrainingStatsRow,
       byMode: (stats?.byMode || {}) as Record<string, TrainingStatsRow>,
-      recent: getTrainingDetailedSessions({ limit: 120 }),
+      recent: getTrainingDetailedSessions({ limit: 160 }),
+      groups: getTrainingGroupSessions({ limit: 80 }),
     };
   }, []);
 
@@ -94,10 +99,12 @@ export default function StatsTrainingModesLocal() {
     window.addEventListener("storage", refresh);
     window.addEventListener("dc-training-stats-updated", refresh as EventListener);
     window.addEventListener("dc-training-history-updated", refresh as EventListener);
+    window.addEventListener("dc-training-group-history-updated", refresh as EventListener);
     return () => {
       window.removeEventListener("storage", refresh);
       window.removeEventListener("dc-training-stats-updated", refresh as EventListener);
       window.removeEventListener("dc-training-history-updated", refresh as EventListener);
+      window.removeEventListener("dc-training-group-history-updated", refresh as EventListener);
     };
   }, [read]);
 
@@ -108,6 +115,33 @@ export default function StatsTrainingModesLocal() {
       map.set(session.modeId, session);
     }
     return map;
+  }, [data.recent]);
+
+  const variants = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const session of data.recent || []) {
+      const summary = trainingConfigSummary(session.modeId, session.config);
+      const key = `${session.modeId}::${summary}`;
+      const current = map.get(key) || {
+        key,
+        modeId: session.modeId,
+        summary,
+        sessions: 0,
+        darts: 0,
+        hits: 0,
+        points: 0,
+        successes: 0,
+        lastAt: 0,
+      };
+      current.sessions += 1;
+      current.darts += Number(session.darts || 0);
+      current.hits += Number(session.hits || 0);
+      current.points += Number(session.points || 0);
+      current.successes += session.success ? 1 : 0;
+      current.lastAt = Math.max(current.lastAt, Number(session.endedAt || 0));
+      map.set(key, current);
+    }
+    return Array.from(map.values()).sort((a: any, b: any) => b.lastAt - a.lastAt);
   }, [data.recent]);
 
   const global = data.global || EMPTY_ROW;
@@ -250,6 +284,73 @@ export default function StatsTrainingModesLocal() {
         })}
       </div>
 
+      {variants.length ? (
+        <section style={{ ...shell, marginTop: 10, padding: 11 }}>
+          <div style={{ fontSize: 11, fontWeight: 950, color: accent, letterSpacing: 0.7, marginBottom: 7 }}>
+            STATS PAR CONFIGURATION
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", gap: 7 }}>
+            {variants.slice(0, 16).map((variant: any) => {
+              const mode = MODES.find((item) => item.id === variant.modeId);
+              const accuracy = variant.darts > 0 ? `${Math.round((variant.hits / variant.darts) * 100)}%` : "—";
+              const avg3Variant = variant.darts > 0 ? (variant.points / variant.darts) * 3 : 0;
+              return (
+                <div key={variant.key} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.20)", padding: 8 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 950 }}>{mode?.short || mode?.label || variant.modeId}</div>
+                  <div style={{ marginTop: 2, fontSize: 9.2, color: "#9aa2bc", lineHeight: 1.3 }}>{variant.summary}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 4, marginTop: 6 }}>
+                    <div><div style={{ fontSize: 7.8, opacity: .45 }}>SESSIONS</div><b style={{ color: accent, fontSize: 11 }}>{variant.sessions}</b></div>
+                    <div><div style={{ fontSize: 7.8, opacity: .45 }}>PRÉCISION</div><b style={{ color: accent, fontSize: 11 }}>{accuracy}</b></div>
+                    <div><div style={{ fontSize: 7.8, opacity: .45 }}>MOY./3</div><b style={{ color: accent, fontSize: 11 }}>{one(avg3Variant)}</b></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {(data.groups || []).length ? (
+        <section style={{ ...shell, marginTop: 10, padding: 11 }}>
+          <div style={{ fontSize: 11, fontWeight: 950, color: accent, letterSpacing: 0.7, marginBottom: 7 }}>
+            HISTORIQUE DES SESSIONS TRAINING
+          </div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {(data.groups || []).slice(0, 10).map((group: TrainingGroupSession) => {
+              const mode = MODES.find((item) => item.id === group.modeId);
+              const winner = Array.isArray(group.participants) ? group.participants[0] : null;
+              return (
+                <div
+                  key={group.id}
+                  style={{
+                    borderRadius: 13,
+                    border: "1px solid rgba(255,255,255,.08)",
+                    background: "rgba(0,0,0,.22)",
+                    padding: "8px 9px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                    <div style={{ minWidth: 0, fontSize: 11, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {mode?.label || group.modeId}
+                    </div>
+                    <div style={{ flex: "0 0 auto", fontSize: 9, color: accent, fontWeight: 950 }}>
+                      {group.participantMode === "teams" ? "ÉQUIPES" : (group.participants?.length || 0) > 1 ? "MULTI" : "SOLO"}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 9.5, color: "#9aa2bc", lineHeight: 1.35 }}>
+                    {trainingConfigSummary(group.modeId, group.config)}
+                  </div>
+                  <div style={{ marginTop: 4, display: "flex", justifyContent: "space-between", gap: 8, fontSize: 8.8, opacity: .55 }}>
+                    <span>{formatDate(group.endedAt)} • {group.participants?.length || 0} participant{(group.participants?.length || 0) > 1 ? "s" : ""}</span>
+                    <span>{winner?.participantName ? `#1 ${winner.participantName}` : "Session enregistrée"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
       {(data.recent || []).length ? (
         <section style={{ ...shell, marginTop: 10, padding: 11 }}>
           <div style={{ fontSize: 11, fontWeight: 950, color: accent, letterSpacing: 0.7, marginBottom: 7 }}>
@@ -277,7 +378,7 @@ export default function StatsTrainingModesLocal() {
                       {mode?.short || mode?.label || session.modeId}
                     </div>
                     <div style={{ marginTop: 1, fontSize: 8.5, opacity: 0.48 }}>
-                      {formatDate(session.endedAt)} • {session.darts} fléchettes • précision {Math.round(session.accuracyPct || 0)}%
+                      {formatDate(session.endedAt)} • {trainingConfigSummary(session.modeId, session.config)} • {session.darts} fléchettes • précision {Math.round(session.accuracyPct || 0)}%
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>

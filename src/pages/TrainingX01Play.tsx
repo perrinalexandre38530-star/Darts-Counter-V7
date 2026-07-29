@@ -15,6 +15,7 @@ import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { onlineApi } from "../lib/onlineApi";
 import { History } from "../lib/history";
+import { recordSoloTrainingResult } from "../training/stats/trainingSessionRecorder";
 
 const NAV_HEIGHT = 64; // hauteur du BottomNav (approx)
 
@@ -1234,6 +1235,7 @@ export default function TrainingX01Play({
   const [bustLocked, setBustLocked] = React.useState(false);
 
   const sessionIdRef = React.useRef<string | null>(null);
+  const sessionStartedAtRef = React.useRef<number>(Date.now());
   const visitCountRef = React.useRef<number>(0);
   const allDartsRef = React.useRef<UIDart[]>([]);
 
@@ -1254,6 +1256,7 @@ export default function TrainingX01Play({
       String(startScore)
     );
     sessionIdRef.current = s.id;
+    sessionStartedAtRef.current = Date.now();
 
     setRemaining(startScore);
     setCurrentThrow([]);
@@ -1562,7 +1565,40 @@ export default function TrainingX01Play({
           bySegmentT: nextT,
         };
 
-        // 1) Sauvegarde locale pour l’overlay "Progression" du Training X01
+        // 1) Enregistrement dans le centre Statistiques Training (avec variante 301/501/701/901 + OUT).
+        try {
+          recordSoloTrainingResult({
+            modeId: "training_x01",
+            config: {
+              startScore,
+              outMode,
+              locked: true,
+              source: "training_x01",
+            },
+            participantIds: currentProfile?.id ? [String(currentProfile.id)] : [],
+            startedAt: sessionStartedAtRef.current,
+            endedAt: stat.date,
+            darts: finalDarts,
+            hits: stat.hitsS + stat.hitsD + stat.hitsT + stat.bull + stat.dBull,
+            points: startScore,
+            success: true,
+            metrics: {
+              score: stat.avg3D,
+              avg3: stat.avg3D,
+              bestVisit: stat.bestVisit,
+              bestCheckout: stat.checkout || 0,
+              best9Score: stat.best9Score || 0,
+              startScore,
+              outMode,
+              checkoutAttempts: stat.coAttempts || 0,
+              checkoutSuccess: stat.coSuccess || 0,
+            },
+          });
+        } catch (err) {
+          console.warn("TrainingX01Play recordSoloTrainingResult failed", err);
+        }
+
+        // 2) Sauvegarde locale pour l’overlay "Progression" du Training X01
         setFinishedSessions((arr) => {
           const persisted = loadTrainingStatsFromStorage();
           const merged = [...persisted, ...arr, stat];
@@ -1576,7 +1612,7 @@ export default function TrainingX01Play({
           return next;
         });
 
-        // 2) Sauvegarde session X01 complète pour StatsHub via TrainingStore
+        // 3) Sauvegarde session X01 complète pour StatsHub via TrainingStore
         try {
           const x01Session: TrainingX01Session = {
             id: sessionIdRef.current!,
@@ -1608,7 +1644,7 @@ export default function TrainingX01Play({
           console.warn("TrainingX01Play saveX01Session failed", err);
         }
 
-        // 3) Historique local dédié Training X01
+        // 4) Historique local dédié Training X01
         try {
           void History.upsert({
             id: sessionIdRef.current!,

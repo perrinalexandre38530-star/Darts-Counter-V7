@@ -99,6 +99,9 @@ export default function GhostModePlay({ config, onExit }: { config: any; onExit:
         title="Ghost Mode"
         tickerId="training_ghost"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>Joue {maxVisits} volées complètes de trois fléchettes.</p>

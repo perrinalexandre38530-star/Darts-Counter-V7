@@ -171,6 +171,9 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         title="Challenges"
         tickerId="training_challenges"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p><b>{title}</b></p>

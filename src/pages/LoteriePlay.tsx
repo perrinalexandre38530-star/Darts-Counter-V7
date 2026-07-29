@@ -1178,6 +1178,9 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = window.setTimeout(() => {
       autosaveTimerRef.current = null;
+      // Un écran de fin peut arriver pendant les 40 ms du debounce. Dans ce cas,
+      // ne jamais réinjecter un ancien snapshot `in_progress` après la victoire.
+      if (finishSent.current) return;
       History.upsert(snapshot).catch((e: any) => console.warn("[Loterie] autosave historique impossible", e));
     }, 40);
     return () => {
@@ -1192,13 +1195,24 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
   React.useEffect(() => {
     const flush = () => {
+      if (finishSent.current) return;
       const rec = latestAutosaveRecordRef.current;
       if (!rec) return;
       History.upsert(rec).catch(() => {});
     };
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    // pagehide couvre navigation / mise en veille mobile. beforeunload ajoute une
+    // seconde barrière sur desktop, et visibilitychange déclenche plus tôt sur
+    // Android lorsque le navigateur passe l'application en arrière-plan.
     window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", flushWhenHidden);
     return () => {
       window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
       flush();
     };
   }, []);
@@ -1206,6 +1220,11 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
   function finish(finalPlayers: LoteriePlayerState[], winId: string, finalEvents: any[]) {
     if (finishSent.current) return;
     finishSent.current = true;
+    // Neutralise tout autosave encore en attente avant d'écrire le record final.
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
     latestAutosaveRecordRef.current = null;
     setWinnerId(winId);
     const finishedAt = Date.now();

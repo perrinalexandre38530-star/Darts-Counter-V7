@@ -1,0 +1,1129 @@
+// src/lib/stats/rebuildStatsFromHistory.ts
+// ============================================
+// Rebuild STATS depuis l'Historique (source de vérité)
+// - Persistance principale en IndexedDB (KV), plus robuste que localStorage
+// - Fallback legacy localStorage conservé pour migration douce
+// - Prépare un vrai stats_index centralisé pour éviter les stats vides
+// ============================================
+
+import { delKV, getKV, setKV } from "../storage";
+import { normalizeMatchForStats } from "../matchCompactCodec";
+import { computeBabyFootRichStats } from "../babyfootRichStats";
+
+// ----------------------------
+// Types génériques (safe)
+// ----------------------------
+export type GameKey =
+  | "x01"
+  | "cricket"
+  | "killer"
+  | "golf"
+  | "shanghai"
+  | "territories"
+  | "battle_royale"
+  | "warfare"
+  | "five_lives"
+  | "scram"
+  | "capital"
+  | "batard"
+  | "babyfoot"
+  | "unknown";
+
+export type HistoryRec = {
+  id: string;
+  status?: "in_progress" | "finished" | "saved" | string;
+  createdAt?: number | string;
+  updatedAt?: number | string;
+  game?: string;
+  mode?: string;
+  payload?: any;
+  payloadCompressed?: string;
+};
+
+export type PlayerAgg = {
+  playerId: string;
+  name?: string;
+  matches: number;
+  wins: number;
+  losses: number;
+  dartsThrown?: number;
+  pointsScored?: number;
+  avg3?: number;
+  bestVisit?: number;
+  bestCheckout?: number;
+  buckets?: Record<string, number>;
+  lastMatchAt?: number;
+};
+
+export type ModeAgg = {
+  mode: GameKey;
+  matches: number;
+  finished: number;
+  inProgress: number;
+  saved: number;
+  lastMatchAt?: number;
+};
+
+export type StatsIndexMeta = {
+  source: "history-rebuild" | "idb-cache" | "localStorage-legacy";
+  rowsScanned: number;
+  includeNonFinished: boolean;
+  historyUpdatedAt?: number;
+};
+
+export type StatsIndex = {
+  version: number;
+  rebuiltAt: number;
+  totals: {
+    matches: number;
+    finished: number;
+    inProgress: number;
+    saved: number;
+  };
+  byMode: Record<GameKey, ModeAgg>;
+  byPlayer: Record<string, PlayerAgg>;
+  matchIdsByMode: Record<GameKey, string[]>;
+  meta?: StatsIndexMeta;
+};
+
+const STATS_KEY = "dc_stats_index_v2";
+const STATS_LEGACY_KEY = "dc-stats-index-v1";
+const STATS_VERSION = 2;
+const STATS_REFRESH_DEBOUNCE_MS = 900;
+const STATS_DIRTY_KEY = "dc_stats_index_dirty_v1";
+let __statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let __statsRefreshPromise: Promise<StatsIndex> | null = null;
+
+export function markStatsIndexDirty(reason = "unknown"): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
+    }
+  } catch {}
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc-stats-index-dirty", { detail: { reason, at: Date.now() } }));
+    }
+  } catch {}
+}
+
+export function clearStatsIndexDirty(): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(STATS_DIRTY_KEY);
+  } catch {}
+}
+
+export function isStatsIndexDirty(): boolean {
+  try {
+    if (typeof localStorage === "undefined") return false;
+    return !!localStorage.getItem(STATS_DIRTY_KEY);
+  } catch {
+    return false;
+  }
+}
+
+function dispatchStatsIndexUpdated(detail?: any) {
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: detail ?? null }));
+    }
+  } catch {}
+}
+
+
+function statsIndexHasData(idx: any): boolean {
+  try {
+    if (!idx || typeof idx !== "object") return false;
+    const totalsMatches = Number(idx?.totals?.matches || 0) || 0;
+    if (totalsMatches > 0) return true;
+    const byPlayer = idx?.byPlayer && typeof idx.byPlayer === "object" ? idx.byPlayer : {};
+    return Object.values(byPlayer).some((p: any) => Number((p as any)?.matches || 0) > 0 || Number((p as any)?.dartsThrown || 0) > 0 || Number((p as any)?.pointsScored || 0) > 0);
+  } catch {
+    return false;
+  }
+}
+
+function isRestoredStatsIndex(idx: any): boolean {
+  try {
+    if (!statsIndexHasData(idx)) return false;
+    const source = String(idx?.meta?.source || "").toLowerCase();
+    return !!idx?.meta?.restoredFromStatsIndex || source.includes("restore") || source.includes("latest-json") || source.includes("nas");
+  } catch {
+    return false;
+  }
+}
+
+function rowsAreStatsOnlyRestored(rows: any[]): boolean {
+  try {
+    if (!Array.isArray(rows) || rows.length === 0) return false;
+    return rows.every((r: any) => !!r?.restoredFromStatsIndex || !!r?.statsOnly || !!r?.summary?.restoredFromStatsIndex || !!r?.summary?.statsOnly);
+  } catch {
+    return false;
+  }
+}
+
+function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
+  return {
+    version: STATS_VERSION,
+    rebuiltAt: Date.now(),
+    totals: { matches: 0, finished: 0, inProgress: 0, saved: 0 },
+    byMode: {
+      x01: { mode: "x01", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      cricket: { mode: "cricket", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      killer: { mode: "killer", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      golf: { mode: "golf", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      battle_royale: { mode: "battle_royale", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      warfare: { mode: "warfare", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      five_lives: { mode: "five_lives", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      scram: { mode: "scram", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      capital: { mode: "capital", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      batard: { mode: "batard", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      babyfoot: { mode: "babyfoot", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      unknown: { mode: "unknown", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+    },
+    byPlayer: {},
+    matchIdsByMode: {
+      x01: [],
+      cricket: [],
+      killer: [],
+      golf: [],
+      shanghai: [],
+      territories: [],
+      battle_royale: [],
+      warfare: [],
+      five_lives: [],
+      scram: [],
+      capital: [],
+      batard: [],
+      babyfoot: [],
+      unknown: [],
+    },
+    meta: {
+      source: "history-rebuild",
+      rowsScanned: 0,
+      includeNonFinished,
+      historyUpdatedAt: undefined,
+    },
+  };
+}
+
+function isValidStatsIndex(v: any): v is StatsIndex {
+  return !!v && typeof v === "object" && Number(v.version) === STATS_VERSION && !!v.byMode && !!v.byPlayer && !!v.totals;
+}
+
+function tryLoadLegacyStatsIndex(): StatsIndex | null {
+  try {
+    const raw = localStorage.getItem(STATS_LEGACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const migrated: StatsIndex = {
+      ...createEmptyStatsIndex(Boolean(parsed?.meta?.includeNonFinished)),
+      ...parsed,
+      version: STATS_VERSION,
+      rebuiltAt: Number(parsed?.rebuiltAt || Date.now()) || Date.now(),
+      meta: {
+        source: "localStorage-legacy",
+        rowsScanned: Number(parsed?.meta?.rowsScanned || parsed?.totals?.matches || 0) || 0,
+        includeNonFinished: Boolean(parsed?.meta?.includeNonFinished),
+        historyUpdatedAt: Number(parsed?.meta?.historyUpdatedAt || 0) || undefined,
+      },
+    };
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadStatsIndex(): Promise<StatsIndex | null> {
+  try {
+    const fromKv = await getKV<StatsIndex>(STATS_KEY);
+    if (isValidStatsIndex(fromKv)) {
+      return {
+        ...fromKv,
+        meta: {
+          source: "idb-cache",
+          rowsScanned: Number(fromKv?.meta?.rowsScanned || 0) || 0,
+          includeNonFinished: Boolean(fromKv?.meta?.includeNonFinished),
+          historyUpdatedAt: Number(fromKv?.meta?.historyUpdatedAt || 0) || undefined,
+        },
+      };
+    }
+  } catch {}
+
+  const legacy = tryLoadLegacyStatsIndex();
+  if (legacy) {
+    await saveStatsIndex(legacy).catch(() => {});
+    try {
+      localStorage.removeItem(STATS_LEGACY_KEY);
+    } catch {}
+    return legacy;
+  }
+
+  return null;
+}
+
+export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
+  const payload: StatsIndex = {
+    ...idx,
+    version: STATS_VERSION,
+    rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
+    meta: {
+      ...(idx?.meta && typeof idx.meta === "object" ? idx.meta : {}),
+      source: String(idx?.meta?.source || "history-rebuild"),
+      rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
+      includeNonFinished: Boolean(idx?.meta?.includeNonFinished),
+      historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || 0) || undefined,
+    },
+  };
+
+  await setKV(STATS_KEY, payload);
+
+  // migration douce : on nettoie l'ancien stockage localStorage
+  try {
+    localStorage.removeItem(STATS_LEGACY_KEY);
+  } catch {}
+}
+
+export async function clearStatsIndex(): Promise<void> {
+  await delKV(STATS_KEY).catch(() => {});
+  try {
+    localStorage.removeItem(STATS_LEGACY_KEY);
+  } catch {}
+}
+
+function computeHistoryUpdatedAt(rows: any[]): number | undefined {
+  let out = 0;
+  for (const rec of Array.isArray(rows) ? rows : []) {
+    const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? 0;
+    if (ts > out) out = ts;
+  }
+  return out || undefined;
+}
+
+function toTs(v: any): number | undefined {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Date.parse(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function normalizeGameKey(rec: any, payload: any): GameKey {
+  const parts = [
+    rec?.sport, rec?.game, rec?.mode, rec?.kind, rec?.variant, rec?.variantId, rec?.summary?.mode, rec?.summary?.variantId,
+    payload?.game, payload?.mode, payload?.kind, payload?.variant, payload?.variantId, payload?.config?.mode, payload?.config?.variantId, payload?.summary?.mode, payload?.summary?.variantId,
+  ];
+  const g = parts.filter((v) => v !== undefined && v !== null).map((v) => String(v).toLowerCase()).join(" ");
+
+  if (g.includes("babyfoot") || g.includes("baby-foot") || g.includes("foosball")) return "babyfoot";
+  if (payload?.teamAProfileIds || payload?.teamBProfileIds || payload?.summary?.teamA || payload?.summary?.teamB) return "babyfoot";
+
+  if (g.includes("x01") || g.includes("301") || g.includes("501")) return "x01";
+
+  // Variantes Cricket : elles doivent alimenter le même tableau de stats Cricket.
+  if (g.includes("cricket") || g.includes("cut_throat") || g.includes("cut-throat") || g.includes("cut throat") || g.includes("enculette") || g.includes("vache")) return "cricket";
+
+  if (g.includes("killer")) return "killer";
+  if (g.includes("golf")) return "golf";
+  if (g.includes("shanghai")) return "shanghai";
+  if (g.includes("territ")) return "territories";
+  if (g.includes("battle") || g.includes("royale")) return "battle_royale";
+  if (g.includes("warfare")) return "warfare";
+  if (g.includes("five_lives") || g.includes("five lives") || g.includes("5 vies") || g.includes("cinq vies")) return "five_lives";
+  if (g.includes("scram")) return "scram";
+  if (g.includes("capital")) return "capital";
+  if (g.includes("batard") || g.includes("bastard") || g.includes("bâtard")) return "batard";
+  if (payload?.x01 || payload?.startScore || payload?.legs || payload?.sets) return "x01";
+  return "unknown";
+}
+
+function bumpMode(idx: StatsIndex, mode: GameKey, status?: string, ts?: number) {
+  const m = idx.byMode[mode] || {
+    mode,
+    matches: 0,
+    finished: 0,
+    inProgress: 0,
+    saved: 0,
+    lastMatchAt: undefined,
+  };
+
+  m.matches += 1;
+
+  const st = (status || "").toLowerCase();
+  if (st.includes("finish")) m.finished += 1;
+  else if (st.includes("progress") || st.includes("in_progress")) m.inProgress += 1;
+  else if (st.includes("save")) m.saved += 1;
+  else m.inProgress += 1;
+
+  if (ts && (!m.lastMatchAt || ts > m.lastMatchAt)) m.lastMatchAt = ts;
+
+  idx.byMode[mode] = m;
+  idx.matchIdsByMode[mode] = idx.matchIdsByMode[mode] || [];
+}
+
+function bumpPlayer(idx: StatsIndex, playerId: string, patch: Partial<PlayerAgg>, ts?: number) {
+  const p = idx.byPlayer[playerId] || {
+    playerId,
+    matches: 0,
+    wins: 0,
+    losses: 0,
+    dartsThrown: 0,
+    pointsScored: 0,
+    avg3: 0,
+    bestVisit: 0,
+    bestCheckout: 0,
+    buckets: {},
+    lastMatchAt: undefined,
+  };
+
+  if (patch.name) p.name = patch.name;
+  if (typeof patch.matches === "number") p.matches += patch.matches;
+  if (typeof patch.wins === "number") p.wins += patch.wins;
+  if (typeof patch.losses === "number") p.losses += patch.losses;
+  if (typeof patch.dartsThrown === "number") p.dartsThrown = (p.dartsThrown || 0) + patch.dartsThrown;
+  if (typeof patch.pointsScored === "number") p.pointsScored = (p.pointsScored || 0) + patch.pointsScored;
+  if (typeof patch.bestVisit === "number") p.bestVisit = Math.max(Number(p.bestVisit || 0) || 0, patch.bestVisit);
+  if (typeof patch.bestCheckout === "number") p.bestCheckout = Math.max(Number(p.bestCheckout || 0) || 0, patch.bestCheckout);
+  if (patch.buckets && typeof patch.buckets === "object") {
+    const cur = (p.buckets && typeof p.buckets === "object") ? p.buckets : {};
+    const nxt: Record<string, number> = { ...cur };
+    for (const [k, v] of Object.entries(patch.buckets || {})) {
+      const n = Number(v || 0) || 0;
+      if (!n) continue;
+      nxt[k] = (Number(nxt[k] || 0) || 0) + n;
+    }
+    p.buckets = nxt;
+  }
+  // Moyenne robuste : les exports compacts de récupération peuvent conserver
+  // `scored + avg3d` sans le nombre exact de fléchettes. On garde les vrais totaux
+  // affichés intacts, mais on utilise un poids virtuel uniquement pour calculer AVG3.
+  const patchDarts = Number(patch.dartsThrown || 0) || 0;
+  const patchPoints = Number(patch.pointsScored || 0) || 0;
+  const patchAvg3 = Number(patch.avg3 || 0) || 0;
+  const internal = p as any;
+  internal.__avg3WeightDarts = Number(internal.__avg3WeightDarts || 0) || 0;
+  internal.__avg3WeightPoints = Number(internal.__avg3WeightPoints || 0) || 0;
+  internal.__avg3DirectSum = Number(internal.__avg3DirectSum || 0) || 0;
+  internal.__avg3DirectCount = Number(internal.__avg3DirectCount || 0) || 0;
+  if (patchDarts > 0) {
+    internal.__avg3WeightDarts += patchDarts;
+    internal.__avg3WeightPoints += patchPoints;
+  } else if (patchAvg3 > 0 && patchPoints > 0) {
+    internal.__avg3WeightDarts += (patchPoints * 3) / patchAvg3;
+    internal.__avg3WeightPoints += patchPoints;
+  } else if (patchAvg3 > 0) {
+    internal.__avg3DirectSum += patchAvg3;
+    internal.__avg3DirectCount += 1;
+  }
+  p.avg3 = internal.__avg3WeightDarts > 0
+    ? (internal.__avg3WeightPoints / internal.__avg3WeightDarts) * 3
+    : internal.__avg3DirectCount > 0
+      ? internal.__avg3DirectSum / internal.__avg3DirectCount
+      : 0;
+  if (ts && (!p.lastMatchAt || ts > p.lastMatchAt)) p.lastMatchAt = ts;
+
+  idx.byPlayer[playerId] = p;
+}
+
+function makeVisitBuckets(bestVisit: number): Record<string, number> {
+  const score = Number(bestVisit || 0) || 0;
+  if (score >= 180) return { "180": 1 };
+  if (score >= 140) return { "140+": 1 };
+  if (score >= 100) return { "100+": 1 };
+  if (score >= 60) return { "60-99": 1 };
+  return { "0-59": 1 };
+}
+
+function extractX01QuickMetrics(pl: any): { dartsThrown: number; pointsScored: number; bestVisit: number; bestCheckout: number; buckets: Record<string, number> } {
+  const dartsThrown =
+    Number(pl?.dartsThrown ?? pl?.darts ?? pl?.stats?.dartsThrown ?? pl?.stats?.dartsTotal ?? 0) || 0;
+  let pointsScored =
+    Number(pl?.pointsScored ?? pl?.scored ?? pl?.stats?.pointsScored ?? pl?.stats?.points ?? pl?.score ?? 0) || 0;
+  let bestVisit =
+    Number(pl?.bestVisit ?? pl?.stats?.bestVisit ?? pl?.stats?.best_visit ?? 0) || 0;
+  let bestCheckout =
+    Number(pl?.bestCheckout ?? pl?.stats?.bestCheckout ?? pl?.stats?.bestFinish ?? 0) || 0;
+  let buckets: Record<string, number> = {};
+
+  const visits = Array.isArray(pl?.visits) ? pl.visits : Array.isArray(pl?.stats?.visits) ? pl.stats.visits : [];
+  if (visits.length) {
+    let total = 0;
+    for (const v of visits) {
+      const score = Number(v?.score ?? 0) || 0;
+      total += score;
+      if (!v?.bust) {
+        if (score > bestVisit) bestVisit = score;
+        if (v?.isCheckout && score > bestCheckout) bestCheckout = score;
+      }
+      const b = makeVisitBuckets(score);
+      for (const [k, n] of Object.entries(b)) buckets[k] = (Number(buckets[k] || 0) || 0) + (Number(n || 0) || 0);
+    }
+    if (!pointsScored && total) pointsScored = total;
+  }
+
+  if (!Object.keys(buckets).length && bestVisit > 0) buckets = makeVisitBuckets(bestVisit);
+  return { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets };
+}
+
+type Extractor = (args: {
+  rec: any;
+  payload: any;
+  mode: GameKey;
+  ts?: number;
+  idx: StatsIndex;
+}) => void;
+
+function sumNumbers(value: any): number {
+  if (Array.isArray(value)) return value.reduce((a, b) => a + (Number(b) || 0), 0);
+  if (value && typeof value === "object") return Object.values(value).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) as number;
+  return Number(value || 0) || 0;
+}
+
+function extractGenericDartsMode(mode: GameKey, payload: any, ts: number | undefined, idx: StatsIndex): void {
+  const pools = [
+    payload?.stats?.players,
+    payload?.summary?.perPlayer,
+    payload?.summary?.players,
+    payload?.players,
+    payload?.state?.players,
+  ];
+  const byId = new Map<string, any>();
+  for (const pool of pools) {
+    if (!Array.isArray(pool)) continue;
+    for (const row of pool) {
+      const pid = String(row?.id || row?.playerId || row?.profileId || row?.uid || "");
+      if (!pid) continue;
+      byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
+    }
+  }
+
+  const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
+  for (const pl of byId.values()) {
+    const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
+    if (!pid) continue;
+    const points = Number(pl?.points ?? pl?.score ?? pl?.totalScore ?? pl?.capital ?? pl?.finalCapital ?? 0) || 0;
+    const dartsThrown = Number(pl?.dartsThrown ?? pl?.darts ?? pl?.totalThrows ?? 0) || 0;
+    const bestVisit = Number(pl?.bestVisit ?? pl?.bestRound ?? pl?.bestAction ?? pl?.validHits ?? pl?.captures ?? pl?.kills ?? points ?? 0) || 0;
+    // Les modes par équipes (dont SCRAM) marquent chaque membre gagnant avec win=true.
+    // winnerId reste l'identifiant léger utilisé par les anciennes cartes historiques.
+    const isWinner = pl?.win === true || pl?.winner === true || (!!winnerId && String(winnerId) === pid);
+    bumpPlayer(idx, pid, {
+      name: pl?.name || pl?.displayName,
+      matches: 1,
+      wins: isWinner ? 1 : 0,
+      losses: winnerId && !isWinner ? 1 : 0,
+      dartsThrown,
+      pointsScored: points,
+      bestVisit,
+      bestCheckout: Number(pl?.bestCheckout ?? 0) || 0,
+      buckets: makeVisitBuckets(bestVisit || points),
+    }, ts);
+
+    const cur: any = (idx.byPlayer[pid] as any)[mode] || {
+      points: 0, darts: 0, wins: 0, captures: 0, steals: 0, kills: 0, friendlyKills: 0,
+      fails: 0, validHits: 0, rounds: 0, advances: 0, livesLeft: 0, lostLives: 0,
+      marks: 0, closed: 0, penalties: 0, success: 0, visits: 0, hits: 0, misses: 0,
+      singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, scoringHits: 0,
+      blockedDarts: 0, wastedDarts: 0, stopperVisits: 0, scorerVisits: 0, stopperDarts: 0, scorerDarts: 0,
+      bestScoringVisit: 0, bestMarksVisit: 0, segmentStats: {},
+    };
+    cur.points += points;
+    cur.darts += dartsThrown;
+    cur.wins += isWinner ? 1 : 0;
+    cur.captures += Number(pl?.captures ?? pl?.captured ?? pl?.territories ?? pl?.owned ?? 0) || 0;
+    cur.steals += Number(pl?.steals ?? pl?.stolen ?? 0) || 0;
+    cur.kills += Number(pl?.kills ?? pl?.eliminations ?? 0) || 0;
+    cur.friendlyKills += Number(pl?.friendlyKills ?? pl?.friendlyFire ?? pl?.teamKills ?? 0) || 0;
+    cur.fails += Number(pl?.fails ?? pl?.misses ?? pl?.penalties ?? 0) || 0;
+    cur.validHits += Number(pl?.validHits ?? pl?.hitsTotal ?? pl?.success ?? pl?.successes ?? 0) || 0;
+    cur.rounds += Number(pl?.rounds ?? payload?.summary?.rounds ?? 0) || 0;
+    cur.advances += Number(pl?.advances ?? 0) || 0;
+    cur.livesLeft += Number(pl?.livesLeft ?? pl?.remainingLives ?? pl?.lives ?? 0) || 0;
+    cur.lostLives += Number(pl?.lostLives ?? pl?.damageTaken ?? pl?.deaths ?? 0) || 0;
+    cur.marks += Number(pl?.totalMarks ?? pl?.marksTotal ?? 0) || sumNumbers(pl?.marks);
+    cur.closed += Number(pl?.closed ?? pl?.closes ?? pl?.closedNumbers ?? 0) || 0;
+    cur.penalties += Number(pl?.penalties ?? 0) || 0;
+    cur.success += Number(pl?.success ?? pl?.successes ?? pl?.validHits ?? 0) || 0;
+    cur.visits += Number(pl?.visits ?? pl?.turns ?? 0) || 0;
+    cur.hits += Number(pl?.hits ?? pl?.hitsTotal ?? 0) || 0;
+    cur.misses += Number(pl?.misses ?? 0) || 0;
+    cur.singles += Number(pl?.singles ?? 0) || 0;
+    cur.doubles += Number(pl?.doubles ?? 0) || 0;
+    cur.triples += Number(pl?.triples ?? 0) || 0;
+    cur.bulls += Number(pl?.bulls ?? 0) || 0;
+    cur.dbulls += Number(pl?.dbulls ?? 0) || 0;
+    cur.scoringHits += Number(pl?.scoringHits ?? 0) || 0;
+    cur.blockedDarts += Number(pl?.blockedDarts ?? 0) || 0;
+    cur.wastedDarts += Number(pl?.wastedDarts ?? 0) || 0;
+    cur.stopperVisits += Number(pl?.stopperVisits ?? 0) || 0;
+    cur.scorerVisits += Number(pl?.scorerVisits ?? 0) || 0;
+    cur.stopperDarts += Number(pl?.stopperDarts ?? 0) || 0;
+    cur.scorerDarts += Number(pl?.scorerDarts ?? 0) || 0;
+    cur.bestScoringVisit = Math.max(Number(cur.bestScoringVisit || 0), Number(pl?.bestScoringVisit ?? pl?.bestVisit ?? 0) || 0);
+    cur.bestMarksVisit = Math.max(Number(cur.bestMarksVisit || 0), Number(pl?.bestMarksVisit ?? 0) || 0);
+    if (pl?.segmentStats && typeof pl.segmentStats === "object") {
+      for (const [target, values] of Object.entries(pl.segmentStats as any)) {
+        const dst: any = cur.segmentStats[target] || { darts: 0, marks: 0, closes: 0, scoringHits: 0, points: 0, blockedDarts: 0 };
+        const src: any = values || {};
+        for (const key of ["darts", "marks", "closes", "scoringHits", "points", "blockedDarts"]) dst[key] += Number(src[key] || 0) || 0;
+        cur.segmentStats[target] = dst;
+      }
+    }
+    (idx.byPlayer[pid] as any)[mode] = cur;
+  }
+}
+
+const extractors: Partial<Record<GameKey, Extractor>> = {
+  x01: ({ payload, ts, idx }) => {
+    const byId = new Map<string, any>();
+    const mergePool = (pool: any) => {
+      if (Array.isArray(pool)) {
+        for (const row of pool) {
+          const pid = String(row?.id || row?.playerId || row?.uid || row?.profileId || row?.pid || "").trim();
+          if (!pid) continue;
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row || {}), id: pid, playerId: pid });
+        }
+      } else if (pool && typeof pool === "object") {
+        for (const [key, row] of Object.entries(pool)) {
+          if (!row || typeof row !== "object") continue;
+          const pid = String((row as any)?.id || (row as any)?.playerId || (row as any)?.uid || (row as any)?.profileId || key || "").trim();
+          if (!pid) continue;
+          byId.set(pid, { ...(byId.get(pid) || {}), ...(row as any), id: pid, playerId: pid });
+        }
+      }
+    };
+
+    for (const pool of [
+      payload?.players, payload?.state?.players, payload?.snapshot?.players, payload?.match?.players,
+      payload?.summary?.players, payload?.summary?.perPlayer, payload?.summary?.ranking,
+      payload?.summary?.rankings, payload?.summary?.finalRanking, payload?.summary?.multiRanking,
+      payload?.summary?.classification, payload?.summary?.standings,
+    ]) mergePool(pool);
+
+    const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.winner?.id || payload?.summary?.winnerId || payload?.summary?.winner?.id;
+    const avg3Map = payload?.summary?.avg3d || payload?.summary?.avg3D || payload?.summary?.avg3ByPlayer || {};
+    const avgFor = (pl: any, pid: string) => {
+      const direct = Number(pl?.avg3 ?? pl?.avg3D ?? pl?.avg3d ?? pl?.stats?.avg3 ?? pl?.stats?.avg3D);
+      if (Number.isFinite(direct) && direct > 0) return direct;
+      for (const key of [pid, pl?.name, pl?.displayName]) {
+        if (key != null && Object.prototype.hasOwnProperty.call(avg3Map, String(key))) {
+          const n = Number(avg3Map[String(key)]);
+          if (Number.isFinite(n) && n > 0) return n;
+        }
+      }
+      return 0;
+    };
+
+    for (const pl of byId.values()) {
+      const pid = String(pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "");
+      if (!pid) continue;
+      const name = pl?.name || pl?.displayName;
+      const { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets } = extractX01QuickMetrics(pl);
+      const isWinner = !!winnerId && pid === String(winnerId);
+
+      bumpPlayer(
+        idx,
+        pid,
+        {
+          name,
+          matches: 1,
+          wins: isWinner ? 1 : 0,
+          losses: winnerId ? (isWinner ? 0 : 1) : 0,
+          dartsThrown,
+          pointsScored,
+          avg3: avgFor(pl, pid),
+          bestVisit,
+          bestCheckout,
+          buckets,
+        },
+        ts
+      );
+    }
+  },
+
+  killer: ({ payload, ts, idx }) => {
+    const players = payload?.players || payload?.state?.players || payload?.summary?.players || [];
+    const winnerId =
+      payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
+
+    for (const pl of Array.isArray(players) ? players : []) {
+      const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
+      if (!pid) continue;
+      const kills = Number(pl?.kills ?? pl?.stats?.kills ?? pl?.special?.kills ?? 0) || 0;
+      const hitsTotal = Number(pl?.hitsTotal ?? pl?.stats?.hitsTotal ?? pl?.special?.hitsTotal ?? 0) || 0;
+
+      bumpPlayer(
+        idx,
+        pid,
+        {
+          name: pl?.name,
+          matches: 1,
+          wins: winnerId && String(winnerId) === pid ? 1 : 0,
+          losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+          bestVisit: hitsTotal,
+        },
+        ts
+      );
+
+      (idx.byPlayer[pid] as any).killer = {
+        kills: Number(((idx.byPlayer[pid] as any).killer?.kills || 0) + kills) || 0,
+      };
+    }
+  },
+
+  cricket: ({ payload, ts, idx }) => {
+    const players = payload?.players || payload?.state?.players || payload?.summary?.players || payload?.stats?.players || [];
+    const winnerId =
+      payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
+
+    for (const pl of Array.isArray(players) ? players : []) {
+      const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
+      if (!pid) continue;
+
+      const marksObj = pl?.marks && typeof pl.marks === "object" ? pl.marks : null;
+      const marksTotal =
+        Number(pl?.marksTotal ?? pl?.stats?.marksTotal ?? pl?.special?.marksTotal ?? 0) ||
+        (marksObj ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) : 0);
+
+      const hitsArr = Array.isArray(pl?.hits) ? pl.hits : [];
+      const hits =
+        Number(pl?.hitCount ?? pl?.hitsCount ?? pl?.stats?.hitCount ?? 0) ||
+        hitsArr.filter((h: any) => h && h.ring !== "MISS" && h.segment !== "MISS").length ||
+        hitsArr.length;
+
+      const dartsThrown =
+        Number(pl?.darts ?? pl?.dartsThrown ?? pl?.stats?.darts ?? pl?.stats?.dartsThrown ?? 0) ||
+        hitsArr.length ||
+        Number(pl?.legStats?.darts ?? 0) ||
+        0;
+
+      const pointsScored = Number(pl?.score ?? pl?.points ?? pl?.stats?.score ?? 0) || 0;
+
+      const mpr = dartsThrown > 0 ? (marksTotal / dartsThrown) * 3 : 0;
+      bumpPlayer(
+        idx,
+        pid,
+        {
+          name: pl?.name,
+          matches: 1,
+          wins: winnerId && String(winnerId) === pid ? 1 : 0,
+          losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+          dartsThrown,
+          pointsScored,
+          bestVisit: Math.max(Number(pl?.bestRoundMarks ?? 0) || 0, marksTotal > 0 ? Math.min(9, marksTotal) : 0),
+          buckets: makeVisitBuckets(Math.round(mpr * 20)),
+        },
+        ts
+      );
+
+      const cur: any = (idx.byPlayer[pid] as any).cricket || { marks: 0, hits: 0, darts: 0, score: 0 };
+      cur.marks += marksTotal;
+      cur.hits += hits;
+      cur.darts += dartsThrown;
+      cur.score += pointsScored;
+      (idx.byPlayer[pid] as any).cricket = cur;
+    }
+  },
+
+  golf: ({ rec, payload, ts, idx }) => {
+    const players = payload?.players || rec?.players || payload?.summary?.players || [];
+
+    const pidOrder = (Array.isArray(players) ? players : [])
+      .map((p: any) => String(p?.id || p?.playerId || p?.profileId || ""))
+      .filter(Boolean);
+
+    const statsArray = Array.isArray(payload?.state?.statsByPlayer)
+      ? payload.state.statsByPlayer
+      : Array.isArray(payload?.statsByPlayer)
+      ? payload.statsByPlayer
+      : null;
+
+    const statsObj =
+      (!Array.isArray(payload?.state?.statsByPlayer) && payload?.state?.statsByPlayer && typeof payload.state.statsByPlayer === "object"
+        ? payload.state.statsByPlayer
+        : null) ||
+      (payload?.statsByPlayer && typeof payload.statsByPlayer === "object" && !Array.isArray(payload.statsByPlayer)
+        ? payload.statsByPlayer
+        : null) ||
+      (payload?.playerStats && typeof payload.playerStats === "object" && !Array.isArray(payload.playerStats)
+        ? payload.playerStats
+        : null) ||
+      (payload?.summary?.playerStats && typeof payload.summary.playerStats === "object" && !Array.isArray(payload.summary.playerStats)
+        ? payload.summary.playerStats
+        : null) ||
+      null;
+
+    for (let i = 0; i < pidOrder.length; i++) {
+      const pid = pidOrder[i];
+      if (!pid) continue;
+      const p = (statsArray ? statsArray[i] : null) || (statsObj ? statsObj[pid] : null) || {};
+      const total =
+        Number(p?.total ?? p?.score ?? 0) ||
+        Number(payload?.summary?.rankings?.find?.((r: any) => String(r?.id) === pid)?.total ?? 0) ||
+        0;
+
+      const dartsThrown = Number(p?.darts ?? 0) || 0;
+      bumpPlayer(idx, pid, { matches: 1, dartsThrown, pointsScored: total, bestVisit: total }, ts);
+
+      const cur: any = (idx.byPlayer[pid] as any).golf || {
+        total: 0,
+        single: 0,
+        double: 0,
+        triple: 0,
+        bull: 0,
+        dbull: 0,
+        miss: 0,
+        turns: 0,
+        hit1: 0,
+        hit2: 0,
+        hit3: 0,
+      };
+
+      cur.total += total;
+      cur.single += Number(p?.s ?? p?.single ?? 0) || 0;
+      cur.double += Number(p?.d ?? p?.double ?? 0) || 0;
+      cur.triple += Number(p?.t ?? p?.triple ?? 0) || 0;
+      cur.bull += Number(p?.b ?? p?.bull ?? 0) || 0;
+      cur.dbull += Number(p?.db ?? p?.dbull ?? 0) || 0;
+      cur.miss += Number(p?.miss ?? 0) || 0;
+      cur.turns += Number(p?.turns ?? 0) || 0;
+      cur.hit1 += Number(p?.hit1 ?? 0) || 0;
+      cur.hit2 += Number(p?.hit2 ?? 0) || 0;
+      cur.hit3 += Number(p?.hit3 ?? 0) || 0;
+
+      (idx.byPlayer[pid] as any).golf = cur;
+    }
+  },
+
+  shanghai: ({ payload, ts, idx }) => {
+    const stats = payload?.statsShanghai || payload?.stats?.statsShanghai || payload?.summary?.statsShanghai || {};
+    const rounds = stats?.rounds || payload?.rounds || [];
+    const players = payload?.players || payload?.summary?.players || stats?.players || [];
+    const winnerId = payload?.winnerId || payload?.summary?.winnerId || payload?.result?.winnerId || null;
+
+    const totalsByPlayer: Record<string, { name?: string; total: number; hits: number }> = {};
+
+    if (Array.isArray(players)) {
+      for (const pl of players) {
+        const pid = String(pl?.id || pl?.playerId || pl?.profileId || "");
+        if (!pid) continue;
+        totalsByPlayer[pid] = {
+          name: pl?.name || pl?.displayName,
+          total: Number(pl?.score ?? pl?.totalScore ?? 0) || 0,
+          hits: Number(pl?.hitsTotal ?? pl?.hits ?? 0) || 0,
+        };
+      }
+    }
+
+    if (stats?.scoreTimelineById && typeof stats.scoreTimelineById === "object") {
+      for (const [pidRaw, timeline] of Object.entries(stats.scoreTimelineById)) {
+        const pid = String(pidRaw || "");
+        const arr = Array.isArray(timeline) ? timeline : [];
+        const total = Number(arr[arr.length - 1] ?? 0) || 0;
+        totalsByPlayer[pid] = { ...(totalsByPlayer[pid] || {}), total, hits: totalsByPlayer[pid]?.hits || 0 };
+      }
+    }
+
+    if (Array.isArray(rounds)) {
+      for (const r of rounds) {
+        const pid = String(r?.playerId || r?.id || "");
+        if (!pid) continue;
+        const prev = totalsByPlayer[pid] || { total: 0, hits: 0 };
+        // Si on a déjà une timeline ou un total player, on ne remplace pas par un cumul partiel faux.
+        if (!prev.total) prev.total += Number(r?.score || 0) || 0;
+        prev.hits += Number(r?.hits ?? r?.S ?? 0) || 0;
+        totalsByPlayer[pid] = prev;
+      }
+    }
+
+    for (const [pid, row] of Object.entries(totalsByPlayer)) {
+      const total = Number((row as any)?.total || 0) || 0;
+      const hits = Number((row as any)?.hits || 0) || 0;
+      bumpPlayer(idx, pid, {
+        name: (row as any)?.name,
+        matches: 1,
+        wins: winnerId && String(winnerId) === pid ? 1 : 0,
+        losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+        pointsScored: total,
+        bestVisit: total,
+      }, ts);
+      const cur: any = (idx.byPlayer[pid] as any).shanghai || { total: 0, min: undefined, max: 0, hits: 0 };
+      cur.total += total;
+      cur.hits += hits;
+      cur.min = cur.min == null ? total : Math.min(cur.min, total);
+      cur.max = Math.max(cur.max || 0, total);
+      (idx.byPlayer[pid] as any).shanghai = cur;
+    }
+  },
+
+
+  babyfoot: ({ rec, payload, ts, idx }) => {
+    const rich = computeBabyFootRichStats(payload || rec || {});
+    const teamAIds = Array.isArray(payload?.teamAProfileIds)
+      ? payload.teamAProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : Array.isArray(payload?.summary?.teamAProfileIds)
+      ? payload.summary.teamAProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : [];
+    const teamBIds = Array.isArray(payload?.teamBProfileIds)
+      ? payload.teamBProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : Array.isArray(payload?.summary?.teamBProfileIds)
+      ? payload.summary.teamBProfileIds.map((x: any) => String(x)).filter(Boolean)
+      : [];
+
+    const players = Array.isArray(payload?.players) ? payload.players : Array.isArray(rec?.players) ? rec.players : [];
+    const nameById = new Map<string, string>();
+    for (const pl of players) {
+      const pid = String(pl?.id || pl?.playerId || pl?.profileId || pl?.uid || "");
+      if (pid) nameById.set(pid, String(pl?.name || pl?.displayName || ""));
+    }
+
+    const scoreA = Number(rich?.teamA?.score ?? rich?.teamA?.goals ?? 0) || 0;
+    const scoreB = Number(rich?.teamB?.score ?? rich?.teamB?.goals ?? 0) || 0;
+    const explicitWinner = String(payload?.winnerTeam ?? payload?.summary?.winnerTeam ?? rec?.winnerTeam ?? "").toUpperCase();
+    const winnerSide = explicitWinner === "A" || explicitWinner === "B" ? explicitWinner : scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+    const playerStatsBlob =
+      (payload?.playerStats && typeof payload.playerStats === "object" ? payload.playerStats : null) ||
+      (payload?.summary?.playerStats && typeof payload.summary.playerStats === "object" ? payload.summary.playerStats : null) ||
+      null;
+
+    const addSide = (ids: string[], side: "A" | "B") => {
+      const mine: any = side === "A" ? rich.teamA : rich.teamB;
+      const opp: any = side === "A" ? rich.teamB : rich.teamA;
+      for (const pid of ids) {
+        if (!pid) continue;
+        const isWinner = winnerSide === side;
+        bumpPlayer(idx, pid, {
+          name: nameById.get(pid),
+          matches: 1,
+          wins: isWinner ? 1 : 0,
+          losses: winnerSide && !isWinner ? 1 : 0,
+          pointsScored: Number((playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? mine?.score ?? 0) || 0,
+          bestVisit: Number(mine?.longestRun ?? (playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? mine?.score ?? 0) || 0,
+          buckets: {
+            goals: Number((playerStatsBlob as any)?.[pid]?.goals ?? mine?.goals ?? 0) || 0,
+            conceded: Number((playerStatsBlob as any)?.[pid]?.goalsConceded ?? mine?.goalsConceded ?? opp?.goals ?? 0) || 0,
+            gamelle: Number((playerStatsBlob as any)?.[pid]?.gamelle ?? mine?.gamelle ?? 0) || 0,
+            peche: Number((playerStatsBlob as any)?.[pid]?.peche ?? mine?.peche ?? 0) || 0,
+            demi: Number((playerStatsBlob as any)?.[pid]?.demi ?? mine?.demi ?? 0) || 0,
+            pissette: Number((playerStatsBlob as any)?.[pid]?.pissette ?? mine?.pissette ?? 0) || 0,
+          },
+        }, ts);
+
+        const cur: any = (idx.byPlayer[pid] as any).babyfoot || {
+          matches: 0, wins: 0, goals: 0, conceded: 0, sets: 0, legs: 0, gamelle: 0,
+          peche: 0, pecheOff: 0, pecheDef: 0, demi: 0, demiBonus: 0, pissette: 0,
+          pissetteValid: 0, pissetteRefused: 0, csc: 0, goalAv: 0, goalDef: 0, goalGb: 0,
+          penalties: 0, cleanSheets: 0, longestRun: 0, goalDiff: 0,
+        };
+        const ps: any = playerStatsBlob ? (playerStatsBlob as any)[pid] : null;
+        const hasIndividual = !!ps && typeof ps === "object";
+        const goalsForPlayer = hasIndividual ? Number(ps.goals ?? 0) || 0 : Number(mine?.goals ?? 0) || 0;
+        const concededForPlayer = hasIndividual ? Number(ps.goalsConceded ?? (opp?.goals ?? 0)) || 0 : Number(mine?.goalsConceded ?? opp?.goals ?? 0) || 0;
+        cur.matches += 1;
+        cur.wins += isWinner ? 1 : 0;
+        cur.goals += goalsForPlayer;
+        cur.conceded += concededForPlayer;
+        cur.sets += Number(mine?.sets ?? 0) || 0;
+        cur.legs += Number(mine?.legs ?? 0) || 0;
+        cur.gamelle += hasIndividual ? Number(ps.gamelle ?? 0) || 0 : Number(mine?.gamelle ?? 0) || 0;
+        cur.peche += hasIndividual ? Number(ps.peche ?? 0) || 0 : Number(mine?.peche ?? 0) || 0;
+        cur.pecheOff += hasIndividual ? Number(ps.pecheOff ?? 0) || 0 : Number(mine?.pecheOff ?? 0) || 0;
+        cur.pecheDef += hasIndividual ? Number(ps.pecheDef ?? 0) || 0 : Number(mine?.pecheDef ?? 0) || 0;
+        cur.demi += hasIndividual ? Number(ps.demi ?? 0) || 0 : Number(mine?.demi ?? 0) || 0;
+        cur.demiBonus += hasIndividual ? Number(ps.demiBonus ?? 0) || 0 : Number(mine?.demiBonus ?? 0) || 0;
+        cur.pissette += hasIndividual ? Number(ps.pissette ?? 0) || 0 : Number(mine?.pissette ?? 0) || 0;
+        cur.pissetteValid += hasIndividual ? Number(ps.pissetteValid ?? 0) || 0 : Number(mine?.pissetteValid ?? 0) || 0;
+        cur.pissetteRefused += hasIndividual ? Number(ps.pissetteRefused ?? 0) || 0 : Number(mine?.pissetteRefused ?? 0) || 0;
+        cur.csc += hasIndividual ? Number(ps.csc ?? ps.ownGoals ?? 0) || 0 : Number(mine?.csc ?? 0) || 0;
+        cur.goalAv += hasIndividual ? Number(ps.goalAv ?? 0) || 0 : Number(mine?.goalAv ?? 0) || 0;
+        cur.goalDef += hasIndividual ? Number(ps.goalDef ?? 0) || 0 : Number(mine?.goalDef ?? 0) || 0;
+        cur.goalGb += hasIndividual ? Number(ps.goalGb ?? 0) || 0 : Number(mine?.goalGb ?? 0) || 0;
+        cur.goalMil = (Number(cur.goalMil || 0) || 0) + (hasIndividual ? Number(ps.goalMil ?? 0) || 0 : 0);
+        cur.penalties += hasIndividual ? Number(ps.penaltyGoals ?? ps.penalties ?? 0) || 0 : Number(mine?.penalties ?? 0) || 0;
+        cur.cleanSheets += concededForPlayer === 0 ? 1 : 0;
+        cur.longestRun = Math.max(Number(cur.longestRun || 0) || 0, Number(mine?.longestRun ?? 0) || 0);
+        cur.goalDiff += hasIndividual ? Number(ps.goalDiff ?? (goalsForPlayer - concededForPlayer)) || 0 : Number(mine?.goalDiff ?? ((mine?.goals || 0) - (opp?.goals || 0))) || 0;
+        (idx.byPlayer[pid] as any).babyfoot = cur;
+      }
+    };
+
+    addSide(teamAIds, "A");
+    addSide(teamBIds, "B");
+  },
+
+  territories: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+
+  battle_royale: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  warfare: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  five_lives: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  scram: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  capital: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+  batard: ({ payload, ts, idx, mode }) => extractGenericDartsMode(mode, payload, ts, idx),
+};
+
+export async function refreshStatsIndexFromHistoryNow(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  reason?: string;
+}): Promise<StatsIndex> {
+  const idx = await rebuildStatsFromHistory({
+    includeNonFinished: options?.includeNonFinished,
+    persist: options?.persist,
+  });
+
+  clearStatsIndexDirty();
+  dispatchStatsIndexUpdated({
+    reason: options?.reason || "refresh-now",
+    rebuiltAt: idx?.rebuiltAt || Date.now(),
+    totals: idx?.totals || null,
+  });
+
+  return idx;
+}
+
+export function scheduleStatsIndexRefresh(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  debounceMs?: number;
+  reason?: string;
+}): Promise<StatsIndex> {
+  const reason = options?.reason || "scheduled-refresh";
+  markStatsIndexDirty(reason);
+
+  // ✅ Perf: no more global/background rebuild here.
+  // We only mark the cache dirty. Actual rebuild happens on-demand
+  // when the user opens a stats screen or explicitly requests it.
+  const cachedPromise = loadStatsIndex().then((cached) => cached || createEmptyStatsIndex(!!options?.includeNonFinished));
+  __statsRefreshPromise = cachedPromise;
+  return cachedPromise;
+}
+
+export function cancelScheduledStatsIndexRefresh(): void {
+  if (__statsRefreshTimer) {
+    clearTimeout(__statsRefreshTimer);
+    __statsRefreshTimer = null;
+  }
+}
+
+export async function getOrRebuildStatsIndex(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  force?: boolean;
+}): Promise<StatsIndex> {
+  // ✅ PERF STATS/HISTORIQUE : si un index valide existe et qu'il n'est pas marqué dirty,
+  // on le renvoie immédiatement. Avant, chaque ouverture de stats pouvait relire tout
+  // l'historique puis recharger les détails un par un, ce qui explosait à 15–20s après restore.
+  const cached = await loadStatsIndex().catch(() => null);
+  if (!options?.force && isValidStatsIndex(cached) && !isStatsIndexDirty()) {
+    return cached as StatsIndex;
+  }
+
+  // RESTORE FIX : certains backups NAS / latest.json contiennent un vrai
+  // dc_stats_index_v2 mais pas les lignes d'historique détaillées.
+  // Dans ce cas, forcer un rebuild depuis History.list() vide écrasait les stats
+  // restaurées par un index vide. Si l'historique est vide et qu'un index restauré
+  // existe, on garde l'index restauré comme source de vérité exploitable.
+  try {
+    const { History } = await import("../history");
+    const rows = options?.includeNonFinished
+      ? await History.list()
+      : ((await (History as any).listFinished?.()) ?? (await History.list()));
+    if ((!Array.isArray(rows) || rows.length === 0) && statsIndexHasData(cached)) {
+      return cached as StatsIndex;
+    }
+    // Latest.json peut restaurer des cartes d'historique synthétiques générées
+    // depuis dc_stats_index_v2. Elles servent à réafficher l'historique, mais
+    // ne doivent JAMAIS déclencher un rebuild qui écraserait l'index réel.
+    if (isRestoredStatsIndex(cached) && rowsAreStatsOnlyRestored(rows as any[])) {
+      return cached as StatsIndex;
+    }
+  } catch {
+    if (statsIndexHasData(cached)) return cached as StatsIndex;
+  }
+
+  return rebuildStatsFromHistory(options);
+}
+
+export async function rebuildStatsFromHistory(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+}): Promise<StatsIndex> {
+  const includeNonFinished = !!options?.includeNonFinished;
+  const persist = options?.persist !== false;
+
+  // ✅ TDZ / cycle break:
+  // rebuildStatsFromHistory <-> history created a runtime import cycle.
+  // We resolve History lazily here so the module graph is fully initialized
+  // before accessing the History object.
+  const { History } = await import("../history");
+
+  const list = includeNonFinished
+    ? await History.list()
+    : (await History.listFinished?.()) ?? (await History.list());
+
+  const idx = createEmptyStatsIndex(includeNonFinished);
+  idx.rebuiltAt = Date.now();
+  idx.meta = {
+    source: "history-rebuild",
+    rowsScanned: Array.isArray(list) ? list.length : 0,
+    includeNonFinished,
+    historyUpdatedAt: computeHistoryUpdatedAt(Array.isArray(list) ? list : []),
+  };
+
+  const rows: any[] = Array.isArray(list) ? list : [];
+
+  // RESTORE FIX : ne pas écraser un index restauré par latest.json/NAS
+  // quand l'historique détaillé est absent du snapshot.
+  if (rows.length === 0 || rowsAreStatsOnlyRestored(rows)) {
+    const cached = await loadStatsIndex().catch(() => null);
+    if (statsIndexHasData(cached)) {
+      clearStatsIndexDirty();
+      return cached as StatsIndex;
+    }
+  }
+
+  for (const lightRec of rows) {
+    let rec: any = lightRec;
+    try {
+      const id = String(lightRec?.matchId ?? lightRec?.id ?? "").trim();
+      if (id && typeof (History as any)?.get === "function") {
+        rec = ((await (History as any).get(id)) as any) || lightRec;
+      }
+    } catch {
+      rec = lightRec;
+    }
+    const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
+    const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
+    const payload = normalizeMatchForStats(rec, rawPayload);
+    const status = rec?.status;
+    const mode = normalizeGameKey(rec, payload);
+
+    bumpMode(idx, mode, status, ts);
+
+    idx.totals.matches += 1;
+    const st = (status || "").toLowerCase();
+    if (st.includes("finish")) idx.totals.finished += 1;
+    else if (st.includes("save")) idx.totals.saved += 1;
+    else idx.totals.inProgress += 1;
+
+    idx.matchIdsByMode[mode] = idx.matchIdsByMode[mode] || [];
+    idx.matchIdsByMode[mode].push(String(rec?.id || ""));
+
+    const extractor = extractors[mode];
+    if (extractor) {
+      try {
+        extractor({ rec, payload, mode, ts, idx });
+      } catch {
+        // ne jamais casser le rebuild stats
+      }
+    }
+  }
+
+  if (persist) await saveStatsIndex(idx);
+  clearStatsIndexDirty();
+  return idx;
+}

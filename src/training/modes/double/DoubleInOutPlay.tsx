@@ -161,6 +161,9 @@ export default function DoubleInOutPlay({ config, onExit }: { config: any; onExi
         title="Double In / Double Out"
         tickerId="training_doubleio"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>Tu as jusqu'à trois fléchettes pour toucher le double affiché.</p>

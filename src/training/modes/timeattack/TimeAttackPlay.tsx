@@ -158,6 +158,9 @@ export default function TimeAttackPlay({ config, onExit }: { config: any; onExit
         title="TIME ATTACK"
         tickerId="training_time_attack"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>Marque le maximum de points avant la fin du chrono.</p>

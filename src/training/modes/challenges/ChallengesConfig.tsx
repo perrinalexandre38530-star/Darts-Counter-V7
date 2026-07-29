@@ -2,9 +2,13 @@ import React from "react";
 import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
-import TrainingParticipantsBlock from "../../ui/TrainingParticipantsBlock";
 import TrainingOptionCard from "../../ui/TrainingOptionCard";
 import TrainingStartButton from "../../ui/TrainingStartButton";
+import TrainingParticipantsSelector, {
+  buildTrainingParticipantConfig,
+  resolveTrainingParticipants,
+  useTrainingParticipantSelection,
+} from "../../ui/TrainingParticipantsSelector";
 
 export const TRAINING_CHALLENGES = [
   {
@@ -32,22 +36,18 @@ export const TRAINING_CHALLENGES = [
   },
 ] as const;
 
-export default function ChallengesConfig({
-  profiles,
-  onStart,
-  onExit,
-}: {
-  profiles?: Profile[];
-  onStart: (cfg: any) => void;
-  onExit: () => void;
-}) {
-  const [selectedPlayerIds, setSelectedPlayerIds] = React.useState<string[]>(() =>
-    profiles?.[0]?.id ? [profiles[0].id] : []
-  );
-  const [selectedBotIds, setSelectedBotIds] = React.useState<string[]>([]);
-  const [selected, setSelected] = React.useState<(typeof TRAINING_CHALLENGES)[number]>(
-    TRAINING_CHALLENGES[0]
-  );
+const sectionLabel: React.CSSProperties = {
+  margin: "14px 2px 8px",
+  color: "#27dcff",
+  fontSize: 10.5,
+  fontWeight: 950,
+  letterSpacing: 1,
+};
+
+export default function ChallengesConfig({ profiles, onStart, onExit }: { profiles?: Profile[]; onStart: (cfg: any) => void; onExit: () => void; }) {
+  const [participants, setParticipants] = useTrainingParticipantSelection(profiles);
+  const [selected, setSelected] = React.useState<(typeof TRAINING_CHALLENGES)[number]>(TRAINING_CHALLENGES[0]);
+  const resolved = resolveTrainingParticipants(participants, profiles);
 
   return (
     <TrainingShell
@@ -58,48 +58,25 @@ export default function ChallengesConfig({
           onBack={onExit}
           rules={
             <>
-              <p>Choisis un défi court. Chaque défi a une condition de réussite et une limite de fléchettes.</p>
-              <p>Le résultat, la progression et la précision sont enregistrés dans les statistiques Training.</p>
+              <p>Choisis un défi court. Chaque participant réalise exactement le même défi.</p>
+              <p>En multi ou en équipes, les joueurs passent à tour de rôle puis un tableau comparatif individuel et collectif est généré.</p>
             </>
           }
         />
       }
       body={
-        <div style={{ width: "min(680px,100%)", margin: "0 auto" }}>
-          <TrainingParticipantsBlock
-            profiles={profiles}
-            selectedPlayerIds={selectedPlayerIds}
-            setSelectedPlayerIds={setSelectedPlayerIds}
-            selectedBotIds={selectedBotIds}
-            setSelectedBotIds={setSelectedBotIds}
-            solo
-            allowBots={false}
-          />
+        <div style={{ width: "min(760px,100%)", margin: "0 auto" }}>
+          <TrainingParticipantsSelector profiles={profiles} value={participants} onChange={setParticipants} />
 
-          <div style={{ margin: "14px 2px 8px", color: "#27dcff", fontSize: 10.5, fontWeight: 950, letterSpacing: 1 }}>
-            DÉFI
-          </div>
+          <div style={sectionLabel}>DÉFI</div>
           {TRAINING_CHALLENGES.map((challenge) => (
-            <TrainingOptionCard
-              key={challenge.id}
-              title={challenge.title}
-              subtitle={challenge.subtitle}
-              active={selected.id === challenge.id}
-              onClick={() => setSelected(challenge)}
-            />
+            <TrainingOptionCard key={challenge.id} title={challenge.title} subtitle={challenge.subtitle} active={selected.id === challenge.id} onClick={() => setSelected(challenge)} />
           ))}
 
           <TrainingStartButton
-            label="LANCER LE DÉFI"
-            disabled={!selectedPlayerIds.length}
-            onClick={() =>
-              onStart({
-                ...selected,
-                challengeId: selected.id,
-                selectedPlayerIds,
-                selectedBotIds: [],
-              })
-            }
+            label={resolved.length > 1 ? `LANCER LE DÉFI — ${resolved.length} JOUEURS` : "LANCER LE DÉFI"}
+            disabled={!resolved.length}
+            onClick={() => onStart({ ...selected, challengeId: selected.id, ...buildTrainingParticipantConfig(participants, profiles) })}
           />
         </div>
       }

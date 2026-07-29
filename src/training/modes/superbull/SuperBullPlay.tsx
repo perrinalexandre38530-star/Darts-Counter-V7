@@ -111,6 +111,9 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
         title="Super Bull"
         tickerId="training_super_bull"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>BULL = 25 points, DBULL = 50 points. Toute autre zone vaut 0 dans ce drill.</p>

@@ -114,40 +114,13 @@ export default function TrainingHeader({ title, rules, onBack, tickerId }: Props
             position: "relative",
             zIndex: 2,
             height: "100%",
-            display: "grid",
-            gridTemplateColumns: "52px minmax(0,1fr) 52px",
+            display: "flex",
             alignItems: "center",
-            gap: 8,
+            justifyContent: "space-between",
             padding: "0 10px",
           }}
         >
           <div>{onBack ? <BackDot onClick={onBack} color={accent} glow="rgba(39,220,255,.55)" /> : null}</div>
-
-          <div
-            style={{
-              minWidth: 0,
-              justifySelf: "center",
-              maxWidth: "100%",
-              padding: "7px 14px",
-              borderRadius: 999,
-              border: "1px solid rgba(39,220,255,.30)",
-              background: "rgba(1,10,18,.66)",
-              backdropFilter: "blur(6px)",
-              color: accent,
-              textAlign: "center",
-              fontWeight: 950,
-              fontSize: "clamp(13px,3.7vw,18px)",
-              letterSpacing: 1,
-              textTransform: "uppercase",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              textShadow: "0 0 14px rgba(39,220,255,.38)",
-            }}
-          >
-            {title}
-          </div>
-
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <InfoDot
               onClick={() => setOpen(true)}

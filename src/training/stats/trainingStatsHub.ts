@@ -28,8 +28,13 @@ export type TrainingDetailedMetrics = Record<string, string | number | boolean |
 export type TrainingDetailedSession = {
   id: string;
   modeId: string;
+  groupSessionId?: string | null;
   participantId: string | null;
+  participantName?: string | null;
   participantType: ParticipantKind;
+  teamId?: string | null;
+  teamName?: string | null;
+  teamLogo?: string | null;
   startedAt: number;
   endedAt: number;
   durationMs: number;
@@ -43,10 +48,39 @@ export type TrainingDetailedSession = {
   metrics?: TrainingDetailedMetrics;
 };
 
+export type TrainingGroupParticipantResult = {
+  sessionId: string;
+  participantId: string | null;
+  participantName?: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  teamLogo?: string | null;
+  darts: number;
+  hits: number;
+  points: number;
+  accuracyPct: number;
+  success: boolean;
+  performance: number;
+  rank?: number;
+  metrics?: TrainingDetailedMetrics;
+};
+
+export type TrainingGroupSession = {
+  id: string;
+  modeId: string;
+  participantMode: "players" | "teams";
+  startedAt: number;
+  endedAt: number;
+  config?: any;
+  participants: TrainingGroupParticipantResult[];
+};
+
 const KEY_V2 = "dc_training_stats_v2";
 const KEY_V1 = "dc_training_stats_v1";
 const KEY_SESSIONS_V3 = "dc_training_sessions_v3";
+const KEY_GROUP_SESSIONS_V4 = "dc_training_group_sessions_v4";
 const MAX_DETAILED_SESSIONS = 600;
+const MAX_GROUP_SESSIONS = 300;
 
 type ParticipantStats = {
   kind: ParticipantKind;
@@ -340,8 +374,13 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
     ...input,
     id: String(input.id || `training-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
     modeId: canonicalModeId(input.modeId),
+    groupSessionId: input.groupSessionId ? String(input.groupSessionId) : null,
     participantId,
+    participantName: input.participantName ? String(input.participantName) : null,
     participantType: input.participantType === "bot" ? "bot" : "player",
+    teamId: input.teamId ? String(input.teamId) : null,
+    teamName: input.teamName ? String(input.teamName) : null,
+    teamLogo: input.teamLogo ? String(input.teamLogo) : null,
     startedAt,
     endedAt,
     durationMs: Math.max(0, Number(input.durationMs) || endedAt - startedAt),
@@ -400,18 +439,96 @@ export function recordTrainingDetailedSession(input: TrainingDetailedSession) {
 export function getTrainingDetailedSessions(filter?: {
   modeId?: string;
   participantId?: string | null;
+  groupSessionId?: string | null;
   limit?: number;
 }): TrainingDetailedSession[] {
   const modeId = filter?.modeId ? canonicalModeId(filter.modeId) : "";
   const participantId = filter?.participantId == null ? "" : String(filter.participantId);
+  const groupSessionId = filter?.groupSessionId == null ? "" : String(filter.groupSessionId);
   const limit = Math.max(1, Math.min(MAX_DETAILED_SESSIONS, Number(filter?.limit || MAX_DETAILED_SESSIONS)));
 
   return loadDetailedSessions()
     .filter(
       (row) =>
         (!modeId || row.modeId === modeId) &&
-        (!participantId || row.participantId === participantId)
+        (!participantId || row.participantId === participantId) &&
+        (!groupSessionId || String(row.groupSessionId || "") === groupSessionId)
     )
+    .sort((a, b) => b.endedAt - a.endedAt)
+    .slice(0, limit);
+}
+
+function loadGroupSessions(): TrainingGroupSession[] {
+  try {
+    const raw = localStorage.getItem(KEY_GROUP_SESSIONS_V4);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((row) => row && typeof row === "object" && row.id && row.modeId)
+      .map((row) => ({
+        ...row,
+        id: String(row.id),
+        modeId: canonicalModeId(row.modeId),
+        participantMode: row.participantMode === "teams" ? "teams" : "players",
+        startedAt: Math.max(0, Number(row.startedAt) || 0),
+        endedAt: Math.max(0, Number(row.endedAt) || 0),
+        participants: Array.isArray(row.participants) ? row.participants : [],
+      })) as TrainingGroupSession[];
+  } catch {
+    return [];
+  }
+}
+
+function saveGroupSessions(rows: TrainingGroupSession[]) {
+  try {
+    localStorage.setItem(KEY_GROUP_SESSIONS_V4, JSON.stringify(rows.slice(0, MAX_GROUP_SESSIONS)));
+    window.dispatchEvent(new Event("dc-training-group-history-updated"));
+  } catch {}
+}
+
+export function recordTrainingGroupSession(input: TrainingGroupSession) {
+  const endedAt = Math.max(0, Number(input.endedAt || Date.now()) || Date.now());
+  const startedAt = Math.min(endedAt, Math.max(0, Number(input.startedAt || endedAt) || endedAt));
+  const participants = (Array.isArray(input.participants) ? input.participants : []).map((row, index) => ({
+    ...row,
+    sessionId: String(row?.sessionId || ""),
+    participantId: row?.participantId ? String(row.participantId) : null,
+    participantName: row?.participantName ? String(row.participantName) : null,
+    teamId: row?.teamId ? String(row.teamId) : null,
+    teamName: row?.teamName ? String(row.teamName) : null,
+    teamLogo: row?.teamLogo ? String(row.teamLogo) : null,
+    darts: Math.max(0, Number(row?.darts) || 0),
+    hits: Math.max(0, Number(row?.hits) || 0),
+    points: Math.max(0, Number(row?.points) || 0),
+    accuracyPct: Math.max(0, Number(row?.accuracyPct) || 0),
+    success: !!row?.success,
+    performance: Math.max(0, Number(row?.performance) || 0),
+    rank: Math.max(1, Number(row?.rank) || index + 1),
+    metrics: row?.metrics || {},
+  }));
+
+  const record: TrainingGroupSession = {
+    ...input,
+    id: String(input.id || `training-group-${endedAt}-${Math.random().toString(36).slice(2, 8)}`),
+    modeId: canonicalModeId(input.modeId),
+    participantMode: input.participantMode === "teams" ? "teams" : "players",
+    startedAt,
+    endedAt,
+    config: input.config || {},
+    participants,
+  };
+
+  const rows = loadGroupSessions().filter((row) => row.id !== record.id);
+  rows.unshift(record);
+  saveGroupSessions(rows);
+  return record;
+}
+
+export function getTrainingGroupSessions(filter?: { modeId?: string; limit?: number }): TrainingGroupSession[] {
+  const modeId = filter?.modeId ? canonicalModeId(filter.modeId) : "";
+  const limit = Math.max(1, Math.min(MAX_GROUP_SESSIONS, Number(filter?.limit || MAX_GROUP_SESSIONS)));
+  return loadGroupSessions()
+    .filter((row) => !modeId || row.modeId === modeId)
     .sort((a, b) => b.endedAt - a.endedAt)
     .slice(0, limit);
 }
@@ -461,5 +578,6 @@ export function getTrainingStats() {
     byMode: getTrainingStatsByMode(),
     byParticipant: getTrainingParticipantStore(),
     sessions: getTrainingDetailedSessions({ limit: 100 }),
+    groupSessions: getTrainingGroupSessions({ limit: 100 }),
   };
 }

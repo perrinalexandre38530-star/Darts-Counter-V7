@@ -125,6 +125,9 @@ export default function PrecisionGauntletPlay({ config, onExit }: { config: any;
         title="Precision Gauntlet"
         tickerId="training_precision_gauntlet"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>Touche la cible exacte affichée pour avancer au prochain obstacle.</p>

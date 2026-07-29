@@ -122,6 +122,9 @@ export default function RepeatMasterPlay({ config, onExit }: { config: any; onEx
         title="Repeat Master"
         tickerId="training_repeat_master"
         onExit={onExit}
+        participant={config?.activeParticipant}
+        participantIndex={Number(config?.activeParticipantIndex || 0) + 1}
+        participantTotal={Number(config?.activeParticipantTotal || 1)}
         rules={
           <>
             <p>Répète <b>{target}</b> jusqu'à obtenir {goal} touches consécutives.</p>

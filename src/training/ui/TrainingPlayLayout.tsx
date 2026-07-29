@@ -1,6 +1,7 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import TrainingHeader from "./TrainingHeader";
+import ProfileAvatar from "../../components/ProfileAvatar";
 
 export type TrainingKpi = {
   label: string;
@@ -21,6 +22,9 @@ export default function TrainingPlayLayout({
   targetHint,
   progress,
   kpis,
+  participant,
+  participantIndex,
+  participantTotal,
   children,
 }: {
   title: string;
@@ -32,6 +36,9 @@ export default function TrainingPlayLayout({
   targetHint?: React.ReactNode;
   progress?: { value: number; max: number; label?: string } | null;
   kpis?: TrainingKpi[];
+  participant?: any;
+  participantIndex?: number;
+  participantTotal?: number;
   children: React.ReactNode;
 }) {
   const { theme } = useTheme();
@@ -122,6 +129,34 @@ export default function TrainingPlayLayout({
               filter: "blur(5px)",
             }}
           />
+
+          {participant ? (
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 8,
+                paddingBottom: 8,
+                borderBottom: "1px solid rgba(255,255,255,.08)",
+              }}
+            >
+              <ProfileAvatar
+                name={participant?.name || "Joueur"}
+                dataUrl={participant?.avatarDataUrl || participant?.avatarUrl || undefined}
+                size={34}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 10, color: accent, fontWeight: 950, textTransform: "uppercase", letterSpacing: .8 }}>
+                  {Number(participantTotal || 1) > 1 ? `Joueur ${Number(participantIndex || 1)}/${Number(participantTotal || 1)}` : "Joueur"}
+                </div>
+                <div style={{ marginTop: 1, fontSize: 12.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {participant?.name || "Joueur"}{participant?.teamName ? ` • ${participant.teamName}` : ""}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {eyebrow ? (
             <div

@@ -37,7 +37,11 @@ const loteriePlaySource = readFileSync("src/pages/LoteriePlay.tsx", "utf8");
 const historyPageSource = readFileSync("src/pages/HistoryPage.tsx", "utf8");
 assert.match(loteriePlaySource, /const snapshot = buildInProgressRecord\(\);[\s\S]*History\.upsert\(snapshot\)/, "autosave LOTERIE manquant");
 assert.match(loteriePlaySource, /const state = \{\s*players, activeIndex, darts, seed, events/, "snapshot de reprise LOTERIE incomplet");
-assert.match(historyPageSource, /loterie_play/, "route de reprise LOTERIE manquante");
+assert.match(loteriePlaySource, /addEventListener\("pagehide", flush\)/, "flush pagehide LOTERIE manquant");
+assert.match(loteriePlaySource, /addEventListener\("beforeunload", flush\)/, "flush beforeunload LOTERIE manquant");
+assert.match(loteriePlaySource, /addEventListener\("visibilitychange", flushWhenHidden\)/, "flush arrière-plan LOTERIE manquant");
+assert.match(loteriePlaySource, /if \(finishSent\.current\) return;[\s\S]*History\.upsert\(snapshot\)/, "garde anti-autosave après fin manquante");
+assert.match(historyPageSource, /safeGo\(\["loterie_play"\]/, "route explicite de reprise LOTERIE manquante");
 
 // EXPRESS : les simples 1..9 sont de vrais résultats, plus jamais "hors lot" par construction.
 assert.deepEqual(resultKey({...base,variant:"express",expressTarget:"simple"},[{v:3,mult:1}]).key,"S3");
