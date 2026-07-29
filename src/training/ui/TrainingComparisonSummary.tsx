@@ -12,12 +12,23 @@ function fmt(value: number, digits = 0) {
 
 function performanceLabel(modeId: string, row: any) {
   const metrics = row?.metrics || {};
+  if (modeId === "training_x01") return `${fmt(Number(metrics.avg3 ?? metrics.avg3D ?? row?.performance ?? 0), 1)} moy./3`;
+  if (modeId === "training_clock" || modeId === "tour_horloge") {
+    const completion = Number(metrics.completionPct ?? 0);
+    return `${Math.round(completion)}% • ${Math.round(row?.darts || 0)} darts`;
+  }
   if (modeId === "training_time_attack") return `${Math.round(row?.points || 0)} pts`;
   if (modeId === "training_ghost") return `${fmt(Number(metrics.avg3 ?? row?.performance ?? 0), 1)} moy./3`;
   if (typeof metrics.objectiveRatePct === "number") return `${Math.round(metrics.objectiveRatePct)}% objectifs`;
   if (typeof metrics.completionPct === "number") return `${Math.round(metrics.completionPct)}% parcours`;
   if (typeof metrics.bestStreak === "number") return `série ${Math.round(metrics.bestStreak)}`;
   return `${Math.round(Number(row?.performance || row?.points || 0))}`;
+}
+
+function teamPerformanceLabel(modeId: string, team: any) {
+  if (modeId === "training_x01") return `${fmt(Number(team?.performance || 0), 1)} moy./3`;
+  if (modeId === "training_clock" || modeId === "tour_horloge") return `${fmt(Number(team?.performance || 0), 1)} indice`;
+  return fmt(Number(team?.performance || 0), 1);
 }
 
 export default function TrainingComparisonSummary({
@@ -121,7 +132,7 @@ export default function TrainingComparisonSummary({
                       <div style={{ fontSize: 12.5, fontWeight: 950 }}>{index + 1}. {team.name}</div>
                       <div style={{ marginTop: 2, fontSize: 9.5, color: "#8f97b3" }}>{team.players} joueurs • {Math.round(team.accuracy)}% précision moyenne • {team.successes}/{team.players} réussites</div>
                     </div>
-                    <div style={{ textAlign: "right", color: accent, fontWeight: 950 }}>{fmt(team.performance, 1)}</div>
+                    <div style={{ textAlign: "right", color: accent, fontWeight: 950 }}>{teamPerformanceLabel(group.modeId, team)}</div>
                   </div>
                 ))}
               </div>

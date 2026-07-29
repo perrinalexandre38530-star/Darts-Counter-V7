@@ -27,7 +27,23 @@ export function isX01Match(rec: SavedMatch): boolean {
 function pickPlayers(rec: any): PlayerLite[] {
   const payload = rec?.payload ?? null;
   const nested = payload?.payload ?? null;
-  const arr = rec?.players || rec?.summary?.players || payload?.players || payload?.config?.players || nested?.players || nested?.config?.players || [];
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const arr =
+    rec?.players ||
+    rec?.summary?.players ||
+    payload?.players ||
+    payload?.config?.players ||
+    payload?.summary?.players ||
+    nested?.players ||
+    nested?.config?.players ||
+    nested?.summary?.players ||
+    summary?.ranking ||
+    summary?.rankings ||
+    summary?.finalRanking ||
+    summary?.multiRanking ||
+    summary?.standings ||
+    summary?.classification ||
+    [];
   return Array.isArray(arr) ? arr : [];
 }
 
@@ -220,6 +236,66 @@ function x01ReadNum(...vals: any[]): number {
   return 0;
 }
 
+function x01SummaryRows(summary: any): any[] {
+  const rows: any[] = [];
+  for (const key of ["ranking", "rankings", "finalRanking", "multiRanking", "classification", "standings", "leaderboard", "perPlayer", "players"]) {
+    const arr = summary?.[key];
+    if (Array.isArray(arr)) rows.push(...arr.filter((row: any) => row && typeof row === "object"));
+  }
+  return rows;
+}
+
+function x01FindPlayerRow(summary: any, ids: string[], playerName?: string): any | null {
+  const wantedName = x01NormName(playerName);
+  let best: any | null = null;
+  let bestRichness = -1;
+  for (const row of x01SummaryRows(summary)) {
+    const rowIds = x01PlayerIds(row);
+    const rowName = x01NormName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname);
+    const matches = rowIds.some((id) => ids.some((wanted) => x01IdMatches(id, wanted))) || (!!wantedName && !!rowName && rowName === wantedName);
+    if (!matches) continue;
+    const richness = [
+      row?.avg3, row?.avg3D, row?.avg3d, row?.darts, row?.dartsThrown, row?.score, row?.scored,
+      row?.remaining, row?.finalScore, row?.rank, row?.place, row?.position, row?.bestVisit,
+      row?.bestCheckout, row?.checkoutAttempts, row?.checkoutHits, row?.legsWon, row?.setsWon,
+    ].filter((v) => v !== undefined && v !== null && String(v) !== "").length;
+    if (richness > bestRichness) { best = row; bestRichness = richness; }
+  }
+  return best;
+}
+
+function x01FindPlayerMapNumber(map: any, ids: string[], names: string[] = []): number {
+  if (!map || typeof map !== "object") return 0;
+  const byId = x01FindMapValue(map, ids);
+  if (Number.isFinite(Number(byId))) return Number(byId);
+
+  const wantedNames = names.map(x01NormName).filter(Boolean);
+  for (const [key, value] of Object.entries(map)) {
+    if (wantedNames.includes(x01NormName(key)) && Number.isFinite(Number(value))) return Number(value);
+    if (value && typeof value === "object") {
+      const row: any = value;
+      const rowIds = x01PlayerIds(row);
+      const rowName = x01NormName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname);
+      if (rowIds.some((id) => ids.some((wanted) => x01IdMatches(id, wanted))) || (!!rowName && wantedNames.includes(rowName))) {
+        const n = x01ReadNum(row?.value, row?.avg3, row?.avg3D, row?.avg3d, row?.score, row?.points, row?.total);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+  }
+  return 0;
+}
+
+// Les exports compacts de récupération peuvent conserver seulement `scored` + `avg3d`.
+// Dans ce cas le nombre de fléchettes est mathématiquement reconstructible si le résultat
+// retombe quasi exactement sur un entier (la moyenne enregistrée est arrondie à 2 décimales).
+function x01InferDartsFromScoredAvg(scored: number, avg3: number): number {
+  if (!(scored > 0) || !(avg3 > 0)) return 0;
+  const raw = (scored * 3) / avg3;
+  const rounded = Math.round(raw);
+  if (rounded <= 0 || rounded > 300) return 0;
+  return Math.abs(raw - rounded) <= 0.05 ? rounded : 0;
+}
+
 export function computeX01MultiAgg(records: SavedMatch[], playerId: string, playerName?: string) {
   const out = {
     sessions: 0,
@@ -243,6 +319,9 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
     visitBuckets: { "50+": 0, "60+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0, "180": 0 } as Record<string, number>,
     checkoutAttempts: 0,
     checkoutHits: 0,
+    // Nombre de CO réussis certains mais dont le nombre total de tentatives n'est pas
+    // présent dans l'export compact. Le leaderboard peut alors afficher "?/CO" au lieu de 0/0.
+    checkoutAttemptsUnknown: 0,
     dartsCo: 0,
     first9_100: 0,
     first9_120: 0,
@@ -326,8 +405,7 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
       }
       return 0;
     };
-    const rankings = Array.isArray(summary?.rankings) ? summary.rankings : Array.isArray(payload?.summary?.rankings) ? payload.summary.rankings : [];
-    const rankHit = rankings.find((rr: any) => x01PlayerIds(rr).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(rr?.name) === pname));
+    const rankHit = x01FindPlayerRow(summary, matchedIds, matched?.name ?? playerName);
     const legsFromSummary = pickMapValue(summary?.legsWonByPlayer, summary?.legsWinByPlayer, summary?.legsByPlayer, summary?.legsWon, summary?.legsScore, payload?.summary?.legsWonByPlayer) || x01ReadNum(rankHit?.legsWon, rankHit?.lw);
     const setsFromSummary = pickMapValue(summary?.setsWonByPlayer, summary?.setsWinByPlayer, summary?.setsByPlayer, summary?.setsWon, summary?.setsScore, payload?.summary?.setsWonByPlayer) || x01ReadNum(rankHit?.setsWon, rankHit?.sw);
     out.legsWin += legsFromSummary;
@@ -337,9 +415,15 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
 
     const detailed = x01FindMapValue(summary?.detailedByPlayer, matchedIds) || x01FindMapValue(summary?.detailedbyplayer, matchedIds) || null;
     const perPlayerArr = Array.isArray(summary?.perPlayer) ? summary.perPlayer : [];
-    const perPlayerHit = perPlayerArr.find((pp: any) => x01PlayerIds(pp).some((id) => matchedIds.some((a) => x01IdMatches(id, a))));
-    const summaryPlayersHit = x01FindMapValue(summary?.players, matchedIds);
-    const statSource: any = (perPlayerHit && typeof perPlayerHit === "object" ? perPlayerHit : null) || (summaryPlayersHit && typeof summaryPlayersHit === "object" ? summaryPlayersHit : null) || (detailed && typeof detailed === "object" ? detailed : null);
+    const perPlayerHit = perPlayerArr.find((pp: any) => x01PlayerIds(pp).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(pp?.name ?? pp?.playerName) === pname));
+    const summaryPlayersHit = Array.isArray(summary?.players)
+      ? summary.players.find((pp: any) => x01PlayerIds(pp).some((id) => matchedIds.some((a) => x01IdMatches(id, a))) || (pname && x01NormName(pp?.name ?? pp?.playerName) === pname))
+      : x01FindMapValue(summary?.players, matchedIds);
+    const statSource: any =
+      (perPlayerHit && typeof perPlayerHit === "object" ? perPlayerHit : null) ||
+      (rankHit && typeof rankHit === "object" ? rankHit : null) ||
+      (summaryPlayersHit && typeof summaryPlayersHit === "object" ? summaryPlayersHit : null) ||
+      (detailed && typeof detailed === "object" ? detailed : null);
     const liveStatsHit =
       x01FindMapValue(payload?.resume?.state?.liveStatsByPlayer, matchedIds) ||
       x01FindMapValue(payload?.payload?.d?.s?.livestatsbyplayer, matchedIds) ||
@@ -439,6 +523,99 @@ export function computeX01MultiAgg(records: SavedMatch[], playerId: string, play
         });
       }
       out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
+    } else {
+      // Import / récupération compact : pas de replayDarts ni detailedByPlayer, mais le
+      // résumé conserve les valeurs de partie (avg3d, score, remaining, rang, gagnant).
+      // Ces valeurs doivent compter dans les stats au lieu de produire "0.0 / 2 matchs".
+      const matchedAny: any = matched as any;
+      const playerNames = [matchedAny?.name, matchedAny?.displayName, matchedAny?.nickname, playerName, rankHit?.name, rankHit?.playerName]
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean);
+      const startScore = x01ReadNum(
+        (rec as any)?.game?.startScore,
+        (rec as any)?.summary?.game?.startScore,
+        payload?.summary?.game?.startScore,
+        payload?.game?.startScore,
+        payload?.resume?.config?.startScore,
+        payload?.config?.startScore,
+        301
+      ) || 301;
+
+      const remainingCandidates = [rankHit?.remaining, rankHit?.finalScore];
+      const remainingFromFinalScores = x01FindPlayerMapNumber(summary?.finalScores, matchedIds, playerNames);
+      const remainingFromMap = x01FindPlayerMapNumber(summary?.remainingByPlayer, matchedIds, playerNames);
+      const hasRemaining =
+        remainingCandidates.some((v) => v !== undefined && v !== null && Number.isFinite(Number(v))) ||
+        (summary?.finalScores && typeof summary.finalScores === "object" &&
+          (matchedIds.some((id) => Object.keys(summary.finalScores).some((key) => x01IdMatches(key, id))) ||
+           playerNames.some((name) => Object.keys(summary.finalScores).some((key) => x01NormName(key) === x01NormName(name))))) ||
+        (summary?.remainingByPlayer && typeof summary.remainingByPlayer === "object" &&
+          (matchedIds.some((id) => Object.keys(summary.remainingByPlayer).some((key) => x01IdMatches(key, id))) ||
+           playerNames.some((name) => Object.keys(summary.remainingByPlayer).some((key) => x01NormName(key) === x01NormName(name)))));
+      const remaining = hasRemaining
+        ? x01ReadNum(...remainingCandidates, remainingFromFinalScores, remainingFromMap)
+        : 0;
+      const avg3 = x01ReadNum(
+        statSource?.avg3,
+        statSource?.avg3D,
+        statSource?.avg3d,
+        x01FindPlayerMapNumber(summary?.avg3d, matchedIds, playerNames),
+        x01FindPlayerMapNumber(summary?.avg3D, matchedIds, playerNames),
+        x01FindPlayerMapNumber(summary?.avg3ByPlayer, matchedIds, playerNames),
+        x01FindPlayerMapNumber(summary?.average3ByPlayer, matchedIds, playerNames)
+      );
+      const sourcePoints = x01ReadNum(
+        statSource?.scored,
+        statSource?.score,
+        statSource?.totalScore,
+        statSource?.totalscore,
+        statSource?.points,
+        statSource?._sumPoints,
+        hasRemaining && remaining >= 0 && remaining <= startScore ? startScore - remaining : 0
+      );
+      const safePoints = Math.min(Math.max(sourcePoints, 0), startScore);
+      const directDarts = x01ReadNum(statSource?.darts, statSource?.dt, statSource?.dartsThrown);
+      const inferredDarts = directDarts || x01InferDartsFromScoredAvg(safePoints, avg3);
+
+      out.scoreTotal += safePoints;
+      out.darts += inferredDarts;
+      out.sumAvg3D += avg3;
+      out.bestAvg3D = Math.max(out.bestAvg3D, avg3);
+      out.bestVisit = Math.max(out.bestVisit, x01ReadNum(statSource?.bestVisit, statSource?.bv, x01FindPlayerMapNumber(summary?.bestVisitByPlayer, matchedIds, playerNames)));
+      out.bestCheckout = Math.max(out.bestCheckout, x01ReadNum(statSource?.bestCheckout, statSource?.bestCO, statSource?.bestCo, statSource?.bc, x01FindPlayerMapNumber(summary?.bestCheckoutByPlayer, matchedIds, playerNames)));
+
+      // Conserver toute donnée granulaire si elle existe malgré l'absence de replay.
+      out.hitsSingle += x01ReadNum(statSource?.hits?.S, statSource?.hits?.s, statSource?.hitsSingle, statSource?.hitssingle);
+      out.hitsDouble += x01ReadNum(statSource?.hits?.D, statSource?.hits?.d, statSource?.hitsDouble, statSource?.hitsdouble);
+      out.hitsTriple += x01ReadNum(statSource?.hits?.T, statSource?.hits?.t, statSource?.hitsTriple, statSource?.hitstriple);
+      out.miss += x01ReadNum(statSource?.hits?.M, statSource?.hits?.m, statSource?.miss, statSource?.misses);
+      out.bust += x01ReadNum(statSource?.bust, statSource?.busts);
+      out.hitsBull += x01ReadNum(statSource?.bull, statSource?.hits?.Bull, statSource?.hits?.bull);
+      out.hitsDBull += x01ReadNum(statSource?.dBull, statSource?.dbull, statSource?.hits?.DBull, statSource?.hits?.dbull);
+
+      const coAttempts = x01ReadNum(statSource?.checkoutAttempts, statSource?.checkoutattempts, statSource?.coAttempts, statSource?.checkouts);
+      const coHits = x01ReadNum(statSource?.checkoutHits, statSource?.checkoutSuccess, statSource?.checkoutsuccess, statSource?.coHits, statSource?.cohits);
+      if (coAttempts > 0 || coHits > 0) {
+        out.checkoutAttempts += coAttempts;
+        out.checkoutHits += Math.min(coHits || (out.bestCheckout > 0 ? 1 : 0), coAttempts || coHits || 1);
+      } else {
+        const winnerIdCompact = String(summary?.winnerId ?? payload?.winnerId ?? payload?.summary?.winnerId ?? "");
+        const winnerNameCompact = x01NormName(summary?.winnerName ?? payload?.winnerName ?? payload?.summary?.winnerName);
+        const isWinnerCompact =
+          statSource?.isWinner === true ||
+          statSource?.result === "WIN" ||
+          x01ReadNum(statSource?.rank, statSource?.place, statSource?.position) === 1 ||
+          matchedIds.some((id) => x01IdMatches(winnerIdCompact, id)) ||
+          (!!winnerNameCompact && playerNames.some((name) => x01NormName(name) === winnerNameCompact));
+        if (isWinnerCompact) {
+          // Un gagnant arrivé à 0 a forcément réussi au moins un checkout. Le nombre
+          // total de tentatives n'est en revanche pas reconstructible : on le marque inconnu.
+          out.checkoutHits += 1;
+          out.checkoutAttemptsUnknown += 1;
+        }
+      }
+
+      if (avg3 > 0) out.progression.push({ avg3D: avg3, ts: (rec as any).updatedAt ?? (rec as any).createdAt ?? Date.now() });
     }
   }
 

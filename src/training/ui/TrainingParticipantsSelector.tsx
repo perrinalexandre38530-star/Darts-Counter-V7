@@ -135,8 +135,11 @@ export function buildTrainingParticipantConfig(
     trainingParticipants: participants.map((participant) => ({
       id: participant.id,
       name: participant.name,
+      avatarDataUrl: participant.avatarDataUrl || null,
+      avatarUrl: participant.avatarUrl || null,
       teamId: participant.teamId || null,
       teamName: participant.teamName || null,
+      teamLogo: participant.teamLogo || null,
     })),
   };
 }

@@ -1,4 +1,14 @@
-export type AdPlacement = "home" | "games" | "stats" | "history" | "settings";
+export type AdPlacement =
+  | "home"
+  | "messages"
+  | "profiles"
+  | "games"
+  | "competitions"
+  | "online"
+  | "stats"
+  | "history"
+  | "settings"
+  | "screens";
 
 export type EndGameAdTiming = "before_results" | "after_results" | "off";
 

@@ -1353,6 +1353,42 @@ function statHubMapValueForPlayer(map: any, pid: string, playerName?: string): a
   return undefined;
 }
 
+function statHubSummaryPlayerRow(summary: any, pid: string, playerName?: string): any | null {
+  const targetName = statHubNormName(playerName);
+  let best: any | null = null;
+  let bestRichness = -1;
+  for (const key of ["ranking", "rankings", "finalRanking", "multiRanking", "classification", "standings", "leaderboard", "perPlayer", "players"]) {
+    const rows = summary?.[key];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const ids = statHubPlayerIds(row);
+      const nm = statHubNormName(row?.name ?? row?.playerName ?? row?.displayName ?? row?.nickname ?? row?.surname);
+      const matches = ids.some((id) => statHubIdMatches(id, pid)) || (!!targetName && !!nm && nm === targetName);
+      if (!matches) continue;
+      const richness = [
+        row?.avg3, row?.avg3D, row?.avg3d, row?.darts, row?.score, row?.scored, row?.remaining,
+        row?.finalScore, row?.rank, row?.place, row?.position, row?.bestVisit, row?.bestCheckout,
+      ].filter((v) => v !== undefined && v !== null && String(v) !== "").length;
+      if (richness > bestRichness) { best = row; bestRichness = richness; }
+    }
+  }
+  return best;
+}
+
+function statHubNumericMapValue(map: any, pid: string, playerName?: string): number | null {
+  if (!map || typeof map !== "object") return null;
+  const direct = statHubMapValueForPlayer(map, pid, playerName);
+  if (Number.isFinite(Number(direct))) return Number(direct);
+  const targetName = statHubNormName(playerName);
+  for (const [key, value] of Object.entries(map)) {
+    if ((statHubIdMatches(key, pid) || (!!targetName && statHubNormName(key) === targetName)) && Number.isFinite(Number(value))) {
+      return Number(value);
+    }
+  }
+  return null;
+}
+
 function recordHasPlayer(r: any, pid: string, playerName?: string): boolean {
   if (!r || !pid) return false;
 
@@ -1378,9 +1414,19 @@ function recordHasPlayer(r: any, pid: string, playerName?: string): boolean {
     ...toArrLoc<any>(r?.payload?.config?.players),
     ...toArrLoc<any>(r?.payload?.stats?.players),
     ...toArrLoc<any>(r?.summary?.players),
+    ...toArrLoc<any>(r?.summary?.ranking),
     ...toArrLoc<any>(r?.summary?.rankings),
+    ...toArrLoc<any>(r?.summary?.finalRanking),
+    ...toArrLoc<any>(r?.summary?.multiRanking),
+    ...toArrLoc<any>(r?.summary?.classification),
+    ...toArrLoc<any>(r?.summary?.standings),
     ...toArrLoc<any>(r?.payload?.summary?.players),
+    ...toArrLoc<any>(r?.payload?.summary?.ranking),
     ...toArrLoc<any>(r?.payload?.summary?.rankings),
+    ...toArrLoc<any>(r?.payload?.summary?.finalRanking),
+    ...toArrLoc<any>(r?.payload?.summary?.multiRanking),
+    ...toArrLoc<any>(r?.payload?.summary?.classification),
+    ...toArrLoc<any>(r?.payload?.summary?.standings),
   ];
   const all = [...direct, ...payloadPlayers];
 
@@ -1670,7 +1716,7 @@ function buildDashboardForPlayer(
 
   // --------- Loop records
   for (const r of records || []) {
-    const inMatch = recordHasPlayer(r as any, pid);
+    const inMatch = recordHasPlayer(r as any, pid, player?.name);
     if (!inMatch) continue;
 
     fbMatches++;
@@ -1692,10 +1738,12 @@ function buildDashboardForPlayer(
     const detailedPstat =
       statHubMapValueForPlayer(ss?.detailedByPlayer, pid, player?.name) ??
       statHubMapValueForPlayer(ss?.detailedbyplayer, pid, player?.name);
+    const summaryRow = statHubSummaryPlayerRow(ss, pid, player?.name);
 
     const pstat =
       detailedPstat ??
-      (ss?.players && typeof ss.players === "object" && !Array.isArray(ss.players) ? ss.players[pid] : null) ??
+      summaryRow ??
+      (ss?.players && typeof ss.players === "object" && !Array.isArray(ss.players) ? statHubMapValueForPlayer(ss.players, pid, player?.name) : null) ??
       (perArr.find((x) => {
         const ids = statHubPlayerIds(x);
         const nm = statHubNormName(x?.name ?? x?.playerName ?? x?.displayName ?? x?.nickname ?? x?.surname);
@@ -1703,20 +1751,31 @@ function buildDashboardForPlayer(
         return ids.some((id) => statHubIdMatches(id, pid)) || (!!targetNm && !!nm && nm === targetNm);
       })) ??
       (perSrc && !Array.isArray(perSrc) && typeof perSrc === "object"
-        ? (perSrc[pid] ?? Object.entries(perSrc).find(([k]) => statHubIdMatches(k, pid))?.[1])
+        ? statHubMapValueForPlayer(perSrc, pid, player?.name)
         : null) ??
       (ss?.[pid]) ??
       {};
 
-    const a3Raw = statHubFirstFinite(pstat.avg3, pstat.avg_3, pstat.avg3Darts, pstat.avg3D, pstat.average3);
+    const a3Raw = statHubFirstFinite(
+      pstat.avg3,
+      pstat.avg3d,
+      pstat.avg_3,
+      pstat.avg3Darts,
+      pstat.avg3D,
+      pstat.average3,
+      statHubNumericMapValue(ss?.avg3d, pid, player?.name),
+      statHubNumericMapValue(ss?.avg3D, pid, player?.name),
+      statHubNumericMapValue(ss?.avg3ByPlayer, pid, player?.name),
+      statHubNumericMapValue(ss?.average3ByPlayer, pid, player?.name)
+    );
     const a3 = a3Raw ?? 0;
 
     const bestVRaw = statHubFirstFinite(pstat.bestVisit, pstat.best_visit, pstat.bv);
     const bestCORaw = statHubFirstFinite(pstat.bestCheckout, pstat.bestCO, pstat.bestCo, pstat.best_co, pstat.bestFinish, pstat.bc);
 
-    const bestV = bestVRaw ?? Nloc(ss?.bestVisitByPlayer?.[pid]);
+    const bestV = bestVRaw ?? statHubNumericMapValue(ss?.bestVisitByPlayer, pid, player?.name) ?? 0;
     // Si detailedByPlayer dit 0 pour le joueur, on respecte 0 et on ignore la map héritée.
-    const bestCO = bestCORaw ?? Nloc(ss?.bestCheckoutByPlayer?.[pid]);
+    const bestCO = bestCORaw ?? statHubNumericMapValue(ss?.bestCheckoutByPlayer, pid, player?.name) ?? 0;
 
     if (a3 > 0) {
       byDate.push({
@@ -1771,9 +1830,13 @@ function buildDashboardForPlayer(
   return {
     playerId: pid,
     playerName: player?.name || "Joueur",
-    avg3Overall: Number.isFinite(Number(quick?.avg3Overall ?? quick?.avg3)) ? Number(quick?.avg3Overall ?? quick?.avg3) : fbAvg3Mean,
-    bestVisit: Number.isFinite(Number(quick?.bestVisit)) ? Number(quick?.bestVisit) : fbBestVisit,
-    bestCheckout: Number.isFinite(Number(quick?.bestCheckout)) ? Number(quick?.bestCheckout) : fbBestCO,
+    // L'historique visible est la source de vérité. Une quick-stat persistée à 0 ne doit
+    // pas écraser une moyenne réellement reconstruite depuis les parties présentes.
+    avg3Overall: fbMatches > 0 && fbAvg3Mean > 0
+      ? fbAvg3Mean
+      : (Number.isFinite(Number(quick?.avg3Overall ?? quick?.avg3)) ? Number(quick?.avg3Overall ?? quick?.avg3) : 0),
+    bestVisit: fbBestVisit > 0 ? fbBestVisit : (Number.isFinite(Number(quick?.bestVisit)) ? Number(quick?.bestVisit) : 0),
+    bestCheckout: fbBestCO > 0 ? fbBestCO : (Number.isFinite(Number(quick?.bestCheckout)) ? Number(quick?.bestCheckout) : 0),
     // ✅ Le taux de victoire du dashboard doit suivre l'historique visible.
     // Si des anciennes stats persistées existent encore dans profiles.stats / index, elles ne doivent
     // plus pouvoir afficher 0% ou une valeur fantôme après suppression de cartes.

@@ -12,6 +12,13 @@ export type NativeAdMobStatus = {
   error?: string;
 };
 
+export type NativeBannerPosition = "TOP_CENTER" | "CENTER" | "BOTTOM_CENTER";
+
+export type NativeBannerOptions = {
+  position?: NativeBannerPosition;
+  margin?: number;
+};
+
 type AdMobPlugin = {
   initialize: (options?: any) => Promise<void>;
   requestConsentInfo: (options?: any) => Promise<any>;
@@ -28,7 +35,7 @@ type AdMobPlugin = {
 
 let pluginCache: AdMobPlugin | null | undefined;
 let readyPromise: Promise<NativeAdMobStatus> | null = null;
-let bannerPlacement: string | null = null;
+let bannerSignature: string | null = null;
 
 function getAdMobPlugin(): AdMobPlugin | null {
   if (pluginCache !== undefined) return pluginCache;
@@ -72,7 +79,6 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
   try {
     await plugin.initialize({ initializeForTesting: config.testMode });
 
-    // UMP : requestConsentInfo DOIT précéder toute décision de chargement pub.
     let consent = await plugin.requestConsentInfo({ tagForUnderAgeOfConsent: false });
     if (!consent?.canRequestAds && consent?.isConsentFormAvailable) {
       consent = await plugin.showConsentForm();
@@ -155,30 +161,43 @@ export async function showNativeRewarded(): Promise<any | null> {
   return plugin.showRewardVideoAd();
 }
 
-export async function showNativeBanner(placement: string): Promise<boolean> {
+export async function showNativeBanner(
+  placement: string,
+  options: NativeBannerOptions = {}
+): Promise<boolean> {
   const plugin = getAdMobPlugin();
   if (!plugin) return false;
+
   const status = await ensureNativeAdMobReady();
   if (!status.canRequestAds) return false;
-  if (bannerPlacement === placement) return true;
 
   const config = getAdMobRuntimeConfig();
+  const position = options.position || "BOTTOM_CENTER";
+  const margin = Math.max(
+    0,
+    Math.round(Number(options.margin ?? (position === "BOTTOM_CENTER" ? 76 : 0)))
+  );
+  const signature = `${placement}:${position}:${margin}`;
+
+  if (bannerSignature === signature) return true;
+
   try { await plugin.removeBanner(); } catch {}
+
   await plugin.showBanner({
     adId: config.bannerIdAndroid,
     adSize: "ADAPTIVE_BANNER",
-    position: "BOTTOM_CENTER",
-    // BottomNav fait ~64-72 px. La pub reste donc au-dessus de la navigation.
-    margin: 76,
+    position,
+    margin,
     isTesting: config.testMode,
   });
-  bannerPlacement = placement;
+
+  bannerSignature = signature;
   return true;
 }
 
 export async function removeNativeBanner(): Promise<void> {
   const plugin = getAdMobPlugin();
-  bannerPlacement = null;
+  bannerSignature = null;
   if (!plugin) return;
   try { await plugin.removeBanner(); } catch {}
 }

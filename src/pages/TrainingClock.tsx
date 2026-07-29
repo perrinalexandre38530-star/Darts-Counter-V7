@@ -27,6 +27,14 @@ import tickerClockDoubles from "../assets/tickers/clock_variants/doubles.png";
 import tickerClockTriples from "../assets/tickers/clock_variants/triples.png";
 import tickerClockSDT from "../assets/tickers/clock_variants/sdt.png";
 import targetBg from "../assets/target_bg.png";
+import { recordSoloTrainingResult } from "../training/stats/trainingSessionRecorder";
+import {
+  getTrainingDetailedSessions,
+  recordTrainingGroupSession,
+  type TrainingDetailedSession,
+  type TrainingGroupSession,
+} from "../training/stats/trainingStatsHub";
+import TrainingComparisonSummary from "../training/ui/TrainingComparisonSummary";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
 type ParticipantMode = "players" | "teams";
@@ -90,7 +98,13 @@ type ClockSession = {
 const STORAGE_KEY = "dc_training_clock_stats_v1";
 const LEGACY_STORAGE_KEY = "dc-training-clock-v1";
 
-type PlayerLite = { id: string | null; name: string; teamId?: string | null; teamName?: string | null };
+type PlayerLite = {
+  id: string | null;
+  name: string;
+  teamId?: string | null;
+  teamName?: string | null;
+  teamLogo?: string | null;
+};
 
 type Props = {
   profiles?: Profile[];
@@ -418,8 +432,8 @@ const TrainingClock: React.FC<Props> = (props) => {
   const handleBack = React.useCallback(() => {
     try {
       if (typeof appGo === "function") {
-        // on revient au menu "Games/Training" (le plus logique)
-        appGo("games");
+        // Le Tour de l'horloge appartient au hub Training.
+        appGo("training");
         return;
       }
     } catch (e) {
@@ -471,6 +485,7 @@ const TrainingClock: React.FC<Props> = (props) => {
             name: p?.nickname ?? p?.name ?? "Joueur",
             teamId: String(team.id),
             teamName: team.name || "Équipe",
+            teamLogo: (team as any)?.logoDataUrl || (team as any)?.logoUrl || (team as any)?.avatarDataUrl || (team as any)?.avatarUrl || null,
           });
         }
       }
@@ -559,6 +574,9 @@ const TrainingClock: React.FC<Props> = (props) => {
     null
   );
   const [history, setHistory] = React.useState<ClockSession[]>([]);
+  const [comparisonGroup, setComparisonGroup] = React.useState<TrainingGroupSession | null>(null);
+  const groupSessionIdRef = React.useRef<string>(`training-group-training_clock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const groupStartedAtRef = React.useRef<number>(Date.now());
 
   const [showInfo, setShowInfo] = React.useState(false);
 
@@ -717,6 +735,9 @@ const TrainingClock: React.FC<Props> = (props) => {
   }
 
   function handleStart() {
+    groupSessionIdRef.current = `training-group-training_clock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    groupStartedAtRef.current = Date.now();
+    setComparisonGroup(null);
     handleStartForPlayer(0);
   }
 
@@ -791,6 +812,57 @@ const TrainingClock: React.FC<Props> = (props) => {
 
     setLastSession(session);
     saveSessionToHistory(session);
+
+    // Statistiques Training dédiées : une ligne détaillée par participant,
+    // toutes rattachées à la même session de groupe pour le comparatif final.
+    try {
+      const completionPct = TARGETS.length > 0 ? (session.targetsCompleted / TARGETS.length) * 100 : 0;
+      const performance = Math.max(0, completionPct + (session.completed ? Math.max(0, 20 - session.dartsThrown / 10) : 0));
+      recordSoloTrainingResult({
+        modeId: "training_clock",
+        config: {
+          ...session.config,
+          groupSessionId: groupSessionIdRef.current,
+          participantMode,
+          activeParticipant: {
+            id: player?.id ?? null,
+            name: player?.name ?? "Joueur",
+            teamId: player?.teamId ?? null,
+            teamName: player?.teamName ?? null,
+            teamLogo: player?.teamLogo ?? null,
+          },
+          trainingParticipants: players.map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            teamId: entry.teamId ?? null,
+            teamName: entry.teamName ?? null,
+            teamLogo: entry.teamLogo ?? null,
+          })),
+        },
+        participantIds: player?.id ? [String(player.id)] : [],
+        startedAt: startTime ?? now,
+        endedAt: now,
+        darts: session.dartsThrown,
+        hits: session.validHits,
+        points: session.targetsCompleted,
+        success: session.completed,
+        metrics: {
+          score: performance,
+          completionPct,
+          targetsCompleted: session.targetsCompleted,
+          totalTargets: TARGETS.length,
+          accuracyPercent: session.accuracyPct,
+          bestStreak: session.bestStreak,
+          elapsedMs: session.elapsedMs,
+          dartsUsed: session.dartsThrown,
+          mode: session.config.mode,
+          dartLimit: session.config.dartLimit ?? 0,
+        },
+      });
+    } catch (err) {
+      console.warn("TrainingClock recordSoloTrainingResult failed", err);
+    }
+
     if (session.dartSetId) {
       try { bumpDartSetUsage(session.dartSetId); } catch {}
     }
@@ -876,6 +948,86 @@ const TrainingClock: React.FC<Props> = (props) => {
 
     setStep("summary");
     playSound(completed ? "win" : "lose");
+
+    if (isMulti && currentPlayerIndex >= players.length - 1) {
+      finalizeClockGroup();
+    }
+  }
+
+  function finalizeClockGroup() {
+    const groupSessionId = groupSessionIdRef.current;
+    if (!groupSessionId || !players.length) return;
+
+    const rows = getTrainingDetailedSessions({
+      modeId: "training_clock",
+      groupSessionId,
+      limit: 100,
+    });
+    const latestByParticipant = new Map<string, TrainingDetailedSession>();
+    for (const row of rows) {
+      const pid = String(row?.participantId || "");
+      if (pid && !latestByParticipant.has(pid)) latestByParticipant.set(pid, row);
+    }
+
+    const ranked = players
+      .map((participant) => {
+        const pid = String(participant.id || "");
+        const row = latestByParticipant.get(pid);
+        if (!row) return null;
+        const metrics: any = row.metrics || {};
+        return {
+          sessionId: row.id,
+          participantId: pid || null,
+          participantName: row.participantName || participant.name,
+          teamId: row.teamId || participant.teamId || null,
+          teamName: row.teamName || participant.teamName || null,
+          teamLogo: row.teamLogo || participant.teamLogo || null,
+          darts: row.darts,
+          hits: row.hits,
+          points: row.points,
+          accuracyPct: row.accuracyPct,
+          success: row.success,
+          performance: Math.max(0, Number(metrics.score ?? metrics.completionPct ?? row.points) || 0),
+          metrics: row.metrics || {},
+        };
+      })
+      .filter(Boolean) as any[];
+
+    ranked.sort((a, b) => {
+      if (a.success !== b.success) return a.success ? -1 : 1;
+      const at = Number(a.metrics?.targetsCompleted || a.points || 0);
+      const bt = Number(b.metrics?.targetsCompleted || b.points || 0);
+      if (bt !== at) return bt - at;
+      if (a.darts !== b.darts) return a.darts - b.darts;
+      const ae = Number(a.metrics?.elapsedMs || 0);
+      const be = Number(b.metrics?.elapsedMs || 0);
+      if (ae !== be) return ae - be;
+      return b.accuracyPct - a.accuracyPct;
+    });
+    ranked.forEach((row, index) => { row.rank = index + 1; });
+
+    const group = recordTrainingGroupSession({
+      id: groupSessionId,
+      modeId: "training_clock",
+      participantMode,
+      startedAt: groupStartedAtRef.current,
+      endedAt: Date.now(),
+      config: {
+        ...config,
+        participantMode,
+        teamIds: participantMode === "teams" ? selectedTeams.map((team) => String(team.id)) : undefined,
+        teamNames: participantMode === "teams" ? selectedTeams.map((team) => String(team.name || "Équipe")) : undefined,
+      },
+      participants: ranked,
+    });
+    setComparisonGroup(group);
+  }
+
+  function replayClockGroup() {
+    groupSessionIdRef.current = `training-group-training_clock-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    groupStartedAtRef.current = Date.now();
+    setComparisonGroup(null);
+    handleStartForPlayer(0);
   }
 
   function handleThrow() {
@@ -1011,6 +1163,17 @@ const TrainingClock: React.FC<Props> = (props) => {
   // ============================================
   // Rendu
   // ============================================
+  if (comparisonGroup) {
+    return (
+      <TrainingComparisonSummary
+        group={comparisonGroup}
+        tickerId="training_clock"
+        onExit={handleBack}
+        onReplay={replayClockGroup}
+      />
+    );
+  }
+
   return (
     <>
       {/* ================= HALO ANIMÉ TOUR DE L'HORLOGE ================= */}
@@ -1659,15 +1822,15 @@ function SetupSection(props: SetupSectionProps) {
   function TypeBlock() {
     return (
       <section style={{ background: cardBg, borderRadius: 18, padding: 14, border: `1px solid ${borderSoft}`, boxShadow: "0 16px 40px rgba(0,0,0,0.55)" }}>
-        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary, margin: "0 0 10px" }}>1. Type de partie</h3>
+        <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: .9, fontWeight: 950, color: primary, margin: "0 0 10px" }}>1. Organisation du Training</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
           <button type="button" onClick={() => setParticipantMode("players")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "players" ? hexToRgba(primary, 0.42) : borderSoft}`, background: participantMode === "players" ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.03)", color: text, padding: 14, textAlign: "left", cursor: "pointer" }}>
             <div style={{ color: primary, fontWeight: 1000, fontSize: 16 }}>Joueurs</div>
-            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>1 à 4 profils.</div>
+            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>1 à 4 profils : chacun réalise le même exercice.</div>
           </button>
           <button type="button" onClick={() => setParticipantMode("teams")} style={{ borderRadius: 18, border: `1px solid ${participantMode === "teams" ? hexToRgba(primary, 0.42) : borderSoft}`, background: participantMode === "teams" ? hexToRgba(primary, 0.14) : "rgba(255,255,255,0.03)", color: text, padding: 14, textAlign: "left", cursor: "pointer" }}>
             <div style={{ color: primary, fontWeight: 1000, fontSize: 16 }}>Équipes</div>
-            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>Teams Darts enregistrées.</div>
+            <div style={{ color: textSoft, fontSize: 11, marginTop: 4 }}>Training collectif avec les Teams Darts enregistrées.</div>
           </button>
         </div>
       </section>
@@ -1693,7 +1856,7 @@ function SetupSection(props: SetupSectionProps) {
         <div style={{ marginTop: 6 }}>
           {participantMode === "players" ? (
             <PlayerPagedSelector
-              usageMode="x01"
+              usageMode="training"
               profiles={profiles}
               selectedIds={selectedPlayerIds}
               onToggle={togglePlayer}

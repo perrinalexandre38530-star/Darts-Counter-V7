@@ -295,9 +295,17 @@ function numOr0(...values: any[]): number {
   return 0;
 }
 
+function inferDartsFromScoredAvg(scored: number, avg3D: number): number {
+  if (!(scored > 0) || !(avg3D > 0)) return 0;
+  const raw = (scored * 3) / avg3D;
+  const rounded = Math.round(raw);
+  if (rounded <= 0 || rounded > 300) return 0;
+  return Math.abs(raw - rounded) <= 0.05 ? rounded : 0;
+}
+
 function collectX01RankingRows(match: any): any[] {
   const rows: any[] = [];
-  const keys = new Set(["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking", "players", "perPlayer"]);
+  const keys = new Set(["rankings", "ranking", "standings", "classification", "multiRanking", "leaderboard", "playersRanking", "finalRanking", "players", "perPlayer"]);
 
   const rowIdentity = (row: any) => String(
     row?.id ??
@@ -401,7 +409,7 @@ function getRankFromRows(match: any, pid: string, playerName?: any): number | nu
   // 1) Vraies tables de classement : l'ordre peut être utilisé en fallback.
   for (const root of roots) {
     if (!root || typeof root !== "object") continue;
-    for (const key of ["rankings", "ranking", "standings", "leaderboard", "playersRanking", "finalRanking"]) {
+    for (const key of ["rankings", "ranking", "standings", "classification", "multiRanking", "leaderboard", "playersRanking", "finalRanking"]) {
       const rows = root[key];
       if (!Array.isArray(rows)) continue;
       for (let i = 0; i < rows.length; i += 1) {
@@ -1240,10 +1248,25 @@ function buildSessionFromSummary(
     dartFallback?.avg3D
   );
 
-  const avg1D =
-    darts > 0 && avg3D > 0
-      ? avg3D / 3
-      : numOr0(detail.avg1D, row.avg1D, dartFallback?.avg1D);
+  // Les exports de récupération compacts peuvent ne plus avoir dartsDetail mais garder
+  // `scored` et `avg3d`. Dans ce cas, on récupère le nombre exact de fléchettes seulement
+  // lorsque l'équation (scored * 3 / avg3d) retombe quasi exactement sur un entier.
+  if (!darts && avg3D > 0) {
+    const scoredForInference = numOr0(
+      row.scored,
+      detail.scored,
+      detail.totalScore,
+      row.totalScore,
+      row.points,
+      row.score,
+      dartFallback?.darts && dartFallback?.avg3D ? (dartFallback.avg3D / 3) * dartFallback.darts : 0
+    );
+    darts = inferDartsFromScoredAvg(scoredForInference, avg3D);
+  }
+
+  const avg1D = avg3D > 0
+    ? avg3D / 3
+    : numOr0(detail.avg1D, row.avg1D, dartFallback?.avg1D);
 
   // ---------- Records BV ----------
   const bestVisit = numOr0(
@@ -1392,8 +1415,9 @@ function buildSessionFromSummary(
   );
 
   // ---------- Win / legs / sets ----------
-  const isWinExplicit =
-    match.winnerId && String(match.winnerId) === pidStr;
+  const explicitWinnerId =
+    match?.winnerId ?? summary?.winnerId ?? match?.payload?.winnerId ?? match?.payload?.summary?.winnerId;
+  const isWinExplicit = !!explicitWinnerId && sameId(explicitWinnerId, pidStr);
 
   const isWinHeuristic =
     row.isWinner === true ||
@@ -1538,13 +1562,22 @@ function buildSessionFromSummary(
     if (totalSets) setsPlayed = totalSets;
   }
 
-  const finishes = numOr0(
+  let finishes = numOr0(
     (row as any).finishes,
     (row as any).finishCount,
     (detail as any).finishes,
     (detail as any).finishCount,
     dartFallback?.finishes
   );
+  const rowRemainingRaw = row?.remaining ?? row?.finalScore ?? rankingRow?.remaining ?? rankingRow?.finalScore;
+  const rowRemaining = Number.isFinite(Number(rowRemainingRaw)) ? Number(rowRemainingRaw) : null;
+  if (!finishes && isWin && rowRemaining === 0) finishes = 1;
+
+  // Un X01 MULTI "stop_on_first" sans tableau de legs sauvegardé représente malgré tout
+  // une manche jouée : tous ont joué 1 leg et le vainqueur en a gagné 1.
+  const compactStopOnFirst = String(summary?.multiFinishMode ?? match?.multiFinishMode ?? "").toLowerCase() === "stop_on_first";
+  if (compactStopOnFirst && !legsPlayed) legsPlayed = 1;
+  if (compactStopOnFirst && isWin && !legsWon) legsWon = 1;
 
   // ---------- Rang multi ----------
   const rawRank =
@@ -1574,9 +1607,19 @@ function buildSessionFromSummary(
   }
   if (!rank) rank = getRankFromRows(match, pidStr, row?.name || row?.playerName);
 
-  // Si vraiment rien dans les résumés mais que les darts bruts ont permis
-  // une reconstruction, on utilise cette ligne.
-  if (!darts && !hitsS && !hitsD && !hitsT && !miss) return dartFallback || null;
+  // Un résumé compact reste une vraie session statistique même sans replayDarts :
+  // moyenne, rang, score final et victoire sont des données fiables et doivent apparaître.
+  const summaryRemaining = rowRemaining;
+  const hasReliableSummaryScalar =
+    avg3D > 0 ||
+    bestVisit > 0 ||
+    bestCheckout > 0 ||
+    rank != null ||
+    isWin ||
+    summaryRemaining != null ||
+    numOr0(row?.scored, row?.score, row?.points, row?.totalScore) > 0;
+
+  if (!darts && !hitsS && !hitsD && !hitsT && !miss && !hasReliableSummaryScalar) return dartFallback || null;
 
   return {
     playerId: pidStr,          // 🔥 OBLIGATOIRE sinon toutes les stats se mélangent !
@@ -1602,8 +1645,8 @@ function buildSessionFromSummary(
     setsWon,
     finishes,
     rank,
-    finalScore: dartFallback?.finalScore ?? null,
-    remaining: dartFallback?.remaining ?? null,
+    finalScore: dartFallback?.finalScore ?? summaryRemaining,
+    remaining: dartFallback?.remaining ?? summaryRemaining,
   };
 }
 

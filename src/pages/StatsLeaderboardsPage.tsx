@@ -170,6 +170,7 @@ type Row = {
   checkouts?: number;
   checkoutHits?: number;
   checkoutRate?: number;
+  checkoutAttemptsUnknown?: number;
   dartsCo?: number;
   darts?: number;
   scoreTotal?: number;
@@ -464,6 +465,12 @@ function x01LeaderboardPlayers(rec: any): any[] {
     (Array.isArray(payload?.config?.players) && payload.config.players) ||
     (Array.isArray(nested?.players) && nested.players) ||
     (Array.isArray(nested?.config?.players) && nested.config.players) ||
+    (Array.isArray(summary?.ranking) && summary.ranking) ||
+    (Array.isArray(summary?.rankings) && summary.rankings) ||
+    (Array.isArray(summary?.finalRanking) && summary.finalRanking) ||
+    (Array.isArray(summary?.multiRanking) && summary.multiRanking) ||
+    (Array.isArray(summary?.standings) && summary.standings) ||
+    (Array.isArray(summary?.classification) && summary.classification) ||
     [];
   return Array.isArray(arr) ? arr : [];
 }
@@ -646,6 +653,15 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       }
     });
 
+    const checkoutAttempts = Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0;
+    const checkoutHitsRaw = Number(agg?.checkoutHits || agg?.coHits || 0) || 0;
+    const checkoutAttemptsUnknown = Number(agg?.checkoutAttemptsUnknown || 0) || 0;
+    // Quand l'export compact prouve un CO réussi (vainqueur à 0) mais a perdu le détail
+    // des tentatives, on conserve le succès sans inventer un faux 1/1 ou 100%.
+    const checkoutHits = checkoutAttempts > 0
+      ? Math.min(checkoutHitsRaw, checkoutAttempts)
+      : checkoutHitsRaw;
+
     rows.push({
       id: c.id,
       name: c.name || "—",
@@ -684,11 +700,10 @@ function computeX01LeaderboardRowsFromDashboardAgg(
       triplePct: attempts > 0 ? (tripleHits / attempts) * 100 : 0,
       bullPct: attempts > 0 ? (bullHits / attempts) * 100 : 0,
       dbullPct: attempts > 0 ? (dbullHits / attempts) * 100 : 0,
-      checkouts: Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0,
-      checkoutHits: Math.min(Number(agg?.checkoutHits || agg?.coHits || 0) || 0, Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || Number(agg?.checkoutHits || agg?.coHits || 0) || 0),
-      checkoutRate: (Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0) > 0
-        ? (Math.min(Number(agg?.checkoutHits || agg?.coHits || 0) || 0, Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 0) / (Number(agg?.checkoutAttempts || agg?.co || agg?.checkouts || 0) || 1)) * 100
-        : 0,
+      checkouts: checkoutAttempts,
+      checkoutHits,
+      checkoutRate: checkoutAttempts > 0 ? (checkoutHits / checkoutAttempts) * 100 : 0,
+      checkoutAttemptsUnknown,
       dartsCo: Number(agg?.dartsCo || agg?.checkoutDarts || 0) || 0,
       bestFirst9,
       first9Avg: Number(agg?.avgFirst9 || agg?.first9Avg || 0) || 0,
@@ -2518,22 +2533,36 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
                   metricValue = `${numOr0(row.setsWin)}`;
                   metricSub = `${numOr0(row.setsWin)}/${rMatches} sets`;
                   break;
-                case "checkouts":
-                  metricValue = `${numOr0(row.checkouts)}`;
-                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} réussis`;
+                case "checkouts": {
+                  const unknownCO = numOr0(row.checkoutAttemptsUnknown) > 0 && numOr0(row.checkouts) <= 0;
+                  metricValue = unknownCO ? "—" : `${numOr0(row.checkouts)}`;
+                  metricSub = unknownCO
+                    ? `${numOr0(row.checkoutHits)} CO réussi(s) · tentatives ?`
+                    : `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} réussis`;
                   break;
-                case "checkoutHits":
+                }
+                case "checkoutHits": {
+                  const unknownCO = numOr0(row.checkoutAttemptsUnknown) > 0 && numOr0(row.checkouts) <= 0;
                   metricValue = `${numOr0(row.checkoutHits)}`;
-                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
+                  metricSub = unknownCO
+                    ? `${numOr0(row.checkoutHits)} CO réussi(s) · tentatives ?`
+                    : `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
                   break;
-                case "checkoutRate":
-                  metricValue = `${Math.min(100, Math.max(0, numOr0(row.checkoutRate))).toFixed(1)}%`;
-                  metricSub = `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
+                }
+                case "checkoutRate": {
+                  const unknownCO = numOr0(row.checkoutAttemptsUnknown) > 0 && numOr0(row.checkouts) <= 0;
+                  metricValue = unknownCO ? "—" : `${Math.min(100, Math.max(0, numOr0(row.checkoutRate))).toFixed(1)}%`;
+                  metricSub = unknownCO
+                    ? `${numOr0(row.checkoutHits)} CO réussi(s) · tentatives ?`
+                    : `${numOr0(row.checkoutHits)}/${numOr0(row.checkouts)} CO`;
                   break;
-                case "dartsCo":
-                  metricValue = `${numOr0(row.dartsCo)}`;
+                }
+                case "dartsCo": {
+                  const unknownDartsCO = numOr0(row.checkoutAttemptsUnknown) > 0 && numOr0(row.dartsCo) <= 0;
+                  metricValue = unknownDartsCO ? "—" : `${numOr0(row.dartsCo)}`;
                   metricSub = `${numOr0(row.checkoutHits)} CO réussis`;
                   break;
+                }
                 case "avg3":
                   metricValue = row.avg3 ? Number(row.avg3).toFixed(1) : "0.0";
                   metricSub = `${numOr0(row.matches)} matchs`;

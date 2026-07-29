@@ -16,6 +16,13 @@ import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { onlineApi } from "../lib/onlineApi";
 import { History } from "../lib/history";
 import { recordSoloTrainingResult } from "../training/stats/trainingSessionRecorder";
+import {
+  getTrainingDetailedSessions,
+  recordTrainingGroupSession,
+  type TrainingDetailedSession,
+  type TrainingGroupSession,
+} from "../training/stats/trainingStatsHub";
+import TrainingComparisonSummary from "../training/ui/TrainingComparisonSummary";
 
 const NAV_HEIGHT = 64; // hauteur du BottomNav (approx)
 
@@ -1120,6 +1127,57 @@ function ThrowPreviewBar({
   );
 }
 
+type X01TrainingParticipant = {
+  id: string;
+  name: string;
+  avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  teamId?: string | null;
+  teamName?: string | null;
+  teamLogo?: string | null;
+};
+
+function makeX01GroupSessionId() {
+  return `training-group-training_x01-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeX01TrainingQueue(config: any, fallbackProfile: Profile | null): X01TrainingParticipant[] {
+  const source = Array.isArray(config?.trainingParticipants) ? config.trainingParticipants : [];
+  const fallback = fallbackProfile?.id
+    ? [{
+        id: String(fallbackProfile.id),
+        name: String(fallbackProfile.name || "Joueur"),
+        avatarDataUrl: (fallbackProfile as any)?.avatarDataUrl || null,
+        avatarUrl: (fallbackProfile as any)?.avatarUrl || (fallbackProfile as any)?.avatar || null,
+      }]
+    : [];
+  const raw = source.length ? source : fallback;
+  const seen = new Set<string>();
+  const out: X01TrainingParticipant[] = [];
+  for (const item of raw) {
+    const id = String(item?.id || item?.profileId || "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      name: String(item?.name || "Joueur"),
+      avatarDataUrl: item?.avatarDataUrl || null,
+      avatarUrl: item?.avatarUrl || item?.avatar || null,
+      teamId: item?.teamId ? String(item.teamId) : null,
+      teamName: item?.teamName ? String(item.teamName) : null,
+      teamLogo: item?.teamLogo || null,
+    });
+  }
+  return out;
+}
+
+function x01TrainingPerformance(session: TrainingDetailedSession) {
+  const metrics: any = session?.metrics || {};
+  const avg3 = Number(metrics.avg3 ?? metrics.avg3D ?? metrics.score);
+  if (Number.isFinite(avg3)) return Math.max(0, avg3);
+  return Math.max(0, Number(session?.points || 0));
+}
+
 // ============================================
 // Composant principal
 // ============================================
@@ -1133,55 +1191,49 @@ export default function TrainingX01Play({
 }) {
   useFullscreenPlay();
   const { theme } = useTheme();
-  // --------------------------------------------------
-  // PROFIL COURANT + AVATAR
-  // --------------------------------------------------
-  const currentProfile = useCurrentProfile() as Profile | null;
-
-  let avatarSrc: string | null = null;
-  if (currentProfile) {
-    const p = currentProfile as any;
-
-    // 1. Clés les plus probables
-    if (typeof p.avatarDataUrl === "string") {
-      avatarSrc = p.avatarDataUrl;
-    } else if (typeof p.avatarUrl === "string") {
-      avatarSrc = p.avatarUrl;
-    } else if (typeof p.avatar === "string") {
-      avatarSrc = p.avatar;
-    } else if (typeof p.avatar_data_url === "string") {
-      avatarSrc = p.avatar_data_url;
-    } else if (typeof p.avatar_url === "string") {
-      avatarSrc = p.avatar_url;
-    } else if (p.avatar && typeof p.avatar === "object") {
-      const o = p.avatar as any;
-      if (typeof o.dataUrl === "string") avatarSrc = o.dataUrl;
-      else if (typeof o.url === "string") avatarSrc = o.url;
-    } else {
-      // 2. Fallback : on cherche un string qui ressemble à une image
-      for (const [key, value] of Object.entries(p)) {
-        if (
-          typeof value === "string" &&
-          /\.(png|jpe?g|webp|gif)$/i.test(value)
-        ) {
-          avatarSrc = value;
-          break;
-        }
-        if (typeof value === "string" && /data:image\//.test(value)) {
-          avatarSrc = value;
-          break;
-        }
-      }
-    }
-  }
+  const fallbackProfile = useCurrentProfile() as Profile | null;
 
   // --------------------------------------------------
-  // CONFIG PROVENANT DU MENU (LOCKED)
+  // CONFIG + FILE DE PARTICIPANTS TRAINING
   // --------------------------------------------------
   const incomingCfg = (params?.config || params) as any;
   const lockedCfg = !!incomingCfg?.locked;
   const incomingStart = incomingCfg?.startScore;
   const incomingOut = incomingCfg?.outMode;
+  const queue = React.useMemo(
+    () => normalizeX01TrainingQueue(incomingCfg, fallbackProfile),
+    [incomingCfg, fallbackProfile?.id]
+  );
+  const [participantIndex, setParticipantIndex] = React.useState(0);
+  const [groupSummary, setGroupSummary] = React.useState<TrainingGroupSession | null>(null);
+  const groupSessionIdRef = React.useRef<string>(String(incomingCfg?.groupSessionId || makeX01GroupSessionId()));
+  const groupStartedAtRef = React.useRef<number>(Number(incomingCfg?.groupStartedAt || Date.now()) || Date.now());
+  const activeParticipant = queue[participantIndex] || null;
+  const currentProfile = (activeParticipant
+    ? ({
+        ...(fallbackProfile && String(fallbackProfile.id) === String(activeParticipant.id) ? fallbackProfile : {}),
+        id: activeParticipant.id,
+        name: activeParticipant.name,
+        avatarDataUrl: activeParticipant.avatarDataUrl || null,
+        avatarUrl: activeParticipant.avatarUrl || null,
+      } as any)
+    : fallbackProfile) as Profile | null;
+  const isGroupTraining = queue.length > 1 || incomingCfg?.participantMode === "teams";
+
+  let avatarSrc: string | null = null;
+  if (currentProfile) {
+    const p = currentProfile as any;
+    avatarSrc =
+      (typeof p.avatarDataUrl === "string" && p.avatarDataUrl) ||
+      (typeof p.avatarUrl === "string" && p.avatarUrl) ||
+      (typeof p.avatar === "string" && p.avatar) ||
+      (typeof p.avatar_data_url === "string" && p.avatar_data_url) ||
+      (typeof p.avatar_url === "string" && p.avatar_url) ||
+      null;
+    if (!avatarSrc && p.avatar && typeof p.avatar === "object") {
+      avatarSrc = p.avatar.dataUrl || p.avatar.url || null;
+    }
+  }
 
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(() => {
     const v = Number(incomingStart);
@@ -1570,10 +1622,15 @@ export default function TrainingX01Play({
           recordSoloTrainingResult({
             modeId: "training_x01",
             config: {
+              ...(incomingCfg || {}),
               startScore,
               outMode,
               locked: true,
               source: "training_x01",
+              groupSessionId: groupSessionIdRef.current || null,
+              participantMode: incomingCfg?.participantMode === "teams" ? "teams" : "players",
+              activeParticipant: activeParticipant || (currentProfile ? { id: currentProfile.id, name: currentProfile.name } : null),
+              trainingParticipants: queue,
             },
             participantIds: currentProfile?.id ? [String(currentProfile.id)] : [],
             startedAt: sessionStartedAtRef.current,
@@ -1658,6 +1715,8 @@ export default function TrainingX01Play({
                   id: String((currentProfile as any).id || "local"),
                   name: currentProfile.name,
                   avatarDataUrl: (currentProfile as any).avatarDataUrl ?? null,
+                  teamId: activeParticipant?.teamId ?? null,
+                  teamName: activeParticipant?.teamName ?? null,
                 }]
               : [],
             winnerId: currentProfile?.id ?? null,
@@ -1666,6 +1725,8 @@ export default function TrainingX01Play({
               startScore,
               outMode,
               isTraining: true,
+              participantMode: incomingCfg?.participantMode === "teams" ? "teams" : "players",
+              groupSessionId: groupSessionIdRef.current || null,
             },
             summary: {
               kind: "training_x01",
@@ -1708,6 +1769,9 @@ export default function TrainingX01Play({
               config: {
                 startScore,
                 outMode,
+                participantMode: incomingCfg?.participantMode === "teams" ? "teams" : "players",
+                groupSessionId: groupSessionIdRef.current || null,
+                activeParticipant: activeParticipant || null,
               },
               stats: stat,
               darts: allDartsRef.current,
@@ -1756,6 +1820,111 @@ export default function TrainingX01Play({
     }
 
     startNewSession();
+  }
+
+  function finishCurrentTrainingStoreSession() {
+    if (!sessionIdRef.current) return;
+    try {
+      TrainingStore.finishSession(sessionIdRef.current);
+    } catch (err) {
+      console.warn("TrainingX01Play finishSession (participant) failed", err);
+    }
+    sessionIdRef.current = null;
+  }
+
+  function handleNextParticipant() {
+    if (participantIndex + 1 >= queue.length) return;
+    finishCurrentTrainingStoreSession();
+    setShowEndModal(false);
+    setParticipantIndex((index) => Math.min(queue.length - 1, index + 1));
+  }
+
+  function buildAndShowGroupSummary() {
+    const groupSessionId = groupSessionIdRef.current;
+    if (!groupSessionId || !queue.length) {
+      handleExit();
+      return;
+    }
+
+    const rows = getTrainingDetailedSessions({
+      modeId: "training_x01",
+      groupSessionId,
+      limit: 100,
+    });
+    const latestByParticipant = new Map<string, TrainingDetailedSession>();
+    for (const row of rows) {
+      const pid = String(row?.participantId || "");
+      if (pid && !latestByParticipant.has(pid)) latestByParticipant.set(pid, row);
+    }
+
+    const ranked = queue
+      .map((participant) => {
+        const row = latestByParticipant.get(participant.id);
+        if (!row) return null;
+        return {
+          sessionId: row.id,
+          participantId: participant.id,
+          participantName: row.participantName || participant.name,
+          teamId: row.teamId || participant.teamId || null,
+          teamName: row.teamName || participant.teamName || null,
+          teamLogo: row.teamLogo || participant.teamLogo || null,
+          darts: row.darts,
+          hits: row.hits,
+          points: row.points,
+          accuracyPct: row.accuracyPct,
+          success: row.success,
+          performance: x01TrainingPerformance(row),
+          metrics: row.metrics || {},
+        };
+      })
+      .filter(Boolean) as any[];
+
+    ranked.sort((a, b) => {
+      if (b.performance !== a.performance) return b.performance - a.performance;
+      if (a.darts !== b.darts) return a.darts - b.darts;
+      return b.accuracyPct - a.accuracyPct;
+    });
+    ranked.forEach((row, index) => { row.rank = index + 1; });
+
+    const group = recordTrainingGroupSession({
+      id: groupSessionId,
+      modeId: "training_x01",
+      participantMode: incomingCfg?.participantMode === "teams" ? "teams" : "players",
+      startedAt: groupStartedAtRef.current,
+      endedAt: Date.now(),
+      config: {
+        ...(incomingCfg || {}),
+        startScore,
+        outMode,
+        groupSessionId,
+        activeParticipant: undefined,
+      },
+      participants: ranked,
+    });
+
+    finishCurrentTrainingStoreSession();
+    setShowEndModal(false);
+    setGroupSummary(group);
+  }
+
+  function replayWholeGroup() {
+    finishCurrentTrainingStoreSession();
+    groupSessionIdRef.current = makeX01GroupSessionId();
+    groupStartedAtRef.current = Date.now();
+    setParticipantIndex(0);
+    setGroupSummary(null);
+    setShowEndModal(false);
+  }
+
+  if (groupSummary) {
+    return (
+      <TrainingComparisonSummary
+        group={groupSummary}
+        tickerId="training_x01"
+        onExit={handleExit}
+        onReplay={replayWholeGroup}
+      />
+    );
   }
 
   // RENDER — compact sans scroll
@@ -2251,7 +2420,7 @@ export default function TrainingX01Play({
             </div>
 
             <Sparkline
-              sessions={finishedSessions}
+              sessions={finishedSessions.filter((session) => !currentProfile?.id || String(session.profileId || "") === String(currentProfile.id))}
               range={rangeKey}
               metric={metricKey}
               onRangeChange={setRangeKey}
@@ -2304,9 +2473,13 @@ export default function TrainingX01Play({
                 color: "rgba(230,230,245,0.9)",
                 marginBottom: 12,
                 textAlign: "center",
+                lineHeight: 1.45,
               }}
             >
-              Que voulez-vous faire ?
+              {isGroupTraining
+                ? `${currentProfile?.name || "Joueur"} a terminé son Training ${startScore}.`
+                : "Que voulez-vous faire ?"}
+              {activeParticipant?.teamName ? <div style={{ color: "#ffcf61", marginTop: 3 }}>{activeParticipant.teamName}</div> : null}
             </div>
 
             <div
@@ -2316,6 +2489,40 @@ export default function TrainingX01Play({
                 gap: 8,
               }}
             >
+              {isGroupTraining && participantIndex < queue.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={handleNextParticipant}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(70,220,255,.9)",
+                    background: "linear-gradient(180deg,#39e4ff,#0aafd9)",
+                    color: "#001018",
+                    fontWeight: 900,
+                    fontSize: 13,
+                  }}
+                >
+                  Joueur suivant : {queue[participantIndex + 1]?.name || "Joueur"}
+                </button>
+              ) : isGroupTraining ? (
+                <button
+                  type="button"
+                  onClick={buildAndShowGroupSummary}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(70,220,255,.9)",
+                    background: "linear-gradient(180deg,#39e4ff,#0aafd9)",
+                    color: "#001018",
+                    fontWeight: 900,
+                    fontSize: 13,
+                  }}
+                >
+                  Voir le comparatif final
+                </button>
+              ) : null}
+
               <button
                 type="button"
                 onClick={() => {
@@ -2325,14 +2532,13 @@ export default function TrainingX01Play({
                   padding: "6px 10px",
                   borderRadius: 999,
                   border: "1px solid rgba(255,220,140,0.9)",
-                  background:
-                    "linear-gradient(180deg,#ffcf61,#c17b0c)",
+                  background: "linear-gradient(180deg,#ffcf61,#c17b0c)",
                   color: "#221600",
                   fontWeight: 800,
                   fontSize: 13,
                 }}
               >
-                Résumé
+                Résumé / progression
               </button>
 
               <button
@@ -2345,14 +2551,13 @@ export default function TrainingX01Play({
                   padding: "6px 10px",
                   borderRadius: 999,
                   border: "1px solid rgba(120,240,170,0.9)",
-                  background:
-                    "linear-gradient(180deg,#11c676,#057a46)",
+                  background: "linear-gradient(180deg,#11c676,#057a46)",
                   color: "#e9fff4",
                   fontWeight: 800,
                   fontSize: 13,
                 }}
               >
-                Rejouer
+                Rejouer ce joueur
               </button>
 
               <button
@@ -2365,8 +2570,7 @@ export default function TrainingX01Play({
                   padding: "6px 10px",
                   borderRadius: 999,
                   border: "1px solid rgba(255,120,120,0.9)",
-                  background:
-                    "linear-gradient(180deg,#e63a3a,#8d1212)",
+                  background: "linear-gradient(180deg,#e63a3a,#8d1212)",
                   color: "#ffecec",
                   fontWeight: 800,
                   fontSize: 13,
