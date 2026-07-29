@@ -138,29 +138,98 @@ function buildPlayerStats(record: any, p: any) {
     n(cricket?.totalMarks, n(p?.marksTotal, n(Object.values(marksBySegment).reduce((a: number, b: any) => a + n(b), 0), compactGet(cp, "legstats_totalmark", "leg_totalmarks", "markstotal"))))
   );
   const points = n(leg?.totalPoints, n(cricket?.totalPoints, n(p?.score, compactGet(cp, "legstats_totalpoin", "leg_totalpoints", "sc"))));
-  const darts = n(leg?.darts, n(cricket?.darts, n(p?.darts, parsedHits.length || compactGet(cp, "legstats_darts", "leg_darts", "dt"))));
+
+  // legStats is per-player. Some legacy/recovered cricketStats.darts values are
+  // match-wide and were copied onto both players, so never prefer them over legStats.
+  const darts = n(leg?.darts, n(compactGet(cp, "legstats_darts", "leg_darts"), n(p?.darts, n(cricket?.darts, parsedHits.length))));
   const visits = n(leg?.visits, compactGet(cp, "legstats_visits", "leg_visits")) || (darts ? Math.ceil(darts / 3) : 0);
   const mpr = n(leg?.mpr, n(cricket?.mpr, compactGet(cp, "legstats_mpr", "leg_mpr"))) || (visits ? totalMarks / visits : 0);
   const hitRateRaw = n(leg?.hitRate, n(cricket?.hitRate, compactGet(cp, "legstats_hitrate", "leg_hitrate")));
-  const hitCount = parsedHits.filter((h: any) => h.ring !== "MISS").length || n(cricket?.hitCount);
+  const parsedHitCount = parsedHits.filter((h: any) => h.ring !== "MISS").length;
+  const hitCount = parsedHits.length
+    ? parsedHitCount
+    : (hitRateRaw > 0 && darts > 0 ? Math.round(hitRateRaw * darts) : n(cricket?.hitCount));
   const hitRate = hitRateRaw || (darts ? hitCount / darts : 0);
+  const misses = darts > 0 && hitCount >= 0 ? Math.max(0, darts - hitCount) : 0;
   const bestVisit = n(leg?.bestVisitMarks, n(cricket?.bestVisitMarks, compactGet(cp, "legstats_bestvisit", "leg_bestvisitmarks")));
   const closed = n(cricket?.closedSegments) || SEGMENTS.filter((seg) => n(marksBySegment[String(seg)]) >= 3).length;
   const damage = n(leg?.totalInflictedPoints, n(cricket?.cutThroatDamage, compactGet(cp, "legstats_totalinfl", "leg_totalinflicted")));
+  const scoringRate = n(leg?.scoringRate, compactGet(cp, "legstats_scoringra", "leg_scoringrate"));
+  const avgMarksWhenScoring = n(leg?.avgMarksWhenScoring, compactGet(cp, "legstats_avgmarksw", "leg_avgmarkswhensc"));
+  const opponentPoints = n(leg?.opponentTotalPoints, compactGet(cp, "legstats_opponentt", "leg_opponenttotalp"));
 
+  // Per-player S/D/T is exact only when we still have the dart events themselves.
+  // Old recovery snapshots kept only one match-wide hitSummary (114 darts) duplicated
+  // on both players, so using it here would fabricate individual ring statistics.
   const rings = { S: 0, D: 0, T: 0, BULL: 0, DBULL: 0, MISS: 0 };
-  for (const h of parsedHits) {
-    const r = String(h?.ring || "MISS").toUpperCase();
-    if (r === "T") rings.T++;
-    else if (r === "D") rings.D++;
-    else if (r === "DB" || r === "DBULL") rings.DBULL++;
-    else if (r === "SB" || r === "BULL" || r === "SBULL") rings.BULL++;
-    else if (r === "MISS") rings.MISS++;
-    else rings.S++;
+  let ringsAvailable = parsedHits.length > 0;
+  if (ringsAvailable) {
+    for (const h of parsedHits) {
+      const r = String(h?.ring || "MISS").toUpperCase();
+      if (r === "T") rings.T++;
+      else if (r === "D") rings.D++;
+      else if (r === "DB" || r === "DBULL") rings.DBULL++;
+      else if (r === "SB" || r === "BULL" || r === "SBULL") rings.BULL++;
+      else if (r === "MISS") rings.MISS++;
+      else rings.S++;
+    }
+  } else {
+    // New/non-recovered matches can legitimately persist a player-scoped hitSummary.
+    // Accept it only if its dart count matches this player's leg dart count.
+    const hs = p?.hitSummary && typeof p.hitSummary === "object" ? p.hitSummary : null;
+    const hsDarts = n(hs?.darts);
+    if (hs && darts > 0 && hsDarts > 0 && Math.abs(hsDarts - darts) <= 1) {
+      rings.S = n(hs?.S ?? hs?.s);
+      rings.D = n(hs?.D ?? hs?.d);
+      rings.T = n(hs?.T ?? hs?.t);
+      rings.BULL = n(hs?.BULL ?? hs?.bull);
+      rings.DBULL = n(hs?.DBULL ?? hs?.dbull);
+      rings.MISS = n(hs?.MISS ?? hs?.miss);
+      ringsAvailable = true;
+    }
   }
 
   const won = String(record?.winnerId ?? record?.payload?.winnerId ?? "") === pid || Number(cp?.compact?.w) === Number(cp?.idx);
-  return { pid, p, points, darts, visits, totalMarks, mpr, hitRate, bestVisit, closed, damage, rings, marksBySegment, won, events: parsedHits };
+  return {
+    pid, p, points, darts, visits, totalMarks, mpr, hitRate, hitCount, misses,
+    bestVisit, closed, damage, scoringRate, avgMarksWhenScoring, opponentPoints,
+    rings, ringsAvailable, marksBySegment, won, events: parsedHits
+  };
+}
+
+function globalRingSummary(record: any, stats: any[]) {
+  // Prefer a true dart-event reconstruction when available for every player.
+  const eventStats = stats.filter((s: any) => s?.ringsAvailable && Array.isArray(s?.events) && s.events.length);
+  if (eventStats.length === stats.length && stats.length) {
+    const out = { S: 0, D: 0, T: 0, BULL: 0, DBULL: 0, MISS: 0, darts: 0 };
+    for (const s of eventStats) {
+      for (const key of ["S","D","T","BULL","DBULL","MISS"] as const) out[key] += n(s.rings?.[key]);
+      out.darts += n(s.darts);
+    }
+    return out;
+  }
+
+  // Recovery format: hitSummary is a MATCH-wide aggregate duplicated on each
+  // player. We can safely show it once at match level when its dart count matches
+  // the sum of the reliable per-player legStats darts.
+  const players = Array.isArray(record?.payload?.players) ? record.payload.players : [];
+  const totalPlayerDarts = stats.reduce((sum: number, s: any) => sum + n(s?.darts), 0);
+  for (const p of players) {
+    const hs = p?.hitSummary;
+    if (!hs || typeof hs !== "object") continue;
+    const hsDarts = n(hs?.darts);
+    if (!hsDarts || !totalPlayerDarts || Math.abs(hsDarts - totalPlayerDarts) > 1) continue;
+    return {
+      S: n(hs?.S ?? hs?.s),
+      D: n(hs?.D ?? hs?.d),
+      T: n(hs?.T ?? hs?.t),
+      BULL: n(hs?.BULL ?? hs?.bull),
+      DBULL: n(hs?.DBULL ?? hs?.dbull),
+      MISS: n(hs?.MISS ?? hs?.miss),
+      darts: hsDarts,
+    };
+  }
+  return null;
 }
 
 function fmtPct(v: number) {
@@ -196,7 +265,14 @@ export default function CricketMatchDetail({ store, go, params }: Props) {
   const teamMode = Boolean(payload?.teamMode);
   const dateTs = n(record?.updatedAt, n(record?.createdAt, Date.now()));
   const detailedAvailable = stats.some((s) => s.darts > 0 || s.totalMarks > 0 || s.events.length > 0);
-  const totalDarts = n(record?.summary?.darts) || stats.reduce((a, s) => a + s.darts, 0);
+  const statsDarts = stats.reduce((a, s) => a + n(s.darts), 0);
+  const summaryDarts = n(record?.summary?.darts);
+  // Legacy Cricket compact sometimes doubled the match dart total (228 vs 57+57).
+  // Per-player legStats are the reliable source on the detail page.
+  const totalDarts = statsDarts > 0 && (!summaryDarts || summaryDarts > statsDarts * 1.5)
+    ? statsDarts
+    : (summaryDarts || statsDarts);
+  const matchRings = React.useMemo(() => globalRingSummary(record || {}, stats), [record, stats]);
 
   const card: React.CSSProperties = {
     border: "1px solid rgba(62,217,95,.42)",
@@ -251,8 +327,10 @@ export default function CricketMatchDetail({ store, go, params }: Props) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
                 {[
                   ["POINTS", s.points], ["MARKS", s.totalMarks], ["MPR", s.mpr ? s.mpr.toFixed(2) : "—"],
-                  ["FLÉCHETTES", s.darts || "—"], ["HIT RATE", s.darts ? fmtPct(s.hitRate) : "—"], ["BEST VISIT", s.bestVisit || "—"],
-                  ["FERMÉS", s.closed], ["DAMAGE", s.damage], ["VOLÉES", s.visits || "—"],
+                  ["FLÉCHETTES", s.darts || "—"], ["TOUCHÉS", s.hitCount], ["RATÉS", s.misses],
+                  ["HIT RATE", s.darts ? fmtPct(s.hitRate) : "—"], ["BEST VISIT", s.bestVisit || "—"], ["VOLÉES", s.visits || "—"],
+                  ["FERMÉS", s.closed], ["DAMAGE", s.damage], ["SCORING RATE", s.scoringRate ? fmtPct(s.scoringRate) : "—"],
+                  ["AVG MARKS / VOLÉE+", s.avgMarksWhenScoring ? s.avgMarksWhenScoring.toFixed(2) : "—"], ["PTS ADVERSAIRE", s.opponentPoints || "—"],
                 ].map(([label, value]) => (
                   <div key={String(label)} style={{ padding: "9px 6px", borderRadius: 13, background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.09)", textAlign: "center" }}>
                     <div style={{ fontSize: 9, opacity: .65, fontWeight: 900 }}>{label}</div>
@@ -264,13 +342,19 @@ export default function CricketMatchDetail({ store, go, params }: Props) {
               <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
                 {[["S",s.rings.S],["D",s.rings.D],["T",s.rings.T],["B",s.rings.BULL],["DB",s.rings.DBULL],["MISS",s.rings.MISS]].map(([label,value]) => (
                   <div key={String(label)} style={{ textAlign: "center", padding: "7px 2px", borderRadius: 10, background: "rgba(8,25,16,.75)", border: "1px solid rgba(62,217,95,.18)" }}>
-                    <div style={{ fontSize: 9, opacity: .65 }}>{label}</div><div style={{ fontWeight: 1000 }}>{String(value)}</div>
+                    <div style={{ fontSize: 9, opacity: .65 }}>{label}</div><div style={{ fontWeight: 1000 }}>{s.ringsAvailable ? String(value) : "—"}</div>
                   </div>
                 ))}
               </div>
+              {!s.ringsAvailable && (
+                <div style={{ marginTop: 7, padding: "7px 9px", borderRadius: 10, background: "rgba(255,199,64,.07)", border: "1px solid rgba(255,199,64,.18)", color: "#ffd77d", fontSize: 10.5, lineHeight: 1.35 }}>
+                  S / D / T / Bull par joueur non récupérables sur cette ancienne sauvegarde : la chronologie fléchette par fléchette avait déjà disparu. Les totaux Cricket ci-dessus sont conservés.
+                </div>
+              )}
 
               <div style={{ marginTop: 12, overflow: "hidden", borderRadius: 14, border: "1px solid rgba(255,255,255,.09)" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", background: "rgba(0,0,0,.38)" }}>
+                <div style={{ padding: "7px 9px", background: "rgba(0,0,0,.42)", fontSize: 10, fontWeight: 1000, color: "#ffd34e" }}>MARKS PAR CIBLE</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", background: "rgba(0,0,0,.28)" }}>
                   {SEGMENTS.map((seg) => <div key={seg} style={{ padding: "7px 2px", textAlign: "center", fontSize: 10, fontWeight: 900 }}>{seg === 25 ? "BULL" : seg}</div>)}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)" }}>
@@ -280,6 +364,23 @@ export default function CricketMatchDetail({ store, go, params }: Props) {
             </div>
           );
         })}
+
+        {matchRings && (
+          <div style={{ ...card, padding: 13, borderColor: "rgba(57,210,255,.34)" }}>
+            <div style={{ fontSize: 11, fontWeight: 1000, color: "#6ee9ff", letterSpacing: .7 }}>RÉPARTITION GLOBALE DE LA PARTIE</div>
+            <div style={{ marginTop: 4, fontSize: 10.5, opacity: .68 }}>
+              Agrégat exact conservé dans la sauvegarde ({matchRings.darts} fléchettes). Il n'est pas attribuable individuellement à Chevroute/Ninja sans inventer de données.
+            </div>
+            <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 5 }}>
+              {[["S",matchRings.S],["D",matchRings.D],["T",matchRings.T],["B",matchRings.BULL],["DB",matchRings.DBULL],["MISS",matchRings.MISS]].map(([label,value]) => (
+                <div key={String(label)} style={{ textAlign: "center", padding: "8px 2px", borderRadius: 10, background: "rgba(8,20,27,.78)", border: "1px solid rgba(57,210,255,.18)" }}>
+                  <div style={{ fontSize: 9, opacity: .65 }}>{label}</div>
+                  <div style={{ fontWeight: 1000, color: "#8feeff" }}>{String(value)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           onClick={() => go("statsHub", { tab: "stats", initialStatsSubTab: "cricket", initialPlayerId: stats.find((x) => x.won)?.pid || stats[0]?.pid || null })}

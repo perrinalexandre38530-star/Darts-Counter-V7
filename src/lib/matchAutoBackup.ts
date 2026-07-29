@@ -2,7 +2,6 @@ import LZString from "lz-string";
 import { apiDelete, apiGet, apiPost, readNasAccessToken } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser } from "./storage";
 import { loadStoragePrefs } from "./storagePlans";
-import { getDirectR2Usage, isDirectR2PremiumWriteAllowed } from "./directR2BackupApi";
 import { queueExternalBackup } from "./externalBackupTarget";
 import {
   CLOUD_VAULT_OBJECT_TYPE,
@@ -11,7 +10,6 @@ import {
   getAccountStorageUsage,
   listCloudObjects,
   uploadCloudObject,
-  uploadCloudVaultSnapshotJson,
   type CloudObjectIndexItem,
 } from "./cloudStorageApi";
 
@@ -135,7 +133,7 @@ async function getActiveStorageProviderCached(): Promise<string> {
   if (localPrefs.updatedAt > 0) {
     if (localPrefs.selectedDestination === "cloud_r2") return "cloud_r2";
     if (localPrefs.selectedDestination === "founder_nas") return "nas_founder";
-    if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual" || localPrefs.selectedDestination === "personal_cloud_manual") return "external_file";
+    if (localPrefs.selectedDestination === "device_file" || localPrefs.selectedDestination === "external_sd_manual") return "external_file";
     return "local_device";
   }
 
@@ -160,9 +158,7 @@ async function getActiveStorageProviderCached(): Promise<string> {
 
 async function shouldUseCloudR2(): Promise<boolean> {
   try {
-    if ((await getActiveStorageProviderCached()) !== "cloud_r2") return false;
-    const usage = await getDirectR2Usage();
-    return isDirectR2PremiumWriteAllowed(usage);
+    return (await getActiveStorageProviderCached()) === "cloud_r2";
   } catch {
     return false;
   }
@@ -439,6 +435,40 @@ function txStore<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => Pro
   }));
 }
 
+async function readBackupsForMatch(store: IDBObjectStore, matchId: string): Promise<MatchBackupItem[]> {
+  const wanted = String(matchId || "").trim();
+  if (!wanted) return [];
+  try {
+    if (store.indexNames?.contains("by_matchId")) {
+      return await new Promise<MatchBackupItem[]>((resolve) => {
+        const req = store.index("by_matchId").getAll(wanted);
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => resolve([]);
+      });
+    }
+  } catch {}
+  // Migration/backward-compat fallback only. Normal databases have by_matchId.
+  return await new Promise<MatchBackupItem[]>((resolve) => {
+    const req = store.getAll();
+    req.onsuccess = () =>
+      resolve(
+        (Array.isArray(req.result) ? req.result : []).filter(
+          (row: any) => String(row?.matchId || row?.id || "") === wanted
+        )
+      );
+    req.onerror = () => resolve([]);
+  });
+}
+
+let localTrimTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleLocalBackupTrim() {
+  if (localTrimTimer) return;
+  localTrimTimer = setTimeout(() => {
+    localTrimTimer = null;
+    void trimLocalMatchBackups();
+  }, 1800);
+}
+
 async function trimLocalMatchBackups(): Promise<void> {
   await txStore("readwrite", async (store) => {
     const rows: MatchBackupItem[] = await new Promise((resolve) => {
@@ -487,13 +517,10 @@ export async function saveLocalMatchBackup(item: MatchBackupItem): Promise<void>
   };
 
   await txStore("readwrite", async (store) => {
-    const rows: MatchBackupItem[] = await new Promise((resolve) => {
-      const req = store.getAll();
-      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
-      req.onerror = () => resolve([]);
-    });
+    // Never scan the whole revision vault for one match. The previous getAll()
+    // made History hydration increasingly slow as the backup vault grew.
+    const rows = await readBackupsForMatch(store, String(revision.matchId || ""));
     const duplicate = rows.find((row) =>
-      String(row?.matchId || "") === String(revision.matchId || "") &&
       String(row?.payloadFingerprint || hashString(String(row?.payloadCompressed || ""))) === fingerprint
     );
     if (duplicate) return;
@@ -504,7 +531,8 @@ export async function saveLocalMatchBackup(item: MatchBackupItem): Promise<void>
       req.onerror = () => reject(req.error);
     });
   });
-  void trimLocalMatchBackups();
+  // Trimming is maintenance, not part of the hot save path.
+  scheduleLocalBackupTrim();
 }
 
 export async function listLocalMatchBackups(): Promise<MatchBackupItem[]> {
@@ -523,16 +551,11 @@ export async function listLocalMatchBackups(): Promise<MatchBackupItem[]> {
 
 export async function getLocalMatchBackup(id: string): Promise<MatchBackupItem | null> {
   const wanted = String(id || "").trim();
+  if (!wanted) return null;
   return txStore("readonly", async (store) => {
-    const rows: MatchBackupItem[] = await new Promise((resolve) => {
-      const req = store.getAll();
-      req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
-      req.onerror = () => resolve([]);
-    });
-    const candidates = rows.filter((row) =>
-      backupBelongsToCurrentUser(row) &&
-      (String(row?.id || "") === wanted || String(row?.matchId || "") === wanted)
-    );
+    // O(revisions of this match), not O(all revisions).
+    const rows = await readBackupsForMatch(store, wanted);
+    const candidates = rows.filter((row) => backupBelongsToCurrentUser(row));
     if (!candidates.length) return null;
     candidates.sort((a, b) => {
       // Recovery must prefer the richest surviving revision, not blindly the latest
@@ -585,18 +608,24 @@ export async function pushMatchBackupToCloud(item: MatchBackupItem): Promise<voi
 }
 
 async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
+  if (!readNasAccessToken()) return;
   if (!(await shouldUseCloudR2())) return;
   const now = Date.now();
   try {
     const last = Number(localStorage.getItem("dc_cloud_auto_full_backup_last_at_v1") || "0") || 0;
     if (last > 0 && now - last < CLOUD_FULL_SNAPSHOT_MIN_INTERVAL_MS) return;
+    localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now));
   } catch {}
   const snapshot = await exportCloudSnapshot();
   const json = JSON.stringify(snapshot);
-  await uploadCloudVaultSnapshotJson({
-    snapshotJson: json,
+  await uploadCloudObject({
+    objectType: CLOUD_VAULT_OBJECT_TYPE,
+    sport: "system",
     title: `Sauvegarde cloud automatique — ${new Date().toLocaleString("fr-FR")}`,
-    sourceDestination: "cloud_r2",
+    objectKey: CLOUD_MATCH_FULL_SNAPSHOT_KEY,
+    mimeType: "application/json",
+    content: json,
+    gzip: true,
     metadata: {
       source: "match_auto_backup_cloud_r2",
       backupKind: "auto_full_snapshot",
@@ -605,7 +634,6 @@ async function pushLatestSnapshotToCloud(reason: string): Promise<void> {
       rawSizeBytes: json.length,
     },
   });
-  try { localStorage.setItem("dc_cloud_auto_full_backup_last_at_v1", String(now)); } catch {}
 }
 
 export async function pushMatchBackupToNas(item: MatchBackupItem): Promise<void> {
@@ -705,10 +733,11 @@ export async function saveMatchBackupAfterHistoryUpsert(args: {
   if (provider === "local_device") return;
 
   if (provider === "cloud_r2") {
-    // R2 n'est utilisé qu'avec un abonnement PREMIUM actif. On ne crée plus un
-    // objet R2 supplémentaire pour chaque partie : le snapshot complet direct
-    // conserve uniquement la génération courante + la précédente.
-    if (!(await shouldUseCloudR2())) return;
+    await pushMatchBackupToCloud(item).catch((error) => {
+      try {
+        localStorage.setItem("dc_match_backup_last_cloud_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));
+      } catch {}
+    });
     void pushLatestSnapshotToCloud("history-upsert").catch((error) => {
       try {
         localStorage.setItem("dc_cloud_auto_full_backup_last_error", JSON.stringify({ at: nowIso(), message: error?.message || String(error) }));

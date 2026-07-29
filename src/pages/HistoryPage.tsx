@@ -2313,6 +2313,13 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     );
   }
   if (!isX01Entry(e)) {
+    // Cricket light headers may contain player identity rows with no per-row score.
+    // genericHistoryRankScorePlayers() turns those missing values into 0, which
+    // masked the valid "Chevroute 96 • Ninja 199" scoreLine stored in the header.
+    if (baseMode(e).includes("cricket")) {
+      const cricketScore = summarizeScore(e);
+      if (cricketScore) return <>{cricketScore}</>;
+    }
     const ranked = genericHistoryRankScorePlayers(e);
     if (ranked.length > 1) return renderRankScoreLine(ranked, theme, (p: any) => p.main || "0");
     const s = summarizeScore(e);

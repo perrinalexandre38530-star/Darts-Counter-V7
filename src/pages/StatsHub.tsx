@@ -6765,19 +6765,27 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
             dartIndex: e?.d,
           }));
       })();
+      const playerScopedHitSummary = (() => {
+        const hs = payloadPlayer?.hitSummary;
+        if (!hs || typeof hs !== "object") return null;
+        const hsDarts = Number(hs?.darts || 0);
+        const playerDarts = Number(compactCricket?.darts || payloadPlayer?.legStats?.darts || 0);
+        // Recovery snapshots can contain one match-wide hitSummary copied to every
+        // player (e.g. 114 summary darts vs 57 leg darts). Do not turn that into
+        // fabricated per-player S/D/T statistics.
+        if (hsDarts > 0 && playerDarts > 0 && Math.abs(hsDarts - playerDarts) > 1) return null;
+        return hs;
+      })();
       const crCounts = readRingCounts(
         compactCricketEvents,
         modeStatsPlayer,
         modeStatsPlayer?.special,
         (modeStatsPlayer as any)?.special?.hitSummary,
         (modeStatsPlayer as any)?.hitSummary,
-        payloadPlayer,
-        payloadPlayer?.hitSummary,
         payloadPlayer?.hits,
-        pl?.hitSummary,
+        playerScopedHitSummary,
         pl?.hits,
-        stats,
-        stats?.hitSummary
+        stats
       );
 
       marksTotal = pickNum(

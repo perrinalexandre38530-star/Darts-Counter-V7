@@ -81,7 +81,7 @@ export type CloudImportResult = {
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
 import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
-import { decodeMatchBackupPayload, getLocalMatchBackup, saveMatchBackupAfterHistoryUpsert } from "./matchAutoBackup";
+import { saveMatchBackupAfterHistoryUpsert } from "./matchAutoBackup";
 import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
 /* =========================
@@ -100,8 +100,6 @@ import { fingerprintHistoryPayload, protectFinishedHistoryPayload } from "./hist
 
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
-const HISTORY_AUTO_REPAIR_IN_FLIGHT = new Set<string>();
-
 const RESUME_INDEX_KEY = "dc-v5-resume-index";
 const scopedResumeIndexKey = () => scopedStorageKey(RESUME_INDEX_KEY);
 function _resumeIndexRead(): string[] {
@@ -1748,6 +1746,49 @@ function toHeaderRecord(rec: any) {
     }
   } catch {}
 
+  // CRICKET HEADER SCORE FIX:
+  // History cards are rendered from the light header. Keep a trustworthy scoreLine
+  // and finalScores there even when the heavy payload lives in history_details.
+  try {
+    const mode = String(
+      out?.kind ||
+      out?.game?.mode ||
+      out?.summary?.mode ||
+      out?.payload?.mode ||
+      out?.payload?.game?.mode ||
+      ""
+    ).toLowerCase();
+    if (mode.includes("cricket")) {
+      const payloadPlayers = Array.isArray(out?.payload?.players) ? out.payload.players : [];
+      const headerPlayers = Array.isArray(out?.players) ? out.players : [];
+      const players = payloadPlayers.length ? payloadPlayers : headerPlayers;
+      const derivedScores: Record<string, number> = {};
+      const line: string[] = [];
+      for (const pl of players) {
+        const pid = String(pl?.id ?? pl?.playerId ?? pl?.profileId ?? "").trim();
+        const rawScore =
+          pl?.legStats?.totalPoints ??
+          pl?.cricketStats?.totalPoints ??
+          pl?.score ??
+          out?.summary?.finalScores?.[pid];
+        const score = Number(rawScore);
+        if (pid && Number.isFinite(score)) derivedScores[pid] = score;
+        const name = String(pl?.name ?? pl?.displayName ?? "").trim();
+        if (name && Number.isFinite(score)) line.push(`${name} ${score}`);
+      }
+      const existingFinal =
+        out?.summary?.finalScores && typeof out.summary.finalScores === "object"
+          ? out.summary.finalScores
+          : {};
+      const existingLine = String(out?.summary?.scoreLine || "").trim();
+      out.summary = {
+        ...(out.summary || {}),
+        finalScores: { ...derivedScores, ...existingFinal },
+        ...(existingLine || line.length ? { scoreLine: existingLine || line.join(" • ") } : {}),
+      };
+    }
+  } catch {}
+
   delete out.payload;
   delete out.payloadCompressed;
   return out;
@@ -2130,79 +2171,14 @@ export async function get(id: string): Promise<SavedMatch | null> {
       }
     } catch {}
 
-    // 🧯 AUTO-REPAIR DEPUIS LES RÉVISIONS LOCALES IMMUTABLES
-    // Si une restauration NAS/R2 ancienne a contourné le garde d'upsert et a déjà
-    // écrasé le détail d'un match terminé, on compare la copie courante à la plus
-    // riche des 5 révisions locales. La lecture renvoie immédiatement la version
-    // réparée ET re-persiste la réparation en arrière-plan.
-    try {
-      if (inferHistoryStatus(header) === "finished") {
-        const repairId = String(header?.matchId || header?.id || id || "").trim();
-        const backup = repairId ? await getLocalMatchBackup(repairId) : null;
-        const backupPayload = backup?.payloadCompressed ? decodeMatchBackupPayload(backup.payloadCompressed) : null;
-        if (backupPayload && typeof backupPayload === "object") {
-          const currentFp = fingerprintHistoryPayload(payload);
-          const backupFp = fingerprintHistoryPayload(backupPayload);
-          const backupIsClearlyRicher =
-            backupFp.detailedSignals > currentFp.detailedSignals ||
-            backupFp.score > Math.max(currentFp.score * 1.2, currentFp.score + 600) ||
-            backupFp.jsonBytes > Math.max(currentFp.jsonBytes * 1.45, currentFp.jsonBytes + 1200);
-
-          if (backupIsClearlyRicher) {
-            payload = protectFinishedHistoryPayload(payload, backupPayload).payload;
-            const mergedFp = fingerprintHistoryPayload(payload);
-            console.warn(
-              `[history.auto-repair] ${repairId}: détail restauré depuis une révision locale ` +
-              `(${currentFp.jsonBytes}B -> ${mergedFp.jsonBytes}B)`
-            );
-
-            if (!HISTORY_AUTO_REPAIR_IN_FLIGHT.has(repairId)) {
-              HISTORY_AUTO_REPAIR_IN_FLIGHT.add(repairId);
-              const backupHeader: any = backup?.header && typeof backup.header === "object" ? backup.header : {};
-              const repairRec: any = {
-                ...header,
-                ...backupHeader,
-                id: repairId,
-                matchId: repairId,
-                kind: backup?.kind || backupHeader?.kind || header?.kind,
-                status: "finished",
-                createdAt: Number(header?.createdAt || backup?.createdAt || backupHeader?.createdAt || Date.now()),
-                updatedAt: Math.max(
-                  Number(header?.updatedAt || 0),
-                  Number(backup?.updatedAt || 0),
-                  Number(backupHeader?.updatedAt || 0)
-                ) || Date.now(),
-                players: Array.isArray(backupHeader?.players) && backupHeader.players.length
-                  ? backupHeader.players
-                  : header?.players,
-                winnerId: backup?.winnerId ?? backupHeader?.winnerId ?? header?.winnerId ?? null,
-                game: backup?.game || backupHeader?.game || header?.game || null,
-                summary: {
-                  ...((header?.summary && typeof header.summary === "object") ? header.summary : {}),
-                  ...((backupHeader?.summary && typeof backupHeader.summary === "object") ? backupHeader.summary : {}),
-                  ...((backup?.summary && typeof backup.summary === "object") ? backup.summary : {}),
-                  integrityRepair: {
-                    version: 1,
-                    source: "local-match-revision",
-                    repairedAt: Date.now(),
-                    beforeBytes: currentFp.jsonBytes,
-                    afterBytes: mergedFp.jsonBytes,
-                  },
-                },
-                payload,
-              };
-
-              void Promise.resolve()
-                .then(() => upsert(repairRec))
-                .catch((error) => console.warn("[history.auto-repair] persistence failed", error))
-                .finally(() => HISTORY_AUTO_REPAIR_IN_FLIGHT.delete(repairId));
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("[history.auto-repair] skipped", error);
-    }
+    // PERFORMANCE / INTEGRITY:
+    // History.get() is intentionally READ-ONLY.
+    // A previous implementation tried to compare every finished match against the
+    // local revision vault on each read, then called upsert() from inside get().
+    // StatsHub can hydrate dozens of matches at once, so a simple page read could
+    // trigger dozens of IndexedDB scans + writes + dc-history-updated events and
+    // enter a repair/reload loop. Integrity repair now happens only on write/import
+    // paths (upsert / snapshot merge), never while rendering a page.
 
     const mid = getCanonicalMatchId({ ...header, payload }) ?? header.matchId ?? null;
     if (mid) header.matchId = String(mid);
@@ -3043,7 +3019,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       } catch {}
 
       const headerReq = headers.put({
-        ...toHeaderRecord(safe),
+        ...toHeaderRecord({ ...safe, payload: payloadEffective }),
         players: stripAvatarDataFromPlayers(safe.players) || [],
       });
       await new Promise<void>((resolve, reject) => {
