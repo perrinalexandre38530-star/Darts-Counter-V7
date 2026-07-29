@@ -1,5 +1,4 @@
 import React from "react";
-import { createPortal } from "react-dom";
 import {
   getVerifiedPremiumState,
   loadMonetizationPrefs,
@@ -7,24 +6,27 @@ import {
 } from "./prefs";
 import { STORE_PACKS } from "./catalog";
 import type { AdPlacement, MonetizationPrefs } from "./types";
-
+import { removeNativeBanner } from "./nativeAdMob";
 
 export function resolveBannerPlacementForRoute(tab: string, params?: any): AdPlacement | null {
   const route = String(tab || "");
 
+  // Pages principales accessibles depuis la BottomNav.
   if (route === "home") return "home";
   if (route === "messages") return "messages";
   if (route === "profiles") return "profiles";
   if (route === "games") return "games";
   if (route === "tournaments" || route === "tournament_list" || route === "tournament_view") return "competitions";
   if (route === "online" || route === "friends") return "online";
+  if (route === "stats") return "stats";
   if (route === "settings") return "settings";
   if (route === "cast_host" || route === "viewer_host" || route === "cast_room") return "screens";
+
+  // Sous-pages statistiques utiles, sans jamais monétiser un écran PLAY.
   if (route === "statsDetail") return "history";
   if (route === "statsHub" && String(params?.tab || "").toLowerCase() === "history") return "history";
-  if (route === "stats" || route === "statsHub") return "stats";
+  if (route === "statsHub") return "stats";
 
-  // Aucun gameplay / keypad / saisie de volée n'est monétisé ici.
   return null;
 }
 
@@ -39,9 +41,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
   const pack = STORE_PACKS[packIndex % Math.max(1, STORE_PACKS.length)];
   const isPreview = prefs.testMode;
 
-  if (!prefs.houseAdsEnabled && !isPreview) {
-    return null;
-  }
+  if (!prefs.houseAdsEnabled && !isPreview) return null;
 
   return (
     <aside
@@ -49,22 +49,29 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
       data-dc-ad-placement={placement}
       style={{
         width: "100%",
-        minHeight: compact ? 58 : 64,
+        minHeight: compact ? 56 : 64,
         borderRadius: 16,
         border: "1px solid rgba(255,255,255,.15)",
-        background: "linear-gradient(135deg,rgba(7,12,24,.98),rgba(17,24,39,.98) 55%,rgba(4,8,16,.98))",
+        background:
+          "linear-gradient(135deg,rgba(7,12,24,.98),rgba(17,24,39,.98) 55%,rgba(4,8,16,.98))",
         boxShadow: "0 12px 28px rgba(0,0,0,.38)",
         overflow: "hidden",
         color: "#fff",
         boxSizing: "border-box",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: compact ? "7px 10px" : "9px 11px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: compact ? "7px 10px" : "9px 11px",
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 9, opacity: 0.62, letterSpacing: 1.05, fontWeight: 900 }}>
             {isPreview ? "PUBLICITÉ · APERÇU INTÉGRÉ" : "MULTISPORTS SCORING"} · {placement.toUpperCase()}
           </div>
-
           <div
             style={{
               marginTop: 2,
@@ -77,7 +84,6 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
           >
             {pack?.title || "MULTISPORTS SCORING"}
           </div>
-
           <div
             style={{
               marginTop: 1,
@@ -91,7 +97,6 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
             {pack?.subtitle || "Nouveautés, contenus et partenaires."}
           </div>
         </div>
-
         <div
           style={{
             flexShrink: 0,
@@ -110,178 +115,82 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
   );
 }
 
-function findExactTextElement(text: string): HTMLElement | null {
-  const wanted = text.trim().toUpperCase();
-  const nodes = Array.from(document.querySelectorAll<HTMLElement>("div,span,h1,h2,h3"));
-  return (
-    nodes.find((el) => {
-      if (el.children.length > 0) return false;
-      return String(el.textContent || "").trim().toUpperCase() === wanted;
-    }) || null
-  );
-}
-
-function findHomeAnchors(): { header: HTMLElement | null; activeCard: HTMLElement | null } {
-  if (typeof document === "undefined") return { header: null, activeCard: null };
-
-  const dartsCounter = findExactTextElement("DARTS COUNTER");
-  const dartsScoring = findExactTextElement("DARTS SCORING");
-  const knownSports = [
-    dartsCounter,
-    dartsScoring,
-    findExactTextElement("PETANQUE COUNTER"),
-    findExactTextElement("BABY-FOOT COUNTER"),
-    findExactTextElement("PING-PONG COUNTER"),
-    findExactTextElement("MÖLKKY COUNTER"),
-    findExactTextElement("DICE COUNTER"),
-    findExactTextElement("FOOT SCORING"),
-  ].filter(Boolean) as HTMLElement[];
-
-  const title = knownSports[0] || null;
-  if (!title) return { header: null, activeCard: null };
-
-  // Renommage demandé uniquement pour le module Darts.
-  if (String(title.textContent || "").trim().toUpperCase() === "DARTS COUNTER") {
-    title.textContent = "DARTS SCORING";
-  }
-
-  const header = title.parentElement as HTMLElement | null;
-  if (!header) return { header: null, activeCard: null };
-
-  let cursor = header.nextElementSibling as HTMLElement | null;
-  while (cursor && cursor.tagName === "STYLE") {
-    cursor = cursor.nextElementSibling as HTMLElement | null;
-  }
-
-  return { header, activeCard: cursor };
-}
-
-function ensureHomePortalHost(anchor: HTMLElement, key: "home-top" | "home-profile"): HTMLElement {
-  const selector = `[data-dc-inline-host="${key}"]`;
-  const existing = document.querySelector<HTMLElement>(selector);
-  if (existing && existing.isConnected) {
-    if (existing.previousElementSibling !== anchor) {
-      anchor.insertAdjacentElement("afterend", existing);
-    }
-    return existing;
-  }
-
-  const host = document.createElement("div");
-  host.setAttribute("data-dc-inline-host", key);
-  host.style.width = "100%";
-  host.style.maxWidth = "520px";
-  host.style.margin = "0 auto 14px";
-  host.style.boxSizing = "border-box";
-  host.style.position = "relative";
-  host.style.zIndex = "1";
-  anchor.insertAdjacentElement("afterend", host);
-  return host;
-}
-
-function removeHomeHosts() {
-  if (typeof document === "undefined") return;
-  document
-    .querySelectorAll<HTMLElement>('[data-dc-inline-host="home-top"],[data-dc-inline-host="home-profile"]')
-    .forEach((node) => node.remove());
-}
-
-function HomeInlineAds({
-  placement,
-  prefs,
-  packIndex,
-}: {
+type InlineAdBannerProps = {
   placement: AdPlacement;
-  prefs: MonetizationPrefs;
-  packIndex: number;
-}) {
-  const [targets, setTargets] = React.useState<{ top: HTMLElement | null; profile: HTMLElement | null }>({
-    top: null,
-    profile: null,
-  });
+  offset?: number;
+  compact?: boolean;
+  style?: React.CSSProperties;
+};
 
-  React.useEffect(() => {
-    let stopped = false;
-
-    const refresh = () => {
-      if (stopped) return;
-      const anchors = findHomeAnchors();
-      if (!anchors.header) {
-        setTargets({ top: null, profile: null });
-        return;
-      }
-
-      const top = ensureHomePortalHost(anchors.header, "home-top");
-      const profile = anchors.activeCard ? ensureHomePortalHost(anchors.activeCard, "home-profile") : null;
-
-      setTargets((prev) => (prev.top === top && prev.profile === profile ? prev : { top, profile }));
-    };
-
-    refresh();
-    const id = window.setInterval(refresh, 1200);
-
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
-      removeHomeHosts();
-    };
-  }, []);
-
-  if (!prefs.adsEnabled || !prefs.bannersEnabled) return null;
-
-  return (
-    <>
-      {targets.top
-        ? createPortal(
-            <InlineCard placement={placement} prefs={prefs} packIndex={packIndex} compact />,
-            targets.top
-          )
-        : null}
-      {targets.profile
-        ? createPortal(
-            <InlineCard placement={placement} prefs={prefs} packIndex={packIndex + 1} compact />,
-            targets.profile
-          )
-        : null}
-    </>
-  );
-}
-
-export default function AdSlot({ placement }: { placement: AdPlacement | null }) {
+/**
+ * Bandeau 100 % React, intégré dans le flux de la page.
+ * Aucun banner AdMob natif flottant n'est utilisé ici.
+ */
+export function InlineAdBanner({
+  placement,
+  offset = 0,
+  compact = false,
+  style,
+}: InlineAdBannerProps) {
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [packIndex, setPackIndex] = React.useState(0);
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
 
-  // Le contenu du bandeau peut tourner, mais le bandeau reste toujours à sa place.
+  // Tue tout reliquat d'un ancien banner natif Android dès qu'un bandeau intégré est monté.
+  React.useEffect(() => {
+    void removeNativeBanner();
+  }, [placement]);
+
   React.useEffect(() => {
     if (!prefs.houseAdsEnabled || STORE_PACKS.length <= 1) return;
-    const id = window.setInterval(() => setPackIndex((v) => (v + 1) % STORE_PACKS.length), 12000);
+    const id = window.setInterval(
+      () => setPackIndex((v) => (v + 1) % STORE_PACKS.length),
+      12000
+    );
     return () => window.clearInterval(id);
   }, [prefs.houseAdsEnabled]);
 
   const premiumActive = getVerifiedPremiumState().active;
-  const eligible = !!placement && prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+  const eligible = prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+  if (!eligible) return null;
 
-  if (!eligible || !placement) return null;
-
-  if (placement === "home") {
-    return <HomeInlineAds placement={placement} prefs={prefs} packIndex={packIndex} />;
-  }
-
-  // Pages hors Home : bloc intégré au flux normal de la page.
-  // Aucun positionnement natif / flottant au-dessus de la WebView ou de la BottomNav.
   return (
     <div
       data-dc-inline-ad-shell={placement}
       style={{
-        width: "min(520px, calc(100vw - 18px))",
-        margin: "14px auto 96px",
+        width: "100%",
+        boxSizing: "border-box",
         position: "relative",
         zIndex: 1,
-        boxSizing: "border-box",
+        ...style,
       }}
     >
-      <InlineCard placement={placement} prefs={prefs} packIndex={packIndex} />
+      <InlineCard
+        placement={placement}
+        prefs={prefs}
+        packIndex={packIndex + offset}
+        compact={compact}
+      />
     </div>
+  );
+}
+
+/**
+ * Bandeau générique des pages BottomNav hors Home.
+ * Il est rendu DANS le conteneur scrollable de l'application par App.tsx.
+ */
+export default function AdSlot({ placement }: { placement: AdPlacement | null }) {
+  if (!placement || placement === "home") return null;
+
+  return (
+    <InlineAdBanner
+      placement={placement}
+      compact
+      style={{
+        width: "min(520px, calc(100% - 18px))",
+        margin: "10px auto 12px",
+      }}
+    />
   );
 }

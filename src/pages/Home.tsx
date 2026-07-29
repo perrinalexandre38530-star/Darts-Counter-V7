@@ -16,6 +16,7 @@ import ActiveProfileCard, {
 import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
+import { InlineAdBanner } from "../monetization/AdSlot";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
 import footHomeCover03 from "../assets/tickers/foot-03.webp";
@@ -2290,6 +2291,46 @@ function buildArcadeItems(
   return items;
 }
 
+function buildTickerAdItems(
+  feedItems: HomeFeedItem[],
+  seed: string
+): ArcadeTickerItem[] {
+  return buildFeedSlides(feedItems)
+    .filter((slide) => slide.kind === "ad")
+    .slice(0, 4)
+    .map((slide, index) => ({
+      id: `promo-${slide.id}`,
+      title: `PUB · ${slide.title}`,
+      text: slide.text,
+      detail: "Contenu additionnel MULTISPORTS SCORING",
+      backgroundImage: pickTickerImage(
+        slide.imageKey || "tipAds",
+        `${seed}::promo::${slide.id}::${index}`
+      ),
+      accentColor: "#FFD15A",
+    }));
+}
+
+function interleaveTickerAds(
+  statsItems: ArcadeTickerItem[],
+  adItems: ArcadeTickerItem[]
+): ArcadeTickerItem[] {
+  if (!adItems.length) return statsItems;
+  const out: ArcadeTickerItem[] = [];
+  let adIndex = 0;
+
+  statsItems.forEach((item, index) => {
+    out.push(item);
+    // Une page PUB après deux pages de stats/informations.
+    if ((index + 1) % 2 === 0 && adIndex < adItems.length) {
+      out.push(adItems[adIndex]);
+      adIndex += 1;
+    }
+  });
+
+  return out;
+}
+
 function ensureKillerTickerItemFirst(
   list: ArcadeTickerItem[],
   t: (k: string, d?: string) => string,
@@ -2604,11 +2645,18 @@ export default function Home({ store, go, activeSport }: Props) {
     [isFootSport, footStats, store, activeProfile, stats, t, theme.primary]
   );
 
-  // ✅ IMPORTANT: pas de side-effects (pas de console.log) dans un useMemo
+  // ✅ IMPORTANT: stats/informations + pages PUB intégrées dans LA MÊME rotation.
+  // Une pub est insérée après deux slides de stats ; aucun banner natif flottant.
   const tickerItems = useMemo(() => {
-    if (isFootSport) return tickerItemsRaw;
-    return ensureKillerTickerItemFirst(tickerItemsRaw, t, theme.primary);
-  }, [isFootSport, tickerItemsRaw, t, theme.primary]);
+    const baseItems = isFootSport
+      ? tickerItemsRaw
+      : ensureKillerTickerItemFirst(tickerItemsRaw, t, theme.primary);
+    const promoItems = buildTickerAdItems(
+      homeFeedItems,
+      `${String(activeProfile?.id ?? "anon")}::${String(sport)}`
+    );
+    return interleaveTickerAds(baseItems, promoItems);
+  }, [isFootSport, tickerItemsRaw, t, theme.primary, homeFeedItems, activeProfile?.id, sport]);
 
   // ✅ Signature stable => permet de détecter les VRAIS changements
   const tickerSignature = useMemo(() => {
@@ -2667,23 +2715,30 @@ export default function Home({ store, go, activeSport }: Props) {
   }, [currentTicker?.id, stats, t, isFootSport, footStats]);
 
   const hasDetailStats = detailRows.length > 0;
+  const currentTickerIsAd = String(currentTicker?.id || "").startsWith("promo-");
   const detailAccent = currentTicker?.accentColor ?? theme.primary ?? "#F6C256";
 
-  const statsTitle = hasDetailStats
-    ? currentTicker?.title ?? ""
-    : t("home.detail.stats.title", "Stats du profil");
-  const statsText = hasDetailStats
+  const statsTitle = currentTickerIsAd
+    ? currentTicker?.title ?? "PUBLICITÉ"
+    : hasDetailStats
+      ? currentTicker?.title ?? ""
+      : t("home.detail.stats.title", "Stats du profil");
+  const statsText = currentTickerIsAd
     ? currentTicker?.text ?? ""
-    : t(
-        "home.detail.stats.text",
-        "Tes stats détaillées apparaîtront ici dès que tu auras joué quelques matchs ou trainings."
-      );
+    : hasDetailStats
+      ? currentTicker?.text ?? ""
+      : t(
+          "home.detail.stats.text",
+          "Tes stats détaillées apparaîtront ici dès que tu auras joué quelques matchs ou trainings."
+        );
 
   const statsSeed = String(activeProfile?.id ?? "anon");
   const statsBackgroundImage = currentTicker
-    ? (isFootSport
-        ? pickFootHomeImage(`${statsSeed}::${currentTicker.id}::stats-card`)
-        : pickStatsBackgroundForTicker(currentTicker.id, `${statsSeed}::stats-card`))
+    ? currentTickerIsAd
+      ? currentTicker.backgroundImage || ""
+      : (isFootSport
+          ? pickFootHomeImage(`${statsSeed}::${currentTicker.id}::stats-card`)
+          : pickStatsBackgroundForTicker(currentTicker.id, `${statsSeed}::stats-card`))
     : "";
 
   const tipSlides = useMemo(() => {
@@ -2848,6 +2903,14 @@ React.useEffect(() => {
             {sportTitle}
           </div>
         </div>
+
+        {/* PUB intégrée 1 : juste sous le bloc BIENVENUE / titre du sport */}
+        <InlineAdBanner
+          placement="home"
+          offset={0}
+          compact
+          style={{ marginBottom: 16 }}
+        />
   
         {/* Carte joueur actif */}
         {activeProfile && (
@@ -2860,8 +2923,18 @@ React.useEffect(() => {
             hideStarRing={isFootSport}
           />
         )}
+
+        {/* PUB intégrée 2 : sous le bloc JOUEUR ACTIF / stats principales */}
+        {activeProfile && (
+          <InlineAdBanner
+            placement="home"
+            offset={2}
+            compact
+            style={{ marginTop: 12, marginBottom: 14 }}
+          />
+        )}
   
-        {/* Petit bandeau arcade (auto-slide interne) */}
+        {/* Petit bandeau arcade : stats + pages PUB dans une seule rotation */}
         <ArcadeTicker
           items={tickerItems} // ✅ IMPORTANT
           activeIndex={tickerIndex}

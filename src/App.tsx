@@ -5353,15 +5353,16 @@ case "babyfoot_team_edit":
           />
         )}
 
-        <div className="container" style={{ paddingBottom: adBannerPlacement ? 154 : 88 }}>
+        <div className="container" style={{ paddingBottom: 88 }}>
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
+              {adBannerPlacement && adBannerPlacement !== "home" && (
+                <AdSlot placement={adBannerPlacement} />
+              )}
               {page}
             </React.Suspense>
           </AppGate>
         </div>
-
-        {adBannerPlacement && <AdSlot placement={adBannerPlacement} />}
 
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}

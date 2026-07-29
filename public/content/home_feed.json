@@ -1,118 +1,76 @@
 {
-
-    "version": 2,
-  
-    "items": [
-  
-      {
-  
-        "id": "store-avatars-arcade",
-  
-        "kind": "ad",
-  
-        "title": "Pack Avatars Arcade",
-  
-        "text": "Nouveaux portraits, cadres et styles visuels pour personnaliser les profils.",
-  
-        "imageKey": "tipAds",
-  
-        "since": "2026-07-01",
-  
-        "weight": 9
-  
-      },
-  
-      {
-  
-        "id": "tournaments-local",
-  
-        "kind": "news",
-  
-        "title": "Tournois (local) dispo",
-  
-        "text": "Bracket + match-play + résultat auto : lance un tournoi en 30 secondes.",
-  
-        "imageKey": "tipNews",
-  
-        "since": "2025-12-10",
-  
-        "weight": 8
-  
-      },
-  
-      {
-  
-        "id": "store-logos-clubs",
-  
-        "kind": "ad",
-  
-        "title": "Pack Logos Clubs",
-  
-        "text": "Une bibliothèque supplémentaire de logos, badges et écussons pour les équipes et clubs.",
-  
-        "imageKey": "tipAds",
-  
-        "since": "2026-07-01",
-  
-        "weight": 7
-  
-      },
-  
-      {
-  
-        "id": "store-themes-neon",
-  
-        "kind": "ad",
-  
-        "title": "Pack Thèmes Neon+",
-  
-        "text": "Thèmes premium, variantes sombres, accents et effets supplémentaires pour l’application.",
-  
-        "imageKey": "tipAds",
-  
-        "since": "2026-07-01",
-  
-        "weight": 6
-  
-      },
-  
-      {
-  
-        "id": "store-dartsets-pro",
-  
-        "kind": "ad",
-  
-        "title": "Pack Dartsets Pro",
-  
-        "text": "Collections additionnelles et nouveaux visuels pour Mes fléchettes.",
-  
-        "imageKey": "tipAds",
-  
-        "since": "2026-07-01",
-  
-        "weight": 5
-  
-      },
-  
-      {
-  
-        "id": "dartsets-stats",
-  
-        "kind": "tip",
-  
-        "title": "Stats par fléchettes",
-  
-        "text": "Associe un set favori : tes stats deviennent ultra parlantes par set.",
-  
-        "imageKey": "tipAdvice",
-  
-        "weight": 4
-  
-      }
-  
-    ]
-  
-  }
-  
-  
-  
+  "version": 3,
+  "items": [
+    {
+      "id": "store-avatars-arcade",
+      "kind": "ad",
+      "title": "Pack Avatars Arcade",
+      "text": "Nouveaux portraits, cadres et styles visuels pour personnaliser les profils.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 9
+    },
+    {
+      "id": "store-bots-ai-champions",
+      "kind": "ad",
+      "title": "Pack Bots IA Champions",
+      "text": "Nouveaux adversaires CPU avec identités, niveaux et styles de jeu supplémentaires.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 8
+    },
+    {
+      "id": "store-custom-bundle",
+      "kind": "ad",
+      "title": "Bundle Personnalisation",
+      "text": "Avatars, logos, thèmes et dartsets réunis dans une collection additionnelle.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 6
+    },
+    {
+      "id": "tournaments-local",
+      "kind": "news",
+      "title": "Tournois (local) dispo",
+      "text": "Bracket + match-play + résultat auto : lance un tournoi en 30 secondes.",
+      "imageKey": "tipNews",
+      "since": "2025-12-10",
+      "weight": 8
+    },
+    {
+      "id": "store-logos-clubs",
+      "kind": "ad",
+      "title": "Pack Logos Clubs",
+      "text": "Une bibliothèque supplémentaire de logos, badges et écussons pour les équipes et clubs.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 7
+    },
+    {
+      "id": "store-themes-neon",
+      "kind": "ad",
+      "title": "Pack Thèmes Neon+",
+      "text": "Thèmes premium, variantes sombres, accents et effets supplémentaires pour l’application.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 6
+    },
+    {
+      "id": "store-dartsets-pro",
+      "kind": "ad",
+      "title": "Pack Dartsets Pro",
+      "text": "Collections additionnelles et nouveaux visuels pour Mes fléchettes.",
+      "imageKey": "tipAds",
+      "since": "2026-07-01",
+      "weight": 5
+    },
+    {
+      "id": "dartsets-stats",
+      "kind": "tip",
+      "title": "Stats par fléchettes",
+      "text": "Associe un set favori : tes stats deviennent ultra parlantes par set.",
+      "imageKey": "tipAdvice",
+      "weight": 4
+    }
+  ]
+}

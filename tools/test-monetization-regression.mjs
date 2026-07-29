@@ -54,11 +54,17 @@ assert.ok(prefs.includes("endGameAdTiming: \"after_results\""), "Le timing par d
 assert.ok(prefs.includes("endGameEveryMatches: 3"), "La fréquence par défaut doit rester 1 pub / 3 parties.");
 assert.ok(prefs.includes("minInterstitialIntervalMs: 8 * 60 * 1000"), "L'intervalle minimum par défaut doit rester 8 minutes.");
 
-// 7) Bannières : liste blanche stricte, jamais un écran *_play.
-for (const allowed of ["home", "games", "settings", "stats", "statsHub", "statsDetail"]) {
-  assert.ok(adSlot.includes(`\"${allowed}\"`), `Route bannière attendue absente : ${allowed}`);
+// 7) Bannières : toutes les entrées principales BottomNav, jamais un écran *_play.
+for (const allowed of [
+  "home", "messages", "profiles", "games", "tournaments", "online",
+  "stats", "settings", "cast_host", "statsHub", "statsDetail"
+]) {
+  assert.ok(adSlot.includes(`"${allowed}"`), `Route bannière attendue absente : ${allowed}`);
 }
 assert.ok(!/route\s*===\s*"[^"]*_play"/.test(adSlot), "Un écran PLAY est éligible aux bannières.");
+assert.ok(adSlot.includes("Aucun banner AdMob natif flottant"), "Le garde-fou banner natif flottant est absent.");
+assert.ok(app.includes('adBannerPlacement !== "home"'), "Home doit gérer ses deux pubs directement dans Home.tsx.");
+assert.ok(app.includes('<AdSlot placement={adBannerPlacement} />'), "Les pages BottomNav hors Home doivent recevoir leur bloc pub intégré.");
 
 // 8) Premium : jamais un simple localStorage premium=true.
 assert.ok(manager.includes("getVerifiedPremiumState().active"), "Garde Premium vérifiée absente du manager.");

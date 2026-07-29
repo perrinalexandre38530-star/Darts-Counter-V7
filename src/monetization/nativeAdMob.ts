@@ -79,6 +79,12 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
   try {
     await plugin.initialize({ initializeForTesting: config.testMode });
 
+    // Les banners natifs flottants sont volontairement désactivés dans MULTISPORTS SCORING.
+    // Nettoie un éventuel banner resté attaché à l'Activity après un ancien build/reload.
+    bannerSignature = null;
+    try { await plugin.hideBanner?.(); } catch {}
+    try { await plugin.removeBanner(); } catch {}
+
     let consent = await plugin.requestConsentInfo({ tagForUnderAgeOfConsent: false });
     if (!consent?.canRequestAds && consent?.isConsentFormAvailable) {
       consent = await plugin.showConsentForm();
@@ -162,37 +168,18 @@ export async function showNativeRewarded(): Promise<any | null> {
 }
 
 export async function showNativeBanner(
-  placement: string,
-  options: NativeBannerOptions = {}
+  _placement: string,
+  _options: NativeBannerOptions = {}
 ): Promise<boolean> {
+  // IMPORTANT : aucun banner AdMob natif ne doit flotter au-dessus de la WebView.
+  // Même si un ancien appel subsiste dans un bundle/cache, on supprime le banner
+  // au lieu de l'afficher. Les pubs de type bandeau sont intégrées au layout React.
   const plugin = getAdMobPlugin();
+  bannerSignature = null;
   if (!plugin) return false;
-
-  const status = await ensureNativeAdMobReady();
-  if (!status.canRequestAds) return false;
-
-  const config = getAdMobRuntimeConfig();
-  const position = options.position || "BOTTOM_CENTER";
-  const margin = Math.max(
-    0,
-    Math.round(Number(options.margin ?? (position === "BOTTOM_CENTER" ? 76 : 0)))
-  );
-  const signature = `${placement}:${position}:${margin}`;
-
-  if (bannerSignature === signature) return true;
-
+  try { await plugin.hideBanner?.(); } catch {}
   try { await plugin.removeBanner(); } catch {}
-
-  await plugin.showBanner({
-    adId: config.bannerIdAndroid,
-    adSize: "ADAPTIVE_BANNER",
-    position,
-    margin,
-    isTesting: config.testMode,
-  });
-
-  bannerSignature = signature;
-  return true;
+  return false;
 }
 
 export async function removeNativeBanner(): Promise<void> {
