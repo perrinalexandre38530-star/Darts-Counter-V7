@@ -34,6 +34,7 @@ for (const sound of ["par", "miss"]) {
 
 // Reprise : LOTERIE doit autosauvegarder un snapshot et l'Historique doit router vers loterie_play.
 const loteriePlaySource = readFileSync("src/pages/LoteriePlay.tsx", "utf8");
+const loterieConfigSource = readFileSync("src/pages/LoterieConfig.tsx", "utf8");
 const historyPageSource = readFileSync("src/pages/HistoryPage.tsx", "utf8");
 assert.match(loteriePlaySource, /const snapshot = buildInProgressRecord\(\);[\s\S]*History\.upsert\(snapshot\)/, "autosave LOTERIE manquant");
 assert.match(loteriePlaySource, /const state = \{\s*players, activeIndex, darts, seed, events/, "snapshot de reprise LOTERIE incomplet");
@@ -42,6 +43,12 @@ assert.match(loteriePlaySource, /addEventListener\("beforeunload", flush\)/, "fl
 assert.match(loteriePlaySource, /addEventListener\("visibilitychange", flushWhenHidden\)/, "flush arrière-plan LOTERIE manquant");
 assert.match(loteriePlaySource, /if \(finishSent\.current\) return;[\s\S]*History\.upsert\(snapshot\)/, "garde anti-autosave après fin manquante");
 assert.match(historyPageSource, /safeGo\(\["loterie_play"\]/, "route explicite de reprise LOTERIE manquante");
+assert.match(loteriePlaySource, /NUMÉRO DÉJÀ VALIDÉ/, "libellé numéro déjà validé manquant");
+assert.match(loteriePlaySource, /const alreadyValidated = Boolean\(baseResult\?\.key/, "détection numéro déjà validé manquante");
+assert.match(loteriePlaySource, /NUMÉROS RESTANTS À JOUER/, "bloc d'aide numéros restants manquant");
+assert.match(loteriePlaySource, /onClick=\{\(\) => openCards\(i\)\}/, "raccourcis C1-C4 vers leur carton manquants");
+assert.match(loteriePlaySource, /const isBest = i === bestIdx/, "mise en avant du meilleur carton manquante");
+assert.match(loterieConfigSource, /showRemainingNumbers/, "option de configuration des numéros restants manquante");
 
 // EXPRESS : les simples 1..9 sont de vrais résultats, plus jamais "hors lot" par construction.
 assert.deepEqual(resultKey({...base,variant:"express",expressTarget:"simple"},[{v:3,mult:1}]).key,"S3");

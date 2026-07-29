@@ -81,6 +81,7 @@ export type LoterieConfig = {
   expressAttempts?: LoterieExpressAttempts;
   missEndsTurn?: boolean;
   revealMode?: LoterieRevealMode;
+  showRemainingNumbers?: boolean;
   cardsPerPlayer: 1 | 2 | 3 | 4;
   cellsPerCard: 5 | 10 | 15;
   startOrderMode: "random" | "fixed";

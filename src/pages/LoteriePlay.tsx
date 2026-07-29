@@ -121,6 +121,7 @@ const DEFAULT_CONFIG: LoterieConfig & any = {
   startOrderMode: "random",
   participantMode: "players",
   revealMode: "self",
+  showRemainingNumbers: false,
 };
 
 function nameOf(p: any) { return String(p?.displayName ?? p?.name ?? p?.nickname ?? "Joueur"); }
@@ -159,17 +160,30 @@ function ModeInlineInfo({ kind, value, accent }: any) {
   );
 }
 function recentScoreItems(events: any[], playerId: string, max = 5) {
-  return [...(events || [])].filter((e: any) => e.playerId === playerId).slice(-max).reverse().map((ev: any, idx: number) => ({
-    id: `${ev.ts}_${idx}`,
-    ok: (ev?.revealed || 0) > 0,
-    label: String(ev?.resultLabel || ev?.volleyScore || 0),
-    detail: ev?.darts?.length ? ev.darts.map((d: any) => d.label).join(" + ") : "—",
-    count: Number(ev?.revealed || 0),
-    total: Number(ev?.volleyScore || 0),
-  }));
+  const playerEvents = [...(events || [])].filter((e: any) => e.playerId === playerId);
+  const validatedLabels = new Set(playerEvents.filter((e: any) => Number(e?.revealed || 0) > 0).map((e: any) => String(e?.resultLabel || e?.volleyScore || 0)));
+  return playerEvents.slice(-max).reverse().map((ev: any, idx: number) => {
+    const label = String(ev?.resultLabel || ev?.volleyScore || 0);
+    const alreadyValidated = Boolean(ev?.alreadyValidated) || (Number(ev?.revealed || 0) <= 0 && validatedLabels.has(label));
+    const ok = Number(ev?.revealed || 0) > 0 || alreadyValidated;
+    return {
+      id: `${ev.ts}_${idx}`,
+      ok,
+      alreadyValidated,
+      label,
+      detail: ev?.darts?.length ? ev.darts.map((d: any) => d.label).join(" + ") : "—",
+      count: Number(ev?.revealed || 0),
+      total: Number(ev?.volleyScore || 0),
+    };
+  });
 }
 function RecentScoreBadges({ scores, onClick, compact = false }: any) {
-  return <button type="button" onClick={onClick} style={{ width: "100%", minHeight: compact ? 54 : 66, borderRadius: 14, border: `1px dashed rgba(214,166,53,.55)`, background: "rgba(255,248,232,.82)", padding: compact ? 8 : 9, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 6px 15px rgba(0,0,0,.06)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>DERNIERS SCORES</div><div style={{ color: "#b7871e", fontSize: 8.2, fontWeight: 1000 }}>VOIR ▸</div></div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{scores?.length ? scores.map((item: any) => <div key={item.id} style={{ minWidth: 0, borderRadius: 9, border: `1px solid ${item.ok ? "rgba(78,201,145,.38)" : "rgba(255,113,138,.38)"}`, background: item.ok ? "rgba(78,201,145,.16)" : "rgba(255,113,138,.14)", color: item.ok ? "#1d8c62" : "#c54e65", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>{item.label}</div><div style={{ marginTop: 2, fontSize: 7.4, fontWeight: 1000, opacity: .88 }}>{item.ok ? "VALIDÉ" : "RATÉ"}</div></div>) : Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ minWidth: 0, borderRadius: 9, border: "1px dashed rgba(151,124,77,.35)", background: "rgba(255,255,255,.45)", color: "#8e785b", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>—</div><div style={{ marginTop: 2, fontSize: 7.1, fontWeight: 1000, opacity: .88 }}>VIDE</div></div>)}</div><div style={{ marginTop: 5, color: "#8b6d46", fontSize: 8.4, fontWeight: 900 }}>{compact ? "Toucher pour ouvrir l'historique" : "5 dernières volées · vert = validé · rouge = raté"}</div></button>;
+  return <button type="button" onClick={onClick} style={{ width: "100%", minHeight: compact ? 54 : 66, borderRadius: 14, border: `1px dashed rgba(214,166,53,.55)`, background: "rgba(255,248,232,.82)", padding: compact ? 8 : 9, overflow: "hidden", textAlign: "left", cursor: "pointer", boxShadow: "0 6px 15px rgba(0,0,0,.06)" }}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ color: "#655039", fontSize: 8, fontWeight: 1000, letterSpacing: .4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>DERNIERS SCORES</div><div style={{ color: "#b7871e", fontSize: 8.2, fontWeight: 1000 }}>VOIR ▸</div></div><div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>{scores?.length ? scores.map((item: any) => {
+    const tone = item.alreadyValidated ? "#a87816" : item.ok ? "#1d8c62" : "#c54e65";
+    const border = item.alreadyValidated ? "rgba(214,166,53,.48)" : item.ok ? "rgba(78,201,145,.38)" : "rgba(255,113,138,.38)";
+    const fill = item.alreadyValidated ? "rgba(214,166,53,.16)" : item.ok ? "rgba(78,201,145,.16)" : "rgba(255,113,138,.14)";
+    return <div key={item.id} style={{ minWidth: 0, borderRadius: 9, border: `1px solid ${border}`, background: fill, color: tone, padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>{item.label}</div><div style={{ marginTop: 2, fontSize: 7.4, fontWeight: 1000, opacity: .88 }}>{item.alreadyValidated ? "DÉJÀ" : item.ok ? "VALIDÉ" : "RATÉ"}</div></div>;
+  }) : Array.from({ length: 5 }).map((_, i) => <div key={i} style={{ minWidth: 0, borderRadius: 9, border: "1px dashed rgba(151,124,77,.35)", background: "rgba(255,255,255,.45)", color: "#8e785b", padding: compact ? "5px 2px" : "6px 3px", textAlign: "center" }}><div style={{ fontSize: compact ? 11 : 12, fontWeight: 1000, lineHeight: 1 }}>—</div><div style={{ marginTop: 2, fontSize: 7.1, fontWeight: 1000, opacity: .88 }}>VIDE</div></div>)}</div><div style={{ marginTop: 5, color: "#8b6d46", fontSize: 8.4, fontWeight: 900 }}>{compact ? "Toucher pour ouvrir l'historique" : "5 dernières volées · vert = validé · or = déjà validé · rouge = raté"}</div></button>;
 }
 function ScoreResultOverlay({ result, lang = "fr" }: any) {
   if (!result) return null;
@@ -179,12 +193,14 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
   const isMiss = Boolean(result?.isMiss);
   const outOfRange = typeof result?.outOfDraw === "boolean" ? result.outOfDraw : (!isExpress && isHorsLoterieScore(score));
   const src = result?.cardSrc || (isMiss ? loterieMissCardUrl() : (outOfRange ? loterieOutOfDrawCardUrl(lang) : loterieScoreCardUrl(score)));
+  const alreadyValidated = Boolean(result?.alreadyValidated) && !outOfRange && !isMiss;
   const good = Boolean(result?.good) && !outOfRange && !isMiss;
-  const status = good ? GOOD : BAD;
+  const status = good ? GOOD : alreadyValidated ? GOLD : BAD;
   const cardNumbers = Array.isArray(result?.cardNumbers) ? result.cardNumbers : [];
   const animationMs = `${SCORE_REVEAL_MS}ms`;
   const scoreLabel = String(result?.label || score || 0);
-  const aura = isMiss ? "#ff718a" : (outOfRange ? "#ff5a72" : material.aura);
+  const aura = isMiss ? "#ff718a" : (outOfRange ? "#ff5a72" : (alreadyValidated ? GOLD : material.aura));
+  const alreadyValidatedText = lang === "fr" ? "NUMÉRO DÉJÀ VALIDÉ" : "NUMBER ALREADY VALIDATED";
   return (
     <div
       aria-live="assertive"
@@ -205,11 +221,11 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: aura, opacity: .58, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
             <>
-              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Résultat ${scoreLabel}`)} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Résultat ${scoreLabel}`)} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good || alreadyValidated ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
               {!good ? (
                 <>
-                  <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
-                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${BAD}aa`, background: "rgba(34,4,10,.72)", color: BAD, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{isMiss ? (result?.endedByMiss ? "MISS · TOUR TERMINÉ" : "MISS") : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ")}</div>
+                  <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: alreadyValidated ? "linear-gradient(180deg, rgba(246,194,86,.22), rgba(91,64,12,.16))" : "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: alreadyValidated ? `inset 0 0 0 2px ${GOLD}b8, inset 0 0 34px rgba(246,194,86,.24), 0 0 26px rgba(246,194,86,.16)` : `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
+                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${status}aa`, background: alreadyValidated ? "rgba(44,31,5,.82)" : "rgba(34,4,10,.72)", color: status, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{alreadyValidated ? alreadyValidatedText : isMiss ? (result?.endedByMiss ? "MISS · TOUR TERMINÉ" : "MISS") : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ")}</div>
                 </>
               ) : null}
             </>
@@ -240,8 +256,8 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           )}
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
-          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : isMiss ? "MISS" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Résultat ${scoreLabel} découvert` : isMiss ? (result?.endedByMiss ? "MISS · tour terminé" : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : `Result ${scoreLabel} out of draw`) : `Résultat ${scoreLabel} non possédé`)}</div>
+          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : alreadyValidated ? alreadyValidatedText : isMiss ? "MISS" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : alreadyValidated ? GOLD : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Résultat ${scoreLabel} découvert` : alreadyValidated ? (lang === "fr" ? `Le numéro ${scoreLabel} était déjà validé` : `Number ${scoreLabel} was already validated`) : isMiss ? (result?.endedByMiss ? "MISS · tour terminé" : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : `Result ${scoreLabel} out of draw`) : `Résultat ${scoreLabel} non possédé`)}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
@@ -584,36 +600,71 @@ function TicketInfo({ label, value, progress, small, clickable, onClick, sublabe
 }
 
 function ScoreHistoryModal({ player, config, events, onClose, accent = GOLD }: any) {
-  const playerEvents = [...(events || [])].filter((e: any) => e.playerId === player?.id).reverse();
-  const grouped = (wantHits: boolean) => {
-    const map = new Map();
-    for (const ev of playerEvents) {
-      const ok = (ev?.revealed || 0) > 0;
-      if (ok !== wantHits) continue;
-      const label = config.variant === 'classic' ? String(ev?.volleyScore ?? ev?.resultLabel ?? 0) : String(ev?.resultLabel ?? 'MISS');
-      const cur = map.get(label) || { label, count: 0, last: ev };
-      cur.count += 1;
-      cur.last = ev;
-      map.set(label, cur);
-    }
-    return [...map.values()].sort((a,b)=> Number(b.count)-Number(a.count) || String(a.label).localeCompare(String(b.label), 'fr'));
-  };
-  const valides = grouped(true);
-  const refuses = grouped(false);
+  const labelOf = (ev: any) => config.variant === 'classic'
+    ? String(ev?.volleyScore ?? ev?.resultLabel ?? 0)
+    : String(ev?.resultLabel ?? 'MISS');
+  const chronological = [...(events || [])]
+    .filter((e: any) => e.playerId === player?.id)
+    .sort((a: any, b: any) => Number(a?.ts || 0) - Number(b?.ts || 0));
+  const validatedLabels = new Set(
+    chronological
+      .filter((ev: any) => Number(ev?.revealed || 0) > 0)
+      .map((ev: any) => labelOf(ev)),
+  );
+  const rows = chronological.map((ev: any, index: number) => {
+    const label = labelOf(ev);
+    const revealed = Number(ev?.revealed || 0);
+    const alreadyValidated = revealed <= 0 && (Boolean(ev?.alreadyValidated) || validatedLabels.has(label));
+    return {
+      ev,
+      label,
+      turn: index + 1,
+      revealed,
+      alreadyValidated,
+      ok: revealed > 0 || alreadyValidated,
+    };
+  });
+  // Un numéro qui a déjà été validé ne doit jamais réapparaître dans le tableau rouge.
+  const valides = rows.filter((row: any) => row.ok);
+  const refuses = rows.filter((row: any) => !row.ok && !validatedLabels.has(row.label));
+  const latest = [...rows].reverse().slice(0, 12);
+  const remainingByCard = (player?.cards || []).map((card: any, index: number) => ({
+    index,
+    id: card?.id || `card_${index}`,
+    labels: (card?.cells || [])
+      .filter((cell: any) => !cell?.revealed)
+      .map((cell: any) => String(cell?.label ?? cell?.value ?? ''))
+      .filter(Boolean)
+      .sort((a: string, b: string) => a.localeCompare(b, 'fr', { numeric: true })),
+  }));
+  const remainingCount = remainingByCard.reduce((sum: number, card: any) => sum + card.labels.length, 0);
   return (
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position:'fixed', inset:0, zIndex:10005, background:'rgba(0,0,0,.78)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', padding:12 }}>
-      <div onClick={(e)=>e.stopPropagation()} style={{ width:'min(560px,100%)', maxHeight:'86dvh', overflowY:'auto', borderRadius:18, border:`1px solid ${GOLD}55`, background:'linear-gradient(180deg,#15120d,#0b0e13 45%,#08090c)', boxShadow:'0 26px 65px rgba(0,0,0,.55)', padding:12 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ color:accent, fontWeight:1000, fontSize:14 }}>DERNIERS SCORES · {player?.name}</div><div style={{ color:SOFT, fontSize:10, marginTop:2 }}>{config.variant === 'classic' ? 'Vert = score ayant ouvert au moins une case · Rouge = score raté' : 'Historique des lancers express'}</div></div><button type='button' onClick={onClose} style={carouselBtnStyle(accent)}>×</button></div>
+      <div onClick={(e)=>e.stopPropagation()} style={{ width:'min(620px,100%)', maxHeight:'88dvh', overflowY:'auto', borderRadius:18, border:`1px solid ${GOLD}55`, background:'linear-gradient(180deg,#15120d,#0b0e13 45%,#08090c)', boxShadow:'0 26px 65px rgba(0,0,0,.55)', padding:12 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10 }}><div><div style={{ color:accent, fontWeight:1000, fontSize:14 }}>NUMÉROS JOUÉS · {player?.name}</div><div style={{ color:SOFT, fontSize:10, marginTop:2 }}>Ordre chronologique · vert = validé · or = déjà validé · rouge = réellement raté</div></div><button type='button' onClick={onClose} style={carouselBtnStyle(accent)}>×</button></div>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:12 }}>
-          <HistoryGroup title='SCORES VALIDÉS' color={GOOD} fill='rgba(112,239,189,.12)' items={valides} empty='Aucun score validé' />
-          <HistoryGroup title='SCORES RATÉS' color={BAD} fill='rgba(255,113,138,.10)' items={refuses} empty='Aucun score refusé' />
+          <HistoryGroup title='NUMÉROS VALIDÉS' color={GOOD} fill='rgba(112,239,189,.12)' items={valides} empty='Aucun numéro validé' />
+          <HistoryGroup title='SCORES RATÉS' color={BAD} fill='rgba(255,113,138,.10)' items={refuses} empty='Aucun score réellement raté' />
         </div>
+
+        {config?.showRemainingNumbers ? (
+          <div style={{ marginTop:12, borderRadius:14, padding:10, background:'rgba(246,194,86,.055)', border:`1px solid ${GOLD}35` }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}><div style={{ color:GOLD, fontSize:11, fontWeight:1000, letterSpacing:.6 }}>NUMÉROS RESTANTS À JOUER</div><div style={{ color:GOLD, fontSize:10, fontWeight:1000 }}>{remainingCount}</div></div>
+            <div style={{ marginTop:4, color:SOFT, fontSize:9.2 }}>Aide activée dans la configuration · cibles encore cachées, rangées par carton.</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:8, marginTop:9 }}>
+              {remainingByCard.map((card: any) => <div key={card.id} style={{ minWidth:0, borderRadius:12, border:'1px solid rgba(255,255,255,.07)', background:'rgba(255,255,255,.025)', padding:8 }}><div style={{ color:card.labels.length ? GOLD : GOOD, fontSize:9.5, fontWeight:1000 }}>C{card.index + 1} · {card.labels.length ? `${card.labels.length} restant${card.labels.length > 1 ? 's' : ''}` : 'COMPLET'}</div><div style={{ display:'flex', flexWrap:'wrap', gap:5, marginTop:7 }}>{card.labels.length ? card.labels.map((label: string, idx: number) => <span key={`${label}_${idx}`} style={{ minWidth:34, padding:'5px 6px', borderRadius:9, border:`1px solid ${GOLD}48`, background:'rgba(246,194,86,.10)', color:'#fff', fontSize:10, fontWeight:1000, textAlign:'center' }}>{label}</span>) : <span style={{ color:GOOD, fontSize:10, fontWeight:1000 }}>✓ Toutes les cases sont validées</span>}</div></div>)}
+            </div>
+          </div>
+        ) : null}
+
         <div style={{ marginTop:12, borderTop:'1px solid rgba(255,255,255,.07)', paddingTop:10 }}>
           <div style={{ color:SOFT, fontSize:10, fontWeight:1000, marginBottom:8 }}>DERNIÈRES VOLÉES</div>
           <div style={{ display:'grid', gap:7 }}>
-            {playerEvents.slice(0,12).map((ev: any, idx: number) => {
-              const ok = (ev?.revealed || 0) > 0;
-              return <div key={`${ev.ts}_${idx}`} style={{ borderRadius:12, padding:'8px 10px', background:'rgba(255,255,255,.04)', border:`1px solid ${ok ? 'rgba(112,239,189,.25)' : 'rgba(255,113,138,.2)'}`, display:'grid', gridTemplateColumns:'auto 1fr auto', gap:8, alignItems:'center' }}><div style={{ width:8, height:8, borderRadius:999, background: ok ? GOOD : BAD }} /><div style={{ minWidth:0 }}><div style={{ color:'#fff', fontSize:11.5, fontWeight:1000, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{config.variant === 'classic' ? `${ev?.darts?.map((d:any)=>d.label).join(' + ')} = ${ev?.volleyScore}` : (ev?.darts?.[0]?.label || ev?.resultLabel || 'MISS')}</div><div style={{ marginTop:2, color:SOFT, fontSize:9 }}>{config?.participantMode === 'teams' && ev?.actorName ? `${ev.actorName} · ` : ''}{ok ? `${ev?.revealed || 0} case${(ev?.revealed || 0) > 1 ? 's' : ''} ouverte${(ev?.revealed || 0) > 1 ? 's' : ''}` : 'Aucune case'}</div></div><div style={{ color: ok ? GOOD : BAD, fontSize:10, fontWeight:1000 }}>{ok ? 'VALIDÉ' : 'REFUSÉ'}</div></div>;
+            {latest.map((row: any) => {
+              const ev = row.ev;
+              const tone = row.alreadyValidated ? GOLD : row.ok ? GOOD : BAD;
+              const status = row.alreadyValidated ? 'DÉJÀ VALIDÉ' : row.ok ? 'VALIDÉ' : 'RATÉ';
+              return <div key={`${ev.ts}_${row.turn}`} style={{ borderRadius:12, padding:'8px 10px', background:'rgba(255,255,255,.04)', border:`1px solid ${tone}40`, display:'grid', gridTemplateColumns:'auto 1fr auto', gap:8, alignItems:'center' }}><div style={{ width:8, height:8, borderRadius:999, background:tone }} /><div style={{ minWidth:0 }}><div style={{ color:'#fff', fontSize:11.5, fontWeight:1000, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{config.variant === 'classic' ? `${ev?.darts?.map((d:any)=>d.label).join(' + ')} = ${ev?.volleyScore}` : (ev?.resultLabel || ev?.darts?.[0]?.label || 'MISS')}</div><div style={{ marginTop:2, color:SOFT, fontSize:9 }}>Tour #{row.turn} · {config?.participantMode === 'teams' && ev?.actorName ? `${ev.actorName} · ` : ''}{row.alreadyValidated ? 'numéro déjà obtenu' : row.ok ? `${ev?.revealed || 0} case${(ev?.revealed || 0) > 1 ? 's' : ''} ouverte${(ev?.revealed || 0) > 1 ? 's' : ''}` : 'Aucune case'}</div></div><div style={{ color:tone, fontSize:9.5, fontWeight:1000, textAlign:'right' }}>{status}</div></div>;
             })}
           </div>
         </div>
@@ -622,7 +673,11 @@ function ScoreHistoryModal({ player, config, events, onClose, accent = GOLD }: a
   );
 }
 function HistoryGroup({ title, color, fill, items, empty }: any) {
-  return <div style={{ borderRadius:14, padding:10, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)' }}><div style={{ color, fontSize:11, fontWeight:1000, letterSpacing:.6 }}>{title}</div><div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>{items.length ? items.map((it:any)=><div key={it.label} style={{ minWidth:64, padding:'8px 10px', borderRadius:12, background:fill, border:`1px solid ${color}55`, boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ color:'#fff', fontSize:14, fontWeight:1000, textAlign:'center' }}>{it.label}</div><div style={{ marginTop:3, color, fontSize:9, fontWeight:1000, textAlign:'center' }}>× {it.count}</div></div>) : <div style={{ color:SOFT, fontSize:10 }}>{empty}</div>}</div></div>;
+  return <div style={{ borderRadius:14, padding:10, background:'rgba(255,255,255,.03)', border:'1px solid rgba(255,255,255,.06)' }}><div style={{ color, fontSize:11, fontWeight:1000, letterSpacing:.6 }}>{title}</div><div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:10 }}>{items.length ? items.map((it:any)=>{
+    const tone = it.alreadyValidated ? GOLD : color;
+    const itemFill = it.alreadyValidated ? 'rgba(246,194,86,.11)' : fill;
+    return <div key={`${it.turn}_${it.label}`} style={{ minWidth:64, padding:'8px 10px', borderRadius:12, background:itemFill, border:`1px solid ${tone}55`, boxShadow:'inset 0 1px 0 rgba(255,255,255,.05)' }}><div style={{ color:'#fff', fontSize:14, fontWeight:1000, textAlign:'center' }}>{it.label}</div><div style={{ marginTop:3, color:tone, fontSize:8.5, fontWeight:1000, textAlign:'center' }}>#{it.turn}{it.alreadyValidated ? ' · DÉJÀ' : ''}</div></div>;
+  }) : <div style={{ color:SOFT, fontSize:10 }}>{empty}</div>}</div></div>;
 }
 
 function FloatingCardsModal({ player, initialIndex, onClose, recentRevealKeys, lastVolleyText, onOpenHistory, recentScores, accent = GOLD }: any) {
@@ -1292,6 +1347,11 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
     const revealMode = config?.revealMode === "all" ? "all" : "self";
     const resolved = revealResult(current, config, turnDarts);
     const baseResult = resolved.result;
+    const matchScope = revealMode === "all" ? players : [current];
+    const matchingCellsBefore = baseResult?.key ? matchScope.reduce((sum: number, p: any) => sum + (p?.cards || []).reduce((cardSum: number, card: any) => cardSum + (card?.cells || []).filter((cell: any) => cell?.key === baseResult.key).length, 0), 0) : 0;
+    const unrevealedMatchingCellsBefore = baseResult?.key ? matchScope.reduce((sum: number, p: any) => sum + (p?.cards || []).reduce((cardSum: number, card: any) => cardSum + (card?.cells || []).filter((cell: any) => cell?.key === baseResult.key && !cell?.revealed).length, 0), 0) : 0;
+    const alreadyValidated = Boolean(baseResult?.key && matchingCellsBefore > 0 && unrevealedMatchingCellsBefore === 0);
+    const numberPossessed = matchingCellsBefore > 0;
     const isExpressTurn = config.variant === "express";
     const targetMatchIndex = isExpressTurn ? expressMatchingDartIndex(config, turnDarts) : -1;
     const targetMatched = targetMatchIndex >= 0;
@@ -1357,6 +1417,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       variant: config.variant, expressTarget: isExpressTurn ? config.expressTarget : null, expressAttemptMode: isExpressTurn ? (config.expressAttempts || "one") : null, missEndsTurn: isExpressTurn ? config.missEndsTurn === true : false,
       targetMatched: isExpressTurn ? targetMatched : null, targetMatchDart: isExpressTurn && targetMatched ? targetMatchIndex + 1 : 0, attemptsUsed, attemptsAllowed: isExpressTurn ? (config.expressAttempts === "up_to_3" ? 3 : 1) : Math.max(1, turnDarts.length), wrongTargetDarts: isExpressTurn ? wrongTargetDarts : 0, endedByMiss: isExpressTurn ? endedByMiss : false, attemptsExhausted: isExpressTurn ? attemptsExhausted : false,
       revealed: totalRevealed, revealedCardNumbers, completedCardIds: currentResolved.completedCardIds,
+      alreadyValidated, numberPossessed, matchingCellsBefore,
       revealMode,
     };
     const nextEvents = [...events, ev];
@@ -1372,6 +1433,8 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       score: resultScore,
       label: isMissResult ? "MISS" : (baseResult?.label || String(resultScore)),
       good: found,
+      alreadyValidated,
+      numberPossessed,
       revealed: totalRevealed,
       cardNumbers: revealedCardNumbers,
       variant: config.variant,
@@ -1386,7 +1449,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
       cardSrc: isMissResult ? loterieMissCardUrl() : expressCardSrc,
       ts: Date.now(),
     });
-    playLoterieGolfTickerSfx(found);
+    playLoterieGolfTickerSfx(found || alreadyValidated);
     if (winnerCandidate) {
       finish(nextPlayers, winnerCandidate, nextEvents);
       return;
@@ -1538,10 +1601,13 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
         </section>
 
         <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 7 }}>
-          <button type="button" onClick={() => openCards(bestIdx)} style={{ ...panelStyle(), minHeight: 76, padding: "8px 10px", cursor: "pointer", color: "#fff", textAlign: "left", overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={{ color: themeAccent, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>CARTONS</span><span style={{ color: themeAccent, fontSize: 9, fontWeight: 900 }}>OUVRIR ›</span></div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, active?.cards?.length || 1)}, minmax(0,1fr))`, gap: 5, marginTop: 8, overflow: "hidden" }}>{active?.cards?.map((card: any, i: number) => <div key={card.id} style={{ minWidth: 0, textAlign: "center", padding: "7px 4px", borderRadius: 12, border: `1px solid color-mix(in srgb, ${themeAccent} ${i === bestIdx ? "76%" : "42%"}, transparent)`, background: `linear-gradient(180deg, color-mix(in srgb, ${themeAccent} ${i === bestIdx ? "24%" : "13%"}, transparent), rgba(255,255,255,.025))`, boxShadow: i === bestIdx ? `0 0 16px color-mix(in srgb, ${themeAccent} 18%, transparent)` : "none" }}><div style={{ color: themeAccent, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap" }}>C{i + 1}</div><div style={{ marginTop: 4, color: "#fff", fontSize: 15, fontWeight: 1000, lineHeight: 1 }}>{cardProgress(card)}</div></div>)}</div>
-          </button>
+          <div style={{ ...panelStyle(), minHeight: 76, padding: "8px 10px", color: "#fff", textAlign: "left", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={{ color: themeAccent, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>CARTONS</span><button type="button" onClick={() => openCards(bestIdx)} style={{ border: "none", background: "transparent", padding: 0, color: themeAccent, fontSize: 9, fontWeight: 900, cursor: "pointer" }}>OUVRIR ›</button></div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, active?.cards?.length || 1)}, minmax(0,1fr))`, gap: 5, marginTop: 8, overflow: "hidden" }}>{active?.cards?.map((card: any, i: number) => {
+              const isBest = i === bestIdx;
+              return <button key={card.id} type="button" onClick={() => openCards(i)} aria-label={`Ouvrir le carton ${i + 1}`} style={{ minWidth: 0, textAlign: "center", padding: "7px 4px", borderRadius: 12, border: `1px solid ${isBest ? `${GOOD}99` : `${themeAccent}55`}`, background: isBest ? "linear-gradient(180deg,rgba(112,239,189,.22),rgba(112,239,189,.07))" : `linear-gradient(180deg, color-mix(in srgb, ${themeAccent} 13%, transparent), rgba(255,255,255,.025))`, boxShadow: isBest ? `0 0 16px ${GOOD}30` : "none", color: "#fff", cursor: "pointer" }}><div style={{ color: isBest ? GOOD : themeAccent, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap" }}>{isBest ? "★ " : ""}C{i + 1}</div><div style={{ marginTop: 4, color: isBest ? GOOD : "#fff", fontSize: 15, fontWeight: 1000, lineHeight: 1 }}>{cardProgress(card)}</div></button>;
+            })}</div>
+          </div>
           <button type="button" onClick={() => setRankingOpen(true)} style={{ ...panelStyle(), minHeight: 76, padding: "8px 10px", cursor: "pointer", color: "#fff", textAlign: "left", overflow: "hidden" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><span style={{ color: themeAccent, fontSize: 10, fontWeight: 1000, letterSpacing: .7 }}>CLASSEMENT</span><span style={{ color: themeAccent, fontSize: 9, fontWeight: 900 }}>DÉTAIL ›</span></div>
             <div style={{ marginTop: 7, display: "grid", gap: 3 }}>{ranking.slice(0, 2).map((p, i) => <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, minWidth: 0 }}><span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 9.5, fontWeight: 900 }}>{i + 1}. {p.name}</span><span style={{ flex: "0 0 auto", color: p.id === active?.id ? themeAccent : SOFT, fontSize: 9, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</span></div>)}</div>

@@ -251,6 +251,7 @@ export default function LoterieConfig(props: any) {
   const [expressAttempts, setExpressAttempts] = React.useState<LoterieExpressAttempts>(saved.expressAttempts === "up_to_3" ? "up_to_3" : "one");
   const [missEndsTurn, setMissEndsTurn] = React.useState(saved.missEndsTurn === true);
   const [revealMode, setRevealMode] = React.useState<LoterieRevealMode>(saved.revealMode === "all" ? "all" : "self");
+  const [showRemainingNumbers, setShowRemainingNumbers] = React.useState(saved.showRemainingNumbers === true);
   const [cardsPerPlayer, setCardsPerPlayer] = React.useState<1 | 2 | 3 | 4>(Number(saved.cardsPerPlayer || 2) as any);
   const [cellsPerCard, setCellsPerCard] = React.useState<5 | 10 | 15>(Number(saved.cellsPerCard || 10) as any);
   const [randomOrder, setRandomOrder] = React.useState(saved.startOrderMode === "random");
@@ -276,11 +277,11 @@ export default function LoterieConfig(props: any) {
       localStorage.setItem(LS_CFG_KEY, JSON.stringify({
         participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds,
         selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled,
-        variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard,
+        variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, showRemainingNumbers, cardsPerPlayer, cellsPerCard,
         startOrderMode: randomOrder ? "random" : "fixed",
       }));
     } catch {}
-  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard, randomOrder]);
+  }, [participantMode, teamsSourceMode, selectedIds, teamAssignments, selectedStoredTeamIds, selectedBotTeamIds, savedTeamMemberSelections, botsPanelEnabled, botTeamsPanelEnabled, variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, showRemainingNumbers, cardsPerPlayer, cellsPerCard, randomOrder]);
 
   const allProfiles = React.useMemo(() => [...humanProfiles, ...botProfiles.map((bot) => ({ ...bot, isBot: true }))], [humanProfiles, botProfiles]);
   const byId = React.useMemo(() => new Map(allProfiles.map((profile: any) => [String(profile.id), profile])), [allProfiles]);
@@ -636,6 +637,15 @@ export default function LoterieConfig(props: any) {
           onChange={(value: any) => setRevealMode(value as LoterieRevealMode)}
           color={primary}
         />
+        <CompactConfigSelect
+          label="Aide"
+          helpTitle="Numéros restants"
+          help={<>Affiche dans le bloc flottant <b>DERNIERS SCORES</b> les cibles encore cachées sur chaque carton. <b>Masqués</b> conserve l'effet loterie ; <b>Affichés</b> transforme le bloc en aide de jeu.</>}
+          value={showRemainingNumbers ? "shown" : "hidden"}
+          options={[{ value: "hidden", label: "Numéros restants masqués" }, { value: "shown", label: "Afficher les numéros restants" }]}
+          onChange={(value: any) => setShowRemainingNumbers(value === "shown")}
+          color={primary}
+        />
       </div>
     </Section>
   );
@@ -652,6 +662,7 @@ export default function LoterieConfig(props: any) {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Cartons</span><b>{cardsPerPlayer} × {cellsPerCard} cases</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Niveau</span><b style={{ textAlign: "right" }}>{variant === "classic" ? String(level).toUpperCase() : "CIBLE EXACTE"}</b></div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Attribution</span><b style={{ textAlign: "right" }}>{revealMode === "all" ? "COMMUNE" : "PERSONNELLE"}</b></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>Aide</span><b style={{ textAlign: "right" }}>{showRemainingNumbers ? "NUMÉROS RESTANTS AFFICHÉS" : "MASQUÉE"}</b></div>
             {variant === "express" ? <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><span style={{ color: "#8f94b5" }}>MISS</span><b style={{ textAlign: "right" }}>{missEndsTurn ? "PASSE LE TOUR" : "CONTINUE"}</b></div> : null}
           </div>
         </div>
@@ -673,7 +684,7 @@ export default function LoterieConfig(props: any) {
   function startGame() {
     if (!validSelection) return;
     const config: LoterieConfigType & any = {
-      variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, cardsPerPlayer, cellsPerCard,
+      variant, level, autoMode, volleyMode, expressTarget, expressAttempts, missEndsTurn, revealMode, showRemainingNumbers, cardsPerPlayer, cellsPerCard,
       startOrderMode: randomOrder ? "random" : "fixed",
       participantMode,
     };
