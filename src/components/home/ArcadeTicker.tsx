@@ -9,6 +9,7 @@
 // =============================================================
 
 import * as React from "react";
+import { PaidInlineSurface } from "../../monetization/AdSlot";
 
 export type ArcadeTickerItem = {
   id: string;
@@ -17,6 +18,7 @@ export type ArcadeTickerItem = {
   detail?: string;
   backgroundImage?: string;
   accentColor?: string;
+  monetizedAd?: boolean;
 };
 
 type Props = {
@@ -147,10 +149,10 @@ export default function ArcadeTicker({
 
   if (!current) return null;
 
-  return (
+  const tickerCard = (
     <div
       style={{
-        marginTop: 12,
+        marginTop: current.monetizedAd ? 0 : 12,
         borderRadius: 22,
         overflow: "hidden",
         position: "relative",
@@ -291,4 +293,19 @@ export default function ArcadeTicker({
       </div>
     </div>
   );
+
+  if (current.monetizedAd) {
+    return (
+      <PaidInlineSurface
+        slotKey="home-ticker"
+        placement="home"
+        minHeight={92}
+        style={{ marginTop: 12, borderRadius: 22 }}
+      >
+        {tickerCard}
+      </PaidInlineSurface>
+    );
+  }
+
+  return tickerCard;
 }

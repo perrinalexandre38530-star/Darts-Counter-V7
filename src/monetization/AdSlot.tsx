@@ -7,11 +7,17 @@ import {
 import { STORE_PACKS } from "./catalog";
 import type { AdPlacement, MonetizationPrefs } from "./types";
 import { removeNativeBanner } from "./nativeAdMob";
+import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import {
+  hideInlineGoogleAd,
+  showInlineGoogleAd,
+  updateInlineGoogleAd,
+  type InlineAdRect,
+} from "./inlineAdMob";
 
 export function resolveBannerPlacementForRoute(tab: string, params?: any): AdPlacement | null {
   const route = String(tab || "");
 
-  // Pages principales accessibles depuis la BottomNav.
   if (route === "home") return "home";
   if (route === "messages") return "messages";
   if (route === "profiles") return "profiles";
@@ -21,8 +27,6 @@ export function resolveBannerPlacementForRoute(tab: string, params?: any): AdPla
   if (route === "stats") return "stats";
   if (route === "settings") return "settings";
   if (route === "cast_host" || route === "viewer_host" || route === "cast_room") return "screens";
-
-  // Sous-pages statistiques utiles, sans jamais monétiser un écran PLAY.
   if (route === "statsDetail") return "history";
   if (route === "statsHub" && String(params?.tab || "").toLowerCase() === "history") return "history";
   if (route === "statsHub") return "stats";
@@ -49,7 +53,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
       data-dc-ad-placement={placement}
       style={{
         width: "100%",
-        minHeight: compact ? 56 : 64,
+        minHeight: compact ? 58 : 68,
         borderRadius: 16,
         border: "1px solid rgba(255,255,255,.15)",
         background:
@@ -115,19 +119,154 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
   );
 }
 
+function measureInlineRect(node: HTMLElement): InlineAdRect {
+  const rect = node.getBoundingClientRect();
+  const viewportHeight = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0);
+  const viewportWidth = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
+  const bottomNavSafeArea = 82;
+
+  const visible =
+    rect.width >= 300 &&
+    rect.height >= 50 &&
+    rect.left >= 0 &&
+    rect.right <= viewportWidth + 1 &&
+    rect.top >= 0 &&
+    rect.bottom <= viewportHeight - bottomNavSafeArea;
+
+  return {
+    left: Math.max(0, rect.left),
+    top: Math.max(0, rect.top),
+    width: Math.max(300, rect.width),
+    height: Math.max(50, Math.min(100, rect.height)),
+    visible,
+  };
+}
+
+type PaidInlineSurfaceProps = {
+  slotKey: string;
+  placement: AdPlacement;
+  active?: boolean;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  minHeight?: number;
+};
+
+/**
+ * Surface réellement monétisable sous Android.
+ * Le DIV réserve sa place dans le layout React ; le plugin Android superpose
+ * une AdView Google exactement sur ce rectangle et la déplace avec le scroll.
+ * Sur le web/PWA, le contenu enfant reste visible comme fallback/house promo.
+ */
+export function PaidInlineSurface({
+  slotKey,
+  placement,
+  active = true,
+  children,
+  style,
+  minHeight = 58,
+}: PaidInlineSurfaceProps) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const shownRef = React.useRef(false);
+  const requestRef = React.useRef(false);
+  const native = isCapacitorNativeRuntime();
+  const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
+
+  React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
+
+  const premiumActive = getVerifiedPremiumState().active;
+  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+
+  React.useEffect(() => {
+    if (!native || !paidEligible) {
+      shownRef.current = false;
+      requestRef.current = false;
+      void hideInlineGoogleAd(slotKey);
+      return;
+    }
+
+    const node = ref.current;
+    if (!node) return;
+    let raf = 0;
+    let destroyed = false;
+
+    const sync = () => {
+      if (destroyed) return;
+      const rect = measureInlineRect(node);
+      if (!rect.visible) {
+        if (shownRef.current) void updateInlineGoogleAd(slotKey, rect);
+        return;
+      }
+
+      if (!shownRef.current && !requestRef.current) {
+        requestRef.current = true;
+        void showInlineGoogleAd(slotKey, rect)
+          .then((shown) => {
+            shownRef.current = shown;
+          })
+          .finally(() => {
+            requestRef.current = false;
+          });
+        return;
+      }
+
+      if (shownRef.current) void updateInlineGoogleAd(slotKey, rect);
+    };
+
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(sync);
+    };
+
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null;
+    resizeObserver?.observe(node);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    document.addEventListener("scroll", schedule, true);
+    schedule();
+
+    return () => {
+      destroyed = true;
+      if (raf) cancelAnimationFrame(raf);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      document.removeEventListener("scroll", schedule, true);
+      shownRef.current = false;
+      requestRef.current = false;
+      void hideInlineGoogleAd(slotKey);
+    };
+  }, [native, paidEligible, slotKey]);
+
+  return (
+    <div
+      ref={ref}
+      data-dc-paid-inline-ad={slotKey}
+      data-dc-paid-inline-placement={placement}
+      style={{
+        minHeight,
+        width: "100%",
+        boxSizing: "border-box",
+        position: "relative",
+        overflow: "hidden",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 type InlineAdBannerProps = {
   placement: AdPlacement;
+  slotKey?: string;
   offset?: number;
   compact?: boolean;
   style?: React.CSSProperties;
 };
 
-/**
- * Bandeau 100 % React, intégré dans le flux de la page.
- * Aucun banner AdMob natif flottant n'est utilisé ici.
- */
 export function InlineAdBanner({
   placement,
+  slotKey,
   offset = 0,
   compact = false,
   style,
@@ -137,7 +276,8 @@ export function InlineAdBanner({
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
 
-  // Tue tout reliquat d'un ancien banner natif Android dès qu'un bandeau intégré est monté.
+  // Le vieux banner ancré du plugin communautaire reste interdit : seules les
+  // nouvelles AdView inline du plugin InlineAdMob sont autorisées.
   React.useEffect(() => {
     void removeNativeBanner();
   }, [placement]);
@@ -155,12 +295,16 @@ export function InlineAdBanner({
   const eligible = prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
   if (!eligible) return null;
 
+  const stableSlotKey = slotKey || `menu-${placement}`;
+
   return (
-    <div
-      data-dc-inline-ad-shell={placement}
+    <PaidInlineSurface
+      slotKey={stableSlotKey}
+      placement={placement}
+      active={eligible}
+      minHeight={compact ? 58 : 68}
       style={{
         width: "100%",
-        boxSizing: "border-box",
         position: "relative",
         zIndex: 1,
         ...style,
@@ -172,20 +316,17 @@ export function InlineAdBanner({
         packIndex={packIndex + offset}
         compact={compact}
       />
-    </div>
+    </PaidInlineSurface>
   );
 }
 
-/**
- * Bandeau générique des pages BottomNav hors Home.
- * Il est rendu DANS le conteneur scrollable de l'application par App.tsx.
- */
 export default function AdSlot({ placement }: { placement: AdPlacement | null }) {
   if (!placement || placement === "home") return null;
 
   return (
     <InlineAdBanner
       placement={placement}
+      slotKey={`bottomnav-${placement}`}
       compact
       style={{
         width: "min(520px, calc(100% - 18px))",

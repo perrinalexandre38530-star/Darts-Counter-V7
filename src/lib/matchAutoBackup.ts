@@ -288,16 +288,20 @@ function stripAvatarData(value: any): any {
   return out;
 }
 
-function decodePayloadCompressed(payloadCompressed: string): any | null {
+export function decodeMatchBackupPayload(payloadCompressed: string): any | null {
   const raw = String(payloadCompressed || "");
   if (!raw) return null;
   try {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed);
     const json = LZString.decompressFromUTF16(raw) || LZString.decompress(raw) || "";
     return json ? JSON.parse(json) : null;
   } catch {
     return null;
   }
 }
+
+const decodePayloadCompressed = decodeMatchBackupPayload;
 
 function encodePayload(payload: any, fallbackPayloadCompressed = ""): { payloadCompressed: string; bytes: number } {
   const clean = stripAvatarData(payload);

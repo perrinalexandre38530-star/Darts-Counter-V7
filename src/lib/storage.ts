@@ -2066,9 +2066,10 @@ function buildSyntheticHistoryDumpFromStatsIndex(idx: any): any | null {
   } catch { return null; }
 }
 
-export async function importAll(dump: any): Promise<void> {
+export async function importAll(dump: any, opts?: { historyReplace?: boolean }): Promise<void> {
   dump = unwrapNasSnapshotPayload(dump);
   if (!dump) return;
+  const historyReplace = opts?.historyReplace ?? true;
 
   // ✅ Support snapshots structurés (v1 et v2)
   // - v2 = format produit par exportAll() dans ce fichier
@@ -2157,14 +2158,14 @@ export async function importAll(dump: any): Promise<void> {
       const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
       const hasRealHistoryRows = Object.keys(rawRows).length > 0;
       if (dump.history && dump.history._v === 1 && hasRealHistoryRows) {
-        await importHistoryDump(dump.history, { replace: true });
+        await importHistoryDump(dump.history, { replace: historyReplace });
       } else {
         const syntheticHistory = buildSyntheticHistoryDumpFromStatsIndex(restoredStatsIndex);
         if (syntheticHistory?.rows && Object.keys(syntheticHistory.rows).length > 0) {
-          await importHistoryDump(syntheticHistory, { replace: true });
+          await importHistoryDump(syntheticHistory, { replace: historyReplace });
           try { localStorage.setItem("dc_history_restored_from_stats_index_v1", "1"); } catch {}
         } else if (dump.history && dump.history._v === 1) {
-          await importHistoryDump(dump.history, { replace: true });
+          await importHistoryDump(dump.history, { replace: historyReplace });
         }
       }
       try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
@@ -2788,7 +2789,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
       clearLocalStorageDc();
     }
 
-    await importAll(dump);
+    await importAll(dump, { historyReplace: mode === "replace" });
 
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.

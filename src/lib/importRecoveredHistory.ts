@@ -109,6 +109,10 @@ function unwrapCandidate(raw: any): any {
   const parsed = parseJsonStringMaybe(raw);
   if (!isObject(parsed)) return parsed;
 
+  // Une ligne native/reconstruite qui possède déjà son id NE DOIT JAMAIS être
+  // déballée vers payload : sinon on perd matchId/id et l'import devient invalide.
+  if (parsed.id || parsed.matchId) return parsed;
+
   // Wrappers courants générés par les exports de récupération.
   if (isObject(parsed.match)) return parsed.match;
   if (isObject(parsed.item)) return parsed.item;

@@ -6,9 +6,35 @@ const root = process.cwd();
 const androidRoot = path.join(root, "android");
 const manifestPath = path.join(androidRoot, "app", "src", "main", "AndroidManifest.xml");
 const stringsPath = path.join(androidRoot, "app", "src", "main", "res", "values", "strings.xml");
+const envPath = path.join(root, ".env");
 
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
-const appId = String(process.env.ADMOB_ANDROID_APP_ID || GOOGLE_TEST_APP_ID).trim();
+
+function readDotEnv() {
+  if (!fs.existsSync(envPath)) return {};
+  const out = {};
+  for (const rawLine of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+const dotenv = readDotEnv();
+const appId = String(
+  process.env.ADMOB_ANDROID_APP_ID ||
+  process.env.VITE_ADMOB_ANDROID_APP_ID ||
+  dotenv.VITE_ADMOB_ANDROID_APP_ID ||
+  GOOGLE_TEST_APP_ID
+).trim();
 
 function fail(message) {
   console.error(`\n[ADMOB ANDROID] ${message}\n`);
@@ -50,4 +76,8 @@ const isGoogleTest = appId === GOOGLE_TEST_APP_ID;
 console.log("\n✅ Configuration Android AdMob appliquée.");
 console.log(`   App ID : ${appId}`);
 console.log(`   Mode   : ${isGoogleTest ? "GOOGLE TEST (sûr pour développement)" : "PRODUCTION / PERSONNALISÉ"}`);
-if (isGoogleTest) console.log("   Aucune vraie impression publicitaire ne sera monétisée avec cet App ID de démonstration.");
+if (isGoogleTest) {
+  console.log("   Aucune vraie impression publicitaire ne sera monétisée avec cet App ID de démonstration.");
+} else {
+  console.log("   L'App ID production vient de .env / VITE_ADMOB_ANDROID_APP_ID (ou ADMOB_ANDROID_APP_ID).");
+}

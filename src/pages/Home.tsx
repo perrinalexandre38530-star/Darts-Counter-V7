@@ -17,6 +17,7 @@ import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
+import { getVerifiedPremiumState, loadMonetizationPrefs } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
 import footHomeCover03 from "../assets/tickers/foot-03.webp";
@@ -2308,6 +2309,7 @@ function buildTickerAdItems(
         `${seed}::promo::${slide.id}::${index}`
       ),
       accentColor: "#FFD15A",
+      monetizedAd: true,
     }));
 }
 
@@ -2502,7 +2504,7 @@ export default function Home({ store, go, activeSport }: Props) {
     if (s === "molkky") return "MÖLKKY COUNTER";
     if (s === "dicegame") return "DICE COUNTER";
     if (s === "foot") return "FOOT SCORING";
-    return "DARTS COUNTER";
+    return "DARTS SCORING";
   }, [sport]);
 
   const primary = theme.primary ?? "#F6C256";
@@ -2651,6 +2653,13 @@ export default function Home({ store, go, activeSport }: Props) {
     const baseItems = isFootSport
       ? tickerItemsRaw
       : ensureKillerTickerItemFirst(tickerItemsRaw, t, theme.primary);
+    const adPrefs = loadMonetizationPrefs();
+    const adsAllowed =
+      adPrefs.adsEnabled &&
+      adPrefs.bannersEnabled &&
+      !getVerifiedPremiumState().active;
+    if (!adsAllowed) return baseItems;
+
     const promoItems = buildTickerAdItems(
       homeFeedItems,
       `${String(activeProfile?.id ?? "anon")}::${String(sport)}`
@@ -2907,6 +2916,7 @@ React.useEffect(() => {
         {/* PUB intégrée 1 : juste sous le bloc BIENVENUE / titre du sport */}
         <InlineAdBanner
           placement="home"
+          slotKey="home-top"
           offset={0}
           compact
           style={{ marginBottom: 16 }}
@@ -2928,6 +2938,7 @@ React.useEffect(() => {
         {activeProfile && (
           <InlineAdBanner
             placement="home"
+            slotKey="home-player"
             offset={2}
             compact
             style={{ marginTop: 12, marginBottom: 14 }}
