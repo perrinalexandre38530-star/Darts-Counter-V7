@@ -179,16 +179,33 @@ function stripHeavy(value: any, depth = 0, seen?: WeakSet<object>): any {
 }
 
 function inferMode(rec: any, payload: any): CompactMatchMode {
-  const raw = String(
-    rec?.kind ?? rec?.mode ?? rec?.game?.mode ?? rec?.game ?? payload?.kind ?? payload?.mode ?? payload?.game?.mode ?? payload?.game ?? payload?.config?.mode ?? ""
-  ).toLowerCase();
-  if (raw.includes("x01") || raw.includes("301") || raw.includes("501")) return "x01";
+  const raw = [
+    rec?.kind,
+    rec?.mode,
+    payload?.kind,
+    payload?.mode,
+    rec?.summary?.kind,
+    rec?.summary?.mode,
+    rec?.summary?.title,
+    payload?.summary?.kind,
+    payload?.summary?.mode,
+    payload?.summary?.title,
+    rec?.game?.mode,
+    rec?.game,
+    payload?.game?.mode,
+    payload?.game,
+    payload?.config?.mode,
+    payload?.options?.mode,
+  ].filter((v) => v !== undefined && v !== null).map((v) => String(v).toLowerCase()).join(" ");
+
+  // Les modes dérivés de X01 (notamment LES 5 VIES) doivent être testés avant
+  // X01 : certains anciens identifiants commencent par `x01-...`.
+  if (raw.includes("five_lives") || raw.includes("five lives") || raw.includes("5 vies") || raw.includes("cinq vies")) return "five_lives";
+  if (raw.includes("loterie") || raw.includes("lottery")) return "loterie";
   if (raw.includes("cricket")) return "cricket";
   if (raw.includes("killer")) return "killer";
   if (raw.includes("golf")) return "golf";
   if (raw.includes("shanghai")) return "shanghai";
-  if (raw.includes("five_lives") || raw.includes("five lives") || raw.includes("5 vies") || raw.includes("cinq vies")) return "five_lives";
-  if (raw.includes("loterie") || raw.includes("lottery")) return "loterie";
   if (raw.includes("territ")) return "territories";
   if (raw.includes("scram")) return "scram";
   if (raw.includes("batard") || raw.includes("bastard")) return "batard";
@@ -198,6 +215,7 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("ping") || raw.includes("pong")) return "pingpong";
   if (raw.includes("dice") || raw.includes("yams") || raw.includes("yam")) return "dice";
   if (raw.includes("training") || raw.includes("entrain")) return "training";
+  if (raw.includes("x01") || raw.includes("301") || raw.includes("501")) return "x01";
   if (payload?.x01 || payload?.startScore || payload?.config?.startScore) return "x01";
   return "unknown";
 }
@@ -244,9 +262,45 @@ function collectPlayers(rec: any, payload: any): any[] {
   // X01 V3 sauvegarde souvent les stats sous summary.players = { [playerId]: stats }.
   // L'ancien compacteur ignorait cette map et ne gardait que rec.players => stats à 0 en détail historique.
   const sources = [
-    rec?.players, rec?.summary?.players, payload?.players, payload?.state?.players, payload?.summary?.players,
-    payload?.stats?.players, payload?.result?.players, payload?.match?.players, payload?.config?.players, payload?.cfg?.players,
-    payload?.teams, payload?.state?.teams, payload?.summary?.teams
+    // Descripteurs simples d'abord, puis statistiques riches ensuite : pushOne()
+    // fusionne par id et les dernières sources complètent/écrasent les champs.
+    rec?.players,
+    rec?.summary?.players,
+    payload?.players,
+    payload?.state?.players,
+    payload?.summary?.players,
+    payload?.result?.players,
+    payload?.match?.players,
+    payload?.config?.players,
+    payload?.cfg?.players,
+    payload?.teams,
+    payload?.state?.teams,
+    payload?.summary?.teams,
+
+    rec?.stats?.players,
+    rec?.perPlayer,
+    rec?.rankings,
+    rec?.entities,
+    rec?.standings,
+    rec?.detailedByPlayer,
+    rec?.summary?.perPlayer,
+    rec?.summary?.rankings,
+    rec?.summary?.entities,
+    rec?.summary?.standings,
+    rec?.summary?.detailedByPlayer,
+    payload?.finalPlayers,
+    payload?.stats?.players,
+    payload?.statsIndex?.players,
+    payload?.perPlayer,
+    payload?.rankings,
+    payload?.entities,
+    payload?.standings,
+    payload?.detailedByPlayer,
+    payload?.summary?.perPlayer,
+    payload?.summary?.rankings,
+    payload?.summary?.entities,
+    payload?.summary?.standings,
+    payload?.summary?.detailedByPlayer,
   ];
   const byId = new Map<string, any>();
   const pushOne = (row: any, forcedId?: string) => {
@@ -360,6 +414,43 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
   if (mode === "x01") {
     const legs = payload.legs ?? payload.sets ?? payload.legResults;
     if (legs) out.l = stripHeavy(legs);
+  }
+
+  // LES 5 VIES : conserver un journal compact permettant de reconstruire les KPI
+  // même si un snapshot futur ne garde plus le payload détaillé.
+  if (mode === "five_lives") {
+    const events = payload.visitHistory ?? payload.events;
+    if (Array.isArray(events) && events.length) {
+      out.fe = events.slice(-1200).map((e: any) => {
+        if (!e || typeof e !== "object") return e;
+        const pid = e.playerId ?? e.profileId ?? e.id ?? e.pid;
+        const darts = Array.isArray(e.darts)
+          ? e.darts.map((d: any) => {
+              if (typeof d === "string") return d;
+              const value = Number(d?.v ?? d?.value ?? d?.segment ?? 0);
+              const mult = Number(d?.mult ?? d?.multiplier ?? 1);
+              if (!value) return "MISS";
+              if (value === 25) return mult === 2 ? "DBULL" : "BULL";
+              return `${mult === 3 ? "T" : mult === 2 ? "D" : "S"}${value}`;
+            })
+          : [];
+        return {
+          ...(pid != null ? { p: indexOf(pid) } : {}),
+          ...(e.score != null ? { sc: toNum(e.score) ?? e.score } : {}),
+          ...(e.target != null ? { tar: toNum(e.target) ?? e.target } : {}),
+          ...(e.required != null ? { req: toNum(e.required) ?? e.required } : {}),
+          ...(e.margin != null ? { mar: toNum(e.margin) ?? e.margin } : {}),
+          ...(e.success != null ? { ok: !!e.success } : {}),
+          ...(e.openingVisit != null ? { op: !!e.openingVisit } : {}),
+          ...(e.lifeLost != null ? { lost: !!e.lifeLost } : {}),
+          ...(e.livesBefore != null ? { lb: toNum(e.livesBefore) ?? e.livesBefore } : {}),
+          ...(e.livesAfter != null ? { la: toNum(e.livesAfter) ?? e.livesAfter } : {}),
+          ...(darts.length ? { ds: darts } : {}),
+          ...(e.inputMethod ? { im: String(e.inputMethod).slice(0, 24) } : {}),
+          ...(e.at != null ? { at: toNum(e.at) ?? e.at } : {}),
+        };
+      });
+    }
   }
 
   // Cricket: conserver le journal fléchette par fléchette.

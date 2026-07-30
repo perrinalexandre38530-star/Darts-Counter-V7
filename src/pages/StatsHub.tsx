@@ -1141,11 +1141,64 @@ function useHistoryAPI(): SavedMatch[] {
       const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
-        const hasPayload = !!(r as any)?.payload;
-        if (hasPayload) continue;
-
         const mode = classifyRecordMode(r);
         if (!NEED.has(mode)) continue;
+
+        const payload: any = (r as any)?.payload;
+        const asRows = (src: any): any[] => Array.isArray(src)
+          ? src
+          : src && typeof src === "object"
+            ? Object.values(src)
+            : [];
+        const playerPools = [
+          payload?.stats?.players,
+          payload?.statsIndex?.players,
+          payload?.finalPlayers,
+          payload?.summary?.perPlayer,
+          payload?.summary?.entities,
+          payload?.summary?.standings,
+          payload?.summary?.rankings,
+          payload?.summary?.detailedByPlayer,
+          payload?.players,
+        ].flatMap(asRows);
+        const hasAnyNumber = (row: any, keys: string[]) => keys.some((key) => {
+          const value = row?.[key];
+          return value !== undefined && value !== null && Number.isFinite(Number(value));
+        });
+        const compact = payload?.compact ?? (r as any)?.compact ?? null;
+        const compactRows = Array.isArray(compact?.ps) ? compact.ps : [];
+        const compactHasPrefix = (prefixes: string[]) => compactRows.some((row: any) => {
+          const bags = [row?.n, row?.h];
+          return bags.some((bag: any) => bag && typeof bag === "object" && Object.keys(bag).some((key) => prefixes.some((prefix) => String(key).startsWith(prefix))));
+        });
+        const hasEventArray = (candidates: any[]) => candidates.some((candidate) => Array.isArray(candidate) && candidate.length > 0);
+
+        let hasDashboardPayload = !!payload;
+        if (mode === "five_lives") {
+          hasDashboardPayload =
+            playerPools.some((row: any) => hasAnyNumber(row, [
+              "visits", "targetsFaced", "successfulVisits", "failedVisits", "livesLost",
+              "dartsThrown", "totalScore", "bestVisit", "bestMargin", "singles", "doubles", "triples",
+            ])) ||
+            hasEventArray([payload?.visitHistory, payload?.events]) ||
+            compactHasPrefix(["fl_"]);
+        } else if (mode === "loterie") {
+          hasDashboardPayload =
+            playerPools.some((row: any) => hasAnyNumber(row, [
+              "cellsRevealed", "visits", "successfulVisits", "emptyVisits", "dartsThrown",
+              "multiHits", "maxCellsInVisit", "bestStreak", "totalVolleyScore", "maxVolley",
+              "cardsCompleted", "bestCardProgress", "singles", "doubles", "triples", "bulls", "dbulls",
+            ])) ||
+            compactHasPrefix(["lo_"]);
+        } else if (mode === "cricket") {
+          hasDashboardPayload =
+            playerPools.some((row: any) => hasAnyNumber(row, [
+              "marksTotal", "totalMarks", "dartsThrown", "hitCount", "score", "points",
+            ]) || Array.isArray(row?.hits) || !!row?.hitSummary || !!row?.legStats || !!row?.cricketStats) ||
+            hasEventArray([payload?.cricketEvents, payload?.cricketDartLog, payload?.dartLog]) ||
+            compactHasPrefix(["cr_", "mk_"]);
+        }
+        if (hasDashboardPayload) continue;
 
         const id = (r as any)?.id;
         if (typeof id === "string" && id) toHydrate.push(id);
@@ -6423,6 +6476,8 @@ type ModeDashboardCard = {
   bestStreak?: number;
   totalVolleyScore?: number;
   maxVolley?: number;
+  statsRecordedMatches?: number;
+  ringRecordedMatches?: number;
   clockCompleted?: number;
   clockTotalTimeMs?: number;
   clockBestTimeMs?: number;
@@ -6621,20 +6676,30 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   };
   const findP = (r: any) => {
     const pools = [
+      // Sources statistiques riches d'abord. Les tableaux `players` peuvent ne
+      // contenir que id/nom/avatar alors que perPlayer/rankings porte tous les KPI.
       r?.payload?.stats?.players,
-      r?.payload?.players,
-      r?.payload?.summary?.players,
+      r?.payload?.statsIndex?.players,
+      r?.payload?.finalPlayers,
       r?.payload?.summary?.perPlayer,
+      r?.payload?.summary?.entities,
+      r?.payload?.summary?.standings,
       r?.payload?.summary?.rankings,
-      r?.payload?.summary?.scores,
-      r?.summary?.players,
+      r?.payload?.summary?.detailedByPlayer,
       r?.summary?.perPlayer,
+      r?.summary?.entities,
+      r?.summary?.standings,
       r?.summary?.rankings,
-      r?.summary?.scores,
+      r?.summary?.detailedByPlayer,
       r?.payload?.playerStats,
       r?.summary?.playerStats,
       r?.payload?.state?.statsByPlayer,
       r?.payload?.state?.statsByPlayerById,
+      r?.payload?.players,
+      r?.payload?.summary?.players,
+      r?.summary?.players,
+      r?.payload?.summary?.scores,
+      r?.summary?.scores,
       r?.players,
     ];
     for (const src of pools) {
@@ -6983,6 +7048,8 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       bestStreak: 0,
       totalVolleyScore: 0,
       maxVolley: 0,
+      statsRecordedMatches: 0,
+      ringRecordedMatches: 0,
       clockCompleted: 0,
       clockTotalTimeMs: 0,
       clockBestTimeMs: 0,
@@ -6994,8 +7061,23 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     } as any);
     const pl: any = findP(r) || {};
     const stats: any = pl?.special || pl?.stats || pl;
-    const modeStatsPlayer: any = findPlayerIn(r?.payload?.stats?.players) || {};
-    const payloadPlayer: any = findPlayerIn(r?.payload?.players) || {};
+    const modeStatsPlayer: any =
+      findPlayerIn(r?.payload?.stats?.players) ||
+      findPlayerIn(r?.payload?.statsIndex?.players) ||
+      {};
+    const payloadPlayer: any =
+      findPlayerIn(r?.payload?.summary?.perPlayer) ||
+      findPlayerIn(r?.payload?.summary?.entities) ||
+      findPlayerIn(r?.payload?.summary?.standings) ||
+      findPlayerIn(r?.payload?.summary?.rankings) ||
+      findPlayerIn(r?.payload?.summary?.detailedByPlayer) ||
+      findPlayerIn(r?.payload?.finalPlayers) ||
+      findPlayerIn(r?.payload?.players) ||
+      findPlayerIn(r?.summary?.perPlayer) ||
+      findPlayerIn(r?.summary?.entities) ||
+      findPlayerIn(r?.summary?.standings) ||
+      findPlayerIn(r?.summary?.rankings) ||
+      {};
     const summaryScorePlayer: any = findPlayerIn(r?.summary?.scores) || findPlayerIn(r?.payload?.summary?.scores) || {};
     const summaryRankingPlayer: any = findPlayerIn(r?.summary?.rankings) || findPlayerIn(r?.payload?.summary?.rankings) || {};
     const golfPlayerStats: any = findPlayerIn(r?.summary?.playerStats) || findPlayerIn(r?.payload?.playerStats) || findPlayerIn(r?.payload?.state?.statsByPlayerById) || {};
@@ -7174,21 +7256,54 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     }
 
     if (mode === "five_lives") {
-      const fl = modeStatsPlayer && Object.keys(modeStatsPlayer).length
-        ? modeStatsPlayer
-        : payloadPlayer && Object.keys(payloadPlayer).length
-          ? payloadPlayer
-          : summaryRankingPlayer && Object.keys(summaryRankingPlayer).length
-            ? summaryRankingPlayer
-            : pl;
+      const fl =
+        findPlayerIn(r?.payload?.summary?.perPlayer) ||
+        findPlayerIn(r?.payload?.summary?.rankings) ||
+        findPlayerIn(r?.payload?.summary?.detailedByPlayer) ||
+        findPlayerIn(r?.payload?.finalPlayers) ||
+        findPlayerIn(r?.payload?.stats?.players) ||
+        findPlayerIn(r?.payload?.statsIndex?.players) ||
+        (modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : null) ||
+        (payloadPlayer && Object.keys(payloadPlayer).length ? payloadPlayer : null) ||
+        (summaryRankingPlayer && Object.keys(summaryRankingPlayer).length ? summaryRankingPlayer : null) ||
+        pl || {};
       const flCompact = readCompactStatsPlayer(r as any, pid);
       const cget = (...keys: string[]) => flCompact?.get?.(...keys) || 0;
+      const compactFiveLivesEvents = (() => {
+        const compact = (r as any)?.payload?.compact ?? (r as any)?.compact ?? null;
+        const rows = Array.isArray(compact?.d?.fe) ? compact.d.fe : [];
+        if (!rows.length || !Array.isArray(compact?.p)) return [];
+        const ids = compact.p.map((x: any) => normId(x));
+        const idx = ids.findIndex((id: string) => statHubIdMatches(id, pid));
+        if (idx < 0) return [];
+        return rows
+          .filter((ev: any) => Number(ev?.p) === idx)
+          .map((ev: any) => ({
+            playerId: pid,
+            score: n(ev?.sc),
+            target: ev?.tar ?? null,
+            required: ev?.req ?? null,
+            margin: ev?.mar ?? null,
+            success: ev?.ok === true,
+            openingVisit: ev?.op === true,
+            lifeLost: ev?.lost === true,
+            livesBefore: ev?.lb,
+            livesAfter: ev?.la,
+            darts: Array.isArray(ev?.ds) ? ev.ds : [],
+            inputMethod: ev?.im,
+          }));
+      })();
       const eventSource = [
         r?.payload?.visitHistory,
         r?.payload?.events,
+        r?.resume?.visitHistory,
+        r?.resume?.visitsHistory,
+        r?.payload?.resume?.visitHistory,
+        r?.payload?.resume?.visitsHistory,
         r?.summary?.visitHistory,
         r?.summary?.events,
-      ].find((x: any) => Array.isArray(x)) as any[] | undefined;
+        compactFiveLivesEvents,
+      ].find((x: any) => Array.isArray(x) && x.length) as any[] | undefined;
       const mineEvents = (eventSource || []).filter((ev: any) => {
         const eventPid = normId(ev?.playerId ?? ev?.profileId ?? ev?.id);
         const eventName = statHubNormName(ev?.playerName ?? ev?.name);
@@ -7196,18 +7311,31 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       });
       const eventDarts = mineEvents.flatMap((ev: any) => Array.isArray(ev?.darts) ? ev.darts : []);
       const flCounts = readRingCounts(eventDarts.length ? eventDarts : null);
-      const visits = pickNum(fl?.visits, fl?.turns, fl?.rounds, cget("fl_vis", "vis"), mineEvents.length);
+      const visits = pickNum(fl?.visits, fl?.turns, fl?.rounds, cget("fl_vis", "vis", "visits"), mineEvents.length);
       const targetsFaced = pickNum(fl?.targetsFaced, cget("fl_tar", "targetsfaced"), mineEvents.filter((ev: any) => !ev?.openingVisit).length);
       const successfulVisits = pickNum(fl?.successfulVisits, fl?.validHits, fl?.successes, cget("fl_suc", "successfulvisits"), mineEvents.filter((ev: any) => !ev?.openingVisit && ev?.success).length);
       const failedVisits = pickNum(fl?.failedVisits, fl?.fails, fl?.livesLost, cget("fl_fail", "failedvisits", "liveslost"), mineEvents.filter((ev: any) => ev?.lifeLost || (!ev?.openingVisit && ev?.success === false)).length);
       const scoreOnlyVisits = pickNum(fl?.scoreOnlyVisits, cget("fl_so", "scoreonlyvisits"), mineEvents.filter((ev: any) => String(ev?.inputMethod || "") === "visit_score").length);
 
-      darts = pickNum(darts, fl?.dartsThrown, fl?.darts, fl?.totalThrows, cget("fl_dt", "dt"), visits ? visits * 3 : 0);
+      // Une saisie par score ne permet pas de connaître le nombre ni la bague des fléchettes.
+      // On n'invente donc plus 3 darts par volée : les impacts restent explicitement indisponibles.
+      darts = pickNum(darts, fl?.dartsThrown, fl?.darts, fl?.totalThrows, cget("fl_dt", "dt", "dartsthrown"), eventDarts.length);
       hits = pickNum(hits, fl?.hitsTotal, cget("fl_hit", "hit"), flCounts.s + flCounts.d + flCounts.t + flCounts.bull + flCounts.dbull);
       // Ne pas transformer les volées saisies directement en 3 MISS : dans ce cas
       // la bague exacte n'est simplement pas connue.
       miss = pickNum(fl?.misses, cget("fl_mis", "mis", "misses"), flCounts.miss, scoreOnlyVisits <= 0 && darts > 0 ? Math.max(0, darts - hits) : 0);
       score = pickNum(score, fl?.totalScore, fl?.score, fl?.points, cget("fl_pts", "sc", "pts", "totalscore"), mineEvents.reduce((sum: number, ev: any) => sum + n(ev?.score), 0));
+
+      const hasFiveLivesStats = Boolean(
+        mineEvents.length || visits || targetsFaced || successfulVisits || failedVisits || score || darts ||
+        n(fl?.bestVisit) || n(fl?.bestMargin) || cget("fl_vis", "fl_pts", "fl_best", "fl_suc", "fl_fail")
+      );
+      if (hasFiveLivesStats) a.statsRecordedMatches = Number(a.statsRecordedMatches || 0) + 1;
+      if (
+        eventDarts.length || flCounts.darts || n(fl?.singles) || n(fl?.doubles) || n(fl?.triples) ||
+        n(fl?.bulls) || n(fl?.dbulls) || n(fl?.misses) ||
+        cget("fl_s", "fl_d", "fl_t", "fl_b", "fl_db", "fl_mis")
+      ) a.ringRecordedMatches = Number(a.ringRecordedMatches || 0) + 1;
 
       a.visits = Number(a.visits || 0) + visits;
       a.targetsFaced = Number(a.targetsFaced || 0) + targetsFaced;
@@ -7218,9 +7346,9 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       a.scoreOnlyVisits = Number(a.scoreOnlyVisits || 0) + scoreOnlyVisits;
       a.bestRound = Math.max(Number(a.bestRound || 0), n(fl?.bestVisit), cget("fl_best", "bv", "bestvisit"), ...mineEvents.map((ev: any) => n(ev?.score)), 0);
 
-      a.simpleHits = Number(a.simpleHits || 0) + pickNum(fl?.singles, cget("fl_s"), flCounts.s);
-      a.doubleHits = Number(a.doubleHits || 0) + pickNum(fl?.doubles, cget("fl_d"), flCounts.d);
-      a.tripleHits = Number(a.tripleHits || 0) + pickNum(fl?.triples, cget("fl_t"), flCounts.t);
+      a.simpleHits = Number(a.simpleHits || 0) + pickNum(fl?.singles, cget("fl_s", "singles"), flCounts.s);
+      a.doubleHits = Number(a.doubleHits || 0) + pickNum(fl?.doubles, cget("fl_d", "doubles"), flCounts.d);
+      a.tripleHits = Number(a.tripleHits || 0) + pickNum(fl?.triples, cget("fl_t", "triples"), flCounts.t);
       a.bullHits = Number(a.bullHits || 0) + pickNum(fl?.bulls, cget("fl_b", "bulls"), flCounts.bull);
       a.dbullHits = Number(a.dbullHits || 0) + pickNum(fl?.dbulls, cget("fl_db", "dbulls"), flCounts.dbull);
       a.missHits = Number(a.missHits || 0) + pickNum(fl?.misses, cget("fl_mis", "mis", "misses"), flCounts.miss);
@@ -7248,21 +7376,26 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     }
 
     if (mode === "loterie") {
-      const lo = modeStatsPlayer && Object.keys(modeStatsPlayer).length
-        ? modeStatsPlayer
-        : payloadPlayer && Object.keys(payloadPlayer).length
-          ? payloadPlayer
-          : pl;
+      const lo =
+        findPlayerIn(r?.payload?.summary?.perPlayer) ||
+        findPlayerIn(r?.payload?.summary?.entities) ||
+        findPlayerIn(r?.payload?.summary?.standings) ||
+        findPlayerIn(r?.payload?.summary?.rankings) ||
+        findPlayerIn(r?.payload?.stats?.players) ||
+        findPlayerIn(r?.payload?.statsIndex?.players) ||
+        (modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : null) ||
+        (payloadPlayer && Object.keys(payloadPlayer).length ? payloadPlayer : null) ||
+        pl || {};
       const loCompact = readCompactStatsPlayer(r as any, pid);
       const lget = (...keys: string[]) => loCompact?.get?.(...keys) || 0;
-      const visits = pickNum(lo?.visits, lo?.turns, lo?.rounds, lget("lo_vis", "vis"));
+      const visits = pickNum(lo?.visits, lo?.turns, lo?.rounds, lget("lo_vis", "vis", "visits"));
       const successfulVisits = pickNum(lo?.successfulVisits, lo?.hitCount, lo?.hits, lget("lo_suc", "successfulvisits", "hit"));
       const emptyVisits = pickNum(lo?.emptyVisits, lo?.misses, lget("lo_emp", "emptyvisits", "mis"), visits > 0 ? Math.max(0, visits - successfulVisits) : 0);
       const cellsRevealed = pickNum(lo?.cellsRevealed, lo?.score, lo?.points, lget("lo_cells", "sc", "pts", "cellsrevealed"));
       const loCounts = readRingCounts({
-        s: pickNum(lo?.singles, lget("lo_s")),
-        d: pickNum(lo?.doubles, lget("lo_d")),
-        t: pickNum(lo?.triples, lget("lo_t")),
+        s: pickNum(lo?.singles, lget("lo_s", "singles")),
+        d: pickNum(lo?.doubles, lget("lo_d", "doubles")),
+        t: pickNum(lo?.triples, lget("lo_t", "triples")),
         bull: pickNum(lo?.bulls, lget("lo_b", "bulls")),
         dbull: pickNum(lo?.dbulls, lget("lo_db", "dbulls")),
         miss: pickNum(lo?.dartMisses, lget("lo_mis", "dartmisses", "mis")),
@@ -7276,19 +7409,28 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       miss = pickNum(emptyVisits, miss);
       score = pickNum(cellsRevealed, score, lo?.bestCardProgress);
 
+      const hasLoterieStats = Boolean(
+        visits || cellsRevealed || darts || n(lo?.bestCardProgress) || n(lo?.cardsCompleted) ||
+        n(lo?.totalVolleyScore) || n(lo?.maxVolley) || lget("lo_vis", "lo_cells", "lo_bcp", "lo_done")
+      );
+      if (hasLoterieStats) a.statsRecordedMatches = Number(a.statsRecordedMatches || 0) + 1;
+      if (loCounts.darts || loCounts.s || loCounts.d || loCounts.t || loCounts.bull || loCounts.dbull || loCounts.miss) {
+        a.ringRecordedMatches = Number(a.ringRecordedMatches || 0) + 1;
+      }
+
       a.visits = Number(a.visits || 0) + visits;
       a.successfulVisits = Number(a.successfulVisits || 0) + successfulVisits;
       a.failedVisits = Number(a.failedVisits || 0) + emptyVisits;
       a.captures = Number(a.captures || 0) + cellsRevealed;
       a.extra = Number(a.extra || 0) + pickNum(lo?.multiHits, lget("lo_multi", "multihits"));
-      a.cardsPlayed = Number(a.cardsPlayed || 0) + pickNum(lo?.cardsCount, lo?.cardsPlayed, lget("lo_cards"), Array.isArray(lo?.cards) ? lo.cards.length : 0);
-      a.cardsCompleted = Number(a.cardsCompleted || 0) + pickNum(lo?.cardsCompleted, lget("lo_done"));
+      a.cardsPlayed = Number(a.cardsPlayed || 0) + pickNum(lo?.cardsCount, lo?.cardsPlayed, lget("lo_cards", "cardscount", "cardsplayed"), Array.isArray(lo?.cards) ? lo.cards.length : 0);
+      a.cardsCompleted = Number(a.cardsCompleted || 0) + pickNum(lo?.cardsCompleted, lget("lo_done", "cardscompleted"));
       a.bestCardProgress = Math.max(Number(a.bestCardProgress || 0), n(lo?.bestCardProgress), lget("lo_bcp", "bestcardprogress"));
-      a.cellsPerCard = Math.max(Number(a.cellsPerCard || 0), n(lo?.cellsPerCard), lget("lo_cpc"));
+      a.cellsPerCard = Math.max(Number(a.cellsPerCard || 0), n(lo?.cellsPerCard), lget("lo_cpc", "cellspercard"));
       a.maxCellsInVisit = Math.max(Number(a.maxCellsInVisit || 0), n(lo?.maxCellsInVisit), lget("lo_maxc", "maxcellsinvisit"));
       a.bestStreak = Math.max(Number(a.bestStreak || 0), n(lo?.bestStreak), lget("lo_str", "beststreak"));
       a.totalVolleyScore = Number(a.totalVolleyScore || 0) + pickNum(lo?.totalVolleyScore, lget("lo_tv", "totalvolleyscore"), n(lo?.averageVolley) * visits);
-      a.maxVolley = Math.max(Number(a.maxVolley || 0), n(lo?.maxVolley), lget("lo_maxv"));
+      a.maxVolley = Math.max(Number(a.maxVolley || 0), n(lo?.maxVolley), lget("lo_maxv", "maxvolley"));
       a.bestRound = Math.max(Number(a.bestRound || 0), n(lo?.maxCellsInVisit), lget("lo_maxc", "maxcellsinvisit"));
       a.best = Math.max(Number(a.best || 0), n(lo?.bestCardProgress), lget("lo_bcp", "bestcardprogress"));
 
@@ -7608,22 +7750,25 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           const targets = Number(a.targetsFaced || 0);
           const success = Number(a.successfulVisits || 0);
           const failed = Number(a.failedVisits || 0);
+          const statsRecorded = Number(a.statsRecordedMatches || 0) > 0;
+          const ringsRecorded = Number(a.ringRecordedMatches || 0) > 0;
           const ringSaved = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
+          const unavailable = "non enregistré";
           return [
             { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
             { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
-            { label: "Points", value: fmtStatValue(a.points), tone: "gold" },
-            { label: "Moy./volée", value: visits ? fmtStatValue(a.points / visits) : "—", tone: "green" },
-            { label: "Best volée", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
-            { label: "Volées", value: fmtStatValue(visits), tone: "gold" },
-            { label: "Réussite", value: targets ? fmtStatValue((success / targets) * 100, "%") : "—", tone: "green" },
-            { label: "Échecs", value: fmtStatValue(failed), tone: "red" },
-            { label: "Vies perdues", value: fmtStatValue(a.livesLost || 0), tone: "red" },
-            { label: "Hit rate", value: ringSaved ? fmtStatValue(((Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0)) / Math.max(1, ringSaved)) * 100, "%") : "—", tone: "green" },
-            { label: "S / D / T", value: ringSaved ? `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}` : "—", tone: "blue" },
-            { label: "Bull + DBull", value: ringSaved ? fmtStatValue(Number(a.bullHits || 0) + Number(a.dbullHits || 0)) : "—", tone: "blue" },
-            { label: "Best marge", value: Number(a.bestMargin || 0) > 0 ? `+${fmtStatValue(a.bestMargin || 0)}` : "—", tone: "blue" },
-            { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
+            { label: "Points", value: statsRecorded ? fmtStatValue(a.points) : unavailable, tone: "gold" },
+            { label: "Moy./volée", value: statsRecorded && visits ? fmtStatValue(a.points / visits) : unavailable, tone: "green" },
+            { label: "Best volée", value: statsRecorded ? fmtStatValue(a.bestRound || a.best) : unavailable, tone: "blue" },
+            { label: "Volées", value: statsRecorded ? fmtStatValue(visits) : unavailable, tone: "gold" },
+            { label: "Réussite", value: statsRecorded && targets ? fmtStatValue((success / targets) * 100, "%") : unavailable, tone: "green" },
+            { label: "Échecs", value: statsRecorded ? fmtStatValue(failed) : unavailable, tone: "red" },
+            { label: "Vies perdues", value: statsRecorded ? fmtStatValue(a.livesLost || 0) : unavailable, tone: "red" },
+            { label: "Hit rate", value: ringsRecorded && ringSaved ? fmtStatValue(((Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0)) / Math.max(1, ringSaved)) * 100, "%") : unavailable, tone: "green" },
+            { label: "S / D / T", value: ringsRecorded ? `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}` : unavailable, tone: "blue" },
+            { label: "Bull + DBull", value: ringsRecorded ? fmtStatValue(Number(a.bullHits || 0) + Number(a.dbullHits || 0)) : unavailable, tone: "blue" },
+            { label: "Best marge", value: statsRecorded ? `+${fmtStatValue(a.bestMargin || 0)}` : unavailable, tone: "blue" },
+            { label: "Numéro favori", value: ringsRecorded && favNumber ? `${favNumber} (${favHits})` : unavailable, tone: "gold" },
           ];
         })()
       : a.key === "loterie"

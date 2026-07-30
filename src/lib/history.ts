@@ -2711,6 +2711,51 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       String(safe.kind || "").toLowerCase() === "cricket" ||
       String((payloadEffective as any)?.mode || "").toLowerCase().includes("cricket");
 
+    const protectedStatsMode = (() => {
+      const raw = [
+        safe.kind,
+        (payloadEffective as any)?.kind,
+        (payloadEffective as any)?.mode,
+        (payloadEffective as any)?.summary?.kind,
+        (payloadEffective as any)?.summary?.mode,
+      ].filter(Boolean).map((v: any) => String(v).toLowerCase()).join(" ");
+      if (raw.includes("five_lives") || raw.includes("five lives") || raw.includes("5 vies")) return "five_lives";
+      if (raw.includes("loterie") || raw.includes("lottery")) return "loterie";
+      return "";
+    })();
+
+    const modePlayerLooksRich = (p: any, mode: string) => !!(
+      p && typeof p === "object" && (
+        mode === "five_lives"
+          ? ["visits", "targetsFaced", "successfulVisits", "failedVisits", "livesLost", "dartsThrown", "totalScore", "bestVisit", "bestMargin", "singles", "doubles", "triples"].some((k) => p?.[k] !== undefined)
+          : mode === "loterie"
+          ? ["cellsRevealed", "visits", "successfulVisits", "emptyVisits", "dartsThrown", "multiHits", "maxCellsInVisit", "bestStreak", "totalVolleyScore", "maxVolley", "cardsCompleted", "bestCardProgress", "singles", "doubles", "triples"].some((k) => p?.[k] !== undefined)
+          : false
+      )
+    );
+    const rowsOf = (src: any): any[] => Array.isArray(src)
+      ? src
+      : src && typeof src === "object"
+      ? Object.values(src)
+      : [];
+    const modePayloadLooksRich = (payload: any, mode: string) => {
+      if (!payload || typeof payload !== "object" || !mode) return false;
+      const playerRows = [
+        payload?.players,
+        payload?.finalPlayers,
+        payload?.stats?.players,
+        payload?.statsIndex?.players,
+        payload?.summary?.perPlayer,
+        payload?.summary?.entities,
+        payload?.summary?.standings,
+        payload?.summary?.rankings,
+        payload?.summary?.detailedByPlayer,
+      ].flatMap(rowsOf);
+      if (playerRows.some((row: any) => modePlayerLooksRich(row, mode))) return true;
+      if (mode === "five_lives") return (Array.isArray(payload?.visitHistory) && payload.visitHistory.length > 0) || (Array.isArray(payload?.events) && payload.events.length > 0);
+      return false;
+    };
+
     const cricketPlayerLooksRich = (p: any) => !!(
       p && typeof p === "object" && (
         (Array.isArray(p.hits) && p.hits.length > 0) ||
@@ -2740,7 +2785,13 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       !!prevPayloadObj &&
       cricketPayloadLooksRich(prevPayloadObj) &&
       !cricketPayloadLooksRich(payloadEffective);
-    const needsMerge = needsX01Merge || needsCricketMerge;
+    const needsModeStatsMerge =
+      !!payloadEffective &&
+      !!protectedStatsMode &&
+      !!prevPayloadObj &&
+      modePayloadLooksRich(prevPayloadObj, protectedStatsMode) &&
+      !modePayloadLooksRich(payloadEffective, protectedStatsMode);
+    const needsMerge = needsX01Merge || needsCricketMerge || needsModeStatsMerge;
 
     try {
       // Correctif critique : payloadCompressed vit dans STORE_DETAILS, jamais dans STORE_HEADERS.
@@ -2789,6 +2840,39 @@ export async function upsert(rec: SavedMatch): Promise<void> {
             merged.cricketDartLog = (prevPayloadObj as any).cricketDartLog;
           }
           if (!incoming?.stats && (prevPayloadObj as any)?.stats) merged.stats = (prevPayloadObj as any).stats;
+        }
+
+        if (needsModeStatsMerge) {
+          const prev: any = prevPayloadObj as any;
+          for (const key of ["players", "finalPlayers", "visitHistory", "events", "stats", "statsIndex"] as const) {
+            const incomingValue = incoming?.[key];
+            const previousValue = prev?.[key];
+            const incomingUseful = Array.isArray(incomingValue)
+              ? incomingValue.length > 0
+              : incomingValue && typeof incomingValue === "object" && Object.keys(incomingValue).length > 0;
+            const isPlayerCollection = key === "players" || key === "finalPlayers";
+            const incomingHasRichPlayers = isPlayerCollection
+              ? rowsOf(incomingValue).some((row: any) => modePlayerLooksRich(row, protectedStatsMode))
+              : true;
+            // Un tableau id/nom/avatar n'est pas une source statistique utile :
+            // conserver l'ancienne version riche au lieu de l'écraser.
+            if ((!incomingUseful || (isPlayerCollection && !incomingHasRichPlayers)) && previousValue != null) {
+              merged[key] = previousValue;
+            }
+          }
+          if (prev?.summary && typeof prev.summary === "object") {
+            const incomingSummary = incoming?.summary && typeof incoming.summary === "object" ? incoming.summary : {};
+            merged.summary = { ...prev.summary, ...incomingSummary };
+            for (const key of ["perPlayer", "entities", "standings", "rankings", "detailedByPlayer"] as const) {
+              const incomingValue = incomingSummary?.[key];
+              const previousValue = prev.summary?.[key];
+              const incomingUseful = Array.isArray(incomingValue)
+                ? incomingValue.length > 0
+                : incomingValue && typeof incomingValue === "object" && Object.keys(incomingValue).length > 0;
+              const incomingHasRichPlayers = rowsOf(incomingValue).some((row: any) => modePlayerLooksRich(row, protectedStatsMode));
+              if ((!incomingUseful || !incomingHasRichPlayers) && previousValue != null) merged.summary[key] = previousValue;
+            }
+          }
         }
 
         payloadEffective = stripAvatarDataFromPayload(merged);

@@ -108,46 +108,76 @@ function play(state: BaseballState, darts: any[]): BaseballState {
   assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
 }
 
-// 6) Variante Attaque/Défense : 6 en attaque - 5 en défense = 1 point.
+// 6) Variante Attaque/Défense : la cible de la manche est obligatoire pour S/D/T.
+//    Cible 20 : A attaque T20 + S1 + D5 = 3 ; B défend D20 + MISS = 2 ; A marque 1.
+//    Puis B attaque et A défend encore sur 20 avant seulement de changer de cible.
 {
   let state = BaseballEngine.initGame(
     [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
     rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, bullTargetMode: "off" })
   );
+  state.target = 20;
+  state.targetSequence[0] = 20;
   assert.equal(state.duelPhase, "attack");
-  state = play(state, [T(5), S(8), D(13)]); // A attaque = 6
+  assert.equal(state.target, 20);
+
+  state = play(state, [T(20), S(1), D(5)]); // A attaque = 3
   assert.equal(state.duelPhase, "defense");
-  assert.equal(state.pendingAttackPower, 6);
-  state = play(state, [T(7), S(5), S(4)]); // B défend = 5 => A +1
+  assert.equal(state.pendingAttackPower, 3);
+  assert.equal(state.target, 20);
+  assert.equal(state.statsByPlayer.p1.targetHits, 1);
+  assert.equal(state.statsByPlayer.p1.wastedDarts, 2);
+
+  state = play(state, [D(20), MISS, T(20)]); // B défense = 2 ; T20 après MISS ignoré
   assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
   assert.equal(state.duelPhase, "attack");
-  state = play(state, [D(1), D(2), D(3)]); // B attaque = 6
-  state = play(state, [T(1), T(2), T(3)]); // A défend = 9 => B +0
+  assert.equal(state.duelPairIndex, 1);
+  assert.equal(state.target, 20);
+  assert.equal(state.statsByPlayer.p2.defensePower, 2);
+  assert.equal(state.statsByPlayer.p2.turnsLostOnMiss, 1);
+
+  state = play(state, [S(20), D(3), T(1)]); // B attaque = 1
+  assert.equal(state.pendingAttackPower, 1);
+  assert.equal(state.target, 20);
+  state = play(state, [S(20)]); // A défense = 1 => B +0
+
   assert.equal(state.finished, true);
   assert.equal(state.standings.find((row) => row.id === "p1")?.total, 1);
   assert.equal(state.standings.find((row) => row.id === "p2")?.total, 0);
-  assert.equal(state.statsByPlayer.p1.attackPower, 6);
-  assert.equal(state.statsByPlayer.p2.runsPrevented, 5);
+  assert.deepEqual(state.history.map((visit) => visit.target), [20, 20, 20, 20]);
+  assert.equal(state.statsByPlayer.p1.attackPower, 3);
+  assert.equal(state.statsByPlayer.p2.runsPrevented, 2);
 }
 
-// 7) Variante duel + BULL Défense : l'effet spécial ne s'applique que pendant le rôle DÉFENSE.
+// 7) La cible ne change qu'après que chacun a attaqué ET défendu sur la cible courante.
 {
   let state = BaseballEngine.initGame(
     [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
-    rules({ gameVariant: "attack_defense", innings: 2, extraInnings: false, bullTargetMode: "defense", bullBonusPoints: 4 })
+    rules({ gameVariant: "attack_defense", innings: 2, extraInnings: false, bullTargetMode: "off" })
   );
-  // Première paire : A attaque 6, B défend 5 => A prend 1 puis le BULL défensif ne peut pas enlever sous 0 avant résolution.
-  state = play(state, [T(5), S(8), D(13)]);
-  state = play(state, [T(7), S(5), BULL]); // puissance 7, donc aucun point A ; effet BULL sur A reste borné à 0
-  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 0);
-  // B attaque 6, A défend 0 => B prend 6.
-  state = play(state, [T(1), D(2), S(3)]);
-  state = play(state, [MISS]);
-  assert.equal(state.standings.find((row) => row.id === "p2")?.total, 6);
-  // Manche 2 : BULL défensif de B doit retirer 4 à A si A a marqué avant.
-  state = play(state, [T(1), T(2), T(3)]); // A attaque 9
-  state = play(state, [BULL]); // B défense puissance 3 + retire 0 à A avant attribution ; net A=6
-  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 6);
+  state.targetSequence[0] = 20;
+  state.targetSequence[1] = 5;
+  state.target = 20;
+
+  state = play(state, [S(20)]); // A attaque
+  state = play(state, [MISS]);  // B défend => A +1
+  state = play(state, [D(20)]); // B attaque
+  assert.equal(state.target, 20);
+  state = play(state, [S(20)]); // A défend => B +1 ; fin manche 1
+
+  assert.equal(state.inning, 2);
+  assert.equal(state.target, 5);
+  assert.equal(state.duelPhase, "attack");
+
+  state = play(state, [T(5), T(20)]); // A attaque = 3, T20 hors cible = 0
+  assert.equal(state.pendingAttackPower, 3);
+  state = play(state, [D(5)]); // B défend = 2 => A +1
+  state = play(state, [S(5)]); // B attaque = 1
+  state = play(state, [S(1)]); // A défense hors cible = 0 => B +1
+
+  assert.equal(state.finished, true);
+  assert.equal(state.standings.find((row) => row.id === "p1")?.total, 2);
+  assert.equal(state.standings.find((row) => row.id === "p2")?.total, 2);
 }
 
 // 8) Règle de 7e manche toujours compatible avec les nouvelles cibles aléatoires.
@@ -187,4 +217,113 @@ function play(state: BaseballState, darts: any[]): BaseballState {
   assert.equal(state.standings.find((row) => row.id === "B")?.total, 4);
 }
 
-console.log("[BASEBALL] 9 regression groups passed");
+
+// 10) Garde-fou duel individuel : impossible de lancer Attaque/Défense à plus de 2 joueurs.
+{
+  const state = BaseballEngine.initGame(
+    [{ id: "p1", name: "A" }, { id: "p2", name: "B" }, { id: "p3", name: "C" }],
+    rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, participantMode: "players" })
+  );
+  assert.equal(state.rules.gameVariant, "target");
+}
+
+// 11) Duel équipes 2v2 : toute l'équipe attaque d'abord, puis l'autre équipe défend le total cumulé.
+//     Ensuite les rôles s'inversent sur la même cible.
+{
+  let state = BaseballEngine.initGame(
+    [
+      { id: "a1", name: "A1" },
+      { id: "b1", name: "B1" },
+      { id: "a2", name: "A2" },
+      { id: "b2", name: "B2" },
+    ],
+    rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, participantMode: "teams", bullTargetMode: "off" }),
+    [
+      { id: "A", name: "Team A", playerIds: ["a1", "a2"] },
+      { id: "B", name: "Team B", playerIds: ["b1", "b2"] },
+    ]
+  );
+  state.target = 20;
+  state.targetSequence[0] = 20;
+
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "a1", defenderId: "b1", role: "attack" });
+  state = play(state, [T(20)]);          // A1 attaque 3
+  assert.equal(state.pendingAttackPower, 3);
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "a2", defenderId: "b2", role: "attack" });
+
+  state = play(state, [D(20)]);          // A2 attaque 2 => attaque équipe A = 5
+  assert.equal(state.pendingAttackPower, 5);
+  assert.equal(state.duelPhase, "defense");
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "a1", defenderId: "b1", role: "defense" });
+
+  state = play(state, [S(20)]);          // B1 défend 1 => reste 4
+  assert.equal(state.pendingAttackPower, 4);
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "a2", defenderId: "b2", role: "defense" });
+  state = play(state, [D(20)]);          // B2 défend 2 => Team A marque 2
+  assert.equal(state.standings.find((row) => row.id === "A")?.total, 2);
+  assert.equal(state.inningAdjustmentsByEntity.A[1], 2);
+
+  assert.equal(state.duelPhase, "attack");
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "b1", defenderId: "a1", role: "attack" });
+  state = play(state, [T(20)]);          // B1 attaque 3
+  state = play(state, [S(20)]);          // B2 attaque 1 => attaque B = 4
+  assert.equal(state.pendingAttackPower, 4);
+  assert.equal(state.duelPhase, "defense");
+
+  state = play(state, [D(20)]);          // A1 défend 2 => reste 2
+  state = play(state, [S(20)]);          // A2 défend 1 => Team B marque 1
+
+  assert.equal(state.finished, true);
+  assert.equal(state.standings.find((row) => row.id === "A")?.total, 2);
+  assert.equal(state.standings.find((row) => row.id === "B")?.total, 1);
+  assert.equal(state.inningAdjustmentsByEntity.B[1], 1);
+  assert.deepEqual(state.history.map((visit) => visit.playerId), ["a1", "a2", "b1", "b2", "b1", "b2", "a1", "a2"]);
+  assert.deepEqual(state.history.map((visit) => visit.target), [20, 20, 20, 20, 20, 20, 20, 20]);
+  for (const id of ["a1", "a2", "b1", "b2"]) {
+    assert.equal(state.statsByPlayer[id].attackVisits, 1);
+    assert.equal(state.statsByPlayer[id].defenseVisits, 1);
+  }
+}
+
+// 12) Duel équipes : si toute l'équipe attaquante fait 0, la défense adverse est sautée.
+{
+  let state = BaseballEngine.initGame(
+    [
+      { id: "a1", name: "A1" }, { id: "a2", name: "A2" },
+      { id: "b1", name: "B1" }, { id: "b2", name: "B2" },
+    ],
+    rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, participantMode: "teams", bullTargetMode: "off" }),
+    [
+      { id: "A", name: "Team A", playerIds: ["a1", "a2"] },
+      { id: "B", name: "Team B", playerIds: ["b1", "b2"] },
+    ]
+  );
+  state.target = 20;
+  state.targetSequence[0] = 20;
+  state = play(state, [MISS]); // A1 = 0
+  state = play(state, [S(1)]); // A2 hors cible = 0 => défense B sautée
+  assert.equal(state.duelPhase, "attack");
+  assert.deepEqual(BaseballEngine.getCurrentDuel(state), { attackerId: "b1", defenderId: "a1", role: "attack" });
+  assert.equal(state.inningAdjustmentsByEntity.A[1], 0);
+  assert.deepEqual(state.history.map((visit) => visit.playerId), ["a1", "a2"]);
+}
+
+// 13) Garde-fou duel équipes : Attaque/Défense refuse plus de 2 équipes.
+{
+  const state = BaseballEngine.initGame(
+    [
+      { id: "a1", name: "A1" },
+      { id: "b1", name: "B1" },
+      { id: "c1", name: "C1" },
+    ],
+    rules({ gameVariant: "attack_defense", innings: 1, extraInnings: false, participantMode: "teams" }),
+    [
+      { id: "A", name: "Team A", playerIds: ["a1"] },
+      { id: "B", name: "Team B", playerIds: ["b1"] },
+      { id: "C", name: "Team C", playerIds: ["c1"] },
+    ]
+  );
+  assert.equal(state.rules.gameVariant, "target");
+}
+
+console.log("[BASEBALL] 13 regression groups passed — team attack aggregate / defense aggregate");
