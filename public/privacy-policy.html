@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#05070c" />
+  <meta name="description" content="Politique de confidentialité de MULTISPORTS SCORING." />
+  <link rel="canonical" href="https://darts-counter-v7.pages.dev/privacy-policy.html" />
+  <link rel="icon" href="/app-512.png" />
+  <title>Politique de confidentialité — MULTISPORTS SCORING</title>
+  <style>
+    :root {
+      --bg: #030509;
+      --panel: rgba(10, 18, 30, 0.94);
+      --panel-2: rgba(14, 27, 45, 0.92);
+      --line: rgba(80, 226, 255, 0.28);
+      --cyan: #55e8ff;
+      --cyan-2: #16c7e8;
+      --gold: #f8c957;
+      --text: #eef8ff;
+      --muted: #a9bed0;
+      --ok: #47e59b;
+      --danger: #ff968e;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(22, 199, 232, 0.18), transparent 32rem),
+        radial-gradient(circle at 92% 8%, rgba(248, 201, 87, 0.10), transparent 30rem),
+        linear-gradient(180deg, #020306 0%, #07111d 48%, #020407 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    a { color: var(--cyan); }
+    a:hover { color: #a8f5ff; }
+
+    .shell {
+      width: min(960px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: linear-gradient(145deg, rgba(7, 16, 28, 0.98), rgba(10, 30, 48, 0.90));
+      box-shadow: var(--shadow), inset 0 0 40px rgba(85, 232, 255, 0.04);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -100px auto;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: rgba(85, 232, 255, 0.09);
+      filter: blur(2px);
+    }
+
+    .brand {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .brand img {
+      width: 82px;
+      height: 82px;
+      object-fit: contain;
+      border-radius: 50%;
+      filter: drop-shadow(0 0 16px rgba(85, 232, 255, 0.28));
+    }
+
+    h1, h2, h3 { margin: 0; line-height: 1.2; }
+    h1 { font-size: clamp(1.7rem, 4vw, 2.65rem); letter-spacing: 0.02em; }
+    h2 { margin-top: 2rem; font-size: 1.36rem; color: var(--cyan); }
+    h3 { margin-top: 1.25rem; font-size: 1.06rem; color: var(--gold); }
+
+    .eyebrow {
+      margin: 0 0 6px;
+      color: var(--gold);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.76rem;
+    }
+
+    .meta {
+      position: relative;
+      z-index: 1;
+      margin: 18px 0 0;
+      color: var(--muted);
+    }
+
+    .language-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .language-nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      padding: 8px 14px;
+      border: 1px solid rgba(85, 232, 255, 0.38);
+      border-radius: 999px;
+      background: rgba(85, 232, 255, 0.08);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 750;
+    }
+
+    .language-nav a:hover { background: rgba(85, 232, 255, 0.16); }
+
+    .notice {
+      margin-top: 18px;
+      padding: 15px 17px;
+      border-left: 4px solid var(--ok);
+      border-radius: 12px;
+      background: rgba(71, 229, 155, 0.08);
+      color: #dfffee;
+    }
+
+    .policy {
+      margin-top: 20px;
+      padding: clamp(22px, 5vw, 42px);
+      border: 1px solid rgba(85, 232, 255, 0.20);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .policy + .policy { margin-top: 28px; }
+
+    p, li { color: #d7e6f1; }
+    ul { padding-left: 1.25rem; }
+    li + li { margin-top: 0.42rem; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 20px 0 6px;
+    }
+
+    .summary-card {
+      padding: 15px;
+      border: 1px solid rgba(85, 232, 255, 0.16);
+      border-radius: 16px;
+      background: var(--panel-2);
+    }
+
+    .summary-card strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--cyan);
+    }
+
+    .contact {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border: 1px solid rgba(248, 201, 87, 0.38);
+      border-radius: 12px;
+      background: rgba(248, 201, 87, 0.08);
+      color: #fff5d5;
+      font-weight: 750;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+
+    .back-top {
+      display: inline-block;
+      margin-top: 24px;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    footer {
+      padding: 26px 8px 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 650px) {
+      .shell { width: min(100% - 18px, 960px); padding-top: 10px; }
+      .hero { padding: 22px 18px; border-radius: 20px; }
+      .brand { align-items: flex-start; }
+      .brand img { width: 64px; height: 64px; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .policy { border-radius: 20px; }
+    }
+  </style>
+</head>
+<body id="top">
+  <main class="shell">
+    <header class="hero">
+      <div class="brand">
+        <img src="/app-512.png" alt="Logo MULTISPORTS SCORING" width="82" height="82" />
+        <div>
+          <p class="eyebrow">MULTISPORTS SCORING</p>
+          <h1>Politique de confidentialité</h1>
+        </div>
+      </div>
+      <p class="meta"><strong>Dernière mise à jour :</strong> 30 juillet 2026</p>
+      <nav class="language-nav" aria-label="Choix de la langue">
+        <a href="#fr">Français</a>
+        <a href="#en" lang="en">English</a>
+      </nav>
+      <div class="notice">
+        Cette page est publique, indépendante de l’application et ne charge ni publicité, ni outil d’analyse, ni cookie publicitaire.
+      </div>
+    </header>
+
+    <article class="policy" id="fr" lang="fr">
+      <p class="eyebrow">Version française</p>
+      <h2>1. Responsable du traitement et contact</h2>
+      <p>
+        Le responsable du traitement est l’éditeur de <strong>MULTISPORTS SCORING</strong>.
+        Pour toute question relative à cette politique ou pour exercer vos droits, contactez-nous à l’adresse suivante :
+      </p>
+      <p><a class="contact" href="mailto:multisports.scoring@gmail.com">multisports.scoring@gmail.com</a></p>
+
+      <div class="summary-grid" aria-label="Résumé de la politique">
+        <div class="summary-card"><strong>Application</strong>Scoring multisports, profils, statistiques, historique, fonctions en ligne et sauvegardes.</div>
+        <div class="summary-card"><strong>Publicité</strong>Google AdMob pour la version gratuite, sous réserve des choix de confidentialité de l’utilisateur.</div>
+        <div class="summary-card"><strong>Contrôle</strong>Les permissions, la visibilité en ligne et la proximité sont facultatives et peuvent être désactivées.</div>
+        <div class="summary-card"><strong>Contact</strong>Demandes d’accès, correction, suppression, opposition et portabilité par e-mail.</div>
+      </div>
+
+      <h2>2. Champ d’application</h2>
+      <p>
+        Cette politique décrit la manière dont MULTISPORTS SCORING traite les données personnelles lors de l’utilisation de l’application mobile,
+        de sa version web/PWA, des fonctions de compte, de synchronisation, de sauvegarde, de jeu en ligne, de messagerie, de création de contenus,
+        de publicité et de paiement.
+      </p>
+
+      <h2>3. Données susceptibles d’être traitées</h2>
+      <h3>3.1 Données de compte et de profil</h3>
+      <ul>
+        <li>adresse e-mail, identifiant de compte, pseudonyme et informations d’authentification ;</li>
+        <li>nom d’affichage, avatar, pays, ville, préférences et informations ajoutées volontairement au profil ;</li>
+        <li>statut de connexion, paramètres de confidentialité et préférences de l’application.</li>
+      </ul>
+
+      <h3>3.2 Données de jeu et contenus</h3>
+      <ul>
+        <li>parties, scores, volées, impacts, statistiques, classements, historique, équipes, clubs, tournois et entraînements ;</li>
+        <li>profils locaux, avatars, logos, images, sons et autres médias ajoutés ou créés par l’utilisateur ;</li>
+        <li>messages, demandes d’amis, invitations, salons, présence en ligne et contenus partagés lorsque ces fonctions sont utilisées.</li>
+      </ul>
+
+      <h3>3.3 Données techniques</h3>
+      <ul>
+        <li>type d’appareil, système, version de l’application, langue, paramètres, journaux d’erreur et diagnostics ;</li>
+        <li>adresse IP, identifiants techniques, données de sécurité, informations de synchronisation et de connexion ;</li>
+        <li>identifiant publicitaire et informations liées à l’affichage, à la mesure et à la prévention de la fraude publicitaire, lorsque la publicité est active.</li>
+      </ul>
+
+      <h3>3.4 Localisation facultative</h3>
+      <p>
+        La fonction « joueurs à proximité » peut utiliser une localisation approximative uniquement si l’utilisateur l’active et accorde l’autorisation correspondante.
+        La position exacte ne doit pas être affichée publiquement : les autres utilisateurs voient au maximum une distance ou une zone approximative.
+        La visibilité peut être désactivée à tout moment.
+      </p>
+
+      <h3>3.5 Paiements et abonnements</h3>
+      <p>
+        Les achats, abonnements, crédits ou offres de stockage peuvent être traités par Google Play, Stripe ou un autre prestataire de paiement indiqué au moment de l’achat.
+        MULTISPORTS SCORING ne reçoit pas le numéro complet de la carte bancaire. Nous pouvons conserver les références de transaction, le statut de paiement,
+        le type d’offre et les dates nécessaires au suivi de l’abonnement, à la lutte contre la fraude et aux obligations comptables.
+      </p>
+
+      <h2>4. Finalités et bases juridiques</h2>
+      <ul>
+        <li><strong>Fournir le service et le compte :</strong> exécution du contrat ou mesures précontractuelles.</li>
+        <li><strong>Enregistrer les parties, synchroniser et restaurer les données :</strong> exécution du service demandé.</li>
+        <li><strong>Fonctions en ligne, amis, messages et proximité :</strong> exécution du service et, pour les permissions facultatives, consentement.</li>
+        <li><strong>Publicité et personnalisation publicitaire :</strong> consentement lorsque celui-ci est requis ; publicité non personnalisée ou traitement limité selon les choix disponibles.</li>
+        <li><strong>Sécurité, prévention des abus, correction des erreurs et amélioration :</strong> intérêt légitime, sous réserve des droits et libertés de l’utilisateur.</li>
+        <li><strong>Paiement, facturation et obligations légales :</strong> exécution du contrat et respect d’obligations légales.</li>
+      </ul>
+
+      <h2>5. Publicité Google AdMob et consentement</h2>
+      <p>
+        La version gratuite de l’application peut afficher des annonces fournies par <strong>Google AdMob</strong>. Google et ses partenaires publicitaires peuvent traiter
+        des identifiants publicitaires, des informations techniques, l’adresse IP, des interactions avec les annonces et des données de mesure ou de prévention de la fraude.
+      </p>
+      <p>
+        Dans les régions où cela est requis, le formulaire Google User Messaging Platform (UMP) demande les choix de l’utilisateur avant toute demande publicitaire.
+        Les choix peuvent être modifiés ultérieurement depuis la rubrique de confidentialité de l’application lorsqu’elle est disponible. La version Premium est destinée à supprimer les annonces de l’interface.
+      </p>
+      <p>
+        Informations complémentaires :
+        <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Règles de confidentialité de Google</a> et
+        <a href="https://policies.google.com/technologies/partner-sites" rel="noopener noreferrer">utilisation des données par les services publicitaires Google</a>.
+      </p>
+
+      <h2>6. Prestataires et destinataires</h2>
+      <p>Selon les fonctions utilisées, certaines données peuvent être traitées par les catégories de prestataires suivantes :</p>
+      <ul>
+        <li><strong>Google :</strong> AdMob, consentement UMP, Google Play et services associés ;</li>
+        <li><strong>Cloudflare :</strong> hébergement web, fonctions, sécurité et stockage R2 ;</li>
+        <li><strong>Supabase :</strong> authentification, base de données et fonctions publiques en ligne ;</li>
+        <li><strong>Stripe :</strong> paiements et abonnements lorsqu’une offre Stripe est utilisée ;</li>
+        <li><strong>OpenAI ou prestataire d’IA indiqué :</strong> génération d’avatars ou de contenus uniquement lorsque l’utilisateur demande cette fonction ;</li>
+        <li><strong>Infrastructure privée autorisée :</strong> un NAS privé peut être utilisé uniquement pour les comptes explicitement autorisés et la destination de sauvegarde choisie.</li>
+      </ul>
+      <p>
+        Ces prestataires traitent les données selon leurs propres conditions et instructions contractuelles. Nous ne vendons pas les données personnelles des utilisateurs.
+      </p>
+
+      <h2>7. Stockage local, cloud et sauvegardes</h2>
+      <p>
+        Une partie des données peut rester uniquement sur l’appareil (par exemple dans IndexedDB ou le stockage local). Lorsque l’utilisateur active un compte,
+        la synchronisation, une sauvegarde cloud ou une destination externe, les données sélectionnées peuvent être copiées vers cette destination.
+        Les options disponibles peuvent inclure le stockage local, un fichier externe, un support amovible, Cloudflare R2 ou une infrastructure privée autorisée.
+      </p>
+
+      <h2>8. Durées de conservation</h2>
+      <ul>
+        <li>les données du compte sont conservées pendant la durée d’utilisation du compte, puis supprimées ou anonymisées après la demande de suppression, sous réserve des obligations légales ;</li>
+        <li>les historiques et sauvegardes sont conservés selon les choix de l’utilisateur, le plan de stockage et les fonctions de restauration disponibles ;</li>
+        <li>certains messages ou états de présence en ligne peuvent être éphémères ou conservés pendant une durée limitée ;</li>
+        <li>les justificatifs de paiement et données comptables peuvent être conservés pendant la durée imposée par la législation applicable ;</li>
+        <li>les journaux techniques sont conservés uniquement pendant la durée nécessaire à la sécurité, au diagnostic et à la prévention des abus.</li>
+      </ul>
+
+      <h2>9. Vos choix et vos droits</h2>
+      <p>Selon la réglementation applicable, vous pouvez demander :</p>
+      <ul>
+        <li>l’accès à vos données et une copie de celles-ci ;</li>
+        <li>la rectification de données inexactes ;</li>
+        <li>l’effacement de vos données et la suppression de votre compte ;</li>
+        <li>la limitation du traitement, l’opposition ou la portabilité ;</li>
+        <li>le retrait de votre consentement, sans remettre en cause les traitements antérieurs licites.</li>
+      </ul>
+      <p>
+        Vous pouvez également modifier les permissions depuis les réglages de votre appareil et les choix publicitaires depuis les options de confidentialité de l’application.
+        Pour exercer vos droits, écrivez à <a href="mailto:multisports.scoring@gmail.com">multisports.scoring@gmail.com</a> en précisant votre demande et l’adresse e-mail du compte concerné.
+        Une preuve d’identité peut être demandée uniquement si elle est nécessaire pour éviter une divulgation frauduleuse.
+      </p>
+      <p>
+        Vous pouvez introduire une réclamation auprès de l’autorité de contrôle compétente, notamment la
+        <a href="https://www.cnil.fr/" rel="noopener noreferrer">Commission nationale de l’informatique et des libertés (CNIL)</a> en France.
+      </p>
+
+      <h2>10. Transferts internationaux</h2>
+      <p>
+        Certains prestataires peuvent traiter des données en dehors de l’Espace économique européen. Dans ce cas, les transferts reposent sur un mécanisme reconnu,
+        tel qu’une décision d’adéquation, des clauses contractuelles types ou des garanties équivalentes prévues par la réglementation applicable.
+      </p>
+
+      <h2>11. Sécurité</h2>
+      <p>
+        Nous mettons en œuvre des mesures techniques et organisationnelles raisonnables : authentification, contrôle des accès, chiffrement des échanges,
+        séparation des environnements, sauvegardes et limitation des données. Aucun système ne peut toutefois garantir une sécurité absolue.
+        L’utilisateur doit protéger ses identifiants et signaler rapidement toute activité suspecte.
+      </p>
+
+      <h2>12. Mineurs</h2>
+      <p>
+        L’application n’a pas pour objet de collecter sciemment les données d’un enfant n’ayant pas l’âge numérique requis sans l’autorisation de son représentant légal.
+        Les responsables légaux sont invités à superviser la création d’un compte et les fonctions en ligne par un mineur.
+      </p>
+
+      <h2>13. Modifications de la politique</h2>
+      <p>
+        Cette politique peut évoluer pour refléter les changements de l’application, des prestataires ou de la réglementation.
+        La date de mise à jour figurant en haut de page sera modifiée. Une information supplémentaire pourra être affichée dans l’application en cas de changement important.
+      </p>
+
+      <a class="back-top" href="#top">↑ Retour en haut</a>
+    </article>
+
+    <article class="policy" id="en" lang="en">
+      <p class="eyebrow">English version</p>
+      <h2>1. Data controller and contact</h2>
+      <p>
+        The data controller is the publisher of <strong>MULTISPORTS SCORING</strong>. For questions about this policy or to exercise your rights, contact:
+      </p>
+      <p><a class="contact" href="mailto:multisports.scoring@gmail.com">multisports.scoring@gmail.com</a></p>
+
+      <h2>2. Scope</h2>
+      <p>
+        This policy explains how MULTISPORTS SCORING processes personal data when you use the mobile app, the web/PWA version, accounts, synchronization,
+        backups, online play, messaging, user-created content, advertising and payment features.
+      </p>
+
+      <h2>3. Data we may process</h2>
+      <ul>
+        <li><strong>Account and profile:</strong> email address, account ID, nickname, authentication data, avatar, country, city, preferences and voluntarily supplied profile information.</li>
+        <li><strong>Games and content:</strong> matches, scores, throws, hits, statistics, rankings, history, teams, clubs, tournaments, messages, invitations and shared media.</li>
+        <li><strong>Technical data:</strong> device type, operating system, app version, language, IP address, technical identifiers, diagnostics, security and synchronization data.</li>
+        <li><strong>Optional approximate location:</strong> only when the nearby-player feature is enabled and permission is granted. Exact location is not intended to be publicly displayed.</li>
+        <li><strong>Advertising data:</strong> advertising identifier, ad interactions, measurement and fraud-prevention data when ads are active.</li>
+        <li><strong>Payments:</strong> transaction references, subscription status, selected plan and relevant dates. We do not receive full bank card details.</li>
+      </ul>
+
+      <h2>4. Purposes and legal bases</h2>
+      <ul>
+        <li>providing accounts, games, statistics, synchronization and backups: performance of the requested service;</li>
+        <li>optional permissions, nearby features and personalized advertising: consent where required;</li>
+        <li>security, abuse prevention, diagnostics and service improvement: legitimate interests, subject to user rights;</li>
+        <li>payments, billing and legal records: contract performance and legal obligations.</li>
+      </ul>
+
+      <h2>5. Google AdMob advertising and consent</h2>
+      <p>
+        The free version may display ads provided by <strong>Google AdMob</strong>. Google and its advertising partners may process advertising identifiers,
+        technical information, IP address, ad interactions, measurement and fraud-prevention information.
+      </p>
+      <p>
+        Where required, Google User Messaging Platform (UMP) collects the user’s privacy choices before ad requests are made. Users can later revisit their choices
+        through the app’s privacy settings when available. The Premium version is intended to remove ads from the interface.
+      </p>
+      <p>
+        Learn more in the <a href="https://policies.google.com/privacy" rel="noopener noreferrer">Google Privacy Policy</a> and
+        <a href="https://policies.google.com/technologies/partner-sites" rel="noopener noreferrer">How Google uses data from partner services</a>.
+      </p>
+
+      <h2>6. Service providers</h2>
+      <p>Depending on the features used, data may be processed by:</p>
+      <ul>
+        <li>Google (AdMob, UMP, Google Play);</li>
+        <li>Cloudflare (web hosting, security, functions and R2 storage);</li>
+        <li>Supabase (authentication, database and public online features);</li>
+        <li>Stripe or another disclosed payment provider;</li>
+        <li>OpenAI or the disclosed AI provider when the user requests AI avatar/content generation;</li>
+        <li>an authorized private NAS only for accounts explicitly allowed to use that storage destination.</li>
+      </ul>
+      <p>We do not sell users’ personal data.</p>
+
+      <h2>7. Local storage, cloud and retention</h2>
+      <p>
+        Some data may remain only on the device. If an account, synchronization, cloud backup or external destination is enabled, selected data may be copied there.
+        Account data is generally kept while the account is active and deleted or anonymized after a valid deletion request, subject to legal obligations.
+        Payment records may be retained for statutory periods, while technical logs are retained only as long as needed for security and diagnostics.
+      </p>
+
+      <h2>8. Your rights and choices</h2>
+      <p>
+        Depending on applicable law, you may request access, rectification, erasure, restriction, objection, portability and withdrawal of consent.
+        You may also change device permissions and advertising privacy choices. Send requests to
+        <a href="mailto:multisports.scoring@gmail.com">multisports.scoring@gmail.com</a> and identify the account concerned.
+      </p>
+      <p>
+        You may lodge a complaint with your competent supervisory authority, including the
+        <a href="https://www.cnil.fr/" rel="noopener noreferrer">French CNIL</a> where applicable.
+      </p>
+
+      <h2>9. International transfers and security</h2>
+      <p>
+        Some providers may process data outside the European Economic Area under applicable transfer safeguards, such as adequacy decisions or standard contractual clauses.
+        We apply reasonable technical and organizational security measures, but no system can guarantee absolute security.
+      </p>
+
+      <h2>10. Children and updates</h2>
+      <p>
+        The service is not intended to knowingly collect data from children below the applicable digital-consent age without parental authorization.
+        This policy may be updated when the app, providers or legal requirements change. The revision date at the top of the page will be updated.
+      </p>
+
+      <a class="back-top" href="#top">↑ Back to top</a>
+    </article>
+
+    <footer>
+      © 2026 MULTISPORTS SCORING · <a href="mailto:multisports.scoring@gmail.com">multisports.scoring@gmail.com</a>
+    </footer>
+  </main>
+</body>
+</html>
