@@ -712,31 +712,51 @@ function computeRecordsFromVisits(visitScores: number[]) {
 // ------------------------------------------------------------
 // API
 // ------------------------------------------------------------
-export async function getX01StatsByDartSet(profileId?: string) {
+export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: any[]) {
   // IMPORTANT : History.list() renvoie volontairement des headers légers.
   // Pour les stats dartsets, les vraies volées / payload X01 peuvent être dans
   // le détail IndexedDB. On enrichit donc les derniers records X01 avec
   // History.get(id), sinon l'agrégateur peut trouver les sessions mais rester à 0.
-  const lightRows = (await History.list?.()) || [];
-  const rows: any[] = [];
+  const lightRows = Array.isArray(preloadedRows) ? preloadedRows : ((await History.list?.()) || []);
   const orderedLight = [...lightRows].sort((a: any, b: any) => getRecordTimestamp(b) - getRecordTimestamp(a));
-  let fullReads = 0;
-  for (const r of orderedLight) {
-    if (!isX01Record(r)) {
-      rows.push(r);
-      continue;
+
+  // PERF : l'ancien code ouvrait jusqu'à 120 payloads IndexedDB l'un après l'autre.
+  // Sur Android/PWA, cela pouvait prendre plusieurs dizaines de secondes. On conserve
+  // exactement la même limite mais on hydrate par petits lots parallèles afin de ne
+  // pas bloquer l'interface ni multiplier les aller-retours séquentiels.
+  const fullById = new Map<string, any>();
+  if (!Array.isArray(preloadedRows)) {
+    const enrichCandidates = orderedLight
+      .filter((r: any) => isX01Record(r))
+      .map((r: any) => ({ row: r, id: String(r?.id ?? r?.matchId ?? "").trim() }))
+      .filter((x: any) => !!x.id)
+      .slice(0, 120);
+
+    const batchSize = 24;
+    for (let i = 0; i < enrichCandidates.length; i += batchSize) {
+      const batch = enrichCandidates.slice(i, i + batchSize);
+      const hydrated = await Promise.all(
+        batch.map(async ({ row, id }: any) => {
+          try {
+            const full = await History.get(id);
+            return [id, full || row] as const;
+          } catch {
+            return [id, row] as const;
+          }
+        })
+      );
+      for (const [id, row] of hydrated) fullById.set(id, row);
+      // Laisse respirer le thread UI entre deux lots sur les appareils modestes.
+      if (i + batchSize < enrichCandidates.length) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
     }
-    const id = String(r?.id ?? r?.matchId ?? "").trim();
-    if (id && fullReads < 120) {
-      try {
-        const full = await History.get(id);
-        rows.push(full || r);
-        fullReads += 1;
-        continue;
-      } catch {}
-    }
-    rows.push(r);
   }
+
+  const rows: any[] = orderedLight.map((r: any) => {
+    const id = String(r?.id ?? r?.matchId ?? "").trim();
+    return (id && fullById.get(id)) || r;
+  });
   const agg: Record<string, DartSetAgg> = {};
 
   // ✅ pour sparkline : on stocke les avg3 par set en ordre chrono
@@ -987,6 +1007,6 @@ export async function getX01StatsByDartSet(profileId?: string) {
   return out;
 }
 
-export async function getX01StatsByDartSetForProfile(profileId: string) {
-  return getX01StatsByDartSet(profileId);
+export async function getX01StatsByDartSetForProfile(profileId: string, preloadedRows?: any[]) {
+  return getX01StatsByDartSet(profileId, preloadedRows);
 }

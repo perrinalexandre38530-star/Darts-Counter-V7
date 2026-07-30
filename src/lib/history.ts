@@ -3496,6 +3496,19 @@ function invalidateStatsAfterHistoryMutation(reason: string): void {
   } catch {}
 }
 
+function clearDartSetStatsRenderCaches(): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const prefix = "dc_stats_dartsets_render_cache_v1:";
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {}
+}
+
 export async function remove(id: string): Promise<void> {
   await migrateFromLocalStorageOnce();
 
@@ -3665,6 +3678,7 @@ export async function clear(): Promise<void> {
     try { clearLegacyRowsSafe(); } catch {}
     try { localStorage.removeItem("dc_stats_render_cache_v2"); } catch {}
     try { localStorage.removeItem("dc_stats_render_cache_v1"); } catch {}
+    clearDartSetStatsRenderCaches();
 
     invalidateStatsAfterHistoryMutation("history:clear");
     scheduleCloudSnapshotPush("history:clear");
@@ -3682,6 +3696,7 @@ export async function clear(): Promise<void> {
 
       try { localStorage.removeItem("dc_stats_render_cache_v2"); } catch {}
       try { localStorage.removeItem("dc_stats_render_cache_v1"); } catch {}
+      clearDartSetStatsRenderCaches();
       invalidateStatsAfterHistoryMutation("history:clear:ls_fallback");
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
       try { emitCloudChange("history:clear:ls_fallback"); } catch {}

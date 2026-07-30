@@ -36,7 +36,7 @@ expect('Recherche SQL utilise ST_DWithin pour le rayon réel', /ST_DWithin\s*\(/
 expect('La recherche respecte aussi le rayon déclaré du joueur trouvé', /least\s*\(\s*greatest\([\s\S]{0,220}n\.radius_km/i.test(migration));
 expect('Distance renvoyée volontairement par paliers', /real_km<2[\s\S]{0,250}real_km<5[\s\S]{0,250}real_km<10[\s\S]{0,250}real_km<25[\s\S]{0,250}real_km<50/i.test(migration));
 expect('Rayons UI 2/5/10/25/50 km présents', /const\s+RADII\s*=\s*\[\s*2\s*,\s*5\s*,\s*10\s*,\s*25\s*,\s*50\s*\]/.test(nearbyPanel));
-expect('Filtre de niveau 1 à 5 présent dans UI', /\[1,2,3,4,5\]/.test(nearbyPanel) && /skillFilter/.test(nearbyPanel));
+expect('Filtre de niveau 1 à 5 présent dans UI', /const\s+LEVELS\s*=\s*\[\s*1\s*,\s*2\s*,\s*3\s*,\s*4\s*,\s*5\s*\]/.test(nearbyPanel) && /skillFilter/.test(nearbyPanel));
 expect('Filtre de niveau est appliqué aux résultats', /found\.filter\([\s\S]{0,180}player\.skillLevel/.test(nearbyPanel));
 
 expect('API frontend appelle ms_get_nearby_settings', has(nearbyApi, 'ms_get_nearby_settings'));
@@ -48,6 +48,11 @@ expect('UI affiche la confidentialité de position', /aucune coordonnée|positio
 expect('Géolocalisation navigateur câblée', has(nearbyPanel, 'navigator.geolocation.getCurrentPosition'));
 expect('Mode JE CHERCHE UNE PARTIE câblé', has(nearbyPanel, 'JE CHERCHE UNE PARTIE'));
 expect('Proposition de partie câblée', has(nearbyPanel, 'Proposer une partie'));
+expect('Première activation locale guidée', has(nearbyPanel, 'ACTIVER LA RECHERCHE LOCALE'));
+expect('Recherche locale directement actionnable', has(nearbyPanel, 'CHERCHER AUTOUR DE MOI'));
+expect('Propositions envoyées visibles et annulables', has(nearbyPanel, 'MES PROPOSITIONS EN ATTENTE') && has(nearbyPanel, 'cancelled'));
+expect('Onglet proximité possède une icône dédiée', has(friendsPage, 'id === "nearby"'));
+expect('Hub Online expose un raccourci proximité', has(friendsPage, 'Trouver des joueurs proches'));
 
 expect('ONLINE public n’utilise le NAS que lorsque le provider est explicitement NAS', /function useNasOnlineBackend\(\)[\s\S]{0,500}return isNasProviderEnabled\(\)/.test(onlineApi));
 expect('Couche sociale publique Supabase présente', /supabase\.(rpc|from)/.test(socialApi));

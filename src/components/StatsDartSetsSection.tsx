@@ -19,7 +19,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
-import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, getDartSetMainImageSrc, getDartSetThumbImageSrc, type DartSet } from "../lib/dartSetsStore";
+import { getDartSetsForProfile, getDartSetById, getCanonicalDartSetId, getDartSetMainImageSrc, getDartSetThumbImageSrc, deleteDartSet, type DartSet } from "../lib/dartSetsStore";
 import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
@@ -1680,6 +1680,267 @@ function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visib
   return Math.max(0, Math.min(100, (v / max) * 100));
 }
 
+
+
+/* ============================================================= */
+/* -------- Cache local instantané — stats MES FLÉCHETTES ------- */
+/* ============================================================= */
+
+const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v1:";
+const DART_SET_STATS_HIDDEN_PREFIX = "dc_stats_dartsets_hidden_v1:";
+const DART_SET_STATS_CACHE_MAX_CHARS = 560_000;
+const DART_SET_STATS_CACHE_MAX_SETS = 36;
+const DART_SET_STATS_IMAGE_MAX_CHARS = 82_000;
+
+type CachedDartSetVisual = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+};
+
+type DartSetStatsRenderCache = {
+  version: 1;
+  profileId: string;
+  updatedAt: number;
+  rows: any[];
+  recentBySet: Record<string, MiniMatch[]>;
+  setVisuals: Record<string, CachedDartSetVisual>;
+};
+
+function dartSetStatsRenderCacheKey(profileId: string) {
+  return `${DART_SET_STATS_RENDER_CACHE_PREFIX}${String(profileId || "").trim()}`;
+}
+
+function dartSetStatsHiddenKey(profileId: string) {
+  return `${DART_SET_STATS_HIDDEN_PREFIX}${String(profileId || "").trim()}`;
+}
+
+function safeCachedDartSetImage(value: any): string | null {
+  const src = String(value || "").trim();
+  if (!src) return null;
+  if (src.startsWith("data:image/")) return src.length <= DART_SET_STATS_IMAGE_MAX_CHARS ? src : null;
+  if (/^(https?:|\/|\.\/|\.\.\/)/i.test(src) || /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(src)) {
+    return src.length <= 4096 ? src : null;
+  }
+  return null;
+}
+
+function compactDartSetSegments(raw: any): Record<string, number> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) continue;
+    out[String(key)] = n;
+    if (Object.keys(out).length >= 96) break;
+  }
+  return out;
+}
+
+function compactDartSetStatsRow(row: any): any {
+  const id = String(row?.dartSetId || row?.dartPresetId || "").trim();
+  return {
+    dartSetId: id,
+    matches: N(row?.matches, 0),
+    darts: N(row?.darts, 0),
+    avg3: N(row?.avg3, 0),
+    first9: N(row?.first9, 0),
+    bestVisit: N(row?.bestVisit, 0),
+    bestCheckout: N(row?.bestCheckout, 0),
+    checkoutPct: N(row?.checkoutPct, 0),
+    doublesPct: N(row?.doublesPct, 0),
+    n180: N(row?.n180, 0),
+    n140: N(row?.n140, 0),
+    n100: N(row?.n100, 0),
+    hitsS: N(row?.hitsS, 0),
+    hitsD: N(row?.hitsD, 0),
+    hitsT: N(row?.hitsT, 0),
+    bull: N(row?.bull, 0),
+    dBull: N(row?.dBull, 0),
+    miss: N(row?.miss, 0),
+    bust: N(row?.bust, 0),
+    wins: N(row?.wins ?? row?.win ?? row?.victories, 0),
+    losses: N(row?.losses ?? row?.lose ?? row?.defeats, 0),
+    segments: compactDartSetSegments(row?.segments),
+    evoAvg3: Array.isArray(row?.evoAvg3)
+      ? row.evoAvg3.map((x: any) => N(x, 0)).filter((x: number) => Number.isFinite(x)).slice(-18)
+      : [],
+  };
+}
+
+function compactRecentBySet(raw: Record<string, MiniMatch[]>): Record<string, MiniMatch[]> {
+  const out: Record<string, MiniMatch[]> = {};
+  for (const [id, rows] of Object.entries(raw || {})) {
+    out[id] = (Array.isArray(rows) ? rows : []).slice(0, 12).map((m: any) => ({
+      id: String(m?.id || ""),
+      at: N(m?.at, 0),
+      dateLabel: String(m?.dateLabel || ""),
+      label: String(m?.label || ""),
+      score: m?.score == null ? undefined : String(m.score),
+      opponent: m?.opponent == null ? undefined : String(m.opponent),
+      avg3: m?.avg3 == null ? null : N(m.avg3, 0),
+    }));
+  }
+  return out;
+}
+
+function buildCachedDartSetVisuals(rows: any[], sets: DartSet[], t: any): Record<string, CachedDartSetVisual> {
+  const out: Record<string, CachedDartSetVisual> = {};
+  for (const row of (rows || []).slice(0, DART_SET_STATS_CACHE_MAX_SETS)) {
+    const id = String(row?.dartSetId || "").trim();
+    if (!id) continue;
+    out[id] = {
+      id,
+      name: String(resolveSetName(id, sets || [], t) || "Set inconnu"),
+      imageUrl: safeCachedDartSetImage(resolveSetImage(id, sets || [])),
+    };
+  }
+  return out;
+}
+
+function readDartSetStatsRenderCache(profileId: string | null | undefined): DartSetStatsRenderCache | null {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(dartSetStatsRenderCacheKey(pid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Number(parsed?.version) !== 1 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) return null;
+    return {
+      version: 1,
+      profileId: pid,
+      updatedAt: N(parsed?.updatedAt, 0),
+      rows: parsed.rows,
+      recentBySet: parsed?.recentBySet && typeof parsed.recentBySet === "object" ? parsed.recentBySet : {},
+      setVisuals: parsed?.setVisuals && typeof parsed.setVisuals === "object" ? parsed.setVisuals : {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeDartSetStatsRenderCache(
+  profileId: string,
+  rows: any[],
+  recentBySet: Record<string, MiniMatch[]>,
+  setVisuals: Record<string, CachedDartSetVisual>
+): void {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return;
+  try {
+    let payload: DartSetStatsRenderCache = {
+      version: 1,
+      profileId: pid,
+      updatedAt: Date.now(),
+      rows: (rows || []).slice(0, DART_SET_STATS_CACHE_MAX_SETS).map(compactDartSetStatsRow),
+      recentBySet: compactRecentBySet(recentBySet || {}),
+      setVisuals: { ...(setVisuals || {}) },
+    };
+
+    let serialized = JSON.stringify(payload);
+    if (serialized.length > DART_SET_STATS_CACHE_MAX_CHARS) {
+      const visualsNoEmbedded: Record<string, CachedDartSetVisual> = {};
+      for (const [id, visual] of Object.entries(payload.setVisuals || {})) {
+        visualsNoEmbedded[id] = {
+          ...visual,
+          imageUrl: String(visual?.imageUrl || "").startsWith("data:image/") ? null : visual?.imageUrl || null,
+        };
+      }
+      payload = {
+        ...payload,
+        recentBySet: Object.fromEntries(Object.entries(payload.recentBySet || {}).map(([id, list]) => [id, list.slice(0, 6)])),
+        setVisuals: visualsNoEmbedded,
+      };
+      serialized = JSON.stringify(payload);
+    }
+
+    if (serialized.length > DART_SET_STATS_CACHE_MAX_CHARS) {
+      payload = { ...payload, rows: payload.rows.slice(0, 24), recentBySet: {} };
+      serialized = JSON.stringify(payload);
+    }
+
+    localStorage.setItem(dartSetStatsRenderCacheKey(pid), serialized);
+  } catch {
+    // Le cache ne doit jamais empêcher les statistiques normales de fonctionner.
+  }
+}
+
+function readHiddenDartSetStats(profileId: string | null | undefined): Record<string, boolean> {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(dartSetStatsHiddenKey(pid));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    const ids = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.ids) ? parsed.ids : [];
+    return Object.fromEntries(ids.map((id: any) => [String(id || "").trim(), true]).filter(([id]) => !!id));
+  } catch {
+    return {};
+  }
+}
+
+function writeHiddenDartSetStats(profileId: string, hidden: Record<string, boolean>): void {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return;
+  try {
+    const ids = Object.keys(hidden || {}).filter((id) => hidden[id]);
+    localStorage.setItem(dartSetStatsHiddenKey(pid), JSON.stringify({ version: 1, ids, updatedAt: Date.now() }));
+  } catch {}
+}
+
+function syntheticDartSetsFromVisuals(visuals: Record<string, CachedDartSetVisual>, current: DartSet[]): DartSet[] {
+  const out: any[] = [...(current || [])];
+  for (const [id, visual] of Object.entries(visuals || {})) {
+    if (out.some((set: any) => setMatchesId(set, id))) continue;
+    out.push({
+      id,
+      name: visual?.name || "Set inconnu",
+      thumbImageUrl: visual?.imageUrl || null,
+      mainImageUrl: visual?.imageUrl || null,
+      photoDataUrl: String(visual?.imageUrl || "").startsWith("data:image/") ? visual.imageUrl : null,
+      __statsCacheVisual: true,
+    });
+  }
+  return out as DartSet[];
+}
+
+const __dartSetStatsPrewarmJobs = new Map<string, Promise<void>>();
+
+/**
+ * Amorçage léger lancé par App.tsx avant que l'utilisateur n'ouvre Stats.
+ * Il suffit à supprimer l'écran vide dès la toute première visite ; la section
+ * complète enrichit ensuite silencieusement First9, récents et comparateurs.
+ */
+export async function prewarmDartSetStatsRenderCache(
+  profileId: string | null | undefined,
+  playerName?: string | null,
+  force = false
+): Promise<void> {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return;
+  const existing = readDartSetStatsRenderCache(pid);
+  if (!force && existing) return;
+  if (__dartSetStatsPrewarmJobs.has(pid)) return __dartSetStatsPrewarmJobs.get(pid);
+
+  const job = (async () => {
+    try {
+      const rows = await getX01StatsByDartSetForProfile(pid).catch(() => []);
+      const sets = getDartSetsForProfile(pid) || [];
+      const fallbackT = (_key: string, fallback: string) => fallback;
+      const visuals = buildCachedDartSetVisuals(Array.isArray(rows) ? rows : [], sets, fallbackT);
+      writeDartSetStatsRenderCache(pid, Array.isArray(rows) ? rows : [], {}, visuals);
+      try {
+        window.dispatchEvent(new CustomEvent("dc-dartset-stats-cache-updated", { detail: { profileId: pid, playerName: playerName || null } }));
+      } catch {}
+    } catch {}
+  })().finally(() => {
+    __dartSetStatsPrewarmJobs.delete(pid);
+  });
+
+  __dartSetStatsPrewarmJobs.set(pid, job);
+  return job;
+}
+
 export default function StatsDartSetsSection(props: { activeProfileId: string | null; activePlayerName?: string | null; title?: string }) {
   const { activeProfileId, activePlayerName, title } = props;
   const { theme } = useTheme();
@@ -1688,108 +1949,166 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
   const accent = pickAccent(theme);
   const accentSoft = `rgba(246,194,86,.22)`;
 
-  const [loading, setLoading] = React.useState(false);
-  const [rows, setRows] = React.useState<any[]>([]);
+  const initialCache = React.useMemo(() => readDartSetStatsRenderCache(activeProfileId), [activeProfileId]);
+  const initialSets = React.useMemo(() => {
+    try { return activeProfileId ? (getDartSetsForProfile(activeProfileId) || []) : []; } catch { return []; }
+  }, [activeProfileId]);
+
+  // Le cache est lu pendant le render initial : aucune carte "Chargement..." si un
+  // snapshot existe déjà, même avant le premier useEffect React.
+  const [loading, setLoading] = React.useState(() => !initialCache);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [rows, setRows] = React.useState<any[]>(() => initialCache?.rows || []);
   const [err, setErr] = React.useState<string | null>(null);
-  const [mySets, setMySets] = React.useState<DartSet[]>([]);
-  const [recentBySet, setRecentBySet] = React.useState<Record<string, MiniMatch[]>>({});
+  const [mySets, setMySets] = React.useState<DartSet[]>(() => initialSets);
+  const [recentBySet, setRecentBySet] = React.useState<Record<string, MiniMatch[]>>(() => initialCache?.recentBySet || {});
+  const [cachedVisuals, setCachedVisuals] = React.useState<Record<string, CachedDartSetVisual>>(() => initialCache?.setVisuals || {});
+  const [hiddenStatsIds, setHiddenStatsIds] = React.useState<Record<string, boolean>>(() => readHiddenDartSetStats(activeProfileId));
   const [selectedIdx, setSelectedIdx] = React.useState(0);
   const [statsTab, setStatsTab] = React.useState<"set" | "compare">("set");
   const [hiddenCompareIds, setHiddenCompareIds] = React.useState<Record<string, boolean>>({});
   const [compareMetric, setCompareMetric] = React.useState<CompareMetricKey>("avg3");
+  const [manageOpen, setManageOpen] = React.useState(false);
+  const [hiddenPanelOpen, setHiddenPanelOpen] = React.useState(false);
+  const [refreshTick, setRefreshTick] = React.useState(0);
+
+  React.useEffect(() => {
+    const cache = readDartSetStatsRenderCache(activeProfileId);
+    setRows(cache?.rows || []);
+    setRecentBySet(cache?.recentBySet || {});
+    setCachedVisuals(cache?.setVisuals || {});
+    setHiddenStatsIds(readHiddenDartSetStats(activeProfileId));
+    setLoading(!cache);
+    setRefreshing(false);
+    setErr(null);
+    setSelectedIdx(0);
+    setManageOpen(false);
+    setHiddenPanelOpen(false);
+    try { setMySets(activeProfileId ? (getDartSetsForProfile(activeProfileId) || []) : []); } catch { setMySets([]); }
+  }, [activeProfileId]);
 
   React.useEffect(() => {
     if (!activeProfileId) return;
-    const refreshSets = () => {
-      try {
-        setMySets(getDartSetsForProfile(activeProfileId) || []);
-      } catch {
-        setMySets([]);
-      }
+    let refreshTimer: number | null = null;
+    const requestRefresh = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => setRefreshTick((v) => v + 1), 120);
     };
-    refreshSets();
+    const refreshSets = () => {
+      try { setMySets(getDartSetsForProfile(activeProfileId) || []); } catch { setMySets([]); }
+      requestRefresh();
+    };
+    const applyWarmedCache = (event: any) => {
+      const eventProfileId = String(event?.detail?.profileId || "").trim();
+      if (eventProfileId && eventProfileId !== String(activeProfileId)) return;
+      const cache = readDartSetStatsRenderCache(activeProfileId);
+      if (!cache) return;
+      setRows(cache.rows || []);
+      setRecentBySet(cache.recentBySet || {});
+      setCachedVisuals(cache.setVisuals || {});
+      setLoading(false);
+    };
     try { window.addEventListener("dc-dartsets-updated", refreshSets); } catch {}
     try { window.addEventListener("dc-linked-history-materialized", refreshSets as any); } catch {}
     try { window.addEventListener("dc-linked-profile-projection-updated", refreshSets as any); } catch {}
+    try { window.addEventListener("dc-history-updated", requestRefresh); } catch {}
+    try { window.addEventListener("dc-dartset-stats-cache-updated", applyWarmedCache as any); } catch {}
     return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
       try { window.removeEventListener("dc-dartsets-updated", refreshSets); } catch {}
       try { window.removeEventListener("dc-linked-history-materialized", refreshSets as any); } catch {}
       try { window.removeEventListener("dc-linked-profile-projection-updated", refreshSets as any); } catch {}
+      try { window.removeEventListener("dc-history-updated", requestRefresh); } catch {}
+      try { window.removeEventListener("dc-dartset-stats-cache-updated", applyWarmedCache as any); } catch {}
     };
   }, [activeProfileId]);
 
   React.useEffect(() => {
     let mounted = true;
+    let cancelled = false;
+    let idleId: any = null;
+    let timerId: number | null = null;
+    const cacheAtStart = readDartSetStatsRenderCache(activeProfileId);
 
     async function run() {
-      if (!activeProfileId) return;
-      setLoading(true);
+      if (!activeProfileId || cancelled) return;
+      if (cacheAtStart) setRefreshing(true);
+      else setLoading(true);
       setErr(null);
 
       try {
-        const s = getDartSetsForProfile(activeProfileId);
-        if (mounted) setMySets(s || []);
-      } catch {
-        if (mounted) setMySets([]);
-      }
+        let setsNow: DartSet[] = [];
+        try { setsNow = getDartSetsForProfile(activeProfileId) || []; } catch { setsNow = []; }
+        if (mounted) setMySets(setsNow);
 
-      try {
-        const statsA = await getX01StatsByDartSetForProfile(activeProfileId).catch(() => []);
-        const rowsA = Array.isArray(statsA) ? statsA : [];
+        // Une seule lecture légère de l'historique, puis une seule hydratation des
+        // payloads X01. L'ancien composant relisait 120 matchs deux fois.
+        const [apiList, storeAny] = await Promise.all([
+          History.list?.().catch(() => []),
+          loadStore<any>().catch(() => null),
+        ]);
+        if (cancelled) return;
 
-        const [apiList, storeAny] = await Promise.all([History.list?.(), loadStore<any>().catch(() => null)]);
         const memList = Array.isArray(storeAny?.history) ? storeAny.history : [];
         const merged = [...(apiList || []), ...memList];
-
         const byId = new Map<string, any>();
         for (const r of merged) {
-          const id = String(r?.id ?? "");
+          const id = String(r?.id ?? r?.matchId ?? "").trim();
           if (!id) continue;
           const old = byId.get(id);
-          if (!old) {
-            byId.set(id, r);
-            continue;
-          }
+          if (!old) { byId.set(id, r); continue; }
           const tNew = Number(r?.updatedAt ?? r?.createdAt ?? r?.endedAt ?? 0);
           const tOld = Number(old?.updatedAt ?? old?.createdAt ?? old?.endedAt ?? 0);
           if (tNew >= tOld) byId.set(id, r);
         }
-        const all = Array.from(byId.values());
 
-        // ------------------------------------------------------------
-        // Enrich complet X01 : History.list() ne donne que le header léger.
-        // Les stats dartsets peuvent avoir besoin du payload détaillé (darts / visits).
-        // On recharge donc les derniers X01 via History.get(id), même si le header
-        // ne contient pas payloadCompressed (il est stocké dans le store detail).
-        // ------------------------------------------------------------
-        const sortedForEnrich = (all || []).slice().sort((a: any, b: any) => {
+        const all = Array.from(byId.values());
+        const sortedForEnrich = all.slice().sort((a: any, b: any) => {
           const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.updatedAt, 0) || N(a?.createdAt, 0) || 0;
           const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.updatedAt, 0) || N(b?.createdAt, 0) || 0;
           return tb - ta;
         });
 
         const enrichedMap = new Map<string, any>();
-        let enrichCount = 0;
-
         for (const rec of sortedForEnrich) {
           const id = String(rec?.id ?? rec?.matchId ?? "").trim();
-          if (!id) continue;
-          if (isX01Record(rec) && enrichCount < 120) {
+          if (id) enrichedMap.set(id, rec);
+        }
+
+        const candidates = sortedForEnrich
+          .filter((rec: any) => isX01Record(rec))
+          .map((rec: any) => ({ rec, id: String(rec?.id ?? rec?.matchId ?? "").trim() }))
+          .filter((x: any) => !!x.id)
+          .slice(0, 120);
+
+        const batchSize = 24;
+        for (let i = 0; i < candidates.length; i += batchSize) {
+          if (cancelled) return;
+          const batch = candidates.slice(i, i + batchSize);
+          const hydrated = await Promise.all(batch.map(async ({ rec, id }: any) => {
             try {
               const full = await History.get(id);
-              enrichedMap.set(id, full || rec);
-              enrichCount += 1;
-              continue;
-            } catch {}
-          }
-          enrichedMap.set(id, rec);
+              return [id, full || rec] as const;
+            } catch {
+              return [id, rec] as const;
+            }
+          }));
+          for (const [id, rec] of hydrated) enrichedMap.set(id, rec);
+          if (i + batchSize < candidates.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
 
         const allEnriched = Array.from(enrichedMap.values());
+        if (cancelled) return;
 
+        // L'agrégateur central reçoit les lignes déjà hydratées : aucune seconde
+        // série de History.get(), mais on conserve tous ses fallbacks historiques.
+        const statsA = await getX01StatsByDartSetForProfile(activeProfileId, allEnriched).catch(() => []);
+        const rowsA = Array.isArray(statsA) ? statsA : [];
 
-        const recMap = canonicalizeRecentMap(buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""), activeProfileId);
-        if (mounted) setRecentBySet(recMap);
+        const recMap = canonicalizeRecentMap(
+          buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""),
+          activeProfileId
+        );
 
         const aggMapRaw = computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
         const aggMap: Record<string, any> = {};
@@ -1818,51 +2137,134 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
             const mergedRow = mergeRowPreferNonZero(a, b);
             mergedRow.dartSetId = String(id);
             return mergedRow;
-          });
+          })
+          .sort((x: any, y: any) => N(pickNum(y, "avg3") ?? 0, 0) - N(pickNum(x, "avg3") ?? 0, 0));
 
-        outRows.sort((x: any, y: any) => N(pickNum(y, "avg3") ?? 0, 0) - N(pickNum(x, "avg3") ?? 0, 0));
+        const visuals = buildCachedDartSetVisuals(outRows, setsNow, t);
+        writeDartSetStatsRenderCache(activeProfileId, outRows, recMap, visuals);
 
-        if (mounted) {
+        if (mounted && !cancelled) {
           setRows(outRows);
-          setSelectedIdx(0);
+          setRecentBySet(recMap);
+          setCachedVisuals(visuals);
+          setErr(null);
         }
       } catch (e: any) {
-        if (mounted) setErr(e?.message || "failed");
+        // Si un cache existe, on garde son affichage au lieu de remplacer toute la
+        // carte par une erreur ou un écran vide.
+        if (mounted && !cacheAtStart) setErr(e?.message || "failed");
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     }
 
-    run();
+    if (cacheAtStart && typeof window !== "undefined") {
+      const ric: any = (window as any).requestIdleCallback;
+      if (typeof ric === "function") idleId = ric(() => void run(), { timeout: 900 });
+      else timerId = window.setTimeout(() => void run(), 80);
+    } else {
+      void run();
+    }
+
     return () => {
       mounted = false;
+      cancelled = true;
+      if (timerId) window.clearTimeout(timerId);
+      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
     };
-  }, [activeProfileId, activePlayerName]);
+  }, [activeProfileId, activePlayerName, refreshTick]);
+
+  const displaySets = React.useMemo(
+    () => syntheticDartSetsFromVisuals(cachedVisuals, mySets),
+    [cachedVisuals, mySets]
+  );
+
+  const visibleRows = React.useMemo(() => (rows || []).filter((row: any) => {
+    const rawId = String(row?.dartSetId || "").trim();
+    const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+    return !hiddenStatsIds[id] && !hiddenStatsIds[rawId];
+  }), [rows, hiddenStatsIds, activeProfileId]);
+
+  const hiddenRows = React.useMemo(() => (rows || []).filter((row: any) => {
+    const rawId = String(row?.dartSetId || "").trim();
+    const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+    return !!hiddenStatsIds[id] || !!hiddenStatsIds[rawId];
+  }), [rows, hiddenStatsIds, activeProfileId]);
 
   React.useEffect(() => {
     setSelectedIdx((i) => {
-      const n = rows?.length || 0;
+      const n = visibleRows?.length || 0;
       if (!n) return 0;
       return Math.max(0, Math.min(n - 1, i));
     });
-  }, [rows?.length]);
+  }, [visibleRows?.length]);
 
-  const compareItems = React.useMemo(() => buildCompareItems(rows, mySets, recentBySet, t, accent, activeProfileId), [rows, mySets, recentBySet, t, accent, activeProfileId]);
+  const compareItems = React.useMemo(
+    () => buildCompareItems(visibleRows, displaySets, recentBySet, t, accent, activeProfileId),
+    [visibleRows, displaySets, recentBySet, t, accent, activeProfileId]
+  );
   const visibleCompareItems = React.useMemo(() => {
     const visible = compareItems.filter((it) => !hiddenCompareIds?.[it.id]);
     return visible.length ? visible : compareItems.slice(0, 1);
   }, [compareItems, hiddenCompareIds]);
 
+  const persistHiddenStats = React.useCallback((next: Record<string, boolean>) => {
+    setHiddenStatsIds(next);
+    if (activeProfileId) writeHiddenDartSetStats(activeProfileId, next);
+  }, [activeProfileId]);
+
+  const hideSetFromStats = React.useCallback((rawId: string) => {
+    const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+    if (!id) return;
+    persistHiddenStats({ ...hiddenStatsIds, [id]: true });
+    setManageOpen(false);
+  }, [activeProfileId, hiddenStatsIds, persistHiddenStats]);
+
+  const restoreSetToStats = React.useCallback((rawId: string) => {
+    const id = canonicalDartSetIdForStats(rawId, activeProfileId);
+    const next = { ...hiddenStatsIds };
+    delete next[id];
+    delete next[String(rawId || "").trim()];
+    persistHiddenStats(next);
+  }, [activeProfileId, hiddenStatsIds, persistHiddenStats]);
+
   if (!activeProfileId) return null;
 
   const cardBg = "linear-gradient(180deg, rgba(17,18,20,.94), rgba(13,14,17,.92))";
-  const countPresets = rows?.length || 0;
-  const top = rows?.[0] || null;
-
-  const current = rows?.[selectedIdx] || null;
+  const countPresets = visibleRows?.length || 0;
+  const top = visibleRows?.[0] || null;
+  const current = visibleRows?.[selectedIdx] || null;
+  const currentId = String(current?.dartSetId || "").trim();
+  const currentStoredSet: any = currentId ? findSetByAnyId(currentId, mySets) : null;
+  const currentIsPublic = Boolean(
+    currentStoredSet?.isPublic === true ||
+    currentStoredSet?.public === true ||
+    String(currentStoredSet?.scope || "").toLowerCase() === "public"
+  );
+  const canDeleteCurrentSet = Boolean(currentStoredSet && !currentStoredSet?.__statsCacheVisual && !currentIsPublic);
 
   const navPrev = () => setSelectedIdx((i) => Math.max(0, i - 1));
-  const navNext = () => setSelectedIdx((i) => Math.min((rows?.length || 1) - 1, i + 1));
+  const navNext = () => setSelectedIdx((i) => Math.min((visibleRows?.length || 1) - 1, i + 1));
+
+  const deleteCurrentSet = () => {
+    if (!currentId || !currentStoredSet || !canDeleteCurrentSet) return;
+    const name = resolveSetName(currentId, displaySets, t);
+    const confirmed = typeof window === "undefined" || window.confirm(
+      `Supprimer « ${name} » de MES FLÉCHETTES ?\n\nLes anciennes parties resteront dans l'historique. Les statistiques de ce set seront masquées.`
+    );
+    if (!confirmed) return;
+    const ok = deleteDartSet(String(currentStoredSet?.id || currentId));
+    if (!ok) {
+      try { window.alert("Impossible de supprimer ce set. Il peut néanmoins être masqué des statistiques."); } catch {}
+      return;
+    }
+    hideSetFromStats(currentId);
+    try { setMySets(getDartSetsForProfile(activeProfileId) || []); } catch {}
+    try { window.alert(`« ${name} » a été supprimé de MES FLÉCHETTES et masqué des statistiques. L'historique des parties est conservé.`); } catch {}
+  };
 
   return (
     <div
@@ -1898,7 +2300,85 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         </div>
       </div>
 
-      {!loading && !err && rows.length > 1 && (
+      {(refreshing || hiddenRows.length > 0) && (
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+          {refreshing && (
+            <span style={{ color: "rgba(255,255,255,.52)", fontSize: 9.5, fontWeight: 850, letterSpacing: 0.35, textTransform: "uppercase" }}>
+              Actualisation en arrière-plan…
+            </span>
+          )}
+          {hiddenRows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setHiddenPanelOpen((v) => !v)}
+              style={{
+                minHeight: 32,
+                borderRadius: 999,
+                border: `1px solid ${accent}66`,
+                background: "rgba(0,0,0,.34)",
+                color: accent,
+                padding: "7px 11px",
+                fontSize: 9.5,
+                fontWeight: 950,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                cursor: "pointer",
+                boxShadow: `0 0 12px ${accent}22`,
+              }}
+            >
+              👁 Sets masqués ({hiddenRows.length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {hiddenPanelOpen && hiddenRows.length > 0 && (
+        <div
+          style={{
+            marginTop: 8,
+            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,.10)",
+            background: "rgba(0,0,0,.34)",
+            padding: 9,
+            display: "grid",
+            gap: 7,
+          }}
+        >
+          <div style={{ color: "rgba(255,255,255,.68)", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.45 }}>
+            Sets masqués des statistiques
+          </div>
+          {hiddenRows.map((row: any) => {
+            const id = String(row?.dartSetId || "");
+            return (
+              <div key={id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 12, background: "rgba(255,255,255,.045)" }}>
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#fff", fontSize: 11, fontWeight: 850 }}>
+                  {resolveSetName(id, displaySets, t)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => restoreSetToStats(id)}
+                  style={{
+                    minHeight: 30,
+                    borderRadius: 999,
+                    border: "1px solid rgba(127,226,169,.58)",
+                    background: "rgba(127,226,169,.10)",
+                    color: "#9ff0be",
+                    padding: "6px 10px",
+                    fontSize: 9,
+                    fontWeight: 950,
+                    textTransform: "uppercase",
+                    cursor: "pointer",
+                  }}
+                >
+                  Réafficher
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && !err && visibleRows.length > 1 && (
         <DartSetsInnerTabs active={statsTab} accent={accent} onChange={setStatsTab} />
       )}
 
@@ -1938,7 +2418,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
                   textShadow: `0 0 12px ${accent}66, 0 0 26px ${accent}33`,
                 }}
               >
-                {resolveSetName(top.dartSetId, mySets, t)}
+                {resolveSetName(top.dartSetId, displaySets, t)}
               </div>
             </div>
 
@@ -1947,9 +2427,9 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         </div>
       )}
 
-      {loading ? (
+      {loading && !rows.length ? (
         <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>{t("common.loading", "Chargement...")}</div>
-      ) : err ? (
+      ) : err && !rows.length ? (
         <div style={{ color: "#ff8a8a", fontSize: 12, padding: 8 }}>
           {t("common.error", "Erreur")} : {String(err)}
         </div>
@@ -1957,7 +2437,11 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 8 }}>
           {t("stats.dartSets.empty", "Aucune partie X01 trouvée pour ce profil.")}
         </div>
-      ) : statsTab === "compare" && rows.length > 1 ? (
+      ) : !visibleRows.length ? (
+        <div style={{ color: "rgba(255,255,255,.75)", fontSize: 12, padding: 10, textAlign: "center" }}>
+          Tous les sets sont actuellement masqués des statistiques. Utilise le bouton SETS MASQUÉS pour en réafficher un.
+        </div>
+      ) : statsTab === "compare" && visibleRows.length > 1 ? (
         <DartSetsComparator
           items={compareItems}
           visibleItems={visibleCompareItems}
@@ -1990,14 +2474,96 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
                 textTransform: "uppercase",
               }}
             >
-              {t("stats.dartSets.presetIndex", "Preset")} {selectedIdx + 1}/{rows.length}
+              {t("stats.dartSets.presetIndex", "Preset")} {selectedIdx + 1}/{visibleRows.length}
             </div>
-            <ArrowBtn right disabled={selectedIdx >= rows.length - 1} onClick={navNext} />
+            <ArrowBtn right disabled={selectedIdx >= visibleRows.length - 1} onClick={navNext} />
           </div>
 
           <div style={{ marginTop: 8 }}>
-            <DartSetCard row={current} mySets={mySets} recent={recentBySet?.[String(current?.dartSetId || "")] || []} accent={accent} accentSoft={accentSoft} t={t} />
+            <DartSetCard row={current} mySets={displaySets} recent={recentBySet?.[canonicalDartSetIdForStats(String(current?.dartSetId || ""), activeProfileId)] || []} accent={accent} accentSoft={accentSoft} t={t} />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setManageOpen((v) => !v)}
+            style={{
+              width: "100%",
+              minHeight: 38,
+              marginTop: 9,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,.13)",
+              background: manageOpen ? `rgba(246,194,86,.12)` : "rgba(255,255,255,.045)",
+              color: manageOpen ? accent : "rgba(255,255,255,.76)",
+              fontSize: 10,
+              fontWeight: 950,
+              letterSpacing: 0.55,
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            ⚙ Gérer ce set
+          </button>
+
+          {manageOpen && current && (
+            <div
+              style={{
+                marginTop: 8,
+                borderRadius: 16,
+                border: `1px solid ${accent}44`,
+                background: "rgba(0,0,0,.38)",
+                padding: 10,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ color: "rgba(255,255,255,.68)", fontSize: 10, lineHeight: 1.4 }}>
+                Masquer retire seulement ce set des statistiques. Les parties restent intactes dans l’historique.
+              </div>
+              <button
+                type="button"
+                onClick={() => hideSetFromStats(currentId)}
+                style={{
+                  minHeight: 38,
+                  borderRadius: 13,
+                  border: "1px solid rgba(255,190,82,.62)",
+                  background: "rgba(255,190,82,.10)",
+                  color: "#ffd38a",
+                  fontSize: 10,
+                  fontWeight: 950,
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                🙈 Masquer des statistiques
+              </button>
+
+              {canDeleteCurrentSet && (
+                <button
+                  type="button"
+                  onClick={deleteCurrentSet}
+                  style={{
+                    minHeight: 38,
+                    borderRadius: 13,
+                    border: "1px solid rgba(255,83,116,.62)",
+                    background: "rgba(255,83,116,.10)",
+                    color: "#ff9db1",
+                    fontSize: 10,
+                    fontWeight: 950,
+                    textTransform: "uppercase",
+                    cursor: "pointer",
+                  }}
+                >
+                  🗑 Supprimer le set
+                </button>
+              )}
+
+              {!canDeleteCurrentSet && (
+                <div style={{ color: "rgba(255,255,255,.45)", fontSize: 9.5, lineHeight: 1.35 }}>
+                  Ce set public ou récupéré ne peut pas être supprimé ici, mais il peut être masqué.
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,.55)" }}>
             {t("stats.dartSets.note", "Ces stats sont calculées sur les matchs X01 terminés, groupées par set sélectionné.")}

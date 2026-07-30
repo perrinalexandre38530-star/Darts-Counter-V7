@@ -2769,22 +2769,43 @@ useEffect(() => {
   }
 
   // ============================================================
-  // ✅ STATS PERF: no more global rebuild in App
-  // We only mark stats cache dirty and let stats pages rebuild on demand.
+  // ✅ STATS PERF: l'index central et le mini-cache MES FLÉCHETTES
+  // sont préparés en arrière-plan, avant l'ouverture de la page Stats.
   // ============================================================
   React.useEffect(() => {
-    const schedule = () => {
+    let warmTimer: number | null = null;
+    const activeId = String((store as any)?.activeProfileId || (store as any)?.profiles?.[0]?.id || "").trim();
+    const activeProfile = Array.isArray((store as any)?.profiles)
+      ? (store as any).profiles.find((p: any) => String(p?.id || "") === activeId) || (store as any).profiles[0] || null
+      : null;
+    const activeName = String(activeProfile?.name || activeProfile?.displayName || "").trim();
+
+    const schedule = (forceDartSets = true) => {
       try {
         markStatsIndexDirty("history-updated");
       } catch (e) {
         console.warn("[stats] mark dirty error:", e);
       }
+
+      if (!activeId || loading || showSplash) return;
+      if (warmTimer) window.clearTimeout(warmTimer);
+      warmTimer = window.setTimeout(() => {
+        import("./components/StatsDartSetsSection")
+          .then((mod: any) => mod?.prewarmDartSetStatsRenderCache?.(activeId, activeName, forceDartSets))
+          .catch((err) => {
+            try { console.warn("[stats] dartsets prewarm ignored:", err); } catch {}
+          });
+      }, forceDartSets ? 220 : 450);
     };
 
-    if (!loading && !showSplash) schedule();
-    window.addEventListener("dc-history-updated", schedule);
-    return () => window.removeEventListener("dc-history-updated", schedule);
-  }, [loading, showSplash]);
+    if (!loading && !showSplash) schedule(false);
+    const onHistoryUpdated = () => schedule(true);
+    window.addEventListener("dc-history-updated", onHistoryUpdated);
+    return () => {
+      if (warmTimer) window.clearTimeout(warmTimer);
+      window.removeEventListener("dc-history-updated", onHistoryUpdated);
+    };
+  }, [loading, showSplash, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
 
   React.useEffect(() => {
     if (loading || showSplash) return;

@@ -1353,6 +1353,8 @@ function OnlineTabIcon({ id, size = 30, color = "currentColor" }: { id: OnlineMa
       {id === "shares" ? <><path {...common} d="M7 17h10" /><path {...common} d="M8 17V9h8v8" /><path {...common} d="M10 9V6h4v3" /><path {...common} d="M12 12v3" /><path {...common} d="M10.5 13.5h3" /></> : null}
       {id === "activity" ? <><path {...common} d="M5 19V9" /><path {...common} d="M12 19V5" /><path {...common} d="M19 19v-7" /><path {...common} d="M3.5 19.5h17" /></> : null}
       {id === "official" ? <><path {...common} d="M8 21h8" /><path {...common} d="M12 17v4" /><path {...common} d="M7 4h10v4a5 5 0 0 1-10 0V4Z" /><path {...common} d="M7 6H4a3 3 0 0 0 3 3" /><path {...common} d="M17 6h3a3 3 0 0 1-3 3" /></> : null}
+      {id === "nearby" ? <><path {...common} d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle {...common} cx="12" cy="10" r="2.4" /></> : null}
+      {id === "clubs" ? <><path {...common} d="M4 20V9l8-5 8 5v11" /><path {...common} d="M8 20v-6h8v6" /><path {...common} d="M9 10h6" /></> : null}
     </svg>
   );
 }
@@ -3964,6 +3966,9 @@ const doLogout = React.useCallback(async () => {
                     onClick={() => setActiveOnlineTab("play")}
                     disabled={!isSignedIn}
                   />
+                  {isSignedIn ? (
+                    <GhostButton label="📍 Trouver des joueurs proches" onClick={() => setActiveOnlineTab("nearby")} />
+                  ) : null}
                   {!isSignedIn ? (
                     <GhostButton label="Connexion / profil" onClick={() => go("profiles")} />
                   ) : incomingRequests.length > 0 ? (
