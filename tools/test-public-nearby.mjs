@@ -32,6 +32,13 @@ expect('RPC réglages proximité présente', has(migration, 'ms_get_nearby_setti
 expect('RPC proposition de partie présente', has(migration, 'ms_send_nearby_game_request'));
 expect('Permissions authenticated présentes', /grant\s+execute[\s\S]+to\s+authenticated/i.test(migration));
 
+expect('Recherche SQL utilise ST_DWithin pour le rayon réel', /ST_DWithin\s*\(/i.test(migration));
+expect('La recherche respecte aussi le rayon déclaré du joueur trouvé', /least\s*\(\s*greatest\([\s\S]{0,220}n\.radius_km/i.test(migration));
+expect('Distance renvoyée volontairement par paliers', /real_km<2[\s\S]{0,250}real_km<5[\s\S]{0,250}real_km<10[\s\S]{0,250}real_km<25[\s\S]{0,250}real_km<50/i.test(migration));
+expect('Rayons UI 2/5/10/25/50 km présents', /const\s+RADII\s*=\s*\[\s*2\s*,\s*5\s*,\s*10\s*,\s*25\s*,\s*50\s*\]/.test(nearbyPanel));
+expect('Filtre de niveau 1 à 5 présent dans UI', /\[1,2,3,4,5\]/.test(nearbyPanel) && /skillFilter/.test(nearbyPanel));
+expect('Filtre de niveau est appliqué aux résultats', /found\.filter\([\s\S]{0,180}player\.skillLevel/.test(nearbyPanel));
+
 expect('API frontend appelle ms_get_nearby_settings', has(nearbyApi, 'ms_get_nearby_settings'));
 expect('API frontend appelle ms_find_nearby_players', has(nearbyApi, 'ms_find_nearby_players'));
 expect('API frontend appelle ms_send_nearby_game_request', has(nearbyApi, 'ms_send_nearby_game_request'));

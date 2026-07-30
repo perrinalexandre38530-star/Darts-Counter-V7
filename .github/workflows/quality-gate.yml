@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Repository preflight
+        run: node ./tools/test-repo-preflight.mjs
       - run: npm ci
       - run: npm run test:auto
 
@@ -43,6 +45,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Repository preflight
+        run: node ./tools/test-repo-preflight.mjs
       - run: npm ci
       - name: Detect live-test configuration
         id: live

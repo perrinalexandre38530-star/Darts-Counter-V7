@@ -42,13 +42,14 @@
     "test:loterie": "node ./tools/run-ts-regressions.mjs --only tools/test-loterie-regression.ts",
     "test:linked-history": "node ./tools/run-ts-regressions.mjs --only tools/test-linked-profile-history.ts",
     "test:regressions": "node ./tools/run-ts-regressions.mjs",
-    "test:auto": "npm run test:ci",
+    "test:auto": "npm run test:preflight && npm run test:ci",
     "test:release": "npm run test:auto && npm run test:live",
     "test:r2-account-data": "node ./tools/test-r2-account-data.mjs",
     "test:history-integrity": "node --experimental-strip-types ./tools/test-history-integrity-regression.ts && node ./tools/test-history-snapshot-integrity-contract.mjs",
     "android:run": "npm run android:sync && npx cap run android --no-sync",
     "android:build:debug": "npm run android:sync && node ./tools/run-android-gradle.mjs assembleDebug",
-    "test:android-store-v1": "node ./tools/test-android-store-v1.mjs"
+    "test:android-store-v1": "node ./tools/test-android-store-v1.mjs",
+    "test:preflight": "node ./tools/test-repo-preflight.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
