@@ -38,6 +38,9 @@ expect('Lockfile npm v3 présent', Number(lock.lockfileVersion || 0) === 3);
 const workflow = read('.github/workflows/quality-gate.yml');
 expect('Quality Gate utilise Node 22+', /node-version:\s*(?:['"]?)(2[2-9]|[3-9]\d)/.test(workflow));
 expect('Secrets Supabase live injectés depuis GitHub Secrets', workflow.includes('secrets.SUPABASE_TEST_URL') && workflow.includes('secrets.SUPABASE_TEST_ANON_KEY') && workflow.includes('secrets.SUPABASE_TEST_SERVICE_ROLE_KEY'));
+expect('Le test Supabase live tourne sans npm ci', /live-cloud:[\s\S]*?run:\s*node \.\/tools\/test-supabase-public-live\.mjs/.test(workflow) && !/live-cloud:[\s\S]*?npm ci[\s\S]*?quality:/.test(workflow));
+const liveE2E = read('tools/test-supabase-public-live.mjs');
+expect('Le test Supabase live ne dépend plus de supabase-js', !/@supabase\/supabase-js/.test(liveE2E) && /fetchJson/.test(liveE2E));
 
 const riskyFiles = [];
 const roots = ['src', 'tools', '.github', 'docs'];

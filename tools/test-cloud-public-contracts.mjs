@@ -21,6 +21,9 @@ const nearbyApi = read("src/lib/nearbyPlayersApi.ts");
 const socialApi = read("src/lib/publicSocialApi.ts");
 const apiClient = read("src/lib/apiClient.ts");
 const friendsApi = read("src/lib/friendsApi.ts");
+const chatApi = read("src/lib/chatApi.ts");
+const onlinePresence = read("src/lib/onlinePresence.ts");
+const spectatorApi = read("src/lib/spectatorApi.ts");
 const linkedProfileSync = read("src/lib/linkedProfileSync.ts");
 const messageCenterNotify = read("src/lib/messageCenterNotify.ts");
 const cloudHistoryImport = read("src/lib/sync/CloudHistoryImport.ts");
@@ -98,11 +101,33 @@ expect(
   "Le JWT Supabase n'est jamais recyclé comme JWT NAS",
   apiClient.includes('provider === "supabase"')
   && apiClient.includes('provider === "supabase_failover"')
-  && apiClient.includes('volatileAccessToken = isNasProviderEnabled() ? token : ""'),
+  && /volatileAccessToken\s*=\s*isNasProviderEnabled\(\)\s*&&\s*!activeSessionIsPublicSupabase\(\)/.test(apiClient),
+);
+
+expect(
+  "La bascule Cloud public neutralise un ancien token NAS encore conservé",
+  /export function canUseNasOnlineApi\(\)[\s\S]{0,520}!activeSessionIsPublicSupabase\(\)[\s\S]{0,220}readNasAccessToken\(\)/.test(apiClient),
 );
 expect(
-  "Une route ONLINE NAS exige un provider NAS et un vrai token NAS",
-  /export function canUseNasOnlineApi\(\)[\s\S]{0,120}isNasProviderEnabled\(\)[\s\S]{0,120}readNasAccessToken\(\)/.test(apiClient),
+  "Le stream ONLINE bascule lui aussi immédiatement sur Supabase en mode public",
+  /function subscribeOnlineStream[\s\S]{0,900}if \(!shouldUseNasForCurrentSession\(\)\)/.test(onlineApi),
+);
+expect(
+  "Le chat salon suit la session active et non le provider NAS global",
+  /canUseNasOnlineApi/.test(chatApi) && !/isNasProviderEnabled/.test(chatApi),
+);
+expect(
+  "La présence realtime suit la session active et non le provider NAS global",
+  /canUseNasOnlineApi/.test(onlinePresence) && !/isNasProviderEnabled/.test(onlinePresence),
+);
+expect(
+  "Le mode spectateur suit la session active et non le provider NAS global",
+  /canUseNasOnlineApi/.test(spectatorApi) && !/isNasProviderEnabled/.test(spectatorApi),
+);
+
+expect(
+  "Une route ONLINE NAS exige un provider NAS, une session NAS active et un vrai token NAS",
+  /export function canUseNasOnlineApi\(\)[\s\S]{0,520}isNasProviderEnabled\(\)[\s\S]{0,220}!activeSessionIsPublicSupabase\(\)[\s\S]{0,220}readNasAccessToken\(\)/.test(apiClient),
 );
 expect(
   "Une session Supabase n'est pas considérée comme session NAS",

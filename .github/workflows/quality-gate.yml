@@ -9,13 +9,63 @@ on:
   schedule:
     - cron: "17 3 * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: mss-quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  nearby-contracts:
+    name: Nearby / Cloud contracts (no install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Repository preflight
+        run: node ./tools/test-repo-preflight.mjs
+      - name: Public Cloud / NAS routing contracts
+        run: node ./tools/test-cloud-public-contracts.mjs
+      - name: Nearby feature contracts
+        run: node ./tools/test-public-nearby.mjs
+
+  live-cloud:
+    name: Supabase live E2E (no npm install)
+    needs: nearby-contracts
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Detect live-test configuration
+        id: live
+        shell: bash
+        run: |
+          if [[ -n "$SUPABASE_TEST_URL" && -n "$SUPABASE_TEST_ANON_KEY" && -n "$SUPABASE_TEST_SERVICE_ROLE_KEY" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run real Supabase Nearby / Social / Online E2E
+        if: steps.live.outputs.ready == 'true'
+        run: node ./tools/test-supabase-public-live.mjs
+      - name: Live E2E not configured
+        if: steps.live.outputs.ready != 'true'
+        run: echo "::warning::Live Supabase E2E skipped. Configure SUPABASE_TEST_URL, SUPABASE_TEST_ANON_KEY and SUPABASE_TEST_SERVICE_ROLE_KEY in GitHub Actions secrets."
+
   quality:
-    name: Build + regressions
+    name: Build + full regressions
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -28,38 +78,3 @@ jobs:
         run: node ./tools/test-repo-preflight.mjs
       - run: npm ci
       - run: npm run test:auto
-
-  live-cloud:
-    name: Supabase live E2E
-    needs: quality
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
-      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
-      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Repository preflight
-        run: node ./tools/test-repo-preflight.mjs
-      - run: npm ci
-      - name: Detect live-test configuration
-        id: live
-        shell: bash
-        run: |
-          if [[ -n "$SUPABASE_TEST_URL" && -n "$SUPABASE_TEST_ANON_KEY" && -n "$SUPABASE_TEST_SERVICE_ROLE_KEY" ]]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Run real Supabase E2E tests
-        if: steps.live.outputs.ready == 'true'
-        run: npm run test:live
-      - name: Live E2E not configured
-        if: steps.live.outputs.ready != 'true'
-        run: echo "::warning::Live Supabase E2E skipped. Configure SUPABASE_TEST_URL, SUPABASE_TEST_ANON_KEY and SUPABASE_TEST_SERVICE_ROLE_KEY in GitHub Actions secrets."

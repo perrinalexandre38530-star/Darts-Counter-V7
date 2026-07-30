@@ -91,8 +91,66 @@ const STATS_LEGACY_KEY = "dc-stats-index-v1";
 const STATS_VERSION = 2;
 const STATS_REFRESH_DEBOUNCE_MS = 900;
 const STATS_DIRTY_KEY = "dc_stats_index_dirty_v1";
+const STATS_QUICK_MIRROR_KEY = "dc_stats_quick_v1";
 let __statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let __statsRefreshPromise: Promise<StatsIndex> | null = null;
+
+
+export type StatsQuickMirror = {
+  version: 1;
+  updatedAt: number;
+  byPlayer: Record<string, {
+    matches: number;
+    wins: number;
+    losses: number;
+    dartsThrown: number;
+    pointsScored: number;
+    avg3: number;
+    bestVisit: number;
+    bestCheckout: number;
+    buckets: Record<string, number>;
+    lastMatchAt?: number;
+  }>;
+};
+
+export function loadStatsQuickMirrorSync(): StatsQuickMirror | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(STATS_QUICK_MIRROR_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1 || typeof parsed.byPlayer !== "object") return null;
+    return parsed as StatsQuickMirror;
+  } catch {
+    return null;
+  }
+}
+
+function saveStatsQuickMirror(idx: StatsIndex): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const byPlayer: StatsQuickMirror["byPlayer"] = {};
+    for (const [pid, entry] of Object.entries(idx?.byPlayer || {})) {
+      const e: any = entry || {};
+      byPlayer[String(pid)] = {
+        matches: Number(e.matches || 0) || 0,
+        wins: Number(e.wins || 0) || 0,
+        losses: Number(e.losses || 0) || 0,
+        dartsThrown: Number(e.dartsThrown || 0) || 0,
+        pointsScored: Number(e.pointsScored || 0) || 0,
+        avg3: Number(e.avg3 || 0) || 0,
+        bestVisit: Number(e.bestVisit || 0) || 0,
+        bestCheckout: Number(e.bestCheckout || 0) || 0,
+        buckets: e.buckets && typeof e.buckets === "object" ? e.buckets : {},
+        lastMatchAt: Number(e.lastMatchAt || 0) || undefined,
+      };
+    }
+    const mirror: StatsQuickMirror = { version: 1, updatedAt: Date.now(), byPlayer };
+    localStorage.setItem(STATS_QUICK_MIRROR_KEY, JSON.stringify(mirror));
+  } catch {
+    // Cache UX uniquement : ne doit jamais bloquer les stats.
+  }
+}
 
 export function markStatsIndexDirty(reason = "unknown"): void {
   try {
@@ -281,6 +339,9 @@ export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
 
   await setKV(STATS_KEY, payload);
 
+  // Petit miroir synchrone pour le premier paint des KPI.
+  saveStatsQuickMirror(payload);
+
   // migration douce : on nettoie l'ancien stockage localStorage
   try {
     localStorage.removeItem(STATS_LEGACY_KEY);
@@ -291,6 +352,7 @@ export async function clearStatsIndex(): Promise<void> {
   await delKV(STATS_KEY).catch(() => {});
   try {
     localStorage.removeItem(STATS_LEGACY_KEY);
+    localStorage.removeItem(STATS_QUICK_MIRROR_KEY);
   } catch {}
 }
 
@@ -994,12 +1056,40 @@ export function scheduleStatsIndexRefresh(options?: {
   const reason = options?.reason || "scheduled-refresh";
   markStatsIndexDirty(reason);
 
-  // ✅ Perf: no more global/background rebuild here.
-  // We only mark the cache dirty. Actual rebuild happens on-demand
-  // when the user opens a stats screen or explicitly requests it.
-  const cachedPromise = loadStatsIndex().then((cached) => cached || createEmptyStatsIndex(!!options?.includeNonFinished));
-  __statsRefreshPromise = cachedPromise;
-  return cachedPromise;
+  // Le coût du rebuild est payé APRES la mutation d'historique, jamais à
+  // l'ouverture de Stats. Les imports massifs repoussent ce timer et ne font
+  // donc qu'un seul rebuild final.
+  if (__statsRefreshTimer) clearTimeout(__statsRefreshTimer);
+  const debounceMs = Math.max(40, Number(options?.debounceMs ?? STATS_REFRESH_DEBOUNCE_MS) || STATS_REFRESH_DEBOUNCE_MS);
+
+  __statsRefreshTimer = setTimeout(() => {
+    __statsRefreshTimer = null;
+    const run = () => {
+      const p = refreshStatsIndexFromHistoryNow({
+        includeNonFinished: options?.includeNonFinished,
+        persist: options?.persist,
+        reason,
+      });
+      __statsRefreshPromise = p;
+      void p.catch((e) => {
+        console.warn("[stats_index background refresh] failed", e);
+      }).finally(() => {
+        if (__statsRefreshPromise === p) __statsRefreshPromise = null;
+      });
+    };
+
+    try {
+      const ric = (globalThis as any)?.requestIdleCallback;
+      if (typeof ric === "function") {
+        ric(run, { timeout: 1200 });
+        return;
+      }
+    } catch {}
+    run();
+  }, debounceMs);
+
+  // Les appelants historiques reçoivent immédiatement le dernier index.
+  return loadStatsIndex().then((cached) => cached || createEmptyStatsIndex(!!options?.includeNonFinished));
 }
 
 export function cancelScheduledStatsIndexRefresh(): void {
@@ -1018,7 +1108,17 @@ export async function getOrRebuildStatsIndex(options?: {
   // on le renvoie immédiatement. Avant, chaque ouverture de stats pouvait relire tout
   // l'historique puis recharger les détails un par un, ce qui explosait à 15–20s après restore.
   const cached = await loadStatsIndex().catch(() => null);
-  if (!options?.force && isValidStatsIndex(cached) && !isStatsIndexDirty()) {
+  if (!options?.force && isValidStatsIndex(cached)) {
+    // Même si l'index vient d'être marqué dirty, on ne bloque jamais le rendu.
+    // On renvoie la dernière valeur connue et on rafraîchit silencieusement.
+    if (isStatsIndexDirty()) {
+      void scheduleStatsIndexRefresh({
+        includeNonFinished: options?.includeNonFinished,
+        persist: options?.persist,
+        debounceMs: 40,
+        reason: "stats-read-dirty-background",
+      });
+    }
     return cached as StatsIndex;
   }
 
@@ -1086,40 +1186,51 @@ export async function rebuildStatsFromHistory(options?: {
     }
   }
 
-  for (const lightRec of rows) {
-    let rec: any = lightRec;
-    try {
-      const id = String(lightRec?.matchId ?? lightRec?.id ?? "").trim();
-      if (id && typeof (History as any)?.get === "function") {
-        rec = ((await (History as any).get(id)) as any) || lightRec;
-      }
-    } catch {
-      rec = lightRec;
-    }
-    const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
-    const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
-    const payload = normalizeMatchForStats(rec, rawPayload);
-    const status = rec?.status;
-    const mode = normalizeGameKey(rec, payload);
-
-    bumpMode(idx, mode, status, ts);
-
-    idx.totals.matches += 1;
-    const st = (status || "").toLowerCase();
-    if (st.includes("finish")) idx.totals.finished += 1;
-    else if (st.includes("save")) idx.totals.saved += 1;
-    else idx.totals.inProgress += 1;
-
-    idx.matchIdsByMode[mode] = idx.matchIdsByMode[mode] || [];
-    idx.matchIdsByMode[mode].push(String(rec?.id || ""));
-
-    const extractor = extractors[mode];
-    if (extractor) {
+  // Hydratation par petits lots parallèles. L'ancien parcours faisait un
+  // History.get() séquentiel par match, très lent après une grosse restauration.
+  const HYDRATE_CHUNK = 24;
+  for (let offset = 0; offset < rows.length; offset += HYDRATE_CHUNK) {
+    const lightChunk = rows.slice(offset, offset + HYDRATE_CHUNK);
+    const hydratedChunk = await Promise.all(lightChunk.map(async (lightRec: any) => {
       try {
-        extractor({ rec, payload, mode, ts, idx });
-      } catch {
-        // ne jamais casser le rebuild stats
+        const id = String(lightRec?.matchId ?? lightRec?.id ?? "").trim();
+        if (id && typeof (History as any)?.get === "function") {
+          return ((await (History as any).get(id)) as any) || lightRec;
+        }
+      } catch {}
+      return lightRec;
+    }));
+
+    for (const rec of hydratedChunk) {
+      const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
+      const rawPayload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
+      const payload = normalizeMatchForStats(rec, rawPayload);
+      const status = rec?.status;
+      const mode = normalizeGameKey(rec, payload);
+
+      bumpMode(idx, mode, status, ts);
+
+      idx.totals.matches += 1;
+      const st = (status || "").toLowerCase();
+      if (st.includes("finish")) idx.totals.finished += 1;
+      else if (st.includes("save")) idx.totals.saved += 1;
+      else idx.totals.inProgress += 1;
+
+      idx.matchIdsByMode[mode] = idx.matchIdsByMode[mode] || [];
+      idx.matchIdsByMode[mode].push(String(rec?.id || ""));
+
+      const extractor = extractors[mode];
+      if (extractor) {
+        try {
+          extractor({ rec, payload, mode, ts, idx });
+        } catch {
+          // ne jamais casser le rebuild stats
+        }
       }
+    }
+
+    if (offset + HYDRATE_CHUNK < rows.length) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
 

@@ -7,6 +7,7 @@ import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
 import { loadBots } from "../lib/bots";
+import { getAvatarCache } from "../lib/avatarCache";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, computeNasSyncSummary, getNasSyncState } from "../lib/manualNasSync";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
@@ -389,11 +390,213 @@ const statsNameCss = `
 // - Tolérant: ne casse pas si cache absent/corrompu
 // ============================================================
 
+const STATS_RENDER_CACHE_KEY = "dc_stats_render_cache_v2";
+const STATS_RENDER_CACHE_LEGACY_KEY = "dc_stats_render_cache_v1";
+const STATS_RENDER_CACHE_MAX_ENTRIES = 48;
+const STATS_RENDER_CACHE_MAX_CHARS = 2_400_000;
+const STATS_AVATAR_THUMB_MAX_CHARS = 70_000;
+
 const STATS_CACHE_KEYS = (profileId: string) => [
   `dc_stats_cache_v2:${profileId}`,
   `dc_stats_cache:${profileId}`,
   `dc-stats-cache:${profileId}`,
 ];
+
+type StatsRenderIdentity = {
+  id: string;
+  name?: string;
+  displayName?: string | null;
+  nickname?: string | null;
+  avatarThumbDataUrl?: string | null;
+  avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
+  photoDataUrl?: string | null;
+  photoUrl?: string | null;
+  avatarUpdatedAt?: number | null;
+  updatedAt: number;
+};
+
+function readStatsRenderCache(profileId: string): any | null {
+  if (!profileId || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STATS_RENDER_CACHE_KEY) || localStorage.getItem(STATS_RENDER_CACHE_LEGACY_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || ![1, 2].includes(Number(parsed.version)) || typeof parsed.byProfile !== "object") return null;
+    return parsed.byProfile?.[profileId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function safeStatsVisualString(value: any, maxChars = STATS_AVATAR_THUMB_MAX_CHARS): string | null {
+  if (typeof value !== "string") return null;
+  const src = value.trim();
+  if (!src) return null;
+  if (src.startsWith("data:image/")) return src.length <= maxChars ? src : null;
+  if (/^(https?:|blob:|\/|\.\/|\.\.\/)/i.test(src) || /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(src)) return src;
+  return null;
+}
+
+function buildStatsRenderIdentity(profileId: string, player: any, existing?: StatsRenderIdentity | null): StatsRenderIdentity {
+  const avatarCache = getAvatarCache(profileId);
+  const tinyThumb = safeStatsVisualString(player?.__statsAvatarThumb, STATS_AVATAR_THUMB_MAX_CHARS);
+  const directAvatar = safeStatsVisualString(player?.avatarDataUrl, 120_000);
+  const cachedThumb = safeStatsVisualString(
+    avatarCache?.avatarThumbDataUrl || avatarCache?.avatarDataUrl || avatarCache?.avatarCastDataUrl,
+    STATS_AVATAR_THUMB_MAX_CHARS
+  );
+  const avatarUrl = safeStatsVisualString(player?.avatarUrl || player?.avatar_url || avatarCache?.avatarUrl, 240_000);
+  const legacyAvatar = safeStatsVisualString(player?.avatar, 120_000);
+  const photoDataUrl = safeStatsVisualString(player?.photoDataUrl, STATS_AVATAR_THUMB_MAX_CHARS);
+  const photoUrl = safeStatsVisualString(player?.photoUrl, 240_000);
+  return {
+    id: String(player?.id || profileId),
+    name: String(player?.name || existing?.name || ""),
+    displayName: player?.displayName ?? existing?.displayName ?? null,
+    nickname: player?.nickname ?? existing?.nickname ?? null,
+    // Une vraie miniature locale gagne : elle permet un premier paint sans NAS/R2.
+    avatarThumbDataUrl: tinyThumb || cachedThumb || directAvatar || photoDataUrl || existing?.avatarThumbDataUrl || null,
+    avatarDataUrl: directAvatar || existing?.avatarDataUrl || null,
+    avatarUrl: avatarUrl || existing?.avatarUrl || null,
+    avatar: legacyAvatar || existing?.avatar || null,
+    photoDataUrl: photoDataUrl || existing?.photoDataUrl || null,
+    photoUrl: photoUrl || existing?.photoUrl || null,
+    avatarUpdatedAt: Number(player?.avatarUpdatedAt || avatarCache?.avatarUpdatedAt || existing?.avatarUpdatedAt || 0) || null,
+    updatedAt: Date.now(),
+  };
+}
+
+const __statsAvatarThumbJobs = new Map<string, Promise<void>>();
+const __statsAvatarThumbDone = new Set<string>();
+
+function createTinyStatsAvatar(src: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      if (typeof document === "undefined" || !src.startsWith("data:image/")) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxEdge = 96;
+          const ratio = Math.min(1, maxEdge / Math.max(1, img.naturalWidth || img.width), maxEdge / Math.max(1, img.naturalHeight || img.height));
+          const w = Math.max(1, Math.round((img.naturalWidth || img.width) * ratio));
+          const h = Math.max(1, Math.round((img.naturalHeight || img.height) * ratio));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          let out = "";
+          try { out = canvas.toDataURL("image/webp", 0.72); } catch {}
+          if (!out || !out.startsWith("data:image/") || out.length > STATS_AVATAR_THUMB_MAX_CHARS) {
+            try { out = canvas.toDataURL("image/jpeg", 0.68); } catch {}
+          }
+          resolve(out && out.length <= STATS_AVATAR_THUMB_MAX_CHARS ? out : null);
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function queueTinyStatsAvatar(profileId: string, player: any): void {
+  try {
+    if (!profileId || !player) return;
+    const avatarCache = getAvatarCache(profileId);
+    const src = String(
+      avatarCache?.avatarThumbDataUrl ||
+      avatarCache?.avatarDataUrl ||
+      player?.avatarDataUrl ||
+      player?.photoDataUrl ||
+      ""
+    ).trim();
+    if (!src.startsWith("data:image/")) return;
+
+    const signature = `${profileId}:${Number(player?.avatarUpdatedAt || avatarCache?.avatarUpdatedAt || 0)}:${src.length}:${src.slice(-24)}`;
+    if (__statsAvatarThumbDone.has(signature) || __statsAvatarThumbJobs.has(signature)) return;
+
+    const job = createTinyStatsAvatar(src).then((tiny) => {
+      if (!tiny) return;
+      writeStatsRenderCache(profileId, null, { ...player, __statsAvatarThumb: tiny });
+      __statsAvatarThumbDone.add(signature);
+    }).finally(() => {
+      __statsAvatarThumbJobs.delete(signature);
+    });
+    __statsAvatarThumbJobs.set(signature, job);
+  } catch {}
+}
+
+function compactStatsRenderCache(byProfile: Record<string, any>): Record<string, any> {
+  const entries = Object.entries(byProfile)
+    .sort((a: any, b: any) => Number(b?.[1]?.updatedAt || b?.[1]?.identity?.updatedAt || 0) - Number(a?.[1]?.updatedAt || a?.[1]?.identity?.updatedAt || 0))
+    .slice(0, STATS_RENDER_CACHE_MAX_ENTRIES);
+  const out: Record<string, any> = Object.fromEntries(entries);
+
+  // Sécurité quota localStorage : on retire d'abord les miniatures les plus anciennes,
+  // jamais les KPI. Les URLs/références restent disponibles.
+  let serialized = JSON.stringify({ version: 2, updatedAt: Date.now(), byProfile: out });
+  if (serialized.length > STATS_RENDER_CACHE_MAX_CHARS) {
+    for (let i = entries.length - 1; i >= 0 && serialized.length > STATS_RENDER_CACHE_MAX_CHARS; i -= 1) {
+      const key = entries[i][0];
+      if (out[key]?.identity?.avatarThumbDataUrl?.startsWith?.("data:image/")) {
+        out[key] = { ...out[key], identity: { ...out[key].identity, avatarThumbDataUrl: null, photoDataUrl: null } };
+        serialized = JSON.stringify({ version: 2, updatedAt: Date.now(), byProfile: out });
+      }
+    }
+  }
+  return out;
+}
+
+function writeStatsRenderCache(profileId: string, dashboard?: any | null, player?: any | null): void {
+  if (!profileId || typeof localStorage === "undefined") return;
+  try {
+    const raw = localStorage.getItem(STATS_RENDER_CACHE_KEY);
+    let parsed: any = null;
+    try { parsed = raw ? JSON.parse(raw) : null; } catch {}
+    const byProfile = parsed?.version === 2 && parsed?.byProfile && typeof parsed.byProfile === "object"
+      ? { ...parsed.byProfile }
+      : {};
+    const prev = byProfile[profileId] || {};
+
+    const nextDashboard = dashboard && typeof dashboard === "object" ? {
+      playerId: String(dashboard?.playerId || profileId),
+      playerName: String(dashboard?.playerName || player?.name || prev?.dashboard?.playerName || ""),
+      avg3Overall: Number(dashboard?.avg3Overall || 0) || 0,
+      bestVisit: Number(dashboard?.bestVisit || 0) || 0,
+      winRatePct: Number(dashboard?.winRatePct || 0) || 0,
+      bestCheckout: Number(dashboard?.bestCheckout || 0) || 0,
+      evolution: Array.isArray(dashboard?.evolution) ? dashboard.evolution.slice(-30) : [],
+      distribution: dashboard?.distribution && typeof dashboard.distribution === "object" ? dashboard.distribution : {},
+      sessionsByMode: dashboard?.sessionsByMode && typeof dashboard.sessionsByMode === "object" ? dashboard.sessionsByMode : {},
+      updatedAt: Date.now(),
+    } : prev?.dashboard || null;
+
+    const nextIdentity = player
+      ? buildStatsRenderIdentity(profileId, player, prev?.identity || null)
+      : (prev?.identity || null);
+
+    byProfile[profileId] = {
+      dashboard: nextDashboard,
+      identity: nextIdentity,
+      updatedAt: Date.now(),
+    };
+
+    const compacted = compactStatsRenderCache(byProfile);
+    localStorage.setItem(STATS_RENDER_CACHE_KEY, JSON.stringify({ version: 2, updatedAt: Date.now(), byProfile: compacted }));
+  } catch {
+    // Le cache visuel/stats ne doit jamais casser la page.
+  }
+}
 
 function safeJsonParseStatsHub<T = any>(raw: any): T | null {
   try {
@@ -420,6 +623,9 @@ function looksLikeDashboard(x: any): boolean {
 function readStatsCache(profileId: string): any | null {
   if (!profileId) return null;
   try {
+    const renderReady = readStatsRenderCache(profileId);
+    if (renderReady?.dashboard) return { dashboard: renderReady.dashboard, identity: renderReady.identity, updatedAt: renderReady?.updatedAt };
+
     for (const k of STATS_CACHE_KEYS(profileId)) {
       const raw = localStorage.getItem(k);
       const parsed = safeJsonParseStatsHub(raw);
@@ -437,32 +643,19 @@ function readStatsCache(profileId: string): any | null {
  */
 
 function useFastDashboardCache(profileId: string | null) {
-  const [cachedDashboard, setCachedDashboard] = React.useState<any | null>(null);
-  const [cacheLoaded, setCacheLoaded] = React.useState(false);
-
-  React.useEffect(() => {
-    setCacheLoaded(false);
-    setCachedDashboard(null);
-
+  // Lecture PENDANT le premier render : KPI + identité visuelle sont disponibles
+  // avant le premier paint, sans attendre IndexedDB/useEffect.
+  const hit = React.useMemo(() => {
     const pid = String(profileId || "");
-    if (!pid) {
-      setCacheLoaded(true);
-      return;
-    }
-
-    // 🔥 lecture sync ultra-rapide (localStorage)
-    const hit = readStatsCache(pid);
-
-    if (hit) {
-      const dash = hit?.dashboard ?? hit;
-      // ⚠️ CRITIQUE : on rejette les dashboards vides / incomplets
-      setCachedDashboard(looksLikeDashboard(dash) ? dash : null);
-    }
-
-    setCacheLoaded(true);
+    return pid ? readStatsCache(pid) : null;
   }, [profileId]);
 
-  return { cachedDashboard, cacheLoaded };
+  const dash = hit?.dashboard ?? hit;
+  return {
+    cachedDashboard: looksLikeDashboard(dash) ? dash : null,
+    cachedIdentity: hit?.identity ?? readStatsRenderCache(String(profileId || ""))?.identity ?? null,
+    cacheLoaded: true,
+  };
 }
 
 function useInjectStatsNameCss() {
@@ -5409,7 +5602,31 @@ const effectiveProfileId = String(
 // canonique pour éviter tout ReferenceError pendant le render.
 const activeProfileId = effectiveProfileId || null;
 
-const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
+const { cachedDashboard, cachedIdentity } = useFastDashboardCache(effectiveProfileId || null);
+
+// Identité visuelle instantanée : même si loadStore()/IndexedDB n'a pas encore fini,
+// le nom et la miniature du médaillon peuvent être peints dès la première frame.
+const selectedPlayerVisual = React.useMemo<PlayerLite | null>(() => {
+  const live: any = selectedPlayer;
+  const cached: any = cachedIdentity;
+  if (!live && !cached?.id) return null;
+  return {
+    ...(cached || {}),
+    ...(live || {}),
+    id: String(live?.id || cached?.id || effectiveProfileId),
+    name: live?.name || cached?.name || cached?.displayName || "Joueur",
+    avatarDataUrl:
+      pickPlayerAvatar(live) ||
+      cached?.avatarThumbDataUrl ||
+      cached?.avatarDataUrl ||
+      cached?.photoDataUrl ||
+      cached?.avatarUrl ||
+      cached?.photoUrl ||
+      null,
+    avatarUrl: live?.avatarUrl || cached?.avatarUrl || cached?.photoUrl || null,
+    avatar: live?.avatar || cached?.avatar || null,
+  } as PlayerLite;
+}, [selectedPlayer, cachedIdentity, effectiveProfileId]);
 
 // ============================================================
 // 🧪 RUNTIME DEBUG (visible sur téléphone)
@@ -5604,6 +5821,10 @@ React.useEffect(() => {
 
   if (!pid) return;
 
+  // Si le cache instantané existe mais que l'historique async n'est pas encore arrivé,
+  // ne remplace pas le snapshot par un faux dashboard à zéro.
+  if (!isDiceSport && !isMolkkySport && nmEffective.length === 0 && cachedDashboard) return;
+
   const compute = () => {
     try {
       // ✅ Sport DiceGame: on garde EXACTEMENT la même UI StatsHub, mais on mappe les métriques.
@@ -5647,7 +5868,7 @@ React.useEffect(() => {
     }
     if (toId != null) window.clearTimeout(toId);
   };
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records, cachedDashboard, isDiceSport]);
 
 
 // ✅ Dashboard calculé "memo" (léger) — NE DOIT PAS être bloqué par le cache
@@ -5699,10 +5920,30 @@ const computedDashboard = React.useMemo(() => {
 // Pour les fléchettes, l'historique est la source de vérité : le cache ne passe plus devant
 // le recalcul, sinon une suppression de carte peut laisser un ancien 0% / une vieille session.
 const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
-  ? (liveDashboard ?? computedDashboard)
-  : (liveDashboard ?? computedDashboard ?? cachedDashboard)) as
+  ? (liveDashboard ?? computedDashboard ?? cachedDashboard)
+  : (liveDashboard ?? cachedDashboard ?? computedDashboard)) as
   | PlayerDashboardStats
   | null;
+
+// Matérialise le dashboard + l'identité visuelle pour la PROCHAINE ouverture.
+React.useEffect(() => {
+  const pid = String(effectiveProfileId || "");
+  if (!pid) return;
+  const fresh = liveDashboard || (nmEffective.length > 0 ? computedDashboard : null);
+  if (!fresh && !selectedPlayer) return;
+  const visual = selectedPlayer || selectedPlayerVisual;
+  writeStatsRenderCache(pid, fresh, visual);
+  if (visual) queueTinyStatsAvatar(pid, visual);
+}, [effectiveProfileId, liveDashboard, computedDashboard, nmEffective.length, selectedPlayer, selectedPlayerVisual]);
+
+// Même sans nouvelle partie, une photo/URL modifiée est immédiatement recopiée dans
+// le cache de rendu. getAvatarCache fournit de préférence sa miniature locale.
+React.useEffect(() => {
+  const pid = String(effectiveProfileId || "");
+  if (!pid || !selectedPlayer) return;
+  writeStatsRenderCache(pid, null, selectedPlayer);
+  queueTinyStatsAvatar(pid, selectedPlayer);
+}, [effectiveProfileId, selectedPlayer?.id, selectedPlayer?.avatarDataUrl, selectedPlayer?.avatarUrl, selectedPlayer?.avatar]);
 
 const currentPlayerIndex = React.useMemo(() => {
   if (!selectedPlayer) return -1;
@@ -7234,7 +7475,7 @@ const dashboardToShowWithModes = React.useMemo(() => {
 }, [dashboardToShow, globalModeDashboard]);
 
 // Taille du nom en fonction de la longueur
-const selectedName = selectedPlayer?.name ?? "";
+const selectedName = selectedPlayerVisual?.name ?? selectedPlayer?.name ?? "";
 const nameLen = selectedName.length;
 let nameFontSize = 22;
 if (nameLen > 12) nameFontSize = 20;
@@ -7497,9 +7738,9 @@ return (
                       overflow: "visible",
                     }}
                   >
-                    {selectedPlayer &&
+                    {selectedPlayerVisual &&
                       (() => {
-                        const pid = selectedPlayer.id;
+                        const pid = selectedPlayerVisual.id;
                         const q: any = quick as any;
 
                         // ✅ Source "HOME-like" : on préfère la moyenne déjà calculée
@@ -7593,7 +7834,9 @@ return (
                               >
                                 <ProfileAvatar
                                   size={AVATAR}
-                                  dataUrl={selectedPlayer.avatarDataUrl ?? undefined}
+                                  dataUrl={pickPlayerAvatar(selectedPlayerVisual) ?? undefined}
+                                  profileId={String(selectedPlayerVisual.id || effectiveProfileId)}
+                                  fallbackDataUrl={cachedIdentity?.avatarThumbDataUrl ?? cachedIdentity?.photoDataUrl ?? undefined}
                                   label={selectedName?.[0]?.toUpperCase() || "?"}
                                   showStars={false}
                                 />

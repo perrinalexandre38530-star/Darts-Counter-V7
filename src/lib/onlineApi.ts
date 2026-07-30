@@ -52,7 +52,7 @@ import {
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
-import { apiGet, apiPost, buildApiUrl, getApiUrl, readNasAccessToken } from "./apiClient";
+import { apiGet, apiPost, buildApiUrl, canUseNasOnlineApi, getApiUrl, readNasAccessToken } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 import { loadStoragePrefs } from "./storagePlans";
 
@@ -369,11 +369,11 @@ function saveAuthToLS(session: AuthSession | null) {
 }
 
 function shouldUseNasForCurrentSession(): boolean {
-  // Une session Supabase sauvegardée dans la clé historique ne doit jamais
-  // être prise pour une session NAS. Le backend NAS n'est autorisé que si
-  // le provider est explicitement NAS ET qu'un vrai JWT NAS dédié existe.
+  // Source unique de vérité : provider NAS + JWT NAS + session active NAS.
+  // Un ancien token NAS peut rester stocké pour permettre un retour rapide au
+  // mode privé, mais il ne doit jamais détourner une session Supabase publique.
   return useNasOnlineBackend()
-    && !!readNasAccessToken()
+    && canUseNasOnlineApi()
     && !isSupabaseFailoverSession(loadAuthFromLS());
 }
 
@@ -1888,7 +1888,9 @@ function subscribeOnlineStream(lobbyCode: string, handlers: OnlineStreamHandlers
   if (!code || typeof window === "undefined") return () => {};
 
   // ONLINE public : Supabase Realtime. Aucun SSE / NAS.
-  if (!useNasOnlineBackend()) {
+  // Le choix suit la session ACTIVE : une bascule NAS -> public doit couper
+  // immédiatement le SSE NAS même si un ancien JWT NAS reste conservé.
+  if (!shouldUseNasForCurrentSession()) {
     let stopped = false;
     const emitLobby = async () => {
       if (stopped) return;

@@ -60,7 +60,7 @@ import {
   type CricketLegStats,
   type CricketProfileStats,
 } from "./cricketStats";
-import { getOrRebuildStatsIndex, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
+import { getOrRebuildStatsIndex, loadStatsQuickMirrorSync, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
 import { getX01StatsContext, x01ContextMatchesFilter, type X01StatsContextFilter } from "./x01StatsContext";
 
 /* ============================================================
@@ -181,6 +181,20 @@ type QuickStatsEntry = BasicProfileStats & {
   buckets?: Record<string, number>;
 };
 
+function loadQuickStatsBagSync(): Record<string, QuickStatsEntry> | null {
+  try {
+    const mirror = loadStatsQuickMirrorSync();
+    if (!mirror?.byPlayer || typeof mirror.byPlayer !== "object") return null;
+    const bag: Record<string, QuickStatsEntry> = {};
+    for (const [pid, entry] of Object.entries(mirror.byPlayer)) {
+      bag[String(pid)] = statsIndexEntryToQuickStats(entry);
+    }
+    return bag;
+  } catch {
+    return null;
+  }
+}
+
 let __quickStatsBag: Record<string, QuickStatsEntry> | null = null;
 let __quickStatsBootPromise: Promise<void> | null = null;
 
@@ -206,9 +220,12 @@ function statsIndexEntryToQuickStats(entry: any): QuickStatsEntry {
   };
 }
 
+// Hydratation immédiate au chargement du module : premier paint synchrone.
+__quickStatsBag = loadQuickStatsBagSync();
+
 async function hydrateQuickStatsBagFromIndex(force = false): Promise<Record<string, QuickStatsEntry>> {
   if (__quickStatsBag && !force) return __quickStatsBag;
-  const idx: CachedStatsIndex | null = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true }).catch(() => null);
+  const idx: CachedStatsIndex | null = await getOrRebuildStatsIndex({ includeNonFinished: false, force: false, persist: true }).catch(() => null);
   const bag: Record<string, QuickStatsEntry> = {};
   for (const [pid, entry] of Object.entries(idx?.byPlayer || {})) {
     bag[pid] = statsIndexEntryToQuickStats(entry);
@@ -682,17 +699,28 @@ export async function buildStatsIndex(force = false): Promise<StatsIndex> {
     const arr = [...localArr, ...linkedArr];
 
     const norm: NormalizedMatch[] = [];
-    for (const r of arr) {
-      try {
-        const id = String((r as any)?.matchId ?? (r as any)?.id ?? "").trim();
-        let full: any = r;
+    const HYDRATE_CHUNK = 24;
+    for (let offset = 0; offset < arr.length; offset += HYDRATE_CHUNK) {
+      const chunk = arr.slice(offset, offset + HYDRATE_CHUNK);
+      const normalizedChunk = await Promise.all(chunk.map(async (r: any) => {
         try {
-          if (id && typeof api?.get === "function") full = (await api.get(id)) || r;
-        } catch {}
-        const n = await normalizeRow(full);
+          const id = String(r?.matchId ?? r?.id ?? "").trim();
+          let full: any = r;
+          try {
+            if (id && typeof api?.get === "function") full = (await api.get(id)) || r;
+          } catch {}
+          return await normalizeRow(full);
+        } catch {
+          return null;
+        }
+      }));
+
+      for (const n of normalizedChunk) {
         if (n && n.id) norm.push(n);
-      } catch {
-        // ignore
+      }
+
+      if (offset + HYDRATE_CHUNK < arr.length) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
     }
 

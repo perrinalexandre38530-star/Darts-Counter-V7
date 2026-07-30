@@ -3579,6 +3579,8 @@ export async function clear(): Promise<void> {
     // ✅ ANDROID / PWA FIX V5
     // Clear doit vider IndexedDB ET le fallback local/session.
     try { clearLegacyRowsSafe(); } catch {}
+    try { localStorage.removeItem("dc_stats_render_cache_v2"); } catch {}
+    try { localStorage.removeItem("dc_stats_render_cache_v1"); } catch {}
 
     invalidateStatsAfterHistoryMutation("history:clear");
     scheduleCloudSnapshotPush("history:clear");
@@ -3594,6 +3596,8 @@ export async function clear(): Promise<void> {
         }
       } catch {}
 
+      try { localStorage.removeItem("dc_stats_render_cache_v2"); } catch {}
+      try { localStorage.removeItem("dc_stats_render_cache_v1"); } catch {}
       invalidateStatsAfterHistoryMutation("history:clear:ls_fallback");
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
       try { emitCloudChange("history:clear:ls_fallback"); } catch {}

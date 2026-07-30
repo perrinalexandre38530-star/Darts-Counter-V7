@@ -89,10 +89,10 @@ let lastAnnouncedAccessToken = "";
 export function setApiAccessToken(rawToken: string | null | undefined): void {
   const token = String(rawToken || "").trim();
 
-  // Cette fonction est appelée depuis le provider d'auth React avec le JWT
-  // Supabase. Ce JWT ne doit JAMAIS être réutilisé comme JWT du backend NAS.
-  // En mode public/hybride on vide donc le token volatile NAS.
-  volatileAccessToken = isNasProviderEnabled() ? token : "";
+  // Cette fonction peut recevoir un JWT Supabase depuis le provider React.
+  // On ne le considère jamais comme JWT NAS lorsqu'une session publique est
+  // actuellement active, même si le build autorise aussi le NAS fondateur.
+  volatileAccessToken = isNasProviderEnabled() && !activeSessionIsPublicSupabase() ? token : "";
 
   if (!volatileAccessToken) {
     lastAnnouncedAccessToken = "";
@@ -101,6 +101,17 @@ export function setApiAccessToken(rawToken: string | null | undefined): void {
   if (volatileAccessToken === lastAnnouncedAccessToken || typeof window === "undefined") return;
   lastAnnouncedAccessToken = volatileAccessToken;
   try { window.dispatchEvent(new CustomEvent("dc-api-auth-token-ready")); } catch {}
+}
+
+function activeSessionIsPublicSupabase(): boolean {
+  const raw = (
+    safeReadLocalStorage("dc_online_auth_supabase_v1") ||
+    safeReadSessionStorage("dc_online_auth_supabase_v1")
+  ).trim();
+  if (!raw) return false;
+  const parsed = safeParseJson<any>(raw, null);
+  const provider = String(parsed?.authProvider || parsed?.auth_provider || "").trim().toLowerCase();
+  return provider === "supabase" || provider === "supabase_failover" || parsed?.degradedMode === true;
 }
 
 function tokenFromStoredValue(raw: string): string {
@@ -158,7 +169,11 @@ export function readNasAccessToken(): string {
 }
 
 export function canUseNasOnlineApi(): boolean {
-  return isNasProviderEnabled() && !!readNasAccessToken();
+  // Le droit NAS et la présence d'un ancien JWT NAS ne suffisent pas :
+  // une bascule explicite vers Cloud public doit immédiatement forcer tout
+  // l'ONLINE/social/realtime sur Supabase, tout en conservant le token NAS
+  // afin de pouvoir revenir ensuite au mode privé sans perdre le bridge.
+  return isNasProviderEnabled() && !activeSessionIsPublicSupabase() && !!readNasAccessToken();
 }
 const envUrl = sanitizeApiUrl(getNasApiUrl());
 const PUBLIC_HTTPS_API_URL = "https://api.multisports-api.fr";

@@ -989,6 +989,9 @@ const LS_EXCLUDE = new Set<string>([
   "dc-history-cache-v1",
   "dc_stats_cache_v1",
   "dc_stats_cache_v2",
+  "dc_stats_quick_v1",
+  "dc_stats_render_cache_v2",
+  "dc_stats_render_cache_v1",
   "dc_match_stats_cache_v1",
 ]);
 

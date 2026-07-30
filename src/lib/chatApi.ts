@@ -1,12 +1,11 @@
 import { supabase } from "./supabaseClient";
-import { isNasProviderEnabled } from "./serverConfig";
-import { apiGet, apiPost } from "./apiClient";
+import { apiGet, apiPost, canUseNasOnlineApi } from "./apiClient";
 
 export async function postMessage(lobbyCode: string, message: any) {
   const code = String(lobbyCode || "").trim().toUpperCase();
   if (!code) throw new Error("Lobby code manquant");
 
-  if (isNasProviderEnabled()) {
+  if (canUseNasOnlineApi()) {
     const res = await apiPost(`/online/lobbies/${encodeURIComponent(code)}/messages`, {
       message,
     });
@@ -28,7 +27,7 @@ export async function fetchMessages(lobbyCode: string, limit = 50) {
   const code = String(lobbyCode || "").trim().toUpperCase();
   if (!code) return [];
 
-  if (isNasProviderEnabled()) {
+  if (canUseNasOnlineApi()) {
     const res = await apiGet(`/online/lobbies/${encodeURIComponent(code)}/messages?limit=${encodeURIComponent(String(limit))}`);
     return Array.isArray(res?.messages) ? res.messages : [];
   }
@@ -48,7 +47,7 @@ export function subscribeMessages(lobbyCode: string, onInsert: (row: any) => voi
 
   // NAS: pas de websocket ici -> polling léger et déduplication locale.
   // Cela rend le chat salon utilisable sur téléphone/PC sans Supabase realtime.
-  if (isNasProviderEnabled()) {
+  if (canUseNasOnlineApi()) {
     const seen = new Set<string>();
     let stopped = false;
     let timer: number | null = null;
