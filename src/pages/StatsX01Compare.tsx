@@ -19,6 +19,7 @@ import { getX01ProfileStats } from "../lib/statsBridge";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { loadX01MultiSessions } from "../stats/X01MultiStatsTabFull";
 import type { X01StartScoreKey, X01VariantKey } from "../lib/x01StatsContext";
+import { writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 
 import {
   ResponsiveContainer,
@@ -1472,17 +1473,216 @@ const ROWS: RowDef[] = [
   },
 ];
 
+// ----------------- Cache instantané comparateur -----------------
+
+const X01_COMPARE_SAMPLES_CACHE_PREFIX = "dc_stats_x01_compare_samples_v3:";
+const X01_COMPARE_SAMPLES_CACHE_VERSION = 3;
+const X01_COMPARE_SAMPLES_CACHE_MAX_CHARS = 300_000;
+
+function x01CompareSamplesCacheKey(profileId: string): string {
+  return `${X01_COMPARE_SAMPLES_CACHE_PREFIX}${String(profileId || "").trim()}`;
+}
+
+function encodeX01CompareSample(sample: X01Sample): any[] {
+  const modeCode = sample.mode === "x01_online" ? 1 : sample.mode === "training_x01" ? 2 : 0;
+  return [
+    Number(sample.createdAt || 0) || 0, modeCode, sample.matchId ?? null, sample.rank ?? null,
+    sample.playerCount ?? null, sample.isTeam ? 1 : 0, sample.x01StartScore ?? null, sample.x01Variant ?? null,
+    sample.matchVictoryMode ?? null, sample.avg3 ?? null, sample.bestVisit ?? null, sample.bestCheckout ?? null,
+    sample.best9Score ?? null, sample.dartsThrown ?? null, sample.totalScore ?? null, sample.legsWon ?? null,
+    sample.legsLost ?? null, sample.matchesPlayed ?? null, sample.matchesWon ?? null, sample.hitsTotal ?? null,
+    sample.hits60 ?? null, sample.hits80 ?? null, sample.hits100 ?? null, sample.hits120 ?? null,
+    sample.hits140 ?? null, sample.hits180 ?? null, sample.miss ?? null, sample.singleHits ?? null,
+    sample.doubleHits ?? null, sample.tripleHits ?? null, sample.bull25 ?? null, sample.bull50 ?? null,
+    sample.bust ?? null, sample.coAttempts ?? null, sample.coSuccess ?? null,
+  ];
+}
+
+function decodeX01CompareSample(row: any[], profileId: string): X01Sample {
+  const mode: ModeKey = row?.[1] === 1 ? "x01_online" : row?.[1] === 2 ? "training_x01" : "x01_local";
+  return {
+    createdAt: Number(row?.[0] || 0) || 0, mode, profileId, matchId: row?.[2] ?? undefined,
+    rank: row?.[3] ?? null, playerCount: row?.[4] ?? undefined, isTeam: row?.[5] === 1,
+    x01StartScore: row?.[6] ?? null, x01Variant: row?.[7] ?? "unknown", matchVictoryMode: row?.[8] ?? "best_of",
+    avg3: row?.[9] ?? undefined, bestVisit: row?.[10] ?? undefined, bestCheckout: row?.[11] ?? undefined,
+    best9Score: row?.[12] ?? undefined, dartsThrown: row?.[13] ?? undefined, totalScore: row?.[14] ?? undefined,
+    legsWon: row?.[15] ?? undefined, legsLost: row?.[16] ?? undefined, matchesPlayed: row?.[17] ?? undefined,
+    matchesWon: row?.[18] ?? undefined, hitsTotal: row?.[19] ?? undefined, hits60: row?.[20] ?? undefined,
+    hits80: row?.[21] ?? undefined, hits100: row?.[22] ?? undefined, hits120: row?.[23] ?? undefined,
+    hits140: row?.[24] ?? undefined, hits180: row?.[25] ?? undefined, miss: row?.[26] ?? undefined,
+    singleHits: row?.[27] ?? undefined, doubleHits: row?.[28] ?? undefined, tripleHits: row?.[29] ?? undefined,
+    bull25: row?.[30] ?? undefined, bull50: row?.[31] ?? undefined, bust: row?.[32] ?? undefined,
+    coAttempts: row?.[33] ?? undefined, coSuccess: row?.[34] ?? undefined,
+  };
+}
+
+function readX01CompareSamplesCacheSync(profileId?: string | null): X01Sample[] | null {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(x01CompareSamplesCacheKey(pid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (String(parsed?.profileId || "") !== pid) return null;
+    if (Number(parsed?.version) === 3 && Array.isArray(parsed?.rows)) {
+      return parsed.rows.map((row: any[]) => decodeX01CompareSample(row, pid));
+    }
+    if (Number(parsed?.version) === 2 && Array.isArray(parsed?.samples)) return parsed.samples as X01Sample[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeX01CompareSamplesCache(profileId: string, samples: X01Sample[]): void {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined" || !Array.isArray(samples)) return;
+  try {
+    const raw = JSON.stringify({
+      version: X01_COMPARE_SAMPLES_CACHE_VERSION,
+      profileId: pid,
+      updatedAt: Date.now(),
+      rows: samples.map(encodeX01CompareSample),
+    });
+    writeDerivedStatsCacheRaw(x01CompareSamplesCacheKey(pid), raw, X01_COMPARE_SAMPLES_CACHE_MAX_CHARS);
+  } catch {}
+}
+
+async function buildX01CompareSamplesForProfileInternal(targetProfile: Pick<Profile, "id" | "name">): Promise<X01Sample[]> {
+  const pid = String(targetProfile?.id || "").trim();
+  if (!pid) return [];
+  const result: X01Sample[] = [];
+
+  const historySamples = await loadX01SamplesForProfile(targetProfile as Profile, { scope: "all" });
+  for (const hs of historySamples) {
+    if (hs.scope === "training") continue;
+    result.push({
+      createdAt: hs.createdAt,
+      mode: hs.scope === "online" ? "x01_online" : "x01_local",
+      profileId: pid,
+      matchId: (hs as any).matchId || undefined,
+      rank: (hs as any).rank ?? null,
+      playerCount: Number((hs as any).playerCount || 0) || undefined,
+      isTeam: !!(hs as any).isTeam || (hs as any).x01Variant === "team",
+      x01StartScore: (hs as any).x01StartScore ?? null,
+      x01Variant: (hs as any).x01Variant ?? "unknown",
+      matchVictoryMode: (hs as any).matchVictoryMode ?? "best_of",
+      avg3: hs.avg3 || undefined,
+      bestVisit: hs.bestVisit || undefined,
+      bestCheckout: hs.bestCheckout || undefined,
+      best9Score: hs.best9Score || undefined,
+      dartsThrown: hs.darts || undefined,
+      totalScore: (hs as any).totalScore || undefined,
+      legsWon: hs.legsWon || undefined,
+      legsLost: undefined,
+      matchesPlayed: hs.matchesPlayed || 1,
+      matchesWon: hs.matchesWon || 0,
+      hitsTotal: (hs.singleHits + hs.doubleHits + hs.tripleHits + hs.bull25 + hs.bull50) || undefined,
+      hits60: hs.h60 || undefined,
+      hits80: hs.h80 || undefined,
+      hits100: hs.h100 || undefined,
+      hits120: hs.h120 || undefined,
+      hits140: hs.h140 || undefined,
+      hits180: hs.h180 || undefined,
+      miss: hs.miss || undefined,
+      singleHits: hs.singleHits || undefined,
+      doubleHits: hs.doubleHits || undefined,
+      tripleHits: hs.tripleHits || undefined,
+      bull25: hs.bull25 || undefined,
+      bull50: hs.bull50 || undefined,
+      bust: hs.bust || undefined,
+      coAttempts: hs.coAttempts || undefined,
+      coSuccess: hs.coSuccess || undefined,
+    });
+  }
+
+  const trainingSessions = loadTrainingSessionsForProfile(pid);
+  for (const row of trainingSessions) {
+    const hitsTotal = Number(row.hitsS || 0) + Number(row.hitsD || 0) + Number(row.hitsT || 0) + Number(row.bull || 0) + Number(row.dBull || 0);
+    result.push({
+      createdAt: row.date,
+      mode: "training_x01",
+      profileId: pid,
+      matchId: row.id || undefined,
+      rank: null,
+      playerCount: 1,
+      isTeam: false,
+      x01StartScore: null,
+      x01Variant: "training",
+      matchVictoryMode: "best_of",
+      avg3: row.avg3D || undefined,
+      bestVisit: row.bestVisit || undefined,
+      bestCheckout: row.bestCheckout ?? undefined,
+      best9Score: row.best9Score ?? undefined,
+      dartsThrown: row.darts || undefined,
+      totalScore: undefined,
+      legsWon: undefined,
+      legsLost: undefined,
+      matchesPlayed: 0,
+      matchesWon: 0,
+      hitsTotal: hitsTotal || undefined,
+      hits60: countThresholdHitsFromSession(row, 60) || undefined,
+      hits80: countThresholdHitsFromSession(row, 80) || undefined,
+      hits100: countThresholdHitsFromSession(row, 100) || undefined,
+      hits120: countThresholdHitsFromSession(row, 120) || undefined,
+      hits140: countThresholdHitsFromSession(row, 140) || undefined,
+      hits180: countThresholdHitsFromSession(row, 180) || undefined,
+      miss: Number(row.miss || 0) || undefined,
+      singleHits: (Number(row.hitsS || 0) + Number(row.bull || 0)) || undefined,
+      doubleHits: (Number(row.hitsD || 0) + Number(row.dBull || 0)) || undefined,
+      tripleHits: Number(row.hitsT || 0) || undefined,
+      bull25: Number(row.bull || 0) || undefined,
+      bull50: Number(row.dBull || 0) || undefined,
+      bust: Number(row.bust || 0) || undefined,
+      coAttempts: Number(row.coAttempts || 0) || undefined,
+      coSuccess: Number(row.coSuccess || 0) || undefined,
+    });
+  }
+
+  return result.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+const __x01CompareSampleJobs = new Map<string, Promise<X01Sample[]>>();
+
+async function buildX01CompareSamplesForProfile(targetProfile: Pick<Profile, "id" | "name">): Promise<X01Sample[]> {
+  const pid = String(targetProfile?.id || "").trim();
+  if (!pid) return [];
+  const running = __x01CompareSampleJobs.get(pid);
+  if (running) return running;
+  const job = buildX01CompareSamplesForProfileInternal(targetProfile).finally(() => {
+    if (__x01CompareSampleJobs.get(pid) === job) __x01CompareSampleJobs.delete(pid);
+  });
+  __x01CompareSampleJobs.set(pid, job);
+  return job;
+}
+
+export async function prewarmX01CompareSamples(profileId: string, playerName = "Joueur", force = false): Promise<void> {
+  const pid = String(profileId || "").trim();
+  if (!pid) return;
+  if (!force && readX01CompareSamplesCacheSync(pid)) return;
+  const samples = await buildX01CompareSamplesForProfile({ id: pid, name: playerName } as Profile);
+  writeX01CompareSamplesCache(pid, samples);
+}
+
 // ----------------- Composant principal -----------------
 
 const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const { theme } = useTheme();
   useLang();
 
+  const profiles: Profile[] = store.profiles || [];
+  const activeFromStore =
+    profiles.find((p) => p.id === store.activeProfileId) || profiles[0] || null;
+
+  const targetProfile: Profile | null =
+    (profileId && profiles.find((p) => p.id === profileId)) || activeFromStore;
+  const initialSamplesCache = readX01CompareSamplesCacheSync(targetProfile?.id);
+
   const [period, setPeriod] = useState<PeriodKey>("ALL");
   const [scoreFilter, setScoreFilter] = useState<X01ScoreFilterKey>("all");
   const [variantFilter, setVariantFilter] = useState<X01VariantFilterKey>("all");
   const hasX01ContextFilters = scoreFilter !== "all" || variantFilter !== "all";
-  const [samples, setSamples] = useState<X01Sample[] | null>(null);
+  const [samples, setSamples] = useState<X01Sample[] | null>(() => initialSamplesCache);
   const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
   const [onlineBridgeStats, setOnlineBridgeStats] = useState<any | null>(null);
   const [localX01MultiAgg, setLocalX01MultiAgg] = useState<any | null>(null);
@@ -1491,133 +1691,45 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     online: emptyX01CompareMatchBreakdown(),
   }));
 
-  const profiles: Profile[] = store.profiles || [];
-  const activeFromStore =
-    profiles.find((p) => p.id === store.activeProfileId) || profiles[0] || null;
-
-  const targetProfile: Profile | null =
-    (profileId && profiles.find((p) => p.id === profileId)) || activeFromStore;
-
   useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
+    let rafA = 0;
+    let rafB = 0;
 
-    async function load() {
-      if (!targetProfile) {
-        setSamples([]);
-        return;
-      }
-
-      try {
-        const pid = targetProfile.id;
-        const result: X01Sample[] = [];
-
-        const historySamples = await loadX01SamplesForProfile(targetProfile, { scope: "all" });
-        for (const hs of historySamples) {
-          if (hs.scope === "training") continue;
-          result.push({
-            createdAt: hs.createdAt,
-            mode: hs.scope === "online" ? "x01_online" : "x01_local",
-            profileId: pid,
-            matchId: (hs as any).matchId || undefined,
-            rank: (hs as any).rank ?? null,
-            playerCount: Number((hs as any).playerCount || 0) || undefined,
-            isTeam: !!(hs as any).isTeam || (hs as any).x01Variant === "team",
-            x01StartScore: (hs as any).x01StartScore ?? null,
-            x01Variant: (hs as any).x01Variant ?? "unknown",
-            matchVictoryMode: (hs as any).matchVictoryMode ?? "best_of",
-            avg3: hs.avg3 || undefined,
-            bestVisit: hs.bestVisit || undefined,
-            bestCheckout: hs.bestCheckout || undefined,
-            best9Score: hs.best9Score || undefined,
-            dartsThrown: hs.darts || undefined,
-            totalScore: (hs as any).totalScore || undefined,
-            legsWon: hs.legsWon || undefined,
-            legsLost: undefined,
-            matchesPlayed: hs.matchesPlayed || 1,
-            matchesWon: hs.matchesWon || 0,
-            hitsTotal: (hs.singleHits + hs.doubleHits + hs.tripleHits + hs.bull25 + hs.bull50) || undefined,
-            hits60: hs.h60 || undefined,
-            hits80: hs.h80 || undefined,
-            hits100: hs.h100 || undefined,
-            hits120: hs.h120 || undefined,
-            hits140: hs.h140 || undefined,
-            hits180: hs.h180 || undefined,
-            miss: hs.miss || undefined,
-            singleHits: hs.singleHits || undefined,
-            doubleHits: hs.doubleHits || undefined,
-            tripleHits: hs.tripleHits || undefined,
-            bull25: hs.bull25 || undefined,
-            bull50: hs.bull50 || undefined,
-            bust: hs.bust || undefined,
-            coAttempts: hs.coAttempts || undefined,
-            coSuccess: hs.coSuccess || undefined,
-          });
-        }
-
-        const trainingSessions = loadTrainingSessionsForProfile(pid);
-        for (const s of trainingSessions) {
-          const hitsTotal =
-            Number(s.hitsS || 0) +
-            Number(s.hitsD || 0) +
-            Number(s.hitsT || 0) +
-            Number(s.bull || 0) +
-            Number(s.dBull || 0);
-
-          result.push({
-            createdAt: s.date,
-            mode: "training_x01",
-            profileId: pid,
-            matchId: s.id || undefined,
-            rank: null,
-            playerCount: 1,
-            isTeam: false,
-            x01StartScore: null,
-            x01Variant: "training",
-            matchVictoryMode: "best_of",
-            avg3: s.avg3D || undefined,
-            bestVisit: s.bestVisit || undefined,
-            bestCheckout: s.bestCheckout ?? undefined,
-            best9Score: s.best9Score ?? undefined,
-            dartsThrown: s.darts || undefined,
-            totalScore: undefined,
-            legsWon: undefined,
-            legsLost: undefined,
-            matchesPlayed: 0,
-            matchesWon: 0,
-            hitsTotal: hitsTotal || undefined,
-            hits60: countThresholdHitsFromSession(s, 60) || undefined,
-            hits80: countThresholdHitsFromSession(s, 80) || undefined,
-            hits100: countThresholdHitsFromSession(s, 100) || undefined,
-            hits120: countThresholdHitsFromSession(s, 120) || undefined,
-            hits140: countThresholdHitsFromSession(s, 140) || undefined,
-            hits180: countThresholdHitsFromSession(s, 180) || undefined,
-            miss: Number(s.miss || 0) || undefined,
-            singleHits: (Number(s.hitsS || 0) + Number(s.bull || 0)) || undefined,
-            doubleHits: (Number(s.hitsD || 0) + Number(s.dBull || 0)) || undefined,
-            tripleHits: Number(s.hitsT || 0) || undefined,
-            bull25: Number(s.bull || 0) || undefined,
-            bull50: Number(s.dBull || 0) || undefined,
-            bust: Number(s.bust || 0) || undefined,
-            coAttempts: Number(s.coAttempts || 0) || undefined,
-            coSuccess: Number(s.coSuccess || 0) || undefined,
-          });
-        }
-
-        if (!cancelled) {
-          setSamples(result);
-        }
-      } catch (err) {
-        console.error("StatsX01Compare — error loading history", err);
-        if (!cancelled) {
-          setSamples([]);
-        }
-      }
+    if (!targetProfile) {
+      setSamples([]);
+      return () => { cancelled = true; };
     }
 
-    load();
+    const cached = readX01CompareSamplesCacheSync(targetProfile.id);
+    if (cached) setSamples(cached);
+
+    const load = async () => {
+      try {
+        const result = await buildX01CompareSamplesForProfile(targetProfile);
+        writeX01CompareSamplesCache(targetProfile.id, result);
+        if (!cancelled) React.startTransition(() => setSamples(result));
+      } catch (err) {
+        console.error("StatsX01Compare — error loading history", err);
+        if (!cancelled && !cached) setSamples([]);
+      }
+    };
+
+    // Le snapshot local est affiché au premier rendu. La consolidation complète
+    // attend ensuite que l'interface soit peinte pour ne pas bloquer Android.
+    if (cached?.length) timer = window.setTimeout(() => void load(), 900);
+    else {
+      rafA = window.requestAnimationFrame(() => {
+        rafB = window.requestAnimationFrame(() => void load());
+      });
+    }
 
     return () => {
       cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+      if (rafA) window.cancelAnimationFrame(rafA);
+      if (rafB) window.cancelAnimationFrame(rafB);
     };
   }, [targetProfile?.id]);
 

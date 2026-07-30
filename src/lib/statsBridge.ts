@@ -62,6 +62,7 @@ import {
 } from "./cricketStats";
 import { getOrRebuildStatsIndex, loadStatsQuickMirrorSync, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
 import { getX01StatsContext, x01ContextMatchesFilter, type X01StatsContextFilter } from "./x01StatsContext";
+import { writeDerivedStatsCacheRaw } from "./statsRenderCacheStorage";
 
 /* ============================================================
    Types publics
@@ -1354,7 +1355,9 @@ export async function getCricketProfileStats2(profileId: string, range: RangeKey
     legs.push(...collectCricketLegsFromMatch(m, profileId));
   }
 
-  return aggregateCricketProfileStats(legs, { maxHistoryItems: 30 });
+  const result = aggregateCricketProfileStats(legs, { maxHistoryItems: 30 });
+  if (range === "all" && source === "all") writeProfileDetailCache(CRICKET_PROFILE_CACHE_PREFIX, profileId, result);
+  return result;
 }
 
 export async function getKillerProfileStats(
@@ -1731,6 +1734,54 @@ function createEmptyMultiCounters(): X01MultiModeCounters {
 }
 function createEmptyMultiLegsSets(): X01MultiLegsSets {
   return { duo: createEmptyMultiCounters(), multi: createEmptyMultiCounters(), team: createEmptyMultiCounters() };
+}
+
+/* ============================================================
+   SNAPSHOTS SYNCHRONES — affichage immédiat des onglets détaillés
+============================================================ */
+const PROFILE_DETAIL_CACHE_VERSION = 2;
+const CRICKET_PROFILE_CACHE_PREFIX = "dc_stats_cricket_profile_v2:";
+const X01_LEGS_SETS_CACHE_PREFIX = "dc_stats_x01_legs_sets_v2:";
+const PROFILE_DETAIL_CACHE_MAX_CHARS = 220_000;
+
+function detailCacheKey(prefix: string, profileId: string): string {
+  return `${prefix}${String(profileId || "").trim()}`;
+}
+
+function readProfileDetailCacheSync<T>(prefix: string, profileId: string): T | null {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(detailCacheKey(prefix, pid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Number(parsed?.version) !== PROFILE_DETAIL_CACHE_VERSION || String(parsed?.profileId || "") !== pid) return null;
+    return (parsed?.value ?? null) as T | null;
+  } catch {
+    return null;
+  }
+}
+
+function writeProfileDetailCache<T>(prefix: string, profileId: string, value: T): void {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined" || value == null) return;
+  try {
+    const raw = JSON.stringify({
+      version: PROFILE_DETAIL_CACHE_VERSION,
+      profileId: pid,
+      updatedAt: Date.now(),
+      value,
+    });
+    writeDerivedStatsCacheRaw(detailCacheKey(prefix, pid), raw, PROFILE_DETAIL_CACHE_MAX_CHARS);
+  } catch {}
+}
+
+export function getCachedCricketProfileStatsSync(profileId: string): CricketProfileStats | null {
+  return readProfileDetailCacheSync<CricketProfileStats>(CRICKET_PROFILE_CACHE_PREFIX, profileId);
+}
+
+export function getCachedX01MultiLegsSetsSync(profileId: string): X01MultiLegsSets | null {
+  return readProfileDetailCacheSync<X01MultiLegsSets>(X01_LEGS_SETS_CACHE_PREFIX, profileId);
 }
 
 export function computeX01MultiLegsSetsForProfileFromMatches(profileId: string, matches: SavedMatch[]): X01MultiLegsSets {
@@ -2243,16 +2294,26 @@ export const StatsBridge = {
     if (!profileId) return createEmptyMultiLegsSets();
     try {
       const rows = ((await (History as any).listFinished?.()) ?? (await History.list())) as SavedMatch[];
-      const fullRows = await Promise.all((Array.isArray(rows) ? rows : []).map(async (m: any) => {
-        try {
-          const id = String(m?.matchId ?? m?.id ?? "").trim();
-          return id ? ((await (History as any).get?.(id)) || m) : m;
-        } catch { return m; }
-      }));
+      const allRows = Array.isArray(rows) ? rows : [];
+      const fullRows: SavedMatch[] = [];
+      const chunkSize = 16;
+      for (let offset = 0; offset < allRows.length; offset += chunkSize) {
+        const chunk = allRows.slice(offset, offset + chunkSize);
+        const hydrated = await Promise.all(chunk.map(async (m: any) => {
+          try {
+            const id = String(m?.matchId ?? m?.id ?? "").trim();
+            return id ? ((await (History as any).get?.(id)) || m) : m;
+          } catch { return m; }
+        }));
+        fullRows.push(...hydrated);
+        if (offset + chunkSize < allRows.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
       const matches = fullRows.filter((m) => safeLower((m as any).kind) === "x01");
-      return computeX01MultiLegsSetsForProfileFromMatches(profileId, matches as SavedMatch[]);
+      const result = computeX01MultiLegsSetsForProfileFromMatches(profileId, matches as SavedMatch[]);
+      writeProfileDetailCache(X01_LEGS_SETS_CACHE_PREFIX, profileId, result);
+      return result;
     } catch {
-      return createEmptyMultiLegsSets();
+      return getCachedX01MultiLegsSetsSync(profileId) || createEmptyMultiLegsSets();
     }
   },
 };
@@ -2271,3 +2332,11 @@ export const getCricketProfileStats = (profileId: string) => StatsBridge.getCric
 
 // ✅ X01 multi
 export const getX01MultiLegsSetsForProfile = (profileId: string) => StatsBridge.getX01MultiLegsSetsForProfile(profileId);
+
+export async function prewarmProfileDetailStats(profileId: string): Promise<void> {
+  const pid = String(profileId || "").trim();
+  if (!pid) return;
+  await getCricketProfileStats2(pid, "all", "all").catch(() => undefined);
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await StatsBridge.getX01MultiLegsSetsForProfile(pid).catch(() => undefined);
+}

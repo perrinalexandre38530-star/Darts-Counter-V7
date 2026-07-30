@@ -968,7 +968,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
       const raw = computeFromRaw(r, String(profileId));
       const fallbackSetId = raw.dartSetId || resolveDartSetIdFromRecord(r, String(profileId), null);
       if (!fallbackSetId) continue;
-      const sid = canonicalDartSetId(fallbackSetId, String(pid || profileId || ""));
+      const sid = canonicalDartSetId(fallbackSetId, String(profileId || ""));
 
       const a = (agg[sid] ||= {
         dartSetId: sid,

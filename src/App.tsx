@@ -2774,7 +2774,7 @@ useEffect(() => {
   // réellement inactif, avec un délai plus long sur téléphone.
   // ============================================================
   React.useEffect(() => {
-    if (loading || showSplash) return;
+    if (loading) return;
     let timer: number | null = null;
     let startupTimer: number | null = null;
     let idleId: any = null;
@@ -2815,7 +2815,7 @@ useEffect(() => {
           // après Mes fléchettes, jamais en concurrence, afin que l'ouverture de
           // l'onglet ne relise plus tous les payloads match par match.
           if (cancelled) return;
-          await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 900 : 250));
+          await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 220 : 80));
           if (cancelled) return;
           try {
             const x01Mod: any = await import("./stats/X01MultiStatsTabFull");
@@ -2823,11 +2823,29 @@ useEffect(() => {
           } catch (err) {
             try { console.warn("[stats] x01 multi idle prewarm ignored:", err); } catch {}
           }
+
+          if (cancelled) return;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 180 : 70));
+          try {
+            const compareMod: any = await import("./pages/StatsX01Compare");
+            await compareMod?.prewarmX01CompareSamples?.(activeId, activeName || "Joueur", force);
+          } catch (err) {
+            try { console.warn("[stats] x01 compare prewarm ignored:", err); } catch {}
+          }
+
+          if (cancelled) return;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 220 : 80));
+          try {
+            const bridgeMod: any = await import("./lib/statsBridge");
+            await bridgeMod?.prewarmProfileDetailStats?.(activeId);
+          } catch (err) {
+            try { console.warn("[stats] cricket/x01 detail prewarm ignored:", err); } catch {}
+          }
         })();
       };
       const ric: any = (window as any).requestIdleCallback;
-      if (typeof ric === "function") idleId = ric(run);
-      else timer = window.setTimeout(run, isConstrained() ? 1800 : 500);
+      if (typeof ric === "function") idleId = ric(run, { timeout: isConstrained() ? 1600 : 650 });
+      else timer = window.setTimeout(run, isConstrained() ? 900 : 280);
     };
 
     const scheduleWarm = (force: boolean, delay: number) => {
@@ -2841,10 +2859,10 @@ useEffect(() => {
     // sans timeout requestIdleCallback. prewarm() quitte immédiatement si le cache existe.
     startupTimer = window.setTimeout(
       () => startWarm(false),
-      isConstrained() ? 5000 : 2000
+      isConstrained() ? 180 : 90
     );
 
-    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 4500 : 1800);
+    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 1500 : 650);
     window.addEventListener("dc-history-updated", onHistoryUpdated);
     return () => {
       cancelled = true;
@@ -2853,7 +2871,7 @@ useEffect(() => {
       try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
       window.removeEventListener("dc-history-updated", onHistoryUpdated);
     };
-  }, [loading, showSplash, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
+  }, [loading, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
 
   React.useEffect(() => {
     if (loading || showSplash) return;

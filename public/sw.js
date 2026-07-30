@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-07-30-stats-hook-order-audit-v20";
+const SW_VERSION = "dc-sw-2026-07-30-stats-instant-cache-audit-v21";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

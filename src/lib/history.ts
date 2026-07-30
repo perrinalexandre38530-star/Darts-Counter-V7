@@ -3588,11 +3588,23 @@ function invalidateStatsAfterHistoryMutation(reason: string): void {
 function clearDartSetStatsRenderCaches(): void {
   try {
     if (typeof localStorage === "undefined") return;
-    const prefix = "dc_stats_dartsets_render_cache_v1:";
+    const prefixes = [
+      "dc_stats_dartsets_render_cache_v1:",
+      "dc_stats_dartsets_render_cache_v3:",
+      "dc_stats_dartsets_quick_v2:",
+      "dc_stats_dartsets_quick_v4:",
+      "dc_x01_multi_sessions_v1:",
+      "dc_x01_multi_quick_v2:",
+      "dc_x01_multi_quick_v3:",
+      "dc_stats_cricket_profile_v2:",
+      "dc_stats_x01_legs_sets_v2:",
+      "dc_stats_x01_compare_samples_v2:",
+      "dc_stats_x01_compare_samples_v3:",
+    ];
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
-      if (key?.startsWith(prefix)) keys.push(key);
+      if (key && prefixes.some((prefix) => key.startsWith(prefix))) keys.push(key);
     }
     for (const key of keys) localStorage.removeItem(key);
   } catch {}

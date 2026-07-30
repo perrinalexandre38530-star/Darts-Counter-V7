@@ -30,6 +30,8 @@ import type { Dart as UIDart } from "../lib/types";
 import {
   getCricketProfileStats,
   getX01MultiLegsSetsForProfile,
+  getCachedCricketProfileStatsSync,
+  getCachedX01MultiLegsSetsSync,
   getBatardProfileStats,
   clearStatsIndexCache,
   type X01MultiLegsSets,
@@ -236,8 +238,6 @@ function buildMolkkyDashboardForPlayer(playerId: string, playerName: string, row
     sessionsByMode: { "Mölkky Classic": sessions },
   };
 }
-// ✅ KEEP en import normal (léger / utilisé souvent)
-import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
 import StatsTrainingModesLocal from "../components/stats/StatsTrainingModesLocal";
 import StatsTrainingLeaderboards from "../components/stats/StatsTrainingLeaderboards";
@@ -245,7 +245,6 @@ import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
-import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import StatsClockDashboard from "../components/StatsClockDashboard";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
@@ -281,6 +280,8 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
+const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
+const StatsX01Compare = lazyWithRetry(() => import("./StatsX01Compare"));
 const X01MultiStatsTabFull = React.lazy(
   () => import("../stats/X01MultiStatsTabFull")
 );
@@ -6599,18 +6600,22 @@ const shanghaiStats = React.useMemo(() => {
 }, [currentMode, records, selectedPlayer?.id, shPeriod]);
 
 const [cricketStats, setCricketStats] =
-  React.useState<CricketProfileStats | null>(null);
+  React.useState<CricketProfileStats | null>(() =>
+    selectedPlayer?.id ? getCachedCricketProfileStatsSync(String(selectedPlayer.id)) : null
+  );
 
 const [x01MultiLegsSets, setX01MultiLegsSets] =
-  React.useState<X01MultiLegsSets | null>(null);
+  React.useState<X01MultiLegsSets | null>(() =>
+    selectedPlayer?.id ? getCachedX01MultiLegsSetsSync(String(selectedPlayer.id)) : null
+  );
 
 const [batardStats, setBatardStats] =
   React.useState<BatardProfileStats | null>(null);
 
 React.useEffect(() => {
   const pid = selectedPlayer?.id;
-  setCricketStats(null);
-  setX01MultiLegsSets(null);
+  setCricketStats(pid ? getCachedCricketProfileStatsSync(String(pid)) : null);
+  setX01MultiLegsSets(pid ? getCachedX01MultiLegsSetsSync(String(pid)) : null);
   setBatardStats(null);
   if (!pid || !heavyStatsReady) return;
 
@@ -8863,11 +8868,13 @@ return (
             {currentMode === "x01_compare" && (
               <div style={card}>
                 {selectedPlayer ? (
-                  <StatsX01Compare
-                    store={pseudoStoreForCompare as any}
-                    profileId={selectedPlayer.id}
-                    compact
-                  />
+                  <React.Suspense fallback={<LazyFallback label="Chargement du comparateur X01…" />}>
+                    <StatsX01Compare
+                      store={pseudoStoreForCompare as any}
+                      profileId={selectedPlayer.id}
+                      compact
+                    />
+                  </React.Suspense>
                 ) : (
                   <div style={{ color: T.text70, fontSize: 13 }}>
                     Sélectionne un joueur pour afficher le comparateur X01.

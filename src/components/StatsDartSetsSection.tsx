@@ -24,6 +24,7 @@ import { dartPresets } from "../lib/dartPresets";
 import { getX01StatsByDartSetForProfile } from "../lib/statsByDartSet";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
+import { writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 import TrainingRadar from "./TrainingRadar";
 
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
@@ -1719,8 +1720,8 @@ function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visib
 /* -------- Cache local instantané — stats MES FLÉCHETTES ------- */
 /* ============================================================= */
 
-const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v1:";
-const DART_SET_STATS_QUICK_CACHE_PREFIX = "dc_stats_dartsets_quick_v2:";
+const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v3:";
+const DART_SET_STATS_QUICK_CACHE_PREFIX = "dc_stats_dartsets_quick_v4:";
 const DART_SET_STATS_HIDDEN_PREFIX = "dc_stats_dartsets_hidden_v1:";
 const DART_SET_STATS_CACHE_MAX_CHARS = 260_000;
 const DART_SET_STATS_QUICK_MAX_CHARS = 96_000;
@@ -1927,7 +1928,7 @@ function writeDartSetStatsRenderCache(
         });
       }
       if (quick.length <= DART_SET_STATS_QUICK_MAX_CHARS) {
-        localStorage.setItem(dartSetStatsQuickCacheKey(pid), quick);
+        writeDerivedStatsCacheRaw(dartSetStatsQuickCacheKey(pid), quick, DART_SET_STATS_QUICK_MAX_CHARS);
       }
     } catch {}
 
@@ -1953,7 +1954,7 @@ function writeDartSetStatsRenderCache(
       serialized = JSON.stringify(payload);
     }
 
-    localStorage.setItem(dartSetStatsRenderCacheKey(pid), serialized);
+    writeDerivedStatsCacheRaw(dartSetStatsRenderCacheKey(pid), serialized, DART_SET_STATS_CACHE_MAX_CHARS);
   } catch {
     // Le cache ne doit jamais empêcher les statistiques normales de fonctionner.
   }
@@ -2018,15 +2019,27 @@ export async function prewarmDartSetStatsRenderCache(
 
   const job = (async () => {
     try {
-      const rows = await getX01StatsByDartSetForProfile(pid).catch(() => []);
+      const historyRows = await History.list?.().catch(() => []);
+      const hasFinishedX01 = Array.isArray(historyRows) && historyRows.some((row: any) => isX01Record(row) && isFinishedX01StatsRecord(row));
+      const rows = await getX01StatsByDartSetForProfile(pid);
+      const normalizedRows = Array.isArray(rows) ? rows : [];
+
+      // Ne jamais empoisonner le cache instantané avec un faux tableau vide :
+      // cela arrivait lorsqu'un ancien match X01 sans summary déclenchait une
+      // exception dans statsByDartSet. Dans ce cas on conserve le dernier cache
+      // valide et la section complète pourra retenter l'hydratation.
+      if (hasFinishedX01 && normalizedRows.length === 0) return;
+
       const sets = getDartSetsForProfile(pid) || [];
       const fallbackT = (_key: string, fallback: string) => fallback;
-      const visuals = buildCachedDartSetVisuals(Array.isArray(rows) ? rows : [], sets, fallbackT);
-      writeDartSetStatsRenderCache(pid, Array.isArray(rows) ? rows : [], {}, visuals);
+      const visuals = buildCachedDartSetVisuals(normalizedRows, sets, fallbackT);
+      writeDartSetStatsRenderCache(pid, normalizedRows, {}, visuals);
       try {
         window.dispatchEvent(new CustomEvent("dc-dartset-stats-cache-updated", { detail: { profileId: pid, playerName: playerName || null } }));
       } catch {}
-    } catch {}
+    } catch (error) {
+      try { console.warn("[StatsDartSetsSection] cache prewarm failed", error); } catch {}
+    }
   })().finally(() => {
     __dartSetStatsPrewarmJobs.delete(pid);
   });

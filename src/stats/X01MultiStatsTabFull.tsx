@@ -21,6 +21,7 @@ import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from ".
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { idbGet, idbSet } from "../lib/indexedDb";
+import { removeDerivedStatsCache, writeDerivedStatsCacheRaw } from "../lib/statsRenderCacheStorage";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -218,16 +219,20 @@ export type X01MultiSession = {
 
 const X01_MULTI_CACHE_VERSION = 1;
 const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v1:";
+const X01_MULTI_QUICK_CACHE_PREFIX = "dc_x01_multi_quick_v3:";
 const X01_MULTI_CACHE_MAX_SYNC_CHARS = 1_250_000;
+const X01_MULTI_QUICK_MAX_SYNC_CHARS = 360_000;
 const __x01MultiMemoryCache = new Map<string, X01MultiSessionsCache>();
 
 type X01MultiSessionsCache = {
-  version: 1;
+  version: 1 | 2 | 3;
   profileId: string;
   fingerprint: string;
   updatedAt: number;
-  sessions: X01MultiSession[];
+  sessions?: X01MultiSession[];
+  rows?: any[][];
   avatars?: Record<string, string>;
+  quick?: boolean;
 };
 
 function x01MultiCacheProfileKey(profileId?: string | null): string {
@@ -238,6 +243,10 @@ function x01MultiCacheKey(profileId?: string | null): string {
   return `${X01_MULTI_CACHE_PREFIX}${x01MultiCacheProfileKey(profileId)}`;
 }
 
+function x01MultiQuickCacheKey(profileId?: string | null): string {
+  return `${X01_MULTI_QUICK_CACHE_PREFIX}${x01MultiCacheProfileKey(profileId)}`;
+}
+
 function safeCachedX01Avatar(value: any): string | null {
   const src = String(value || "").trim();
   if (!src) return null;
@@ -245,32 +254,97 @@ function safeCachedX01Avatar(value: any): string | null {
   return src.length <= 4096 ? src : null;
 }
 
+function decodeX01QuickRow(row: any[]): X01MultiSession {
+  return {
+    id: String(row?.[0] || ""),
+    matchId: String(row?.[1] || row?.[0] || ""),
+    date: Number(row?.[2] || 0) || 0,
+    selectedPlayerId: String(row?.[3] || ""),
+    playerName: String(row?.[4] || "Joueur"),
+    profileId: row?.[5] == null ? undefined : String(row[5]),
+    x01StartScore: row?.[6] ?? null,
+    x01Variant: row?.[7] ?? "unknown",
+    matchVictoryMode: row?.[8] ?? "best_of",
+    darts: Number(row?.[9] || 0) || 0,
+    avg3D: Number(row?.[10] || 0) || 0,
+    avg1D: Number(row?.[11] || 0) || 0,
+    bestVisit: Number(row?.[12] || 0) || 0,
+    bestCheckout: row?.[13] == null ? null : Number(row[13] || 0),
+    hitsS: Number(row?.[14] || 0) || 0,
+    hitsD: Number(row?.[15] || 0) || 0,
+    hitsT: Number(row?.[16] || 0) || 0,
+    miss: Number(row?.[17] || 0) || 0,
+    bull: Number(row?.[18] || 0) || 0,
+    dBull: Number(row?.[19] || 0) || 0,
+    bust: Number(row?.[20] || 0) || 0,
+    isWin: row?.[21] === 1,
+    legsPlayed: Number(row?.[22] || 0) || 0,
+    legsWon: Number(row?.[23] || 0) || 0,
+    setsPlayed: Number(row?.[24] || 0) || 0,
+    setsWon: Number(row?.[25] || 0) || 0,
+    finishes: Number(row?.[26] || 0) || 0,
+    isTeam: row?.[27] === 1,
+    rank: row?.[28] == null ? null : Number(row[28] || 0) || null,
+    scoreLabel: row?.[29] == null ? null : String(row[29]),
+    scoreUnit: row?.[30] ?? null,
+    finalScore: row?.[31] == null ? null : Number(row[31]),
+    remaining: row?.[32] == null ? null : Number(row[32]),
+    avatarDataUrl: null,
+  } as X01MultiSession;
+}
+
+function encodeX01QuickRow(row: any): any[] {
+  return [
+    String(row?.id || ""), String(row?.matchId || row?.id || ""), Number(row?.date || 0) || 0,
+    String(row?.selectedPlayerId || row?.profileId || row?.playerId || ""), String(row?.playerName || "Joueur"),
+    row?.profileId == null ? null : String(row.profileId), row?.x01StartScore ?? null, row?.x01Variant ?? "unknown",
+    row?.matchVictoryMode ?? "best_of", Number(row?.darts || 0) || 0, Number(row?.avg3D || 0) || 0,
+    Number(row?.avg1D || 0) || 0, Number(row?.bestVisit || 0) || 0, row?.bestCheckout == null ? null : Number(row.bestCheckout || 0),
+    Number(row?.hitsS || 0) || 0, Number(row?.hitsD || 0) || 0, Number(row?.hitsT || 0) || 0, Number(row?.miss || 0) || 0,
+    Number(row?.bull || 0) || 0, Number(row?.dBull || 0) || 0, Number(row?.bust || 0) || 0, row?.isWin ? 1 : 0,
+    Number(row?.legsPlayed || 0) || 0, Number(row?.legsWon || 0) || 0, Number(row?.setsPlayed || 0) || 0,
+    Number(row?.setsWon || 0) || 0, Number(row?.finishes || 0) || 0, row?.isTeam ? 1 : 0,
+    row?.rank == null ? null : Number(row.rank || 0) || null, row?.scoreLabel == null ? null : String(row.scoreLabel),
+    row?.scoreUnit ?? null, row?.finalScore == null ? null : Number(row.finalScore), row?.remaining == null ? null : Number(row.remaining),
+  ];
+}
+
 function restoreCachedX01Sessions(cache: X01MultiSessionsCache | null): X01MultiSessionsCache | null {
-  if (!cache || cache.version !== X01_MULTI_CACHE_VERSION || !Array.isArray(cache.sessions)) return null;
+  if (!cache || ![1, 2, 3].includes(Number(cache.version))) return null;
+  const rawSessions = Array.isArray(cache.sessions)
+    ? cache.sessions
+    : (Number(cache.version) === 3 && Array.isArray(cache.rows) ? cache.rows.map(decodeX01QuickRow) : null);
+  if (!Array.isArray(rawSessions)) return null;
   const avatars = cache.avatars && typeof cache.avatars === "object" ? cache.avatars : {};
   return {
     ...cache,
-    sessions: cache.sessions.map((row: any) => ({
+    sessions: rawSessions.map((row: any) => ({
       ...row,
-      avatarDataUrl: row?.avatarDataUrl || avatars[String(row?.selectedPlayerId || row?.profileId || "")] || null,
+      avatarDataUrl: safeCachedX01Avatar(row?.avatarDataUrl) || safeCachedX01Avatar(avatars[String(row?.selectedPlayerId || row?.profileId || "")]) || null,
     })),
   };
 }
 
-function readX01MultiSessionsCacheSync(profileId?: string | null): X01MultiSessionsCache | null {
-  const key = x01MultiCacheKey(profileId);
-  const memory = restoreCachedX01Sessions(__x01MultiMemoryCache.get(key) || null);
-  if (memory) return memory;
+function readLocalX01Cache(key: string): X01MultiSessionsCache | null {
   try {
     if (typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = restoreCachedX01Sessions(JSON.parse(raw));
-    if (parsed) __x01MultiMemoryCache.set(key, parsed);
-    return parsed;
+    return restoreCachedX01Sessions(JSON.parse(raw));
   } catch {
     return null;
   }
+}
+
+function readX01MultiSessionsCacheSync(profileId?: string | null): X01MultiSessionsCache | null {
+  const memoryKey = x01MultiCacheKey(profileId);
+  const memory = restoreCachedX01Sessions(__x01MultiMemoryCache.get(memoryKey) || null);
+  if (memory) return memory;
+
+  const full = readLocalX01Cache(x01MultiCacheKey(profileId));
+  const quick = full || readLocalX01Cache(x01MultiQuickCacheKey(profileId));
+  if (quick) __x01MultiMemoryCache.set(memoryKey, quick);
+  return quick;
 }
 
 async function readX01MultiSessionsCache(
@@ -278,16 +352,19 @@ async function readX01MultiSessionsCache(
   fingerprint?: string | null
 ): Promise<X01MultiSessionsCache | null> {
   const key = x01MultiCacheKey(profileId);
-  let cache = readX01MultiSessionsCacheSync(profileId);
-  if (!cache) {
-    try {
-      cache = restoreCachedX01Sessions(await idbGet<X01MultiSessionsCache>(key));
-      if (cache) __x01MultiMemoryCache.set(key, cache);
-    } catch {}
-  }
-  if (!cache) return null;
-  if (fingerprint && cache.fingerprint !== fingerprint) return null;
-  return cache;
+  const syncCache = readX01MultiSessionsCacheSync(profileId);
+  if (syncCache && (!fingerprint || syncCache.fingerprint === fingerprint)) return syncCache;
+
+  // Le cache complet IndexedDB reste prioritaire si le miroir rapide est ancien.
+  try {
+    const idbCache = restoreCachedX01Sessions(await idbGet<X01MultiSessionsCache>(key));
+    if (idbCache && (!fingerprint || idbCache.fingerprint === fingerprint)) {
+      __x01MultiMemoryCache.set(key, idbCache);
+      return idbCache;
+    }
+  } catch {}
+
+  return null;
 }
 
 function compactX01SessionsForCache(sessions: X01MultiSession[]): { sessions: X01MultiSession[]; avatars: Record<string, string> } {
@@ -299,6 +376,48 @@ function compactX01SessionsForCache(sessions: X01MultiSession[]): { sessions: X0
     return { ...row, avatarDataUrl: null };
   });
   return { sessions: compact as X01MultiSession[], avatars };
+}
+
+function compactX01SessionForQuickCache(row: any): X01MultiSession {
+  // Snapshot synchrone : uniquement les champs nécessaires aux KPI, filtres,
+  // courbes et classement. Les maps par segment restent dans IndexedDB et sont
+  // réinjectées silencieusement après le premier paint.
+  return {
+    id: String(row?.id || ""),
+    matchId: String(row?.matchId || row?.id || ""),
+    date: Number(row?.date || 0) || 0,
+    selectedPlayerId: String(row?.selectedPlayerId || row?.profileId || row?.playerId || ""),
+    playerName: String(row?.playerName || "Joueur"),
+    profileId: row?.profileId == null ? undefined : String(row.profileId),
+    x01StartScore: row?.x01StartScore ?? null,
+    x01Variant: row?.x01Variant ?? "unknown",
+    matchVictoryMode: row?.matchVictoryMode ?? "best_of",
+    darts: Number(row?.darts || 0) || 0,
+    avg3D: Number(row?.avg3D || 0) || 0,
+    avg1D: Number(row?.avg1D || 0) || 0,
+    bestVisit: Number(row?.bestVisit || 0) || 0,
+    bestCheckout: row?.bestCheckout == null ? null : Number(row.bestCheckout || 0),
+    hitsS: Number(row?.hitsS || 0) || 0,
+    hitsD: Number(row?.hitsD || 0) || 0,
+    hitsT: Number(row?.hitsT || 0) || 0,
+    miss: Number(row?.miss || 0) || 0,
+    bull: Number(row?.bull || 0) || 0,
+    dBull: Number(row?.dBull || 0) || 0,
+    bust: Number(row?.bust || 0) || 0,
+    isWin: !!row?.isWin,
+    legsPlayed: Number(row?.legsPlayed || 0) || 0,
+    legsWon: Number(row?.legsWon || 0) || 0,
+    setsPlayed: Number(row?.setsPlayed || 0) || 0,
+    setsWon: Number(row?.setsWon || 0) || 0,
+    finishes: Number(row?.finishes || 0) || 0,
+    isTeam: !!row?.isTeam,
+    rank: row?.rank == null ? null : Number(row.rank || 0) || null,
+    scoreLabel: row?.scoreLabel == null ? null : String(row.scoreLabel),
+    scoreUnit: row?.scoreUnit ?? null,
+    finalScore: row?.finalScore == null ? null : Number(row.finalScore),
+    remaining: row?.remaining == null ? null : Number(row.remaining),
+    avatarDataUrl: null,
+  } as X01MultiSession;
 }
 
 async function writeX01MultiSessionsCache(
@@ -321,12 +440,23 @@ async function writeX01MultiSessionsCache(
   try { await idbSet(key, payload); } catch {}
   try {
     if (typeof localStorage === "undefined") return;
-    const serialized = JSON.stringify(payload);
-    if (serialized.length <= X01_MULTI_CACHE_MAX_SYNC_CHARS) {
-      localStorage.setItem(key, serialized);
-    } else {
-      // Ne jamais saturer localStorage sur Android : IndexedDB garde le cache complet.
-      localStorage.removeItem(key);
+    // La copie complète reste dans IndexedDB. La dupliquer dans localStorage
+    // saturait le quota Android et empêchait précisément les petits snapshots
+    // synchrones de Mes fléchettes / Cricket / Comparateur de s'écrire.
+    removeDerivedStatsCache(key);
+
+    const quickPayload: X01MultiSessionsCache = {
+      version: 3,
+      profileId: payload.profileId,
+      fingerprint,
+      updatedAt: payload.updatedAt,
+      rows: compact.sessions.map(compactX01SessionForQuickCache).map(encodeX01QuickRow),
+      avatars: compact.avatars,
+      quick: true,
+    };
+    const quickSerialized = JSON.stringify(quickPayload);
+    if (quickSerialized.length <= X01_MULTI_QUICK_MAX_SYNC_CHARS) {
+      writeDerivedStatsCacheRaw(x01MultiQuickCacheKey(profileId), quickSerialized, X01_MULTI_QUICK_MAX_SYNC_CHARS);
     }
   } catch {}
 }
@@ -1815,7 +1945,7 @@ function buildSessionFromSummary(
  * - Si profileId fourni : ne garder que ce profil
  *   (match.players[].profileId === profileId OU player.id === profileId)
  */
-export async function loadX01MultiSessions(
+async function loadX01MultiSessionsInternal(
   profileId?: string | null
 ): Promise<X01MultiSession[]> {
   let list: any[] = [];
@@ -2051,6 +2181,21 @@ export async function loadX01MultiSessions(
   const sorted = out.sort((a, b) => a.date - b.date);
   await writeX01MultiSessionsCache(profileId, fingerprint, sorted);
   return sorted;
+}
+
+const __x01MultiLoadJobs = new Map<string, Promise<X01MultiSession[]>>();
+
+export async function loadX01MultiSessions(
+  profileId?: string | null
+): Promise<X01MultiSession[]> {
+  const key = x01MultiCacheProfileKey(profileId);
+  const running = __x01MultiLoadJobs.get(key);
+  if (running) return running;
+  const job = loadX01MultiSessionsInternal(profileId).finally(() => {
+    if (__x01MultiLoadJobs.get(key) === job) __x01MultiLoadJobs.delete(key);
+  });
+  __x01MultiLoadJobs.set(key, job);
+  return job;
 }
 
 export async function prewarmX01MultiSessions(profileId?: string | null): Promise<void> {
@@ -2497,15 +2642,33 @@ export default function X01MultiStatsTabFull({
   // Chargement des matchs (une fois + quand l’ID effectif change + après suppression historique)
   React.useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
+    let rafA = 0;
+    let rafB = 0;
     const instant = readX01MultiSessionsCacheSync(effectiveProfileId);
     setSessions(instant?.sessions || []);
 
-    (async () => {
+    const refresh = async () => {
       const data = await loadX01MultiSessions(effectiveProfileId);
       if (!cancelled) React.startTransition(() => setSessions(data));
-    })();
+    };
+
+    // Si un snapshot synchrone existe, le premier paint ne doit pas concurrencer
+    // le scan IndexedDB. Sans snapshot, on démarre après deux frames, sans page
+    // bloquée ni calcul dans le rendu React.
+    if (instant?.sessions?.length) {
+      timer = window.setTimeout(() => void refresh(), isConstrainedX01MultiDevice() ? 1200 : 300);
+    } else {
+      rafA = window.requestAnimationFrame(() => {
+        rafB = window.requestAnimationFrame(() => void refresh());
+      });
+    }
+
     return () => {
       cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+      if (rafA) window.cancelAnimationFrame(rafA);
+      if (rafB) window.cancelAnimationFrame(rafB);
     };
   }, [effectiveProfileId, historyVersion]);
 
