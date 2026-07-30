@@ -14,6 +14,11 @@ export type NearbyPlayer = {
   lookingForGame: boolean;
   preferredModes: string[];
   updatedAt?: string | null;
+  /** Coordonnées volontairement arrondies côté SQL, jamais la position brute. */
+  mapLat?: number | null;
+  mapLng?: number | null;
+  /** Direction arrondie par secteur de 45° pour le fallback cartographique. */
+  bearingDeg?: number | null;
 };
 
 export type NearbySettings = {
@@ -42,6 +47,45 @@ export type NearbyGameRequest = {
   direction: "incoming" | "outgoing";
   createdAt?: string | null;
   expiresAt?: string | null;
+};
+
+export type NearbyEncounter = {
+  userId: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  countryCode?: string | null;
+  cityLabel?: string | null;
+  sports: string[];
+  skillLevel?: number | null;
+  crossedCount: number;
+  closestDistanceKm: number;
+  distanceLabel: string;
+  firstCrossedAt?: string | null;
+  lastCrossedAt?: string | null;
+  availableNow?: boolean;
+  lookingForGame?: boolean;
+};
+
+export type NearbyPlaceKind = "club" | "team" | "tournament" | "venue";
+
+export type NearbyPlace = {
+  id: string;
+  ownerUserId: string;
+  kind: NearbyPlaceKind;
+  title: string;
+  description?: string | null;
+  sport: string;
+  areaLabel?: string | null;
+  distanceKm: number;
+  distanceLabel: string;
+  mapLat?: number | null;
+  mapLng?: number | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  preciseLocation: boolean;
+  metadata?: Record<string, any>;
+  isOwner?: boolean;
+  createdAt?: string | null;
 };
 
 function fail(error: any, fallback: string): never {
@@ -126,6 +170,9 @@ export async function findNearbyPlayers(input: { radiusKm: number; sport?: strin
     lookingForGame: !!(row?.lookingForGame ?? row?.looking_for_game),
     preferredModes: Array.isArray(row?.preferredModes ?? row?.preferred_modes) ? (row?.preferredModes ?? row?.preferred_modes) : [],
     updatedAt: row?.updatedAt ?? row?.updated_at ?? null,
+    mapLat: row?.mapLat == null && row?.map_lat == null ? null : Number(row?.mapLat ?? row?.map_lat),
+    mapLng: row?.mapLng == null && row?.map_lng == null ? null : Number(row?.mapLng ?? row?.map_lng),
+    bearingDeg: row?.bearingDeg == null && row?.bearing_deg == null ? null : Number(row?.bearingDeg ?? row?.bearing_deg),
   })).filter((row: NearbyPlayer) => !!row.userId);
 }
 
@@ -151,4 +198,104 @@ export async function respondNearbyGameRequest(id: string, status: "accepted" | 
   const { data, error } = await supabase.rpc("ms_respond_nearby_game_request", { p_request_id: id, p_status: status } as any);
   if (error) fail(error, "Impossible de répondre à la proposition.");
   return data;
+}
+
+export async function listNearbyEncounters(limit = 100): Promise<NearbyEncounter[]> {
+  const { data, error } = await supabase.rpc("ms_list_nearby_encounters", { p_limit: Math.max(1, Math.min(200, limit)) } as any);
+  if (error) fail(error, "Impossible de charger les joueurs croisés.");
+  return (Array.isArray(data) ? data : []).map((row: any) => ({
+    userId: String(row?.userId ?? row?.user_id ?? ""),
+    displayName: String(row?.displayName ?? row?.display_name ?? "Joueur"),
+    avatarUrl: row?.avatarUrl ?? row?.avatar_url ?? null,
+    countryCode: row?.countryCode ?? row?.country_code ?? null,
+    cityLabel: row?.cityLabel ?? row?.city_label ?? null,
+    sports: Array.isArray(row?.sports) ? row.sports : [],
+    skillLevel: row?.skillLevel ?? row?.skill_level ?? null,
+    crossedCount: Number(row?.crossedCount ?? row?.crossed_count ?? 1),
+    closestDistanceKm: Number(row?.closestDistanceKm ?? row?.closest_distance_km ?? 50),
+    distanceLabel: String(row?.distanceLabel ?? row?.distance_label ?? "Croisé à proximité"),
+    firstCrossedAt: row?.firstCrossedAt ?? row?.first_crossed_at ?? null,
+    lastCrossedAt: row?.lastCrossedAt ?? row?.last_crossed_at ?? null,
+    availableNow: !!(row?.availableNow ?? row?.available_now),
+    lookingForGame: !!(row?.lookingForGame ?? row?.looking_for_game),
+  })).filter((row: NearbyEncounter) => !!row.userId);
+}
+
+export async function clearNearbyEncounters(): Promise<void> {
+  const { error } = await supabase.rpc("ms_clear_nearby_encounters");
+  if (error) fail(error, "Impossible d'effacer les rencontres récentes.");
+}
+
+export async function findNearbyPlaces(input: { radiusKm: number; sport?: string | null; kinds?: NearbyPlaceKind[]; limit?: number }): Promise<NearbyPlace[]> {
+  const { data, error } = await supabase.rpc("ms_find_nearby_places", {
+    p_radius_km: Math.max(1, Math.min(100, Number(input.radiusKm || 10))),
+    p_sport: input.sport || null,
+    p_kinds: input.kinds || [],
+    p_limit: Math.max(1, Math.min(200, Number(input.limit || 100))),
+  } as any);
+  if (error) fail(error, "Impossible de charger les clubs et événements proches.");
+  return (Array.isArray(data) ? data : []).map((row: any) => ({
+    id: String(row?.id || ""),
+    ownerUserId: String(row?.ownerUserId ?? row?.owner_user_id ?? ""),
+    kind: String(row?.kind || "venue") as NearbyPlaceKind,
+    title: String(row?.title || "Lieu local"),
+    description: row?.description ?? null,
+    sport: String(row?.sport || "generic"),
+    areaLabel: row?.areaLabel ?? row?.area_label ?? null,
+    distanceKm: Number(row?.distanceKm ?? row?.distance_km ?? 0),
+    distanceLabel: String(row?.distanceLabel ?? row?.distance_label ?? "À proximité"),
+    mapLat: row?.mapLat == null && row?.map_lat == null ? null : Number(row?.mapLat ?? row?.map_lat),
+    mapLng: row?.mapLng == null && row?.map_lng == null ? null : Number(row?.mapLng ?? row?.map_lng),
+    startsAt: row?.startsAt ?? row?.starts_at ?? null,
+    endsAt: row?.endsAt ?? row?.ends_at ?? null,
+    preciseLocation: !!(row?.preciseLocation ?? row?.precise_location),
+    metadata: row?.metadata && typeof row.metadata === "object" ? row.metadata : {},
+    isOwner: !!(row?.isOwner ?? row?.is_owner),
+    createdAt: row?.createdAt ?? row?.created_at ?? null,
+  })).filter((row: NearbyPlace) => !!row.id);
+}
+
+export async function publishNearbyPlace(input: {
+  kind: NearbyPlaceKind;
+  title: string;
+  description?: string | null;
+  sport: string;
+  latitude: number;
+  longitude: number;
+  areaLabel?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  preciseLocation?: boolean;
+  metadata?: Record<string, any>;
+}): Promise<NearbyPlace> {
+  const { data, error } = await supabase.rpc("ms_publish_nearby_place", {
+    p_kind: input.kind,
+    p_title: input.title,
+    p_description: input.description || null,
+    p_sport: input.sport,
+    p_latitude: input.latitude,
+    p_longitude: input.longitude,
+    p_area_label: input.areaLabel || null,
+    p_starts_at: input.startsAt || null,
+    p_ends_at: input.endsAt || null,
+    p_precise_location: !!input.preciseLocation,
+    p_metadata: input.metadata || {},
+  } as any);
+  if (error) fail(error, "Impossible de publier ce point local.");
+  const row: any = Array.isArray(data) ? data[0] : data;
+  return {
+    id: String(row?.id || ""), ownerUserId: String(row?.ownerUserId ?? row?.owner_user_id ?? ""),
+    kind: String(row?.kind || input.kind) as NearbyPlaceKind, title: String(row?.title || input.title), description: row?.description ?? input.description ?? null,
+    sport: String(row?.sport || input.sport), areaLabel: row?.areaLabel ?? row?.area_label ?? input.areaLabel ?? null,
+    distanceKm: Number(row?.distanceKm ?? 0), distanceLabel: String(row?.distanceLabel || "Publié"),
+    mapLat: row?.mapLat == null ? input.latitude : Number(row.mapLat), mapLng: row?.mapLng == null ? input.longitude : Number(row.mapLng),
+    startsAt: row?.startsAt ?? input.startsAt ?? null, endsAt: row?.endsAt ?? input.endsAt ?? null,
+    preciseLocation: !!(row?.preciseLocation ?? input.preciseLocation), metadata: row?.metadata || input.metadata || {}, isOwner: true,
+    createdAt: row?.createdAt ?? new Date().toISOString(),
+  };
+}
+
+export async function deleteNearbyPlace(id: string): Promise<void> {
+  const { error } = await supabase.rpc("ms_delete_nearby_place", { p_place_id: id } as any);
+  if (error) fail(error, "Impossible de supprimer ce point local.");
 }

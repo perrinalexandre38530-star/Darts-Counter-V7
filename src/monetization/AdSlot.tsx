@@ -187,21 +187,51 @@ export function PaidInlineSurface({
     const node = ref.current;
     if (!node) return;
     let raf = 0;
+    let retryTimer = 0;
+    let retryDelayMs = 700;
     let destroyed = false;
+
+    const clearRetry = () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+      retryTimer = 0;
+    };
+
+    const scheduleRetry = () => {
+      if (destroyed || shownRef.current || retryTimer) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = 0;
+        schedule();
+      }, retryDelayMs);
+      retryDelayMs = Math.min(8000, Math.round(retryDelayMs * 1.65));
+    };
 
     const sync = () => {
       if (destroyed) return;
       const rect = measureInlineRect(node);
       if (!rect.visible) {
         if (shownRef.current) void updateInlineGoogleAd(slotKey, rect);
+        else scheduleRetry();
         return;
       }
 
       if (!shownRef.current && !requestRef.current) {
         requestRef.current = true;
+        clearRetry();
         void showInlineGoogleAd(slotKey, placement, rect)
           .then((shown) => {
+            if (destroyed) return;
             shownRef.current = shown;
+            if (shown) {
+              retryDelayMs = 700;
+              clearRetry();
+            } else {
+              scheduleRetry();
+            }
+          })
+          .catch(() => {
+            if (destroyed) return;
+            shownRef.current = false;
+            scheduleRetry();
           })
           .finally(() => {
             requestRef.current = false;
@@ -213,23 +243,33 @@ export function PaidInlineSurface({
     };
 
     const schedule = () => {
+      if (destroyed) return;
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(sync);
     };
 
+    const onVisibilityChange = () => {
+      if (!document.hidden) schedule();
+    };
     const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null;
     resizeObserver?.observe(node);
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
+    window.addEventListener("pageshow", schedule);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     document.addEventListener("scroll", schedule, true);
     schedule();
+    scheduleRetry();
 
     return () => {
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
+      clearRetry();
       resizeObserver?.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("pageshow", schedule);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("scroll", schedule, true);
       shownRef.current = false;
       requestRef.current = false;

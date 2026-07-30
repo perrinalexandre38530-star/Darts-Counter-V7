@@ -73,14 +73,21 @@ export async function showInlineGoogleAd(
   if (!status.canRequestAds) return false;
 
   const config = getAdMobRuntimeConfig();
-  await plugin.show({
-    slotId,
-    adId: getAdMobBannerId(placement),
-    isTesting: config.testMode,
-    testDeviceIds: config.mode === "real_test" ? config.testDeviceIds : [],
-    ...rect,
-  });
-  return true;
+  try {
+    // Le pont Android ne résout désormais la promesse qu'après onAdLoaded.
+    // En cas d'échec réseau/no-fill, false permet au composant React de
+    // retenter automatiquement sans attendre une navigation de l'utilisateur.
+    await plugin.show({
+      slotId,
+      adId: getAdMobBannerId(placement),
+      isTesting: config.testMode,
+      testDeviceIds: config.mode === "real_test" ? config.testDeviceIds : [],
+      ...rect,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function updateInlineGoogleAd(slotId: string, rect: InlineAdRect): Promise<void> {

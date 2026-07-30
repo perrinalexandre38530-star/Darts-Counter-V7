@@ -4034,9 +4034,9 @@ const doLogout = React.useCallback(async () => {
       {showNearbyTab ? (
         <>
           <SectionTitle
-            title="Joueurs à proximité"
-            subtitle="Trouve des joueurs autour de toi sans révéler ta position exacte"
-            right={<Pill label="LOCAL" tone="gold" />}
+            title="Carte locale & rencontres"
+            subtitle="Joueurs, clubs, équipes, tournois et lieux de pratique autour de toi"
+            right={<Pill label="CARTE" tone="gold" />}
           />
           <div style={{ marginTop: 10 }}>
             <NearbyPlayersPanel

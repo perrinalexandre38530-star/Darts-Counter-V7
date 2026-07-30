@@ -44,6 +44,7 @@ public class InlineAdMobPlugin extends Plugin {
         final String adUnitId;
         final FrameLayout container;
         final AdView adView;
+        boolean loaded = false;
 
         SlotHolder(String adUnitId, FrameLayout container, AdView adView) {
             this.adUnitId = adUnitId;
@@ -161,11 +162,13 @@ public class InlineAdMobPlugin extends Plugin {
                 applyTestDeviceConfiguration(call);
 
                 SlotHolder existing = slots.get(slotId);
-                if (existing != null && existing.adUnitId.equals(adId)) {
+                if (existing != null && existing.adUnitId.equals(adId) && existing.loaded) {
                     applyRect(existing, call);
                     call.resolve();
                     return;
                 }
+                // Un slot encore en chargement ou ayant échoué ne doit pas être
+                // considéré comme affiché : on repart sur une requête propre.
                 if (existing != null) destroySlot(slotId);
 
                 FrameLayout root = getRootContent();
@@ -203,10 +206,21 @@ public class InlineAdMobPlugin extends Plugin {
                 adView.setAdListener(new AdListener() {
                     @Override
                     public void onAdLoaded() {
+                        SlotHolder current = slots.get(slotId);
+                        if (current != holder) {
+                            call.reject("Emplacement publicitaire remplacé avant chargement");
+                            return;
+                        }
+                        holder.loaded = true;
+                        applyRect(holder, call);
                         JSObject data = new JSObject();
                         data.put("slotId", slotId);
                         data.put("adUnitId", adId);
                         notifyListeners("inlineAdLoaded", data);
+                        // La promesse JS ne devient vraie qu'une fois l'annonce
+                        // réellement chargée. Cela permet au React de retenter si
+                        // AdMob répond temporairement par une erreur/no-fill.
+                        call.resolve();
                     }
 
                     @Override
@@ -216,12 +230,12 @@ public class InlineAdMobPlugin extends Plugin {
                         data.put("code", error.getCode());
                         data.put("message", error.getMessage());
                         notifyListeners("inlineAdFailed", data);
-                        container.setVisibility(View.GONE);
+                        if (slots.get(slotId) == holder) destroySlot(slotId);
+                        call.reject("Échec du chargement AdMob (" + error.getCode() + ") : " + error.getMessage());
                     }
                 });
 
                 adView.loadAd(new AdRequest.Builder().build());
-                call.resolve();
             } catch (Exception error) {
                 call.reject("Impossible d'afficher la publicité AdMob intégrée", error);
             }
