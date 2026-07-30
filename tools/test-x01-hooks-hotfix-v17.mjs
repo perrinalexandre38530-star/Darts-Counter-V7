@@ -31,6 +31,6 @@ assert(!x01.includes('[range, selectedSessions.length]'), 'Ancien hook paginatio
 assert(history.includes('const HISTORY_UI_CACHE_MAX_CHARS = 360_000;'), 'Cache Historique mobile encore trop volumineux');
 assert(history.includes('if (/^data:image\\//i.test(value)) return undefined;'), 'Data URLs encore dupliquées dans le cache Historique');
 assert(history.includes('__cachePersistenceDisabled = true;'), 'Protection anti-boucle QuotaExceeded absente');
-assert(sw.includes('x01-hooks-hardfix-v18'), 'Service worker hardfix V18 absent');
+assert(sw.includes('x01-hooks-hardfix-v18') || sw.includes('stats-hook-order-audit-v20'), 'Service worker hardfix V18/V20 absent');
 
 console.log('OK — X01 hooks fixes sans useMemo React + cache Historique anti-quota V18');

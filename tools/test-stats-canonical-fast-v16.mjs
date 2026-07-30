@@ -35,6 +35,6 @@ assert(x01.includes('historyFingerprint(list)'), 'Invalidation X01 Multi par His
 assert(!x01.includes('console.log("X01Multi sample session"'), 'Log massif X01 Multi encore présent');
 assert(x01Source.includes('buildX01SamplesForProfileFromRecords'), 'Réutilisation des matchs hydratés absente');
 assert(app.includes('prewarmX01MultiSessions'), 'Préparation X01 Multi en arrière-plan absente');
-assert(sw.includes('stats-canonical-fast-v16'), 'Version service worker non renouvelée');
+assert(sw.includes('stats-canonical-fast-v16') || sw.includes('stats-hook-order-audit-v20'), 'Version service worker non renouvelée');
 
 console.log('OK — Stats canoniques + caches non destructifs V16');

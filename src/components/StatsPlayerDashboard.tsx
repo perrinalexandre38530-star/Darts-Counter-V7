@@ -775,6 +775,21 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
   const accent = theme?.primary ?? T.gold;
   const accentSoft = (theme as any)?.accent20 ?? `${accent}33`;
 
+  // CRITIQUE REACT #310 : tous les hooks doivent être appelés à chaque rendu,
+  // y compris pendant le premier rendu où le snapshot Stats n'est pas encore prêt.
+  // Le précédent `return` avant useMemo/useContainerWidth faisait varier le nombre
+  // de hooks entre `data = null` puis `data = dashboard`, ce qui faisait planter
+  // Android et Chrome dès l'arrivée des statistiques.
+  const modeStats = useMemo(
+    () => (data ? getModeStats(data, x01MultiLegsSets, sport) : []),
+    [data, x01MultiLegsSets, sport]
+  );
+  const favoriteMode = useMemo(() => computeFavoriteModeLabel(modeStats), [modeStats]);
+  const favoriteModeCount = useMemo(() => computeFavoriteModeCount(modeStats), [modeStats]);
+
+  const [refL, wL] = useContainerWidth<HTMLDivElement>(320);
+  const [refB, wB] = useContainerWidth<HTMLDivElement>(320);
+
   if (!data) {
     return (
       <div style={{ background: "rgba(20,20,20,.8)", padding: 16, borderRadius: 16, textAlign: "center", color: T.text }}>
@@ -807,13 +822,6 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
 
   const effectiveSport = String(sport || "").toLowerCase();
   const isMolkkySport = effectiveSport === "molkky";
-
-  const modeStats = useMemo(() => getModeStats(data, x01MultiLegsSets, sport), [data, x01MultiLegsSets, sport]);
-  const favoriteMode = useMemo(() => computeFavoriteModeLabel(modeStats), [modeStats]);
-  const favoriteModeCount = useMemo(() => computeFavoriteModeCount(modeStats), [modeStats]);
-
-  const [refL, wL] = useContainerWidth<HTMLDivElement>(320);
-  const [refB, wB] = useContainerWidth<HTMLDivElement>(320);
 
   const dashboardSubtitle = "";
   const favoriteLabel = isMolkkySport ? "Mode de jeu préféré" : "Mode de jeu préféré";

@@ -14,7 +14,7 @@
 import * as React from "react";
 import SparklinePro from "../components/SparklinePro";
 import TrainingRadar from "../components/TrainingRadar";
-import { GoldPill } from "../components/StatsPlayerDashboard";
+import GoldPill from "../components/GoldPill";
 import { History } from "../lib/history";
 import { buildX01SamplesForProfileFromRecords } from "../lib/x01StatsSource";
 import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from "../lib/x01StatsContext";

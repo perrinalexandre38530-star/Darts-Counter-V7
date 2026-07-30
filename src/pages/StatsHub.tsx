@@ -1193,33 +1193,11 @@ function formatShortDate(ts: number) {
 }
 
 function safePercent(num: number, den: number) {
+  // Fonction mathématique PURE : aucun hook React ne doit être appelé ici.
+  // L'ancienne version appelait React.useMemo seulement lorsque den != 0 ;
+  // le nombre de hooks variait donc selon les données et déclenchait React #310.
   if (!den) return 0;
-  
-  // ------------------------------------------------------------
-  // ✅ UX: éviter le flash sur un profil local (ex: Antoine) pendant l'hydratation du profil online.
-  // Si on est en mode "active" et qu'un profil online est attendu mais pas encore dispo,
-  // on affiche un écran de chargement court au lieu de sélectionner le 1er joueur local.
-  // ------------------------------------------------------------
-  const shouldHoldForActiveProfile = React.useMemo(() => {
-    if (mode !== "active") return false;
-    const hasOnlineId = Boolean((profile as any)?.id);
-    const hasLocalActive = Boolean(activePlayerId);
-    // Si on n'a pas encore d'id online MAIS qu'on a un activePlayerId local,
-    // on ne bloque pas (offline/local).
-    // Si l'id online arrive, on utilisera activeKeyId + mapping.
-    return !hasOnlineId && !hasLocalActive;
-  }, [mode, profile, activePlayerId]);
-
-  if (shouldHoldForActiveProfile) {
-    return (
-      <div style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.85)" }}>
-        <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Chargement du profil actif…</div>
-        <div style={{ fontSize: 13, opacity: 0.8 }}>Synchronisation en cours</div>
-      </div>
-    );
-  }
-
-return (num / den) * 100;
+  return (num / den) * 100;
 }
 
 /* ---------- Hooks Historique ---------- */

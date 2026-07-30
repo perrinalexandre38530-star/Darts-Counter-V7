@@ -13,7 +13,7 @@
 import React from "react";
 import SparklinePro from "../SparklinePro";
 import TrainingRadar from "../TrainingRadar";
-import { GoldPill } from "../StatsPlayerDashboard";
+import GoldPill from "../GoldPill";
 import type { SavedMatch } from "../../lib/history";
 import type { Dart as UIDart } from "../../lib/types";
 import X01MultiStatsMatchModal, {

@@ -3240,11 +3240,13 @@ function compareCardStyle(accent: string): React.CSSProperties {
 /* ============================================================= */
 
 function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; accent: string; accentSoft: string; t: any }) {
-  const { row: r, mySets, recent, accent, accentSoft, t } = props;
+  const { row, mySets, recent, accent, accentSoft, t } = props;
+  const r = row || null;
 
-  if (!r) return null;
-
-  const id: string = String(r.dartSetId || "");
+  // CRITIQUE REACT #310 : ce composant peut d'abord recevoir `row = null`,
+  // puis la ligne calculée quelques millisecondes plus tard. Les hooks image
+  // doivent donc être exécutés dans les deux cas, avant toute sortie anticipée.
+  const id: string = String(r?.dartSetId || "");
   const my: any = findSetByAnyId(id, mySets);
 
   const prDirect = !my ? presetById(id) : null;
@@ -3266,6 +3268,8 @@ function DartSetCard(props: { row: any; mySets: DartSet[]; recent: MiniMatch[]; 
   React.useEffect(() => {
     setImgFailed(false);
   }, [img]);
+
+  if (!r) return null;
 
   const avg3v = pickNum(r, "avg3") ?? 0;
 
