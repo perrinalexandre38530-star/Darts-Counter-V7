@@ -112,7 +112,6 @@ import { purgeLegacyLocalStorageIfNeeded } from "./lib/storageQuota";
 
 // 🚀 warmUp lite aggregator
 import { warmAggOnce } from "./boot/warmAgg";
-import { markStatsIndexDirty } from "./lib/stats/rebuildStatsFromHistory";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
@@ -2769,40 +2768,73 @@ useEffect(() => {
   }
 
   // ============================================================
-  // ✅ STATS PERF: l'index central et le mini-cache MES FLÉCHETTES
-  // sont préparés en arrière-plan, avant l'ouverture de la page Stats.
+  // ✅ STATS MOBILE ZERO-FREEZE
+  // Aucun agrégateur lourd n'est lancé au démarrage. Après une partie, le
+  // cache MES FLÉCHETTES est reconstruit seulement quand le navigateur est
+  // réellement inactif, avec un délai plus long sur téléphone.
   // ============================================================
   React.useEffect(() => {
-    let warmTimer: number | null = null;
-    const activeId = String((store as any)?.activeProfileId || (store as any)?.profiles?.[0]?.id || "").trim();
-    const activeProfile = Array.isArray((store as any)?.profiles)
-      ? (store as any).profiles.find((p: any) => String(p?.id || "") === activeId) || (store as any).profiles[0] || null
-      : null;
-    const activeName = String(activeProfile?.name || activeProfile?.displayName || "").trim();
+    if (loading || showSplash) return;
+    let timer: number | null = null;
+    let startupTimer: number | null = null;
+    let idleId: any = null;
+    let cancelled = false;
 
-    const schedule = (forceDartSets = true) => {
+    const isConstrained = () => {
       try {
-        markStatsIndexDirty("history-updated");
-      } catch (e) {
-        console.warn("[stats] mark dirty error:", e);
+        const nav: any = navigator;
+        return Boolean(
+          /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+          (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+          (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+        );
+      } catch {
+        return false;
       }
-
-      if (!activeId || loading || showSplash) return;
-      if (warmTimer) window.clearTimeout(warmTimer);
-      warmTimer = window.setTimeout(() => {
-        import("./components/StatsDartSetsSection")
-          .then((mod: any) => mod?.prewarmDartSetStatsRenderCache?.(activeId, activeName, forceDartSets))
-          .catch((err) => {
-            try { console.warn("[stats] dartsets prewarm ignored:", err); } catch {}
-          });
-      }, forceDartSets ? 220 : 450);
     };
 
-    if (!loading && !showSplash) schedule(false);
-    const onHistoryUpdated = () => schedule(true);
+    const startWarm = (force: boolean) => {
+      if (cancelled) return;
+      const run = () => {
+        if (cancelled) return;
+        const activeId = String((store as any)?.activeProfileId || (store as any)?.profiles?.[0]?.id || "").trim();
+        if (!activeId) return;
+        const activeProfile = Array.isArray((store as any)?.profiles)
+          ? (store as any).profiles.find((p: any) => String(p?.id || "") === activeId) || (store as any).profiles[0] || null
+          : null;
+        const activeName = String(activeProfile?.name || activeProfile?.displayName || "").trim();
+        import("./components/StatsDartSetsSection")
+          .then((mod: any) => mod?.prewarmDartSetStatsRenderCache?.(activeId, activeName, force))
+          .catch((err) => {
+            try { console.warn("[stats] dartsets idle prewarm ignored:", err); } catch {}
+          });
+      };
+      const ric: any = (window as any).requestIdleCallback;
+      if (typeof ric === "function") idleId = ric(run);
+      else timer = window.setTimeout(run, isConstrained() ? 1800 : 500);
+    };
+
+    const scheduleWarm = (force: boolean, delay: number) => {
+      if (timer != null) window.clearTimeout(timer);
+      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
+      idleId = null;
+      timer = window.setTimeout(() => startWarm(force), delay);
+    };
+
+    // Migration unique des anciens historiques : uniquement lors d'un vrai idle,
+    // sans timeout requestIdleCallback. prewarm() quitte immédiatement si le cache existe.
+    startupTimer = window.setTimeout(
+      () => startWarm(false),
+      isConstrained() ? 12000 : 4500
+    );
+
+    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 8000 : 2800);
     window.addEventListener("dc-history-updated", onHistoryUpdated);
     return () => {
-      if (warmTimer) window.clearTimeout(warmTimer);
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+      if (startupTimer != null) window.clearTimeout(startupTimer);
+      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
       window.removeEventListener("dc-history-updated", onHistoryUpdated);
     };
   }, [loading, showSplash, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
@@ -2810,34 +2842,34 @@ useEffect(() => {
   React.useEffect(() => {
     if (loading || showSplash) return;
     let timer: number | null = null;
+    let idleId: any = null;
     const preloadPage = (loader: () => Promise<unknown>) => {
-      // IMPORTANT: un preload Vite ne doit jamais faire crasher l’app.
-      // Si Cloudflare/Chrome garde un index ancien qui pointe vers un chunk supprimé,
-      // le preload peut rejeter avec "Failed to fetch dynamically imported module".
-      // On log seulement: la récupération globale de main.tsx gère le reload/purge.
       loader().catch((err) => {
         try { console.warn("[preload] lazy chunk ignored:", err); } catch {}
       });
     };
-    const preload = () => {
+    const constrained = (() => {
+      try {
+        const nav: any = navigator;
+        return /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") || Number(nav?.deviceMemory || 8) <= 4;
+      } catch { return false; }
+    })();
+    const preloadLight = () => {
       preloadPage(() => import("./pages/Profiles"));
       preloadPage(() => import("./pages/ProfilesBots"));
       preloadPage(() => import("./pages/Settings"));
       preloadPage(() => import("./pages/StatsShell"));
-      preloadPage(() => import("./pages/StatsHub"));
-      // SyncCenter est volontairement en import statique: c’est une page de démarrage/synchro critique.
       preloadPage(() => import("./pages/TournamentsHome"));
+      // StatsHub est volontairement exclu du preload mobile : son gros chunk ne
+      // doit jamais être parsé pendant que l'utilisateur navigue ailleurs.
+      if (!constrained) preloadPage(() => import("./pages/StatsHub"));
     };
     const ric: any = (window as any).requestIdleCallback;
-    if (typeof ric === "function") {
-      const id = ric(() => preload(), { timeout: 1200 });
-      return () => {
-        try { (window as any).cancelIdleCallback?.(id); } catch {}
-      };
-    }
-    timer = window.setTimeout(preload, 350);
+    if (typeof ric === "function") idleId = ric(preloadLight);
+    else timer = window.setTimeout(preloadLight, constrained ? 6000 : 900);
     return () => {
-      if (timer) window.clearTimeout(timer);
+      if (timer != null) window.clearTimeout(timer);
+      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
     };
   }, [loading, showSplash]);
 

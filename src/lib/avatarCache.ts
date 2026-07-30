@@ -2,6 +2,8 @@ import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 
 const KEY = "dc_avatar_cache_v1";
+const FAST_KEY_PREFIX = "dc_avatar_fast_v2:";
+const FAST_THUMB_MAX_CHARS = 72_000;
 const MAX_CACHE_ENTRIES = 120;
 
 export type AvatarCacheEntry = {
@@ -42,6 +44,60 @@ function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheE
     avatarFullAssetId: typeof entry.avatarFullAssetId === "string" ? entry.avatarFullAssetId : null,
     avatarCastAssetId: typeof entry.avatarCastAssetId === "string" ? entry.avatarCastAssetId : null,
   };
+}
+
+function fastKey(profileId: string): string {
+  return `${FAST_KEY_PREFIX}${String(profileId || "").trim()}`;
+}
+
+function toFastEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheEntry | null {
+  if (!entry?.profileId) return null;
+  const thumbRaw = typeof entry.avatarThumbDataUrl === "string"
+    ? entry.avatarThumbDataUrl
+    : typeof entry.avatarDataUrl === "string"
+    ? entry.avatarDataUrl
+    : "";
+  const thumb = thumbRaw.startsWith("data:image/") && thumbRaw.length <= FAST_THUMB_MAX_CHARS
+    ? sanitizeAvatarDataUrl(thumbRaw, FAST_THUMB_MAX_CHARS)
+    : null;
+  return {
+    profileId: String(entry.profileId),
+    avatarThumbDataUrl: thumb || null,
+    avatarUrl: typeof entry.avatarUrl === "string" && !entry.avatarUrl.startsWith("data:image/") ? entry.avatarUrl : null,
+    avatarUpdatedAt: Number(entry.avatarUpdatedAt || Date.now()),
+    avatarAssetId: typeof entry.avatarAssetId === "string" ? entry.avatarAssetId : null,
+    avatarThumbAssetId: typeof entry.avatarThumbAssetId === "string" ? entry.avatarThumbAssetId : null,
+    avatarFullAssetId: typeof entry.avatarFullAssetId === "string" ? entry.avatarFullAssetId : null,
+    avatarCastAssetId: typeof entry.avatarCastAssetId === "string" ? entry.avatarCastAssetId : null,
+  };
+}
+
+function writeFastEntry(entry: AvatarCacheEntry | null | undefined): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const fast = toFastEntry(entry);
+    if (!fast) return;
+    localStorage.setItem(fastKey(fast.profileId), JSON.stringify(fast));
+  } catch {}
+}
+
+/**
+ * Lecture spéciale premier paint : ne décompresse jamais le gros cache global.
+ * Le cache complet legacy peut contenir plusieurs Mo d'images LZ et bloquer Chrome Android.
+ */
+export function getAvatarCacheFast(profileId: string): AvatarCacheEntry | null {
+  const pid = String(profileId || "").trim();
+  if (!pid) return null;
+  try {
+    if (memoryCache?.[pid]) return toFastEntry(memoryCache[pid]);
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(fastKey(pid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return toFastEntry(parsed as AvatarCacheEntry);
+  } catch {
+    return null;
+  }
 }
 
 let memoryCache: Record<string, AvatarCacheEntry> | null = null;
@@ -104,6 +160,10 @@ export function setAvatarCache(entry: AvatarCacheEntry) {
   try {
     const safe = sanitizeEntry(entry);
     if (!safe) return;
+
+    // Petit miroir par profil écrit immédiatement : affichage avatar sans
+    // décompression du cache global au montage des pages.
+    writeFastEntry(safe);
 
     const all = readAll();
     all[safe.profileId] = safe;

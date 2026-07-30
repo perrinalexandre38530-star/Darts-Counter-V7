@@ -5,9 +5,9 @@ import React from "react";
 const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
-import { loadStore } from "../lib/storage";
+import { loadStore, getCachedLocalProfilesForSafety } from "../lib/storage";
 import { loadBots } from "../lib/bots";
-import { getAvatarCache } from "../lib/avatarCache";
+import { getAvatarCacheFast } from "../lib/avatarCache";
 import { pushNasAccountSnapshot, pullNasAccountSnapshot, computeNasSyncSummary, getNasSyncState } from "../lib/manualNasSync";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
@@ -15,7 +15,7 @@ import StatsPlayerDashboard, {
   ProfilePill,
 } from "../components/StatsPlayerDashboard";
 import { useQuickStats } from "../hooks/useQuickStats";
-import { getOrRebuildStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
+import { loadStatsIndex, scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
 import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
 import HistoryPage from "./HistoryPage";
@@ -38,9 +38,28 @@ import {
 import type { CricketProfileStats } from "../lib/cricketStats";
 
 // ---- Utils ----
-const STATSHUB_HISTORY_LIGHT_CAP = 300;
-const STATSHUB_HISTORY_HYDRATE_CAP = 120;
-const STATSHUB_STORE_HISTORY_CAP = 200;
+const STATSHUB_HISTORY_LIGHT_CAP = 240;
+const STATSHUB_HISTORY_HYDRATE_CAP = 72;
+const STATSHUB_STORE_HISTORY_CAP = 160;
+
+function isConstrainedStatsDevice(): boolean {
+  try {
+    const nav: any = typeof navigator !== "undefined" ? navigator : null;
+    const cores = Number(nav?.hardwareConcurrency || 0);
+    const memory = Number(nav?.deviceMemory || 0);
+    const touch = Number(nav?.maxTouchPoints || 0) > 0;
+    return touch || (cores > 0 && cores <= 4) || (memory > 0 && memory <= 4);
+  } catch {
+    return false;
+  }
+}
+
+function yieldStatsFrame(delay = 0): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") { resolve(); return; }
+    window.setTimeout(resolve, Math.max(0, delay));
+  });
+}
 
 function takeRecent<T>(arr: T[], cap: number): T[] {
   if (!Array.isArray(arr)) return [];
@@ -226,7 +245,6 @@ import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
-import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import StatsClockDashboard from "../components/StatsClockDashboard";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
@@ -259,6 +277,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 }
 // ---- END PATCH ----
 
+const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
 
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
@@ -392,9 +411,10 @@ const statsNameCss = `
 
 const STATS_RENDER_CACHE_KEY = "dc_stats_render_cache_v2";
 const STATS_RENDER_CACHE_LEGACY_KEY = "dc_stats_render_cache_v1";
-const STATS_RENDER_CACHE_MAX_ENTRIES = 48;
-const STATS_RENDER_CACHE_MAX_CHARS = 2_400_000;
-const STATS_AVATAR_THUMB_MAX_CHARS = 70_000;
+const STATS_RENDER_PROFILE_PREFIX = "dc_stats_render_profile_v3:";
+const STATS_RENDER_CACHE_MAX_ENTRIES = 18;
+const STATS_RENDER_CACHE_MAX_CHARS = 360_000;
+const STATS_AVATAR_THUMB_MAX_CHARS = 48_000;
 
 const STATS_CACHE_KEYS = (profileId: string) => [
   `dc_stats_cache_v2:${profileId}`,
@@ -420,6 +440,15 @@ type StatsRenderIdentity = {
 function readStatsRenderCache(profileId: string): any | null {
   if (!profileId || typeof localStorage === "undefined") return null;
   try {
+    // Cache par profil : quelques ko seulement, donc lecture sûre pendant le
+    // premier render même sur un téléphone modeste.
+    const tinyRaw = localStorage.getItem(`${STATS_RENDER_PROFILE_PREFIX}${profileId}`);
+    if (tinyRaw) {
+      const tiny = JSON.parse(tinyRaw);
+      if (tiny?.version === 3 && tiny?.entry) return tiny.entry;
+    }
+
+    // Migration douce depuis le cache global historique.
     const raw = localStorage.getItem(STATS_RENDER_CACHE_KEY) || localStorage.getItem(STATS_RENDER_CACHE_LEGACY_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
@@ -440,7 +469,7 @@ function safeStatsVisualString(value: any, maxChars = STATS_AVATAR_THUMB_MAX_CHA
 }
 
 function buildStatsRenderIdentity(profileId: string, player: any, existing?: StatsRenderIdentity | null): StatsRenderIdentity {
-  const avatarCache = getAvatarCache(profileId);
+  const avatarCache = getAvatarCacheFast(profileId);
   const tinyThumb = safeStatsVisualString(player?.__statsAvatarThumb, STATS_AVATAR_THUMB_MAX_CHARS);
   const directAvatar = safeStatsVisualString(player?.avatarDataUrl, 120_000);
   const cachedThumb = safeStatsVisualString(
@@ -512,7 +541,7 @@ function createTinyStatsAvatar(src: string): Promise<string | null> {
 function queueTinyStatsAvatar(profileId: string, player: any): void {
   try {
     if (!profileId || !player) return;
-    const avatarCache = getAvatarCache(profileId);
+    const avatarCache = getAvatarCacheFast(profileId);
     const src = String(
       avatarCache?.avatarThumbDataUrl ||
       avatarCache?.avatarDataUrl ||
@@ -557,7 +586,7 @@ function compactStatsRenderCache(byProfile: Record<string, any>): Record<string,
   return out;
 }
 
-function writeStatsRenderCache(profileId: string, dashboard?: any | null, player?: any | null): void {
+function commitStatsRenderCache(profileId: string, dashboard?: any | null, player?: any | null): void {
   if (!profileId || typeof localStorage === "undefined") return;
   try {
     const raw = localStorage.getItem(STATS_RENDER_CACHE_KEY);
@@ -592,10 +621,61 @@ function writeStatsRenderCache(profileId: string, dashboard?: any | null, player
     };
 
     const compacted = compactStatsRenderCache(byProfile);
+    const entry = compacted[profileId] || byProfile[profileId];
+    try {
+      localStorage.setItem(`${STATS_RENDER_PROFILE_PREFIX}${profileId}`, JSON.stringify({
+        version: 3,
+        profileId,
+        updatedAt: Date.now(),
+        entry,
+      }));
+    } catch {}
     localStorage.setItem(STATS_RENDER_CACHE_KEY, JSON.stringify({ version: 2, updatedAt: Date.now(), byProfile: compacted }));
   } catch {
     // Le cache visuel/stats ne doit jamais casser la page.
   }
+}
+
+const __statsRenderPending = new Map<string, { dashboard?: any | null; player?: any | null }>();
+let __statsRenderIdleId: any = null;
+let __statsRenderTimer: number | null = null;
+
+function flushStatsRenderCacheWrites(): void {
+  __statsRenderIdleId = null;
+  if (__statsRenderTimer != null) {
+    clearTimeout(__statsRenderTimer);
+    __statsRenderTimer = null;
+  }
+  const pending = Array.from(__statsRenderPending.entries());
+  __statsRenderPending.clear();
+  for (const [profileId, value] of pending) {
+    commitStatsRenderCache(profileId, value.dashboard, value.player);
+  }
+}
+
+function writeStatsRenderCache(profileId: string, dashboard?: any | null, player?: any | null): void {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return;
+  const prev = __statsRenderPending.get(pid) || {};
+  __statsRenderPending.set(pid, {
+    dashboard: dashboard && typeof dashboard === "object" ? dashboard : prev.dashboard,
+    player: player && typeof player === "object" ? player : prev.player,
+  });
+  if (__statsRenderIdleId != null || __statsRenderTimer != null) return;
+
+  try {
+    const ric: any = (globalThis as any)?.requestIdleCallback;
+    if (typeof ric === "function") {
+      // Aucun timeout : Chrome Android ne peut pas forcer stringify/canvas
+      // pendant un swipe ou le montage de la page.
+      __statsRenderIdleId = ric(flushStatsRenderCacheWrites);
+      return;
+    }
+  } catch {}
+  __statsRenderTimer = window.setTimeout(
+    flushStatsRenderCacheWrites,
+    isConstrainedStatsDevice() ? 1800 : 350
+  );
 }
 
 function safeJsonParseStatsHub<T = any>(raw: any): T | null {
@@ -1122,10 +1202,14 @@ return (num / den) * 100;
 }
 
 /* ---------- Hooks Historique ---------- */
-function useHistoryAPI(): SavedMatch[] {
+function useHistoryAPI(enabled = true): SavedMatch[] {
   const [rows, setRows] = React.useState<SavedMatch[]>([]);
 
   React.useEffect(() => {
+    if (!enabled) {
+      setRows([]);
+      return;
+    }
     // ✅ Guard SSR / build (window undefined)
     if (typeof window === "undefined") return;
 
@@ -1214,7 +1298,8 @@ function useHistoryAPI(): SavedMatch[] {
       });
 
       // Chunk to avoid hammering IDB / blocking UI
-      const CHUNK = 25;
+      const constrained = isConstrainedStatsDevice();
+      const CHUNK = constrained ? 6 : 16;
       for (let i = 0; i < toHydrate.length; i += CHUNK) {
         const slice = toHydrate.slice(i, i + CHUNK);
         const got = await Promise.all(
@@ -1231,6 +1316,7 @@ function useHistoryAPI(): SavedMatch[] {
           if (!full?.id) continue;
           byId.set(String(full.id), full as any);
         }
+        if (i + CHUNK < toHydrate.length) await yieldStatsFrame(constrained ? 16 : 0);
       }
 
       // Preserve original order
@@ -1268,15 +1354,19 @@ function useHistoryAPI(): SavedMatch[] {
       mounted = false;
       window.removeEventListener("dc-history-updated", onUpd as any);
     };
-  }, []);
+  }, [enabled]);
 
   return rows;
 }
 
-function useStoreHistory(): SavedMatch[] {
+function useStoreHistory(enabled = true): SavedMatch[] {
   const [rows, setRows] = React.useState<SavedMatch[]>([]);
 
   React.useEffect(() => {
+    if (!enabled) {
+      setRows([]);
+      return;
+    }
     let mounted = true;
 
     (async () => {
@@ -1292,7 +1382,7 @@ function useStoreHistory(): SavedMatch[] {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [enabled]);
 
   return rows;
 }
@@ -4857,33 +4947,63 @@ go,
   // (ex: Mölkky stats pages) attendent {profiles, activeProfileId, history}.
   // On hydrate donc ici un snapshot léger depuis IDB.
   // ============================================================
-  const [store, setStore] = React.useState<any>(() => ({ profiles: [], activeProfileId: null, history: [] }));
+  const initialProfileSafety = React.useMemo(() => {
+    try { return getCachedLocalProfilesForSafety(); } catch { return null; }
+  }, []);
+  const [store, setStore] = React.useState<any>(() => ({
+    profiles: initialProfileSafety?.profiles || [],
+    activeProfileId: initialProfileSafety?.activeProfileId || null,
+    // Ne jamais recopier store.history dans l'état de StatsHub : c'est le bloc
+    // le plus volumineux et History/IndexedDB est déjà la source de vérité.
+    history: [],
+  }));
 
   React.useEffect(() => {
     let alive = true;
+    let timer: number | null = null;
+    let idleId: any = null;
 
-    const refresh = async () => {
+    const refreshFromTinyProfileCache = () => {
       try {
-        const s: any = await loadStore<any>();
-        if (!alive) return;
-        if (s && typeof s === "object") {
-          setStore({
-            ...(s || {}),
-            profiles: Array.isArray((s as any).profiles) ? (s as any).profiles : [],
-            activeProfileId: (s as any).activeProfileId ?? null,
-            history: Array.isArray((s as any).history) ? (s as any).history : [],
-          });
-        }
+        const cached = getCachedLocalProfilesForSafety();
+        if (!alive || !cached?.profiles?.length) return false;
+        React.startTransition(() => setStore((prev: any) => ({
+          ...(prev || {}),
+          profiles: cached.profiles,
+          activeProfileId: cached.activeProfileId || prev?.activeProfileId || null,
+          history: [],
+        })));
+        return true;
       } catch {
-        // keep fallback
+        return false;
       }
     };
 
-    refresh();
-    const onUpd = () => refresh();
+    const loadFallbackOnlyWhenIdle = () => {
+      if (refreshFromTinyProfileCache()) return;
+      const run = async () => {
+        try {
+          const loaded: any = await loadStore<any>();
+          if (!alive || !loaded) return;
+          React.startTransition(() => setStore({
+            profiles: Array.isArray(loaded?.profiles) ? loaded.profiles : [],
+            activeProfileId: loaded?.activeProfileId ?? null,
+            history: [],
+          }));
+        } catch {}
+      };
+      const ric: any = (window as any).requestIdleCallback;
+      if (typeof ric === "function") idleId = ric(() => void run());
+      else timer = window.setTimeout(() => void run(), isConstrainedStatsDevice() ? 4500 : 1200);
+    };
+
+    loadFallbackOnlyWhenIdle();
+    const onUpd = () => refreshFromTinyProfileCache();
     window.addEventListener("dc-store-updated", onUpd as any);
     return () => {
       alive = false;
+      if (timer != null) window.clearTimeout(timer);
+      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
       window.removeEventListener("dc-store-updated", onUpd as any);
     };
   }, []);
@@ -4958,31 +5078,38 @@ const { enabled: devModeEnabled } = useDevMode();
 
 
 
-  // ✅ Bootstrap stats_index centralisé.
-  // On ne rebuild qu'une seule fois si l'index n'existe pas encore,
-  // au lieu de réinjecter de gros blobs dans le store principal.
+  // Bootstrap non bloquant : la page Stats ne reconstruit JAMAIS l'index au montage.
+  // Elle lit d'abord le snapshot existant. Une migration est seulement planifiée
+  // si aucun index n'existe encore, après plusieurs frames et sans timeout idle forcé.
   React.useEffect(() => {
     let cancelled = false;
-    const run = async () => {
+    let timer: number | null = null;
+    let idleId: any = null;
+
+    const check = async () => {
       try {
-        await getOrRebuildStatsIndex({ includeNonFinished: false });
-      } catch (e) {
-        if (!cancelled) console.warn("[stats_index bootstrap] failed", e);
-      }
+        const cached = await loadStatsIndex();
+        if (cancelled || cached) return;
+        const schedule = () => {
+          if (cancelled) return;
+          void scheduleStatsIndexRefresh({
+            includeNonFinished: false,
+            persist: true,
+            debounceMs: 2500,
+            reason: "stats-first-cache-migration",
+          });
+        };
+        const ric: any = (window as any)?.requestIdleCallback;
+        if (typeof ric === "function") idleId = ric(schedule);
+        else timer = window.setTimeout(schedule, isConstrainedStatsDevice() ? 5000 : 2200);
+      } catch {}
     };
 
-    const ric = (window as any)?.requestIdleCallback as undefined | ((cb: () => void, opts?: any) => any);
-    const id = ric ? ric(() => { void run(); }, { timeout: 1200 }) : window.setTimeout(() => { void run(); }, 250);
-
+    timer = window.setTimeout(() => { void check(); }, 650);
     return () => {
       cancelled = true;
-      try {
-        if (ric && (window as any)?.cancelIdleCallback) {
-          (window as any).cancelIdleCallback(id);
-        } else {
-          clearTimeout(id);
-        }
-      } catch {}
+      if (timer != null) window.clearTimeout(timer);
+      try { if (idleId != null) (window as any)?.cancelIdleCallback?.(idleId); } catch {}
     };
   }, []);
 
@@ -5017,44 +5144,6 @@ React.useEffect(() => {
     .catch((e: any) => {
       console.warn("[DEBUG] History.list error =", e);
     });
-}, []);
-
-// ==========================
-// ✅ NEW — History normalisée (PHASE 2)
-// ==========================
-const [normalizedMatches, setNormalizedMatches] = React.useState<NormalizedMatch[]>(
-  []
-);
-
-// ✅ Charge l'historique normalisé (source unique pour stats, à terme)
-React.useEffect(() => {
-  let mounted = true;
-
-  const load = async () => {
-    try {
-      const nm = await loadNormalizedHistory();
-      if (!mounted) return;
-      setNormalizedMatches(takeRecent(Array.isArray(nm) ? nm : [], STATSHUB_HISTORY_LIGHT_CAP));
-    } catch {
-      if (!mounted) return;
-      setNormalizedMatches([]);
-    }
-  };
-
-  load();
-
-  const onUpd = () => load();
-
-  if (typeof window !== "undefined") {
-    window.addEventListener("dc-history-updated", onUpd as any);
-  }
-
-  return () => {
-    mounted = false;
-    if (typeof window !== "undefined") {
-      window.removeEventListener("dc-history-updated", onUpd as any);
-    }
-  };
 }, []);
 
 // -- 0) BOT helper --
@@ -5146,11 +5235,104 @@ const goNextMode = React.useCallback(() => {
 
 const canScrollModes = totalModes > 1;
 
-// -- 2) Historiques (legacy + api + mem) --
-const storeHistory = useStoreHistory();
-const apiHistory = useHistoryAPI();
+// Premier paint prioritaire sur mobile : les lecteurs IndexedDB, décompressions et
+// agrégateurs ne sont activés qu'après que la page et son snapshot aient été peints.
+const [heavyStatsReady, setHeavyStatsReady] = React.useState(false);
+React.useEffect(() => {
+  setHeavyStatsReady(false);
+  if (typeof window === "undefined") return;
+  let raf1 = 0;
+  let raf2 = 0;
+  let timer: number | null = null;
+  const constrained = isConstrainedStatsDevice();
+  raf1 = window.requestAnimationFrame(() => {
+    raf2 = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        React.startTransition(() => setHeavyStatsReady(true));
+      }, constrained ? 420 : 90);
+    });
+  });
+  return () => {
+    if (raf1) window.cancelAnimationFrame(raf1);
+    if (raf2) window.cancelAnimationFrame(raf2);
+    if (timer != null) window.clearTimeout(timer);
+  };
+}, [currentMode]);
 
-const [storeProfiles, setStoreProfiles] = React.useState<PlayerLite[]>([]);
+// Dashboard, Mes fléchettes, Historique et Classements disposent de leurs propres
+// snapshots/lecteurs. Ils ne doivent surtout pas déclencher le scan global de StatsHub.
+const needsStatsHistory = heavyStatsReady && (
+  (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
+    ? currentMode === "dashboard"
+    : !["dashboard", "dartsets", "history", "leaderboards"].includes(currentMode)
+);
+
+// ==========================
+// ✅ NEW — History normalisée (PHASE 2)
+// ==========================
+const [normalizedMatches, setNormalizedMatches] = React.useState<NormalizedMatch[]>(
+  []
+);
+
+// ✅ Charge l'historique normalisé (source unique pour stats, à terme)
+React.useEffect(() => {
+  if (!needsStatsHistory) {
+    setNormalizedMatches([]);
+    return;
+  }
+  let mounted = true;
+
+  const load = async () => {
+    try {
+      const nm = await loadNormalizedHistory();
+      if (!mounted) return;
+      setNormalizedMatches(takeRecent(Array.isArray(nm) ? nm : [], STATSHUB_HISTORY_LIGHT_CAP));
+    } catch {
+      if (!mounted) return;
+      setNormalizedMatches([]);
+    }
+  };
+
+  load();
+
+  const onUpd = () => load();
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("dc-history-updated", onUpd as any);
+  }
+
+  return () => {
+    mounted = false;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("dc-history-updated", onUpd as any);
+    }
+  };
+}, [needsStatsHistory]);
+
+
+// -- 2) Historiques (legacy + api + mem) --
+// History/IndexedDB est désormais l'unique source lourde. On ne décompresse plus
+// le store complet une seconde fois pour récupérer une copie legacy de history.
+const storeHistory: SavedMatch[] = [];
+const apiHistory = useHistoryAPI(needsStatsHistory);
+
+const [storeProfiles, setStoreProfiles] = React.useState<PlayerLite[]>(() => {
+  const src = Array.isArray(initialProfileSafety?.profiles) ? initialProfileSafety!.profiles : [];
+  return src.map((p: any) => ({
+    ...p,
+    id: String(p.id ?? p.profileId ?? p.playerId ?? p.userId ?? p.name),
+    playerId: p.playerId ?? p.id ?? null,
+    profileId: p.profileId ?? p.id ?? null,
+    userId: p.userId ?? null,
+    name: pickPlayerName(p),
+    displayName: p.displayName ?? null,
+    nickname: p.nickname ?? null,
+    avatarDataUrl: pickPlayerAvatar(p),
+    avatarUrl: p.avatarUrl ?? p.avatar_url ?? null,
+    avatar: p.avatar ?? null,
+    isBot: false,
+  }));
+});
 const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any>(() => ({
   profiles: [],
   history: [],
@@ -5161,13 +5343,11 @@ const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any
 React.useEffect(() => {
   let mounted = true;
 
-  (async () => {
+  const refresh = () => {
     try {
-      const store: any = await loadStore<any>();
-      if (!mounted) return;
-
-      const profileArr: PlayerLite[] = Array.isArray(store?.profiles)
-        ? store.profiles.map((p: any) => ({
+      const cached = getCachedLocalProfilesForSafety();
+      const profileArr: PlayerLite[] = Array.isArray(cached?.profiles)
+        ? cached!.profiles.map((p: any) => ({
             ...p,
             id: String(p.id ?? p.profileId ?? p.playerId ?? p.userId ?? p.name),
             playerId: p.playerId ?? p.id ?? null,
@@ -5200,19 +5380,24 @@ React.useEffect(() => {
         }));
       } catch {}
 
-      setStoreProfiles([...profileArr, ...botArr]);
+      if (mounted) React.startTransition(() => setStoreProfiles([...profileArr, ...botArr]));
     } catch {
-      if (!mounted) return;
-      setStoreProfiles([]);
+      if (mounted) setStoreProfiles([]);
     }
-  })();
+  };
 
+  refresh();
+  window.addEventListener("dc-store-updated", refresh as any);
+  window.addEventListener("dc-profiles-updated", refresh as any);
   return () => {
     mounted = false;
+    window.removeEventListener("dc-store-updated", refresh as any);
+    window.removeEventListener("dc-profiles-updated", refresh as any);
   };
 }, []);
 
 React.useEffect(() => {
+  if (!needsStatsHistory) return;
   let mounted = true;
   const load = async () => {
     try {
@@ -5235,7 +5420,7 @@ React.useEffect(() => {
     window.removeEventListener("dc-profile-links-updated", onUpd as any);
     window.removeEventListener("dc-store-updated", onUpd as any);
   };
-}, [storeProfiles.length]);
+}, [storeProfiles.length, needsStatsHistory]);
 
 const effectiveStoreProfiles = React.useMemo(
   () => mergeLinkedProfiles(storeProfiles as any[], linkedProfileProjection?.profiles || []) as any[],
@@ -5250,6 +5435,7 @@ const pseudoStoreForCompare = React.useMemo(
 
 // Fusion en éliminant doublons (mem + api + store)
 const combinedHistory = React.useMemo(() => {
+  if (!needsStatsHistory) return [] as SavedMatch[];
   const api = toArr<SavedMatch>(apiHistory);
   const mem = toArr<SavedMatch>(memHistory);
   const store = toArr<SavedMatch>(storeHistory);
@@ -5294,7 +5480,7 @@ const combinedHistory = React.useMemo(() => {
       ((b as any)?.updatedAt ?? (b as any)?.createdAt ?? 0) -
       ((a as any)?.updatedAt ?? (a as any)?.createdAt ?? 0)
   );
-}, [memHistory, apiHistory, storeHistory, linkedProfileProjection?.history]);
+}, [needsStatsHistory, memHistory, apiHistory, storeHistory, linkedProfileProjection?.history]);
 
 const scopedCombinedHistory = React.useMemo(() => {
   const arr = Array.isArray(combinedHistory) ? combinedHistory : [];
@@ -5750,39 +5936,44 @@ const [liveDashboard, setLiveDashboard] =
   const [x01HydratedRows, setX01HydratedRows] = React.useState<any[] | null>(null);
 
   React.useEffect(() => {
+    const enabled = needsStatsHistory && (currentMode === "x01_multi" || currentMode === "x01_compare");
+    if (!enabled) {
+      setX01HydratedRows(null);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
-        const isX01Row = (r: any) =>
-          lc(r?.kind ?? r?.mode ?? r?.game).includes("x01");
-
-        const ids = (combinedHistory || [])
-          .filter(isX01Row)
-          .map((r: any) => r?.id)
-          .filter(Boolean);
-
+        const isX01Row = (r: any) => lc(r?.kind ?? r?.mode ?? r?.game).includes("x01");
+        const ids = (combinedHistory || []).filter(isX01Row).map((r: any) => r?.id).filter(Boolean);
         const uniq: string[] = [];
         const seen = new Set<string>();
         for (const id of ids) {
-          const s = String(id);
-          if (!seen.has(s)) {
-            seen.add(s);
-            uniq.push(s);
-          }
+          const sid = String(id);
+          if (!seen.has(sid)) { seen.add(sid); uniq.push(sid); }
         }
 
-        // Hydrate payloads via History.get (decodes payloadCompressed)
-        const full = await Promise.all(uniq.slice(0, 600).map((id) => History.get(id).catch(() => null)));
-        const rows = full.filter(Boolean) as any[];
-        if (!cancelled) setX01HydratedRows(rows);
+        const constrained = isConstrainedStatsDevice();
+        const cap = constrained ? 120 : 320;
+        const chunk = constrained ? 6 : 16;
+        const rows: any[] = [];
+        const selected = uniq.slice(0, cap);
+        for (let i = 0; i < selected.length; i += chunk) {
+          if (cancelled) return;
+          const batch = await Promise.all(
+            selected.slice(i, i + chunk).map((id) => History.get(id).catch(() => null))
+          );
+          rows.push(...batch.filter(Boolean));
+          if (i + chunk < selected.length) await yieldStatsFrame(constrained ? 16 : 0);
+        }
+        if (!cancelled) React.startTransition(() => setX01HydratedRows(rows));
       } catch {
         if (!cancelled) setX01HydratedRows(null);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [combinedHistory]);
+    return () => { cancelled = true; };
+  }, [combinedHistory, currentMode, needsStatsHistory]);
 
   const applyX01AggToDashboard = React.useCallback(
     (dash: any, pid: string, pname?: string) => {
@@ -5864,133 +6055,93 @@ const [liveDashboard, setLiveDashboard] =
 const quick = useQuickStats(selectedPlayer?.id ?? null);
 
 React.useEffect(() => {
-  let cancelled = false;
+  // Le dashboard Darts standard vient du snapshot quick/cache. Aucun replay global
+  // n'est autorisé à l'ouverture. Les adaptateurs de sports spécifiques peuvent
+  // encore calculer, mais seulement après le gate de premier paint.
+  const canCompute = heavyStatsReady && currentMode === "dashboard" &&
+    (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport);
+  if (!canCompute) {
+    setLiveDashboard(null);
+    return;
+  }
 
+  let cancelled = false;
   const pid = String(selectedPlayer?.id ?? "");
   const pname = String(selectedPlayer?.name ?? "Joueur");
-
-  // reset quand on change de joueur / source
-  setLiveDashboard(null);
-
   if (!pid) return;
-
-  // Si le cache instantané existe mais que l'historique async n'est pas encore arrivé,
-  // ne remplace pas le snapshot par un faux dashboard à zéro.
-  if (!isDiceSport && !isMolkkySport && nmEffective.length === 0 && cachedDashboard) return;
 
   const compute = () => {
     try {
-      // ✅ Sport DiceGame: on garde EXACTEMENT la même UI StatsHub, mais on mappe les métriques.
-      if (isDiceSport) {
-        const dashDice = buildDiceDashboardForPlayer(pid, pname, diceRows);
-        if (!cancelled) setLiveDashboard(dashDice as any);
-        return;
+      let dash: any = null;
+      if (isDiceSport) dash = buildDiceDashboardForPlayer(pid, pname, diceRows);
+      else if (isMolkkySport) dash = buildMolkkyDashboardForPlayer(pid, pname, records as any);
+      else {
+        const base = buildDashboardFromNormalized(pid, pname, nmEffective);
+        dash = applyX01AggToDashboard(base, pid, pname);
       }
-
-      // ✅ Sport Mölkky : même structure visuelle que DartsCounter, données adaptées.
-      if (isMolkkySport) {
-        const dashMolkky = buildMolkkyDashboardForPlayer(pid, pname, records as any);
-        if (!cancelled) setLiveDashboard(dashMolkky as any);
-        return;
-      }
-
-      const baseDash = buildDashboardFromNormalized(pid, pname, nmEffective);
-      const dash = applyX01AggToDashboard(baseDash, pid, pname);
-      if (!cancelled) setLiveDashboard(dash as any);
+      if (!cancelled) React.startTransition(() => setLiveDashboard(dash as any));
     } catch {
       if (!cancelled) setLiveDashboard(null);
     }
   };
 
-  // On laisse respirer l'UI (cache affiché d'abord), puis calcul derrière
-  // requestIdleCallback si dispo, sinon timeout léger
-  const w = window as any;
+  const w: any = window;
   let idleId: any = null;
-  let toId: any = null;
-
-  if (w && typeof w.requestIdleCallback === "function") {
-    idleId = w.requestIdleCallback(compute, { timeout: 1200 });
-  } else {
-    toId = window.setTimeout(compute, 60);
-  }
+  let timerId: number | null = null;
+  if (typeof w?.requestIdleCallback === "function") idleId = w.requestIdleCallback(compute);
+  else timerId = window.setTimeout(compute, isConstrainedStatsDevice() ? 700 : 180);
 
   return () => {
     cancelled = true;
-    if (w && typeof w.cancelIdleCallback === "function" && idleId != null) {
-      w.cancelIdleCallback(idleId);
-    }
-    if (toId != null) window.clearTimeout(toId);
+    try { if (idleId != null) w?.cancelIdleCallback?.(idleId); } catch {}
+    if (timerId != null) window.clearTimeout(timerId);
   };
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records, cachedDashboard, isDiceSport]);
+}, [heavyStatsReady, currentMode, selectedPlayer?.id, selectedPlayer?.name, isDiceSport, isMolkkySport, isBabyFootSport, isPingPongSport, diceRows, records, nmEffective, applyX01AggToDashboard]);
 
-
-// ✅ Dashboard calculé "memo" (léger) — NE DOIT PAS être bloqué par le cache
+// Snapshot réellement léger : aucune traversée Historique dans un useMemo de render.
+// Le miroir quick est mis à jour après chaque mutation d'historique par le moteur central.
 const computedDashboard = React.useMemo(() => {
-  if (!selectedPlayer) return null;
-  try {
-    if (isMolkkySport) {
-      return buildMolkkyDashboardForPlayer(
-        String(selectedPlayer.id),
-        String(selectedPlayer.name || "Joueur"),
-        records as any
-      ) as any;
-    }
-    const pid = String(selectedPlayer.id);
-    const pname = String(selectedPlayer.name || "Joueur");
-    const base = applyX01AggToDashboard(
-      buildDashboardFromNormalized(pid, pname, nmEffective),
-      pid,
-      pname
-    );
-    const hasBaseData =
-      Number((base as any)?.sessions || 0) > 0 ||
-      Number((base as any)?.avg3Overall || 0) > 0 ||
-      Number((base as any)?.bestVisit || 0) > 0 ||
-      Object.values((base as any)?.sessionsByMode || {}).some((v: any) => Number(v || 0) > 0);
+  const visual: any = selectedPlayerVisual || selectedPlayer;
+  if (!visual) return cachedDashboard || null;
+  const pid = String(visual?.id || effectiveProfileId || "");
+  const pname = String(visual?.name || cachedDashboard?.playerName || "Joueur");
+  if (!pid) return cachedDashboard || null;
 
-    // RESTORE FIX : un latest.json peut restaurer uniquement dc_stats_index_v2
-    // sans historique détaillé. Dans ce cas nmEffective est vide, donc le dashboard
-    // historique reste à 0. On bascule alors sur quickStats, qui lit l'index restauré.
-    if (!hasBaseData && quick) {
-      return buildDashboardForPlayer(selectedPlayer as any, records as any, {
-        avg3: (quick as any).avg3,
-        avg3Overall: (quick as any).avg3,
-        bestVisit: (quick as any).bestVisit,
-        bestCheckout: (quick as any).bestCheckout,
-        winRatePct: (quick as any).winRatePct,
-        distribution: (quick as any).buckets,
-        buckets: (quick as any).buckets,
-      } as any) as any;
-    }
+  if (!quick) return cachedDashboard || null;
+  return {
+    ...(cachedDashboard || {}),
+    playerId: pid,
+    playerName: pname,
+    sessions: Number((quick as any).matches ?? cachedDashboard?.sessions ?? 0) || 0,
+    avg3Overall: Number((quick as any).avg3 || 0) || 0,
+    bestVisit: Number((quick as any).bestVisit || 0) || 0,
+    bestCheckout: Number((quick as any).bestCheckout ?? cachedDashboard?.bestCheckout ?? 0) || 0,
+    winRatePct: Number((quick as any).winRatePct || 0) || 0,
+    totalDarts: Number((quick as any).dartsThrown ?? cachedDashboard?.totalDarts ?? 0) || 0,
+    evolution: Array.isArray(cachedDashboard?.evolution) ? cachedDashboard.evolution : [],
+    distribution: (quick as any).buckets && typeof (quick as any).buckets === "object"
+      ? (quick as any).buckets
+      : (cachedDashboard?.distribution || {}),
+    sessionsByMode: cachedDashboard?.sessionsByMode || {},
+  } as any;
+}, [selectedPlayerVisual, selectedPlayer, effectiveProfileId, cachedDashboard, quick]);
 
-    return base;
-  } catch {
-    return null;
-  }
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records, quick?.avg3, quick?.bestVisit, quick?.bestCheckout, quick?.winRatePct]);
+const dashboardToShow = (liveDashboard ?? computedDashboard ?? cachedDashboard) as PlayerDashboardStats | null;
 
-// ✅ Dashboard final à passer au composant.
-// Pour les fléchettes, l'historique est la source de vérité : le cache ne passe plus devant
-// le recalcul, sinon une suppression de carte peut laisser un ancien 0% / une vieille session.
-const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
-  ? (liveDashboard ?? computedDashboard ?? cachedDashboard)
-  : (liveDashboard ?? cachedDashboard ?? computedDashboard)) as
-  | PlayerDashboardStats
-  | null;
-
-// Matérialise le dashboard + l'identité visuelle pour la PROCHAINE ouverture.
+// Matérialise le snapshot quick + identité pour la prochaine ouverture. Cette écriture
+// ne contient jamais l'Historique complet et reste sous quelques centaines de ko.
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "");
   if (!pid) return;
-  const fresh = liveDashboard || (nmEffective.length > 0 ? computedDashboard : null);
-  if (!fresh && !selectedPlayer) return;
+  const fresh = liveDashboard || computedDashboard || cachedDashboard || null;
   const visual = selectedPlayer || selectedPlayerVisual;
+  if (!fresh && !visual) return;
   writeStatsRenderCache(pid, fresh, visual);
   if (visual) queueTinyStatsAvatar(pid, visual);
-}, [effectiveProfileId, liveDashboard, computedDashboard, nmEffective.length, selectedPlayer, selectedPlayerVisual]);
+}, [effectiveProfileId, liveDashboard, computedDashboard, cachedDashboard, selectedPlayer, selectedPlayerVisual]);
 
 // Même sans nouvelle partie, une photo/URL modifiée est immédiatement recopiée dans
-// le cache de rendu. getAvatarCache fournit de préférence sa miniature locale.
+// le cache de rendu. Le miroir avatar rapide fournit sa miniature locale.
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "");
   if (!pid || !selectedPlayer) return;
@@ -6067,6 +6218,7 @@ type KillerAgg = {
 };
 
 const killerAgg = React.useMemo<KillerAgg | null>(() => {
+  if (currentMode !== "killer") return null;
   const pid = selectedPlayer?.id;
   if (!pid) return null;
 
@@ -6165,7 +6317,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     favNumber,
     favHits,
   };
-}, [selectedPlayer?.id, records]);
+}, [currentMode, selectedPlayer?.id, records]);
 
 // ============================================================
 // ✅ SHANGHAI — période + stats agrégées (pour StatsShanghaiDashboard v2)
@@ -6362,8 +6514,9 @@ function buildShanghaiStatsFromRecords(
 }
 
 const shanghaiStats = React.useMemo(() => {
+  if (currentMode !== "shanghai") return buildShanghaiStatsFromRecords([], null, shPeriod);
   return buildShanghaiStatsFromRecords(records, selectedPlayer?.id ?? null, shPeriod);
-}, [records, selectedPlayer?.id, shPeriod]);
+}, [currentMode, records, selectedPlayer?.id, shPeriod]);
 
 const [cricketStats, setCricketStats] =
   React.useState<CricketProfileStats | null>(null);
@@ -6375,43 +6528,42 @@ const [batardStats, setBatardStats] =
   React.useState<BatardProfileStats | null>(null);
 
 React.useEffect(() => {
-  if (!selectedPlayer?.id) {
-    setCricketStats(null);
-    setX01MultiLegsSets(null);
-    setBatardStats(null);
-    return;
-  }
+  const pid = selectedPlayer?.id;
+  setCricketStats(null);
+  setX01MultiLegsSets(null);
+  setBatardStats(null);
+  if (!pid || !heavyStatsReady) return;
+
+  const wantsCricket = currentMode === "cricket";
+  const wantsX01 = currentMode === "x01_multi" || currentMode === "x01_compare";
+  const wantsBatard = currentMode === "batard";
+  if (!wantsCricket && !wantsX01 && !wantsBatard) return;
 
   let cancelled = false;
-
-  (async () => {
+  const run = async () => {
     try {
-      const [cri, x01multi, bat] = await Promise.all([
-        getCricketProfileStats(selectedPlayer.id),
-        getX01MultiLegsSetsForProfile(selectedPlayer.id),
-        getBatardProfileStats(selectedPlayer.id),
-      ]);
-
-      if (!cancelled) {
-        setCricketStats(cri);
-        setX01MultiLegsSets(x01multi);
-        setBatardStats(bat);
+      if (wantsCricket) {
+        const value = await getCricketProfileStats(pid);
+        if (!cancelled) React.startTransition(() => setCricketStats(value));
+      } else if (wantsX01) {
+        const value = await getX01MultiLegsSetsForProfile(pid);
+        if (!cancelled) React.startTransition(() => setX01MultiLegsSets(value));
+      } else if (wantsBatard) {
+        const value = await getBatardProfileStats(pid);
+        if (!cancelled) React.startTransition(() => setBatardStats(value));
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[StatsHub] load extended profile stats failed", err);
-      if (!cancelled) {
-        setCricketStats(null);
-        setX01MultiLegsSets(null);
-        setBatardStats(null);
-      }
+      try { console.warn("[StatsHub] active mode stats load failed", err); } catch {}
     }
-  })();
+  };
 
+  // Laisse le premier paint et la navigation terminer avant l'accès IndexedDB.
+  let raf = window.requestAnimationFrame(() => void run());
   return () => {
     cancelled = true;
+    if (raf) window.cancelAnimationFrame(raf);
   };
-}, [selectedPlayer?.id, linkedProfileProjection?.history?.length]);
+}, [currentMode, heavyStatsReady, selectedPlayer?.id, linkedProfileProjection?.history?.length]);
 
 
 type ModeTickerStat = { label: string; value: string; tone?: "gold" | "red" | "green" | "blue" };
@@ -6538,6 +6690,7 @@ function hexToRgba(hex: string, alpha: number) {
 const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   const pid = selectedPlayer?.id ? String(selectedPlayer.id).replace(/^online:/, "") : "";
   const rows = Array.isArray(records) ? records : [];
+  if (currentMode !== "dashboard" || !pid || rows.length === 0) return [];
   const modeLabels: Record<string, string> = {
     x01: "X01",
     cricket: "Cricket",
@@ -7857,10 +8010,11 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (byWins !== 0) return byWins;
     return String(a.label || "").localeCompare(String(b.label || ""));
   });
-}, [records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles, cricketStats]);
+}, [currentMode, records, selectedPlayer?.id, selectedPlayer?.name, storeProfiles, cricketStats]);
 
 const dashboardToShowWithModes = React.useMemo(() => {
   if (!dashboardToShow) return dashboardToShow;
+  if (!globalModeDashboard.length) return dashboardToShow;
   const sessionsByMode: Record<string, number> = {};
   let totalMatches = 0;
   let totalWins = 0;

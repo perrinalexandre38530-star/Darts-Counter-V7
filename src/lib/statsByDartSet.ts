@@ -53,6 +53,29 @@ export type DartSetAggOut = DartSetAgg & {
 
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 
+function isConstrainedDartStatsDevice(): boolean {
+  try {
+    const nav: any = navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldDartStatsWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function" && isConstrainedDartStatsDevice()) {
+      window.requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 function safeLower(x: any) {
   return String(x ?? "").trim().toLowerCase();
 }
@@ -730,9 +753,9 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
       .filter((r: any) => isX01Record(r))
       .map((r: any) => ({ row: r, id: String(r?.id ?? r?.matchId ?? "").trim() }))
       .filter((x: any) => !!x.id)
-      .slice(0, 120);
+      .slice(0, isConstrainedDartStatsDevice() ? 72 : 160);
 
-    const batchSize = 24;
+    const batchSize = isConstrainedDartStatsDevice() ? 4 : 12;
     for (let i = 0; i < enrichCandidates.length; i += batchSize) {
       const batch = enrichCandidates.slice(i, i + batchSize);
       const hydrated = await Promise.all(
@@ -748,7 +771,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
       for (const [id, row] of hydrated) fullById.set(id, row);
       // Laisse respirer le thread UI entre deux lots sur les appareils modestes.
       if (i + batchSize < enrichCandidates.length) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await yieldDartStatsWork();
       }
     }
   }
@@ -765,7 +788,11 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
   // tri ancien -> récent (plus simple pour evo)
   const ordered = [...rows].sort((a: any, b: any) => getRecordTimestamp(a) - getRecordTimestamp(b));
 
-  for (const r of ordered) {
+  for (let rowIndex = 0; rowIndex < ordered.length; rowIndex += 1) {
+    if (rowIndex > 0 && rowIndex % (isConstrainedDartStatsDevice() ? 8 : 28) === 0) {
+      await yieldDartStatsWork();
+    }
+    const r = ordered[rowIndex];
     if (!isX01Record(r)) continue;
 
     if (!isFinishedX01StatsRecord(r)) continue;

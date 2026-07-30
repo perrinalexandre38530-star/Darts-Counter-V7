@@ -23,10 +23,10 @@ import {
   getFavoriteDartSetForProfile,
   getDartSetsForProfile,
 } from "../lib/dartSetsStore";
-import { loadStore } from "../lib/storage";
+import { loadStore, getCachedLocalProfilesForSafety } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
-import { getAvatarCache } from "../lib/avatarCache";
+import { getAvatarCacheFast } from "../lib/avatarCache";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback, dartSetThumbMediaKey } from "../lib/userMediaFallback";
 import ResilientUserImage from "./ResilientUserImage";
@@ -161,11 +161,21 @@ async function getProfileByIdFromStore(
       };
     }
 
-    const store = await loadStore<any>();
-    if (!store) return null;
+    // Premier choix : mini-cache profils synchronisé par storage.ts. Il évite de
+    // décompresser tout le store (historique + médias) pour afficher un avatar.
+    let pr: any = null;
+    try {
+      const cached = getCachedLocalProfilesForSafety();
+      pr = (cached?.profiles || []).find((x: any) => String(x?.id || "") === String(profileId)) || null;
+    } catch {}
 
-    const arr: any[] = Array.isArray(store.profiles) ? store.profiles : [];
-    const pr = arr.find((x) => String(x?.id || "") === String(profileId));
+    // Secours legacy uniquement si le mini-cache n'existe pas encore.
+    if (!pr) {
+      const store = await loadStore<any>();
+      if (!store) return null;
+      const arr: any[] = Array.isArray(store.profiles) ? store.profiles : [];
+      pr = arr.find((x) => String(x?.id || "") === String(profileId)) || null;
+    }
     if (!pr) return null;
 
     return {
@@ -311,7 +321,7 @@ export default function ProfileAvatar(props: Props) {
   const explicitFallback = normalizeImport(props.fallbackDataUrl) || "";
   const readCachedFallback = React.useCallback(() => {
     if (!effectiveProfileId) return explicitFallback;
-    const cached: any = getAvatarCache(effectiveProfileId);
+    const cached: any = getAvatarCacheFast(effectiveProfileId);
     return (
       explicitFallback ||
       normalizeImport(cached?.avatarThumbDataUrl) ||

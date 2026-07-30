@@ -95,6 +95,30 @@ const STATS_QUICK_MIRROR_KEY = "dc_stats_quick_v1";
 let __statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let __statsRefreshPromise: Promise<StatsIndex> | null = null;
 
+function isConstrainedStatsIndexDevice(): boolean {
+  try {
+    const nav: any = (globalThis as any)?.navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldStatsIndexWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const raf = (globalThis as any)?.requestAnimationFrame;
+    if (isConstrainedStatsIndexDevice() && typeof raf === "function") {
+      raf(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 
 export type StatsQuickMirror = {
   version: 1;
@@ -1081,11 +1105,14 @@ export function scheduleStatsIndexRefresh(options?: {
     try {
       const ric = (globalThis as any)?.requestIdleCallback;
       if (typeof ric === "function") {
-        ric(run, { timeout: 1200 });
+        // Sur mobile, aucun timeout ne doit forcer le rebuild pendant une
+        // interaction. Il part uniquement lors d'un vrai créneau idle.
+        if (isConstrainedStatsIndexDevice()) ric(run);
+        else ric(run, { timeout: 5000 });
         return;
       }
     } catch {}
-    run();
+    setTimeout(run, isConstrainedStatsIndexDevice() ? 2200 : 300);
   }, debounceMs);
 
   // Les appelants historiques reçoivent immédiatement le dernier index.
@@ -1188,7 +1215,7 @@ export async function rebuildStatsFromHistory(options?: {
 
   // Hydratation par petits lots parallèles. L'ancien parcours faisait un
   // History.get() séquentiel par match, très lent après une grosse restauration.
-  const HYDRATE_CHUNK = 24;
+  const HYDRATE_CHUNK = isConstrainedStatsIndexDevice() ? 4 : 12;
   for (let offset = 0; offset < rows.length; offset += HYDRATE_CHUNK) {
     const lightChunk = rows.slice(offset, offset + HYDRATE_CHUNK);
     const hydratedChunk = await Promise.all(lightChunk.map(async (lightRec: any) => {
@@ -1230,7 +1257,7 @@ export async function rebuildStatsFromHistory(options?: {
     }
 
     if (offset + HYDRATE_CHUNK < rows.length) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await yieldStatsIndexWork();
     }
   }
 

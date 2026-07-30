@@ -1,10 +1,17 @@
 // ============================================
 // src/hooks/useQuickStats.ts
-// Source principale: stats_index centralisé (IndexedDB/KV)
-// Plus de dépendance au store principal pour les mini-stats.
+// Snapshot instantané, sans rebuild au montage.
+// - 1er rendu : miroir localStorage ultra-léger
+// - Puis : lecture de l'index IndexedDB déjà calculé
+// - Aucun polling / aucun force:true / aucun scan Historique depuis la page Stats
 // ============================================
 import { useEffect, useMemo, useState } from "react";
-import { getOrRebuildStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
+import {
+  loadStatsIndex,
+  loadStatsQuickMirrorSync,
+  type StatsIndex,
+  type StatsQuickMirror,
+} from "../lib/stats/rebuildStatsFromHistory";
 
 export type QuickStats = {
   avg3: number;
@@ -12,67 +19,88 @@ export type QuickStats = {
   bestCheckout?: number;
   winRatePct: number;
   buckets: Record<string, number>;
+  matches?: number;
+  wins?: number;
+  losses?: number;
+  dartsThrown?: number;
+  pointsScored?: number;
+  lastMatchAt?: number;
 };
 
+function readQuickEntry(
+  playerId: string,
+  index: StatsIndex | null,
+  mirror: StatsQuickMirror | null
+): QuickStats | null {
+  const fromIndex: any = index?.byPlayer?.[playerId] || null;
+  const fromMirror: any = mirror?.byPlayer?.[playerId] || null;
+  const p: any = fromIndex || fromMirror;
+  if (!p) return null;
+
+  const games = Number(p.matches || 0) || 0;
+  const wins = Number(p.wins || 0) || 0;
+  const losses = Number(p.losses || 0) || 0;
+  const winRatePct = games > 0 ? (wins / games) * 100 : 0;
+
+  return {
+    avg3: Number(p.avg3 || 0) || 0,
+    bestVisit: Number(p.bestVisit || 0) || 0,
+    bestCheckout: p.bestCheckout != null ? Number(p.bestCheckout || 0) || 0 : undefined,
+    winRatePct,
+    buckets: p.buckets && typeof p.buckets === "object" ? p.buckets : {},
+    matches: games,
+    wins,
+    losses,
+    dartsThrown: Number(p.dartsThrown || 0) || 0,
+    pointsScored: Number(p.pointsScored || 0) || 0,
+    lastMatchAt: Number(p.lastMatchAt || 0) || undefined,
+  };
+}
+
 export function useQuickStats(playerId: string | null): QuickStats | null {
-  const [seed, setSeed] = useState(0);
-  const [snap, setSnap] = useState<StatsIndex | null>(null);
+  // Lecture synchronisée avant le premier paint. Ce miroir fait quelques ko,
+  // contrairement à l'Historique et à ses payloads compressés.
+  const [mirror, setMirror] = useState<StatsQuickMirror | null>(() => loadStatsQuickMirrorSync());
+  const [index, setIndex] = useState<StatsIndex | null>(null);
 
   useEffect(() => {
     let alive = true;
-    const read = async () => {
+
+    const refreshFromCaches = async () => {
+      // Toujours relire le miroir immédiatement : il est mis à jour par le rebuild
+      // réalisé après une partie/import, pas par la page Stats.
       try {
-        const idx = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
-        if (!alive) return;
-        setSnap(idx || null);
+        if (alive) setMirror(loadStatsQuickMirrorSync());
+      } catch {}
+
+      try {
+        const cached = await loadStatsIndex();
+        if (alive) setIndex(cached || null);
       } catch {
-        if (!alive) return;
-        setSnap(null);
+        if (alive) setIndex(null);
       }
     };
-    void read();
 
-    const onStatsUpdated = () => setSeed((x) => x + 1);
+    void refreshFromCaches();
+
+    const onStatsUpdated = () => {
+      void refreshFromCaches();
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
-      window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
     }
-    const t = setInterval(() => setSeed((x) => x + 1), 2000);
 
     return () => {
       alive = false;
       if (typeof window !== "undefined") {
         window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
-        window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);
       }
-      clearInterval(t);
     };
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const idx = await getOrRebuildStatsIndex({ includeNonFinished: false, force: true, persist: true });
-        setSnap(idx || null);
-      } catch {
-        setSnap(null);
-      }
-    })();
-  }, [seed]);
-
   return useMemo(() => {
-    if (!playerId || !snap?.byPlayer?.[playerId]) return null;
-    const p: any = snap.byPlayer[playerId] || {};
-    const games = Number(p.matches || 0) || 0;
-    const wins = Number(p.wins || 0) || 0;
-    const winRatePct = games > 0 ? (wins / games) * 100 : 0;
-
-    return {
-      avg3: Number(p.avg3 || 0) || 0,
-      bestVisit: Number(p.bestVisit || 0) || 0,
-      bestCheckout: p.bestCheckout != null ? Number(p.bestCheckout || 0) || 0 : undefined,
-      winRatePct,
-      buckets: (p.buckets && typeof p.buckets === "object") ? p.buckets : {},
-    };
-  }, [snap, playerId]);
+    if (!playerId) return null;
+    return readQuickEntry(String(playerId), index, mirror);
+  }, [index, mirror, playerId]);
 }

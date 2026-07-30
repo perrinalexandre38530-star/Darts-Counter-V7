@@ -29,6 +29,33 @@ import TrainingRadar from "./TrainingRadar";
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
+function isConstrainedDartSetDevice(): boolean {
+  try {
+    const nav: any = navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldDartSetFrame(force = false): Promise<void> {
+  if (!force && !isConstrainedDartSetDevice()) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 12);
+    }
+  });
+}
+
 function fmt1(n: number) {
   return N(n, 0).toFixed(1);
 }
@@ -636,10 +663,13 @@ function isWinnerForPlayerFromSummary(summary: any, mine: any, profileId: string
   );
 }
 
-function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName = ""): Record<string, MiniMatch[]> {
+async function buildRecentMatchesMap(allHistory: any[], profileId: string, playerName = ""): Promise<Record<string, MiniMatch[]>> {
   const map: Record<string, MiniMatch[]> = {};
+  const source = allHistory || [];
 
-  for (const r of allHistory || []) {
+  for (let rowIndex = 0; rowIndex < source.length; rowIndex += 1) {
+    if (rowIndex > 0 && rowIndex % (isConstrainedDartSetDevice() ? 10 : 28) === 0) await yieldDartSetFrame(true);
+    const r = source[rowIndex];
     if (!isX01Record(r)) continue;
 
     if (!isFinishedX01StatsRecord(r)) continue;
@@ -1374,10 +1404,13 @@ function computeRawVisitStats(r: any, profileId: string, playerName = ""): RawVi
   return out.darts > 0 ? out : null;
 }
 
-function computeAggFromHistory(allHistory: any[], profileId: string, playerName = ""): Record<string, AggRow> {
+async function computeAggFromHistory(allHistory: any[], profileId: string, playerName = ""): Promise<Record<string, AggRow>> {
   const out: Record<string, AggRow> = {};
+  const source = allHistory || [];
 
-  for (const r of allHistory || []) {
+  for (let rowIndex = 0; rowIndex < source.length; rowIndex += 1) {
+    if (rowIndex > 0 && rowIndex % (isConstrainedDartSetDevice() ? 8 : 24) === 0) await yieldDartSetFrame(true);
+    const r = source[rowIndex];
     if (!isX01Record(r)) continue;
 
     if (!isFinishedX01StatsRecord(r)) continue;
@@ -1688,9 +1721,9 @@ function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visib
 
 const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v1:";
 const DART_SET_STATS_HIDDEN_PREFIX = "dc_stats_dartsets_hidden_v1:";
-const DART_SET_STATS_CACHE_MAX_CHARS = 560_000;
-const DART_SET_STATS_CACHE_MAX_SETS = 36;
-const DART_SET_STATS_IMAGE_MAX_CHARS = 82_000;
+const DART_SET_STATS_CACHE_MAX_CHARS = 260_000;
+const DART_SET_STATS_CACHE_MAX_SETS = 24;
+const DART_SET_STATS_IMAGE_MAX_CHARS = 42_000;
 
 type CachedDartSetVisual = {
   id: string;
@@ -2043,16 +2076,21 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
 
         // Une seule lecture légère de l'historique, puis une seule hydratation des
         // payloads X01. L'ancien composant relisait 120 matchs deux fois.
-        const [apiList, storeAny] = await Promise.all([
-          History.list?.().catch(() => []),
-          loadStore<any>().catch(() => null),
-        ]);
+        const apiList = await History.list?.().catch(() => []);
         if (cancelled) return;
 
-        const memList = Array.isArray(storeAny?.history) ? storeAny.history : [];
+        // History.list est la source normale. Le vieux store complet (souvent très
+        // volumineux) n'est décompressé qu'en secours si IndexedDB est vide.
+        let memList: any[] = [];
+        if (!Array.isArray(apiList) || apiList.length === 0) {
+          const storeAny = await loadStore<any>().catch(() => null);
+          memList = Array.isArray(storeAny?.history) ? storeAny.history : [];
+        }
         const merged = [...(apiList || []), ...memList];
         const byId = new Map<string, any>();
-        for (const r of merged) {
+        for (let mergeIndex = 0; mergeIndex < merged.length; mergeIndex += 1) {
+          if (mergeIndex > 0 && mergeIndex % (isConstrainedDartSetDevice() ? 18 : 60) === 0) await yieldDartSetFrame(true);
+          const r = merged[mergeIndex];
           const id = String(r?.id ?? r?.matchId ?? "").trim();
           if (!id) continue;
           const old = byId.get(id);
@@ -2079,9 +2117,9 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
           .filter((rec: any) => isX01Record(rec))
           .map((rec: any) => ({ rec, id: String(rec?.id ?? rec?.matchId ?? "").trim() }))
           .filter((x: any) => !!x.id)
-          .slice(0, 120);
+          .slice(0, isConstrainedDartSetDevice() ? 72 : 140);
 
-        const batchSize = 24;
+        const batchSize = isConstrainedDartSetDevice() ? 4 : 12;
         for (let i = 0; i < candidates.length; i += batchSize) {
           if (cancelled) return;
           const batch = candidates.slice(i, i + batchSize);
@@ -2094,7 +2132,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
             }
           }));
           for (const [id, rec] of hydrated) enrichedMap.set(id, rec);
-          if (i + batchSize < candidates.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          if (i + batchSize < candidates.length) await yieldDartSetFrame(true);
         }
 
         const allEnriched = Array.from(enrichedMap.values());
@@ -2106,11 +2144,11 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         const rowsA = Array.isArray(statsA) ? statsA : [];
 
         const recMap = canonicalizeRecentMap(
-          buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""),
+          await buildRecentMatchesMap(allEnriched || [], activeProfileId, activePlayerName || ""),
           activeProfileId
         );
 
-        const aggMapRaw = computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
+        const aggMapRaw = await computeAggFromHistory(allEnriched || [], activeProfileId, activePlayerName || "");
         const aggMap: Record<string, any> = {};
         for (const [rawId, row] of Object.entries(aggMapRaw || {})) {
           const id = canonicalDartSetIdForStats(rawId, activeProfileId);
@@ -2144,10 +2182,12 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         writeDartSetStatsRenderCache(activeProfileId, outRows, recMap, visuals);
 
         if (mounted && !cancelled) {
-          setRows(outRows);
-          setRecentBySet(recMap);
-          setCachedVisuals(visuals);
-          setErr(null);
+          React.startTransition(() => {
+            setRows(outRows);
+            setRecentBySet(recMap);
+            setCachedVisuals(visuals);
+            setErr(null);
+          });
         }
       } catch (e: any) {
         // Si un cache existe, on garde son affichage au lieu de remplacer toute la
@@ -2161,10 +2201,29 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       }
     }
 
+    const shouldRefresh = !cacheAtStart || refreshTick > 0;
+    if (!shouldRefresh) {
+      setLoading(false);
+      setRefreshing(false);
+      return () => {
+        mounted = false;
+        cancelled = true;
+      };
+    }
+
     if (cacheAtStart && typeof window !== "undefined") {
+      // Un cache visible ne doit JAMAIS être recalculé pendant le premier paint.
+      // On attend un vrai idle; aucun timeout ne peut forcer le travail sur mobile.
       const ric: any = (window as any).requestIdleCallback;
-      if (typeof ric === "function") idleId = ric(() => void run(), { timeout: 900 });
-      else timerId = window.setTimeout(() => void run(), 80);
+      if (typeof ric === "function") idleId = ric(() => void run());
+      else timerId = window.setTimeout(() => void run(), isConstrainedDartSetDevice() ? 1800 : 500);
+    } else if (typeof window !== "undefined") {
+      let rafA = 0;
+      let rafB = 0;
+      rafA = window.requestAnimationFrame(() => {
+        rafB = window.requestAnimationFrame(() => void run());
+      });
+      idleId = { rafA, rafB, __raf: true };
     } else {
       void run();
     }
@@ -2173,7 +2232,14 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
       mounted = false;
       cancelled = true;
       if (timerId) window.clearTimeout(timerId);
-      try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
+      try {
+        if (idleId?.__raf) {
+          if (idleId.rafA) window.cancelAnimationFrame(idleId.rafA);
+          if (idleId.rafB) window.cancelAnimationFrame(idleId.rafB);
+        } else if (idleId != null) {
+          (window as any).cancelIdleCallback?.(idleId);
+        }
+      } catch {}
     };
   }, [activeProfileId, activePlayerName, refreshTick]);
 
