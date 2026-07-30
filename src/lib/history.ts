@@ -730,7 +730,7 @@ const MAX_ROWS = 400;
 const MAX_CACHE_ROWS = 400;
 const HISTORY_UI_CACHE_KEY = "dc-history-ui-cache-v1";
 const HISTORY_UI_CACHE_VERSION = 1;
-const HISTORY_UI_CACHE_MAX_CHARS = 2_600_000;
+const HISTORY_UI_CACHE_MAX_CHARS = 360_000;
 const scopedHistoryUiCacheKey = () => scopedStorageKey(HISTORY_UI_CACHE_KEY);
 const LIST_PAYLOAD_KINDS = new Set(["cricket"]); // payload décodé seulement si vraiment utile
 
@@ -3802,6 +3802,7 @@ type _LightRow = Omit<SavedMatch, "payload">;
 let __cache: _LightRow[] = [];
 let __cacheScopeKey = "";
 let __cacheSaveTimer: number | null = null;
+let __cachePersistenceDisabled = false;
 
 const HISTORY_CACHE_HEAVY_KEYS = new Set([
   "payload",
@@ -3832,9 +3833,12 @@ function _compactHistoryCacheValue(value: any, key = "", depth = 0): any {
   if (HISTORY_CACHE_HEAVY_KEYS.has(lowerKey)) return undefined;
 
   if (typeof value === "string") {
-    // On conserve les URLs/références et les petites miniatures, jamais une photo originale énorme.
-    if (/^data:image\//i.test(value) && value.length > 28_000) return undefined;
-    if (value.length > 16_000) return value.slice(0, 16_000);
+    // Le cache Historique est répété sur de nombreuses cartes. Une data URL d'avatar
+    // dupliquée dans chaque partie remplit très vite le localStorage mobile. On garde
+    // les URLs, IDs et références légères ; l'avatar lui-même reste dans son cache
+    // visuel dédié / IndexedDB.
+    if (/^data:image\//i.test(value)) return undefined;
+    if (value.length > 4_096) return value.slice(0, 4_096);
     return value;
   }
 
@@ -3927,7 +3931,7 @@ function _ensureHistoryCacheScope() {
 
 function _persistHistoryCacheNow() {
   try {
-    if (typeof localStorage === "undefined") return;
+    if (typeof localStorage === "undefined" || __cachePersistenceDisabled) return;
     _ensureHistoryCacheScope();
     const compactRows = __cache
       .map((row) => _compactHistoryCacheRow(row))
@@ -3953,12 +3957,22 @@ function _persistHistoryCacheNow() {
     localStorage.setItem(__cacheScopeKey, payload);
   } catch (error) {
     // Un cache ne doit jamais empêcher l’écriture de l’Historique source de vérité.
-    console.warn("[history.ui-cache] persistence skipped", error);
+    // En cas de quota saturé, on supprime uniquement ce cache dérivé et on évite
+    // de refaire un JSON.stringify/setItem coûteux à chaque mutation de la session.
+    try { localStorage.removeItem(__cacheScopeKey || HISTORY_UI_CACHE_KEY); } catch {}
+    __cachePersistenceDisabled = true;
+    try {
+      const name = String((error as any)?.name || "");
+      if (name !== "QuotaExceededError" && name !== "NS_ERROR_DOM_QUOTA_REACHED") {
+        console.warn("[history.ui-cache] persistence skipped", error);
+      }
+    } catch {}
   }
 }
 
 function _saveCache() {
   try {
+    if (__cachePersistenceDisabled) return;
     _ensureHistoryCacheScope();
     if (typeof window === "undefined") return;
     if (__cacheSaveTimer != null) window.clearTimeout(__cacheSaveTimer);

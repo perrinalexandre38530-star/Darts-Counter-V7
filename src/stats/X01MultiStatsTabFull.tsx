@@ -2220,6 +2220,55 @@ function normalizeX01Dart(v: number, mult: number): UIDart | null {
   return { v, mult: mult as 0 | 1 | 2 | 3 };
 }
 
+// Calcul pur volontairement sans hook React. Cette reconstruction peut dépendre
+// du contenu des sessions, mais elle ne doit jamais modifier le nombre de hooks
+// exécutés entre un premier rendu vide et le rendu suivant avec les données.
+function buildX01DartsForStats(statsSessions: X01MultiSession[]): UIDart[] {
+  const out: UIDart[] = [];
+
+  for (const s of statsSessions) {
+    const { bySegmentS, bySegmentD, bySegmentT } = s;
+
+    if (
+      (!bySegmentS || !Object.keys(bySegmentS).length) &&
+      (!bySegmentD || !Object.keys(bySegmentD).length) &&
+      (!bySegmentT || !Object.keys(bySegmentT).length)
+    ) {
+      continue;
+    }
+
+    const keys = new Set<string>([
+      ...Object.keys(bySegmentS || {}),
+      ...Object.keys(bySegmentD || {}),
+      ...Object.keys(bySegmentT || {}),
+    ]);
+
+    for (const segStr of keys) {
+      const seg = Number(segStr);
+      if (!Number.isFinite(seg) || seg <= 0) continue;
+
+      const sCount = cap(Number(bySegmentS?.[segStr] || 0));
+      const dCount = cap(Number(bySegmentD?.[segStr] || 0));
+      const tCount = cap(Number(bySegmentT?.[segStr] || 0));
+
+      for (let i = 0; i < sCount; i++) {
+        const dart = normalizeX01Dart(seg, 1);
+        if (dart) out.push(dart);
+      }
+      for (let i = 0; i < dCount; i++) {
+        const dart = normalizeX01Dart(seg, 2);
+        if (dart) out.push(dart);
+      }
+      for (let i = 0; i < tCount; i++) {
+        const dart = normalizeX01Dart(seg, 3);
+        if (dart) out.push(dart);
+      }
+    }
+  }
+
+  return out;
+}
+
 // ===========================================================
 // Composant principal
 // ===========================================================
@@ -2261,6 +2310,23 @@ export default function X01MultiStatsTabFull({
 
   const [metricLocked, setMetricLocked] = React.useState(false);
   const [page, setPage] = React.useState(1);
+  const [ticker, setTicker] = React.useState(0);
+
+  // Tous les hooks du composant restent groupés avant les calculs statistiques.
+  // Le timer est volontairement toujours présent : aucune donnée asynchrone ne
+  // peut donc faire varier le nombre de hooks entre deux rendus.
+  React.useEffect(() => {
+    if (!sessions.length) return;
+    const id = window.setInterval(() => {
+      setTicker((value) => value + 1);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [sessions.length]);
+
+  React.useEffect(() => {
+    setTicker(0);
+    setPage(1);
+  }, [effectiveProfileId, historyVersion, range, scoreFilter, variantFilter]);
 
   React.useEffect(() => {
     const onHistoryUpdated = () => setHistoryVersion((v) => v + 1);
@@ -2324,6 +2390,12 @@ export default function X01MultiStatsTabFull({
       sameId(s?.playerId, target)
     );
   }, [filtered, effectiveProfileId]);
+
+  const statsSessions = selectedSessions;
+  const x01DartsAll: UIDart[] = React.useMemo(
+    () => buildX01DartsForStats(statsSessions),
+    [statsSessions]
+  );
 
   // Classements multi pour le joueur (ou tous si aucun ID fourni)
   const multiRanks = React.useMemo(() => {
@@ -2591,7 +2663,6 @@ const pct = (num: number, den: number) =>
   // 🔥 % FINISH multi
   const multiPctFinish = pct(multiFinishCount, multiTotal);
 
-  const statsSessions = selectedSessions;
   const totalSessions = statsSessions.length;
   const totalDarts = statsSessions.reduce((s: any, x: any) => s + x.darts, 0);
   const avgDarts = totalSessions > 0 ? totalDarts / totalSessions : 0;
@@ -2797,52 +2868,8 @@ const pctSetsWinX01 =
   const fmtPct = (v: number | null | undefined) =>
     v && Number.isFinite(v) && v !== 0 ? `${v.toFixed(1)}%` : "-";
 
-  // Darts pour radar + hits/segment (reconstruits depuis bySegmentS/D/T)
-  const x01DartsAll: UIDart[] = React.useMemo(() => {
-    const out: UIDart[] = [];
-
-    for (const s of statsSessions) {
-      const { bySegmentS, bySegmentD, bySegmentT } = s;
-
-      if (
-        (!bySegmentS || !Object.keys(bySegmentS).length) &&
-        (!bySegmentD || !Object.keys(bySegmentD).length) &&
-        (!bySegmentT || !Object.keys(bySegmentT).length)
-      ) {
-        continue;
-      }
-
-      const keys = new Set<string>([
-        ...Object.keys(bySegmentS || {}),
-        ...Object.keys(bySegmentD || {}),
-        ...Object.keys(bySegmentT || {}),
-      ]);
-
-      for (const segStr of keys) {
-        const seg = Number(segStr);
-        if (!Number.isFinite(seg) || seg <= 0) continue;
-
-        const sCount = cap(Number(bySegmentS?.[segStr] || 0));
-        const dCount = cap(Number(bySegmentD?.[segStr] || 0));
-        const tCount = cap(Number(bySegmentT?.[segStr] || 0));
-
-        for (let i = 0; i < sCount; i++) {
-          const d = normalizeX01Dart(seg, 1);
-          if (d) out.push(d);
-        }
-        for (let i = 0; i < dCount; i++) {
-          const d = normalizeX01Dart(seg, 2);
-          if (d) out.push(d);
-        }
-        for (let i = 0; i < tCount; i++) {
-          const d = normalizeX01Dart(seg, 3);
-          if (d) out.push(d);
-        }
-      }
-    }
-
-    return out;
-  }, [statsSessions]);
+  // Darts pour radar + hits/segment déjà reconstruits par le useMemo placé
+  // avec les autres hooks, avant tous les calculs susceptibles d'échouer.
 
   // Hit préféré / favoris
   const segmentCount: Record<string, number> = {};
@@ -3196,15 +3223,6 @@ const pctSetsWinX01 =
     green1Items.length ||
     green2Items.length;
 
-  const [ticker, setTicker] = React.useState(0);
-  React.useEffect(() => {
-    if (!hasAnyKpi) return;
-    const id = window.setInterval(() => {
-      setTicker((t: any) => t + 1);
-    }, 4000);
-    return () => window.clearInterval(id);
-  }, [hasAnyKpi, filtered.length]);
-
   const currentGold =
     goldItems.length > 0 ? goldItems[ticker % goldItems.length] : null;
   const currentPink =
@@ -3267,10 +3285,6 @@ const pctSetsWinX01 =
     background: "rgba(0,0,0,.45)",
     cursor: "pointer",
   };
-
-  React.useEffect(() => {
-    setPage(1);
-  }, [range, selectedSessions.length]);
 
   const pageSize = 10;
   const totalPages =
