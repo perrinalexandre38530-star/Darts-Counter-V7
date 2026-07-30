@@ -138,6 +138,29 @@ function writePreferredRemoteSource(provider: BackupProvider) {
   try { window.localStorage.setItem(REMOTE_SOURCE_PREF_KEY, provider); } catch {}
 }
 
+const NAS_SLOTS_CACHE_PREFIX = "dc_storage_vault_nas_slots_cache_v2:";
+
+function nasSlotsCacheKey(): string {
+  return `${NAS_SLOTS_CACHE_PREFIX}${getVaultCurrentUserId() || "anonymous"}`;
+}
+
+function readCachedNasSlots(): NasSlot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(nasSlotsCacheKey()) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((row: any) => row && typeof row === "object" && row.id).slice(0, 120) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedNasSlots(slots: NasSlot[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(nasSlotsCacheKey(), JSON.stringify((Array.isArray(slots) ? slots : []).slice(0, 120)));
+  } catch {}
+}
+
 const neon = "var(--dc-accent-soft, #22d3ee)";
 const gold = "var(--dc-accent, #d9ff33)";
 const red = "#fb7185";
@@ -1300,7 +1323,7 @@ export default function StorageVaultPage({ go }: Props) {
           subtitle: q.restorable ? `${saveCategory(summary)} · ${fmtDate(slot.createdAt || slot.updatedAt || null)}` : `Masqué par garde-fou · ${q.label}`,
         };
       })
-      .filter((entry) => entry.quality.grade === "complete" || entry.quality.grade === "history")
+      .filter((entry) => entry.latest || entry.quality.grade === "complete" || entry.quality.grade === "history")
       .sort((a, b) => {
         const gradeA = a.quality.grade === "complete" ? 2 : 1;
         const gradeB = b.quality.grade === "complete" ? 2 : 1;
@@ -1389,9 +1412,12 @@ export default function StorageVaultPage({ go }: Props) {
   const remoteEntries = backupProvider === "cloud" ? cloudEntries : nasEntries;
   const trashRemoteEntries = backupProvider === "cloud" ? trashCloudEntries : trashNasEntries;
   const latestRemoteEntry = React.useMemo(() => {
-    const latest = remoteEntries.find((entry) => entry.latest) || remoteEntries[0] || null;
-    return latest;
-  }, [remoteEntries]);
+    // NAS : ne jamais rebaptiser une archive en « sauvegarde courante ».
+    // Si le serveur ne confirme pas explicitement latest, on conserve l'état
+    // précédent/cache au lieu d'afficher une archive comme si elle était courante.
+    if (backupProvider === "nas") return remoteEntries.find((entry) => entry.latest) || null;
+    return remoteEntries.find((entry) => entry.latest) || remoteEntries[0] || null;
+  }, [backupProvider, remoteEntries]);
 
   const archivedRemoteEntries = React.useMemo(() => {
     return remoteEntries.filter((entry) => !entry.latest && entry.key !== latestRemoteEntry?.key);
@@ -1522,20 +1548,53 @@ export default function StorageVaultPage({ go }: Props) {
         return;
       }
 
-      const [nsRaw, trashRaw, nasMatches] = await Promise.all([
-        withFastFallback(listNasMemorySlots(), [], 2_500),
-        withFastFallback(listNasDeletedMemorySlots(), [], 2_500),
-        withFastFallback(listNasMatchBackups(), [], 2_500),
+      // IMPORTANT : une lecture NAS lente/404 ne doit JAMAIS effacer de l'écran
+      // une sauvegarde qui vient d'être confirmée. Avant, withFastFallback(..., [])
+      // remplaçait la liste par [] au bout de 2,5 s : la sauvegarde « disparaissait »
+      // alors qu'elle existait toujours dans PostgreSQL. On adopte un vrai
+      // stale-while-revalidate : succès => remplace/cache ; échec => conserve.
+      const [nsResult, trashResult, nasMatchesResult] = await Promise.allSettled([
+        listNasMemorySlots(),
+        listNasDeletedMemorySlots(),
+        listNasMatchBackups(),
       ]);
-      const activeNas = nsRaw.map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
-      const trashNas = trashRaw.map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
+
+      let activeNasCount: number | null = null;
+      if (nsResult.status === "fulfilled") {
+        const activeNas = (nsResult.value || []).map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
+        activeNasCount = activeNas.length;
+        setNasSlots(activeNas);
+        writeCachedNasSlots(activeNas);
+      } else {
+        setNasSlots((current) => {
+          if (current.length) return current;
+          return readCachedNasSlots().map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
+        });
+      }
+
+      if (trashResult.status === "fulfilled") {
+        const trashNas = (trashResult.value || []).map((slot) => ({ ...slot, summary: normalizeSummary(slot.summary || {}) }));
+        setTrashNasSlots(trashNas);
+      }
+
+      if (nasMatchesResult.status === "fulfilled") {
+        setMatchBackups([...(localMatches || []), ...(nasMatchesResult.value || [])]);
+      } else {
+        setMatchBackups((current) => {
+          const remoteKept = current.filter((item) => item.origin === "nas");
+          return [...(localMatches || []), ...remoteKept];
+        });
+      }
 
       setCloudSlots([]);
       setTrashCloudSlots([]);
-      setNasSlots(activeNas);
-      setTrashNasSlots(trashNas);
-      setMatchBackups([...(localMatches || []), ...(nasMatches || [])]);
-      if (lastUserActionAtRef.current <= refreshStartedAt) setMessage(`Prêt. Destination active : ${selectedForSaveLabel}. ${activeNas.length} sauvegarde(s) NAS, ${ls.length} sauvegarde(s) locale(s). Aucun snapshot n'a été téléchargé pendant le scan.`);
+
+      if (lastUserActionAtRef.current <= refreshStartedAt) {
+        const degraded = nsResult.status !== "fulfilled" || trashResult.status !== "fulfilled" || nasMatchesResult.status !== "fulfilled";
+        setMessage(degraded
+          ? `NAS temporairement lent ou partiellement indisponible. La dernière liste confirmée est conservée à l'écran ; aucune sauvegarde n'a été effacée.`
+          : `Prêt. Destination active : ${selectedForSaveLabel}. ${activeNasCount ?? 0} sauvegarde(s) NAS, ${ls.length} sauvegarde(s) locale(s). Aucun snapshot n'a été téléchargé pendant le scan.`);
+      }
     } catch (error: any) {
       if (lastUserActionAtRef.current <= refreshStartedAt) setMessage(`Actualisation impossible : ${error?.message || error}`);
     } finally {
@@ -2091,15 +2150,22 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       setAccountScopeId(getVaultCurrentUserId());
       if (!token) throw new Error("Token NAS introuvable. La copie locale a été créée, mais l'envoi NAS nécessite une reconnexion au compte NAS.");
       const response = await pushSnapshotToNasFast(prepared.snapshot, "storage-vault-instant", token, prepared.summary);
-      const slotId = String(response?.slotId || response?.id || `nas_${Date.now()}`);
+      // /sync/push met à jour l'emplacement canonique. Son identifiant UI est
+      // TOUJOURS « latest ». Le slotId retourné (quand il existe) désigne une
+      // révision d'archive, pas l'emplacement courant. L'ancien faux nas_<date>
+      // provoquait ensuite un 404 si on tentait de restaurer avant le refresh.
       const nasSlot: NasSlot = {
-        id: slotId,
+        id: "latest",
         latest: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        summary: prepared.summary,
+        createdAt: String(response?.updatedAt || new Date().toISOString()),
+        updatedAt: String(response?.updatedAt || new Date().toISOString()),
+        summary: normalizeSummary(response?.summary || prepared.summary),
       };
-      setNasSlots((current) => [nasSlot, ...current.map((row) => ({ ...row, latest: false })).filter((row) => row.id !== slotId)].slice(0, 120));
+      setNasSlots((current) => {
+        const next = [nasSlot, ...current.map((row) => ({ ...row, latest: false })).filter((row) => row.id !== "latest")].slice(0, 120);
+        writeCachedNasSlots(next);
+        return next;
+      });
       setBackupProvider("nas");
       writePreferredRemoteSource("nas");
       setMessage(`Sauvegarde NAS créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · copie locale de sécurité conservée.`);

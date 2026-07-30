@@ -1122,11 +1122,10 @@ export async function nasPushStoreSnapshot(
   nasPushInFlight = true;
   nasPushLastAttemptAt = Date.now();
 
-  // R2 est un miroir, pas une destination alternative choisie dans les réglages :
-  // chaque snapshot NAS est aussi écrit directement dans Cloudflare Pages/R2.
-  // Cette écriture ne traverse jamais le QNAP.
-  const r2MirrorPromise = mirrorPortableSnapshotDirectToR2(payload, opts?.reason || "nas_sync_push", force)
-    .catch((r2Error) => console.warn("[nasSync] direct R2 mirror failed", r2Error));
+  // RÈGLE DE FACTURATION : une sauvegarde NAS ne doit JAMAIS déclencher une
+  // écriture Cloudflare R2 implicite. R2 est une destination PREMIUM distincte
+  // et n'est utilisée que lorsque l'utilisateur choisit explicitement Cloud R2.
+  const r2MirrorPromise = Promise.resolve();
 
   try {
     const session0 = await nasRestoreSession();

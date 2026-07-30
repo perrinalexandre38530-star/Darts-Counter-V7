@@ -536,9 +536,21 @@ export function decodeMaybeCompressedNasPayload(payload: any): any {
 
 export async function listNasMemorySlots(): Promise<NasSlot[]> {
   const data = await apiGet("/sync/slots?limit=120").catch(async () => {
+    // Compatibilité ancien backend : /sync/pull suffit pour prouver que le
+    // courant existe. On calcule aussi son résumé ; sans cela la page le
+    // classait « technique » puis le masquait, donnant l'impression qu'il avait
+    // disparu alors que le payload était bien présent sur le NAS.
     const latest = await apiGet("/sync/pull");
     if (!latest?.payload) return { slots: [] };
-    return { slots: [{ id: "latest", latest: true, version: latest.version, updatedAt: latest.updatedAt, createdAt: latest.updatedAt }] };
+    const decoded = decodeMaybeCompressedNasPayload(latest.payload);
+    return { slots: [{
+      id: "latest",
+      latest: true,
+      version: latest.version,
+      updatedAt: latest.updatedAt,
+      createdAt: latest.updatedAt,
+      summary: summarizeVaultPayload(decoded),
+    }] };
   });
   const slots = Array.isArray(data) ? data : Array.isArray(data?.slots) ? data.slots : [];
   return slots as NasSlot[];
