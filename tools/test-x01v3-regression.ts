@@ -153,7 +153,10 @@ function testCheckoutModes() {
     for (const s of scores) {
       const sug = getAdaptiveCheckoutSuggestionV3({ score: s, dartsLeft: 3, outMode } as any);
 
-      if (s <= 1 || s > 170) {
+      // Un reste de 1 est terminable uniquement en Simple Out (S1).
+      // En Double Out / Master Out, 1 reste impossible à fermer.
+      const impossible = s <= 0 || s > 170 || (s === 1 && outMode !== "simple");
+      if (impossible) {
         assert.equal(sug, null);
         continue;
       }
