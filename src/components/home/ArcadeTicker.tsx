@@ -9,7 +9,6 @@
 // =============================================================
 
 import * as React from "react";
-import { PaidInlineSurface } from "../../monetization/AdSlot";
 
 export type ArcadeTickerItem = {
   id: string;
@@ -294,18 +293,8 @@ export default function ArcadeTicker({
     </div>
   );
 
-  if (current.monetizedAd) {
-    return (
-      <PaidInlineSurface
-        slotKey="home-ticker"
-        placement="home"
-        minHeight={92}
-        style={{ marginTop: 12, borderRadius: 22 }}
-      >
-        {tickerCard}
-      </PaidInlineSurface>
-    );
-  }
-
+  // Les deux seuls emplacements AdMob HOME sont home-top et home-player.
+  // Les cartes marquées monetizedAd restent des promotions internes dans le
+  // carrousel et ne créent jamais une troisième bannière réelle.
   return tickerCard;
 }

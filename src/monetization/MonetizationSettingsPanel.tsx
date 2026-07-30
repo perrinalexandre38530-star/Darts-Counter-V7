@@ -191,7 +191,7 @@ export default function MonetizationSettingsPanel() {
       <section style={card}>
         <div style={{ color: theme.primary, fontWeight: 950 }}>ANDROID / ADMOB + CONFIDENTIALITÉ UMP</div>
         <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.5, marginTop: 5 }}>
-          Le runtime Android est maintenant câblé vers AdMob natif. Tant que les identifiants de production ne sont pas configurés, seuls les blocs de démonstration Google sont utilisés.
+          Le runtime Android utilise maintenant les vraies bannières AdMob sur les appareils déclarés comme appareils de test. Les formats plein écran restent sur les blocs Google de démonstration tant que leurs propres IDs ne sont pas créés.
         </div>
 
         {isCapacitorNativeRuntime() ? (
@@ -203,7 +203,7 @@ export default function MonetizationSettingsPanel() {
               Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"}
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
-              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION" : nativeStatus?.mode === "real_test" ? "VRAIS IDs · APPAREIL TEST" : "GOOGLE TEST"} · Appareils test : {nativeStatus?.testDeviceCount ?? 0} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
+              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION" : nativeStatus?.mode === "real_test" ? "VRAIS IDs · APPAREIL TEST" : "GOOGLE TEST"} · Appareil test : {nativeStatus?.testDevicesManagedByAdMobConsole ? "CONSOLE ADMOB" : (nativeStatus?.testDeviceCount ?? 0)} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
             </div>
             {nativeStatus?.configErrors?.length ? (
               <div style={{ marginTop: 7, borderRadius: 10, padding: 8, background: "rgba(255,80,80,.08)", border: "1px solid rgba(255,80,80,.24)", color: "#ff9b9b", fontSize: 10, lineHeight: 1.45 }}>

@@ -2953,7 +2953,7 @@ React.useEffect(() => {
         {/* PUB intégrée 2 : sous le bloc JOUEUR ACTIF / stats principales */}
         {activeProfile && (
           <InlineAdBanner
-            placement="home"
+            placement="home_secondary"
             slotKey="home-player"
             offset={2}
             compact

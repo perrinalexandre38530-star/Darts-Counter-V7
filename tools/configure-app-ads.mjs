@@ -5,6 +5,7 @@ import path from "node:path";
 const root = process.cwd();
 const envPath = path.join(root, ".env");
 const outputPath = path.join(root, "public", "app-ads.txt");
+const publicConfigPath = path.join(root, "config", "admob.public.json");
 
 function readDotEnv() {
   if (!fs.existsSync(envPath)) return {};
@@ -22,8 +23,15 @@ function readDotEnv() {
   return out;
 }
 
-function modeFromEnv(values) {
-  const explicit = String(process.env.VITE_ADMOB_MODE || values.VITE_ADMOB_MODE || "").trim().toLowerCase();
+
+function readPublicConfig() {
+  if (!fs.existsSync(publicConfigPath)) return {};
+  try { return JSON.parse(fs.readFileSync(publicConfigPath, "utf8")); }
+  catch { return {}; }
+}
+
+function modeFromEnv(values, publicConfig) {
+  const explicit = String(process.env.VITE_ADMOB_MODE || values.VITE_ADMOB_MODE || publicConfig.mode || "").trim().toLowerCase();
   if (["production", "prod", "live"].includes(explicit)) return "production";
   if (["real_test", "real-test", "device_test", "device-test"].includes(explicit)) return "real_test";
   if (["google_test", "google-test", "demo", "test"].includes(explicit)) return "google_test";
@@ -39,12 +47,15 @@ function publisherDigits(value) {
 }
 
 const env = readDotEnv();
-const mode = modeFromEnv(env);
+const publicConfig = readPublicConfig();
+const mode = modeFromEnv(env, publicConfig);
 const publisher = publisherDigits(
   process.env.ADMOB_PUBLISHER_ID
   || env.ADMOB_PUBLISHER_ID
   || process.env.VITE_ADMOB_ANDROID_APP_ID
   || env.VITE_ADMOB_ANDROID_APP_ID
+  || publicConfig.publisherId
+  || publicConfig.androidAppId
   || ""
 );
 

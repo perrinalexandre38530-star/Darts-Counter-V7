@@ -8,6 +8,7 @@ const manifestPath = path.join(androidRoot, "app", "src", "main", "AndroidManife
 const stringsPath = path.join(androidRoot, "app", "src", "main", "res", "values", "strings.xml");
 const appGradlePath = path.join(androidRoot, "app", "build.gradle");
 const envPath = path.join(root, ".env");
+const publicConfigPath = path.join(root, "config", "admob.public.json");
 
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
 
@@ -29,13 +30,20 @@ function readDotEnv() {
   return out;
 }
 
+
+function readPublicConfig() {
+  if (!fs.existsSync(publicConfigPath)) return {};
+  try { return JSON.parse(fs.readFileSync(publicConfigPath, "utf8")); }
+  catch { return {}; }
+}
+
 function fail(message) {
   console.error(`\n[ADMOB ANDROID] ${message}\n`);
   process.exit(1);
 }
 
-function modeFromEnv(values) {
-  const explicit = String(process.env.VITE_ADMOB_MODE || values.VITE_ADMOB_MODE || "").trim().toLowerCase();
+function modeFromEnv(values, publicConfig) {
+  const explicit = String(process.env.VITE_ADMOB_MODE || values.VITE_ADMOB_MODE || publicConfig.mode || "").trim().toLowerCase();
   if (["production", "prod", "live"].includes(explicit)) return "production";
   if (["real_test", "real-test", "device_test", "device-test"].includes(explicit)) return "real_test";
   if (["google_test", "google-test", "demo", "test"].includes(explicit)) return "google_test";
@@ -48,11 +56,13 @@ function isValidAppId(value) {
 }
 
 const dotenv = readDotEnv();
-const mode = modeFromEnv(dotenv);
+const publicConfig = readPublicConfig();
+const mode = modeFromEnv(dotenv, publicConfig);
 const configuredAppId = String(
   process.env.ADMOB_ANDROID_APP_ID ||
   process.env.VITE_ADMOB_ANDROID_APP_ID ||
   dotenv.VITE_ADMOB_ANDROID_APP_ID ||
+  publicConfig.androidAppId ||
   ""
 ).trim();
 

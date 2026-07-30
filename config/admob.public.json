@@ -1,0 +1,24 @@
+{
+  "mode": "real_test",
+  "publisherId": "pub-5323277022978157",
+  "androidAppId": "ca-app-pub-5323277022978157~6265161029",
+  "androidBannerId": "ca-app-pub-5323277022978157/7738024798",
+  "androidBannerIds": {
+    "home": "ca-app-pub-5323277022978157/7895485626",
+    "home_secondary": "ca-app-pub-5323277022978157/2158395052",
+    "messages": "ca-app-pub-5323277022978157/9817393225",
+    "profiles": "ca-app-pub-5323277022978157/4373494850",
+    "games": "ca-app-pub-5323277022978157/5548523886",
+    "competitions": "ca-app-pub-5323277022978157/7624022885",
+    "online": "ca-app-pub-5323277022978157/6808086500",
+    "stats": "ca-app-pub-5323277022978157/7087288100",
+    "history": "ca-app-pub-5323277022978157/4461124768",
+    "settings": "ca-app-pub-5323277022978157/6317131910",
+    "screens": "ca-app-pub-5323277022978157/5303433142"
+  },
+  "androidInterstitialId": "",
+  "androidRewardedId": "",
+  "testDeviceIds": [],
+  "testDevicesManagedByAdMobConsole": true,
+  "consentDebugGeography": "DISABLED"
+}

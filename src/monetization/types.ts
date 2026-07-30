@@ -1,5 +1,6 @@
 export type AdPlacement =
   | "home"
+  | "home_secondary"
   | "messages"
   | "profiles"
   | "games"

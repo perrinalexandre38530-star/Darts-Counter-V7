@@ -13,6 +13,7 @@ export type NativeAdMobStatus = {
   usesGoogleDemoIds: boolean;
   productionReady: boolean;
   testDeviceCount: number;
+  testDevicesManagedByAdMobConsole: boolean;
   configErrors: string[];
   error?: string;
 };
@@ -71,6 +72,7 @@ function baseStatus() {
     usesGoogleDemoIds: config.usesGoogleDemoIds,
     productionReady: config.productionReady,
     testDeviceCount: config.testDeviceIds.length,
+    testDevicesManagedByAdMobConsole: config.testDevicesManagedByAdMobConsole,
     configErrors: config.configErrors,
   } as const;
 }

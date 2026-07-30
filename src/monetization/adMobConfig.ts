@@ -1,3 +1,4 @@
+import publicAdMobConfig from "../../config/admob.public.json";
 import type { AdPlacement } from "./types";
 
 export type AdMobMode = "google_test" | "real_test" | "production";
@@ -16,9 +17,25 @@ export type AdMobRuntimeConfig = {
   interstitialIdAndroid: string;
   rewardedIdAndroid: string;
   testDeviceIds: string[];
+  testDevicesManagedByAdMobConsole: boolean;
   consentDebugGeography: AdMobConsentDebugGeography;
   configErrors: string[];
 };
+
+type PublicAdMobConfig = {
+  mode?: string;
+  publisherId?: string;
+  androidAppId?: string;
+  androidBannerId?: string;
+  androidBannerIds?: Partial<Record<AdPlacement, string>>;
+  androidInterstitialId?: string;
+  androidRewardedId?: string;
+  testDeviceIds?: string[];
+  testDevicesManagedByAdMobConsole?: boolean;
+  consentDebugGeography?: string;
+};
+
+const PUBLIC_CONFIG = publicAdMobConfig as PublicAdMobConfig;
 
 const GOOGLE_ANDROID_TEST_IDS = {
   appId: "ca-app-pub-3940256099942544~3347511713",
@@ -29,6 +46,7 @@ const GOOGLE_ANDROID_TEST_IDS = {
 
 const BANNER_ENV_BY_PLACEMENT: Record<AdPlacement, string> = {
   home: "VITE_ADMOB_ANDROID_BANNER_HOME_ID",
+  home_secondary: "VITE_ADMOB_ANDROID_BANNER_HOME_SECONDARY_ID",
   messages: "VITE_ADMOB_ANDROID_BANNER_MESSAGES_ID",
   profiles: "VITE_ADMOB_ANDROID_BANNER_PROFILES_ID",
   games: "VITE_ADMOB_ANDROID_BANNER_GAMES_ID",
@@ -48,27 +66,48 @@ function env(name: string): string {
   }
 }
 
-function parseList(raw: string): string[] {
+function envBoolean(name: string): boolean | null {
+  const raw = env(name).toLowerCase();
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return null;
+}
+
+function parseList(raw: string | string[] | undefined): string[] {
+  const source = Array.isArray(raw) ? raw.join(",") : String(raw || "");
   return Array.from(new Set(
-    String(raw || "")
+    source
       .split(/[;,\s]+/g)
       .map((value) => value.trim())
       .filter(Boolean)
   ));
 }
 
-function normalizeMode(): AdMobMode {
-  const explicit = env("VITE_ADMOB_MODE").toLowerCase();
+function normalizeModeValue(value: string): AdMobMode | null {
+  const explicit = String(value || "").trim().toLowerCase();
   if (explicit === "production" || explicit === "prod" || explicit === "live") return "production";
   if (explicit === "real_test" || explicit === "real-test" || explicit === "device_test" || explicit === "device-test") return "real_test";
   if (explicit === "google_test" || explicit === "google-test" || explicit === "demo" || explicit === "test") return "google_test";
+  return null;
+}
+
+function normalizeMode(): AdMobMode {
+  const fromEnv = normalizeModeValue(env("VITE_ADMOB_MODE"));
+  if (fromEnv) return fromEnv;
+
+  const fromPublicConfig = normalizeModeValue(PUBLIC_CONFIG.mode || "");
+  if (fromPublicConfig) return fromPublicConfig;
 
   // Compatibilité avec le premier socle AdMob du projet.
   return env("VITE_ADMOB_TEST_MODE") === "0" ? "production" : "google_test";
 }
 
 function normalizeConsentDebugGeography(): AdMobConsentDebugGeography {
-  const raw = env("VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY").toUpperCase().replace(/[-\s]/g, "_");
+  const raw = String(
+    env("VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY")
+      || PUBLIC_CONFIG.consentDebugGeography
+      || "DISABLED"
+  ).toUpperCase().replace(/[-\s]/g, "_");
   if (raw === "EEA") return "EEA";
   if (raw === "NOT_EEA" || raw === "NONEEA") return "NOT_EEA";
   return "DISABLED";
@@ -86,70 +125,93 @@ function publisherDigits(value: string): string {
   return String(value || "").match(/^ca-app-pub-(\d{16})[~/]/)?.[1] || "";
 }
 
-function realIdsFromEnvironment() {
-  const genericBanner = env("VITE_ADMOB_ANDROID_BANNER_ID");
+function realIdsFromConfiguration() {
+  const genericBanner = env("VITE_ADMOB_ANDROID_BANNER_ID") || String(PUBLIC_CONFIG.androidBannerId || "").trim();
   const placementBanners = Object.fromEntries(
     (Object.entries(BANNER_ENV_BY_PLACEMENT) as [AdPlacement, string][]).map(([placement, variable]) => [
       placement,
-      env(variable) || genericBanner,
+      env(variable)
+        || String(PUBLIC_CONFIG.androidBannerIds?.[placement] || "").trim()
+        || genericBanner,
     ])
   ) as Record<AdPlacement, string>;
 
   return {
-    appIdAndroid: env("VITE_ADMOB_ANDROID_APP_ID"),
+    appIdAndroid: env("VITE_ADMOB_ANDROID_APP_ID") || String(PUBLIC_CONFIG.androidAppId || "").trim(),
     bannerIdAndroid: genericBanner,
     bannerIdsAndroid: placementBanners,
-    interstitialIdAndroid: env("VITE_ADMOB_ANDROID_INTERSTITIAL_ID"),
-    rewardedIdAndroid: env("VITE_ADMOB_ANDROID_REWARDED_ID"),
+    interstitialIdAndroid: env("VITE_ADMOB_ANDROID_INTERSTITIAL_ID") || String(PUBLIC_CONFIG.androidInterstitialId || "").trim(),
+    rewardedIdAndroid: env("VITE_ADMOB_ANDROID_REWARDED_ID") || String(PUBLIC_CONFIG.androidRewardedId || "").trim(),
   };
 }
 
-function validateRealIds(real: ReturnType<typeof realIdsFromEnvironment>): string[] {
+function validateRealBannerIds(real: ReturnType<typeof realIdsFromConfiguration>): string[] {
   const errors: string[] = [];
-  if (!isValidAdMobAndroidAppId(real.appIdAndroid)) errors.push("VITE_ADMOB_ANDROID_APP_ID manquant ou invalide.");
-  if (!isValidAdMobAndroidAdUnitId(real.bannerIdAndroid)) errors.push("VITE_ADMOB_ANDROID_BANNER_ID manquant ou invalide.");
-  if (!isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) errors.push("VITE_ADMOB_ANDROID_INTERSTITIAL_ID manquant ou invalide.");
-  if (!isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid)) errors.push("VITE_ADMOB_ANDROID_REWARDED_ID manquant ou invalide.");
+  if (!isValidAdMobAndroidAppId(real.appIdAndroid)) errors.push("App ID AdMob Android manquant ou invalide.");
+  if (!isValidAdMobAndroidAdUnitId(real.bannerIdAndroid)) errors.push("Bannière générique AdMob manquante ou invalide.");
 
   for (const [placement, adUnitId] of Object.entries(real.bannerIdsAndroid) as [AdPlacement, string][]) {
-    if (adUnitId && !isValidAdMobAndroidAdUnitId(adUnitId)) {
-      errors.push(`${BANNER_ENV_BY_PLACEMENT[placement]} invalide.`);
+    if (!isValidAdMobAndroidAdUnitId(adUnitId)) {
+      errors.push(`${BANNER_ENV_BY_PLACEMENT[placement]} manquant ou invalide.`);
     }
   }
 
   const publisher = publisherDigits(real.appIdAndroid);
-  const allUnits = [
-    real.bannerIdAndroid,
-    real.interstitialIdAndroid,
-    real.rewardedIdAndroid,
-    ...Object.values(real.bannerIdsAndroid),
-  ].filter(Boolean);
-  if (publisher && allUnits.some((id) => publisherDigits(id) !== publisher)) {
-    errors.push("Tous les blocs publicitaires doivent appartenir au même compte éditeur que l'App ID AdMob.");
+  const realBannerUnits = [real.bannerIdAndroid, ...Object.values(real.bannerIdsAndroid)].filter(Boolean);
+  if (publisher && realBannerUnits.some((id) => publisherDigits(id) !== publisher)) {
+    errors.push("Toutes les bannières doivent appartenir au même compte éditeur que l'App ID AdMob.");
   }
 
-  return Array.from(new Set(errors));
+  return errors;
+}
+
+function validateProductionFullscreenIds(real: ReturnType<typeof realIdsFromConfiguration>): string[] {
+  const errors: string[] = [];
+  if (!isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) errors.push("Interstitiel AdMob de production manquant ou invalide.");
+  if (!isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid)) errors.push("Rewarded AdMob de production manquant ou invalide.");
+
+  const publisher = publisherDigits(real.appIdAndroid);
+  const fullScreenUnits = [real.interstitialIdAndroid, real.rewardedIdAndroid].filter(Boolean);
+  if (publisher && fullScreenUnits.some((id) => publisherDigits(id) !== publisher)) {
+    errors.push("Les blocs interstitiel/rewarded doivent appartenir au même compte éditeur que l'App ID AdMob.");
+  }
+  return errors;
 }
 
 /**
  * Trois modes sûrs :
  * - google_test : App ID + blocs de démonstration Google ; aucun revenu.
- * - real_test   : vrais IDs AdMob, mais uniquement sur des appareils de test déclarés.
- * - production  : vrais IDs, aucun appareil de test injecté dans le build public.
- *
- * Si une configuration réelle est incomplète, le runtime retombe volontairement
- * sur les IDs Google de démonstration. Le contrôle de release bloque ensuite un
- * AAB de production tant que les valeurs ne sont pas complètes.
+ * - real_test   : vrais IDs de bannières sur appareil déclaré dans AdMob. Tant
+ *                 que les formats plein écran ne sont pas créés, leurs IDs de
+ *                 démonstration Google restent utilisés.
+ * - production  : tous les IDs sont réels et aucun mode de test n'est injecté.
  */
 export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
   const requestedMode = normalizeMode();
-  const real = realIdsFromEnvironment();
-  const configErrors = requestedMode === "google_test" ? [] : validateRealIds(real);
-  const testDeviceIds = parseList(env("VITE_ADMOB_ANDROID_TEST_DEVICE_IDS"));
+  const real = realIdsFromConfiguration();
+  const configErrors = requestedMode === "google_test" ? [] : validateRealBannerIds(real);
+
+  if (requestedMode === "production") {
+    configErrors.push(...validateProductionFullscreenIds(real));
+  } else if (requestedMode === "real_test") {
+    if (real.interstitialIdAndroid && !isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) {
+      configErrors.push("Interstitiel AdMob de test invalide.");
+    }
+    if (real.rewardedIdAndroid && !isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid)) {
+      configErrors.push("Rewarded AdMob de test invalide.");
+    }
+  }
+
+  const testDeviceIds = parseList(
+    env("VITE_ADMOB_ANDROID_TEST_DEVICE_IDS") || PUBLIC_CONFIG.testDeviceIds || []
+  );
+  const consoleManagedFromEnv = envBoolean("VITE_ADMOB_TEST_DEVICES_MANAGED_BY_CONSOLE");
+  const testDevicesManagedByAdMobConsole = consoleManagedFromEnv
+    ?? Boolean(PUBLIC_CONFIG.testDevicesManagedByAdMobConsole);
   const consentDebugGeography = normalizeConsentDebugGeography();
 
-  if (requestedMode === "real_test" && testDeviceIds.length === 0) {
-    configErrors.push("VITE_ADMOB_ANDROID_TEST_DEVICE_IDS est obligatoire en mode real_test sur un téléphone physique.");
+  if (requestedMode === "real_test" && testDeviceIds.length === 0 && !testDevicesManagedByAdMobConsole) {
+    configErrors.push("Déclare au moins un appareil de test dans AdMob ou renseigne VITE_ADMOB_ANDROID_TEST_DEVICE_IDS.");
   }
 
   const realConfigurationReady = configErrors.length === 0;
@@ -175,10 +237,18 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
       interstitialIdAndroid: GOOGLE_ANDROID_TEST_IDS.interstitial,
       rewardedIdAndroid: GOOGLE_ANDROID_TEST_IDS.rewarded,
       testDeviceIds,
+      testDevicesManagedByAdMobConsole,
       consentDebugGeography,
-      configErrors,
+      configErrors: Array.from(new Set(configErrors)),
     };
   }
+
+  const interstitialIdAndroid = mode === "real_test" && !real.interstitialIdAndroid
+    ? GOOGLE_ANDROID_TEST_IDS.interstitial
+    : real.interstitialIdAndroid;
+  const rewardedIdAndroid = mode === "real_test" && !real.rewardedIdAndroid
+    ? GOOGLE_ANDROID_TEST_IDS.rewarded
+    : real.rewardedIdAndroid;
 
   return {
     requestedMode,
@@ -187,10 +257,15 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
     usesGoogleDemoIds: false,
     usesRealAdUnitIds: true,
     productionReady: mode === "production" && realConfigurationReady,
-    ...real,
+    appIdAndroid: real.appIdAndroid,
+    bannerIdAndroid: real.bannerIdAndroid,
+    bannerIdsAndroid: real.bannerIdsAndroid,
+    interstitialIdAndroid,
+    rewardedIdAndroid,
     testDeviceIds: mode === "real_test" ? testDeviceIds : [],
+    testDevicesManagedByAdMobConsole: mode === "real_test" && testDevicesManagedByAdMobConsole,
     consentDebugGeography: mode === "real_test" ? consentDebugGeography : "DISABLED",
-    configErrors,
+    configErrors: Array.from(new Set(configErrors)),
   };
 }
 

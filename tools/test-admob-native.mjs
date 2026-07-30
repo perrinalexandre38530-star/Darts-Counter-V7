@@ -22,6 +22,7 @@ const configure = read("tools/configure-android-admob.mjs");
 const appAdsConfigure = read("tools/configure-app-ads.mjs");
 const releaseGuard = read("tools/admob-release-check.mjs");
 const envExample = read("env.example");
+const publicConfig = read("config/admob.public.json");
 
 check("Google test banner ID", config.includes("ca-app-pub-3940256099942544/9214589741"));
 check("Three explicit AdMob modes", config.includes('"google_test" | "real_test" | "production"'));
@@ -39,9 +40,10 @@ check("React slots measure real DOM rectangles", slot.includes("getBoundingClien
 check("React slots pass placement to native bridge", slot.includes("showInlineGoogleAd(slotKey, placement, rect)"));
 check("Home top has stable paid slot", home.includes('slotKey="home-top"'));
 check("Home player has stable paid slot", home.includes('slotKey="home-player"'));
+check("Home player uses secondary banner unit", home.includes('placement="home_secondary"'));
 check("Darts Home title is DARTS SCORING", home.includes('return "DARTS SCORING"'));
 check("Ticker inserts monetized ad slides", home.includes("monetizedAd: true"));
-check("Ticker mounts paid surface", ticker.includes('slotKey="home-ticker"') && ticker.includes("PaidInlineSurface"));
+check("Ticker remains internal and does not create a third paid banner", !ticker.includes('slotKey="home-ticker"') && !ticker.includes("PaidInlineSurface"));
 check("Premium users do not receive paid inline ads", slot.includes("!premiumActive") && home.includes("!getVerifiedPremiumState().active"));
 check("Settings expose runtime mode and config errors", settings.includes("Prêt production") && settings.includes("configErrors"));
 check("MainActivity registers InlineAdMob plugin", mainActivity.includes("registerPlugin(InlineAdMobPlugin.class)"));
@@ -53,8 +55,10 @@ check("Android app exposes GMA SDK to custom plugin", appGradle.includes("com.go
 check("AdMob dependency pinned compatibly with plugin v8", variablesGradle.includes("playServicesAdsVersion = '24.9.0'"));
 check("Android configurator understands real_test", configure.includes('mode === "real_test"'));
 check("app-ads.txt generator writes Google seller line", appAdsConfigure.includes("f08c47fec0942fa0") && appAdsConfigure.includes("app-ads.txt"));
-check("Production release guard checks app-ads.txt", releaseGuard.includes("public/app-ads.txt") && releaseGuard.includes("Aucun appareil de test"));
-check("Environment template documents placement units", envExample.includes("VITE_ADMOB_ANDROID_BANNER_GAMES_ID") && envExample.includes("ADMOB_PUBLISHER_ID"));
+check("Production release guard checks app-ads.txt", releaseGuard.includes("public/app-ads.txt") && releaseGuard.includes("Aucun appareil de test local"));
+check("Environment template documents placement units", envExample.includes("VITE_ADMOB_ANDROID_BANNER_HOME_SECONDARY_ID") && envExample.includes("VITE_ADMOB_ANDROID_BANNER_GAMES_ID") && envExample.includes("ADMOB_PUBLISHER_ID"));
+check("Committed public AdMob config contains real banner IDs", publicConfig.includes("ca-app-pub-5323277022978157~6265161029") && publicConfig.includes("home_secondary") && publicConfig.includes("2158395052"));
+check("AdMob console-managed test device mode supported", config.includes("testDevicesManagedByAdMobConsole") && settings.includes("CONSOLE ADMOB"));
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [label, ok] of checks) console.log(`${ok ? "✅" : "❌"} ${label}`);
