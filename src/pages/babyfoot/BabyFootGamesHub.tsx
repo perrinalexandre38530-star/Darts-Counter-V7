@@ -5,6 +5,7 @@
 // =============================================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -168,6 +169,8 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
           <BackDot onClick={goHome} />
         </div>
       </div>
+
+      <PageAdBanner placement="games" slotKey="page-games-babyfoot-under-header" />
 
       <div
         style={{

@@ -1,4 +1,5 @@
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
@@ -244,6 +245,8 @@ export default function FootMenuGames({ go }: Props) {
             <BackDot onClick={() => go("home")} />
           </div>
         </div>
+
+        <PageAdBanner placement="games" slotKey="page-games-foot-under-header" />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {FOOT_FORMATS.map((f, index) => {

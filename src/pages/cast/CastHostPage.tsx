@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import QRCode from "qrcode";
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -433,6 +434,8 @@ export default function CastHostPage({ go, initialTab }: Props) {
           </div>
           <div />
         </header>
+
+        <PageAdBanner placement="screens" slotKey="page-screens-under-header" />
 
         <nav style={{ ...cardStyle({ padding: 0, overflow: "hidden", marginBottom: 12 }) }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>

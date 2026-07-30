@@ -8,6 +8,7 @@
 // ============================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
@@ -289,6 +290,8 @@ export default function PingPongMenuGames({ go }: Props) {
           </div>
         </div>
       )}
+
+      <PageAdBanner placement="games" slotKey="page-games-pingpong-under-header" />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {

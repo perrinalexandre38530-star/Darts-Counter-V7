@@ -6,6 +6,7 @@
 // ============================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -181,6 +182,7 @@ export default function BabyFootStatsShell({ store, go }: Props) {
             <BackDot onClick={() => go("babyfoot_menu" as any)} />
           </div>
         </div>
+        <PageAdBanner placement="stats" slotKey="page-stats-babyfoot-under-header" style={{ marginTop: 10, marginBottom: 10, paddingInline: 8 }} />
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
           <div style={{ fontSize: 13, lineHeight: 1.35, color: (theme as any).textSoft, maxWidth: 320 }}>
             {"Analyse tes performances, les classements, les équipes et les duels (local)."}

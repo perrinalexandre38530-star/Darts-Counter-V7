@@ -8,6 +8,7 @@
 // =============================================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { useSport } from "../../contexts/SportContext";
@@ -231,6 +232,8 @@ export default function DiceMenuGames({ go }: Props) {
           </div>
         </div>
       </div>
+
+      <PageAdBanner placement="games" slotKey="page-games-dice-under-header" style={{ marginTop: 14 }} />
 
       {/* FAVORIS */}
       <div style={{ marginTop: 14 }}>

@@ -8,6 +8,7 @@
 // ============================================
 
 import React, { useDeferredValue } from "react";
+import { PageAdBanner } from "../monetization/AdSlot";
 import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AvatarLite from "../components/profile/AvatarLite";
@@ -3485,6 +3486,11 @@ React.useEffect(() => {
               </div>
             )}
 
+            <PageAdBanner
+              placement="profiles"
+              slotKey={`page-profiles-${view}-under-header`}
+            />
+
             {view === "me" && (
               <>
                 <Card>
@@ -3827,6 +3833,8 @@ function ProfilesMenuView({
           )}
         </div>
       </div>
+
+      <PageAdBanner placement="profiles" slotKey="page-profiles-menu-under-header" />
   
       <CardBtn
         title={t("profiles.menu.avatar.title", "CREER AVATAR")}

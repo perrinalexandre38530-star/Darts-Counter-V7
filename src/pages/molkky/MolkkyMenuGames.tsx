@@ -7,6 +7,7 @@
 // =============================================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useSport } from "../../contexts/SportContext";
 import BackDot from "../../components/BackDot";
@@ -144,6 +145,8 @@ export default function MolkkyMenuGames({ go }: Props) {
           />
         </div>
       </div>
+
+      <PageAdBanner placement="games" slotKey="page-games-molkky-under-header" />
 
       {/* CARDS: mêmes proportions (h=86) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

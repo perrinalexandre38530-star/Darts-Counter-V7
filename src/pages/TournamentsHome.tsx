@@ -1,4 +1,5 @@
 import React from "react";
+import { PageAdBanner } from "../monetization/AdSlot";
 import type { Store } from "../lib/types";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -308,6 +309,7 @@ export default function TournamentsHome({ store, go, params }: Props) {
   return (
     <div style={{ padding: 18, paddingBottom: 108, color: "white" }}>
       <CompetitionHeader onBack={back} tickerSrc={competitionTicker} />
+      <PageAdBanner placement="competitions" slotKey={`page-competitions-${entryMode}-under-header`} />
 
       {entryMode === "menu" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>

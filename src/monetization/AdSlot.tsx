@@ -320,6 +320,32 @@ export function InlineAdBanner({
   );
 }
 
+type PageAdBannerProps = {
+  placement: AdPlacement;
+  slotKey: string;
+  style?: React.CSSProperties;
+};
+
+/**
+ * Bannière des pages principales. Elle doit être rendue explicitement juste
+ * après le header de la page afin de rester dans le flux et de ne jamais
+ * remonter au-dessus du titre.
+ */
+export function PageAdBanner({ placement, slotKey, style }: PageAdBannerProps) {
+  return (
+    <InlineAdBanner
+      placement={placement}
+      slotKey={slotKey}
+      compact
+      style={{
+        width: "100%",
+        margin: "0 0 14px",
+        ...style,
+      }}
+    />
+  );
+}
+
 export default function AdSlot({ placement }: { placement: AdPlacement | null }) {
   if (!placement || placement === "home") return null;
 

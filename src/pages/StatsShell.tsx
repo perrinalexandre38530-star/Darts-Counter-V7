@@ -11,6 +11,7 @@
 // - Bouton "i" : popin d'aide (légère aura animée comme Games)
 // ============================================
 import React from "react";
+import { PageAdBanner } from "../monetization/AdSlot";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -199,6 +200,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
             <BackDot onClick={() => go("games" as any)} />
           </div>
         </div>
+        <PageAdBanner placement="stats" slotKey="page-stats-under-header" style={{ marginTop: 10, marginBottom: 10, paddingInline: 8 }} />
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
           <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
             {isMolkkySport

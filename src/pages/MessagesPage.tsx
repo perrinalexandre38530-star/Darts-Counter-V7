@@ -1,4 +1,5 @@
 import React from "react";
+import { PageAdBanner } from "../monetization/AdSlot";
 import {
   acceptSharedMatch,
   importSharedMatch,
@@ -3047,6 +3048,8 @@ export default function MessagesPage({ store, update, go }: Props) {
           ))}
         </div>
       </div>
+
+      <PageAdBanner placement="messages" slotKey="page-messages-under-header" />
 
       {actionsOpen ? (
         <div

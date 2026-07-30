@@ -26,6 +26,7 @@
 // ============================================
 
 import React from "react";
+import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
@@ -4263,6 +4264,8 @@ export function Settings({ go }: Props) {
       </div>
 
       <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
+        <PageAdBanner placement="settings" slotKey={`page-settings-${tab}-under-header`} />
+
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard

@@ -11,6 +11,7 @@
 // ============================================
 
 import React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import InfoDot from "../../components/InfoDot";
@@ -472,6 +473,8 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
           </div>
         </div>
       </div>
+
+      <PageAdBanner placement="games" slotKey="page-games-petanque-under-header" />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {

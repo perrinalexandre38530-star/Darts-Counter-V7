@@ -1,5 +1,6 @@
 // @ts-nocheck
 import * as React from "react";
+import { PageAdBanner } from "../../monetization/AdSlot";
 import QRCode from "qrcode";
 import { createViewerSession, viewerJoinUrl } from "../../lib/viewer/viewerClient";
 import { buildViewerWaitingSnapshot } from "../../lib/viewer/buildViewerSnapshot";
@@ -111,6 +112,8 @@ export default function ViewerHost({ go }: Props) {
           <div style={{ fontSize: 28, fontWeight: 1100, color: "#ffd56a" }}>Viewer tablette</div>
           <button onClick={() => go("viewer_join")} style={button(false)}>Rejoindre</button>
         </div>
+
+        <PageAdBanner placement="screens" slotKey="page-viewer-under-header" />
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 16 }} className="viewer-host-grid">
           <section style={card()}>
