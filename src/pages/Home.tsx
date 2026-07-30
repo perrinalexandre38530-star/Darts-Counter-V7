@@ -34,6 +34,7 @@ import {
 } from "../lib/statsBridge";
 import { History } from "../lib/history";
 import { computeX01MultiAgg, isX01Match } from "../lib/x01MultiAgg";
+import { buildHomeModeSlides } from "../lib/homeModeStats";
 import { listProfileFriendLinks, type ProfileFriendLink } from "../lib/friendsApi";
 import { loadLinkedProfileProjection } from "../lib/linkedProfileSync";
 
@@ -198,7 +199,9 @@ function emptyActiveProfileStats(): ActiveProfileStats {
     trainingGoalSuccessRate: 0,
     trainingBestCO: 0,
 
+    clockSessions: 0,
     clockTargetsHit: 0,
+    clockAttempts: 0,
     clockSuccessRate: 0,
     clockTotalTimeSec: 0,
     clockBestStreak: 0,
@@ -669,7 +672,8 @@ function computeKillerAggFromMatches(
 
 async function buildStatsForProfile(
   profileId: string,
-  profileName?: string
+  profileName?: string,
+  activeSport: string = "darts"
 ): Promise<ActiveProfileStats> {
   try {
     const [base, multiRaw, cricket] = await Promise.all([
@@ -1154,6 +1158,13 @@ async function buildStatsForProfile(
     const clockBestStreak = cAgg.bestStreak;
 
     const killerAgg = computeKillerAggFromMatches(allHistoryMatches, profileId);
+    const homeModeSlides = buildHomeModeSlides(
+      allHistoryMatches,
+      profileId,
+      profileName,
+      activeSport,
+      ["x01", "cricket", "killer"]
+    );
 
     const s: ActiveProfileStats = {
       ratingGlobal,
@@ -1184,11 +1195,12 @@ async function buildStatsForProfile(
       x01MultiBestCO: recordBestCOX01,
       x01MultiMinDartsLabel,
 
-      cricketPointsPerRound: cricketBestPoints || 0,
-      cricketHitsTotal: cricketMatches || 0,
-      cricketCloseRate: cricketWinRate || 0,
+      // Cricket : données réelles de l'agrégateur, pas des alias de sessions/record.
+      cricketPointsPerRound: Number(cricket?.globalMpr ?? 0) || 0,
+      cricketHitsTotal: Number(cricket?.totalMarks ?? 0) || 0,
+      cricketCloseRate: Number(cricket?.globalHitRate ?? 0) || 0,
       cricketLegsWinrate: cricketWinRate || 0,
-      cricketAvgClose201918: 0,
+      cricketAvgClose201918: Number(cricket?.avgPointsFor ?? 0) || 0,
       cricketOpenings: cricketMatches || 0,
 
       trainingAvg3D,
@@ -1198,7 +1210,9 @@ async function buildStatsForProfile(
       trainingGoalSuccessRate: 0,
       trainingBestCO: tAgg.bestCheckout ?? 0,
 
+      clockSessions: cAgg.runs,
       clockTargetsHit,
+      clockAttempts: cAgg.attemptsTotal,
       clockSuccessRate,
       clockTotalTimeSec,
       clockBestStreak,
@@ -1216,6 +1230,8 @@ async function buildStatsForProfile(
     ;(s as any).killerTotalHits = killerAgg.totalHits;
     ;(s as any).killerFavNumberHits = killerAgg.favNumberHits;
     ;(s as any).killerFavSegmentHits = killerAgg.favSegmentHits;
+    ;(s as any).x01MultiBestAvg3D = recordBestAvg3DX01;
+    ;(s as any).homeModeSlides = homeModeSlides;
 
     return s;
   } catch (err) {
@@ -2595,7 +2611,7 @@ export default function Home({ store, go, activeSport }: Props) {
         return;
       }
       try { await loadLinkedProfileProjection([activeProfile as any]); } catch {}
-      const baseStats = await buildStatsForProfile(activeProfile.id, activeProfile.name).catch(() => emptyActiveProfileStats());
+      const baseStats = await buildStatsForProfile(activeProfile.id, activeProfile.name, String(sport)).catch(() => emptyActiveProfileStats());
       const linkedMiniStats = await loadIncomingLinkedMiniStatsForHome((auth as any)?.userId || (auth as any)?.user?.id || activeProfile.id);
       const s = linkedMiniStats ? applyLinkedMiniStatsToHomeStats(baseStats, linkedMiniStats) : baseStats;
       if (!cancelled) setStats(s);
@@ -2612,7 +2628,7 @@ export default function Home({ store, go, activeSport }: Props) {
       cancelled = true;
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     };
-  }, [isFootSport, activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
+  }, [isFootSport, sport, activeProfile?.id, (auth as any)?.userId, (auth as any)?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;

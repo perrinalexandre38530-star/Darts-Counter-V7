@@ -2,9 +2,8 @@
 // src/components/home/ActiveProfileCard.tsx
 // Carte joueur actif scindée en 2 :
 // - Gauche : avatar médaillon + nom + statut (sur carte dorée)
-// - Droite : carrousel auto de stats (7 slides max)
-//   Vue globale / Records / Online / X01 / Cricket / Training X01 / Horloge
-//   + ✅ NEW: KILLER (dans le carrousel de droite)
+// - Droite : carrousel auto sans plafond, alimenté par tous les modes joués
+//   Vue globale / Records / Online / X01 / Cricket / Killer + résumés History
 // - N'affiche que les slides qui ont des données (ex : sessions > 0)
 // - Stats affichées en blocs KPI centrés avec halo léger
 // =============================================================
@@ -49,6 +48,7 @@ export type ActiveProfileStats = {
   x01MultiWinrate?: MaybeNum;
   x01MultiBestVisit?: MaybeNum;
   x01MultiBestCO?: MaybeNum;
+  x01MultiBestAvg3D?: MaybeNum;
   x01MultiMinDartsLabel?: string | null; // ex: "11 darts (501)"
 
   // ---- Cricket ----
@@ -59,6 +59,15 @@ export type ActiveProfileStats = {
   cricketAvgClose201918?: MaybeNum;
   cricketOpenings?: MaybeNum;
 
+  // ---- Killer ----
+  killerSessions?: MaybeNum;
+  killerWins?: MaybeNum;
+  killerWinrate?: MaybeNum;
+  killerKills?: MaybeNum;
+  killerTotalHits?: MaybeNum;
+  killerFavNumberHits?: MaybeNum;
+  killerFavSegmentHits?: MaybeNum;
+
   // ---- Training X01 ----
   trainingAvg3D?: MaybeNum;
   trainingHitsS?: MaybeNum;
@@ -68,10 +77,15 @@ export type ActiveProfileStats = {
   trainingBestCO?: MaybeNum;
 
   // ---- Tour de l'Horloge ----
+  clockSessions?: MaybeNum;
   clockTargetsHit?: MaybeNum;
+  clockAttempts?: MaybeNum;
   clockSuccessRate?: MaybeNum; // 0–1
   clockTotalTimeSec?: MaybeNum;
   clockBestStreak?: MaybeNum;
+
+  // ---- Résumés automatiques de tous les modes joués (History) ----
+  homeModeSlides?: SlideDef[];
 };
 
 type Props = {
@@ -92,7 +106,7 @@ type Props = {
   status?: "online" | "away" | "offline";
 };
 
-type SlideDef = {
+export type SlideDef = {
   id: string;
   title: string;
   rows: { label: string; value: string }[];
@@ -275,12 +289,14 @@ function ActiveProfileCard({
     const out: SlideDef[] = [];
 
     // ✅ KILLER (stats attachées via Home.tsx, donc access en any ici)
-    const killerSessions = Number((s as any)?.killerSessions ?? 0) || 0;
-    const killerWinrate01 = Number((s as any)?.killerWinrate ?? 0) || 0; // attendu 0-1
-    const killerKills = Number((s as any)?.killerKills ?? 0) || 0;
-    const killerTotalHits = Number((s as any)?.killerTotalHits ?? 0) || 0;
-    const killerFavNumberHits = Number((s as any)?.killerFavNumberHits ?? 0) || 0;
-    const killerFavSegmentHits = Number((s as any)?.killerFavSegmentHits ?? 0) || 0;
+    const killerSessions = Number(s?.killerSessions ?? 0) || 0;
+    const killerWins = Number(s?.killerWins ?? 0) || 0;
+    const killerWinrate01 = Number(s?.killerWinrate ?? 0) || 0; // attendu 0-1
+    const killerKills = Number(s?.killerKills ?? 0) || 0;
+    const killerTotalHits = Number(s?.killerTotalHits ?? 0) || 0;
+    const killerFavNumberHits = Number(s?.killerFavNumberHits ?? 0) || 0;
+    const killerFavSegmentHits = Number(s?.killerFavSegmentHits ?? 0) || 0;
+    const x01BestAvg3D = Number(s?.x01MultiBestAvg3D ?? s?.recordBestAvg3DX01 ?? 0) || 0;
 
     const hasKillerData =
       killerSessions > 0 ||
@@ -300,11 +316,12 @@ function ActiveProfileCard({
               value: String(k.value),
             }))
           : [
-              { label: t("home.stats?.rating", "rating"), value: fmtNum(s.ratingGlobal, 1) },
-              { label: t("home.stats?.winrateGlobal", "win%"), value: fmtPct(s.winrateGlobal) },
-              { label: t("home.stats?.avg3dGlobal", "AVG3D"), value: fmtNum(s.avg3DGlobal, 2) },
-              { label: t("home.stats?.sessionsGlobal", "sessions"), value: fmtNum(s.sessionsGlobal, 0) },
-              { label: t("home.stats?.favoriteNumber", "numéro favori"), value: s.favoriteNumberLabel ?? "—" },
+              { label: t("home.stats?.rating", "rating"), value: fmtNum(Number(s.ratingGlobal ?? 0), 1) },
+              { label: t("home.stats?.winrateGlobal", "win%"), value: fmtPct(Number(s.winrateGlobal ?? 0)) },
+              { label: t("home.stats?.avg3dGlobal", "AVG3D"), value: fmtNum(Number(s.avg3DGlobal ?? 0), 2) },
+              { label: t("home.stats?.sessionsGlobal", "sessions"), value: fmtNum(Number(s.sessionsGlobal ?? 0), 0) },
+              { label: t("home.stats?.bestVisit", "best visit"), value: fmtNum(Number(s.recordBestVisitX01 ?? 0), 0) },
+              { label: t("home.stats?.bestCO", "best co"), value: fmtNum(Number(s.recordBestCOX01 ?? 0), 0) },
             ],
     });
 
@@ -322,20 +339,34 @@ function ActiveProfileCard({
       }
     }
 
-    if (suppressDefaultStatsSlides) return out.length > 0 ? out.slice(0, 7) : [];
+    const automaticModeSlides: SlideDef[] = Array.isArray(s.homeModeSlides)
+      ? s.homeModeSlides
+          .filter((slide: any) => slide && Array.isArray(slide.rows) && slide.rows.length > 0)
+          .map((slide: any, modeIndex: number) => ({
+            id: String(slide.id || `mode-${modeIndex}`),
+            title: String(slide.title || "Stats"),
+            rows: slide.rows.slice(0, 6).map((row: any) => ({
+              label: String(row?.label || ""),
+              value: String(row?.value ?? "0"),
+            })),
+          }))
+      : [];
+    const automaticModeIds = new Set(automaticModeSlides.map((slide) => slide.id));
+
+    if (suppressDefaultStatsSlides) return out;
 
     // 2) Killer
-    if (hasKillerData) {
+    if (hasKillerData && !automaticModeIds.has("mode-killer")) {
       out.push({
         id: "killer",
         title: t("home.stats?.killer", "killer"),
         rows: [
           { label: t("home.stats?.killerSessions", "sessions"), value: fmtNum(killerSessions, 0) },
+          { label: t("home.stats?.killerWins", "victoires"), value: fmtNum(killerWins, 0) },
           { label: t("home.stats?.killerWinrate", "win%"), value: fmtPct(killerWinrate01) },
           { label: t("home.stats?.killerKills", "kills"), value: fmtNum(killerKills, 0) },
           { label: t("home.stats?.killerHits", "hits"), value: fmtNum(killerTotalHits, 0) },
-          { label: t("home.stats?.killerFavNumberHits", "hits n°"), value: fmtNum(killerFavNumberHits, 0) },
-          { label: t("home.stats?.killerFavSegmentHits", "hits seg"), value: fmtNum(killerFavSegmentHits, 0) },
+          { label: t("home.stats?.killerKillsPerSession", "kills/session"), value: fmtNum(killerSessions > 0 ? killerKills / killerSessions : 0, 2) },
         ],
       });
     }
@@ -352,12 +383,14 @@ function ActiveProfileCard({
         id: "records",
         title: t("home.stats?.records", "records"),
         rows: [
-          { label: t("home.stats?.bestVisitX01", "best visit"), value: fmtNum(s.recordBestVisitX01, 0) },
-          { label: t("home.stats?.bestCOX01", "best co"), value: fmtNum(s.recordBestCOX01, 0) },
-          { label: t("home.stats?.minDarts501", "min darts 501"), value: fmtNum(s.recordMinDarts501, 0) },
-          { label: t("home.stats?.bestAvg3DX01", "Best AVG3D"), value: fmtNum(s.recordBestAvg3DX01, 2) },
-          { label: t("home.stats?.bestStreak", "meilleure série"), value: fmtNum(s.recordBestStreak, 0) },
-          { label: t("home.stats?.bestCricketScore", "best cricket"), value: fmtNum(s.recordBestCricketScore, 0) },
+          { label: t("home.stats?.bestVisitX01", "best visit"), value: fmtNum(Number(s.recordBestVisitX01 ?? 0), 0) },
+          { label: t("home.stats?.bestCOX01", "best co"), value: fmtNum(Number(s.recordBestCOX01 ?? 0), 0) },
+          { label: t("home.stats?.bestAvg3DX01", "best AVG3D"), value: fmtNum(Number(s.recordBestAvg3DX01 ?? 0), 2) },
+          { label: t("home.stats?.bestStreak", "meilleure série"), value: fmtNum(Number(s.recordBestStreak ?? 0), 0) },
+          { label: t("home.stats?.bestCricketScore", "best cricket"), value: fmtNum(Number(s.recordBestCricketScore ?? 0), 0) },
+          Number(s.recordMinDarts501 ?? 0) > 0
+            ? { label: t("home.stats?.minDarts501", "min darts 501"), value: fmtNum(Number(s.recordMinDarts501), 0) }
+            : { label: t("home.stats?.sessions", "sessions X01"), value: fmtNum(Number(s.x01MultiSessions ?? 0), 0) },
         ],
       });
     }
@@ -380,46 +413,52 @@ function ActiveProfileCard({
                 ? s.onlineBestRank != null
                   ? `${fmtNum(s.onlineRank, 0)} (${fmtNum(s.onlineBestRank, 0)})`
                   : fmtNum(s.onlineRank, 0)
-                : "—",
+                : t("home.stats?.unranked", "non classé"),
           },
         ],
       });
     }
 
     // 5) X01 Multi
-    if ((s.x01MultiSessions ?? 0) > 0) {
+    if ((s.x01MultiSessions ?? 0) > 0 && !automaticModeIds.has("mode-x01")) {
       out.push({
         id: "x01multi",
         title: t("home.stats?.x01multi", "x01 multi"),
         rows: [
-          { label: t("home.stats?.avg3d", "AVG3D"), value: fmtNum(s.x01MultiAvg3D, 2) },
-          { label: t("home.stats?.sessions", "sessions"), value: fmtNum(s.x01MultiSessions, 0) },
-          { label: t("home.stats?.winrate", "win%"), value: fmtPct(s.x01MultiWinrate) },
-          { label: t("home.stats?.bestVisit", "best visit"), value: fmtNum(s.x01MultiBestVisit, 0) },
-          { label: t("home.stats?.bestCO", "best co"), value: fmtNum(s.x01MultiBestCO, 0) },
-          { label: t("home.stats?.minDarts", "min darts"), value: s.x01MultiMinDartsLabel ?? "—" },
+          { label: t("home.stats?.avg3d", "AVG3D"), value: fmtNum(Number(s.x01MultiAvg3D ?? 0), 2) },
+          { label: t("home.stats?.sessions", "sessions"), value: fmtNum(Number(s.x01MultiSessions ?? 0), 0) },
+          { label: t("home.stats?.winrate", "win%"), value: fmtPct(Number(s.x01MultiWinrate ?? 0)) },
+          { label: t("home.stats?.bestVisit", "best visit"), value: fmtNum(Number(s.x01MultiBestVisit ?? 0), 0) },
+          { label: t("home.stats?.bestCO", "best co"), value: fmtNum(Number(s.x01MultiBestCO ?? 0), 0) },
+          String(s.x01MultiMinDartsLabel ?? "").trim() && String(s.x01MultiMinDartsLabel).trim() !== "0"
+            ? { label: t("home.stats?.minDarts", "min darts"), value: String(s.x01MultiMinDartsLabel).trim() }
+            : { label: t("home.stats?.bestAvg3DX01", "best AVG3D"), value: fmtNum(x01BestAvg3D, 2) },
         ],
       });
     }
 
     // 6) Cricket
-    if ((s.cricketHitsTotal ?? 0) > 0) {
+    if (((s.cricketOpenings ?? 0) > 0 || (s.cricketHitsTotal ?? 0) > 0) && !automaticModeIds.has("mode-cricket")) {
       out.push({
         id: "cricket",
         title: t("home.stats?.cricket", "cricket"),
         rows: [
-          { label: t("home.stats?.pointsPerRound", "pts/round"), value: fmtNum(s.cricketPointsPerRound, 1) },
-          { label: t("home.stats?.hitsTotal", "hits"), value: fmtNum(s.cricketHitsTotal, 0) },
-          { label: t("home.stats?.closeRate", "close%"), value: fmtPct(s.cricketCloseRate) },
-          { label: t("home.stats?.legsWinrate", "legs%"), value: fmtPct(s.cricketLegsWinrate) },
-          { label: t("home.stats?.close201918", "20/19/18"), value: fmtNum(s.cricketAvgClose201918, 1) },
-          { label: t("home.stats?.openings", "openings"), value: fmtNum(s.cricketOpenings, 0) },
+          { label: t("home.stats?.cricketMpr", "MPR"), value: fmtNum(Number(s.cricketPointsPerRound ?? 0), 2) },
+          { label: t("home.stats?.cricketMarks", "marks"), value: fmtNum(Number(s.cricketHitsTotal ?? 0), 0) },
+          { label: t("home.stats?.cricketHitRate", "hit%"), value: fmtPct(Number(s.cricketCloseRate ?? 0)) },
+          { label: t("home.stats?.legsWinrate", "win%"), value: fmtPct(Number(s.cricketLegsWinrate ?? 0)) },
+          { label: t("home.stats?.cricketAvgScore", "score moyen"), value: fmtNum(Number(s.cricketAvgClose201918 ?? 0), 1) },
+          { label: t("home.stats?.sessions", "sessions"), value: fmtNum(Number(s.cricketOpenings ?? 0), 0) },
         ],
       });
     }
 
+    // Tous les autres modes réellement joués, triés par nombre de sessions.
+    // Aucun plafond : chaque mode présent dans l'Historique doit entrer dans la boucle.
+    out.push(...automaticModeSlides);
+
     // 7) Training X01
-    if ((s.trainingHitsS ?? 0) + (s.trainingHitsD ?? 0) + (s.trainingHitsT ?? 0) > 0) {
+    if ((s.trainingHitsS ?? 0) + (s.trainingHitsD ?? 0) + (s.trainingHitsT ?? 0) > 0 && !automaticModeIds.has("mode-training")) {
       out.push({
         id: "trainingx01",
         title: t("home.stats?.trainingX01", "training x01"),
@@ -435,23 +474,27 @@ function ActiveProfileCard({
     }
 
     // 8) Horloge
-    if ((s.clockTargetsHit ?? 0) > 0) {
+    if (((s.clockSessions ?? 0) > 0 || (s.clockTargetsHit ?? 0) > 0) && !automaticModeIds.has("mode-clock")) {
+      const clockSessions = Number(s.clockSessions ?? 0) || 0;
+      const clockTotalTime = Number(s.clockTotalTimeSec ?? 0) || 0;
       out.push({
         id: "clock",
         title: t("home.stats?.clock", "horloge"),
         rows: [
+          { label: t("home.stats?.sessions", "sessions"), value: fmtNum(clockSessions, 0) },
           { label: t("home.stats?.targetsHit", "cibles"), value: fmtNum(s.clockTargetsHit, 0) },
+          { label: t("home.stats?.attempts", "essais"), value: fmtNum(s.clockAttempts, 0) },
           { label: t("home.stats?.clockSuccess", "succès%"), value: fmtPct(s.clockSuccessRate) },
           {
-            label: t("home.stats?.clockTime", "temps"),
-            value: s.clockTotalTimeSec != null ? `${Math.round(s.clockTotalTimeSec / 60)} min` : "—",
+            label: t("home.stats?.clockAvgTime", "temps moyen"),
+            value: `${Math.round(clockSessions > 0 ? clockTotalTime / clockSessions : clockTotalTime)} s`,
           },
           { label: t("home.stats?.bestStreakClock", "série"), value: fmtNum(s.clockBestStreak, 0) },
         ],
       });
     }
 
-    return out.length > 0 ? out.slice(0, 7) : [];
+    return out;
   }, [stats, t, globalTitle, globalKpis, customSlides, suppressDefaultStatsSlides]);
 
   useEffect(() => {
