@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-07-30-stats-mobile-zero-freeze-v13";
+const SW_VERSION = "dc-sw-2026-07-30-stats-canonical-fast-v16";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

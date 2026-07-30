@@ -2803,11 +2803,27 @@ useEffect(() => {
           ? (store as any).profiles.find((p: any) => String(p?.id || "") === activeId) || (store as any).profiles[0] || null
           : null;
         const activeName = String(activeProfile?.name || activeProfile?.displayName || "").trim();
-        import("./components/StatsDartSetsSection")
-          .then((mod: any) => mod?.prewarmDartSetStatsRenderCache?.(activeId, activeName, force))
-          .catch((err) => {
+        void (async () => {
+          try {
+            const dartSetsMod: any = await import("./components/StatsDartSetsSection");
+            await dartSetsMod?.prewarmDartSetStatsRenderCache?.(activeId, activeName, force);
+          } catch (err) {
             try { console.warn("[stats] dartsets idle prewarm ignored:", err); } catch {}
-          });
+          }
+
+          // X01 Multi possède son propre snapshot dérivé de History. On le prépare
+          // après Mes fléchettes, jamais en concurrence, afin que l'ouverture de
+          // l'onglet ne relise plus tous les payloads match par match.
+          if (cancelled) return;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, isConstrained() ? 900 : 250));
+          if (cancelled) return;
+          try {
+            const x01Mod: any = await import("./stats/X01MultiStatsTabFull");
+            await x01Mod?.prewarmX01MultiSessions?.(activeId);
+          } catch (err) {
+            try { console.warn("[stats] x01 multi idle prewarm ignored:", err); } catch {}
+          }
+        })();
       };
       const ric: any = (window as any).requestIdleCallback;
       if (typeof ric === "function") idleId = ric(run);
@@ -2825,10 +2841,10 @@ useEffect(() => {
     // sans timeout requestIdleCallback. prewarm() quitte immédiatement si le cache existe.
     startupTimer = window.setTimeout(
       () => startWarm(false),
-      isConstrained() ? 12000 : 4500
+      isConstrained() ? 5000 : 2000
     );
 
-    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 8000 : 2800);
+    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 4500 : 1800);
     window.addEventListener("dc-history-updated", onHistoryUpdated);
     return () => {
       cancelled = true;

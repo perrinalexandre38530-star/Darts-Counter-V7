@@ -1720,8 +1720,10 @@ function normalizedRadarValue(metric: CompareMetricKey, item: CompareItem, visib
 /* ============================================================= */
 
 const DART_SET_STATS_RENDER_CACHE_PREFIX = "dc_stats_dartsets_render_cache_v1:";
+const DART_SET_STATS_QUICK_CACHE_PREFIX = "dc_stats_dartsets_quick_v2:";
 const DART_SET_STATS_HIDDEN_PREFIX = "dc_stats_dartsets_hidden_v1:";
 const DART_SET_STATS_CACHE_MAX_CHARS = 260_000;
+const DART_SET_STATS_QUICK_MAX_CHARS = 96_000;
 const DART_SET_STATS_CACHE_MAX_SETS = 24;
 const DART_SET_STATS_IMAGE_MAX_CHARS = 42_000;
 
@@ -1742,6 +1744,10 @@ type DartSetStatsRenderCache = {
 
 function dartSetStatsRenderCacheKey(profileId: string) {
   return `${DART_SET_STATS_RENDER_CACHE_PREFIX}${String(profileId || "").trim()}`;
+}
+
+function dartSetStatsQuickCacheKey(profileId: string) {
+  return `${DART_SET_STATS_QUICK_CACHE_PREFIX}${String(profileId || "").trim()}`;
 }
 
 function dartSetStatsHiddenKey(profileId: string) {
@@ -1831,14 +1837,35 @@ function buildCachedDartSetVisuals(rows: any[], sets: DartSet[], t: any): Record
   return out;
 }
 
+function readDartSetStatsQuickCache(profileId: string | null | undefined): DartSetStatsRenderCache | null {
+  const pid = String(profileId || "").trim();
+  if (!pid || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(dartSetStatsQuickCacheKey(pid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Number(parsed?.version) !== 2 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) return null;
+    return {
+      version: 1,
+      profileId: pid,
+      updatedAt: N(parsed?.updatedAt, 0),
+      rows: parsed.rows,
+      recentBySet: {},
+      setVisuals: parsed?.setVisuals && typeof parsed.setVisuals === "object" ? parsed.setVisuals : {},
+    };
+  } catch {
+    return null;
+  }
+}
+
 function readDartSetStatsRenderCache(profileId: string | null | undefined): DartSetStatsRenderCache | null {
   const pid = String(profileId || "").trim();
   if (!pid || typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem(dartSetStatsRenderCacheKey(pid));
-    if (!raw) return null;
+    if (!raw) return readDartSetStatsQuickCache(pid);
     const parsed = JSON.parse(raw);
-    if (Number(parsed?.version) !== 1 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) return null;
+    if (Number(parsed?.version) !== 1 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) return readDartSetStatsQuickCache(pid);
     return {
       version: 1,
       profileId: pid,
@@ -1848,7 +1875,7 @@ function readDartSetStatsRenderCache(profileId: string | null | undefined): Dart
       setVisuals: parsed?.setVisuals && typeof parsed.setVisuals === "object" ? parsed.setVisuals : {},
     };
   } catch {
-    return null;
+    return readDartSetStatsQuickCache(pid);
   }
 }
 
@@ -1869,6 +1896,40 @@ function writeDartSetStatsRenderCache(
       recentBySet: compactRecentBySet(recentBySet || {}),
       setVisuals: { ...(setVisuals || {}) },
     };
+
+    // Miroir ultra-léger lu pendant le premier render. Il ne contient ni
+    // photos embarquées ni listes de matchs, donc il reste disponible même lorsque
+    // le téléphone purge les grosses clés localStorage.
+    try {
+      const quickVisuals: Record<string, CachedDartSetVisual> = {};
+      for (const [id, visual] of Object.entries(payload.setVisuals || {})) {
+        const image = String(visual?.imageUrl || "");
+        quickVisuals[id] = {
+          id,
+          name: String(visual?.name || "Set inconnu"),
+          imageUrl: image.startsWith("data:image/") ? null : (image || null),
+        };
+      }
+      let quick = JSON.stringify({
+        version: 2,
+        profileId: pid,
+        updatedAt: payload.updatedAt,
+        rows: payload.rows,
+        setVisuals: quickVisuals,
+      });
+      if (quick.length > DART_SET_STATS_QUICK_MAX_CHARS) {
+        quick = JSON.stringify({
+          version: 2,
+          profileId: pid,
+          updatedAt: payload.updatedAt,
+          rows: payload.rows.map((row: any) => ({ ...row, segments: {}, evoAvg3: (row?.evoAvg3 || []).slice(-8) })),
+          setVisuals: quickVisuals,
+        });
+      }
+      if (quick.length <= DART_SET_STATS_QUICK_MAX_CHARS) {
+        localStorage.setItem(dartSetStatsQuickCacheKey(pid), quick);
+      }
+    } catch {}
 
     let serialized = JSON.stringify(payload);
     if (serialized.length > DART_SET_STATS_CACHE_MAX_CHARS) {
@@ -2117,7 +2178,7 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
           .filter((rec: any) => isX01Record(rec))
           .map((rec: any) => ({ rec, id: String(rec?.id ?? rec?.matchId ?? "").trim() }))
           .filter((x: any) => !!x.id)
-          .slice(0, isConstrainedDartSetDevice() ? 72 : 140);
+          .slice(0, 120);
 
         const batchSize = isConstrainedDartSetDevice() ? 4 : 12;
         for (let i = 0; i < candidates.length; i += batchSize) {

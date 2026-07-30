@@ -38,9 +38,9 @@ import {
 import type { CricketProfileStats } from "../lib/cricketStats";
 
 // ---- Utils ----
-const STATSHUB_HISTORY_LIGHT_CAP = 240;
-const STATSHUB_HISTORY_HYDRATE_CAP = 72;
-const STATSHUB_STORE_HISTORY_CAP = 160;
+const STATSHUB_HISTORY_LIGHT_CAP = 300;
+const STATSHUB_HISTORY_HYDRATE_CAP = 120;
+const STATSHUB_STORE_HISTORY_CAP = 200;
 
 function isConstrainedStatsDevice(): boolean {
   try {
@@ -245,6 +245,7 @@ import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
+import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import StatsClockDashboard from "../components/StatsClockDashboard";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
@@ -277,7 +278,6 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 }
 // ---- END PATCH ----
 
-const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
 
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
@@ -409,12 +409,28 @@ const statsNameCss = `
 // - Tolérant: ne casse pas si cache absent/corrompu
 // ============================================================
 
-const STATS_RENDER_CACHE_KEY = "dc_stats_render_cache_v2";
-const STATS_RENDER_CACHE_LEGACY_KEY = "dc_stats_render_cache_v1";
-const STATS_RENDER_PROFILE_PREFIX = "dc_stats_render_profile_v3:";
+const STATS_RENDER_CACHE_KEY = "dc_stats_render_cache_v4";
+const STATS_RENDER_CACHE_LEGACY_KEY = "dc_stats_render_cache_v4_legacy";
+const STATS_RENDER_PROFILE_PREFIX = "dc_stats_render_profile_v4:";
 const STATS_RENDER_CACHE_MAX_ENTRIES = 18;
 const STATS_RENDER_CACHE_MAX_CHARS = 360_000;
 const STATS_AVATAR_THUMB_MAX_CHARS = 48_000;
+let __obsoleteStatsRenderCachesPurged = false;
+
+function purgeObsoleteStatsRenderCachesOnce(): void {
+  if (__obsoleteStatsRenderCachesPurged || typeof localStorage === "undefined") return;
+  __obsoleteStatsRenderCachesPurged = true;
+  try {
+    localStorage.removeItem("dc_stats_render_cache_v1");
+    localStorage.removeItem("dc_stats_render_cache_v2");
+    const remove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = String(localStorage.key(i) || "");
+      if (key.startsWith("dc_stats_render_profile_v3:")) remove.push(key);
+    }
+    for (const key of remove) localStorage.removeItem(key);
+  } catch {}
+}
 
 const STATS_CACHE_KEYS = (profileId: string) => [
   `dc_stats_cache_v2:${profileId}`,
@@ -439,13 +455,14 @@ type StatsRenderIdentity = {
 
 function readStatsRenderCache(profileId: string): any | null {
   if (!profileId || typeof localStorage === "undefined") return null;
+  purgeObsoleteStatsRenderCachesOnce();
   try {
     // Cache par profil : quelques ko seulement, donc lecture sûre pendant le
     // premier render même sur un téléphone modeste.
     const tinyRaw = localStorage.getItem(`${STATS_RENDER_PROFILE_PREFIX}${profileId}`);
     if (tinyRaw) {
       const tiny = JSON.parse(tinyRaw);
-      if (tiny?.version === 3 && tiny?.entry) return tiny.entry;
+      if (tiny?.version === 4 && tiny?.source === "history-canonical" && tiny?.entry) return tiny.entry;
     }
 
     // Migration douce depuis le cache global historique.
@@ -624,7 +641,8 @@ function commitStatsRenderCache(profileId: string, dashboard?: any | null, playe
     const entry = compacted[profileId] || byProfile[profileId];
     try {
       localStorage.setItem(`${STATS_RENDER_PROFILE_PREFIX}${profileId}`, JSON.stringify({
-        version: 3,
+        version: 4,
+        source: "history-canonical",
         profileId,
         updatedAt: Date.now(),
         entry,
@@ -703,13 +721,16 @@ function looksLikeDashboard(x: any): boolean {
 function readStatsCache(profileId: string): any | null {
   if (!profileId) return null;
   try {
+    // Seuls les snapshots produits par le calcul canonique Historique sont admis.
+    // Les anciens caches quick/index ont pu contenir des agrégats partiels et ne
+    // doivent plus remplacer les statistiques réelles du Dashboard.
     const renderReady = readStatsRenderCache(profileId);
-    if (renderReady?.dashboard) return { dashboard: renderReady.dashboard, identity: renderReady.identity, updatedAt: renderReady?.updatedAt };
-
-    for (const k of STATS_CACHE_KEYS(profileId)) {
-      const raw = localStorage.getItem(k);
-      const parsed = safeJsonParseStatsHub(raw);
-      if (parsed) return parsed;
+    if (renderReady?.dashboard) {
+      return {
+        dashboard: renderReady.dashboard,
+        identity: renderReady.identity,
+        updatedAt: renderReady?.updatedAt,
+      };
     }
   } catch {}
   return null;
@@ -5264,7 +5285,7 @@ React.useEffect(() => {
 const needsStatsHistory = heavyStatsReady && (
   (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
     ? currentMode === "dashboard"
-    : !["dashboard", "dartsets", "history", "leaderboards"].includes(currentMode)
+    : !["dartsets", "history", "leaderboards", "x01_multi"].includes(currentMode)
 );
 
 // ==========================
@@ -5273,16 +5294,19 @@ const needsStatsHistory = heavyStatsReady && (
 const [normalizedMatches, setNormalizedMatches] = React.useState<NormalizedMatch[]>(
   []
 );
+const [normalizedHistoryLoaded, setNormalizedHistoryLoaded] = React.useState(false);
 
 // ✅ Charge l'historique normalisé (source unique pour stats, à terme)
 React.useEffect(() => {
   if (!needsStatsHistory) {
     setNormalizedMatches([]);
+    setNormalizedHistoryLoaded(false);
     return;
   }
   let mounted = true;
 
   const load = async () => {
+    setNormalizedHistoryLoaded(false);
     try {
       const nm = await loadNormalizedHistory();
       if (!mounted) return;
@@ -5290,6 +5314,8 @@ React.useEffect(() => {
     } catch {
       if (!mounted) return;
       setNormalizedMatches([]);
+    } finally {
+      if (mounted) setNormalizedHistoryLoaded(true);
     }
   };
 
@@ -5936,7 +5962,7 @@ const [liveDashboard, setLiveDashboard] =
   const [x01HydratedRows, setX01HydratedRows] = React.useState<any[] | null>(null);
 
   React.useEffect(() => {
-    const enabled = needsStatsHistory && (currentMode === "x01_multi" || currentMode === "x01_compare");
+    const enabled = needsStatsHistory && (currentMode === "dashboard" || currentMode === "x01_compare");
     if (!enabled) {
       setX01HydratedRows(null);
       return;
@@ -5955,8 +5981,8 @@ const [liveDashboard, setLiveDashboard] =
         }
 
         const constrained = isConstrainedStatsDevice();
-        const cap = constrained ? 120 : 320;
-        const chunk = constrained ? 6 : 16;
+        const cap = 600;
+        const chunk = constrained ? 8 : 24;
         const rows: any[] = [];
         const selected = uniq.slice(0, cap);
         for (let i = 0; i < selected.length; i += chunk) {
@@ -6055,30 +6081,37 @@ const [liveDashboard, setLiveDashboard] =
 const quick = useQuickStats(selectedPlayer?.id ?? null);
 
 React.useEffect(() => {
-  // Le dashboard Darts standard vient du snapshot quick/cache. Aucun replay global
-  // n'est autorisé à l'ouverture. Les adaptateurs de sports spécifiques peuvent
-  // encore calculer, mais seulement après le gate de premier paint.
-  const canCompute = heavyStatsReady && currentMode === "dashboard" &&
-    (isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport);
-  if (!canCompute) {
-    setLiveDashboard(null);
-    return;
-  }
-
   let cancelled = false;
+
   const pid = String(selectedPlayer?.id ?? "");
   const pname = String(selectedPlayer?.name ?? "Joueur");
-  if (!pid) return;
+
+  // Le cache canonique reste visible pendant le recalcul. On ne construit jamais
+  // un dashboard depuis le miroir quick tant que l'Historique réel est disponible.
+  setLiveDashboard(null);
+  if (!pid || currentMode !== "dashboard" || !heavyStatsReady) return;
+  if (!isDiceSport && !isMolkkySport && !isBabyFootSport && !isPingPongSport && !normalizedHistoryLoaded) return;
+
+  // Tant que l'Historique async n'est pas arrivé, conserver le snapshot correct
+  // de la visite précédente plutôt que de fabriquer des zéros.
+  if (!isDiceSport && !isMolkkySport && nmEffective.length === 0 && cachedDashboard) return;
 
   const compute = () => {
     try {
-      let dash: any = null;
-      if (isDiceSport) dash = buildDiceDashboardForPlayer(pid, pname, diceRows);
-      else if (isMolkkySport) dash = buildMolkkyDashboardForPlayer(pid, pname, records as any);
-      else {
-        const base = buildDashboardFromNormalized(pid, pname, nmEffective);
-        dash = applyX01AggToDashboard(base, pid, pname);
+      if (isDiceSport) {
+        const dashDice = buildDiceDashboardForPlayer(pid, pname, diceRows);
+        if (!cancelled) React.startTransition(() => setLiveDashboard(dashDice as any));
+        return;
       }
+
+      if (isMolkkySport) {
+        const dashMolkky = buildMolkkyDashboardForPlayer(pid, pname, records as any);
+        if (!cancelled) React.startTransition(() => setLiveDashboard(dashMolkky as any));
+        return;
+      }
+
+      const baseDash = buildDashboardFromNormalized(pid, pname, nmEffective);
+      const dash = applyX01AggToDashboard(baseDash, pid, pname);
       if (!cancelled) React.startTransition(() => setLiveDashboard(dash as any));
     } catch {
       if (!cancelled) setLiveDashboard(null);
@@ -6088,60 +6121,129 @@ React.useEffect(() => {
   const w: any = window;
   let idleId: any = null;
   let timerId: number | null = null;
-  if (typeof w?.requestIdleCallback === "function") idleId = w.requestIdleCallback(compute);
-  else timerId = window.setTimeout(compute, isConstrainedStatsDevice() ? 700 : 180);
+  if (typeof w?.requestIdleCallback === "function") {
+    // Pas de timeout sur mobile : le calcul ne doit jamais être forcé pendant
+    // un swipe ou pendant le montage des graphiques.
+    idleId = w.requestIdleCallback(compute);
+  } else {
+    timerId = window.setTimeout(compute, isConstrainedStatsDevice() ? 500 : 100);
+  }
 
   return () => {
     cancelled = true;
     try { if (idleId != null) w?.cancelIdleCallback?.(idleId); } catch {}
     if (timerId != null) window.clearTimeout(timerId);
   };
-}, [heavyStatsReady, currentMode, selectedPlayer?.id, selectedPlayer?.name, isDiceSport, isMolkkySport, isBabyFootSport, isPingPongSport, diceRows, records, nmEffective, applyX01AggToDashboard]);
+}, [
+  heavyStatsReady,
+  currentMode,
+  normalizedHistoryLoaded,
+  selectedPlayer?.id,
+  selectedPlayer?.name,
+  nmEffective,
+  applyX01AggToDashboard,
+  isMolkkySport,
+  records,
+  cachedDashboard,
+  isDiceSport,
+  diceRows,
+]);
 
-// Snapshot réellement léger : aucune traversée Historique dans un useMemo de render.
-// Le miroir quick est mis à jour après chaque mutation d'historique par le moteur central.
+// Calcul canonique identique à la version antérieure : History/NormalizedMatch
+// reste la source de vérité. Le quick index n'est utilisé qu'en secours lorsqu'une
+// restauration ne contient réellement aucun historique détaillé.
 const computedDashboard = React.useMemo(() => {
-  const visual: any = selectedPlayerVisual || selectedPlayer;
-  if (!visual) return cachedDashboard || null;
-  const pid = String(visual?.id || effectiveProfileId || "");
-  const pname = String(visual?.name || cachedDashboard?.playerName || "Joueur");
-  if (!pid) return cachedDashboard || null;
+  if (!selectedPlayer) return null;
+  if (!isDiceSport && !isMolkkySport && !isBabyFootSport && !isPingPongSport && !normalizedHistoryLoaded) {
+    return cachedDashboard || null;
+  }
+  try {
+    if (isMolkkySport) {
+      return buildMolkkyDashboardForPlayer(
+        String(selectedPlayer.id),
+        String(selectedPlayer.name || "Joueur"),
+        records as any
+      ) as any;
+    }
 
-  if (!quick) return cachedDashboard || null;
-  return {
-    ...(cachedDashboard || {}),
-    playerId: pid,
-    playerName: pname,
-    sessions: Number((quick as any).matches ?? cachedDashboard?.sessions ?? 0) || 0,
-    avg3Overall: Number((quick as any).avg3 || 0) || 0,
-    bestVisit: Number((quick as any).bestVisit || 0) || 0,
-    bestCheckout: Number((quick as any).bestCheckout ?? cachedDashboard?.bestCheckout ?? 0) || 0,
-    winRatePct: Number((quick as any).winRatePct || 0) || 0,
-    totalDarts: Number((quick as any).dartsThrown ?? cachedDashboard?.totalDarts ?? 0) || 0,
-    evolution: Array.isArray(cachedDashboard?.evolution) ? cachedDashboard.evolution : [],
-    distribution: (quick as any).buckets && typeof (quick as any).buckets === "object"
-      ? (quick as any).buckets
-      : (cachedDashboard?.distribution || {}),
-    sessionsByMode: cachedDashboard?.sessionsByMode || {},
-  } as any;
-}, [selectedPlayerVisual, selectedPlayer, effectiveProfileId, cachedDashboard, quick]);
+    const pid = String(selectedPlayer.id);
+    const pname = String(selectedPlayer.name || "Joueur");
+    const base = applyX01AggToDashboard(
+      buildDashboardFromNormalized(pid, pname, nmEffective),
+      pid,
+      pname
+    );
+    const hasBaseData =
+      Number((base as any)?.sessions || 0) > 0 ||
+      Number((base as any)?.avg3Overall || 0) > 0 ||
+      Number((base as any)?.bestVisit || 0) > 0 ||
+      Object.values((base as any)?.sessionsByMode || {}).some((v: any) => Number(v || 0) > 0);
 
-const dashboardToShow = (liveDashboard ?? computedDashboard ?? cachedDashboard) as PlayerDashboardStats | null;
+    if (!hasBaseData && quick && normalizedHistoryLoaded && nmEffective.length === 0) {
+      return buildDashboardForPlayer(selectedPlayer as any, records as any, {
+        avg3: (quick as any).avg3,
+        avg3Overall: (quick as any).avg3,
+        bestVisit: (quick as any).bestVisit,
+        bestCheckout: (quick as any).bestCheckout,
+        winRatePct: (quick as any).winRatePct,
+        distribution: (quick as any).buckets,
+        buckets: (quick as any).buckets,
+      } as any) as any;
+    }
 
-// Matérialise le snapshot quick + identité pour la prochaine ouverture. Cette écriture
-// ne contient jamais l'Historique complet et reste sous quelques centaines de ko.
+    return base;
+  } catch {
+    return null;
+  }
+}, [
+  selectedPlayer?.id,
+  selectedPlayer?.name,
+  normalizedHistoryLoaded,
+  cachedDashboard,
+  nmEffective,
+  applyX01AggToDashboard,
+  isDiceSport,
+  isMolkkySport,
+  isBabyFootSport,
+  isPingPongSport,
+  records,
+  quick?.avg3,
+  quick?.bestVisit,
+  quick?.bestCheckout,
+  quick?.winRatePct,
+]);
+
+const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
+  ? (liveDashboard ?? computedDashboard ?? cachedDashboard)
+  : (liveDashboard ?? cachedDashboard ?? computedDashboard)) as PlayerDashboardStats | null;
+
+// Le snapshot n'est écrit qu'à partir du calcul canonique. Un index rapide ou
+// partiel ne peut donc plus contaminer les ouvertures suivantes.
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "");
   if (!pid) return;
-  const fresh = liveDashboard || computedDashboard || cachedDashboard || null;
+  const specialSport = isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport;
+  const canonicalReady = specialSport || (normalizedHistoryLoaded && x01HydratedRows !== null);
+  const fresh = canonicalReady ? (liveDashboard || (nmEffective.length > 0 ? computedDashboard : null)) : null;
   const visual = selectedPlayer || selectedPlayerVisual;
   if (!fresh && !visual) return;
   writeStatsRenderCache(pid, fresh, visual);
   if (visual) queueTinyStatsAvatar(pid, visual);
-}, [effectiveProfileId, liveDashboard, computedDashboard, cachedDashboard, selectedPlayer, selectedPlayerVisual]);
+}, [
+  effectiveProfileId,
+  liveDashboard,
+  computedDashboard,
+  nmEffective.length,
+  normalizedHistoryLoaded,
+  x01HydratedRows,
+  isDiceSport,
+  isMolkkySport,
+  isBabyFootSport,
+  isPingPongSport,
+  selectedPlayer,
+  selectedPlayerVisual,
+]);
 
-// Même sans nouvelle partie, une photo/URL modifiée est immédiatement recopiée dans
-// le cache de rendu. Le miroir avatar rapide fournit sa miniature locale.
 React.useEffect(() => {
   const pid = String(effectiveProfileId || "");
   if (!pid || !selectedPlayer) return;

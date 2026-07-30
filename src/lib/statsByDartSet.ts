@@ -753,7 +753,7 @@ export async function getX01StatsByDartSet(profileId?: string, preloadedRows?: a
       .filter((r: any) => isX01Record(r))
       .map((r: any) => ({ row: r, id: String(r?.id ?? r?.matchId ?? "").trim() }))
       .filter((x: any) => !!x.id)
-      .slice(0, isConstrainedDartStatsDevice() ? 72 : 160);
+      .slice(0, 120);
 
     const batchSize = isConstrainedDartStatsDevice() ? 4 : 12;
     for (let i = 0; i < enrichCandidates.length; i += batchSize) {

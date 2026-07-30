@@ -601,11 +601,33 @@ export function aggregateX01Samples(samples: X01PlayerSample[]): X01Agg {
   return out;
 }
 
+function isConstrainedX01StatsDevice(): boolean {
+  try {
+    const nav: any = (globalThis as any)?.navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldX01StatsWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const raf: any = (globalThis as any)?.requestAnimationFrame;
+    if (isConstrainedX01StatsDevice() && typeof raf === "function") {
+      raf(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 export async function loadAllHistoryRecords(): Promise<any[]> {
-  // SOURCE UNIQUE DE VÉRITÉ STATS :
-  // on ne lit que les parties réellement présentes dans l'Historique terminé.
-  // Ne pas réinjecter store.history / caches / dc_online_matches_v1 ici, sinon Home,
-  // Stats X01 Multi et Classements peuvent diverger.
+  // SOURCE UNIQUE DE VÉRITÉ STATS : uniquement History. La modification ci-dessous
+  // change seulement l'ordonnancement des lectures IndexedDB, jamais les données.
   const byId = new Map<string, any>();
   const push = (rec: any, idx = 0) => {
     if (!rec || typeof rec !== "object") return;
@@ -623,42 +645,56 @@ export async function loadAllHistoryRecords(): Promise<any[]> {
 
   try {
     const api: any = History as any;
-    const rows =
+    const rawRows =
       typeof api?.listFinished === "function"
         ? await api.listFinished()
         : typeof api?.list === "function"
         ? await api.list()
         : [];
-    for (let i = 0; i < (Array.isArray(rows) ? rows : []).length; i++) {
-      const row: any = rows[i];
-      const id = String(row?.matchId ?? row?.id ?? "").trim();
-      let full = row;
-      try {
-        if (id && typeof api?.get === "function") {
-          full = (await api.get(id)) || row;
-        }
-      } catch {}
-      push(full, i);
+    const rows = Array.isArray(rawRows) ? rawRows : [];
+    const chunk = isConstrainedX01StatsDevice() ? 6 : 20;
+
+    for (let offset = 0; offset < rows.length; offset += chunk) {
+      const batch = rows.slice(offset, offset + chunk);
+      const fullBatch = await Promise.all(batch.map(async (row: any) => {
+        const id = String(row?.matchId ?? row?.id ?? "").trim();
+        if (!id || typeof api?.get !== "function") return row;
+        try { return (await api.get(id)) || row; } catch { return row; }
+      }));
+      fullBatch.forEach((full: any, index: number) => push(full, offset + index));
+      if (offset + chunk < rows.length) await yieldX01StatsWork();
     }
   } catch {}
 
   return Array.from(byId.values());
 }
 
-export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X01Scope | "all" } & X01StatsContextFilter): Promise<X01PlayerSample[]> {
-  const all = await loadAllHistoryRecords();
+export function buildX01SamplesForProfileFromRecords(
+  records: any[],
+  profile: any,
+  opts?: { scope?: X01Scope | "all" } & X01StatsContextFilter
+): X01PlayerSample[] {
   const out: X01PlayerSample[] = [];
-  for (const rec of all || []) {
+  for (const rec of records || []) {
     const recIsOnline = isOnlineRecord(rec);
     if (recIsOnline && isOnlineStatsExcluded(rec)) continue;
     if (!isX01Record(rec) && !isTrainingRecord(rec)) continue;
     const smp = sampleFromRec(rec, profile);
     if (!smp) continue;
     if (opts?.scope && opts.scope !== "all" && smp.scope !== opts.scope) continue;
-    if (!x01ContextMatchesFilter({ startScore: smp.x01StartScore ?? null, variant: smp.x01Variant ?? "unknown", victoryMode: smp.matchVictoryMode ?? "best_of" }, opts)) continue;
+    if (!x01ContextMatchesFilter({
+      startScore: smp.x01StartScore ?? null,
+      variant: smp.x01Variant ?? "unknown",
+      victoryMode: smp.matchVictoryMode ?? "best_of",
+    }, opts)) continue;
     out.push(smp);
   }
   return out.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function loadX01SamplesForProfile(profile: any, opts?: { scope?: X01Scope | "all" } & X01StatsContextFilter): Promise<X01PlayerSample[]> {
+  const all = await loadAllHistoryRecords();
+  return buildX01SamplesForProfileFromRecords(all, profile, opts);
 }
 
 export async function loadOnlineX01SamplesForActiveProfile(): Promise<X01PlayerSample[]> {

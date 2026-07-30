@@ -16,10 +16,11 @@ import SparklinePro from "../components/SparklinePro";
 import TrainingRadar from "../components/TrainingRadar";
 import { GoldPill } from "../components/StatsPlayerDashboard";
 import { History } from "../lib/history";
-import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
+import { buildX01SamplesForProfileFromRecords } from "../lib/x01StatsSource";
 import { getX01StatsContext, type X01StartScoreKey, type X01VariantKey } from "../lib/x01StatsContext";
 import type { Dart as UIDart } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
+import { idbGet, idbSet } from "../lib/indexedDb";
 
 // ------ Helpers locaux : classement multi pour un joueur ------
 
@@ -213,6 +214,163 @@ export type X01MultiSession = {
   x01Variant?: X01VariantKey;
   matchVictoryMode?: "best_of" | "first_to";
 };
+
+
+const X01_MULTI_CACHE_VERSION = 1;
+const X01_MULTI_CACHE_PREFIX = "dc_x01_multi_sessions_v1:";
+const X01_MULTI_CACHE_MAX_SYNC_CHARS = 1_250_000;
+const __x01MultiMemoryCache = new Map<string, X01MultiSessionsCache>();
+
+type X01MultiSessionsCache = {
+  version: 1;
+  profileId: string;
+  fingerprint: string;
+  updatedAt: number;
+  sessions: X01MultiSession[];
+  avatars?: Record<string, string>;
+};
+
+function x01MultiCacheProfileKey(profileId?: string | null): string {
+  return String(profileId || "__all__").trim() || "__all__";
+}
+
+function x01MultiCacheKey(profileId?: string | null): string {
+  return `${X01_MULTI_CACHE_PREFIX}${x01MultiCacheProfileKey(profileId)}`;
+}
+
+function safeCachedX01Avatar(value: any): string | null {
+  const src = String(value || "").trim();
+  if (!src) return null;
+  if (src.startsWith("data:image/")) return src.length <= 70_000 ? src : null;
+  return src.length <= 4096 ? src : null;
+}
+
+function restoreCachedX01Sessions(cache: X01MultiSessionsCache | null): X01MultiSessionsCache | null {
+  if (!cache || cache.version !== X01_MULTI_CACHE_VERSION || !Array.isArray(cache.sessions)) return null;
+  const avatars = cache.avatars && typeof cache.avatars === "object" ? cache.avatars : {};
+  return {
+    ...cache,
+    sessions: cache.sessions.map((row: any) => ({
+      ...row,
+      avatarDataUrl: row?.avatarDataUrl || avatars[String(row?.selectedPlayerId || row?.profileId || "")] || null,
+    })),
+  };
+}
+
+function readX01MultiSessionsCacheSync(profileId?: string | null): X01MultiSessionsCache | null {
+  const key = x01MultiCacheKey(profileId);
+  const memory = restoreCachedX01Sessions(__x01MultiMemoryCache.get(key) || null);
+  if (memory) return memory;
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = restoreCachedX01Sessions(JSON.parse(raw));
+    if (parsed) __x01MultiMemoryCache.set(key, parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function readX01MultiSessionsCache(
+  profileId: string | null | undefined,
+  fingerprint?: string | null
+): Promise<X01MultiSessionsCache | null> {
+  const key = x01MultiCacheKey(profileId);
+  let cache = readX01MultiSessionsCacheSync(profileId);
+  if (!cache) {
+    try {
+      cache = restoreCachedX01Sessions(await idbGet<X01MultiSessionsCache>(key));
+      if (cache) __x01MultiMemoryCache.set(key, cache);
+    } catch {}
+  }
+  if (!cache) return null;
+  if (fingerprint && cache.fingerprint !== fingerprint) return null;
+  return cache;
+}
+
+function compactX01SessionsForCache(sessions: X01MultiSession[]): { sessions: X01MultiSession[]; avatars: Record<string, string> } {
+  const avatars: Record<string, string> = {};
+  const compact = (sessions || []).map((row: any) => {
+    const playerKey = String(row?.selectedPlayerId || row?.profileId || "");
+    const avatar = safeCachedX01Avatar(row?.avatarDataUrl);
+    if (playerKey && avatar && !avatars[playerKey]) avatars[playerKey] = avatar;
+    return { ...row, avatarDataUrl: null };
+  });
+  return { sessions: compact as X01MultiSession[], avatars };
+}
+
+async function writeX01MultiSessionsCache(
+  profileId: string | null | undefined,
+  fingerprint: string,
+  sessions: X01MultiSession[]
+): Promise<void> {
+  const key = x01MultiCacheKey(profileId);
+  const compact = compactX01SessionsForCache(sessions);
+  const payload: X01MultiSessionsCache = {
+    version: X01_MULTI_CACHE_VERSION,
+    profileId: x01MultiCacheProfileKey(profileId),
+    fingerprint,
+    updatedAt: Date.now(),
+    sessions: compact.sessions,
+    avatars: compact.avatars,
+  };
+  __x01MultiMemoryCache.set(key, restoreCachedX01Sessions(payload) || payload);
+
+  try { await idbSet(key, payload); } catch {}
+  try {
+    if (typeof localStorage === "undefined") return;
+    const serialized = JSON.stringify(payload);
+    if (serialized.length <= X01_MULTI_CACHE_MAX_SYNC_CHARS) {
+      localStorage.setItem(key, serialized);
+    } else {
+      // Ne jamais saturer localStorage sur Android : IndexedDB garde le cache complet.
+      localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
+function historyFingerprint(rows: any[]): string {
+  let hash = 2166136261 >>> 0;
+  let latest = 0;
+  const list = Array.isArray(rows) ? rows : [];
+  for (let i = 0; i < list.length; i += 1) {
+    const row = list[i] || {};
+    const id = String(row?.id ?? row?.matchId ?? i);
+    const stamp = Number(row?.updatedAt ?? row?.endedAt ?? row?.finishedAt ?? row?.createdAt ?? 0) || 0;
+    latest = Math.max(latest, stamp);
+    const token = `${id}|${stamp}|${String(row?.status || "")}`;
+    for (let j = 0; j < token.length; j += 1) {
+      hash ^= token.charCodeAt(j);
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+  }
+  return `${list.length}:${latest}:${hash.toString(36)}`;
+}
+
+function isConstrainedX01MultiDevice(): boolean {
+  try {
+    const nav: any = navigator;
+    return Boolean(
+      /Android|iPhone|iPad|iPod|Mobile/i.test(nav?.userAgent || "") ||
+      (Number(nav?.deviceMemory || 8) > 0 && Number(nav?.deviceMemory || 8) <= 4) ||
+      (Number(nav?.hardwareConcurrency || 8) > 0 && Number(nav?.hardwareConcurrency || 8) <= 4)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function yieldX01MultiWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (typeof window !== "undefined" && isConstrainedX01MultiDevice() && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
 
 type Props = {
   /** Optionnel : ne garder que ce profil */
@@ -1668,21 +1826,31 @@ export async function loadX01MultiSessions(
     return [];
   }
 
+  const fingerprint = historyFingerprint(list);
+  const cached = await readX01MultiSessionsCache(profileId, fingerprint);
+  if (cached) return cached.sessions.slice().sort((a, b) => a.date - b.date);
+
+  // Même source qu'avant, mais lectures IndexedDB parallélisées par petits lots.
+  // Aucun match n'est supprimé ni plafonné : seule l'attente séquentielle disparaît.
+  const hydratedList: any[] = [];
+  const batchSize = isConstrainedX01MultiDevice() ? 6 : 20;
+  for (let offset = 0; offset < list.length; offset += batchSize) {
+    const batch = list.slice(offset, offset + batchSize);
+    const hydrated = await Promise.all(batch.map(async (liteMatch: any) => {
+      try {
+        const id = String(liteMatch?.id ?? liteMatch?.matchId ?? "").trim();
+        return id ? ((await History.get(id)) || liteMatch) : liteMatch;
+      } catch {
+        return liteMatch;
+      }
+    }));
+    hydratedList.push(...hydrated);
+    if (offset + batchSize < list.length) await yieldX01MultiWork();
+  }
+
   const out: X01MultiSession[] = [];
 
-  for (const liteMatch of list) {
-    // Les lignes History.list() peuvent être allégées et ne pas contenir
-    // summary.detailedByPlayer / payload décodé. Pour les stats X01, on hydrate
-    // chaque ligne avant extraction afin que le Centre de statistiques voie la
-    // même source que la carte Historique / X01End.
-    let match: any = liteMatch;
-    try {
-      if (liteMatch?.id) {
-        match = (await History.get(liteMatch.id)) || liteMatch;
-      }
-    } catch {
-      match = liteMatch;
-    }
+  for (const match of hydratedList) {
 
     // --------- 1) est-ce bien un X01 / X01V3 ? ----------
     const candidates: any[] = [
@@ -1834,7 +2002,7 @@ export async function loadX01MultiSessions(
   // Home / Profils / Leaderboards. On fusionne sans dupliquer les lignes déjà lues.
   if (profileId) {
     try {
-      const samples = await loadX01SamplesForProfile({ id: profileId, profileId });
+      const samples = buildX01SamplesForProfileFromRecords(hydratedList, { id: profileId, profileId });
       const existing = new Set(out.map((x) => `${x.matchId}|${x.selectedPlayerId}`));
       for (const smp of samples as any[]) {
         const key = `${smp.matchId || smp.id}|${smp.playerId || profileId}`;
@@ -1878,8 +2046,15 @@ export async function loadX01MultiSessions(
     }
   }
 
-  // Tri chronologique
-  return out.sort((a, b) => a.date - b.date);
+  // Tri chronologique + matérialisation locale. Les ouvertures suivantes ne
+  // relisent plus les payloads tant que l'empreinte de l'Historique est identique.
+  const sorted = out.sort((a, b) => a.date - b.date);
+  await writeX01MultiSessionsCache(profileId, fingerprint, sorted);
+  return sorted;
+}
+
+export async function prewarmX01MultiSessions(profileId?: string | null): Promise<void> {
+  await loadX01MultiSessions(profileId).then(() => undefined).catch(() => undefined);
 }
 
 // Normalisation d’un dart pour le radar
@@ -2065,7 +2240,11 @@ export default function X01MultiStatsTabFull({
     [playerId, profileId]
   );
 
-  const [sessions, setSessions] = React.useState<X01MultiSession[]>([]);
+  const initialCachedSessions = React.useMemo(
+    () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || [],
+    [effectiveProfileId]
+  );
+  const [sessions, setSessions] = React.useState<X01MultiSession[]>(() => initialCachedSessions);
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
   const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>("all");
@@ -2096,11 +2275,12 @@ export default function X01MultiStatsTabFull({
   // Chargement des matchs (une fois + quand l’ID effectif change + après suppression historique)
   React.useEffect(() => {
     let cancelled = false;
+    const instant = readX01MultiSessionsCacheSync(effectiveProfileId);
+    setSessions(instant?.sessions || []);
+
     (async () => {
       const data = await loadX01MultiSessions(effectiveProfileId);
-      if (!cancelled) {
-        setSessions(data);
-      }
+      if (!cancelled) React.startTransition(() => setSessions(data));
     })();
     return () => {
       cancelled = true;
@@ -3396,10 +3576,6 @@ for (const id in perPersonStats) {
     favTeammateMatches = st.teamMatches;
     favTeammateId = id;
   }
-}
-
-if (filtered.length > 0) {
-  console.log("X01Multi sample session", filtered[0]);
 }
 
 // ============================================================
