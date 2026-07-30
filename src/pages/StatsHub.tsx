@@ -6408,6 +6408,21 @@ type ModeDashboardCard = {
   dbull?: number;
   captures: number;
   extra: number;
+  visits?: number;
+  successfulVisits?: number;
+  failedVisits?: number;
+  targetsFaced?: number;
+  livesLost?: number;
+  bestMargin?: number;
+  scoreOnlyVisits?: number;
+  cardsPlayed?: number;
+  cardsCompleted?: number;
+  bestCardProgress?: number;
+  cellsPerCard?: number;
+  maxCellsInVisit?: number;
+  bestStreak?: number;
+  totalVolleyScore?: number;
+  maxVolley?: number;
   clockCompleted?: number;
   clockTotalTimeMs?: number;
   clockBestTimeMs?: number;
@@ -6698,7 +6713,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
               continue;
             }
             const ringRaw = String(h.ring ?? h.r ?? h.multLabel ?? h.type ?? h.kind ?? h.mult ?? "").toUpperCase();
-            const segRaw = h.segment ?? h.s ?? h.value ?? h.target ?? h.number;
+            const segRaw = h.segment ?? h.s ?? h.value ?? h.v ?? h.target ?? h.number;
             const segNum = Number(segRaw);
             const multNum = Number(h.mult ?? h.multiplier ?? h.multiplicateur ?? 0);
             const isMiss = ringRaw.includes("MISS") || String(segRaw).toUpperCase() === "MISS" || segNum === 0;
@@ -6782,6 +6797,41 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
   };
 
 
+  const readCompactStatsPlayer = (r: any, targetPid: string) => {
+    const compact =
+      r?.payload?.compact ??
+      r?.payload?.payload?.compact ??
+      r?.compact ??
+      r?.summary?.compactData ??
+      null;
+    if (!compact || !Array.isArray(compact?.ps)) return null;
+    const ids = Array.isArray(compact?.p) ? compact.p.map((x: any) => normId(x)) : [];
+    let idx = ids.findIndex((id: string) => statHubIdMatches(id, targetPid));
+    if (idx < 0) {
+      const targetName = statHubNormName(selectedPlayer?.name);
+      const pn = compact?.pn && typeof compact.pn === "object" ? compact.pn : {};
+      const hit = Object.entries(pn).find(([k, v]: any) => {
+        const name = statHubNormName(v);
+        return !!targetName && name === targetName;
+      });
+      if (hit) idx = Number(hit[0]);
+    }
+    if (idx < 0) return null;
+    const row = compact.ps.find((x: any) => Number(x?.i) === idx) || compact.ps[idx];
+    if (!row) return null;
+    const nrow = row?.n || {};
+    const hrow = row?.h || {};
+    const get = (...keys: string[]) => {
+      for (const k of keys) {
+        const value = nrow?.[k] ?? hrow?.[k];
+        const num = Number(value);
+        if (Number.isFinite(num)) return num;
+      }
+      return 0;
+    };
+    return { compact, idx, row, nrow, hrow, get };
+  };
+
   // Cricket compact.v1 fallback:
   // anciens exports Cricket stockent les vraies stats dans payload.compact.ps[]
   // au lieu de payload.players[]. Sans cette lecture, la carte résumé reste vide.
@@ -6799,10 +6849,11 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     if (idx < 0) {
       const targetName = statHubNormName(selectedPlayer?.name);
       const pn = compact?.pn && typeof compact.pn === "object" ? compact.pn : {};
-      idx = Object.entries(pn).findIndex(([k, v]) => {
+      const hit = Object.entries(pn).find(([k, v]) => {
         const name = statHubNormName(v);
         return !!targetName && name === targetName;
       });
+      if (hit) idx = Number(hit[0]);
     }
     if (idx < 0) return null;
 
@@ -6832,6 +6883,14 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     const mpr = get("leg_mpr", "legstats_mpr");
     const bestVisitMarks = get("leg_bestvisitmarks", "legstats_bestvisit");
     const totalInflicted = get("leg_totalinflicted", "legstats_totalinfl");
+    // Depuis compact.v1 renforcé : compteurs de bagues Cricket garantis, même si
+    // le journal fléchette par fléchette a été supprimé par un ancien snapshot.
+    const simpleHits = get("cr_s", "hitsummary_s");
+    const doubleHits = get("cr_d", "hitsummary_d");
+    const tripleHits = get("cr_t", "hitsummary_t");
+    const bullHits = get("cr_b", "hitsummary_bull");
+    const dbullHits = get("cr_db", "hitsummary_dbull");
+    const missHits = get("cr_mis", "hitsummary_miss");
 
     const favMap: Record<string, number> = {};
     Object.entries(marksBySegment).forEach(([k, v]) => {
@@ -6855,6 +6914,12 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       mpr,
       bestVisitMarks,
       closedSegments,
+      simpleHits,
+      doubleHits,
+      tripleHits,
+      bullHits,
+      dbullHits,
+      missHits,
       marksBySegment,
       favMap,
       won: Boolean(cfg?.won) || Number(compact?.w) === idx || statHubIdMatches(normId(r?.winnerId ?? r?.payload?.winnerId), targetPid),
@@ -6903,6 +6968,21 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       favHits: 0,
       captures: 0,
       extra: 0,
+      visits: 0,
+      successfulVisits: 0,
+      failedVisits: 0,
+      targetsFaced: 0,
+      livesLost: 0,
+      bestMargin: 0,
+      scoreOnlyVisits: 0,
+      cardsPlayed: 0,
+      cardsCompleted: 0,
+      bestCardProgress: 0,
+      cellsPerCard: 0,
+      maxCellsInVisit: 0,
+      bestStreak: 0,
+      totalVolleyScore: 0,
+      maxVolley: 0,
       clockCompleted: 0,
       clockTotalTimeMs: 0,
       clockBestTimeMs: 0,
@@ -7017,17 +7097,29 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
         if (hsDarts > 0 && playerDarts > 0 && Math.abs(hsDarts - playerDarts) > 1) return null;
         return hs;
       })();
-      const crCounts = readRingCounts(
-        compactCricketEvents,
-        modeStatsPlayer,
-        modeStatsPlayer?.special,
-        (modeStatsPlayer as any)?.special?.hitSummary,
-        (modeStatsPlayer as any)?.hitSummary,
-        payloadPlayer?.hits,
-        playerScopedHitSummary,
-        pl?.hits,
-        stats
-      );
+      const compactRingCounts = compactCricket ? {
+        s: compactCricket.simpleHits,
+        d: compactCricket.doubleHits,
+        t: compactCricket.tripleHits,
+        bull: compactCricket.bullHits,
+        dbull: compactCricket.dbullHits,
+        miss: compactCricket.missHits,
+      } : null;
+      // Une seule source de détail à la fois : certains historiques répètent le même
+      // hitSummary dans payload.players + payload.stats.players + special. Les additionner
+      // gonflait artificiellement S/D/T. Priorité au journal, puis aux hits joueur.
+      const cricketRingSource = compactCricketEvents.length
+        ? compactCricketEvents
+        : Array.isArray(payloadPlayer?.hits) && payloadPlayer.hits.length
+          ? payloadPlayer.hits
+          : Array.isArray((modeStatsPlayer as any)?.hits) && (modeStatsPlayer as any).hits.length
+            ? (modeStatsPlayer as any).hits
+            : playerScopedHitSummary
+              ? playerScopedHitSummary
+              : compactRingCounts && Object.values(compactRingCounts).some((v: any) => Number(v || 0) > 0)
+                ? compactRingCounts
+                : (modeStatsPlayer as any)?.hitSummary ?? (modeStatsPlayer as any)?.special?.hitSummary ?? stats;
+      const crCounts = readRingCounts(cricketRingSource);
 
       marksTotal = pickNum(
         marksTotal,
@@ -7081,16 +7173,140 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
       mergeFavMap(a.favMap, crCounts.favMap);
     }
 
+    if (mode === "five_lives") {
+      const fl = modeStatsPlayer && Object.keys(modeStatsPlayer).length
+        ? modeStatsPlayer
+        : payloadPlayer && Object.keys(payloadPlayer).length
+          ? payloadPlayer
+          : summaryRankingPlayer && Object.keys(summaryRankingPlayer).length
+            ? summaryRankingPlayer
+            : pl;
+      const flCompact = readCompactStatsPlayer(r as any, pid);
+      const cget = (...keys: string[]) => flCompact?.get?.(...keys) || 0;
+      const eventSource = [
+        r?.payload?.visitHistory,
+        r?.payload?.events,
+        r?.summary?.visitHistory,
+        r?.summary?.events,
+      ].find((x: any) => Array.isArray(x)) as any[] | undefined;
+      const mineEvents = (eventSource || []).filter((ev: any) => {
+        const eventPid = normId(ev?.playerId ?? ev?.profileId ?? ev?.id);
+        const eventName = statHubNormName(ev?.playerName ?? ev?.name);
+        return statHubIdMatches(eventPid, pid) || (!!selectedPlayer?.name && eventName === statHubNormName(selectedPlayer.name));
+      });
+      const eventDarts = mineEvents.flatMap((ev: any) => Array.isArray(ev?.darts) ? ev.darts : []);
+      const flCounts = readRingCounts(eventDarts.length ? eventDarts : null);
+      const visits = pickNum(fl?.visits, fl?.turns, fl?.rounds, cget("fl_vis", "vis"), mineEvents.length);
+      const targetsFaced = pickNum(fl?.targetsFaced, cget("fl_tar", "targetsfaced"), mineEvents.filter((ev: any) => !ev?.openingVisit).length);
+      const successfulVisits = pickNum(fl?.successfulVisits, fl?.validHits, fl?.successes, cget("fl_suc", "successfulvisits"), mineEvents.filter((ev: any) => !ev?.openingVisit && ev?.success).length);
+      const failedVisits = pickNum(fl?.failedVisits, fl?.fails, fl?.livesLost, cget("fl_fail", "failedvisits", "liveslost"), mineEvents.filter((ev: any) => ev?.lifeLost || (!ev?.openingVisit && ev?.success === false)).length);
+      const scoreOnlyVisits = pickNum(fl?.scoreOnlyVisits, cget("fl_so", "scoreonlyvisits"), mineEvents.filter((ev: any) => String(ev?.inputMethod || "") === "visit_score").length);
+
+      darts = pickNum(darts, fl?.dartsThrown, fl?.darts, fl?.totalThrows, cget("fl_dt", "dt"), visits ? visits * 3 : 0);
+      hits = pickNum(hits, fl?.hitsTotal, cget("fl_hit", "hit"), flCounts.s + flCounts.d + flCounts.t + flCounts.bull + flCounts.dbull);
+      // Ne pas transformer les volées saisies directement en 3 MISS : dans ce cas
+      // la bague exacte n'est simplement pas connue.
+      miss = pickNum(fl?.misses, cget("fl_mis", "mis", "misses"), flCounts.miss, scoreOnlyVisits <= 0 && darts > 0 ? Math.max(0, darts - hits) : 0);
+      score = pickNum(score, fl?.totalScore, fl?.score, fl?.points, cget("fl_pts", "sc", "pts", "totalscore"), mineEvents.reduce((sum: number, ev: any) => sum + n(ev?.score), 0));
+
+      a.visits = Number(a.visits || 0) + visits;
+      a.targetsFaced = Number(a.targetsFaced || 0) + targetsFaced;
+      a.successfulVisits = Number(a.successfulVisits || 0) + successfulVisits;
+      a.failedVisits = Number(a.failedVisits || 0) + failedVisits;
+      a.livesLost = Number(a.livesLost || 0) + pickNum(fl?.livesLost, fl?.lostLives, fl?.damageTaken, cget("fl_lost", "liveslost"), failedVisits);
+      a.bestMargin = Math.max(Number(a.bestMargin || 0), n(fl?.bestMargin), cget("fl_mar", "bestmargin"), ...mineEvents.map((ev: any) => Math.max(0, n(ev?.margin))), 0);
+      a.scoreOnlyVisits = Number(a.scoreOnlyVisits || 0) + scoreOnlyVisits;
+      a.bestRound = Math.max(Number(a.bestRound || 0), n(fl?.bestVisit), cget("fl_best", "bv", "bestvisit"), ...mineEvents.map((ev: any) => n(ev?.score)), 0);
+
+      a.simpleHits = Number(a.simpleHits || 0) + pickNum(fl?.singles, cget("fl_s"), flCounts.s);
+      a.doubleHits = Number(a.doubleHits || 0) + pickNum(fl?.doubles, cget("fl_d"), flCounts.d);
+      a.tripleHits = Number(a.tripleHits || 0) + pickNum(fl?.triples, cget("fl_t"), flCounts.t);
+      a.bullHits = Number(a.bullHits || 0) + pickNum(fl?.bulls, cget("fl_b", "bulls"), flCounts.bull);
+      a.dbullHits = Number(a.dbullHits || 0) + pickNum(fl?.dbulls, cget("fl_db", "dbulls"), flCounts.dbull);
+      a.missHits = Number(a.missHits || 0) + pickNum(fl?.misses, cget("fl_mis", "mis", "misses"), flCounts.miss);
+      const flFav: Record<string, number> = {};
+      if (fl?.hitsBySegment && typeof fl.hitsBySegment === "object") {
+        Object.entries(fl.hitsBySegment).forEach(([rawKey, rawValue]: any) => {
+          const keyUpper = String(rawKey || "").trim().toUpperCase();
+          if (!keyUpper || keyUpper === "MISS" || keyUpper === "M" || keyUpper === "0") return;
+          const key = keyUpper.includes("BULL") || keyUpper === "SB" || keyUpper === "DB"
+            ? "25"
+            : keyUpper.replace(/^[SDT]/, "");
+          if (key) flFav[key] = (flFav[key] || 0) + n(rawValue);
+        });
+      } else if (flCompact?.hrow && typeof flCompact.hrow === "object") {
+        Object.entries(flCompact.hrow).forEach(([rawKey, rawValue]: any) => {
+          const keyUpper = String(rawKey || "").replace(/^hitsbysegment_?/i, "").trim().toUpperCase();
+          if (!keyUpper || keyUpper === "MISS" || keyUpper === "M" || keyUpper === "0") return;
+          const key = keyUpper.includes("BULL") || keyUpper === "SB" || keyUpper === "DB" ? "25" : keyUpper.replace(/^[SDT]/, "");
+          if (key && /^\d{1,2}$/.test(key)) flFav[key] = (flFav[key] || 0) + n(rawValue);
+        });
+      } else {
+        Object.assign(flFav, flCounts.favMap);
+      }
+      mergeFavMap(a.favMap, flFav);
+    }
+
     if (mode === "loterie") {
-      const lo = modeStatsPlayer && Object.keys(modeStatsPlayer).length ? modeStatsPlayer : pl;
-      darts = pickNum(darts, lo?.dartsThrown, lo?.darts);
-      hits = pickNum(hits, lo?.successfulVisits, lo?.hitCount, lo?.hits);
-      miss = pickNum(miss, lo?.emptyVisits, lo?.misses);
-      score = pickNum(score, lo?.cellsRevealed, lo?.bestCardProgress, lo?.points);
-      a.captures = Number(a.captures || 0) + n(lo?.cellsRevealed);
-      a.extra = Number(a.extra || 0) + n(lo?.multiHits);
-      a.bestRound = Math.max(Number(a.bestRound || 0), n(lo?.maxCellsInVisit));
-      a.best = Math.max(Number(a.best || 0), n(lo?.bestCardProgress));
+      const lo = modeStatsPlayer && Object.keys(modeStatsPlayer).length
+        ? modeStatsPlayer
+        : payloadPlayer && Object.keys(payloadPlayer).length
+          ? payloadPlayer
+          : pl;
+      const loCompact = readCompactStatsPlayer(r as any, pid);
+      const lget = (...keys: string[]) => loCompact?.get?.(...keys) || 0;
+      const visits = pickNum(lo?.visits, lo?.turns, lo?.rounds, lget("lo_vis", "vis"));
+      const successfulVisits = pickNum(lo?.successfulVisits, lo?.hitCount, lo?.hits, lget("lo_suc", "successfulvisits", "hit"));
+      const emptyVisits = pickNum(lo?.emptyVisits, lo?.misses, lget("lo_emp", "emptyvisits", "mis"), visits > 0 ? Math.max(0, visits - successfulVisits) : 0);
+      const cellsRevealed = pickNum(lo?.cellsRevealed, lo?.score, lo?.points, lget("lo_cells", "sc", "pts", "cellsrevealed"));
+      const loCounts = readRingCounts({
+        s: pickNum(lo?.singles, lget("lo_s")),
+        d: pickNum(lo?.doubles, lget("lo_d")),
+        t: pickNum(lo?.triples, lget("lo_t")),
+        bull: pickNum(lo?.bulls, lget("lo_b", "bulls")),
+        dbull: pickNum(lo?.dbulls, lget("lo_db", "dbulls")),
+        miss: pickNum(lo?.dartMisses, lget("lo_mis", "dartmisses", "mis")),
+        darts: pickNum(lo?.dartsThrown, lget("lo_dt", "dt")),
+      });
+
+      darts = pickNum(darts, lo?.dartsThrown, lo?.darts, lget("lo_dt", "dt"), loCounts.darts);
+      // Pour Loterie, hits/miss représentent ici les TOURS avec/sans découverte.
+      // Les impacts S/D/T/MISS de fléchettes sont conservés séparément ci-dessous.
+      hits = pickNum(successfulVisits, hits);
+      miss = pickNum(emptyVisits, miss);
+      score = pickNum(cellsRevealed, score, lo?.bestCardProgress);
+
+      a.visits = Number(a.visits || 0) + visits;
+      a.successfulVisits = Number(a.successfulVisits || 0) + successfulVisits;
+      a.failedVisits = Number(a.failedVisits || 0) + emptyVisits;
+      a.captures = Number(a.captures || 0) + cellsRevealed;
+      a.extra = Number(a.extra || 0) + pickNum(lo?.multiHits, lget("lo_multi", "multihits"));
+      a.cardsPlayed = Number(a.cardsPlayed || 0) + pickNum(lo?.cardsCount, lo?.cardsPlayed, lget("lo_cards"), Array.isArray(lo?.cards) ? lo.cards.length : 0);
+      a.cardsCompleted = Number(a.cardsCompleted || 0) + pickNum(lo?.cardsCompleted, lget("lo_done"));
+      a.bestCardProgress = Math.max(Number(a.bestCardProgress || 0), n(lo?.bestCardProgress), lget("lo_bcp", "bestcardprogress"));
+      a.cellsPerCard = Math.max(Number(a.cellsPerCard || 0), n(lo?.cellsPerCard), lget("lo_cpc"));
+      a.maxCellsInVisit = Math.max(Number(a.maxCellsInVisit || 0), n(lo?.maxCellsInVisit), lget("lo_maxc", "maxcellsinvisit"));
+      a.bestStreak = Math.max(Number(a.bestStreak || 0), n(lo?.bestStreak), lget("lo_str", "beststreak"));
+      a.totalVolleyScore = Number(a.totalVolleyScore || 0) + pickNum(lo?.totalVolleyScore, lget("lo_tv", "totalvolleyscore"), n(lo?.averageVolley) * visits);
+      a.maxVolley = Math.max(Number(a.maxVolley || 0), n(lo?.maxVolley), lget("lo_maxv"));
+      a.bestRound = Math.max(Number(a.bestRound || 0), n(lo?.maxCellsInVisit), lget("lo_maxc", "maxcellsinvisit"));
+      a.best = Math.max(Number(a.best || 0), n(lo?.bestCardProgress), lget("lo_bcp", "bestcardprogress"));
+
+      a.simpleHits = Number(a.simpleHits || 0) + loCounts.s;
+      a.doubleHits = Number(a.doubleHits || 0) + loCounts.d;
+      a.tripleHits = Number(a.tripleHits || 0) + loCounts.t;
+      a.bullHits = Number(a.bullHits || 0) + loCounts.bull;
+      a.dbullHits = Number(a.dbullHits || 0) + loCounts.dbull;
+      a.missHits = Number(a.missHits || 0) + loCounts.miss;
+      if (lo?.segmentCounts && typeof lo.segmentCounts === "object") mergeFavMap(a.favMap, lo.segmentCounts);
+      else if (loCompact?.hrow && typeof loCompact.hrow === "object") {
+        const compactFav: Record<string, number> = {};
+        Object.entries(loCompact.hrow).forEach(([rawKey, rawValue]: any) => {
+          const key = String(rawKey || "").replace(/^segmentcounts_?/i, "").trim();
+          if (/^\d{1,2}$/.test(key) && n(rawValue) > 0) compactFav[key] = (compactFav[key] || 0) + n(rawValue);
+        });
+        mergeFavMap(a.favMap, compactFav);
+      } else mergeFavMap(a.favMap, loCounts.favMap);
     }
 
     if (mode === "golf") {
@@ -7386,6 +7602,59 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
           { label: "Best volée", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
           { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
         ]
+      : a.key === "five_lives"
+      ? (() => {
+          const visits = Number(a.visits || 0);
+          const targets = Number(a.targetsFaced || 0);
+          const success = Number(a.successfulVisits || 0);
+          const failed = Number(a.failedVisits || 0);
+          const ringSaved = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
+          return [
+            { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+            { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+            { label: "Points", value: fmtStatValue(a.points), tone: "gold" },
+            { label: "Moy./volée", value: visits ? fmtStatValue(a.points / visits) : "—", tone: "green" },
+            { label: "Best volée", value: fmtStatValue(a.bestRound || a.best), tone: "blue" },
+            { label: "Volées", value: fmtStatValue(visits), tone: "gold" },
+            { label: "Réussite", value: targets ? fmtStatValue((success / targets) * 100, "%") : "—", tone: "green" },
+            { label: "Échecs", value: fmtStatValue(failed), tone: "red" },
+            { label: "Vies perdues", value: fmtStatValue(a.livesLost || 0), tone: "red" },
+            { label: "Hit rate", value: ringSaved ? fmtStatValue(((Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0)) / Math.max(1, ringSaved)) * 100, "%") : "—", tone: "green" },
+            { label: "S / D / T", value: ringSaved ? `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}` : "—", tone: "blue" },
+            { label: "Bull + DBull", value: ringSaved ? fmtStatValue(Number(a.bullHits || 0) + Number(a.dbullHits || 0)) : "—", tone: "blue" },
+            { label: "Best marge", value: Number(a.bestMargin || 0) > 0 ? `+${fmtStatValue(a.bestMargin || 0)}` : "—", tone: "blue" },
+            { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
+          ];
+        })()
+      : a.key === "loterie"
+      ? (() => {
+          const visits = Number(a.visits || 0);
+          const success = Number(a.successfulVisits || 0);
+          const failed = Number(a.failedVisits || 0);
+          const ringSaved = Number(a.simpleHits || 0) + Number(a.doubleHits || 0) + Number(a.tripleHits || 0) + Number(a.bullHits || 0) + Number(a.dbullHits || 0) + Number(a.missHits || 0);
+          const cardsPlayed = Number(a.cardsPlayed || 0);
+          const bestProgress = Number(a.bestCardProgress || 0);
+          const cellsPerCard = Number(a.cellsPerCard || 0);
+          return [
+            { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
+            { label: "% win", value: fmtStatValue(winRate, "%"), tone: "green" },
+            { label: "Cases révélées", value: fmtStatValue(a.points), tone: "gold" },
+            { label: "Découverte", value: visits ? fmtStatValue((success / visits) * 100, "%") : "—", tone: "green" },
+            { label: "Cases/tour", value: visits ? fmtStatValue(a.points / visits) : "—", tone: "green" },
+            { label: "Tours à vide", value: fmtStatValue(failed), tone: "red" },
+            { label: "Multi-hits", value: fmtStatValue(a.extra || 0), tone: "gold" },
+            { label: "Record cases/tour", value: fmtStatValue(a.maxCellsInVisit || a.bestRound || 0), tone: "blue" },
+            { label: "Best série", value: fmtStatValue(a.bestStreak || 0), tone: "blue" },
+            { label: "Darts", value: fmtStatValue(a.darts), tone: "gold" },
+            { label: "Volée moy.", value: visits ? fmtStatValue(Number(a.totalVolleyScore || 0) / visits) : "—", tone: "green" },
+            { label: "Best volée", value: fmtStatValue(a.maxVolley || 0), tone: "blue" },
+            { label: "Cartons finis", value: cardsPlayed ? `${fmtStatValue(a.cardsCompleted || 0)}/${fmtStatValue(cardsPlayed)}` : fmtStatValue(a.cardsCompleted || 0), tone: "green" },
+            { label: "Best carton", value: cellsPerCard ? `${fmtStatValue(bestProgress)}/${fmtStatValue(cellsPerCard)}` : fmtStatValue(bestProgress), tone: "blue" },
+            { label: "S / D / T", value: ringSaved ? `${fmtStatValue(a.simpleHits || 0)} / ${fmtStatValue(a.doubleHits || 0)} / ${fmtStatValue(a.tripleHits || 0)}` : "—", tone: "blue" },
+            { label: "Bull + DBull", value: ringSaved ? fmtStatValue(Number(a.bullHits || 0) + Number(a.dbullHits || 0)) : "—", tone: "blue" },
+            { label: "Numéro favori", value: favNumber ? `${favNumber} (${favHits})` : "—", tone: "gold" },
+          ];
+        })()
       : a.key === "golf"
       ? [
           { label: "Matchs", value: fmtStatValue(a.matches), tone: "gold" },
@@ -8159,7 +8428,7 @@ return (
                             <div style={{ fontSize: 9, color: mainColor, border: `1px solid ${hexToRgba(mainColor, 0.55)}`, borderRadius: 999, padding: "2px 6px", whiteSpace: "nowrap" }}>{m.matches} sess.</div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 13 : 4).map((it) => {
+                            {m.ticker.slice(0, m.key === "killer" ? 8 : m.key === "x01" ? 14 : m.key === "golf" ? 12 : m.key === "shanghai" ? 12 : m.key === "cricket" ? 13 : m.key === "five_lives" ? 14 : m.key === "loterie" ? 17 : 4).map((it) => {
                               const color = it.tone === "red" ? "#FF5A5A" : it.tone === "blue" ? "#82D8FF" : it.tone === "green" ? mainColor : T.gold;
                               return (
                                 <div key={`${m.key}-${it.label}`} style={{ borderRadius: 11, padding: "6px 7px", background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}>

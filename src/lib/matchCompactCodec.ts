@@ -18,6 +18,8 @@ export type CompactMatchMode =
   | "killer"
   | "golf"
   | "shanghai"
+  | "five_lives"
+  | "loterie"
   | "territories"
   | "scram"
   | "batard"
@@ -185,6 +187,8 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("killer")) return "killer";
   if (raw.includes("golf")) return "golf";
   if (raw.includes("shanghai")) return "shanghai";
+  if (raw.includes("five_lives") || raw.includes("five lives") || raw.includes("5 vies") || raw.includes("cinq vies")) return "five_lives";
+  if (raw.includes("loterie") || raw.includes("lottery")) return "loterie";
   if (raw.includes("territ")) return "territories";
   if (raw.includes("scram")) return "scram";
   if (raw.includes("batard") || raw.includes("bastard")) return "batard";
@@ -420,6 +424,78 @@ export function encodeCompactMatch(input: any): CompactMatchV1 | null {
       flattenNumericStats(pl?.stats, n, "st");
       flattenNumericStats(pl?.legStats, n, "leg");
       flattenNumericStats(pl?.summary, n, "sum");
+      const firstNum = (...values: any[]) => {
+        for (const value of values) {
+          const num = toNum(value);
+          if (num !== undefined) return num;
+        }
+        return undefined;
+      };
+
+      if (mode === "five_lives") {
+        const modeStats: Array<[string, number | undefined]> = [
+          ["fl_vis", firstNum(pl?.visits, pl?.turns, pl?.rounds)],
+          ["fl_tar", firstNum(pl?.targetsFaced)],
+          ["fl_suc", firstNum(pl?.successfulVisits, pl?.successes, pl?.validHits)],
+          ["fl_fail", firstNum(pl?.failedVisits, pl?.fails)],
+          ["fl_lost", firstNum(pl?.livesLost, pl?.lostLives, pl?.damageTaken)],
+          ["fl_dt", firstNum(pl?.dartsThrown, pl?.darts, pl?.totalThrows)],
+          ["fl_pts", firstNum(pl?.totalScore, pl?.score, pl?.points)],
+          ["fl_best", firstNum(pl?.bestVisit)],
+          ["fl_mar", firstNum(pl?.bestMargin)],
+          ["fl_s", firstNum(pl?.singles)],
+          ["fl_d", firstNum(pl?.doubles)],
+          ["fl_t", firstNum(pl?.triples)],
+          ["fl_b", firstNum(pl?.bulls)],
+          ["fl_db", firstNum(pl?.dbulls)],
+          ["fl_mis", firstNum(pl?.misses)],
+          ["fl_hit", firstNum(pl?.hitsTotal)],
+          ["fl_so", firstNum(pl?.scoreOnlyVisits)],
+        ];
+        for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
+      }
+
+      if (mode === "loterie") {
+        const modeStats: Array<[string, number | undefined]> = [
+          ["lo_vis", firstNum(pl?.visits, pl?.turns, pl?.rounds)],
+          ["lo_suc", firstNum(pl?.successfulVisits, pl?.hitCount, pl?.hits)],
+          ["lo_emp", firstNum(pl?.emptyVisits, pl?.misses)],
+          ["lo_cells", firstNum(pl?.cellsRevealed, pl?.score, pl?.points)],
+          ["lo_dt", firstNum(pl?.dartsThrown, pl?.darts)],
+          ["lo_multi", firstNum(pl?.multiHits)],
+          ["lo_maxc", firstNum(pl?.maxCellsInVisit)],
+          ["lo_str", firstNum(pl?.bestStreak)],
+          ["lo_tv", firstNum(pl?.totalVolleyScore)],
+          ["lo_maxv", firstNum(pl?.maxVolley)],
+          ["lo_cards", firstNum(pl?.cardsCount, pl?.cardsPlayed, Array.isArray(pl?.cards) ? pl.cards.length : undefined)],
+          ["lo_done", firstNum(pl?.cardsCompleted)],
+          ["lo_bcp", firstNum(pl?.bestCardProgress)],
+          ["lo_cpc", firstNum(pl?.cellsPerCard)],
+          ["lo_s", firstNum(pl?.singles)],
+          ["lo_d", firstNum(pl?.doubles)],
+          ["lo_t", firstNum(pl?.triples)],
+          ["lo_b", firstNum(pl?.bulls)],
+          ["lo_db", firstNum(pl?.dbulls)],
+          ["lo_mis", firstNum(pl?.dartMisses, pl?.misses)],
+        ];
+        for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
+      }
+
+      if (mode === "cricket") {
+        // Compteurs de bagues garantis dans le compact. Ils complètent compact.d.ce
+        // et restent disponibles même si une sauvegarde allégée retire le journal.
+        const hs = pl?.hitSummary ?? pl?.special?.hitSummary ?? pl?.cricketStats?.hitSummary ?? null;
+        const br = pl?.cricketStats?.byRing ?? hs?.byRing ?? null;
+        const ringStats: Array<[string, number | undefined]> = [
+          ["cr_s", firstNum(hs?.S, hs?.s, br?.S, br?.s)],
+          ["cr_d", firstNum(hs?.D, hs?.d, br?.D, br?.d)],
+          ["cr_t", firstNum(hs?.T, hs?.t, br?.T, br?.t)],
+          ["cr_b", firstNum(hs?.BULL, hs?.bull, br?.BULL, br?.bull, br?.SBULL, br?.SB)],
+          ["cr_db", firstNum(hs?.DBULL, hs?.dbull, br?.DBULL, br?.DB)],
+          ["cr_mis", firstNum(hs?.MISS, hs?.miss, hs?.misses, br?.MISS, br?.miss)],
+        ];
+        for (const [key, value] of ringStats) if (value !== undefined) n[key] = value;
+      }
       collectHistogram(pl, h);
       collectHistogram(pl?.stats, h, "st");
       collectCategorical(pl, c);

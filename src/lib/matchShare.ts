@@ -80,6 +80,17 @@ export function buildMatchSharePacket(entry: any): MatchSharePacketV1 {
   // lors d'un export/partage.
   let payload = entry?.payload ?? entry?.decoded ?? entry;
 
+  // Le compact est stocké au niveau racine par History.upsert(). Si payload existe,
+  // l'ancien export unitaire l'oubliait complètement : une réimportation pouvait donc
+  // perdre les stats détaillées conservées dans compact.ps / compact.d (notamment Cricket).
+  if (entry?.compact && typeof entry.compact === "object") {
+    payload = {
+      ...(payload && typeof payload === "object" ? payload : {}),
+      compact: entry.compact,
+      ...(Number(entry?.compactBytes || 0) > 0 ? { compactBytes: Number(entry.compactBytes) } : {}),
+    };
+  }
+
   // TERRITORIES : exporter explicitement la partie riche lorsqu'elle existe.
   if (kind === "territories") {
     const richMatch =

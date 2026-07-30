@@ -88,14 +88,16 @@ const Icon = {
       <path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2v7Z" />
     </svg>
   ),
-  Upload: (p: any) => (
+  // Import = flèche qui ENTRE dans le bac (vers le bas).
+  Import: (p: any) => (
     <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
-      <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18 5 5h-3v6h-4V7H7l5-5Z" />
+      <path fill="currentColor" d="M11 3h2v10.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17V3Zm-6 16h14v2H5v-2Z" />
     </svg>
   ),
-  Download: (p: any) => (
+  // Export = flèche qui SORT du bac (vers le haut).
+  Export: (p: any) => (
     <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
-      <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18-5 5h3v6h4V7h3l-5-5Z" />
+      <path fill="currentColor" d="M11 17h2V6.83l3.59 3.58L18 9l-6-6-6 6 1.41 1.41L11 6.83V17Zm-6 2h14v2H5v-2Z" />
     </svg>
   ),
   Refresh: (p: any) => (
@@ -4351,7 +4353,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           onClick={handleImportClick}
           disabled={!!historyTransferBusy}
         >
-          <Icon.Upload />
+          <Icon.Import />
         </button>
 
         <button
@@ -4362,7 +4364,7 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           onClick={handleExportAllHistory}
           disabled={!!historyTransferBusy}
         >
-          <Icon.Download />
+          <Icon.Export />
         </button>
 
         {tab !== "inbox" && (

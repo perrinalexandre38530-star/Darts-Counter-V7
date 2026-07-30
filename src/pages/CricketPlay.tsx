@@ -1456,8 +1456,22 @@ function toHitStringFromObj(h: any): string | null {
 
   if (typeof seg === "string") {
     const s = seg.toUpperCase();
-    if (s === "0") return "MISS";
+    if (s === "0" || s === "MISS") return "MISS";
+    // Les événements du recorder stockent parfois segment="20" + ring="T".
+    if (/^\d{1,2}$/.test(s)) {
+      const numericSeg = Number(s);
+      const ring = String(h.ring ?? h.r ?? "S").toUpperCase();
+      if (numericSeg === 25) return ring === "DB" || ring === "DBULL" || ring === "D" ? "DBULL" : "SBULL";
+      if (numericSeg >= 15 && numericSeg <= 20) return `${ring === "T" ? "T" : ring === "D" ? "D" : "S"}${numericSeg}`;
+    }
     return s;
+  }
+
+  if (typeof seg === "number") {
+    const ring = String(h.ring ?? h.r ?? "S").toUpperCase();
+    if (seg <= 14 || ring === "MISS") return "MISS";
+    if (seg === 25) return ring === "DB" || ring === "DBULL" || ring === "D" ? "DBULL" : "SBULL";
+    if (seg >= 15 && seg <= 20) return `${ring === "T" ? "T" : ring === "D" ? "D" : "S"}${seg}`;
   }
 
   const target = h.target ?? h.number ?? null;
@@ -1610,7 +1624,15 @@ function buildHistoryRecord(): SavedMatch | null {
 
 const playersPayload = state.players.map((p: any) => {
     const pid = String(p.id);
-    const hits = extractHitsForPlayerFromState(state, pid);
+    const stateHits = extractHitsForPlayerFromState(state, pid);
+    const recorderHits = (cricketRecorder.eventsRef.current || [])
+      .filter((ev: any) => String(ev?.playerId ?? ev?.profileId ?? "") === pid)
+      .map((ev: any) => toHitStringFromObj(ev))
+      .filter(Boolean) as string[];
+    // Source prioritaire : le recorder Cricket est alimenté à chaque fléchette.
+    // L'ancien state ne conservait pas toujours p.hits/history, ce qui faisait
+    // disparaître S/D/T au moment de sauver la partie. On garde la source la plus riche.
+    const hits = recorderHits.length > stateHits.length ? recorderHits : stateHits;
     const prof = profileById.get(pid);
     const pDartSetId =
       (prof as any)?.dartSetId ?? (prof as any)?.favoriteDartSetId ?? dartSetId ?? null;
