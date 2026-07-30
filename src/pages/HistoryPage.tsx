@@ -2506,71 +2506,103 @@ function mergeHistoryRowsFast(rowsLocal: SavedEntry[], linkedRows: SavedEntry[] 
     if (!prev) byId.set(key, row);
     else {
       const score = (x: any) => (x?.payload ? 4 : 0) + (x?.summary ? 2 : 0) + (Array.isArray(x?.players) ? x.players.length : 0);
-      if (score(row) >= score(prev)) byId.set(key, row);
+      const rowAt = Number((row as any)?.updatedAt || (row as any)?.finishedAt || (row as any)?.createdAt || 0);
+      const prevAt = Number((prev as any)?.updatedAt || (prev as any)?.finishedAt || (prev as any)?.createdAt || 0);
+      if (rowAt > prevAt || (rowAt === prevAt && score(row) >= score(prev))) byId.set(key, row);
     }
   }
   return Array.from(byId.values());
 }
 
-async function hydrateBabyFootHistoryRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
-  return Promise.all(rows.map(async (row, index) => {
-    if (!isBabyFootEntry(row) || index > 80) return row;
-    const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
-    if (!id) return row;
-    try {
-      const full: any = await History.get(id);
-      if (!full) return row;
-      const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
-      const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
-      const payload = { ...rowPayload, ...fullPayload };
-      const summary = {
-        ...((row as any)?.summary || {}),
-        ...(full?.summary || {}),
-        ...(payload?.summary || {}),
-      };
-      payload.summary = summary;
-      const players = Array.isArray(payload?.players) && payload.players.length
-        ? payload.players
-        : Array.isArray(full?.players) && full.players.length
-          ? full.players
-          : (row as any)?.players;
-      return normalizeSavedEntry({ ...(row as any), ...full, payload, summary, players } as SavedEntry);
-    } catch {
-      return row;
+async function hydrateHistoryRowsInBatches(
+  rows: SavedEntry[],
+  shouldHydrate: (row: SavedEntry, index: number) => boolean,
+  hydrateOne: (row: SavedEntry) => Promise<SavedEntry>,
+): Promise<SavedEntry[]> {
+  const out = [...rows];
+  const targets = rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row, index }) => index <= 80 && shouldHydrate(row, index));
+
+  for (let offset = 0; offset < targets.length; offset += 12) {
+    const batch = targets.slice(offset, offset + 12);
+    const hydrated = await Promise.all(batch.map(({ row }) => hydrateOne(row)));
+    hydrated.forEach((row, index) => {
+      out[batch[index].index] = row;
+    });
+    if (offset + 12 < targets.length) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
     }
-  }));
+  }
+
+  return out;
 }
 
-async function hydrateInProgressKillerRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
-  return Promise.all(rows.map(async (row, index) => {
-    if (!isKillerEntry(row) || statusOf(row) !== "in_progress" || index > 80) return row;
-    const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
-    if (!id) return row;
-    try {
-      const full: any = await History.get(id);
-      if (!full) return row;
-      const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
-      const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
-      const payload = { ...rowPayload, ...fullPayload };
-      const summary = {
-        ...((row as any)?.summary || {}),
-        ...(full?.summary || {}),
-        ...(payload?.summary || {}),
-      };
-      const mergedRecord: any = { ...(row as any), ...full, payload, summary };
-      const livePlayers = killerLivePlayerRows(mergedRecord);
-      const players = livePlayers.length
-        ? livePlayers
-        : Array.isArray(payload?.state?.players) && payload.state.players.length
-          ? payload.state.players
+async function hydrateBabyFootHistoryRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
+  return hydrateHistoryRowsInBatches(
+    rows,
+    (row) => isBabyFootEntry(row),
+    async (row) => {
+      const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+      if (!id) return row;
+      try {
+        const full: any = await History.get(id);
+        if (!full) return row;
+        const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
+        const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
+        const payload = { ...rowPayload, ...fullPayload };
+        const summary = {
+          ...((row as any)?.summary || {}),
+          ...(full?.summary || {}),
+          ...(payload?.summary || {}),
+        };
+        payload.summary = summary;
+        const players = Array.isArray(payload?.players) && payload.players.length
+          ? payload.players
           : Array.isArray(full?.players) && full.players.length
             ? full.players
             : (row as any)?.players;
-      return normalizeSavedEntry({ ...mergedRecord, players } as SavedEntry);
-    } catch {
-      return row;
-    }
-  }));
+        return normalizeSavedEntry({ ...(row as any), ...full, payload, summary, players } as SavedEntry);
+      } catch {
+        return row;
+      }
+    },
+  );
+}
+
+async function hydrateInProgressKillerRows(rows: SavedEntry[]): Promise<SavedEntry[]> {
+  return hydrateHistoryRowsInBatches(
+    rows,
+    (row) => isKillerEntry(row) && statusOf(row) === "in_progress",
+    async (row) => {
+      const id = String((row as any)?.id || (row as any)?.matchId || "").trim();
+      if (!id) return row;
+      try {
+        const full: any = await History.get(id);
+        if (!full) return row;
+        const rowPayload = (row as any)?.payload && typeof (row as any).payload === "object" ? (row as any).payload : {};
+        const fullPayload = full?.payload && typeof full.payload === "object" ? full.payload : {};
+        const payload = { ...rowPayload, ...fullPayload };
+        const summary = {
+          ...((row as any)?.summary || {}),
+          ...(full?.summary || {}),
+          ...(payload?.summary || {}),
+        };
+        const mergedRecord: any = { ...(row as any), ...full, payload, summary };
+        const livePlayers = killerLivePlayerRows(mergedRecord);
+        const players = livePlayers.length
+          ? livePlayers
+          : Array.isArray(payload?.state?.players) && payload.state.players.length
+            ? payload.state.players
+            : Array.isArray(full?.players) && full.players.length
+              ? full.players
+              : (row as any)?.players;
+        return normalizeSavedEntry({ ...mergedRecord, players } as SavedEntry);
+      } catch {
+        return row;
+      }
+    },
+  );
 }
 
 function readCachedLinkedHistoryRows(): SavedEntry[] {
@@ -2610,8 +2642,82 @@ function kickLinkedProjectionRefresh(localProfiles: any[]) {
   } catch {}
 }
 
+function enhanceHistoryRowsLight(rows: SavedEntry[]): SavedEntry[] {
+  const enhanced: SavedEntry[] = [];
+  for (const row of safeArray<SavedEntry>(rows)) {
+    try {
+      const r: any = normalizeSavedEntry(row);
+      if (!r.summary) r.summary = {};
+      if (!r.game) r.game = {};
+
+      if (!r.winnerName) {
+        const wid = r.summary?.winnerId || r.summary?.result?.winnerId || r.summary?.winner?.id;
+        if (wid) {
+          const hit = (r.players || []).find((p: any) => getId(p) === String(wid));
+          const nm = hit ? getName(hit) : null;
+          if (nm) r.winnerName = nm;
+        }
+      }
+
+      enhanced.push(normalizeSavedEntry(r as SavedEntry));
+    } catch {
+      enhanced.push(normalizeSavedEntry(row as SavedEntry));
+    }
+  }
+  return enhanced.filter(isUsableSavedEntry);
+}
+
+async function enrichHistoryRowsForCards(rowsInput: SavedEntry[]): Promise<SavedEntry[]> {
+  const babyFootRows = await hydrateBabyFootHistoryRows(rowsInput);
+  const rows = await hydrateInProgressKillerRows(babyFootRows);
+  const enhanced: SavedEntry[] = [];
+  let payloadDecodeBudget = 25;
+
+  for (const row of rows) {
+    try {
+      const r: any = normalizeSavedEntry(row);
+      if (!r.summary) r.summary = {};
+      if (!r.game) r.game = {};
+
+      // Enrichissement secondaire uniquement : la carte légère est déjà affichée.
+      const needsPayloadForCard = !r.game?.mode || !r.game?.startScore || Object.keys(r.summary || {}).length === 0;
+      if (payloadDecodeBudget > 0 && needsPayloadForCard && typeof r.payload === "string") {
+        payloadDecodeBudget -= 1;
+        const decoded = await decodePayload(r.payload);
+        if (decoded && typeof decoded === "object") {
+          r.decoded = decoded;
+          const cfg = decoded.config || decoded.game || decoded.x01?.config || decoded.x01;
+          if (cfg) {
+            const sc = cfg.startScore ?? cfg.start ?? cfg.x01Start ?? cfg.x01StartScore;
+            if (typeof sc === "number") r.game.startScore = sc;
+            const mode = cfg.mode || cfg.gameMode || "x01";
+            if (!r.game.mode) r.game.mode = mode;
+          }
+          const sum = decoded.summary || decoded.result || decoded.stats || {};
+          r.summary = { ...sum, ...r.summary };
+        }
+      }
+
+      if (!r.winnerName) {
+        const wid = r.summary?.winnerId || r.summary?.result?.winnerId || r.summary?.winner?.id;
+        if (wid) {
+          const hit = (r.players || []).find((p: any) => getId(p) === String(wid));
+          const nm = hit ? getName(hit) : null;
+          if (nm) r.winnerName = nm;
+        }
+      }
+
+      enhanced.push(normalizeSavedEntry(r as SavedEntry));
+    } catch {
+      enhanced.push(normalizeSavedEntry(row as SavedEntry));
+    }
+  }
+
+  return enhanced.filter(isUsableSavedEntry);
+}
+
 const HistoryAPI = {
-  async list(store: Store): Promise<SavedEntry[]> {
+  async listFast(store: Store): Promise<SavedEntry[]> {
     try {
       const rowsLocal = safeArray<SavedEntry>(await History.list())
         .filter(isUsableSavedEntry)
@@ -2623,62 +2729,30 @@ const HistoryAPI = {
         ...(Array.isArray(anyStore?.localProfiles) ? anyStore.localProfiles : []),
       ];
 
-      // ✅ PERF: l’historique ne doit plus attendre le NAS / profils liés.
-      // On affiche immédiatement l’IDB local + cache éventuel, puis on rafraîchit en arrière-plan.
+      // Affichage immédiat : uniquement les en-têtes IndexedDB + projections déjà en cache.
       const cachedLinkedRows = readCachedLinkedHistoryRows();
       const mergedRows = mergeHistoryRowsFast(rowsLocal, cachedLinkedRows);
-      const babyFootRows = await hydrateBabyFootHistoryRows(mergedRows);
-      const rows = await hydrateInProgressKillerRows(babyFootRows);
       kickLinkedProjectionRefresh(localProfiles);
-
-      const enhanced: SavedEntry[] = [];
-      let payloadDecodeBudget = 25;
-      for (const row of rows) {
-        try {
-          const r: any = row;
-          if (!r.summary) r.summary = {};
-          if (!r.game) r.game = {};
-
-          // Décodage léger uniquement si une carte n’a pas déjà ses infos de base.
-          // Avant : toutes les payload string pouvaient être décodées en série au chargement.
-          const needsPayloadForCard = !r.game?.mode || !r.game?.startScore || !r.summary || Object.keys(r.summary || {}).length === 0;
-          if (payloadDecodeBudget > 0 && needsPayloadForCard && typeof r.payload === "string") {
-            payloadDecodeBudget -= 1;
-            const decoded = await decodePayload(r.payload);
-            if (decoded && typeof decoded === "object") {
-              r.decoded = decoded;
-              const cfg = decoded.config || decoded.game || decoded.x01?.config || decoded.x01;
-              if (cfg) {
-                const sc = cfg.startScore ?? cfg.start ?? cfg.x01Start ?? cfg.x01StartScore;
-                if (typeof sc === "number") r.game.startScore = sc;
-                const mode = cfg.mode || cfg.gameMode || "x01";
-                if (!r.game.mode) r.game.mode = mode;
-              }
-              const sum = decoded.summary || decoded.result || decoded.stats || {};
-              r.summary = { ...sum, ...r.summary };
-            }
-          }
-
-          if (!r.winnerName) {
-            const wid = r.summary?.winnerId || r.summary?.result?.winnerId || r.summary?.winner?.id;
-            if (wid) {
-              const hit = (r.players || []).find((p: any) => getId(p) === String(wid));
-              const nm = hit ? getName(hit) : null;
-              if (nm) r.winnerName = nm;
-            }
-          }
-
-          enhanced.push(normalizeSavedEntry(r as SavedEntry));
-        } catch {
-          enhanced.push(normalizeSavedEntry(row as SavedEntry));
-        }
-      }
-
-      return safeArray<SavedEntry>(enhanced).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
+      return enhanceHistoryRowsLight(mergedRows);
     } catch {
       const anyStore = store as any;
-      return safeArray<SavedEntry>(anyStore.history).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
+      return enhanceHistoryRowsLight(
+        safeArray<SavedEntry>(anyStore.history)
+          .filter(isUsableSavedEntry)
+          .map((r) => normalizeSavedEntry(r)),
+      );
     }
+  },
+  async enrich(rows: SavedEntry[]): Promise<SavedEntry[]> {
+    try {
+      return await enrichHistoryRowsForCards(rows);
+    } catch {
+      return enhanceHistoryRowsLight(rows);
+    }
+  },
+  async list(store: Store): Promise<SavedEntry[]> {
+    const rows = await this.listFast(store);
+    return await this.enrich(rows);
   },
   async remove(id: string) {
     try {
@@ -2691,6 +2765,24 @@ const HistoryAPI = {
     } catch {}
   },
 };
+
+function readInitialHistoryRows(store: Store): SavedEntry[] {
+  try {
+    const cachedLocal = safeArray<SavedEntry>((History as any)?.readAll?.())
+      .filter(isUsableSavedEntry)
+      .map((row) => normalizeSavedEntry(row));
+    const anyStore: any = store as any;
+    const storeRows = safeArray<SavedEntry>(anyStore?.history)
+      .filter(isUsableSavedEntry)
+      .map((row) => normalizeSavedEntry(row));
+    const cachedLinkedRows = readCachedLinkedHistoryRows();
+    return enhanceHistoryRowsLight(
+      mergeHistoryRowsFast(mergeHistoryRowsFast(cachedLocal, storeRows), cachedLinkedRows),
+    );
+  } catch {
+    return [];
+  }
+}
 
 /* ---------- Styles ---------- */
 
@@ -3128,8 +3220,11 @@ export default function HistoryPage({
   const [playerFilter, setPlayerFilter] = useState<PlayerFilterKey>("all");
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterMode, setFilterMode] = useState<"games" | "players">("games");
-  const [items, setItems] = useState<SavedEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const initialHistoryRowsRef = useRef<SavedEntry[] | null>(null);
+  if (initialHistoryRowsRef.current === null) initialHistoryRowsRef.current = readInitialHistoryRows(store);
+  const [items, setItems] = useState<SavedEntry[]>(() => initialHistoryRowsRef.current || []);
+  const [loading, setLoading] = useState(() => (initialHistoryRowsRef.current?.length || 0) === 0);
+  const [visibleCount, setVisibleCount] = useState(18);
   const [historyTransferBusy, setHistoryTransferBusy] = useState<null | "export" | "import">(null);
 
   // FIX HISTORIQUE/FIREFOX:
@@ -3140,6 +3235,7 @@ export default function HistoryPage({
   const loadingRef = useRef(false);
   const loadSeqRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
+  const historyLoadMoreRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     storeRef.current = store;
   }, [store]);
@@ -3201,9 +3297,23 @@ export default function HistoryPage({
     loadingRef.current = true;
     setLoading(true);
     try {
-      const rows = await HistoryAPI.list(storeRef.current);
+      // Étape 1 : les en-têtes légers deviennent visibles dès la fin de la lecture IDB.
+      const rows = await HistoryAPI.listFast(storeRef.current);
       if (seq !== loadSeqRef.current) return;
-      setItems(safeArray<SavedEntry>(rows).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r)));
+      const lightRows = safeArray<SavedEntry>(rows)
+        .filter(isUsableSavedEntry)
+        .map((r) => normalizeSavedEntry(r));
+      setItems(lightRows);
+
+      // Étape 2 : Baby-foot/Killer/anciens payloads sont enrichis sans bloquer l’écran.
+      void HistoryAPI.enrich(lightRows).then((enriched) => {
+        if (seq !== loadSeqRef.current) return;
+        setItems(
+          safeArray<SavedEntry>(enriched)
+            .filter(isUsableSavedEntry)
+            .map((r) => normalizeSavedEntry(r)),
+        );
+      }).catch(() => {});
     } finally {
       if (seq === loadSeqRef.current) {
         loadingRef.current = false;
@@ -3890,6 +4000,31 @@ export default function HistoryPage({
       .filter((e) => gameFilter === "all" || inferGameFilterKey(e, sport) === gameFilter)
       .filter((e) => entryHasPlayer(e, playerFilter));
   }, [sportSource, sub, gameFilter, playerFilter, sport]);
+
+  // Rendu progressif : évite de construire 200 à 400 cartes lourdes au premier paint.
+  useEffect(() => {
+    setVisibleCount(18);
+  }, [tab, sub, gameFilter, playerFilter, sport]);
+
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, Math.max(18, visibleCount)),
+    [filtered, visibleCount],
+  );
+
+  useEffect(() => {
+    const el = historyLoadMoreRef.current;
+    if (!el || visibleCount >= filtered.length || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisibleCount((count) => Math.min(filtered.length, count + 18));
+        }
+      },
+      { rootMargin: "500px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [filtered.length, visibleCount]);
 
   // Debug volontairement désactivé en prod : les console.table répétées faisaient ramer Firefox.
 
@@ -4594,9 +4729,32 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
           </div>
 	        ) : (
 	          filtered.length === 0 ? (
-	            <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>Aucune partie ici.</div>
+              loading && items.length === 0 ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {[0, 1, 2].map((index) => (
+                    <div
+                      key={`history-skeleton-${index}`}
+                      style={{
+                        ...sportCardStyle(theme.primary),
+                        minHeight: 132,
+                        opacity: 0.58 - index * 0.08,
+                        display: "grid",
+                        alignContent: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ width: "42%", height: 14, borderRadius: 999, background: "rgba(255,255,255,.14)" }} />
+                      <div style={{ width: "78%", height: 18, borderRadius: 999, background: "rgba(255,255,255,.1)" }} />
+                      <div style={{ width: "58%", height: 14, borderRadius: 999, background: "rgba(255,255,255,.08)" }} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>Aucune partie ici.</div>
+              )
 	          ) : (
-	            filtered.map((e) => {
+              <>
+	            {visibleFiltered.map((e) => {
             const inProg = statusOf(e) === "in_progress";
             const key = matchLink(e) || e.id;
             const historyVisits = !inProg && isX01HistoryRecord(e) ? buildX01HistoryVisits(e) : [];
@@ -4719,7 +4877,28 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
                 ) : null}
               </ScaledCard>
             );
-	            })
+	            })}
+                {visibleCount < filtered.length ? (
+                  <button
+                    ref={historyLoadMoreRef}
+                    type="button"
+                    onClick={() => setVisibleCount((count) => Math.min(filtered.length, count + 18))}
+                    style={{
+                      width: "100%",
+                      padding: "14px 8px 20px",
+                      textAlign: "center",
+                      opacity: 0.78,
+                      fontSize: 12,
+                      color: theme.primary,
+                      background: "transparent",
+                      border: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Afficher la suite · {visibleFiltered.length} / {filtered.length} parties
+                  </button>
+                ) : null}
+              </>
 	          )
         )}
       </div>

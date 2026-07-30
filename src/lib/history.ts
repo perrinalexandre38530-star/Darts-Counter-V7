@@ -726,7 +726,11 @@ const STORE_HEADERS = "history_headers";
 const STORE_DETAILS = "history_details";
 const STORE = STORE_HEADERS;
 const MAX_ROWS = 400;
-const MAX_CACHE_ROWS = 200;
+const MAX_CACHE_ROWS = 400;
+const HISTORY_UI_CACHE_KEY = "dc-history-ui-cache-v1";
+const HISTORY_UI_CACHE_VERSION = 1;
+const HISTORY_UI_CACHE_MAX_CHARS = 2_600_000;
+const scopedHistoryUiCacheKey = () => scopedStorageKey(HISTORY_UI_CACHE_KEY);
 const LIST_PAYLOAD_KINDS = new Set(["cricket"]); // payload décodé seulement si vraiment utile
 
 
@@ -3711,10 +3715,162 @@ export async function clear(): Promise<void> {
 type _LightRow = Omit<SavedMatch, "payload">;
 
 let __cache: _LightRow[] = [];
+let __cacheScopeKey = "";
+let __cacheSaveTimer: number | null = null;
+
+const HISTORY_CACHE_HEAVY_KEYS = new Set([
+  "payload",
+  "payloadcompressed",
+  "decoded",
+  "visithistory",
+  "visitshistory",
+  "darts",
+  "dartsdetail",
+  "events",
+  "timeline",
+  "throws",
+  "rounds",
+  "frames",
+  "raw",
+  "replay",
+  "snapshots",
+  "screenshots",
+  "photos",
+  "media",
+]);
+
+function _compactHistoryCacheValue(value: any, key = "", depth = 0): any {
+  if (value == null || typeof value === "boolean" || typeof value === "number") return value;
+  if (depth > 7) return undefined;
+
+  const lowerKey = String(key || "").toLowerCase();
+  if (HISTORY_CACHE_HEAVY_KEYS.has(lowerKey)) return undefined;
+
+  if (typeof value === "string") {
+    // On conserve les URLs/références et les petites miniatures, jamais une photo originale énorme.
+    if (/^data:image\//i.test(value) && value.length > 28_000) return undefined;
+    if (value.length > 16_000) return value.slice(0, 16_000);
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const max = lowerKey === "players" || lowerKey === "teams" || lowerKey === "rankings" || lowerKey === "perplayer"
+      ? 24
+      : 48;
+    return value
+      .slice(0, max)
+      .map((item) => _compactHistoryCacheValue(item, lowerKey, depth + 1))
+      .filter((item) => item !== undefined);
+  }
+
+  if (typeof value === "object") {
+    const out: Record<string, any> = {};
+    let kept = 0;
+    for (const [childKey, childValue] of Object.entries(value)) {
+      if (kept >= 120) break;
+      const compact = _compactHistoryCacheValue(childValue, childKey, depth + 1);
+      if (compact === undefined) continue;
+      out[childKey] = compact;
+      kept += 1;
+    }
+    return out;
+  }
+
+  return undefined;
+}
+
+function _compactHistoryCacheRow(rec: any): _LightRow | null {
+  try {
+    const normalized: any = normalizeHistoryRow({ ...(rec || {}) });
+    const id = String(normalized?.id || normalized?.matchId || normalized?.resumeId || "").trim();
+    if (!id) return null;
+    normalized.id = id;
+    normalized.matchId = String(normalized?.matchId || id);
+    delete normalized.payload;
+    delete normalized.payloadCompressed;
+    delete normalized.decoded;
+    const compact = _compactHistoryCacheValue(normalized, "row", 0);
+    return compact && typeof compact === "object"
+      ? (normalizeHistoryRow(compact as any) as _LightRow)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function _readPersistedHistoryCache(key: string): _LightRow[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Number(parsed?.version || 0) !== HISTORY_UI_CACHE_VERSION) return [];
+    return (Array.isArray(parsed?.rows) ? parsed.rows : [])
+      .filter(isHistoryRowUsable)
+      .filter((row: any) => !isHistoryDeletedByTombstone(row))
+      .map((row: any) => normalizeHistoryRow(row) as _LightRow)
+      .slice(0, MAX_CACHE_ROWS);
+  } catch {
+    return [];
+  }
+}
+
+function _ensureHistoryCacheScope() {
+  const wanted = scopedHistoryUiCacheKey();
+  if (__cacheScopeKey === wanted) return;
+  if (__cacheSaveTimer != null && typeof window !== "undefined") {
+    window.clearTimeout(__cacheSaveTimer);
+    __cacheSaveTimer = null;
+  }
+  __cacheScopeKey = wanted;
+  __cache = _readPersistedHistoryCache(wanted);
+}
+
+function _persistHistoryCacheNow() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    _ensureHistoryCacheScope();
+    const compactRows = __cache
+      .map((row) => _compactHistoryCacheRow(row))
+      .filter(Boolean) as _LightRow[];
+
+    let rows = compactRows.slice(0, MAX_CACHE_ROWS);
+    let payload = JSON.stringify({
+      version: HISTORY_UI_CACHE_VERSION,
+      updatedAt: Date.now(),
+      rows,
+    });
+
+    // Garde-fou localStorage : conserver en priorité les parties les plus récentes.
+    while (payload.length > HISTORY_UI_CACHE_MAX_CHARS && rows.length > 8) {
+      rows = rows.slice(0, Math.max(8, Math.floor(rows.length * 0.86)));
+      payload = JSON.stringify({
+        version: HISTORY_UI_CACHE_VERSION,
+        updatedAt: Date.now(),
+        rows,
+      });
+    }
+
+    localStorage.setItem(__cacheScopeKey, payload);
+  } catch (error) {
+    // Un cache ne doit jamais empêcher l’écriture de l’Historique source de vérité.
+    console.warn("[history.ui-cache] persistence skipped", error);
+  }
+}
 
 function _saveCache() {
-  // stage 1: on supprime la persistance locale du cache history
+  try {
+    _ensureHistoryCacheScope();
+    if (typeof window === "undefined") return;
+    if (__cacheSaveTimer != null) window.clearTimeout(__cacheSaveTimer);
+    __cacheSaveTimer = window.setTimeout(() => {
+      __cacheSaveTimer = null;
+      _persistHistoryCacheNow();
+    }, 80);
+  } catch {}
 }
+
+_ensureHistoryCacheScope();
 
 async function _hydrateCacheFromList() {
   try {
@@ -3741,6 +3897,7 @@ async function _hydrateCacheFromList() {
 }
 
 function _applyUpsertToCache(rec: SavedMatch) {
+  _ensureHistoryCacheScope();
   const cid = getCanonicalMatchId(rec) ?? (rec as any)?.matchId ?? rec.id;
   const { payload, ...lite0 } = (rec as any) || {};
   const lite = normalizeHistoryRow({ ...lite0, id: String(cid), matchId: String(cid) } as any) as _LightRow;
@@ -3750,16 +3907,25 @@ function _applyUpsertToCache(rec: SavedMatch) {
 }
 
 function _applyRemoveToCache(id: string) {
+  _ensureHistoryCacheScope();
   __cache = __cache.filter((r) => r.id !== id && (r as any).matchId !== id);
   _saveCache();
 }
 
 function _clearCache() {
+  _ensureHistoryCacheScope();
   __cache = [];
-  _saveCache();
+  try {
+    if (__cacheSaveTimer != null && typeof window !== "undefined") {
+      window.clearTimeout(__cacheSaveTimer);
+      __cacheSaveTimer = null;
+    }
+    if (typeof localStorage !== "undefined") localStorage.removeItem(__cacheScopeKey);
+  } catch {}
 }
 
 function readAllSync(): _LightRow[] {
+  _ensureHistoryCacheScope();
   return __cache.slice();
 }
 
