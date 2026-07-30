@@ -1,71 +1,77 @@
-# MULTISPORTS SCORING — Android AdMob TEST + UMP
+# MULTISPORTS SCORING — AdMob Android : TEST SÛR + UMP
 
-## État de ce patch
+## Modes disponibles
 
-Le code React est maintenant raccordé au plugin natif `@capacitor-community/admob` via le runtime Capacitor.
-
-Par sécurité, les annonces Android utilisent par défaut uniquement les identifiants de démonstration Google :
-
-- App ID Android test : `ca-app-pub-3940256099942544~3347511713`
-- Bannière test : `ca-app-pub-3940256099942544/6300978111`
-- Interstitiel test : `ca-app-pub-3940256099942544/1033173712`
-- Rewarded test : `ca-app-pub-3940256099942544/5224354917`
-
-Ces identifiants ne monétisent rien et sont destinés au développement.
-
-## Création / mise à jour du shell Android
-
-```bash
-npm run android:bootstrap
-```
-
-Ce script :
-
-1. installe Capacitor 8.4.2 ;
-2. installe `@capacitor-community/admob` 8.0.0 ;
-3. crée `android/` s'il n'existe pas ;
-4. construit la PWA ;
-5. synchronise Capacitor ;
-6. ajoute l'App ID AdMob dans `AndroidManifest.xml` / `strings.xml` ;
-7. resynchronise Android.
-
-Puis :
-
-```bash
-npm run android:open
-```
-
-## Flux UMP
-
-Au démarrage natif Android :
-
-1. initialisation AdMob ;
-2. `requestConsentInfo()` ;
-3. formulaire UMP si nécessaire ;
-4. vérification `canRequestAds` ;
-5. seulement ensuite chargement des bannières/interstitiels/rewarded.
-
-Dans Settings > Publicité & Premium, l'état natif AdMob/UMP peut être contrôlé et les options de confidentialité peuvent être rouvertes.
-
-## Passage futur en production
-
-Ne pas passer en production tant que l'application AdMob et ses vrais blocs ne sont pas créés.
-
-Variables Vite prévues :
+La configuration ne repose plus sur un simple interrupteur ambigu. Trois modes sont prévus :
 
 ```env
-VITE_ADMOB_TEST_MODE=0
-VITE_ADMOB_ANDROID_APP_ID=ca-app-pub-XXXXXXXX~YYYYYYYY
-VITE_ADMOB_ANDROID_BANNER_ID=ca-app-pub-XXXXXXXX/BBBBBBBB
-VITE_ADMOB_ANDROID_INTERSTITIAL_ID=ca-app-pub-XXXXXXXX/IIIIIIII
-VITE_ADMOB_ANDROID_REWARDED_ID=ca-app-pub-XXXXXXXX/RRRRRRRR
+VITE_ADMOB_MODE=google_test
 ```
 
-Et pour le manifeste Android :
+- `google_test` : App ID et blocs de démonstration Google. Aucun revenu, aucun risque de trafic invalide.
+- `real_test` : vrais IDs AdMob, mais uniquement sur les téléphones déclarés comme appareils de test.
+- `production` : vrais IDs, sans appareils de test injectés dans le build public.
+
+Si un mode réel est incomplet ou incohérent, le runtime retombe sur `google_test`. Le contrôle de release bloque néanmoins une publication production incomplète.
+
+## Test initial — IDs Google
+
+```env
+VITE_ADMOB_MODE=google_test
+VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY=DISABLED
+```
+
+IDs utilisés automatiquement :
+
+- App ID : `ca-app-pub-3940256099942544~3347511713`
+- Bannière adaptive/inline : `ca-app-pub-3940256099942544/9214589741`
+- Interstitiel : `ca-app-pub-3940256099942544/1033173712`
+- Rewarded : `ca-app-pub-3940256099942544/5224354917`
+
+## Tester les vrais blocs sans générer de trafic réel
+
+Après création de l'application et des blocs dans AdMob :
+
+```env
+VITE_ADMOB_MODE=real_test
+VITE_ADMOB_ANDROID_APP_ID=ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY
+VITE_ADMOB_ANDROID_BANNER_ID=ca-app-pub-XXXXXXXXXXXXXXXX/BBBBBBBBBB
+VITE_ADMOB_ANDROID_INTERSTITIAL_ID=ca-app-pub-XXXXXXXXXXXXXXXX/IIIIIIIIII
+VITE_ADMOB_ANDROID_REWARDED_ID=ca-app-pub-XXXXXXXXXXXXXXXX/RRRRRRRRRR
+VITE_ADMOB_ANDROID_TEST_DEVICE_IDS=33BE2250B43518CCDA7DE426D04EE231
+VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY=EEA
+```
+
+Pour récupérer l'ID du téléphone :
+
+1. lancer une première requête publicitaire ;
+2. ouvrir Logcat dans Android Studio ;
+3. rechercher `setTestDeviceIds` ;
+4. copier l'identifiant affiché ;
+5. reconstruire l'application avec cet ID.
+
+Le pont React et le plugin Android inline utilisent la même liste d'appareils de test. Les vrais blocs peuvent donc être testés en conservant le libellé `Annonce test`.
+
+## Consentement UMP
+
+À chaque démarrage Android :
+
+1. initialisation du SDK AdMob ;
+2. actualisation du statut UMP ;
+3. affichage du formulaire si nécessaire ;
+4. vérification `canRequestAds` ;
+5. chargement des annonces seulement ensuite.
+
+Dans `Réglages > Publicité & Boutique`, le bouton **Confidentialité** s'active lorsque Google exige un point d'entrée permettant de modifier les choix.
+
+`VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY=EEA` fonctionne dans `google_test` et `real_test` lorsqu’un ID de téléphone est fourni. Il est automatiquement désactivé par le runtime en production.
+
+## Commandes
 
 ```bash
-ADMOB_ANDROID_APP_ID="ca-app-pub-XXXXXXXX~YYYYYYYY" npm run android:configure-admob
 npm run android:sync
+npm run test:admob-native
+npm run android:release-check
 ```
 
-Le code retombe volontairement sur les identifiants Google TEST si `VITE_ADMOB_TEST_MODE=0` mais que l'un des vrais IDs manque.
+`android:sync` génère aussi `app-ads.txt` lorsque le Publisher ID est disponible, construit la PWA, synchronise Capacitor, injecte l'App ID Android puis exécute les contrôles de release.

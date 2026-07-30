@@ -9,6 +9,11 @@ export type NativeAdMobStatus = {
   consentStatus: string;
   privacyOptionsRequired: boolean;
   testMode: boolean;
+  mode: "google_test" | "real_test" | "production";
+  usesGoogleDemoIds: boolean;
+  productionReady: boolean;
+  testDeviceCount: number;
+  configErrors: string[];
   error?: string;
 };
 
@@ -58,6 +63,18 @@ function getAdMobPlugin(): AdMobPlugin | null {
   }
 }
 
+function baseStatus() {
+  const config = getAdMobRuntimeConfig();
+  return {
+    testMode: config.testMode,
+    mode: config.mode,
+    usesGoogleDemoIds: config.usesGoogleDemoIds,
+    productionReady: config.productionReady,
+    testDeviceCount: config.testDeviceIds.length,
+    configErrors: config.configErrors,
+  } as const;
+}
+
 function unavailable(error?: string): NativeAdMobStatus {
   return {
     native: isCapacitorNativeRuntime(),
@@ -66,9 +83,15 @@ function unavailable(error?: string): NativeAdMobStatus {
     canRequestAds: false,
     consentStatus: "UNKNOWN",
     privacyOptionsRequired: false,
-    testMode: getAdMobRuntimeConfig().testMode,
+    ...baseStatus(),
     ...(error ? { error } : {}),
   };
+}
+
+function consentDebugValue(value: string): number | undefined {
+  if (value === "EEA") return 1;
+  if (value === "NOT_EEA") return 2;
+  return undefined;
 }
 
 async function performInitialization(): Promise<NativeAdMobStatus> {
@@ -77,7 +100,12 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
   if (!plugin) return unavailable("Plugin AdMob natif indisponible. Lance android:bootstrap puis android:sync.");
 
   try {
-    await plugin.initialize({ initializeForTesting: config.testMode });
+    await plugin.initialize({
+      initializeForTesting: config.mode === "real_test",
+      testingDevices: config.mode === "real_test" ? config.testDeviceIds : [],
+      tagForChildDirectedTreatment: false,
+      tagForUnderAgeOfConsent: false,
+    });
 
     // Les banners natifs flottants sont volontairement désactivés dans MULTISPORTS SCORING.
     // Nettoie un éventuel banner resté attaché à l'Activity après un ancien build/reload.
@@ -85,7 +113,14 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
     try { await plugin.hideBanner?.(); } catch {}
     try { await plugin.removeBanner(); } catch {}
 
-    let consent = await plugin.requestConsentInfo({ tagForUnderAgeOfConsent: false });
+    const consentOptions: Record<string, unknown> = { tagForUnderAgeOfConsent: false };
+    const debugGeography = consentDebugValue(config.consentDebugGeography);
+    if (config.testMode && config.testDeviceIds.length) {
+      consentOptions.testDeviceIdentifiers = config.testDeviceIds;
+      if (debugGeography !== undefined) consentOptions.debugGeography = debugGeography;
+    }
+
+    let consent = await plugin.requestConsentInfo(consentOptions);
     if (!consent?.canRequestAds && consent?.isConsentFormAvailable) {
       consent = await plugin.showConsentForm();
     }
@@ -97,7 +132,7 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
       canRequestAds: consent?.canRequestAds === true,
       consentStatus: String(consent?.status || "UNKNOWN"),
       privacyOptionsRequired: String(consent?.privacyOptionsRequirementStatus || "") === "REQUIRED",
-      testMode: config.testMode,
+      ...baseStatus(),
     };
   } catch (e: any) {
     return {
@@ -107,7 +142,7 @@ async function performInitialization(): Promise<NativeAdMobStatus> {
       canRequestAds: false,
       consentStatus: "UNKNOWN",
       privacyOptionsRequired: false,
-      testMode: config.testMode,
+      ...baseStatus(),
       error: String(e?.message || e || "Initialisation AdMob/UMP impossible"),
     };
   }
@@ -119,15 +154,15 @@ export function ensureNativeAdMobReady(forceRefresh = false): Promise<NativeAdMo
   return readyPromise;
 }
 
-export async function getNativeAdMobStatus(): Promise<NativeAdMobStatus> {
-  return ensureNativeAdMobReady();
+export async function getNativeAdMobStatus(forceRefresh = false): Promise<NativeAdMobStatus> {
+  return ensureNativeAdMobReady(forceRefresh);
 }
 
 export async function showNativePrivacyOptions(): Promise<boolean> {
   const plugin = getAdMobPlugin();
   if (!plugin) return false;
   const status = await ensureNativeAdMobReady();
-  if (!status.pluginAvailable) return false;
+  if (!status.pluginAvailable || !status.privacyOptionsRequired) return false;
   try {
     await plugin.showPrivacyOptionsForm();
     readyPromise = performInitialization();

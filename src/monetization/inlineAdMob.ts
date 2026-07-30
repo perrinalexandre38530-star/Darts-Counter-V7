@@ -1,6 +1,7 @@
-import { getAdMobRuntimeConfig } from "./adMobConfig";
+import { getAdMobBannerId, getAdMobRuntimeConfig } from "./adMobConfig";
 import { ensureNativeAdMobReady } from "./nativeAdMob";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import type { AdPlacement } from "./types";
 
 export type InlineAdRect = {
   left: number;
@@ -15,6 +16,7 @@ type InlineAdMobPlugin = {
     slotId: string;
     adId: string;
     isTesting: boolean;
+    testDeviceIds: string[];
     left: number;
     top: number;
     width: number;
@@ -59,7 +61,11 @@ export function canUseInlineGoogleAds(): boolean {
   return isCapacitorNativeRuntime() && !!getPlugin();
 }
 
-export async function showInlineGoogleAd(slotId: string, rect: InlineAdRect): Promise<boolean> {
+export async function showInlineGoogleAd(
+  slotId: string,
+  placement: AdPlacement,
+  rect: InlineAdRect
+): Promise<boolean> {
   const plugin = getPlugin();
   if (!plugin || !rect.visible) return false;
 
@@ -69,8 +75,9 @@ export async function showInlineGoogleAd(slotId: string, rect: InlineAdRect): Pr
   const config = getAdMobRuntimeConfig();
   await plugin.show({
     slotId,
-    adId: config.bannerIdAndroid,
+    adId: getAdMobBannerId(placement),
     isTesting: config.testMode,
+    testDeviceIds: config.mode === "real_test" ? config.testDeviceIds : [],
     ...rect,
   });
   return true;

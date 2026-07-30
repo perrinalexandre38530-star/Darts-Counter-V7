@@ -866,7 +866,10 @@ const LEGACY_LS_KEY = "darts-counter-store-v3";
 
 const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
 const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
-let CURRENT_USER_ID: string | null = null;
+// `var` sans initialiseur est intentionnel : en cas de cycle ESM, la liaison
+// existe déjà avec la valeur undefined au lieu d'être dans la TDZ. Elle n'est
+// jamais réinitialisée plus tard pendant l'évaluation du module.
+var CURRENT_USER_ID: string | null | undefined;
 
 function normalizeUserId(value: unknown): string | null {
   const s = typeof value === "string" ? value.trim() : String(value || "").trim();
@@ -876,7 +879,9 @@ function normalizeUserId(value: unknown): string | null {
 function detectUserIdFromAuthLS(): string | null {
   if (typeof localStorage === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_USER_LS_KEY) || localStorage.getItem(AUTH_SESSION_LS_KEY);
+    // Littéraux volontaires : cette fonction peut être appelée très tôt pendant
+    // un cycle ESM, avant l'initialisation des constantes du module.
+    const raw = localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_online_auth_supabase_v1");
     if (!raw) return null;
     if (raw.startsWith("{") || raw.startsWith("[")) {
       const parsed = safeJsonParse<any>(raw, null);
@@ -890,16 +895,17 @@ function detectUserIdFromAuthLS(): string | null {
 
 export function getStorageUser(): string | null {
   if (CURRENT_USER_ID) return CURRENT_USER_ID;
-  CURRENT_USER_ID = detectUserIdFromAuthLS();
-  return CURRENT_USER_ID;
+  const detected = detectUserIdFromAuthLS();
+  CURRENT_USER_ID = detected;
+  return detected;
 }
 
 export function setStorageUser(userId: string | null) {
   CURRENT_USER_ID = normalizeUserId(userId);
   if (typeof localStorage === "undefined") return;
   try {
-    if (CURRENT_USER_ID) localStorage.setItem(STORAGE_USER_LS_KEY, CURRENT_USER_ID);
-    else localStorage.removeItem(STORAGE_USER_LS_KEY);
+    if (CURRENT_USER_ID) localStorage.setItem("dc_storage_user_id_v1", CURRENT_USER_ID);
+    else localStorage.removeItem("dc_storage_user_id_v1");
   } catch {}
 }
 

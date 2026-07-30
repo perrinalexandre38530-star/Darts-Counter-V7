@@ -29,17 +29,36 @@ function readDotEnv() {
   return out;
 }
 
-const dotenv = readDotEnv();
-const appId = String(
-  process.env.ADMOB_ANDROID_APP_ID ||
-  process.env.VITE_ADMOB_ANDROID_APP_ID ||
-  dotenv.VITE_ADMOB_ANDROID_APP_ID ||
-  GOOGLE_TEST_APP_ID
-).trim();
-
 function fail(message) {
   console.error(`\n[ADMOB ANDROID] ${message}\n`);
   process.exit(1);
+}
+
+function modeFromEnv(values) {
+  const explicit = String(process.env.VITE_ADMOB_MODE || values.VITE_ADMOB_MODE || "").trim().toLowerCase();
+  if (["production", "prod", "live"].includes(explicit)) return "production";
+  if (["real_test", "real-test", "device_test", "device-test"].includes(explicit)) return "real_test";
+  if (["google_test", "google-test", "demo", "test"].includes(explicit)) return "google_test";
+  const legacy = String(process.env.VITE_ADMOB_TEST_MODE || values.VITE_ADMOB_TEST_MODE || "1").trim();
+  return legacy === "0" ? "production" : "google_test";
+}
+
+function isValidAppId(value) {
+  return /^ca-app-pub-\d{16}~\d{10}$/.test(String(value || "").trim());
+}
+
+const dotenv = readDotEnv();
+const mode = modeFromEnv(dotenv);
+const configuredAppId = String(
+  process.env.ADMOB_ANDROID_APP_ID ||
+  process.env.VITE_ADMOB_ANDROID_APP_ID ||
+  dotenv.VITE_ADMOB_ANDROID_APP_ID ||
+  ""
+).trim();
+
+const appId = mode === "google_test" ? GOOGLE_TEST_APP_ID : configuredAppId;
+if (mode !== "google_test" && !isValidAppId(appId)) {
+  fail(`${mode} exige un vrai VITE_ADMOB_ANDROID_APP_ID au format ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY.`);
 }
 
 if (!fs.existsSync(androidRoot)) fail("android/ introuvable. Lance d'abord npm run android:bootstrap.");
@@ -86,13 +105,13 @@ if (!appGradle.includes("com.google.android.gms:play-services-ads:")) {
   fs.writeFileSync(appGradlePath, appGradle);
 }
 
-
-const isGoogleTest = appId === GOOGLE_TEST_APP_ID;
 console.log("\n✅ Configuration Android AdMob appliquée.");
+console.log(`   Mode   : ${mode}`);
 console.log(`   App ID : ${appId}`);
-console.log(`   Mode   : ${isGoogleTest ? "GOOGLE TEST (sûr pour développement)" : "PRODUCTION / PERSONNALISÉ"}`);
-if (isGoogleTest) {
-  console.log("   Aucune vraie impression publicitaire ne sera monétisée avec cet App ID de démonstration.");
+if (mode === "google_test") {
+  console.log("   Les IDs de démonstration Google restent actifs : aucune monétisation.");
+} else if (mode === "real_test") {
+  console.log("   Vrais IDs AdMob + appareils de test : aucun trafic réel ne doit être comptabilisé.");
 } else {
-  console.log("   L'App ID production vient de .env / VITE_ADMOB_ANDROID_APP_ID (ou ADMOB_ANDROID_APP_ID).");
+  console.log("   Configuration production : le contrôle de release vérifiera tous les blocs et app-ads.txt.");
 }

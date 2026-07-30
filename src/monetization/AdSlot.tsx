@@ -199,7 +199,7 @@ export function PaidInlineSurface({
 
       if (!shownRef.current && !requestRef.current) {
         requestRef.current = true;
-        void showInlineGoogleAd(slotKey, rect)
+        void showInlineGoogleAd(slotKey, placement, rect)
           .then((shown) => {
             shownRef.current = shown;
           })
@@ -235,7 +235,7 @@ export function PaidInlineSurface({
       requestRef.current = false;
       void hideInlineGoogleAd(slotKey);
     };
-  }, [native, paidEligible, slotKey]);
+  }, [native, paidEligible, placement, slotKey]);
 
   return (
     <div

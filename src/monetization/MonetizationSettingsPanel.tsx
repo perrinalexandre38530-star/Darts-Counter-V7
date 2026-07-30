@@ -30,7 +30,7 @@ export default function MonetizationSettingsPanel() {
     if (!isCapacitorNativeRuntime()) return;
     setNativeBusy(true);
     try {
-      const [ads, billing] = await Promise.all([getNativeAdMobStatus(), getNativeBillingStatus()]);
+      const [ads, billing] = await Promise.all([getNativeAdMobStatus(true), getNativeBillingStatus()]);
       setNativeStatus(ads);
       setBillingStatus(billing);
     } finally { setNativeBusy(false); }
@@ -200,12 +200,22 @@ export default function MonetizationSettingsPanel() {
               {nativeStatus?.initialized ? "ADMOB NATIF INITIALISÉ" : "ADMOB NATIF — CONTRÔLE"}
             </div>
             <div style={{ marginTop: 5, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
-              Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"} · Mode : {nativeStatus?.testMode === false ? "PRODUCTION" : "TEST"}
+              Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"}
             </div>
+            <div style={{ marginTop: 4, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
+              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION" : nativeStatus?.mode === "real_test" ? "VRAIS IDs · APPAREIL TEST" : "GOOGLE TEST"} · Appareils test : {nativeStatus?.testDeviceCount ?? 0} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
+            </div>
+            {nativeStatus?.configErrors?.length ? (
+              <div style={{ marginTop: 7, borderRadius: 10, padding: 8, background: "rgba(255,80,80,.08)", border: "1px solid rgba(255,80,80,.24)", color: "#ff9b9b", fontSize: 10, lineHeight: 1.45 }}>
+                {nativeStatus.configErrors.map((message) => <div key={message}>• {message}</div>)}
+              </div>
+            ) : null}
             {nativeStatus?.error ? <div style={{ marginTop: 6, color: "#ff8b8b", fontSize: 10 }}>{nativeStatus.error}</div> : null}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 9 }}>
               <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={smallBtn(true)}>{nativeBusy ? "…" : "↻ Vérifier AdMob"}</button>
-              <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={smallBtn(false)}>Confidentialité</button>
+              <button type="button" disabled={nativeBusy || !nativeStatus?.privacyOptionsRequired} onClick={() => void openPrivacyOptions()} style={{ ...smallBtn(false), opacity: nativeStatus?.privacyOptionsRequired ? 1 : .48 }}>
+                {nativeStatus?.privacyOptionsRequired ? "Confidentialité" : "Options non requises"}
+              </button>
             </div>
           </div>
         ) : (

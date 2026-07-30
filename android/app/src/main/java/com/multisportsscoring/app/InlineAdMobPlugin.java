@@ -9,6 +9,7 @@ import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -19,8 +20,13 @@ import com.google.android.gms.ads.AdRequest;
 import com.google.android.gms.ads.AdSize;
 import com.google.android.gms.ads.AdView;
 import com.google.android.gms.ads.LoadAdError;
+import com.google.android.gms.ads.MobileAds;
+import com.google.android.gms.ads.RequestConfiguration;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -47,6 +53,35 @@ public class InlineAdMobPlugin extends Plugin {
     }
 
     private final Map<String, SlotHolder> slots = new HashMap<>();
+    private String testDeviceConfigurationSignature = "";
+
+    /**
+     * Les vrais IDs AdMob peuvent être testés sans générer de trafic invalide.
+     * Le build real_test transmet explicitement les IDs des téléphones autorisés ;
+     * le build production transmet une liste vide et retire donc tout appareil de test.
+     */
+    private void applyTestDeviceConfiguration(PluginCall call) {
+        final boolean testing = Boolean.TRUE.equals(call.getBoolean("isTesting", false));
+        final List<String> deviceIds = new ArrayList<>();
+        final JSArray rawIds = call.getArray("testDeviceIds");
+        if (testing && rawIds != null) {
+            for (int index = 0; index < rawIds.length(); index++) {
+                final String value = rawIds.optString(index, "").trim();
+                if (!value.isEmpty() && !deviceIds.contains(value)) deviceIds.add(value);
+            }
+        }
+
+        Collections.sort(deviceIds);
+        final String signature = testing + ":" + String.join(",", deviceIds);
+        if (signature.equals(testDeviceConfigurationSignature)) return;
+
+        RequestConfiguration configuration = MobileAds.getRequestConfiguration()
+            .toBuilder()
+            .setTestDeviceIds(testing ? deviceIds : Collections.emptyList())
+            .build();
+        MobileAds.setRequestConfiguration(configuration);
+        testDeviceConfigurationSignature = signature;
+    }
 
     private int dp(float value) {
         final float density = getActivity().getResources().getDisplayMetrics().density;
@@ -123,6 +158,8 @@ public class InlineAdMobPlugin extends Plugin {
 
         getActivity().runOnUiThread(() -> {
             try {
+                applyTestDeviceConfiguration(call);
+
                 SlotHolder existing = slots.get(slotId);
                 if (existing != null && existing.adUnitId.equals(adId)) {
                     applyRect(existing, call);
