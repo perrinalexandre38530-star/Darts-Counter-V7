@@ -2269,6 +2269,167 @@ function buildX01DartsForStats(statsSessions: X01MultiSession[]): UIDart[] {
   return out;
 }
 
+
+// ===========================================================
+// Mémoïsation pure X01 Multi (AUCUN hook React)
+// ===========================================================
+// React #310 est déclenché lorsqu'un rendu exécute davantage de hooks que le
+// rendu précédent. Les agrégats ci-dessous restent mémorisés, mais hors de la
+// liste des hooks React : le chargement asynchrone des sessions ne peut donc
+// plus modifier l'ordre ou le nombre de hooks du composant.
+let __memoFilteredInput: X01MultiSession[] | null = null;
+let __memoFilteredRange: TimeRange | null = null;
+let __memoFilteredScore: X01ScoreFilterKey | null = null;
+let __memoFilteredVariant: X01VariantFilterKey | null = null;
+let __memoFilteredValue: X01MultiSession[] = [];
+
+function memoFilteredX01Sessions(
+  sessions: X01MultiSession[],
+  range: TimeRange,
+  scoreFilter: X01ScoreFilterKey,
+  variantFilter: X01VariantFilterKey
+): X01MultiSession[] {
+  if (
+    __memoFilteredInput === sessions &&
+    __memoFilteredRange === range &&
+    __memoFilteredScore === scoreFilter &&
+    __memoFilteredVariant === variantFilter
+  ) {
+    return __memoFilteredValue;
+  }
+  const value = filterByX01Context(
+    filterByRange(sessions, range),
+    scoreFilter,
+    variantFilter
+  ).sort((a, b) => a.date - b.date);
+  __memoFilteredInput = sessions;
+  __memoFilteredRange = range;
+  __memoFilteredScore = scoreFilter;
+  __memoFilteredVariant = variantFilter;
+  __memoFilteredValue = value;
+  return value;
+}
+
+let __memoSelectedInput: X01MultiSession[] | null = null;
+let __memoSelectedProfileId: string | null = null;
+let __memoSelectedValue: X01MultiSession[] = [];
+
+function memoSelectedX01Sessions(
+  filtered: X01MultiSession[],
+  effectiveProfileId: string | null
+): X01MultiSession[] {
+  const normalizedId = effectiveProfileId == null ? null : String(effectiveProfileId);
+  if (__memoSelectedInput === filtered && __memoSelectedProfileId === normalizedId) {
+    return __memoSelectedValue;
+  }
+  const value = normalizedId == null
+    ? filtered
+    : filtered.filter((session: any) =>
+        sameId(session?.selectedPlayerId, normalizedId) ||
+        sameId(session?.profileId, normalizedId) ||
+        sameId(session?.playerId, normalizedId)
+      );
+  __memoSelectedInput = filtered;
+  __memoSelectedProfileId = normalizedId;
+  __memoSelectedValue = value;
+  return value;
+}
+
+let __memoDartsInput: X01MultiSession[] | null = null;
+let __memoDartsValue: UIDart[] = [];
+
+function memoX01DartsForStats(statsSessions: X01MultiSession[]): UIDart[] {
+  if (__memoDartsInput === statsSessions) return __memoDartsValue;
+  const value = buildX01DartsForStats(statsSessions);
+  __memoDartsInput = statsSessions;
+  __memoDartsValue = value;
+  return value;
+}
+
+let __memoRanksInput: X01MultiSession[] | null = null;
+let __memoRanksProfileId: string | null = null;
+let __memoRanksValue: MultiRankStats = makeEmptyMultiRankStats();
+
+function computeMultiRanksPure(
+  filtered: X01MultiSession[],
+  effectiveProfileId: string | null
+): MultiRankStats {
+  const stats = makeEmptyMultiRankStats();
+  if (!filtered.length) return stats;
+
+  const byMatch = new Map<string, X01MultiSession[]>();
+  for (const session of filtered) {
+    if (!session.matchId) continue;
+    const rows = byMatch.get(session.matchId) || [];
+    rows.push(session);
+    byMatch.set(session.matchId, rows);
+  }
+
+  for (const [, rows] of byMatch) {
+    if (rows.length < 3) continue;
+    if (rows.some((player) => player.isTeam)) continue;
+
+    const targetLine = effectiveProfileId
+      ? rows.find((session) => {
+          const target = String(effectiveProfileId);
+          const lineProfileId = session.profileId != null ? String(session.profileId) : null;
+          const linePlayerId = session.selectedPlayerId != null ? String(session.selectedPlayerId) : null;
+          return sameId(lineProfileId, target) || sameId(linePlayerId, target);
+        })
+      : rows[0];
+
+    if (!targetLine) continue;
+
+    let rank: number | null = targetLine.isWin ? 1 : Number(targetLine.rank || 0) || null;
+    if (!targetLine.isWin && rank === 1) rank = null;
+
+    if (!rank || rank < 1) {
+      const sorted = [...rows].sort((a, b) => {
+        const aWin = a.isWin ? 0 : 1;
+        const bWin = b.isWin ? 0 : 1;
+        if (aWin !== bWin) return aWin - bWin;
+        const aRemaining = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
+        const bRemaining = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
+        if (aRemaining !== bRemaining) return aRemaining - bRemaining;
+        return String(a.selectedPlayerId).localeCompare(String(b.selectedPlayerId));
+      });
+      const index = sorted.findIndex((row) => sameId(row.selectedPlayerId, targetLine.selectedPlayerId));
+      if (index >= 0) rank = index + 1;
+    }
+
+    if (!targetLine.isWin && rank === 1) rank = 2;
+    if (!rank || rank < 1) continue;
+
+    if (rank === 1) stats.first++;
+    else if (rank === 2) stats.second++;
+    else if (rank === 3) stats.third++;
+    else if (rank === 4) stats.place4++;
+    else if (rank === 5) stats.place5++;
+    else if (rank === 6) stats.place6++;
+    else if (rank === 7) stats.place7++;
+    else if (rank === 8) stats.place8++;
+    else if (rank === 9) stats.place9++;
+    else stats.place10plus++;
+  }
+
+  return stats;
+}
+
+function memoMultiRanks(
+  filtered: X01MultiSession[],
+  effectiveProfileId: string | null
+): MultiRankStats {
+  const normalizedId = effectiveProfileId == null ? null : String(effectiveProfileId);
+  if (__memoRanksInput === filtered && __memoRanksProfileId === normalizedId) {
+    return __memoRanksValue;
+  }
+  const value = computeMultiRanksPure(filtered, normalizedId);
+  __memoRanksInput = filtered;
+  __memoRanksProfileId = normalizedId;
+  __memoRanksValue = value;
+  return value;
+}
+
 // ===========================================================
 // Composant principal
 // ===========================================================
@@ -2284,16 +2445,11 @@ export default function X01MultiStatsTabFull({
   // 👉 ID effectivement utilisé pour filtrer les sessions :
   //    - priorité au playerId (venant de StatsHub / carrousel)
   //    - fallback sur profileId (anciens appels)
-  const effectiveProfileId = React.useMemo(
-    () => playerId ?? profileId ?? null,
-    [playerId, profileId]
-  );
+  const effectiveProfileId = playerId ?? profileId ?? null;
 
-  const initialCachedSessions = React.useMemo(
-    () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || [],
-    [effectiveProfileId]
+  const [sessions, setSessions] = React.useState<X01MultiSession[]>(
+    () => readX01MultiSessionsCacheSync(effectiveProfileId)?.sessions || []
   );
-  const [sessions, setSessions] = React.useState<X01MultiSession[]>(() => initialCachedSessions);
   const [historyVersion, setHistoryVersion] = React.useState(0);
   const [range, setRange] = React.useState<TimeRange>("all");
   const [scoreFilter, setScoreFilter] = React.useState<X01ScoreFilterKey>("all");
@@ -2375,99 +2531,14 @@ export default function X01MultiStatsTabFull({
     return () => window.clearTimeout(id);
   }, [metricLocked]);
 
-  // Sessions filtrées
-  const filtered = React.useMemo(
-    () => filterByX01Context(filterByRange(sessions, range), scoreFilter, variantFilter).sort((a, b) => a.date - b.date),
-    [sessions, range, scoreFilter, variantFilter]
-  );
-
-  const selectedSessions = React.useMemo(() => {
-    if (!effectiveProfileId) return filtered;
-    const target = String(effectiveProfileId);
-    return filtered.filter((s: any) =>
-      sameId(s?.selectedPlayerId, target) ||
-      sameId(s?.profileId, target) ||
-      sameId(s?.playerId, target)
-    );
-  }, [filtered, effectiveProfileId]);
-
+  // Sessions filtrées — mémoïsées hors React pour garantir une liste de hooks fixe.
+  const filtered = memoFilteredX01Sessions(sessions, range, scoreFilter, variantFilter);
+  const selectedSessions = memoSelectedX01Sessions(filtered, effectiveProfileId);
   const statsSessions = selectedSessions;
-  const x01DartsAll: UIDart[] = React.useMemo(
-    () => buildX01DartsForStats(statsSessions),
-    [statsSessions]
-  );
+  const x01DartsAll: UIDart[] = memoX01DartsForStats(statsSessions);
 
-  // Classements multi pour le joueur (ou tous si aucun ID fourni)
-  const multiRanks = React.useMemo(() => {
-    const stats = makeEmptyMultiRankStats();
-    if (!filtered.length) return stats;
-
-    // Regroupe les lignes par match
-    const byMatch = new Map<string, X01MultiSession[]>();
-    for (const s of filtered) {
-      if (!s.matchId) continue;
-      const arr = byMatch.get(s.matchId) || [];
-      arr.push(s);
-      byMatch.set(s.matchId, arr);
-    }
-
-    for (const [, arr] of byMatch) {
-      // Multi = au moins 3 joueurs sur le match (et pas TEAM)
-      if (arr.length < 3) continue;
-      const isTeamMatch = arr.some((p) => p.isTeam);
-      if (isTeamMatch) continue;
-
-      const targetLine = effectiveProfileId
-        ? arr.find((s) => {
-            const target = String(effectiveProfileId);
-            const lineProfileId = s.profileId != null ? String(s.profileId) : null;
-            const linePlayerId = s.selectedPlayerId != null ? String(s.selectedPlayerId) : null;
-            return sameId(lineProfileId, target) || sameId(linePlayerId, target);
-          })
-        : arr[0];
-
-      if (!targetLine) continue;
-
-      // Le compteur 1er doit rester strictement cohérent avec Matchs multi Win/Total.
-      // Donc : victoire réelle => rang 1, défaite réelle => jamais rang 1 même si un
-      // vieux score restant / ordre de players ferait croire le contraire.
-      let r: number | null = targetLine.isWin ? 1 : Number(targetLine.rank || 0) || null;
-      if (!targetLine.isWin && r === 1) r = null;
-
-      // Fallback pour les places 2..10 : on classe les non-vainqueurs au score/restant,
-      // en gardant toujours les vainqueurs devant. Cela remplit les places perdues sans
-      // créer de fausses victoires.
-      if (!r || r < 1) {
-        const sorted = [...arr].sort((a, b) => {
-          const aw = a.isWin ? 0 : 1;
-          const bw = b.isWin ? 0 : 1;
-          if (aw !== bw) return aw - bw;
-          const ar = Number((a as any).remaining ?? (a as any).finalScore ?? 999999);
-          const br = Number((b as any).remaining ?? (b as any).finalScore ?? 999999);
-          if (ar !== br) return ar - br;
-          return String(a.selectedPlayerId).localeCompare(String(b.selectedPlayerId));
-        });
-        const idx = sorted.findIndex((x) => sameId(x.selectedPlayerId, targetLine.selectedPlayerId));
-        if (idx >= 0) r = idx + 1;
-      }
-
-      if (!targetLine.isWin && r === 1) r = 2;
-      if (!r || r < 1) continue;
-
-      if (r === 1) stats.first++;
-      else if (r === 2) stats.second++;
-      else if (r === 3) stats.third++;
-      else if (r === 4) stats.place4++;
-      else if (r === 5) stats.place5++;
-      else if (r === 6) stats.place6++;
-      else if (r === 7) stats.place7++;
-      else if (r === 8) stats.place8++;
-      else if (r === 9) stats.place9++;
-      else stats.place10plus++;
-    }
-
-    return stats;
-  }, [filtered, effectiveProfileId]);
+  // Classements multi — formule identique, mémoïsation pure sans hook React.
+  const multiRanks = memoMultiRanks(filtered, effectiveProfileId);
   
   // --- AGRÉGATION RÉELLE DES MATCHS PAR TYPE ---
 
