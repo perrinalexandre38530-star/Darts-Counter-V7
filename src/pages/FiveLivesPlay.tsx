@@ -100,7 +100,7 @@ function clampInt(n: any, min: number, max: number, fallback: number) {
 }
 function sanitizeFiveLivesScoreInput(value: unknown): ScoreInputMethod {
   const method = sanitizeScoreInputMethod(value);
-  return method === "visit_score" || method === "dartboard" ? method : "keypad";
+  return method === "dartboard" ? method : "keypad";
 }
 function pct(n: number, d: number) {
   return d > 0 ? Math.round((n / d) * 1000) / 10 : 0;

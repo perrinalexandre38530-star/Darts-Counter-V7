@@ -15,7 +15,10 @@ import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 import { onlineApi } from "../lib/onlineApi";
 import { History } from "../lib/history";
-import { recordSoloTrainingResult } from "../training/stats/trainingSessionRecorder";
+import {
+  appendTrainingVisit,
+  recordSoloTrainingResult,
+} from "../training/stats/trainingSessionRecorder";
 import {
   getTrainingDetailedSessions,
   recordTrainingGroupSession,
@@ -1290,6 +1293,7 @@ export default function TrainingX01Play({
   const sessionStartedAtRef = React.useRef<number>(Date.now());
   const visitCountRef = React.useRef<number>(0);
   const allDartsRef = React.useRef<UIDart[]>([]);
+  const visitHistoryRef = React.useRef<any[]>([]);
 
   // Helper : démarrer / redémarrer proprement une session Training
   function startNewSession() {
@@ -1335,6 +1339,7 @@ export default function TrainingX01Play({
     setBustLocked(false);
 
     allDartsRef.current = []; // 🔁 on vide le buffer de fléchettes
+    visitHistoryRef.current = [];
   }
 
   React.useEffect(() => {
@@ -1474,6 +1479,13 @@ export default function TrainingX01Play({
     }
 
     const didCheckout = !isBust && after === 0;
+    appendTrainingVisit(visitHistoryRef.current, currentThrow, {
+      roundIndex: visitCountRef.current,
+      bust: isBust,
+      result: didCheckout ? "checkout" : isBust ? "bust" : "scored",
+      meta: { remainingBefore: remaining, remainingAfter: isBust ? remaining : after },
+    });
+    visitCountRef.current += 1;
     const checkoutAttemptsThisThrow = countCheckoutAttemptsForThrow(
       remaining,
       currentThrow,
@@ -1621,6 +1633,7 @@ export default function TrainingX01Play({
         try {
           recordSoloTrainingResult({
             modeId: "training_x01",
+            historyId: sessionIdRef.current!,
             config: {
               ...(incomingCfg || {}),
               startScore,
@@ -1639,6 +1652,7 @@ export default function TrainingX01Play({
             hits: stat.hitsS + stat.hitsD + stat.hitsT + stat.bull + stat.dBull,
             points: startScore,
             success: true,
+            visitHistory: visitHistoryRef.current,
             metrics: {
               score: stat.avg3D,
               avg3: stat.avg3D,
@@ -1720,6 +1734,11 @@ export default function TrainingX01Play({
                 }]
               : [],
             winnerId: currentProfile?.id ?? null,
+            sport: "darts",
+            visitHistory: visitHistoryRef.current,
+            visits: visitHistoryRef.current,
+            events: visitHistoryRef.current,
+            dartLog: visitHistoryRef.current,
             game: {
               mode: "training_x01",
               startScore,
@@ -1775,6 +1794,10 @@ export default function TrainingX01Play({
               },
               stats: stat,
               darts: allDartsRef.current,
+              visitHistory: visitHistoryRef.current,
+              visits: visitHistoryRef.current,
+              events: visitHistoryRef.current,
+              dartLog: visitHistoryRef.current,
             },
           });
         } catch (err) {

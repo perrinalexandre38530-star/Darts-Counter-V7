@@ -29,6 +29,7 @@ import { playGolfIntro, stopGolfIntro, playGolfTickerSound, playGolfPerfSfx, unl
 import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 import { History, type SavedMatch } from "../lib/history";
+import { canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 /**
@@ -219,6 +220,7 @@ type HistoryEntry = {
   prevTeamScores: (number | null)[][];
   prevTurnThrows: ThrowKind[];
   prevStats: PlayerStat[];
+  prevTelemetryLength: number;
 };
 
 
@@ -232,6 +234,15 @@ function kindToScore(k: ThrowKind, missStrokes: number): number {
   if (k === "T") return 1; // Bogey
   if (k === "S") return 3; // Double Bogey
   return missStrokes; // configurable
+}
+
+function golfThrowToUiDart(kind: ThrowKind, target: number): { v: number; mult: 1 | 2 | 3 } {
+  if (kind === "M") return { v: 0, mult: 1 };
+  if (kind === "B") return { v: 25, mult: 1 };
+  if (kind === "DB") return { v: 25, mult: 2 };
+  if (kind === "D") return { v: target, mult: 2 };
+  if (kind === "T") return { v: target, mult: 3 };
+  return { v: target, mult: 1 };
 }
 
 type TeamKey = "gold" | "pink" | "blue" | "green";
@@ -1210,6 +1221,9 @@ const teamIndexByKey = useMemo(() => {
       const st = payload?.state || payload?.golf?.state || payload?.data || payload?.snapshot || null;
       if (!st) return;
 
+      const savedVisits = payload?.visitHistory ?? payload?.visits ?? payload?.telemetry?.visits ?? st?.visitHistory;
+      if (Array.isArray(savedVisits)) golfVisitHistoryRef.current = savedVisits.slice();
+
       // ordre cibles
       if (Array.isArray(st.holeTargets) && st.holeTargets.length) {
         setSavedHoleTargets(st.holeTargets.map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x)));
@@ -1460,6 +1474,7 @@ const teamIndexByKey = useMemo(() => {
   }, [showGrid, scoreCardTickerSrc]);
 
   const historyRef = useRef<HistoryEntry[]>([]);
+  const golfVisitHistoryRef = useRef<any[]>([]);
 
   const playerTotals = useMemo(() => scores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [scores]);
 const teamTotals = useMemo(() => teamScores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [teamScores]);
@@ -1663,12 +1678,15 @@ const ranking = useMemo(() => {
       teamCursor,
       isFinished: status === "finished",
       turnThrows,
+      visitHistory: golfVisitHistoryRef.current.slice(),
     };
 
     return {
       id: String(matchId),
       matchId: String(matchId),
       kind: "golf",
+      mode: "golf",
+      sport: "darts",
       status,
       players: playersLite as any,
       winnerId,
@@ -1690,6 +1708,10 @@ const ranking = useMemo(() => {
       },
       payload: {
         mode: "golf",
+        sport: "darts",
+        visitHistory: golfVisitHistoryRef.current.slice(),
+        visits: golfVisitHistoryRef.current.slice(),
+        events: golfVisitHistoryRef.current.slice(),
         dartSetId,
         dartSetIdsByPlayer,
         meta: { ...(cfg as any)?.meta, dartSetId, dartSetIdsByPlayer },
@@ -1965,6 +1987,7 @@ React.useEffect(() => {
       setHoleIdx(0);
       setTurnThrows([]);
       historyRef.current = [];
+      golfVisitHistoryRef.current = [];
 
       // reset order
       if (startRandom) {
@@ -2013,6 +2036,7 @@ React.useEffect(() => {
     prevTeamScores: prevTeamScores.map((r) => r.slice()),
     prevTurnThrows: prevTurn.slice(),
     prevStats: prevStats.map((s) => ({ ...s })),
+    prevTelemetryLength: golfVisitHistoryRef.current.length,
   });
   if (historyRef.current.length > 200) historyRef.current.shift();
 }
@@ -2168,6 +2192,18 @@ React.useEffect(() => {
   const holeScore = last ? kindToScore(last, missStrokesVal) : null;
   if (holeScore == null) return;
 
+  const activeProfileId = String(roster[activePlayerIdx]?.id || `p${activePlayerIdx + 1}`);
+  const exactDarts = prevTurn.slice(0, 3).map((kind) => golfThrowToUiDart(kind, Number(holeTargets[holeIdx] || holeIdx + 1)));
+  const visitIndex = golfVisitHistoryRef.current.filter((row: any) => String(row?.playerId) === activeProfileId).length;
+  golfVisitHistoryRef.current.push(canonicalVisitFromUiDarts({
+    playerId: activeProfileId,
+    darts: exactDarts,
+    visitIndex,
+    roundIndex: holeIdx,
+    source: "golf",
+    meta: { hole: holeIdx + 1, target: Number(holeTargets[holeIdx] || holeIdx + 1), golfResult: last, holeScore },
+  }));
+
   // ✅ Toujours écrire le score sur le joueur ACTIF (solo + teams)
   nextScores[activePlayerIdx][holeIdx] = holeScore;
 
@@ -2289,6 +2325,7 @@ return nextScores;
   setIsFinished(h.isFinished);
   setTurnThrows(h.prevTurnThrows.slice());
   setStatsByPlayer(h.prevStats.map((s) => ({ ...s })));
+  golfVisitHistoryRef.current = golfVisitHistoryRef.current.slice(0, Math.max(0, Number(h.prevTelemetryLength || 0)));
 }
 
 

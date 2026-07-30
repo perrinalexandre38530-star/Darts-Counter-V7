@@ -33,7 +33,11 @@ export type ScoreVisitPayload = {
 export const SCORE_INPUT_LS_KEY = "dc-score-input-method";
 
 export function sanitizeScoreInputMethod(value: unknown): ScoreInputMethod {
-  if (value === "keypad" || value === "visit_score" || value === "dartboard" || value === "presets" || value === "voice") {
+  // SCORE VOLÉE est conservé dans le type uniquement pour lire les anciennes
+  // parties. Il n'est plus autorisé pour une nouvelle partie : un total 0..180
+  // ne permet pas de connaître honnêtement les S/D/T/BULL/MISS qui l'ont produit.
+  if (value === "visit_score") return "keypad";
+  if (value === "keypad" || value === "dartboard" || value === "presets" || value === "voice") {
     return value;
   }
   // Compat anciennes configs : auto / ai / camera-ai / tout inconnu => keypad.

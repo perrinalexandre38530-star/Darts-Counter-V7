@@ -345,11 +345,19 @@ export default function BatardPlay(props: any) {
       : throwPoints);
 
   function recordVisit(pid: string, darts: UIDart[], roundIdx: number) {
+    const ts = Date.now();
     visitsRef.current.push({
+      id: `${matchIdRef.current}:${pid}:${visitsRef.current.length}:${ts}`,
       p: pid,
+      playerId: pid,
+      profileId: pid,
+      visitIndex: visitsRef.current.length,
+      roundIndex: roundIdx,
       darts: (darts || []).map((d) => ({ v: Number(d.v || 0), mult: Number(d.mult || 1) })),
       score: visitScore(darts),
-      ts: Date.now(),
+      startedAt: ts,
+      endedAt: ts,
+      ts,
       roundIndexBefore: roundIdx,
     });
   }
@@ -493,7 +501,10 @@ export default function BatardPlay(props: any) {
       updatedAt: now,
       stats: unifiedStats,
       config: { ...runtimeCfg, players: playerRows },
+      visitHistory: visitsRef.current,
       visits: visitsRef.current,
+      events: visitsRef.current,
+      dartLog: visitsRef.current,
       states,
       winnerId: status === "finished" ? winnerId : null,
     };
@@ -501,11 +512,17 @@ export default function BatardPlay(props: any) {
     return {
       id: matchIdRef.current,
       kind: "batard",
+      mode: "batard",
+      sport: "darts",
       status,
       createdAt: createdAtRef.current,
       updatedAt: now,
       players: playerRows,
       winnerId: status === "finished" ? winnerId : null,
+      visitHistory: visitsRef.current,
+      visits: visitsRef.current,
+      events: visitsRef.current,
+      dartLog: visitsRef.current,
       summary,
       payload,
     };

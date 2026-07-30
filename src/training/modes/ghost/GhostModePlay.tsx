@@ -9,13 +9,14 @@ import {
   visitScore,
   type TrainingDart,
 } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 export default function GhostModePlay({ config, onExit }: { config: any; onExit: () => void }) {
   const ghostAvg = Math.max(1, Number(config?.avg || 60));
   const maxVisits = Math.max(1, Math.floor(Number(config?.visits || 10)));
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const dataRef = React.useRef({
     darts: 0,
     hits: 0,
@@ -65,6 +66,7 @@ export default function GhostModePlay({ config, onExit }: { config: any; onExit:
       hits: data.hits,
       points: data.points,
       success,
+      visitHistory: visitHistoryRef.current,
       metrics: { ...metrics, accuracyPercent: accuracyPct },
     });
     setResult({ success, stats, metrics });
@@ -74,6 +76,7 @@ export default function GhostModePlay({ config, onExit }: { config: any; onExit:
     (darts: TrainingDart[]) => {
       if (endedRef.current || darts.length !== 3) return;
       const data = dataRef.current;
+      appendTrainingVisit(visitHistoryRef.current, darts, { roundIndex: data.visits.length });
       data.darts += darts.length;
       data.hits += countNonMisses(darts);
       const score = visitScore(darts);

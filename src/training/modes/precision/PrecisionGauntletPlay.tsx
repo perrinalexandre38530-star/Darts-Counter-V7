@@ -7,7 +7,7 @@ import {
   trainingDartMatches,
   type TrainingDart,
 } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 const FALLBACK_TARGETS = ["T20", "T19", "D18", "T17", "D16", "DBULL"];
 
@@ -20,6 +20,7 @@ export default function PrecisionGauntletPlay({ config, onExit }: { config: any;
 
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const dataRef = React.useRef({
     darts: 0,
     hits: 0,
@@ -70,6 +71,7 @@ export default function PrecisionGauntletPlay({ config, onExit }: { config: any;
         hits: data.hits,
         points: data.points,
         success,
+        visitHistory: visitHistoryRef.current,
         metrics: { ...metrics, accuracyPercent: accuracyPct },
       });
       setResult({ success, stats, metrics });
@@ -81,6 +83,10 @@ export default function PrecisionGauntletPlay({ config, onExit }: { config: any;
     (darts: TrainingDart[]) => {
       if (endedRef.current || !darts.length) return;
       const data = dataRef.current;
+      appendTrainingVisit(visitHistoryRef.current, darts, {
+        roundIndex: data.targetIndex,
+        result: targets[data.targetIndex] || null,
+      });
 
       for (const dart of darts) {
         if (endedRef.current || data.targetIndex >= targets.length) break;

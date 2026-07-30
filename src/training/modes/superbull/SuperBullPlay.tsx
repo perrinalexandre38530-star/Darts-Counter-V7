@@ -3,13 +3,14 @@ import TrainingPlayLayout from "../../ui/TrainingPlayLayout";
 import TrainingDartPad from "../../ui/TrainingDartPad";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { makeTrainingStats, type TrainingDart } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 export default function SuperBullPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const target = Math.max(25, Math.floor(Number(config?.target || 100)));
   const maxDarts = Math.max(3, Math.floor(Number(config?.maxDarts || 30)));
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const dataRef = React.useRef({
     darts: 0,
     hits: 0,
@@ -58,6 +59,7 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
         hits: data.hits,
         points: data.points,
         success,
+        visitHistory: visitHistoryRef.current,
         metrics: { ...metrics, accuracyPercent: accuracyPct },
       });
       setResult({ success, stats, metrics });
@@ -69,6 +71,11 @@ export default function SuperBullPlay({ config, onExit }: { config: any; onExit:
     (darts: TrainingDart[]) => {
       if (endedRef.current || !darts.length) return;
       const data = dataRef.current;
+      const remaining = Math.max(0, maxDarts - data.darts);
+      appendTrainingVisit(visitHistoryRef.current, darts.slice(0, remaining), {
+        roundIndex: visitHistoryRef.current.length,
+        result: "BULL",
+      });
 
       for (const dart of darts) {
         if (endedRef.current || data.darts >= maxDarts) break;

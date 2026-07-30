@@ -126,7 +126,7 @@ function clampInt(n: any, min: number, max: number, fb: number) {
 
 function sanitizeFiveLivesScoreInput(value: unknown): ScoreInputMethod {
   const method = sanitizeScoreInputMethod(value);
-  return method === "visit_score" || method === "dartboard" ? method : "keypad";
+  return method === "dartboard" ? method : "keypad";
 }
 
 function pickAvatar(p: any): string | null {
@@ -703,14 +703,11 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Mode de saisie</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton label="KEYPAD" active={scoreInputMethod === "keypad"} onClick={() => setScoreInputMethod("keypad")} primary={primary} primarySoft={primarySoft} />
-              <PillButton label="SCORE VOLÉE" active={scoreInputMethod === "visit_score"} onClick={() => setScoreInputMethod("visit_score")} primary={primary} primarySoft={primarySoft} />
               <PillButton label="CIBLE" active={scoreInputMethod === "dartboard"} onClick={() => setScoreInputMethod("dartboard")} primary={primary} primarySoft={primarySoft} />
             </div>
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6, lineHeight: 1.35 }}>
               {scoreInputMethod === "dartboard"
                 ? "CIBLE : touche directement la zone atteinte sur la cible, comme en X01."
-                : scoreInputMethod === "visit_score"
-                ? "SCORE VOLÉE : saisis directement le total de 0 à 180. Le détail S/D/T ne pourra pas être calculé."
                 : "KEYPAD : saisis chaque fléchette avec SIMPLE, DOUBLE ou TRIPLE."}
             </div>
           </div>

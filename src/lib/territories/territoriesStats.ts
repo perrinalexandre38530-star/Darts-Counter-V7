@@ -432,6 +432,8 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
     const rec: any = {
       id: String(m.id || `territories-${createdAt}-${Math.random().toString(36).slice(2, 8)}`),
       kind: "territories",
+      mode: "territories",
+      sport: "darts",
       status: "finished",
       createdAt,
       updatedAt: createdAt,
@@ -471,7 +473,13 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
       },
       payload: {
         kind: "territories",
+        mode: "territories",
+        sport: "darts",
         match: m,
+        visitHistory: Array.isArray(m.visitLog) ? m.visitLog : [],
+        visits: Array.isArray(m.visitLog) ? m.visitLog : [],
+        events: Array.isArray(m.visitLog) ? m.visitLog : [],
+        dartLog: Array.isArray(m.visitLog) ? m.visitLog : [],
         summary: {
           kind: "territories",
           mode: "territories",

@@ -7,7 +7,7 @@ import {
   trainingDartMatches,
   type TrainingDart,
 } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 export default function RepeatMasterPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const target = String(config?.target || "T20").toUpperCase();
@@ -17,6 +17,7 @@ export default function RepeatMasterPlay({ config, onExit }: { config: any; onEx
 
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const dataRef = React.useRef({
     darts: 0,
     hits: 0,
@@ -65,6 +66,7 @@ export default function RepeatMasterPlay({ config, onExit }: { config: any; onEx
         hits: data.hits,
         points: data.points,
         success,
+        visitHistory: visitHistoryRef.current,
         metrics: { ...metrics, accuracyPercent: accuracyPct },
       });
       setResult({ success, stats, metrics });
@@ -76,6 +78,11 @@ export default function RepeatMasterPlay({ config, onExit }: { config: any; onEx
     (darts: TrainingDart[]) => {
       if (endedRef.current || !darts.length) return;
       const data = dataRef.current;
+      const remaining = Math.max(0, maxDarts - data.darts);
+      appendTrainingVisit(visitHistoryRef.current, darts.slice(0, remaining), {
+        roundIndex: visitHistoryRef.current.length,
+        result: target,
+      });
 
       for (const dart of darts) {
         if (endedRef.current || data.darts >= maxDarts) break;

@@ -20,6 +20,28 @@ export type CompactMatchMode =
   | "shanghai"
   | "five_lives"
   | "loterie"
+  | "warfare"
+  | "battle_royale"
+  | "darts_racer"
+  | "bowling"
+  | "baseball"
+  | "shooter"
+  | "prisoner"
+  | "president"
+  | "attrape_moi"
+  | "halve_it"
+  | "bobs_27"
+  | "count_up"
+  | "super_bull"
+  | "knockout"
+  | "tic_tac_toe"
+  | "happy_mille"
+  | "enculette"
+  | "capital"
+  | "rugby"
+  | "football_darts"
+  | "fun_gages"
+  | "game_170"
   | "territories"
   | "scram"
   | "batard"
@@ -202,6 +224,28 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   // X01 : certains anciens identifiants commencent par `x01-...`.
   if (raw.includes("five_lives") || raw.includes("five lives") || raw.includes("5 vies") || raw.includes("cinq vies")) return "five_lives";
   if (raw.includes("loterie") || raw.includes("lottery")) return "loterie";
+  if (raw.includes("warfare")) return "warfare";
+  if (raw.includes("battle_royale") || raw.includes("battle royale")) return "battle_royale";
+  if (raw.includes("darts_racer") || raw.includes("darts racer")) return "darts_racer";
+  if (raw.includes("bowling")) return "bowling";
+  if (raw.includes("baseball")) return "baseball";
+  if (raw.includes("shooter")) return "shooter";
+  if (raw.includes("prisoner")) return "prisoner";
+  if (raw.includes("president") || raw.includes("président")) return "president";
+  if (raw.includes("attrape")) return "attrape_moi";
+  if (raw.includes("halve")) return "halve_it";
+  if (raw.includes("bobs") || raw.includes("bob's")) return "bobs_27";
+  if (raw.includes("count_up") || raw.includes("count-up")) return "count_up";
+  if (raw.includes("super_bull") || raw.includes("super bull")) return "super_bull";
+  if (raw.includes("knockout")) return "knockout";
+  if (raw.includes("tic_tac_toe") || raw.includes("tic-tac-toe")) return "tic_tac_toe";
+  if (raw.includes("happy_mille") || raw.includes("happy mille")) return "happy_mille";
+  if (raw.includes("enculette")) return "enculette";
+  if (raw.includes("capital")) return "capital";
+  if (raw.includes("rugby")) return "rugby";
+  if (raw.includes("football") && !raw.includes("baby")) return "football_darts";
+  if (raw.includes("fun_gages") || raw.includes("fun gages")) return "fun_gages";
+  if (raw.includes("game_170") || raw.includes(" 170")) return "game_170";
   if (raw.includes("cricket")) return "cricket";
   if (raw.includes("killer")) return "killer";
   if (raw.includes("golf")) return "golf";
@@ -408,6 +452,27 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
   const visits = payload.visits ?? payload.turns ?? payload.rounds ?? payload.darts ?? payload.hits ?? payload.events;
   const out: any = {};
   if (Array.isArray(visits)) out.e = visits.slice(-600).map(takeVisit);
+  // Canonical telemetry shared by every Darts mode. The detailed payload remains
+  // the source of truth; this compact copy keeps the ordered path available to
+  // StatsHub/imports even when only the compact record is loaded.
+  const telemetryVisits = payload?.telemetry?.visits ?? payload?.dartTelemetry?.visits;
+  if (Array.isArray(telemetryVisits) && telemetryVisits.length) {
+    out.tv = telemetryVisits.slice(-5000).map((v: any) => {
+      const pid = v?.playerId ?? v?.profileId ?? v?.by;
+      return {
+        ...(pid != null ? { p: indexOf(pid) } : {}),
+        ...(v?.visitIndex != null ? { i: toNum(v.visitIndex) ?? v.visitIndex } : {}),
+        ...(v?.roundIndex != null ? { r: toNum(v.roundIndex) ?? v.roundIndex } : {}),
+        ...(v?.score != null ? { s: toNum(v.score) ?? v.score } : {}),
+        ...(v?.startedAt != null ? { a: toNum(v.startedAt) ?? v.startedAt } : {}),
+        ...(v?.endedAt != null ? { z: toNum(v.endedAt) ?? v.endedAt } : {}),
+        ...(v?.bust ? { b: 1 } : {}),
+        d: Array.isArray(v?.darts)
+          ? v.darts.map((d: any) => String(d?.label ?? d?.code ?? d?.segment ?? "")).filter(Boolean)
+          : [],
+      };
+    });
+  }
   const state = payload.finalState ?? payload.state ?? payload.result ?? payload.summary;
   const cleanState = stripHeavy(state);
   if (cleanState && Object.keys(cleanState || {}).length) out.s = cleanState;

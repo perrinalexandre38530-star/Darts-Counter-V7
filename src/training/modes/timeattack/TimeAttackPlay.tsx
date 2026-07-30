@@ -9,7 +9,7 @@ import {
   visitScore,
   type TrainingDart,
 } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 type RunData = {
   darts: number;
@@ -52,6 +52,7 @@ export default function TimeAttackPlay({ config, onExit }: { config: any; onExit
   const runRef = React.useRef<RunData>(run);
   const startedAtRef = React.useRef<number | null>(null);
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const [running, setRunning] = React.useState(false);
   const [ended, setEnded] = React.useState(false);
   const [remainingMs, setRemainingMs] = React.useState(limitMs);
@@ -82,6 +83,7 @@ export default function TimeAttackPlay({ config, onExit }: { config: any; onExit
       hits: data.hits,
       points: data.points,
       success: true,
+      visitHistory: visitHistoryRef.current,
       metrics: {
         avg3,
         bestVisit: data.bestVisit,
@@ -118,6 +120,7 @@ export default function TimeAttackPlay({ config, onExit }: { config: any; onExit
         setRemainingMs(limitMs);
       }
 
+      appendTrainingVisit(visitHistoryRef.current, darts, { roundIndex: runRef.current.visits });
       const score = visitScore(darts);
       const hits = countNonMisses(darts);
       setRun((prev) => {

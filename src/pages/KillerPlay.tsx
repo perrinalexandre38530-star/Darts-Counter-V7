@@ -32,6 +32,7 @@ import { parseBotLevelValue } from "../lib/bots";
 import { useViewport } from "../hooks/useViewport";
 import type { Store, MatchRecord, Dart as UIDart } from "../lib/types";
 import { History } from "../lib/history";
+import { buildDartsTelemetry } from "../lib/dartsTelemetry";
 import type {
   KillerConfig,
   KillerDamageRule,
@@ -2640,16 +2641,29 @@ React.useEffect(() => {
     return s && typeof s === "object" ? s : null;
   }, [config]);
 
-  const [events, setEvents] = React.useState<any[]>([]);
-  const eventsRef = React.useRef<any[]>([]);
-  const MAX_SAVED_EVENTS = 60;
+  const [events, setEvents] = React.useState<any[]>(() => Array.isArray(resumeState?.events) ? resumeState.events : []);
+  const eventsRef = React.useRef<any[]>(Array.isArray(resumeState?.events) ? resumeState.events : []);
+  const MAX_SAVED_EVENTS = 10000;
 
   React.useEffect(() => {
     eventsRef.current = Array.isArray(events) ? events : [];
   }, [events]);
 
   function pushEvent(e: any) {
-    setEvents((prev) => [e, ...prev].slice(0, 800));
+    const now = Number(e?.at ?? e?.t) || Date.now();
+    const actorId = e?.actorId ?? e?.playerId ?? e?.by ?? null;
+    const hasExactThrow = !!(e?.throw || e?.dart || (Array.isArray(e?.darts) && e.darts.length));
+    const enriched = {
+      ...(e || {}),
+      t: Number(e?.t) || now,
+      at: now,
+      actorId,
+      playerId: actorId,
+      visitIndex: e?.visitIndex ?? (hasExactThrow ? Number(turnCount || 0) : undefined),
+      roundIndex: e?.roundIndex ?? (hasExactThrow ? Number(turnCount || 0) : undefined),
+      dartIndex: e?.dartIndex ?? (hasExactThrow ? Math.max(0, 3 - Number(dartsLeft || 3)) : undefined),
+    };
+    setEvents((prev) => [enriched, ...prev].slice(0, MAX_SAVED_EVENTS));
   }
 
   const [assignDone, setAssignDone] = React.useState<boolean>(() => {
@@ -2916,14 +2930,27 @@ React.useEffect(() => {
           return null;
         }
       })();
+      // Conserve l'intégralité chronologique des saisies exactes. Les événements
+      // sont stockés du plus récent au plus ancien dans l'UI, mais chaque ligne
+      // garde son timestamp, son joueur, sa volée et sa position dans la volée.
       const compactEvents = (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS).map((e: any) => ({
+        ...e,
         kind: e?.kind ?? e?.type ?? null,
+        type: e?.type ?? e?.kind ?? null,
         label: e?.label ?? e?.text ?? null,
         actorId: e?.actorId ?? e?.playerId ?? e?.by ?? null,
+        playerId: e?.playerId ?? e?.actorId ?? e?.by ?? null,
         targetId: e?.targetId ?? e?.to ?? null,
+        throw: e?.throw ? { ...e.throw } : undefined,
+        dart: e?.dart ? { ...e.dart } : undefined,
+        darts: Array.isArray(e?.darts) ? e.darts.map((d: any) => ({ ...(d || {}) })) : undefined,
+        visitIndex: Number.isFinite(Number(e?.visitIndex)) ? Number(e.visitIndex) : null,
+        roundIndex: Number.isFinite(Number(e?.roundIndex)) ? Number(e.roundIndex) : null,
+        dartIndex: Number.isFinite(Number(e?.dartIndex)) ? Number(e.dartIndex) : null,
         value: Number.isFinite(Number(e?.value)) ? Number(e.value) : null,
         mult: Number.isFinite(Number(e?.mult)) ? Number(e.mult) : null,
-        at: Number.isFinite(Number(e?.at)) ? Number(e.at) : updatedAt,
+        t: Number.isFinite(Number(e?.t)) ? Number(e.t) : updatedAt,
+        at: Number.isFinite(Number(e?.at ?? e?.t)) ? Number(e?.at ?? e?.t) : updatedAt,
       }));
       const rec: any = {
         id: matchIdRef.current,
@@ -2972,8 +2999,10 @@ React.useEffect(() => {
             kills: Number(p.kills || 0),
           })),
         },
+        sport: "darts",
         payload: {
           mode: "killer",
+          sport: "darts",
           gameId: historyGameId,
           variantId: progressiveMode ? "progressive" : "classic",
           progressiveTarget: progressiveMode ? progressiveTarget : undefined,
@@ -2981,6 +3010,10 @@ React.useEffect(() => {
           resumeConfig,
           resumeId: (config as any)?.resumeId ?? null,
           meta: { dartSetId, dartSetIdsByPlayer, resumeConfig },
+          visitHistory: compactEvents,
+          visits: compactEvents,
+          events: compactEvents,
+          dartLog: compactEvents,
           state: {
             resumeConfig,
             players: (players || []).map((p: any) => ({
@@ -2999,6 +3032,15 @@ React.useEffect(() => {
           },
         },
       };
+      const telemetry = buildDartsTelemetry(rec, rec.payload);
+      if (telemetry) {
+        rec.payload.telemetry = telemetry;
+        rec.payload.dartTelemetry = telemetry;
+        rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+        rec.summary.perPlayer = telemetry.perPlayer;
+        rec.summary.telemetryExact = true;
+        rec.summary.telemetryCoverage = "full";
+      }
       void History.upsert(rec as any);
     } catch {}
   }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig, historyGameId, progressiveMode, progressiveTarget]);
@@ -3669,6 +3711,8 @@ React.useEffect(() => {
       id,
       resumeId,
       kind: historyGameId,
+      mode: "killer",
+      sport: "darts",
       status: "finished",
       createdAt: startedAt,
       updatedAt: finishedAt,
@@ -3701,18 +3745,31 @@ React.useEffect(() => {
       },
       payload: {
         mode: "killer",
+        sport: "darts",
         gameId: historyGameId,
         variantId: progressiveMode ? "progressive" : "classic",
         progressiveTarget: progressiveMode ? progressiveTarget : undefined,
         meta: { dartSetId, dartSetIdsByPlayer, gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic" },
         config,
         resumeId,
+        visitHistory: (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS),
+        visits: (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS),
+        events: (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS),
+        dartLog: (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS),
         summary: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, winnerId, detailedByPlayer, perPlayer, perPlayerMap, ranking, rankings, hitsBySegmentByPlayer, hitsByNumberByPlayer },
         // ✅ Bloc unifié pour StatsHub
         stats: unifiedStats as any,
       },
     };
 
+    const telemetry = buildDartsTelemetry(rec, rec.payload);
+    if (telemetry) {
+      rec.payload.telemetry = telemetry;
+      rec.payload.dartTelemetry = telemetry;
+      rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+      rec.summary.telemetryExact = true;
+      rec.summary.telemetryCoverage = "full";
+    }
     return rec as MatchRecord;
   }
 
@@ -4806,6 +4863,8 @@ if (isActiveKiller(me)) {
         rec = {
           id: `${historyGameId}-${Date.now()}`,
           kind: historyGameId,
+          mode: "killer",
+          sport: "darts",
           status: "finished",
           createdAt: startedAt,
           updatedAt: Date.now(),
@@ -4816,7 +4875,7 @@ if (isActiveKiller(me)) {
             avatarDataUrl: p.avatarDataUrl ?? null,
           })),
           summary: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, ranking: [] },
-          payload: { mode: "killer", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, config, meta: { dartSetId, dartSetIdsByPlayer } },
+          payload: { mode: "killer", sport: "darts", gameId: historyGameId, variantId: progressiveMode ? "progressive" : "classic", progressiveTarget: progressiveMode ? progressiveTarget : undefined, config, meta: { dartSetId, dartSetIdsByPlayer }, visitHistory: (eventsRef.current || []).slice(), visits: (eventsRef.current || []).slice(), events: (eventsRef.current || []).slice(), dartLog: (eventsRef.current || []).slice() },
         };
       }
 

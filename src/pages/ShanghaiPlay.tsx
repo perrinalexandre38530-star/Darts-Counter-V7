@@ -17,6 +17,7 @@
 import React from "react";
 import { parseBotLevelValue } from "../lib/bots";
 import { History } from "../lib/history";
+import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
@@ -339,6 +340,7 @@ export default function ShanghaiPlay(props: Props) {
   );
   const autosaveLastSigRef = React.useRef("");
   const autosaveIdleRef = React.useRef<any>(null);
+  const visitHistoryRef = React.useRef<any[]>([]);
   useFullscreenPlay();
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
 
@@ -936,12 +938,15 @@ export default function ShanghaiPlay(props: Props) {
       statsShanghai: packedStatsShanghai,
     };
 
-    return {
+    const rec: any = {
       id: matchIdRef.current,
+      matchId: matchIdRef.current,
       kind: "shanghai",
+      mode: "shanghai",
+      sport: "darts",
       status,
       createdAt,
-      updatedAt: createdAt,
+      updatedAt: Date.now(),
 
       players: safePlayers.map((p) => ({
         id: p.id,
@@ -954,7 +959,13 @@ export default function ShanghaiPlay(props: Props) {
       summary,
 
       payload: {
+        mode: "shanghai",
+        sport: "darts",
         meta: { dartSetId, dartSetIdsByPlayer },
+        visitHistory: visitHistoryRef.current.slice(),
+        visits: visitHistoryRef.current.slice(),
+        events: visitHistoryRef.current.slice(),
+        dartLog: visitHistoryRef.current.slice(),
         config: {
           ...(cfg as any),
           targetOrderMode,
@@ -977,6 +988,16 @@ export default function ShanghaiPlay(props: Props) {
         stats: unifiedStats as any,
       },
     };
+    const telemetry = buildDartsTelemetry(rec, rec.payload);
+    if (telemetry) {
+      rec.payload.telemetry = telemetry;
+      rec.payload.dartTelemetry = telemetry;
+      rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+      rec.summary.perPlayer = telemetry.perPlayer;
+      rec.summary.telemetryExact = true;
+      rec.summary.telemetryCoverage = "full";
+    }
+    return rec;
   }
 
   function openEndScreen(
@@ -1008,6 +1029,15 @@ export default function ShanghaiPlay(props: Props) {
 
     const pid = active.id;
     const snapshot = [...currentThrow].slice(0, 3);
+    const playerVisitIndex = visitHistoryRef.current.filter((row: any) => String(row?.playerId) === String(pid)).length;
+    visitHistoryRef.current.push(canonicalVisitFromUiDarts({
+      playerId: String(pid),
+      darts: snapshot,
+      visitIndex: playerVisitIndex,
+      roundIndex: Math.max(0, Number(round || 1) - 1),
+      source: "shanghai",
+      meta: { target },
+    }));
 
     const add = shanghaiThrowTotal(target, snapshot);
     const isSh = isShanghaiOnTarget(target, snapshot);

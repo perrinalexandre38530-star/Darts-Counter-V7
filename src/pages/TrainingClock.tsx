@@ -764,6 +764,16 @@ const TrainingClock: React.FC<Props> = (props) => {
     const finalTargets = Math.max(0, Math.min(TARGETS.length, Number(values?.targetsCompleted ?? targetsCompleted) || 0));
     const finalBestStreak = Number(values?.bestStreak ?? bestStreak) || 0;
     const finalThrowLabels = Array.isArray(values?.throwLabels) ? values!.throwLabels! : throwLog;
+    const exactVisitHistory = finalThrowLabels.map((label, index) => ({
+      id: `clock-${String(player?.id || "training-player")}-${index}-${now}`,
+      playerId: String(player?.id || "training-player"),
+      participantId: String(player?.id || "training-player"),
+      visitIndex: index,
+      roundIndex: index,
+      startedAt: (startTime ?? now) + index,
+      endedAt: (startTime ?? now) + index,
+      darts: [label],
+    }));
     const elapsed = startTime != null ? Math.max(0, now - startTime) : 0;
     const targetReachedValue = completed
       ? "Bull"
@@ -820,6 +830,7 @@ const TrainingClock: React.FC<Props> = (props) => {
       const performance = Math.max(0, completionPct + (session.completed ? Math.max(0, 20 - session.dartsThrown / 10) : 0));
       recordSoloTrainingResult({
         modeId: "training_clock",
+        historyId: `clock-${session.id}`,
         config: {
           ...session.config,
           groupSessionId: groupSessionIdRef.current,
@@ -846,6 +857,7 @@ const TrainingClock: React.FC<Props> = (props) => {
         hits: session.validHits,
         points: session.targetsCompleted,
         success: session.completed,
+        visitHistory: exactVisitHistory,
         metrics: {
           score: performance,
           completionPct,
@@ -921,6 +933,11 @@ const TrainingClock: React.FC<Props> = (props) => {
         updatedAt: session.endedAt,
         players: [{ id: session.profileId, name: session.profileName, teamId: session.teamId ?? null, teamName: session.teamName ?? null, dartSetId: session.dartSetId ?? null, dartSetName: session.dartSetName ?? null }],
         winnerId: session.completed ? session.profileId : null,
+        sport: "darts",
+        visitHistory: exactVisitHistory,
+        visits: exactVisitHistory,
+        events: exactVisitHistory,
+        dartLog: exactVisitHistory,
         summary: {
           kind: "clock",
           mode: "tour_de_l_horloge",
@@ -939,6 +956,10 @@ const TrainingClock: React.FC<Props> = (props) => {
           players: [playerStats],
           stats: { kind: "clock", mode: "tour_de_l_horloge", players: [playerStats] },
           summary: { players: [playerStats], perPlayer: [playerStats], session },
+          visitHistory: exactVisitHistory,
+          visits: exactVisitHistory,
+          events: exactVisitHistory,
+          dartLog: exactVisitHistory,
           session,
         },
       });

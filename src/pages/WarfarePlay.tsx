@@ -16,10 +16,13 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import type { WarfareConfig, WarfareZoneRule } from "./WarfareConfig";
+import { History } from "../lib/history";
+import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 
 type Props = {
   go: (tab: any, params?: any) => void;
   config: WarfareConfig;
+  onFinish?: (match: any) => void;
 };
 
 type Army = "TOP" | "BOTTOM";
@@ -30,6 +33,8 @@ const BOTTOM_ARMY = [6, 10, 15, 2, 17, 3, 19, 7, 16, 8] as const;
 type ApplyDelta = {
   removedFromTop: number[];
   removedFromBottom: number[];
+  playerId?: string;
+  statsDelta?: Partial<PlayerStats>;
 };
 
 type PlayerStats = {
@@ -81,7 +86,7 @@ function fmt(d?: Dart) {
   return fmtDart(d);
 }
 
-export default function WarfarePlay({ go, config }: Props) {
+export default function WarfarePlay({ go, config, onFinish }: Props) {
   const { theme } = useTheme();
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
   const { t } = useLang();
@@ -153,6 +158,11 @@ export default function WarfarePlay({ go, config }: Props) {
   const [infoOpen, setInfoOpen] = React.useState(false);
 
   const [statsByPlayerId, setStatsByPlayerId] = React.useState<Record<string, PlayerStats>>({});
+  const matchIdRef = React.useRef(`warfare-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
+  const createdAtRef = React.useRef(Date.now());
+  const visitHistoryRef = React.useRef<any[]>([]);
+  const [telemetryTick, setTelemetryTick] = React.useState(0);
+  const finishOnceRef = React.useRef(false);
 
   const activeArmy: Army = turnIndex === 0 ? "TOP" : "BOTTOM";
   const activeCursor = activeArmy === "TOP" ? cursorTop : cursorBottom;
@@ -193,6 +203,86 @@ export default function WarfarePlay({ go, config }: Props) {
     [statsByPlayerId]
   );
 
+  function appendExactVisit(darts: Dart[]) {
+    const playerId = String(activePlayer?.id || "");
+    if (!playerId || !Array.isArray(darts) || darts.length === 0) return;
+    const visitIndex = visitHistoryRef.current.filter((row: any) => String(row?.playerId) === playerId).length;
+    visitHistoryRef.current.push(canonicalVisitFromUiDarts({
+      playerId,
+      darts: darts.slice(0, 3),
+      visitIndex,
+      roundIndex: Math.max(cursorTop, cursorBottom),
+      source: "warfare",
+      meta: { army: activeArmy, zoneRule: activeRule, friendlyFire: normalized.friendlyFire },
+    }));
+    setTelemetryTick((value) => value + 1);
+  }
+
+  function buildWarfareRecord(status: "in_progress" | "finished") {
+    const now = Date.now();
+    const allPlayers = [...teams.TOP.map((p) => ({ ...p, army: "TOP" })), ...teams.BOTTOM.map((p) => ({ ...p, army: "BOTTOM" }))];
+    const winnerIds = winnerArmy ? teams[winnerArmy].map((p) => String(p.id)) : [];
+    const rec: any = {
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
+      kind: "warfare",
+      mode: "warfare",
+      sport: "darts",
+      status,
+      createdAt: createdAtRef.current,
+      updatedAt: now,
+      winnerId: status === "finished" ? winnerIds[0] || null : null,
+      winnerIds: status === "finished" ? winnerIds : [],
+      players: allPlayers.map((p: any) => ({ id: String(p.id), name: p.name, avatarDataUrl: p.avatarDataUrl ?? null, isBot: !!p.isBot, army: p.army })),
+      summary: {
+        mode: "warfare",
+        finished: status === "finished",
+        winnerArmy: status === "finished" ? winnerArmy : null,
+        winnerIds: status === "finished" ? winnerIds : [],
+        aliveTop: aliveTop.slice(),
+        aliveBottom: aliveBottom.slice(),
+        statsByPlayerId,
+      },
+      payload: {
+        mode: "warfare",
+        sport: "darts",
+        config,
+        normalizedConfig: normalized,
+        state: { aliveTop: aliveTop.slice(), aliveBottom: aliveBottom.slice(), turnIndex, cursorTop, cursorBottom, winnerArmy },
+        statsByPlayerId,
+        visitHistory: visitHistoryRef.current.slice(),
+        visits: visitHistoryRef.current.slice(),
+        events: visitHistoryRef.current.slice(),
+      },
+    };
+    const telemetry = buildDartsTelemetry(rec, rec.payload);
+    if (telemetry) {
+      rec.payload.telemetry = telemetry;
+      rec.payload.dartTelemetry = telemetry;
+      rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+      rec.summary.perPlayer = telemetry.perPlayer;
+      rec.summary.telemetryExact = true;
+      rec.summary.telemetryCoverage = "full";
+    }
+    return rec;
+  }
+
+  React.useEffect(() => {
+    if (telemetryTick <= 0 || winnerArmy !== null || invalidTeams) return;
+    const record = buildWarfareRecord("in_progress");
+    void History.upsert(record).catch((error) => console.warn("[Warfare] autosave failed", error));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telemetryTick, aliveTop, aliveBottom, turnIndex, cursorTop, cursorBottom, statsByPlayerId, winnerArmy, invalidTeams]);
+
+  React.useEffect(() => {
+    if (winnerArmy === null || finishOnceRef.current || invalidTeams) return;
+    finishOnceRef.current = true;
+    const record = buildWarfareRecord("finished");
+    void History.upsert(record).catch((error) => console.warn("[Warfare] final history failed", error));
+    try { onFinish?.(record); } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winnerArmy, invalidTeams]);
+
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
@@ -224,9 +314,10 @@ export default function WarfarePlay({ go, config }: Props) {
 
   function applyTurn(darts: Dart[]) {
     if (winnerArmy !== null) return;
-    const delta: ApplyDelta = { removedFromTop: [], removedFromBottom: [] };
-
     const pid = activePlayer?.id || "";
+    appendExactVisit(darts);
+    const delta: ApplyDelta = { removedFromTop: [], removedFromBottom: [], playerId: pid };
+
     const nextStatsDelta: Partial<PlayerStats> = {
       darts: (darts || []).length,
       kills: 0,
@@ -285,7 +376,9 @@ export default function WarfarePlay({ go, config }: Props) {
       });
     }
 
-    // Push delta for undo
+    // Keep the exact stats delta with the gameplay snapshot so UNDO removes
+    // both the board effect and the corresponding telemetry/statistics.
+    delta.statsDelta = { ...nextStatsDelta };
     setUndoStack((prev) => [...prev, delta]);
 
     const nextTop = TOP_ARMY.filter((n) => topSet.has(n));
@@ -306,6 +399,27 @@ export default function WarfarePlay({ go, config }: Props) {
     if (undoStack.length === 0 || winnerArmy !== null) return;
     const last = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
+    if (visitHistoryRef.current.length) {
+      visitHistoryRef.current.pop();
+      setTelemetryTick((value) => value + 1);
+    }
+    if (last.playerId && last.statsDelta) {
+      setStatsByPlayerId((prev) => {
+        const cur = prev[last.playerId!] || { darts: 0, kills: 0, friendlyKills: 0, heals: 0, bombard: 0, invalidZone: 0 };
+        const d = last.statsDelta || {};
+        return {
+          ...prev,
+          [last.playerId!]: {
+            darts: Math.max(0, cur.darts - Number(d.darts || 0)),
+            kills: Math.max(0, cur.kills - Number(d.kills || 0)),
+            friendlyKills: Math.max(0, cur.friendlyKills - Number(d.friendlyKills || 0)),
+            heals: Math.max(0, cur.heals - Number(d.heals || 0)),
+            bombard: Math.max(0, cur.bombard - Number(d.bombard || 0)),
+            invalidZone: Math.max(0, cur.invalidZone - Number(d.invalidZone || 0)),
+          },
+        };
+      });
+    }
 
     setAliveTop((prev) => {
       const add = last.removedFromTop || [];

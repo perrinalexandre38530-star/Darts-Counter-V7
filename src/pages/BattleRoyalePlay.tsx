@@ -22,6 +22,8 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
+import { History } from "../lib/history";
+import { buildDartsTelemetry, canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { DartIconColorizable } from "../components/MaskIcon";
 
 import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
@@ -455,6 +457,10 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   // ✅ Finish guard (onFinish appelé une seule fois) + données pour overlay (Step 2)
   const finishOnceRef = React.useRef(false);
   const [finalSummary, setFinalSummary] = React.useState<any>(null);
+  const matchIdRef = React.useRef(`battle-royale-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
+  const createdAtRef = React.useRef(Date.now());
+  const visitHistoryRef = React.useRef<any[]>([]);
+  const [telemetryTick, setTelemetryTick] = React.useState(0);
 
   const target = TARGETS[roundIndex % TARGETS.length];
 
@@ -580,10 +586,74 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     setCurrentThrow((prev) => (prev?.length ? prev.slice(0, -1) : prev));
   }
 
+  function appendExactVisit(player: BRPlayerState, darts: UIDart[]) {
+    const playerId = String(player?.id || "");
+    if (!playerId || !Array.isArray(darts) || darts.length === 0) return;
+    const visitIndex = visitHistoryRef.current.filter((row: any) => String(row?.playerId) === playerId).length;
+    visitHistoryRef.current.push(canonicalVisitFromUiDarts({
+      playerId,
+      darts: darts.slice(0, dartsPerTurn),
+      visitIndex,
+      roundIndex,
+      source: "battle_royale",
+      meta: { target, eliminationRule },
+    }));
+    setTelemetryTick((value) => value + 1);
+  }
+
+  function buildBattleRoyaleRecord(status: "in_progress" | "finished", sourcePlayers = players) {
+    const now = Date.now();
+    const summary = buildBattleRoyaleSummary({
+      players: sourcePlayers,
+      eliminationRule,
+      missLimit,
+      dartsPerTurn,
+      roundsPlayed: roundIndex + 1,
+      targets: TARGETS,
+    });
+    const rec: any = {
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
+      kind: "battle_royale",
+      mode: "battle_royale",
+      sport: "darts",
+      status,
+      createdAt: createdAtRef.current,
+      updatedAt: now,
+      players: computeFinalRanking(sourcePlayers).map((p) => ({
+        id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null, isBot: !!p.isBot,
+      })),
+      winnerId: status === "finished" ? summary?.winnerId ?? null : null,
+      summary: { ...summary, finished: status === "finished" },
+      payload: {
+        mode: "battle_royale",
+        sport: "darts",
+        summary,
+        config: cfg,
+        roundsPlayed: roundIndex + 1,
+        visitHistory: visitHistoryRef.current.slice(),
+        visits: visitHistoryRef.current.slice(),
+        events: visitHistoryRef.current.slice(),
+      },
+    };
+    const telemetry = buildDartsTelemetry(rec, rec.payload);
+    if (telemetry) {
+      rec.payload.telemetry = telemetry;
+      rec.payload.dartTelemetry = telemetry;
+      rec.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+      rec.summary.perPlayer = telemetry.perPlayer;
+      rec.summary.telemetryExact = true;
+      rec.summary.telemetryCoverage = "full";
+    }
+    return rec;
+  }
+
   function finishTurn() {
     if (!activePlayer || ended) return;
 
     const throwDarts = currentThrow || [];
+    if (!throwDarts.length) return;
+    appendExactVisit(activePlayer, throwDarts);
     const hits = throwDarts.filter((d) => isHitOnTarget(target, d));
     const pts = throwDarts.reduce((acc, d) => acc + pointsOnTarget(target, d), 0);
 
@@ -671,6 +741,16 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     }, 0);
   }
 
+  // Autosave after every validated exact visit so an interrupted match can be
+  // reconstructed dart by dart, not only from the final aggregate.
+  React.useEffect(() => {
+    if (telemetryTick <= 0 || ended) return;
+    const record = buildBattleRoyaleRecord("in_progress", players);
+    void History.upsert(record).catch((error) => console.warn("[BattleRoyale] autosave failed", error));
+    // buildBattleRoyaleRecord intentionally reads refs containing the latest visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telemetryTick, players, roundIndex, turnPtr, ended]);
+
   // ✅ FIN: onFinish + summary (une seule fois)
   React.useEffect(() => {
     if (!ended) return;
@@ -689,24 +769,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
       setFinalSummary(summary);
 
-      onFinish?.({
-        kind: "battle_royale",
-        status: "finished",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        players: computeFinalRanking(players).map((p) => ({
-          id: p.id,
-          name: p.name,
-          avatarDataUrl: p.avatarDataUrl ?? null,
-        })),
-        winnerId: summary?.winnerId ?? null,
-        summary,
-        payload: {
-          summary,
-          config: cfg,
-          roundsPlayed: roundIndex + 1,
-        },
-      });
+      const record = buildBattleRoyaleRecord("finished", players);
+      void History.upsert(record).catch((error) => console.warn("[BattleRoyale] final history failed", error));
+      onFinish?.(record);
     } catch (e) {
       console.warn("[BattleRoyale] onFinish summary error:", e);
     }

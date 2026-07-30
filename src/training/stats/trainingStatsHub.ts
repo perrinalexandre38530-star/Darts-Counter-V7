@@ -46,6 +46,11 @@ export type TrainingDetailedSession = {
   success: boolean;
   config?: any;
   metrics?: TrainingDetailedMetrics;
+  /** Exact ordered darts grouped by validated visit. */
+  visitHistory?: any[];
+  /** Canonical S/D/T/BULL/DBULL/MISS telemetry, rebuildable for future stats. */
+  telemetry?: any;
+  telemetryCoverage?: "exact" | "missing";
 };
 
 export type TrainingGroupParticipantResult = {

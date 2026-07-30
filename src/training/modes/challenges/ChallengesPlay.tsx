@@ -10,7 +10,7 @@ import {
   visitScore,
   type TrainingDart,
 } from "../../lib/trainingDarts";
-import { recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
+import { appendTrainingVisit, recordSoloTrainingResult } from "../../stats/trainingSessionRecorder";
 
 export default function ChallengesPlay({ config, onExit }: { config: any; onExit: () => void }) {
   const challengeId = String(config?.challengeId || config?.id || "3_DOUBLES_9");
@@ -18,6 +18,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
   const sequence = Array.isArray(config?.seq) ? config.seq.map(String) : ["BULL", "T20", "D20"];
   const startedAtRef = React.useRef(Date.now());
   const endedRef = React.useRef(false);
+  const visitHistoryRef = React.useRef<any[]>([]);
   const dataRef = React.useRef({
     darts: 0,
     hits: 0,
@@ -80,6 +81,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
         hits: data.hits,
         points: data.points,
         success,
+        visitHistory: visitHistoryRef.current,
         metrics: { ...metrics, accuracyPercent: accuracyPct },
       });
       setResult({ success, stats, metrics });
@@ -94,6 +96,7 @@ export default function ChallengesPlay({ config, onExit }: { config: any; onExit
       const remaining = Math.max(0, maxDarts - data.darts);
       const darts = visit.slice(0, remaining);
       if (!darts.length) return;
+      appendTrainingVisit(visitHistoryRef.current, darts, { roundIndex: visitHistoryRef.current.length });
 
       if (challengeId === "CHECKOUT_40_3") {
         data.darts += darts.length;

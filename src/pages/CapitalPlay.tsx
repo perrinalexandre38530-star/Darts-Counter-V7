@@ -43,6 +43,8 @@ import {
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 import { loadBotPlayers } from "../lib/bots";
 import ProfileAvatar from "../components/ProfileAvatar";
+import { History } from "../lib/history";
+import { buildDartsTelemetry } from "../lib/dartsTelemetry";
 import {
   applyCapitalVisit,
   buildCapitalMatchStats,
@@ -875,6 +877,8 @@ export default function CapitalPlay(props: any) {
   const [visits, setVisits] = useState<CapitalVisit[]>([]);
   const [finishedRecord, setFinishedRecord] = useState<any>(null);
   const historySavedRef = useRef(false);
+  const matchIdRef = useRef(`capital-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const startedAtRef = useRef(Date.now());
 
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
@@ -944,7 +948,36 @@ export default function CapitalPlay(props: any) {
       penaltyLost: applied.penaltyLost,
       createdAt: Date.now(),
     };
-    setVisits((previous) => [...previous, newVisit]);
+    const nextVisits = [...visits, newVisit];
+    setVisits(nextVisits);
+
+    // Sauvegarde durable après chaque volée : même une partie interrompue garde
+    // l'ordre exact S/D/T/BULL/DBULL/MISS et peut être recalculée plus tard.
+    try {
+      const progress: any = {
+        id: matchIdRef.current,
+        matchId: matchIdRef.current,
+        kind: "capital",
+        mode: "capital",
+        sport: "darts",
+        status: "in_progress",
+        createdAt: startedAtRef.current,
+        updatedAt: Date.now(),
+        players: participants.map((p: any, i: number) => ({ id: String(p?.id ?? i), name: p?.nickname ?? p?.name ?? `Joueur ${i + 1}`, avatarDataUrl: p?.avatarDataUrl ?? null })),
+        summary: { mode: "capital", finished: false, finalScores: Object.fromEntries(participants.map((p: any, i: number) => [String(p?.id ?? i), Number(nextScores[i] || 0)])) },
+        payload: { mode: "capital", sport: "darts", config: cfg, scores: nextScores, roundIdx, playerIdx, visitHistory: nextVisits, visits: nextVisits, events: nextVisits, dartLog: nextVisits },
+      };
+      const telemetry = buildDartsTelemetry(progress, progress.payload);
+      if (telemetry) {
+        progress.payload.telemetry = telemetry;
+        progress.payload.dartTelemetry = telemetry;
+        progress.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+        progress.summary.perPlayer = telemetry.perPlayer;
+        progress.summary.telemetryExact = true;
+        progress.summary.telemetryCoverage = "full";
+      }
+      void History.upsert(progress);
+    } catch {}
 
     const targetReached = (() => {
       if (cfg?.victoryMode !== "first_to_target" || !Number(cfg?.targetScore)) return false;
@@ -1173,12 +1206,13 @@ export default function CapitalPlay(props: any) {
     const savedMatchStats = { ...matchStats, durationMs: Math.max(Number(matchStats?.durationMs || 0), Math.max(0, now - startedAt)) };
     const winnerIds = winningPlayerIds.filter(Boolean);
     const record = {
-      id: `capital-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      id: matchIdRef.current,
+      matchId: matchIdRef.current,
       kind: "capital",
       mode: "capital",
       sport: "darts",
       status: "finished",
-      createdAt: startedAt,
+      createdAt: startedAtRef.current || startedAt,
       updatedAt: now,
       players: playerStats,
       teams: teamStats,
@@ -1209,6 +1243,11 @@ export default function CapitalPlay(props: any) {
       payload: {
         kind: "capital",
         mode: "capital",
+        sport: "darts",
+        visitHistory: visits,
+        visits,
+        events: visits,
+        dartLog: visits,
         config: cfg,
         players: playerStats,
         teams: teamStats,
@@ -1236,7 +1275,17 @@ export default function CapitalPlay(props: any) {
         },
       },
     };
+    const telemetry = buildDartsTelemetry(record, record.payload);
+    if (telemetry) {
+      record.payload.telemetry = telemetry;
+      record.payload.dartTelemetry = telemetry;
+      record.summary.hitSummary = { ...telemetry.totals, byPlayer: telemetry.perPlayer };
+      record.summary.perPlayerTelemetry = telemetry.perPlayer;
+      record.summary.telemetryExact = true;
+      record.summary.telemetryCoverage = "full";
+    }
     setFinishedRecord(record);
+    void History.upsert(record as any).catch((error: any) => console.warn("[Capital] history persistence failed", error));
     try { props?.onFinish?.(record); } catch {}
   }, [isFinished, visits, playerStats, teamStats, matchStats, winningPlayerIds, winnerTeam, cfg, contracts, props?.onFinish]);
 
