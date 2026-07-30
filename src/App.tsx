@@ -81,7 +81,6 @@ import BottomNav from "./components/BottomNav";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 // MONETIZATION_V1
-import AdSlot, { resolveBannerPlacementForRoute } from "./monetization/AdSlot";
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
 
 import AuthStart from "./pages/AuthStart";
@@ -5336,7 +5335,6 @@ case "babyfoot_team_edit":
   ] as any);
 
   const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab);
-  const adBannerPlacement = resolveBannerPlacementForRoute(String(tab || ""), routeParams);
 
 
   return (
@@ -5356,9 +5354,6 @@ case "babyfoot_team_edit":
         <div className="container" style={{ paddingBottom: 88 }}>
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
-              {adBannerPlacement && adBannerPlacement !== "home" && (
-                <AdSlot placement={adBannerPlacement} />
-              )}
               {page}
             </React.Suspense>
           </AppGate>
