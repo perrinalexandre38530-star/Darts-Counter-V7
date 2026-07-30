@@ -124,20 +124,29 @@ function measureInlineRect(node: HTMLElement): InlineAdRect {
   const viewportHeight = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0);
   const viewportWidth = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
   const bottomNavSafeArea = 82;
+  const usableBottom = Math.max(0, viewportHeight - bottomNavSafeArea);
+
+  // Ne pas exiger que le DIV soit contenu au pixel près dans le viewport :
+  // Android/WebView peut ajouter 1 à quelques pixels d'inset, de scrollbar ou
+  // d'arrondi. On mesure plutôt la partie réellement visible et on la borne.
+  const clippedLeft = Math.max(0, rect.left);
+  const clippedTop = Math.max(0, rect.top);
+  const clippedRight = Math.min(viewportWidth, rect.right);
+  const clippedBottom = Math.min(usableBottom, rect.bottom);
+  const visibleWidth = Math.max(0, clippedRight - clippedLeft);
+  const visibleHeight = Math.max(0, clippedBottom - clippedTop);
 
   const visible =
-    rect.width >= 300 &&
-    rect.height >= 50 &&
-    rect.left >= 0 &&
-    rect.right <= viewportWidth + 1 &&
-    rect.top >= 0 &&
-    rect.bottom <= viewportHeight - bottomNavSafeArea;
+    viewportWidth > 0 &&
+    usableBottom > 0 &&
+    visibleWidth >= 280 &&
+    visibleHeight >= 45;
 
   return {
-    left: Math.max(0, rect.left),
-    top: Math.max(0, rect.top),
-    width: Math.max(300, rect.width),
-    height: Math.max(50, Math.min(100, rect.height)),
+    left: clippedLeft,
+    top: clippedTop,
+    width: Math.max(300, visible ? visibleWidth : Math.min(viewportWidth || rect.width, rect.width)),
+    height: Math.max(50, Math.min(100, visible ? visibleHeight : rect.height)),
     visible,
   };
 }
@@ -188,7 +197,7 @@ export function PaidInlineSurface({
     if (!node) return;
     let raf = 0;
     let retryTimer = 0;
-    let retryDelayMs = 700;
+    let retryDelayMs = 2500;
     let destroyed = false;
 
     const clearRetry = () => {
@@ -202,7 +211,7 @@ export function PaidInlineSurface({
         retryTimer = 0;
         schedule();
       }, retryDelayMs);
-      retryDelayMs = Math.min(8000, Math.round(retryDelayMs * 1.65));
+      retryDelayMs = Math.min(30000, Math.round(retryDelayMs * 1.8));
     };
 
     const sync = () => {
@@ -210,7 +219,8 @@ export function PaidInlineSurface({
       const rect = measureInlineRect(node);
       if (!rect.visible) {
         if (shownRef.current) void updateInlineGoogleAd(slotKey, rect);
-        else scheduleRetry();
+        // Le scroll/IntersectionObserver relancera la mesure dès que le slot
+        // entre réellement dans le viewport. Inutile de marteler AdMob hors écran.
         return;
       }
 
@@ -222,7 +232,7 @@ export function PaidInlineSurface({
             if (destroyed) return;
             shownRef.current = shown;
             if (shown) {
-              retryDelayMs = 700;
+              retryDelayMs = 2500;
               clearRetry();
             } else {
               scheduleRetry();
@@ -252,23 +262,29 @@ export function PaidInlineSurface({
       if (!document.hidden) schedule();
     };
     const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null;
+    const intersectionObserver = typeof IntersectionObserver !== "undefined"
+      ? new IntersectionObserver(schedule, { threshold: [0, 0.25, 0.75, 1] })
+      : null;
     resizeObserver?.observe(node);
+    intersectionObserver?.observe(node);
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
     window.addEventListener("pageshow", schedule);
+    window.addEventListener("focus", schedule);
     document.addEventListener("visibilitychange", onVisibilityChange);
     document.addEventListener("scroll", schedule, true);
     schedule();
-    scheduleRetry();
 
     return () => {
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
       clearRetry();
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
       window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("focus", schedule);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("scroll", schedule, true);
       shownRef.current = false;

@@ -131,7 +131,9 @@ public class InlineAdMobPlugin extends Plugin {
         params.topMargin = webOffset[1] + dp(topDp);
         params.gravity = Gravity.TOP | Gravity.LEFT;
         holder.container.setLayoutParams(params);
-        holder.container.setVisibility(Boolean.FALSE.equals(visible) ? View.GONE : View.VISIBLE);
+        // Tant que Google n'a pas confirmé onAdLoaded, le conteneur natif reste
+        // invisible et ne masque ni ne bloque la carte de secours React.
+        holder.container.setVisibility(holder.loaded && !Boolean.FALSE.equals(visible) ? View.VISIBLE : View.GONE);
     }
 
     private void destroySlot(String slotId) {

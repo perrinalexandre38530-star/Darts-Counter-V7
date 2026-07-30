@@ -37,6 +37,45 @@ type InlineAdMobPlugin = {
 
 let pluginCache: InlineAdMobPlugin | null | undefined;
 
+const slotEpochs = new Map<string, number>();
+let nativeLoadQueue: Promise<void> = Promise.resolve();
+let nextNativeLoadAt = 0;
+const NATIVE_LOAD_GAP_MS = 650;
+const NATIVE_LOAD_TIMEOUT_MS = 15000;
+
+function slotEpoch(slotId: string): number {
+  return slotEpochs.get(slotId) || 0;
+}
+
+function invalidateSlot(slotId: string): void {
+  slotEpochs.set(slotId, slotEpoch(slotId) + 1);
+}
+
+function wait(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function enqueueNativeLoad<T>(task: () => Promise<T>): Promise<T> {
+  const run = nativeLoadQueue.then(task, task);
+  nativeLoadQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(`timeout ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 function getPlugin(): InlineAdMobPlugin | null {
   if (pluginCache !== undefined) return pluginCache;
   if (typeof window === "undefined" || !isCapacitorNativeRuntime()) {
@@ -69,25 +108,45 @@ export async function showInlineGoogleAd(
   const plugin = getPlugin();
   if (!plugin || !rect.visible) return false;
 
-  const status = await ensureNativeAdMobReady();
-  if (!status.canRequestAds) return false;
+  const requestedEpoch = slotEpoch(slotId);
 
-  const config = getAdMobRuntimeConfig();
-  try {
-    // Le pont Android ne résout désormais la promesse qu'après onAdLoaded.
-    // En cas d'échec réseau/no-fill, false permet au composant React de
-    // retenter automatiquement sans attendre une navigation de l'utilisateur.
-    await plugin.show({
-      slotId,
-      adId: getAdMobBannerId(placement),
-      isTesting: config.testMode,
-      testDeviceIds: config.mode === "real_test" ? config.testDeviceIds : [],
-      ...rect,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  // Les AdView inline sont chargées en file, une à la fois. Cela évite les
+  // rafales simultanées (HOME possède deux bannières) et les throttles/no-fill
+  // aléatoires observés lors d'une navigation rapide entre les pages.
+  return enqueueNativeLoad(async () => {
+    if (slotEpoch(slotId) !== requestedEpoch) return false;
+
+    const delay = Math.max(0, nextNativeLoadAt - Date.now());
+    await wait(delay);
+    if (slotEpoch(slotId) !== requestedEpoch) return false;
+
+    const status = await ensureNativeAdMobReady();
+    if (!status.canRequestAds || slotEpoch(slotId) !== requestedEpoch) return false;
+
+    const config = getAdMobRuntimeConfig();
+    const adId = getAdMobBannerId(placement);
+    nextNativeLoadAt = Date.now() + NATIVE_LOAD_GAP_MS;
+
+    try {
+      await withTimeout(plugin.show({
+        slotId,
+        adId,
+        isTesting: config.testMode,
+        testDeviceIds: config.mode === "real_test" ? config.testDeviceIds : [],
+        ...rect,
+      }), NATIVE_LOAD_TIMEOUT_MS);
+
+      if (slotEpoch(slotId) !== requestedEpoch) {
+        try { await plugin.hide({ slotId }); } catch {}
+        return false;
+      }
+      return true;
+    } catch (error) {
+      try { await plugin.hide({ slotId }); } catch {}
+      console.warn(`[AdMob:inline] ${slotId}/${placement} non chargé`, error);
+      return false;
+    }
+  });
 }
 
 export async function updateInlineGoogleAd(slotId: string, rect: InlineAdRect): Promise<void> {
@@ -97,6 +156,7 @@ export async function updateInlineGoogleAd(slotId: string, rect: InlineAdRect): 
 }
 
 export async function hideInlineGoogleAd(slotId: string): Promise<void> {
+  invalidateSlot(slotId);
   const plugin = getPlugin();
   if (!plugin) return;
   try {
@@ -107,6 +167,7 @@ export async function hideInlineGoogleAd(slotId: string): Promise<void> {
 }
 
 export async function hideAllInlineGoogleAds(): Promise<void> {
+  for (const slotId of slotEpochs.keys()) invalidateSlot(slotId);
   const plugin = getPlugin();
   if (!plugin) return;
   try {

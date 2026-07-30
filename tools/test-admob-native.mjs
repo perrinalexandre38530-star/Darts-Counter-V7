@@ -37,11 +37,15 @@ check("Inline bridge uses dedicated Capacitor plugin", inlineTs.includes('regist
 check("Inline bridge waits for UMP consent", inlineTs.includes("ensureNativeAdMobReady") && inlineTs.includes("status.canRequestAds"));
 check("Inline bridge resolves unit by placement", inlineTs.includes("getAdMobBannerId(placement)"));
 check("React slots measure real DOM rectangles", slot.includes("getBoundingClientRect") && slot.includes("PaidInlineSurface"));
+check("React slots tolerate WebView insets and partial pixel clipping", slot.includes("visibleWidth >= 280") && slot.includes("clippedRight") && slot.includes("usableBottom"));
 check("React slots pass placement to native bridge", slot.includes("showInlineGoogleAd(slotKey, placement, rect)"));
 check("Inline slots retry transient startup/load failures", slot.includes("scheduleRetry") && slot.includes("retryDelayMs") && slot.includes("visibilitychange"));
 check("Inline bridge converts native load errors into retryable false", inlineTs.includes("catch") && inlineTs.includes("return false"));
+check("Inline loads are serialized to avoid request bursts", inlineTs.includes("nativeLoadQueue") && inlineTs.includes("enqueueNativeLoad") && inlineTs.includes("NATIVE_LOAD_GAP_MS"));
+check("Inline native calls have a bounded timeout", inlineTs.includes("NATIVE_LOAD_TIMEOUT_MS") && inlineTs.includes("withTimeout"));
 check("Android plugin resolves only after onAdLoaded", inlineJava.indexOf("onAdLoaded()") < inlineJava.indexOf("call.resolve();", inlineJava.indexOf("onAdLoaded()")) && inlineJava.includes("holder.loaded = true"));
 check("Android plugin destroys failed slots for a clean retry", inlineJava.includes("onAdFailedToLoad") && inlineJava.includes("destroySlot(slotId)") && inlineJava.includes("call.reject"));
+check("Android ad container stays hidden until Google confirms load", inlineJava.includes("holder.loaded && !Boolean.FALSE.equals(visible)"));
 check("Home top has stable paid slot", home.includes('slotKey="home-top"'));
 check("Home player has stable paid slot", home.includes('slotKey="home-player"'));
 check("Home player uses secondary banner unit", home.includes('placement="home_secondary"'));
