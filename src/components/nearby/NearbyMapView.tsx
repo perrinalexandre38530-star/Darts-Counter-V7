@@ -166,6 +166,9 @@ export default function NearbyMapView({
   const [mapCenter, setMapCenter] = React.useState<MapCenter | null>(center ? { lat: center.latitude, lng: center.longitude } : null);
   const [selected, setSelected] = React.useState<Marker | null>(null);
   const [tileErrors, setTileErrors] = React.useState(0);
+  const [visibleKinds, setVisibleKinds] = React.useState<Set<Marker["kind"]>>(
+    () => new Set(["player", "club", "team", "tournament", "venue"])
+  );
 
   React.useEffect(() => {
     if (center) setMapCenter({ lat: center.latitude, lng: center.longitude });
@@ -216,8 +219,18 @@ export default function NearbyMapView({
         subtitle: place.distanceLabel,
         place,
       }));
-    return [...playerMarkers, ...placeMarkers];
-  }, [center, crossedUserIds, places, players]);
+    return [...playerMarkers, ...placeMarkers].filter((marker) => visibleKinds.has(marker.kind));
+  }, [center, crossedUserIds, places, players, visibleKinds]);
+
+  const toggleKind = (kind: Marker["kind"]) => {
+    setVisibleKinds((current) => {
+      const next = new Set(current);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+    setSelected(null);
+  };
 
   if (!center || !mapCenter) {
     return (
@@ -326,6 +339,19 @@ export default function NearbyMapView({
         <div style={{ position: "absolute", left: 10, top: 10, zIndex: 20, display: "flex", gap: 6, flexWrap: "wrap", maxWidth: "calc(100% - 110px)" }}>
           <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(2,8,14,.86)", border: "1px solid rgba(255,255,255,.14)", fontSize: 10.5, fontWeight: 1000 }}>{players.length} joueur(s)</span>
           <span style={{ borderRadius: 999, padding: "6px 9px", background: "rgba(2,8,14,.86)", border: "1px solid rgba(255,255,255,.14)", fontSize: 10.5, fontWeight: 1000 }}>{places.length} lieu(x)</span>
+        </div>
+
+        <div style={{ position: "absolute", left: 10, top: 47, zIndex: 20, display: "flex", gap: 5, flexWrap: "wrap", maxWidth: "calc(100% - 58px)" }}>
+          {([
+            ["player", "👤 Joueurs"],
+            ["club", "🏛 Clubs"],
+            ["team", "🛡 Équipes"],
+            ["tournament", "🏆 Tournois"],
+            ["venue", "📌 Lieux"],
+          ] as Array<[Marker["kind"], string]>).map(([kind, label]) => {
+            const active = visibleKinds.has(kind);
+            return <button key={kind} type="button" onClick={() => toggleKind(kind)} style={{ borderRadius: 999, padding: "5px 7px", background: active ? "rgba(2,8,14,.92)" : "rgba(2,8,14,.62)", border: `1px solid ${active ? accent : "rgba(255,255,255,.10)"}`, color: active ? accent : "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 1000, cursor: "pointer" }}>{label}</button>;
+          })}
         </div>
 
         <div style={{ position: "absolute", right: 10, top: 10, zIndex: 20, display: "grid", gap: 6 }}>

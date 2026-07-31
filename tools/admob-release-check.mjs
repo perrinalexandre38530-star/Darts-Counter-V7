@@ -105,7 +105,7 @@ if (mode === "google_test") {
   check("App ID réel injecté dans Android", !!appId && strings.includes(`<string name="admob_app_id">${appId}</string>`), appId);
 
   if (mode === "real_test") {
-    check("Appareil de test protégé", testDevices.length > 0 || consoleManaged, consoleManaged ? "déclaré dans la console AdMob" : `${testDevices.length} appareil(s) local(aux)`);
+    check("Appareil de test protégé", testDevices.length > 0 || consoleManaged, consoleManaged && testDevices.length > 0 ? `console AdMob + ${testDevices.length} appareil(s) SDK` : consoleManaged ? "déclaré dans la console AdMob" : `${testDevices.length} appareil(s) SDK`);
     check("App ID non démonstration", appId !== GOOGLE_TEST_APP_ID, appId);
     if (units.interstitial) check("Interstitiel renseigné valide", isUnitId(units.interstitial), units.interstitial);
     if (units.rewarded) check("Rewarded renseigné valide", isUnitId(units.rewarded), units.rewarded);

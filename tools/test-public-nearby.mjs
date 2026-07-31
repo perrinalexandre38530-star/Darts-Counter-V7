@@ -17,12 +17,14 @@ function has(text, needle) {
 
 const migration = read('supabase/migrations/20260727_public_online_nearby.sql');
 const mapMigration = read('supabase/migrations/20260730_nearby_map_encounters_places.sql');
+const participationMigration = read('supabase/migrations/20260730_nearby_map_participation_v2.sql');
 const nearbyApi = read('src/lib/nearbyPlayersApi.ts');
 const nearbyPanel = read('src/components/NearbyPlayersPanel.tsx');
 const nearbyMap = read('src/components/nearby/NearbyMapView.tsx');
 const nearbyCard = read('src/components/nearby/NearbyPlayerCard.tsx');
 const encountersPanel = read('src/components/nearby/NearbyEncountersPanel.tsx');
 const placeCard = read('src/components/nearby/NearbyPlaceCard.tsx');
+const placeRequestsPanel = read('src/components/nearby/NearbyPlaceRequestsPanel.tsx');
 const encountersTable = (mapMigration.match(/create table if not exists public\.ms_nearby_encounters[\s\S]*?\n\);/i) || [''])[0];
 const friendsPage = read('src/pages/FriendsPage.tsx');
 const onlineApi = read('src/lib/onlineApi.ts');
@@ -54,11 +56,23 @@ expect('Historique croisé limité et effaçable', has(mapMigration, 'ms_list_ne
 expect('Publication locale clubs/équipes/tournois/lieux câblée', has(mapMigration, 'ms_publish_nearby_place') && /club.*team.*tournament.*venue/s.test(mapMigration));
 expect('Recherche de points locaux utilise PostGIS', has(mapMigration, 'ms_find_nearby_places') && /ST_DWithin\s*\(/i.test(mapMigration));
 
+expect('Migration participation locale V2 versionnée', participationMigration.length > 9000);
+expect('Table inscriptions et contacts locaux présente', has(participationMigration, 'ms_nearby_place_requests'));
+expect('Demandes locales distinguent adhésion inscription défi et contact', /join.*participate.*challenge.*contact/s.test(participationMigration));
+expect('Capacité et niveaux des événements contrôlés en base', has(participationMigration, 'max_participants') && has(participationMigration, 'min_skill_level') && has(participationMigration, 'max_skill_level'));
+expect('RPC inscription locale présente', has(participationMigration, 'ms_send_nearby_place_request'));
+expect('RPC acceptation et refus organisateur présente', has(participationMigration, 'ms_respond_nearby_place_request'));
+expect('RPC annulation demande locale présente', has(participationMigration, 'ms_cancel_nearby_place_request'));
+expect('Une capacité complète bloque une nouvelle inscription', has(participationMigration, 'PLACE_FULL'));
+expect('RLS demandes locales activée', /ms_nearby_place_requests enable row level security/i.test(participationMigration));
+
 expect('API frontend appelle ms_get_nearby_settings', has(nearbyApi, 'ms_get_nearby_settings'));
 expect('API frontend appelle ms_find_nearby_players', has(nearbyApi, 'ms_find_nearby_players'));
 expect('API frontend appelle ms_send_nearby_game_request', has(nearbyApi, 'ms_send_nearby_game_request'));
 expect('API frontend charge les joueurs croisés', has(nearbyApi, 'ms_list_nearby_encounters'));
 expect('API frontend charge et publie les points locaux', has(nearbyApi, 'ms_find_nearby_places') && has(nearbyApi, 'ms_publish_nearby_place'));
+expect('API frontend gère inscriptions et contacts locaux', has(nearbyApi, 'ms_send_nearby_place_request') && has(nearbyApi, 'ms_list_nearby_place_requests') && has(nearbyApi, 'ms_respond_nearby_place_request') && has(nearbyApi, 'ms_cancel_nearby_place_request'));
+expect('API frontend publie capacité niveau et couverture', has(nearbyApi, 'maxParticipants') && has(nearbyApi, 'minSkillLevel') && has(nearbyApi, 'coverUrl'));
 expect('Coordonnées GPS brutes ne font pas partie du type NearbyPlayer', !/type NearbyPlayer[\s\S]{0,1200}\blatitude\b/i.test(nearbyApi) && !/type NearbyPlayer[\s\S]{0,1200}\blongitude\b/i.test(nearbyApi));
 expect('Les seules coordonnées cartographiques du joueur sont explicitement arrondies', /Coordonnées volontairement arrondies/.test(nearbyApi));
 
@@ -82,6 +96,11 @@ expect('Belles cartes joueurs dédiées', has(nearbyCard, 'NearbyPlayerCard') &&
 expect('Panneau joueurs croisés dédié', has(encountersPanel, 'JOUEURS CROISÉS'));
 expect('Cartes clubs et tournois dédiées', has(placeCard, 'TOURNOI') && has(placeCard, 'CLUB'));
 expect('Publication d’un point local disponible dans UI', has(nearbyPanel, 'PUBLIER SUR LA CARTE'));
+expect('Cartes locales affichent capacité et niveau', has(placeCard, 'acceptedCount') && has(placeCard, 'maxParticipants') && has(placeCard, 'Niveau'));
+expect('Cartes locales utilisent de vraies demandes dédiées', has(placeCard, 'Rejoindre le club') && has(placeCard, 'Défier l’équipe') && has(placeCard, 'Participer'));
+expect('Panneau organisateur accepte refuse et annule les demandes', has(placeRequestsPanel, 'DEMANDES LOCALES REÇUES') && has(placeRequestsPanel, 'Accepter') && has(placeRequestsPanel, 'Annuler'));
+expect('Carte permet de filtrer joueurs clubs équipes tournois et lieux', has(nearbyMap, 'visibleKinds') && has(nearbyMap, '🏛 Clubs') && has(nearbyMap, '🏆 Tournois'));
+expect('Publication UI propose capacité niveaux et image de couverture', has(nearbyPanel, 'maxParticipants') && has(nearbyPanel, 'minSkillLevel') && has(nearbyPanel, 'coverUrl'));
 
 expect('ONLINE public n’utilise le NAS que lorsque le provider est explicitement NAS', /function useNasOnlineBackend\(\)[\s\S]{0,500}return isNasProviderEnabled\(\)/.test(onlineApi));
 expect('Couche sociale publique Supabase présente', /supabase\.(rpc|from)/.test(socialApi));

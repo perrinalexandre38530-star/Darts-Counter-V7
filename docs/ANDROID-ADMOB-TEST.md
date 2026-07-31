@@ -75,3 +75,14 @@ npm run android:release-check
 ```
 
 `android:sync` génère aussi `app-ads.txt` lorsque le Publisher ID est disponible, construit la PWA, synchronise Capacitor, injecte l'App ID Android puis exécute les contrôles de release.
+
+
+## Appareil de test SDK — Samsung de développement
+
+Le mode `real_test` inclut explicitement l’identifiant Google Mobile Ads SDK suivant :
+
+```text
+AD2A12F3E08C12ABDD574BC06097D62C
+```
+
+Il est transmis à `RequestConfiguration.setTestDeviceIds(...)` en plus de l’enregistrement dans la console AdMob. Cette protection doit rester absente du mode `production`.

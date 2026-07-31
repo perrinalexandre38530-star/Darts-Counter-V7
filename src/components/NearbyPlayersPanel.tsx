@@ -1,27 +1,34 @@
 import React from "react";
 import { sendFriendRequest } from "../lib/friendsApi";
 import {
+  cancelNearbyPlaceRequest,
   clearNearbyEncounters,
   deleteNearbyPlace,
   findNearbyPlaces,
   findNearbyPlayers,
   listNearbyEncounters,
   listNearbyGameRequests,
+  listNearbyPlaceRequests,
   loadNearbySettings,
   publishNearbyPlace,
   respondNearbyGameRequest,
+  respondNearbyPlaceRequest,
   saveNearbySettings,
   sendNearbyGameRequest,
+  sendNearbyPlaceRequest,
   type NearbyEncounter,
   type NearbyGameRequest,
   type NearbyPlace,
   type NearbyPlaceKind,
+  type NearbyPlaceRequest,
+  type NearbyPlaceRequestType,
   type NearbyPlayer,
   type NearbySettings,
 } from "../lib/nearbyPlayersApi";
 import NearbyEncountersPanel from "./nearby/NearbyEncountersPanel";
 import NearbyMapView from "./nearby/NearbyMapView";
 import NearbyPlaceCard from "./nearby/NearbyPlaceCard";
+import NearbyPlaceRequestsPanel from "./nearby/NearbyPlaceRequestsPanel";
 import NearbyPlayerCard from "./nearby/NearbyPlayerCard";
 
 type Props = {
@@ -42,6 +49,10 @@ type PublishDraft = {
   areaLabel: string;
   startsAt: string;
   endsAt: string;
+  maxParticipants: string;
+  minSkillLevel: string;
+  maxSkillLevel: string;
+  coverUrl: string;
   preciseLocation: boolean;
 };
 
@@ -163,7 +174,7 @@ function toIsoOrNull(raw: string) {
 
 function isMissingMapMigration(error: any) {
   const message = String(error?.message || error || "").toLowerCase();
-  return message.includes("ms_find_nearby_places") || message.includes("ms_list_nearby_encounters") || message.includes("could not find the function") || message.includes("pgrst202");
+  return message.includes("ms_find_nearby_places") || message.includes("ms_list_nearby_encounters") || message.includes("ms_list_nearby_place_requests") || message.includes("ms_send_nearby_place_request") || message.includes("could not find the function") || message.includes("pgrst202");
 }
 
 const DEFAULT_SETTINGS: NearbySettings = {
@@ -184,6 +195,10 @@ const DEFAULT_PUBLISH: PublishDraft = {
   areaLabel: "",
   startsAt: "",
   endsAt: "",
+  maxParticipants: "",
+  minSkillLevel: "",
+  maxSkillLevel: "",
+  coverUrl: "",
   preciseLocation: false,
 };
 
@@ -193,6 +208,7 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
   const [settings, setSettings] = React.useState<NearbySettings>({ ...DEFAULT_SETTINGS, sports: [activeSport] });
   const [players, setPlayers] = React.useState<NearbyPlayer[]>([]);
   const [requests, setRequests] = React.useState<NearbyGameRequest[]>([]);
+  const [placeRequests, setPlaceRequests] = React.useState<NearbyPlaceRequest[]>([]);
   const [encounters, setEncounters] = React.useState<NearbyEncounter[]>(() => loadLocalEncounters());
   const [places, setPlaces] = React.useState<NearbyPlace[]>([]);
   const [coords, setCoords] = React.useState<Coordinates | null>(null);
@@ -251,6 +267,16 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
   const refreshRequests = React.useCallback(async () => {
     if (!signedIn) return;
     try { setRequests(await listNearbyGameRequests()); } catch {}
+  }, [signedIn]);
+
+  const refreshPlaceRequests = React.useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      setPlaceRequests(await listNearbyPlaceRequests(150));
+      setMapMigrationReady(true);
+    } catch (caught) {
+      if (isMissingMapMigration(caught)) setMapMigrationReady(false);
+    }
   }, [signedIn]);
 
   const refreshEncounters = React.useCallback(async () => {
@@ -353,7 +379,7 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
         setSettingsLoaded(true);
         const preferredSearchSport = normalized.sports.includes(activeSport) ? activeSport : (normalized.sports[0] || activeSport);
         setSearchSport(preferredSearchSport);
-        await Promise.allSettled([refreshRequests(), refreshEncounters(), refreshPlaces(normalized, preferredSearchSport)]);
+        await Promise.allSettled([refreshRequests(), refreshPlaceRequests(), refreshEncounters(), refreshPlaces(normalized, preferredSearchSport)]);
         if (normalized.hasLocation && alive) {
           try { await searchWithSettings(normalized, { silent: true, sport: preferredSearchSport, available: false, looking: false, level: null }); } catch {}
         }
@@ -362,13 +388,16 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
       }
     })();
     return () => { alive = false; };
-  }, [activeSport, refreshEncounters, refreshPlaces, refreshRequests, searchWithSettings, signedIn]);
+  }, [activeSport, refreshEncounters, refreshPlaceRequests, refreshPlaces, refreshRequests, searchWithSettings, signedIn]);
 
   React.useEffect(() => {
     if (!signedIn) return;
-    const timer = window.setInterval(() => { void refreshRequests(); }, 30000);
+    const timer = window.setInterval(() => {
+      void refreshRequests();
+      void refreshPlaceRequests();
+    }, 30000);
     return () => window.clearInterval(timer);
-  }, [refreshRequests, signedIn]);
+  }, [refreshPlaceRequests, refreshRequests, signedIn]);
 
   async function refreshPlayers() {
     setBusy(true); setError(null); setMessage(null);
@@ -448,17 +477,71 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
         startsAt: toIsoOrNull(publishDraft.startsAt),
         endsAt: toIsoOrNull(publishDraft.endsAt),
         preciseLocation: publishDraft.preciseLocation,
+        maxParticipants: publishDraft.maxParticipants ? Number(publishDraft.maxParticipants) : null,
+        minSkillLevel: publishDraft.minSkillLevel ? Number(publishDraft.minSkillLevel) : null,
+        maxSkillLevel: publishDraft.maxSkillLevel ? Number(publishDraft.maxSkillLevel) : null,
+        coverUrl: publishDraft.coverUrl.trim() || null,
+        organizerLabel: readProfileName(profile),
         metadata: { publisherName: readProfileName(profile) },
       });
       setPublishDraft(DEFAULT_PUBLISH);
       setPublishOpen(false);
       setMessage("Point local publié sur la carte.");
-      await refreshPlaces(settings, searchSport);
+      await Promise.allSettled([refreshPlaces(settings, searchSport), refreshPlaceRequests()]);
       setView("map");
       setMapMigrationReady(true);
     } catch (caught: any) {
       if (isMissingMapMigration(caught)) setMapMigrationReady(false);
       setError(isMissingMapMigration(caught) ? "La migration Supabase CARTE LOCALE doit être installée avant de publier." : String(caught?.message || caught));
+    } finally { setBusy(false); }
+  }
+
+  async function requestPlace(place: NearbyPlace, requestType: NearbyPlaceRequestType) {
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      const label = requestType === "participate" ? "inscription" : requestType === "join" ? "demande d’adhésion" : requestType === "challenge" ? "défi" : "prise de contact";
+      const created = await sendNearbyPlaceRequest({
+        placeId: place.id,
+        requestType,
+        partySize: 1,
+        message: `${readProfileName(profile)} envoie une ${label} depuis la carte locale MULTISPORTS SCORING.`,
+      });
+      const update = (row: NearbyPlace) => row.id === place.id ? { ...row, myRequestStatus: created.status, myRequestId: created.id } : row;
+      setPlaces((rows) => rows.map(update));
+      setSelectedMapPlace((current) => current ? update(current) : current);
+      setMessage(requestType === "participate" ? `Inscription envoyée pour ${place.title}.` : requestType === "join" ? `Demande envoyée à ${place.title}.` : requestType === "challenge" ? `Défi envoyé à ${place.title}.` : `Demande de contact envoyée à ${place.title}.`);
+      await refreshPlaceRequests();
+    } catch (caught: any) {
+      if (isMissingMapMigration(caught)) setMapMigrationReady(false);
+      const raw = String(caught?.message || caught);
+      setError(/PLACE_FULL/i.test(raw) ? "Cet événement est complet." : isMissingMapMigration(caught) ? "La migration Supabase CARTE LOCALE V2 doit être installée pour gérer les inscriptions et contacts." : raw);
+    } finally { setBusy(false); }
+  }
+
+  async function cancelPlaceRequestFor(place: NearbyPlace) {
+    const requestId = place.myRequestId || placeRequests.find((request) => request.placeId === place.id && request.direction === "outgoing" && request.status === "pending")?.id;
+    if (!requestId) return;
+    setBusy(true); setError(null);
+    try {
+      await cancelNearbyPlaceRequest(requestId);
+      const update = (row: NearbyPlace) => row.id === place.id ? { ...row, myRequestStatus: "cancelled", myRequestId: requestId } : row;
+      setPlaces((rows) => rows.map(update));
+      setSelectedMapPlace((current) => current ? update(current) : current);
+      setMessage(`Demande annulée pour ${place.title}.`);
+      await refreshPlaceRequests();
+    } catch (caught: any) { setError(String(caught?.message || caught)); }
+    finally { setBusy(false); }
+  }
+
+  async function answerPlaceRequest(request: NearbyPlaceRequest, status: "accepted" | "rejected") {
+    setBusy(true); setError(null);
+    try {
+      await respondNearbyPlaceRequest(request.id, status);
+      setMessage(status === "accepted" ? `${request.userDisplayName || "Le joueur"} est accepté pour ${request.placeTitle}.` : `Demande refusée pour ${request.placeTitle}.`);
+      await Promise.allSettled([refreshPlaceRequests(), refreshPlaces(settings, searchSport)]);
+    } catch (caught: any) {
+      const raw = String(caught?.message || caught);
+      setError(/PLACE_FULL/i.test(raw) ? "La capacité maximale est atteinte. Augmente la capacité ou refuse une autre inscription." : raw);
     } finally { setBusy(false); }
   }
 
@@ -481,6 +564,7 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
   const outgoing = requests.filter((request) => request.direction === "outgoing" && request.status === "pending");
   const pendingTargets = new Set(outgoing.map((request) => request.toUserId));
   const crossedUserIds = new Set(encounters.map((encounter) => encounter.userId));
+  const pendingPlaceRequests = placeRequests.filter((request) => request.status === "pending");
 
   if (!settingsLoaded) return <div style={panel}><div style={{ color: accent, fontWeight: 1000 }}>📍 Chargement de la carte locale…</div></div>;
 
@@ -531,7 +615,7 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
         <button type="button" disabled={busy || !settings.hasLocation} style={{ ...primary, width: "100%", marginTop: 12, opacity: settings.hasLocation ? 1 : .55 }} onClick={refreshPlayers}>{busy ? "RECHERCHE EN COURS…" : "CHERCHER AUTOUR DE MOI"}</button>
         {error ? <div style={{ marginTop: 10, color: "#ff9a9a", fontSize: 12, lineHeight: 1.35 }}>{error}</div> : null}
         {message ? <div style={{ marginTop: 10, color: "#bfe8c8", fontSize: 12, lineHeight: 1.35 }}>{message}</div> : null}
-        {!mapMigrationReady ? <div style={{ marginTop: 10, borderRadius: 12, border: "1px solid rgba(255,196,91,.35)", background: "rgba(255,196,91,.08)", color: "#ffd173", padding: 9, fontSize: 11.5, lineHeight: 1.4 }}>La liste des joueurs fonctionne. Pour activer les joueurs croisés, clubs, tournois et points cartographiques partagés, installe la migration Supabase fournie dans le patch.</div> : null}
+        {!mapMigrationReady ? <div style={{ marginTop: 10, borderRadius: 12, border: "1px solid rgba(255,196,91,.35)", background: "rgba(255,196,91,.08)", color: "#ffd173", padding: 9, fontSize: 11.5, lineHeight: 1.4 }}>La liste des joueurs fonctionne. Pour activer les joueurs croisés, clubs, tournois, inscriptions et contacts locaux partagés, installe les migrations Supabase CARTE LOCALE fournies dans le patch.</div> : null}
       </div>
 
       <div style={{ ...panel, padding: 9 }}>
@@ -552,6 +636,17 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
 
       {outgoing.length > 0 ? <div style={panel}><div style={{ fontWeight: 1000, marginBottom: 8 }}>MES PROPOSITIONS EN ATTENTE ({outgoing.length})</div>{outgoing.map((request) => <div key={request.id} style={{ borderTop: "1px solid rgba(255,255,255,.08)", padding: "9px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><div style={{ flex: 1, minWidth: 160 }}><b>{request.toDisplayName || "Joueur"}</b><div style={{ fontSize: 11.5, opacity: .7 }}>{SPORT_LABEL[request.sport] || request.sport}</div></div><button type="button" style={btn} onClick={async () => { await respondNearbyGameRequest(request.id, "cancelled"); await refreshRequests(); setMessage("Proposition annulée."); }}>Annuler</button></div>)}</div> : null}
 
+      <NearbyPlaceRequestsPanel
+        requests={placeRequests}
+        accent={accent}
+        onRespond={(request, status) => void answerPlaceRequest(request, status)}
+        onCancel={(request) => {
+          const place = places.find((row) => row.id === request.placeId) || ({ id: request.placeId, title: request.placeTitle, myRequestId: request.id } as NearbyPlace);
+          void cancelPlaceRequestFor(place);
+        }}
+        onOpenMessages={onOpenMessages}
+      />
+
       {view === "list" ? (
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}><div style={{ fontWeight: 1000, fontSize: 13 }}>{players.length} JOUEUR(S) TROUVÉ(S)</div><button type="button" disabled={busy} style={{ ...btn, padding: "7px 10px", fontSize: 11 }} onClick={refreshPlayers}>↻ Actualiser</button></div>
@@ -563,7 +658,7 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
         <div style={{ display: "grid", gap: 10 }}>
           <NearbyMapView center={coords} radiusKm={settings.radiusKm} players={players} places={places} crossedUserIds={crossedUserIds} accent={accent} onNeedLocation={async () => { try { await ensureCoordinates(); } catch (caught: any) { setError(String(caught?.message || caught)); } }} onSelectPlayer={(player) => { setSelectedMapPlayer(player); setSelectedMapPlace(null); }} onSelectPlace={(place) => { setSelectedMapPlace(place); setSelectedMapPlayer(null); }} />
           {selectedMapPlayer ? <NearbyPlayerCard player={selectedMapPlayer} accent={accent} crossedCount={encounters.find((row) => row.userId === selectedMapPlayer.userId)?.crossedCount} proposed={pendingTargets.has(selectedMapPlayer.userId)} onFriend={() => void addFriend(selectedMapPlayer)} onMessage={onOpenMessages} onMatch={() => void proposePlayer(selectedMapPlayer, "match")} onTournament={() => void proposePlayer(selectedMapPlayer, "tournament")} /> : null}
-          {selectedMapPlace ? <NearbyPlaceCard place={selectedMapPlace} accent={accent} onContact={!selectedMapPlace.isOwner ? () => void addFriend({ userId: selectedMapPlace.ownerUserId, displayName: selectedMapPlace.title }) : undefined} onInvite={!selectedMapPlace.isOwner ? () => void proposePlayer({ userId: selectedMapPlace.ownerUserId, displayName: selectedMapPlace.title }, selectedMapPlace.kind === "tournament" ? "tournament" : "match") : undefined} onDelete={selectedMapPlace.isOwner ? () => void removePlace(selectedMapPlace) : undefined} /> : null}
+          {selectedMapPlace ? <NearbyPlaceCard place={selectedMapPlace} accent={accent} onRequest={!selectedMapPlace.isOwner ? (type) => void requestPlace(selectedMapPlace, type) : undefined} onCancelRequest={!selectedMapPlace.isOwner && selectedMapPlace.myRequestStatus === "pending" ? () => void cancelPlaceRequestFor(selectedMapPlace) : undefined} onDelete={selectedMapPlace.isOwner ? () => void removePlace(selectedMapPlace) : undefined} /> : null}
         </div>
       ) : null}
 
@@ -571,11 +666,11 @@ export default function NearbyPlayersPanel({ signedIn, accent, activeSportId, ac
 
       {view === "places" ? (
         <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ ...panel, background: `radial-gradient(120% 140% at 0% 0%, ${accent}20, rgba(7,10,16,.88) 60%)` }}><div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 1000, color: accent }}>🏆 CLUBS, ÉQUIPES ET ÉVÉNEMENTS LOCAUX</div><div style={{ marginTop: 4, fontSize: 11.5, opacity: .72 }}>Publie un tournoi, un lieu de pratique, ton club ou une équipe pour faciliter les rencontres.</div></div><button type="button" style={primary} onClick={() => setPublishOpen((value) => !value)}>{publishOpen ? "Fermer" : "＋ Publier"}</button></div></div>
+          <div style={{ ...panel, background: `radial-gradient(120% 140% at 0% 0%, ${accent}20, rgba(7,10,16,.88) 60%)` }}><div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 1000, color: accent }}>🏆 CLUBS, ÉQUIPES ET ÉVÉNEMENTS LOCAUX{pendingPlaceRequests.length ? ` • ${pendingPlaceRequests.length} demande(s)` : ""}</div><div style={{ marginTop: 4, fontSize: 11.5, opacity: .72 }}>Publie un tournoi, un lieu de pratique, ton club ou une équipe pour faciliter les rencontres.</div></div><button type="button" style={primary} onClick={() => setPublishOpen((value) => !value)}>{publishOpen ? "Fermer" : "＋ Publier"}</button></div></div>
 
-          {publishOpen ? <div style={panel}><div style={{ fontSize: 15, fontWeight: 1000 }}>PUBLIER SUR LA CARTE</div><div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}>{(["club","team","tournament","venue"] as NearbyPlaceKind[]).map((kind) => <button key={kind} type="button" style={chip(publishDraft.kind === kind)} onClick={() => setPublishDraft((draft) => ({ ...draft, kind, preciseLocation: false }))}>{kind === "club" ? "🏛 Club" : kind === "team" ? "🛡 Équipe" : kind === "tournament" ? "🏆 Tournoi" : "📌 Lieu"}</button>)}</div><div style={{ marginTop: 10, display: "grid", gap: 8 }}><input value={publishDraft.title} onChange={(event) => setPublishDraft((draft) => ({ ...draft, title: event.target.value }))} placeholder="Nom du club, équipe, tournoi ou lieu" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none" }} /><textarea value={publishDraft.description} onChange={(event) => setPublishDraft((draft) => ({ ...draft, description: event.target.value }))} placeholder="Description, format, niveau recherché, informations utiles…" rows={3} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none", resize: "vertical" }} /><input value={publishDraft.areaLabel} onChange={(event) => setPublishDraft((draft) => ({ ...draft, areaLabel: event.target.value }))} placeholder="Secteur affiché : Grenoble centre, Voiron…" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none" }} />{publishDraft.kind === "tournament" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={{ fontSize: 10.5, opacity: .72 }}>DÉBUT<input type="datetime-local" value={publishDraft.startsAt} onChange={(event) => setPublishDraft((draft) => ({ ...draft, startsAt: event.target.value }))} style={{ marginTop: 4, width: "100%", boxSizing: "border-box", borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 9 }} /></label><label style={{ fontSize: 10.5, opacity: .72 }}>FIN<input type="datetime-local" value={publishDraft.endsAt} onChange={(event) => setPublishDraft((draft) => ({ ...draft, endsAt: event.target.value }))} style={{ marginTop: 4, width: "100%", boxSizing: "border-box", borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 9 }} /></label></div> : null}<label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11.5, lineHeight: 1.4, opacity: .84 }}><input type="checkbox" checked={publishDraft.preciseLocation} onChange={(event) => setPublishDraft((draft) => ({ ...draft, preciseLocation: event.target.checked }))} /><span><b>Lieu public précisément positionné</b><br />Décoche pour afficher seulement une zone arrondie.</span></label><button type="button" disabled={busy} style={{ ...primary, width: "100%" }} onClick={publishPlace}>{busy ? "PUBLICATION…" : "PUBLIER SUR LA CARTE"}</button></div></div> : null}
+          {publishOpen ? <div style={panel}><div style={{ fontSize: 15, fontWeight: 1000 }}>PUBLIER SUR LA CARTE</div><div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 7 }}>{(["club","team","tournament","venue"] as NearbyPlaceKind[]).map((kind) => <button key={kind} type="button" style={chip(publishDraft.kind === kind)} onClick={() => setPublishDraft((draft) => ({ ...draft, kind, preciseLocation: false }))}>{kind === "club" ? "🏛 Club" : kind === "team" ? "🛡 Équipe" : kind === "tournament" ? "🏆 Tournoi" : "📌 Lieu"}</button>)}</div><div style={{ marginTop: 10, display: "grid", gap: 8 }}><input value={publishDraft.title} onChange={(event) => setPublishDraft((draft) => ({ ...draft, title: event.target.value }))} placeholder="Nom du club, équipe, tournoi ou lieu" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none" }} /><textarea value={publishDraft.description} onChange={(event) => setPublishDraft((draft) => ({ ...draft, description: event.target.value }))} placeholder="Description, format, niveau recherché, informations utiles…" rows={3} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none", resize: "vertical" }} /><input value={publishDraft.areaLabel} onChange={(event) => setPublishDraft((draft) => ({ ...draft, areaLabel: event.target.value }))} placeholder="Secteur affiché : Grenoble centre, Voiron…" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none" }} />{publishDraft.kind === "tournament" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><label style={{ fontSize: 10.5, opacity: .72 }}>DÉBUT<input type="datetime-local" value={publishDraft.startsAt} onChange={(event) => setPublishDraft((draft) => ({ ...draft, startsAt: event.target.value }))} style={{ marginTop: 4, width: "100%", boxSizing: "border-box", borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 9 }} /></label><label style={{ fontSize: 10.5, opacity: .72 }}>FIN<input type="datetime-local" value={publishDraft.endsAt} onChange={(event) => setPublishDraft((draft) => ({ ...draft, endsAt: event.target.value }))} style={{ marginTop: 4, width: "100%", boxSizing: "border-box", borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 9 }} /></label></div> : null}<div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}><input type="number" min="2" max="10000" value={publishDraft.maxParticipants} onChange={(event) => setPublishDraft((draft) => ({ ...draft, maxParticipants: event.target.value }))} placeholder="Capacité" style={{ minWidth: 0, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 9 }} /><select value={publishDraft.minSkillLevel} onChange={(event) => setPublishDraft((draft) => ({ ...draft, minSkillLevel: event.target.value }))} style={{ minWidth: 0, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "#0b121d", color: "#fff", padding: 9 }}><option value="">Niv. min</option>{LEVELS.map((level) => <option key={level} value={level}>{level}★</option>)}</select><select value={publishDraft.maxSkillLevel} onChange={(event) => setPublishDraft((draft) => ({ ...draft, maxSkillLevel: event.target.value }))} style={{ minWidth: 0, borderRadius: 10, border: "1px solid rgba(255,255,255,.14)", background: "#0b121d", color: "#fff", padding: 9 }}><option value="">Niv. max</option>{LEVELS.map((level) => <option key={level} value={level}>{level}★</option>)}</select></div><input value={publishDraft.coverUrl} onChange={(event) => setPublishDraft((draft) => ({ ...draft, coverUrl: event.target.value }))} placeholder="URL facultative d’une image de couverture ou d’un logo" style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", padding: 11, outline: "none" }} /><label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11.5, lineHeight: 1.4, opacity: .84 }}><input type="checkbox" checked={publishDraft.preciseLocation} onChange={(event) => setPublishDraft((draft) => ({ ...draft, preciseLocation: event.target.checked }))} /><span><b>Lieu public précisément positionné</b><br />Décoche pour afficher seulement une zone arrondie.</span></label><button type="button" disabled={busy} style={{ ...primary, width: "100%" }} onClick={publishPlace}>{busy ? "PUBLICATION…" : "PUBLIER SUR LA CARTE"}</button></div></div> : null}
 
-          {places.length === 0 ? <div style={{ ...panel, textAlign: "center", padding: 22 }}><div style={{ fontSize: 35 }}>🏆</div><div style={{ marginTop: 7, fontWeight: 1000 }}>Aucun club ou événement visible dans ce rayon</div><div style={{ marginTop: 5, fontSize: 12, opacity: .7 }}>Sois le premier à publier un tournoi, une équipe ou un lieu de pratique local.</div></div> : places.map((place) => <NearbyPlaceCard key={place.id} place={place} accent={accent} onContact={!place.isOwner ? () => void addFriend({ userId: place.ownerUserId, displayName: place.title }) : undefined} onInvite={!place.isOwner ? () => void proposePlayer({ userId: place.ownerUserId, displayName: place.title }, place.kind === "tournament" ? "tournament" : "match") : undefined} onDelete={place.isOwner ? () => void removePlace(place) : undefined} />)}
+          {places.length === 0 ? <div style={{ ...panel, textAlign: "center", padding: 22 }}><div style={{ fontSize: 35 }}>🏆</div><div style={{ marginTop: 7, fontWeight: 1000 }}>Aucun club ou événement visible dans ce rayon</div><div style={{ marginTop: 5, fontSize: 12, opacity: .7 }}>Sois le premier à publier un tournoi, une équipe ou un lieu de pratique local.</div></div> : places.map((place) => <NearbyPlaceCard key={place.id} place={place} accent={accent} onRequest={!place.isOwner ? (type) => void requestPlace(place, type) : undefined} onCancelRequest={!place.isOwner && place.myRequestStatus === "pending" ? () => void cancelPlaceRequestFor(place) : undefined} onDelete={place.isOwner ? () => void removePlace(place) : undefined} />)}
         </div>
       ) : null}
     </div>

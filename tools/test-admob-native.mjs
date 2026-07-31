@@ -67,6 +67,7 @@ check("Production release guard checks app-ads.txt", releaseGuard.includes("publ
 check("Environment template documents placement units", envExample.includes("VITE_ADMOB_ANDROID_BANNER_HOME_SECONDARY_ID") && envExample.includes("VITE_ADMOB_ANDROID_BANNER_GAMES_ID") && envExample.includes("ADMOB_PUBLISHER_ID"));
 check("Committed public AdMob config contains real banner IDs", publicConfig.includes("ca-app-pub-5323277022978157~6265161029") && publicConfig.includes("home_secondary") && publicConfig.includes("2158395052"));
 check("AdMob console-managed test device mode supported", config.includes("testDevicesManagedByAdMobConsole") && settings.includes("CONSOLE ADMOB"));
+check("Samsung SDK test device committed for real_test", publicConfig.includes("AD2A12F3E08C12ABDD574BC06097D62C") && settings.includes("CONSOLE + SDK"));
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [label, ok] of checks) console.log(`${ok ? "✅" : "❌"} ${label}`);

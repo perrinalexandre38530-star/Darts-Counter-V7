@@ -24,6 +24,7 @@ const emailB = `mss-e2e-${runId}-b@example.com`;
 const lobbyCode = `T${runId.slice(-7).toUpperCase()}`;
 let userA = null;
 let userB = null;
+let nearbyPlaceId = null;
 
 function ok(label) { console.log(`✅ ${label}`); }
 function encode(value) { return encodeURIComponent(String(value ?? "")); }
@@ -125,6 +126,10 @@ async function ignoreFailure(label, task) {
 }
 
 async function cleanup() {
+  if (nearbyPlaceId) {
+    await ignoreFailure("ms_nearby_place_requests", () => restAdmin(`ms_nearby_place_requests?place_id=eq.${encode(nearbyPlaceId)}`, { method: "DELETE", prefer: "return=minimal" }));
+    await ignoreFailure("ms_nearby_places", () => restAdmin(`ms_nearby_places?id=eq.${encode(nearbyPlaceId)}`, { method: "DELETE", prefer: "return=minimal" }));
+  }
   await ignoreFailure("online_messages", () => restAdmin(`online_messages?lobby_code=eq.${encode(lobbyCode)}`, { method: "DELETE", prefer: "return=minimal" }));
   await ignoreFailure("online_matches", () => restAdmin(`online_matches?lobby_code=eq.${encode(lobbyCode)}`, { method: "DELETE", prefer: "return=minimal" }));
   await ignoreFailure("online_lobby_players", () => restAdmin(`online_lobby_players?lobby_code=eq.${encode(lobbyCode)}`, { method: "DELETE", prefer: "return=minimal" }));
@@ -221,6 +226,53 @@ try {
   const looking = await rpc(tokenA, "ms_find_nearby_players", { p_radius_km: 10, p_sport: "darts", p_available_only: true, p_looking_only: true, p_limit: 20 });
   assert.ok(looking.some((row) => String(row?.userId || row?.user_id) === String(userB.id)));
   ok("Filtre JE CHERCHE UNE PARTIE appliqué");
+
+  const place = await rpc(tokenA, "ms_publish_nearby_place_v2", {
+    p_kind: "tournament",
+    p_title: `Tournoi E2E ${runId}`,
+    p_description: "Tournoi local automatique de validation",
+    p_sport: "darts",
+    p_latitude: 48.8576,
+    p_longitude: 2.3522,
+    p_area_label: "Zone tournoi E2E",
+    p_starts_at: new Date(Date.now() + 86400000).toISOString(),
+    p_ends_at: new Date(Date.now() + 90000000).toISOString(),
+    p_precise_location: false,
+    p_metadata: { e2e: true },
+    p_max_participants: 8,
+    p_min_skill_level: 2,
+    p_max_skill_level: 5,
+    p_cover_url: null,
+    p_organizer_label: `E2E A ${runId}`,
+  });
+  nearbyPlaceId = String(place?.id || "");
+  assert.ok(nearbyPlaceId, "Le tournoi local doit être publié");
+
+  const placesB = await rpc(tokenB, "ms_find_nearby_places", { p_radius_km: 10, p_sport: "darts", p_kinds: ["tournament"], p_limit: 20 });
+  const placeSeenByB = placesB.find((row) => String(row?.id) === nearbyPlaceId);
+  assert.ok(placeSeenByB, "Le tournoi doit apparaître sur la carte du joueur B");
+  assert.equal(Number(placeSeenByB?.maxParticipants), 8);
+  assert.equal(Number(placeSeenByB?.acceptedCount), 0);
+  ok("Tournoi local publié et visible sur la carte");
+
+  const placeRequest = await rpc(tokenB, "ms_send_nearby_place_request", {
+    p_place_id: nearbyPlaceId,
+    p_request_type: "participate",
+    p_message: "Inscription E2E",
+    p_party_size: 1,
+  });
+  assert.ok(placeRequest?.id, "La demande d'inscription doit être créée");
+  const ownerRequests = await rpc(tokenA, "ms_list_nearby_place_requests", { p_limit: 50 });
+  const ownerIncoming = ownerRequests.find((row) => String(row?.id) === String(placeRequest.id));
+  assert.equal(ownerIncoming?.direction, "incoming");
+  assert.equal(ownerIncoming?.requestType, "participate");
+  await rpc(tokenA, "ms_respond_nearby_place_request", { p_request_id: placeRequest.id, p_status: "accepted" });
+
+  const placesBAfterAccept = await rpc(tokenB, "ms_find_nearby_places", { p_radius_km: 10, p_sport: "darts", p_kinds: ["tournament"], p_limit: 20 });
+  const acceptedPlace = placesBAfterAccept.find((row) => String(row?.id) === nearbyPlaceId);
+  assert.equal(acceptedPlace?.myRequestStatus, "accepted");
+  assert.equal(Number(acceptedPlace?.acceptedCount), 1);
+  ok("Inscription tournoi envoyée, reçue et acceptée");
 
   const request = await rpc(tokenA, "ms_send_nearby_game_request", { p_to_user_id: userB.id, p_sport: "darts", p_modes: ["x01"], p_message: "E2E" });
   assert.ok(request?.id);

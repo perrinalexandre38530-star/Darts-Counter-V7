@@ -203,7 +203,7 @@ export default function MonetizationSettingsPanel() {
               Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"}
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
-              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION" : nativeStatus?.mode === "real_test" ? "VRAIS IDs · APPAREIL TEST" : "GOOGLE TEST"} · Appareil test : {nativeStatus?.testDevicesManagedByAdMobConsole ? "CONSOLE ADMOB" : (nativeStatus?.testDeviceCount ?? 0)} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
+              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION" : nativeStatus?.mode === "real_test" ? "VRAIS IDs · APPAREIL TEST" : "GOOGLE TEST"} · Appareil test : {nativeStatus?.testDevicesManagedByAdMobConsole && (nativeStatus?.testDeviceCount ?? 0) > 0 ? `CONSOLE + SDK (${nativeStatus?.testDeviceCount ?? 0})` : nativeStatus?.testDevicesManagedByAdMobConsole ? "CONSOLE ADMOB" : (nativeStatus?.testDeviceCount ?? 0)} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
             </div>
             {nativeStatus?.configErrors?.length ? (
               <div style={{ marginTop: 7, borderRadius: 10, padding: 8, background: "rgba(255,80,80,.08)", border: "1px solid rgba(255,80,80,.24)", color: "#ff9b9b", fontSize: 10, lineHeight: 1.45 }}>

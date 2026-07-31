@@ -18,7 +18,9 @@
   },
   "androidInterstitialId": "",
   "androidRewardedId": "",
-  "testDeviceIds": [],
+  "testDeviceIds": [
+    "AD2A12F3E08C12ABDD574BC06097D62C"
+  ],
   "testDevicesManagedByAdMobConsole": true,
   "consentDebugGeography": "DISABLED"
 }
