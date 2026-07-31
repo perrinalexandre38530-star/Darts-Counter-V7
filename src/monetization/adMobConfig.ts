@@ -18,6 +18,7 @@ export type AdMobRuntimeConfig = {
   rewardedIdAndroid: string;
   testDeviceIds: string[];
   testDevicesManagedByAdMobConsole: boolean;
+  realTestUseGoogleDemoBanners: boolean;
   consentDebugGeography: AdMobConsentDebugGeography;
   configErrors: string[];
 };
@@ -32,6 +33,7 @@ type PublicAdMobConfig = {
   androidRewardedId?: string;
   testDeviceIds?: string[];
   testDevicesManagedByAdMobConsole?: boolean;
+  realTestUseGoogleDemoBanners?: boolean;
   consentDebugGeography?: string;
 };
 
@@ -208,6 +210,14 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
   const consoleManagedFromEnv = envBoolean("VITE_ADMOB_TEST_DEVICES_MANAGED_BY_CONSOLE");
   const testDevicesManagedByAdMobConsole = consoleManagedFromEnv
     ?? Boolean(PUBLIC_CONFIG.testDevicesManagedByAdMobConsole);
+  const demoBannersFromEnv = envBoolean("VITE_ADMOB_REAL_TEST_USE_GOOGLE_DEMO_BANNERS");
+  // En real_test, les vrais IDs restent chargés et contrôlés par les guards de
+  // release, mais les requêtes visuelles peuvent utiliser le bloc de démonstration
+  // Google. Cela rend les tests FREE/PREMIUM déterministes : un bloc réel tout
+  // juste créé ou non encore approuvé peut légitimement répondre NO_FILL (3).
+  const realTestUseGoogleDemoBanners = requestedMode === "real_test"
+    ? (demoBannersFromEnv ?? (PUBLIC_CONFIG.realTestUseGoogleDemoBanners !== false))
+    : false;
   const consentDebugGeography = normalizeConsentDebugGeography();
 
   if (requestedMode === "real_test" && testDeviceIds.length === 0 && !testDevicesManagedByAdMobConsole) {
@@ -238,6 +248,7 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
       rewardedIdAndroid: GOOGLE_ANDROID_TEST_IDS.rewarded,
       testDeviceIds,
       testDevicesManagedByAdMobConsole,
+      realTestUseGoogleDemoBanners: true,
       consentDebugGeography,
       configErrors: Array.from(new Set(configErrors)),
     };
@@ -264,6 +275,7 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
     rewardedIdAndroid,
     testDeviceIds: mode === "real_test" ? testDeviceIds : [],
     testDevicesManagedByAdMobConsole: mode === "real_test" && testDevicesManagedByAdMobConsole,
+    realTestUseGoogleDemoBanners: mode === "real_test" && realTestUseGoogleDemoBanners,
     consentDebugGeography: mode === "real_test" ? consentDebugGeography : "DISABLED",
     configErrors: Array.from(new Set(configErrors)),
   };
@@ -271,6 +283,13 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
 
 export function getAdMobBannerId(placement: AdPlacement): string {
   const config = getAdMobRuntimeConfig();
+  // Pour les tests fonctionnels Android, le bloc de démonstration Google est
+  // volontairement privilégié. Google le configure spécifiquement pour renvoyer
+  // des créations de test de façon fiable. Les vrais IDs restent néanmoins
+  // présents, validés et seront automatiquement utilisés en production.
+  if (config.mode === "google_test" || (config.mode === "real_test" && config.realTestUseGoogleDemoBanners)) {
+    return GOOGLE_ANDROID_TEST_IDS.banner;
+  }
   return config.bannerIdsAndroid[placement] || config.bannerIdAndroid;
 }
 

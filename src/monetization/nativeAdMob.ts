@@ -15,6 +15,7 @@ export type NativeAdMobStatus = {
   productionReady: boolean;
   testDeviceCount: number;
   testDevicesManagedByAdMobConsole: boolean;
+  realTestUseGoogleDemoBanners: boolean;
   configErrors: string[];
   error?: string;
 };
@@ -74,6 +75,7 @@ function baseStatus() {
     productionReady: config.productionReady,
     testDeviceCount: config.testDeviceIds.length,
     testDevicesManagedByAdMobConsole: config.testDevicesManagedByAdMobConsole,
+    realTestUseGoogleDemoBanners: config.realTestUseGoogleDemoBanners,
     configErrors: config.configErrors,
   } as const;
 }

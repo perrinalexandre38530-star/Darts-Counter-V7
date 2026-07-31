@@ -1,6 +1,7 @@
 package com.multisportsscoring.app;
 
 import android.graphics.Color;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,6 +40,8 @@ import java.util.Map;
  */
 @CapacitorPlugin(name = "InlineAdMob")
 public class InlineAdMobPlugin extends Plugin {
+
+    private static final String LOG_TAG = "MSSInlineAdMob";
 
     private static final class SlotHolder {
         final String adUnitId;
@@ -238,6 +241,7 @@ public class InlineAdMobPlugin extends Plugin {
                         }
                         holder.loaded = true;
                         applyRect(holder, call);
+                        Log.i(LOG_TAG, "LOADED slot=" + slotId + " unit=" + adId);
                         JSObject data = new JSObject();
                         data.put("slotId", slotId);
                         data.put("adUnitId", adId);
@@ -255,6 +259,11 @@ public class InlineAdMobPlugin extends Plugin {
                         data.put("code", error.getCode());
                         data.put("message", error.getMessage());
                         notifyListeners("inlineAdFailed", data);
+                        Log.w(LOG_TAG,
+                            "FAILED slot=" + slotId
+                                + " code=" + error.getCode()
+                                + " message=" + error.getMessage()
+                                + " response=" + String.valueOf(error.getResponseInfo()));
                         if (slots.get(slotId) == holder) destroySlot(slotId);
                         call.reject("Échec du chargement AdMob (" + error.getCode() + ") : " + error.getMessage());
                     }

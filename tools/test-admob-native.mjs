@@ -39,6 +39,7 @@ check("Privacy options only open when required", native.includes("status.privacy
 check("Inline bridge uses dedicated Capacitor plugin", inlineTs.includes('registerPlugin("InlineAdMob")'));
 check("Inline bridge waits for UMP consent", inlineTs.includes("ensureNativeAdMobReady") && inlineTs.includes("status.canRequestAds"));
 check("Inline bridge resolves unit by placement", inlineTs.includes("getAdMobBannerId(placement)"));
+check("Real-test can force deterministic Google demo banners", config.includes("realTestUseGoogleDemoBanners") && config.includes("GOOGLE_ANDROID_TEST_IDS.banner"));
 check("React slots measure real DOM rectangles", slot.includes("getBoundingClientRect") && slot.includes("PaidInlineSurface"));
 check("React slots tolerate WebView insets and partial pixel clipping", slot.includes("visibleWidth >= 280") && slot.includes("clippedRight") && slot.includes("usableBottom"));
 check("React slots pass placement to native bridge", slot.includes("showInlineGoogleAd(slotKey, placement, rect)"));

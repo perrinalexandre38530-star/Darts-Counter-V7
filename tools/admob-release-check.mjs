@@ -83,6 +83,11 @@ const placementUnits = placementKeys.map(([envName, jsonName]) => [
 ]);
 const testDevices = parseList(value(env, "VITE_ADMOB_ANDROID_TEST_DEVICE_IDS", (publicConfig.testDeviceIds || []).join(",")));
 const consoleManaged = boolValue(env, "VITE_ADMOB_TEST_DEVICES_MANAGED_BY_CONSOLE", publicConfig.testDevicesManagedByAdMobConsole === true);
+const realTestUseGoogleDemoBanners = boolValue(
+  env,
+  "VITE_ADMOB_REAL_TEST_USE_GOOGLE_DEMO_BANNERS",
+  publicConfig.realTestUseGoogleDemoBanners !== false
+);
 const checks = [];
 const check = (label, ok, detail = "") => checks.push({ label, ok: !!ok, detail });
 
@@ -109,7 +114,9 @@ if (mode === "google_test") {
     check("App ID non démonstration", appId !== GOOGLE_TEST_APP_ID, appId);
     if (units.interstitial) check("Interstitiel renseigné valide", isUnitId(units.interstitial), units.interstitial);
     if (units.rewarded) check("Rewarded renseigné valide", isUnitId(units.rewarded), units.rewarded);
-    console.log("\nℹ️ Mode real_test : les bannières sont réelles mais restent en test sur l'appareil déclaré. Les formats plein écran non renseignés utilisent les IDs de démonstration Google.");
+    console.log(realTestUseGoogleDemoBanners
+      ? "\nℹ️ Mode real_test : vrais IDs configurés/contrôlés, mais bannières de démonstration Google utilisées pour un test visuel déterministe. La production reprendra automatiquement les vrais IDs."
+      : "\nℹ️ Mode real_test : les bannières utilisent les vrais IDs sur l'appareil déclaré. Un NO_FILL reste possible. Les formats plein écran non renseignés utilisent les IDs de démonstration Google.");
   } else {
     check("Interstitiel réel valide", isUnitId(units.interstitial), units.interstitial || "manquant");
     check("Rewarded réel valide", isUnitId(units.rewarded), units.rewarded || "manquant");
