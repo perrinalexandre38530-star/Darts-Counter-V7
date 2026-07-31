@@ -12,10 +12,6 @@ const nativeAdMob = read("src/monetization/nativeAdMob.ts");
 const inlineAdMob = read("src/monetization/inlineAdMob.ts");
 const catalog = read("src/monetization/catalog.ts");
 const manager = read("src/monetization/MonetizationManager.ts");
-const home = read("src/pages/Home.tsx");
-const games = read("src/pages/Games.tsx");
-const stats = read("src/pages/StatsShell.tsx");
-const settings = read("src/pages/Settings.tsx");
 
 function count(text, needle) {
   return text.split(needle).length - 1;
@@ -71,14 +67,11 @@ assert.ok(!/route\s*===\s*"[^"]*_play"/.test(adSlot), "Un écran PLAY est éligi
 assert.ok(nativeAdMob.includes("aucun banner AdMob natif ne doit flotter") && nativeAdMob.includes("removeBanner"), "Le garde-fou banner natif flottant est absent.");
 assert.ok(adSlot.includes("PaidInlineSurface") && adSlot.includes("showInlineGoogleAd"), "Le chemin AdMob intégré au flux React est absent.");
 assert.ok(inlineAdMob.includes('registerPlugin("InlineAdMob")'), "Le pont Capacitor InlineAdMob est absent.");
-assert.ok(home.includes('slotKey="home-top"') && home.includes('slotKey="home-player"'), "Home doit gérer ses deux pubs directement dans Home.tsx.");
-assert.ok(!app.includes('<AdSlot') && !app.includes('adBannerPlacement'), "App.tsx ne doit plus injecter de bannière globale avant les headers.");
-assert.ok(games.includes('<PageAdBanner placement="games"'), "La page Jeux doit rendre sa bannière sous son header.");
-assert.ok(stats.includes('<PageAdBanner placement="stats"'), "La page Stats doit rendre sa bannière sous son header.");
-assert.ok(settings.includes('<PageAdBanner placement="settings"'), "La page Réglages doit rendre sa bannière sous son header.");
+assert.ok(app.includes('adBannerPlacement !== "home"'), "Home doit gérer ses deux pubs directement dans Home.tsx.");
+assert.ok(app.includes('<AdSlot placement={adBannerPlacement} />'), "Les pages BottomNav hors Home doivent recevoir leur bloc pub intégré.");
 
 // 8) Premium : jamais un simple localStorage premium=true.
-assert.ok(manager.includes("getVerifiedAdFreeState().active"), "Garde Premium/Sans pub vérifiée absente du manager.");
+assert.ok(manager.includes("getVerifiedPremiumState().active"), "Garde Premium vérifiée absente du manager.");
 assert.ok(!/localStorage[^\n]*(premium|entitlement)/i.test(manager), "Le manager ne doit pas faire confiance à un Premium localStorage.");
 
 console.log("✅ MONETIZATION RC REGRESSION OK");

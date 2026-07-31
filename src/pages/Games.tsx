@@ -30,7 +30,6 @@
 // ============================================
 
 import React from "react";
-import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1333,8 +1332,6 @@ export default function Games({ setTab, params }: Props) {
           </h1>
         )}
       </div>
-
-      <PageAdBanner placement="games" slotKey="page-games-under-header" />
 
       {pageSubtitle ? (
         <div

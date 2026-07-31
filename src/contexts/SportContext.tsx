@@ -49,6 +49,15 @@ type Ctx = {
 };
 
 const SportContext = React.createContext<Ctx | null>(null);
+let warnedMissingSportProvider = false;
+
+function setSportWithoutProvider(s: SportId) {
+  const next = normalizeSport(s);
+  writeSport(next);
+  try {
+    window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: next, source: "sport-context-fallback" } }));
+  } catch {}
+}
 
 export function SportProvider({ children }: { children: React.ReactNode }) {
   const [sport, setSportState] = React.useState<SportId>(() => readSport());
@@ -59,13 +68,23 @@ export function SportProvider({ children }: { children: React.ReactNode }) {
     writeSport(next);
   }, []);
 
-  // si le LS change (multi-onglets), on resync
+  // si le LS change (multi-onglets) ou qu'un fallback boot/HMR demande
+  // un changement de sport dans le même onglet, on resynchronise le Provider.
   React.useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === LS_KEY) setSportState(normalizeSport(e.newValue));
     };
+    const onSportChange = (e: Event) => {
+      const next = normalizeSport((e as CustomEvent)?.detail?.sport);
+      setSportState(next);
+      writeSport(next);
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("dc:sport-change", onSportChange as EventListener);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("dc:sport-change", onSportChange as EventListener);
+    };
   }, []);
 
   return <SportContext.Provider value={{ sport, setSport }}>{children}</SportContext.Provider>;
@@ -73,6 +92,19 @@ export function SportProvider({ children }: { children: React.ReactNode }) {
 
 export function useSport() {
   const ctx = React.useContext(SportContext);
-  if (!ctx) throw new Error("useSport() must be used within <SportProvider>");
-  return ctx;
+  if (ctx) return ctx;
+
+  // BOOT/HMR SAFE : StackBlitz/Vite peut momentanément conserver un Provider
+  // provenant de l'ancienne instance du module pendant que ce hook vient d'être
+  // rechargé. Un contexte React neuf vaut alors null même si <SportProvider> est
+  // bien présent dans AppRoot. Cela ne doit jamais faire tomber toute l'application.
+  if (!warnedMissingSportProvider) {
+    warnedMissingSportProvider = true;
+    console.warn("[SportContext] Provider momentanément indisponible — fallback boot/HMR activé");
+  }
+
+  return {
+    sport: readSport(),
+    setSport: setSportWithoutProvider,
+  } satisfies Ctx;
 }

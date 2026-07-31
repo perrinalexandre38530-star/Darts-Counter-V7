@@ -1,3 +1,12 @@
+import java.util.Properties
+
+def playKeyPropertiesFile = rootProject.file("key.properties")
+def playKeyProperties = new Properties()
+def playSigningConfigured = playKeyPropertiesFile.exists()
+if (playSigningConfigured) {
+    playKeyPropertiesFile.withInputStream { stream -> playKeyProperties.load(stream) }
+}
+
 apply plugin: 'com.android.application'
 
 android {
@@ -8,7 +17,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0-rc1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +25,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (playSigningConfigured) {
+            release {
+                storeFile rootProject.file(playKeyProperties['storeFile'])
+                storePassword playKeyProperties['storePassword']
+                keyAlias playKeyProperties['keyAlias']
+                keyPassword playKeyProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (playSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

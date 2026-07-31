@@ -1,0 +1,57 @@
+name: MULTISPORTS SCORING - Google Play Internal AAB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-signed-aab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Restore Google Play upload key
+        env:
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          test -n "$PLAY_UPLOAD_KEYSTORE_BASE64" || (echo "PLAY_UPLOAD_KEYSTORE_BASE64 missing" && exit 1)
+          echo "$PLAY_UPLOAD_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$PLAY_UPLOAD_STORE_PASSWORD
+          keyAlias=$PLAY_UPLOAD_KEY_ALIAS
+          keyPassword=$PLAY_UPLOAD_KEY_PASSWORD
+          EOF
+
+      - name: Build and verify signed Play AAB
+        run: |
+          chmod +x android/gradlew
+          npm run android:play:aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: multisports-scoring-google-play-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
