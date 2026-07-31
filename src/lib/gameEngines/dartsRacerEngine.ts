@@ -95,6 +95,15 @@ export type DartsRacerPlayerStats = {
   leadVisits: number;
   lapsCompleted: number;
   finishVisit: number | null;
+  dartPoints: number;
+  bestVisitPoints: number;
+  productiveVisits: number;
+  emptyVisits: number;
+  backwardVisits: number;
+  perfectVisits: number;
+  hitsBySegment: Record<string, number>;
+  visitDistances: number[];
+  visitScores: number[];
 };
 
 export type DartsRacerEntityProgress = {
@@ -219,6 +228,8 @@ export function emptyDartsRacerStats(): DartsRacerPlayerStats {
     attackPickups: 0, attacksLanded: 0, attackDistance: 0,
     shieldsPicked: 0, shieldsUsed: 0, hazards: 0, hazardDistance: 0,
     collisions: 0, collisionDistance: 0, leadVisits: 0, lapsCompleted: 0, finishVisit: null,
+    dartPoints: 0, bestVisitPoints: 0, productiveVisits: 0, emptyVisits: 0, backwardVisits: 0, perfectVisits: 0,
+    hitsBySegment: {}, visitDistances: [], visitScores: [],
   };
 }
 
@@ -236,6 +247,16 @@ export function dartsRacerDartDistance(dart: GameDart) {
   if (dart.bed === "T") return 3;
   if (dart.bed === "D") return 2;
   return 1;
+}
+
+export function dartsRacerDartPoints(dart: GameDart) {
+  if (!dart || dart.bed === "MISS") return 0;
+  if (dart.bed === "IB") return 50;
+  if (dart.bed === "OB") return 25;
+  const number = Math.max(0, Number(dart.number || 0));
+  if (dart.bed === "T") return number * 3;
+  if (dart.bed === "D") return number * 2;
+  return number;
 }
 
 function entityMaps(players: Player[], teams: DartsRacerTeamConfig[], participantMode: DartsRacerParticipantMode) {
@@ -398,7 +419,7 @@ export function cloneDartsRacerState(state: DartsRacerState): DartsRacerState {
     turnOrder: [...state.turnOrder],
     specialCells: state.specialCells.map((cell) => ({ ...cell })),
     entities: Object.fromEntries(Object.entries(state.entities).map(([id, e]) => [id, { ...e, playerIds: [...e.playerIds] }])),
-    statsByPlayer: Object.fromEntries(Object.entries(state.statsByPlayer).map(([id, s]) => [id, { ...s }])),
+    statsByPlayer: Object.fromEntries(Object.entries(state.statsByPlayer).map(([id, s]) => [id, { ...s, hitsBySegment: { ...(s.hitsBySegment || {}) }, visitDistances: [...(s.visitDistances || [])], visitScores: [...(s.visitScores || [])] }])),
     history: state.history.map((visit) => ({ ...visit, darts: visit.darts.map((d) => ({ ...d })), labels: [...visit.labels], specialEvents: visit.specialEvents.map((e) => ({ ...e })) })),
     standings: state.standings.map((row) => ({ ...row, playerIds: [...row.playerIds] })),
     winnerIds: [...state.winnerIds],
@@ -457,14 +478,22 @@ export function playDartsRacerVisit(previous: DartsRacerState, dartsInput: GameD
   let baseDistance = 0;
   let bonusDistance = 0;
   let penaltyDistance = 0;
+  let dartsUsed = 0;
+  let visitPoints = 0;
+  let visitHits = 0;
   const specialEvents: DartsRacerSpecialEvent[] = [];
 
   for (let dartIndex = 0; dartIndex < darts.length; dartIndex += 1) {
     if (entity.completed) break;
     const dart = darts[dartIndex];
     const distance = dartsRacerDartDistance(dart);
+    const dartPoints = dartsRacerDartPoints(dart);
+    dartsUsed += 1;
+    visitPoints += dartPoints;
     baseDistance += distance;
-    if (distance > 0) stats.hits += 1;
+    if (distance > 0) { stats.hits += 1; visitHits += 1; }
+    const segmentKey = dartsRacerDartLabel(dart);
+    stats.hitsBySegment[segmentKey] = Number(stats.hitsBySegment[segmentKey] || 0) + 1;
     if (dart.bed === "S") stats.singles += 1;
     else if (dart.bed === "D") { stats.doubles += 1; stats.miniBoosts += 1; }
     else if (dart.bed === "T") { stats.triples += 1; stats.boosts += 1; }
@@ -541,14 +570,22 @@ export function playDartsRacerVisit(previous: DartsRacerState, dartsInput: GameD
     }
   }
 
-  stats.darts += 3;
+  stats.darts += dartsUsed;
   stats.visits += 1;
+  stats.dartPoints += visitPoints;
+  stats.bestVisitPoints = Math.max(stats.bestVisitPoints, visitPoints);
   stats.baseDistance += baseDistance;
   stats.bonusDistance += bonusDistance;
   stats.penaltyDistance += penaltyDistance;
   const netDistance = entity.position - positionBefore;
   stats.netDistance += netDistance;
   stats.bestVisitDistance = Math.max(stats.bestVisitDistance, netDistance);
+  stats.visitDistances.push(netDistance);
+  stats.visitScores.push(visitPoints);
+  if (netDistance > 0) stats.productiveVisits += 1;
+  else if (netDistance < 0) stats.backwardVisits += 1;
+  else stats.emptyVisits += 1;
+  if (dartsUsed > 0 && visitHits === dartsUsed && dartsUsed === 3) stats.perfectVisits += 1;
   stats.maxPosition = Math.max(stats.maxPosition, entity.position);
   stats.lapsCompleted = Math.max(stats.lapsCompleted, Math.min(state.rules.laps, Math.floor(entity.position / state.rules.trackLength)));
   if (entity.completed && stats.finishVisit == null) stats.finishVisit = state.history.length + 1;
@@ -558,7 +595,7 @@ export function playDartsRacerVisit(previous: DartsRacerState, dartsInput: GameD
   state.history.push({
     id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(), round: state.roundIndex + 1, playerId,
-    teamId: state.teamByPlayer[playerId] || null, entityId, darts, labels: darts.map(dartsRacerDartLabel),
+    teamId: state.teamByPlayer[playerId] || null, entityId, darts: darts.slice(0, dartsUsed), labels: darts.slice(0, dartsUsed).map(dartsRacerDartLabel),
     positionBefore, positionAfter: entity.position, baseDistance, bonusDistance, penaltyDistance,
     netDistance, lapBefore, lapAfter, shieldBefore, shieldAfter: entity.shield, specialEvents, completed: entity.completed,
   });

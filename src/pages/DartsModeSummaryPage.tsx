@@ -699,6 +699,48 @@ function DartsRacerSummaryTables({ rec, accent }: { rec: any; accent: string }) 
         <Kpi label="Collision infligée" value={sums("collisionDistance")} accent={accent} />
       </div>
     </section>
+
+    {(() => {
+      const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory, rec?.visits));
+      const dartPts = (d: any) => d?.bed === "IB" ? 50 : d?.bed === "OB" ? 25 : d?.bed === "MISS" ? 0 : num(d?.number) * (d?.bed === "T" ? 3 : d?.bed === "D" ? 2 : 1);
+      const visitDistances = visits.map((v:any)=>num(v?.netDistance));
+      const visitScores = visits.map((v:any)=>asArray(v?.darts).reduce((a:number,d:any)=>a+dartPts(d),0));
+      const productive = visitDistances.filter((v:number)=>v>0).length;
+      const neutral = visitDistances.filter((v:number)=>v===0).length;
+      const backward = visitDistances.filter((v:number)=>v<0).length;
+      const perfect = visits.filter((v:any)=>asArray(v?.darts).length===3&&asArray(v?.darts).every((d:any)=>d?.bed&&d.bed!=="MISS")).length;
+      const bestScore = Math.max(0,num(matchStats?.bestVisitPoints),...visitScores);
+      const totalPoints = num(matchStats?.totalDartPoints,visitScores.reduce((a:number,v:number)=>a+v,0));
+      const avg3d = totalDarts ? totalPoints / totalDarts * 3 : 0;
+      const segmentMap:any = {};
+      players.forEach((p:any)=>Object.entries(p?.hitsBySegment||{}).forEach(([k,v]:any)=>segmentMap[k]=(segmentMap[k]||0)+num(v)));
+      if (!Object.keys(segmentMap).length) visits.forEach((v:any)=>asArray(v?.darts).forEach((d:any)=>{const label=d?.bed==="IB"?"DBULL":d?.bed==="OB"?"BULL":d?.bed==="MISS"?"MISS":`${d?.bed||"S"}${d?.number||""}`;segmentMap[label]=(segmentMap[label]||0)+1;}));
+      const topSegments=Object.entries(segmentMap).filter(([k])=>k!=="MISS").sort((a:any,b:any)=>num(b[1])-num(a[1])).slice(0,8);
+      const maxSeg=Math.max(1,...topSegments.map((x:any)=>num(x[1])));
+      return <>
+        <section style={card(accent)}>
+          <div style={sectionTitle(accent)}>Rythme & qualité des volées</div>
+          <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8 }}>
+            <Kpi label="Volées" value={visits.length || num(matchStats?.totalVisits)} accent={accent}/>
+            <Kpi label="Productives" value={productive || num(matchStats?.productiveVisits)} accent="#65efb4"/>
+            <Kpi label="À zéro" value={neutral || num(matchStats?.emptyVisits)} accent="#aeb3c5"/>
+            <Kpi label="Recul" value={backward || num(matchStats?.backwardVisits)} accent="#ff7c93"/>
+            <Kpi label="3/3 touchées" value={perfect || num(matchStats?.perfectVisits)} accent="#ffd76a"/>
+            <Kpi label="Dist./volée" value={(visits.length ? (visitDistances.reduce((a:number,v:number)=>a+v,0)/Math.max(1,visitDistances.length)) : num(matchStats?.averageDistancePerVisit)).toFixed(2)} accent={accent}/>
+            <Kpi label="Avg 3D" value={avg3d.toFixed(1)} accent={accent}/>
+            <Kpi label="Best score" value={bestScore || "—"} accent="#ffd76a"/>
+          </div>
+        </section>
+        {topSegments.length ? <section style={card(accent)}>
+          <div style={sectionTitle(accent)}>Segments les plus touchés</div>
+          <div style={{display:"grid",gap:6}}>{topSegments.map(([label,value]:any)=><div key={label} style={{display:"grid",gridTemplateColumns:"52px minmax(0,1fr) 34px",gap:7,alignItems:"center"}}><div style={{color:"#d5d8e2",fontWeight:1000,fontSize:10}}>{label}</div><div style={{height:8,borderRadius:99,overflow:"hidden",background:"rgba(255,255,255,.07)"}}><div style={{width:`${Math.min(100,num(value)/maxSeg*100)}%`,height:"100%",background:`linear-gradient(90deg,${accent}99,${accent})`}}/></div><div style={{color:accent,fontWeight:1000,fontSize:10,textAlign:"right"}}>{value}</div></div>)}</div>
+        </section> : null}
+        {visits.length ? <section style={card(accent)}>
+          <div style={sectionTitle(accent)}>Dernières volées</div>
+          <div style={{display:"grid",gap:6}}>{visits.slice(-12).reverse().map((v:any,index:number)=>{const row=players.find((p:any)=>String(p?.id||p?.playerId)===String(v?.playerId));const score=asArray(v?.darts).reduce((a:number,d:any)=>a+dartPts(d),0);const events=asArray(v?.specialEvents).map((ev:any)=>String(ev?.label||ev?.type||"")).filter(Boolean).join(" · ");return <div key={String(v?.id||index)} style={{padding:8,borderRadius:12,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}><div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8}}><div style={{fontWeight:1000,fontSize:10}}>{String(row?.name||row?.playerName||v?.playerId||"Joueur")} · R{num(v?.round,1)} · {asArray(v?.labels).join(" / ")}</div><div style={{color:num(v?.netDistance)>=0?accent:"#ff7c93",fontWeight:1000}}>{num(v?.netDistance)>=0?"+":""}{num(v?.netDistance)}</div></div><div style={{marginTop:2,color:"#9096a8",fontSize:9}}>Score {score} · {num(v?.positionBefore)}→{num(v?.positionAfter)}{events?` · ${events}`:""}</div></div>})}</div>
+        </section> : null}
+      </>;
+    })()}
   </>;
 }
 

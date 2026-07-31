@@ -10,6 +10,7 @@ const allTests = [
   "tools/test-baseball-regression.ts",
   "tools/test-shooter-regression.ts",
   "tools/test-loterie-regression.ts",
+  "tools/test-darts-racer-regression.ts",
   "tools/test-linked-profile-history.ts",
   "tools/test-home-mode-stats.ts",
   "tools/test-history-integrity-regression.ts",

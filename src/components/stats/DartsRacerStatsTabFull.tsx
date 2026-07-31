@@ -6,6 +6,7 @@ const PINK = "#ff63b8";
 const GOLD = "#ffd76a";
 const GOOD = "#65efb4";
 const BAD = "#ff7c93";
+const SOFT = "#9ba2b4";
 
 function n(value: any, fallback = 0) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
 function txt(value: any) { return String(value ?? "").trim(); }
@@ -13,158 +14,79 @@ function pid(row: any) { return txt(row?.id || row?.playerId || row?.profileId |
 function pname(row: any) { return txt(row?.name || row?.playerName || row?.displayName || "Joueur"); }
 function ratio(a: number, b: number) { return b > 0 ? (a / b) * 100 : 0; }
 function pct(value: number) { return `${Math.round(value * 10) / 10}%`; }
-function playedAt(record: any) { return n(record?.updatedAt || record?.summary?.finishedAt || record?.payload?.summary?.finishedAt || record?.createdAt); }
-function isRacer(record: any) {
-  const blob = [record?.kind, record?.mode, record?.summary?.kind, record?.summary?.mode, record?.payload?.kind, record?.payload?.mode, record?.payload?.summary?.mode]
-    .map((v) => txt(v).toLowerCase()).join(" ");
-  return blob.includes("darts_racer") || blob.includes("darts racer") || blob.includes("dartsracer") || blob.includes("mario_kart");
-}
-function pools(record: any) { return [record?.payload?.stats?.players, record?.payload?.summary?.players, record?.payload?.summary?.perPlayer, record?.summary?.players, record?.summary?.perPlayer, record?.payload?.players, record?.players].filter(Array.isArray); }
-function findRow(record: any, id: string, name?: string | null) {
-  const wantedName = txt(name).toLowerCase();
-  for (const pool of pools(record)) {
-    const byId = pool.find((row: any) => pid(row) === String(id));
-    if (byId) return byId;
-    if (wantedName) {
-      const byName = pool.find((row: any) => pname(row).toLowerCase() === wantedName);
-      if (byName) return byName;
-    }
-  }
-  return null;
-}
-function winnerIds(record: any) {
-  const raw = record?.winnerIds || record?.summary?.winnerIds || record?.payload?.winnerIds || record?.payload?.summary?.winnerIds;
-  if (Array.isArray(raw)) return raw.map(String);
-  const one = txt(record?.winnerId || record?.summary?.winnerId || record?.payload?.winnerId || record?.payload?.summary?.winnerId);
-  return one ? [one] : [];
-}
-function sum(rows: any[], ...keys: string[]) {
-  return rows.reduce((total, row) => {
-    for (const key of keys) {
-      const value = row?.[key];
-      if (value !== undefined && value !== null && Number.isFinite(Number(value))) return total + Number(value);
-    }
-    return total;
-  }, 0);
-}
-function best(rows: any[], ...keys: string[]) {
-  return rows.reduce((max, row) => {
-    for (const key of keys) {
-      const value = Number(row?.[key]);
-      if (Number.isFinite(value)) return Math.max(max, value);
-    }
-    return max;
-  }, 0);
-}
-function kpi(label: string, value: any, detail?: any, color = ACCENT) {
-  return <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.04)", padding: 12, minWidth: 0 }}>
-    <div style={{ color: "#9ea3b7", fontSize: 10.5, fontWeight: 900, textTransform: "uppercase", letterSpacing: .55 }}>{label}</div>
-    <div style={{ marginTop: 4, color, fontSize: 22, fontWeight: 1000, lineHeight: 1.05 }}>{value}</div>
-    {detail ? <div style={{ marginTop: 4, color: "#aeb3c3", fontSize: 10.5 }}>{detail}</div> : null}
-  </div>;
-}
-function section(title: string, children: React.ReactNode) {
-  return <section style={{ marginTop: 12, borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", padding: 12 }}>
-    <div style={{ color: ACCENT, fontSize: 11, fontWeight: 1000, textTransform: "uppercase", marginBottom: 9 }}>{title}</div>{children}
-  </section>;
-}
+function playedAt(record: any) { return n(record?.finishedAt || record?.endedAt || record?.updatedAt || record?.summary?.finishedAt || record?.payload?.summary?.finishedAt || record?.createdAt); }
+function mean(values: number[]) { return values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0; }
+function sum(rows: any[], ...keys: string[]) { return rows.reduce((total,row)=>{ for(const key of keys){ const v=row?.[key]; if(v!==undefined&&v!==null&&Number.isFinite(Number(v))) return total+Number(v); } return total; },0); }
+function best(rows: any[], ...keys: string[]) { return rows.reduce((max,row)=>{ for(const key of keys){ const v=Number(row?.[key]); if(Number.isFinite(v)) return Math.max(max,v); } return max; },0); }
+function styleOf(record: any) { return txt(record?.summary?.raceStyle || record?.payload?.summary?.raceStyle || record?.payload?.config?.raceStyle || record?.payload?.rules?.raceStyle || "arcade").toLowerCase(); }
+function participantMode(record:any){ return txt(record?.summary?.participantMode || record?.payload?.summary?.participantMode || record?.payload?.config?.participantMode || "players").toLowerCase(); }
+function isRacer(record: any) { const blob=[record?.kind,record?.mode,record?.summary?.kind,record?.summary?.mode,record?.payload?.kind,record?.payload?.mode,record?.payload?.summary?.mode].map(v=>txt(v).toLowerCase()).join(" "); return blob.includes("darts_racer")||blob.includes("darts racer")||blob.includes("dartsracer")||blob.includes("mario_kart"); }
+function pools(record: any) { return [record?.payload?.stats?.players,record?.payload?.summary?.players,record?.payload?.summary?.perPlayer,record?.summary?.players,record?.summary?.perPlayer,record?.payload?.players,record?.players].filter(Array.isArray); }
+function findRow(record:any,id:string,name?:string|null){ const wanted=txt(name).toLowerCase(); for(const pool of pools(record)){ const byId=pool.find((r:any)=>pid(r)===String(id)); if(byId)return byId; if(wanted){const byName=pool.find((r:any)=>pname(r).toLowerCase()===wanted);if(byName)return byName;} } return null; }
+function winnerIds(record:any){ const raw=record?.winnerIds||record?.summary?.winnerIds||record?.payload?.winnerIds||record?.payload?.summary?.winnerIds; if(Array.isArray(raw))return raw.map(String); const one=txt(record?.winnerId||record?.summary?.winnerId||record?.payload?.winnerId||record?.payload?.summary?.winnerId); return one?[one]:[]; }
+function visitsOf(record:any, playerId:string){ const list=record?.payload?.visits || record?.payload?.visitHistory || record?.visits || []; return Array.isArray(list)?list.filter((v:any)=>String(v?.playerId||v?.profileId||"")===String(playerId)):[]; }
+function dartLabel(d:any){ if(!d||d.bed==="MISS")return "MISS"; if(d.bed==="OB")return "BULL"; if(d.bed==="IB")return "DBULL"; return `${d.bed||"S"}${d.number||""}`; }
+function dartPoints(d:any){ if(!d||d.bed==="MISS")return 0; if(d.bed==="OB")return 25; if(d.bed==="IB")return 50; const m=d.bed==="T"?3:d.bed==="D"?2:1; return n(d.number)*m; }
+function didWin(record:any,row:any,id:string){ const wins=winnerIds(record); return row?.win===true||row?.winner===true||wins.includes(String(id))||(row?.teamId&&wins.includes(String(row.teamId))); }
+
+function Kpi({label,value,detail,color=ACCENT}:any){return <div style={{borderRadius:15,border:"1px solid rgba(255,255,255,.09)",background:"rgba(255,255,255,.035)",padding:10,minWidth:0}}><div style={{color:SOFT,fontSize:8.8,fontWeight:1000,textTransform:"uppercase",letterSpacing:.5}}>{label}</div><div style={{marginTop:3,color,fontSize:20,fontWeight:1100,lineHeight:1.05}}>{value}</div>{detail?<div style={{marginTop:3,color:"#81889a",fontSize:8.8}}>{detail}</div>:null}</div>}
+function Section({title,children,accent=ACCENT}:any){return <section style={{marginTop:11,borderRadius:18,border:"1px solid rgba(255,255,255,.09)",background:"rgba(255,255,255,.025)",padding:11}}><div style={{color:accent,fontSize:9.5,fontWeight:1000,textTransform:"uppercase",letterSpacing:.65,marginBottom:8}}>{title}</div>{children}</section>}
+function Bar({label,value,max,color=ACCENT,suffix=""}:any){const w=max>0?Math.max(0,Math.min(100,n(value)/max*100)):0;return <div style={{display:"grid",gridTemplateColumns:"82px minmax(0,1fr) 54px",gap:7,alignItems:"center"}}><div style={{color:"#c0c5d1",fontSize:8.8,fontWeight:900,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</div><div style={{height:8,borderRadius:999,overflow:"hidden",background:"rgba(255,255,255,.07)"}}><div style={{height:"100%",width:`${w}%`,background:`linear-gradient(90deg,${color}99,${color})`,boxShadow:`0 0 8px ${color}55`}}/></div><div style={{textAlign:"right",color,fontSize:9,fontWeight:1000}}>{value}{suffix}</div></div>}
+function Trend({items}:any){ if(!items.length)return null; const W=360,H=110,P=12; const vals=items.map((x:any)=>n(x.distance)); const max=Math.max(1,...vals); const pts=vals.map((v:number,i:number)=>`${P+(i*(W-P*2)/Math.max(1,vals.length-1))},${H-P-(v/max)*(H-P*2)}`).join(" "); return <div><svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:120,display:"block"}} preserveAspectRatio="none"><defs><linearGradient id="drFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={ACCENT} stopOpacity=".32"/><stop offset="1" stopColor={ACCENT} stopOpacity=".02"/></linearGradient></defs><polyline fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="1" points={`${P},${H-P} ${W-P},${H-P}`}/><polygon fill="url(#drFill)" points={`${P},${H-P} ${pts} ${W-P},${H-P}`}/><polyline fill="none" stroke={ACCENT} strokeWidth="3" points={pts}/>{vals.map((v:number,i:number)=>{const x=P+(i*(W-P*2)/Math.max(1,vals.length-1));const y=H-P-(v/max)*(H-P*2);return <circle key={i} cx={x} cy={y} r="3" fill={GOLD}/>})}</svg><div style={{display:"flex",justifyContent:"space-between",color:"#70778a",fontSize:8}}><span>Anciennes</span><span>Distance nette / course</span><span>Récentes</span></div></div> }
+function Donut({items,center,centerLabel}:any){ const total=items.reduce((a:any,x:any)=>a+n(x.value),0); let cursor=0; const stops=items.map((x:any)=>{const start=cursor;const end=cursor+(total?n(x.value)/total*100:0);cursor=end;return `${x.color} ${start}% ${end}%`;}).join(","); return <div style={{display:"grid",gridTemplateColumns:"116px minmax(0,1fr)",gap:12,alignItems:"center"}}><div style={{width:110,height:110,borderRadius:"50%",background:total?`conic-gradient(${stops})`:"rgba(255,255,255,.06)",display:"grid",placeItems:"center",boxShadow:"inset 0 0 22px rgba(0,0,0,.42)"}}><div style={{width:68,height:68,borderRadius:"50%",background:"#0a0e16",display:"grid",placeItems:"center",textAlign:"center",border:"1px solid rgba(255,255,255,.08)"}}><div><div style={{fontSize:18,fontWeight:1100,color:ACCENT}}>{center}</div><div style={{fontSize:7.5,color:SOFT,fontWeight:1000}}>{centerLabel}</div></div></div></div><div style={{display:"grid",gap:5}}>{items.map((x:any)=><div key={x.label} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:9}}><span style={{color:x.color,fontWeight:1000}}>{x.label}</span><b>{x.value}</b></div>)}</div></div> }
 
 export default function DartsRacerStatsTabFull({ records = [], playerId, playerName }: any) {
-  const matches = React.useMemo(() => (Array.isArray(records) ? records : [])
-    .filter(isRacer)
-    .map((record) => ({ record, row: findRow(record, String(playerId || ""), playerName) }))
-    .filter((item) => item.row)
-    .sort((a, b) => playedAt(b.record) - playedAt(a.record)), [records, playerId, playerName]);
+  const [range,setRange]=React.useState("all");
+  const allMatches=React.useMemo(()=>(Array.isArray(records)?records:[]).filter(isRacer).map(record=>({record,row:findRow(record,String(playerId||""),playerName),visits:visitsOf(record,String(playerId||""))})).filter(x=>x.row).sort((a,b)=>playedAt(b.record)-playedAt(a.record)),[records,playerId,playerName]);
+  const cutoff=range==="7d"?Date.now()-7*86400000:range==="30d"?Date.now()-30*86400000:0;
+  const matches=allMatches.filter(x=>!cutoff||playedAt(x.record)>=cutoff);
+  const rows=matches.map(x=>x.row);
+  const games=matches.length;
+  const wins=matches.filter(({record,row})=>didWin(record,row,String(playerId))).length;
+  const podiums=rows.filter((r:any)=>n(r.rank)>0&&n(r.rank)<=3).length;
+  const avgRank=mean(rows.map((r:any)=>n(r.rank)).filter(v=>v>0));
+  const darts=sum(rows,"dartsThrown","darts"),hits=sum(rows,"hits"),visits=sum(rows,"visits");
+  const net=sum(rows,"netDistance"),base=sum(rows,"baseDistance"),bonus=sum(rows,"bonusDistance"),penalty=sum(rows,"penaltyDistance");
+  const singles=sum(rows,"singles"),doubles=sum(rows,"doubles"),triples=sum(rows,"triples"),bulls=sum(rows,"bulls"),dbulls=sum(rows,"dbulls"),misses=sum(rows,"misses");
+  const boosts=sum(rows,"specialBoosts"),attacks=sum(rows,"attacksLanded"),shields=sum(rows,"shieldsPicked"),hazards=sum(rows,"hazards"),collisions=sum(rows,"collisions");
+  const attackDistance=sum(rows,"attackDistance"),hazardDistance=sum(rows,"hazardDistance"),collisionDistance=sum(rows,"collisionDistance"),leadVisits=sum(rows,"leadVisits");
+  const bestVisit=best(rows,"bestVisitDistance"),bestScore=best(rows,"bestVisitPoints"),maxPosition=best(rows,"maxPosition","position","distance","finalPosition");
+  const productive=sum(rows,"productiveVisits"),empty=sum(rows,"emptyVisits"),backward=sum(rows,"backwardVisits"),perfect=sum(rows,"perfectVisits");
 
-  const rows = matches.map((item) => item.row);
-  const games = matches.length;
-  const wins = matches.filter(({ record, row }) => row?.win === true || row?.winner === true || winnerIds(record).includes(String(playerId)) || (row?.teamId && winnerIds(record).includes(String(row.teamId)))).length;
-  const darts = sum(rows, "dartsThrown", "darts");
-  const hits = sum(rows, "hits");
-  const visits = sum(rows, "visits");
-  const singles = sum(rows, "singles");
-  const doubles = sum(rows, "doubles");
-  const triples = sum(rows, "triples");
-  const bulls = sum(rows, "bulls");
-  const dbulls = sum(rows, "dbulls");
-  const misses = sum(rows, "misses");
-  const baseDistance = sum(rows, "baseDistance");
-  const bonusDistance = sum(rows, "bonusDistance");
-  const penaltyDistance = sum(rows, "penaltyDistance");
-  const netDistance = sum(rows, "netDistance");
-  const specialBoosts = sum(rows, "specialBoosts");
-  const doublesBoost = sum(rows, "miniBoosts");
-  const triplesBoost = sum(rows, "boosts");
-  const turbo = sum(rows, "turboHits");
-  const hyperTurbo = sum(rows, "hyperTurboHits");
-  const attackPickups = sum(rows, "attackPickups");
-  const attacksLanded = sum(rows, "attacksLanded");
-  const attackDistance = sum(rows, "attackDistance");
-  const shieldsPicked = sum(rows, "shieldsPicked");
-  const shieldsUsed = sum(rows, "shieldsUsed");
-  const hazards = sum(rows, "hazards");
-  const hazardDistance = sum(rows, "hazardDistance");
-  const collisions = sum(rows, "collisions");
-  const collisionDistance = sum(rows, "collisionDistance");
-  const leadVisits = sum(rows, "leadVisits");
-  const lapsCompleted = sum(rows, "lapsCompleted");
-  const bestVisitDistance = best(rows, "bestVisitDistance");
-  const maxPosition = best(rows, "maxPosition", "position", "distance", "finalPosition");
-  const accuracy = ratio(hits, darts);
-  const avgDistance = visits ? netDistance / visits : 0;
-  const positiveArcade = bonusDistance + attackDistance + collisionDistance;
-  const negativeArcade = penaltyDistance;
+  const allVisits=matches.flatMap(x=>x.visits);
+  const derivedDarts=allVisits.flatMap((v:any)=>Array.isArray(v.darts)?v.darts:[]);
+  const dartPointsTotal=rows.some((r:any)=>n(r.dartPoints)>0)?sum(rows,"dartPoints"):derivedDarts.reduce((a:number,d:any)=>a+dartPoints(d),0);
+  const avg3D=darts?dartPointsTotal/darts*3:0;
+  const segmentMap:any={};
+  rows.forEach((r:any)=>Object.entries(r?.hitsBySegment||{}).forEach(([k,v]:any)=>segmentMap[k]=(segmentMap[k]||0)+n(v)));
+  if(!Object.keys(segmentMap).length) derivedDarts.forEach((d:any)=>{const k=dartLabel(d);segmentMap[k]=(segmentMap[k]||0)+1;});
+  const topSegments=Object.entries(segmentMap).filter(([k])=>k!=="MISS").sort((a:any,b:any)=>n(b[1])-n(a[1])).slice(0,10);
+  const maxSegment=Math.max(1,...topSegments.map((x:any)=>n(x[1])));
 
-  if (!playerId) return <div style={{ padding: 16, color: "rgba(255,255,255,.65)" }}>Sélectionne un joueur pour afficher ses statistiques DARTS RACER.</div>;
+  const styleRows=["sprint","arcade","chaos"].map(style=>{const sub=matches.filter(x=>styleOf(x.record)===style);const rr=sub.map(x=>x.row);const ww=sub.filter(x=>didWin(x.record,x.row,String(playerId))).length;return {style,games:sub.length,wins:ww,winRate:ratio(ww,sub.length),accuracy:ratio(sum(rr,"hits"),sum(rr,"darts","dartsThrown")),distance:sum(rr,"netDistance"),perVisit:sum(rr,"visits")?sum(rr,"netDistance")/sum(rr,"visits"):0};}).filter(x=>x.games);
+  const teamGames=matches.filter(x=>participantMode(x.record)==="teams").length;
+  const soloGames=games-teamGames;
+  const trend=[...matches].reverse().slice(-14).map(({record,row}:any,index:number)=>({label:String(index+1),distance:n(row.netDistance),accuracy:n(row.accuracy,ratio(n(row.hits),n(row.darts||row.dartsThrown))),rank:n(row.rank),date:playedAt(record)}));
 
-  return <div style={{ padding: 16 }}>
-    <div style={{ color: ACCENT, fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase" }}>DARTS RACER — Statistiques détaillées</div>
-    <div style={{ marginTop: 5, color: "#aeb3c5", fontSize: 11.5 }}>Vitesse, distance, précision, boosts, attaques, boucliers, pièges, collisions et temps passé en tête.</div>
+  if(!playerId)return <div style={{padding:16,color:"rgba(255,255,255,.65)"}}>Sélectionne un joueur pour afficher ses statistiques DARTS RACER.</div>;
+  return <div style={{padding:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}><div><div style={{color:ACCENT,fontWeight:1100,letterSpacing:1,textTransform:"uppercase"}}>DARTS RACER — Centre de performances</div><div style={{marginTop:4,color:"#aeb3c5",fontSize:10.5}}>Historique canonique : course, précision, vitesse, arcade, segments et progression.</div></div><div style={{display:"flex",gap:5}}>{[["all","TOUT"],["30d","30 J"],["7d","7 J"]].map(([id,label])=><button key={id} onClick={()=>setRange(id)} style={{minHeight:30,padding:"0 9px",borderRadius:999,border:`1px solid ${range===id?ACCENT:"rgba(255,255,255,.10)"}`,background:range===id?`${ACCENT}18`:"rgba(255,255,255,.035)",color:range===id?ACCENT:SOFT,fontWeight:1000,fontSize:8.5}}>{label}</button>)}</div></div>
+    {!games?<div style={{marginTop:14,padding:16,borderRadius:16,border:"1px solid rgba(255,255,255,.09)",color:"#aeb3c5"}}>Aucune course DARTS RACER terminée sur cette période.</div>:<>
+      <div style={{marginTop:12,display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}><Kpi label="Courses" value={games} detail={`${soloGames} solo · ${teamGames} teams`}/><Kpi label="Victoires" value={wins} detail={`${pct(ratio(wins,games))} win rate`} color={GOLD}/><Kpi label="Podiums" value={podiums} detail={avgRank?`rang moyen ${avgRank.toFixed(2)}`:"—"} color={PINK}/><Kpi label="Précision" value={pct(ratio(hits,darts))} detail={`${hits}/${darts} darts`} color={GOOD}/><Kpi label="Distance nette" value={net} detail={`${visits?(net/visits).toFixed(2):"0.00"}/volée`}/><Kpi label="Distance / dart" value={darts?(net/darts).toFixed(2):"0.00"} detail={`base ${base} · bonus +${bonus}`} color={GOLD}/><Kpi label="Meilleure volée" value={`+${bestVisit}`} detail={`position max ${maxPosition}`} color={GOLD}/><Kpi label="Avg 3D" value={avg3D.toFixed(1)} detail={bestScore?`best score ${bestScore}`:"score darts"} color={ACCENT}/></div>
 
-    {!games ? <div style={{ marginTop: 14, padding: 16, borderRadius: 16, border: "1px solid rgba(255,255,255,.09)", color: "#aeb3c5" }}>Aucune course DARTS RACER terminée pour ce profil.</div> : <>
-      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
-        {kpi("Courses", games, `${wins} victoire${wins > 1 ? "s" : ""}`)}
-        {kpi("Win rate", pct(ratio(wins, games)), `${wins}/${games}`, GOLD)}
-        {kpi("Précision", pct(accuracy), `${hits}/${darts} fléchettes`, GOOD)}
-        {kpi("Distance nette", netDistance, `${avgDistance.toFixed(1)} cases/volée`)}
-        {kpi("Meilleure volée", `+${bestVisitDistance}`, `Position max : ${maxPosition}`, GOLD)}
-        {kpi("Bonus de piste", `+${bonusDistance}`, `${specialBoosts} boosts spéciaux`, PINK)}
-        {kpi("Pénalités", penaltyDistance ? `−${penaltyDistance}` : "0", `${hazards} piège${hazards > 1 ? "s" : ""}`, BAD)}
-        {kpi("Tours bouclés", lapsCompleted, `${leadVisits} passages en tête`)}
-      </div>
+      <Section title="Progression — distance nette par course"><Trend items={trend}/></Section>
 
-      {section("Répartition des impacts", <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-        {[["Singles", singles, ACCENT], ["Doubles", doubles, ACCENT], ["Triples", triples, PINK], ["BULL", bulls, GOLD], ["DBULL", dbulls, GOLD], ["MISS", misses, BAD]].map(([label, value, color]: any) => <div key={label} style={{ padding: 10, borderRadius: 13, background: "rgba(0,0,0,.22)", textAlign: "center" }}><div style={{ color: "#959aad", fontSize: 9.5 }}>{label}</div><div style={{ color, fontSize: 19, fontWeight: 1000 }}>{value}</div></div>)}
-      </div>)}
+      <Section title="Qualité des volées" accent={GOOD}><div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:7}}><Kpi label="Productives" value={productive||allVisits.filter((v:any)=>n(v.netDistance)>0).length} color={GOOD}/><Kpi label="À zéro" value={empty||allVisits.filter((v:any)=>n(v.netDistance)===0).length} color={SOFT}/><Kpi label="Recul" value={backward||allVisits.filter((v:any)=>n(v.netDistance)<0).length} color={BAD}/><Kpi label="3/3 touchées" value={perfect||allVisits.filter((v:any)=>(v.darts||[]).length===3&&(v.darts||[]).every((d:any)=>d?.bed&&d.bed!=="MISS")).length} color={GOLD}/></div></Section>
 
-      {section("Vitesse & boosts", <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-        {[["Distance brute", baseDistance, `${darts} darts`], ["Mini-boosts D", doublesBoost, "Double = +2"], ["Boosts T", triplesBoost, "Triple = +3"], ["Turbo BULL", turbo, "BULL = +4"], ["Hyper turbo DBULL", hyperTurbo, "DBULL = +5"], ["Boosts de piste", specialBoosts, `+${bonusDistance} cases`]].map(([label, value, detail]: any) => <div key={label} style={{ padding: 10, borderRadius: 13, background: "rgba(0,0,0,.22)" }}><div style={{ color: "#979cad", fontSize: 9.5, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 2, color: label.includes("DBULL") || label.includes("BULL") ? GOLD : label.includes("piste") ? PINK : ACCENT, fontSize: 19, fontWeight: 1000 }}>{value}</div><div style={{ color: "#777d91", fontSize: 8.5 }}>{detail}</div></div>)}
-      </div>)}
+      <Section title="Répartition des impacts"><Donut center={darts} centerLabel="DARTS" items={[{label:"Singles",value:singles,color:ACCENT},{label:"Doubles",value:doubles,color:"#8ad8ff"},{label:"Triples",value:triples,color:PINK},{label:"Bull / DB",value:bulls+dbulls,color:GOLD},{label:"Miss",value:misses,color:BAD}]}/></Section>
 
-      {section("Interactions arcade", <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-        {[["💥 Attaques", attacksLanded, `${attackPickups} bonus ramassés · ${attackDistance} cases infligées`, PINK], ["🛡 Boucliers", shieldsPicked, `${shieldsUsed} utilisés`, GOLD], ["⚠ Pièges", hazards, `${hazardDistance} cases perdues`, BAD], ["🏎 Collisions", collisions, `${collisionDistance} cases infligées`, ACCENT]].map(([label, value, detail, color]: any) => <div key={label} style={{ padding: 10, borderRadius: 13, background: `${color}0d`, border: `1px solid ${color}2f` }}><div style={{ color, fontSize: 10, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 2, color: "#fff", fontSize: 19, fontWeight: 1000 }}>{value}</div><div style={{ color: "#979cad", fontSize: 9 }}>{detail}</div></div>)}
-      </div>)}
+      <Section title="Segments les plus touchés"><div style={{display:"grid",gap:6}}>{topSegments.length?topSegments.map(([label,value]:any)=><Bar key={label} label={label} value={value} max={maxSegment} color={label.startsWith("T")?PINK:label.startsWith("D")?"#8ad8ff":label.includes("BULL")?GOLD:ACCENT}/>):<div style={{color:SOFT,fontSize:10}}>Les anciennes courses ne contiennent pas encore le détail segment par segment.</div>}</div></Section>
 
-      {section("Bilan course", <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
-        <div style={{ padding: 10, borderRadius: 13, textAlign: "center", background: `${GOOD}0d`, border: `1px solid ${GOOD}2e` }}><div style={{ color: GOOD, fontSize: 9, fontWeight: 1000 }}>GAIN ARCADE</div><div style={{ color: GOOD, fontSize: 20, fontWeight: 1000 }}>+{positiveArcade}</div></div>
-        <div style={{ padding: 10, borderRadius: 13, textAlign: "center", background: `${BAD}0d`, border: `1px solid ${BAD}2e` }}><div style={{ color: BAD, fontSize: 9, fontWeight: 1000 }}>PERTE ARCADE</div><div style={{ color: BAD, fontSize: 20, fontWeight: 1000 }}>−{negativeArcade}</div></div>
-        <div style={{ padding: 10, borderRadius: 13, textAlign: "center", background: `${ACCENT}0d`, border: `1px solid ${ACCENT}2e` }}><div style={{ color: ACCENT, fontSize: 9, fontWeight: 1000 }}>EN TÊTE</div><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{leadVisits}</div><div style={{ color: "#777d91", fontSize: 8.5 }}>volées</div></div>
-      </div>)}
+      <Section title="Arcade — bonus, attaques & incidents" accent={PINK}><div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6}}><Kpi label="⚡ Boosts" value={boosts} detail={`+${bonus} cases`} color={GOLD}/><Kpi label="💥 Attaques" value={attacks} detail={`${attackDistance} cases`} color={PINK}/><Kpi label="🛡 Boucliers" value={shields} color="#7dd3fc"/><Kpi label="⚠ Pièges" value={hazards} detail={`−${hazardDistance}`} color={BAD}/><Kpi label="🏎 Collisions" value={collisions} detail={`${collisionDistance} infligées`} color={ACCENT}/></div><div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6}}><Kpi label="Bonus total" value={`+${bonus}`} color={GOOD}/><Kpi label="Pénalités" value={`−${penalty}`} color={BAD}/><Kpi label="Passages en tête" value={leadVisits} color={ACCENT}/></div></Section>
 
-      {section("Courses récentes", <div style={{ display: "grid", gap: 7 }}>
-        {matches.slice(0, 10).map(({ record, row }, index) => {
-          const winsArr = winnerIds(record);
-          const won = row?.win === true || row?.winner === true || winsArr.includes(String(playerId)) || (row?.teamId && winsArr.includes(String(row.teamId)));
-          const date = playedAt(record) ? new Date(playedAt(record)).toLocaleDateString("fr-FR") : "—";
-          const totalDistance = n(record?.summary?.totalDistance || record?.payload?.summary?.totalDistance || record?.payload?.state?.totalDistance);
-          const style = txt(record?.summary?.raceStyle || record?.payload?.summary?.raceStyle || record?.payload?.config?.raceStyle || "arcade").toUpperCase();
-          return <div key={record?.id || index} style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 9, alignItems: "center", padding: 10, borderRadius: 15, border: `1px solid ${won ? `${ACCENT}66` : "rgba(255,255,255,.08)"}`, background: won ? `${ACCENT}0d` : "rgba(255,255,255,.03)" }}>
-            <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: won ? ACCENT : "rgba(255,255,255,.07)", color: won ? "#080a10" : "#c8cbd6", fontWeight: 1000 }}>{won ? "WIN" : `#${row?.rank || "—"}`}</div>
-            <div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000 }}>{date} • {style}</div><div style={{ color: "#aeb3c3", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n(row?.position ?? row?.distance)}/{totalDistance || "?"} cases • {n(row?.hits)}/{n(row?.darts)} hits • best +{n(row?.bestVisitDistance)} • ⚡ {n(row?.specialBoosts)} • 💥 {n(row?.attacksLanded)}</div></div>
-            <div style={{ textAlign: "right" }}><div style={{ color: ACCENT, fontSize: 20, fontWeight: 1000 }}>{n(row?.position ?? row?.distance)}</div><div style={{ color: "#9297aa", fontSize: 9.5 }}>cases</div></div>
-          </div>;
-        })}
-      </div>)}
+      {styleRows.length?<Section title="Comparatif des styles"><div style={{display:"grid",gap:7}}>{styleRows.map((x:any)=>{const color=x.style==="chaos"?PINK:x.style==="sprint"?GOLD:ACCENT;return <div key={x.style} style={{padding:9,borderRadius:13,background:`${color}0b`,border:`1px solid ${color}32`,display:"grid",gridTemplateColumns:"80px repeat(4,minmax(0,1fr))",gap:6,alignItems:"center",textAlign:"center"}}><div style={{color,fontWeight:1100,textTransform:"uppercase",fontSize:9}}>{x.style}</div><div><b>{x.games}</b><small style={{display:"block",color:SOFT,fontSize:7.5}}>courses</small></div><div><b>{pct(x.winRate)}</b><small style={{display:"block",color:SOFT,fontSize:7.5}}>win</small></div><div><b>{pct(x.accuracy)}</b><small style={{display:"block",color:SOFT,fontSize:7.5}}>préc.</small></div><div><b>{x.perVisit.toFixed(2)}</b><small style={{display:"block",color:SOFT,fontSize:7.5}}>cases/volée</small></div></div>})}</div></Section>:null}
+
+      <Section title="Courses récentes"><div style={{display:"grid",gap:7}}>{matches.slice(0,12).map(({record,row}:any,index:number)=>{const won=didWin(record,row,String(playerId));const date=playedAt(record)?new Date(playedAt(record)).toLocaleDateString("fr-FR"):"—";const total=n(record?.summary?.totalDistance||record?.payload?.summary?.totalDistance||record?.payload?.state?.totalDistance);const style=styleOf(record).toUpperCase();const dartsN=n(row?.darts??row?.dartsThrown),hitsN=n(row?.hits),dist=n(row?.position??row?.distance);return <div key={record?.id||index} style={{display:"grid",gridTemplateColumns:"42px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:14,border:`1px solid ${won?ACCENT+"66":"rgba(255,255,255,.08)"}`,background:won?`${ACCENT}0c`:"rgba(255,255,255,.025)"}}><div style={{width:38,height:38,borderRadius:12,display:"grid",placeItems:"center",background:won?ACCENT:"rgba(255,255,255,.06)",color:won?"#071018":"#d1d5df",fontSize:9,fontWeight:1100}}>{won?"WIN":`#${n(row.rank)||"—"}`}</div><div style={{minWidth:0}}><div style={{fontWeight:1000,fontSize:10}}>{date} · {style} · {participantMode(record)==="teams"?"TEAMS":"JOUEURS"}</div><div style={{color:SOFT,fontSize:8.8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{dist}/{total||"?"} cases · {pct(n(row.accuracy,ratio(hitsN,dartsN)))} · best +{n(row.bestVisitDistance)} · ⚡{n(row.specialBoosts)} 💥{n(row.attacksLanded)} 🛡{n(row.shieldsPicked)}</div></div><div style={{textAlign:"right"}}><div style={{color:ACCENT,fontSize:18,fontWeight:1100}}>{dist}</div><div style={{color:"#7e8597",fontSize:7.5}}>cases</div></div></div>})}</div></Section>
     </>}
   </div>;
 }

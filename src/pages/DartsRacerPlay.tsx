@@ -17,6 +17,7 @@ import {
   cloneDartsRacerState,
   createDartsRacerState,
   dartsRacerDartDistance,
+  dartsRacerDartPoints,
   emptyDartsRacerStats,
   getDartsRacerActiveEntity,
   getDartsRacerActivePlayerId,
@@ -308,8 +309,18 @@ export default function DartsRacerPlay(props: any) {
       const stats: DartsRacerPlayerStats = state.statsByPlayer[player.id] || emptyDartsRacerStats();
       const teamId = state.teamByPlayer[player.id] || null;
       const entityId = state.entityByPlayer[player.id];
+      const entity = state.entities[entityId];
       const standing = state.standings.find((row) => row.id === entityId);
       const win = Boolean(entityId && winnerEntityIds.has(entityId));
+      const visits = state.history.filter((visit: any) => String(visit.playerId) === String(player.id));
+      const visitDistances = visits.map((visit: any) => Number(visit.netDistance || 0));
+      const visitScores = visits.map((visit: any) => (visit.darts || []).reduce((sum: number, dart: GameDart) => sum + dartsRacerDartPoints(dart), 0));
+      const eventCounts = visits.flatMap((visit: any) => visit.specialEvents || []).reduce((acc: any, event: any) => { acc[event.type] = Number(acc[event.type] || 0) + 1; return acc; }, {});
+      const totalDartPoints = visitScores.reduce((a: number, value: number) => a + value, 0);
+      const productiveVisits = visitDistances.filter((value: number) => value > 0).length;
+      const emptyVisits = visitDistances.filter((value: number) => value === 0).length;
+      const backwardVisits = visitDistances.filter((value: number) => value < 0).length;
+      const perfectVisits = visits.filter((visit: any) => (visit.darts || []).length === 3 && (visit.darts || []).every((dart: GameDart) => dartsRacerDartDistance(dart) > 0)).length;
       return {
         id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile),
         avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
@@ -317,17 +328,23 @@ export default function DartsRacerPlay(props: any) {
         teamId, team: teamId, teamName: teamId ? teamById.get(teamId)?.name : null,
         win, winner: win, rank: standing?.rank || 1,
         position: standing?.position || 0, distance: standing?.position || 0, finalPosition: standing?.position || 0,
-        progressPct: standing?.progressPct || 0, lap: standing?.lap || 1, shield: standing?.shield || 0,
+        totalDistance: state.totalDistance, progressPct: standing?.progressPct || 0, lap: standing?.lap || 1, shield: standing?.shield || 0,
         darts: stats.darts, dartsThrown: stats.darts, visits: stats.visits, hits: stats.hits,
         accuracy: pct(stats.hits, stats.darts), singles: stats.singles, doubles: stats.doubles, triples: stats.triples,
         bulls: stats.bulls, dbulls: stats.dbulls, misses: stats.misses,
         baseDistance: stats.baseDistance, bonusDistance: stats.bonusDistance, penaltyDistance: stats.penaltyDistance,
-        netDistance: stats.netDistance, bestVisitDistance: stats.bestVisitDistance, maxPosition: stats.maxPosition,
+        netDistance: stats.netDistance, averageDistancePerVisit: stats.visits ? stats.netDistance / stats.visits : 0, averageDistancePerDart: stats.darts ? stats.netDistance / stats.darts : 0,
+        bestVisitDistance: stats.bestVisitDistance, maxPosition: stats.maxPosition,
+        dartPoints: Number(stats.dartPoints || totalDartPoints), avg3DScore: stats.darts ? (Number(stats.dartPoints || totalDartPoints) / stats.darts) * 3 : 0, bestVisitPoints: Number(stats.bestVisitPoints || Math.max(0, ...visitScores)),
+        productiveVisits: Number(stats.productiveVisits ?? productiveVisits), emptyVisits: Number(stats.emptyVisits ?? emptyVisits), backwardVisits: Number(stats.backwardVisits ?? backwardVisits), perfectVisits: Number(stats.perfectVisits ?? perfectVisits),
+        visitDistances: Array.isArray(stats.visitDistances) && stats.visitDistances.length ? stats.visitDistances : visitDistances, visitScores: Array.isArray(stats.visitScores) && stats.visitScores.length ? stats.visitScores : visitScores,
+        visitHistory: visits, dartsDetail: visits.flatMap((visit: any) => (visit.darts || []).map((dart: GameDart, dartIndex: number) => ({ ...dart, visitId: visit.id, round: visit.round, dartIndex: dartIndex + 1, label: visit.labels?.[dartIndex] || null, distance: dartsRacerDartDistance(dart), score: dartsRacerDartPoints(dart) }))),
+        hitsBySegment: { ...(stats.hitsBySegment || {}) }, eventCounts,
         boosts: stats.boosts, miniBoosts: stats.miniBoosts, turboHits: stats.turboHits, hyperTurboHits: stats.hyperTurboHits,
         specialBoosts: stats.specialBoosts, attackPickups: stats.attackPickups, attacksLanded: stats.attacksLanded, attackDistance: stats.attackDistance,
         shieldsPicked: stats.shieldsPicked, shieldsUsed: stats.shieldsUsed, hazards: stats.hazards, hazardDistance: stats.hazardDistance,
         collisions: stats.collisions, collisionDistance: stats.collisionDistance, leadVisits: stats.leadVisits,
-        lapsCompleted: stats.lapsCompleted, finishVisit: stats.finishVisit, rawStats: stats,
+        lapsCompleted: stats.lapsCompleted, finishVisit: stats.finishVisit, finishDarts: entity?.finishDarts ?? null, rawStats: stats,
       };
     });
 
@@ -335,24 +352,34 @@ export default function DartsRacerPlay(props: any) {
     const winnerId = state.tied ? null : winnerStanding?.id || null;
     const totalDarts = playerRows.reduce((a, p) => a + p.darts, 0);
     const totalHits = playerRows.reduce((a, p) => a + p.hits, 0);
+    const totalVisits = playerRows.reduce((a, p) => a + p.visits, 0);
+    const totalDartPoints = playerRows.reduce((a, p) => a + Number(p.dartPoints || 0), 0);
+    const totalSpecialEvents = state.history.reduce((a: number, visit: any) => a + (visit.specialEvents?.length || 0), 0);
     const matchStats = {
-      durationMs: Math.max(0, now - state.startedAt), totalDarts, totalHits, accuracy: pct(totalHits, totalDarts),
+      statisticsVersion: 2, telemetryVersion: 1,
+      durationMs: Math.max(0, now - state.startedAt), totalDarts, totalHits, totalVisits, accuracy: pct(totalHits, totalDarts),
+      totalDartPoints, avg3DScore: totalDarts ? (totalDartPoints / totalDarts) * 3 : 0, bestVisitPoints: Math.max(0, ...playerRows.map((p) => Number(p.bestVisitPoints || 0))),
       totalBaseDistance: playerRows.reduce((a, p) => a + p.baseDistance, 0),
       totalBonusDistance: playerRows.reduce((a, p) => a + p.bonusDistance, 0),
       totalPenaltyDistance: playerRows.reduce((a, p) => a + p.penaltyDistance, 0),
       totalNetDistance: playerRows.reduce((a, p) => a + p.netDistance, 0),
+      averageDistancePerVisit: totalVisits ? playerRows.reduce((a, p) => a + p.netDistance, 0) / totalVisits : 0,
+      averageDistancePerDart: totalDarts ? playerRows.reduce((a, p) => a + p.netDistance, 0) / totalDarts : 0,
+      bestVisitDistance: Math.max(0, ...playerRows.map((p) => Number(p.bestVisitDistance || 0))),
+      productiveVisits: playerRows.reduce((a, p) => a + Number(p.productiveVisits || 0), 0), emptyVisits: playerRows.reduce((a, p) => a + Number(p.emptyVisits || 0), 0), backwardVisits: playerRows.reduce((a, p) => a + Number(p.backwardVisits || 0), 0), perfectVisits: playerRows.reduce((a, p) => a + Number(p.perfectVisits || 0), 0),
       boosts: playerRows.reduce((a, p) => a + p.specialBoosts + p.boosts, 0),
-      attacks: playerRows.reduce((a, p) => a + p.attacksLanded, 0),
-      shields: playerRows.reduce((a, p) => a + p.shieldsPicked, 0),
-      hazards: playerRows.reduce((a, p) => a + p.hazards, 0),
-      collisions: playerRows.reduce((a, p) => a + p.collisions, 0),
-      leadChanges: state.leadChanges,
+      specialBoosts: playerRows.reduce((a, p) => a + p.specialBoosts, 0),
+      attacks: playerRows.reduce((a, p) => a + p.attacksLanded, 0), attackDistance: playerRows.reduce((a, p) => a + p.attackDistance, 0),
+      shields: playerRows.reduce((a, p) => a + p.shieldsPicked, 0), shieldsUsed: playerRows.reduce((a, p) => a + p.shieldsUsed, 0),
+      hazards: playerRows.reduce((a, p) => a + p.hazards, 0), hazardDistance: playerRows.reduce((a, p) => a + p.hazardDistance, 0),
+      collisions: playerRows.reduce((a, p) => a + p.collisions, 0), collisionDistance: playerRows.reduce((a, p) => a + p.collisionDistance, 0),
+      totalSpecialEvents, leadChanges: state.leadChanges,
       roundsPlayed: Math.min(state.roundIndex + 1, config.maxRounds || state.roundIndex + 1),
-      trackLength: state.rules.trackLength, laps: state.rules.laps, totalDistance: state.totalDistance,
+      trackLength: state.rules.trackLength, laps: state.rules.laps, totalDistance: state.totalDistance, raceStyle: state.rules.raceStyle, participantMode: config.participantMode,
     };
 
     const summary = {
-      kind: "darts_racer", mode: "darts_racer", sport: "darts", finished: true,
+      kind: "darts_racer", mode: "darts_racer", sport: "darts", finished: true, statisticsVersion: 2, telemetryVersion: 1,
       participantMode: config.participantMode, winnerId, winnerIds: state.winnerIds,
       winnerName: state.tied ? "Égalité" : winnerStanding?.name || "—", tied: state.tied,
       trackLength: state.rules.trackLength, laps: state.rules.laps, totalDistance: state.totalDistance,
@@ -365,11 +392,11 @@ export default function DartsRacerPlay(props: any) {
     };
 
     return {
-      id: matchIdRef.current, matchId: matchIdRef.current, kind: "darts_racer", mode: "darts_racer", sport: "darts", status: "finished",
-      createdAt: state.startedAt, updatedAt: now, winnerId, winnerIds: state.winnerIds, players: playerRows, teams,
+      id: matchIdRef.current, matchId: matchIdRef.current, kind: "darts_racer", mode: "darts_racer", sport: "darts", status: "finished", statisticsVersion: 2, telemetryVersion: 1,
+      createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now, finishedAt: now, endedAt: now, winnerId, winnerIds: state.winnerIds, players: playerRows, teams,
       game: { mode: "darts_racer", teams }, summary,
       payload: {
-        kind: "darts_racer", mode: "darts_racer", sport: "darts", winnerId, winnerIds: state.winnerIds, tied: state.tied,
+        kind: "darts_racer", mode: "darts_racer", sport: "darts", statisticsVersion: 2, telemetryVersion: 1, winnerId, winnerIds: state.winnerIds, tied: state.tied,
         config, rules: state.rules, players: playerRows, teams, summary,
         visits: state.history, visitHistory: state.history,
         state: { roundIndex: state.roundIndex, totalDistance: state.totalDistance, specialCells: state.specialCells, entities: state.entities, standings: state.standings, finishReason: state.finishReason, leadChanges: state.leadChanges },
@@ -474,7 +501,7 @@ export default function DartsRacerPlay(props: any) {
 
     {showStandings ? <StandingsModal state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowStandings(false)} /> : null}
     {showStats ? <StatsModal state={state} profilesById={byId} primary={primary} onClose={() => setShowStats(false)} /> : null}
-    {showEnd && state.finished ? <EndModal state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+    {showEnd && state.finished ? <EndModal state={state} profilesById={byId} teamById={teamById} participantMode={config.participantMode} primary={primary} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.standings[0]?.playerIds?.[0] || state.players?.[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_racer" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord(), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
 
@@ -527,16 +554,54 @@ function StatsModal({ state, profilesById, primary, onClose }: any) {
   </div></div>;
 }
 
-function EndModal({ state, profilesById, teamById, participantMode, primary, onClose, onReplay, onHistory }: any) {
+function EndKpi({ label, value, color = C.cyan, detail }: any) {
+  return <div style={{ minWidth: 0, padding: 9, borderRadius: 13, background: `${color}0c`, border: `1px solid ${color}2e`, textAlign: "center" }}><div style={{ color: "#9297aa", fontSize: 8.2, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .35 }}>{label}</div><div style={{ marginTop: 2, color, fontSize: 18, fontWeight: 1100, lineHeight: 1.05 }}>{value}</div>{detail ? <div style={{ marginTop: 2, color: "rgba(255,255,255,.48)", fontSize: 8 }}>{detail}</div> : null}</div>;
+}
+
+function EndProgress({ label, value, max, color, suffix = "" }: any) {
+  const pctValue = max > 0 ? Math.max(0, Math.min(100, (Number(value || 0) / max) * 100)) : 0;
+  return <div style={{ display: "grid", gridTemplateColumns: "78px minmax(0,1fr) 48px", gap: 7, alignItems: "center" }}><div style={{ color: "#c5cad6", fontSize: 9, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div><div style={{ height: 8, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ height: "100%", width: `${pctValue}%`, background: `linear-gradient(90deg,${color}aa,${color})`, boxShadow: `0 0 9px ${color}55` }} /></div><div style={{ color, fontSize: 9, fontWeight: 1000, textAlign: "right" }}>{value}{suffix}</div></div>;
+}
+
+function EndModal({ state, profilesById, teamById, participantMode, primary, onClose, onReplay, onStats, onHistory }: any) {
+  const [tab, setTab] = React.useState("summary");
   const winner = state.standings[0];
-  const totalDarts = Object.values(state.statsByPlayer || {}).reduce((a: number, s: any) => a + Number(s.darts || 0), 0);
-  const totalBoosts = Object.values(state.statsByPlayer || {}).reduce((a: number, s: any) => a + Number(s.specialBoosts || 0), 0);
-  const totalAttacks = Object.values(state.statsByPlayer || {}).reduce((a: number, s: any) => a + Number(s.attacksLanded || 0), 0);
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.82)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 10 }}><div style={{ ...panelStyle(), width: "min(820px,100%)", maxHeight: "92vh", overflow: "auto", padding: 14, borderColor: `${primary}66` }}>
-    <div style={{ textAlign: "center" }}><div style={{ color: C.gold, fontSize: 11, fontWeight: 1000, letterSpacing: 1.3 }}>🏁 COURSE TERMINÉE</div><div style={{ marginTop: 4, color: "#fff", fontSize: 23, fontWeight: 1100 }}>{state.tied ? "ÉGALITÉ" : winner?.name || "DARTS RACER"}</div><div style={{ color: primary, fontSize: 11, fontWeight: 900 }}>{state.finishReason === "round_limit" ? "Limite de rounds atteinte" : "Ligne d’arrivée franchie"}</div></div>
-    <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>{[["Distance",state.totalDistance],["Rounds",state.roundIndex+1],["Darts",totalDarts],["Leader changes",state.leadChanges]].map(([label,value]:any)=><div key={label} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.04)", textAlign: "center" }}><div style={{ color: "#9297aa", fontSize: 8.5 }}>{label}</div><div style={{ color: primary, fontSize: 18, fontWeight: 1000 }}>{value}</div></div>)}</div>
-    <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><div style={{ padding: 9, borderRadius: 13, background: `${C.gold}0d`, border: `1px solid ${C.gold}33`, textAlign: "center" }}><div style={{ color: C.gold, fontSize: 18, fontWeight: 1000 }}>⚡ {totalBoosts}</div><div style={{ color: "#9ca1b1", fontSize: 8.5 }}>BOOSTS DE PISTE</div></div><div style={{ padding: 9, borderRadius: 13, background: `${C.pink}0d`, border: `1px solid ${C.pink}33`, textAlign: "center" }}><div style={{ color: C.pink, fontSize: 18, fontWeight: 1000 }}>💥 {totalAttacks}</div><div style={{ color: "#9ca1b1", fontSize: 8.5 }}>ATTAQUES RÉUSSIES</div></div></div>
-    <div style={{ marginTop: 12, display: "grid", gap: 7 }}>{state.standings.map((standing:any,index:number)=>{const team=participantMode==="teams"?teamById.get(standing.id):null;const profile=participantMode==="players"?profilesById.get(standing.id):null;return <div key={standing.id} style={{ display:"grid",gridTemplateColumns:"34px 42px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:14,background:index===0?`${primary}13`:"rgba(255,255,255,.035)",border:`1px solid ${index===0?primary:"rgba(255,255,255,.08)"}` }}><div style={{ color:index===0?C.gold:"#fff",fontWeight:1000 }}>#{standing.rank}</div>{team?<TeamLogo team={team} size={38}/>:<ProfileAvatar profile={profile} size={38} showStars={false}/>}<div><div style={{fontWeight:1000}}>{standing.name}{index===0?" 🏆":""}</div><div style={{color:"#979cad",fontSize:10}}>{standing.position}/{state.totalDistance} · {standing.progressPct}% · tour {standing.lap}/{state.rules.laps}</div></div><div style={{color:primary,fontSize:18,fontWeight:1000}}>{standing.distanceToFinish}</div></div>})}</div>
-    <div style={{ marginTop: 13, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}><button onClick={onReplay} style={actionButton(primary)}>REJOUER</button><button onClick={onHistory} style={actionButton(C.gold)}>HISTORIQUE</button><button onClick={onClose} style={actionButton(C.silver)}>FERMER</button></div>
+  const playerRows = state.players.map((player: any, index: number) => {
+    const stats: any = state.statsByPlayer[player.id] || emptyDartsRacerStats();
+    const standing = state.standings.find((s: any) => s.id === state.entityByPlayer[player.id]);
+    const visits = state.history.filter((v: any) => String(v.playerId) === String(player.id));
+    const totalPoints = visits.reduce((sum: number, v: any) => sum + (v.darts || []).reduce((a: number, d: GameDart) => a + dartsRacerDartPoints(d), 0), 0);
+    const color = playerColor(index);
+    return { player, profile: profilesById.get(player.id) || player, stats, standing, visits, totalPoints, color };
+  }).sort((a: any, b: any) => Number(a.standing?.rank || 99) - Number(b.standing?.rank || 99));
+  const totals = playerRows.reduce((acc: any, row: any) => { const s = row.stats; acc.darts += Number(s.darts || 0); acc.hits += Number(s.hits || 0); acc.visits += Number(s.visits || 0); acc.net += Number(s.netDistance || 0); acc.boosts += Number(s.specialBoosts || 0); acc.attacks += Number(s.attacksLanded || 0); acc.shields += Number(s.shieldsPicked || 0); acc.hazards += Number(s.hazards || 0); acc.collisions += Number(s.collisions || 0); acc.points += Number(row.totalPoints || 0); return acc; }, { darts:0,hits:0,visits:0,net:0,boosts:0,attacks:0,shields:0,hazards:0,collisions:0,points:0 });
+  const bestVisit = Math.max(0, ...playerRows.map((r:any)=>Number(r.stats.bestVisitDistance||0)));
+  const bestScore = Math.max(0, ...playerRows.map((r:any)=>Number(r.stats.bestVisitPoints||0)), ...playerRows.flatMap((r:any)=>r.visits.map((v:any)=>(v.darts||[]).reduce((a:number,d:GameDart)=>a+dartsRacerDartPoints(d),0))));
+  const latestVisits = [...state.history].slice(-14).reverse();
+  const tabs = [["summary","RÉSUMÉ","🏁"],["precision","FLÉCHETTES","🎯"],["arcade","ARCADE","⚡"],["timeline","VOLÉES","📈"]];
+  return <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.84)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panelStyle(), width: "min(900px,100%)", maxHeight: "94dvh", overflow: "auto", padding: 12, borderColor: `${primary}66`, background: "linear-gradient(180deg,rgba(10,18,28,.98),rgba(4,8,14,.99))" }}>
+    <div style={{ textAlign: "center" }}><div style={{ color: C.gold, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>🏁 COURSE TERMINÉE</div><div style={{ marginTop: 3, color: "#fff", fontSize: 23, fontWeight: 1100 }}>{state.tied ? "ÉGALITÉ" : winner?.name || "DARTS RACER"}</div><div style={{ color: primary, fontSize: 10, fontWeight: 900 }}>{styleLabel(state.rules.raceStyle)} · {state.rules.trackLength} CASES × {state.rules.laps} TOUR{state.rules.laps > 1 ? "S" : ""} · {state.finishReason === "round_limit" ? "LIMITE DE ROUNDS" : "ARRIVÉE FRANCHIE"}</div></div>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{tabs.map(([id,label,icon]:any)=><button key={id} onClick={()=>setTab(id)} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${tab===id?primary:"rgba(255,255,255,.09)"}`, background: tab===id?`${primary}18`:"rgba(255,255,255,.035)", color: tab===id?primary:"#aeb4c3", fontWeight: 1000, fontSize: 8.6, cursor:"pointer" }}><div style={{fontSize:15}}>{icon}</div>{label}</button>)}</div>
+
+    {tab === "summary" ? <>
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><EndKpi label="Distance" value={state.totalDistance} color={primary}/><EndKpi label="Rounds" value={state.roundIndex+1} color={primary}/><EndKpi label="Darts" value={totals.darts} color={C.silver}/><EndKpi label="Précision" value={`${pct(totals.hits,totals.darts)}%`} color="#65efb4"/><EndKpi label="Best volée" value={`+${bestVisit}`} color={C.gold}/><EndKpi label="Best score" value={bestScore} color={C.gold}/><EndKpi label="Leader changes" value={state.leadChanges} color={C.pink}/><EndKpi label="Durée" value={fmtDuration(Math.max(0,(state.finishedAt||Date.now())-state.startedAt))} color={primary}/></div>
+      <div style={{ marginTop: 10, display: "grid", gap: 7 }}>{state.standings.map((standing:any,index:number)=>{const team=participantMode==="teams"?teamById.get(standing.id):null;const profile=participantMode==="players"?profilesById.get(standing.id):null;const tone=rankColor(standing.rank,playerColor(index));return <div key={standing.id} style={{ display:"grid",gridTemplateColumns:"34px 42px minmax(0,1fr) auto",gap:8,alignItems:"center",padding:9,borderRadius:14,background:index===0?`${primary}13`:"rgba(255,255,255,.035)",border:`1px solid ${index===0?primary:"rgba(255,255,255,.08)"}` }}><div style={{ color:tone,fontWeight:1100,textAlign:"center" }}>#{standing.rank}</div>{team?<TeamLogo team={team} size={38}/>:<ProfileAvatar profile={profile} size={38} showStars={false}/>}<div style={{minWidth:0}}><div style={{fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{standing.name}{index===0?" 🏆":""}</div><div style={{color:"#979cad",fontSize:9.5}}>Tour {standing.lap}/{state.rules.laps} · {standing.progressPct}% · {standing.distanceToFinish} restantes</div></div><div style={{color:tone,fontSize:18,fontWeight:1100}}>{standing.position}<span style={{fontSize:8,opacity:.5}}>/{state.totalDistance}</span></div></div>})}</div>
+      <div style={{ marginTop: 10, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)", display:"grid", gap:7 }}><div style={{color:primary,fontSize:8.5,fontWeight:1000,letterSpacing:.7}}>COMPARATEUR DE DISTANCE</div>{playerRows.map((row:any)=><EndProgress key={row.player.id} label={playerName(row.profile)} value={row.standing?.position||0} max={state.totalDistance} color={row.color}/>)}</div>
+    </> : null}
+
+    {tab === "precision" ? <>
+      <div style={{ marginTop: 10, display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6 }}><EndKpi label="Touches" value={`${totals.hits}/${totals.darts}`} color="#65efb4"/><EndKpi label="Avg 3D" value={totals.darts?((totals.points/totals.darts)*3).toFixed(1):"0.0"} color={primary}/><EndKpi label="Dist./dart" value={totals.darts?(totals.net/totals.darts).toFixed(2):"0.00"} color={C.gold}/><EndKpi label="Dist./volée" value={totals.visits?(totals.net/totals.visits).toFixed(2):"0.00"} color={C.gold}/></div>
+      <div style={{ marginTop:10, display:"grid",gap:7 }}>{playerRows.map((row:any)=>{const st=row.stats;const darts=Number(st.darts||0),hits=Number(st.hits||0);return <div key={row.player.id} style={{padding:10,borderRadius:14,border:`1px solid ${row.color}44`,background:`${row.color}0b`}}><div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div style={{fontWeight:1000,color:row.color}}>{playerName(row.profile)} · #{row.standing?.rank||"—"}</div><div style={{fontWeight:1100,color:"#65efb4"}}>{pct(hits,darts)}%</div></div><div style={{marginTop:7,display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:4}}>{[["S",st.singles,C.cyan],["D",st.doubles,"#8ad8ff"],["T",st.triples,C.pink],["B",st.bulls,C.gold],["DB",st.dbulls,C.gold],["MISS",st.misses,C.red]].map(([l,v,c]:any)=><div key={l} style={{padding:"6px 2px",borderRadius:9,textAlign:"center",background:"rgba(0,0,0,.20)"}}><div style={{fontSize:7.5,color:"#858b9e",fontWeight:900}}>{l}</div><div style={{fontSize:15,color:c,fontWeight:1100}}>{v||0}</div></div>)}</div><div style={{marginTop:6,color:"#969cae",fontSize:8.8}}>Avg3D {darts?((row.totalPoints/darts)*3).toFixed(1):"0.0"} · Best +{st.bestVisitDistance||0} · Best score {st.bestVisitPoints||Math.max(0,...row.visits.map((v:any)=>(v.darts||[]).reduce((a:number,d:GameDart)=>a+dartsRacerDartPoints(d),0)))}</div></div>})}</div>
+    </> : null}
+
+    {tab === "arcade" ? <>
+      <div style={{ marginTop:10,display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:6 }}><EndKpi label="Boosts" value={totals.boosts} color={C.gold}/><EndKpi label="Attaques" value={totals.attacks} color={C.pink}/><EndKpi label="Boucliers" value={totals.shields} color="#7dd3fc"/><EndKpi label="Pièges" value={totals.hazards} color={C.red}/><EndKpi label="Collisions" value={totals.collisions} color={primary}/></div>
+      <div style={{marginTop:10,display:"grid",gap:7}}>{playerRows.map((row:any)=>{const st=row.stats;return <div key={row.player.id} style={{padding:9,borderRadius:14,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.08)"}}><div style={{display:"flex",justifyContent:"space-between",gap:8}}><strong style={{color:row.color}}>{playerName(row.profile)}</strong><span style={{color:C.gold,fontWeight:1000}}>+{Number(st.bonusDistance||0)} / −{Number(st.penaltyDistance||0)}</span></div><div style={{marginTop:6,display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:4,fontSize:8.5,textAlign:"center"}}><div>⚡ <b>{st.specialBoosts||0}</b></div><div>💥 <b>{st.attacksLanded||0}</b></div><div>🛡 <b>{st.shieldsPicked||0}</b></div><div>⚠ <b>{st.hazards||0}</b></div><div>🏎 <b>{st.collisions||0}</b></div></div><div style={{marginTop:5,color:"#8f95a8",fontSize:8}}>attaque {st.attackDistance||0} cases · pièges {st.hazardDistance||0} · collisions {st.collisionDistance||0} · en tête {st.leadVisits||0} volée(s)</div></div>})}</div>
+    </> : null}
+
+    {tab === "timeline" ? <div style={{marginTop:10,display:"grid",gap:6}}>{latestVisits.length?latestVisits.map((visit:any,index:number)=>{const profile=profilesById.get(visit.playerId);const events=(visit.specialEvents||[]).map((e:any)=>e.label).join(" · ");const score=(visit.darts||[]).reduce((a:number,d:GameDart)=>a+dartsRacerDartPoints(d),0);return <div key={visit.id||index} style={{padding:8,borderRadius:12,background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.07)"}}><div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:8}}><div style={{fontSize:9.5,fontWeight:1000}}>{playerName(profile)} · R{visit.round} · {(visit.labels||[]).join(" / ")}</div><div style={{color:Number(visit.netDistance||0)>=0?primary:C.red,fontWeight:1100}}> {Number(visit.netDistance||0)>=0?"+":""}{visit.netDistance||0}</div></div><div style={{marginTop:2,color:"#868c9e",fontSize:8.3}}>Score {score} · {visit.positionBefore}→{visit.positionAfter}{events?` · ${events}`:""}</div></div>}):<div style={{color:"#8f95a8",padding:12}}>Aucune volée enregistrée.</div>}</div> : null}
+
+    <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><button onClick={onReplay} style={actionButton(primary)}>REJOUER</button><button onClick={onStats} style={actionButton(C.pink)}>STATS</button><button onClick={onHistory} style={actionButton(C.gold)}>HISTORIQUE</button><button onClick={onClose} style={actionButton(C.silver)}>FERMER</button></div>
   </div></div>;
 }
+

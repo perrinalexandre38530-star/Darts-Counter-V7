@@ -1821,24 +1821,38 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
     const matchStats = summary?.matchStats || anyE?.payload?.stats?.match || anyE?.payload?.stats?.global || {};
     const totalDistance = Number(summary?.totalDistance || matchStats?.totalDistance || anyE?.payload?.state?.totalDistance || 0) || 0;
     const style = String(summary?.raceStyle || anyE?.payload?.config?.raceStyle || "arcade").toUpperCase();
+    const laps = Number(summary?.laps || matchStats?.laps || anyE?.payload?.config?.laps || 1) || 1;
     const entityRows = standings.length ? standings : players.slice().sort((a: any, b: any) => Number(a?.rank || 99) - Number(b?.rank || 99));
+    const sortedPlayers = players.slice().sort((a:any,b:any)=>Number(a?.rank||99)-Number(b?.rank||99));
+    const totalDarts = Number(matchStats?.totalDarts || sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.darts??p?.dartsThrown??0),0)) || 0;
+    const totalHits = Number(matchStats?.totalHits || sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.hits||0),0)) || 0;
+    const accuracy = Number(matchStats?.accuracy ?? (totalDarts ? (totalHits/totalDarts)*100 : 0)) || 0;
+    const bestVisit = Math.max(0, Number(matchStats?.bestVisitDistance||0), ...sortedPlayers.map((p:any)=>Number(p?.bestVisitDistance||0)));
+    const boosts = Number(matchStats?.specialBoosts ?? sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.specialBoosts||0),0)) || 0;
+    const attacks = Number(matchStats?.attacks ?? sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.attacksLanded||0),0)) || 0;
+    const hazards = Number(matchStats?.hazards ?? sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.hazards||0),0)) || 0;
+    const collisions = Number(matchStats?.collisions ?? sortedPlayers.reduce((a:any,p:any)=>a+Number(p?.collisions||0),0)) || 0;
+    const winnerName = String(summary?.winnerName || entityRows?.[0]?.name || "—");
     return (
-      <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-          {entityRows.slice(0, 4).map((row: any, index: number) => (
-            <React.Fragment key={String(row?.id || row?.name || index)}>
-              {index ? <span style={{ color: "rgba(255,255,255,.36)" }}>•</span> : null}
-              <span style={{ color: historyRankColor(Number(row?.rank || index + 1)), fontWeight: 1000 }}>{Number(row?.rank || index + 1)}.</span>
-              <span style={{ color: "rgba(255,255,255,.94)", fontWeight: 900 }}>{String(row?.name || `Kart ${index + 1}`)}</span>
-              <span style={{ color: theme.primary, fontWeight: 1000, textShadow: `0 0 9px ${theme.primary}55` }}>{Number(row?.position ?? row?.distance ?? 0)}/{totalDistance || "?"}</span>
-            </React.Fragment>
-          ))}
+      <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 12, background: `linear-gradient(90deg,${theme.primary}12,rgba(255,255,255,.025))`, border: `1px solid ${theme.primary}32` }}>
+          <div style={{ minWidth: 0 }}><div style={{ color: "#ffd76a", fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>🏁 {style} · {laps} TOUR{laps > 1 ? "S" : ""}</div><div style={{ marginTop: 1, color: "rgba(255,255,255,.96)", fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{summary?.tied ? "ÉGALITÉ" : winnerName}</div></div>
+          <div style={{ textAlign: "right" }}><div style={{ color: theme.primary, fontSize: 18, lineHeight: 1, fontWeight: 1100 }}>{totalDistance || "—"}</div><div style={{ color: "rgba(255,255,255,.48)", fontSize: 7.5, fontWeight: 900 }}>CASES</div></div>
         </div>
-        {players.length ? <div style={{ color: "rgba(255,255,255,.64)", fontSize: 10, fontWeight: 850, lineHeight: 1.3 }}>
-          {players.slice().sort((a: any,b: any)=>Number(a?.rank||99)-Number(b?.rank||99)).slice(0,4).map((p:any)=>{const name=historyScoreName(e,p)||getName(p)||"Joueur";const darts=Number(p?.darts??p?.dartsThrown??0)||0;const hits=Number(p?.hits??0)||0;const accuracy=Number(p?.accuracy??(darts?(hits/darts)*100:0))||0;return `${name}: précision ${accuracy.toFixed(1)}% • dist. ${Number(p?.netDistance||0)} • best +${Number(p?.bestVisitDistance||0)} • ⚡ ${Number(p?.specialBoosts||0)} • 💥 ${Number(p?.attacksLanded||0)}`;}).join("  |  ")}
+        <div style={{ display: "grid", gap: 4 }}>
+          {entityRows.slice(0, 4).map((row: any, index: number) => {
+            const rank = Number(row?.rank || index + 1);
+            const pos = Number(row?.position ?? row?.distance ?? 0) || 0;
+            const progress = totalDistance ? Math.max(0, Math.min(100, (pos/totalDistance)*100)) : Number(row?.progressPct||0);
+            const tone = historyRankColor(rank);
+            return <div key={String(row?.id || row?.name || index)} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) 48px", gap: 6, alignItems: "center" }}><div style={{ color: tone, fontSize: 9, fontWeight: 1100, textAlign: "center" }}>#{rank}</div><div style={{ minWidth: 0 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}><span style={{ color: "rgba(255,255,255,.9)", fontSize: 9, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(row?.name || `Kart ${index + 1}`)}</span><span style={{ color: "rgba(255,255,255,.45)", fontSize: 7.5 }}>T{Number(row?.lap||1)}/{laps}</span></div><div style={{ marginTop: 2, height: 5, borderRadius: 99, overflow: "hidden", background: "rgba(255,255,255,.07)" }}><div style={{ width: `${progress}%`, height: "100%", background: `linear-gradient(90deg,${tone}99,${tone})` }} /></div></div><div style={{ color: tone, textAlign: "right", fontSize: 9, fontWeight: 1000 }}>{pos}/{totalDistance || "?"}</div></div>;
+          })}
+        </div>
+        {sortedPlayers.length ? <div style={{ display: "grid", gridTemplateColumns: sortedPlayers.length > 1 ? "repeat(2,minmax(0,1fr))" : "1fr", gap: 5 }}>
+          {sortedPlayers.slice(0,4).map((p:any,index:number)=>{const name=historyScoreName(e,p)||getName(p)||"Joueur";const darts=Number(p?.darts??p?.dartsThrown??0)||0;const hits=Number(p?.hits??0)||0;const acc=Number(p?.accuracy??(darts?(hits/darts)*100:0))||0;return <div key={String(p?.id||p?.playerId||index)} style={{ minWidth:0,padding:"6px 7px",borderRadius:10,background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.055)" }}><div style={{display:"flex",justifyContent:"space-between",gap:5}}><span style={{fontSize:8.5,fontWeight:1000,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span><span style={{color:theme.primary,fontSize:8.5,fontWeight:1000}}>{acc.toFixed(0)}%</span></div><div style={{marginTop:2,color:"rgba(255,255,255,.48)",fontSize:7.5}}>dist {Number(p?.netDistance||0)} · best +{Number(p?.bestVisitDistance||0)} · ⚡{Number(p?.specialBoosts||0)} 💥{Number(p?.attacksLanded||0)}</div></div>})}
         </div> : null}
-        <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 850, lineHeight: 1.25 }}>
-          {style}{totalDistance ? ` • ${totalDistance} cases` : ""}{Number(summary?.laps||0) ? ` • ${Number(summary.laps)} tour${Number(summary.laps)>1?"s":""}` : ""}{Number(matchStats?.totalDarts||0) ? ` • ${Number(matchStats.totalDarts)} flèches` : ""}{Number(matchStats?.leadChanges||0) ? ` • ${Number(matchStats.leadChanges)} changements de leader` : ""}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+          {[["PRÉC.",`${accuracy.toFixed(0)}%`,"#65efb4"],["BEST",`+${bestVisit}`,"#ffd76a"],["ARCADE",`${boosts+attacks+hazards+collisions}`,"#ff63b8"],["LEAD",`${Number(matchStats?.leadChanges||0)}`,theme.primary]].map(([label,value,color]:any)=><div key={label} style={{padding:"5px 3px",borderRadius:9,textAlign:"center",background:`${color}0b`,border:`1px solid ${color}25`}}><div style={{color:"rgba(255,255,255,.42)",fontSize:6.8,fontWeight:1000}}>{label}</div><div style={{color,fontSize:10,fontWeight:1100}}>{value}</div></div>)}
         </div>
       </div>
     );
