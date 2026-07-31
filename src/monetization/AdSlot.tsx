@@ -1,8 +1,9 @@
 import React from "react";
 import {
-  getVerifiedPremiumState,
+  getVerifiedAdFreeState,
   loadMonetizationPrefs,
   subscribeMonetizationPrefs,
+  subscribeVerifiedEntitlements,
 } from "./prefs";
 import { STORE_PACKS } from "./catalog";
 import type { AdPlacement, MonetizationPrefs } from "./types";
@@ -179,11 +180,12 @@ export function PaidInlineSurface({
   const requestRef = React.useRef(false);
   const native = isCapacitorNativeRuntime();
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
+  const [adFreeActive, setAdFreeActive] = React.useState(() => getVerifiedAdFreeState().active);
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
+  React.useEffect(() => subscribeVerifiedEntitlements(() => setAdFreeActive(getVerifiedAdFreeState().active)), []);
 
-  const premiumActive = getVerifiedPremiumState().active;
-  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive;
 
   React.useEffect(() => {
     if (!native || !paidEligible) {
@@ -362,8 +364,10 @@ export function InlineAdBanner({
 }: InlineAdBannerProps) {
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [packIndex, setPackIndex] = React.useState(0);
+  const [adFreeActive, setAdFreeActive] = React.useState(() => getVerifiedAdFreeState().active);
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
+  React.useEffect(() => subscribeVerifiedEntitlements(() => setAdFreeActive(getVerifiedAdFreeState().active)), []);
 
   // Le vieux banner ancré du plugin communautaire reste interdit : seules les
   // nouvelles AdView inline du plugin InlineAdMob sont autorisées.
@@ -380,8 +384,7 @@ export function InlineAdBanner({
     return () => window.clearInterval(id);
   }, [prefs.houseAdsEnabled]);
 
-  const premiumActive = getVerifiedPremiumState().active;
-  const eligible = prefs.adsEnabled && prefs.bannersEnabled && !premiumActive;
+  const eligible = prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive;
   if (!eligible) return null;
 
   const stableSlotKey = slotKey || `menu-${placement}`;

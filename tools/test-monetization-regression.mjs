@@ -78,7 +78,7 @@ assert.ok(stats.includes('<PageAdBanner placement="stats"'), "La page Stats doit
 assert.ok(settings.includes('<PageAdBanner placement="settings"'), "La page Réglages doit rendre sa bannière sous son header.");
 
 // 8) Premium : jamais un simple localStorage premium=true.
-assert.ok(manager.includes("getVerifiedPremiumState().active"), "Garde Premium vérifiée absente du manager.");
+assert.ok(manager.includes("getVerifiedAdFreeState().active"), "Garde Premium/Sans pub vérifiée absente du manager.");
 assert.ok(!/localStorage[^\n]*(premium|entitlement)/i.test(manager), "Le manager ne doit pas faire confiance à un Premium localStorage.");
 
 console.log("✅ MONETIZATION RC REGRESSION OK");

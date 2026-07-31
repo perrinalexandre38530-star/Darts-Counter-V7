@@ -1,5 +1,6 @@
 import { ADMOB_ANDROID_GOOGLE_TEST_UNITS, getAdMobRuntimeConfig } from "./adMobConfig";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs } from "./prefs";
 
 export type NativeAdMobStatus = {
   native: boolean;
@@ -176,6 +177,7 @@ export async function showNativePrivacyOptions(): Promise<boolean> {
 }
 
 export async function showNativeInterstitial(forceGoogleTest = false): Promise<boolean> {
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
   const plugin = getAdMobPlugin();
   if (!plugin) return false;
   const status = await ensureNativeAdMobReady();
@@ -186,11 +188,13 @@ export async function showNativeInterstitial(forceGoogleTest = false): Promise<b
     isTesting: forceGoogleTest || config.testMode,
     immersiveMode: true,
   });
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
   await plugin.showInterstitial();
   return true;
 }
 
 export async function showNativeRewarded(): Promise<any | null> {
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return null;
   const plugin = getAdMobPlugin();
   if (!plugin) return null;
   const status = await ensureNativeAdMobReady();
@@ -201,6 +205,7 @@ export async function showNativeRewarded(): Promise<any | null> {
     isTesting: config.testMode,
     immersiveMode: true,
   });
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return null;
   return plugin.showRewardVideoAd();
 }
 

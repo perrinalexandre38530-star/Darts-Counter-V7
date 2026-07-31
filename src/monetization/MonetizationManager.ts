@@ -1,4 +1,4 @@
-import { getVerifiedPremiumState, loadMonetizationPrefs } from "./prefs";
+import { getVerifiedAdFreeState, loadMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
 import { showInterstitialAd } from "./provider";
 
 const RUNTIME_KEY = "dc_monetization_runtime_v1";
@@ -25,6 +25,20 @@ const DEFAULT_RUNTIME: RuntimeState = {
 };
 
 let interstitialInFlight: Promise<void> | null = null;
+let entitlementGuardInstalled = false;
+
+function installEntitlementGuard(): void {
+  if (entitlementGuardInstalled || typeof window === "undefined") return;
+  entitlementGuardInstalled = true;
+  subscribeVerifiedEntitlements(() => {
+    if (!getVerifiedAdFreeState().active) return;
+    const state = loadRuntime();
+    if (state.pending) {
+      state.pending = null;
+      saveRuntime(state);
+    }
+  });
+}
 
 function loadRuntime(): RuntimeState {
   if (typeof window === "undefined") return { ...DEFAULT_RUNTIME };
@@ -74,7 +88,7 @@ function isResultRoute(tab: string, params?: any): boolean {
 function dueNow(state: RuntimeState): boolean {
   const prefs = loadMonetizationPrefs();
   if (!prefs.adsEnabled || !prefs.endGameVideoEnabled || prefs.endGameAdTiming === "off") return false;
-  if (getVerifiedPremiumState().active) return false;
+  if (getVerifiedAdFreeState().active) return false;
   if (state.completedMatches % Math.max(1, prefs.endGameEveryMatches) !== 0) return false;
   return Date.now() - Number(state.lastInterstitialAt || 0) >= prefs.minInterstitialIntervalMs;
 }
@@ -95,6 +109,7 @@ async function showAndConsume(reason: string): Promise<void> {
 
 /** Appelé uniquement lorsqu'une partie terminée est réellement persistée. */
 export function markCompletedMatchForAds(matchId: string, mode?: string): void {
+  installEntitlementGuard();
   const id = String(matchId || "").trim();
   if (!id) return;
 
@@ -124,9 +139,10 @@ export function interceptMonetizedNavigation(args: {
   toParams?: any;
   navigate: () => void;
 }): boolean {
+  installEntitlementGuard();
   const prefs = loadMonetizationPrefs();
   if (prefs.endGameAdTiming !== "after_results" || !prefs.endGameVideoEnabled || !prefs.adsEnabled) return false;
-  if (getVerifiedPremiumState().active) return false;
+  if (getVerifiedAdFreeState().active) return false;
 
   const state = loadRuntime();
   const pending = state.pending;

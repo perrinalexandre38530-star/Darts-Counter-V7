@@ -64,7 +64,42 @@ function expressMissEndsTurn(r: any) {
   return Boolean(r?.summary?.missEndsTurn ?? r?.payload?.config?.missEndsTurn ?? r?.summary?.config?.missEndsTurn ?? r?.config?.missEndsTurn);
 }
 function playerPools(r: any) {
-  return [r?.payload?.stats?.players, r?.payload?.players, r?.payload?.summary?.players, r?.summary?.players, r?.summary?.perPlayer, r?.players].filter(Array.isArray);
+  // IMPORTANT: les tableaux d'identité (`summary.players`, `players`) ne doivent
+  // jamais gagner face aux lignes statistiques riches (`perPlayer`, `stats.players`).
+  // Sur les exports LOTERIE actuels, `summary.players` ne contient que id/name/avatar
+  // tandis que `summary.perPlayer` contient visites, cases, darts, précision, etc.
+  return [
+    r?.summary?.perPlayer,
+    r?.payload?.summary?.perPlayer,
+    r?.payload?.stats?.players,
+    r?.stats?.players,
+    r?.summary?.standings,
+    r?.summary?.rankings,
+    r?.payload?.summary?.standings,
+    r?.payload?.summary?.rankings,
+    r?.payload?.players,
+    r?.payload?.summary?.players,
+    r?.summary?.players,
+    r?.players,
+  ].filter(Array.isArray);
+}
+
+function loterieRowRichness(row: any): number {
+  if (!row || typeof row !== "object") return 0;
+  const statKeys = [
+    "cellsRevealed", "visits", "dartsThrown", "successfulVisits", "emptyVisits",
+    "hitCount", "hitRate", "multiHits", "maxCellsInVisit", "bestStreak",
+    "totalVolleyScore", "averageVolley", "maxVolley", "cardsCount",
+    "cardsCompleted", "bestCardProgress", "cellsPerCard", "rank", "score",
+    "singles", "doubles", "triples", "bulls", "dbulls", "dartMisses",
+  ];
+  let score = 0;
+  for (const key of statKeys) if (row?.[key] !== undefined && row?.[key] !== null) score += 5;
+  if (Array.isArray(row?.cards) && row.cards.length) score += 20 + row.cards.length;
+  if (row?.scoreMap && typeof row.scoreMap === "object") score += 20;
+  if (row?.segmentCounts && typeof row.segmentCounts === "object") score += 20;
+  score += Object.values(row).filter((value: any) => Number.isFinite(Number(value))).length;
+  return score;
 }
 function teamPools(r: any) {
   return [r?.payload?.stats?.teams, r?.payload?.teams, r?.payload?.summary?.teams, r?.summary?.teams, r?.teams, r?.summary?.rankings].filter(Array.isArray);
@@ -81,13 +116,20 @@ function findTeam(r: any, teamId: any) {
 function findRow(r: any, playerId: string, playerName?: string | null) {
   const pid = txt(playerId);
   const pname = txt(playerName).toLowerCase();
+  const matches: any[] = [];
   for (const arr of playerPools(r)) {
-    const byId = arr.find((x: any) => [x?.id, x?.playerId, x?.profileId].some((v) => txt(v) === pid));
-    if (byId) return byId;
+    const byId = arr.find((x: any) => [x?.id, x?.playerId, x?.profileId, x?.entityId].some((v) => txt(v) === pid));
+    if (byId) matches.push(byId);
     if (pname) {
       const byName = arr.find((x: any) => txt(x?.name ?? x?.playerName ?? x?.displayName).toLowerCase() === pname);
-      if (byName) return byName;
+      if (byName && !matches.includes(byName)) matches.push(byName);
     }
+  }
+  if (matches.length) {
+    // Fusion des lignes au lieu d'un "first match wins". La ligne la plus riche
+    // fournit les stats, les lignes d'identité complètent avatar/nom/id.
+    const ordered = [...matches].sort((a, b) => loterieRowRichness(a) - loterieRowRichness(b));
+    return ordered.reduce((acc, row) => ({ ...acc, ...row }), {});
   }
   if (participantMode(r) === "teams") {
     for (const arr of teamPools(r)) {
@@ -399,15 +441,16 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
 
   if (!playerId) return <div style={{ padding: 16, color: SOFT }}>Sélectionne un joueur pour afficher ses statistiques LOTERIE.</div>;
 
-  return <div style={{ padding: 12, minWidth: 0 }}>
+  return <div style={{ padding: 10, minWidth: 0, display: "grid", gap: 10, width: "100%", maxWidth: 920, margin: "0 auto" }}>
     <section style={card}>
-      <div style={titleStyle}>🎰 LOTERIE — CENTRE DE PERFORMANCE</div>
-      <div style={{ marginTop: 4, color: SOFT, fontSize: 10, lineHeight: 1.4 }}>Dashboard complet : résultats, cartons, précision, cibles, volées, régularité, comparateurs, variantes et performances individuelles / équipes.</div>
+      <div style={{ ...titleStyle, fontSize: 15 }}>LOTERIE — STATISTIQUES DÉTAILLÉES</div>
+      <div style={{ marginTop: 4, color: SOFT, fontSize: 10, lineHeight: 1.4 }}>Même structure que X01 MULTI : vue d’ensemble, progression, précision, stats avancées et historique détaillé.</div>
       <RangePills value={range} onChange={setRange} />
     </section>
 
     {!games ? <section style={{ ...card, marginTop: 11, color: SOFT }}>Aucune partie LOTERIE terminée sur cette période.</section> : <>
-      <div style={{ marginTop: 11, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+      <Section title="Vue d’ensemble" subtitle={`${games} partie${games > 1 ? "s" : ""} sur la période sélectionnée.`}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
         <Kpi label="Parties" value={games} detail={`${soloMatches.length} solo · ${teamMatches.length} teams`} color={GOLD} />
         <Kpi label="Win rate" value={pct(wins,games)} detail={`${wins} W · ${losses} L`} color={GOOD} delta={currentCompare.winRate-previousCompare.winRate} />
         <Kpi label="Taux découverte" value={`${round1(successRate)}%`} detail={`${success} hits · ${empty} ratés`} color={CYAN} delta={currentCompare.hitRate-previousCompare.hitRate} />
@@ -421,8 +464,9 @@ export default function LoterieStatsTabFull({ records = [], playerId, playerName
         <Kpi label="Score / dart" value={fmt1(avgDartScore)} detail={`${dartPointTotal} points cumulés`} color={CYAN} />
         <Kpi label="Darts sur cible" value={`${round1(dartOnBoardRate)}%`} detail={`${dartMissTotal} MISS / ${dartTotal}`} color={dartOnBoardRate>=75?GOOD:ORANGE} />
       </div>
+      </Section>
 
-      <Section title="Comparateur de période" subtitle={range==="all"?"5 dernières parties comparées aux 5 précédentes.":"Période sélectionnée comparée à la période précédente équivalente."}>
+      <Section title="Progression / comparateur de période" subtitle={range==="all"?"5 dernières parties comparées aux 5 précédentes.":"Période sélectionnée comparée à la période précédente équivalente."}>
         <DeltaCompare hasPrevious={previousCompare.games>0} items={[
           {label:"Win rate",current:currentCompare.winRate,previous:previousCompare.winRate,suffix:" pt",color:GOOD,format:(v:any)=>`${fmt1(v)}%`},
           {label:"Taux découverte",current:currentCompare.hitRate,previous:previousCompare.hitRate,suffix:" pt",color:CYAN,format:(v:any)=>`${fmt1(v)}%`},

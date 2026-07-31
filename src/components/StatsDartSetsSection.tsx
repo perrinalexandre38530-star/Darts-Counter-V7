@@ -1840,28 +1840,41 @@ function buildCachedDartSetVisuals(rows: any[], sets: DartSet[], t: any): Record
 
 function readDartSetStatsQuickCache(profileId: string | null | undefined): DartSetStatsRenderCache | null {
   const pid = String(profileId || "").trim();
-  if (!pid || typeof localStorage === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(dartSetStatsQuickCacheKey(pid));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (Number(parsed?.version) !== 2 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) return null;
-    return {
-      version: 1,
-      profileId: pid,
-      updatedAt: N(parsed?.updatedAt, 0),
-      rows: parsed.rows,
-      recentBySet: {},
-      setVisuals: parsed?.setVisuals && typeof parsed.setVisuals === "object" ? parsed.setVisuals : {},
-    };
-  } catch {
-    return null;
+  if (!pid || typeof window === "undefined") return null;
+  const key = dartSetStatsQuickCacheKey(pid);
+  // sessionStorage est minuscule, propre à l'onglet et n'est pas touché par la
+  // purge de quota localStorage visible dans DevTools. On le lit en premier pour
+  // afficher les cartes dès le premier render.
+  const stores: Storage[] = [];
+  try { if (typeof sessionStorage !== "undefined") stores.push(sessionStorage); } catch {}
+  try { if (typeof localStorage !== "undefined") stores.push(localStorage); } catch {}
+  for (const storage of stores) {
+    try {
+      const raw = storage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (Number(parsed?.version) !== 2 || String(parsed?.profileId || "") !== pid || !Array.isArray(parsed?.rows)) continue;
+      // Auto-miroir vers sessionStorage quand le snapshot vient de localStorage.
+      try { if (storage !== sessionStorage) sessionStorage.setItem(key, raw); } catch {}
+      return {
+        version: 1,
+        profileId: pid,
+        updatedAt: N(parsed?.updatedAt, 0),
+        rows: parsed.rows,
+        recentBySet: {},
+        setVisuals: parsed?.setVisuals && typeof parsed.setVisuals === "object" ? parsed.setVisuals : {},
+      };
+    } catch {}
   }
+  return null;
 }
 
 function readDartSetStatsRenderCache(profileId: string | null | undefined): DartSetStatsRenderCache | null {
   const pid = String(profileId || "").trim();
-  if (!pid || typeof localStorage === "undefined") return null;
+  if (!pid || typeof window === "undefined") return null;
+  const quick = readDartSetStatsQuickCache(pid);
+  if (quick) return quick;
+  if (typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem(dartSetStatsRenderCacheKey(pid));
     if (!raw) return readDartSetStatsQuickCache(pid);
@@ -1928,7 +1941,11 @@ function writeDartSetStatsRenderCache(
         });
       }
       if (quick.length <= DART_SET_STATS_QUICK_MAX_CHARS) {
-        writeDerivedStatsCacheRaw(dartSetStatsQuickCacheKey(pid), quick, DART_SET_STATS_QUICK_MAX_CHARS);
+        const quickKey = dartSetStatsQuickCacheKey(pid);
+        try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem(quickKey, quick); } catch {}
+        // localStorage reste un secours inter-session, mais une erreur de quota ne
+        // peut plus retarder ni empêcher l'affichage instantané de la session.
+        writeDerivedStatsCacheRaw(quickKey, quick, DART_SET_STATS_QUICK_MAX_CHARS);
       }
     } catch {}
 

@@ -1,5 +1,6 @@
 import { getAdMobBannerId, getAdMobRuntimeConfig } from "./adMobConfig";
 import { ensureNativeAdMobReady } from "./nativeAdMob";
+import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import type { AdPlacement } from "./types";
 
@@ -33,6 +34,7 @@ type InlineAdMobPlugin = {
   }) => Promise<void>;
   hide: (options: { slotId: string }) => Promise<void>;
   hideAll: () => Promise<void>;
+  setAdsAllowed: (options: { allowed: boolean }) => Promise<void>;
 };
 
 let pluginCache: InlineAdMobPlugin | null | undefined;
@@ -96,7 +98,30 @@ function getPlugin(): InlineAdMobPlugin | null {
   }
 }
 
+
+let guardInstalled = false;
+
+async function syncInlineAdsPolicy(): Promise<void> {
+  const plugin = getPlugin();
+  if (!plugin) return;
+  const allowed = canRequestBannerAds(loadMonetizationPrefs());
+  try { await plugin.setAdsAllowed({ allowed }); } catch {}
+  if (!allowed) {
+    for (const slotId of slotEpochs.keys()) invalidateSlot(slotId);
+    try { await plugin.hideAll(); } catch {}
+  }
+}
+
+function ensureInlineAdsPolicyGuard(): void {
+  if (guardInstalled || typeof window === "undefined") return;
+  guardInstalled = true;
+  subscribeMonetizationPrefs(() => { void syncInlineAdsPolicy(); });
+  subscribeVerifiedEntitlements(() => { void syncInlineAdsPolicy(); });
+  void syncInlineAdsPolicy();
+}
+
 export function canUseInlineGoogleAds(): boolean {
+  ensureInlineAdsPolicyGuard();
   return isCapacitorNativeRuntime() && !!getPlugin();
 }
 
@@ -105,8 +130,15 @@ export async function showInlineGoogleAd(
   placement: AdPlacement,
   rect: InlineAdRect
 ): Promise<boolean> {
+  ensureInlineAdsPolicyGuard();
+  if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+    await hideInlineGoogleAd(slotId);
+    return false;
+  }
+
   const plugin = getPlugin();
   if (!plugin || !rect.visible) return false;
+  try { await plugin.setAdsAllowed({ allowed: true }); } catch {}
 
   const requestedEpoch = slotEpoch(slotId);
 
@@ -115,13 +147,16 @@ export async function showInlineGoogleAd(
   // aléatoires observés lors d'une navigation rapide entre les pages.
   return enqueueNativeLoad(async () => {
     if (slotEpoch(slotId) !== requestedEpoch) return false;
+    if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
 
     const delay = Math.max(0, nextNativeLoadAt - Date.now());
     await wait(delay);
     if (slotEpoch(slotId) !== requestedEpoch) return false;
+    if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
 
     const status = await ensureNativeAdMobReady();
     if (!status.canRequestAds || slotEpoch(slotId) !== requestedEpoch) return false;
+    if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
 
     const config = getAdMobRuntimeConfig();
     const adId = getAdMobBannerId(placement);
@@ -150,6 +185,10 @@ export async function showInlineGoogleAd(
 }
 
 export async function updateInlineGoogleAd(slotId: string, rect: InlineAdRect): Promise<void> {
+  if (!canRequestBannerAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+    await hideInlineGoogleAd(slotId);
+    return;
+  }
   const plugin = getPlugin();
   if (!plugin) return;
   await plugin.update({ slotId, ...rect });
@@ -167,6 +206,7 @@ export async function hideInlineGoogleAd(slotId: string): Promise<void> {
 }
 
 export async function hideAllInlineGoogleAds(): Promise<void> {
+  ensureInlineAdsPolicyGuard();
   for (const slotId of slotEpochs.keys()) invalidateSlot(slotId);
   const plugin = getPlugin();
   if (!plugin) return;

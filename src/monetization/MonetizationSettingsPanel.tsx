@@ -2,11 +2,12 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { GOOGLE_PLAY_CORE_PRODUCTS, STORE_PACKS } from "./catalog";
 import { getMonetizationRuntimeSnapshot, previewEndGameInterstitial } from "./MonetizationManager";
-import { getVerifiedPremiumState, loadMonetizationPrefs, saveMonetizationPrefs, subscribeMonetizationPrefs } from "./prefs";
+import { applyVerifiedEntitlements, getVerifiedAdFreeState, getVerifiedPremiumState, loadMonetizationPrefs, saveMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
 import type { EndGameAdTiming, MonetizationPrefs } from "./types";
 import { getNativeAdMobStatus, showNativePrivacyOptions, type NativeAdMobStatus } from "./nativeAdMob";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { getNativeBillingStatus, type NativeBillingStatus } from "./nativeBilling";
+import { getAdMobRuntimeConfig } from "./adMobConfig";
 
 export default function MonetizationSettingsPanel() {
   const { theme } = useTheme() as any;
@@ -15,10 +16,14 @@ export default function MonetizationSettingsPanel() {
   const [nativeStatus, setNativeStatus] = React.useState<NativeAdMobStatus | null>(null);
   const [billingStatus, setBillingStatus] = React.useState<NativeBillingStatus | null>(null);
   const [nativeBusy, setNativeBusy] = React.useState(false);
-  const premium = getVerifiedPremiumState();
+  const [entitlementRevision, setEntitlementRevision] = React.useState(0);
+  const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
+  const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
   const runtime = React.useMemo(() => getMonetizationRuntimeSnapshot(), [runtimeTick]);
+  const allowSessionEntitlementTest = getAdMobRuntimeConfig().mode !== "production";
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
+  React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
   React.useEffect(() => {
     if (!isCapacitorNativeRuntime()) return;
     void getNativeAdMobStatus().then(setNativeStatus);
@@ -87,8 +92,8 @@ export default function MonetizationSettingsPanel() {
             <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 17 }}>PUBLICITÉ & PREMIUM</div>
             <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 3 }}>Socle commun PWA → Android / Google Play.</div>
           </div>
-          <div style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${premium.active ? theme.primary : theme.borderSoft}`, color: premium.active ? theme.primary : theme.textSoft, fontSize: 10, fontWeight: 1000 }}>
-            {premium.active ? "PREMIUM · SANS PUB" : "FREE · PUBS"}
+          <div style={{ borderRadius: 999, padding: "7px 10px", border: `1px solid ${adFree.active ? theme.primary : theme.borderSoft}`, color: adFree.active ? theme.primary : theme.textSoft, fontSize: 10, fontWeight: 1000 }}>
+            {premium.active ? "PREMIUM · SANS PUB" : adFree.active ? "SANS PUB · À VIE" : "FREE · PUBS"}
           </div>
         </div>
         <div style={{ marginTop: 10, fontSize: 11, color: theme.textSoft, lineHeight: 1.45 }}>
@@ -99,6 +104,19 @@ export default function MonetizationSettingsPanel() {
           <div>Annuel : {GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly}</div>
           <div>Sans pub à vie : {GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime}</div>
         </div>
+
+        {allowSessionEntitlementTest ? (
+          <div style={{ marginTop: 12, borderRadius: 14, padding: 10, background: "rgba(255,190,0,.06)", border: "1px solid rgba(255,190,0,.2)" }}>
+            <div style={{ fontSize: 10, fontWeight: 950, color: theme.primary }}>TEST FREE / PREMIUM — SESSION UNIQUEMENT</div>
+            <div style={{ marginTop: 4, fontSize: 10, lineHeight: 1.4, color: theme.textSoft }}>
+              Disponible uniquement hors production. Aucun localStorage : le test disparaît au redémarrage et ne remplace jamais la vérification Google Play / serveur.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 8 }}>
+              <button type="button" onClick={() => applyVerifiedEntitlements(null)} style={smallBtn(!adFree.active)}>TEST FREE</button>
+              <button type="button" onClick={() => applyVerifiedEntitlements({ premium: true, source: "verified-server", products: ["test-premium-session"] })} style={smallBtn(adFree.active)}>TEST PREMIUM</button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section style={card}>

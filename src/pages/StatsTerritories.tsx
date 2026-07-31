@@ -13,16 +13,16 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS } from "../lib/territories/maps";
 import {
-  clearTerritoriesHistory,
   loadTerritoriesHistory,
+  loadTerritoriesHistoryUnified,
   type TerritoriesMatch,
 } from "../lib/territories/territoriesStats";
 
 const INFO_TEXT = `STATS TERRITORIES
 
-- Parties enregistrées localement (sur l'appareil)
+- Source unifiée : Historique / IndexedDB + cache local immédiat
 - KPIs : maps jouées, domination, captures, volumes
-- Reset possible via le bouton "effacer"`;
+- Filtres Jour / Semaine / Mois / Année / Tout`;
 
 function fmtDate(ts: number) {
   try {
@@ -61,16 +61,26 @@ export default function StatsTerritories(props: any) {
 
   const embedded = Boolean(props?.embedded);
 
-  const [items, setItems] = React.useState<TerritoriesMatch[]>(() =>
+  // Affichage immédiat depuis le cache local, puis réconciliation asynchrone
+  // avec History/IndexedDB. Un PC synchronisé ne dépend donc plus de la clé
+  // localStorage qui existait uniquement sur le téléphone.
+  const [allItems, setAllItems] = React.useState<TerritoriesMatch[]>(() =>
     loadTerritoriesHistory()
   );
+  const [syncingHistory, setSyncingHistory] = React.useState(false);
+  const [range, setRange] = React.useState<"day" | "week" | "month" | "year" | "all">("all");
 
   const refresh = React.useCallback(() => {
-    setItems(loadTerritoriesHistory());
+    const immediate = loadTerritoriesHistory();
+    setAllItems(immediate);
+    setSyncingHistory(true);
+    void loadTerritoriesHistoryUnified()
+      .then((unified) => setAllItems(unified))
+      .finally(() => setSyncingHistory(false));
   }, []);
 
   React.useEffect(() => {
-    // refresh if history changes
+    refresh();
     const onUpd = () => refresh();
     if (typeof window !== "undefined") {
       window.addEventListener("dc-territories-updated", onUpd);
@@ -84,15 +94,39 @@ export default function StatsTerritories(props: any) {
     };
   }, [refresh]);
 
+  const selectedPlayerId = String(props?.playerId || "").trim();
+  const selectedPlayerName = String(props?.playerName || "").trim().toLowerCase();
+  const items = React.useMemo(() => {
+    if (!selectedPlayerId && !selectedPlayerName) return allItems;
+    const idMatches = (value: unknown) => {
+      const a = String(value || "").trim();
+      if (!a || !selectedPlayerId) return false;
+      return a === selectedPlayerId || (a.length >= 16 && selectedPlayerId.length >= 16 && (a.startsWith(selectedPlayerId.slice(0, 16)) || selectedPlayerId.startsWith(a.slice(0, 16))));
+    };
+    const scoped = allItems.filter((match: any) => {
+      const players = Array.isArray(match?.players) ? match.players : [];
+      const ids = Object.keys(match?.playerStats || {});
+      const hasIdentityData = players.length > 0 || ids.length > 0;
+      if (!hasIdentityData) return true; // legacy : ne pas masquer une partie impossible à attribuer
+      if (players.some((p: any) => idMatches(p?.id ?? p?.playerId ?? p?.profileId))) return true;
+      if (ids.some(idMatches)) return true;
+      return !!selectedPlayerName && players.some((p: any) => String(p?.name || "").trim().toLowerCase() === selectedPlayerName);
+    });
+    if (range === "all") return scoped;
+    const now = Date.now();
+    let from = 0;
+    if (range === "day") { const d = new Date(); d.setHours(0,0,0,0); from = d.getTime(); }
+    else if (range === "week") from = now - 7 * 24 * 60 * 60 * 1000;
+    else if (range === "month") { const d = new Date(); from = new Date(d.getFullYear(), d.getMonth(), 1).getTime(); }
+    else if (range === "year") { const d = new Date(); from = new Date(d.getFullYear(), 0, 1).getTime(); }
+    return scoped.filter((match: any) => Number(match?.ts || 0) >= from);
+  }, [allItems, selectedPlayerId, selectedPlayerName, range]);
+
   function goBack() {
     if (props?.setTab) return props.setTab("stats");
     window.history.back();
   }
 
-  function clearAll() {
-    clearTerritoriesHistory();
-    refresh();
-  }
 
   // =====================
   // Aggregations
@@ -471,40 +505,6 @@ return {
         />
       )}
 
-      {embedded && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>
-            TERRITORIES
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              onClick={refresh}
-              style={{
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(255,255,255,0.06)",
-                padding: "6px 10px",
-                color: "#fff",
-                fontWeight: 950,
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              {t("generic.refresh", "Rafraîchir")}
-            </button>
-
-            <InfoDot title="Stats TERRITORIES" content={INFO_TEXT} />
-          </div>
-        </div>
-      )}
-
       <div
         style={{
           padding: embedded ? 0 : 12,
@@ -512,60 +512,40 @@ return {
           flexDirection: "column",
           gap: 12,
           marginTop: embedded ? 10 : 0,
+          maxWidth: 920,
+          width: "100%",
+          marginLeft: "auto",
+          marginRight: "auto",
         }}
       >
         {/* HEADER CARD */}
         <div style={{ ...card, padding: 14 }}>
           <div style={{ ...goldNeon, fontSize: 18, marginBottom: 8, textAlign: "center" }}>
-            {t("territories.title", "Territories")}
+            {t("territories.title", "TERRITORIES — STATISTIQUES DÉTAILLÉES")}
           </div>
           <div style={{ fontSize: 12, color: T.text70, textAlign: "center" }}>
             {t(
               "territories.subtitle",
-              "Vue d'ensemble + gameplay (même style que X01)"
+              "Dashboard complet basé sur l’Historique, structuré comme X01 MULTI"
             )}
           </div>
+          <div style={{ marginTop: 6, fontSize: 10, color: syncingHistory ? "#82D8FF" : T.text70, textAlign: "center" }}>
+            {syncingHistory ? "Synchronisation avec l’Historique…" : `${items.length} partie${items.length > 1 ? "s" : ""} exploitable${items.length > 1 ? "s" : ""}`}
+          </div>
 
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              gap: 10,
-              justifyContent: "center",
-            }}
-          >
-            <button
-              onClick={refresh}
-              style={{
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(255,255,255,0.06)",
-                padding: "10px 12px",
-                color: "#fff",
-                fontWeight: 950,
-                cursor: "pointer",
-                minWidth: 110,
-              }}
-            >
-              {t("generic.refresh", "Rafraîchir")}
-            </button>
-
-            <button
-              onClick={clearAll}
-              style={{
-                borderRadius: 14,
-                border: "1px solid rgba(255,120,120,0.25)",
-                background: "rgba(255,120,120,0.12)",
-                padding: "10px 12px",
-                color: "#fff",
-                fontWeight: 950,
-                cursor: "pointer",
-                minWidth: 110,
-              }}
-              title="Supprime l'historique TERRITORIES local"
-            >
-              {t("generic.clear", "Effacer")}
-            </button>
+          <div style={{ marginTop: 12, display: "flex", gap: 6, overflowX: "auto", justifyContent: "center", scrollbarWidth: "none" }}>
+            {([
+              ["day", "JOUR"], ["week", "SEMAINE"], ["month", "MOIS"], ["year", "ANNÉE"], ["all", "TOUT"],
+            ] as Array<[typeof range, string]>).map(([key, label]) => {
+              const active = range === key;
+              return <button key={key} type="button" onClick={() => setRange(key)} style={{
+                flex: "0 0 auto", minWidth: 58, height: 30, borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${active ? `${T.gold}AA` : "rgba(255,255,255,.10)"}`,
+                background: active ? `linear-gradient(180deg,${T.gold}33,rgba(70,50,12,.24))` : "rgba(255,255,255,.035)",
+                color: active ? "#fff" : T.text70, fontSize: 9, fontWeight: 1000,
+                boxShadow: active ? `0 0 14px ${T.gold}33` : "none",
+              }}>{label}</button>;
+            })}
           </div>
         </div>
 

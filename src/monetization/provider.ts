@@ -1,5 +1,5 @@
 import type { AdShowResult } from "./types";
-import { loadMonetizationPrefs } from "./prefs";
+import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs } from "./prefs";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { showNativeInterstitial, showNativeRewarded } from "./nativeAdMob";
 import { purchaseNativeProduct, restoreNativePurchases } from "./nativeBilling";
@@ -71,6 +71,9 @@ function testInterstitial(title: string): Promise<AdShowResult> {
 }
 
 export async function showInterstitialAd(reason = "end_game", forceTest = false): Promise<AdShowResult> {
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+    return { status: "skipped", provider: "none" };
+  }
   if (isCapacitorNativeRuntime()) {
     try {
       const shown = await showNativeInterstitial(forceTest);
@@ -98,6 +101,9 @@ export async function showInterstitialAd(reason = "end_game", forceTest = false)
 }
 
 export async function showRewardedAd(rewardId: string): Promise<AdShowResult> {
+  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+    return { status: "skipped", provider: "none" };
+  }
   if (isCapacitorNativeRuntime()) {
     try {
       const reward = await showNativeRewarded();

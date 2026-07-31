@@ -14,7 +14,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
 import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
-import { loadX01SamplesForProfile } from "../lib/x01StatsSource";
+import { loadX01SamplesForProfile, sampleFromRec } from "../lib/x01StatsSource";
 import { getX01ProfileStats } from "../lib/statsBridge";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 import { loadX01MultiSessions } from "../stats/X01MultiStatsTabFull";
@@ -628,10 +628,15 @@ async function loadFullFinishedHistoryRowsForX01Compare(): Promise<any[]> {
     const lightRows =
       (typeof api?.listFinished === "function" ? await api.listFinished() : null) ??
       (typeof api?.list === "function" ? await api.list() : []);
-    const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
-      .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
-      .filter(Boolean)));
-    const fullRows = await Promise.all(ids.slice(0, 600).map((id) => api.get(id).catch(() => null)));
+    const light = Array.isArray(lightRows) ? lightRows : [];
+    // Ne jamais jeter le header synchronisé si le détail IndexedDB n'est pas encore
+    // matérialisé sur le PC. Le summary du header contient déjà online/lobby + stats.
+    const picked = light.slice(0, 600);
+    const fullRows = await Promise.all(picked.map(async (row: any) => {
+      const id = String(row?.matchId ?? row?.id ?? "").trim();
+      if (!id || typeof api?.get !== "function") return row;
+      try { return (await api.get(id)) || row; } catch { return row; }
+    }));
     return fullRows.filter(Boolean);
   } catch {
     return [];
@@ -814,10 +819,14 @@ function isX01CompareOnlineRecord(rec: any): boolean {
   if (vals.some((v) => v.includes("online") || v.includes("remote") || v.includes("lobby") || v.includes("network"))) return true;
   const payload = rec?.payload ?? null;
   const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const state = rec?.state ?? payload?.state ?? nested?.state ?? null;
   return !!(
-    rec?.online || rec?.isOnline || rec?.lobbyId || rec?.roomCode || rec?.onlineMatchId ||
-    payload?.online || payload?.isOnline || payload?.lobbyId || payload?.roomCode || payload?.onlineMatchId ||
-    nested?.online || nested?.isOnline || nested?.lobbyId || nested?.roomCode || nested?.onlineMatchId
+    rec?.online || rec?.isOnline || rec?.lobbyId || rec?.lobbyCode || rec?.roomCode || rec?.roomId || rec?.onlineMatchId ||
+    payload?.online || payload?.isOnline || payload?.lobbyId || payload?.lobbyCode || payload?.roomCode || payload?.roomId || payload?.onlineMatchId ||
+    nested?.online || nested?.isOnline || nested?.lobbyId || nested?.lobbyCode || nested?.roomCode || nested?.roomId || nested?.onlineMatchId ||
+    summary?.online || summary?.isOnline || summary?.onlineMode || summary?.lobbyId || summary?.lobbyCode || summary?.roomCode || summary?.roomId || summary?.onlineMatchId ||
+    state?.online || state?.isOnline || state?.onlineMode || state?.lobbyCode || state?.roomCode || state?.roomId || state?.onlineMatchId
   );
 }
 
@@ -1475,8 +1484,8 @@ const ROWS: RowDef[] = [
 
 // ----------------- Cache instantané comparateur -----------------
 
-const X01_COMPARE_SAMPLES_CACHE_PREFIX = "dc_stats_x01_compare_samples_v3:";
-const X01_COMPARE_SAMPLES_CACHE_VERSION = 3;
+const X01_COMPARE_SAMPLES_CACHE_PREFIX = "dc_stats_x01_compare_samples_v4:";
+const X01_COMPARE_SAMPLES_CACHE_VERSION = 4;
 const X01_COMPARE_SAMPLES_CACHE_MAX_CHARS = 300_000;
 
 function x01CompareSamplesCacheKey(profileId: string): string {
@@ -1524,7 +1533,7 @@ function readX01CompareSamplesCacheSync(profileId?: string | null): X01Sample[] 
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (String(parsed?.profileId || "") !== pid) return null;
-    if (Number(parsed?.version) === 3 && Array.isArray(parsed?.rows)) {
+    if (Number(parsed?.version) === 4 && Array.isArray(parsed?.rows)) {
       return parsed.rows.map((row: any[]) => decodeX01CompareSample(row, pid));
     }
     if (Number(parsed?.version) === 2 && Array.isArray(parsed?.samples)) return parsed.samples as X01Sample[];
@@ -1664,6 +1673,47 @@ export async function prewarmX01CompareSamples(profileId: string, playerName = "
   writeX01CompareSamplesCache(pid, samples);
 }
 
+function directOnlineSamplesFromFullHistory(rows: any[], targetProfile: Pick<Profile, "id" | "name">): X01Sample[] {
+  const pid = String(targetProfile?.id || "").trim();
+  if (!pid) return [];
+  const out: X01Sample[] = [];
+  for (const rec of rows || []) {
+    if (!isX01CompareRecord(rec) || !isX01CompareOnlineRecord(rec)) continue;
+    try {
+      let hs: any = sampleFromRec(rec, targetProfile as any);
+      // Sur un second appareil le profil restauré peut avoir un identifiant de lien
+      // différent alors que le nom public est identique. On retente avec l'identité
+      // réellement stockée dans la partie avant de déclarer ONLINE = 0.
+      if (!hs && targetProfile?.name) {
+        const wantedName = normX01CompareText(targetProfile.name);
+        const candidate = getX01ComparePlayers(rec).find((p: any) =>
+          normX01CompareText(p?.name ?? p?.playerName ?? p?.displayName) === wantedName
+        );
+        const candidateId = String(candidate?.id ?? candidate?.playerId ?? candidate?.profileId ?? "").trim();
+        if (candidateId) hs = sampleFromRec(rec, { id: candidateId, name: targetProfile.name } as any);
+      }
+      if (!hs) continue;
+      out.push({
+        createdAt: Number(hs.createdAt || getX01CompareTimestamp(rec) || 0), mode: "x01_online", profileId: pid,
+        matchId: String(hs.matchId || rec?.matchId || rec?.id || ""), rank: hs.rank ?? null,
+        playerCount: Number(hs.playerCount || 0) || undefined, isTeam: !!hs.isTeam || hs.x01Variant === "team",
+        x01StartScore: hs.x01StartScore ?? null, x01Variant: hs.x01Variant ?? "unknown", matchVictoryMode: hs.matchVictoryMode ?? "best_of",
+        avg3: Number(hs.avg3 || 0) || undefined, bestVisit: Number(hs.bestVisit || 0) || undefined,
+        bestCheckout: Number(hs.bestCheckout || 0) || undefined, best9Score: Number(hs.best9Score || 0) || undefined,
+        dartsThrown: Number(hs.darts || 0) || undefined, totalScore: Number(hs.totalScore || 0) || undefined,
+        legsWon: Number(hs.legsWon || 0) || undefined, matchesPlayed: 1, matchesWon: Number(hs.matchesWon || 0) || 0,
+        hitsTotal: (Number(hs.singleHits || 0) + Number(hs.doubleHits || 0) + Number(hs.tripleHits || 0) + Number(hs.bull25 || 0) + Number(hs.bull50 || 0)) || undefined,
+        hits60: Number(hs.h60 || 0) || undefined, hits80: Number(hs.h80 || 0) || undefined, hits100: Number(hs.h100 || 0) || undefined,
+        hits120: Number(hs.h120 || 0) || undefined, hits140: Number(hs.h140 || 0) || undefined, hits180: Number(hs.h180 || 0) || undefined,
+        miss: Number(hs.miss || 0) || undefined, singleHits: Number(hs.singleHits || 0) || undefined, doubleHits: Number(hs.doubleHits || 0) || undefined,
+        tripleHits: Number(hs.tripleHits || 0) || undefined, bull25: Number(hs.bull25 || 0) || undefined, bull50: Number(hs.bull50 || 0) || undefined,
+        bust: Number(hs.bust || 0) || undefined, coAttempts: Number(hs.coAttempts || 0) || undefined, coSuccess: Number(hs.coSuccess || 0) || undefined,
+      });
+    } catch {}
+  }
+  return out.sort((a, b) => a.createdAt - b.createdAt);
+}
+
 // ----------------- Composant principal -----------------
 
 const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
@@ -1685,6 +1735,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   const [samples, setSamples] = useState<X01Sample[] | null>(() => initialSamplesCache);
   const [localBridgeStats, setLocalBridgeStats] = useState<any | null>(null);
   const [onlineBridgeStats, setOnlineBridgeStats] = useState<any | null>(null);
+  const [onlineHistoryFallback, setOnlineHistoryFallback] = useState<AggregatedStats | null>(null);
   const [localX01MultiAgg, setLocalX01MultiAgg] = useState<any | null>(null);
   const [matchBreakdown, setMatchBreakdown] = useState<{ local: X01CompareMatchBreakdown; online: X01CompareMatchBreakdown }>(() => ({
     local: emptyX01CompareMatchBreakdown(),
@@ -1775,6 +1826,16 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         const onlineMatches = rows.length
           ? computeX01CompareMatchBreakdown(rows, effectiveId, targetProfile.name, "online", byPeriod)
           : emptyX01CompareMatchBreakdown();
+        const directOnline = rows.length ? directOnlineSamplesFromFullHistory(rows, targetProfile) : [];
+        const directOnlineFiltered = directOnline.filter((sample) => {
+          if (byPeriod?.archivesOnly && typeof byPeriod.to === "number" && sample.createdAt >= byPeriod.to) return false;
+          if (!byPeriod?.archivesOnly && typeof byPeriod?.from === "number" && sample.createdAt < byPeriod.from) return false;
+          if (!byPeriod?.archivesOnly && typeof byPeriod?.to === "number" && sample.createdAt > byPeriod.to) return false;
+          if (scoreFilter !== "all" && sample.x01StartScore !== scoreFilter) return false;
+          if (variantFilter !== "all" && sample.x01Variant !== variantFilter) return false;
+          return true;
+        });
+        const directOnlineAgg = aggregateSamples(directOnlineFiltered);
 
         let x01MultiTabMatches = emptyX01CompareMatchBreakdown();
         try {
@@ -1789,6 +1850,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         if (!cancelled) {
           setLocalBridgeStats(stats || null);
           setOnlineBridgeStats(onlineStats || null);
+          setOnlineHistoryFallback(directOnlineAgg.count ? directOnlineAgg : null);
           setLocalX01MultiAgg(x01Agg || null);
           setMatchBreakdown({
             local: hasX01CompareMatchBreakdownValues(x01MultiTabMatches) ? x01MultiTabMatches : localMatches,
@@ -1800,6 +1862,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         if (!cancelled) {
           setLocalBridgeStats(null);
           setOnlineBridgeStats(null);
+          setOnlineHistoryFallback(null);
           setLocalX01MultiAgg(null);
           setMatchBreakdown({ local: emptyX01CompareMatchBreakdown(), online: emptyX01CompareMatchBreakdown() });
         }
@@ -1871,7 +1934,10 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
   );
 
   const aggOnline = useMemo(() => {
-    const base = bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online));
+    const bridgeBase = bridgeX01ToAggregatedStats(onlineBridgeStats, aggregateSamples(filtered.online));
+    const base = Number(bridgeBase.count || bridgeBase.matchesPlayed || 0) > 0
+      ? bridgeBase
+      : (onlineHistoryFallback || bridgeBase);
     const raw = hasX01CompareMatchBreakdownValues(onlineSampleMatchBreakdown)
       ? onlineSampleMatchBreakdown
       : (hasX01ContextFilters ? emptyX01CompareMatchBreakdown() : (matchBreakdown.online || emptyX01CompareMatchBreakdown()));
@@ -1891,7 +1957,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
         };
 
     return mergeX01CompareMatchBreakdown(base, onlineFallback);
-  }, [hasX01ContextFilters, onlineBridgeStats, filtered.online, onlineSampleMatchBreakdown, matchBreakdown.online]);
+  }, [hasX01ContextFilters, onlineBridgeStats, onlineHistoryFallback, filtered.online, onlineSampleMatchBreakdown, matchBreakdown.online]);
   const aggTraining = useMemo(
     () => aggregateSamples(filtered.training),
     [filtered.training]

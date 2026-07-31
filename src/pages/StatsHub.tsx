@@ -17,6 +17,7 @@ import StatsPlayerDashboard, {
 import { useQuickStats } from "../hooks/useQuickStats";
 import { loadStatsIndex, scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 import StatsCricketDashboard from "../components/StatsCricketDashboard";
+import StatsDartSetsSection from "../components/StatsDartSetsSection";
 import AttrapeMoiStatsTabFull from "../components/stats/AttrapeMoiStatsTabFull";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
@@ -280,7 +281,6 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
-const StatsDartSetsSection = lazyWithRetry(() => import("../components/StatsDartSetsSection"));
 const StatsX01Compare = lazyWithRetry(() => import("./StatsX01Compare"));
 const X01MultiStatsTabFull = React.lazy(
   () => import("../stats/X01MultiStatsTabFull")
@@ -9865,7 +9865,7 @@ return (
             {currentMode === "territories" && (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Territories…" />}>
-                  <StatsTerritoriesTab embedded />
+                  <StatsTerritoriesTab embedded playerId={selectedPlayer?.id} playerName={selectedPlayer?.name} />
                 </React.Suspense>
               </div>
             )}

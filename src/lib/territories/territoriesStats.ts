@@ -187,6 +187,8 @@ function arrNums(v: any): number[] | undefined {
 
 function isRichTerritoriesMatch(v: TerritoriesMatch | null | undefined): v is TerritoriesMatch {
   if (!v) return false;
+  const capturedTotal = Array.isArray(v.captured) ? v.captured.reduce((sum, x) => sum + toNum(x, 0), 0) : 0;
+  const dominationTotal = Array.isArray(v.domination) ? v.domination.reduce((sum, x) => sum + toNum(x, 0), 0) : 0;
   return !!(
     String(v.id || "").trim() &&
     String(v.mapId || "").trim() &&
@@ -195,7 +197,8 @@ function isRichTerritoriesMatch(v: TerritoriesMatch | null | undefined): v is Te
     Array.isArray(v.domination) &&
     v.domination.length > 0 &&
     (
-      (Array.isArray(v.darts) && v.darts.length > 0) ||
+      toNum(v.rounds, 0) > 0 || capturedTotal > 0 || dominationTotal > 0 ||
+      (Array.isArray(v.darts) && v.darts.some((x) => toNum(x, 0) > 0)) ||
       (v.playerStats && Object.keys(v.playerStats).length > 0) ||
       (Array.isArray(v.visitLog) && v.visitLog.length > 0)
     )
@@ -341,6 +344,92 @@ export function loadTerritoriesHistory(): TerritoriesMatch[] {
   } catch {
     return [];
   }
+}
+
+function territoriesRecordTag(rec: any): string {
+  return [
+    rec?.kind, rec?.mode, rec?.game, rec?.game?.mode, rec?.game?.id,
+    rec?.summary?.kind, rec?.summary?.mode, rec?.summary?.gameMode,
+    rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.game?.mode, rec?.payload?.stats?.mode, rec?.payload?.stats?.sport,
+  ]
+    .filter(Boolean).map((v) => String(v).toLowerCase()).join("|");
+}
+
+function isTerritoriesHistoryRecord(rec: any): boolean {
+  const tag = territoriesRecordTag(rec);
+  return tag.includes("territor") || tag.includes("departement") || tag.includes("département") || tag.includes("department");
+}
+
+function territoriesFromHistoryRecord(rec: any): TerritoriesMatch | null {
+  if (!rec || !isTerritoriesHistoryRecord(rec)) return null;
+  const direct = [rec?.payload?.match, rec?.match, rec?.payload?.territoriesMatch, rec?.territoriesMatch];
+  for (const candidate of direct) {
+    const normalized = normalizeTerritoriesMatch(candidate);
+    if (isRichTerritoriesMatch(normalized)) return normalized;
+  }
+  const summary = rec?.summary ?? rec?.payload?.summary ?? {};
+  const global = rec?.payload?.stats?.global ?? rec?.stats?.global ?? {};
+  // Certains historiques legacy ne gardaient plus payload.stats.global mais avaient
+  // encore les agrégats Territories directement dans summary. On reconstruit avec
+  // les deux sources au lieu de considérer la partie comme vide.
+  const rebuilt = normalizeTerritoriesMatch({
+    id: rec?.id ?? rec?.matchId,
+    ts: rec?.finishedAt ?? rec?.updatedAt ?? rec?.createdAt,
+    mapId: global?.mapId ?? summary?.mapId ?? rec?.payload?.summary?.mapId,
+    mapName: global?.mapName ?? summary?.mapName ?? rec?.payload?.summary?.mapName,
+    teams: global?.teams ?? summary?.teams ?? 1,
+    teamSize: global?.teamSize ?? summary?.teamSize ?? 1,
+    objective: global?.objective ?? summary?.objective ?? 0,
+    rounds: global?.rounds ?? summary?.rounds ?? summary?.turns ?? 0,
+    winnerTeam: global?.winnerTeam ?? summary?.winnerTeam ?? 0,
+    captured: global?.captured ?? summary?.captured ?? summary?.captures, domination: global?.domination ?? summary?.domination, dominationValue: global?.dominationValue ?? summary?.dominationValue,
+    darts: global?.darts ?? summary?.darts, steals: global?.steals ?? summary?.steals, lost: global?.lost ?? summary?.lost, fortresses: global?.fortresses ?? summary?.fortresses, breaches: global?.breaches ?? summary?.breaches,
+    visits: global?.visits ?? summary?.visits, bulls: global?.bulls ?? summary?.bulls, dbulls: global?.dbulls ?? summary?.dbulls, misses: global?.misses ?? summary?.misses, bullReplays: global?.bullReplays ?? summary?.bullReplays,
+    missPasses: global?.missPasses ?? summary?.missPasses, captureValueTotal: global?.captureValueTotal ?? summary?.captureValueTotal, maxCaptureValue: global?.maxCaptureValue ?? summary?.maxCaptureValue,
+    exactCaptures: global?.exactCaptures ?? summary?.exactCaptures, gteCaptures: global?.gteCaptures ?? summary?.gteCaptures, playerStats: global?.playerStats ?? summary?.playerStats,
+    visitLog: global?.visitLog ?? rec?.payload?.visitHistory ?? rec?.payload?.events, finalTerritories: global?.finalTerritories,
+    configSnapshot: global?.configSnapshot ?? summary?.configSnapshot, schemaVersion: global?.schemaVersion ?? summary?.schemaVersion,
+    gameMode: global?.gameMode ?? summary?.gameMode, victory: global?.victory ?? summary?.victory, durationMs: global?.durationMs ?? summary?.durationMs,
+    players: rec?.players ?? summary?.players, owners: rec?.payload?.match?.owners ?? summary?.owners,
+  });
+  return isRichTerritoriesMatch(rebuilt) ? rebuilt : null;
+}
+
+function writeTerritoriesLocalCache(items: TerritoriesMatch[]) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(KEY, JSON.stringify(items.slice(0, 250)));
+  } catch {}
+}
+
+/**
+ * Source unifiée du Centre de stats : cache local immédiat + History/IndexedDB.
+ * Ainsi un PC restauré/synchronisé ne dépend plus d'une clé localStorage propre
+ * à l'ancien appareil.
+ */
+export async function loadTerritoriesHistoryUnified(): Promise<TerritoriesMatch[]> {
+  const byId = new Map<string, TerritoriesMatch>();
+  for (const item of loadTerritoriesHistory()) byId.set(String(item.id), item);
+  try {
+    const api: any = History as any;
+    const light = typeof api?.listFinished === "function" ? await api.listFinished() : await api.list();
+    const candidates = (Array.isArray(light) ? light : []).filter((rec: any) => isTerritoriesHistoryRecord(rec));
+    const batchSize = 16;
+    for (let i = 0; i < candidates.length; i += batchSize) {
+      const batch = candidates.slice(i, i + batchSize);
+      const fullRows = await Promise.all(batch.map(async (rec: any) => {
+        const id = String(rec?.id ?? rec?.matchId ?? "").trim();
+        if (!id || typeof api?.get !== "function") return rec;
+        try { return (await api.get(id)) || rec; } catch { return rec; }
+      }));
+      for (const rec of fullRows) {
+        const item = territoriesFromHistoryRecord(rec);
+        if (item) byId.set(String(item.id), item);
+      }
+    }
+  } catch {}
+  const out = Array.from(byId.values()).sort((a,b) => Number(b.ts || 0) - Number(a.ts || 0));
+  if (out.length) writeTerritoriesLocalCache(out);
+  return out;
 }
 
 export function pushTerritoriesHistory(m: TerritoriesMatch) {

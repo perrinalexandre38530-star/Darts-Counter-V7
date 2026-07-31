@@ -10,6 +10,9 @@ function check(label, ok) { checks.push([label, !!ok]); }
 const config = read("src/monetization/adMobConfig.ts");
 const native = read("src/monetization/nativeAdMob.ts");
 const inlineTs = read("src/monetization/inlineAdMob.ts");
+const prefs = read("src/monetization/prefs.ts");
+const provider = read("src/monetization/provider.ts");
+const manager = read("src/monetization/MonetizationManager.ts");
 const slot = read("src/monetization/AdSlot.tsx");
 const settings = read("src/monetization/MonetizationSettingsPanel.tsx");
 const home = read("src/pages/Home.tsx");
@@ -54,7 +57,7 @@ check("Home player uses secondary banner unit", home.includes('placement="home_s
 check("Darts Home title is DARTS SCORING", home.includes('return "DARTS SCORING"'));
 check("Ticker inserts monetized ad slides", home.includes("monetizedAd: true"));
 check("Ticker remains internal and does not create a third paid banner", !ticker.includes('slotKey="home-ticker"') && !ticker.includes("PaidInlineSurface"));
-check("Premium users do not receive paid inline ads", slot.includes("!premiumActive") && home.includes("!getVerifiedPremiumState().active"));
+check("Premium/ad-free users do not receive paid inline ads", slot.includes("!adFreeActive") && home.includes("!getVerifiedAdFreeState().active"));
 check("Settings expose runtime mode and config errors", settings.includes("Prêt production") && settings.includes("configErrors"));
 check("MainActivity registers InlineAdMob plugin", mainActivity.includes("registerPlugin(InlineAdMobPlugin.class)"));
 check("Android plugin creates real Google AdView", inlineJava.includes("new AdView") && inlineJava.includes("AdRequest.Builder"));
@@ -69,6 +72,13 @@ check("Production release guard checks app-ads.txt", releaseGuard.includes("publ
 check("Environment template documents placement units", envExample.includes("VITE_ADMOB_ANDROID_BANNER_HOME_SECONDARY_ID") && envExample.includes("VITE_ADMOB_ANDROID_BANNER_GAMES_ID") && envExample.includes("ADMOB_PUBLISHER_ID"));
 check("Committed public AdMob config contains real banner IDs", publicConfig.includes("ca-app-pub-5323277022978157~6265161029") && publicConfig.includes("home_secondary") && publicConfig.includes("2158395052"));
 check("AdMob console-managed test device mode supported", config.includes("testDevicesManagedByAdMobConsole") && settings.includes("CONSOLE ADMOB"));
+check("Verified entitlement change event is reactive", prefs.includes("VERIFIED_ENTITLEMENTS_CHANGED_EVENT") && prefs.includes("subscribeVerifiedEntitlements"));
+check("Lifetime remove-ads entitlement is supported", prefs.includes("msc_remove_ads_lifetime") && prefs.includes("getVerifiedAdFreeState"));
+check("Inline AdMob has a hard ad-free guard", inlineTs.includes("canRequestBannerAds") && inlineTs.includes("setAdsAllowed"));
+check("Android inline plugin rejects ads when disabled", inlineJava.includes("adsAllowed = false") && inlineJava.includes("setAdsAllowed") && inlineJava.includes("avant la requête AdMob"));
+check("Interstitial/rewarded provider skips verified ad-free users", provider.includes("getVerifiedAdFreeState") && provider.includes('status: "skipped"'));
+check("Pending end-game ads are cleared on ad-free entitlement", manager.includes("subscribeVerifiedEntitlements") && manager.includes("state.pending = null"));
+check("Non-production settings can simulate FREE/PREMIUM without local persistence", settings.includes("TEST FREE / PREMIUM") && settings.includes("applyVerifiedEntitlements") && settings.includes('mode !== "production"'));
 check("Samsung SDK test device committed for real_test", publicConfig.includes("AD2A12F3E08C12ABDD574BC06097D62C") && settings.includes("CONSOLE + SDK"));
 
 const failed = checks.filter(([, ok]) => !ok);

@@ -55,6 +55,7 @@ public class InlineAdMobPlugin extends Plugin {
 
     private final Map<String, SlotHolder> slots = new HashMap<>();
     private String testDeviceConfigurationSignature = "";
+    private volatile boolean adsAllowed = false;
 
     /**
      * Les vrais IDs AdMob peuvent être testés sans générer de trafic invalide.
@@ -151,7 +152,25 @@ public class InlineAdMobPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setAdsAllowed(PluginCall call) {
+        final boolean allowed = Boolean.TRUE.equals(call.getBoolean("allowed", true));
+        adsAllowed = allowed;
+        getActivity().runOnUiThread(() -> {
+            if (!allowed) {
+                for (String slotId : slots.keySet().toArray(new String[0])) {
+                    destroySlot(slotId);
+                }
+            }
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
     public void show(PluginCall call) {
+        if (!adsAllowed) {
+            call.reject("Publicités désactivées par le droit Sans pub/Premium");
+            return;
+        }
         final String slotId = call.getString("slotId", "").trim();
         final String adId = call.getString("adId", "").trim();
         if (slotId.isEmpty() || adId.isEmpty()) {
@@ -161,6 +180,10 @@ public class InlineAdMobPlugin extends Plugin {
 
         getActivity().runOnUiThread(() -> {
             try {
+                if (!adsAllowed) {
+                    call.reject("Publicités désactivées par le droit Sans pub/Premium");
+                    return;
+                }
                 applyTestDeviceConfiguration(call);
 
                 SlotHolder existing = slots.get(slotId);
@@ -237,6 +260,11 @@ public class InlineAdMobPlugin extends Plugin {
                     }
                 });
 
+                if (!adsAllowed) {
+                    destroySlot(slotId);
+                    call.reject("Publicités désactivées avant la requête AdMob");
+                    return;
+                }
                 adView.loadAd(new AdRequest.Builder().build());
             } catch (Exception error) {
                 call.reject("Impossible d'afficher la publicité AdMob intégrée", error);

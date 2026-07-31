@@ -41,6 +41,8 @@ type FiveLivesSession = {
   playerName: string;
   avatarDataUrl?: string | null;
   isWin: boolean;
+  resultKnown: boolean;
+  hasDetailedStats: boolean;
   rank: number | null;
   playersCount: number;
   startingLives: number;
@@ -161,22 +163,54 @@ function rowMatchesPlayer(row: any, playerId: string): boolean {
   return sameId(playerIdOf(row), playerId);
 }
 
+function isCompetitiveFiveLivesRow(row: any): boolean {
+  if (!row || typeof row !== "object") return false;
+  return [
+    "rank", "position", "place", "isWinner", "win", "winner", "livesLeft", "remainingLives",
+    "visits", "targetsFaced", "successfulVisits", "failedVisits", "livesLost", "dartsThrown",
+    "totalScore", "bestVisit", "bestMargin", "singles", "doubles", "triples", "hitsTotal",
+  ].some((key) => row?.[key] !== undefined && row?.[key] !== null);
+}
+
 function rankingsForRecord(rec: any): any[] {
   const candidates = arrays(
     rec?.summary?.rankings,
-    rec?.summary?.players,
     rec?.summary?.perPlayer,
     rec?.payload?.summary?.rankings,
-    rec?.payload?.summary?.players,
     rec?.payload?.summary?.perPlayer,
     rec?.payload?.stats?.players,
-    rec?.payload?.players,
+    rec?.payload?.finalPlayers,
     rec?.stats?.players,
     rec?.rankings,
-    rec?.players,
   );
-  for (const rows of candidates) if (rows.length) return rows;
+  for (const rows of candidates) {
+    if (rows.length && rows.some(isCompetitiveFiveLivesRow)) return rows;
+  }
   return [];
+}
+
+function compactFiveLivesPlayerRow(rec: any, playerId: string): any | null {
+  const compact = rec?.compact ?? rec?.payload?.compact ?? null;
+  const ps = Array.isArray(compact?.ps) ? compact.ps : [];
+  const ids = Array.isArray(compact?.p) ? compact.p.map(String) : [];
+  if (!ps.length || !ids.length) return null;
+  const idx = ids.findIndex((id: string) => sameId(id, playerId));
+  if (idx < 0) return null;
+  const row = ps.find((it: any) => Number(it?.i) === idx) || ps[idx];
+  const bag = row?.n && typeof row.n === "object" ? row.n : {};
+  const pick = (key: string) => bag?.[key] ?? bag?.[`st${key}`] ?? undefined;
+  const out: any = { id: ids[idx], playerId: ids[idx] };
+  const map: Record<string,string> = {
+    fl_vis:"visits", fl_tar:"targetsFaced", fl_suc:"successfulVisits", fl_fail:"failedVisits",
+    fl_lost:"livesLost", fl_dt:"dartsThrown", fl_pts:"totalScore", fl_best:"bestVisit",
+    fl_mar:"bestMargin", fl_s:"singles", fl_d:"doubles", fl_t:"triples", fl_b:"bulls",
+    fl_db:"dbulls", fl_mis:"misses", fl_hit:"hitsTotal", fl_so:"scoreOnlyVisits",
+  };
+  for (const [src, dst] of Object.entries(map)) {
+    const value = pick(src);
+    if (value !== undefined && value !== null) out[dst] = Number(value);
+  }
+  return isCompetitiveFiveLivesRow(out) ? out : null;
 }
 
 function detailedMapRows(rec: any): any[] {
@@ -200,35 +234,45 @@ function findPlayerRow(rec: any, playerId: string): any | null {
   const pools = [
     detailedMapRows(rec),
     ...arrays(
-      rec?.summary?.rankings,
-      rec?.payload?.summary?.rankings,
-      rec?.payload?.stats?.players,
-      rec?.stats?.players,
-      rec?.summary?.perPlayer,
-      rec?.payload?.summary?.perPlayer,
-      rec?.summary?.players,
-      rec?.payload?.players,
-      rec?.players,
+      rec?.summary?.rankings, rec?.payload?.summary?.rankings, rec?.payload?.stats?.players,
+      rec?.payload?.finalPlayers, rec?.stats?.players, rec?.summary?.perPlayer, rec?.payload?.summary?.perPlayer,
+      rec?.summary?.players, rec?.payload?.players, rec?.players,
     ),
   ];
+  const hits: any[] = [];
   for (const rows of pools) {
     const hit = rows.find((row: any) => rowMatchesPlayer(row, playerId));
-    if (hit) return hit;
+    if (hit) hits.push(hit);
   }
-  return null;
+  const compact = compactFiveLivesPlayerRow(rec, playerId);
+  if (compact) hits.push(compact);
+  if (!hits.length) return null;
+  const richness = (row: any) => Object.keys(row || {}).reduce((score, key) => score + (isCompetitiveFiveLivesRow({ [key]: row[key] }) ? 4 : 1), 0);
+  return hits.sort((a,b)=>richness(a)-richness(b)).reduce((acc,row)=>({ ...acc, ...row }),{});
 }
 
 function eventRows(rec: any): any[] {
   const candidates = [
-    rec?.payload?.visitHistory,
-    rec?.payload?.events,
-    rec?.summary?.visitHistory,
-    rec?.summary?.events,
-    rec?.visitHistory,
-    rec?.events,
+    rec?.payload?.visitHistory, rec?.payload?.events, rec?.summary?.visitHistory, rec?.summary?.events, rec?.visitHistory, rec?.events,
   ];
-  for (const rows of candidates) if (Array.isArray(rows)) return rows;
-  return [];
+  for (const rows of candidates) if (Array.isArray(rows) && rows.length) return rows;
+  const compact = rec?.compact ?? rec?.payload?.compact ?? null;
+  const rows = compact?.d?.fe;
+  const ids = Array.isArray(compact?.p) ? compact.p.map(String) : [];
+  if (!Array.isArray(rows)) return [];
+  const parseDart = (label: any) => {
+    const text = String(label || "").toUpperCase();
+    if (!text || text === "MISS") return { v: 0, mult: 0 };
+    if (text === "BULL") return { v: 25, mult: 1 };
+    if (text === "DBULL") return { v: 25, mult: 2 };
+    const m = text.match(/^([SDT])(\d{1,2})$/);
+    return m ? { v: Number(m[2]), mult: m[1] === "T" ? 3 : m[1] === "D" ? 2 : 1 } : { v: 0, mult: 0 };
+  };
+  return rows.map((e: any, index: number) => ({
+    turn: index + 1, playerId: ids[Number(e?.p)] || e?.playerId, score: e?.sc, target: e?.tar, required: e?.req,
+    margin: e?.mar, success: e?.ok, openingVisit: e?.op, lifeLost: e?.lost, livesBefore: e?.lb, livesAfter: e?.la,
+    darts: Array.isArray(e?.ds) ? e.ds.map(parseDart) : [], at: e?.at,
+  }));
 }
 
 function normalizeEvent(ev: any): FiveLivesEvent {
@@ -295,7 +339,9 @@ function sessionFromRecord(rec: any, playerId: string): FiveLivesSession | null 
   const orderedIndex = rankings.findIndex((r) => rowMatchesPlayer(r, playerId));
   const rank = explicitRank > 0 ? explicitRank : orderedIndex >= 0 ? orderedIndex + 1 : null;
   const winnerId = String(rec?.winnerId ?? rec?.summary?.winnerId ?? rec?.payload?.winnerId ?? rec?.payload?.summary?.winnerId ?? "");
-  const isWin = Boolean(row?.isWinner ?? row?.win) || sameId(winnerId, playerId) || rank === 1;
+  const explicitResult = typeof row?.isWinner === "boolean" ? row.isWinner : typeof row?.win === "boolean" ? row.win : typeof row?.winner === "boolean" ? row.winner : null;
+  const resultKnown = explicitResult !== null || !!winnerId || (rank != null && rankings.length > 0);
+  const isWin = explicitResult === true || sameId(winnerId, playerId) || (rank === 1 && rankings.length > 0);
   const rawEvents = eventRows(rec)
     .filter((ev: any) => sameId(ev?.playerId ?? ev?.id ?? ev?.profileId, playerId))
     .map(normalizeEvent)
@@ -336,6 +382,7 @@ function sessionFromRecord(rec: any, playerId: string): FiveLivesSession | null 
   }
 
   const summary = rec?.summary ?? rec?.payload?.summary ?? {};
+  const hasDetailedStats = rawEvents.length > 0 || ["visits","targetsFaced","successfulVisits","failedVisits","livesLost","dartsThrown","totalScore","bestVisit","bestMargin","singles","doubles","triples","hitsTotal"].some((key) => row?.[key] !== undefined && row?.[key] !== null);
   const date = n(rec?.finishedAt, rec?.updatedAt, rec?.createdAt, summary?.finishedAt, Date.now());
   return {
     id: String(rec?.id ?? rec?.matchId ?? rec?.resumeId ?? `five-lives-${date}`),
@@ -346,6 +393,8 @@ function sessionFromRecord(rec: any, playerId: string): FiveLivesSession | null 
     playerName: String(row?.name ?? row?.playerName ?? row?.displayName ?? playerId),
     avatarDataUrl: row?.avatarDataUrl ?? row?.avatarUrl ?? null,
     isWin,
+    resultKnown,
+    hasDetailedStats,
     rank,
     playersCount: Math.max(1, rankings.length || n(summary?.playersCount) || 1),
     startingLives: n(rec?.payload?.startingLives, summary?.startingLives, rec?.startingLives, 5),
@@ -455,7 +504,11 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
 
   const agg = React.useMemo(() => {
     const games = sessions.length;
-    const wins = sessions.filter((s) => s.isWin).length;
+    const knownResults = sessions.filter((s) => s.resultKnown);
+    const wins = knownResults.filter((s) => s.isWin).length;
+    const losses = knownResults.length - wins;
+    const unknownResults = games - knownResults.length;
+    const detailedGames = sessions.filter((s) => s.hasDetailedStats).length;
     const visits = sessions.reduce((sum, s) => sum + s.visits, 0);
     const targetsFaced = sessions.reduce((sum, s) => sum + s.targetsFaced, 0);
     const successes = sessions.reduce((sum, s) => sum + s.successfulVisits, 0);
@@ -511,6 +564,9 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
     return {
       games,
       wins,
+      losses,
+      unknownResults,
+      detailedGames,
       visits,
       targetsFaced,
       successes,
@@ -531,7 +587,7 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
       worstVisit,
       bestMargin,
       avgWinningMargin: successes ? positiveMarginTotal / successes : 0,
-      winRate: pct(wins, games),
+      winRate: pct(wins, knownResults.length),
       objectiveRate: pct(successes, targetsFaced),
       averageVisit: visits ? points / visits : 0,
       avgLivesLost: games ? livesLost / games : 0,
@@ -631,15 +687,21 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
             <SectionTitle right={`${sessions.length} partie${sessions.length > 1 ? "s" : ""}`}>VUE D’ENSEMBLE</SectionTitle>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
               <Kpi label="Parties" value={agg.games} tone={ACCENT} />
-              <Kpi label="Victoires" value={`${fmt1(agg.winRate)}%`} sub={`${agg.wins} victoire${agg.wins > 1 ? "s" : ""}`} tone={GREEN} />
-              <Kpi label="Moyenne / volée" value={fmt1(agg.averageVisit)} tone={GOLD} />
-              <Kpi label="Meilleure volée" value={agg.bestVisit || "—"} tone={BLUE} />
-              <Kpi label="Réussite objectifs" value={`${fmt1(agg.objectiveRate)}%`} sub={`${agg.successes} / ${agg.targetsFaced}`} tone={GREEN} />
-              <Kpi label="Vies perdues" value={agg.livesLost} sub={`${fmt1(agg.avgLivesLost)} / partie`} tone={RED} />
-              <Kpi label="Volées jouées" value={agg.visits} sub={`${agg.darts} fléchettes`} />
+              <Kpi label="Victoires" value={`${fmt1(agg.winRate)}%`} sub={`${agg.wins} V · ${agg.losses} D${agg.unknownResults ? ` · ${agg.unknownResults} inconnu` : ""}`} tone={GREEN} />
+              <Kpi label="Moyenne / volée" value={agg.detailedGames ? fmt1(agg.averageVisit) : "—"} tone={GOLD} />
+              <Kpi label="Meilleure volée" value={agg.detailedGames ? (agg.bestVisit || "—") : "—"} tone={BLUE} />
+              <Kpi label="Réussite objectifs" value={agg.detailedGames && agg.targetsFaced ? `${fmt1(agg.objectiveRate)}%` : "—"} sub={agg.detailedGames ? `${agg.successes} / ${agg.targetsFaced}` : "Détail absent des anciennes sauvegardes"} tone={GREEN} />
+              <Kpi label="Vies perdues" value={agg.detailedGames ? agg.livesLost : "—"} sub={agg.detailedGames ? `${fmt1(agg.avgLivesLost)} / partie` : undefined} tone={RED} />
+              <Kpi label="Volées jouées" value={agg.detailedGames ? agg.visits : "—"} sub={agg.detailedGames ? `${agg.darts} fléchettes` : "Parties comptées, télémétrie non stockée"} />
               <Kpi label="Meilleure marge" value={agg.bestMargin ? `+${agg.bestMargin}` : "—"} sub={`Moy. +${fmt1(agg.avgWinningMargin)}`} tone={ACCENT} />
             </div>
           </div>
+
+          {agg.detailedGames < agg.games ? (
+            <div style={{ ...card, borderColor: "rgba(246,194,86,.25)", color: TEXT70, fontSize: 10.5, lineHeight: 1.45 }}>
+              <b style={{ color: GOLD }}>Historique partiellement détaillé :</b> {agg.games - agg.detailedGames} ancienne(s) partie(s) Les 5 vies ne contiennent que le résultat/configuration dans l’export. Elles restent comptées, mais les volées/impacts impossibles à reconstruire sont affichés « — » au lieu de faux zéros.
+            </div>
+          ) : null}
 
           <div style={card}>
             <SectionTitle>PROGRESSION</SectionTitle>
@@ -780,7 +842,7 @@ export default function FiveLivesStatsTabFull({ records, playerId }: Props) {
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: session.isWin ? GREEN : RED, fontSize: 11, fontWeight: 1000 }}>{session.isWin ? "VICTOIRE" : "DÉFAITE"}{session.rank ? ` · ${session.rank}${session.rank === 1 ? "er" : "e"}` : ""}</div>
+                      <div style={{ color: !session.resultKnown ? GOLD : session.isWin ? GREEN : RED, fontSize: 11, fontWeight: 1000 }}>{!session.resultKnown ? "RÉSULTAT INCOMPLET" : session.isWin ? "VICTOIRE" : "DÉFAITE"}{session.rank ? ` · ${session.rank}${session.rank === 1 ? "er" : "e"}` : ""}</div>
                       <div style={{ color: TEXT55, fontSize: 9.5, marginTop: 2 }}>{formatDate(session.date)} · {session.playersCount} joueurs · {formatDuration(session.durationMs)}</div>
                     </div>
                     <div style={{ borderRadius: 999, padding: "5px 8px", border: `1px solid ${ACCENT}44`, color: ACCENT, fontSize: 10, fontWeight: 1000 }}>{session.livesLeft} ♥</div>

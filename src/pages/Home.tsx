@@ -17,7 +17,7 @@ import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
-import { getVerifiedPremiumState, loadMonetizationPrefs } from "../monetization/prefs";
+import { getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
 import footHomeCover03 from "../assets/tickers/foot-03.webp";
@@ -2502,6 +2502,13 @@ function buildFootTipSlides(fs: FootHomeStats): LiveTipSlide[] {
 ============================================================ */
 
 export default function Home({ store, go, activeSport }: Props) {
+  const [monetizationRevision, setMonetizationRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setMonetizationRevision((value) => value + 1);
+    const offPrefs = subscribeMonetizationPrefs(refresh);
+    const offEntitlements = subscribeVerifiedEntitlements(refresh);
+    return () => { offPrefs(); offEntitlements(); };
+  }, []);
   const { theme } = useTheme();
   const { t } = useLang();
   const auth = useAuthOnline();
@@ -2673,7 +2680,7 @@ export default function Home({ store, go, activeSport }: Props) {
     const adsAllowed =
       adPrefs.adsEnabled &&
       adPrefs.bannersEnabled &&
-      !getVerifiedPremiumState().active;
+      !getVerifiedAdFreeState().active;
     if (!adsAllowed) return baseItems;
 
     const promoItems = buildTickerAdItems(
@@ -2681,7 +2688,7 @@ export default function Home({ store, go, activeSport }: Props) {
       `${String(activeProfile?.id ?? "anon")}::${String(sport)}`
     );
     return interleaveTickerAds(baseItems, promoItems);
-  }, [isFootSport, tickerItemsRaw, t, theme.primary, homeFeedItems, activeProfile?.id, sport]);
+  }, [isFootSport, tickerItemsRaw, t, theme.primary, homeFeedItems, activeProfile?.id, sport, monetizationRevision]);
 
   // ✅ Signature stable => permet de détecter les VRAIS changements
   const tickerSignature = useMemo(() => {
