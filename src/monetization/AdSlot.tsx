@@ -234,6 +234,15 @@ export function PaidInlineSurface({
             if (shown) {
               retryDelayMs = 2500;
               clearRetry();
+
+              // IMPORTANT : le rectangle utilisé au début du chargement peut déjà
+              // être périmé quand Google renvoie onAdLoaded. C'est notamment le
+              // cas des pages dont le header est une image (Jeux, Compétitions,
+              // Stats) : le ticker charge après le premier layout et pousse le
+              // slot publicitaire vers le bas. On remesure donc AU MOMENT où la
+              // bannière devient réellement visible et on la recale immédiatement.
+              const latestRect = measureInlineRect(node);
+              void updateInlineGoogleAd(slotKey, latestRect);
             } else {
               scheduleRetry();
             }
@@ -265,20 +274,43 @@ export function PaidInlineSurface({
     const intersectionObserver = typeof IntersectionObserver !== "undefined"
       ? new IntersectionObserver(schedule, { threshold: [0, 0.25, 0.75, 1] })
       : null;
+
+    // Le slot lui-même garde souvent la même hauteur alors qu'un ticker/image
+    // placé AVANT lui vient de se charger et déplace tout le contenu. Observer
+    // aussi son parent permet de détecter ce type de reflow.
     resizeObserver?.observe(node);
+    if (node.parentElement) resizeObserver?.observe(node.parentElement);
     intersectionObserver?.observe(node);
+
+    // Les événements load des images ne bouillonnent pas normalement. En phase
+    // de capture, on les reçoit quand même et on recalcule la position du slot.
+    // C'est le correctif principal pour les headers-tickers de Games /
+    // Competitions / Stats.
+    const onCapturedResourceLoad = (event: Event) => {
+      const target = event.target;
+      if (target instanceof HTMLImageElement || target instanceof HTMLVideoElement) schedule();
+    };
+
+    // Quelques checkpoints courts absorbent aussi les polices, transitions ou
+    // layouts asynchrones qui peuvent décaler le slot sans resize direct.
+    const settleTimers = [120, 350, 800, 1600, 3000].map((delay) =>
+      window.setTimeout(schedule, delay)
+    );
+
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
     window.addEventListener("pageshow", schedule);
     window.addEventListener("focus", schedule);
     document.addEventListener("visibilitychange", onVisibilityChange);
     document.addEventListener("scroll", schedule, true);
+    document.addEventListener("load", onCapturedResourceLoad, true);
     schedule();
 
     return () => {
       destroyed = true;
       if (raf) cancelAnimationFrame(raf);
       clearRetry();
+      settleTimers.forEach((timer) => window.clearTimeout(timer));
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
       window.removeEventListener("resize", schedule);
@@ -287,6 +319,7 @@ export function PaidInlineSurface({
       window.removeEventListener("focus", schedule);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       document.removeEventListener("scroll", schedule, true);
+      document.removeEventListener("load", onCapturedResourceLoad, true);
       shownRef.current = false;
       requestRef.current = false;
       void hideInlineGoogleAd(slotKey);

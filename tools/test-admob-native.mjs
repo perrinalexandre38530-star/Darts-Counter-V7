@@ -40,6 +40,8 @@ check("React slots measure real DOM rectangles", slot.includes("getBoundingClien
 check("React slots tolerate WebView insets and partial pixel clipping", slot.includes("visibleWidth >= 280") && slot.includes("clippedRight") && slot.includes("usableBottom"));
 check("React slots pass placement to native bridge", slot.includes("showInlineGoogleAd(slotKey, placement, rect)"));
 check("Inline slots retry transient startup/load failures", slot.includes("scheduleRetry") && slot.includes("retryDelayMs") && slot.includes("visibilitychange"));
+check("Inline slots recalculate position after an ad finishes loading", slot.includes("const latestRect = measureInlineRect(node)") && slot.includes("updateInlineGoogleAd(slotKey, latestRect)"));
+check("Inline slots follow late-loading image headers", slot.includes('document.addEventListener("load", onCapturedResourceLoad, true)') && slot.includes("node.parentElement") && slot.includes("settleTimers"));
 check("Inline bridge converts native load errors into retryable false", inlineTs.includes("catch") && inlineTs.includes("return false"));
 check("Inline loads are serialized to avoid request bursts", inlineTs.includes("nativeLoadQueue") && inlineTs.includes("enqueueNativeLoad") && inlineTs.includes("NATIVE_LOAD_GAP_MS"));
 check("Inline native calls have a bounded timeout", inlineTs.includes("NATIVE_LOAD_TIMEOUT_MS") && inlineTs.includes("withTimeout"));
