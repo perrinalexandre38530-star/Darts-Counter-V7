@@ -1287,6 +1287,27 @@ async function decodeIncomingSyncPayload(payload) {
   return payload;
 }
 
+function encodedSnapshotFromGzipTransport(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const format = String(payload?._format || "").trim().toLowerCase();
+  const encoding = String(payload?.encoding || "").trim().toLowerCase();
+  const data = typeof payload?.data === "string" ? payload.data.trim() : "";
+  if (!((format === "gzip+store-v2" || format === "gzip-store-v2") && payload?.compressed === true && data)) return null;
+  if (encoding && encoding !== "base64") return null;
+  // Validation légère, sans décompression ni reparsing du snapshot complet :
+  // la chaîne doit être un base64 gzip plausible. Le client a construit ce
+  // transport depuis le snapshot JSON canonique juste avant l'envoi.
+  let compressed;
+  try { compressed = Buffer.from(data, "base64"); } catch { return null; }
+  if (!compressed || compressed.length < 18 || compressed[0] !== 0x1f || compressed[1] !== 0x8b) return null;
+  return {
+    text: data,
+    encoding: "gzip-base64-json",
+    rawBytes: Math.max(0, Number(payload?.meta?.rawBytes || 0)),
+    storedBytes: Math.max(0, Number(payload?.meta?.compressedBytes || compressed.length)),
+  };
+}
+
 async function loadUserStoreSnapshot(userId) {
   const result = await pool.query(`
     SELECT payload, data, payload_text, data_text, payload_encoding, data_encoding, version, updated_at
@@ -1421,13 +1442,13 @@ function summarizeSnapshotForVault(payload) {
   return out;
 }
 
-async function insertUserStoreSnapshotSlot(userId, encoded, version = 2, payload = null, reason = "push") {
+async function insertUserStoreSnapshotSlot(userId, encoded, version = 2, payload = null, reason = "push", summaryOverride = null) {
   const slotId = uid("uss");
-  const summary = summarizeSnapshotForVault(payload);
+  const summary = summaryOverride && typeof summaryOverride === "object" ? summaryOverride : summarizeSnapshotForVault(payload);
   await pool.query(`
     INSERT INTO user_store_snapshots (
       id, user_id, store, payload, data, payload_text, data_text, payload_encoding, data_encoding, version, summary, reason, created_at
-    ) VALUES ($1,$2,'main',NULL,NULL,$3,$3,$4,$4,$5,$6::jsonb,$7,NOW())
+    ) VALUES ($1,$2,'main',NULL,NULL,$3,NULL,$4,NULL,$5,$6::jsonb,$7,NOW())
   `, [slotId, userId, encoded.text, encoded.encoding, version, JSON.stringify(summary || {}), reason]);
 
   await pool.query(`
@@ -1442,8 +1463,8 @@ async function insertUserStoreSnapshotSlot(userId, encoded, version = 2, payload
   return slotId;
 }
 
-async function saveUserStoreSnapshot(userId, payload, version = 2, reason = "push") {
-  const encoded = await encodeSnapshotForTextStore(payload);
+async function saveUserStoreSnapshot(userId, payload, version = 2, reason = "push", encodedOverride = null, summaryOverride = null) {
+  const encoded = encodedOverride || await encodeSnapshotForTextStore(payload);
 
   await pool.query(`
     INSERT INTO user_store (
@@ -1464,9 +1485,9 @@ async function saveUserStoreSnapshot(userId, payload, version = 2, reason = "pus
       NULL,
       NULL,
       $2,
-      $2,
+      NULL,
       $3,
-      $3,
+      NULL,
       $4,
       NOW()
     )
@@ -1475,15 +1496,15 @@ async function saveUserStoreSnapshot(userId, payload, version = 2, reason = "pus
       payload = NULL,
       data = NULL,
       payload_text = EXCLUDED.payload_text,
-      data_text = EXCLUDED.data_text,
+      data_text = NULL,
       payload_encoding = EXCLUDED.payload_encoding,
-      data_encoding = EXCLUDED.data_encoding,
+      data_encoding = NULL,
       version = EXCLUDED.version,
       updated_at = NOW(),
       store = 'main'
   `, [userId, encoded.text, encoded.encoding, version]);
 
-  const slotId = await insertUserStoreSnapshotSlot(userId, encoded, version, payload, reason).catch((error) => {
+  const slotId = await insertUserStoreSnapshotSlot(userId, encoded, version, payload, reason, summaryOverride).catch((error) => {
     console.warn('[user_store_snapshots] insert failed:', error?.message || error);
     return null;
   });
@@ -2302,10 +2323,40 @@ app.get("/sync/pull", authRequired, async (req, res) => {
 app.post("/sync/push", authRequired, async (req, res) => {
   try {
     const incomingPayload = req.body?.payload ?? null;
+    if (incomingPayload == null) return res.status(400).json({ ok: false, error: "Payload de sauvegarde manquant" });
+
+    const encodedTransport = encodedSnapshotFromGzipTransport(incomingPayload);
+    const reason = String(req.body?.reason || "push");
+    const clientSummary = req.body?.summary && typeof req.body.summary === "object" ? req.body.summary : null;
+
+    // Chemin rapide NAS : le navigateur a déjà produit le gzip canonique.
+    // On évite donc le cycle coûteux gunzip -> JSON.parse -> JSON.stringify -> gzip
+    // et la double copie payload_text/data_text en PostgreSQL.
+    if (encodedTransport) {
+      const version = Number(req.body?.version || 8) || 8;
+      const saved = await saveUserStoreSnapshot(
+        req.user.id,
+        null,
+        version,
+        reason,
+        encodedTransport,
+        clientSummary,
+      );
+      return res.json({
+        ok: true,
+        version,
+        updatedAt: nowIso(),
+        slotId: saved?.slotId || null,
+        transport: "gzip+store-v2-fast",
+        transportStats: req.body?.transportStats || incomingPayload?.meta || null,
+        fastPath: true,
+      });
+    }
+
     const payload = await decodeIncomingSyncPayload(incomingPayload);
     if (payload == null) return res.status(400).json({ ok: false, error: "Payload de sauvegarde manquant" });
     const version = Number(req.body?.version || payload?._v || payload?.v || 8) || 8;
-    const saved = await saveUserStoreSnapshot(req.user.id, payload, version, String(req.body?.reason || "push"));
+    const saved = await saveUserStoreSnapshot(req.user.id, payload, version, reason, null, clientSummary);
     res.json({
       ok: true,
       version,
@@ -2313,6 +2364,7 @@ app.post("/sync/push", authRequired, async (req, res) => {
       slotId: saved?.slotId || null,
       transport: String(req.body?.transport || incomingPayload?._format || "json"),
       transportStats: req.body?.transportStats || incomingPayload?.meta || null,
+      fastPath: false,
     });
   } catch (error) {
     console.error("POST /sync/push error:", error);

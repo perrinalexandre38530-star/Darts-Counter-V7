@@ -3,6 +3,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
 import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
+import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
 
 /**
  * BottomNav
@@ -232,6 +233,8 @@ export default function BottomNav({
   const accent = (theme as any)?.navAccent ?? theme.primary ?? textMain;
   const [messageSummary, setMessageSummary] = React.useState<MessageCenterUnreadSummary | null>(null);
   const messageBadge = Math.max(0, Number(messageSummary?.total || 0));
+  const backgroundBackup = useBackgroundBackupState();
+  const showBackgroundBackup = backgroundBackup.status !== "idle";
 
   React.useEffect(() => {
     if (hideOnline) {
@@ -311,7 +314,48 @@ export default function BottomNav({
     (value === "babyfoot_menu" && sportLc === "babyfoot");
 
   return (
-    <nav
+    <>
+      {showBackgroundBackup ? (
+        <div
+          role="status"
+          aria-live="polite"
+          onClick={() => backgroundBackup.status === "running" ? undefined : dismissBackgroundBackupState()}
+          style={{
+            position: "fixed",
+            left: 10,
+            right: 10,
+            bottom: "calc(88px + env(safe-area-inset-bottom))",
+            zIndex: 79,
+            minHeight: 46,
+            padding: "8px 12px 10px",
+            borderRadius: 15,
+            border: `1px solid ${backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent}`,
+            background: "rgba(3,8,18,.96)",
+            boxShadow: `0 0 18px ${backgroundBackup.status === "error" ? "rgba(251,113,133,.35)" : backgroundBackup.status === "success" ? "rgba(52,211,153,.32)" : `${accent}55`}`,
+            color: textMain,
+            cursor: backgroundBackup.status === "running" ? "default" : "pointer",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {backgroundBackup.status === "running" ? "💾 Sauvegarde en arrière-plan" : backgroundBackup.status === "success" ? "✅ Sauvegarde terminée" : "⚠️ Sauvegarde interrompue"}
+              </div>
+              <div style={{ marginTop: 2, color: textSoft, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {backgroundBackup.message || backgroundBackup.label}
+              </div>
+            </div>
+            <strong style={{ color: backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent, fontSize: 12 }}>
+              {backgroundBackup.status === "running" ? `${Math.max(1, Math.round(backgroundBackup.progress))}%` : "×"}
+            </strong>
+          </div>
+          <div style={{ height: 3, borderRadius: 99, background: "rgba(255,255,255,.10)", overflow: "hidden", marginTop: 7 }}>
+            <div style={{ width: `${Math.max(backgroundBackup.status === "running" ? 4 : 100, backgroundBackup.progress)}%`, height: "100%", borderRadius: 99, background: backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent, transition: "width .25s ease" }} />
+          </div>
+        </div>
+      ) : null}
+      <nav
       className="bottom-nav"
       role="navigation"
       aria-label="Navigation principale"
@@ -401,6 +445,7 @@ export default function BottomNav({
         );
       })}
       <div className="bn-safe" />
-    </nav>
+      </nav>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import {
   createLocalMemorySlot,
   createLocalMemorySlotFromSnapshot,
   createNasVersionedSnapshot,
+  decodeMaybeCompressedNasPayload,
   deleteLocalMemorySlot,
   deleteNasMemorySlot,
   emptyNasDeletedMemorySlots,
@@ -85,6 +86,11 @@ import {
   writeExternalBackupNow,
   type ExternalBackupStatus,
 } from "../lib/externalBackupTarget";
+import {
+  isBackgroundBackupRunning,
+  startBackgroundBackupJob,
+  useBackgroundBackupState,
+} from "../lib/backgroundBackup";
 
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
@@ -1078,42 +1084,85 @@ async function pushSnapshotToAccount(payload: any, reason: string) {
   return apiPost("/sync/push", { payload: snapshot, version, reason });
 }
 
+type PreparedBackupKind = "full" | "cloud-fast";
+
 type PreparedBackup = {
+  kind: PreparedBackupKind;
+  revision: number;
   snapshot: any;
   snapshotJson: string;
   summary: VaultSummary;
   bytes: number;
   preparedAt: number;
+  gzipPromise?: Promise<Uint8Array>;
 };
 
-let preparedBackupInFlight: Promise<PreparedBackup> | null = null;
-let preparedBackupCache: PreparedBackup | null = null;
+let preparedBackupRevision = 1;
+const preparedBackupInFlight = new Map<PreparedBackupKind, Promise<PreparedBackup>>();
+const preparedBackupCache = new Map<PreparedBackupKind, PreparedBackup>();
+let preparedBackupInvalidationInstalled = false;
 
-async function prepareCurrentBackupOnce(): Promise<PreparedBackup> {
-  if (preparedBackupInFlight) return preparedBackupInFlight;
-  if (preparedBackupCache && Date.now() - preparedBackupCache.preparedAt < 2_000) return preparedBackupCache;
-  preparedBackupInFlight = (async () => {
-    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot()));
+function installPreparedBackupInvalidation(): void {
+  if (preparedBackupInvalidationInstalled || typeof window === "undefined") return;
+  preparedBackupInvalidationInstalled = true;
+  const invalidate = () => {
+    preparedBackupRevision += 1;
+    preparedBackupCache.clear();
+  };
+  [
+    "dc-history-updated",
+    "dc-store-updated",
+    "dc-dartsets-updated",
+    "dc-teams-updated",
+    "dc:bots-changed",
+    "dc:profiles-changed",
+  ].forEach((eventName) => window.addEventListener(eventName, invalidate as EventListener, { passive: true }));
+}
+
+installPreparedBackupInvalidation();
+
+async function prepareCurrentBackupOnce(kind: PreparedBackupKind = "full"): Promise<PreparedBackup> {
+  const inFlight = preparedBackupInFlight.get(kind);
+  if (inFlight) return inFlight;
+
+  const cached = preparedBackupCache.get(kind);
+  if (cached && cached.revision === preparedBackupRevision && Date.now() - cached.preparedAt < 90_000) return cached;
+
+  const revisionAtStart = preparedBackupRevision;
+  const promise = (async () => {
+    const exportOptions = kind === "cloud-fast"
+      ? { mediaMirror: "background" as const, includeEmbeddedMedia: false, includeAvatarFallbacks: false }
+      : { mediaMirror: "skip" as const, includeEmbeddedMedia: true, includeAvatarFallbacks: true };
+    const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(await exportCloudSnapshot(exportOptions)));
     if (!looksLikeCloudSnapshot(snapshot) && !looksLikeCloudBackupV1(snapshot)) {
       throw new Error("L’état courant ne contient pas une sauvegarde Multisports exploitable.");
     }
     const summary = strictSummaryForRestore(snapshot);
     const snapshotJson = JSON.stringify(snapshot);
-    const prepared = {
+    const prepared: PreparedBackup = {
+      kind,
+      revision: revisionAtStart,
       snapshot,
       snapshotJson,
       summary,
-      bytes: new Blob([snapshotJson]).size,
+      bytes: new TextEncoder().encode(snapshotJson).byteLength,
       preparedAt: Date.now(),
     };
-    preparedBackupCache = prepared;
+    if (revisionAtStart === preparedBackupRevision) preparedBackupCache.set(kind, prepared);
     return prepared;
   })();
+
+  preparedBackupInFlight.set(kind, promise);
   try {
-    return await preparedBackupInFlight;
+    return await promise;
   } finally {
-    preparedBackupInFlight = null;
+    preparedBackupInFlight.delete(kind);
   }
+}
+
+async function getPreparedGzip(prepared: PreparedBackup): Promise<Uint8Array> {
+  if (!prepared.gzipPromise) prepared.gzipPromise = gzipSnapshotJson(prepared.snapshotJson);
+  return prepared.gzipPromise;
 }
 
 async function withFastFallback<T>(promise: Promise<T>, fallback: T, timeoutMs = 2_500): Promise<T> {
@@ -1143,9 +1192,9 @@ async function gzipSnapshotJson(json: string): Promise<Uint8Array> {
   return gzipSync(strToU8(json), { level: 1 });
 }
 
-async function encodeNasTransportSnapshotJson(snapshotJson: string): Promise<{ payload: any; rawBytes: number; compressedBytes: number }> {
+async function encodeNasTransportSnapshotJson(snapshotJson: string, compressedInput?: Uint8Array): Promise<{ payload: any; rawBytes: number; compressedBytes: number }> {
   const rawBytes = new TextEncoder().encode(snapshotJson).byteLength;
-  const compressed = await gzipSnapshotJson(snapshotJson);
+  const compressed = compressedInput || await gzipSnapshotJson(snapshotJson);
   return {
     rawBytes,
     compressedBytes: compressed.byteLength,
@@ -1161,8 +1210,8 @@ async function encodeNasTransportSnapshotJson(snapshotJson: string): Promise<{ p
 
 const NAS_PUSH_TIMEOUT_MS = 30_000;
 
-async function pushSnapshotToNasFast(snapshotJson: string, version: number, reason: string, token: string, summary?: any): Promise<any> {
-  const transport = await encodeNasTransportSnapshotJson(snapshotJson);
+async function pushSnapshotToNasFast(snapshotJson: string, version: number, reason: string, token: string, summary?: any, compressedInput?: Uint8Array): Promise<any> {
+  const transport = await encodeNasTransportSnapshotJson(snapshotJson, compressedInput);
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), NAS_PUSH_TIMEOUT_MS);
   try {
@@ -1290,6 +1339,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [tab, setTab] = React.useState<TabKey>("restore");
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("Scan en attente…");
+  const backgroundBackup = useBackgroundBackupState();
   const lastUserActionAtRef = React.useRef(0);
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
@@ -1514,7 +1564,7 @@ export default function StorageVaultPage({ go }: Props) {
   const localEntries = React.useMemo<SaveEntry[]>(() => {
     return localSlots
       .map((slot, idx) => {
-        const summary = strictSummaryForRestore(slot.payload, slot.summary);
+        const summary = slot.summary ? normalizeSummary(slot.summary) : strictSummaryForRestore(decodeMaybeCompressedNasPayload(slot.payload));
         const q = assessSave(summary);
         return {
           key: `local:${slot.id}`,
@@ -1760,7 +1810,11 @@ export default function StorageVaultPage({ go }: Props) {
     title?: string,
     options?: { cloudCopyOnly?: boolean; sourceDestination?: string }
   ) => {
-    const snapshot = await exportCloudSnapshot();
+    const snapshot = await exportCloudSnapshot({
+      mediaMirror: "background",
+      includeEmbeddedMedia: false,
+      includeAvatarFallbacks: false,
+    });
     return uploadSnapshotPayloadToCloudVault(snapshot, reason, title, options);
   };
 
@@ -1958,7 +2012,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     try {
       let payload: any = null;
       if (entry.source === "local") {
-        payload = (entry.slot as MemorySlot).payload;
+        payload = decodeMaybeCompressedNasPayload((entry.slot as MemorySlot).payload);
       } else if (entry.source === "nas") {
         const id = String((entry.slot as NasSlot).id || "latest");
         payload = (await pullNasMemorySlot(id)).payload;
@@ -2044,8 +2098,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     setBusy(true);
     const startedAt = performance.now();
     try {
-      const prepared = await prepareCurrentBackupOnce();
-      const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, "Bloc local de sécurité", "manual", prepared.summary);
+      const prepared = await prepareCurrentBackupOnce("full");
+      const compressed = await getPreparedGzip(prepared);
+      const slot = await createLocalMemorySlotFromSnapshot(
+        prepared.snapshot,
+        "Bloc local de sécurité",
+        "manual",
+        prepared.summary,
+        prepared.snapshotJson,
+        compressed,
+      );
       setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
       const q = assessSave(prepared.summary);
       setMessage(`Bloc local créé en ${Math.max(1, Math.round(performance.now() - startedAt))} ms : ${q.label} · ${slot.summary.matches} parties • ${slot.summary.profiles} profils.`);
@@ -2151,40 +2213,25 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
   const createSelectedDestinationBackup = async () => {
     if (busy) return;
     lastUserActionAtRef.current = Date.now();
-    const startedAt = performance.now();
     const destination = loadStoragePrefs().selectedDestination;
     const destinationLabel = getStorageDestination(destination).label;
-    setBusy(true);
-    setMessage(`Préparation de la sauvegarde vers ${destinationLabel}…`);
 
-    try {
-      // Aucun octet R2 n'est généré ni envoyé tant que le compte n'a pas un
-      // abonnement Cloud PREMIUM actif (sauf compte explicitement exempté).
-      if (destination === "cloud_r2") {
-        const usage = directR2Usage || await getDirectR2Usage();
-        setDirectR2Usage(usage);
-        if (!isDirectR2PremiumWriteAllowed(usage)) {
-          throw new Error("Cloud R2 est verrouillé sans offre PREMIUM active. Local, fichier, USB, SD et cloud personnel restent gratuits.");
-        }
-      }
+    if (isBackgroundBackupRunning()) {
+      setMessage("Une sauvegarde est déjà en cours en arrière-plan. Tu peux continuer à naviguer.");
+      return;
+    }
 
-      // Le snapshot complet n'est construit qu'une seule fois, puis le même
-      // objet est écrit vers la destination choisie.
-      const prepared = await prepareCurrentBackupOnce();
-      const quality = assessSaveForProvider(prepared.summary, destination === "cloud_r2" ? "cloud" : destination === "founder_nas" ? "nas" : "local");
-      if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
-
-      const elapsed = () => `${Math.max(1, Math.round(performance.now() - startedAt))} ms`;
-      const localLabel = `Sauvegarde ${destinationLabel} — ${new Date().toLocaleString("fr-FR")}`;
-
-      if (destination === "app_local") {
-        const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, localLabel, "manual", prepared.summary);
-        setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
-        setMessage(`Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(prepared.bytes)}.`);
-        return;
-      }
-
-      if (destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual") {
+    // Les sélecteurs de fichier doivent rester attachés au geste utilisateur.
+    // Cette branche reste donc au premier plan jusqu'au choix du fichier, puis
+    // l'écriture est bornée et n'empêche pas la navigation globale de l'app.
+    if (destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual") {
+      const startedAt = performance.now();
+      setBusy(true);
+      setMessage(`Préparation du fichier vers ${destinationLabel}…`);
+      try {
+        const prepared = await prepareCurrentBackupOnce("full");
+        const quality = assessSaveForProvider(prepared.summary, "local");
+        if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
         let status: ExternalBackupStatus;
         if (!externalBackupStatus.configured && externalBackupStatus.supported) {
           status = await chooseExternalBackupFileWithJson(prepared.snapshotJson, "storage-vault-instant");
@@ -2196,99 +2243,189 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         setExternalBackupStatus(status);
         if (status.lastError) throw new Error(status.lastError);
         if (storagePrefs.keepLocalSafetyCopy) {
-          const slot = await createLocalMemorySlotFromSnapshot(prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary);
+          const compressed = await getPreparedGzip(prepared);
+          const slot = await createLocalMemorySlotFromSnapshot(
+            prepared.snapshot,
+            `Sécurité locale — Sauvegarde ${destinationLabel} — ${new Date().toLocaleString("fr-FR")}`,
+            "manual",
+            prepared.summary,
+            prepared.snapshotJson,
+            compressed,
+          );
           setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
         }
-        setMessage(`Sauvegarde fichier créée en ${elapsed()} · ${status.fileName || "fichier téléchargé"} · ${formatStorageBytes(status.lastBytes || prepared.bytes)}.`);
-        return;
+        setMessage(`Sauvegarde fichier créée en ${Math.max(1, Math.round(performance.now() - startedAt))} ms · ${status.fileName || "fichier téléchargé"} · ${formatStorageBytes(status.lastBytes || prepared.bytes)}.`);
+      } catch (error: any) {
+        setMessage(`Sauvegarde impossible vers ${destinationLabel} : ${error?.message || error}`);
+      } finally {
+        setBusy(false);
       }
-
-      if (destination === "cloud_r2") {
-        const localSlot = storagePrefs.keepLocalSafetyCopy
-          ? await createLocalMemorySlotFromSnapshot(prepared.snapshot, `Sécurité locale — ${localLabel}`, "manual", prepared.summary).catch(() => null)
-          : null;
-        if (localSlot) setLocalSlots((current) => [localSlot, ...current.filter((item) => item.id !== localSlot.id)].slice(0, 10));
-
-        const uploaded = await uploadCloudVaultSnapshotJson({
-          snapshotJson: prepared.snapshotJson,
-          title: localLabel,
-          sourceDestination: "cloud_r2",
-          metadata: {
-            summary: prepared.summary,
-            exportedAt: new Date().toISOString(),
-            rawSizeBytes: prepared.bytes,
-            engine: "instant-backup-v44",
-          },
-        });
-        const item = uploaded.object as CloudSlot;
-        item.__summary = prepared.summary;
-        item.latest = true;
-        setCloudSlots((current) => [item, ...current.filter((row) => row.id !== item.id)].slice(0, 2));
-        setBackupProvider("cloud");
-        writePreferredRemoteSource("cloud");
-        if ((uploaded as any)?.usage) {
-          const u: any = (uploaded as any).usage;
-          setDirectR2Usage({
-            usedBytes: Number(u.usedBytes || 0), quotaBytes: Number(u.quotaBytes || 0),
-            remainingBytes: Number(u.remainingBytes || 0), percentUsed: Number(u.percentUsed || 0),
-            planId: String(u.preference?.plan_id || u.planId || "free_test_100mb"),
-            billingStatus: String(u.preference?.billing_status || u.billingStatus || "locked"),
-            billingExempt: u.preference?.billing_exempt === true || u.billingExempt === true,
-            retainedBackups: Number(u.retainedBackups || 1), retentionTotal: Number(u.retentionTotal || 2),
-            writeAllowed: u.writeAllowed === true,
-            premiumRequired: u.premiumRequired !== false,
-          });
-        }
-        setMessage(`Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · conservation automatique : courante + précédente uniquement.`);
-        return;
-      }
-
-      // NAS rapide : sécurité locale et compression/envoi tournent EN PARALLÈLE.
-      // L'ancienne version attendait l'écriture IndexedDB complète avant même de
-      // commencer le réseau, ce qui additionnait les deux durées.
-      const localSafetyPromise = createLocalMemorySlotFromSnapshot(
-        prepared.snapshot,
-        `Sécurité locale avant NAS — ${new Date().toLocaleString("fr-FR")}`,
-        "before-restore",
-        prepared.summary
-      ).then((localSlot) => {
-        setLocalSlots((current) => [localSlot, ...current.filter((item) => item.id !== localSlot.id)].slice(0, 10));
-        return localSlot;
-      }).catch(() => null);
-
-      const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
-      setAccountScopeId(getVaultCurrentUserId());
-      if (!token) {
-        await localSafetyPromise;
-        throw new Error("Token NAS introuvable. La copie locale a été créée, mais l'envoi NAS nécessite une reconnexion au compte NAS.");
-      }
-      const version = Number(prepared.snapshot?._v || prepared.snapshot?.v || 2) || 2;
-      const response = await pushSnapshotToNasFast(prepared.snapshotJson, version, "storage-vault-instant", token, prepared.summary);
-      void localSafetyPromise;
-      // /sync/push met à jour l'emplacement canonique. Son identifiant UI est
-      // TOUJOURS « latest ». Le slotId retourné (quand il existe) désigne une
-      // révision d'archive, pas l'emplacement courant. L'ancien faux nas_<date>
-      // provoquait ensuite un 404 si on tentait de restaurer avant le refresh.
-      const nasSlot: NasSlot = {
-        id: "latest",
-        latest: true,
-        createdAt: String(response?.updatedAt || new Date().toISOString()),
-        updatedAt: String(response?.updatedAt || new Date().toISOString()),
-        summary: normalizeSummary(response?.summary || prepared.summary),
-      };
-      setNasSlots((current) => {
-        const next = [nasSlot, ...current.map((row) => ({ ...row, latest: false })).filter((row) => row.id !== "latest")].slice(0, 120);
-        writeCachedNasSlots(next);
-        return next;
-      });
-      setBackupProvider("nas");
-      writePreferredRemoteSource("nas");
-      setMessage(`Sauvegarde NAS créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · copie locale de sécurité conservée.`);
-    } catch (error: any) {
-      setMessage(`Sauvegarde impossible vers ${destinationLabel} : ${error?.message || error}`);
-    } finally {
-      setBusy(false);
+      return;
     }
+
+    setMessage(`Sauvegarde vers ${destinationLabel} lancée en arrière-plan. Tu peux changer de page et continuer à utiliser l'application.`);
+
+    void startBackgroundBackupJob({
+      destination,
+      label: `Sauvegarde ${destinationLabel}`,
+      successMessage: (result: any) => String(result?.message || `Sauvegarde ${destinationLabel} terminée.`),
+      run: async (report) => {
+        const startedAt = performance.now();
+        const elapsed = () => `${Math.max(1, Math.round(performance.now() - startedAt))} ms`;
+        const localLabel = `Sauvegarde ${destinationLabel} — ${new Date().toLocaleString("fr-FR")}`;
+
+        report(5, `Contrôle de la destination ${destinationLabel}…`);
+        if (destination === "cloud_r2") {
+          const usage = directR2Usage || await getDirectR2Usage();
+          setDirectR2Usage(usage);
+          if (!isDirectR2PremiumWriteAllowed(usage)) {
+            throw new Error("Cloud R2 est verrouillé sans offre PREMIUM active. Local, fichier, USB, SD et cloud personnel restent gratuits.");
+          }
+        }
+
+        const preparedKind: PreparedBackupKind = destination === "cloud_r2" ? "cloud-fast" : "full";
+        report(12, "Assemblage du snapshot local…");
+        const prepared = await prepareCurrentBackupOnce(preparedKind);
+        const quality = assessSaveForProvider(prepared.summary, destination === "cloud_r2" ? "cloud" : destination === "founder_nas" ? "nas" : "local");
+        if (!quality.restorable) throw new Error(`Sauvegarde refusée : ${quality.reason}`);
+
+        if (destination === "app_local") {
+          report(48, "Compression locale rapide…");
+          const compressed = await getPreparedGzip(prepared);
+          report(76, "Écriture dans la mémoire locale…");
+          const slot = await createLocalMemorySlotFromSnapshot(
+            prepared.snapshot,
+            localLabel,
+            "manual",
+            prepared.summary,
+            prepared.snapshotJson,
+            compressed,
+          );
+          setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10));
+          return {
+            message: `Sauvegarde locale créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${prepared.summary.profiles} profil(s) · ${formatStorageBytes(compressed.byteLength)} compressés.`,
+          };
+        }
+
+        if (destination === "cloud_r2") {
+          // La sécurité locale complète est indépendante du snapshot R2 allégé.
+          // Elle est lancée en parallèle et ne retarde jamais la confirmation R2.
+          if (storagePrefs.keepLocalSafetyCopy) {
+            void prepareCurrentBackupOnce("full")
+              .then(async (fullPrepared) => {
+                const compressed = await getPreparedGzip(fullPrepared);
+                return createLocalMemorySlotFromSnapshot(
+                  fullPrepared.snapshot,
+                  `Sécurité locale — ${localLabel}`,
+                  "manual",
+                  fullPrepared.summary,
+                  fullPrepared.snapshotJson,
+                  compressed,
+                );
+              })
+              .then((slot) => setLocalSlots((current) => [slot, ...current.filter((item) => item.id !== slot.id)].slice(0, 10)))
+              .catch(() => null);
+          }
+
+          report(38, "Envoi des données vers Cloudflare R2…");
+          const uploaded = await uploadCloudVaultSnapshotJson({
+            snapshotJson: prepared.snapshotJson,
+            title: localLabel,
+            sourceDestination: "cloud_r2",
+            metadata: {
+              summary: prepared.summary,
+              exportedAt: new Date().toISOString(),
+              rawSizeBytes: prepared.bytes,
+              engine: "background-backup-v45",
+              mediaMirror: "background",
+            },
+          });
+          report(88, "Finalisation de la rétention R2…");
+          const item = uploaded.object as CloudSlot;
+          item.__summary = prepared.summary;
+          item.latest = true;
+          setCloudSlots((current) => [item, ...current.filter((row) => row.id !== item.id)].slice(0, 2));
+          setBackupProvider("cloud");
+          writePreferredRemoteSource("cloud");
+          if ((uploaded as any)?.usage) {
+            const u: any = (uploaded as any).usage;
+            setDirectR2Usage({
+              usedBytes: Number(u.usedBytes || 0), quotaBytes: Number(u.quotaBytes || 0),
+              remainingBytes: Number(u.remainingBytes || 0), percentUsed: Number(u.percentUsed || 0),
+              planId: String(u.preference?.plan_id || u.planId || "free_test_100mb"),
+              billingStatus: String(u.preference?.billing_status || u.billingStatus || "locked"),
+              billingExempt: u.preference?.billing_exempt === true || u.billingExempt === true,
+              retainedBackups: Number(u.retainedBackups || 1), retentionTotal: Number(u.retentionTotal || 2),
+              writeAllowed: u.writeAllowed === true,
+              premiumRequired: u.premiumRequired !== false,
+            });
+          }
+          return {
+            message: `Sauvegarde Cloud R2 créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(prepared.bytes)} · médias poursuivis séparément en arrière-plan.`,
+          };
+        }
+
+        // NAS : un seul gzip est produit puis réutilisé à la fois pour le réseau
+        // et pour la copie locale. Les deux écritures sont lancées en parallèle.
+        report(30, "Compression unique du snapshot NAS…");
+        const compressed = await getPreparedGzip(prepared);
+        const localSafetyPromise = createLocalMemorySlotFromSnapshot(
+          prepared.snapshot,
+          `Sécurité locale avant NAS — ${new Date().toLocaleString("fr-FR")}`,
+          "before-restore",
+          prepared.summary,
+          prepared.snapshotJson,
+          compressed,
+        ).then((localSlot) => {
+          setLocalSlots((current) => [localSlot, ...current.filter((item) => item.id !== localSlot.id)].slice(0, 10));
+          return localSlot;
+        }).catch(() => null);
+
+        report(46, "Connexion au NAS…");
+        const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
+        setAccountScopeId(getVaultCurrentUserId());
+        if (!token) {
+          void localSafetyPromise;
+          throw new Error("Token NAS introuvable. La copie locale continue en arrière-plan, mais l'envoi NAS nécessite une reconnexion au compte NAS.");
+        }
+        const version = Number(prepared.snapshot?._v || prepared.snapshot?.v || 2) || 2;
+        report(58, `Envoi NAS compressé (${formatStorageBytes(compressed.byteLength)})…`);
+        const response = await pushSnapshotToNasFast(
+          prepared.snapshotJson,
+          version,
+          "storage-vault-background-v45",
+          token,
+          prepared.summary,
+          compressed,
+        );
+        report(90, "Confirmation et indexation NAS…");
+        void localSafetyPromise;
+        const nasSlot: NasSlot = {
+          id: "latest",
+          latest: true,
+          createdAt: String(response?.updatedAt || new Date().toISOString()),
+          updatedAt: String(response?.updatedAt || new Date().toISOString()),
+          summary: normalizeSummary(response?.summary || prepared.summary),
+        };
+        setNasSlots((current) => {
+          const next = [nasSlot, ...current.map((row) => ({ ...row, latest: false })).filter((row) => row.id !== "latest")].slice(0, 120);
+          writeCachedNasSlots(next);
+          return next;
+        });
+        setBackupProvider("nas");
+        writePreferredRemoteSource("nas");
+        return {
+          message: `Sauvegarde NAS créée en ${elapsed()} · ${prepared.summary.matches} partie(s) · ${formatStorageBytes(compressed.byteLength)} envoyés · copie locale parallèle.`,
+        };
+      },
+    })
+      .then((result: any) => {
+        setMessage(String(result?.message || `Sauvegarde ${destinationLabel} terminée.`));
+        void refresh().catch(() => undefined);
+      })
+      .catch((error: any) => {
+        setMessage(`Sauvegarde impossible vers ${destinationLabel} : ${error?.message || error}`);
+      });
   };
 
   const restoreNas = async (entry: SaveEntry) => {
@@ -2330,7 +2467,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     setBusy(true);
     try {
       const slot = entry.slot as MemorySlot;
-      await restoreSnapshotIntoBrowserAndAccount(slot.payload, `restore-local:${slot.id}`, entry.title);
+      await restoreSnapshotIntoBrowserAndAccount(decodeMaybeCompressedNasPayload(slot.payload), `restore-local:${slot.id}`, entry.title);
     } catch (error: any) {
       setMessage(`Restauration locale impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
@@ -2376,7 +2513,8 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               : await pullCloudVaultSlot(slot);
             exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${String(slot.id || "cloud").replace(/[^a-z0-9_-]/gi, "_")}.json`);
           } else {
-            exportJsonDownload(entry.slot, `${(entry.slot as MemorySlot).id}.json`);
+            const localSlot = entry.slot as MemorySlot;
+            exportJsonDownload({ ...localSlot, payload: decodeMaybeCompressedNasPayload(localSlot.payload) }, `${localSlot.id}.json`);
           }
         } catch (error: any) {
           setMessage(`Export impossible : ${error?.message || error}`);
@@ -2513,7 +2651,8 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
 
   const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas";
   const cloudR2WriteLocked = selectedDestination === "cloud_r2" && directR2Usage !== null && !isDirectR2PremiumWriteAllowed(directR2Usage);
-  const primaryBackupDisabled = busy || externalBackupBusy !== null || cloudR2WriteLocked || (remoteDestinationNeedsAccount && !hasConnectedAccount);
+  const backgroundBackupRunning = backgroundBackup.status === "running";
+  const primaryBackupDisabled = busy || backgroundBackupRunning || externalBackupBusy !== null || cloudR2WriteLocked || (remoteDestinationNeedsAccount && !hasConnectedAccount);
 
   const pageHelp = (
     <div style={{ display: "grid", gap: 10, lineHeight: 1.45 }}>
@@ -2725,7 +2864,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               {selectedDestination === "app_local" ? <div style={{ marginTop: 9, color: muted, fontSize: 10.5 }}>Libre estimé : <b style={{ color: green }}>{formatStorageBytes(storageEstimate.free)}</b></div> : null}
               {selectedDestination === "cloud_r2" && cloudR2WriteLocked ? <div style={{ marginTop: 9, color: amber, fontSize: 10.5, fontWeight: 900 }}>Cloud R2 verrouillé : offre PREMIUM requise.</div> : null}
               {remoteDestinationNeedsAccount && !hasConnectedAccount ? <div style={{ marginTop: 9, color: red, fontSize: 10.5, fontWeight: 900 }}>Connexion requise pour cette destination.</div> : null}
-              <button type="button" style={{ ...primaryBtn, width: "100%", minHeight: 58, marginTop: 11, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }} disabled={primaryBackupDisabled} onClick={() => void createSelectedDestinationBackup()}><VaultGlyph name="save" size={24}/>{busy ? "SAUVEGARDE EN COURS…" : primaryBackupLabel.toUpperCase()}</button>
+              <button type="button" style={{ ...primaryBtn, width: "100%", minHeight: 58, marginTop: 11, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }} disabled={primaryBackupDisabled} onClick={() => void createSelectedDestinationBackup()}><VaultGlyph name="save" size={24}/>{backgroundBackupRunning ? `SAUVEGARDE EN ARRIÈRE-PLAN ${Math.max(1, Math.round(backgroundBackup.progress))}%` : busy ? "OPÉRATION EN COURS…" : primaryBackupLabel.toUpperCase()}</button>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 8 }}>
                 {selectedDestination !== "app_local" ? <VaultActionButton icon="shield" label="Sécurité locale" disabled={busy} onClick={createLocalSlot}/> : <VaultActionButton icon="download" label="Exporter JSON" disabled={busy} onClick={() => void runExternalBackupAction("download")}/>} 
                 <VaultActionButton icon="upload" label="Importer JSON" disabled={busy} onClick={() => inputRef.current?.click()}/>

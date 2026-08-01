@@ -20,7 +20,15 @@ const variablesGradle = read("android/variables.gradle");
 const configure = read("tools/configure-android-admob.mjs");
 
 check("Google test banner ID", config.includes("ca-app-pub-3940256099942544/9214589741"));
-check("Production IDs are required together", config.includes("productionComplete"));
+
+check(
+  "Production mode validates all required real IDs",
+  config.includes("validateRealBannerIds")
+    && config.includes("validateProductionFullscreenIds")
+    && config.includes('requestedMode === "production"')
+    && config.includes('productionReady: mode === "production" && realConfigurationReady')
+);
+
 check("Legacy floating banner remains disabled", native.includes("aucun banner AdMob natif") && native.includes("removeBanner"));
 check("Inline bridge uses dedicated Capacitor plugin", inlineTs.includes('registerPlugin("InlineAdMob")'));
 check("Inline bridge waits for UMP consent", inlineTs.includes("ensureNativeAdMobReady") && inlineTs.includes("status.canRequestAds"));
@@ -30,8 +38,22 @@ check("Home top has stable paid slot", home.includes('slotKey="home-top"'));
 check("Home player has stable paid slot", home.includes('slotKey="home-player"'));
 check("Darts Home title is DARTS SCORING", home.includes('return "DARTS SCORING"'));
 check("Ticker inserts monetized ad slides", home.includes("monetizedAd: true"));
-check("Ticker mounts paid surface", ticker.includes('slotKey="home-ticker"') && ticker.includes("PaidInlineSurface"));
-check("Premium users do not receive paid inline ads", slot.includes("!premiumActive") && home.includes("!getVerifiedPremiumState().active"));
+
+check(
+  "Ticker avoids a third paid Google surface",
+  !ticker.includes('slotKey="home-ticker"')
+    && !ticker.includes("PaidInlineSurface")
+    && ticker.includes("home-top")
+    && ticker.includes("home-player")
+);
+
+check(
+  "Verified ad-free users do not receive paid inline ads",
+  slot.includes("getVerifiedAdFreeState")
+    && slot.includes("subscribeVerifiedEntitlements")
+    && slot.includes("!adFreeActive")
+);
+
 check("MainActivity registers InlineAdMob plugin", mainActivity.includes("registerPlugin(InlineAdMobPlugin.class)"));
 check("Android plugin creates real Google AdView", inlineJava.includes("new AdView") && inlineJava.includes("AdRequest.Builder"));
 check("Android plugin uses inline adaptive banner size", inlineJava.includes("getInlineAdaptiveBannerAdSize"));

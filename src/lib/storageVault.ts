@@ -1,5 +1,5 @@
 import LZString from "lz-string";
-import { gunzipSync, strFromU8 } from "fflate";
+import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { apiDelete, apiGet, apiPost } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser, importCloudSnapshot } from "./storage";
 import { pushNasAccountSnapshot } from "./manualNasSync";
@@ -330,13 +330,45 @@ export async function listLocalMemorySlots(): Promise<MemorySlot[]> {
     .sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""));
 }
 
+async function gzipJsonForLocalVault(json: string): Promise<Uint8Array> {
+  const CompressionStreamCtor = (globalThis as any).CompressionStream;
+  if (typeof CompressionStreamCtor === "function") {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return gzipSync(strToU8(json), { level: 1 });
+}
+
+function localCompressedPayload(bytes: Uint8Array, rawBytes: number): any {
+  return {
+    _format: "gzip+store-v2",
+    compressed: true,
+    encoding: "uint8array",
+    data: bytes,
+    meta: {
+      rawBytes,
+      compressedBytes: bytes.byteLength,
+      compressedAt: new Date().toISOString(),
+      engine: "local-vault-gzip-v2",
+    },
+  };
+}
+
 export async function createLocalMemorySlotFromSnapshot(
   payload: any,
   label = "Bloc local",
   source: MemorySlot["source"] = "manual",
-  summaryInput?: VaultSummary | null
+  summaryInput?: VaultSummary | null,
+  snapshotJson?: string,
+  compressedBytes?: Uint8Array
 ): Promise<MemorySlot> {
   const now = new Date().toISOString();
+  let storedPayload = payload;
+  const json = typeof snapshotJson === "string" ? snapshotJson : "";
+  if (json.length >= 64 * 1024) {
+    const bytes = compressedBytes || await gzipJsonForLocalVault(json);
+    storedPayload = localCompressedPayload(bytes, new TextEncoder().encode(json).byteLength);
+  }
   const slot: MemorySlot = {
     id: `local_${now.replace(/[^0-9]/g, "")}_${Math.random().toString(16).slice(2, 8)}`,
     ownerId: getVaultCurrentUserId(),
@@ -344,7 +376,7 @@ export async function createLocalMemorySlotFromSnapshot(
     updatedAt: now,
     label,
     source,
-    payload,
+    payload: storedPayload,
     summary: summaryInput || summarizeVaultPayload(payload),
   };
   await vaultPut(slot);
@@ -367,7 +399,7 @@ export async function restoreLocalMemorySlot(id: string): Promise<MemorySlot> {
   const slot = slots.find((s) => s.id === id);
   if (!slot) throw new Error("Bloc local introuvable");
   await createLocalMemorySlot("Sécurité avant restauration locale", "before-restore").catch(() => null);
-  await importCloudSnapshot(slot.payload, { mode: "replace" });
+  await importCloudSnapshot(decodeMaybeCompressedNasPayload(slot.payload), { mode: "replace" });
   return slot;
 }
 
@@ -520,11 +552,20 @@ export async function scanLocalStorageAndIndexedDb(): Promise<StorageBlock[]> {
 
 export function decodeMaybeCompressedNasPayload(payload: any): any {
   if (!payload || typeof payload !== "object") return payload;
-  if (payload._format === "gzip+store-v2" && payload.compressed && typeof payload.data === "string") {
-    const binary = atob(payload.data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return JSON.parse(strFromU8(gunzipSync(bytes)));
+  if (payload._format === "gzip+store-v2" && payload.compressed) {
+    let bytes: Uint8Array | null = null;
+    if (typeof payload.data === "string") {
+      const binary = atob(payload.data);
+      bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    } else if (payload.data instanceof Uint8Array) {
+      bytes = payload.data;
+    } else if (payload.data instanceof ArrayBuffer) {
+      bytes = new Uint8Array(payload.data);
+    } else if (ArrayBuffer.isView(payload.data)) {
+      bytes = new Uint8Array(payload.data.buffer, payload.data.byteOffset, payload.data.byteLength);
+    }
+    if (bytes) return JSON.parse(strFromU8(gunzipSync(bytes)));
   }
   if (payload._format === "lz-string+store-v1" && payload.compressed && typeof payload.data === "string") {
     const json = payload.encoding === "utf16" ? LZString.decompressFromUTF16(payload.data) : LZString.decompressFromBase64(payload.data);
