@@ -1192,7 +1192,83 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "monetization" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
+type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
+
+const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
+const ACCOUNT_DELETION_URL = "https://darts-counter-v7.pages.dev/account-deletion.html";
+const PRIVACY_CONTACT_EMAIL = "multisports.scoring@gmail.com";
+
+function openLegalUrl(url: string) {
+  if (typeof window === "undefined") return;
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+  if (!opened) window.location.href = url;
+}
+
+function PrivacyDataSection({ onOpenAccount }: { onOpenAccount?: () => void }) {
+  const { theme } = useTheme();
+
+  const card: React.CSSProperties = {
+    borderRadius: 16,
+    border: `1px solid ${theme.borderSoft}`,
+    background: theme.card,
+    padding: 14,
+    boxShadow: `0 14px 28px rgba(0,0,0,0.42), 0 0 18px ${theme.primary}18`,
+  };
+
+  const button: React.CSSProperties = {
+    width: "100%",
+    minHeight: 46,
+    borderRadius: 13,
+    border: `1px solid ${theme.primary}88`,
+    background: `${theme.primary}18`,
+    color: theme.primary,
+    fontWeight: 950,
+    cursor: "pointer",
+    padding: "11px 13px",
+  };
+
+  return (
+    <section style={{ display: "grid", gap: 12 }}>
+      <div style={card}>
+        <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 16 }}>Confidentialité et données</div>
+        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
+          Consulte les règles de confidentialité de MULTISPORTS SCORING, les prestataires utilisés, les durées de conservation et les moyens d’exercer tes droits.
+        </p>
+        <button type="button" style={{ ...button, marginTop: 12 }} onClick={() => openLegalUrl(PRIVACY_POLICY_URL)}>
+          Ouvrir la politique de confidentialité
+        </button>
+      </div>
+
+      <div style={card}>
+        <div style={{ color: "#ffcc66", fontWeight: 1000, fontSize: 16 }}>Suppression du compte</div>
+        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
+          La suppression définitive est disponible dans Compte → Zone dangereuse. Une page web publique permet également d’envoyer une demande lorsque l’application n’est plus accessible.
+        </p>
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          <button type="button" style={button} onClick={onOpenAccount}>
+            Ouvrir les réglages du compte
+          </button>
+          <button type="button" style={button} onClick={() => openLegalUrl(ACCOUNT_DELETION_URL)}>
+            Ouvrir la demande web de suppression
+          </button>
+        </div>
+      </div>
+
+      <div style={card}>
+        <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 16 }}>Contact confidentialité</div>
+        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
+          Pour une demande d’accès, de rectification, de portabilité ou de suppression :
+        </p>
+        <a
+          href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
+          style={{ display: "block", marginTop: 10, color: theme.primary, fontWeight: 950, overflowWrap: "anywhere" }}
+        >
+          {PRIVACY_CONTACT_EMAIL}
+        </a>
+      </div>
+    </section>
+  );
+}
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
@@ -4181,6 +4257,8 @@ export function Settings({ go }: Props) {
       ? t("settings.menu.account", "Compte")
       : tab === "monetization"
       ? "Publicité & Boutique"
+      : tab === "privacy"
+      ? "Confidentialité"
       : tab === "theme"
       ? t("settings.menu.theme", "Thème")
       : tab === "lang"
@@ -4200,6 +4278,8 @@ export function Settings({ go }: Props) {
       ? t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")
       : tab === "monetization"
       ? "Bannières, vidéo de fin de partie, Premium et packs additionnels."
+      : tab === "privacy"
+      ? "Politique de confidentialité, droits et suppression du compte."
       : tab === "theme"
       ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
       : tab === "lang"
@@ -4307,6 +4387,13 @@ export function Settings({ go }: Props) {
               onClick={() => setTab("monetization")}
             />
             <SettingsMenuCard
+              title="Confidentialité & données"
+              subtitle="Politique de confidentialité, contact et suppression du compte."
+              theme={theme}
+              rightHint="RGPD / PLAY"
+              onClick={() => setTab("privacy")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.theme", "Thème")}
               subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
               theme={theme}
@@ -4352,6 +4439,7 @@ export function Settings({ go }: Props) {
 
         {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} onFullReset={handleFullReset} />}
         {tab === "monetization" && <MonetizationSettingsPanel />}
+        {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => setTab("account")} />}
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}

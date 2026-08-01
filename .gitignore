@@ -28,9 +28,8 @@ dist-ssr
 .env.*
 !.env.example
 !env.example
-
-# Fichiers Android Google Play
-releases/google-play/*.aab
-
-# Fichiers Android Google Play
-releases/google-play/*.aab
+*.aab
+*.apk
+releases/
+android/upload-keystore.jks
+android/key.properties
