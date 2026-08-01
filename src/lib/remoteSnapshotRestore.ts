@@ -1,5 +1,5 @@
 import type { Store } from "./types";
-import { importCloudSnapshot, loadStore } from "./storage";
+import { importCloudSnapshot, loadStore, refreshRuntimeStoreAfterRestore } from "./storage";
 import { getAllDartSets } from "./dartSetsStore";
 
 function extractStoreFromPayload(payload: any): any | null {
@@ -49,10 +49,8 @@ export function hasMeaningfulRemoteSnapshotPayload(payload: any): boolean {
 export async function restoreRemoteSnapshotIntoLocalApp(payload: any): Promise<boolean> {
   if (!hasMeaningfulRemoteSnapshotPayload(payload)) return false;
 
-  const appStore: any = (window as any).__appStore;
-  if (!appStore) return false;
-
   await importCloudSnapshot(payload, { mode: "replace" });
+  const appStore: any = (window as any).__appStore;
 
   const restored = await loadStore<Store>();
   const next: Store = restored
@@ -70,13 +68,12 @@ export async function restoreRemoteSnapshotIntoLocalApp(payload: any): Promise<b
         dartSets: getAllDartSets(),
       } as Store);
 
-  if (typeof appStore.update === "function") {
+  if (appStore && typeof appStore.update === "function") {
     appStore.update(() => next);
-  } else if (typeof appStore.setState === "function") {
+  } else if (appStore && typeof appStore.setState === "function") {
     appStore.setState(next);
-  } else {
-    return false;
   }
+  await refreshRuntimeStoreAfterRestore("remote-snapshot-restore").catch(() => false);
 
   try {
     if ((next.profiles?.length || 0) > 0 || next.activeProfileId) {
@@ -84,9 +81,9 @@ export async function restoreRemoteSnapshotIntoLocalApp(payload: any): Promise<b
     }
   } catch {}
 
-  try {
-    window.dispatchEvent(new Event("dc-dartsets-updated"));
-  } catch {}
+  for (const eventName of ["dc-dartsets-updated", "dc:bots-changed", "dc-teams-updated", "dc:avatar-gallery-changed", "dc-tournaments-updated", "dc-competitions-updated"]) {
+    try { window.dispatchEvent(new CustomEvent(eventName, { detail: { reason: "remote-snapshot-restore" } })); } catch {}
+  }
 
   return true;
 }

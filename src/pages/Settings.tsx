@@ -1294,6 +1294,7 @@ function AccountPages({
 
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
+  const [privateNasCapability, setPrivateNasCapability] = React.useState<Awaited<ReturnType<typeof onlineApi.getPrivateNasCapability>> | null>(null);
   const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({ supported: false, configured: false, permission: "unknown" }));
   const [externalBackupBusy, setExternalBackupBusy] = React.useState<null | "choose" | "save" | "download" | "forget">(null);
   const [supabaseFailoverState, setSupabaseFailoverState] = React.useState<SupabaseAuthFailoverState | null>(() => getSupabaseAuthFailoverState());
@@ -1368,6 +1369,20 @@ function AccountPages({
       window.removeEventListener("storage", onStoragePrefs as any);
     };
   }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!isSignedIn) {
+      setPrivateNasCapability(null);
+      return () => { alive = false; };
+    }
+    void onlineApi.getPrivateNasCapability().then((capability) => {
+      if (alive) setPrivateNasCapability(capability);
+    }).catch(() => {
+      if (alive) setPrivateNasCapability({ checked: false, authorized: false, reason: "capability_unavailable", checkedAt: Date.now() });
+    });
+    return () => { alive = false; };
+  }, [isSignedIn, (user as any)?.id]);
 
   const refreshCloudUsage = React.useCallback(async () => {
     if (!isSignedIn) {
@@ -1484,6 +1499,14 @@ function AccountPages({
 
   async function persistStoragePrefs(next: Partial<typeof storagePrefs>, msg?: string) {
     const previous = storagePrefs;
+    if (next.selectedDestination === "founder_nas" && previous.selectedDestination !== "founder_nas") {
+      const capability = await onlineApi.getPrivateNasCapability({ force: true });
+      setPrivateNasCapability(capability);
+      if (!capability.authorized) {
+        setCloudUsageError("Ce compte public n'est pas autorisé à accéder au NAS privé du fondateur.");
+        return;
+      }
+    }
     const saved = saveStoragePrefs(next);
     setStoragePrefs(saved);
     setMessage(msg || "Préférence de stockage enregistrée.");
@@ -2472,35 +2495,37 @@ function AccountPages({
                 );
               })}
 
-              <button
-                type="button"
-                disabled={!isSignedIn}
-                onClick={() => persistStoragePrefs(
-                  {
-                    selectedDestination: "founder_nas",
-                    keepLocalSafetyCopy: true,
-                  },
-                  "NAS fondateur sélectionné pour les sauvegardes privées. L'ONLINE public reste sur Supabase/Cloudflare."
-                )}
-                style={{
-                  textAlign: "left",
-                  borderRadius: 14,
-                  padding: 12,
-                  border: storagePrefs.selectedDestination === "founder_nas" ? `1px solid ${theme.primary}` : `1px dashed ${theme.primary}77`,
-                  background: storagePrefs.selectedDestination === "founder_nas" ? `${theme.primary}16` : "rgba(255,255,255,0.025)",
-                  color: theme.text,
-                  cursor: isSignedIn ? "pointer" : "not-allowed",
-                  opacity: isSignedIn ? 1 : 0.65,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <b style={{ color: theme.primary }}>NAS fondateur — sauvegardes privées</b>
-                  {storagePrefs.selectedDestination === "founder_nas" && <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 950, color: "#9cffaa" }}>ACTIF</span>}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
-                  Réservé au compte admin : le NAS peut rester la destination privée de tes sauvegardes, avec copie locale de sécurité. Le réseau public (ONLINE, amis, présence, joueurs à proximité et salons) reste indépendant sur Supabase/Cloudflare. Tu peux revenir au Cloud R2 public à tout moment.
-                </div>
-              </button>
+              {privateNasCapability?.authorized === true && (
+                <button
+                  type="button"
+                  disabled={!isSignedIn}
+                  onClick={() => persistStoragePrefs(
+                    {
+                      selectedDestination: "founder_nas",
+                      keepLocalSafetyCopy: true,
+                    },
+                    "NAS fondateur sélectionné pour les sauvegardes privées. L'ONLINE public reste sur Supabase/Cloudflare."
+                  )}
+                  style={{
+                    textAlign: "left",
+                    borderRadius: 14,
+                    padding: 12,
+                    border: storagePrefs.selectedDestination === "founder_nas" ? `1px solid ${theme.primary}` : `1px dashed ${theme.primary}77`,
+                    background: storagePrefs.selectedDestination === "founder_nas" ? `${theme.primary}16` : "rgba(255,255,255,0.025)",
+                    color: theme.text,
+                    cursor: isSignedIn ? "pointer" : "not-allowed",
+                    opacity: isSignedIn ? 1 : 0.65,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <b style={{ color: theme.primary }}>NAS fondateur — sauvegardes privées</b>
+                    {storagePrefs.selectedDestination === "founder_nas" && <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 950, color: "#9cffaa" }}>ACTIF</span>}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+                    Réservé à ton compte fondateur : le NAS peut rester la destination privée des sauvegardes, avec copie locale de sécurité. ONLINE, amis, présence, joueurs à proximité et salons restent indépendants sur Supabase/Cloudflare.
+                  </div>
+                </button>
+              )}
             </div>
           </div>
 

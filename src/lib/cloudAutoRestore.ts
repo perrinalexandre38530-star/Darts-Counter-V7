@@ -321,8 +321,9 @@ async function fetchCloudSlotPayload(slot: CloudObjectIndexItem): Promise<any> {
   return content;
 }
 
-async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectIndexItem): Promise<{ profiles: number; matches: number }> {
+async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectIndexItem): Promise<{ profiles: number; matches: number; restoreReport: any }> {
   const restoreAuth = rememberAuthKeys();
+  let restoreReport: any = null;
   const normalized = unwrapSnapshotEnvelope(payload);
   const summary = summarizeSnapshot(normalized);
 
@@ -331,14 +332,14 @@ async function restoreDownloadedCloudSnapshot(payload: any, slot: CloudObjectInd
     const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(payload), mode: "merge", rebuild: true });
     if (!restored.ok) throw new Error(restored.error || "Restauration cloud impossible.");
   } else {
-    await importCloudSnapshot(normalized, { mode: "merge" });
+    restoreReport = await importCloudSnapshot(normalized, { mode: "merge" });
   }
 
   restoreAuth();
   writeStorageKey(`${AUTO_RESTORE_PREFIX}:imported:${String(slot.id || "")}`, String(Date.now()));
   try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason: "cloud-auto-restore" } })); } catch {}
   try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason: "cloud-auto-restore" } })); } catch {}
-  return summary;
+  return { ...summary, restoreReport };
 }
 
 async function restoreFromR2NasMirrorFallback(userId: string, force = false): Promise<boolean> {
@@ -448,7 +449,12 @@ export async function maybeAutoRestoreCloudForSignedInUser(
       }
 
       removeStorageKey(`${AUTO_RESTORE_DECLINED_PREFIX}:${uid}`);
-      await restoreDownloadedCloudSnapshot(payload, latest);
+      const restoreResult = await restoreDownloadedCloudSnapshot(payload, latest);
+      const portableRestore = restoreResult?.restoreReport?.portable;
+      if (portableRestore && portableRestore.ok === false) {
+        removeStorageKey(markerKey);
+        throw new Error(`Restauration portable incomplète : ${portableRestore.errors?.join(" ; ") || "vérification échouée"}`);
+      }
 
       // Ne jamais mémoriser "restauré" si les données critiques attendues ne
       // sont pas réellement relisibles après import. Sinon une panne partielle

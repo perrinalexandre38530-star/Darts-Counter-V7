@@ -40,6 +40,39 @@ function restoreInProgress(): boolean {
   try { return sessionStorage.getItem(RESTORE_GUARD_KEY) === "1"; } catch { return false; }
 }
 
+function snapshotStatsSummary(snapshot: any): { statsBlocks: number; statsMatches: number } {
+  const seen = new WeakSet<object>();
+  let statsBlocks = 0;
+  let statsMatches = 0;
+  const walk = (node: any, path = "") => {
+    if (!node || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node.slice(0, 500)) walk(item, path);
+      return;
+    }
+    for (const [key, value] of Object.entries<any>(node)) {
+      const low = String(key || "").toLowerCase();
+      const nextPath = path ? `${path}.${key}` : key;
+      if (low.includes("stats") && value && typeof value === "object") statsBlocks += 1;
+      if (low === "dc_stats_index_v2" || low.includes("stats_index")) {
+        const explicit = Number(value?.totals?.matches || value?.statsMatches || 0) || 0;
+        const ids = Array.isArray(value?.matchIds)
+          ? value.matchIds.length
+          : value?.matchIdsByMode && typeof value.matchIdsByMode === "object"
+            ? Object.values<any>(value.matchIdsByMode).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
+            : 0;
+        statsMatches = Math.max(statsMatches, explicit, ids);
+        if (statsMatches > 0) statsBlocks = Math.max(statsBlocks, 1);
+      }
+      walk(value, nextPath);
+    }
+  };
+  try { walk(snapshot); } catch {}
+  return { statsBlocks, statsMatches };
+}
+
 export function snapshotSummary(snapshot: any) {
   const store = (() => {
     const idb = snapshot?.idb && typeof snapshot.idb === "object" ? snapshot.idb : {};
@@ -48,6 +81,7 @@ export function snapshotSummary(snapshot: any) {
     return found?.[1] || snapshot?.store || snapshot?.data || {};
   })();
   const portable = snapshot?.portableAccountData || {};
+  const statsSummary = snapshotStatsSummary(snapshot);
   const historyRows = snapshot?.history?.rows && typeof snapshot.history.rows === "object"
     ? Object.keys(snapshot.history.rows).length
     : 0;
@@ -59,6 +93,8 @@ export function snapshotSummary(snapshot: any) {
     galleryItems: Number(portable?.counts?.galleryItems || 0) || 0,
     tournaments: Number(portable?.counts?.tournaments || snapshot?.tournaments?.counts?.tournaments || 0) || 0,
     matches: historyRows,
+    statsBlocks: statsSummary.statsBlocks,
+    statsMatches: statsSummary.statsMatches,
   };
 }
 

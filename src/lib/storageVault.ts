@@ -252,6 +252,15 @@ export function summarizeVaultPayload(value: any): VaultSummary {
       const low = k.toLowerCase();
       if (low.includes("profile") && Array.isArray(v)) profiles = Math.max(profiles, v.length);
       if ((low === "stats" || low.includes("stats")) && v && typeof v === "object") statsBlocks += 1;
+      if (low === "dc_stats_index_v2" || low.includes("stats_index")) {
+        const indexedMatches = Number((v as any)?.totals?.matches || (v as any)?.statsMatches || 0) || 0;
+        const indexedIds = Array.isArray((v as any)?.matchIds)
+          ? (v as any).matchIds.length
+          : (v as any)?.matchIdsByMode && typeof (v as any).matchIdsByMode === "object"
+            ? Object.values<any>((v as any).matchIdsByMode).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
+            : 0;
+        if (Math.max(indexedMatches, indexedIds) > 0) statsBlocks = Math.max(statsBlocks, 1);
+      }
       if (/media|avatar|photo|image/.test(low) && typeof v === "string" && v) mediaRefs += /\/media\//.test(v) ? 1 : 0;
       if (/history|match|matches|partie|saved/.test(low) && Array.isArray(v)) probable.add("parties");
       walk(v, path ? `${path}.${k}` : k);

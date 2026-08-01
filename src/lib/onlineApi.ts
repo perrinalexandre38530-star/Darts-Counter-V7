@@ -127,6 +127,19 @@ export type AuthSession = {
   supabaseUserId?: string | null;
 };
 
+export type PrivateNasCapability = {
+  checked: boolean;
+  authorized: boolean;
+  reason?: string | null;
+  supabaseUserId?: string | null;
+  canonicalUserId?: string | null;
+  user?: UserAuth | null;
+  profile?: OnlineProfile | null;
+  storage?: any;
+  profileSync?: any;
+  checkedAt: number;
+};
+
 export type SignupPayload = {
   email?: string;
   nickname: string;
@@ -251,13 +264,21 @@ function useNasOnlineBackend(): boolean {
 
 function shouldUsePrivateNasDataSync(): boolean {
   if (isNasProviderEnabled()) return true;
-  if (!isNasDataSyncEnabled()) return false;
-  try { return loadStoragePrefs().selectedDestination === "founder_nas"; } catch { return false; }
+  try {
+    // Le choix explicite NAS fondateur doit fonctionner dans la version Play Store
+    // publique sans activer VITE_NAS_DATA_SYNC pour tous les utilisateurs. Le droit
+    // réel reste contrôlé côté serveur par /auth/supabase/bridge.
+    if (loadStoragePrefs().selectedDestination === "founder_nas") return true;
+  } catch {}
+  return isNasDataSyncEnabled();
 }
 
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
+const PRIVATE_NAS_CAPABILITY_PREFIX = "dc_private_nas_capability_v1:";
+const PRIVATE_NAS_CAPABILITY_TTL_MS = 5 * 60 * 1000;
+let __privateNasCapabilityMemory: PrivateNasCapability | null = null;
 const AUTH_LOCAL_KEYS_TO_PURGE = [
   LS_AUTH_KEY,
   NAS_TOKEN_KEY,
@@ -699,6 +720,118 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
   return null;
 }
 
+function privateNasCapabilityCacheKey(supabaseUserId: string): string {
+  return `${PRIVATE_NAS_CAPABILITY_PREFIX}${String(supabaseUserId || "unknown")}`;
+}
+
+function readPrivateNasCapabilityCache(supabaseUserId: string): PrivateNasCapability | null {
+  if (__privateNasCapabilityMemory?.supabaseUserId === supabaseUserId && Date.now() - __privateNasCapabilityMemory.checkedAt < PRIVATE_NAS_CAPABILITY_TTL_MS) {
+    return __privateNasCapabilityMemory;
+  }
+  try {
+    const raw = localStorage.getItem(privateNasCapabilityCacheKey(supabaseUserId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PrivateNasCapability;
+    if (!parsed?.checkedAt || Date.now() - parsed.checkedAt >= PRIVATE_NAS_CAPABILITY_TTL_MS) return null;
+    __privateNasCapabilityMemory = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePrivateNasCapabilityCache(capability: PrivateNasCapability): PrivateNasCapability {
+  __privateNasCapabilityMemory = capability;
+  try {
+    if (capability.supabaseUserId) {
+      localStorage.setItem(privateNasCapabilityCacheKey(capability.supabaseUserId), JSON.stringify(capability));
+    }
+  } catch {}
+  return capability;
+}
+
+function mergeOnlineProfiles(primary: OnlineProfile | null, fallback: OnlineProfile | null): OnlineProfile | null {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  const meaningful = (value: any) => value !== undefined && value !== null && (!(typeof value === "string") || value.trim() !== "");
+  const merged: any = { ...fallback };
+  for (const [key, value] of Object.entries(primary as any)) {
+    if (meaningful(value)) merged[key] = value;
+  }
+  merged.preferences = { ...((fallback as any)?.preferences || {}), ...((primary as any)?.preferences || {}) };
+  merged.privateInfo = { ...((fallback as any)?.privateInfo || {}), ...((primary as any)?.privateInfo || {}) };
+  return merged as OnlineProfile;
+}
+
+async function probePrivateNasCapabilityForSession(
+  session: any,
+  nickname: string,
+  opts?: { force?: boolean; bootstrapProfile?: boolean }
+): Promise<PrivateNasCapability> {
+  const supabaseUserId = String(session?.user?.id || "").trim();
+  if (!supabaseUserId || !session?.access_token) {
+    return { checked: true, authorized: false, reason: "no_supabase_session", supabaseUserId: supabaseUserId || null, checkedAt: Date.now() };
+  }
+  if (!opts?.force) {
+    const cached = readPrivateNasCapabilityCache(supabaseUserId);
+    if (cached) return cached;
+  }
+
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl && typeof window !== "undefined" ? window.setTimeout(() => ctrl.abort(), 4500) : null;
+  try {
+    const res = await fetch(`${getApiUrl()}/auth/supabase/nas-capability`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: session.access_token,
+        nickname,
+        bootstrapProfile: opts?.bootstrapProfile !== false,
+      }),
+      signal: ctrl?.signal,
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!res.ok) throw new Error(json?.message || json?.error || text || `Capability NAS HTTP ${res.status}`);
+    return writePrivateNasCapabilityCache({
+      checked: true,
+      authorized: json?.authorized === true,
+      reason: json?.reason || null,
+      supabaseUserId,
+      canonicalUserId: String(json?.canonicalUserId || "").trim() || null,
+      user: json?.user || null,
+      profile: json?.profile || null,
+      storage: json?.storage || null,
+      profileSync: json?.profileSync || null,
+      checkedAt: Date.now(),
+    });
+  } catch (error: any) {
+    const cached = readPrivateNasCapabilityCache(supabaseUserId);
+    if (cached?.authorized) return cached;
+    return {
+      checked: false,
+      authorized: false,
+      reason: error?.name === "AbortError" ? "capability_timeout" : "capability_unavailable",
+      supabaseUserId,
+      checkedAt: Date.now(),
+    };
+  } finally {
+    if (timer && typeof window !== "undefined") window.clearTimeout(timer);
+  }
+}
+
+async function getPrivateNasCapability(opts?: { force?: boolean }): Promise<PrivateNasCapability> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data?.session?.user) {
+    return { checked: true, authorized: false, reason: "not_signed_in", checkedAt: Date.now() };
+  }
+  const user = data.session.user;
+  const meta = (user.user_metadata || {}) as any;
+  const nickname = meta?.nickname || meta?.displayName || user.email || "Player";
+  return probePrivateNasCapabilityForSession(data.session, nickname, { force: opts?.force, bootstrapProfile: true });
+}
+
 async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, profile: OnlineProfile | null, force = false): Promise<AuthSession | null> {
   // En mode public/hybride, Supabase authentifie l’utilisateur, mais le backend NAS
   // reste l’API de contrôle des quotas et des objets R2. On échange donc le token
@@ -893,7 +1026,16 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  const profile = await getOrCreateProfile(supabaseUserId, nickname);
+  let profile = await getOrCreateProfile(supabaseUserId, nickname);
+  let privateNasCapability: PrivateNasCapability | null = null;
+  try {
+    privateNasCapability = await probePrivateNasCapabilityForSession(session, nickname, { bootstrapProfile: true });
+    if (privateNasCapability.authorized && privateNasCapability.profile) {
+      profile = mergeOnlineProfiles(privateNasCapability.profile, profile);
+    }
+  } catch (capabilityError) {
+    console.warn("[onlineApi] private NAS capability probe ignored", capabilityError);
+  }
 
   try {
     const bridged = await bridgeSupabaseSessionToNas(session, supabaseUserAuth, profile);
@@ -913,7 +1055,7 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
     console.warn("[onlineApi] private NAS bridge unavailable; keeping Supabase session", bridgeError);
   }
 
-  const canonicalUserId = resolveCanonicalUserId(user) || supabaseUserId;
+  const canonicalUserId = String(privateNasCapability?.canonicalUserId || resolveCanonicalUserId(user) || supabaseUserId);
   rememberCanonicalUserMapping({ email: user.email, canonicalUserId, supabaseUserId });
 
   const authSession: AuthSession = {
@@ -1100,8 +1242,10 @@ async function switchAccountInfrastructure(target: "public" | "nas"): Promise<Au
   const session = data?.session; const user = session?.user;
   if (!session || !user) throw new Error("Aucune session publique disponible pour ouvrir le NAS privé.");
   const meta = (user.user_metadata || {}) as any; const nickname = meta?.nickname || meta?.displayName || user.email || "Player";
+  const capability = await probePrivateNasCapabilityForSession(session, nickname, { force: true, bootstrapProfile: true });
+  if (!capability.authorized) throw new Error("Ce compte n'est pas autorisé à accéder au NAS privé du fondateur.");
   const userAuth: UserAuth = { id: String(user.id), email: user.email ?? undefined, nickname, createdAt: user.created_at ? Date.parse(user.created_at) : now() };
-  const profile = await getOrCreateProfile(String(user.id), nickname);
+  const profile = mergeOnlineProfiles(capability.profile || null, await getOrCreateProfile(String(user.id), nickname));
   const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile, true);
   if (!bridged?.token) throw new Error("Le NAS privé n'a pas pu être activé pour ce compte.");
   bridged.authProvider = "nas"; bridged.degradedMode = false; saveAuthToLS(bridged); markAuthReady(true); return bridged;
@@ -2111,6 +2255,7 @@ export const onlineApi = {
   signupWithInvitation,
   loginWithInvitation,
   switchAccountInfrastructure,
+  getPrivateNasCapability,
   restoreSession,
   ensureAnonymousSession,
   ensureAutoSession,

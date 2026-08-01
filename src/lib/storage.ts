@@ -2528,8 +2528,115 @@ async function restoreGalleryMetadata(portable: any): Promise<number> {
   return restored;
 }
 
-async function restorePortableAccountData(portable: any): Promise<void> {
-  if (!portable || typeof portable !== "object") return;
+export type PortableAccountRestoreCounts = {
+  profiles: number;
+  bots: number;
+  dartSets: number;
+  teams: number;
+  galleryItems: number;
+  tournaments: number;
+};
+
+export type PortableAccountRestoreReport = {
+  ok: boolean;
+  expected: PortableAccountRestoreCounts;
+  restored: PortableAccountRestoreCounts;
+  errors: string[];
+  restoredAt: string;
+};
+
+export type CloudSnapshotImportReport = {
+  mode: "replace" | "merge";
+  portable: PortableAccountRestoreReport | null;
+  runtimeRefreshed: boolean;
+};
+
+function emptyPortableCounts(): PortableAccountRestoreCounts {
+  return { profiles: 0, bots: 0, dartSets: 0, teams: 0, galleryItems: 0, tournaments: 0 };
+}
+
+function expectedPortableCounts(portable: any): PortableAccountRestoreCounts {
+  const counts = portable?.counts && typeof portable.counts === "object" ? portable.counts : {};
+  const galleryObjects = portable?.avatarGalleries && typeof portable.avatarGalleries === "object"
+    ? Object.values<any>(portable.avatarGalleries).reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0)
+    : 0;
+  return {
+    profiles: Math.max(Number(counts.profiles || 0), Array.isArray(portable?.profiles) ? portable.profiles.length : 0),
+    bots: Math.max(Number(counts.bots || 0), Array.isArray(portable?.bots) ? portable.bots.length : 0),
+    dartSets: Math.max(Number(counts.dartSets || 0), Array.isArray(portable?.dartSets) ? portable.dartSets.length : 0),
+    teams: Math.max(Number(counts.teams || 0), Array.isArray(portable?.teams) ? portable.teams.length : 0),
+    galleryItems: Math.max(
+      Number(counts.galleryItems || 0),
+      galleryObjects + (Array.isArray(portable?.legacyAiGallery) ? portable.legacyAiGallery.length : 0),
+    ),
+    tournaments: Math.max(
+      Number(counts.tournaments || 0),
+      Number(portable?.tournaments?.counts?.tournaments || portable?.tournaments?.tournaments?.length || 0),
+    ),
+  };
+}
+
+function profileValueIsMeaningful(value: any): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function mergePortableProfile(local: any, remote: any): any {
+  const out: any = { ...(local || {}) };
+  for (const [key, value] of Object.entries(remote || {})) {
+    if (profileValueIsMeaningful(value) || !profileValueIsMeaningful(out[key])) out[key] = value;
+  }
+  out.privateInfo = { ...((local as any)?.privateInfo || {}), ...((remote as any)?.privateInfo || {}) };
+  out.preferences = { ...((local as any)?.preferences || {}), ...((remote as any)?.preferences || {}) };
+  return out;
+}
+
+async function countRestoredPortableData(): Promise<PortableAccountRestoreCounts> {
+  const store: any = (await loadStore().catch(() => null)) || {};
+  const gallery = exportAvatarGalleryMetadata();
+  const tournaments = await exportLocalTournamentsSnapshot().catch(() => null);
+  return {
+    profiles: Array.isArray(store?.profiles) ? store.profiles.filter((p: any) => p && String(p.id || "").trim()).length : 0,
+    bots: Array.isArray(loadStoredBots()) ? loadStoredBots().length : 0,
+    dartSets: Array.isArray(getAllDartSets()) ? getAllDartSets().length : 0,
+    teams: Array.isArray(loadStoredTeams()) ? loadStoredTeams().length : 0,
+    galleryItems: Number(gallery.count || 0),
+    tournaments: Number(tournaments?.counts?.tournaments || tournaments?.tournaments?.length || 0) || 0,
+  };
+}
+
+async function revalidatePortableRestoreReport(report: PortableAccountRestoreReport | null): Promise<PortableAccountRestoreReport | null> {
+  if (!report) return null;
+  report.restored = await countRestoredPortableData();
+  const countErrorPrefix = /^(profiles|bots|dartSets|teams|galleryItems|tournaments): /;
+  report.errors = report.errors.filter((message) => !countErrorPrefix.test(String(message || "")));
+  for (const key of Object.keys(report.expected) as Array<keyof PortableAccountRestoreCounts>) {
+    if (report.expected[key] > 0 && report.restored[key] < report.expected[key]) {
+      report.errors.push(`${key}: ${report.expected[key]} attendu(s), ${report.restored[key]} relu(s)`);
+    }
+  }
+  report.ok = report.errors.length === 0;
+  report.restoredAt = new Date().toISOString();
+  return report;
+}
+
+async function restorePortableAccountData(portable: any): Promise<PortableAccountRestoreReport | null> {
+  if (!portable || typeof portable !== "object") return null;
+  const report: PortableAccountRestoreReport = {
+    ok: true,
+    expected: expectedPortableCounts(portable),
+    restored: emptyPortableCounts(),
+    errors: [],
+    restoredAt: new Date().toISOString(),
+  };
+  const recordError = (scope: string, error: any) => {
+    const message = `${scope}: ${String(error?.message || error || "erreur inconnue")}`;
+    report.errors.push(message);
+    console.warn(`[storage] ${scope}`, error);
+  };
 
   try {
     const current: any = (await loadStore().catch(() => null)) || {};
@@ -2542,13 +2649,7 @@ async function restorePortableAccountData(portable: any): Promise<void> {
     for (const remote of remoteProfiles) {
       const id = String(remote?.id || "").trim();
       if (!id) continue;
-      const local = byId.get(id) || {};
-      byId.set(id, {
-        ...(local || {}),
-        ...(remote || {}),
-        privateInfo: { ...((local as any)?.privateInfo || {}), ...((remote as any)?.privateInfo || {}) },
-        preferences: { ...((local as any)?.preferences || {}), ...((remote as any)?.preferences || {}) },
-      });
+      byId.set(id, mergePortableProfile(byId.get(id) || {}, remote));
     }
     let mergedStore: any = {
       ...(current || {}),
@@ -2558,43 +2659,84 @@ async function restorePortableAccountData(portable: any): Promise<void> {
     if (Array.isArray(portable?.bots)) mergedStore.bots = portable.bots;
     if (Array.isArray(portable?.dartSets)) mergedStore.dartSets = portable.dartSets;
     if (Array.isArray(portable?.teams)) mergedStore.teams = portable.teams;
-
     const hydrated = await hydrateStoreUserMedia(mergedStore).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
     await saveStore(mergedStore as any, { skipAsyncNormalize: true });
   } catch (error) {
-    console.warn("[storage] portable account store restore failed", error);
+    recordError("portable account store restore failed", error);
   }
 
   try {
     if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
-  } catch (error) { console.warn("[storage] portable bots restore failed", error); }
+  } catch (error) { recordError("portable bots restore failed", error); }
   try {
     if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
-  } catch (error) { console.warn("[storage] portable dartsets restore failed", error); }
+  } catch (error) { recordError("portable dartsets restore failed", error); }
   try {
     if (Array.isArray(portable?.teams)) saveStoredTeams(portable.teams as any[]);
-  } catch (error) { console.warn("[storage] portable teams restore failed", error); }
+  } catch (error) { recordError("portable teams restore failed", error); }
   try {
     const critical = portable?.criticalLocalStorage && typeof portable.criticalLocalStorage === "object" ? portable.criticalLocalStorage : {};
     for (const [key, value] of Object.entries<any>(critical)) {
       if (!CRITICAL_LOCAL_STORAGE_KEYS.includes(key as any)) continue;
       if (typeof value === "string") localStorage.setItem(key, value);
     }
-  } catch (error) { console.warn("[storage] portable critical localStorage restore failed", error); }
+  } catch (error) { recordError("portable critical localStorage restore failed", error); }
   try {
     await restoreGalleryMetadata(portable);
-  } catch (error) { console.warn("[storage] portable gallery restore failed", error); }
+  } catch (error) { recordError("portable gallery restore failed", error); }
   try {
     if (portable?.tournaments && typeof portable.tournaments === "object") {
       await importLocalTournamentsSnapshot(portable.tournaments, { replace: false });
     }
-  } catch (error) { console.warn("[storage] portable competitions restore failed", error); }
+  } catch (error) { recordError("portable competitions restore failed", error); }
 
-  try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
-  try { window.dispatchEvent(new Event("dc-dartsets-updated")); } catch {}
-  try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
-  try { window.dispatchEvent(new Event("dc-teams-updated")); } catch {}
+  await revalidatePortableRestoreReport(report);
+
+  if (typeof window !== "undefined") {
+    const events = [
+      "dc-store-updated",
+      "dc-history-updated",
+      "dc-dartsets-updated",
+      "dc:bots-changed",
+      "dc-teams-updated",
+      "dc:teams-changed",
+      "dc:avatar-gallery-changed",
+      "dc-tournaments-updated",
+      "dc-competitions-updated",
+    ];
+    for (const eventName of events) {
+      try { window.dispatchEvent(new CustomEvent(eventName, { detail: { reason: "portable-account-restore", report } })); } catch {}
+    }
+    try { window.dispatchEvent(new CustomEvent("dc-portable-account-restored", { detail: report })); } catch {}
+  }
+  return report;
+}
+
+export async function refreshRuntimeStoreAfterRestore(reason = "snapshot-restore"): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const restored: any = await loadStore().catch(() => null);
+  if (!restored) return false;
+  const appStore: any = (window as any).__appStore;
+  if (appStore) {
+    if (typeof appStore.update === "function") appStore.update(() => restored);
+    else if (typeof appStore.setState === "function") appStore.setState(restored);
+  }
+  const events = [
+    "dc-store-updated",
+    "dc-history-updated",
+    "dc-dartsets-updated",
+    "dc:bots-changed",
+    "dc-teams-updated",
+    "dc:teams-changed",
+    "dc:avatar-gallery-changed",
+    "dc-tournaments-updated",
+    "dc-competitions-updated",
+  ];
+  for (const eventName of events) {
+    try { window.dispatchEvent(new CustomEvent(eventName, { detail: { reason } })); } catch {}
+  }
+  return true;
 }
 
 // ============================================================
@@ -2787,9 +2929,11 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   }
 }
 
-export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<void> {
+export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<CloudSnapshotImportReport> {
   dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
+  let portableReport: PortableAccountRestoreReport | null = null;
+  let runtimeRefreshed = false;
   try { sessionStorage.setItem("dc_cloud_restore_in_progress_v2", "1"); } catch {}
 
   try {
@@ -2819,9 +2963,16 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // BLOC CANONIQUE DES DONNÉES DE COMPTE : restaure explicitement les
   // catégories que les anciens snapshots pouvaient laisser vides.
   try {
-    await restorePortableAccountData((dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null);
+    portableReport = await restorePortableAccountData((dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null);
   } catch (portableError) {
     console.warn("[storage] portable account data import skipped", portableError);
+    portableReport = {
+      ok: false,
+      expected: emptyPortableCounts(),
+      restored: emptyPortableCounts(),
+      errors: [String((portableError as any)?.message || portableError)],
+      restoredAt: new Date().toISOString(),
+    };
   }
 
   // ✅ Important: le cloud peut contenir des doublons (ex: plusieurs profils locaux
@@ -2861,9 +3012,12 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
       console.warn("[storage] restore teams from snapshot failed", e);
     }
   }
+  portableReport = await revalidatePortableRestoreReport(portableReport);
+  runtimeRefreshed = await refreshRuntimeStoreAfterRestore("cloud-snapshot-import").catch(() => false);
   } finally {
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
   }
+  return { mode, portable: portableReport, runtimeRefreshed };
 }
 
 // ------------------------------------------------------------

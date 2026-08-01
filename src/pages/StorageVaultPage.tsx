@@ -537,6 +537,8 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
   const profilesCount = Number(nested.profiles ?? meta.profilesCount ?? meta.profiles ?? 0) || 0;
   const dartsetsCount = Number(meta.dartsetsCount ?? 0) || 0;
   const rawSize = Number(nested.bytes ?? meta.rawSizeBytes ?? meta.originalByteSize ?? item?.size_bytes ?? 0) || 0;
+  const statsMatches = Number(nested.statsMatches ?? meta.statsMatches ?? 0) || 0;
+  const statsBlocks = Math.max(Number(nested.statsBlocks ?? meta.statsBlocks ?? 0) || 0, statsMatches > 0 ? 1 : 0);
   if (!historyCount && !profilesCount && !dartsetsCount && !rawSize) return null;
   return {
     bytes: rawSize,
@@ -544,7 +546,7 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
     profiles: profilesCount,
     matches: historyCount,
     historyRows: historyCount,
-    statsBlocks: Number(nested.statsBlocks || 0) || 0,
+    statsBlocks,
     mediaRefs: Number(nested.mediaRefs || 0) || 0,
     dataImages: Number(nested.dataImages || 0) || 0,
     sports: Array.isArray(nested.sports) ? nested.sports : [],
@@ -554,6 +556,7 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
       historyCount ? "historique réel" : "",
       profilesCount ? "profils" : "",
       dartsetsCount ? "dartsets" : "",
+      statsBlocks ? "stats" : "",
     ].filter(Boolean),
   };
 }
