@@ -12,9 +12,17 @@ export type VaultSummary = {
   profiles: number;
   matches: number;
   historyRows: number;
+  /** Nombre de parties possédant des statistiques/télémétrie réellement exploitables. */
+  statsMatches?: number;
   statsBlocks: number;
   mediaRefs: number;
   dataImages: number;
+  images?: number;
+  teams?: number;
+  bots?: number;
+  dartsets?: number;
+  visits?: number;
+  darts?: number;
   sports: string[];
   names: string[];
   exportedAt?: string | null;
@@ -45,7 +53,7 @@ export type MemorySlot = {
   createdAt: string;
   updatedAt: string;
   label: string;
-  source: "local" | "before-restore" | "manual";
+  source: "local" | "before-restore" | "before-nas-backup" | "manual";
   payload: any;
   summary: VaultSummary;
 };
@@ -183,6 +191,91 @@ function looksLikeMatchObject(obj: any): boolean {
   return !!((hasSport && (hasPlayers || hasScore)) || (hasMatchId && hasPlayers && hasScore));
 }
 
+function arrayLength(value: any): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function historyRowsFromSnapshot(snapshot: any): any[] {
+  const rows = snapshot?.history?.rows;
+  if (Array.isArray(rows)) return rows;
+  if (rows && typeof rows === "object") return Object.values(rows);
+  if (Array.isArray(snapshot?.history)) return snapshot.history;
+  if (Array.isArray(snapshot?.matches)) return snapshot.matches;
+  return [];
+}
+
+function telemetryArrayLength(value: any): number {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object") return Object.keys(value).length;
+  return 0;
+}
+
+function matchTelemetrySummary(match: any): { usable: boolean; visits: number; darts: number } {
+  if (!match || typeof match !== "object") return { usable: false, visits: 0, darts: 0 };
+  const candidates = [
+    match,
+    match.summary,
+    match.stats,
+    match.game,
+    match.resume,
+    match.__legStats,
+    match.telemetry,
+  ].filter((value) => value && typeof value === "object");
+
+  let visits = 0;
+  let darts = 0;
+  let usable = false;
+  const seen = new Set<any>();
+
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    const visitCollections = [
+      candidate.visitHistory,
+      candidate.visitsHistory,
+      candidate.visits,
+      candidate.volleys,
+      candidate.vollees,
+      candidate.rounds,
+      candidate.turns,
+    ];
+    const dartCollections = [
+      candidate.dartsDetail,
+      candidate.darts,
+      candidate.throws,
+      candidate.hits,
+      candidate.dartHits,
+    ];
+    visits = Math.max(visits, ...visitCollections.map(telemetryArrayLength));
+    darts = Math.max(darts, ...dartCollections.map(telemetryArrayLength));
+
+    const keys = Object.keys(candidate).map((key) => key.toLowerCase());
+    if (keys.some((key) => /avg|average|checkout|bestvisit|hitsbysegment|dartdetail|visit|volley|volee|throw|bull|double|triple/.test(key))) {
+      usable = true;
+    }
+  }
+
+  if (visits > 0 || darts > 0) usable = true;
+  if (darts <= 0 && visits > 0) darts = visits * 3;
+  return { usable, visits, darts };
+}
+
+function statsIndexMatchCount(snapshot: any): number {
+  const idb = snapshot?.idb;
+  if (!idb || typeof idb !== "object") return 0;
+  let best = 0;
+  for (const [key, value] of Object.entries<any>(idb)) {
+    if (!String(key).includes("stats_index")) continue;
+    const direct = Number(value?.totals?.matches || value?.statsMatches || 0) || 0;
+    const grouped = value?.matchIdsByMode && typeof value.matchIdsByMode === "object"
+      ? Object.values<any>(value.matchIdsByMode).reduce((sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0), 0)
+      : 0;
+    const ids = Array.isArray(value?.matchIds) ? value.matchIds.length : 0;
+    best = Math.max(best, direct, grouped, ids);
+  }
+  return best;
+}
+
 export function summarizeVaultPayload(value: any): VaultSummary {
   const root = tryParse(value);
   const seen = new WeakSet<object>();
@@ -269,6 +362,68 @@ export function summarizeVaultPayload(value: any): VaultSummary {
 
   walk(root);
 
+  const portable = root?.portableAccountData && typeof root.portableAccountData === "object"
+    ? root.portableAccountData
+    : {};
+  const portableCounts = portable?.counts && typeof portable.counts === "object" ? portable.counts : {};
+  const store = root?.store && typeof root.store === "object"
+    ? root.store
+    : root?.data && typeof root.data === "object"
+      ? root.data
+      : {};
+
+  const teams = Math.max(
+    Number(portableCounts.teams || 0) || 0,
+    arrayLength(portable.teams),
+    arrayLength(store.teams),
+    arrayLength(root?.teams),
+  );
+  const bots = Math.max(
+    Number(portableCounts.bots || 0) || 0,
+    arrayLength(portable.bots),
+    arrayLength(store.bots),
+    arrayLength(store.cpuBots),
+    arrayLength(root?.bots),
+  );
+  const dartsets = Math.max(
+    Number(portableCounts.dartSets || portableCounts.dartsets || 0) || 0,
+    arrayLength(portable.dartSets),
+    arrayLength(portable.dartsets),
+    arrayLength(store.dartSets),
+    arrayLength(store.dartsets),
+    arrayLength(root?.dartSets),
+    arrayLength(root?.dartsets),
+  );
+  profiles = Math.max(
+    profiles,
+    Number(portableCounts.profiles || 0) || 0,
+    arrayLength(portable.profiles),
+    arrayLength(root?.localProfiles),
+    arrayLength(store.profiles),
+  );
+
+  const historyMatches = historyRowsFromSnapshot(root);
+  let statsMatches = 0;
+  let visits = 0;
+  let darts = 0;
+  for (const match of historyMatches) {
+    const telemetry = matchTelemetrySummary(match);
+    if (telemetry.usable) statsMatches += 1;
+    visits += telemetry.visits;
+    darts += telemetry.darts;
+  }
+  statsMatches = Math.max(statsMatches, statsIndexMatchCount(root));
+  if (statsMatches > 0) statsBlocks = statsMatches;
+
+  const mediaVaultCount = root?.userMediaFallbacks?.media && typeof root.userMediaFallbacks.media === "object"
+    ? Object.keys(root.userMediaFallbacks.media).length
+    : 0;
+  const avatarFallbackCount = root?.avatarFallbacks?.profiles && typeof root.avatarFallbacks.profiles === "object"
+    ? Object.keys(root.avatarFallbacks.profiles).length
+    : 0;
+  const galleryCount = Number(portableCounts.galleryItems || 0) || 0;
+  const images = Math.max(mediaRefs + dataImages, mediaVaultCount + avatarFallbackCount, galleryCount);
+
   if (profiles > 0) probable.add("profils");
   if (matches > 0 || historyRows > 0) probable.add("parties");
   if (statsBlocks > 0) probable.add("stats");
@@ -280,9 +435,16 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     profiles,
     matches,
     historyRows,
+    statsMatches,
     statsBlocks,
     mediaRefs,
     dataImages,
+    images,
+    teams,
+    bots,
+    dartsets,
+    visits,
+    darts,
     sports,
     names,
     exportedAt,
@@ -547,7 +709,7 @@ export async function scanLocalStorageAndIndexedDb(): Promise<StorageBlock[]> {
   ]);
   const slotBlocks: StorageBlock[] = slots.map((slot) => ({
     id: slot.id,
-    source: "localSlot",
+    source: "localSlot" as const,
     title: slot.label || "Bloc local",
     subtitle: slot.source === "before-restore" ? "Sauvegarde automatique avant restauration" : "Sauvegarde locale manuelle",
     location: `${VAULT_DB}/${VAULT_STORE}/${slot.id}`,

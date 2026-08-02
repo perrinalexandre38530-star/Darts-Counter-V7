@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">MULTISPORTS SCORING</string>
-    <string name="title_activity_main">MULTISPORTS SCORING</string>
-    <string name="package_name">com.multisportsscoring.app</string>
-    <string name="custom_url_scheme">com.multisportsscoring.app</string>
-</resources>

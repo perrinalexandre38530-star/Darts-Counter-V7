@@ -162,6 +162,54 @@ export async function chooseExternalBackupFileWithJson(snapshotJson: string, rea
   }
 }
 
+/**
+ * Ouvre uniquement le sélecteur système et mémorise la cible choisie.
+ *
+ * Contrairement à chooseExternalBackupFileWithJson(), cette fonction n'écrit
+ * aucune sauvegarde. Elle est utilisée par l'écran Sauvegarde au moment où
+ * l'utilisateur sélectionne une destination fichier / SD / USB / cloud perso.
+ * Le vrai export reste déclenché ensuite par le bouton principal.
+ */
+export async function chooseExternalBackupTargetOnly(
+  suggestedName = "multisports-scoring-backup.json"
+): Promise<ExternalBackupStatus> {
+  if (!supportsFilePicker()) {
+    return writeStatus({
+      ...readStatus(),
+      supported: false,
+      configured: false,
+      permission: "unsupported",
+      fileName: null,
+      lastError: null,
+    });
+  }
+
+  try {
+    const handle = await (window as any).showSaveFilePicker({
+      suggestedName,
+      types: [{ description: "Sauvegarde Multisports", accept: { "application/json": [".json", ".dcbackup"] } }],
+    });
+    await putHandle(handle);
+    return writeStatus({
+      ...readStatus(),
+      configured: true,
+      fileName: String(handle?.name || suggestedName),
+      permission: "granted",
+      lastError: null,
+    });
+  } catch (error: any) {
+    if (String(error?.name || "") === "AbortError") {
+      return writeStatus({ ...readStatus(), lastError: null });
+    }
+    return writeStatus({
+      ...readStatus(),
+      configured: false,
+      permission: "unknown",
+      lastError: String(error?.message || error || "Sélection impossible"),
+    });
+  }
+}
+
 export async function downloadExternalBackupJson(snapshotJson: string, reason = "manual-download"): Promise<ExternalBackupStatus> {
   try {
     const json = wrapPreparedSnapshotJson(snapshotJson, reason);

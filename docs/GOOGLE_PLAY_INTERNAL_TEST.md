@@ -1,30 +1,37 @@
-# MULTISPORTS SCORING — Google Play test interne
+# MULTISPORTS SCORING — Google Play test
+
+Version de référence : **1.0.0-rc2**  
+Code Google Play : **3**
+
+## Source unique de version
+
+La référence officielle du projet est :
+
+`config/release-version.json`
+
+Elle alimente automatiquement :
+
+- `package.json` ;
+- `package-lock.json` ;
+- `android/app/build.gradle` ;
+- le template Android `android/app/src/build.gradle` ;
+- la documentation de version.
+
+Pour réaligner le projet à tout moment :
+
+```powershell
+npm run version:sync
+npm run version:check
+```
 
 ## Identité Android figée
 
 - Application : **MULTISPORTS SCORING**
 - Package : `com.multisportsscoring.app`
-- Première version Play : `versionCode 1`, `versionName 1.0.0-rc1`
+- Version actuellement présente sur Google Play : `versionCode 3`, `versionName 1.0.0-rc2`
 - Artefact : Android App Bundle (`.aab`)
 
-Dès le premier artefact importé dans Play Console, le package ID est fixé pour cette application.
-
-## 1. Créer UNE FOIS la clé d'upload
-
-Dans PowerShell à la racine du projet :
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\create-android-upload-key.ps1
-```
-
-Le script crée localement :
-
-- `android/upload-keystore.jks`
-- `android/key.properties`
-
-Ces deux fichiers sont ignorés par Git. Ne jamais les envoyer dans un ZIP public, GitHub, Slack ou un ticket. Sauvegarder la clé et son mot de passe séparément et durablement.
-
-## 2. Construire l'AAB signé
+## Construire l’AAB signé
 
 ```powershell
 npm run android:play:aab
@@ -34,30 +41,25 @@ Le résultat attendu est :
 
 `android/app/build/outputs/bundle/release/app-release.aab`
 
-La commande vérifie TypeScript, la whitelist Store V1, AdMob, Billing, la signature et le certificat de l'AAB.
+Les `.aab`, `.apk`, dossiers `releases/` et clés de signature restent locaux et sont ignorés par Git.
 
-## 3. Importer dans Google Play Console
+## Prochaine Release Candidate
 
-Créer l'application **MULTISPORTS SCORING**, puis :
-
-`Tester et publier > Tests > Tests internes > Créer une version`
-
-Importer `app-release.aab`, ajouter la liste de testeurs et lancer le déploiement interne. Google Play App Signing doit rester activé (recommandé).
-
-## 4. Version suivante
-
-Chaque nouvel AAB destiné à Google Play doit avoir un `versionCode` supérieur. Exemple :
+Le prochain bundle Google Play devra utiliser un `versionCode` strictement supérieur à 3. Pour RC3 :
 
 ```powershell
-npm run android:version -- 2 1.0.0-rc2
+npm run android:version -- 4 1.0.0-rc3
+npm run version:check
 npm run android:play:aab
 ```
 
-Puis RC3 :
+La commande `android:version` met désormais à jour la source unique puis synchronise toutes les copies. Ne plus modifier `versionCode`, `versionName` ou `package.json` séparément.
 
-```powershell
-npm run android:version -- 3 1.0.0-rc3
-npm run android:play:aab
-```
+## Clé d’upload
 
-Ne jamais recréer une nouvelle clé d'upload à chaque version.
+Conserver localement :
+
+- `android/upload-keystore.jks` ;
+- `android/key.properties`.
+
+Ne jamais envoyer ces fichiers sur GitHub ou dans un ZIP public. Ne jamais recréer une nouvelle clé d’upload à chaque version.

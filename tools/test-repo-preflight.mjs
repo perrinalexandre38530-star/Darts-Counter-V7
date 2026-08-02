@@ -20,6 +20,10 @@ const gitignore = read('.gitignore');
 expect('.env est explicitement ignoré par Git', /^\.env\s*$/m.test(gitignore));
 expect('Les variantes .env.* sont ignorées', /^\.env\.\*\s*$/m.test(gitignore));
 expect('Un modèle env reste autorisé', /^!(?:\.env\.example|env\.example)\s*$/m.test(gitignore));
+expect('Les AAB sont ignorés', /^\*\.aab\s*$/m.test(gitignore));
+expect('Les APK sont ignorés', /^\*\.apk\s*$/m.test(gitignore));
+expect('Le dossier releases est ignoré', /^releases\/\s*$/m.test(gitignore));
+expect('La clé Android locale est ignorée', /^android\/key\.properties\s*$/m.test(gitignore) && /^android\/upload-keystore\.jks\s*$/m.test(gitignore));
 
 const pkg = json('package.json');
 const lock = json('package-lock.json');
@@ -34,6 +38,9 @@ for (const section of ['dependencies', 'devDependencies', 'optionalDependencies'
   }
 }
 expect('Lockfile npm v3 présent', Number(lock.lockfileVersion || 0) === 3);
+const release = json('config/release-version.json');
+expect('Version canonique package.json cohérente', pkg.version === release.versionName, `${pkg.version} != ${release.versionName}`);
+expect('Version canonique package-lock cohérente', lock.version === release.versionName && lockRoot.version === release.versionName);
 
 const workflow = read('.github/workflows/quality-gate.yml');
 expect('Quality Gate utilise Node 22+', /node-version:\s*(?:['"]?)(2[2-9]|[3-9]\d)/.test(workflow));

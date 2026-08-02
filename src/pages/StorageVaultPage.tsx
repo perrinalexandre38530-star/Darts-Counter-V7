@@ -79,6 +79,7 @@ import {
 import {
   chooseExternalBackupFile,
   chooseExternalBackupFileWithJson,
+  chooseExternalBackupTargetOnly,
   downloadExternalBackupFallback,
   downloadExternalBackupJson,
   getExternalBackupStatus,
@@ -95,8 +96,9 @@ import {
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
 type RestoreView = "current" | "archives" | "trash";
-type SaveSource = "nas" | "local" | "cloud";
+type SaveSource = "nas" | "local" | "cloud" | "file";
 type BackupProvider = "nas" | "cloud";
+type RestoreSource = BackupProvider | "local" | "file";
 type SaveGrade = "complete" | "history" | "stats-only" | "profiles-only" | "technical";
 
 type SaveQuality = {
@@ -121,6 +123,36 @@ type SaveEntry = {
   latest?: boolean;
   index: number;
   quality: SaveQuality;
+};
+
+type BackupModeBreakdown = {
+  mode: string;
+  count: number;
+};
+
+type BackupSportBreakdown = {
+  sport: string;
+  count: number;
+  modes: BackupModeBreakdown[];
+};
+
+type BackupDetails = {
+  date: string | null;
+  sizeBytes: number;
+  matches: number;
+  profiles: number;
+  statsMatches: number;
+  images: number;
+  teams: number;
+  bots: number;
+  dartsets: number;
+  visits: number;
+  darts: number;
+  sports: BackupSportBreakdown[];
+  sourceLabel: string;
+  appVersion: string | null;
+  formatVersion: string | null;
+  integrityLabel: string;
 };
 
 type CloudSlot = CloudObjectIndexItem & {
@@ -480,7 +512,8 @@ function strictSummaryForRestore(payload: any, fallback?: Partial<VaultSummary> 
       ...base,
       matches: realHistory.rows,
       historyRows: realHistory.rows,
-      statsBlocks: Math.max(base.statsBlocks, statsIds ? 1 : 0),
+      statsMatches: Math.max(n(base.statsMatches), statsIds),
+      statsBlocks: Math.max(base.statsBlocks, statsIds),
       probableContent: Array.from(new Set([...(base.probableContent || []), "historique réel", "parties"])),
     };
   }
@@ -490,7 +523,8 @@ function strictSummaryForRestore(payload: any, fallback?: Partial<VaultSummary> 
       ...base,
       matches: statsIds,
       historyRows: 0,
-      statsBlocks: Math.max(base.statsBlocks, 1),
+      statsMatches: Math.max(n(base.statsMatches), statsIds),
+      statsBlocks: Math.max(base.statsBlocks, statsIds),
       probableContent: Array.from(new Set([...(base.probableContent || []), "stats seules"])),
     };
   }
@@ -538,7 +572,7 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
   const dartsetsCount = Number(meta.dartsetsCount ?? 0) || 0;
   const rawSize = Number(nested.bytes ?? meta.rawSizeBytes ?? meta.originalByteSize ?? item?.size_bytes ?? 0) || 0;
   const statsMatches = Number(nested.statsMatches ?? meta.statsMatches ?? 0) || 0;
-  const statsBlocks = Math.max(Number(nested.statsBlocks ?? meta.statsBlocks ?? 0) || 0, statsMatches > 0 ? 1 : 0);
+  const statsBlocks = Math.max(Number(nested.statsBlocks ?? meta.statsBlocks ?? 0) || 0, statsMatches);
   if (!historyCount && !profilesCount && !dartsetsCount && !rawSize) return null;
   return {
     bytes: rawSize,
@@ -546,9 +580,16 @@ function cloudObjectMetadataSummary(item: CloudObjectIndexItem): Partial<VaultSu
     profiles: profilesCount,
     matches: historyCount,
     historyRows: historyCount,
+    statsMatches,
     statsBlocks,
     mediaRefs: Number(nested.mediaRefs || 0) || 0,
     dataImages: Number(nested.dataImages || 0) || 0,
+    images: Number(nested.images || meta.imagesCount || 0) || 0,
+    teams: Number(nested.teams || meta.teamsCount || 0) || 0,
+    bots: Number(nested.bots || meta.botsCount || 0) || 0,
+    dartsets: Math.max(dartsetsCount, Number(nested.dartsets || 0) || 0),
+    visits: Number(nested.visits || 0) || 0,
+    darts: Number(nested.darts || 0) || 0,
     sports: Array.isArray(nested.sports) ? nested.sports : [],
     names: Array.isArray(nested.names) ? nested.names : [],
     exportedAt: nested.exportedAt || meta.exportedAt || item?.created_at || null,
@@ -577,7 +618,7 @@ function strictSummaryForCloudPayload(payload: any, fallback?: Partial<VaultSumm
   return strictSummaryForRestore(normalized, fallback);
 }
 
-function assessSaveForProvider(summary?: Partial<VaultSummary> | null, provider: BackupProvider = "nas"): SaveQuality {
+function assessSaveForProvider(summary?: Partial<VaultSummary> | null, provider: BackupProvider | "local" = "nas"): SaveQuality {
   const q = assessSave(summary);
   const s = normalizeSummary(summary || {});
   if (provider === "cloud" && !q.restorable && (s.profiles > 0 || s.matches > 0 || s.historyRows > 0)) {
@@ -630,13 +671,217 @@ function normalizeSummary(raw: Partial<VaultSummary> | undefined | null): VaultS
     profiles: n(s.profiles),
     matches: n(s.matches),
     historyRows: n(s.historyRows),
-    statsBlocks: n(s.statsBlocks || s.stats),
+    statsMatches: n(s.statsMatches || s.statsBlocks || s.stats),
+    statsBlocks: n(s.statsMatches || s.statsBlocks || s.stats),
     mediaRefs: n(s.mediaRefs),
     dataImages: n(s.dataImages),
+    images: n(s.images || (n(s.mediaRefs) + n(s.dataImages))),
+    teams: n(s.teams),
+    bots: n(s.bots),
+    dartsets: n(s.dartsets || s.dartSets),
+    visits: n(s.visits),
+    darts: n(s.darts),
     sports: Array.isArray(s.sports) ? s.sports.map(String).filter(Boolean).slice(0, 16) : [],
     names: Array.isArray(s.names) ? s.names.map(String).filter(Boolean).slice(0, 20) : [],
     exportedAt: s.exportedAt || null,
     probableContent: Array.isArray(s.probableContent) ? s.probableContent.map(String).filter(Boolean) : [],
+  };
+}
+
+function detailRows(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function historyRowsForDetails(payload: any): any[] {
+  const snapshot = unwrapSnapshotEnvelope(payload);
+  const candidates = [
+    snapshot?.history?.rows,
+    snapshot?.history,
+    snapshot?.matches,
+    snapshot?.localHistory,
+  ];
+  for (const candidate of candidates) {
+    const rows = detailRows(candidate).filter((row) => row && typeof row === "object");
+    if (rows.length) return rows;
+  }
+  return [];
+}
+
+function detailCollectionLength(value: any): number {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object") return Object.keys(value).length;
+  return 0;
+}
+
+function detailTelemetry(match: any): { usable: boolean; visits: number; darts: number } {
+  const sources = [match, match?.summary, match?.stats, match?.game, match?.resume, match?.__legStats, match?.telemetry]
+    .filter((value) => value && typeof value === "object");
+  let visits = 0;
+  let darts = 0;
+  let usable = false;
+  const seen = new Set<any>();
+  for (const source of sources) {
+    if (seen.has(source)) continue;
+    seen.add(source);
+    visits = Math.max(
+      visits,
+      detailCollectionLength(source.visitHistory),
+      detailCollectionLength(source.visitsHistory),
+      detailCollectionLength(source.visits),
+      detailCollectionLength(source.volleys),
+      detailCollectionLength(source.vollees),
+      detailCollectionLength(source.rounds),
+      detailCollectionLength(source.turns),
+    );
+    darts = Math.max(
+      darts,
+      detailCollectionLength(source.dartsDetail),
+      detailCollectionLength(source.darts),
+      detailCollectionLength(source.throws),
+      detailCollectionLength(source.hits),
+      detailCollectionLength(source.dartHits),
+    );
+    if (Object.keys(source).some((key) => /avg|average|checkout|bestvisit|hitsbysegment|dartdetail|visit|volley|volee|throw|bull|double|triple/i.test(key))) {
+      usable = true;
+    }
+  }
+  if (visits > 0 || darts > 0) usable = true;
+  if (!darts && visits) darts = visits * 3;
+  return { usable, visits, darts };
+}
+
+function cleanDetailLabel(value: any, fallback: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .slice(0, 72);
+}
+
+function inferDetailSport(match: any): string {
+  const raw = match?.sport || match?.game?.sport || match?.category || match?.gameCategory || "";
+  if (raw) return cleanDetailLabel(raw, "Autres jeux");
+  const mode = String(match?.mode || match?.gameMode || match?.kind || match?.game?.mode || "").toLowerCase();
+  if (/x01|cricket|killer|shanghai|golf|loterie|territor|dart|halve|scram|five|5.?vie|capital|racer|baseball|shooter/.test(mode)) return "Fléchettes";
+  if (/petanque|pétanque/.test(mode)) return "Pétanque";
+  if (/molkky|mölkky/.test(mode)) return "Mölkky";
+  if (/baby.?foot|foosball/.test(mode)) return "Baby-foot";
+  if (/ping.?pong|table.?tennis/.test(mode)) return "Ping-pong";
+  if (/football|soccer|foot/.test(mode)) return "Football";
+  return "Autres jeux";
+}
+
+function inferDetailMode(match: any): string {
+  return cleanDetailLabel(
+    match?.mode || match?.gameMode || match?.kind || match?.game?.mode || match?.game?.kind || match?.variant,
+    "Mode non renseigné",
+  );
+}
+
+function sourceLabelForEntry(entry: SaveEntry): string {
+  if (entry.source === "nas") return "NAS privé";
+  if (entry.source === "cloud") return "Cloud R2";
+  if (entry.source === "file") return "Fichier externe";
+  return "Mémoire de l’appareil";
+}
+
+function buildBackupDetails(entry: SaveEntry, payloadInput: any): BackupDetails {
+  const payload = unwrapSnapshotEnvelope(payloadInput);
+  const summary = normalizeSummary(strictSummaryForRestore(payload, entry.summary));
+  const portable = payload?.portableAccountData && typeof payload.portableAccountData === "object"
+    ? payload.portableAccountData
+    : {};
+  const counts = portable?.counts && typeof portable.counts === "object" ? portable.counts : {};
+  const store = payload?.store && typeof payload.store === "object"
+    ? payload.store
+    : payload?.data && typeof payload.data === "object"
+      ? payload.data
+      : {};
+  const history = historyRowsForDetails(payload);
+  const sportMap = new Map<string, Map<string, number>>();
+  let statsMatches = 0;
+  let visits = 0;
+  let darts = 0;
+
+  for (const match of history) {
+    const sport = inferDetailSport(match);
+    const mode = inferDetailMode(match);
+    if (!sportMap.has(sport)) sportMap.set(sport, new Map());
+    const modes = sportMap.get(sport)!;
+    modes.set(mode, (modes.get(mode) || 0) + 1);
+    const telemetry = detailTelemetry(match);
+    if (telemetry.usable) statsMatches += 1;
+    visits += telemetry.visits;
+    darts += telemetry.darts;
+  }
+
+  const sports = Array.from(sportMap.entries())
+    .map(([sport, modes]) => {
+      const modeRows = Array.from(modes.entries())
+        .map(([mode, count]) => ({ mode, count }))
+        .sort((a, b) => b.count - a.count || a.mode.localeCompare(b.mode, "fr"));
+      return { sport, count: modeRows.reduce((sum, row) => sum + row.count, 0), modes: modeRows };
+    })
+    .sort((a, b) => b.count - a.count || a.sport.localeCompare(b.sport, "fr"));
+
+  const fallbackImages = n(summary.images || (summary.mediaRefs + summary.dataImages));
+  const userMediaCount = payload?.userMediaFallbacks?.media && typeof payload.userMediaFallbacks.media === "object"
+    ? Object.keys(payload.userMediaFallbacks.media).length
+    : 0;
+  const avatarFallbackCount = payload?.avatarFallbacks?.profiles && typeof payload.avatarFallbacks.profiles === "object"
+    ? Object.keys(payload.avatarFallbacks.profiles).length
+    : 0;
+  const images = Math.max(fallbackImages, userMediaCount + avatarFallbackCount, n(counts.galleryItems));
+  const profiles = Math.max(summary.profiles, n(counts.profiles), detailCollectionLength(portable.profiles), detailCollectionLength(store.profiles), detailCollectionLength(payload?.localProfiles));
+  const teams = Math.max(n(summary.teams), n(counts.teams), detailCollectionLength(portable.teams), detailCollectionLength(store.teams), detailCollectionLength(payload?.teams));
+  const bots = Math.max(n(summary.bots), n(counts.bots), detailCollectionLength(portable.bots), detailCollectionLength(store.bots), detailCollectionLength(store.cpuBots), detailCollectionLength(payload?.bots));
+  const dartsets = Math.max(n(summary.dartsets), n(counts.dartSets || counts.dartsets), detailCollectionLength(portable.dartSets), detailCollectionLength(portable.dartsets), detailCollectionLength(store.dartSets), detailCollectionLength(store.dartsets), detailCollectionLength(payload?.dartsets));
+  const resolvedStatsMatches = Math.max(statsMatches, n(summary.statsMatches || summary.statsBlocks));
+  const resolvedDate = entry.createdAt || entry.updatedAt || summary.exportedAt || payload?.exportedAt || portable?.exportedAt || null;
+  const appVersion = payload?.appVersion || payload?.app_version || payload?.meta?.appVersion || null;
+  const rawFormat = payload?._v ?? payload?.version ?? payload?.formatVersion ?? null;
+
+  return {
+    date: resolvedDate ? String(resolvedDate) : null,
+    sizeBytes: Math.max(summary.bytes, n(entry.summary.bytes)),
+    matches: Math.max(summary.matches, history.length),
+    profiles,
+    statsMatches: resolvedStatsMatches,
+    images,
+    teams,
+    bots,
+    dartsets,
+    visits: Math.max(visits, n(summary.visits)),
+    darts: Math.max(darts, n(summary.darts)),
+    sports,
+    sourceLabel: sourceLabelForEntry(entry),
+    appVersion: appVersion ? String(appVersion) : null,
+    formatVersion: rawFormat == null ? null : String(rawFormat),
+    integrityLabel: entry.quality.restorable ? entry.quality.label : "SAUVEGARDE PARTIELLE",
+  };
+}
+
+function summaryWithBackupDetails(summaryInput: Partial<VaultSummary> | null | undefined, details: BackupDetails): VaultSummary {
+  const summary = normalizeSummary(summaryInput || {});
+  return {
+    ...summary,
+    bytes: Math.max(summary.bytes, details.sizeBytes),
+    profiles: Math.max(summary.profiles, details.profiles),
+    matches: Math.max(summary.matches, details.matches),
+    historyRows: Math.max(summary.historyRows, details.matches),
+    statsMatches: Math.max(n(summary.statsMatches), details.statsMatches),
+    statsBlocks: Math.max(summary.statsBlocks, details.statsMatches),
+    images: Math.max(n(summary.images), details.images),
+    teams: Math.max(n(summary.teams), details.teams),
+    bots: Math.max(n(summary.bots), details.bots),
+    dartsets: Math.max(n(summary.dartsets), details.dartsets),
+    visits: Math.max(n(summary.visits), details.visits),
+    darts: Math.max(n(summary.darts), details.darts),
+    sports: details.sports.length ? details.sports.map((row) => row.sport) : summary.sports,
   };
 }
 
@@ -738,12 +983,6 @@ function fmtBytes(bytes?: number | null) {
   if (b < 1024) return `${b} o`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} ko`;
   return `${(b / 1024 / 1024).toFixed(2)} Mo`;
-}
-
-function shortId(value?: string | null) {
-  const s = String(value || "").trim();
-  if (!s) return "—";
-  return s.length <= 12 ? s : `${s.slice(0, 6)}…${s.slice(-4)}`;
 }
 
 function fmtDate(value?: string | null) {
@@ -873,7 +1112,7 @@ function Line({ label, value }: { label: string; value: React.ReactNode }) {
 function QualityBadge({ quality }: { quality: SaveQuality }) {
   return (
     <span style={{ border: `1px solid ${quality.color}`, color: quality.color, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000, whiteSpace: "nowrap" }}>
-      {quality.short} · {Math.min(100, Math.round(quality.score))}%
+      {quality.short}
     </span>
   );
 }
@@ -882,21 +1121,70 @@ function SummaryLines({ summary }: { summary: Partial<VaultSummary> }) {
   const s = normalizeSummary(summary);
   return (
     <div style={{ display: "grid", gap: 7, minWidth: 0 }}>
-      <Line label="Contenu" value={`${s.matches} parties • ${s.profiles} profils • ${s.statsBlocks} stats • ${s.mediaRefs + s.dataImages} médias`} />
-      <Line label="Historique" value={`${s.historyRows} lignes`} />
-      <Line label="Catégorie" value={saveCategory(s)} />
+      <Line label="Parties" value={s.matches} />
+      <Line label="Profils" value={s.profiles} />
+      <Line label="Stats" value={`${s.statsMatches || s.statsBlocks} partie(s) exploitable(s)`} />
+      <Line label="Médias" value={s.images || (s.mediaRefs + s.dataImages)} />
       <Line label="Taille" value={fmtBytes(s.bytes)} />
-      <Line label="Sports" value={join(s.sports)} />
-      <Line label="Noms" value={join(s.names)} />
     </div>
   );
 }
 
-function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDelete, onCloudCopy, restoreLabel = "Restaurer cet état", exportLabel = "Exporter JSON", deleteLabel = "Supprimer", cloudCopyLabel = "Copier vers Cloud R2" }: {
+function MiniInfoButton({ title, content, color = neon }: { title: string; content: React.ReactNode; color?: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) => { event.stopPropagation(); setOpen(true); }}
+        aria-label={`Informations : ${title}`}
+        title="Informations"
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,.18)",
+          background: "rgba(255,255,255,.06)",
+          color: "#fff",
+          fontWeight: 1000,
+          fontSize: 14,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: `0 0 12px color-mix(in srgb, ${color} 24%, rgba(0,0,0,.55))`,
+          cursor: "pointer",
+          flex: "0 0 auto",
+        }}
+      >i</button>
+      {open ? (
+        <div
+          role="presentation"
+          onClick={() => setOpen(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(0,0,0,.76)", display: "grid", placeItems: "center", padding: 18 }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: "min(520px, 100%)", maxHeight: "78vh", overflowY: "auto", borderRadius: 20, border: `1px solid ${color}`, background: "linear-gradient(180deg,#0f172a,#020617)", boxShadow: `0 0 32px color-mix(in srgb, ${color} 28%, transparent)`, padding: 16 }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", marginBottom: 12 }}>
+              <strong style={{ color, fontSize: 18, ...wrapText }}>{title}</strong>
+              <button type="button" onClick={() => setOpen(false)} style={{ ...btn, width: 38, height: 38, padding: 0, borderRadius: 999, color: "#fff", borderColor: "rgba(255,255,255,.24)" }}>×</button>
+            </div>
+            <div style={{ color: "#dbe5f1", fontSize: 13, lineHeight: 1.5 }}>{content}</div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function SaveCard({ entry, busy, onDetails, onRestore, onExport, onDelete, onCloudCopy, restoreLabel = "Restaurer", exportLabel = "Exporter", deleteLabel = "Supprimer", cloudCopyLabel = "Copier vers Cloud R2" }: {
   entry: SaveEntry;
   busy: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  onDetails: () => void;
   onRestore: () => void;
   onExport: () => void;
   onDelete?: () => void;
@@ -908,77 +1196,174 @@ function SaveCard({ entry, busy, expanded, onToggle, onRestore, onExport, onDele
 }) {
   const q = entry.quality;
   const s = normalizeSummary(entry.summary);
+  const sourceIcon: VaultGlyphName = entry.source === "nas" ? "nas" : entry.source === "cloud" ? "cloud" : entry.source === "file" ? "file" : "local";
+  const sourceLabel = sourceLabelForEntry(entry);
+  const dateValue = entry.createdAt || entry.updatedAt || s.exportedAt || null;
   return (
-    <div style={{ ...panel, borderColor: q.restorable ? "rgba(52,211,153,.38)" : "rgba(251,191,36,.28)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 12, alignItems: "center", minWidth: 0 }}>
-        <div
-          style={{
-            width: 50,
-            height: 50,
-            borderRadius: 16,
-            display: "grid",
-            placeItems: "center",
-            background: q.grade === "complete" ? "color-mix(in srgb, #34d399 14%, transparent)" : "color-mix(in srgb, var(--dc-accent, #d9ff33) 12%, transparent)",
-            border: `1px solid ${q.color}`,
-            color: q.color,
-            fontWeight: 1000,
-            boxShadow: `0 0 18px color-mix(in srgb, ${q.color} 33%, transparent)`,
-          }}
-        >
-          {String(entry.index).padStart(2, "0")}
+    <div style={{ ...panel, padding: 13, borderColor: q.restorable ? "rgba(52,211,153,.38)" : "rgba(251,191,36,.28)", overflow: "visible" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "50px minmax(0,1fr) auto", gap: 10, alignItems: "center", minWidth: 0 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", border: `1px solid ${q.color}`, background: `color-mix(in srgb, ${q.color} 11%, transparent)`, color: q.color, boxShadow: `0 0 18px color-mix(in srgb, ${q.color} 24%, transparent)` }}>
+          <VaultGlyph name={sourceIcon} size={27}/>
         </div>
-
         <div style={wrapText}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <strong style={{ color: "#fff", fontSize: 16, ...wrapText }}>{entry.title}</strong>
-            <QualityBadge quality={q} />
+          <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            <strong style={{ color: "#fff", fontSize: 15.5, ...wrapText }}>{entry.title}</strong>
+            <QualityBadge quality={q}/>
           </div>
-          <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 4, ...wrapText }}>{entry.subtitle}</div>
-          <div style={{ color: q.color, fontSize: 12, fontWeight: 900, marginTop: 6, ...wrapText }}>{q.reason}</div>
+          <div style={{ color: muted, fontSize: 10.5, fontWeight: 800, marginTop: 4 }}>{sourceLabel} · {fmtDate(dateValue)} · {fmtBytes(s.bytes)}</div>
+          <div style={{ color: q.color, fontSize: 11, fontWeight: 900, marginTop: 4 }}>{q.label}</div>
         </div>
-
-        <button style={{ ...btn, padding: "9px 10px", borderColor: "rgba(148,163,184,.35)", color: "#e5e7eb" }} onClick={onToggle}>
-          {expanded ? "Masquer" : "Détails"}
+        <button type="button" onClick={onDetails} disabled={busy} style={{ ...btn, minWidth: 42, height: 42, padding: 0, borderRadius: 13, display: "grid", placeItems: "center", borderColor: "rgba(148,163,184,.38)", color: "#fff" }} aria-label="Afficher les détails">
+          <VaultGlyph name="expert" size={22}/>
         </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>PARTIES</div>
-          <div style={{ color: gold, fontWeight: 1000, fontSize: 18 }}>{s.matches}</div>
-        </div>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>PROFILS</div>
-          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{s.profiles}</div>
-        </div>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>STATS</div>
-          <div style={{ color: green, fontWeight: 1000, fontSize: 18 }}>{s.statsBlocks}</div>
-        </div>
+        {[
+          ["PARTIES", s.matches, gold],
+          ["PROFILS", s.profiles, neon],
+          ["STATS", s.statsMatches || s.statsBlocks, green],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 14, padding: "9px 7px", textAlign: "center", background: "rgba(2,6,23,.62)" }}>
+            <div style={{ color: muted, fontSize: 9.5, fontWeight: 1000 }}>{label}</div>
+            <div style={{ color: String(color), fontSize: 20, lineHeight: 1.15, fontWeight: 1000, marginTop: 3 }}>{String(value)}</div>
+          </div>
+        ))}
       </div>
 
-      {expanded && (
-        <div style={{ marginTop: 12 }}>
-          <SummaryLines summary={s} />
-          <Line label="Date" value={fmtDate(entry.createdAt || entry.updatedAt || null)} />
-        </div>
-      )}
-
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={q.restorable ? primaryBtn : { ...btn, borderColor: muted, color: muted }} disabled={busy || !q.restorable} onClick={onRestore}>
-          {restoreLabel}
-        </button>
+        <button style={q.restorable ? primaryBtn : { ...btn, borderColor: muted, color: muted }} disabled={busy || !q.restorable} onClick={onRestore}>{restoreLabel}</button>
         <button style={btn} disabled={busy} onClick={onExport}>{exportLabel}</button>
-        {onCloudCopy && (
-          <button
-            style={{ ...btn, borderColor: gold, color: gold, background: "color-mix(in srgb, var(--dc-accent, #d9ff33) 9%, transparent)" }}
-            disabled={busy}
-            onClick={onCloudCopy}
-          >
-            {cloudCopyLabel}
-          </button>
-        )}
-        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>{deleteLabel}</button>}
+        {onCloudCopy ? <button style={{ ...btn, borderColor: gold, color: gold }} disabled={busy} onClick={onCloudCopy}>{cloudCopyLabel}</button> : null}
+        {onDelete ? <button style={dangerBtn} disabled={busy} onClick={onDelete}>{deleteLabel}</button> : null}
+      </div>
+    </div>
+  );
+}
+
+function BackupDetailsModal({ state, onClose }: { state: { entry: SaveEntry; details?: BackupDetails | null; loading: boolean; error?: string | null } | null; onClose: () => void }) {
+  if (!state) return null;
+  const details = state.details;
+  const date = details?.date ? new Date(details.date) : null;
+  const validDate = date && !Number.isNaN(date.getTime()) ? date : null;
+  const containsDarts = !!details && (details.dartsets > 0 || details.sports.some((row) => /fléchettes|darts/i.test(row.sport)));
+  const mainRows: Array<[string, React.ReactNode]> = details ? [
+    ["Date", validDate ? validDate.toLocaleDateString("fr-FR") : "—"],
+    ["Heure", validDate ? validDate.toLocaleTimeString("fr-FR") : "—"],
+    ["Taille", fmtBytes(details.sizeBytes)],
+    ["Parties", details.matches],
+    ["Profils", details.profiles],
+    ["Images / médias", details.images],
+    ["Équipes / teams", details.teams],
+    ["Bots", details.bots],
+    ...(containsDarts ? [["Dartsets", details.dartsets] as [string, React.ReactNode]] : []),
+    ["Parties avec stats", details.statsMatches],
+    ["Volées / tours", details.visits || "—"],
+    ["Fléchettes / saisies", details.darts || "—"],
+  ] : [];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1400, background: "rgba(0,0,0,.82)", display: "grid", alignItems: "end", justifyItems: "center", padding: "18px 10px max(18px, env(safe-area-inset-bottom))" }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(680px,100%)", maxHeight: "88vh", overflowY: "auto", borderRadius: 24, border: `1px solid ${neon}`, background: "linear-gradient(180deg,#0f172a,#020617)", boxShadow: `0 0 36px ${accentSoftGlow}`, padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "start" }}>
+          <div style={wrapText}>
+            <div style={{ color: neon, fontSize: 11, fontWeight: 1000, letterSpacing: ".08em" }}>DÉTAILS DE LA SAUVEGARDE</div>
+            <strong style={{ color: "#fff", fontSize: 20, display: "block", marginTop: 4 }}>{state.entry.title}</strong>
+            <div style={{ color: muted, fontSize: 11, marginTop: 3 }}>{details?.sourceLabel || sourceLabelForEntry(state.entry)}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ ...btn, width: 42, height: 42, padding: 0, borderRadius: 999, color: "#fff", borderColor: "rgba(255,255,255,.24)", fontSize: 22 }}>×</button>
+        </div>
+
+        {state.loading ? <div style={{ ...panel, marginTop: 14, textAlign: "center", color: neon }}>Lecture et analyse de la sauvegarde…</div> : null}
+        {state.error ? <div style={{ ...panel, marginTop: 14, color: red }}>{state.error}</div> : null}
+        {details ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 14 }}>
+              {mainRows.map(([label, value]) => (
+                <div key={label} style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 14, padding: 10, background: "rgba(2,6,23,.62)" }}>
+                  <div style={{ color: muted, fontSize: 9.5, fontWeight: 1000, textTransform: "uppercase" }}>{label}</div>
+                  <div style={{ color: "#fff", fontSize: 17, fontWeight: 1000, marginTop: 4, ...wrapText }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ ...panel, marginTop: 12, padding: 12 }}>
+              <div style={{ color: gold, fontWeight: 1000, fontSize: 15 }}>RÉPARTITION PAR SPORT ET MODE</div>
+              {details.sports.length ? details.sports.map((sport) => (
+                <details key={sport.sport} open={details.sports.length <= 3} style={{ marginTop: 10, border: "1px solid rgba(148,163,184,.18)", borderRadius: 13, padding: 10, background: "rgba(15,23,42,.55)" }}>
+                  <summary style={{ cursor: "pointer", color: "#fff", fontWeight: 1000 }}>{sport.sport} — {sport.count} partie(s)</summary>
+                  <div style={{ display: "grid", gap: 6, marginTop: 9 }}>
+                    {sport.modes.map((mode) => <Line key={`${sport.sport}:${mode.mode}`} label={mode.mode} value={mode.count}/>) }
+                  </div>
+                </details>
+              )) : <div style={{ color: muted, marginTop: 10 }}>Aucune répartition sport/mode exploitable dans ce format de sauvegarde.</div>}
+            </div>
+
+            <div style={{ ...panel, marginTop: 12, padding: 12 }}>
+              <Line label="Intégrité" value={details.integrityLabel}/>
+              <Line label="Version app" value={details.appVersion || "—"}/>
+              <Line label="Format" value={details.formatVersion || "—"}/>
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function DestinationSetupModal({ destination, status, busy, onClose, onChoose }: {
+  destination: ReturnType<typeof getStorageDestination> | null;
+  status: ExternalBackupStatus;
+  busy: boolean;
+  onClose: () => void;
+  onChoose: () => void;
+}) {
+  if (!destination) return null;
+  const cloudNas = destination.id === "personal_cloud_manual";
+  const external = destination.id === "external_sd_manual";
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1450, background: "rgba(0,0,0,.82)", display: "grid", placeItems: "center", padding: 16 }}>
+      <div onClick={(event) => event.stopPropagation()} style={{ width: "min(560px,100%)", maxHeight: "86vh", overflowY: "auto", borderRadius: 22, border: `1px solid ${gold}`, background: "linear-gradient(180deg,#0f172a,#020617)", boxShadow: `0 0 34px ${accentGlow}`, padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", border: `1px solid ${gold}`, color: gold, background: accentSoftBg }}><StorageDestinationIcon id={destination.id} size={28}/></div>
+          <div style={wrapText}>
+            <div style={{ color: muted, fontSize: 10, fontWeight: 1000 }}>CONFIGURER LA DESTINATION</div>
+            <strong style={{ color: "#fff", fontSize: 18 }}>{destination.label}</strong>
+          </div>
+          <button type="button" onClick={onClose} style={{ ...btn, width: 40, height: 40, padding: 0, borderRadius: 999, color: "#fff", borderColor: "rgba(255,255,255,.24)", fontSize: 21 }}>×</button>
+        </div>
+
+        <div style={{ ...panel, marginTop: 14, padding: 12 }}>
+          <div style={{ color: "#dbe5f1", lineHeight: 1.5, fontSize: 13 }}>{destination.description}</div>
+          {destination.warning ? <div style={{ color: amber, marginTop: 9, lineHeight: 1.45, fontSize: 12 }}>{destination.warning}</div> : null}
+        </div>
+
+        {cloudNas ? (
+          <div style={{ ...panel, marginTop: 10, padding: 12 }}>
+            <div style={{ color: neon, fontWeight: 1000 }}>COMMENT UTILISER TON CLOUD OU TON NAS</div>
+            <div style={{ display: "grid", gap: 7, marginTop: 9, color: "#dbe5f1", fontSize: 12.5, lineHeight: 1.45 }}>
+              <div>1. Ajoute Google Drive, OneDrive, Dropbox, Nextcloud, Synology Drive ou QNAP dans le gestionnaire de fichiers de l’appareil.</div>
+              <div>2. Pour un NAS, monte son partage réseau ou utilise l’application du constructeur afin qu’il apparaisse dans le sélecteur système.</div>
+              <div>3. Choisis ensuite le fichier de sauvegarde ici. Aucun mot de passe de ton NAS n’est transmis à MULTISPORTS SCORING.</div>
+            </div>
+          </div>
+        ) : null}
+
+        {external ? (
+          <div style={{ ...panel, marginTop: 10, padding: 12, color: "#dbe5f1", fontSize: 12.5, lineHeight: 1.45 }}>
+            La carte SD, la clé USB ou le disque doit être reconnu par Android/Windows. Il apparaîtra alors directement dans le sélecteur de fichiers.
+          </div>
+        ) : null}
+
+        <div style={{ ...panel, marginTop: 10, padding: 12, borderColor: status.configured ? "rgba(52,211,153,.38)" : "rgba(148,163,184,.22)" }}>
+          <div style={{ color: status.configured ? green : amber, fontWeight: 1000 }}>{status.configured ? "EMPLACEMENT PRÊT" : "EMPLACEMENT NON CHOISI"}</div>
+          <div style={{ color: "#fff", marginTop: 5, ...wrapText }}>{status.fileName || "Aucun fichier mémorisé"}</div>
+          {!status.supported ? <div style={{ color: muted, fontSize: 11.5, marginTop: 7 }}>Sur cet appareil, le choix final sera proposé par Android ou le navigateur au moment de l’export.</div> : null}
+        </div>
+
+        <button type="button" disabled={busy} onClick={onChoose} style={{ ...primaryBtn, width: "100%", minHeight: 54, marginTop: 12, fontSize: 13.5 }}>
+          {busy ? "OUVERTURE DU SÉLECTEUR…" : status.configured ? "CHANGER L’EMPLACEMENT" : "CHOISIR L’EMPLACEMENT"}
+        </button>
+        <button type="button" onClick={onClose} style={{ ...btn, width: "100%", marginTop: 8, color: "#fff", borderColor: "rgba(148,163,184,.28)" }}>Conserver ce réglage et revenir</button>
       </div>
     </div>
   );
@@ -1286,6 +1671,29 @@ function VaultGlyph({ name, size = 24 }: { name: VaultGlyphName; size?: number }
   }
 }
 
+function StorageTickerHeader({ onBack, onRefresh, busy, help }: { onBack: () => void; onRefresh: () => void; busy: boolean; help: React.ReactNode }) {
+  return (
+    <div style={{ position: "relative", width: "100%", minHeight: 98, borderRadius: 20, overflow: "hidden", border: `1px solid ${neon}`, background: "radial-gradient(circle at 15% 50%, rgba(34,211,238,.26), transparent 32%), radial-gradient(circle at 85% 50%, rgba(217,255,51,.20), transparent 34%), linear-gradient(100deg,#020617,#0b1730 48%,#020617)", boxShadow: `0 0 28px ${accentSoftGlow}`, marginBottom: 10 }}>
+      <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .22, backgroundImage: "linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px)", backgroundSize: "22px 22px" }}/>
+      <div aria-hidden style={{ position: "absolute", left: 62, top: "50%", transform: "translateY(-50%) rotate(-8deg)", color: neon, opacity: .34 }}><VaultGlyph name="nas" size={54}/></div>
+      <div aria-hidden style={{ position: "absolute", right: 68, top: "50%", transform: "translateY(-50%) rotate(8deg)", color: gold, opacity: .34 }}><VaultGlyph name="cloud" size={58}/></div>
+      <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+        <BackDot size={42} color={neon} glow={`${neon}77`} onClick={onBack}/>
+      </div>
+      <div style={{ position: "relative", zIndex: 2, minHeight: 98, display: "grid", placeItems: "center", textAlign: "center", padding: "10px 108px" }}>
+        <div>
+          <div style={{ color: "#fff", fontWeight: 1000, fontSize: "clamp(19px,4.2vw,30px)", lineHeight: 1, letterSpacing: ".045em", fontStyle: "italic", textShadow: `0 0 16px ${accentSoftGlow}` }}>SAUVEGARDE</div>
+          <div style={{ color: gold, fontWeight: 1000, fontSize: "clamp(11px,2.4vw,16px)", letterSpacing: ".14em", marginTop: 5, textShadow: `0 0 12px ${accentGlow}` }}>& RESTAURATION</div>
+        </div>
+      </div>
+      <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3, display: "flex", alignItems: "center", gap: 7 }}>
+        <InfoDot title="Centre de sauvegarde" size={38} color={gold} glow={`${gold}66`} content={help}/>
+        <button type="button" disabled={busy} onClick={onRefresh} aria-label="Actualiser" style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${neon}`, background: "rgba(0,0,0,.48)", color: neon, display: "grid", placeItems: "center", boxShadow: `0 0 14px ${accentSoftGlow}`, cursor: busy ? "wait" : "pointer", opacity: busy ? .55 : 1 }}><VaultGlyph name="refresh" size={21}/></button>
+      </div>
+    </div>
+  );
+}
+
 function VaultNavButton({ active, icon, label, onClick, disabled = false }: { active: boolean; icon: VaultGlyphName; label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={onClick} style={{
@@ -1324,7 +1732,7 @@ function CompactSectionTitle({ title, info, color = "#fff", right }: { title: st
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", alignItems: "center", gap: 8, marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <strong style={{ color, fontSize: 15.5, letterSpacing: ".02em", ...wrapText }}>{title}</strong>
-        <InfoDot title={title} size={28} color={color === "#fff" ? neon : color} glow={`${color === "#fff" ? neon : color}66`} content={info}/>
+        <MiniInfoButton title={title} color={color === "#fff" ? neon : color} content={info}/>
       </div>
       {right || null}
     </div>
@@ -1350,6 +1758,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [cloudSlots, setCloudSlots] = React.useState<CloudSlot[]>([]);
   const [trashCloudSlots, setTrashCloudSlots] = React.useState<CloudSlot[]>([]);
   const [backupProvider, setBackupProvider] = React.useState<BackupProvider>(() => readPreferredRemoteSource() || "nas");
+  const [restoreSource, setRestoreSource] = React.useState<RestoreSource>(() => readPreferredRemoteSource() || "nas");
   const [storagePrefs, setStoragePrefs] = React.useState(() => loadStoragePrefs());
   const [externalBackupStatus, setExternalBackupStatus] = React.useState<ExternalBackupStatus>(() => ({
     supported: typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function",
@@ -1367,10 +1776,13 @@ export default function StorageVaultPage({ go }: Props) {
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
+  const [detailsState, setDetailsState] = React.useState<{ entry: SaveEntry; details?: BackupDetails | null; loading: boolean; error?: string | null } | null>(null);
+  const [destinationSetup, setDestinationSetup] = React.useState<StorageDestinationId | null>(null);
+  const [importedRestoreEntry, setImportedRestoreEntry] = React.useState<SaveEntry | null>(null);
   const [accountScopeId, setAccountScopeId] = React.useState<string | null>(() => getVaultCurrentUserId());
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const cloudImportRef = React.useRef<HTMLInputElement | null>(null);
+  const restoreFileRef = React.useRef<HTMLInputElement | null>(null);
 
   const currentAuthForVault = React.useMemo(() => ({
     token: (auth.session as any)?.access_token || (auth.session as any)?.token || "",
@@ -1585,11 +1997,18 @@ export default function StorageVaultPage({ go }: Props) {
       .filter((entry) => entry.quality.restorable);
   }, [localSlots]);
 
-  const restorableEntries = React.useMemo(() => [...remoteEntries, ...localEntries], [remoteEntries, localEntries]);
-  const archiveEntries = React.useMemo(() => [...archivedRemoteEntries, ...localEntries], [archivedRemoteEntries, localEntries]);
-  const archiveCompleteEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "complete"), [archiveEntries]);
-  const archiveHistoryEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.quality.grade === "history"), [archiveEntries]);
-  const archiveCloudOtherEntries = React.useMemo(() => archiveEntries.filter((entry) => entry.source === "cloud" && entry.quality.grade !== "complete" && entry.quality.grade !== "history"), [archiveEntries]);
+  const currentRestoreEntry = restoreSource === "local"
+    ? localEntries[0] || null
+    : restoreSource === "file"
+      ? importedRestoreEntry
+      : latestRemoteEntry;
+  const currentRestoreArchives = restoreSource === "local"
+    ? localEntries.slice(1)
+    : restoreSource === "file"
+      ? []
+      : archivedRemoteEntries;
+  const headerSummary = normalizeSummary(currentRestoreEntry?.summary || latestRemoteEntry?.summary || localEntries[0]?.summary || {});
+  const headerDate = currentRestoreEntry?.createdAt || currentRestoreEntry?.updatedAt || latestRemoteEntry?.createdAt || localEntries[0]?.createdAt || null;
   const matchBackupEntries = React.useMemo(() => {
     const byId = new Map<string, MatchBackupItem>();
     const priority = (origin?: string) => origin === "cloud" ? 3 : origin === "nas" ? 2 : 1;
@@ -1629,21 +2048,19 @@ export default function StorageVaultPage({ go }: Props) {
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
     const preferred = readPreferredRemoteSource();
-    const localChoice = loadStoragePrefs().selectedDestination;
-    if (localChoice === "cloud_r2") return "cloud";
-    if (localChoice === "founder_nas") return "nas";
-    // Local/fichier ne doit jamais attendre le backend pour savoir quel onglet
-    // distant afficher. On conserve le dernier choix explicite, sinon R2.
-    return preferred || "cloud";
+    // La source de restauration est indépendante de la destination de sauvegarde.
+    // Avant ce correctif, une destination R2 active forçait systématiquement la
+    // liste R2 et rendait le bouton NAS visuellement inopérant.
+    return preferred || "nas";
   }, []);
 
-  const refresh = React.useCallback(async () => {
+  const refresh = React.useCallback(async (providerOverride?: BackupProvider) => {
     // L'actualisation des listes ne bloque jamais le bouton Sauvegarder.
     const refreshStartedAt = Date.now();
     ensureVaultNasToken();
     setAccountScopeId(getVaultCurrentUserId());
     try {
-      const provider = await resolveBackupProvider();
+      const provider = providerOverride || await resolveBackupProvider();
       setBackupProvider(provider);
       const selectedForSave = loadStoragePrefs().selectedDestination;
       const selectedForSaveLabel = getStorageDestination(selectedForSave).label;
@@ -1933,20 +2350,119 @@ ${label}`)) return;
   };
 
   const selectRemoteRestoreSource = async (provider: BackupProvider) => {
+    lastUserActionAtRef.current = Date.now();
     writePreferredRemoteSource(provider);
     setBackupProvider(provider);
+    setRestoreSource(provider);
     setRestoreView("current");
-    await refresh().catch(() => undefined);
+    await refresh(provider).catch(() => undefined);
     setMessage(provider === "cloud"
       ? "Source distante sélectionnée : Cloudflare R2. Les sauvegardes disponibles sur tous tes appareils sont affichées ci-dessous."
       : "Source distante sélectionnée : NAS. Les sauvegardes privées du serveur sont affichées ci-dessous.");
   };
 
+  const selectLocalRestoreSource = () => {
+    lastUserActionAtRef.current = Date.now();
+    setRestoreSource("local");
+    setRestoreView("current");
+    setMessage(`${localEntries.length} sauvegarde(s) locale(s) disponible(s) sur cet appareil.`);
+  };
+
+  const selectFileRestoreSource = () => {
+    lastUserActionAtRef.current = Date.now();
+    setRestoreSource("file");
+    setRestoreView("current");
+    restoreFileRef.current?.click();
+  };
+
+  const loadRestoreFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw);
+      const snapshot = unwrapSnapshotEnvelope(parsed);
+      const summary = strictSummaryForRestore(snapshot);
+      const quality = assessSave(summary);
+      const timestamp = file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString();
+      const slot: MemorySlot = {
+        id: `file_${file.name}_${file.lastModified || Date.now()}`,
+        ownerId: getVaultCurrentUserId(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        label: file.name || "Fichier de sauvegarde",
+        source: "manual",
+        payload: snapshot,
+        summary,
+      };
+      const entry: SaveEntry = {
+        key: `file:${slot.id}`,
+        source: "file",
+        slot,
+        summary,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        index: 1,
+        quality,
+        title: file.name || "Fichier de sauvegarde",
+        subtitle: `${fmtBytes(file.size)} · ${fmtDate(timestamp)}`,
+      };
+      setImportedRestoreEntry(entry);
+      setRestoreSource("file");
+      setRestoreView("current");
+      setMessage(quality.restorable
+        ? `Fichier prêt : ${summary.matches} partie(s) · ${summary.profiles} profil(s) · ${summary.statsMatches || summary.statsBlocks} partie(s) avec stats.`
+        : `Fichier lu, mais restauration déconseillée : ${quality.reason}`);
+    } catch (error: any) {
+      setImportedRestoreEntry(null);
+      setMessage(`Lecture du fichier impossible : ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+      if (restoreFileRef.current) restoreFileRef.current.value = "";
+    }
+  };
+
+  const openSaveDetails = async (entry: SaveEntry) => {
+    setDetailsState({ entry, loading: true, details: null, error: null });
+    try {
+      let payload: any;
+      if (entry.source === "nas") {
+        payload = (await pullNasMemorySlot(String((entry.slot as NasSlot).id || "latest"))).payload;
+      } else if (entry.source === "cloud") {
+        const slot = entry.slot as CloudSlot;
+        payload = slot.__payload || (await pullCloudVaultSlot(slot, { trash: entry.key.startsWith("trash-") })).payload;
+      } else {
+        payload = decodeMaybeCompressedNasPayload((entry.slot as MemorySlot).payload);
+      }
+      const details = buildBackupDetails(entry, payload);
+      const enrichedSummary = summaryWithBackupDetails(entry.summary, details);
+      const enrichedEntry = { ...entry, summary: enrichedSummary };
+      const slotId = String((entry.slot as any)?.id || "");
+      if (entry.source === "nas") {
+        setNasSlots((current) => {
+          const next = current.map((slot) => String(slot.id || "") === slotId ? { ...slot, summary: enrichedSummary } : slot);
+          writeCachedNasSlots(next);
+          return next;
+        });
+      } else if (entry.source === "cloud") {
+        setCloudSlots((current) => current.map((slot) => String(slot.id || "") === slotId ? { ...slot, __summary: enrichedSummary } : slot));
+      } else if (entry.source === "local") {
+        setLocalSlots((current) => current.map((slot) => String(slot.id || "") === slotId ? { ...slot, summary: enrichedSummary } : slot));
+      } else if (entry.source === "file") {
+        setImportedRestoreEntry(enrichedEntry);
+      }
+      setDetailsState({ entry: enrichedEntry, loading: false, details, error: null });
+    } catch (error: any) {
+      setDetailsState({ entry, loading: false, details: null, error: `Détails indisponibles : ${error?.message || error}` });
+    }
+  };
+
   const finishCloudTransfer = async (messageText: string) => {
     writePreferredRemoteSource("cloud");
     setBackupProvider("cloud");
+    setRestoreSource("cloud");
     setRestoreView("current");
-    await refresh().catch(() => undefined);
+    await refresh("cloud").catch(() => undefined);
     setMessage(messageText);
   };
 
@@ -2014,7 +2530,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     setBusy(true);
     try {
       let payload: any = null;
-      if (entry.source === "local") {
+      if (entry.source === "local" || entry.source === "file") {
         payload = decodeMaybeCompressedNasPayload((entry.slot as MemorySlot).payload);
       } else if (entry.source === "nas") {
         const id = String((entry.slot as NasSlot).id || "latest");
@@ -2044,16 +2560,13 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       keepLocalSafetyCopy: true,
     });
     setStoragePrefs(saved);
-    if (destination === "cloud_r2") {
-      writePreferredRemoteSource("cloud");
-      setBackupProvider("cloud");
-    } else if (destination === "founder_nas") {
-      writePreferredRemoteSource("nas");
-      setBackupProvider("nas");
-    }
 
     const label = getStorageDestination(destination).label;
-    setMessage(`Destination active : ${label}. Le prochain clic sur Sauvegarder écrira directement ici.`);
+    const needsSystemTarget = destination === "device_file" || destination === "external_sd_manual" || destination === "personal_cloud_manual";
+    if (needsSystemTarget) setDestinationSetup(destination);
+    setMessage(needsSystemTarget
+      ? `Destination active : ${label}. Choisis maintenant l'emplacement exact dans la fenêtre de configuration.`
+      : `Destination active : ${label}. Le prochain clic sur Sauvegarder écrira directement ici.`);
 
     // La préférence locale est la source de vérité immédiate. La copie serveur
     // est best-effort et ne doit jamais bloquer l'interface ni empêcher une
@@ -2094,6 +2607,32 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     } finally {
       setExternalBackupBusy(null);
       setBusy(false);
+    }
+  };
+
+  const configureExternalDestination = async () => {
+    const destination = destinationSetup ? getStorageDestination(destinationSetup) : null;
+    if (!destination) return;
+    setExternalBackupBusy("choose");
+    try {
+      const suggested = destinationSetup === "personal_cloud_manual"
+        ? "multisports-scoring-cloud-nas.json"
+        : destinationSetup === "external_sd_manual"
+          ? "multisports-scoring-externe.json"
+          : "multisports-scoring-backup.json";
+      const next = await chooseExternalBackupTargetOnly(suggested);
+      setExternalBackupStatus(next);
+      if (next.lastError) throw new Error(next.lastError);
+      if (next.configured) {
+        setMessage(`Emplacement configuré : ${next.fileName || destination.label}. Le bouton Sauvegarder écrira dans cette cible.`);
+        setDestinationSetup(null);
+      } else {
+        setMessage(`Le sélecteur d'écriture directe n'est pas disponible ici. Le bouton Sauvegarder ouvrira l'export système Android / navigateur pour choisir ${destination.label}.`);
+      }
+    } catch (error: any) {
+      setMessage(`Configuration de ${destination.label} impossible : ${error?.message || error}`);
+    } finally {
+      setExternalBackupBusy(null);
     }
   };
 
@@ -2492,15 +3031,12 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     }
   };
 
-  const toggleExpanded = (key: string) => setExpanded((old) => ({ ...old, [key]: !old[key] }));
-
   const renderEntry = (entry: SaveEntry) => (
     <SaveCard
       key={entry.key}
       entry={entry}
       busy={busy}
-      expanded={Boolean(expanded[entry.key])}
-      onToggle={() => toggleExpanded(entry.key)}
+      onDetails={() => void openSaveDetails(entry)}
       onRestore={() => entry.source === "nas" ? restoreNas(entry) : entry.source === "cloud" ? restoreCloud(entry) : restoreLocal(entry)}
       onExport={async () => {
         try {
@@ -2556,8 +3092,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       key={entry.key}
       entry={entry}
       busy={busy}
-      expanded={Boolean(expanded[entry.key])}
-      onToggle={() => toggleExpanded(entry.key)}
+      onDetails={() => void openSaveDetails(entry)}
       restoreLabel="Sortir de la corbeille"
       exportLabel="Exporter JSON"
       deleteLabel="Supprimer définitivement"
@@ -2644,14 +3179,6 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           ? "Créer sauvegarde Cloud R2"
           : "Créer sauvegarde NAS";
 
-  const destinationStatValue = selectedDestination === "app_local"
-    ? localEntries.length
-    : selectedDestination === "device_file" || selectedDestination === "external_sd_manual" || selectedDestination === "personal_cloud_manual"
-      ? (externalBackupStatus.configured ? 1 : 0)
-      : selectedDestination === "cloud_r2"
-        ? cloudEntries.length
-        : nasEntries.length;
-
   const remoteDestinationNeedsAccount = selectedDestination === "cloud_r2" || selectedDestination === "founder_nas";
   const cloudR2WriteLocked = selectedDestination === "cloud_r2" && directR2Usage !== null && !isDirectR2PremiumWriteAllowed(directR2Usage);
   const backgroundBackupRunning = backgroundBackup.status === "running";
@@ -2732,7 +3259,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       {destination.id === "app_local" ? <div style={{ color: green }}>Utilisé : {formatStorageBytes(storageEstimate.usage)} · Libre estimé : {formatStorageBytes(storageEstimate.free)} · Quota : {formatStorageBytes(storageEstimate.quota)}</div> : null}
       {destination.id === "cloud_r2" ? cloudR2Details : null}
       {destination.id === "device_file" || destination.id === "external_sd_manual" || destination.id === "personal_cloud_manual" ? externalTargetDetails : null}
-      {destination.id === "personal_cloud_manual" ? <div style={{ color: neon }}>Compatible avec un dossier synchronisé Google Drive / OneDrive / Dropbox / Nextcloud.</div> : null}
+      {destination.id === "personal_cloud_manual" ? <div style={{ color: neon }}>Compatible avec Google Drive / OneDrive / Dropbox / Nextcloud, Synology Drive, QNAP et tout partage NAS monté dans le sélecteur système.</div> : null}
       {destination.id === "founder_nas" ? <div style={{ color: neon, fontWeight: 900 }}>Destination privée du compte fondateur. La sécurité locale est conservée avant l’envoi et les archives restent restaurables.</div> : null}
     </div>
   );
@@ -2742,30 +3269,29 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
   return (
     <div style={{ ...pageStyle, paddingTop: 8, ...themeVars }}>
       <div style={shellStyle}>
+        <StorageTickerHeader
+          busy={busy}
+          help={pageHelp}
+          onBack={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}
+          onRefresh={() => void refresh()}
+        />
+
         <div style={{ ...panel, padding: 11, marginBottom: 10, borderColor: accentSoftBorder }}>
-          <div style={{ display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
-            <BackDot
-              size={42}
-              color={neon}
-              glow={`${neon}77`}
-              onClick={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}
-            />
-            <div style={{ textAlign: "center", minWidth: 0 }}>
-              <div style={{ color: neon, fontWeight: 1000, fontSize: 22, letterSpacing: ".06em", textShadow: `0 0 18px ${accentSoftGlow}` }}>SAUVEGARDE</div>
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
-                <span style={{ border: `1px solid ${accountScopeId ? green : red}`, color: accountScopeId ? green : red, borderRadius: 999, padding: "3px 7px", fontSize: 9.5, fontWeight: 900 }}>{accountScopeId ? `COMPTE ${shortId(accountScopeId)}` : "HORS COMPTE"}</span>
-                <span style={{ border: `1px solid ${gold}`, color: gold, borderRadius: 999, padding: "3px 7px", fontSize: 9.5, fontWeight: 900 }}>{activeDestination.shortLabel.toUpperCase()}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+            {[
+              ["PARTIES", headerSummary.matches, gold],
+              ["PROFILS", headerSummary.profiles, neon],
+              ["STATS", headerSummary.statsMatches || headerSummary.statsBlocks, green],
+            ].map(([label, value, color]) => (
+              <div key={String(label)} style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 14, padding: 9, textAlign: "center", background: "rgba(2,6,23,.62)" }}>
+                <div style={{ color: muted, fontSize: 9.5, fontWeight: 1000 }}>{label}</div>
+                <div style={{ color: String(color), fontSize: 21, fontWeight: 1000, marginTop: 3 }}>{String(value)}</div>
               </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <InfoDot title="Centre de sauvegarde" size={38} color={gold} glow={`${gold}66`} content={pageHelp}/>
-              <button type="button" disabled={busy} onClick={() => void refresh()} aria-label="Actualiser" style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${neon}`, background: "rgba(0,0,0,.45)", color: neon, display: "grid", placeItems: "center", boxShadow: `0 0 14px ${accentSoftGlow}`, cursor: busy ? "wait" : "pointer", opacity: busy ? .55 : 1 }}><VaultGlyph name="refresh" size={21}/></button>
-            </div>
+            ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
-            <div style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 12, padding: 8, textAlign: "center", background: "rgba(2,6,23,.62)" }}><div style={{ color: muted, fontSize: 9, fontWeight: 900 }}>ÉTATS</div><div style={{ color: green, fontSize: 19, fontWeight: 1000 }}>{restorableEntries.length}</div></div>
-            <div style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 12, padding: 8, textAlign: "center", background: "rgba(2,6,23,.62)" }}><div style={{ color: muted, fontSize: 9, fontWeight: 900 }}>PARTIES</div><div style={{ color: gold, fontSize: 19, fontWeight: 1000 }}>{matchBackupEntries.length}</div></div>
-            <div style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 12, padding: 8, textAlign: "center", background: "rgba(2,6,23,.62)" }}><div style={{ color: muted, fontSize: 9, fontWeight: 900 }}>{activeDestination.shortLabel.toUpperCase()}</div><div style={{ color: neon, fontSize: 19, fontWeight: 1000 }}>{destinationStatValue}</div></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
+            <span style={wrapText}>Dernière sauvegarde affichée : <b style={{ color: "#fff" }}>{fmtDate(headerDate)}</b></span>
+            <MiniInfoButton title="Signification des compteurs" color={neon} content={<div style={{ display: "grid", gap: 7 }}><div><b>Parties</b> : nombre total de parties contenues dans la sauvegarde.</div><div><b>Profils</b> : profils locaux réellement sauvegardés.</div><div><b>Stats</b> : nombre de parties possédant des volées, impacts, scores ou statistiques exploitables.</div></div>}/>
           </div>
         </div>
 
@@ -2779,53 +3305,51 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         <div style={{ ...panel, padding: "9px 11px", marginBottom: 10, borderColor: busy ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
           <span style={{ color: busy ? amber : green, lineHeight: 0 }}>{busy ? <VaultGlyph name="save" size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
           <div title={message} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{message}</div>
-          <InfoDot title="État détaillé" size={28} color={busy ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
+          <MiniInfoButton title="État détaillé" color={busy ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
           {busy ? <div style={{ gridColumn: "1 / -1", height: 3, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)" }}><div style={{ width: "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" }}/></div> : null}
         </div>
 
         {tab === "restore" && (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="SOURCE DISTANTE" color={neon} info={<div>Le choix NAS / Cloud R2 sert uniquement à afficher les sauvegardes disponibles. Il ne change pas la destination utilisée par le bouton Sauver.</div>}/>
+              <CompactSectionTitle title="SOURCE DE RESTAURATION" color={neon} info={<div>La source choisie ici est indépendante de la destination utilisée dans l’onglet Sauver. NAS ne peut donc plus être écrasé par une destination R2 active.</div>}/>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                <VaultActionButton icon="nas" label="NAS privé" active={backupProvider === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
-                <VaultActionButton icon="cloud" label="Cloud R2" active={backupProvider === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
+                <VaultActionButton icon="nas" label="NAS privé" active={restoreSource === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
+                <VaultActionButton icon="cloud" label="Cloud R2" active={restoreSource === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
+                <VaultActionButton icon="local" label="Cet appareil" active={restoreSource === "local"} onClick={selectLocalRestoreSource}/>
+                <VaultActionButton icon="file" label="Fichier / SD / Cloud perso" active={restoreSource === "file"} onClick={selectFileRestoreSource}/>
+                <input ref={restoreFileRef} type="file" accept="application/json,.json,.dcbackup" style={{ display: "none" }} onChange={(event) => void loadRestoreFile(event.currentTarget.files?.[0] || null)}/>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: restoreSource === "file" ? "1fr" : restoreSource === "local" ? "repeat(2,minmax(0,1fr))" : "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
                 <VaultActionButton icon="current" label="Dernière" active={restoreView === "current"} onClick={() => setRestoreView("current")}/>
-                <VaultActionButton icon="archive" label={`Archives ${archiveEntries.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/>
-                <VaultActionButton icon="trash" label={`Corbeille ${trashRemoteEntries.length}`} active={restoreView === "trash"} onClick={() => setRestoreView("trash")}/>
+                {restoreSource !== "file" ? <VaultActionButton icon="archive" label={`Archives ${currentRestoreArchives.length}`} active={restoreView === "archives"} onClick={() => setRestoreView("archives")}/> : null}
+                {restoreSource === "nas" || restoreSource === "cloud" ? <VaultActionButton icon="trash" label={`Corbeille ${trashRemoteEntries.length}`} active={restoreView === "trash"} onClick={() => setRestoreView("trash")}/> : null}
               </div>
             </div>
 
-            {restoreView === "current" && (latestRemoteEntry ? renderEntry(latestRemoteEntry) : <CompactEmpty title={`Aucune sauvegarde ${backupProvider === "nas" ? "NAS" : "Cloud R2"} courante`} detail="Crée un état depuis l’onglet Sauver, puis actualise."/>)}
+            {restoreView === "current" && (currentRestoreEntry
+              ? renderEntry(currentRestoreEntry)
+              : <CompactEmpty
+                  title={restoreSource === "file" ? "Sélectionne un fichier de sauvegarde" : restoreSource === "local" ? "Aucune sauvegarde locale" : `Aucune sauvegarde ${restoreSource === "nas" ? "NAS" : "Cloud R2"} courante`}
+                  detail={restoreSource === "file" ? "Le fichier sera d’abord analysé et affiché. Rien ne sera restauré avant confirmation." : "Crée une sauvegarde depuis l’onglet Sauver, puis actualise."}
+                />)}
 
-            {restoreView === "archives" && (
+            {restoreView === "archives" && restoreSource !== "file" ? (
               <>
-                {archiveCompleteEntries.map(renderEntry)}
-                {archiveHistoryEntries.map(renderEntry)}
-                {backupProvider === "cloud" ? archiveCloudOtherEntries.map(renderEntry) : null}
-                {!archiveEntries.length ? <CompactEmpty title="Aucune archive restaurable"/> : null}
+                {currentRestoreArchives.map(renderEntry)}
+                {!currentRestoreArchives.length ? <CompactEmpty title="Aucune archive restaurable"/> : null}
               </>
-            )}
+            ) : null}
 
-            {restoreView === "trash" && (
+            {restoreView === "trash" && (restoreSource === "nas" || restoreSource === "cloud") ? (
               <>
                 <div style={{ ...panel, padding: 11 }}>
                   <CompactSectionTitle title="CORBEILLE" color={red} info={<div>Une sauvegarde placée ici reste récupérable. Le bouton « Vider » la supprime définitivement du serveur.</div>} right={<button style={{ ...dangerBtn, padding: "7px 10px", fontSize: 10.5 }} disabled={busy || !trashRemoteEntries.length} onClick={emptyTrash}>Vider</button>}/>
                 </div>
                 {trashRemoteEntries.length ? trashRemoteEntries.map(renderTrashEntry) : <CompactEmpty title="Corbeille vide"/>}
               </>
-            )}
-
-            <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="MULTI-APPAREILS" color={gold} info={<div>Crée une copie Cloud R2 sans modifier la destination principale. Sur l’autre appareil, connecte le même compte puis ouvre Restaurer → Cloud R2.</div>}/>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                <VaultActionButton icon="upload" label={cloudTransferBusy === "current" ? "Envoi…" : "Cet appareil → R2"} disabled={busy || !hasConnectedAccount} onClick={() => void publishCurrentDeviceToCloud()}/>
-                <VaultActionButton icon="file" label={cloudTransferBusy === "file" ? "Lecture…" : "Fichier → R2"} disabled={busy || !hasConnectedAccount} onClick={() => cloudImportRef.current?.click()}/>
-                <input ref={cloudImportRef} type="file" accept="application/json,.json,.dcbackup" style={{ display: "none" }} onChange={(e) => void publishFileToCloud(e.currentTarget.files?.[0] || null)}/>
-              </div>
-            </div>
+            ) : null}
           </div>
         )}
 
@@ -2851,7 +3375,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                         <span style={{ color: active ? gold : neon, lineHeight: 0 }}><VaultGlyph name={destinationIconName(destination.id)} size={29}/></span>
                         <span><b style={{ display: "block", fontSize: 11.5, lineHeight: 1.15 }}>{destination.shortLabel}</b><small style={{ display: "block", color: active ? green : muted, fontSize: 9.5, marginTop: 4 }}>{active ? "ACTIF" : accountRequired && !hasConnectedAccount ? "CONNEXION" : "SÉLECTIONNER"}</small></span>
                       </button>
-                      <div style={{ position: "absolute", top: 8, right: 7 }}><InfoDot title={destination.shortLabel} size={27} color={active ? gold : neon} content={destinationHelp(destination)}/></div>
+                      <div style={{ position: "absolute", top: 8, right: 7 }}><MiniInfoButton title={destination.shortLabel} color={active ? gold : neon} content={destinationHelp(destination)}/></div>
                     </div>
                   );
                 })}
@@ -2862,7 +3386,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               <div style={{ display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                 <div style={{ width: 44, height: 44, borderRadius: 14, border: `1px solid ${gold}`, color: gold, display: "grid", placeItems: "center", background: accentSoftBg }}><VaultGlyph name={destinationIconName(selectedDestination)} size={27}/></div>
                 <div style={{ minWidth: 0 }}><div style={{ color: muted, fontSize: 9.5, fontWeight: 900 }}>DESTINATION ACTIVE</div><strong style={{ color: "#fff", fontSize: 13.5, ...wrapText }}>{activeDestination.label}</strong></div>
-                <InfoDot title={activeDestination.shortLabel} size={30} color={green} content={<div style={{ display: "grid", gap: 9 }}><div>La sauvegarde inclut les parties, l’Historique, les profils, les statistiques, les compétitions et les références médias. Les blocs incomplets sont refusés par le garde-fou.</div>{destinationHelp(activeDestination)}</div>}/>
+                <MiniInfoButton title={activeDestination.shortLabel} color={green} content={<div style={{ display: "grid", gap: 9 }}><div>La sauvegarde inclut les parties, l’Historique, les profils, les statistiques, les compétitions et les références médias. Les blocs incomplets sont refusés par le garde-fou.</div>{destinationHelp(activeDestination)}</div>}/>
               </div>
               {selectedDestination === "app_local" ? <div style={{ marginTop: 9, color: muted, fontSize: 10.5 }}>Libre estimé : <b style={{ color: green }}>{formatStorageBytes(storageEstimate.free)}</b></div> : null}
               {selectedDestination === "cloud_r2" && cloudR2WriteLocked ? <div style={{ marginTop: 9, color: amber, fontSize: 10.5, fontWeight: 900 }}>Cloud R2 verrouillé : offre PREMIUM requise.</div> : null}
@@ -2879,7 +3403,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
               <div style={{ ...panel, padding: 11 }}>
                 <CompactSectionTitle title="FICHIER EXTERNE" color={neon} info={<div>Choisis un fichier une fois, puis le bouton Écrire mettra ce même fichier à jour. Si l’accès direct est refusé, un téléchargement JSON est proposé automatiquement.</div>}/>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
-                  <VaultActionButton icon="folder" label={externalBackupStatus.configured ? "Changer" : "Choisir"} disabled={busy || externalBackupBusy !== null} onClick={() => void runExternalBackupAction("choose")}/>
+                  <VaultActionButton icon="folder" label={externalBackupStatus.configured ? "Changer" : "Configurer"} disabled={busy || externalBackupBusy !== null} onClick={() => setDestinationSetup(selectedDestination)}/>
                   <VaultActionButton icon="save" label="Écrire" disabled={busy || externalBackupBusy !== null || !externalBackupStatus.configured} onClick={() => void runExternalBackupAction("save")}/>
                   <VaultActionButton icon="download" label="Télécharger" disabled={busy || externalBackupBusy !== null} onClick={() => void runExternalBackupAction("download")}/>
                 </div>
@@ -2897,10 +3421,33 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 <VaultActionButton icon="expert" label={showDiagnostic ? "Masquer blocs" : `Afficher ${technicalCount}`} active={showDiagnostic} onClick={() => setShowDiagnostic((v) => !v)}/>
               </div>
             </div>
+            <div style={{ ...panel, padding: 11 }}>
+              <CompactSectionTitle title="TRANSFÉRER VERS UN AUTRE APPAREIL" color={gold} info={<div>Cette fonction ne synchronise pas deux téléphones en direct. Elle crée une copie transportable, puis l’autre appareil la restaure.</div>}/>
+              <div style={{ display: "grid", gap: 9 }}>
+                <div style={{ border: "1px solid rgba(52,211,153,.28)", borderRadius: 14, padding: 11, background: "rgba(52,211,153,.05)" }}>
+                  <div style={{ color: green, fontWeight: 1000 }}>MÉTHODE GRATUITE</div>
+                  <div style={{ color: "#dbe5f1", fontSize: 11.5, lineHeight: 1.45, marginTop: 5 }}>Exporte un fichier, envoie-le sur l’autre appareil, puis ouvre Restaurer → Fichier / SD / Cloud perso.</div>
+                  <button type="button" style={{ ...btn, width: "100%", marginTop: 8 }} disabled={busy} onClick={() => void runExternalBackupAction("download")}>Exporter un fichier de transfert</button>
+                </div>
+                <div style={{ border: "1px solid rgba(217,255,51,.28)", borderRadius: 14, padding: 11, background: accentSoftBg }}>
+                  <div style={{ color: gold, fontWeight: 1000 }}>MÉTHODE CLOUD PREMIUM</div>
+                  <div style={{ color: "#dbe5f1", fontSize: 11.5, lineHeight: 1.45, marginTop: 5 }}>Crée une copie R2. Sur l’autre appareil, connecte le même compte puis ouvre Restaurer → Cloud R2.</div>
+                  <button type="button" style={{ ...btn, width: "100%", marginTop: 8, borderColor: gold, color: gold }} disabled={busy || !hasConnectedAccount || cloudTransferBusy !== null} onClick={() => void publishCurrentDeviceToCloud()}>{cloudTransferBusy === "current" ? "Envoi en cours…" : "Créer la copie R2 pour l’autre appareil"}</button>
+                </div>
+              </div>
+            </div>
             {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}/>) : null}
           </div>
         )}
       </div>
+      <BackupDetailsModal state={detailsState} onClose={() => setDetailsState(null)}/>
+      <DestinationSetupModal
+        destination={destinationSetup ? getStorageDestination(destinationSetup) : null}
+        status={externalBackupStatus}
+        busy={externalBackupBusy === "choose"}
+        onClose={() => setDestinationSetup(null)}
+        onChoose={() => void configureExternalDestination()}
+      />
       <style>{`@keyframes dcVaultBusy { from { transform: translateX(-40%); opacity:.45 } to { transform: translateX(140%); opacity:1 } }`}</style>
     </div>
   );

@@ -1,3 +1,18 @@
+# MULTISPORTS SCORING
+
+Version de référence : **1.0.0-rc2**  
+Code Google Play : **3**  
+Package Android : `com.multisportsscoring.app`
+
+La source unique de version est `config/release-version.json`.
+
+```powershell
+npm run version:sync
+npm run version:check
+```
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

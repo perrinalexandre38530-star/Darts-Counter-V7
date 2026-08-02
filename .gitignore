@@ -29,5 +29,16 @@ dist-ssr
 !.env.example
 !env.example
 
-# Android App Bundles
-releases/google-play/*.aab
+# Android — artefacts générés et releases locales
+*.aab
+*.apk
+releases/
+android/app/build/
+android/.gradle/
+android/local.properties
+
+# Android — secrets de signature (ne jamais pousser)
+android/key.properties
+android/upload-keystore.jks
+*.jks
+*.keystore
