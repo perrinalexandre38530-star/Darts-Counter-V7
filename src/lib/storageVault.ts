@@ -1,4 +1,5 @@
 import LZString from "lz-string";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
 import { apiDelete, apiGet, apiPost } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser, importCloudSnapshot } from "./storage";
@@ -816,14 +817,63 @@ export async function emptyNasDeletedMemorySlots(): Promise<void> {
   await apiDelete("/sync/slots/trash");
 }
 
-export async function exportJsonDownload(value: any, filename: string) {
+type NativeJsonExportResult = {
+  cancelled?: boolean;
+  fileName?: string;
+  uri?: string;
+};
+
+type NativeJsonExportPlugin = {
+  saveJson(options: { content: string; fileName: string; mimeType: string }): Promise<NativeJsonExportResult>;
+};
+
+let nativeJsonExportPlugin: NativeJsonExportPlugin | null | undefined;
+
+function getNativeJsonExportPlugin(): NativeJsonExportPlugin | null {
+  if (nativeJsonExportPlugin !== undefined) return nativeJsonExportPlugin;
+  try {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") {
+      nativeJsonExportPlugin = null;
+      return null;
+    }
+    nativeJsonExportPlugin = registerPlugin<NativeJsonExportPlugin>("NativeJsonExport");
+    return nativeJsonExportPlugin;
+  } catch {
+    nativeJsonExportPlugin = null;
+    return null;
+  }
+}
+
+function safeJsonFileName(filename: string): string {
+  const base = String(filename || "multisports-backup.json")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, " ")
+    .slice(0, 180) || "multisports-backup.json";
+  return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
+}
+
+export async function exportJsonDownload(value: any, filename: string): Promise<NativeJsonExportResult> {
+  const fileName = safeJsonFileName(filename);
+  const nativePlugin = getNativeJsonExportPlugin();
+
+  if (nativePlugin) {
+    // Sur Android WebView, l'attribut HTML download peut être ignoré sans erreur.
+    // Le plugin ouvre donc le sélecteur système "Enregistrer sous" et écrit le JSON
+    // dans l'emplacement réellement choisi par l'utilisateur.
+    const content = JSON.stringify(value);
+    return nativePlugin.saveJson({ content, fileName, mimeType: "application/json" });
+  }
+
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = fileName;
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   a.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 2500);
+  return { cancelled: false, fileName };
 }

@@ -2348,7 +2348,7 @@ Elle sera réinjectée dans l’Historique sans remplacer tout le reste.`
         : item.origin === "cloud"
           ? await pullCloudMatchBackup(item)
           : item;
-      exportJsonDownload(full || item, `${String(item.matchId || item.id || "match").replace(/[^a-z0-9_-]/gi, "_")}.json`);
+      await exportJsonDownload(full || item, `${String(item.matchId || item.id || "match").replace(/[^a-z0-9_-]/gi, "_")}.json`);
     } catch (error: any) {
       setMessage(`Export partie impossible : ${error?.message || error}`);
     }
@@ -3067,16 +3067,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             const slot = entry.slot as NasSlot;
             const id = String(slot.id || "latest");
             const pulled = await pullNasMemorySlot(id);
-            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+            await exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
           } else if (entry.source === "cloud") {
             const slot = entry.slot as CloudSlot;
             const pulled = slot.__payload
               ? { slot, payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
               : await pullCloudVaultSlot(slot);
-            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${String(slot.id || "cloud").replace(/[^a-z0-9_-]/gi, "_")}.json`);
+            await exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${String(slot.id || "cloud").replace(/[^a-z0-9_-]/gi, "_")}.json`);
           } else {
             const localSlot = entry.slot as MemorySlot;
-            exportJsonDownload({ ...localSlot, payload: decodeMaybeCompressedNasPayload(localSlot.payload) }, `${localSlot.id}.json`);
+            await exportJsonDownload({ ...localSlot, payload: decodeMaybeCompressedNasPayload(localSlot.payload) }, `${localSlot.id}.json`);
           }
         } catch (error: any) {
           setMessage(`Export impossible : ${error?.message || error}`);
@@ -3140,10 +3140,10 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           const id = String((entry.slot as any).id || "");
           if (entry.source === "cloud") {
             const pulled = await pullCloudVaultSlot(entry.slot as CloudSlot, { trash: true });
-            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+            await exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
           } else {
             const pulled = await pullNasMemorySlot(id, { trash: true });
-            exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
+            await exportJsonDownload({ slot: pulled.slot, payload: pulled.payload, summary: pulled.summary }, `${id}.json`);
           }
         } catch (error: any) {
           setMessage(`Export corbeille impossible : ${error?.message || error}`);
@@ -3459,7 +3459,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 </div>
               </div>
             </div>
-            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}/>) : null}
+            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}/>) : null}
           </div>
         )}
       </div>
