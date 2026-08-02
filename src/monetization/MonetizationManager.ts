@@ -85,12 +85,14 @@ function isResultRoute(tab: string, params?: any): boolean {
   return false;
 }
 
-function dueNow(state: RuntimeState): boolean {
+function dueNow(_state: RuntimeState): boolean {
   const prefs = loadMonetizationPrefs();
   if (!prefs.adsEnabled || !prefs.endGameVideoEnabled || prefs.endGameAdTiming === "off") return false;
   if (getVerifiedAdFreeState().active) return false;
-  if (state.completedMatches % Math.max(1, prefs.endGameEveryMatches) !== 0) return false;
-  return Date.now() - Number(state.lastInterstitialAt || 0) >= prefs.minInterstitialIntervalMs;
+
+  // Politique FREE retenue : chaque partie réellement terminée et sauvegardée
+  // crée une tentative d'interstitiel. Aucun modulo et aucun délai minimum.
+  return true;
 }
 
 async function showAndConsume(reason: string): Promise<void> {

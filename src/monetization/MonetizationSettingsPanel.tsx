@@ -3,7 +3,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { GOOGLE_PLAY_CORE_PRODUCTS, STORE_PACKS } from "./catalog";
 import { getMonetizationRuntimeSnapshot, previewEndGameInterstitial } from "./MonetizationManager";
 import { applyVerifiedEntitlements, getVerifiedAdFreeState, getVerifiedPremiumState, loadMonetizationPrefs, saveMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
-import type { EndGameAdTiming, MonetizationPrefs } from "./types";
+import type { MonetizationPrefs } from "./types";
 import { getNativeAdMobStatus, showNativePrivacyOptions, type NativeAdMobStatus } from "./nativeAdMob";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import { getNativeBillingStatus, type NativeBillingStatus } from "./nativeBilling";
@@ -78,11 +78,6 @@ export default function MonetizationSettingsPanel() {
     </div>
   );
 
-  const timingOptions: { id: EndGameAdTiming; label: string }[] = [
-    { id: "after_results", label: "Après résultats" },
-    { id: "before_results", label: "Avant résultats" },
-    { id: "off", label: "Jamais" },
-  ];
 
   return (
     <div style={{ display: "grid", gap: 12, paddingBottom: 72 }}>
@@ -129,27 +124,21 @@ export default function MonetizationSettingsPanel() {
       <section style={card}>
         <div style={{ color: theme.primary, fontWeight: 950 }}>VIDÉO / INTERSTITIEL FIN DE PARTIE</div>
         <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.4, marginTop: 3 }}>
-          Par défaut : après fermeture des résultats, pour que le vainqueur et les statistiques apparaissent immédiatement.
-        </div>
-        <Toggle label="Vidéo de fin de partie" help="Déclenchée uniquement après une partie réellement terminée et enregistrée." value={prefs.endGameVideoEnabled} onChange={(v) => patch({ endGameVideoEnabled: v })} />
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 7, marginTop: 10 }}>
-          {timingOptions.map((o) => <button key={o.id} type="button" onClick={() => patch({ endGameAdTiming: o.id })} style={smallBtn(prefs.endGameAdTiming === o.id)}>{o.label}</button>)}
+          Compte FREE : une tentative d'interstitiel après chaque partie réellement terminée et enregistrée. L'écran de résultats reste affiché en premier.
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 11, color: theme.textSoft, fontWeight: 850 }}>Fréquence maximum</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 7, marginTop: 7 }}>
-          {[2, 3, 4, 5].map((n) => <button key={n} type="button" onClick={() => patch({ endGameEveryMatches: n })} style={smallBtn(prefs.endGameEveryMatches === n)}>1 / {n}</button>)}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 11 }}>
+          <div style={{ ...smallBtn(true), textAlign: "center", cursor: "default" }}>1 PUB / 1 PARTIE</div>
+          <div style={{ ...smallBtn(true), textAlign: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 11, color: theme.textSoft, fontWeight: 850 }}>Intervalle minimum</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 7, marginTop: 7 }}>
-          {[5, 8, 12].map((minutes) => <button key={minutes} type="button" onClick={() => patch({ minInterstitialIntervalMs: minutes * 60_000 })} style={smallBtn(prefs.minInterstitialIntervalMs === minutes * 60_000)}>{minutes} min</button>)}
+        <div style={{ marginTop: 9, borderRadius: 12, padding: 9, background: "rgba(255,255,255,.025)", border: `1px solid ${theme.borderSoft}`, color: theme.textSoft, fontSize: 10, lineHeight: 1.45 }}>
+          PREMIUM / SANS PUB : aucune demande AdMob. Si aucune annonce n'est disponible, la navigation continue immédiatement. La durée et l'apparition du bouton de fermeture sont pilotées par Google.
         </div>
 
         <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...smallBtn(true), width: "100%", marginTop: 12 }}>▶ Aperçu vidéo / interstitiel</button>
         <div style={{ marginTop: 8, fontSize: 10, color: theme.textSoft }}>
-          Parties terminées comptées : {runtime.completedMatches} · dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}
+          Parties terminées comptées : {runtime.completedMatches} · dernière pub affichée : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}
         </div>
         <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...smallBtn(false), marginTop: 6 }}>Rafraîchir compteur</button>
       </section>

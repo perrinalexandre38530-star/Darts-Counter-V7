@@ -55,7 +55,8 @@
     "android:play:aab": "npm run typecheck && npm run test:android-store-v1 && npm run test:admob-native && npm run test:play-billing && npm run android:bundle:release && npm run android:play:verify-aab",
     "android:version": "node ./tools/set-android-version.mjs",
     "test:account-restore": "node ./tools/test-android-account-restore.mjs",
-    "test:play-privacy": "node ./tools/test-play-privacy.mjs"
+    "test:play-privacy": "node ./tools/test-play-privacy.mjs",
+    "test:interstitial-every-match": "node ./tools/test-interstitial-every-match.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

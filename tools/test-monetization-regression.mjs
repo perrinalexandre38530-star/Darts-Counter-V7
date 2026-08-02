@@ -12,6 +12,13 @@ const nativeAdMob = read("src/monetization/nativeAdMob.ts");
 const inlineAdMob = read("src/monetization/inlineAdMob.ts");
 const catalog = read("src/monetization/catalog.ts");
 const manager = read("src/monetization/MonetizationManager.ts");
+const homePage = read("src/pages/Home.tsx");
+const profilesPage = read("src/pages/Profiles.tsx");
+const tournamentsPage = read("src/pages/TournamentsHome.tsx");
+const statsPage = read("src/pages/StatsShell.tsx");
+const settingsPage = read("src/pages/Settings.tsx");
+const messagesPage = read("src/pages/MessagesPage.tsx");
+const screensPage = read("src/pages/cast/CastHostPage.tsx");
 
 function count(text, needle) {
   return text.split(needle).length - 1;
@@ -51,10 +58,12 @@ assert.ok(productIds.length >= 9, "Catalogue Google Play incomplet.");
 assert.ok(productIds.every((id) => id.startsWith("msc_")), "Un Product ID n'utilise pas le préfixe msc_.");
 assert.ok(!catalog.includes('"dc_'), "Ancien préfixe produit dc_ encore présent dans catalog.ts.");
 
-// 6) Valeurs de fréquence sûres par défaut.
+// 6) Politique interstitielle FREE : après chaque partie, sans cooldown.
 assert.ok(prefs.includes("endGameAdTiming: \"after_results\""), "Le timing par défaut doit rester après résultats.");
-assert.ok(prefs.includes("endGameEveryMatches: 3"), "La fréquence par défaut doit rester 1 pub / 3 parties.");
-assert.ok(prefs.includes("minInterstitialIntervalMs: 8 * 60 * 1000"), "L'intervalle minimum par défaut doit rester 8 minutes.");
+assert.ok(prefs.includes("endGameEveryMatches: 1"), "La fréquence doit être 1 pub / 1 partie.");
+assert.ok(prefs.includes("minInterstitialIntervalMs: 0"), "Aucun intervalle minimum ne doit subsister.");
+assert.ok(!manager.includes("prefs.endGameEveryMatches"), "Le manager ne doit plus appliquer de modulo de parties.");
+assert.ok(!manager.includes("prefs.minInterstitialIntervalMs"), "Le manager ne doit plus appliquer de cooldown.");
 
 // 7) Bannières : toutes les entrées principales BottomNav, jamais un écran *_play.
 for (const allowed of [
@@ -67,11 +76,21 @@ assert.ok(!/route\s*===\s*"[^"]*_play"/.test(adSlot), "Un écran PLAY est éligi
 assert.ok(nativeAdMob.includes("aucun banner AdMob natif ne doit flotter") && nativeAdMob.includes("removeBanner"), "Le garde-fou banner natif flottant est absent.");
 assert.ok(adSlot.includes("PaidInlineSurface") && adSlot.includes("showInlineGoogleAd"), "Le chemin AdMob intégré au flux React est absent.");
 assert.ok(inlineAdMob.includes('registerPlugin("InlineAdMob")'), "Le pont Capacitor InlineAdMob est absent.");
-assert.ok(app.includes('adBannerPlacement !== "home"'), "Home doit gérer ses deux pubs directement dans Home.tsx.");
-assert.ok(app.includes('<AdSlot placement={adBannerPlacement} />'), "Les pages BottomNav hors Home doivent recevoir leur bloc pub intégré.");
+assert.ok(homePage.includes('slotKey="home-top"') && homePage.includes('slotKey="home-player"'), "Home doit conserver ses deux bannières inline dédiées.");
+for (const [name, source, placement] of [
+  ["Profils", profilesPage, "profiles"],
+  ["Compétitions", tournamentsPage, "competitions"],
+  ["Stats", statsPage, "stats"],
+  ["Réglages", settingsPage, "settings"],
+  ["Messages", messagesPage, "messages"],
+  ["Écrans", screensPage, "screens"],
+]) {
+  assert.ok(source.includes("PageAdBanner"), `${name} doit utiliser PageAdBanner.`);
+  assert.ok(source.includes(`placement="${placement}"`), `${name} utilise un mauvais placement AdMob.`);
+}
 
-// 8) Premium : jamais un simple localStorage premium=true.
-assert.ok(manager.includes("getVerifiedPremiumState().active"), "Garde Premium vérifiée absente du manager.");
+// 8) Premium / Sans pub : jamais un simple localStorage premium=true.
+assert.ok(manager.includes("getVerifiedAdFreeState().active"), "Garde Premium/Sans pub vérifiée absente du manager.");
 assert.ok(!/localStorage[^\n]*(premium|entitlement)/i.test(manager), "Le manager ne doit pas faire confiance à un Premium localStorage.");
 
 console.log("✅ MONETIZATION RC REGRESSION OK");

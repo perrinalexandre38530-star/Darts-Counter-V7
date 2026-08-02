@@ -12,25 +12,23 @@ export const DEFAULT_MONETIZATION_PREFS: MonetizationPrefs = {
   endGameVideoEnabled: true,
   // Choix par défaut : ne jamais retarder l'affichage du résultat.
   endGameAdTiming: "after_results",
-  endGameEveryMatches: 3,
-  minInterstitialIntervalMs: 8 * 60 * 1000,
+  // Politique FREE : une tentative d'interstitiel après chaque partie terminée.
+  endGameEveryMatches: 1,
+  minInterstitialIntervalMs: 0,
   houseAdsEnabled: true,
   testMode: false,
 };
 
 function normalize(raw: any): MonetizationPrefs {
-  const every = Math.max(1, Math.min(10, Number(raw?.endGameEveryMatches || DEFAULT_MONETIZATION_PREFS.endGameEveryMatches)));
-  const minMs = Math.max(60_000, Math.min(60 * 60_000, Number(raw?.minInterstitialIntervalMs || DEFAULT_MONETIZATION_PREFS.minInterstitialIntervalMs)));
-  const timing = raw?.endGameAdTiming === "before_results" || raw?.endGameAdTiming === "off"
-    ? raw.endGameAdTiming
-    : "after_results";
-
   return {
     ...DEFAULT_MONETIZATION_PREFS,
     ...(raw && typeof raw === "object" ? raw : {}),
-    endGameEveryMatches: every,
-    minInterstitialIntervalMs: minMs,
-    endGameAdTiming: timing,
+    // Migration forcée : les anciennes préférences 1/3 + 8 min ne doivent plus
+    // survivre dans le localStorage après l'installation de ce patch.
+    endGameVideoEnabled: true,
+    endGameAdTiming: "after_results",
+    endGameEveryMatches: 1,
+    minInterstitialIntervalMs: 0,
   };
 }
 

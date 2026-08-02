@@ -28,8 +28,6 @@ dist-ssr
 .env.*
 !.env.example
 !env.example
-*.aab
-*.apk
-releases/
-android/upload-keystore.jks
-android/key.properties
+
+# Android App Bundles
+releases/google-play/*.aab
