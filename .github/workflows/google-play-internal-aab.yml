@@ -2,6 +2,17 @@ name: MULTISPORTS SCORING - Google Play Internal AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Android versionName"
+        required: true
+        default: "1.0.0-rc4"
+        type: string
+      version_code:
+        description: "Google Play versionCode (must be unused)"
+        required: true
+        default: "5"
+        type: string
 
 jobs:
   build-signed-aab:
@@ -28,6 +39,28 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      - name: Apply requested Google Play version
+        env:
+          RELEASE_VERSION_NAME: ${{ inputs.version_name }}
+          RELEASE_VERSION_CODE: ${{ inputs.version_code }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'config/release-version.json';
+          const release = JSON.parse(fs.readFileSync(file, 'utf8'));
+          release.versionName = process.env.RELEASE_VERSION_NAME;
+          release.versionCode = Number(process.env.RELEASE_VERSION_CODE);
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release.versionName || '')) {
+            throw new Error(`Invalid versionName: ${release.versionName}`);
+          }
+          if (!Number.isInteger(release.versionCode) || release.versionCode < 1) {
+            throw new Error(`Invalid versionCode: ${process.env.RELEASE_VERSION_CODE}`);
+          }
+          fs.writeFileSync(file, `${JSON.stringify(release, null, 2)}\n`, 'utf8');
+          NODE
+          npm run version:sync
+          npm run version:check
+
       - name: Restore Google Play upload key
         env:
           PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
@@ -51,7 +84,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: multisports-scoring-google-play-aab
+          name: multisports-scoring-${{ inputs.version_name }}-code-${{ inputs.version_code }}-google-play-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
