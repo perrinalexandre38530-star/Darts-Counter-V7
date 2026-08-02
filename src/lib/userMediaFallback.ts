@@ -89,6 +89,12 @@ export function dartSetThumbMediaKey(setId: unknown): string {
   return cleanKey(`dartset_thumb:${String(setId || "").trim()}`);
 }
 
+function mediaAssetUrl(assetIdInput: unknown): string {
+  const assetId = String(assetIdInput || "").trim();
+  if (!assetId) return "";
+  try { return resolveRuntimeMediaUrl(`/media/${encodeURIComponent(assetId)}`); } catch { return ""; }
+}
+
 export function teamLogoMediaKey(teamId: unknown): string {
   return cleanKey(`team_logo:${String(teamId || "").trim()}`);
 }
@@ -429,6 +435,8 @@ function collectSnapshotStores(snapshotInput: any): any[] {
   push(snapshot);
   push(snapshot?.store);
   push(snapshot?.data);
+  push(snapshot?.portableAccountData);
+  push(snapshot?.portable_account_data);
   if (snapshot?.idb && typeof snapshot.idb === "object") {
     for (const value of Object.values(snapshot.idb)) push(value);
   }
@@ -447,8 +455,12 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
       for (const p of list) {
         const id = String(p?.id || p?.profileId || p?.playerId || "").trim();
         if (!id) continue;
-        const src = firstImage(p?.avatarThumbDataUrl, p?.avatarDataUrl, p?.avatarFullDataUrl, p?.avatarCastDataUrl, p?.photoDataUrl, p?.avatar, p?.avatarUrl);
-        if (!isImageDataUrl(src)) continue;
+        const src = firstImage(
+          p?.avatarThumbDataUrl, p?.avatarDataUrl, p?.avatarFullDataUrl, p?.avatarCastDataUrl,
+          p?.photoDataUrl, p?.avatar, p?.avatarUrl,
+          mediaAssetUrl(p?.avatarAssetId || p?.avatarFullAssetId || p?.avatarThumbAssetId)
+        );
+        if (!src) continue;
         const saved = await captureUserMediaFallback(profileAvatarMediaKey(id), src, { kind: "profile_avatar" }).catch(() => "");
         if (saved) count += 1;
       }
@@ -471,13 +483,22 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
       for (const set of list) {
         const id = String(set?.id || "").trim();
         if (!id) continue;
-        const main = firstImage(set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl, set?.mainImageUrl, set?.photoUrl, set?.imageUrl);
-        const thumb = firstImage(set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl, set?.photoThumbUrl, main);
-        if (isImageDataUrl(main)) {
+        const main = firstImage(
+          set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl,
+          set?.mainImageUrl, set?.photoUrl, set?.imageUrl,
+          mediaAssetUrl(set?.mainImageAssetId || set?.photoAssetId || set?.imageAssetId || set?.dartSetImageAssetId)
+        );
+        const thumb = firstImage(
+          set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl,
+          set?.photoThumbUrl,
+          mediaAssetUrl(set?.thumbImageAssetId || set?.photoThumbAssetId),
+          main
+        );
+        if (main) {
           const saved = await captureUserMediaFallback(dartSetMainMediaKey(id), main, { kind: "dartset_main" }).catch(() => "");
           if (saved) count += 1;
         }
-        if (isImageDataUrl(thumb)) {
+        if (thumb) {
           const saved = await captureUserMediaFallback(dartSetThumbMediaKey(id), thumb, { kind: "dartset_thumb" }).catch(() => "");
           if (saved) count += 1;
         }
@@ -501,6 +522,10 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
     }
   }
   return count;
+}
+
+export async function importUserMediaFromSnapshot(snapshotInput: any): Promise<number> {
+  return await importLegacyMediaFromSnapshot(snapshotInput);
 }
 
 async function hydrateFromLocalVaultOnce(): Promise<void> {
@@ -691,11 +716,18 @@ export async function captureStoreUserMedia(
     for (const set of dartSets) {
       const id = String(set?.id || "").trim();
       if (!id) continue;
-      const main = firstImage(set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl, set?.mainImageUrl, set?.photoUrl, set?.imageUrl);
-      const thumb = firstImage(set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl, set?.photoThumbUrl, main);
+      const main = firstImage(
+        set?.photoDataUrl, set?.imageDataUrl, set?.mainImageDataUrl, set?.dartSetImageDataUrl,
+        set?.mainImageUrl, set?.photoUrl, set?.imageUrl,
+        mediaAssetUrl(set?.mainImageAssetId || set?.photoAssetId || set?.imageAssetId || set?.dartSetImageAssetId)
+      );
+      const thumb = firstImage(
+        set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl, set?.thumbImageUrl,
+        set?.photoThumbUrl, mediaAssetUrl(set?.thumbImageAssetId || set?.photoThumbAssetId), main
+      );
       // Les visuels du catalogue (/assets/...) sont déjà dans l'application. R2
       // doit sauvegarder les photos PERSONNELLES choisies depuis la galerie/fichier.
-      const customPhoto = set?.kind === "photo" || [main, thumb, set?.photoDataUrl, set?.mainImageDataUrl]
+      const customPhoto = set?.kind === "photo" || Boolean(set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId) || [main, thumb, set?.photoDataUrl, set?.mainImageDataUrl]
         .some((value) => {
           const raw = String(value || "").trim();
           return raw.startsWith("data:image/") || raw.startsWith("blob:");
@@ -827,8 +859,14 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
   await mapWithConcurrency(dartSets, 3, async (d) => {
     const id = String(d?.id || "").trim();
     if (!id) return;
-    const mainPrimary = firstImage(d?.photoDataUrl, d?.imageDataUrl, d?.mainImageDataUrl, d?.mainImageUrl, d?.photoUrl, d?.imageUrl);
-    const thumbPrimary = firstImage(d?.photoThumbDataUrl, d?.thumbDataUrl, d?.thumbImageDataUrl, d?.thumbImageUrl, mainPrimary);
+    const mainPrimary = firstImage(
+      d?.photoDataUrl, d?.imageDataUrl, d?.mainImageDataUrl, d?.mainImageUrl, d?.photoUrl, d?.imageUrl,
+      mediaAssetUrl(d?.mainImageAssetId || d?.photoAssetId || d?.imageAssetId || d?.dartSetImageAssetId)
+    );
+    const thumbPrimary = firstImage(
+      d?.photoThumbDataUrl, d?.thumbDataUrl, d?.thumbImageDataUrl, d?.thumbImageUrl,
+      mediaAssetUrl(d?.thumbImageAssetId || d?.photoThumbAssetId), mainPrimary
+    );
     const [main, thumb] = await Promise.all([
       resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main" }),
       resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb" }),

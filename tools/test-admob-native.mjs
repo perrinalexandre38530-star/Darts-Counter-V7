@@ -22,11 +22,12 @@ const configure = read("tools/configure-android-admob.mjs");
 check("Google test banner ID", config.includes("ca-app-pub-3940256099942544/9214589741"));
 
 check(
-  "Production mode validates all required real IDs",
+  "Production mode keeps real banners live before fullscreen IDs exist",
   config.includes("validateRealBannerIds")
-    && config.includes("validateProductionFullscreenIds")
     && config.includes('requestedMode === "production"')
     && config.includes('productionReady: mode === "production" && realConfigurationReady')
+    && config.includes("interstitialReady")
+    && config.includes("rewardedReady")
 );
 
 check("Legacy floating banner remains disabled", native.includes("aucun banner AdMob natif") && native.includes("removeBanner"));
@@ -61,6 +62,7 @@ check("Android plugin follows WebView rectangle", inlineJava.includes("getWebVie
 check("Android app exposes GMA SDK to custom plugin", appGradle.includes("com.google.android.gms:play-services-ads:"));
 check("AdMob dependency pinned compatibly with plugin v8", variablesGradle.includes("playServicesAdsVersion = '24.9.0'"));
 check("Android configurator can read VITE App ID from .env", configure.includes("dotenv.VITE_ADMOB_ANDROID_APP_ID"));
+check("Android configurator can read committed production App ID", configure.includes("publicConfig.androidAppId"));
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [label, ok] of checks) console.log(`${ok ? "✅" : "❌"} ${label}`);

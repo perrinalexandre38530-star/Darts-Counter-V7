@@ -11,6 +11,8 @@ export type AdMobRuntimeConfig = {
   usesGoogleDemoIds: boolean;
   usesRealAdUnitIds: boolean;
   productionReady: boolean;
+  interstitialReady: boolean;
+  rewardedReady: boolean;
   appIdAndroid: string;
   bannerIdAndroid: string;
   bannerIdsAndroid: Record<AdPlacement, string>;
@@ -167,18 +169,6 @@ function validateRealBannerIds(real: ReturnType<typeof realIdsFromConfiguration>
   return errors;
 }
 
-function validateProductionFullscreenIds(real: ReturnType<typeof realIdsFromConfiguration>): string[] {
-  const errors: string[] = [];
-  if (!isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) errors.push("Interstitiel AdMob de production manquant ou invalide.");
-  if (!isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid)) errors.push("Rewarded AdMob de production manquant ou invalide.");
-
-  const publisher = publisherDigits(real.appIdAndroid);
-  const fullScreenUnits = [real.interstitialIdAndroid, real.rewardedIdAndroid].filter(Boolean);
-  if (publisher && fullScreenUnits.some((id) => publisherDigits(id) !== publisher)) {
-    errors.push("Les blocs interstitiel/rewarded doivent appartenir au même compte éditeur que l'App ID AdMob.");
-  }
-  return errors;
-}
 
 /**
  * Trois modes sûrs :
@@ -186,7 +176,9 @@ function validateProductionFullscreenIds(real: ReturnType<typeof realIdsFromConf
  * - real_test   : vrais IDs de bannières sur appareil déclaré dans AdMob. Tant
  *                 que les formats plein écran ne sont pas créés, leurs IDs de
  *                 démonstration Google restent utilisés.
- * - production  : tous les IDs sont réels et aucun mode de test n'est injecté.
+ * - production  : App ID + bannières réels, aucun mode de test injecté. Les
+ *                 formats plein écran restent désactivés jusqu'à la création
+ *                 de leurs propres blocs AdMob réels.
  */
 export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
   const requestedMode = normalizeMode();
@@ -194,7 +186,25 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
   const configErrors = requestedMode === "google_test" ? [] : validateRealBannerIds(real);
 
   if (requestedMode === "production") {
-    configErrors.push(...validateProductionFullscreenIds(real));
+    // Les bannières peuvent être monétisées immédiatement avec leurs vrais IDs.
+    // Les formats plein écran sont indépendants : tant que leurs blocs AdMob
+    // n'existent pas, ils restent simplement désactivés au lieu de faire
+    // retomber TOUTE la configuration sur les IDs de démonstration Google.
+    if (real.interstitialIdAndroid && !isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) {
+      configErrors.push("Interstitiel AdMob de production invalide.");
+    }
+    if (real.rewardedIdAndroid && !isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid)) {
+      configErrors.push("Rewarded AdMob de production invalide.");
+    }
+    const publisher = publisherDigits(real.appIdAndroid);
+    for (const [label, id] of [
+      ["interstitiel", real.interstitialIdAndroid],
+      ["rewarded", real.rewardedIdAndroid],
+    ] as const) {
+      if (id && publisher && publisherDigits(id) !== publisher) {
+        configErrors.push(`Le bloc ${label} doit appartenir au même compte éditeur que l'App ID AdMob.`);
+      }
+    }
   } else if (requestedMode === "real_test") {
     if (real.interstitialIdAndroid && !isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid)) {
       configErrors.push("Interstitiel AdMob de test invalide.");
@@ -225,6 +235,8 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
   }
 
   const realConfigurationReady = configErrors.length === 0;
+  const interstitialReady = isValidAdMobAndroidAdUnitId(real.interstitialIdAndroid);
+  const rewardedReady = isValidAdMobAndroidAdUnitId(real.rewardedIdAndroid);
   const mode: AdMobMode = requestedMode === "google_test" || !realConfigurationReady
     ? "google_test"
     : requestedMode;
@@ -241,6 +253,8 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
       usesGoogleDemoIds: true,
       usesRealAdUnitIds: false,
       productionReady: false,
+      interstitialReady: false,
+      rewardedReady: false,
       appIdAndroid: GOOGLE_ANDROID_TEST_IDS.appId,
       bannerIdAndroid: GOOGLE_ANDROID_TEST_IDS.banner,
       bannerIdsAndroid: googleBanners,
@@ -267,14 +281,21 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
     testMode: mode === "real_test",
     usesGoogleDemoIds: false,
     usesRealAdUnitIds: true,
+    // productionReady signifie ici : App ID + toutes les bannières réelles
+    // sont prêtes à générer des impressions monétisables. Les formats plein
+    // écran ont leur propre état et n'empêchent plus les bannières de passer live.
     productionReady: mode === "production" && realConfigurationReady,
+    interstitialReady: mode === "real_test" || interstitialReady,
+    rewardedReady: mode === "real_test" || rewardedReady,
     appIdAndroid: real.appIdAndroid,
     bannerIdAndroid: real.bannerIdAndroid,
     bannerIdsAndroid: real.bannerIdsAndroid,
     interstitialIdAndroid,
     rewardedIdAndroid,
     testDeviceIds: mode === "real_test" ? testDeviceIds : [],
-    testDevicesManagedByAdMobConsole: mode === "real_test" && testDevicesManagedByAdMobConsole,
+    // Une déclaration dans la console AdMob reste valable même dans un build
+    // production. Seule l'injection locale d'identifiants est supprimée.
+    testDevicesManagedByAdMobConsole,
     realTestUseGoogleDemoBanners: mode === "real_test" && realTestUseGoogleDemoBanners,
     consentDebugGeography: mode === "real_test" ? consentDebugGeography : "DISABLED",
     configErrors: Array.from(new Set(configErrors)),

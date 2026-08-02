@@ -28,7 +28,7 @@
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
-    "test:admob-native": "node ./tools/test-admob-native.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs",
     "android:configure-admob": "node ./tools/configure-android-admob.mjs",
     "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
     "android:release-check": "node ./tools/android-release-check.mjs",

@@ -118,13 +118,13 @@ export default function MonetizationSettingsPanel() {
         <div style={{ color: theme.primary, fontWeight: 950, marginBottom: 5 }}>BANNIÈRES</div>
         <Toggle label="Espaces publicitaires" help="Active les emplacements autorisés : Accueil, Jeux, Stats, Historique et Réglages." value={prefs.adsEnabled} onChange={(v) => patch({ adsEnabled: v })} />
         <Toggle label="Bannières" help="Jamais sur les écrans Play, le keypad ou pendant une volée." value={prefs.bannersEnabled} onChange={(v) => patch({ bannersEnabled: v })} />
-        <Toggle label="Promotions MULTISPORTS SCORING" help="Utilise les emplacements libres pour présenter les packs additionnels tant qu'aucun réseau réel n'est branché." value={prefs.houseAdsEnabled} onChange={(v) => patch({ houseAdsEnabled: v })} />
+        <Toggle label="Promotions MULTISPORTS SCORING" help="Utilise les emplacements de secours pour présenter les packs si aucune bannière AdMob n'est disponible." value={prefs.houseAdsEnabled} onChange={(v) => patch({ houseAdsEnabled: v })} />
       </section>
 
       <section style={card}>
         <div style={{ color: theme.primary, fontWeight: 950 }}>VIDÉO / INTERSTITIEL FIN DE PARTIE</div>
         <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.4, marginTop: 3 }}>
-          Compte FREE : une tentative d'interstitiel après chaque partie réellement terminée et enregistrée. L'écran de résultats reste affiché en premier.
+          Compte FREE : l'interstitiel sera tenté après chaque partie dès que son bloc AdMob réel sera créé. Les bannières, elles, peuvent déjà générer des revenus.
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 11 }}>
@@ -136,7 +136,9 @@ export default function MonetizationSettingsPanel() {
           PREMIUM / SANS PUB : aucune demande AdMob. Si aucune annonce n'est disponible, la navigation continue immédiatement. La durée et l'apparition du bouton de fermeture sont pilotées par Google.
         </div>
 
-        <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...smallBtn(true), width: "100%", marginTop: 12 }}>▶ Aperçu vidéo / interstitiel</button>
+        {getAdMobRuntimeConfig().mode !== "production" ? (
+          <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...smallBtn(true), width: "100%", marginTop: 12 }}>▶ Aperçu vidéo / interstitiel</button>
+        ) : null}
         <div style={{ marginTop: 8, fontSize: 10, color: theme.textSoft }}>
           Parties terminées comptées : {runtime.completedMatches} · dernière pub affichée : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}
         </div>
@@ -198,7 +200,7 @@ export default function MonetizationSettingsPanel() {
       <section style={card}>
         <div style={{ color: theme.primary, fontWeight: 950 }}>ANDROID / ADMOB + CONFIDENTIALITÉ UMP</div>
         <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.5, marginTop: 5 }}>
-          En développement, les emplacements utilisent les bannières de démonstration Google afin d'obtenir un test visuel fiable. Les vrais IDs AdMob restent configurés et contrôlés, puis seront utilisés automatiquement en production. Les formats plein écran restent eux aussi sur les blocs Google de démonstration tant que leurs propres IDs ne sont pas créés.
+          Le build Android est configuré pour utiliser les vrais blocs de bannières AdMob. Les appareils déclarés comme appareils de test dans la console AdMob restent protégés ; les autres appareils FREE reçoivent des demandes publicitaires live. Les formats plein écran restent désactivés jusqu'à la création de leurs propres blocs réels.
         </div>
 
         {isCapacitorNativeRuntime() ? (
@@ -210,7 +212,10 @@ export default function MonetizationSettingsPanel() {
               Plugin : {nativeStatus?.pluginAvailable ? "OK" : "—"} · Consentement : {nativeStatus?.consentStatus || "…"} · Publicités autorisées : {nativeStatus?.canRequestAds ? "OUI" : "NON"}
             </div>
             <div style={{ marginTop: 4, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
-              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION · VRAIS IDs" : nativeStatus?.mode === "real_test" ? (nativeStatus?.realTestUseGoogleDemoBanners ? "REAL_TEST · BANNIÈRES DEMO GOOGLE" : "REAL_TEST · VRAIS IDs") : "GOOGLE TEST"} · Appareil test : {nativeStatus?.testDevicesManagedByAdMobConsole && (nativeStatus?.testDeviceCount ?? 0) > 0 ? `CONSOLE + SDK (${nativeStatus?.testDeviceCount ?? 0})` : nativeStatus?.testDevicesManagedByAdMobConsole ? "CONSOLE ADMOB" : (nativeStatus?.testDeviceCount ?? 0)} · Prêt production : {nativeStatus?.productionReady ? "OUI" : "NON"}
+              Mode : {nativeStatus?.mode === "production" ? "PRODUCTION · BANNIÈRES LIVE" : nativeStatus?.mode === "real_test" ? (nativeStatus?.realTestUseGoogleDemoBanners ? "REAL_TEST · BANNIÈRES DEMO GOOGLE" : "REAL_TEST · VRAIS IDs") : "GOOGLE TEST"} · Appareil test : {nativeStatus?.testDevicesManagedByAdMobConsole && (nativeStatus?.testDeviceCount ?? 0) > 0 ? `CONSOLE + SDK (${nativeStatus?.testDeviceCount ?? 0})` : nativeStatus?.testDevicesManagedByAdMobConsole ? "CONSOLE ADMOB" : (nativeStatus?.testDeviceCount ?? 0)} · Bannières réelles : {nativeStatus?.productionReady ? "OUI" : "NON"}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 10, color: theme.textSoft, lineHeight: 1.45 }}>
+              Interstitiel réel : {nativeStatus?.interstitialReady ? "PRÊT" : "À CRÉER"} · Rewarded réel : {nativeStatus?.rewardedReady ? "PRÊT" : "À CRÉER"}
             </div>
             {nativeStatus?.configErrors?.length ? (
               <div style={{ marginTop: 7, borderRadius: 10, padding: 8, background: "rgba(255,80,80,.08)", border: "1px solid rgba(255,80,80,.24)", color: "#ff9b9b", fontSize: 10, lineHeight: 1.45 }}>
@@ -227,11 +232,11 @@ export default function MonetizationSettingsPanel() {
           </div>
         ) : (
           <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 10, lineHeight: 1.45 }}>
-            PWA détectée : aucun SDK AdMob natif n'est chargé ici. Les vraies annonces de test apparaîtront dans l'application Android Capacitor.
+            PWA détectée : aucun SDK AdMob natif n'est chargé ici. Les bannières live sont demandées uniquement dans l'application Android Capacitor.
           </div>
         )}
 
-        <Toggle label="Aperçu PWA des emplacements" help="Sur le web uniquement, affiche les faux emplacements visuels. Sur Android, les blocs Google de démonstration sont utilisés à la place." value={prefs.testMode} onChange={(v) => patch({ testMode: v })} />
+        <Toggle label="Aperçu PWA des emplacements" help="Sur le web uniquement, affiche les faux emplacements visuels. Android utilise la configuration AdMob du build." value={prefs.testMode} onChange={(v) => patch({ testMode: v })} />
       </section>
     </div>
   );

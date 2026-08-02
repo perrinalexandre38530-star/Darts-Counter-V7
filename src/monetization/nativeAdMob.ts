@@ -13,6 +13,8 @@ export type NativeAdMobStatus = {
   mode: "google_test" | "real_test" | "production";
   usesGoogleDemoIds: boolean;
   productionReady: boolean;
+  interstitialReady: boolean;
+  rewardedReady: boolean;
   testDeviceCount: number;
   testDevicesManagedByAdMobConsole: boolean;
   realTestUseGoogleDemoBanners: boolean;
@@ -73,6 +75,8 @@ function baseStatus() {
     mode: config.mode,
     usesGoogleDemoIds: config.usesGoogleDemoIds,
     productionReady: config.productionReady,
+    interstitialReady: config.interstitialReady,
+    rewardedReady: config.rewardedReady,
     testDeviceCount: config.testDeviceIds.length,
     testDevicesManagedByAdMobConsole: config.testDevicesManagedByAdMobConsole,
     realTestUseGoogleDemoBanners: config.realTestUseGoogleDemoBanners,
@@ -185,8 +189,11 @@ export async function showNativeInterstitial(forceGoogleTest = false): Promise<b
   const status = await ensureNativeAdMobReady();
   if (!status.canRequestAds) return false;
   const config = getAdMobRuntimeConfig();
+  if (!forceGoogleTest && !config.interstitialReady) return false;
+  const adId = forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.interstitial : config.interstitialIdAndroid;
+  if (!adId) return false;
   await plugin.prepareInterstitial({
-    adId: forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.interstitial : config.interstitialIdAndroid,
+    adId,
     isTesting: forceGoogleTest || config.testMode,
     immersiveMode: true,
   });
@@ -202,6 +209,7 @@ export async function showNativeRewarded(): Promise<any | null> {
   const status = await ensureNativeAdMobReady();
   if (!status.canRequestAds) return null;
   const config = getAdMobRuntimeConfig();
+  if (!config.rewardedReady || !config.rewardedIdAndroid) return null;
   await plugin.prepareRewardVideoAd({
     adId: config.rewardedIdAndroid,
     isTesting: config.testMode,

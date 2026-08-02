@@ -118,10 +118,21 @@ if (mode === "google_test") {
       ? "\nℹ️ Mode real_test : vrais IDs configurés/contrôlés, mais bannières de démonstration Google utilisées pour un test visuel déterministe. La production reprendra automatiquement les vrais IDs."
       : "\nℹ️ Mode real_test : les bannières utilisent les vrais IDs sur l'appareil déclaré. Un NO_FILL reste possible. Les formats plein écran non renseignés utilisent les IDs de démonstration Google.");
   } else {
-    check("Interstitiel réel valide", isUnitId(units.interstitial), units.interstitial || "manquant");
-    check("Rewarded réel valide", isUnitId(units.rewarded), units.rewarded || "manquant");
-    check("Aucun ID de démonstration Google", appId !== GOOGLE_TEST_APP_ID && Object.values(units).every((id) => !GOOGLE_TEST_UNITS.has(id)), "production stricte");
-    check("Formats plein écran du même éditeur", [units.interstitial, units.rewarded].every((id) => publisher(id) === pub), pub);
+    if (units.interstitial) {
+      check("Interstitiel réel valide", isUnitId(units.interstitial), units.interstitial);
+      check("Interstitiel du même éditeur", publisher(units.interstitial) === pub, pub);
+      check("Interstitiel non démonstration", !GOOGLE_TEST_UNITS.has(units.interstitial), units.interstitial);
+    } else {
+      console.log("ℹ️ Interstitiel réel non créé : format désactivé, bannières live autorisées.");
+    }
+    if (units.rewarded) {
+      check("Rewarded réel valide", isUnitId(units.rewarded), units.rewarded);
+      check("Rewarded du même éditeur", publisher(units.rewarded) === pub, pub);
+      check("Rewarded non démonstration", !GOOGLE_TEST_UNITS.has(units.rewarded), units.rewarded);
+    } else {
+      console.log("ℹ️ Rewarded réel non créé : format désactivé, bannières live autorisées.");
+    }
+    check("App ID et bannières sans ID de démonstration Google", appId !== GOOGLE_TEST_APP_ID && [units.banner, ...placementUnits.map(([, id]) => id)].every((id) => !GOOGLE_TEST_UNITS.has(id)), "production bannières");
     check("Aucun appareil de test local dans le build production", testDevices.length === 0, `${testDevices.length} appareil(s)`);
     check("Debug UMP désactivé en production", ["", "DISABLED"].includes(value(env, "VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY", publicConfig.consentDebugGeography).toUpperCase()), value(env, "VITE_ADMOB_CONSENT_DEBUG_GEOGRAPHY", publicConfig.consentDebugGeography) || "DISABLED");
     const expectedLine = pub ? `google.com, pub-${pub}, DIRECT, f08c47fec0942fa0` : "";

@@ -1097,22 +1097,10 @@ return baseSrc;
 
 function isMirrorProfile(p: any): boolean {
   if (!p) return true;
-
-  const id = String(p.id ?? "");
-
-  // ✅ On ne masque QUE les vrais profils-miroirs online.
-  // Avant, cette fonction cachait aussi des profils locaux légitimes dès qu'ils
-  // portaient userId / email / country / phone après une restauration NAS.
-  // Résultat observé : le NAS rechargeait 38 profils, mais la page n'en affichait
-  // que 33. Ces champs peuvent être des métadonnées normales d'un profil local
-  // synchronisé, ils ne doivent donc plus servir de critère d'exclusion.
-  if (id.startsWith("online:")) return true;
-  if (p.source === "online") return true;
-  if (String(p.origin ?? "") === "online") return true;
-  if (p.isOnlineMirror === true) return true;
-  if (p.isOnline === true && id.startsWith("online:")) return true;
-
-  return false;
+  // Le seul marqueur fiable d'un ancien miroir est son identifiant online:.
+  // source/origin/isOnlineMirror ont parfois été copiés sur de vrais profils
+  // locaux et les masquaient tous après une restauration Android.
+  return String(p.id ?? "").startsWith("online:");
 }
 
 
@@ -1123,11 +1111,7 @@ function isMirrorProfile(p: any): boolean {
 //   sauf s'il est explicitement marqué, ou si son id commence par "online:"
 // ============================================
 function isOnlineMirrorProfile(p: any): boolean {
-  const id = String(p?.id || "");
-  if (id.startsWith("online:")) return true;
-  if (p?.isOnlineMirror === true) return true;
-  if (p?.source === "online") return true;
-  return false;
+  return String(p?.id || "").startsWith("online:");
 }
 
 /* ================================

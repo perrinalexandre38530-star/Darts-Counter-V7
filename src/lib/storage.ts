@@ -18,7 +18,7 @@ import { buildAvatarFallbackSnapshot, importAvatarFallbackSnapshot } from "./ava
 import {
   captureStoreUserMedia,
   exportUserMediaFallbackSnapshot,
-  importUserMediaFallbackSnapshot,
+  importUserMediaFromSnapshot,
   hydrateStoreUserMedia,
   resolveUserMediaFallback,
   galleryItemMediaKey,
@@ -135,6 +135,22 @@ function profileSafetyCacheKey() {
 function validProfileList(value: any): any[] {
   if (!Array.isArray(value)) return [];
   return value.filter((p) => p && typeof p === "object" && String(p.id || "").trim() && String(p.name || "").trim());
+}
+
+function normalizeRestoredLocalProfileMarkers(profile: any): any {
+  if (!profile || typeof profile !== "object") return profile;
+  const id = String(profile?.id || "").trim();
+  if (!id || id.startsWith("online:")) return profile;
+
+  // Les anciennes sauvegardes ont pu marquer des profils locaux avec
+  // source/origin="online" ou isOnlineMirror=true. Leur identifiant reste
+  // pourtant un vrai identifiant local. On retire ces marqueurs obsolètes
+  // pendant la restauration afin que la page PROFILS LOCAUX ne les masque pas.
+  const next: any = { ...(profile || {}) };
+  if (String(next.source || "").toLowerCase() === "online") delete next.source;
+  if (String(next.origin || "").toLowerCase() === "online") delete next.origin;
+  if (next.isOnlineMirror === true) delete next.isOnlineMirror;
+  return next;
 }
 
 function mergeProfilesForSafety(primary: any[], fallback: any[]): any[] {
@@ -291,9 +307,9 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     }
 
     const incomingStore = best.store || {};
-    const incomingProfiles = validProfileList(best.profiles);
-    const currentProfiles = validProfileList(currentStore?.profiles);
-    const profiles = mergeProfilesForSafety(incomingProfiles, currentProfiles);
+    const incomingProfiles = validProfileList(best.profiles).map(normalizeRestoredLocalProfileMarkers);
+    const currentProfiles = validProfileList(currentStore?.profiles).map(normalizeRestoredLocalProfileMarkers);
+    const profiles = mergeProfilesForSafety(incomingProfiles, currentProfiles).map(normalizeRestoredLocalProfileMarkers);
 
     if (!profiles.length) return false;
 
@@ -2632,6 +2648,7 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     errors: [],
     restoredAt: new Date().toISOString(),
   };
+  let restoredDartSetsForRuntime: any[] | null = null;
   const recordError = (scope: string, error: any) => {
     const message = `${scope}: ${String(error?.message || error || "erreur inconnue")}`;
     report.errors.push(message);
@@ -2640,7 +2657,9 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
 
   try {
     const current: any = (await loadStore().catch(() => null)) || {};
-    const remoteProfiles = Array.isArray(portable.profiles) ? portable.profiles : [];
+    const remoteProfiles = Array.isArray(portable.profiles)
+      ? portable.profiles.map(normalizeRestoredLocalProfileMarkers)
+      : [];
     const byId = new Map<string, any>();
     for (const profile of Array.isArray(current?.profiles) ? current.profiles : []) {
       const id = String(profile?.id || "").trim();
@@ -2661,6 +2680,7 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     if (Array.isArray(portable?.teams)) mergedStore.teams = portable.teams;
     const hydrated = await hydrateStoreUserMedia(mergedStore).catch(() => ({ store: mergedStore, changed: false }));
     mergedStore = hydrated?.store || mergedStore;
+    restoredDartSetsForRuntime = Array.isArray(mergedStore?.dartSets) ? mergedStore.dartSets : null;
     await saveStore(mergedStore as any, { skipAsyncNormalize: true });
   } catch (error) {
     recordError("portable account store restore failed", error);
@@ -2670,7 +2690,8 @@ async function restorePortableAccountData(portable: any): Promise<PortableAccoun
     if (Array.isArray(portable?.bots)) restoreBotsFromSnapshot(portable.bots as any[]);
   } catch (error) { recordError("portable bots restore failed", error); }
   try {
-    if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
+    if (Array.isArray(restoredDartSetsForRuntime)) replaceAllDartSets(restoredDartSetsForRuntime as any[]);
+    else if (Array.isArray(portable?.dartSets)) replaceAllDartSets(portable.dartSets as any[]);
   } catch (error) { recordError("portable dartsets restore failed", error); }
   try {
     if (Array.isArray(portable?.teams)) saveStoredTeams(portable.teams as any[]);
@@ -2971,7 +2992,9 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.
   try {
-    await importUserMediaFallbackSnapshot((dump as any)?.userMediaFallbacks || (dump as any)?.user_media_fallbacks || null);
+    // Compat anciens snapshots : scanne aussi les profils/dartsets directement
+    // dans le snapshot lorsque le bloc userMediaFallbacks n'existait pas encore.
+    await importUserMediaFromSnapshot(dump);
   } catch (mediaError) {
     console.warn("[storage] user media fallback import skipped", mediaError);
   }
@@ -3011,9 +3034,15 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // ✅ CRITIQUE : restaurer les DartSets / Bots exactement là où l’UI lit réellement
   const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
   if (dartSets) {
-    // Une seule écriture via le store officiel. L'ancien double appel pouvait
-    // relancer immédiatement une fusion avec une autre copie du snapshot.
-    writeDartSetsToLocalStorage(dartSets);
+    // Ne jamais réécraser les dartsets déjà hydratés avec la copie brute du
+    // snapshot. C'était la cause des cartes restaurées sans leur photo.
+    const canonical = Array.isArray(getAllDartSets()) && getAllDartSets().length > 0
+      ? getAllDartSets()
+      : dartSets;
+    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical })
+      .then((result) => Array.isArray(result?.store?.dartSets) ? result.store.dartSets : canonical)
+      .catch(() => canonical);
+    writeDartSetsToLocalStorage(hydratedDartSets);
   }
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
 
@@ -3057,16 +3086,11 @@ function scoreProfileCompleteness(p: any): number {
 
 function isOnlineShadowProfile(p: any): boolean {
   const id = String(p?.id ?? "");
-  // Ne retirer QUE les vrais profils-miroirs ONLINE. `isOnline: true` peut
-  // aussi être un simple statut de présence porté par un profil local normal.
-  // L'ancien test supprimait alors tous ces profils juste après leur import,
-  // puis le boot recréait seulement le profil de compte actif.
-  if (id.startsWith("online:")) return true;
-  if (p?.isOnlineMirror === true) return true;
-  if (String(p?.source || "").toLowerCase() === "online") return true;
-  if (String(p?.origin || "").toLowerCase() === "online") return true;
-  if (p?.isOnline === true && id.startsWith("online:")) return true;
-  return false;
+  // Seul le préfixe historique online: identifie de façon certaine un miroir.
+  // Les champs source/origin/isOnlineMirror ont été posés à tort sur de vrais
+  // profils locaux dans certaines anciennes versions et ne doivent plus les
+  // faire disparaître pendant une restauration.
+  return id.startsWith("online:");
 }
 
 async function normalizeLocalProfilesInStore(): Promise<void> {
@@ -3080,7 +3104,9 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
   const arr = Array.isArray(store?.profiles) ? [...store.profiles] : [];
 
   // 1) retire les "online" du tableau local
-  const locals = arr.filter((p) => !isOnlineShadowProfile(p));
+  const locals = arr
+    .filter((p) => !isOnlineShadowProfile(p))
+    .map(normalizeRestoredLocalProfileMarkers);
 
   // 2) dédoublonne par id
   const byId = new Map<string, any>();
@@ -3111,8 +3137,13 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
   store.profiles = cleaned;
 
   const outTxt = safeJsonStringify(store);
-  const outRaw = await compressGzip(outTxt);
-  await idbSet(scopedStorageKey(STORE_KEY), outRaw);
+  const scopedKey = scopedStorageKey(STORE_KEY);
+  const outRaw = await persistPayloadForKey(scopedKey, outTxt);
+  await idbSet(scopedKey, outRaw);
+  try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, outTxt)); } catch {}
+  lastSavedStoreJsonByScope.set(scopedKey, outTxt);
+  lastSavedStoreJsonByScope.set(STORE_KEY, outTxt);
+  writeProfilesSafetyCache(store);
 }
 
 export async function nukeAll(): Promise<void> {

@@ -8,6 +8,7 @@ const manifestPath = path.join(androidRoot, "app", "src", "main", "AndroidManife
 const stringsPath = path.join(androidRoot, "app", "src", "main", "res", "values", "strings.xml");
 const appGradlePath = path.join(androidRoot, "app", "build.gradle");
 const envPath = path.join(root, ".env");
+const publicConfigPath = path.join(root, "config", "admob.public.json");
 
 const GOOGLE_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713";
 
@@ -29,13 +30,32 @@ function readDotEnv() {
   return out;
 }
 
+function readPublicConfig() {
+  if (!fs.existsSync(publicConfigPath)) return {};
+  try { return JSON.parse(fs.readFileSync(publicConfigPath, "utf8")); }
+  catch { return {}; }
+}
+
+function normalizeMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  if (["production", "prod", "live"].includes(mode)) return "production";
+  if (["real_test", "real-test", "device_test", "device-test"].includes(mode)) return "real_test";
+  return "google_test";
+}
+
 const dotenv = readDotEnv();
-const appId = String(
+const publicConfig = readPublicConfig();
+const mode = normalizeMode(
+  process.env.VITE_ADMOB_MODE || dotenv.VITE_ADMOB_MODE || publicConfig.mode || "google_test"
+);
+const configuredAppId = String(
   process.env.ADMOB_ANDROID_APP_ID ||
   process.env.VITE_ADMOB_ANDROID_APP_ID ||
   dotenv.VITE_ADMOB_ANDROID_APP_ID ||
-  GOOGLE_TEST_APP_ID
+  publicConfig.androidAppId ||
+  ""
 ).trim();
+const appId = mode === "google_test" ? GOOGLE_TEST_APP_ID : configuredAppId;
 
 function fail(message) {
   console.error(`\n[ADMOB ANDROID] ${message}\n`);
@@ -43,6 +63,9 @@ function fail(message) {
 }
 
 if (!fs.existsSync(androidRoot)) fail("android/ introuvable. Lance d'abord npm run android:bootstrap.");
+if (mode !== "google_test" && !/^ca-app-pub-\d{16}~\d{10}$/.test(appId)) {
+  fail(`App ID AdMob réel manquant ou invalide pour le mode ${mode}.`);
+}
 if (!fs.existsSync(manifestPath)) fail(`AndroidManifest.xml introuvable: ${manifestPath}`);
 if (!fs.existsSync(stringsPath)) fail(`strings.xml introuvable: ${stringsPath}`);
 if (!fs.existsSync(appGradlePath)) fail(`build.gradle introuvable: ${appGradlePath}`);
@@ -90,9 +113,9 @@ if (!appGradle.includes("com.google.android.gms:play-services-ads:")) {
 const isGoogleTest = appId === GOOGLE_TEST_APP_ID;
 console.log("\n✅ Configuration Android AdMob appliquée.");
 console.log(`   App ID : ${appId}`);
-console.log(`   Mode   : ${isGoogleTest ? "GOOGLE TEST (sûr pour développement)" : "PRODUCTION / PERSONNALISÉ"}`);
+console.log(`   Mode   : ${mode === "production" ? "PRODUCTION · BANNIÈRES LIVE" : mode === "real_test" ? "REAL_TEST · APPAREIL PROTÉGÉ" : "GOOGLE TEST"}`);
 if (isGoogleTest) {
   console.log("   Aucune vraie impression publicitaire ne sera monétisée avec cet App ID de démonstration.");
 } else {
-  console.log("   L'App ID production vient de .env / VITE_ADMOB_ANDROID_APP_ID (ou ADMOB_ANDROID_APP_ID).");
+  console.log("   L'App ID réel vient de .env ou de config/admob.public.json (compatible CI GitHub Actions).");
 }

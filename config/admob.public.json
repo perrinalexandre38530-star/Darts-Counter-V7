@@ -1,5 +1,5 @@
 {
-  "mode": "real_test",
+  "mode": "production",
   "publisherId": "pub-5323277022978157",
   "androidAppId": "ca-app-pub-5323277022978157~6265161029",
   "androidBannerId": "ca-app-pub-5323277022978157/7738024798",
@@ -18,10 +18,8 @@
   },
   "androidInterstitialId": "",
   "androidRewardedId": "",
-  "testDeviceIds": [
-    "AD2A12F3E08C12ABDD574BC06097D62C"
-  ],
+  "testDeviceIds": [],
   "testDevicesManagedByAdMobConsole": true,
   "consentDebugGeography": "DISABLED",
-  "realTestUseGoogleDemoBanners": true
+  "realTestUseGoogleDemoBanners": false
 }

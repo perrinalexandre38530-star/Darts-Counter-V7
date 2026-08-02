@@ -16,11 +16,13 @@ MULTISPORTS SCORING
 
 ## 2. Créer les blocs
 
-Blocs minimum obligatoires :
+Pour commencer à générer des revenus avec les emplacements déjà intégrés, le minimum est :
 
-- une bannière générique ;
-- un interstitiel de fin de partie ;
-- un rewarded.
+- l'App ID Android réel ;
+- une bannière générique réelle ;
+- les bannières réelles par emplacement.
+
+L'interstitiel de fin de partie et le rewarded peuvent être créés ensuite. Tant que leurs IDs restent vides, ils sont désactivés et ne font plus retomber les bannières sur le mode Google TEST.
 
 Pour suivre précisément les revenus, créer aussi une bannière par emplacement :
 
@@ -125,9 +127,19 @@ npm run android:release-check
 
 Le contrôle bloque la release si :
 
-- un ID est manquant ou mal formé ;
+- l'App ID ou une bannière est manquant/mal formé ;
 - un bloc n'appartient pas au même Publisher ID ;
 - un ID de démonstration Google reste présent ;
 - un appareil de test est encore injecté ;
 - l'App ID Android ne correspond pas au `.env` ;
 - `public/app-ads.txt` est absent ou incohérent.
+
+## 7. État de cette RC
+
+Cette RC est configurée en `production` pour les bannières :
+
+- aucun identifiant d'appareil de test n'est injecté dans le bundle ;
+- les appareils déclarés dans la console AdMob restent des appareils de test ;
+- les autres appareils FREE demandent des annonces live ;
+- les comptes Premium/Sans pub vérifiés ne font aucune demande ;
+- l'interstitiel et le rewarded restent désactivés jusqu'à la création de leurs blocs réels.
