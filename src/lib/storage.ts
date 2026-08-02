@@ -2849,15 +2849,39 @@ export type CloudSnapshotExportOptions = {
 export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {}): Promise<CloudSnapshot> {
   const dump = await exportAll();
   const mediaMirror = opts.mediaMirror ?? "await";
-  // Pour R2 direct, la réplication des médias ne doit JAMAIS bloquer le bouton
-  // Sauver pendant plusieurs minutes. Elle peut continuer en arrière-plan pendant
-  // que l'utilisateur reprend immédiatement l'application.
+  // IMPORTANT RESTAURATION MULTI-APPAREILS : un snapshot NAS/local/fichier doit
+  // être autonome. Avant d'exporter le coffre média, on capture donc réellement
+  // les avatars, photos de dartsets et logos encore présents dans les stores
+  // métier. `saveStore()` lançait cette capture sans l'attendre : une sauvegarde
+  // immédiate pouvait ainsi embarquer les profils/dartsets mais pas leurs images.
+  //
+  // Pour R2 direct allégé, le clic reste non bloquant : la réplication média
+  // continue séparément en arrière-plan et n'est pas réembarquée dans le JSON.
   try {
     const currentStore: any = await loadStore();
-    if (currentStore && mediaMirror !== "skip") {
-      const job = captureStoreUserMedia(currentStore, { mirrorR2: true });
-      if (mediaMirror === "await") await job;
-      else void job.catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
+    if (currentStore) {
+      const mediaSource = {
+        ...(currentStore || {}),
+        bots: loadStoredBots(),
+        dartSets: getAllDartSets(),
+        teams: loadStoredTeams(),
+      };
+
+      if (opts.includeEmbeddedMedia !== false) {
+        // NAS / local / fichier : la copie IndexedDB locale doit être terminée
+        // AVANT exportUserMediaFallbackSnapshot(). Aucun upload R2 n'est imposé
+        // lorsque mediaMirror="skip".
+        await captureStoreUserMedia(mediaSource, { mirrorR2: mediaMirror === "await" });
+
+        if (mediaMirror === "background") {
+          void captureStoreUserMedia(mediaSource, { mirrorR2: true })
+            .catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
+        }
+      } else if (mediaMirror !== "skip") {
+        const job = captureStoreUserMedia(mediaSource, { mirrorR2: true });
+        if (mediaMirror === "await") await job;
+        else void job.catch((mediaMirrorError) => console.warn("[storage] background R2 media mirror incomplete", mediaMirrorError));
+      }
     }
   } catch (mediaMirrorError) {
     console.warn("[storage] exact R2 media mirror preflight incomplete", mediaMirrorError);
@@ -3033,11 +3057,15 @@ function scoreProfileCompleteness(p: any): number {
 
 function isOnlineShadowProfile(p: any): boolean {
   const id = String(p?.id ?? "");
-  // Notre convention (si jamais elle traîne dans des snapshots)
+  // Ne retirer QUE les vrais profils-miroirs ONLINE. `isOnline: true` peut
+  // aussi être un simple statut de présence porté par un profil local normal.
+  // L'ancien test supprimait alors tous ces profils juste après leur import,
+  // puis le boot recréait seulement le profil de compte actif.
   if (id.startsWith("online:")) return true;
-  // Et on écarte aussi les profils manifestement injectés depuis Supabase
-  // (ils n'ont aucune donnée locale de profil, uniquement email/nickname)
-  if (p?.isOnline === true) return true;
+  if (p?.isOnlineMirror === true) return true;
+  if (String(p?.source || "").toLowerCase() === "online") return true;
+  if (String(p?.origin || "").toLowerCase() === "online") return true;
+  if (p?.isOnline === true && id.startsWith("online:")) return true;
   return false;
 }
 

@@ -2259,11 +2259,12 @@ export default function StorageVaultPage({ go }: Props) {
     const restoreAuth = rememberAuthKeys();
     await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
 
+    let importReport: any = null;
     if (isBackupV1) {
       const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
       if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
     } else {
-      await importCloudSnapshot(snapshot, { mode: "replace" });
+      importReport = await importCloudSnapshot(snapshot, { mode: "replace" });
     }
     restoreAuth();
 
@@ -2272,11 +2273,33 @@ export default function StorageVaultPage({ go }: Props) {
     // suite le store vivant avec le store relu depuis la clé restaurée.
     try {
       const restoredStore = await loadStore<any>();
+      const actualProfiles = Array.isArray(restoredStore?.profiles)
+        ? restoredStore.profiles.filter((profile: any) => profile && String(profile?.id || "").trim()).length
+        : 0;
+      const expectedProfiles = Math.max(
+        Number(summary.profiles || 0),
+        Number(importReport?.portable?.expected?.profiles || 0),
+      );
+
+      if (importReport?.portable && importReport.portable.ok === false) {
+        throw new Error(
+          `Restauration locale incomplète : ${String(importReport.portable.errors?.join(" ; ") || "contrôle portable échoué")}`
+        );
+      }
+
+      if (expectedProfiles > 0 && actualProfiles < expectedProfiles) {
+        throw new Error(
+          `Restauration locale incomplète : ${expectedProfiles} profil(s) attendu(s), ${actualProfiles} réellement relu(s). ` +
+          `La sauvegarde distante n'a pas été réécrite.`
+        );
+      }
+
       if (restoredStore && typeof (window as any).__replaceLocalStoreNow === "function") {
         await (window as any).__replaceLocalStoreNow(restoredStore, reason);
       }
     } catch (e) {
       console.warn("[StorageVault] live store refresh after restore failed", e);
+      throw e;
     }
 
     await afterRestoreHousekeeping(reason);

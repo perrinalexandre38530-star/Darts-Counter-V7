@@ -617,8 +617,7 @@ function ActiveProfileCard({
             <div style={{ position: "relative", width: 84, height: 84, marginBottom: 4 }}>
               <ProfileAvatar
                 size={84}
-                dataUrl={(profile as any).avatarDataUrl ?? (profile as any).avatarUrl ?? undefined}
-                label={profile?.name?.[0]?.toUpperCase() || "?"}
+                profile={profile as any}
                 ringColor={primary}
                 showStars={false}
               />
