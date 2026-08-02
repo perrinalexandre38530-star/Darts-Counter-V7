@@ -819,14 +819,21 @@ export async function emptyNasDeletedMemorySlots(): Promise<void> {
 
 type NativeJsonExportResult = {
   cancelled?: boolean;
+  exportId?: string;
   fileName?: string;
   uri?: string;
+  chunksWritten?: number;
+  bytesWritten?: number;
 };
 
 type NativeJsonExportPlugin = {
-  saveJson(options: { content: string; fileName: string; mimeType: string }): Promise<NativeJsonExportResult>;
+  beginJsonExport(options: { fileName: string; mimeType: string }): Promise<NativeJsonExportResult>;
+  appendJsonChunk(options: { exportId: string; chunk: string; index: number }): Promise<NativeJsonExportResult>;
+  finishJsonExport(options: { exportId: string }): Promise<NativeJsonExportResult>;
+  abortJsonExport(options: { exportId: string }): Promise<void>;
 };
 
+const ANDROID_JSON_CHUNK_CHARS = 64 * 1024;
 let nativeJsonExportPlugin: NativeJsonExportPlugin | null | undefined;
 
 function getNativeJsonExportPlugin(): NativeJsonExportPlugin | null {
@@ -853,16 +860,52 @@ function safeJsonFileName(filename: string): string {
   return base.toLowerCase().endsWith(".json") ? base : `${base}.json`;
 }
 
+function nextJsonChunkEnd(content: string, start: number): number {
+  let end = Math.min(content.length, start + ANDROID_JSON_CHUNK_CHARS);
+  if (end < content.length) {
+    const previous = content.charCodeAt(end - 1);
+    const next = content.charCodeAt(end);
+    const splitSurrogatePair = previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff;
+    if (splitSurrogatePair) end -= 1;
+  }
+  return Math.max(start + 1, end);
+}
+
+async function yieldToAndroidUi(): Promise<void> {
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+}
+
 export async function exportJsonDownload(value: any, filename: string): Promise<NativeJsonExportResult> {
   const fileName = safeJsonFileName(filename);
   const nativePlugin = getNativeJsonExportPlugin();
 
   if (nativePlugin) {
-    // Sur Android WebView, l'attribut HTML download peut être ignoré sans erreur.
-    // Le plugin ouvre donc le sélecteur système "Enregistrer sous" et écrit le JSON
-    // dans l'emplacement réellement choisi par l'utilisateur.
     const content = JSON.stringify(value);
-    return nativePlugin.saveJson({ content, fileName, mimeType: "application/json" });
+    const opened = await nativePlugin.beginJsonExport({ fileName, mimeType: "application/json" });
+    if (opened.cancelled || !opened.exportId) return opened;
+
+    const exportId = opened.exportId;
+    let index = 0;
+    let offset = 0;
+
+    try {
+      while (offset < content.length) {
+        const end = nextJsonChunkEnd(content, offset);
+        await nativePlugin.appendJsonChunk({ exportId, chunk: content.slice(offset, end), index });
+        offset = end;
+        index += 1;
+        if (index % 8 === 0) await yieldToAndroidUi();
+      }
+
+      return await nativePlugin.finishJsonExport({ exportId });
+    } catch (error) {
+      try {
+        await nativePlugin.abortJsonExport({ exportId });
+      } catch {
+        // L'erreur d'origine reste prioritaire.
+      }
+      throw error;
+    }
   }
 
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });

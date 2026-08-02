@@ -53,6 +53,18 @@ if (!manifest.includes(devApplicationLabel)) {
   fail('Impossible de configurer le nom distinct de l’application DEV dans AndroidManifest.xml.');
 }
 
+// IMPORTANT : le package Java de MainActivity reste com.multisportsscoring.app,
+// même quand le build debug utilise applicationIdSuffix ".dev". Un nom relatif
+// (.MainActivity) peut être résolu vers com.multisportsscoring.app.dev.MainActivity
+// selon la fusion du manifeste, alors que cette classe n'existe pas. On force donc
+// le nom Java absolu pour que Android Studio puisse lancer la variante DEV.
+const relativeMainActivity = 'android:name=".MainActivity"';
+const absoluteMainActivity = 'android:name="com.multisportsscoring.app.MainActivity"';
+if (manifest.includes(relativeMainActivity)) {
+  manifest = manifest.replaceAll(relativeMainActivity, absoluteMainActivity);
+  changed = true;
+}
+
 fs.writeFileSync(gradlePath, gradle, 'utf8');
 fs.writeFileSync(manifestPath, manifest, 'utf8');
 

@@ -3,6 +3,9 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { gzipSync, strToU8 } from "fflate";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
+import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.webp";
+import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { apiPost, buildApiUrl, readNasAccessToken } from "../lib/apiClient";
 import { exportCloudSnapshot, importCloudSnapshot, loadStore, setStorageUser } from "../lib/storage";
@@ -1671,24 +1674,27 @@ function VaultGlyph({ name, size = 24 }: { name: VaultGlyphName; size?: number }
   }
 }
 
-function StorageTickerHeader({ onBack, onRefresh, busy, help }: { onBack: () => void; onRefresh: () => void; busy: boolean; help: React.ReactNode }) {
+function StorageTickerHeader({ ticker, alt, onBack, onRefresh, busy, help }: { ticker: string; alt: string; onBack: () => void; onRefresh: () => void; busy: boolean; help: React.ReactNode }) {
   return (
-    <div style={{ position: "relative", width: "100%", minHeight: 98, borderRadius: 20, overflow: "hidden", border: `1px solid ${neon}`, background: "radial-gradient(circle at 15% 50%, rgba(34,211,238,.26), transparent 32%), radial-gradient(circle at 85% 50%, rgba(217,255,51,.20), transparent 34%), linear-gradient(100deg,#020617,#0b1730 48%,#020617)", boxShadow: `0 0 28px ${accentSoftGlow}`, marginBottom: 10 }}>
-      <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .22, backgroundImage: "linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px)", backgroundSize: "22px 22px" }}/>
-      <div aria-hidden style={{ position: "absolute", left: 62, top: "50%", transform: "translateY(-50%) rotate(-8deg)", color: neon, opacity: .34 }}><VaultGlyph name="nas" size={54}/></div>
-      <div aria-hidden style={{ position: "absolute", right: 68, top: "50%", transform: "translateY(-50%) rotate(8deg)", color: gold, opacity: .34 }}><VaultGlyph name="cloud" size={58}/></div>
-      <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+    <div style={{ position: "relative", width: "100%", minWidth: 0, marginBottom: 10 }}>
+      <img
+        src={ticker}
+        alt={alt}
+        draggable={false}
+        style={{
+          width: "100%",
+          maxWidth: "none",
+          height: "auto",
+          display: "block",
+          filter: `drop-shadow(0 0 14px ${accentSoftGlow})`,
+        }}
+      />
+      <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5 }}>
         <BackDot size={42} color={neon} glow={`${neon}77`} onClick={onBack}/>
       </div>
-      <div style={{ position: "relative", zIndex: 2, minHeight: 98, display: "grid", placeItems: "center", textAlign: "center", padding: "10px 108px" }}>
-        <div>
-          <div style={{ color: "#fff", fontWeight: 1000, fontSize: "clamp(19px,4.2vw,30px)", lineHeight: 1, letterSpacing: ".045em", fontStyle: "italic", textShadow: `0 0 16px ${accentSoftGlow}` }}>SAUVEGARDE</div>
-          <div style={{ color: gold, fontWeight: 1000, fontSize: "clamp(11px,2.4vw,16px)", letterSpacing: ".14em", marginTop: 5, textShadow: `0 0 12px ${accentGlow}` }}>& RESTAURATION</div>
-        </div>
-      </div>
-      <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3, display: "flex", alignItems: "center", gap: 7 }}>
-        <InfoDot title="Centre de sauvegarde" size={38} color={gold} glow={`${gold}66`} content={help}/>
-        <button type="button" disabled={busy} onClick={onRefresh} aria-label="Actualiser" style={{ width: 38, height: 38, borderRadius: 999, border: `1px solid ${neon}`, background: "rgba(0,0,0,.48)", color: neon, display: "grid", placeItems: "center", boxShadow: `0 0 14px ${accentSoftGlow}`, cursor: busy ? "wait" : "pointer", opacity: busy ? .55 : 1 }}><VaultGlyph name="refresh" size={21}/></button>
+      <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: 5 }}>
+        <InfoDot title={alt} size={36} color={gold} glow={`${gold}66`} content={help}/>
+        <button type="button" disabled={busy} onClick={onRefresh} aria-label="Actualiser" style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${neon}`, background: "rgba(0,0,0,.72)", color: neon, display: "grid", placeItems: "center", boxShadow: `0 0 14px ${accentSoftGlow}`, cursor: busy ? "wait" : "pointer", opacity: busy ? .55 : 1 }}><VaultGlyph name="refresh" size={20}/></button>
       </div>
     </div>
   );
@@ -1745,6 +1751,7 @@ function CompactEmpty({ title, detail }: { title: string; detail?: string }) {
 
 export default function StorageVaultPage({ go }: Props) {
   const { theme } = useTheme();
+  const { lang } = useLang();
   const auth = useAuthOnline();
   const themeVars = React.useMemo(() => ({ "--dc-accent": theme?.primary || "#d9ff33", "--dc-accent-soft": theme?.accent1 || theme?.primary || "#22d3ee" }) as React.CSSProperties, [theme]);
   const [tab, setTab] = React.useState<TabKey>("restore");
@@ -3293,6 +3300,8 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     <div style={{ ...pageStyle, paddingTop: 8, ...themeVars }}>
       <div style={shellStyle}>
         <StorageTickerHeader
+          ticker={lang === "fr" ? tickerStorageBackupFr : tickerStorageBackupEn}
+          alt={lang === "fr" ? "Centre de sauvegarde" : "Backup center"}
           busy={busy}
           help={pageHelp}
           onBack={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}
@@ -3459,7 +3468,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 </div>
               </div>
             </div>
-            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`)}/>) : null}
+            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : null}
           </div>
         )}
       </div>

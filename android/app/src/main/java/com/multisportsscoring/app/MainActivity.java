@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PlayBillingPlugin.class);
         registerPlugin(InlineAdMobPlugin.class);
+        registerPlugin(NativeJsonExportPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
