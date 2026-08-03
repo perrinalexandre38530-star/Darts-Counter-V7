@@ -45,6 +45,7 @@ export function normalizeProfileUsageMode(mode: any, fallback = "global"): strin
   if (v === "killer_progressive" || v === "killer_progressif" || v === "progressive_killer") return "killer_progressif";
   if (v === "five_lives" || v === "5_lives" || v === "cinq_vies") return "five_lives";
   if (v === "battle_royale" || v === "battleroyale") return "battle_royale";
+  if (v === "darts_firefighter_config" || v === "darts_firefighter_play" || v === "firefighter") return "darts_firefighter";
   if (v === "departements" || v === "departement" || v === "territory" || v === "territories") return "territories";
   if (v === "baby_foot" || v === "babyfoot" || v === "baby") return "babyfoot";
   if (v === "ping_pong" || v === "pingpong" || v === "table_tennis") return "pingpong";

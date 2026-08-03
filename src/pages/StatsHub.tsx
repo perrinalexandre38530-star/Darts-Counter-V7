@@ -322,6 +322,7 @@ const StatsKiller = React.lazy(() => import("./StatsKiller"));
 
 // ✅ TERRITORIES (stats locales)
 const StatsTerritoriesTab = React.lazy(() => import("./StatsTerritories"));
+const StatsDartsFirefighterTab = React.lazy(() => import("./StatsDartsFirefighter"));
 
 import {
   loadNormalizedHistory,
@@ -872,6 +873,7 @@ type Props = {
     | "shanghai"
     | "killer"
     | "territories"
+    | "darts_firefighter"
     | "loterie"
     | "bowling"
     | "halve_it"
@@ -1222,7 +1224,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1519,6 +1521,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("killer")) return "killer";
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("golf")) return "golf";
+  if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
   if (tag.includes("territ") || tag.includes("departement")) return "territories";
   if (tag.includes("batard") || tag.includes("bastard")) return "batard";
   if (tag.includes("scram")) return "scram";
@@ -5204,6 +5207,7 @@ const modeDefs = React.useMemo(
               { key: "loterie", label: "LOTERIE" },
               { key: "batard", label: "BÂTARD" },
               { key: "territories", label: "Territories" },
+              { key: "darts_firefighter", label: "DARTS FIREFIGHTER" },
               { key: "tour_de_l_horloge", label: "Tour de l’Horloge" },
               { key: "leaderboards", label: "Classements" },
               { key: "history", label: "Historique" },
@@ -6739,6 +6743,7 @@ const modeThemeColor: Record<string, string> = {
   shanghai: "#ffb000",
   golf: "#f6c256",
   territories: "#4ac29a",
+  darts_firefighter: "#ff6b27",
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
@@ -6799,9 +6804,10 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     capital: "Capital",
     batard: "Bâtard",
     territories: "Territories",
+    darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "capital", "batard", "territories", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -9629,6 +9635,7 @@ return (
                       capital: ["capital"],
                       batard: ["batard", "bâtard", "bastard"],
                       territories: ["territories", "territoires", "territory", "territ"],
+                      darts_firefighter: ["darts_firefighter", "darts firefighter", "firefighter"],
                     };
                     const pid = String(selectedPlayer.id);
                     const modeAliases = aliases[String(currentMode)] || [String(currentMode)];
@@ -9866,6 +9873,14 @@ return (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Territories…" />}>
                   <StatsTerritoriesTab embedded playerId={selectedPlayer?.id} playerName={selectedPlayer?.name} />
+                </React.Suspense>
+              </div>
+            )}
+
+            {currentMode === "darts_firefighter" && (
+              <div style={card}>
+                <React.Suspense fallback={<LazyFallback label="Chargement DARTS FIREFIGHTER…" />}>
+                  <StatsDartsFirefighterTab embedded playerId={selectedPlayer?.id} playerName={selectedPlayer?.name} />
                 </React.Suspense>
               </div>
             )}

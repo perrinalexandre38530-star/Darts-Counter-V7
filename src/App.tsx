@@ -360,6 +360,8 @@ import RugbyConfig from "./pages/RugbyConfig";
 import RugbyPlay from "./pages/RugbyPlay";
 import DepartementsConfig from "./pages/DepartementsConfig";
 import DepartementsPlay from "./pages/DepartementsPlay";
+import DartsFirefighterConfig from "./pages/DartsFirefighterConfig";
+import DartsFirefighterPlay from "./pages/DartsFirefighterPlay";
 import EnculetteConfig from "./pages/EnculetteConfig";
 import EnculettePlay from "./pages/EnculettePlay";
 import CastJoinPage from "./pages/cast/CastJoinPage";
@@ -418,6 +420,8 @@ const ONLINE_CONTEXT_TABS = new Set<string>([
   "capital_play",
   "departements_config",
   "departements_play",
+  "darts_firefighter_config",
+  "darts_firefighter_play",
   "training_clock",
   "babyfoot_config",
   "babyfoot_play",
@@ -437,6 +441,7 @@ const ONLINE_GAMEPLAY_TABS = new Set<string>([
   "batard_play",
   "capital_play",
   "departements_play",
+  "darts_firefighter_play",
   "training_clock",
   "babyfoot_play",
 ]);
@@ -946,6 +951,8 @@ type Tab =
   | "rugby_play"
   | "departements_config"
   | "departements_play"
+  | "darts_firefighter_config"
+  | "darts_firefighter_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -5318,6 +5325,13 @@ case "babyfoot_team_edit":
         page = <DepartementsPlay store={store} go={go} setTab={go} params={routeParams} onFinish={(m: any) => pushHistory(enrichOnlineMatchForHistory(m, "territories", routeParams))} />;
         break;
 
+      case "darts_firefighter_config":
+        page = <DartsFirefighterConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "darts_firefighter_play":
+        page = <DartsFirefighterPlay store={store} go={go} setTab={go} params={routeParams} onFinish={(m: any, options?: any) => pushHistory(enrichOnlineMatchForHistory(m, "darts_firefighter", routeParams), options)} />;
+        break;
+
       case "enculette_config":
         page = <EnculetteConfig setTab={go} params={routeParams} />;
         break;
@@ -5392,6 +5406,7 @@ case "babyfoot_team_edit":
     "happy_mille_play",
     "rugby_play",
     "departements_play",
+    "darts_firefighter_play",
     "enculette_play",
 
     // Tournois: match en cours (plein écran)

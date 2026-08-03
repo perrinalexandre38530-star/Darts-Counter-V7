@@ -356,6 +356,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "shanghai", label: "Shanghai", aliases: ["shanghai"] },
     { key: "golf", label: "Golf", aliases: ["golf"] },
     { key: "territories", label: "Territories", aliases: ["territories", "territoires", "departement", "département"] },
+    { key: "darts_firefighter", label: "DARTS FIREFIGHTER", aliases: ["darts_firefighter", "darts firefighter", "firefighter"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
@@ -465,7 +466,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -499,6 +500,8 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "territories",
     "territoires",
     "departements",
+    "dartsfirefighter",
+    "darts_firefighter",
     "cricketcutthroat",
     "cricket_cut_throat",
     "cutthroat",
@@ -614,6 +617,7 @@ function modeLabel(e: SavedEntry) {
     return "KILLER PROGRESSIF";
   }
   if (m === "darts_racer" || m === "dartsracer" || m === "mario_kart" || m === "mariokart") return "DARTS RACER";
+  if (m === "darts_firefighter" || m === "dartsfirefighter" || m === "firefighter") return "DARTS FIREFIGHTER";
   if (m === "x01") {
     const sc = getStartScore(e);
     const raw = [
@@ -797,6 +801,9 @@ const modeColor: Record<string, string> = {
   shanghai: "#ffb000",
   golf: "#f6c256",
   territories: "#4ac29a",
+  darts_firefighter: "#ff6b27",
+  dartsfirefighter: "#ff6b27",
+  firefighter: "#ff6b27",
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
@@ -1410,6 +1417,71 @@ function historyTeamRowsForX01(e: SavedEntry): any[] {
     .sort((a: any, b: any) => (b.winner ? 1 : 0) - (a.winner ? 1 : 0) || b.score - a.score || a._idx - b._idx);
 }
 
+function isDartsFirefighterHistoryEntry(e: SavedEntry): boolean {
+  const tokens = historyModeTokens(e).join("|");
+  const raw = `${baseMode(e)}|${tokens}`.toLowerCase();
+  return raw.includes("darts_firefighter") || raw.includes("dartsfirefighter") || raw.includes("darts firefighter") || raw.includes("firefighter");
+}
+
+function dartsFirefighterHistoryData(e: SavedEntry): any {
+  const anyE: any = e as any;
+  const payload = anyE?.payload && typeof anyE.payload === "object" && !Array.isArray(anyE.payload) ? anyE.payload : {};
+  const summary = {
+    ...(payload?.summary && typeof payload.summary === "object" ? payload.summary : {}),
+    ...(anyE?.summary && typeof anyE.summary === "object" ? anyE.summary : {}),
+  };
+  const match = summary?.matchStats || payload?.stats?.match || payload?.stats?.global || {};
+  const players = [payload?.stats?.players, payload?.players, summary?.players, summary?.perPlayer, anyE?.players]
+    .find((rows: any) => Array.isArray(rows) && rows.length) || [];
+  return {
+    payload,
+    summary,
+    match,
+    players,
+    won: Boolean(summary?.won ?? payload?.won),
+    score: Number(summary?.score ?? match?.score ?? payload?.state?.score ?? 0) || 0,
+    extinguished: Number(summary?.totalExtinguished ?? match?.totalExtinguished ?? 0) || 0,
+    destroyed: Number(summary?.totalDestroyed ?? match?.totalDestroyed ?? 0) || 0,
+    blocked: Number(summary?.propagationBlocked ?? match?.propagationBlocked ?? 0) || 0,
+    spread: Number(summary?.totalSpread ?? match?.totalSpread ?? 0) || 0,
+    darts: Number(match?.totalDarts ?? 0) || 0,
+    accuracy: Number(match?.accuracy ?? 0) || 0,
+    rounds: Number(summary?.roundsPlayed ?? match?.roundsPlayed ?? 0) || 0,
+    durationMs: Number(summary?.durationMs ?? match?.durationMs ?? 0) || 0,
+    mapId: String(summary?.mapId || payload?.config?.mapId || "Carte"),
+    difficulty: String(summary?.difficulty || payload?.config?.difficulty || "firefighter"),
+  };
+}
+
+function DartsFirefighterHistoryScoreBlock({ e, theme }: { e: SavedEntry; theme: any }) {
+  const d = dartsFirefighterHistoryData(e);
+  const accent = "#ff6b27";
+  const water = "#25c9ff";
+  const duration = d.durationMs > 0 ? (() => { const sec = Math.round(d.durationMs / 1000); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; })() : "—";
+  const difficulty = ({ recruit: "Recrue", firefighter: "Pompier", commander: "Commandant", inferno: "Enfer" } as any)[d.difficulty] || d.difficulty;
+  return (
+    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+        <span style={{ color: d.won ? "#5ce6a8" : "#ff5964", fontWeight: 1000 }}>{d.won ? "✅ MISSION RÉUSSIE" : "🚨 MISSION ÉCHOUÉE"}</span>
+        <span style={{ color: "rgba(255,255,255,.38)" }}>•</span>
+        <span style={{ color: "#ffd76a", fontWeight: 1000 }}>{d.score} pts</span>
+        <span style={{ color: "rgba(255,255,255,.38)" }}>•</span>
+        <span style={{ color: water, fontWeight: 950 }}>{d.extinguished} feux éteints</span>
+        <span style={{ color: d.destroyed ? "#ff5964" : "rgba(255,255,255,.72)", fontWeight: 950 }}>{d.destroyed} zones perdues</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {[`🗺 ${d.mapId}`, `🔥 ${d.spread} propagations`, `💧 ${d.blocked} bloquées`, `🎯 ${d.accuracy.toFixed(1)}%`, `↻ ${d.rounds} rounds`, `⏱ ${duration}`].map((label) => (
+          <span key={label} style={{ padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,.045)", border: `1px solid ${accent}35`, color: "rgba(255,255,255,.76)", fontSize: 9.5, fontWeight: 850 }}>{label}</span>
+        ))}
+        <span style={{ padding: "3px 7px", borderRadius: 999, background: `${water}12`, border: `1px solid ${water}45`, color: water, fontSize: 9.5, fontWeight: 950 }}>{difficulty}</span>
+      </div>
+      {d.players.length ? <div style={{ color: "rgba(255,255,255,.58)", fontSize: 9.5, lineHeight: 1.3 }}>
+        {d.players.slice(0, 4).map((p: any) => `${p?.name || p?.playerName || "Pompier"}: ${Number(p?.fireReduced || 0)} niveaux • ${Number(p?.firesExtinguished || 0)} ext. • ${Number(p?.score || 0)} pts`).join("  |  ")}
+      </div> : null}
+    </div>
+  );
+}
+
 function isTerritoriesHistoryEntry(e: SavedEntry): boolean {
   const anyE: any = e as any;
   const token = String(
@@ -1717,6 +1789,9 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
 }
 
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (isDartsFirefighterHistoryEntry(e)) {
+    return <DartsFirefighterHistoryScoreBlock e={e} theme={theme} />;
+  }
   if (isTerritoriesHistoryEntry(e)) {
     return <TerritoriesHistoryScoreBlock e={e} theme={theme} />;
   }
@@ -2371,6 +2446,10 @@ function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
 }
 
 function deriveHistoryWinnerName(e: SavedEntry): string {
+  if (isDartsFirefighterHistoryEntry(e)) {
+    const d = dartsFirefighterHistoryData(e);
+    return d.won ? "BRIGADE D’INTERVENTION" : "INCENDIE";
+  }
   if (isTerritoriesHistoryEntry(e)) {
     const winner = territoriesHistoryOwnerRows(e).find((row) => row.winner) || territoriesHistoryOwnerRows(e)[0];
     return winner?.name || "";
@@ -4188,6 +4267,19 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
+    if (isDartsFirefighterHistoryEntry(e) && statusOf(e) === "in_progress") {
+      const config = (e as any)?.resume?.config || (e as any)?.payload?.config || (e as any)?.summary?.config || null;
+      go("darts_firefighter_play", {
+        rec: e,
+        resumeId,
+        config,
+        mode: "darts_firefighter",
+        from: preview ? "history_preview" : "history",
+        preview: !!preview,
+      });
+      return;
+    }
+
     if (!preview && (isGenericDartsSummaryMode(baseMode(e)) || isGenericDartsSummaryMode(inferredMode))) {
       go("darts_mode_summary", { rec: e, resumeId, from: "history", mode: inferredMode || baseMode(e) });
       return;
@@ -4295,6 +4387,21 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       go("statsHub", {
         tab: "stats",
         initialStatsSubTab: "loterie",
+        initialPlayerId: firstPlayerId,
+        playerId: firstPlayerId,
+        matchId: e.id,
+        resumeId,
+        from: "history",
+      });
+      return;
+    }
+
+    // ✅ DARTS FIREFIGHTER : ouvrir le tableau de bord dédié.
+    if (isDartsFirefighterHistoryEntry(e) || m === "darts_firefighter" || inferredMode === "darts_firefighter") {
+      const firstPlayerId = (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      go("statsHub", {
+        tab: "stats",
+        initialStatsSubTab: "darts_firefighter",
         initialPlayerId: firstPlayerId,
         playerId: firstPlayerId,
         matchId: e.id,

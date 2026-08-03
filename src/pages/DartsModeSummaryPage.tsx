@@ -21,6 +21,7 @@ type ModeKind =
   | "capital"
   | "batard"
   | "territories"
+  | "darts_firefighter"
   | "cricket_cut_throat"
   | "enculette_vache"
   | "unknown";
@@ -130,6 +131,14 @@ const MODE_META: Record<ModeKind, { title: string; accent: string; subtitle: str
     secondary: "Steals",
     tertiary: "Tours",
   },
+  darts_firefighter: {
+    title: "DARTS FIREFIGHTER",
+    accent: "#ff6b27",
+    subtitle: "Intervention coopérative : extinction, protections, propagation, zones critiques et soutien Canadair.",
+    primary: "Feu réduit",
+    secondary: "Extinctions",
+    tertiary: "Score",
+  },
   cricket_cut_throat: {
     title: "Cricket Cut-Throat",
     accent: "#7ee081",
@@ -170,6 +179,7 @@ const aliases: Array<[ModeKind, string[]]> = [
   ["capital", ["capital"]],
   ["batard", ["batard", "bastard", "batard"]],
   ["territories", ["territories", "territoires", "departements", "departement"]],
+  ["darts_firefighter", ["darts_firefighter", "dartsfirefighter", "darts firefighter", "firefighter"]],
   ["cricket_cut_throat", ["cricket_cut_throat", "cut_throat", "cutthroat", "cut-throat"]],
   ["enculette_vache", ["enculette", "vache", "enculette_vache"]],
 ];
@@ -376,6 +386,11 @@ function valueFor(mode: ModeKind, key: "primary" | "secondary" | "tertiary", row
     if (key === "secondary") return num(pick(row.steals, row.stolen), 0);
     return num(pick(row.rounds, row.turns), 0);
   }
+  if (mode === "darts_firefighter") {
+    if (key === "primary") return num(pick(row.fireReduced, row.totalFireReduced), 0);
+    if (key === "secondary") return num(pick(row.firesExtinguished, row.extinguished), 0);
+    return num(pick(row.score, row.points), 0);
+  }
   if (mode === "cricket_cut_throat" || mode === "enculette_vache") {
     if (key === "primary") return num(pick(row.marks, row.totalMarks, row.hits), 0);
     if (key === "secondary") return num(pick(row.pointsGiven, row.points, row.score), 0);
@@ -439,6 +454,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   const prisonerMatchStats = mode === "prisoner" ? (pick(prisonerSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const capitalSummary = mode === "capital" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
   const capitalMatchStats = mode === "capital" ? (pick(capitalSummary?.matchStats, capitalSummary?.stats, rec?.payload?.stats?.match, {}) || {}) : {};
+  const firefighterSummary = mode === "darts_firefighter" ? (pick(rec?.summary, rec?.payload?.summary, {}) || {}) : {};
+  const firefighterMatchStats = mode === "darts_firefighter" ? (pick(firefighterSummary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {}) : {};
   const winnerLabel = mode === "capital" && capitalSummary?.winnerTeamName ? String(capitalSummary.winnerTeamName) : mode === "attrape_moi" && attrapeSummary?.winnerName ? String(attrapeSummary.winnerName) : (winner?.name || "—");
   const date = pick(rec?.createdAt, rec?.updatedAt, rec?.summary?.createdAt, rec?.payload?.createdAt);
   const createdLabel = date ? new Date(Number(date) || date).toLocaleString("fr-FR") : "—";
@@ -453,7 +470,9 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         ? num(attrapeMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
       : mode === "prisoner"
         ? num(prisonerMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0))
-        : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
+        : mode === "darts_firefighter"
+          ? num(firefighterMatchStats?.totalDarts, rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown), 0), 0))
+          : rows.reduce((sum, r) => sum + num(pick(r.raw?.darts, r.raw?.dartsThrown, r.raw?.totalThrows), 0), 0);
   const totalActions = mode === "capital"
     ? num(capitalMatchStats?.contractsPlayed, rows.reduce((sum, r) => sum + num(r.raw?.contractsPlayed, 0), 0))
     : mode === "bobs_27"
@@ -468,7 +487,9 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           ? num(attrapeMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(pick(r.raw?.captureCredits, r.raw?.captures), 0), 0))
         : mode === "prisoner"
           ? num(prisonerMatchStats?.totalCaptures, rows.reduce((sum, r) => sum + num(r.raw?.captures, 0), 0))
-          : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
+          : mode === "darts_firefighter"
+            ? num(firefighterMatchStats?.totalFireReduced, rows.reduce((sum, r) => sum + num(r.raw?.fireReduced, 0), 0))
+            : rows.reduce((sum, r) => sum + num(pick(r.raw?.kills, r.raw?.captures, r.raw?.marks, r.raw?.hits, r.raw?.points, r.raw?.score), 0), 0);
 
   if (mode === "attrape_moi") {
     return (
@@ -504,7 +525,7 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
           <Kpi label="Vainqueur" value={winnerLabel} accent={meta.accent} />
           <Kpi label="Joueurs" value={rows.length || "—"} accent={meta.accent} />
           <Kpi label="Total flèches" value={totalDarts || "—"} accent={meta.accent} />
-          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
+          <Kpi label={mode === "capital" ? "Contrats tentés" : mode === "bobs_27" ? "Doubles réussis" : mode === "halve_it" ? "Touches valides" : mode === "shooter" ? "Marks" : mode === "darts_racer" ? "Distance nette" : mode === "attrape_moi" ? "Captures" : mode === "prisoner" ? "Captures" : mode === "darts_firefighter" ? "Niveaux de feu supprimés" : "Total actions"} value={totalActions || "—"} accent={meta.accent} />
         </div>
       </section>
 
@@ -541,6 +562,8 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
         <PrisonerSummaryTables rec={rec} accent={meta.accent} />
       ) : mode === "capital" ? (
         <CapitalSummaryTables rec={rec} rows={rows} accent={meta.accent} />
+      ) : mode === "darts_firefighter" ? (
+        <DartsFirefighterSummaryTables rec={rec} rows={rows} accent={meta.accent} />
       ) : (
         <section style={card(meta.accent)}>
           <div style={sectionTitle(meta.accent)}>Stats détaillées</div>
@@ -556,6 +579,57 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
   );
 }
 
+
+function DartsFirefighterSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
+  const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
+  const match = pick(summary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {};
+  const territories = asArray(pick(summary?.finalTerritories, rec?.payload?.finalTerritories));
+  const visits = asArray(pick(summary?.visits, rec?.payload?.visits, rec?.payload?.visitHistory));
+  const won = Boolean(pick(summary?.won, rec?.payload?.won, false));
+  const score = num(pick(summary?.score, match?.score, rec?.payload?.state?.score), 0);
+  const durationMs = num(pick(summary?.durationMs, match?.durationMs), 0);
+  const duration = durationMs > 0 ? (() => { const sec = Math.round(durationMs / 1000); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; })() : "—";
+  const statusColor = (zone: any) => zone?.destroyed ? "#30343c" : num(zone?.fireLevel) >= 3 ? "#ff343f" : num(zone?.fireLevel) === 2 ? "#ff6b27" : num(zone?.fireLevel) === 1 ? "#ffb13c" : zone?.smoke ? "#a9afb9" : num(zone?.protection) > 0 ? "#25c9ff" : "#5ce6a8";
+  const difficulty = ({ recruit: "Recrue", firefighter: "Pompier", commander: "Commandant", inferno: "Enfer" } as any)[String(summary?.difficulty || rec?.payload?.config?.difficulty)] || String(summary?.difficulty || rec?.payload?.config?.difficulty || "—");
+  return <>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Bilan de l’intervention</div>
+      <div style={{ textAlign: "center", padding: 12, marginBottom: 10, borderRadius: 15, background: won ? "rgba(92,230,168,.08)" : "rgba(255,76,85,.08)", border: `1px solid ${won ? "#5ce6a8" : "#ff4c55"}55` }}>
+        <div style={{ color: won ? "#5ce6a8" : "#ff4c55", fontWeight: 1000, fontSize: 18 }}>{won ? "✅ MISSION RÉUSSIE" : "🚨 MISSION ÉCHOUÉE"}</div>
+        <div style={{ color: "#ffd76a", fontWeight: 1000, fontSize: 25, marginTop: 3 }}>{score} POINTS</div>
+        <div style={{ color: "#aeb4c1", fontSize: 11 }}>{String(summary?.mapId || rec?.payload?.config?.mapId || "Carte")} · {difficulty} · {duration}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        <Kpi label="Feux éteints" value={num(pick(summary?.totalExtinguished, match?.totalExtinguished))} accent="#5ce6a8" />
+        <Kpi label="Feu réduit" value={num(match?.totalFireReduced)} accent="#25c9ff" />
+        <Kpi label="Zones perdues" value={num(pick(summary?.totalDestroyed, match?.totalDestroyed))} accent="#ff4c55" />
+        <Kpi label="Propagations" value={num(pick(summary?.totalSpread, match?.totalSpread))} accent="#ff6b27" />
+        <Kpi label="Blocages" value={num(pick(summary?.propagationBlocked, match?.propagationBlocked))} accent="#25c9ff" />
+        <Kpi label="Protections" value={num(match?.protectionsPlaced)} accent="#25c9ff" />
+        <Kpi label="Canadairs" value={num(match?.canadairs)} accent="#ffd76a" />
+        <Kpi label="Précision" value={`${num(match?.accuracy).toFixed(1)}%`} accent="#5ce6a8" />
+      </div>
+    </section>
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Contribution de la brigade</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Pompier</th><th style={th}>Score</th><th style={th}>Feu réduit</th><th style={th}>Extinctions</th><th style={th}>Blocages</th><th style={th}>Protections</th><th style={th}>Eau</th><th style={th}>Préc.</th><th style={th}>S/D/T</th><th style={th}>Bull/DB</th><th style={th}>MISS</th><th style={th}>Best</th></tr></thead>
+        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts); const hits = num(p.hits); const accuracy = num(p.accuracy, darts > 0 ? (hits / darts) * 100 : 0); return <tr key={`firefighter-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.score)}</td><td style={td}>{num(p.fireReduced)}</td><td style={td}>{num(p.firesExtinguished)}</td><td style={td}>{num(p.propagationBlocked)}</td><td style={td}>{num(p.protectionsPlaced)}</td><td style={td}>{num(p.waterApplied)}</td><td style={td}>{accuracy.toFixed(1)}%</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td><td style={td}>{num(p.bestVisitScore)}</td></tr>; })}</tbody>
+      </table></div>
+    </section>
+
+    {territories.length ? <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>État final du territoire</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 7 }}>{[...territories].sort((a,b) => num(a?.target)-num(b?.target)).map((zone: any) => { const color = statusColor(zone); const label = zone?.destroyed ? "DÉTRUIT" : num(zone?.fireLevel) > 0 ? `FEU N${num(zone.fireLevel)}` : zone?.smoke ? "FUMÉE" : num(zone?.protection) > 0 ? `PROTÉGÉ ${num(zone.protection)}` : "SAIN"; return <div key={String(zone?.id || zone?.target)} style={{ padding: 9, borderRadius: 13, background: `${color}0d`, border: `1px solid ${color}44` }}><div style={{ display: "flex", justifyContent: "space-between" }}><strong style={{ color: "#ffd76a" }}>{num(zone?.target)}</strong><span>{zone?.critical ? "⚠️" : ""}</span></div><div style={{ marginTop: 3, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(zone?.name || zone?.id || "Zone")}</div><div style={{ marginTop: 2, color, fontSize: 10, fontWeight: 950 }}>{label}</div></div>; })}</div>
+    </section> : null}
+
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Journal des volées</div>
+      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 40).map((visit: any, index: number) => { const row = rows.find((r:any) => String(r.id) === String(visit?.playerId)); return <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{row?.name || visit?.playerName || "Pompier"} · R{num(visit?.round,1)} · {asArray(visit?.labels).join(" / ") || "—"}</strong><strong style={{ color: num(visit?.score) >= 0 ? "#5ce6a8" : "#ff4c55" }}>{num(visit?.score) >= 0 ? "+" : ""}{num(visit?.score)}</strong></div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 3 }}>{asArray(visit?.events).slice(-4).map((event:any) => event?.label).filter(Boolean).join(" · ") || "Aucun effet"}</div></div>; }) : <div style={{ color: "#c9c9d4" }}>Aucune volée enregistrée.</div>}</div>
+    </section>
+  </>;
+}
 
 function AttrapeMoiSummaryTables({ rec, accent }: { rec: any; accent: string }) {
   const [tab, setTab] = React.useState<"resume" | "camps" | "players" | "roles" | "legs" | "charts">("resume");

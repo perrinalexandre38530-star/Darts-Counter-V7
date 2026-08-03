@@ -477,6 +477,7 @@ function detectKindMode(rec: any, decoded: any | null) {
   if (blob.includes("killer")) return { kind: "killer", mode: "killer" };
   if (blob.includes("shanghai")) return { kind: "shanghai", mode: "shanghai" };
   if (blob.includes("golf")) return { kind: "golf", mode: "golf" };
+  if (blob.includes("darts_firefighter") || blob.includes("darts firefighter") || blob.includes("firefighter")) return { kind: "darts_firefighter", mode: "darts_firefighter" };
   if (blob.includes("territ") || blob.includes("departement")) return { kind: "territories", mode: "territories" };
   if (blob.includes("batard") || blob.includes("bastard")) return { kind: "batard", mode: "batard" };
   if (blob.includes("battle") || blob.includes("royale")) return { kind: "battle_royale", mode: "battle_royale" };

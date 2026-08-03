@@ -21,6 +21,7 @@ type ModeKey =
   | "golf"
   | "shanghai"
   | "territories"
+  | "darts_firefighter"
   | "warfare"
   | "battle_royale"
   | "scram"
@@ -93,7 +94,7 @@ type ModeAgg = {
 
 const DARTS_MODE_KEYS = new Set<ModeKey>([
   "x01", "cricket", "enculette", "killer", "five_lives", "loterie", "golf", "shanghai",
-  "territories", "warfare", "battle_royale", "scram", "capital", "batard",
+  "territories", "darts_firefighter", "warfare", "battle_royale", "scram", "capital", "batard",
   "clock", "baseball", "bowling", "bobs_27", "halve_it", "shooter",
   "prisoner", "attrape_moi", "darts_racer", "president", "count_up",
   "game_170", "super_bull", "tic_tac_toe", "football", "rugby", "knockout",
@@ -110,6 +111,7 @@ const MODE_TITLES: Record<ModeKey, string> = {
   golf: "GOLF",
   shanghai: "SHANGHAI",
   territories: "TERRITORIES",
+  darts_firefighter: "DARTS FIREFIGHTER",
   warfare: "WARFARE",
   battle_royale: "BATTLE ROYALE",
   scram: "SCRAM",
@@ -199,6 +201,7 @@ export function detectHomeMode(record: any): ModeKey {
   if (tag.includes("loterie") || tag.includes("lottery")) return "loterie";
   if (tag.includes("golf")) return "golf";
   if (tag.includes("shanghai")) return "shanghai";
+  if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
   if (tag.includes("territor") || tag.includes("departement")) return "territories";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("battle_royale") || (tag.includes("battle") && tag.includes("royale"))) return "battle_royale";
@@ -488,6 +491,13 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     boosts: readSpecial(merged, detail, "boosts", "specialBoosts"),
     attacks: readSpecial(merged, detail, "attacksLanded", "attacks"),
     kills: readSpecial(merged, detail, "kills"),
+    fireReduced: readSpecial(merged, detail, "fireReduced", "totalFireReduced"),
+    firesExtinguished: readSpecial(merged, detail, "firesExtinguished", "totalExtinguished"),
+    propagationBlocked: readSpecial(merged, detail, "propagationBlocked"),
+    protectionsPlaced: readSpecial(merged, detail, "protectionsPlaced"),
+    waterApplied: readSpecial(merged, detail, "waterApplied"),
+    canadairs: readSpecial(merged, detail, "canadairs", "dbulls"),
+    zonesDestroyed: readSpecial(merged, detail, "zonesDestroyed", "totalDestroyed"),
     holes: firstFinite(
       record?.game?.holes,
       record?.payload?.stats?.global?.holes,
@@ -703,6 +713,15 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("captures", formatNumber(s.captures, 0)),
         row("évasions", formatNumber(s.escapes, 0)),
         row("best visit", formatNumber(bestMetric(agg), 0)),
+      ];
+    case "darts_firefighter":
+      return [
+        row("missions", agg.sessions),
+        row("victoires", agg.wins),
+        row("feu réduit", formatNumber(s.fireReduced, 0)),
+        row("extinctions", formatNumber(s.firesExtinguished, 0)),
+        row("blocages", formatNumber(s.propagationBlocked, 0)),
+        row("Canadairs", formatNumber(s.canadairs, 0)),
       ];
     case "darts_racer":
       return [

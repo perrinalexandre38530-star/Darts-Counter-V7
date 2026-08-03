@@ -43,6 +43,7 @@ export type CompactMatchMode =
   | "fun_gages"
   | "game_170"
   | "territories"
+  | "darts_firefighter"
   | "scram"
   | "batard"
   | "babyfoot"
@@ -108,6 +109,11 @@ export type DecodedCompactMatch = {
   winnerId?: string | null;
   summary: Record<string, any>;
   detail?: any;
+  config?: any;
+  stateSnapshot?: any;
+  finalTerritories?: any[];
+  visits?: any[];
+  stats?: any;
   compact: CompactMatchV1;
 };
 
@@ -115,7 +121,9 @@ const NUMERIC_HINTS = [
   "score", "points", "marks", "darts", "dart", "avg", "mpr", "ppd", "best", "checkout", "co",
   "win", "wins", "loss", "losses", "rank", "legs", "sets", "kills", "hit", "hits", "miss", "misses",
   "bull", "dbull", "shield", "resurrection", "damage", "streak", "round", "turn", "visit", "duration",
-  "assist", "goal", "goals", "penalty", "fanny", "mene", "throw", "throws", "closed", "open"
+  "assist", "goal", "goals", "penalty", "fanny", "mene", "throw", "throws", "closed", "open",
+  "single", "double", "triple", "fire", "water", "smoke", "protect", "extinguish", "spread",
+  "canadair", "critical", "useless", "perfect", "accuracy"
 ];
 
 const DROP_KEYS = new Set([
@@ -200,6 +208,36 @@ function stripHeavy(value: any, depth = 0, seen?: WeakSet<object>): any {
   return undefined;
 }
 
+function stripHeavyPreserveKeys(value: any, depth = 0, seen?: WeakSet<object>): any {
+  if (value == null) return value;
+  if (depth > 10) return undefined;
+  if (value && typeof value === "object") {
+    const guard = seen || new WeakSet<object>();
+    if (guard.has(value)) return undefined;
+    guard.add(value);
+    seen = guard;
+  }
+  if (typeof value === "string") {
+    if (value.startsWith("data:image") || value.length > 1024) return undefined;
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    const max = depth <= 4 ? 1200 : 400;
+    return value.slice(-max).map((item) => stripHeavyPreserveKeys(item, depth + 1, seen)).filter((item) => item !== undefined);
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, any> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      if (DROP_KEYS.has(key)) continue;
+      const clean = stripHeavyPreserveKeys(nested, depth + 1, seen);
+      if (clean !== undefined) out[key] = clean;
+    }
+    return out;
+  }
+  return undefined;
+}
+
 function inferMode(rec: any, payload: any): CompactMatchMode {
   const raw = [
     rec?.kind,
@@ -250,6 +288,7 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("killer")) return "killer";
   if (raw.includes("golf")) return "golf";
   if (raw.includes("shanghai")) return "shanghai";
+  if (raw.includes("darts_firefighter") || raw.includes("darts firefighter") || raw.includes("firefighter")) return "darts_firefighter";
   if (raw.includes("territ")) return "territories";
   if (raw.includes("scram")) return "scram";
   if (raw.includes("batard") || raw.includes("bastard")) return "batard";
@@ -479,6 +518,38 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
   if (mode === "x01") {
     const legs = payload.legs ?? payload.sets ?? payload.legResults;
     if (legs) out.l = stripHeavy(legs);
+  }
+
+  // DARTS FIREFIGHTER : préserver la mission complète avec ses noms de champs.
+  // Cela permet aux sauvegardes compactes de restaurer la carte en cours et de
+  // reconstruire les statistiques détaillées sans dépendre du payload lourd.
+  if (mode === "darts_firefighter") {
+    const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const matchStats = payload?.stats?.match ?? payload?.stats?.global ?? summary?.matchStats ?? {};
+    const snapshot = payload?.stateSnapshot ?? payload?.resume?.state ?? null;
+    const finalTerritories = payload?.finalTerritories ?? summary?.finalTerritories ?? snapshot?.territories ?? [];
+    const firefighterVisits = payload?.visitHistory ?? payload?.visits ?? summary?.visits ?? snapshot?.history ?? [];
+    out.ff = {
+      config: stripHeavyPreserveKeys(payload?.config ?? snapshot?.config ?? {}),
+      stateSnapshot: snapshot ? stripHeavyPreserveKeys(snapshot) : undefined,
+      finalTerritories: stripHeavyPreserveKeys(finalTerritories),
+      visits: stripHeavyPreserveKeys(firefighterVisits),
+      matchStats: stripHeavyPreserveKeys(matchStats),
+      summary: stripHeavyPreserveKeys({
+        won: payload?.won ?? summary?.won,
+        finishReason: payload?.finishReason ?? summary?.finishReason,
+        score: summary?.score ?? matchStats?.score,
+        mapId: summary?.mapId ?? payload?.config?.mapId,
+        difficulty: summary?.difficulty ?? payload?.config?.difficulty,
+        roundsPlayed: summary?.roundsPlayed ?? matchStats?.roundsPlayed,
+        durationMs: summary?.durationMs ?? matchStats?.durationMs,
+        totalExtinguished: summary?.totalExtinguished ?? matchStats?.totalExtinguished,
+        totalDestroyed: summary?.totalDestroyed ?? matchStats?.totalDestroyed,
+        totalSpread: summary?.totalSpread ?? matchStats?.totalSpread,
+        propagationBlocked: summary?.propagationBlocked ?? matchStats?.propagationBlocked,
+        scoreLine: summary?.scoreLine,
+      }),
+    };
   }
 
   // LES 5 VIES : conserver un journal compact permettant de reconstruire les KPI
@@ -713,6 +784,32 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       if (ps.n?.mk != null) out.marksTotal = ps.n.mk;
       if (ps.n?.mpr != null) out.mpr = ps.n.mpr;
       if (ps.n?.kil != null) out.kills = ps.n.kil;
+      if (compact.m === "darts_firefighter") {
+        const n = ps.n || {};
+        const alias = (target: string, ...keys: string[]) => {
+          for (const key of keys) {
+            if (n[key] != null) { out[target] = n[key]; return; }
+          }
+        };
+        alias("darts", "dt", "darts");
+        alias("hits", "hit", "hits");
+        alias("singles", "singles");
+        alias("doubles", "doubles");
+        alias("triples", "triples");
+        alias("bulls", "bulls");
+        alias("dbulls", "dbulls");
+        alias("misses", "mis", "misses");
+        alias("waterApplied", "waterapplied");
+        alias("fireReduced", "firereduced");
+        alias("firesExtinguished", "firesextinguished");
+        alias("smokeCleared", "smokecleared");
+        alias("protectionsPlaced", "protectionsplaced");
+        alias("propagationBlocked", "propagationblocked");
+        alias("uselessDarts", "uselessdarts");
+        alias("bestVisitScore", "bestvisitscore", "bv");
+        alias("perfectVisits", "perfectvisits");
+        alias("criticalInterventions", "criticalinterventio");
+      }
       return out;
     });
     const winnerId = Number.isInteger(compact.w) && compact.p?.[compact.w] ? String(compact.p[compact.w]) : null;
@@ -746,6 +843,19 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         bestCheckout: toNum(p.bestCheckout) ?? 0,
       };
     }
+    const firefighter = compact.m === "darts_firefighter" && compact.d?.ff && typeof compact.d.ff === "object" ? compact.d.ff : null;
+    const summary = {
+      players: playersMap,
+      perPlayer: players,
+      detailedByPlayer,
+      winnerId,
+      options: compact.o || {},
+      compact: true,
+      ...(firefighter?.summary || {}),
+      ...(firefighter?.matchStats ? { matchStats: firefighter.matchStats } : {}),
+      ...(Array.isArray(firefighter?.finalTerritories) ? { finalTerritories: firefighter.finalTerritories } : {}),
+      ...(Array.isArray(firefighter?.visits) ? { visits: firefighter.visits } : {}),
+    };
     return {
       id: String(compact.id || ""),
       kind: compact.m || "unknown",
@@ -756,8 +866,15 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       updatedAt: compact.u ? Number(compact.u) : undefined,
       players,
       winnerId,
-      summary: { players: playersMap, perPlayer: players, detailedByPlayer, winnerId, options: compact.o || {}, compact: true },
+      summary,
       detail: compact.d,
+      ...(firefighter ? {
+        config: firefighter.config || compact.o || {},
+        stateSnapshot: firefighter.stateSnapshot,
+        finalTerritories: Array.isArray(firefighter.finalTerritories) ? firefighter.finalTerritories : [],
+        visits: Array.isArray(firefighter.visits) ? firefighter.visits : [],
+        stats: { sport: "darts", mode: "darts_firefighter", players, match: firefighter.matchStats || {}, global: firefighter.matchStats || {} },
+      } : {}),
       compact,
     };
   } catch {

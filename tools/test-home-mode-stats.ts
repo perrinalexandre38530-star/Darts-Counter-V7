@@ -20,6 +20,7 @@ const matches = [
   finished("loterie", { cellsRevealed: 4, dartsThrown: 6, hitsTotal: 2, bestStreak: 2, win: true }),
   finished("golf", { score: 42, dartsThrown: 27, win: true }, { payload: { mode: "golf", sport: "darts", stats: { global: { holes: 9 } } } }),
   finished("enculette", { score: 80, dartsThrown: 9, hitsTotal: 5, win: true }),
+  finished("darts_firefighter", { score: 1450, darts: 12, hits: 10, fireReduced: 9, firesExtinguished: 4, propagationBlocked: 2, dbulls: 1, win: true }),
   finished("new_future_mode", { score: 123, dartsThrown: 9, hitsTotal: 6, win: true }, { summary: { title: "Mode Futur", finished: true, perPlayer: [{ id: profile.id, name: profile.name, score: 123, dartsThrown: 9, hitsTotal: 6, win: true }] } }),
   finished("x01", { score: 501, dartsThrown: 24, win: true }),
   finished("cricket", { score: 199, dartsThrown: 9, hitsTotal: 8, win: true }),
@@ -27,12 +28,13 @@ const matches = [
 ];
 
 assert.equal(detectHomeMode(matches[3]), "enculette");
-assert.equal(detectHomeMode(matches[4]), "unknown");
+assert.equal(detectHomeMode(matches[4]), "darts_firefighter");
+assert.equal(detectHomeMode(matches[5]), "unknown");
 
 const slides = buildHomeModeSlides(matches, profile.id, profile.name, "darts", ["x01", "cricket", "killer"]);
 const byId = new Map(slides.map((slide) => [slide.id, slide]));
 
-for (const id of ["mode-five_lives", "mode-loterie", "mode-golf", "mode-enculette", "mode-custom-new_future_mode"]) {
+for (const id of ["mode-five_lives", "mode-loterie", "mode-golf", "mode-enculette", "mode-darts_firefighter", "mode-custom-new_future_mode"]) {
   assert.ok(byId.has(id), `slide manquant: ${id}`);
   const slide = byId.get(id)!;
   assert.equal(slide.rows.length, 6, `${id}: exactement 6 KPI attendus`);
@@ -40,6 +42,9 @@ for (const id of ["mode-five_lives", "mode-loterie", "mode-golf", "mode-enculett
 }
 
 assert.equal(byId.get("mode-five_lives")?.rows.find((row) => row.label === "best visit")?.value, "60");
+assert.equal(byId.get("mode-darts_firefighter")?.title, "DARTS FIREFIGHTER");
+assert.equal(byId.get("mode-darts_firefighter")?.rows.find((row) => row.label === "extinctions")?.value, "4");
+assert.equal(byId.get("mode-darts_firefighter")?.rows.find((row) => row.label === "Canadairs")?.value, "1");
 assert.equal(byId.get("mode-custom-new_future_mode")?.title, "MODE FUTUR");
 assert.ok(!byId.has("mode-x01"));
 assert.ok(!byId.has("mode-cricket"));

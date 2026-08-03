@@ -159,6 +159,7 @@ function normalizeDashboardMode(mode: any, raw?: any): string {
   if (tag.includes('killer')) return 'killer';
   if (tag.includes('shanghai')) return 'shanghai';
   if (tag.includes('golf')) return 'golf';
+  if (tag.includes('darts_firefighter') || tag.includes('darts firefighter') || tag.includes('firefighter')) return 'darts_firefighter';
   if (tag.includes('territ') || tag.includes('departement')) return 'territories';
   if (tag.includes('batard') || tag.includes('bâtard') || tag.includes('bastard')) return 'batard';
   if (tag.includes('scram')) return 'scram';

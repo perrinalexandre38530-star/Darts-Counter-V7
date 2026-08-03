@@ -38,6 +38,7 @@ export type DartsGameTab =
   | "capital_config"
   | "loterie_config"
   | "departements_config"
+  | "darts_firefighter_config"
   | "prisoner_config"
   | "tic_tac_toe_config"
   | "batard_config"
@@ -545,6 +546,23 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "TERRITORIES",
     infoBody:
       "Mode TERRITORIES : cartes (FR/EN/WORLD) + variantes de zones (IT/DE/ES). Objectifs territoriaux a implementer.",
+  },
+  {
+    id: "darts_firefighter",
+    label: "DARTS FIREFIGHTER",
+    category: "challenge",
+    entry: "games",
+    tab: "darts_firefighter_config",
+    popularityRank: 40,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:darts_firefighter",
+    infoTitle: "DARTS FIREFIGHTER",
+    infoBody:
+      "Une brigade coopérative lutte contre un incendie qui évolue sur une carte de territoires. Simple, Double et Triple délivrent 1, 2 ou 3 unités d’eau ; le surplus protège la zone. Le vent oriente la propagation, les territoires critiques doivent être sauvés et le Double Bull déclenche un largage Canadair.",
   },
 
   // ===========================================================
@@ -1183,6 +1201,7 @@ const READY_IDS = new Set<string>([
   "shanghai",
   "golf",
   "departements",
+  "darts_firefighter",
   "bastard",
   "battle_royale",
   "warfare",
