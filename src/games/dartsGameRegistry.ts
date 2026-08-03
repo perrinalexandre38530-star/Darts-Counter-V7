@@ -119,7 +119,8 @@ const rawDartsGameRegistry: DartsGameDef[] = [
   {
     id: "darts_poker",
     label: "Darts Poker",
-    category: "classic",
+    category: "fun",
+    subCategory: "strategie",
     entry: "games",
     tab: "darts_poker_config",
     popularityRank: 3,
@@ -1214,6 +1215,7 @@ const READY_IDS = new Set<string>([
   "training_super_bull",
   "training_time_attack",
   "cricket",
+  "darts_poker",
   "killer",
   "killer_progressive",
   "shanghai",
