@@ -668,14 +668,39 @@ function n(value: any): number {
 
 function normalizeSummary(raw: Partial<VaultSummary> | undefined | null): VaultSummary {
   const s: any = raw || {};
+  const rawMatches = n(s.matches);
+  const rawHistoryRows = n(s.historyRows);
+  const rawStatsMatches = n(s.statsMatches || s.statsBlocks || s.stats);
+
+  // Compatibilité avec les résumés créés avant la correction V57 :
+  // l'ancien parcours additionnait les volées/fléchettes situées sous
+  // "history.*" et comptait parfois deux fois les lignes d'historique.
+  const clearlyInflatedLegacySummary =
+    rawMatches > 1_000 &&
+    rawStatsMatches > 0 &&
+    rawMatches > Math.max(rawHistoryRows, rawStatsMatches) * 20;
+  const duplicatedLegacyHistory =
+    rawHistoryRows > 0 &&
+    rawStatsMatches > 0 &&
+    rawHistoryRows === rawStatsMatches * 2;
+
+  const correctedHistoryRows =
+    clearlyInflatedLegacySummary && duplicatedLegacyHistory
+      ? rawStatsMatches
+      : rawHistoryRows;
+  const correctedMatches =
+    clearlyInflatedLegacySummary
+      ? (correctedHistoryRows || rawStatsMatches)
+      : rawMatches;
+
   return {
     bytes: n(s.bytes),
     keys: n(s.keys),
     profiles: n(s.profiles),
-    matches: n(s.matches),
-    historyRows: n(s.historyRows),
-    statsMatches: n(s.statsMatches || s.statsBlocks || s.stats),
-    statsBlocks: n(s.statsMatches || s.statsBlocks || s.stats),
+    matches: correctedMatches,
+    historyRows: correctedHistoryRows,
+    statsMatches: rawStatsMatches,
+    statsBlocks: rawStatsMatches,
     mediaRefs: n(s.mediaRefs),
     dataImages: n(s.dataImages),
     images: n(s.images || (n(s.mediaRefs) + n(s.dataImages))),
@@ -843,7 +868,10 @@ function buildBackupDetails(entry: SaveEntry, payloadInput: any): BackupDetails 
   const teams = Math.max(n(summary.teams), n(counts.teams), detailCollectionLength(portable.teams), detailCollectionLength(store.teams), detailCollectionLength(payload?.teams));
   const bots = Math.max(n(summary.bots), n(counts.bots), detailCollectionLength(portable.bots), detailCollectionLength(store.bots), detailCollectionLength(store.cpuBots), detailCollectionLength(payload?.bots));
   const dartsets = Math.max(n(summary.dartsets), n(counts.dartSets || counts.dartsets), detailCollectionLength(portable.dartSets), detailCollectionLength(portable.dartsets), detailCollectionLength(store.dartSets), detailCollectionLength(store.dartsets), detailCollectionLength(payload?.dartsets));
-  const resolvedStatsMatches = Math.max(statsMatches, n(summary.statsMatches || summary.statsBlocks));
+  const resolvedStatsMatchesRaw = Math.max(statsMatches, n(summary.statsMatches || summary.statsBlocks));
+  const resolvedStatsMatches = history.length > 0
+    ? Math.min(resolvedStatsMatchesRaw, history.length)
+    : resolvedStatsMatchesRaw;
   const resolvedDate = entry.createdAt || entry.updatedAt || summary.exportedAt || payload?.exportedAt || portable?.exportedAt || null;
   const appVersion = payload?.appVersion || payload?.app_version || payload?.meta?.appVersion || null;
   const rawFormat = payload?._v ?? payload?.version ?? payload?.formatVersion ?? null;
@@ -851,7 +879,7 @@ function buildBackupDetails(entry: SaveEntry, payloadInput: any): BackupDetails 
   return {
     date: resolvedDate ? String(resolvedDate) : null,
     sizeBytes: Math.max(summary.bytes, n(entry.summary.bytes)),
-    matches: Math.max(summary.matches, history.length),
+    matches: history.length > 0 ? history.length : summary.matches,
     profiles,
     statsMatches: resolvedStatsMatches,
     images,
@@ -874,10 +902,14 @@ function summaryWithBackupDetails(summaryInput: Partial<VaultSummary> | null | u
     ...summary,
     bytes: Math.max(summary.bytes, details.sizeBytes),
     profiles: Math.max(summary.profiles, details.profiles),
-    matches: Math.max(summary.matches, details.matches),
-    historyRows: Math.max(summary.historyRows, details.matches),
-    statsMatches: Math.max(n(summary.statsMatches), details.statsMatches),
-    statsBlocks: Math.max(summary.statsBlocks, details.statsMatches),
+    matches: details.matches > 0 ? details.matches : summary.matches,
+    historyRows: details.matches > 0 ? details.matches : summary.historyRows,
+    statsMatches: details.matches > 0
+      ? Math.min(details.statsMatches, details.matches)
+      : Math.max(n(summary.statsMatches), details.statsMatches),
+    statsBlocks: details.matches > 0
+      ? Math.min(details.statsMatches, details.matches)
+      : Math.max(summary.statsBlocks, details.statsMatches),
     images: Math.max(n(summary.images), details.images),
     teams: Math.max(n(summary.teams), details.teams),
     bots: Math.max(n(summary.bots), details.bots),

@@ -306,10 +306,9 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     if (Array.isArray(node)) {
       const low = path.toLowerCase();
       if (/profile|player|joueur/.test(low)) profiles = Math.max(profiles, node.length);
-      if (/history|match|matches|partie|saved/.test(low)) {
-        const matchItems = node.filter((item) => looksLikeMatchObject(item)).length;
-        matches += matchItems || (node.length && /history|match|partie/.test(low) ? node.length : 0);
-      }
+      // Ne jamais déduire le nombre de parties du nom complet du chemin.
+      // Exemple réel : "history.rows.<id>.visitHistory" contient des centaines
+      // de volées, qui étaient auparavant comptées comme autant de parties.
       for (let i = 0; i < Math.min(node.length, 250); i += 1) walk(node[i], `${path}[${i}]`);
       return;
     }
@@ -319,7 +318,6 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     keys += objKeys.length;
 
     if (!exportedAt && typeof obj.exportedAt === "string") exportedAt = obj.exportedAt;
-    if (looksLikeMatchObject(obj)) matches += 1;
 
     if (typeof obj.sport === "string") uniquePush(sports, obj.sport, 12);
     if (typeof obj.mode === "string") uniquePush(sports, obj.mode, 12);
@@ -327,19 +325,6 @@ export function summarizeVaultPayload(value: any): VaultSummary {
 
     for (const k of ["name", "displayName", "nickname", "playerName", "teamName", "winnerName"]) {
       if (typeof obj[k] === "string") uniquePush(names, obj[k], 16);
-    }
-
-    if (isRecord(obj.history) && isRecord(obj.history.rows)) {
-      const c = Object.keys(obj.history.rows).length;
-      historyRows += c;
-      matches += c;
-      if (c > 0) probable.add("historique");
-    }
-    if (isRecord(obj.rows) && /history|match/i.test(path)) {
-      const c = Object.keys(obj.rows).length;
-      historyRows += c;
-      matches += c;
-      if (c > 0) probable.add("historique");
     }
 
     for (const [k, v] of Object.entries(obj)) {
@@ -403,17 +388,32 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     arrayLength(store.profiles),
   );
 
-  const historyMatches = historyRowsFromSnapshot(root);
+  const historyMatches = historyRowsFromSnapshot(root)
+    .filter((match) => match && typeof match === "object");
+  const directRootMatches = Array.isArray(root)
+    ? root.filter((match) => looksLikeMatchObject(match))
+    : [];
+  const canonicalMatches = historyMatches.length > 0 ? historyMatches : directRootMatches;
+
+  // Le nombre de parties provient exclusivement des lignes d'historique
+  // canoniques (ou, à défaut, d'un tableau racine de vrais matchs).
+  // Les volées, fléchettes et tableaux de télémétrie imbriqués ne sont
+  // donc plus additionnés au compteur de parties.
+  historyRows = historyMatches.length;
+  matches = canonicalMatches.length;
+  if (historyRows > 0) probable.add("historique");
+
   let statsMatches = 0;
   let visits = 0;
   let darts = 0;
-  for (const match of historyMatches) {
+  for (const match of canonicalMatches) {
     const telemetry = matchTelemetrySummary(match);
     if (telemetry.usable) statsMatches += 1;
     visits += telemetry.visits;
     darts += telemetry.darts;
   }
   statsMatches = Math.max(statsMatches, statsIndexMatchCount(root));
+  if (matches > 0) statsMatches = Math.min(statsMatches, matches);
   if (statsMatches > 0) statsBlocks = statsMatches;
 
   const mediaVaultCount = root?.userMediaFallbacks?.media && typeof root.userMediaFallbacks.media === "object"

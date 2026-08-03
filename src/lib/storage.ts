@@ -340,6 +340,34 @@ async function forceRestoreProfilesFromSnapshotIntoCurrentStore(dump: any, reaso
     // Sans ce miroir, les 46 profils sont bien restaurés dans store:<uid>,
     // mais la page Profils repart sur un store vide/non scopé.
     try { await idbSet(STORE_KEY, await persistPayloadForKey(STORE_KEY, json)); } catch {}
+
+    // Android peut relire le compte avec l'UUID Supabase OU l'identifiant NAS
+    // historique après le reload. On écrit le même store complet sur tous les
+    // scopes simples connus du snapshot pour éviter le retour à `profiles: [actif]`.
+    const aliases = knownStoreScopeAliasesFromSnapshot(dump);
+    for (const alias of aliases) {
+      try {
+        const aliasKey = `${STORE_KEY}:${alias}`;
+        const aliasActiveProfileId = profiles.some((profile) => String(profile?.id || "") === alias)
+          ? alias
+          : activeProfileId;
+        const aliasStore = { ...nextStore, profiles, activeProfileId: aliasActiveProfileId };
+        const aliasJson = safeJsonStringify(aliasStore);
+        await idbSet(aliasKey, await persistPayloadForKey(aliasKey, aliasJson));
+        lastSavedStoreJsonByScope.set(aliasKey, aliasJson);
+      } catch {}
+    }
+
+    // Nettoie uniquement les anciennes clés récursives `store:a:b:c` créées
+    // par les vieux imports. Les scopes simples `store:<uid>` sont conservés.
+    try {
+      const keys = await idbKeys();
+      for (const rawKey of keys) {
+        const raw = String(rawKey || "");
+        if (/^store:[^:]+:/.test(raw)) await idbDel(rawKey);
+      }
+    } catch {}
+
     lastSavedStoreJsonByScope.set(key, json);
     lastSavedStoreJsonByScope.set(STORE_KEY, json);
     writeProfilesSafetyCache(nextStore);
@@ -419,6 +447,100 @@ async function findBestPersistedStoreAcrossKeys(): Promise<{ key: string; store:
   } catch {
     return null;
   }
+}
+
+
+function canonicalProfileCompleteness(profile: any): number {
+  if (!profile || typeof profile !== "object") return 0;
+  const keys = [
+    "name", "displayName", "nickname", "avatarUrl", "avatarDataUrl",
+    "country", "surname", "firstName", "lastName", "birthDate", "city", "phone",
+  ];
+  let score = 0;
+  for (const key of keys) {
+    const value = profile?.[key];
+    if (typeof value === "string" ? value.trim().length > 0 : value != null) score += 1;
+  }
+  if (profile?.privateInfo && typeof profile.privateInfo === "object") score += Object.keys(profile.privateInfo).length * 0.05;
+  if (profile?.preferences && typeof profile.preferences === "object") score += Object.keys(profile.preferences).length * 0.05;
+  return score;
+}
+
+function mergeCanonicalProfileLists(...lists: any[][]): any[] {
+  const byId = new Map<string, any>();
+  for (const list of lists) {
+    for (const raw of validProfileList(list).map(normalizeRestoredLocalProfileMarkers)) {
+      const id = String(raw?.id || "").trim();
+      if (!id) continue;
+      const previous = byId.get(id);
+      if (!previous || canonicalProfileCompleteness(raw) >= canonicalProfileCompleteness(previous)) {
+        byId.set(id, previous ? mergePortableProfile(previous, raw) : raw);
+      }
+    }
+  }
+  return Array.from(byId.values());
+}
+
+/**
+ * Sélectionne le store de compte le plus complet, indépendamment du scope actif.
+ *
+ * Sur Android, le même compte a historiquement pu alterner entre un UUID
+ * Supabase et un identifiant NAS `usr_*`. Le store courant pouvait donc ne
+ * contenir que le profil actif tandis que le store non scopé contenait tous les
+ * profils locaux. Une sauvegarde ne doit jamais prendre aveuglément le scope
+ * courant comme source canonique.
+ */
+async function loadCanonicalAccountStoreForSnapshot(): Promise<any> {
+  const candidates: any[] = [];
+  try {
+    const runtime = (window as any)?.__appStore?.store;
+    if (runtime && typeof runtime === "object") candidates.push(runtime);
+  } catch {}
+  try {
+    const current = await loadStore<any>();
+    if (current && typeof current === "object") candidates.push(current);
+  } catch {}
+  try {
+    const persisted = await findBestPersistedStoreAcrossKeys();
+    if (persisted?.store) candidates.push(persisted.store);
+  } catch {}
+
+  if (!candidates.length) return {};
+  const scored = candidates.map((store, index) => {
+    const profiles = validProfileList(store?.profiles);
+    const collectionScore = [store?.dartSets, store?.friends, store?.history, store?.teams, store?.bots]
+      .reduce((sum, value) => sum + (Array.isArray(value) ? Math.min(value.length, 100) : 0), 0);
+    return { store, profiles, score: profiles.length * 10000 + collectionScore * 10 + (index === 0 ? 5 : 0) };
+  }).sort((a, b) => b.score - a.score);
+
+  const base = scored[0]?.store || {};
+  const profiles = mergeCanonicalProfileLists(...scored.map((row) => row.profiles));
+  const preferredActiveIds = candidates
+    .map((store) => String(store?.activeProfileId || "").trim())
+    .filter(Boolean);
+  const activeProfileId = preferredActiveIds.find((id) => profiles.some((profile) => String(profile?.id || "") === id))
+    || String(profiles[0]?.id || "")
+    || null;
+
+  return guardStoreShape({ ...base, profiles, activeProfileId } as any);
+}
+
+function knownStoreScopeAliasesFromSnapshot(dump: any): string[] {
+  const aliases = new Set<string>();
+  const add = (value: any) => {
+    const id = String(value || "").trim();
+    if (id && !id.includes(":")) aliases.add(id);
+  };
+  add(getStorageUser());
+  add(dump?.portableAccountData?.userId || dump?.portable_account_data?.userId);
+  try {
+    const idb = dump?.idb && typeof dump.idb === "object" ? dump.idb : {};
+    for (const key of Object.keys(idb)) {
+      const match = String(key || "").match(/^store:([^:]+)$/);
+      if (match?.[1]) add(match[1]);
+    }
+  } catch {}
+  return Array.from(aliases);
 }
 
 function guardStoreShape<T extends Store>(store: T | null | undefined): T {
@@ -1841,21 +1963,40 @@ export async function exportAll(): Promise<any> {
 
     for (let i = 0; i < keys.length; i++) {
       try {
+        const rawKey = String(keys[i] || "");
         const raw = values[i];
 
         if (raw == null) continue;
+        // Les anciennes restaurations ont créé des clés récursives du type
+        // `store:<uidA>:<uidB>` et `dc_stats_index_v2:<uidA>:<uidB>`.
+        // Elles dupliquent le même compte, gonflent le JSON et rendent le choix
+        // du store aléatoire sur Android. On ne les réexporte plus.
+        if (/^(store|dc_stats_index_v2):[^:]+:/.test(rawKey)) continue;
 
         const json = await decompressGzip(raw);
         const parsed = safeJsonParse(json, null);
-        if (String(keys[i]) === scopedStorageKey(STORE_KEY) && parsed && typeof parsed === "object") {
-          idbDump[String(keys[i])] = sanitizeStoreForPersistence(parsed as any);
+        if (rawKey === scopedStorageKey(STORE_KEY) && parsed && typeof parsed === "object") {
+          idbDump[rawKey] = sanitizeStoreForPersistence(parsed as any);
         } else {
-          idbDump[String(keys[i])] = parsed;
+          idbDump[rawKey] = parsed;
         }
       } catch {}
     }
   } catch (err) {
     console.warn("[storage] exportAll optimized read failed:", err);
+  }
+
+  // Le store portable doit toujours provenir de la vue la plus complète et
+  // non du scope courant, qui peut ne contenir que le profil actif sur Android.
+  try {
+    const canonicalStore = await loadCanonicalAccountStoreForSnapshot();
+    if (validProfileList(canonicalStore?.profiles).length > 0) {
+      const safeCanonical = sanitizeStoreForPersistence(canonicalStore as any);
+      idbDump[STORE_KEY] = safeCanonical;
+      idbDump[scopedStorageKey(STORE_KEY)] = safeCanonical;
+    }
+  } catch (error) {
+    console.warn("[storage] canonical store export fallback failed", error);
   }
 
   const lsDump = exportLocalStorageDc();
@@ -1900,10 +2041,16 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   // relisent correctement le store après reconnexion.
   const currentUid = getStorageUser();
   if (currentUid) {
-    const alreadyScopedForCurrentUser = key === scopedStorageKey(STORE_KEY) || key.endsWith(`:${currentUid}`);
-    if (!alreadyScopedForCurrentUser) {
-      const scoped = scopedStorageKey(key);
-      if (scoped !== key) targets.add(scoped);
+    if (isStoreLikeKey) {
+      // Ne jamais transformer `store:<uidA>` en `store:<uidA>:<uidB>`.
+      // Le store non scopé est le seul qui doit être recopié vers le scope actif.
+      if (key === STORE_KEY) targets.add(scopedStorageKey(STORE_KEY));
+    } else {
+      const alreadyScopedForCurrentUser = key.endsWith(`:${currentUid}`);
+      if (!alreadyScopedForCurrentUser) {
+        const scoped = scopedStorageKey(key);
+        if (scoped !== key) targets.add(scoped);
+      }
     }
   }
 
@@ -2454,7 +2601,7 @@ function exportCriticalLocalStorageValues(): Record<string, string> {
 }
 
 async function exportPortableAccountData(): Promise<any> {
-  const currentStore: any = await loadStore().catch(() => null);
+  const currentStore: any = await loadCanonicalAccountStoreForSnapshot().catch(() => null);
   const profiles = Array.isArray(currentStore?.profiles) ? currentStore.profiles.map(sanitizePortableProfile) : [];
   const dartSets = getAllDartSets();
   const bots = loadStoredBots();
@@ -2879,7 +3026,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   // Pour R2 direct allégé, le clic reste non bloquant : la réplication média
   // continue séparément en arrière-plan et n'est pas réembarquée dans le JSON.
   try {
-    const currentStore: any = await loadStore();
+    const currentStore: any = await loadCanonicalAccountStoreForSnapshot();
     if (currentStore) {
       const mediaSource = {
         ...(currentStore || {}),
@@ -2938,7 +3085,7 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
     // miniatures compactes (192px), utilisable même si le NAS est hors ligne.
     if (opts.includeAvatarFallbacks !== false) {
       try {
-        const currentStore: any = await loadStore();
+        const currentStore: any = await loadCanonicalAccountStoreForSnapshot();
         const avatarFallbacks = await buildAvatarFallbackSnapshot(
           Array.isArray(currentStore?.profiles) ? currentStore.profiles : []
         );
