@@ -1,7 +1,7 @@
 import LZString from "lz-string";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from "fflate";
-import { apiDelete, apiGet, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiGetBytes, apiPost } from "./apiClient";
 import { exportCloudSnapshot, getStorageUser, importCloudSnapshot } from "./storage";
 import { pushNasAccountSnapshot } from "./manualNasSync";
 
@@ -734,9 +734,25 @@ export function decodeMaybeCompressedNasPayload(payload: any): any {
   if (payload._format === "gzip+store-v2" && payload.compressed) {
     let bytes: Uint8Array | null = null;
     if (typeof payload.data === "string") {
-      const binary = atob(payload.data);
-      bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      // Décodage par blocs : évite de créer en même temps une chaîne binaire
+      // géante de 20-30 Mo dans la WebView Android.
+      const base64 = payload.data.replace(/\s+/g, "");
+      const chunkChars = 1024 * 1024; // multiple de 4
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      for (let offset = 0; offset < base64.length; offset += chunkChars) {
+        const binary = atob(base64.slice(offset, offset + chunkChars));
+        const chunk = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) chunk[i] = binary.charCodeAt(i);
+        chunks.push(chunk);
+        total += chunk.byteLength;
+      }
+      bytes = new Uint8Array(total);
+      let cursor = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, cursor);
+        cursor += chunk.byteLength;
+      }
     } else if (payload.data instanceof Uint8Array) {
       bytes = payload.data;
     } else if (payload.data instanceof ArrayBuffer) {
@@ -782,16 +798,66 @@ export async function listNasDeletedMemorySlots(): Promise<NasSlot[]> {
   return slots as NasSlot[];
 }
 
-export async function pullNasMemorySlot(slotId: string, opts?: { trash?: boolean }): Promise<{ slot: NasSlot; payload: any; summary: VaultSummary }> {
-  const suffix = opts?.trash ? "?trash=1" : "";
+export async function pullNasMemorySlot(
+  slotId: string,
+  opts?: {
+    trash?: boolean;
+    onProgress?: (loadedBytes: number, totalBytes: number) => void;
+    summaryHint?: VaultSummary;
+  },
+): Promise<{ slot: NasSlot; payload: any; summary: VaultSummary }> {
+  const rawQuery = opts?.trash ? "?trash=1" : "";
+  const rawPath = slotId === "latest"
+    ? `/sync/pull/raw${rawQuery}`
+    : `/sync/slots/${encodeURIComponent(slotId)}/raw${rawQuery}`;
+
+  // V61 : priorité au flux gzip brut. Il évite la grosse enveloppe JSON/base64
+  // et réduit fortement le temps CPU/mémoire sur la WebView Android.
+  try {
+    const raw = await apiGetBytes(rawPath, {
+      manual: true,
+      timeoutMs: NAS_MANUAL_PULL_TIMEOUT_MS,
+      onDownloadProgress: opts?.onProgress,
+    });
+    const bytes = raw.bytes;
+    const isGzip = bytes.byteLength >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+    if (!isGzip) throw new Error("Transport gzip NAS invalide");
+    const payload = decodeMaybeCompressedNasPayload({
+      _format: "gzip+store-v2",
+      compressed: true,
+      encoding: "binary",
+      data: bytes,
+    });
+    return {
+      slot: {
+        id: raw.snapshotId || slotId,
+        version: raw.snapshotVersion,
+        updatedAt: raw.snapshotUpdatedAt,
+        createdAt: raw.snapshotUpdatedAt,
+        latest: slotId === "latest",
+      },
+      payload,
+      summary: opts?.summaryHint || summarizeVaultPayload(payload),
+    };
+  } catch (error: any) {
+    const status = Number(error?.status || 0);
+    const compatibleFallback = [404, 405, 406, 409, 415, 501].includes(status) || /Transport gzip NAS invalide/i.test(String(error?.message || ""));
+    if (!compatibleFallback) throw error;
+  }
+
+  // Compatibilité avec un backend NAS pas encore passé en V61 : enveloppe
+  // gzip/base64 rapide, puis ancien JSON si le serveur ignore le paramètre.
+  const query = new URLSearchParams();
+  query.set("transport", "1");
+  if (opts?.trash) query.set("trash", "1");
+  const suffix = `?${query.toString()}`;
   const path = slotId === "latest"
-    ? "/sync/pull"
+    ? `/sync/pull${suffix}`
     : `/sync/slots/${encodeURIComponent(slotId)}${suffix}`;
-  // Lecture explicitement manuelle : elle ne doit pas hériter du timeout de
-  // 4 secondes ni du cooldown des hooks automatiques.
   const data = await apiGet(path, {
     manual: true,
     timeoutMs: NAS_MANUAL_PULL_TIMEOUT_MS,
+    onDownloadProgress: opts?.onProgress,
   });
   const payloadRaw = data?.payload ?? null;
   if (!payloadRaw) throw new Error("Payload NAS introuvable");
@@ -799,7 +865,7 @@ export async function pullNasMemorySlot(slotId: string, opts?: { trash?: boolean
   return {
     slot: { id: data?.id || slotId, version: data?.version, updatedAt: data?.updatedAt, createdAt: data?.createdAt, deletedAt: data?.deletedAt || null, deletedReason: data?.deletedReason || null, latest: slotId === "latest" },
     payload,
-    summary: summarizeVaultPayload(payload),
+    summary: opts?.summaryHint || summarizeVaultPayload(payload),
   };
 }
 

@@ -400,8 +400,84 @@ async function recoverNasAuthToken(reason: "missing_token" | "401"): Promise<str
   return nasAuthRecoveryInFlight;
 }
 
-async function parseJsonSafe(res: Response) {
-  const text = await res.text();
+async function readResponseText(
+  res: Response,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void,
+): Promise<string> {
+  const totalBytes = Math.max(0, Number(res.headers.get("content-length") || 0));
+  if (!onProgress || !res.body || typeof res.body.getReader !== "function") {
+    const text = await res.text();
+    try { onProgress?.(text.length, totalBytes || text.length); } catch {}
+    return text;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  let loadedBytes = 0;
+  try { onProgress(0, totalBytes); } catch {}
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value?.byteLength) {
+      loadedBytes += value.byteLength;
+      parts.push(decoder.decode(value, { stream: true }));
+      try { onProgress(loadedBytes, totalBytes); } catch {}
+    }
+  }
+  parts.push(decoder.decode());
+  try { onProgress(loadedBytes, totalBytes || loadedBytes); } catch {}
+  return parts.join("");
+}
+
+async function readResponseBytes(
+  res: Response,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void,
+): Promise<Uint8Array> {
+  const totalBytes = Math.max(0, Number(res.headers.get("content-length") || 0));
+  if (!res.body || typeof res.body.getReader !== "function") {
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    try { onProgress?.(bytes.byteLength, totalBytes || bytes.byteLength); } catch {}
+    return bytes;
+  }
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loadedBytes = 0;
+  try { onProgress?.(0, totalBytes); } catch {}
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value?.byteLength) {
+      chunks.push(value);
+      loadedBytes += value.byteLength;
+      try { onProgress?.(loadedBytes, totalBytes); } catch {}
+    }
+  }
+  const bytes = new Uint8Array(loadedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try { onProgress?.(loadedBytes, totalBytes || loadedBytes); } catch {}
+  return bytes;
+}
+
+export type ApiBinaryResponse = {
+  bytes: Uint8Array;
+  contentType: string;
+  contentLength: number;
+  snapshotId: string;
+  snapshotVersion: number | null;
+  snapshotUpdatedAt: string | null;
+};
+
+async function parseJsonSafe(
+  res: Response,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void,
+) {
+  const text = await readResponseText(res, onProgress);
   try {
     return text ? JSON.parse(text) : null;
   } catch {
@@ -438,6 +514,10 @@ export type ApiRequestOptions = {
    * aux hooks automatiques. Exemple : restauration choisie depuis la page Sauvegarde.
    */
   manual?: boolean;
+  /** Progression réelle du corps HTTP pour les téléchargements volumineux. */
+  onDownloadProgress?: (loadedBytes: number, totalBytes: number) => void;
+  /** Corps JSON classique ou flux binaire (gros snapshot gzip). */
+  responseType?: "json" | "bytes";
 };
 
 function clampRequestTimeout(value: number): number {
@@ -538,12 +618,16 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
 
   for (const apiBase of candidates) {
     let res: Response | null = null;
+    let clearResponseDeadline = () => {};
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
       const timer = ctrl ? window.setTimeout(() => {
         try { ctrl.abort(new DOMException("timeout", "AbortError")); } catch { ctrl.abort(); }
       }, requestTimeoutMs) : null;
+      const clearDeadline = () => {
+        if (timer) window.clearTimeout(timer);
+      };
 
       try {
         res = await fetch(`${apiBase}${normalizedPath}`, {
@@ -551,26 +635,25 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
           signal: ctrl?.signal ?? init?.signal,
           headers: buildHeaders(init),
         });
+        // Le délai reste actif pendant la lecture du corps. Avant V61 il était
+        // supprimé dès la réception des en-têtes, ce qui pouvait laisser un
+        // gros /sync/pull bloqué indéfiniment au milieu du téléchargement.
+        clearResponseDeadline = clearDeadline;
       } catch (error: any) {
+        clearDeadline();
         const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
         lastError = new Error(aborted
           ? `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS trop lent (timeout ${requestTimeoutMs}ms)`
           : `${init?.method || "GET"} ${normalizedPath} failed — Backend NAS inaccessible (${apiBase})`);
         res = null;
-        // Depuis Cloudflare Pages, le proxy et le domaine direct visent le même
-        // backend. Retenter immédiatement le domaine direct ne fait qu'ajouter
-        // une seconde erreur CORS/503 dans la console.
         if (proxyBase && apiBase === proxyBase) throw lastError;
         break;
-      } finally {
-        if (timer) window.clearTimeout(timer);
       }
 
       if (res.status !== 401 || attempt > 0) break;
 
-      // 401 peut arriver juste après une relance app / réveil NAS alors que le
-      // cache local possède encore une session récupérable. On restaure puis on
-      // retente une seule fois avant de purger réellement l'auth.
+      clearResponseDeadline();
+      clearResponseDeadline = () => {};
       const recoveredToken = await recoverNasAuthToken("401");
       if (!recoveredToken) break;
     }
@@ -579,7 +662,8 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
 
     if (!res.ok) {
       if (res.status === 401) clearNasAuthBecauseUnauthorized(normalizedPath);
-      const errPayload = await parseJsonSafe(res).catch(() => null);
+      const errPayload = await parseJsonSafe(res).catch(() => null).finally(clearResponseDeadline);
+      clearResponseDeadline = () => {};
       const errMessage = String(
         errPayload?.message ||
           errPayload?.error ||
@@ -599,16 +683,10 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
         databaseBackendCooldownUntil = Date.now() + DATABASE_BACKEND_COOLDOWN_MS;
       }
 
-      // Le proxy Pages et le domaine direct pointent vers le même NAS. Une
-      // réponse structurée 5xx du proxy est définitive pour cette tentative :
-      // aucun second appel direct/CORS n'est lancé.
       if (proxyBase && apiBase === proxyBase && res.status >= 500) {
         throw error;
       }
 
-      // Si on a un reverse proxy KO (502/503/504) ou une route health absente
-      // sur un ancien endpoint, on tente le candidat suivant. Pour les erreurs
-      // métier (400/401/403/404 hors health), on remonte immédiatement.
       if ((res.status >= 500 || (res.status === 404 && normalizedPath === "/health")) && apiBase !== candidates[candidates.length - 1]) {
         lastError = error;
         continue;
@@ -616,11 +694,31 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
       throw error;
     }
 
-    rememberWorkingApiUrl(apiBase);
-    if (normalizedPath.startsWith("/online/")) onlineBackendCooldownUntil = 0;
-    databaseBackendCooldownUntil = 0;
-    backendHealthyUntil = Date.now() + 15_000;
-    return parseJsonSafe(res);
+    try {
+      const parsed = options?.responseType === "bytes"
+        ? {
+            bytes: await readResponseBytes(res, options?.onDownloadProgress),
+            contentType: String(res.headers.get("content-type") || ""),
+            contentLength: Math.max(0, Number(res.headers.get("content-length") || 0)),
+            snapshotId: String(res.headers.get("x-mss-snapshot-id") || ""),
+            snapshotVersion: Number(res.headers.get("x-mss-snapshot-version") || 0) || null,
+            snapshotUpdatedAt: String(res.headers.get("x-mss-snapshot-updated-at") || "") || null,
+          }
+        : await parseJsonSafe(res, options?.onDownloadProgress);
+      rememberWorkingApiUrl(apiBase);
+      if (normalizedPath.startsWith("/online/")) onlineBackendCooldownUntil = 0;
+      databaseBackendCooldownUntil = 0;
+      backendHealthyUntil = Date.now() + 15_000;
+      return parsed;
+    } catch (error: any) {
+      const aborted = error?.name === "AbortError" || /abort|timeout/i.test(String(error?.message || ""));
+      if (aborted) {
+        throw new Error(`${init?.method || "GET"} ${normalizedPath} failed — téléchargement NAS interrompu après ${requestTimeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearResponseDeadline();
+    }
   }
 
   throw lastError || new Error(`${init?.method || "GET"} ${normalizedPath} failed — aucun backend NAS joignable`);
@@ -628,6 +726,10 @@ async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOpt
 
 export async function apiGet(path: string, options?: ApiRequestOptions) {
   return doFetch(path, undefined, options);
+}
+
+export async function apiGetBytes(path: string, options?: Omit<ApiRequestOptions, "responseType">): Promise<ApiBinaryResponse> {
+  return doFetch(path, undefined, { ...options, responseType: "bytes" }) as Promise<ApiBinaryResponse>;
 }
 
 export async function apiPost(path: string, body: unknown) {

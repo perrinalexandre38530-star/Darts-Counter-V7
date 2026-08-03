@@ -4,6 +4,7 @@ import { useSport } from "../contexts/SportContext";
 import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
+import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib/backgroundRestore";
 
 /**
  * BottomNav
@@ -234,7 +235,16 @@ export default function BottomNav({
   const [messageSummary, setMessageSummary] = React.useState<MessageCenterUnreadSummary | null>(null);
   const messageBadge = Math.max(0, Number(messageSummary?.total || 0));
   const backgroundBackup = useBackgroundBackupState();
-  const showBackgroundBackup = backgroundBackup.status !== "idle";
+  const backgroundRestore = useBackgroundRestoreState();
+  const activeBackgroundJob = backgroundRestore.status === "running"
+    ? { kind: "restore" as const, state: backgroundRestore }
+    : backgroundBackup.status === "running"
+      ? { kind: "backup" as const, state: backgroundBackup }
+      : backgroundRestore.status !== "idle"
+        ? { kind: "restore" as const, state: backgroundRestore }
+        : backgroundBackup.status !== "idle"
+          ? { kind: "backup" as const, state: backgroundBackup }
+          : null;
 
   React.useEffect(() => {
     if (hideOnline) {
@@ -315,11 +325,22 @@ export default function BottomNav({
 
   return (
     <>
-      {showBackgroundBackup ? (
+      {activeBackgroundJob ? (() => {
+        const job = activeBackgroundJob.state;
+        const isRestore = activeBackgroundJob.kind === "restore";
+        const dismiss = () => {
+          if (job.status === "running") return;
+          if (isRestore) dismissBackgroundRestoreState();
+          else dismissBackgroundBackupState();
+        };
+        const runningTitle = isRestore ? "♻️ Restauration en arrière-plan" : "💾 Sauvegarde en arrière-plan";
+        const successTitle = isRestore ? "✅ Restauration terminée" : "✅ Sauvegarde terminée";
+        const errorTitle = isRestore ? "⚠️ Restauration interrompue" : "⚠️ Sauvegarde interrompue";
+        return (
         <div
           role="status"
           aria-live="polite"
-          onClick={() => backgroundBackup.status === "running" ? undefined : dismissBackgroundBackupState()}
+          onClick={dismiss}
           style={{
             position: "fixed",
             left: 10,
@@ -329,32 +350,33 @@ export default function BottomNav({
             minHeight: 46,
             padding: "8px 12px 10px",
             borderRadius: 15,
-            border: `1px solid ${backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent}`,
+            border: `1px solid ${job.status === "error" ? "#fb7185" : job.status === "success" ? "#34d399" : accent}`,
             background: "rgba(3,8,18,.96)",
-            boxShadow: `0 0 18px ${backgroundBackup.status === "error" ? "rgba(251,113,133,.35)" : backgroundBackup.status === "success" ? "rgba(52,211,153,.32)" : `${accent}55`}`,
+            boxShadow: `0 0 18px ${job.status === "error" ? "rgba(251,113,133,.35)" : job.status === "success" ? "rgba(52,211,153,.32)" : `${accent}55`}`,
             color: textMain,
-            cursor: backgroundBackup.status === "running" ? "default" : "pointer",
+            cursor: job.status === "running" ? "default" : "pointer",
             backdropFilter: "blur(12px)",
           }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {backgroundBackup.status === "running" ? "💾 Sauvegarde en arrière-plan" : backgroundBackup.status === "success" ? "✅ Sauvegarde terminée" : "⚠️ Sauvegarde interrompue"}
+                {job.status === "running" ? runningTitle : job.status === "success" ? successTitle : errorTitle}
               </div>
               <div style={{ marginTop: 2, color: textSoft, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {backgroundBackup.message || backgroundBackup.label}
+                {job.message || job.label}
               </div>
             </div>
-            <strong style={{ color: backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent, fontSize: 12 }}>
-              {backgroundBackup.status === "running" ? `${Math.max(1, Math.round(backgroundBackup.progress))}%` : "×"}
+            <strong style={{ color: job.status === "error" ? "#fb7185" : job.status === "success" ? "#34d399" : accent, fontSize: 12 }}>
+              {job.status === "running" ? `${Math.max(1, Math.round(job.progress))}%` : "×"}
             </strong>
           </div>
           <div style={{ height: 3, borderRadius: 99, background: "rgba(255,255,255,.10)", overflow: "hidden", marginTop: 7 }}>
-            <div style={{ width: `${Math.max(backgroundBackup.status === "running" ? 4 : 100, backgroundBackup.progress)}%`, height: "100%", borderRadius: 99, background: backgroundBackup.status === "error" ? "#fb7185" : backgroundBackup.status === "success" ? "#34d399" : accent, transition: "width .25s ease" }} />
+            <div style={{ width: `${Math.max(job.status === "running" ? 4 : 100, job.progress)}%`, height: "100%", borderRadius: 99, background: job.status === "error" ? "#fb7185" : job.status === "success" ? "#34d399" : accent, transition: "width .25s ease" }} />
           </div>
         </div>
-      ) : null}
+        );
+      })() : null}
       <nav
       className="bottom-nav"
       role="navigation"

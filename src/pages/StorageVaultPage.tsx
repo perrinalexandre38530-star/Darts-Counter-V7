@@ -96,6 +96,12 @@ import {
   startBackgroundBackupJob,
   useBackgroundBackupState,
 } from "../lib/backgroundBackup";
+import {
+  isBackgroundRestoreRunning,
+  startBackgroundRestoreJob,
+  useBackgroundRestoreState,
+  type BackgroundRestoreReporter,
+} from "../lib/backgroundRestore";
 
 type Props = { go?: (tab: any, params?: any) => void };
 type TabKey = "restore" | "backup" | "matches" | "diagnostic";
@@ -1817,6 +1823,8 @@ export default function StorageVaultPage({ go }: Props) {
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState("Scan en attente…");
   const backgroundBackup = useBackgroundBackupState();
+  const backgroundRestore = useBackgroundRestoreState();
+  const restoreRunning = backgroundRestore.status === "running";
   const lastUserActionAtRef = React.useRef(0);
   const [localSlots, setLocalSlots] = React.useState<MemorySlot[]>([]);
   const [nasSlots, setNasSlots] = React.useState<NasSlot[]>([]);
@@ -1849,6 +1857,12 @@ export default function StorageVaultPage({ go }: Props) {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const cloudImportRef = React.useRef<HTMLInputElement | null>(null);
   const restoreFileRef = React.useRef<HTMLInputElement | null>(null);
+
+  React.useEffect(() => {
+    if (backgroundRestore.status !== "idle" && backgroundRestore.message) {
+      setMessage(backgroundRestore.message);
+    }
+  }, [backgroundRestore.status, backgroundRestore.message]);
 
   const currentAuthForVault = React.useMemo(() => ({
     token: (auth.session as any)?.access_token || (auth.session as any)?.token || "",
@@ -2323,31 +2337,48 @@ export default function StorageVaultPage({ go }: Props) {
     return uploadSnapshotPayloadToCloudVault(snapshot, reason, title, options);
   };
 
-  const restoreSnapshotIntoBrowserAndAccount = async (payload: any, reason: string, label: string) => {
+  const restoreSnapshotIntoBrowserAndAccount = async (
+    payload: any,
+    reason: string,
+    label: string,
+    options?: {
+      skipConfirm?: boolean;
+      background?: boolean;
+      provider?: BackupProvider;
+      report?: BackgroundRestoreReporter;
+    },
+  ): Promise<{ summary: VaultSummary }> => {
+    const report = options?.report || (() => {});
+    const provider = options?.provider || backupProvider;
+    report(54, "Préparation du snapshot téléchargé…", "prepare");
     const snapshot = normalizeCloudPayload(unwrapSnapshotEnvelope(payload));
     const isBackupV1 = looksLikeCloudBackupV1(snapshot);
     if (!looksLikeCloudSnapshot(snapshot) && !isBackupV1) throw new Error("Snapshot restaurable introuvable dans ce bloc.");
     const summary = isBackupV1 ? strictSummaryForCloudPayload(snapshot) : strictSummaryForRestore(snapshot);
-    const q = backupProvider === "cloud" ? assessSaveForProvider(summary, "cloud") : assessSave(summary);
+    const q = provider === "cloud" ? assessSaveForProvider(summary, "cloud") : assessSave(summary);
     if (!q.restorable) {
       throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason} ${explainStrictPayload(snapshot)}`);
     }
 
     const isNativeRestore = Capacitor.isNativePlatform();
-    const targetLabel = backupProvider === "cloud" ? "Cloudflare R2" : "compte NAS";
+    const targetLabel = provider === "cloud" ? "Cloudflare R2" : "compte NAS";
     const restoreFlowText = isNativeRestore
       ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
       : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
-    const ok = window.confirm(
-      `Restaurer "${label}" ?\n\n` +
-      `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
-      restoreFlowText
-    );
-    if (!ok) return;
+    if (!options?.skipConfirm) {
+      const ok = window.confirm(
+        `Restaurer "${label}" ?\n\n` +
+        `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
+        restoreFlowText
+      );
+      if (!ok) return { summary };
+    }
 
+    report(58, "Création de la sécurité locale avant restauration…", "prepare");
     const restoreAuth = rememberAuthKeys();
     await createLocalMemorySlot("Sécurité avant restauration", "before-restore").catch(() => null);
 
+    report(64, "Import des parties, profils et médias dans l’appareil…", "import");
     let importReport: any = null;
     if (isBackupV1) {
       const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
@@ -2357,9 +2388,7 @@ export default function StorageVaultPage({ go }: Props) {
     }
     restoreAuth();
 
-    // ✅ Important : la restauration IDB est faite, mais le state React courant
-    // peut encore contenir `profiles: []` jusqu'au reload. On remplace tout de
-    // suite le store vivant avec le store relu depuis la clé restaurée.
+    report(82, "Contrôle des profils restaurés et mise à jour de l’affichage…", "import");
     try {
       const restoredStore = await loadStore<any>();
       const actualProfiles = Array.isArray(restoredStore?.profiles)
@@ -2391,39 +2420,48 @@ export default function StorageVaultPage({ go }: Props) {
       throw e;
     }
 
+    report(90, "Reconstruction de l’historique et des statistiques…", "rebuild");
     await afterRestoreHousekeeping(reason);
 
     if (!Capacitor.isNativePlatform()) {
-      // Comportement PWA historique conservé pour ne pas modifier un flux déjà
-      // validé sur navigateur pendant le correctif Android ciblé.
-      if (backupProvider === "cloud") {
+      report(94, `Synchronisation de l’état restauré vers ${targetLabel}…`, "finalize");
+      if (provider === "cloud") {
         await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
       } else {
         await pushSnapshotToAccount(snapshot, reason);
       }
       setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
+      report(100, "Restauration terminée. Rechargement…", "finalize");
       window.setTimeout(() => window.location.reload(), 900);
-      return;
+      return { summary };
     }
 
     // ANDROID SOURCE UNIQUE V59:
-    // Restaurer n'est pas sauvegarder. L'ancien flux renvoyait immédiatement le
-    // snapshot complet (jusqu'à ~54 Mo JSON) vers NAS/R2, puis forçait un reload.
-    // Sur WebView, ce double traitement provoquait un pic mémoire et pouvait
-    // fermer l'application. Le store React a déjà été remplacé ci-dessus : on
-    // conserve donc l'état restauré localement sans second upload ni reload.
+    // Le snapshot restauré reste local à l'appareil : aucun renvoi automatique
+    // vers NAS/R2 et aucun rechargement brutal de la WebView.
     try {
       localStorage.setItem("dc_last_manual_restore_v1", JSON.stringify({
         at: new Date().toISOString(),
-        provider: backupProvider,
+        provider,
         reason,
         matches: Number(summary.matches || 0),
         profiles: Number(summary.profiles || 0),
       }));
     } catch {}
 
-    setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. État appliqué sans rechargement.`);
-    await refresh(backupProvider).catch(() => undefined);
+    report(98, "Application du nouvel état dans toutes les pages…", "finalize");
+    try {
+      window.dispatchEvent(new CustomEvent("dc-store-restored", {
+        detail: { reason, provider, summary },
+      }));
+    } catch {}
+
+    if (!options?.background) {
+      setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. État appliqué sans rechargement.`);
+      await refresh(provider).catch(() => undefined);
+    }
+    report(100, "Restauration terminée. Les données sont disponibles dans l’application.", "finalize");
+    return { summary };
   };
 
   const restoreSingleMatch = async (item: MatchBackupItem) => {
@@ -3111,6 +3149,48 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       });
   };
 
+  const confirmBackgroundRestore = (entry: SaveEntry, provider: BackupProvider): boolean => {
+    const summary = normalizeSummary(entry.summary || {});
+    const sourceLabel = provider === "cloud" ? "Cloud R2" : entry.source === "local" || entry.source === "file" ? "cet appareil" : "NAS";
+    return window.confirm(
+      `Restaurer "${entry.title}" depuis ${sourceLabel} ?\n\n` +
+      `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
+      `La restauration continuera en arrière-plan. Tu pourras changer de page pendant le téléchargement et l’import.`
+    );
+  };
+
+  const launchNativeRestore = (
+    entry: SaveEntry,
+    provider: BackupProvider,
+    run: (report: BackgroundRestoreReporter) => Promise<{ summary: VaultSummary }>,
+  ) => {
+    if (isBackgroundRestoreRunning()) {
+      setMessage("Une restauration est déjà en cours. Son avancement reste visible au-dessus de la navigation.");
+      return;
+    }
+    if (isBackgroundBackupRunning()) {
+      setMessage("Une sauvegarde est encore en cours. Attends sa fin avant de restaurer.");
+      return;
+    }
+    if (!confirmBackgroundRestore(entry, provider)) return;
+
+    setMessage("Restauration lancée en arrière-plan. Tu peux maintenant changer de page.");
+    void startBackgroundRestoreJob({
+      source: provider,
+      label: entry.title,
+      run,
+      successMessage: (result) => {
+        const summary = normalizeSummary(result?.summary || entry.summary || {});
+        return `Restauration terminée : ${summary.matches} partie(s) et ${summary.profiles} profil(s) disponibles.`;
+      },
+    }).then((result) => {
+      const summary = normalizeSummary(result?.summary || entry.summary || {});
+      setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} stats.`);
+    }).catch((error: any) => {
+      setMessage(`Restauration impossible : ${error?.message || error}`);
+    });
+  };
+
   const restoreNas = async (entry: SaveEntry) => {
     const token = await ensureNasTokenFromOnlineRuntime(currentAuthForVault);
     setAccountScopeId(getVaultCurrentUserId());
@@ -3118,44 +3198,102 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       setMessage("Restauration NAS impossible : token NAS introuvable. Déconnecte/reconnecte-toi au compte NAS.");
       return;
     }
+
+    const slot = entry.slot as NasSlot;
+    const id = String(slot.id || "latest");
+    const expectedBytes = Number(normalizeSummary(entry.summary).bytes || 0);
+
+    if (Capacitor.isNativePlatform()) {
+      launchNativeRestore(entry, "nas", async (report) => {
+        report(4, `Connexion au NAS pour préparer ${entry.title}…`, "download");
+        const pulled = await pullNasMemorySlot(id, {
+          summaryHint: normalizeSummary(entry.summary),
+          onProgress: (loadedBytes, totalBytes) => {
+            const fallbackTotal = expectedBytes > 0 ? Math.ceil(expectedBytes * 4 / 3) : 0;
+            const denominator = totalBytes > 0 ? totalBytes : fallbackTotal;
+            const ratio = denominator > 0 ? Math.min(1, loadedBytes / denominator) : 0;
+            const progress = 6 + Math.round(ratio * 44);
+            const sizeText = denominator > 0
+              ? `${fmtBytes(loadedBytes)} / ${fmtBytes(denominator)}`
+              : fmtBytes(loadedBytes);
+            report(progress, `Téléchargement NAS : ${sizeText}. Tu peux naviguer dans l’application.`, "download");
+          },
+        });
+        report(52, "Téléchargement terminé. Décompression locale du snapshot…", "prepare");
+        return restoreSnapshotIntoBrowserAndAccount(
+          pulled.payload,
+          `restore-nas:${id}`,
+          entry.title,
+          { skipConfirm: true, background: true, provider: "nas", report },
+        );
+      });
+      return;
+    }
+
     setBusy(true);
     try {
-      const slot = entry.slot as NasSlot;
-      const id = String(slot.id || "latest");
-      const expectedBytes = Number(normalizeSummary(entry.summary).bytes || 0);
       setMessage(
         `Téléchargement manuel de la sauvegarde NAS${expectedBytes > 0 ? ` (${fmtBytes(expectedBytes)})` : ""}… ` +
         `Le NAS peut avoir besoin de quelques secondes pour préparer le fichier.`
       );
       const pulled = await pullNasMemorySlot(id);
-      await restoreSnapshotIntoBrowserAndAccount(
-        pulled.payload,
-        `restore-nas:${id}`,
-        entry.title
-      );
+      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-nas:${id}`, entry.title, { provider: "nas" });
     } catch (error: any) {
       setMessage(`Restauration NAS impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
   const restoreCloud = async (entry: SaveEntry) => {
+    if (Capacitor.isNativePlatform()) {
+      launchNativeRestore(entry, "cloud", async (report) => {
+        report(8, "Téléchargement de la sauvegarde Cloud R2…", "download");
+        const slot = entry.slot as CloudSlot;
+        const pulled = slot.__payload
+          ? { payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
+          : await pullCloudVaultSlot(slot);
+        report(50, "Téléchargement Cloud terminé. Préparation du snapshot…", "prepare");
+        return restoreSnapshotIntoBrowserAndAccount(
+          pulled.payload,
+          `restore-cloud:${slot.id}`,
+          entry.title,
+          { skipConfirm: true, background: true, provider: "cloud", report },
+        );
+      });
+      return;
+    }
+
     setBusy(true);
     try {
       const slot = entry.slot as CloudSlot;
       const pulled = slot.__payload
         ? { payload: slot.__payload, summary: slot.__summary || strictSummaryForCloudPayload(slot.__payload) }
         : await pullCloudVaultSlot(slot);
-      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-cloud:${slot.id}`, entry.title);
+      await restoreSnapshotIntoBrowserAndAccount(pulled.payload, `restore-cloud:${slot.id}`, entry.title, { provider: "cloud" });
     } catch (error: any) {
       setMessage(`Restauration cloud impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
   };
 
   const restoreLocal = async (entry: SaveEntry) => {
+    if (Capacitor.isNativePlatform()) {
+      launchNativeRestore(entry, "nas", async (report) => {
+        report(44, "Lecture de la sauvegarde présente sur cet appareil…", "prepare");
+        const slot = entry.slot as MemorySlot;
+        const payload = decodeMaybeCompressedNasPayload(slot.payload);
+        return restoreSnapshotIntoBrowserAndAccount(
+          payload,
+          `restore-local:${slot.id}`,
+          entry.title,
+          { skipConfirm: true, background: true, provider: "nas", report },
+        );
+      });
+      return;
+    }
+
     setBusy(true);
     try {
       const slot = entry.slot as MemorySlot;
-      await restoreSnapshotIntoBrowserAndAccount(decodeMaybeCompressedNasPayload(slot.payload), `restore-local:${slot.id}`, entry.title);
+      await restoreSnapshotIntoBrowserAndAccount(decodeMaybeCompressedNasPayload(slot.payload), `restore-local:${slot.id}`, entry.title, { provider: "nas" });
     } catch (error: any) {
       setMessage(`Restauration locale impossible : ${error?.message || error}`);
     } finally { setBusy(false); }
@@ -3181,7 +3319,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     <SaveCard
       key={entry.key}
       entry={entry}
-      busy={busy}
+      busy={busy || restoreRunning}
       onDetails={() => void openSaveDetails(entry)}
       onRestore={() => entry.source === "nas" ? restoreNas(entry) : entry.source === "cloud" ? restoreCloud(entry) : restoreLocal(entry)}
       onExport={async () => {
@@ -3237,7 +3375,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     <SaveCard
       key={entry.key}
       entry={entry}
-      busy={busy}
+      busy={busy || restoreRunning}
       onDetails={() => void openSaveDetails(entry)}
       restoreLabel="Sortir de la corbeille"
       exportLabel="Exporter JSON"
@@ -3418,7 +3556,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         <StorageTickerHeader
           ticker={lang === "fr" ? tickerStorageBackupFr : tickerStorageBackupEn}
           alt={lang === "fr" ? "Centre de sauvegarde" : "Backup center"}
-          busy={busy}
+          busy={busy || restoreRunning}
           help={pageHelp}
           onBack={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}
           onRefresh={() => void refresh()}
@@ -3450,11 +3588,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           <VaultNavButton active={tab === "diagnostic"} icon="expert" label="Expert" onClick={() => setTab("diagnostic")}/>
         </div>
 
-        <div style={{ ...panel, padding: "9px 11px", marginBottom: 10, borderColor: busy ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
-          <span style={{ color: busy ? amber : green, lineHeight: 0 }}>{busy ? <VaultGlyph name="save" size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
+        <div style={{ ...panel, padding: "9px 11px", marginBottom: 10, borderColor: busy || restoreRunning ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+          <span style={{ color: busy || restoreRunning ? amber : green, lineHeight: 0 }}>{busy || restoreRunning ? <VaultGlyph name={restoreRunning ? "restore" : "save"} size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
           <div title={message} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{message}</div>
-          <MiniInfoButton title="État détaillé" color={busy ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
-          {busy ? <div style={{ gridColumn: "1 / -1", height: 3, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)" }}><div style={{ width: "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" }}/></div> : null}
+          <MiniInfoButton title="État détaillé" color={busy || restoreRunning ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
+          {busy || restoreRunning ? <div style={{ gridColumn: "1 / -1", height: 3, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)" }}><div style={{ width: "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" }}/></div> : null}
         </div>
 
         {tab === "restore" && (
@@ -3495,7 +3633,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             {restoreView === "trash" && (restoreSource === "nas" || restoreSource === "cloud") ? (
               <>
                 <div style={{ ...panel, padding: 11 }}>
-                  <CompactSectionTitle title="CORBEILLE" color={red} info={<div>Une sauvegarde placée ici reste récupérable. Le bouton « Vider » la supprime définitivement du serveur.</div>} right={<button style={{ ...dangerBtn, padding: "7px 10px", fontSize: 10.5 }} disabled={busy || !trashRemoteEntries.length} onClick={emptyTrash}>Vider</button>}/>
+                  <CompactSectionTitle title="CORBEILLE" color={red} info={<div>Une sauvegarde placée ici reste récupérable. Le bouton « Vider » la supprime définitivement du serveur.</div>} right={<button style={{ ...dangerBtn, padding: "7px 10px", fontSize: 10.5 }} disabled={busy || restoreRunning || !trashRemoteEntries.length} onClick={emptyTrash}>Vider</button>}/>
                 </div>
                 {trashRemoteEntries.length ? trashRemoteEntries.map(renderTrashEntry) : <CompactEmpty title="Corbeille vide"/>}
               </>
@@ -3506,7 +3644,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         {tab === "matches" && (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ ...panel, padding: 11 }}><CompactSectionTitle title="PARTIES À L’UNITÉ" color={green} info={<div>Chaque bloc restaure une seule partie dans l’Historique. Aucune autre partie ni aucun profil n’est remplacé.</div>} right={<button type="button" style={{ ...btn, width: 35, height: 35, padding: 0, borderRadius: 999, display: "grid", placeItems: "center" }} onClick={() => void refresh()}><VaultGlyph name="refresh" size={19}/></button>}/></div>
-            {matchBackupEntries.length ? matchBackupEntries.map((item) => <MatchBackupCard key={`${item.origin || "local"}:${item.matchId || item.id}`} item={item} busy={busy} onRestore={() => restoreSingleMatch(item)} onExport={() => exportSingleMatch(item)} onDelete={() => deleteSingleMatch(item)}/>) : <CompactEmpty title="Aucune sauvegarde de partie détectée" detail="Les nouvelles parties terminées seront ajoutées automatiquement."/>}
+            {matchBackupEntries.length ? matchBackupEntries.map((item) => <MatchBackupCard key={`${item.origin || "local"}:${item.matchId || item.id}`} item={item} busy={busy || restoreRunning} onRestore={() => restoreSingleMatch(item)} onExport={() => exportSingleMatch(item)} onDelete={() => deleteSingleMatch(item)}/>) : <CompactEmpty title="Aucune sauvegarde de partie détectée" detail="Les nouvelles parties terminées seront ajoutées automatiquement."/>}
           </div>
         )}
 
@@ -3586,7 +3724,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 </div>
               </div>
             </div>
-            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : null}
+            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy || restoreRunning} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : null}
           </div>
         )}
       </div>

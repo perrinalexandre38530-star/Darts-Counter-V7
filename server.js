@@ -1308,6 +1308,105 @@ function encodedSnapshotFromGzipTransport(payload) {
   };
 }
 
+function gzipBufferFromStoredSnapshotText(text, encoding) {
+  const raw = typeof text === "string" ? text.trim() : "";
+  const enc = String(encoding || "").trim().toLowerCase();
+  if (!raw || (enc !== "gzip-base64-json" && enc !== "gzip-base64")) return null;
+  try {
+    const buffer = Buffer.from(raw, "base64");
+    if (buffer.length < 18 || buffer[0] !== 0x1f || buffer[1] !== 0x8b) return null;
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
+async function loadUserStoreSnapshotStoredRow(userId) {
+  const result = await pool.query(`
+    SELECT payload_text, payload_encoding, version, updated_at
+    FROM user_store
+    WHERE user_id = $1 AND store = 'main'
+    LIMIT 1
+  `, [userId]);
+  return result.rows[0] || null;
+}
+
+async function loadUserStoreSnapshotSlotStoredRow(userId, slotId) {
+  const result = await pool.query(`
+    SELECT id, user_id, payload_text, payload_encoding, version, summary, created_at
+    FROM user_store_snapshots
+    WHERE user_id = $1 AND id = $2 AND store = 'main'
+    LIMIT 1
+  `, [userId, slotId]);
+  return result.rows[0] || null;
+}
+
+function sendStoredSnapshotGzip(res, row, fallbackId) {
+  const buffer = gzipBufferFromStoredSnapshotText(row?.payload_text, row?.payload_encoding);
+  if (!buffer) {
+    return res.status(409).json({
+      ok: false,
+      error: "Transport gzip brut indisponible pour cette ancienne sauvegarde",
+      code: "snapshot_raw_transport_unavailable",
+    });
+  }
+  const snapshotId = String(row?.id || fallbackId || "latest");
+  const updatedAt = row?.updated_at || row?.created_at || null;
+  res.status(200);
+  res.setHeader("Content-Type", "application/gzip");
+  res.setHeader("Content-Length", String(buffer.length));
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-MSS-Snapshot-Id", snapshotId);
+  res.setHeader("X-MSS-Snapshot-Version", String(Number(row?.version || 0) || 0));
+  if (updatedAt) res.setHeader("X-MSS-Snapshot-Updated-At", new Date(updatedAt).toISOString());
+  res.setHeader("X-MSS-Snapshot-Transport", "gzip-raw-fast");
+  return res.end(buffer);
+}
+
+function transportFromStoredSnapshotText(text, encoding) {
+  const raw = typeof text === "string" ? text.trim() : "";
+  const enc = String(encoding || "").trim().toLowerCase();
+  if (!raw || (enc !== "gzip-base64-json" && enc !== "gzip-base64")) return null;
+  return {
+    _format: "gzip+store-v2",
+    compressed: true,
+    encoding: "base64",
+    data: raw,
+    meta: {
+      compressedBytes: Math.max(0, Math.floor((raw.length * 3) / 4)),
+      fastTransport: true,
+    },
+  };
+}
+
+async function loadUserStoreSnapshotTransport(userId) {
+  const result = await pool.query(`
+    SELECT payload, data, payload_text, data_text, payload_encoding, data_encoding, version, updated_at
+    FROM user_store
+    WHERE user_id = $1 AND store = 'main'
+    LIMIT 1
+  `, [userId]);
+  const row = result.rows[0] || null;
+  if (!row) return null;
+  const transport = transportFromStoredSnapshotText(row.payload_text, row.payload_encoding);
+  if (transport) return { ...row, payload: transport, data: null, fastTransport: true };
+  return loadUserStoreSnapshot(userId);
+}
+
+async function loadUserStoreSnapshotSlotTransport(userId, slotId) {
+  const result = await pool.query(`
+    SELECT id, user_id, store, payload, data, payload_text, data_text, payload_encoding, data_encoding, version, summary, reason, promoted_at, created_at
+    FROM user_store_snapshots
+    WHERE user_id = $1 AND id = $2 AND store = 'main'
+    LIMIT 1
+  `, [userId, slotId]);
+  const row = result.rows[0] || null;
+  if (!row) return null;
+  const transport = transportFromStoredSnapshotText(row.payload_text, row.payload_encoding);
+  if (transport) return { ...row, payload: transport, data: null, fastTransport: true };
+  return loadUserStoreSnapshotSlot(userId, slotId);
+}
+
 async function loadUserStoreSnapshot(userId) {
   const result = await pool.query(`
     SELECT payload, data, payload_text, data_text, payload_encoding, data_encoding, version, updated_at
@@ -2302,17 +2401,34 @@ app.post("/profiles/avatar", authRequired, async (req, res) => {
   }
 });
 
+app.get("/sync/pull/raw", authRequired, async (req, res) => {
+  try {
+    const row = await loadUserStoreSnapshotStoredRow(req.user.id);
+    if (!row) return res.status(404).json({ ok: false, error: "Aucun backup NAS disponible" });
+    return sendStoredSnapshotGzip(res, row, "latest");
+  } catch (error) {
+    console.error("GET /sync/pull/raw error:", error);
+    res.status(500).json({ ok: false, error: error.message || "Erreur lecture gzip NAS" });
+  }
+});
+
 app.get("/sync/pull", authRequired, async (req, res) => {
   try {
-    const row = await loadUserStoreSnapshot(req.user.id);
+    const fastTransport = String(req.query?.transport || "") === "1";
+    const row = fastTransport
+      ? await loadUserStoreSnapshotTransport(req.user.id)
+      : await loadUserStoreSnapshot(req.user.id);
     if (!row) {
       return res.json({ status: "not_found", payload: null, version: null, updatedAt: null });
     }
+    res.setHeader("Cache-Control", "no-store");
+    if (row.fastTransport) res.setHeader("X-MSS-Snapshot-Transport", "gzip-base64");
     res.json({
       status: "ok",
       payload: row.payload ?? row.data ?? null,
       version: row.version,
       updatedAt: row.updated_at,
+      transport: row.fastTransport ? "gzip-base64-fast" : "json",
     });
   } catch (error) {
     console.error("GET /sync/pull error:", error);
@@ -2404,14 +2520,26 @@ app.post("/sync/slots", authRequired, async (req, res) => {
 
 app.get("/sync/slots", authRequired, async (req, res) => {
   try {
-    const latest = await loadUserStoreSnapshot(req.user.id).catch(() => null);
-    const result = await pool.query(`
-      SELECT id, user_id, store, version, summary, reason, promoted_at, created_at
-      FROM user_store_snapshots
-      WHERE user_id = $1 AND store = 'main'
-      ORDER BY created_at DESC
-      LIMIT 10
-    `, [req.user.id]);
+    // Liste rapide : ne jamais décompresser le snapshot complet de 20-50 Mo
+    // uniquement pour afficher les cartes. Le résumé du dernier slot est écrit
+    // en même temps que la sauvegarde et sert de métadonnée canonique.
+    const [currentResult, result] = await Promise.all([
+      pool.query(`
+        SELECT version, updated_at
+        FROM user_store
+        WHERE user_id = $1 AND store = 'main'
+        LIMIT 1
+      `, [req.user.id]),
+      pool.query(`
+        SELECT id, user_id, store, version, summary, reason, promoted_at, created_at
+        FROM user_store_snapshots
+        WHERE user_id = $1 AND store = 'main'
+        ORDER BY created_at DESC
+        LIMIT 10
+      `, [req.user.id]),
+    ]);
+    const current = currentResult.rows[0] || null;
+    const latestSummary = result.rows[0]?.summary || {};
     const slots = result.rows.map((row) => ({
       id: row.id,
       ownerId: row.user_id,
@@ -2423,19 +2551,20 @@ app.get("/sync/slots", authRequired, async (req, res) => {
       updatedAt: row.created_at,
       latest: false,
     }));
-    if (latest) {
+    if (current) {
       slots.unshift({
         id: "latest",
         ownerId: req.user.id,
-        version: latest.version,
-        summary: summarizeSnapshotForVault(latest.payload ?? latest.data ?? null),
+        version: current.version,
+        summary: latestSummary,
         reason: "current",
         promotedAt: null,
-        createdAt: latest.updated_at,
-        updatedAt: latest.updated_at,
+        createdAt: current.updated_at,
+        updatedAt: current.updated_at,
         latest: true,
       });
     }
+    res.setHeader("Cache-Control", "no-store");
     res.json({ ok: true, slots });
   } catch (error) {
     console.error("GET /sync/slots error:", error);
@@ -2443,17 +2572,44 @@ app.get("/sync/slots", authRequired, async (req, res) => {
   }
 });
 
+app.get("/sync/slots/:id/raw", authRequired, async (req, res) => {
+  try {
+    const slotId = String(req.params.id || "").trim();
+    if (!slotId) return res.status(400).json({ ok: false, error: "Slot NAS invalide" });
+    if (slotId === "latest") {
+      const latest = await loadUserStoreSnapshotStoredRow(req.user.id);
+      if (!latest) return res.status(404).json({ ok: false, error: "Aucun backup NAS disponible" });
+      return sendStoredSnapshotGzip(res, latest, "latest");
+    }
+    const row = await loadUserStoreSnapshotSlotStoredRow(req.user.id, slotId);
+    if (!row) return res.status(404).json({ ok: false, error: "Slot NAS introuvable" });
+    return sendStoredSnapshotGzip(res, row, slotId);
+  } catch (error) {
+    console.error("GET /sync/slots/:id/raw error:", error);
+    res.status(500).json({ ok: false, error: error.message || "Erreur lecture gzip du slot NAS" });
+  }
+});
+
 app.get("/sync/slots/:id", authRequired, async (req, res) => {
   try {
     const slotId = String(req.params.id || "").trim();
+    const fastTransport = String(req.query?.transport || "") === "1";
     if (slotId === "latest") {
-      const row = await loadUserStoreSnapshot(req.user.id);
+      const row = fastTransport
+        ? await loadUserStoreSnapshotTransport(req.user.id)
+        : await loadUserStoreSnapshot(req.user.id);
       if (!row) return res.status(404).json({ error: "Aucun backup NAS disponible" });
-      return res.json({ ok: true, id: "latest", ownerId: req.user.id, payload: row.payload ?? row.data ?? null, version: row.version, summary: summarizeSnapshotForVault(row.payload ?? row.data ?? null), createdAt: row.updated_at, updatedAt: row.updated_at, latest: true });
+      res.setHeader("Cache-Control", "no-store");
+      if (row.fastTransport) res.setHeader("X-MSS-Snapshot-Transport", "gzip-base64");
+      return res.json({ ok: true, id: "latest", ownerId: req.user.id, payload: row.payload ?? row.data ?? null, version: row.version, summary: row.fastTransport ? {} : summarizeSnapshotForVault(row.payload ?? row.data ?? null), createdAt: row.updated_at, updatedAt: row.updated_at, latest: true, transport: row.fastTransport ? "gzip-base64-fast" : "json" });
     }
-    const row = await loadUserStoreSnapshotSlot(req.user.id, slotId);
+    const row = fastTransport
+      ? await loadUserStoreSnapshotSlotTransport(req.user.id, slotId)
+      : await loadUserStoreSnapshotSlot(req.user.id, slotId);
     if (!row) return res.status(404).json({ error: "Slot NAS introuvable" });
-    res.json({ ok: true, id: row.id, ownerId: row.user_id, payload: row.payload ?? row.data ?? null, version: row.version, summary: row.summary || summarizeSnapshotForVault(row.payload ?? row.data ?? null), reason: row.reason || null, promotedAt: row.promoted_at || null, createdAt: row.created_at, updatedAt: row.created_at, latest: false });
+    res.setHeader("Cache-Control", "no-store");
+    if (row.fastTransport) res.setHeader("X-MSS-Snapshot-Transport", "gzip-base64");
+    res.json({ ok: true, id: row.id, ownerId: row.user_id, payload: row.payload ?? row.data ?? null, version: row.version, summary: row.summary || (row.fastTransport ? {} : summarizeSnapshotForVault(row.payload ?? row.data ?? null)), reason: row.reason || null, promotedAt: row.promoted_at || null, createdAt: row.created_at, updatedAt: row.created_at, latest: false, transport: row.fastTransport ? "gzip-base64-fast" : "json" });
   } catch (error) {
     console.error("GET /sync/slots/:id error:", error);
     res.status(500).json({ error: error.message || "Erreur lecture slot NAS" });
