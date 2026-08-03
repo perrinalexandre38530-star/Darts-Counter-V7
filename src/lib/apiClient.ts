@@ -427,12 +427,34 @@ function buildHeaders(init?: RequestInit): HeadersInit {
   return baseHeaders;
 }
 
-async function doFetch(path: string, init?: RequestInit) {
+export type ApiRequestOptions = {
+  /**
+   * Délai réseau explicite pour une action déclenchée par l'utilisateur.
+   * Ne modifie pas les délais courts des lectures automatiques au démarrage.
+   */
+  timeoutMs?: number;
+  /**
+   * Une lecture manuelle ne doit pas être bloquée par le probe/cooldown réservé
+   * aux hooks automatiques. Exemple : restauration choisie depuis la page Sauvegarde.
+   */
+  manual?: boolean;
+};
+
+function clampRequestTimeout(value: number): number {
+  if (!Number.isFinite(value)) return API_TIMEOUT_MS;
+  return Math.max(2_500, Math.min(180_000, Math.round(value)));
+}
+
+async function doFetch(path: string, init?: RequestInit, options?: ApiRequestOptions) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const requestMethod = String(init?.method || "GET").toUpperCase();
   const isBackgroundOnlineGet = requestMethod === "GET" && normalizedPath.startsWith("/online/");
-  const isAutomaticRead = isAutomaticBackendRead(normalizedPath, requestMethod);
-  const requestTimeoutMs = requestTimeoutFor(normalizedPath, requestMethod);
+  const isAutomaticRead = options?.manual === true
+    ? false
+    : isAutomaticBackendRead(normalizedPath, requestMethod);
+  const requestTimeoutMs = options?.timeoutMs != null
+    ? clampRequestTimeout(Number(options.timeoutMs))
+    : requestTimeoutFor(normalizedPath, requestMethod);
   const proxyBase = sameOriginApiProxyBase();
 
   // Invariant d'architecture : en mode public/hybride, AUCUNE route /online/*
@@ -604,8 +626,8 @@ async function doFetch(path: string, init?: RequestInit) {
   throw lastError || new Error(`${init?.method || "GET"} ${normalizedPath} failed — aucun backend NAS joignable`);
 }
 
-export async function apiGet(path: string) {
-  return doFetch(path);
+export async function apiGet(path: string, options?: ApiRequestOptions) {
+  return doFetch(path, undefined, options);
 }
 
 export async function apiPost(path: string, body: unknown) {

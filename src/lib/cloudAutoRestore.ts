@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { importCloudSnapshot, loadStore, setStorageUser } from "./storage";
 import {
   downloadCloudObject,
@@ -375,9 +376,20 @@ async function restoreFromR2NasMirrorFallback(userId: string, force = false): Pr
 
 export async function maybeAutoRestoreCloudForSignedInUser(
   userId?: string | null,
-  opts?: { force?: boolean }
+  opts?: { force?: boolean; explicitManual?: boolean }
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
+
+  // ANDROID SOURCE UNIQUE V59:
+  // l'application native ne doit jamais restaurer R2 en arrière-plan après la
+  // connexion. Cette restauration invisible entrait en concurrence avec la
+  // restauration NAS manuelle, réinjectait l'historique R2 (72 parties), puis
+  // remplaçait aussi thème et profils. R2 reste disponible exclusivement depuis
+  // la page Sauvegarde/Restauration, où la source est choisie par l'utilisateur.
+  if (Capacitor.isNativePlatform() && opts?.explicitManual !== true) {
+    try { console.info("[cloudAutoRestore] Android natif : restauration R2 automatique désactivée"); } catch {}
+    return false;
+  }
   const uid = String(userId || "").trim();
   if (!uid) return false;
   // Un identifiant local conservé n'est pas une session Cloud.

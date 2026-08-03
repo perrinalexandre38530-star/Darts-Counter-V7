@@ -76,6 +76,13 @@ const VAULT_DB = "dc_memory_card_v1";
 const VAULT_STORE = "slots";
 const MAX_LOCAL_SLOTS = 10;
 
+/**
+ * Un snapshot NAS complet peut dépasser 20 Mo et le QNAP peut mettre plusieurs
+ * secondes à préparer la réponse avant d'envoyer les premiers octets.
+ * Le délai court de 4 s reste réservé aux lectures automatiques de métadonnées.
+ */
+const NAS_MANUAL_PULL_TIMEOUT_MS = 120_000;
+
 
 const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
 const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
@@ -777,7 +784,15 @@ export async function listNasDeletedMemorySlots(): Promise<NasSlot[]> {
 
 export async function pullNasMemorySlot(slotId: string, opts?: { trash?: boolean }): Promise<{ slot: NasSlot; payload: any; summary: VaultSummary }> {
   const suffix = opts?.trash ? "?trash=1" : "";
-  const data = slotId === "latest" ? await apiGet("/sync/pull") : await apiGet(`/sync/slots/${encodeURIComponent(slotId)}${suffix}`);
+  const path = slotId === "latest"
+    ? "/sync/pull"
+    : `/sync/slots/${encodeURIComponent(slotId)}${suffix}`;
+  // Lecture explicitement manuelle : elle ne doit pas hériter du timeout de
+  // 4 secondes ni du cooldown des hooks automatiques.
+  const data = await apiGet(path, {
+    manual: true,
+    timeoutMs: NAS_MANUAL_PULL_TIMEOUT_MS,
+  });
   const payloadRaw = data?.payload ?? null;
   if (!payloadRaw) throw new Error("Payload NAS introuvable");
   const payload = decodeMaybeCompressedNasPayload(payloadRaw);

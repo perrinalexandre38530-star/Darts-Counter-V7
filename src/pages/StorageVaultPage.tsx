@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Capacitor } from "@capacitor/core";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { gzipSync, strToU8 } from "fflate";
@@ -336,25 +337,51 @@ function readUserIdFromObject(value: any): string {
   ).trim();
 }
 
+function readVaultAuthProvider(authLike?: any): string {
+  return String(
+    authLike?.authProvider ||
+    authLike?.auth_provider ||
+    authLike?.user?.user_metadata?.auth_provider ||
+    authLike?.user?.app_metadata?.provider ||
+    authLike?.session?.authProvider ||
+    authLike?.session?.auth_provider ||
+    authLike?.session?.user?.user_metadata?.auth_provider ||
+    ""
+  ).trim().toLowerCase();
+}
+
+function isPublicSupabaseVaultAuth(authLike?: any): boolean {
+  const provider = readVaultAuthProvider(authLike);
+  return provider === "supabase" ||
+    provider === "supabase_failover" ||
+    authLike?.degradedMode === true ||
+    authLike?.degraded_mode === true ||
+    authLike?.user?.user_metadata?.degraded_mode === true;
+}
+
 function persistNasAuthForVault(authLike?: any): string {
   if (typeof window === "undefined") return "";
 
-  let token = readAuthTokenFromObject(authLike || {});
-  let refreshToken = readRefreshTokenFromObject(authLike || {});
+  const publicSupabaseSession = isPublicSupabaseVaultAuth(authLike);
+  let token = publicSupabaseSession ? "" : readAuthTokenFromObject(authLike || {});
+  let refreshToken = publicSupabaseSession ? "" : readRefreshTokenFromObject(authLike || {});
   let userId = String(authLike?.userId || authLike?.user?.id || readUserIdFromObject(authLike || "") || "").trim();
 
   try {
     const raw = window.localStorage.getItem("dc_online_auth_supabase_v1") || "";
     if (raw) {
       const cached = JSON.parse(raw);
-      token = token || readAuthTokenFromObject(cached);
-      refreshToken = refreshToken || readRefreshTokenFromObject(cached);
+      const cachedIsPublicSupabase = isPublicSupabaseVaultAuth(cached);
+      if (!publicSupabaseSession && !cachedIsPublicSupabase) {
+        token = token || readAuthTokenFromObject(cached);
+        refreshToken = refreshToken || readRefreshTokenFromObject(cached);
+      }
       userId = userId || readUserIdFromObject(cached);
     }
   } catch {}
 
   try {
-    token = token || readNasAccessToken();
+    if (!publicSupabaseSession) token = token || readNasAccessToken();
   } catch {}
 
   if (userId) {
@@ -387,7 +414,7 @@ function persistNasAuthForVault(authLike?: any): string {
     } catch {}
   }
 
-  return token || "";
+  return publicSupabaseSession ? "" : (token || "");
 }
 
 async function ensureNasTokenFromOnlineRuntime(authLike?: any): Promise<string> {
@@ -1828,7 +1855,26 @@ export default function StorageVaultPage({ go }: Props) {
     refreshToken: (auth.session as any)?.refresh_token || (auth.session as any)?.refreshToken || "",
     userId: auth.userId || (auth.user as any)?.id || null,
     user: auth.user || null,
+    authProvider:
+      (auth.user as any)?.user_metadata?.auth_provider ||
+      (auth.session as any)?.authProvider ||
+      (auth.session as any)?.auth_provider ||
+      "",
+    degradedMode:
+      (auth.user as any)?.user_metadata?.degraded_mode === true ||
+      (auth.session as any)?.degradedMode === true,
   }), [auth.session, auth.user, auth.userId]);
+
+  const canUsePrivateNas = !isPublicSupabaseVaultAuth(currentAuthForVault) && Boolean(
+    readAuthTokenFromObject(currentAuthForVault) || readNasAccessToken()
+  );
+
+  React.useEffect(() => {
+    if (canUsePrivateNas) return;
+    if (backupProvider === "nas") setBackupProvider("cloud");
+    if (restoreSource === "nas") setRestoreSource("cloud");
+    if (readPreferredRemoteSource() === "nas") writePreferredRemoteSource("cloud");
+  }, [canUsePrivateNas, backupProvider, restoreSource]);
 
   const ensureVaultNasToken = React.useCallback(() => {
     const token = persistNasAuthForVault(currentAuthForVault);
@@ -2087,11 +2133,11 @@ export default function StorageVaultPage({ go }: Props) {
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
     const preferred = readPreferredRemoteSource();
-    // La source de restauration est indépendante de la destination de sauvegarde.
-    // Avant ce correctif, une destination R2 active forçait systématiquement la
-    // liste R2 et rendait le bouton NAS visuellement inopérant.
+    // Application grand public : le NAS privé n'est jamais une source implicite.
+    // Il n'est disponible que lorsqu'une vraie session NAS est présente.
+    if (!canUsePrivateNas) return "cloud";
     return preferred || "nas";
-  }, []);
+  }, [canUsePrivateNas]);
 
   const refresh = React.useCallback(async (providerOverride?: BackupProvider) => {
     // L'actualisation des listes ne bloque jamais le bouton Sauvegarder.
@@ -2287,11 +2333,15 @@ export default function StorageVaultPage({ go }: Props) {
       throw new Error(`Garde-fou restauration : bloc refusé. ${q.reason} ${explainStrictPayload(snapshot)}`);
     }
 
+    const isNativeRestore = Capacitor.isNativePlatform();
     const targetLabel = backupProvider === "cloud" ? "Cloudflare R2" : "compte NAS";
+    const restoreFlowText = isNativeRestore
+      ? "L’application va créer une sécurité puis remplacer uniquement les données locales par cette sauvegarde. Aucune autre source ne sera chargée en arrière-plan."
+      : `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`;
     const ok = window.confirm(
       `Restaurer "${label}" ?\n\n` +
       `${summary.matches} parties • ${summary.historyRows} lignes historique • ${summary.profiles} profils • ${summary.statsBlocks} stats\n\n` +
-      `L’application va créer une sécurité, restaurer le navigateur, synchroniser vers ${targetLabel}, puis recharger.`
+      restoreFlowText
     );
     if (!ok) return;
 
@@ -2342,13 +2392,38 @@ export default function StorageVaultPage({ go }: Props) {
     }
 
     await afterRestoreHousekeeping(reason);
-    if (backupProvider === "cloud") {
-      await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
-    } else {
-      await pushSnapshotToAccount(snapshot, reason);
+
+    if (!Capacitor.isNativePlatform()) {
+      // Comportement PWA historique conservé pour ne pas modifier un flux déjà
+      // validé sur navigateur pendant le correctif Android ciblé.
+      if (backupProvider === "cloud") {
+        await uploadCurrentSnapshotToCloudVault(`restore-cloud:${reason}`, `État restauré — ${label}`);
+      } else {
+        await pushSnapshotToAccount(snapshot, reason);
+      }
+      setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
+      window.setTimeout(() => window.location.reload(), 900);
+      return;
     }
-    setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. Rechargement…`);
-    window.setTimeout(() => window.location.reload(), 900);
+
+    // ANDROID SOURCE UNIQUE V59:
+    // Restaurer n'est pas sauvegarder. L'ancien flux renvoyait immédiatement le
+    // snapshot complet (jusqu'à ~54 Mo JSON) vers NAS/R2, puis forçait un reload.
+    // Sur WebView, ce double traitement provoquait un pic mémoire et pouvait
+    // fermer l'application. Le store React a déjà été remplacé ci-dessus : on
+    // conserve donc l'état restauré localement sans second upload ni reload.
+    try {
+      localStorage.setItem("dc_last_manual_restore_v1", JSON.stringify({
+        at: new Date().toISOString(),
+        provider: backupProvider,
+        reason,
+        matches: Number(summary.matches || 0),
+        profiles: Number(summary.profiles || 0),
+      }));
+    } catch {}
+
+    setMessage(`Restauration terminée : ${summary.matches} partie(s), ${summary.profiles} profil(s), ${summary.statsBlocks} bloc(s) stats. État appliqué sans rechargement.`);
+    await refresh(backupProvider).catch(() => undefined);
   };
 
   const restoreSingleMatch = async (item: MatchBackupItem) => {
@@ -2413,6 +2488,10 @@ ${label}`)) return;
 
   const selectRemoteRestoreSource = async (provider: BackupProvider) => {
     lastUserActionAtRef.current = Date.now();
+    if (provider === "nas" && !canUsePrivateNas) {
+      setMessage("Le NAS privé n’est pas disponible pour ce compte. Utilise Cloud R2, cet appareil ou un fichier personnel.");
+      return;
+    }
     writePreferredRemoteSource(provider);
     setBackupProvider(provider);
     setRestoreSource(provider);
@@ -3043,6 +3122,11 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
     try {
       const slot = entry.slot as NasSlot;
       const id = String(slot.id || "latest");
+      const expectedBytes = Number(normalizeSummary(entry.summary).bytes || 0);
+      setMessage(
+        `Téléchargement manuel de la sauvegarde NAS${expectedBytes > 0 ? ` (${fmtBytes(expectedBytes)})` : ""}… ` +
+        `Le NAS peut avoir besoin de quelques secondes pour préparer le fichier.`
+      );
       const pulled = await pullNasMemorySlot(id);
       await restoreSnapshotIntoBrowserAndAccount(
         pulled.payload,
@@ -3378,7 +3462,9 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             <div style={{ ...panel, padding: 11 }}>
               <CompactSectionTitle title="SOURCE DE RESTAURATION" color={neon} info={<div>La source choisie ici est indépendante de la destination utilisée dans l’onglet Sauver. NAS ne peut donc plus être écrasé par une destination R2 active.</div>}/>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                <VaultActionButton icon="nas" label="NAS privé" active={restoreSource === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
+                {canUsePrivateNas ? (
+                  <VaultActionButton icon="nas" label="NAS privé" active={restoreSource === "nas"} onClick={() => void selectRemoteRestoreSource("nas")}/>
+                ) : null}
                 <VaultActionButton icon="cloud" label="Cloud R2" active={restoreSource === "cloud"} onClick={() => void selectRemoteRestoreSource("cloud")}/>
                 <VaultActionButton icon="local" label="Cet appareil" active={restoreSource === "local"} onClick={selectLocalRestoreSource}/>
                 <VaultActionButton icon="file" label="Fichier / SD / Cloud perso" active={restoreSource === "file"} onClick={selectFileRestoreSource}/>
