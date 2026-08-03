@@ -2320,10 +2320,17 @@ function buildSyntheticHistoryDumpFromStatsIndex(idx: any): any | null {
   } catch { return null; }
 }
 
-export async function importAll(dump: any, opts?: { historyReplace?: boolean }): Promise<void> {
+export async function importAll(
+  dump: any,
+  opts?: {
+    historyReplace?: boolean;
+    onProgress?: (progress: number, message: string) => void;
+  },
+): Promise<void> {
   dump = unwrapNasSnapshotPayload(dump);
   if (!dump) return;
   const historyReplace = opts?.historyReplace ?? true;
+  const report = opts?.onProgress || (() => {});
 
   // ✅ Support snapshots structurés (v1 et v2)
   // - v2 = format produit par exportAll() dans ce fichier
@@ -2333,15 +2340,27 @@ export async function importAll(dump: any, opts?: { historyReplace?: boolean }):
     const restoredStatsIndex = markRestoredStatsIndex(pickBestRestorableStatsIndexFromDump(dump));
 
     // 1) restore KV (IDB kv)
-    // ⚠️ IMPORTANT: un exportAll() v2 contient déjà des clés IDB potentiellement namespacées
-    // (ex: "store:<uid>"). Il ne faut SURTOUT PAS repasser par setKV(), sinon la clé est
-    // re-scopée une 2e fois ("store:<uid>:<uid>") et le store redevient introuvable.
-    for (const [k, v] of Object.entries(idbDump)) {
+    // Les anciens snapshots peuvent contenir des dizaines de copies récursives
+    // `store:uidA:uidB:...` et `dc_stats_index_v2:uidA:uidB:...`.
+    // Les réimporter toutes réécrit plusieurs fois le même store et ralentit
+    // énormément Android. Le store canonique non scopé est la source de vérité ;
+    // importIdbEntryRaw le recopie déjà vers le scope actuellement connecté.
+    const idbEntries = Object.entries(idbDump).filter(([rawKey]) => {
+      const key = String(rawKey || "");
+      if (key === STORE_KEY) return true;
+      if (key.startsWith(`${STORE_KEY}:`)) return false;
+      if (key === "dc_stats_index_v2" || key.startsWith("dc_stats_index_v2:")) return false;
+      return true;
+    });
+    report(8, `Import du stockage principal : 0/${Math.max(1, idbEntries.length)}`);
+    for (let index = 0; index < idbEntries.length; index += 1) {
+      const [k, v] = idbEntries[index];
       try {
         await importIdbEntryRaw(String(k), v);
       } catch (e) {
         console.warn("[storage] importAll idb entry failed", k, e);
       }
+      report(8 + Math.round(((index + 1) / Math.max(1, idbEntries.length)) * 22), `Import du stockage principal : ${index + 1}/${idbEntries.length}`);
     }
 
     // ✅ Si un vrai dc_stats_index_v2 est présent, on le réécrit explicitement
@@ -2356,6 +2375,7 @@ export async function importAll(dump: any, opts?: { historyReplace?: boolean }):
     }
 
     // 2) restore localStorage (dc_* + dc-*)
+    report(32, "Restauration des préférences locales…");
     importLocalStorageDc(lsDump);
 
     // 2.0) ✅ RESTORE PROFILS LOCAUX PRIORITAIRE
@@ -2412,14 +2432,21 @@ export async function importAll(dump: any, opts?: { historyReplace?: boolean }):
       const rawRows = dump?.history?.rows && typeof dump.history.rows === "object" ? dump.history.rows : {};
       const hasRealHistoryRows = Object.keys(rawRows).length > 0;
       if (dump.history && dump.history._v === 1 && hasRealHistoryRows) {
-        await importHistoryDump(dump.history, { replace: historyReplace });
+        report(46, `Restauration des ${Object.keys(rawRows).length} partie(s)…`);
+        await importHistoryDump(dump.history, {
+          replace: historyReplace,
+          preserveExisting: !historyReplace,
+          onProgress: (completed, total) => {
+            report(46 + Math.round((completed / Math.max(1, total)) * 24), `Restauration des parties : ${completed}/${total}`);
+          },
+        });
       } else {
         const syntheticHistory = buildSyntheticHistoryDumpFromStatsIndex(restoredStatsIndex);
         if (syntheticHistory?.rows && Object.keys(syntheticHistory.rows).length > 0) {
-          await importHistoryDump(syntheticHistory, { replace: historyReplace });
+          await importHistoryDump(syntheticHistory, { replace: historyReplace, preserveExisting: !historyReplace });
           try { localStorage.setItem("dc_history_restored_from_stats_index_v1", "1"); } catch {}
         } else if (dump.history && dump.history._v === 1) {
-          await importHistoryDump(dump.history, { replace: historyReplace });
+          await importHistoryDump(dump.history, { replace: historyReplace, preserveExisting: !historyReplace });
         }
       }
       try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
@@ -2430,6 +2457,7 @@ export async function importAll(dump: any, opts?: { historyReplace?: boolean }):
     // 4) ✅ NAS BACKUP : restore ligues/tournois créés.
     // Compat: "tournaments" est le champ officiel, "competitions" est gardé
     // comme alias de sécurité pour les snapshots patchés.
+    report(72, "Restauration des compétitions et équipes…");
     try {
       const competitionsDump = dump.tournaments || dump.competitions || null;
       if (competitionsDump && typeof competitionsDump === "object") {
@@ -2439,6 +2467,7 @@ export async function importAll(dump: any, opts?: { historyReplace?: boolean }):
       console.warn("[storage] importAll tournaments restore failed", e);
     }
 
+    report(78, "Finalisation du stockage principal…");
     try {
       const maybeStoreKey = scopedStorageKey(STORE_KEY);
       const rawStore = await idbGet<any>(maybeStoreKey);
@@ -2794,6 +2823,11 @@ export type CloudSnapshotImportReport = {
   mode: "replace" | "merge";
   portable: PortableAccountRestoreReport | null;
   runtimeRefreshed: boolean;
+};
+
+export type CloudSnapshotImportOptions = {
+  mode?: "replace" | "merge";
+  onProgress?: (progress: number, message: string) => void;
 };
 
 function emptyPortableCounts(): PortableAccountRestoreCounts {
@@ -3203,33 +3237,45 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
   }
 }
 
-export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<CloudSnapshotImportReport> {
+export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnapshotImportOptions): Promise<CloudSnapshotImportReport> {
   dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
+  const report = opts?.onProgress || (() => {});
   let portableReport: PortableAccountRestoreReport | null = null;
   let runtimeRefreshed = false;
   try { sessionStorage.setItem("dc_cloud_restore_in_progress_v2", "1"); } catch {}
 
   try {
     if (mode === "replace") {
+      report(1, "Nettoyage sécurisé de l’ancien état local…");
       await nukeAll();
       clearLocalStorageDc();
     }
 
-    await importAll(dump, { historyReplace: mode === "replace" });
+    report(4, "Restauration du stockage et de l’historique…");
+    await importAll(dump, {
+      historyReplace: mode === "replace",
+      onProgress: (progress, message) => report(4 + Math.round(progress * 0.56), message),
+    });
 
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.
   try {
     // Compat anciens snapshots : scanne aussi les profils/dartsets directement
     // dans le snapshot lorsque le bloc userMediaFallbacks n'existait pas encore.
-    await importUserMediaFromSnapshot(dump);
+    await importUserMediaFromSnapshot(dump, {
+      onProgress: (completed, total, message) => {
+        const ratio = total > 0 ? completed / total : 1;
+        report(62 + Math.round(ratio * 14), message);
+      },
+    });
   } catch (mediaError) {
     console.warn("[storage] user media fallback import skipped", mediaError);
   }
 
   // AVATARS R2 FAILOVER : réhydrate immédiatement le cache local des avatars
   // depuis le bloc compact embarqué dans le snapshot Cloudflare R2.
+  report(77, "Restauration des avatars et données de compte…");
   try {
     importAvatarFallbackSnapshot((dump as any)?.avatarFallbacks || (dump as any)?.avatar_fallbacks || null);
   } catch (avatarError) {
@@ -3239,6 +3285,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // BLOC CANONIQUE DES DONNÉES DE COMPTE : restaure explicitement les
   // catégories que les anciens snapshots pouvaient laisser vides.
   try {
+    report(80, "Restauration des profils, bots, dartsets et équipes…");
     portableReport = await restorePortableAccountData((dump as any)?.portableAccountData || (dump as any)?.portable_account_data || null);
   } catch (portableError) {
     console.warn("[storage] portable account data import skipped", portableError);
@@ -3255,12 +3302,14 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
   // clonés depuis le profil online). On nettoie systématiquement après import
   // pour éviter que l'UI "Profils locaux" explose.
   try {
+    report(88, "Contrôle et normalisation des profils locaux…");
     await normalizeLocalProfilesInStore();
   } catch (err) {
     console.warn("[storage] normalizeLocalProfilesInStore failed", err);
   }
 
   // ✅ CRITIQUE : restaurer les DartSets / Bots exactement là où l’UI lit réellement
+  report(92, "Activation des collections restaurées…");
   const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
   if (dartSets) {
     // Ne jamais réécraser les dartsets déjà hydratés avec la copie brute du
@@ -3294,8 +3343,10 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
       console.warn("[storage] restore teams from snapshot failed", e);
     }
   }
+  report(97, "Vérification finale et mise à jour de l’application…");
   portableReport = await revalidatePortableRestoreReport(portableReport);
   runtimeRefreshed = await refreshRuntimeStoreAfterRestore("cloud-snapshot-import").catch(() => false);
+  report(100, "Import local terminé.");
   } finally {
     try { sessionStorage.removeItem("dc_cloud_restore_in_progress_v2"); } catch {}
   }

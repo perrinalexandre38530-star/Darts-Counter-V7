@@ -164,17 +164,43 @@ async function idbGetAll(): Promise<UserMediaFallbackEntry[]> {
   }
 }
 
+let trimTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleTrimLocalDb(): void {
+  if (trimTimer) return;
+  trimTimer = setTimeout(() => {
+    trimTimer = null;
+    void trimLocalDb();
+  }, 750);
+}
+
 async function idbPut(entry: UserMediaFallbackEntry): Promise<void> {
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, "readwrite");
-      const req = tx.objectStore(STORE_NAME).put(entry);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      tx.objectStore(STORE_NAME).put(entry);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
-    void trimLocalDb();
+    scheduleTrimLocalDb();
   } catch {}
+}
+
+async function idbPutMany(entries: UserMediaFallbackEntry[]): Promise<void> {
+  if (!entries.length) return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    for (const entry of entries) store.put(entry);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+  for (const entry of entries) memory.set(entry.key, entry);
+  scheduleTrimLocalDb();
 }
 
 async function trimLocalDb(): Promise<void> {
@@ -443,10 +469,25 @@ function collectSnapshotStores(snapshotInput: any): any[] {
   return out;
 }
 
-async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number> {
+async function importLegacyMediaFromSnapshot(
+  snapshotInput: any,
+  opts: { onProgress?: (completed: number, total: number, message: string) => void } = {},
+): Promise<number> {
   const snapshot = unwrapPortableSnapshot(snapshotInput);
   if (!snapshot || typeof snapshot !== "object") return 0;
-  let count = await importUserMediaFallbackSnapshot(snapshot?.userMediaFallbacks || snapshot?.user_media_fallbacks || null).catch(() => 0);
+
+  const explicitBlock = snapshot?.userMediaFallbacks || snapshot?.user_media_fallbacks || null;
+  const explicitMedia = explicitBlock?.media && typeof explicitBlock.media === "object"
+    ? Object.keys(explicitBlock.media)
+    : [];
+  if (explicitMedia.length > 0) {
+    // Snapshot moderne : le coffre média est la source canonique. Le rescanner
+    // ensuite dans chaque copie de store du snapshot multipliait les mêmes
+    // écritures des centaines de fois sur Android et bloquait la restauration.
+    return await importUserMediaFallbackSnapshot(explicitBlock, opts).catch(() => 0);
+  }
+
+  let count = 0;
   const stores = collectSnapshotStores(snapshot);
 
   for (const root of stores) {
@@ -524,8 +565,11 @@ async function importLegacyMediaFromSnapshot(snapshotInput: any): Promise<number
   return count;
 }
 
-export async function importUserMediaFromSnapshot(snapshotInput: any): Promise<number> {
-  return await importLegacyMediaFromSnapshot(snapshotInput);
+export async function importUserMediaFromSnapshot(
+  snapshotInput: any,
+  opts: { onProgress?: (completed: number, total: number, message: string) => void } = {},
+): Promise<number> {
+  return await importLegacyMediaFromSnapshot(snapshotInput, opts);
 }
 
 async function hydrateFromLocalVaultOnce(): Promise<void> {
@@ -910,24 +954,42 @@ export async function exportUserMediaFallbackSnapshot(): Promise<UserMediaFallba
   return { _v: 1, createdAt: new Date().toISOString(), media };
 }
 
-export async function importUserMediaFallbackSnapshot(snapshot: any): Promise<number> {
+export async function importUserMediaFallbackSnapshot(
+  snapshot: any,
+  opts: { onProgress?: (completed: number, total: number, message: string) => void } = {},
+): Promise<number> {
   const block = snapshot?.userMediaFallbacks || snapshot?.user_media_fallbacks || snapshot;
   const media = block?.media && typeof block.media === "object" ? block.media : {};
-  let count = 0;
-  for (const [rawKey, raw] of Object.entries(media)) {
+  const rows = Object.entries(media);
+  const entries: UserMediaFallbackEntry[] = [];
+  const total = rows.length;
+
+  opts.onProgress?.(0, total, total > 0 ? `Préparation de ${total} média(s)…` : "Aucun média à restaurer.");
+  for (let index = 0; index < rows.length; index += 1) {
+    const [rawKey, raw] = rows[index];
     const row: any = raw;
     const key = cleanKey(row?.key || rawKey);
     const dataUrl = String(row?.dataUrl || "").trim();
-    if (!key || !isImageDataUrl(dataUrl)) continue;
-    const entry: UserMediaFallbackEntry = {
-      key,
-      kind: String(row?.kind || key.split(":")[0] || "user_image"),
-      dataUrl,
-      updatedAt: Number(row?.updatedAt || Date.now()) || Date.now(),
-      sourceUrl: row?.sourceUrl ? String(row.sourceUrl) : null,
-    };
-    await storeEntry(entry);
-    count += 1;
+    if (key && isImageDataUrl(dataUrl)) {
+      entries.push({
+        key,
+        kind: String(row?.kind || key.split(":")[0] || "user_image"),
+        dataUrl,
+        updatedAt: Number(row?.updatedAt || Date.now()) || Date.now(),
+        sourceUrl: row?.sourceUrl ? String(row.sourceUrl) : null,
+      });
+    }
+    if ((index + 1) % 40 === 0 || index + 1 === rows.length) {
+      opts.onProgress?.(index + 1, total, `Préparation des médias : ${index + 1}/${total}`);
+      await Promise.resolve();
+    }
   }
-  return count;
+
+  // Une seule transaction IndexedDB au lieu d'une transaction + un getAll()
+  // par image. Sur Android, c'est la différence entre quelques secondes et
+  // plusieurs minutes à 64 %.
+  opts.onProgress?.(Math.max(0, total - 1), total, `Écriture groupée de ${entries.length} média(s)…`);
+  await idbPutMany(entries);
+  opts.onProgress?.(total, total, `${entries.length} média(s) restauré(s).`);
+  return entries.length;
 }

@@ -416,20 +416,33 @@ function toDetailRecord(id: string, rec: any) {
   };
 }
 
-export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: boolean }) {
+export async function importHistoryDump(
+  dump: HistoryDumpV1,
+  opts?: {
+    replace?: boolean;
+    preserveExisting?: boolean;
+    onProgress?: (completed: number, total: number) => void;
+  },
+) {
   if (!dump || dump._v !== 1) return;
   const replace = opts?.replace ?? false;
+  const preserveExisting = opts?.preserveExisting ?? !replace;
 
   const db = await openDB();
   const deletedIds = readHistoryDeletedIdsSet();
 
-  // CRITICAL : les restaurations NAS/R2 passaient historiquement par des put()
-  // directs et contournaient History.upsert() + son garde anti-régression.
-  // On capture donc la copie locale AVANT toute clear/écriture puis on fusionne
-  // chaque match entrant avec la version locale/révision la plus riche.
-  const existingDump = await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> }));
+  // Une restauration explicite en mode replace possède déjà une sauvegarde de
+  // sécurité. Relire et fusionner tout l'ancien historique avant de l'effacer
+  // doublait le coût CPU/mémoire sur Android pour 75 gros matchs.
+  const existingDump = preserveExisting
+    ? await exportHistoryDump().catch(() => ({ _v: 1 as const, rows: {} as Record<string, SavedMatch> }))
+    : { _v: 1 as const, rows: {} as Record<string, SavedMatch> };
   const preparedRows: Record<string, SavedMatch> = {};
-  for (const raw of Object.values(dump.rows || {})) {
+  const incomingRows = Object.values(dump.rows || {});
+  const totalRows = incomingRows.length;
+  opts?.onProgress?.(0, totalRows);
+  for (let rowIndex = 0; rowIndex < incomingRows.length; rowIndex += 1) {
+    const raw = incomingRows[rowIndex];
     try {
       const r: any = raw || {};
       const id = String(r?.id || r?.matchId || "").trim();
@@ -438,6 +451,9 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
       const existing = (existingDump.rows || {})[id] || null;
       preparedRows[id] = mergeHistorySnapshotRowMonotonic(existing, incoming) as SavedMatch;
     } catch {}
+    if ((rowIndex + 1) % 10 === 0 || rowIndex + 1 === totalRows) {
+      opts?.onProgress?.(rowIndex + 1, totalRows);
+    }
   }
 
   if (db.objectStoreNames.contains(STORE_HEADERS) && db.objectStoreNames.contains(STORE_DETAILS)) {
@@ -458,7 +474,10 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
         } catch {}
       }
 
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        opts?.onProgress?.(totalRows, totalRows);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
@@ -478,7 +497,10 @@ export async function importHistoryDump(dump: HistoryDumpV1, opts?: { replace?: 
           store.put(mergeHistorySnapshotRowMonotonic(existing, r) as any);
         } catch {}
       }
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        opts?.onProgress?.(totalRows, totalRows);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });

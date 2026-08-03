@@ -2384,7 +2384,14 @@ export default function StorageVaultPage({ go }: Props) {
       const restored = await restoreCloudBackupFromJson({ json: JSON.stringify(snapshot), mode: "replace", rebuild: true });
       if (!restored.ok) throw new Error(restored.error || "Restauration CloudBackup impossible.");
     } else {
-      importReport = await importCloudSnapshot(snapshot, { mode: "replace" });
+      importReport = await importCloudSnapshot(snapshot, {
+        mode: "replace",
+        onProgress: (progress, message) => {
+          // L'import local occupe la plage 64 → 90 du ticker global. Les étapes
+          // internes remontent désormais réellement au lieu de rester figées à 64 %.
+          report(64 + Math.round(Math.max(0, Math.min(100, progress)) * 0.26), message, "import");
+        },
+      });
     }
     restoreAuth();
 
