@@ -30,6 +30,7 @@ import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 import { loadTeams as loadStoredTeams, saveTeams as saveStoredTeams } from "./petanqueTeamsStore";
 import { exportLocalTournamentsSnapshot, importLocalTournamentsSnapshot } from "./tournaments/storeLocal";
+import { createCooperativeYielder } from "./mainThreadYield";
 
 const STORAGE_DIAG_ENABLED = false; // PERF V2: désactive les logs verbeux par défaut (les slows restent dans runtimeDiag)
 const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
@@ -2331,6 +2332,7 @@ export async function importAll(
   if (!dump) return;
   const historyReplace = opts?.historyReplace ?? true;
   const report = opts?.onProgress || (() => {});
+  const yieldIfNeeded = createCooperativeYielder(10);
 
   // ✅ Support snapshots structurés (v1 et v2)
   // - v2 = format produit par exportAll() dans ce fichier
@@ -2361,7 +2363,9 @@ export async function importAll(
         console.warn("[storage] importAll idb entry failed", k, e);
       }
       report(8 + Math.round(((index + 1) / Math.max(1, idbEntries.length)) * 22), `Import du stockage principal : ${index + 1}/${idbEntries.length}`);
+      await yieldIfNeeded();
     }
+    await yieldIfNeeded(true);
 
     // ✅ Si un vrai dc_stats_index_v2 est présent, on le réécrit explicitement
     // sur la clé scopée de l'utilisateur courant. C'est le bloc qui contient
@@ -2377,6 +2381,7 @@ export async function importAll(
     // 2) restore localStorage (dc_* + dc-*)
     report(32, "Restauration des préférences locales…");
     importLocalStorageDc(lsDump);
+    await yieldIfNeeded(true);
 
     // 2.0) ✅ RESTORE PROFILS LOCAUX PRIORITAIRE
     // Certains snapshots NAS affichent bien "46 profils", mais l'app relit ensuite
@@ -2423,6 +2428,8 @@ export async function importAll(
       console.warn("[storage] importAll teams restore failed", e);
     }
 
+    await yieldIfNeeded(true);
+
     // 3) ✅ CRITIQUE : restore DB historique (historyCloud)
     // Si history.rows est vide mais dc_stats_index_v2 contient les matchIds,
     // on reconstruit des cartes d'historique minimales. Elles ne recréent pas
@@ -2453,6 +2460,7 @@ export async function importAll(
     } catch (e) {
       console.warn("[storage] importAll history restore failed", e);
     }
+    await yieldIfNeeded(true);
 
     // 4) ✅ NAS BACKUP : restore ligues/tournois créés.
     // Compat: "tournaments" est le champ officiel, "competitions" est gardé
@@ -2468,6 +2476,7 @@ export async function importAll(
     }
 
     report(78, "Finalisation du stockage principal…");
+    await yieldIfNeeded(true);
     try {
       const maybeStoreKey = scopedStorageKey(STORE_KEY);
       const rawStore = await idbGet<any>(maybeStoreKey);
@@ -2484,6 +2493,7 @@ export async function importAll(
       } catch (e) {
         console.warn("[storage] importAll legacy entry failed", k, e);
       }
+      await yieldIfNeeded();
     }
   }
 }
@@ -3241,6 +3251,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   dump = unwrapNasSnapshotPayload(dump) as any;
   const mode = opts?.mode ?? "replace";
   const report = opts?.onProgress || (() => {});
+  const yieldIfNeeded = createCooperativeYielder(10);
   let portableReport: PortableAccountRestoreReport | null = null;
   let runtimeRefreshed = false;
   try { sessionStorage.setItem("dc_cloud_restore_in_progress_v2", "1"); } catch {}
@@ -3250,6 +3261,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       report(1, "Nettoyage sécurisé de l’ancien état local…");
       await nukeAll();
       clearLocalStorageDc();
+      await yieldIfNeeded(true);
     }
 
     report(4, "Restauration du stockage et de l’historique…");
@@ -3257,6 +3269,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       historyReplace: mode === "replace",
       onProgress: (progress, message) => report(4 + Math.round(progress * 0.56), message),
     });
+    await yieldIfNeeded(true);
 
   // MEDIA UTILISATEUR MULTI-SOURCE : réhydrate le coffre IndexedDB dédié
   // avant même que le NAS soit à nouveau disponible.
@@ -3272,6 +3285,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   } catch (mediaError) {
     console.warn("[storage] user media fallback import skipped", mediaError);
   }
+  await yieldIfNeeded(true);
 
   // AVATARS R2 FAILOVER : réhydrate immédiatement le cache local des avatars
   // depuis le bloc compact embarqué dans le snapshot Cloudflare R2.
@@ -3281,6 +3295,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   } catch (avatarError) {
     console.warn("[storage] avatar R2 fallback import skipped", avatarError);
   }
+  await yieldIfNeeded(true);
 
   // BLOC CANONIQUE DES DONNÉES DE COMPTE : restaure explicitement les
   // catégories que les anciens snapshots pouvaient laisser vides.
@@ -3297,6 +3312,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       restoredAt: new Date().toISOString(),
     };
   }
+  await yieldIfNeeded(true);
 
   // ✅ Important: le cloud peut contenir des doublons (ex: plusieurs profils locaux
   // clonés depuis le profil online). On nettoie systématiquement après import
@@ -3307,6 +3323,7 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
   } catch (err) {
     console.warn("[storage] normalizeLocalProfilesInStore failed", err);
   }
+  await yieldIfNeeded(true);
 
   // ✅ CRITIQUE : restaurer les DartSets / Bots exactement là où l’UI lit réellement
   report(92, "Activation des collections restaurées…");
@@ -3317,10 +3334,11 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
     const canonical = Array.isArray(getAllDartSets()) && getAllDartSets().length > 0
       ? getAllDartSets()
       : dartSets;
-    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical })
+    const hydratedDartSets = await hydrateStoreUserMedia({ dartSets: canonical }, { allowRemote: false })
       .then((result) => Array.isArray(result?.store?.dartSets) ? result.store.dartSets : canonical)
       .catch(() => canonical);
     writeDartSetsToLocalStorage(hydratedDartSets);
+    await yieldIfNeeded(true);
   }
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
 
@@ -3343,8 +3361,10 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: CloudSnaps
       console.warn("[storage] restore teams from snapshot failed", e);
     }
   }
+  await yieldIfNeeded(true);
   report(97, "Vérification finale et mise à jour de l’application…");
   portableReport = await revalidatePortableRestoreReport(portableReport);
+  await yieldIfNeeded(true);
   runtimeRefreshed = await refreshRuntimeStoreAfterRestore("cloud-snapshot-import").catch(() => false);
   report(100, "Import local terminé.");
   } finally {

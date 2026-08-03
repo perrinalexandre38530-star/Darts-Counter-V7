@@ -7,6 +7,7 @@
 import type { SavedMatch } from "./history";
 import LZString from "lz-string";
 import { mergeHistoryPayloadMonotonic, protectFinishedHistoryPayload } from "./historyIntegrity";
+import { createCooperativeYielder } from "./mainThreadYield";
 
 const HISTORY_DB_BASE = "dc-store-v1";
 const DB_VER = 3;
@@ -440,6 +441,7 @@ export async function importHistoryDump(
   const preparedRows: Record<string, SavedMatch> = {};
   const incomingRows = Object.values(dump.rows || {});
   const totalRows = incomingRows.length;
+  const yieldIfNeeded = createCooperativeYielder(9);
   opts?.onProgress?.(0, totalRows);
   for (let rowIndex = 0; rowIndex < incomingRows.length; rowIndex += 1) {
     const raw = incomingRows[rowIndex];
@@ -451,11 +453,15 @@ export async function importHistoryDump(
       const existing = (existingDump.rows || {})[id] || null;
       preparedRows[id] = mergeHistorySnapshotRowMonotonic(existing, incoming) as SavedMatch;
     } catch {}
-    if ((rowIndex + 1) % 10 === 0 || rowIndex + 1 === totalRows) {
+    if ((rowIndex + 1) % 8 === 0 || rowIndex + 1 === totalRows) {
       opts?.onProgress?.(rowIndex + 1, totalRows);
+      await yieldIfNeeded(true);
+    } else {
+      await yieldIfNeeded();
     }
   }
 
+  await yieldIfNeeded(true);
   if (db.objectStoreNames.contains(STORE_HEADERS) && db.objectStoreNames.contains(STORE_DETAILS)) {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction([STORE_HEADERS, STORE_DETAILS], "readwrite");
@@ -481,6 +487,7 @@ export async function importHistoryDump(
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
+    await yieldIfNeeded(true);
     return;
   }
 
@@ -504,5 +511,6 @@ export async function importHistoryDump(
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
+    await yieldIfNeeded(true);
   }
 }

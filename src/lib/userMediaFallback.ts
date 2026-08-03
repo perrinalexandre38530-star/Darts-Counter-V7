@@ -7,6 +7,7 @@ import {
   canAttemptDirectR2FromStoredSession,
 } from "./directR2BackupApi";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
+import { createCooperativeYielder } from "./mainThreadYield";
 
 export type UserMediaKind =
   | "profile_avatar"
@@ -164,14 +165,99 @@ async function idbGetAll(): Promise<UserMediaFallbackEntry[]> {
   }
 }
 
-let trimTimer: ReturnType<typeof setTimeout> | null = null;
+async function idbCount(): Promise<number> {
+  try {
+    const db = await openDb();
+    return await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).count();
+      req.onsuccess = () => resolve(Number(req.result || 0));
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Lit plusieurs clés dans une seule transaction IndexedDB et renvoie la première
+ * image disponible dans l'ordre demandé. Utilisé notamment pour les alias de
+ * dartsets restaurés depuis d'anciens backups.
+ */
+export async function readFirstLocalUserMediaFallback(keysInput: string[]): Promise<string> {
+  const keys = Array.from(new Set((keysInput || []).map(cleanKey).filter(Boolean)));
+  if (!keys.length) return "";
+
+  for (const key of keys) {
+    const cached = memory.get(key);
+    if (cached?.dataUrl && isImageDataUrl(cached.dataUrl)) return cached.dataUrl;
+  }
+
+  try {
+    const db = await openDb();
+    const rows = await new Promise<Array<UserMediaFallbackEntry | null>>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const store = tx.objectStore(STORE_NAME);
+      const values: Array<UserMediaFallbackEntry | null> = new Array(keys.length).fill(null);
+      let completed = 0;
+      let settled = false;
+
+      const finishOne = () => {
+        completed += 1;
+        if (!settled && completed >= keys.length) {
+          settled = true;
+          resolve(values);
+        }
+      };
+
+      keys.forEach((key, index) => {
+        const req = store.get(key);
+        req.onsuccess = () => {
+          values[index] = (req.result as UserMediaFallbackEntry) || null;
+          finishOne();
+        };
+        req.onerror = () => finishOne();
+      });
+      tx.onabort = () => {
+        if (!settled) {
+          settled = true;
+          reject(tx.error);
+        }
+      };
+    });
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (!row?.dataUrl || !isImageDataUrl(row.dataUrl)) continue;
+      memory.set(keys[index], row);
+      return row.dataUrl;
+    }
+  } catch {}
+
+  return "";
+}
+
+let trimScheduled = false;
 
 function scheduleTrimLocalDb(): void {
-  if (trimTimer) return;
-  trimTimer = setTimeout(() => {
-    trimTimer = null;
+  if (trimScheduled) return;
+  trimScheduled = true;
+  const run = () => {
+    trimScheduled = false;
     void trimLocalDb();
-  }, 750);
+  };
+
+  try {
+    const requestIdle = (globalThis as any)?.requestIdleCallback;
+    if (typeof requestIdle === "function") {
+      // Aucun timeout volontaire : le nettoyage n'a jamais la priorité sur la
+      // navigation ou l'affichage Android.
+      requestIdle(run);
+      return;
+    }
+  } catch {}
+
+  setTimeout(run, 5000);
 }
 
 async function idbPut(entry: UserMediaFallbackEntry): Promise<void> {
@@ -205,8 +291,12 @@ async function idbPutMany(entries: UserMediaFallbackEntry[]): Promise<void> {
 
 async function trimLocalDb(): Promise<void> {
   try {
+    // `getAll()` recopie toutes les grosses data:image en mémoire et provoquait
+    // un freeze juste après restauration. Le count() léger évite totalement ce
+    // travail dans le cas normal (144 médias pour une limite de 1200).
+    const count = await idbCount();
+    if (count <= MAX_LOCAL_ENTRIES) return;
     const rows = await idbGetAll();
-    if (rows.length <= MAX_LOCAL_ENTRIES) return;
     const keep = rows.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0)).slice(0, MAX_LOCAL_ENTRIES);
     const keepKeys = new Set(keep.map((row) => row.key));
     const db = await openDb();
@@ -868,7 +958,24 @@ async function mapWithConcurrency<T>(items: T[], concurrency: number, worker: (i
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => run()));
 }
 
-export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: any; changed: boolean }> {
+function dartSetMediaIds(raw: any): string[] {
+  return Array.from(new Set([
+    raw?.id,
+    raw?.dartSetId,
+    raw?.setId,
+    raw?.linkedSourceDartSetId,
+    raw?.sourceDartSetId,
+    raw?.remoteDartSetId,
+    raw?.originalId,
+    ...(Array.isArray(raw?.duplicateIds) ? raw.duplicateIds : []),
+    ...(Array.isArray(raw?.aliasIds) ? raw.aliasIds : []),
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+export async function hydrateStoreUserMedia(
+  storeInput: any,
+  opts: { allowRemote?: boolean } = {},
+): Promise<{ store: any; changed: boolean }> {
   if (!storeInput || typeof storeInput !== "object") return { store: storeInput, changed: false };
   const store = { ...storeInput };
   let changed = false;
@@ -878,7 +985,7 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
     const id = String(p?.id || "").trim();
     if (!id) return;
     const primary = firstImage(p?.avatarDataUrl, p?.avatarUrl, p?.avatar, p?.photoUrl, p?.avatarPath);
-    const fallback = await resolveUserMediaFallback(profileAvatarMediaKey(id), primary, { kind: "profile_avatar" });
+    const fallback = await resolveUserMediaFallback(profileAvatarMediaKey(id), primary, { kind: "profile_avatar", allowR2: opts.allowRemote !== false });
     if (fallback && p.avatarDataUrl !== fallback) {
       p.avatarDataUrl = fallback;
       changed = true;
@@ -891,7 +998,7 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
     const id = String(b?.id || b?.botId || "").trim();
     if (!id) return;
     const primary = firstImage(b?.avatarDataUrl, b?.avatarFullDataUrl, b?.avatarThumbDataUrl, b?.avatarUrl, b?.avatar, b?.photoDataUrl);
-    const fallback = await resolveUserMediaFallback(botAvatarMediaKey(id), primary, { kind: "bot_avatar" });
+    const fallback = await resolveUserMediaFallback(botAvatarMediaKey(id), primary, { kind: "bot_avatar", allowR2: opts.allowRemote !== false });
     if (fallback && b.avatarDataUrl !== fallback) {
       b.avatarDataUrl = fallback;
       changed = true;
@@ -901,7 +1008,8 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
 
   const dartSets: any[] = Array.isArray(store.dartSets) ? store.dartSets.map((d: any) => ({ ...d })) : [];
   await mapWithConcurrency(dartSets, 3, async (d) => {
-    const id = String(d?.id || "").trim();
+    const ids = dartSetMediaIds(d);
+    const id = ids[0] || "";
     if (!id) return;
     const mainPrimary = firstImage(
       d?.photoDataUrl, d?.imageDataUrl, d?.mainImageDataUrl, d?.mainImageUrl, d?.photoUrl, d?.imageUrl,
@@ -911,9 +1019,22 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
       d?.photoThumbDataUrl, d?.thumbDataUrl, d?.thumbImageDataUrl, d?.thumbImageUrl,
       mediaAssetUrl(d?.thumbImageAssetId || d?.photoThumbAssetId), mainPrimary
     );
+
+    // Les anciens backups peuvent avoir enregistré le média sous l'identifiant
+    // source/alias tandis que le dartset restauré porte un nouvel id canonique.
+    // On cherche donc toutes les clés locales avant toute tentative réseau.
+    const localMain = await readFirstLocalUserMediaFallback([
+      ...ids.map(dartSetMainMediaKey),
+      ...ids.map(dartSetThumbMediaKey),
+    ]);
+    const localThumb = await readFirstLocalUserMediaFallback([
+      ...ids.map(dartSetThumbMediaKey),
+      ...ids.map(dartSetMainMediaKey),
+    ]);
+
     const [main, thumb] = await Promise.all([
-      resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main" }),
-      resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb" }),
+      localMain || resolveUserMediaFallback(String(d?.r2MainMediaKey || dartSetMainMediaKey(id)), mainPrimary, { kind: "dartset_main", allowR2: opts.allowRemote !== false }),
+      localThumb || resolveUserMediaFallback(String(d?.r2ThumbMediaKey || dartSetThumbMediaKey(id)), thumbPrimary, { kind: "dartset_thumb", allowR2: opts.allowRemote !== false }),
     ]);
     if (main && d.mainImageUrl !== main) { d.mainImageUrl = main; changed = true; }
     if (thumb && d.thumbImageUrl !== thumb) { d.thumbImageUrl = thumb; changed = true; }
@@ -927,8 +1048,8 @@ export async function hydrateStoreUserMedia(storeInput: any): Promise<{ store: a
     const primary = firstImage(t?.logoDataUrl, t?.logoUrl, t?.avatarUrl, t?.imageUrl, t?.logo);
     const coverPrimary = firstImage(t?.coverDataUrl, t?.coverUrl, t?.bannerDataUrl, t?.bannerUrl);
     const [logo, cover] = await Promise.all([
-      resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo" }),
-      resolveUserMediaFallback(teamCoverMediaKey(id), coverPrimary, { kind: "team_cover" }),
+      resolveUserMediaFallback(teamLogoMediaKey(id), primary, { kind: "team_logo", allowR2: opts.allowRemote !== false }),
+      resolveUserMediaFallback(teamCoverMediaKey(id), coverPrimary, { kind: "team_cover", allowR2: opts.allowRemote !== false }),
     ]);
     if (logo && t.logoDataUrl !== logo) { t.logoDataUrl = logo; changed = true; }
     if (cover && t.coverDataUrl !== cover) { t.coverDataUrl = cover; changed = true; }
@@ -963,6 +1084,7 @@ export async function importUserMediaFallbackSnapshot(
   const rows = Object.entries(media);
   const entries: UserMediaFallbackEntry[] = [];
   const total = rows.length;
+  const yieldIfNeeded = createCooperativeYielder(9);
 
   opts.onProgress?.(0, total, total > 0 ? `Préparation de ${total} média(s)…` : "Aucun média à restaurer.");
   for (let index = 0; index < rows.length; index += 1) {
@@ -979,9 +1101,11 @@ export async function importUserMediaFallbackSnapshot(
         sourceUrl: row?.sourceUrl ? String(row.sourceUrl) : null,
       });
     }
-    if ((index + 1) % 40 === 0 || index + 1 === rows.length) {
+    if ((index + 1) % 16 === 0 || index + 1 === rows.length) {
       opts.onProgress?.(index + 1, total, `Préparation des médias : ${index + 1}/${total}`);
-      await Promise.resolve();
+      await yieldIfNeeded(true);
+    } else {
+      await yieldIfNeeded();
     }
   }
 
@@ -989,7 +1113,13 @@ export async function importUserMediaFallbackSnapshot(
   // par image. Sur Android, c'est la différence entre quelques secondes et
   // plusieurs minutes à 64 %.
   opts.onProgress?.(Math.max(0, total - 1), total, `Écriture groupée de ${entries.length} média(s)…`);
+  await yieldIfNeeded(true);
   await idbPutMany(entries);
+  await yieldIfNeeded(true);
   opts.onProgress?.(total, total, `${entries.length} média(s) restauré(s).`);
+  if (typeof window !== "undefined") {
+    try { window.dispatchEvent(new CustomEvent("dc-user-media-restored", { detail: { count: entries.length } })); } catch {}
+    try { window.dispatchEvent(new Event("dc-dartsets-updated")); } catch {}
+  }
   return entries.length;
 }

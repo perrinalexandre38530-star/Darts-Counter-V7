@@ -770,6 +770,69 @@ export function decodeMaybeCompressedNasPayload(payload: any): any {
   return payload;
 }
 
+
+async function decodeGzipBytesOffMainThread(bytes: Uint8Array): Promise<any> {
+  if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") {
+    return JSON.parse(strFromU8(gunzipSync(bytes)));
+  }
+
+  const workerSource = `
+    self.onmessage = async (event) => {
+      try {
+        const buffer = event.data;
+        if (typeof DecompressionStream !== "function") throw new Error("DecompressionStream indisponible");
+        const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+        const text = await new Response(stream).text();
+        const payload = JSON.parse(text);
+        self.postMessage({ ok: true, payload });
+      } catch (error) {
+        self.postMessage({ ok: false, error: String(error && error.message || error || "Décodage impossible") });
+      }
+    };
+  `;
+
+  const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+  const worker = new Worker(url);
+  try {
+    // On transfère une copie compacte pour conserver `bytes` utilisable si la
+    // WebView refuse le Worker/DecompressionStream et qu'un repli est nécessaire.
+    const transferable = bytes.slice().buffer;
+    return await new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Décodage NAS trop long")), 120_000);
+      worker.onmessage = (event) => {
+        clearTimeout(timer);
+        const result = event.data || {};
+        if (result.ok) resolve(result.payload);
+        else reject(new Error(String(result.error || "Décodage NAS impossible")));
+      };
+      worker.onerror = (event) => {
+        clearTimeout(timer);
+        reject(new Error(String((event as any)?.message || "Worker de décodage NAS impossible")));
+      };
+      worker.postMessage(transferable, [transferable]);
+    });
+  } catch {
+    // CSP/WebView trop ancienne : repli compatible, uniquement dans ce cas.
+    return JSON.parse(strFromU8(gunzipSync(bytes)));
+  } finally {
+    try { worker.terminate(); } catch {}
+    try { URL.revokeObjectURL(url); } catch {}
+  }
+}
+
+/** Décompresse et parse les gros backups NAS hors du thread UI Android. */
+export async function decodeMaybeCompressedNasPayloadAsync(payload: any): Promise<any> {
+  if (!payload || typeof payload !== "object") return payload;
+  if (payload._format === "gzip+store-v2" && payload.compressed) {
+    let bytes: Uint8Array | null = null;
+    if (payload.data instanceof Uint8Array) bytes = payload.data;
+    else if (payload.data instanceof ArrayBuffer) bytes = new Uint8Array(payload.data);
+    else if (ArrayBuffer.isView(payload.data)) bytes = new Uint8Array(payload.data.buffer, payload.data.byteOffset, payload.data.byteLength);
+    if (bytes) return decodeGzipBytesOffMainThread(bytes);
+  }
+  return decodeMaybeCompressedNasPayload(payload);
+}
+
 export async function listNasMemorySlots(): Promise<NasSlot[]> {
   const data = await apiGet("/sync/slots?limit=120").catch(async () => {
     // Compatibilité ancien backend : /sync/pull suffit pour prouver que le
@@ -822,7 +885,7 @@ export async function pullNasMemorySlot(
     const bytes = raw.bytes;
     const isGzip = bytes.byteLength >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
     if (!isGzip) throw new Error("Transport gzip NAS invalide");
-    const payload = decodeMaybeCompressedNasPayload({
+    const payload = await decodeMaybeCompressedNasPayloadAsync({
       _format: "gzip+store-v2",
       compressed: true,
       encoding: "binary",
@@ -861,7 +924,7 @@ export async function pullNasMemorySlot(
   });
   const payloadRaw = data?.payload ?? null;
   if (!payloadRaw) throw new Error("Payload NAS introuvable");
-  const payload = decodeMaybeCompressedNasPayload(payloadRaw);
+  const payload = await decodeMaybeCompressedNasPayloadAsync(payloadRaw);
   return {
     slot: { id: data?.id || slotId, version: data?.version, updatedAt: data?.updatedAt, createdAt: data?.createdAt, deletedAt: data?.deletedAt || null, deletedReason: data?.deletedReason || null, latest: slotId === "latest" },
     payload,

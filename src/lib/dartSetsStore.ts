@@ -1,7 +1,7 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
 import { dartPresets } from "./dartPresets";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
-import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey } from "./userMediaFallback";
+import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey, readFirstLocalUserMediaFallback } from "./userMediaFallback";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -2139,6 +2139,36 @@ export function getDartSetThumbImageSrc(set: any): string | null {
   const recovered = recoverImageForSet(set);
   const recoveredSrc = recovered ? readThumbImage(recovered) || readMainImage(recovered) : "";
   return recoveredSrc || null;
+}
+
+/**
+ * Résout en priorité l'image restaurée dans le coffre média local. Les anciens
+ * backups peuvent référencer le même dartset avec un id source, un alias ou un
+ * id fusionné ; toutes ces identités sont donc essayées avant l'ancienne URL.
+ */
+export async function resolveDartSetBestImageSrc(set: any, preferThumb = false): Promise<string | null> {
+  if (!set || typeof set !== "object") return null;
+  const ids = uniqStrings([
+    set?.id,
+    set?.dartSetId,
+    set?.setId,
+    set?.linkedSourceDartSetId,
+    set?.sourceDartSetId,
+    set?.remoteDartSetId,
+    set?.originalId,
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ]);
+
+  const localKeys = preferThumb
+    ? [...ids.map(dartSetThumbMediaKey), ...ids.map(dartSetMainMediaKey)]
+    : [...ids.map(dartSetMainMediaKey), ...ids.map(dartSetThumbMediaKey)];
+  const local = await readFirstLocalUserMediaFallback(localKeys);
+  if (local) return local;
+
+  return preferThumb
+    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set))
+    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set));
 }
 
 function normalizeDartSetMutationPatch(patch: any): any {

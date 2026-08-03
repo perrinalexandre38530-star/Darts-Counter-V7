@@ -55,8 +55,7 @@ import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagM
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 import {
   getFavoriteDartSetForProfile,
-  getDartSetMainImageSrc,
-  getDartSetThumbImageSrc,
+  resolveDartSetBestImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 import {
@@ -89,6 +88,7 @@ import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncA
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
+import { useBackgroundRestoreState } from "../lib/backgroundRestore";
 
 /**
  * Totalise les utilisations enregistrées dans tous les modes de jeu.
@@ -1171,6 +1171,8 @@ export default function Profiles({
 }) {
 
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
+  const backgroundRestoreState = useBackgroundRestoreState();
+  const restoreBusy = backgroundRestoreState.status === "running";
 
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
@@ -3613,14 +3615,14 @@ React.useEffect(() => {
                   onSyncLinkedStats={handleManualLinkedProfileStatsSync}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
-                  deferHeavy={!localsHeavyReady}
+                  deferHeavy={!localsHeavyReady || restoreBusy}
                 />
               </Card>
             )}
 
             {view === "avatarGallery" && (
               <Card title={t("profiles.avatarGallery.title", "GALERIE")}>
-                {avatarGalleryHeavyReady ? (
+                {avatarGalleryHeavyReady && !restoreBusy ? (
                   <AvatarGalleryPanel
                     items={avatarGalleryItems}
                     profiles={(stableProfiles as any[]).filter((p: any) => !!p && !isMirrorProfile(p))}
@@ -3641,7 +3643,7 @@ React.useEffect(() => {
             {view === "dartsets" && (
               <Card>
                 <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "grid", gap: 10, overflow: "hidden" }}>
-                  {dartsetsHeavyReady && selectedDartsetsProfile ? (
+                  {dartsetsHeavyReady && !restoreBusy && selectedDartsetsProfile ? (
                     <DartSetsPanel
                       profile={selectedDartsetsProfile as any}
                       availableProfiles={dartSetOwners as any}
@@ -6224,27 +6226,47 @@ function FavoriteDartSetBadge({
   style?: React.CSSProperties;
 }) {
   const [favorite, setFavorite] = React.useState<DartSet | null>(null);
+  const [src, setSrc] = React.useState("");
+  const [imageFailed, setImageFailed] = React.useState(false);
 
   React.useEffect(() => {
-    const refresh = () => {
+    let alive = true;
+
+    const refresh = async () => {
+      let next: DartSet | null = null;
       try {
-        setFavorite(profileId ? (getFavoriteDartSetForProfile(String(profileId)) || null) : null);
+        next = profileId ? (getFavoriteDartSetForProfile(String(profileId)) || null) : null;
       } catch {
-        setFavorite(null);
+        next = null;
+      }
+      if (!alive) return;
+      setFavorite(next);
+      setImageFailed(false);
+      setSrc("");
+      if (!next) return;
+
+      try {
+        // Le coffre média IndexedDB est prioritaire : les anciennes URLs /media
+        // peuvent être inaccessibles dans la WebView Android alors que l'image
+        // restaurée est bien présente localement.
+        const resolved = await resolveDartSetBestImageSrc(next, true);
+        if (alive) setSrc(String(resolved || ""));
+      } catch {
+        if (alive) setSrc("");
       }
     };
-    refresh();
-    if (typeof window === "undefined") return;
-    window.addEventListener("dc-dartsets-updated", refresh);
-    window.addEventListener("storage", refresh);
+
+    void refresh();
+    if (typeof window === "undefined") return () => { alive = false; };
+    const events = ["dc-dartsets-updated", "dc-user-media-restored", "dc-background-restore-finished", "storage"];
+    for (const eventName of events) window.addEventListener(eventName, refresh as EventListener);
     return () => {
-      window.removeEventListener("dc-dartsets-updated", refresh);
-      window.removeEventListener("storage", refresh);
+      alive = false;
+      for (const eventName of events) window.removeEventListener(eventName, refresh as EventListener);
     };
   }, [profileId]);
 
   if (!favorite) return null;
-  const src = getDartSetMainImageSrc(favorite) || getDartSetThumbImageSrc(favorite) || "";
 
   return (
     <span
@@ -6270,9 +6292,18 @@ function FavoriteDartSetBadge({
         ...style,
       }}
     >
-      {src ? (
-        <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      {src && !imageFailed ? (
+        <img
+          src={src}
+          alt=""
+          decoding="async"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+        />
       ) : (
+        // Jamais d'icône d'image cassée : le médaillon reste exploitable pendant
+        // la résolution asynchrone ou lorsqu'un ancien média est absent.
         <span aria-hidden>🎯</span>
       )}
     </span>

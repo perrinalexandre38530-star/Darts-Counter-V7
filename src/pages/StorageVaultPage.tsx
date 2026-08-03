@@ -34,7 +34,7 @@ import {
 } from "../lib/storageVault";
 import {
   markStatsIndexDirty,
-  refreshStatsIndexFromHistoryNow,
+  scheduleStatsIndexRefresh,
 } from "../lib/stats/rebuildStatsFromHistory";
 import {
   deleteCloudMatchBackup,
@@ -2283,9 +2283,19 @@ export default function StorageVaultPage({ go }: Props) {
 
   const afterRestoreHousekeeping = async (reason: string) => {
     try { markStatsIndexDirty(reason); } catch {}
-    try { await refreshStatsIndexFromHistoryNow({ includeNonFinished: true, persist: true, reason }); } catch {}
-    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason } })); } catch {}
-    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason } })); } catch {}
+    // Le recalcul complet des statistiques ne doit plus bloquer la fin de la
+    // restauration ni la navigation. Il part dans un vrai créneau idle et un
+    // seul rebuild est conservé si plusieurs événements arrivent.
+    try {
+      void scheduleStatsIndexRefresh({
+        includeNonFinished: true,
+        persist: true,
+        debounceMs: 900,
+        reason,
+      }).catch(() => undefined);
+    } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-history-updated", { detail: { reason, statsRebuildDeferred: true } })); } catch {}
+    try { window.dispatchEvent(new CustomEvent("dc-store-updated", { detail: { reason, statsRebuildDeferred: true } })); } catch {}
   };
 
   const uploadSnapshotPayloadToCloudVault = async (
@@ -2395,21 +2405,30 @@ export default function StorageVaultPage({ go }: Props) {
     }
     restoreAuth();
 
-    report(82, "Contrôle des profils restaurés et mise à jour de l’affichage…", "import");
+    report(91, "Contrôle final des profils restaurés…", "finalize");
     try {
-      const restoredStore = await loadStore<any>();
-      const actualProfiles = Array.isArray(restoredStore?.profiles)
-        ? restoredStore.profiles.filter((profile: any) => profile && String(profile?.id || "").trim()).length
-        : 0;
       const expectedProfiles = Math.max(
         Number(summary.profiles || 0),
         Number(importReport?.portable?.expected?.profiles || 0),
       );
+      const runtimeAlreadyRefreshed = importReport?.runtimeRefreshed === true;
+      let actualProfiles = Number(importReport?.portable?.restored?.profiles || 0);
+      let restoredStore: any = null;
 
       if (importReport?.portable && importReport.portable.ok === false) {
         throw new Error(
           `Restauration locale incomplète : ${String(importReport.portable.errors?.join(" ; ") || "contrôle portable échoué")}`
         );
+      }
+
+      // importCloudSnapshot a déjà relu et injecté le store vivant. Le refaire ici
+      // doublait la décompression du store et provoquait une seconde grosse vague
+      // de rendus React pendant la navigation Android.
+      if (!runtimeAlreadyRefreshed || (expectedProfiles > 0 && actualProfiles < expectedProfiles)) {
+        restoredStore = await loadStore<any>();
+        actualProfiles = Array.isArray(restoredStore?.profiles)
+          ? restoredStore.profiles.filter((profile: any) => profile && String(profile?.id || "").trim()).length
+          : actualProfiles;
       }
 
       if (expectedProfiles > 0 && actualProfiles < expectedProfiles) {
@@ -2419,7 +2438,7 @@ export default function StorageVaultPage({ go }: Props) {
         );
       }
 
-      if (restoredStore && typeof (window as any).__replaceLocalStoreNow === "function") {
+      if (!runtimeAlreadyRefreshed && restoredStore && typeof (window as any).__replaceLocalStoreNow === "function") {
         await (window as any).__replaceLocalStoreNow(restoredStore, reason);
       }
     } catch (e) {
@@ -2427,7 +2446,7 @@ export default function StorageVaultPage({ go }: Props) {
       throw e;
     }
 
-    report(90, "Reconstruction de l’historique et des statistiques…", "rebuild");
+    report(96, "Données appliquées. Le recalcul des statistiques est différé au prochain temps libre…", "finalize");
     await afterRestoreHousekeeping(reason);
 
     if (!Capacitor.isNativePlatform()) {
