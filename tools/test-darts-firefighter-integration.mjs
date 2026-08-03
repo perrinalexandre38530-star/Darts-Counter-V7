@@ -22,6 +22,29 @@ const png = fs.readFileSync(path.join(root, "src/assets/tickers/ticker_darts_fir
 assert.equal(png.readUInt32BE(16), 800, "le ticker doit faire 800 px de large");
 assert.equal(png.readUInt32BE(20), 230, "le ticker doit faire 230 px de haut");
 
+
+const configPage = read("src/pages/DartsFirefighterConfig.tsx");
+for (const token of [
+  "CONFIGURATION GUIDÉE",
+  "CONFIGURATION COMPLÈTE",
+  "Intervention express",
+  "Feu de forêt",
+  "Protection civile",
+  "Survie Inferno",
+  "propagationTiming",
+  "initialFireLevel",
+  "initialSmoke",
+  "firePlacement",
+  "windStrength",
+  "dartsPerTurn",
+  "canadairRequiresGauge",
+]) assert.ok(configPage.includes(token), `configuration V2 incomplète: ${token}`);
+
+const engine = read("src/lib/gameEngines/dartsFirefighterEngine.ts");
+for (const token of ["objective_complete", "after_round", "initialSmoke", "targetOrder", "canadairGaugeCost", "normalizeDartsFirefighterConfig"]) {
+  assert.ok(engine.includes(token), `moteur V2 non câblé: ${token}`);
+}
+
 const app = read("src/App.tsx");
 assert.ok(app.includes('case "darts_firefighter_config"'), "route config absente");
 assert.ok(app.includes('case "darts_firefighter_play"'), "route play absente");

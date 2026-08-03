@@ -39,6 +39,7 @@ export type DartsGameTab =
   | "loterie_config"
   | "departements_config"
   | "darts_firefighter_config"
+  | "darts_poker_config"
   | "prisoner_config"
   | "tic_tac_toe_config"
   | "batard_config"
@@ -114,6 +115,23 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "Cricket",
     infoBody:
       "Cibles: 15-16-17-18-19-20 + Bull. Il faut fermer chaque cible (3 marques) avant l'adversaire. Une fois une cible fermee par toi, tu peux marquer des points dessus tant que l'adversaire ne l'a pas fermee. Victoire selon regle: fermer tout et etre devant aux points (ou simple fermeture selon config).",
+  },
+  {
+    id: "darts_poker",
+    label: "Darts Poker",
+    category: "classic",
+    entry: "games",
+    tab: "darts_poker_config",
+    popularityRank: 3,
+    ready: true,
+    isNew: true,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:darts_poker",
+    infoTitle: "Darts Poker",
+    infoBody:
+      "Un marché dynamique associe une carte visible à chacun des secteurs 1 à 20. Une touche récupère la carte et la remplace. En 6 fléchettes, construis la meilleure main de 5 cartes. Double = jeton Échange, Triple et Bull = jeton Choix, Double Bull = Joker. La meilleure combinaison de poker gagne la manche.",
   },
   {
     id: "killer",

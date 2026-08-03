@@ -14,7 +14,13 @@ import type { TerritoriesMap, Territory } from "../../territories/types";
 
 export type DartsFirefighterDifficulty = "recruit" | "firefighter" | "commander" | "inferno";
 export type DartsFirefighterInputMethod = "keypad" | "dartboard";
-export type DartsFirefighterFinishReason = "all_fires_out" | "critical_lost" | "destruction_limit" | "round_limit" | null;
+export type DartsFirefighterObjective = "extinguish_all" | "protect_critical" | "survival";
+export type DartsFirefighterPropagationTiming = "after_visit" | "after_round";
+export type DartsFirefighterFirePlacement = "random" | "clustered" | "critical_first";
+export type DartsFirefighterTargetOrder = "sequential" | "random";
+export type DartsFirefighterWindStrength = "light" | "normal" | "strong";
+export type DartsFirefighterInitialIntensity = "mixed" | 1 | 2 | 3;
+export type DartsFirefighterFinishReason = "all_fires_out" | "objective_complete" | "critical_lost" | "destruction_limit" | "round_limit" | null;
 export type FireStatus = "safe" | "protected" | "smoke" | "fire1" | "fire2" | "fire3" | "destroyed";
 
 export type DartsFirefighterConfigPayload = {
@@ -28,14 +34,41 @@ export type DartsFirefighterConfigPayload = {
   botLevel?: "easy" | "normal" | "hard";
   mapId: string;
   difficulty: DartsFirefighterDifficulty;
-  activeTerritories: 12 | 16 | 20;
+  missionPreset?: "express" | "wildfire" | "civil_protection" | "inferno_survival" | "custom";
+  objective?: DartsFirefighterObjective;
+  activeTerritories: 8 | 12 | 16 | 20;
+  targetOrder?: DartsFirefighterTargetOrder;
   initialFires: number;
+  initialFireLevel?: DartsFirefighterInitialIntensity;
+  initialSmoke?: number;
+  firePlacement?: DartsFirefighterFirePlacement;
   criticalTerritories: number;
+  criticalLossEndsMission?: boolean;
   maxRounds: number;
+  destructionLimit?: number;
+  growthChance?: number;
+  spreadChance?: number;
+  smokeChance?: number;
+  destructionTurns?: number;
+  protectionDecay?: number;
+  propagationTiming?: DartsFirefighterPropagationTiming;
   windEnabled: boolean;
+  windStrength?: DartsFirefighterWindStrength;
+  windChangeEvery?: number;
   forecastEnabled: boolean;
+  forecastCount?: number;
+  dartsPerTurn?: 1 | 2 | 3;
   missEndsTurn: boolean;
+  comboEnabled?: boolean;
+  perfectVisitBonus?: number;
   bullAirSupport: boolean;
+  bullPower?: 1 | 2 | 3;
+  bullTargetMode?: "selected" | "priority";
+  canadairCenterPower?: 2 | 3;
+  canadairNeighborPower?: 1 | 2;
+  canadairNeighborCount?: 1 | 2 | 3 | 4;
+  canadairRequiresGauge?: boolean;
+  canadairGaugeCost?: number;
   scoreInputMethod: DartsFirefighterInputMethod;
   randomOrder?: boolean;
 };
@@ -136,6 +169,7 @@ export type DartsFirefighterState = {
   activePlayerIndex: number;
   roundIndex: number;
   turnIndex: number;
+  propagationIndex: number;
   selectedTerritoryId: string | null;
   windOffset: -3 | -2 | -1 | 1 | 2 | 3;
   windLabel: string;
@@ -163,6 +197,84 @@ const DIFFICULTY = {
   commander: { growChance: .52, spreadChance: .70, smokeChance: .84, destructionTurns: 2, destructionLimit: 3, protectionDecay: .42, scoreMultiplier: 1.35 },
   inferno: { growChance: .68, spreadChance: .86, smokeChance: .92, destructionTurns: 1, destructionLimit: 2, protectionDecay: .58, scoreMultiplier: 1.65 },
 } as const;
+
+function clamp01(value: any, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : fallback;
+}
+
+export function dartsFirefighterDifficultyRules(difficulty: DartsFirefighterDifficulty) {
+  return { ...(DIFFICULTY[difficulty] || DIFFICULTY.firefighter) };
+}
+
+function effectiveRules(config: DartsFirefighterConfigPayload) {
+  const base = DIFFICULTY[config.difficulty] || DIFFICULTY.firefighter;
+  return {
+    ...base,
+    growChance: clamp01(config.growthChance, base.growChance),
+    spreadChance: clamp01(config.spreadChance, base.spreadChance),
+    smokeChance: clamp01(config.smokeChance, base.smokeChance),
+    protectionDecay: clamp01(config.protectionDecay, base.protectionDecay),
+    destructionTurns: Math.max(1, Math.min(6, Number(config.destructionTurns || base.destructionTurns))),
+    destructionLimit: Math.max(1, Math.min(20, Number(config.destructionLimit || base.destructionLimit))),
+  };
+}
+
+export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterConfigPayload> | any = {}): DartsFirefighterConfigPayload {
+  const difficulty: DartsFirefighterDifficulty = ["recruit", "firefighter", "commander", "inferno"].includes(raw?.difficulty) ? raw.difficulty : "firefighter";
+  const base = DIFFICULTY[difficulty];
+  const active = [8, 12, 16, 20].includes(Number(raw?.activeTerritories)) ? Number(raw.activeTerritories) : 20;
+  const objective: DartsFirefighterObjective = ["extinguish_all", "protect_critical", "survival"].includes(raw?.objective) ? raw.objective : "extinguish_all";
+  return {
+    mode: "darts_firefighter",
+    players: Math.max(1, Math.min(8, Number(raw?.players || raw?.selectedIds?.length || 1))),
+    selectedIds: Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String) : [],
+    playersList: Array.isArray(raw?.playersList) ? raw.playersList : [],
+    playerDartSets: raw?.playerDartSets || {},
+    botIds: Array.isArray(raw?.botIds) ? raw.botIds.map(String) : [],
+    botsEnabled: Boolean(raw?.botsEnabled),
+    botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
+    mapId: String(raw?.mapId || "FR"),
+    difficulty,
+    missionPreset: ["express", "wildfire", "civil_protection", "inferno_survival", "custom"].includes(raw?.missionPreset) ? raw.missionPreset : "custom",
+    objective,
+    activeTerritories: active as any,
+    targetOrder: raw?.targetOrder === "random" ? "random" : "sequential",
+    initialFires: Math.max(1, Math.min(8, Number(raw?.initialFires || 3))),
+    initialFireLevel: raw?.initialFireLevel === "mixed" || [1, 2, 3].includes(Number(raw?.initialFireLevel)) ? raw.initialFireLevel : "mixed",
+    initialSmoke: Math.max(0, Math.min(8, Number(raw?.initialSmoke || 0))),
+    firePlacement: ["random", "clustered", "critical_first"].includes(raw?.firePlacement) ? raw.firePlacement : "random",
+    criticalTerritories: Math.max(0, Math.min(8, Number(raw?.criticalTerritories ?? 2))),
+    criticalLossEndsMission: raw?.criticalLossEndsMission !== false,
+    maxRounds: Math.max(1, Math.min(60, Number(raw?.maxRounds || 18))),
+    destructionLimit: Math.max(1, Math.min(12, Number(raw?.destructionLimit || base.destructionLimit))),
+    growthChance: clamp01(raw?.growthChance, base.growChance),
+    spreadChance: clamp01(raw?.spreadChance, base.spreadChance),
+    smokeChance: clamp01(raw?.smokeChance, base.smokeChance),
+    destructionTurns: Math.max(1, Math.min(6, Number(raw?.destructionTurns || base.destructionTurns))),
+    protectionDecay: clamp01(raw?.protectionDecay, base.protectionDecay),
+    propagationTiming: raw?.propagationTiming === "after_round" ? "after_round" : "after_visit",
+    windEnabled: raw?.windEnabled !== false,
+    windStrength: ["light", "normal", "strong"].includes(raw?.windStrength) ? raw.windStrength : "normal",
+    windChangeEvery: Math.max(1, Math.min(10, Number(raw?.windChangeEvery || 3))),
+    forecastEnabled: raw?.forecastEnabled !== false,
+    forecastCount: Math.max(1, Math.min(6, Number(raw?.forecastCount || 4))),
+    dartsPerTurn: ([1, 2, 3].includes(Number(raw?.dartsPerTurn)) ? Number(raw.dartsPerTurn) : 3) as any,
+    missEndsTurn: Boolean(raw?.missEndsTurn),
+    comboEnabled: raw?.comboEnabled !== false,
+    perfectVisitBonus: Math.max(0, Math.min(1000, Number(raw?.perfectVisitBonus ?? 200))),
+    bullAirSupport: raw?.bullAirSupport !== false,
+    bullPower: ([1, 2, 3].includes(Number(raw?.bullPower)) ? Number(raw.bullPower) : 2) as any,
+    bullTargetMode: raw?.bullTargetMode === "priority" ? "priority" : "selected",
+    canadairCenterPower: ([2, 3].includes(Number(raw?.canadairCenterPower)) ? Number(raw.canadairCenterPower) : 3) as any,
+    canadairNeighborPower: ([1, 2].includes(Number(raw?.canadairNeighborPower)) ? Number(raw.canadairNeighborPower) : 1) as any,
+    canadairNeighborCount: ([1, 2, 3, 4].includes(Number(raw?.canadairNeighborCount)) ? Number(raw.canadairNeighborCount) : 3) as any,
+    canadairRequiresGauge: Boolean(raw?.canadairRequiresGauge),
+    canadairGaugeCost: Math.max(0, Math.min(100, Number(raw?.canadairGaugeCost ?? 35))),
+    scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
+    randomOrder: Boolean(raw?.randomOrder),
+  };
+}
 
 const WIND_LABELS: Record<number, string> = {
   [-3]: "VENT FORT OUEST",
@@ -298,8 +410,9 @@ function buildNeighbors(ids: string[]): Record<string, string[]> {
 }
 
 function randomWind(state: DartsFirefighterState): void {
-  const offsets = [-3, -2, -1, 1, 2, 3] as const;
-  state.windOffset = offsets[randomInt(state, offsets.length)];
+  const strength = state.config.windStrength || "normal";
+  const offsets = strength === "light" ? [-1, 1] : strength === "strong" ? [-3, -2, 2, 3] : [-2, -1, 1, 2];
+  state.windOffset = offsets[randomInt(state, offsets.length)] as any;
   state.windLabel = WIND_LABELS[state.windOffset] || "VENT VARIABLE";
 }
 
@@ -310,6 +423,7 @@ function worstTerritory(state: DartsFirefighterState): FireTerritory | null {
 }
 
 function selectedOrWorst(state: DartsFirefighterState): FireTerritory | null {
+  if (state.config.bullTargetMode === "priority") return worstTerritory(state);
   return state.territories.find((t) => t.id === state.selectedTerritoryId && t.playable && !t.destroyed) || worstTerritory(state);
 }
 
@@ -326,7 +440,7 @@ function applyWater(
   labelPrefix = "",
 ): { score: number; useful: boolean; fireReduced: number; protected: number; extinguished: boolean; smokeCleared: boolean } {
   if (!territory || territory.destroyed || power <= 0) return { score: 0, useful: false, fireReduced: 0, protected: 0, extinguished: false, smokeCleared: false };
-  const rules = DIFFICULTY[state.config.difficulty];
+  const rules = effectiveRules(state.config);
   const beforeFire = territory.fireLevel;
   const beforeSmoke = territory.smoke;
   const beforeProtection = territory.protection;
@@ -395,25 +509,37 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
   let result;
   if (dart.bed === "IB" && state.config.bullAirSupport) {
     const center = selectedOrWorst(state);
-    result = applyWater(state, center, 3, playerId, events, "CANADAIR · ");
-    if (center) {
-      for (const neighborId of center.neighbors.slice(0, 3)) {
-        const neighbor = state.territories.find((t) => t.id === neighborId) || null;
-        const extra = applyWater(state, neighbor, 1, playerId, events, "LARGAGE LATÉRAL · ");
-        result.score += extra.score;
-        result.fireReduced += extra.fireReduced;
-        result.protected += extra.protected;
-        result.extinguished = result.extinguished || extra.extinguished;
-        result.smokeCleared = result.smokeCleared || extra.smokeCleared;
-        result.useful = result.useful || extra.useful;
+    const gaugeCost = Math.max(0, Number(state.config.canadairGaugeCost ?? 35));
+    const gaugeReady = !state.config.canadairRequiresGauge || state.brigadeGauge >= gaugeCost;
+    if (gaugeReady) {
+      const centerPower = Number(state.config.canadairCenterPower || 3);
+      const neighborPower = Number(state.config.canadairNeighborPower || 1);
+      const neighborCount = Math.max(1, Math.min(4, Number(state.config.canadairNeighborCount || 3)));
+      result = applyWater(state, center, centerPower, playerId, events, "CANADAIR · ");
+      if (center) {
+        for (const neighborId of center.neighbors.slice(0, neighborCount)) {
+          const neighbor = state.territories.find((t) => t.id === neighborId) || null;
+          const extra = applyWater(state, neighbor, neighborPower, playerId, events, "LARGAGE LATÉRAL · ");
+          result.score += extra.score;
+          result.fireReduced += extra.fireReduced;
+          result.protected += extra.protected;
+          result.extinguished = result.extinguished || extra.extinguished;
+          result.smokeCleared = result.smokeCleared || extra.smokeCleared;
+          result.useful = result.useful || extra.useful;
+        }
+        addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: 250, label: `CANADAIR engagé sur ${center.name}` });
+        result.score += 250;
+        state.brigadeGauge = Math.max(0, state.brigadeGauge - gaugeCost);
       }
-      addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: 250, label: `CANADAIR engagé sur ${center.name}` });
-      result.score += 250;
-      state.brigadeGauge = Math.max(0, state.brigadeGauge - 35);
+    } else {
+      const power = Number(state.config.bullPower || 2);
+      result = applyWater(state, center, power, playerId, events, "DBULL · LARGAGE AU SOL · ");
+      addEvent(events, { type: "bull_drop", territoryId: center?.id, territoryName: center?.name, score: 0, label: `Canadair indisponible · jauge ${Math.round(state.brigadeGauge)}/${gaugeCost}` });
     }
-  } else if (dart.bed === "OB") {
+  } else if (dart.bed === "OB" || dart.bed === "IB") {
     const target = selectedOrWorst(state);
-    result = applyWater(state, target, 2, playerId, events, "BULL · ");
+    const power = Number(state.config.bullPower || 2);
+    result = applyWater(state, target, power, playerId, events, `${dart.bed === "IB" ? "DBULL" : "BULL"} · `);
     if (target) addEvent(events, { type: "bull_drop", territoryId: target.id, territoryName: target.name, score: 80, label: `Largage précis sur ${target.name}` });
     result.score += target ? 80 : 0;
   } else {
@@ -433,7 +559,7 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
 }
 
 function resolvePropagation(state: DartsFirefighterState, events: FirefighterEvent[], playerId: string) {
-  const cfg = DIFFICULTY[state.config.difficulty];
+  const cfg = effectiveRules(state.config);
   const active = state.territories.filter((t) => t.playable && !t.destroyed);
   const incomingSmoke = new Set<string>();
   const incomingFire = new Set<string>();
@@ -514,7 +640,23 @@ function resolvePropagation(state: DartsFirefighterState, events: FirefighterEve
     addEvent(events, { type: "spread", territoryId: target.id, territoryName: target.name, score: -140, label: `Propagation vers ${target.name}` });
   }
 
-  if (state.config.windEnabled && (state.turnIndex + 1) % 3 === 0) randomWind(state);
+  const objective = state.config.objective || "extinguish_all";
+  if ((objective === "survival" || objective === "protect_critical") && activeIncidents(state) === 0) {
+    const candidates = state.territories.filter((t) => t.playable && !t.destroyed && t.fireLevel === 0 && !t.smoke);
+    const preferred = objective === "protect_critical" ? candidates.filter((t) => !t.critical) : candidates;
+    const pool = preferred.length ? preferred : candidates;
+    const target = pool[randomInt(state, Math.max(1, pool.length))];
+    if (target) {
+      target.smoke = true;
+      state.totalSpread += 1;
+      state.score -= 75;
+      addEvent(events, { type: "spread", territoryId: target.id, territoryName: target.name, score: -75, label: `NOUVEAU DÉPART DE FEU · fumée détectée à ${target.name}` });
+    }
+  }
+
+  state.propagationIndex = Number(state.propagationIndex || 0) + 1;
+  const changeEvery = Math.max(1, Number(state.config.windChangeEvery || 3));
+  if (state.config.windEnabled && state.propagationIndex % changeEvery === 0) randomWind(state);
   state.forecastTerritoryIds = computeForecast(state);
 }
 
@@ -528,14 +670,17 @@ export function computeForecast(state: DartsFirefighterState): string[] {
     const id = preferred?.id || territory.neighbors[0];
     if (id && !out.includes(id)) out.push(id);
   }
-  return out.slice(0, 4);
+  return out.slice(0, Math.max(1, Math.min(6, Number(state.config.forecastCount || 4))));
 }
 
 function evaluateEnd(state: DartsFirefighterState) {
   if (state.finished) return;
+  const objective = state.config.objective || "extinguish_all";
   const criticalLost = state.territories.some((t) => t.critical && t.destroyed);
-  const cfg = DIFFICULTY[state.config.difficulty];
-  if (criticalLost) {
+  const cfg = effectiveRules(state.config);
+  const roundLimitReached = state.config.maxRounds > 0 && state.roundIndex >= state.config.maxRounds;
+
+  if (criticalLost && state.config.criticalLossEndsMission !== false) {
     state.finished = true;
     state.won = false;
     state.finishReason = "critical_lost";
@@ -543,16 +688,24 @@ function evaluateEnd(state: DartsFirefighterState) {
     state.finished = true;
     state.won = false;
     state.finishReason = "destruction_limit";
-  } else if (activeIncidents(state) === 0 && state.turnIndex > 0) {
+  } else if (objective === "extinguish_all" && activeIncidents(state) === 0 && state.turnIndex > 0) {
     state.finished = true;
     state.won = true;
     state.finishReason = "all_fires_out";
-    const criticalSaved = state.territories.filter((t) => t.critical && !t.destroyed).length;
-    state.score += criticalSaved * 300 + Math.max(0, state.config.maxRounds - state.roundIndex - 1) * 100;
-  } else if (state.config.maxRounds > 0 && state.roundIndex >= state.config.maxRounds) {
+  } else if ((objective === "survival" || objective === "protect_critical") && roundLimitReached) {
+    state.finished = true;
+    state.won = true;
+    state.finishReason = "objective_complete";
+  } else if (objective === "extinguish_all" && roundLimitReached) {
     state.finished = true;
     state.won = false;
     state.finishReason = "round_limit";
+  }
+
+  if (state.finished && state.won) {
+    const criticalSaved = state.territories.filter((t) => t.critical && !t.destroyed).length;
+    const timeBonus = objective === "extinguish_all" ? Math.max(0, state.config.maxRounds - state.roundIndex - 1) * 100 : 0;
+    state.score += criticalSaved * 300 + timeBonus;
   }
   if (state.finished) state.finishedAt = Date.now();
 }
@@ -563,13 +716,25 @@ export function createDartsFirefighterState(
   rawMap: TerritoriesMap,
   now = Date.now(),
 ): DartsFirefighterState {
+  const normalizedConfig = normalizeDartsFirefighterConfig(config);
   const safePlayers = players.length ? players : [{ id: "p1", name: "Joueur 1" }];
-  const activeCount = Math.max(6, Math.min(20, Number(config.activeTerritories || 20)));
+  const activeCount = Math.max(6, Math.min(20, Number(normalizedConfig.activeTerritories || 20)));
   const chosen = chooseActiveTerritories(rawMap, activeCount);
   const chosenIds = chosen.map((t) => t.id);
   const neighbors = buildNeighbors(chosenIds);
   const activeIdSet = new Set(chosenIds);
-  const seedBase = hash(`${config.mapId}|${config.difficulty}|${now}|${safePlayers.map((p) => p.id).join("|")}`);
+  const seedBase = hash(`${normalizedConfig.mapId}|${normalizedConfig.difficulty}|${now}|${safePlayers.map((p) => p.id).join("|")}`);
+
+  const targetNumbers = Array.from({ length: chosen.length }, (_, index) => index + 1);
+  if (normalizedConfig.targetOrder === "random") {
+    let targetSeed = seedBase;
+    for (let i = targetNumbers.length - 1; i > 0; i -= 1) {
+      const [r, nextSeed] = nextRandom(targetSeed);
+      targetSeed = nextSeed;
+      const j = Math.floor(r * (i + 1));
+      [targetNumbers[i], targetNumbers[j]] = [targetNumbers[j], targetNumbers[i]];
+    }
+  }
 
   const territories: FireTerritory[] = (rawMap.territories || []).map((territory) => {
     const activeIndex = chosen.findIndex((t) => t.id === territory.id);
@@ -578,7 +743,7 @@ export function createDartsFirefighterState(
       name: territory.name || territory.id,
       short: (territory as any).short,
       svgPathId: territory.svgPathId,
-      target: activeIndex >= 0 ? activeIndex + 1 : 0,
+      target: activeIndex >= 0 ? targetNumbers[activeIndex] : 0,
       playable: activeIdSet.has(territory.id),
       critical: false,
       fireLevel: 0,
@@ -600,13 +765,14 @@ export function createDartsFirefighterState(
 
   const state: DartsFirefighterState = {
     mode: "darts_firefighter",
-    config,
+    config: normalizedConfig,
     players: safePlayers,
     map,
     territories,
     activePlayerIndex: 0,
     roundIndex: 0,
     turnIndex: 0,
+    propagationIndex: 0,
     selectedTerritoryId: chosenIds[0] || null,
     windOffset: 1,
     windLabel: "BRISE EST",
@@ -630,7 +796,7 @@ export function createDartsFirefighterState(
   randomWind(state);
 
   const active = state.territories.filter((t) => t.playable);
-  const criticalCount = Math.max(0, Math.min(active.length, Number(config.criticalTerritories || 0)));
+  const criticalCount = Math.max(0, Math.min(active.length, Number(normalizedConfig.criticalTerritories || 0)));
   const criticalPool = [...active];
   for (let i = 0; i < criticalCount && criticalPool.length; i += 1) {
     const idx = randomInt(state, criticalPool.length);
@@ -638,19 +804,47 @@ export function createDartsFirefighterState(
     if (selected) selected.critical = true;
   }
 
-  const initialFireCount = Math.max(1, Math.min(active.length, Number(config.initialFires || 2)));
-  const firePool = [...active].sort((a, b) => Number(b.critical) - Number(a.critical));
-  for (let i = 0; i < initialFireCount && firePool.length; i += 1) {
-    const idx = randomInt(state, firePool.length);
-    const target = firePool.splice(idx, 1)[0];
-    if (!target) continue;
-    const base = config.difficulty === "inferno" ? 3 : config.difficulty === "commander" ? 2 : i === 0 ? 2 : 1;
-    target.fireLevel = base as any;
+  const initialFireCount = Math.max(1, Math.min(active.length, Number(normalizedConfig.initialFires || 2)));
+  const selectedFireIds: string[] = [];
+  const fireCandidates = [...active];
+  while (selectedFireIds.length < initialFireCount && fireCandidates.length) {
+    let target: FireTerritory | undefined;
+    if (normalizedConfig.firePlacement === "critical_first") {
+      const critical = fireCandidates.filter((t) => t.critical);
+      const pool = critical.length ? critical : fireCandidates;
+      target = pool[randomInt(state, pool.length)];
+    } else if (normalizedConfig.firePlacement === "clustered" && selectedFireIds.length > 0) {
+      const neighborIds = selectedFireIds.flatMap((id) => state.territories.find((t) => t.id === id)?.neighbors || []);
+      const clustered = fireCandidates.filter((t) => neighborIds.includes(t.id));
+      const pool = clustered.length ? clustered : fireCandidates;
+      target = pool[randomInt(state, pool.length)];
+    } else {
+      target = fireCandidates[randomInt(state, fireCandidates.length)];
+    }
+    if (!target) break;
+    selectedFireIds.push(target.id);
+    const removeIndex = fireCandidates.findIndex((t) => t.id === target?.id);
+    if (removeIndex >= 0) fireCandidates.splice(removeIndex, 1);
   }
-  if (config.difficulty === "commander" || config.difficulty === "inferno") {
-    const smokeTarget = firePool[randomInt(state, Math.max(1, firePool.length))];
-    if (smokeTarget) smokeTarget.smoke = true;
+
+  selectedFireIds.forEach((id, index) => {
+    const target = state.territories.find((t) => t.id === id);
+    if (!target) return;
+    const configured = normalizedConfig.initialFireLevel;
+    const level = configured === "mixed"
+      ? (normalizedConfig.difficulty === "inferno" ? 3 : normalizedConfig.difficulty === "commander" ? (index === 0 ? 3 : 2) : index === 0 ? 2 : 1)
+      : Number(configured || 1);
+    target.fireLevel = Math.max(1, Math.min(3, level)) as any;
+  });
+
+  const smokeCount = Math.max(0, Math.min(active.length - selectedFireIds.length, Number(normalizedConfig.initialSmoke || 0)));
+  const smokePool = active.filter((t) => !selectedFireIds.includes(t.id));
+  for (let i = 0; i < smokeCount && smokePool.length; i += 1) {
+    const index = randomInt(state, smokePool.length);
+    const target = smokePool.splice(index, 1)[0];
+    if (target) target.smoke = true;
   }
+
   state.forecastTerritoryIds = computeForecast(state);
   return state;
 }
@@ -667,7 +861,8 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   const next = cloneDartsFirefighterState(state);
   const player = getActivePlayer(next);
   const stats = next.playerStats[player.id] || (next.playerStats[player.id] = emptyFirefighterStats());
-  const safeDarts = (darts || []).slice(0, 3);
+  const dartsPerTurn = Math.max(1, Math.min(3, Number(next.config.dartsPerTurn || 3)));
+  const safeDarts = (darts || []).slice(0, dartsPerTurn);
   const processedDarts: GameDart[] = [];
   const events: FirefighterEvent[] = [];
   const before = totalFire(next);
@@ -687,12 +882,16 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
     }
   }
 
-  if (usefulDarts > 0) next.combo = Math.min(12, next.combo + usefulDarts);
-  else next.combo = 0;
-  const comboMultiplier = 1 + Math.min(.75, comboBefore * .05);
+  if (next.config.comboEnabled !== false) {
+    if (usefulDarts > 0) next.combo = Math.min(12, next.combo + usefulDarts);
+    else next.combo = 0;
+  } else {
+    next.combo = 0;
+  }
+  const comboMultiplier = next.config.comboEnabled !== false ? 1 + Math.min(.75, comboBefore * .05) : 1;
   visitScore = Math.round(visitScore * comboMultiplier);
-  if (processedDarts.length === 3 && usefulDarts === 3) {
-    visitScore += 200;
+  if (processedDarts.length === dartsPerTurn && usefulDarts === dartsPerTurn) {
+    visitScore += Math.max(0, Number(next.config.perfectVisitBonus ?? 200));
     stats.perfectVisits += 1;
   }
   next.score += visitScore;
@@ -701,7 +900,12 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   stats.bestVisitScore = Math.max(stats.bestVisitScore, visitScore);
   stats.criticalInterventions += events.filter((e) => e.territoryId && next.territories.find((t) => t.id === e.territoryId)?.critical && (e.type === "water" || e.type === "extinguished" || e.type === "protected")).length;
 
-  resolvePropagation(next, events, player.id);
+  const endOfRound = next.activePlayerIndex >= next.players.length - 1;
+  if (next.config.propagationTiming !== "after_round" || endOfRound) {
+    resolvePropagation(next, events, player.id);
+  } else {
+    next.forecastTerritoryIds = computeForecast(next);
+  }
 
   const visit: FirefighterVisit = {
     id: `fire-visit-${next.turnIndex + 1}-${player.id}-${next.seed.toString(36)}`,
@@ -770,6 +974,7 @@ export function difficultyLabel(value: DartsFirefighterDifficulty): string {
 
 export function finishReasonLabel(reason: DartsFirefighterFinishReason): string {
   if (reason === "all_fires_out") return "INCENDIE MAÎTRISÉ";
+  if (reason === "objective_complete") return "MISSION ACCOMPLIE";
   if (reason === "critical_lost") return "ZONE CRITIQUE PERDUE";
   if (reason === "destruction_limit") return "TROP DE TERRITOIRES DÉTRUITS";
   if (reason === "round_limit") return "TEMPS D’INTERVENTION ÉCOULÉ";

@@ -357,6 +357,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "golf", label: "Golf", aliases: ["golf"] },
     { key: "territories", label: "Territories", aliases: ["territories", "territoires", "departement", "département"] },
     { key: "darts_firefighter", label: "DARTS FIREFIGHTER", aliases: ["darts_firefighter", "darts firefighter", "firefighter"] },
+    { key: "darts_poker", label: "DARTS POKER", aliases: ["darts_poker", "darts poker", "dartspoker"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
@@ -466,7 +467,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -502,6 +503,8 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "departements",
     "dartsfirefighter",
     "darts_firefighter",
+    "dartspoker",
+    "darts_poker",
     "cricketcutthroat",
     "cricket_cut_throat",
     "cutthroat",
@@ -618,6 +621,7 @@ function modeLabel(e: SavedEntry) {
   }
   if (m === "darts_racer" || m === "dartsracer" || m === "mario_kart" || m === "mariokart") return "DARTS RACER";
   if (m === "darts_firefighter" || m === "dartsfirefighter" || m === "firefighter") return "DARTS FIREFIGHTER";
+  if (m === "darts_poker" || m === "dartspoker") return "DARTS POKER";
   if (m === "x01") {
     const sc = getStartScore(e);
     const raw = [
@@ -804,6 +808,8 @@ const modeColor: Record<string, string> = {
   darts_firefighter: "#ff6b27",
   dartsfirefighter: "#ff6b27",
   firefighter: "#ff6b27",
+  darts_poker: "#f6c256",
+  dartspoker: "#f6c256",
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
   five_lives: "#ff4fb8",
@@ -1421,6 +1427,12 @@ function isDartsFirefighterHistoryEntry(e: SavedEntry): boolean {
   const tokens = historyModeTokens(e).join("|");
   const raw = `${baseMode(e)}|${tokens}`.toLowerCase();
   return raw.includes("darts_firefighter") || raw.includes("dartsfirefighter") || raw.includes("darts firefighter") || raw.includes("firefighter");
+}
+
+function isDartsPokerHistoryEntry(e: SavedEntry): boolean {
+  const tokens = historyModeTokens(e).join("|");
+  const raw = `${baseMode(e)}|${tokens}`.toLowerCase();
+  return raw.includes("darts_poker") || raw.includes("dartspoker") || raw.includes("darts poker");
 }
 
 function dartsFirefighterHistoryData(e: SavedEntry): any {
@@ -4253,6 +4265,18 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
 
     const inferredMode = inferGameFilterKey(e, "darts");
 
+    // DARTS POKER : reprise exacte du marché, des mains, pouvoirs, volées et manche active.
+    if ((isDartsPokerHistoryEntry(e) || normalizeToken(baseMode(e)) === "dartspoker" || normalizeToken(inferredMode) === "dartspoker") && statusOf(e) === "in_progress") {
+      const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null);
+      const config = payload?.config || (e as any)?.resume?.config || (e as any)?.summary?.config || null;
+      const ok = safeGo(["darts_poker_play"], {
+        rec: e, resumeId, config, mode: "darts_poker",
+        from: preview ? "history_preview" : "history", preview: !!preview,
+      });
+      if (!ok) go("darts_poker_play", { rec: e, resumeId, config, mode: "darts_poker", from: preview ? "history_preview" : "history", preview: !!preview });
+      return;
+    }
+
     // LOTERIE : une partie `in_progress` possède désormais un snapshot complet
     // (cartons révélés, tour actif, darts en cours, événements et config). Elle doit
     // revenir dans LoteriePlay, jamais dans le résumé générique / X01.
@@ -4366,6 +4390,21 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         focusMatchId: matchId,
         matchPayload: full,
         rec: full,
+        from: "history",
+      });
+      return;
+    }
+
+    // ✅ DARTS POKER : tableau dédié avec mains, combinaisons, cartes et pouvoirs.
+    if (isDartsPokerHistoryEntry(e) || m === "darts_poker" || inferredMode === "darts_poker") {
+      const firstPlayerId = (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      go("statsHub", {
+        tab: "stats",
+        initialStatsSubTab: "darts_poker",
+        initialPlayerId: firstPlayerId,
+        playerId: firstPlayerId,
+        matchId: e.id,
+        resumeId,
         from: "history",
       });
       return;

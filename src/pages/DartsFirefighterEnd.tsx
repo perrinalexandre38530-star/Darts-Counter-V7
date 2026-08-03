@@ -116,6 +116,7 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
         <div style={{ color: state.won ? GREEN : RED, fontSize: 11, fontWeight: 1100, letterSpacing: 1.2 }}>{state.won ? "✅ MISSION RÉUSSIE" : "🚨 MISSION ÉCHOUÉE"}</div>
         <div style={{ marginTop: 3, color: "#fff", fontSize: 24, fontWeight: 1100 }}>{finishReasonLabel(state.finishReason)}</div>
         <div style={{ color: WATER, fontSize: 10, fontWeight: 950 }}>{difficultyLabel(state.config.difficulty)} · {state.config.mapId} · {state.score} POINTS</div>
+        <div style={{ marginTop: 2, color: "#aeb5c5", fontSize: 8.5, fontWeight: 900 }}>{state.config.objective === "survival" ? `SURVIE · ${state.config.maxRounds} ROUNDS` : state.config.objective === "protect_critical" ? `PROTECTION · ${state.config.criticalTerritories} ZONES CRITIQUES` : "EXTINCTION TOTALE"}</div>
       </div>
 
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
@@ -135,7 +136,11 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
         </div>
         <div style={{ marginTop: 10, padding: 10, borderRadius: 14, background: state.won ? `${GREEN}0c` : `${RED}0c`, border: `1px solid ${state.won ? GREEN : RED}35`, color: "#d9dde5", fontSize: 10.5, lineHeight: 1.45 }}>
           {state.won
-            ? `La brigade a maîtrisé l’incendie avec ${state.totalDestroyed} territoire${state.totalDestroyed > 1 ? "s" : ""} perdu${state.totalDestroyed > 1 ? "s" : ""}.`
+            ? state.config.objective === "survival"
+              ? `La brigade a tenu jusqu’aux renforts malgré ${activeIncidents(state)} incident${activeIncidents(state) > 1 ? "s" : ""} encore actif${activeIncidents(state) > 1 ? "s" : ""}.`
+              : state.config.objective === "protect_critical"
+                ? `Les zones critiques ont été protégées jusqu’à l’arrivée des renforts. ${state.totalDestroyed} territoire${state.totalDestroyed > 1 ? "s" : ""} perdu${state.totalDestroyed > 1 ? "s" : ""}.`
+                : `La brigade a maîtrisé l’incendie avec ${state.totalDestroyed} territoire${state.totalDestroyed > 1 ? "s" : ""} perdu${state.totalDestroyed > 1 ? "s" : ""}.`
             : `Il reste ${activeIncidents(state)} incident${activeIncidents(state) > 1 ? "s" : ""}. ${finishReasonLabel(state.finishReason)}.`}
         </div>
       </> : null}

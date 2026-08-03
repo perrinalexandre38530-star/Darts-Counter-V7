@@ -14,6 +14,7 @@ export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "x01",
   "cricket",
   "killer",
+  "darts_poker",
   "shanghai",
   "training_x01",
   "tour_horloge",

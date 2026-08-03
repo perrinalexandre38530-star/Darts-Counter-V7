@@ -4,6 +4,7 @@ import {
   buildFireMapForView,
   createDartsFirefighterState,
   fireStatus,
+  normalizeDartsFirefighterConfig,
   playDartsFirefighterVisit,
   selectFireTerritory,
   totalFire,
@@ -55,6 +56,55 @@ const players = [
   { id: "p1", name: "Alpha" },
   { id: "p2", name: "Bravo" },
 ];
+
+
+// Configuration V2 : mini carte, secteurs aléatoires, fumée initiale et propagation par round.
+const advancedCfg = normalizeDartsFirefighterConfig({
+  ...config(),
+  objective: "survival",
+  activeTerritories: 8,
+  targetOrder: "random",
+  initialFires: 3,
+  initialFireLevel: 2,
+  initialSmoke: 2,
+  firePlacement: "clustered",
+  propagationTiming: "after_round",
+  dartsPerTurn: 2,
+  windStrength: "strong",
+  windChangeEvery: 1,
+});
+let advanced = createDartsFirefighterState(players, advancedCfg, fakeMap(), 1_700_000_000_005);
+const advancedActive = advanced.territories.filter((territory) => territory.playable);
+assert.equal(advancedActive.length, 8, "la mini mission doit accepter 8 zones");
+assert.equal(new Set(advancedActive.map((territory) => territory.target)).size, 8, "les secteurs aléatoires doivent rester uniques");
+assert.equal(advancedActive.filter((territory) => territory.fireLevel > 0).length, 3, "les foyers configurés doivent être appliqués");
+assert.equal(advancedActive.filter((territory) => territory.smoke).length, 2, "la fumée initiale doit être appliquée");
+advanced = playDartsFirefighterVisit(advanced, [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }]);
+assert.equal(advanced.history[0].darts.length, 2, "la limite de deux fléchettes doit être respectée");
+assert.equal(advanced.propagationIndex, 0, "la propagation après round doit attendre le dernier joueur");
+advanced = playDartsFirefighterVisit(advanced, [{ bed: "MISS" }]);
+assert.equal(advanced.propagationIndex, 1, "la propagation doit se déclencher en fin de round");
+
+// Objectif Survie : la mission réussit à la limite même si des incidents subsistent.
+let survival = createDartsFirefighterState(players, normalizeDartsFirefighterConfig({
+  ...config(), objective: "survival", maxRounds: 1, propagationTiming: "after_round",
+  growthChance: 0, spreadChance: 0, smokeChance: 0, protectionDecay: 0,
+  initialFires: 1, initialSmoke: 0, criticalTerritories: 0,
+}), fakeMap(), 1_700_000_000_006);
+survival = playDartsFirefighterVisit(survival, [{ bed: "MISS" }]);
+survival = playDartsFirefighterVisit(survival, [{ bed: "MISS" }]);
+assert.equal(survival.finished, true, "la survie doit finir à la limite de rounds");
+assert.equal(survival.won, true, "tenir jusqu'aux renforts doit être une victoire");
+assert.equal(survival.finishReason, "objective_complete");
+
+// Canadair conditionné par la jauge : DBULL reste utile mais ne déclenche pas l'avion.
+let gatedCanadair = createDartsFirefighterState(players, normalizeDartsFirefighterConfig({
+  ...config(), canadairRequiresGauge: true, canadairGaugeCost: 50, initialFires: 2,
+}), fakeMap(), 1_700_000_000_007);
+gatedCanadair.brigadeGauge = 0;
+gatedCanadair = playDartsFirefighterVisit(gatedCanadair, [{ bed: "IB" }]);
+assert.equal(gatedCanadair.history[0].events.some((event) => event.type === "canadair"), false, "le Canadair ne doit pas partir sans jauge");
+assert.ok(gatedCanadair.history[0].events.some((event) => event.type === "bull_drop"), "le DBULL doit conserver un largage au sol");
 
 const initial = createDartsFirefighterState(players, config(), fakeMap(), 1_700_000_000_000);
 const active = initial.territories.filter((territory) => territory.playable);

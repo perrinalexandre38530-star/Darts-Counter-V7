@@ -29,6 +29,7 @@ import {
   fireTerritoryColor,
   getActivePlayer,
   playDartsFirefighterVisit,
+  normalizeDartsFirefighterConfig,
   protectedCount,
   selectFireTerritory,
   totalFire,
@@ -90,37 +91,16 @@ function statusIcon(t: FireTerritory) {
 function normalizeConfig(props: any): DartsFirefighterConfigPayload {
   const record = props?.params?.rec || props?.params?.record || props?.params?.match || null;
   const raw = props?.params?.config || record?.payload?.config || record?.resume?.config || record?.summary?.config || props?.config || props?.params || {};
-  return {
-    mode: "darts_firefighter",
-    players: Math.max(1, Number(raw?.players || raw?.selectedIds?.length || 1)),
-    selectedIds: Array.isArray(raw?.selectedIds) ? raw.selectedIds.map(String) : [],
-    playersList: Array.isArray(raw?.playersList) ? raw.playersList : [],
-    playerDartSets: raw?.playerDartSets || {},
-    botIds: Array.isArray(raw?.botIds) ? raw.botIds.map(String) : [],
-    botsEnabled: Boolean(raw?.botsEnabled),
-    botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
-    mapId: String(raw?.mapId || "FR"),
-    difficulty: ["recruit","firefighter","commander","inferno"].includes(raw?.difficulty) ? raw.difficulty : "firefighter",
-    activeTerritories: ([12,16,20].includes(Number(raw?.activeTerritories)) ? Number(raw.activeTerritories) : 20) as any,
-    initialFires: Math.max(1, Math.min(6, Number(raw?.initialFires || 3))),
-    criticalTerritories: Math.max(0, Math.min(5, Number(raw?.criticalTerritories ?? 2))),
-    maxRounds: Math.max(5, Math.min(50, Number(raw?.maxRounds || 18))),
-    windEnabled: raw?.windEnabled !== false,
-    forecastEnabled: raw?.forecastEnabled !== false,
-    missEndsTurn: Boolean(raw?.missEndsTurn),
-    bullAirSupport: raw?.bullAirSupport !== false,
-    scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
-    randomOrder: Boolean(raw?.randomOrder),
-  };
+  return normalizeDartsFirefighterConfig(raw);
 }
 
 function Rules({ config }: { config: DartsFirefighterConfigPayload }) {
   return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
-    <div><strong style={{ color: FIRE }}>OBJECTIF</strong><br />Éteins tous les foyers avant la perte d’une zone critique ou la destruction d’un trop grand nombre de territoires.</div>
+    <div><strong style={{ color: FIRE }}>OBJECTIF</strong><br />{config.objective === "survival" ? `Résiste pendant ${config.maxRounds} rounds.` : config.objective === "protect_critical" ? `Protège les zones critiques pendant ${config.maxRounds} rounds.` : "Éteins tous les foyers avant la limite."}</div>
     <div><strong style={{ color: WATER }}>PUISSANCE</strong><br />Simple 1 · Double 2 · Triple 3. Le surplus crée une protection qui absorbe une future propagation.</div>
     <div><strong style={{ color: GOLD }}>CIBLES</strong><br />Chaque territoire actif porte un numéro de secteur. Une touche agit automatiquement sur le territoire correspondant.</div>
-    <div><strong style={{ color: WATER }}>BULL</strong><br />Le Bull arrose la zone sélectionnée. Le Double Bull déclenche le Canadair sur cette zone et ses voisines.</div>
-    <div><strong style={{ color: FIRE }}>VENT</strong><br />{config.windEnabled ? "Le vent change toutes les trois volées et oriente la propagation." : "Vent désactivé."}</div>
+    <div><strong style={{ color: WATER }}>BULL</strong><br />{`Bull = ${config.bullPower || 2} unités sur ${config.bullTargetMode === "priority" ? "la priorité automatique" : "la zone sélectionnée"}. ${config.bullAirSupport ? "Le Double Bull appelle le Canadair." : "Canadair désactivé."}`}</div>
+    <div><strong style={{ color: FIRE }}>VENT</strong><br />{config.windEnabled ? `Vent ${config.windStrength || "normal"}, changement tous les ${config.windChangeEvery || 3} cycles.` : "Vent désactivé."}</div>
   </div>;
 }
 
@@ -131,7 +111,8 @@ function buildBotVisit(state: DartsFirefighterState, level: string): { darts: Ui
   const missChance = level === "hard" ? .04 : level === "easy" ? .25 : .11;
   const bullChance = level === "hard" ? .18 : level === "easy" ? .04 : .10;
   const darts: UiDart[] = [];
-  for (let i = 0; i < 3; i += 1) {
+  const dartsPerTurn = Math.max(1, Math.min(3, Number(state.config.dartsPerTurn || 3)));
+  for (let i = 0; i < dartsPerTurn; i += 1) {
     const r = Math.random();
     if (r < missChance) darts.push({ v: 0, mult: 1 });
     else if (r < missChance + bullChance) darts.push({ v: 25, mult: level === "hard" && Math.random() > .48 ? 2 : 1 });
@@ -201,6 +182,9 @@ export default function DartsFirefighterPlay(props: any) {
   const latestVisit = state.history[state.history.length - 1];
   const currentStats = state.playerStats[activePlayer?.id] || {};
   const projectedLabels = throwDarts.map(uiLabel);
+  const forecastTerritories = config.forecastEnabled
+    ? state.forecastTerritoryIds.map((id) => state.territories.find((territory) => territory.id === id)).filter(Boolean)
+    : [];
 
   function backToConfig() {
     if (typeof go === "function") go("darts_firefighter_config", config);
@@ -212,14 +196,14 @@ export default function DartsFirefighterPlay(props: any) {
     if (t) setNotice(`${t.name} · secteur ${t.target} · ${statusLabel(t)}`);
   }
   function addDart(v: number, mult?: 1 | 2 | 3) {
-    if (botThinking || state.finished || throwDarts.length >= 3) return;
+    if (botThinking || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)) return;
     const dart = { v: Number(v) || 0, mult: (mult || multiplier) as 1 | 2 | 3 };
-    const next = [...throwDarts, dart].slice(0, 3);
+    const next = [...throwDarts, dart].slice(0, Number(config.dartsPerTurn || 3));
     setThrowDarts(next);
     if (dart.v === 0 && config.missEndsTurn) window.setTimeout(() => commitVisit(next), 0);
   }
   function commitVisit(source?: UiDart[]) {
-    const darts = (source || throwDarts).slice(0, 3);
+    const darts = (source || throwDarts).slice(0, Number(config.dartsPerTurn || 3));
     if (!darts.length || state.finished) return;
     setUndoStack((prev) => [...prev.slice(-19), cloneDartsFirefighterState(state)]);
     const next = playDartsFirefighterVisit(state, darts.map(uiToGameDart));
@@ -313,6 +297,12 @@ export default function DartsFirefighterPlay(props: any) {
       bestVisitScore: Math.max(0, ...playerRows.map((row) => Number(row.bestVisitScore || 0))),
       roundsPlayed: Math.max(1, state.roundIndex || 1),
       activeTerritories: config.activeTerritories,
+      objective: config.objective,
+      missionPreset: config.missionPreset,
+      dartsPerTurn: config.dartsPerTurn,
+      propagationTiming: config.propagationTiming,
+      windStrength: config.windStrength,
+      destructionLimit: config.destructionLimit,
       incidentsRemaining: activeIncidents(state),
       protectedTerritories: protectedCount(state),
     };
@@ -324,7 +314,9 @@ export default function DartsFirefighterPlay(props: any) {
       winnerIds: isFinished && state.won ? state.players.map((player) => String(player.id)) : [],
       winnerName: isFinished ? (state.won ? "BRIGADE D’INTERVENTION" : "INCENDIE") : null,
       score: totalScore, mapId: config.mapId, difficulty: config.difficulty,
-      activeTerritories: config.activeTerritories, initialFires: config.initialFires, criticalTerritories: config.criticalTerritories,
+      missionPreset: config.missionPreset, objective: config.objective,
+      activeTerritories: config.activeTerritories, initialFires: config.initialFires, initialSmoke: config.initialSmoke, initialFireLevel: config.initialFireLevel, criticalTerritories: config.criticalTerritories,
+      propagationTiming: config.propagationTiming, windStrength: config.windStrength, dartsPerTurn: config.dartsPerTurn, targetOrder: config.targetOrder,
       roundsPlayed: matchStats.roundsPlayed, durationMs: matchStats.durationMs,
       finishReason: state.finishReason, totalExtinguished: state.totalExtinguished, totalDestroyed: state.totalDestroyed,
       totalSpread: state.totalSpread, propagationBlocked: state.propagationBlocked,
@@ -377,7 +369,7 @@ export default function DartsFirefighterPlay(props: any) {
   }, [state.finished]);
 
   const keypadNotice = <div style={{ display: "grid", gap: 3 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: soft, fontSize: 9, fontWeight: 950 }}><span>{selectedTerritory ? `BULL → ${selectedTerritory.name}` : "BULL → PRIORITÉ AUTO"}</span><span style={{ color: FIRE }}>{projectedLabels.join(" · ") || "3 FLÉCHETTES"}</span></div>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: soft, fontSize: 9, fontWeight: 950 }}><span>{config.bullTargetMode === "priority" ? "BULL → PRIORITÉ AUTO" : selectedTerritory ? `BULL → ${selectedTerritory.name}` : "BULL → PRIORITÉ AUTO"}</span><span style={{ color: FIRE }}>{projectedLabels.join(" · ") || `${config.dartsPerTurn || 3} FLÉCHETTE${Number(config.dartsPerTurn || 3) > 1 ? "S" : ""}`}</span></div>
     <div style={{ textAlign: "center", color: notice.includes("DÉTRUIT") || notice.includes("Propagation") ? RED : WATER, fontSize: 9.4, fontWeight: 1000 }}>{notice}</div>
   </div>;
   const centerScore = <div style={{ minWidth: 62, height: 46, padding: "0 8px", borderRadius: 13, display: "grid", placeItems: "center", background: "linear-gradient(180deg,#42dcff,#0a91d4)", border: "1px solid rgba(160,235,255,.8)", color: "#02131c", fontSize: 18, lineHeight: 1, fontWeight: 1100, boxShadow: "0 0 20px rgba(37,201,255,.34)" }}>💧{throwDarts.reduce((sum, dart) => sum + (dart.v === 0 ? 0 : dart.v === 25 ? (dart.mult === 2 ? 3 : 2) : dart.mult), 0)}</div>;
@@ -393,7 +385,7 @@ export default function DartsFirefighterPlay(props: any) {
             {botThinking ? <div style={{ color: WATER, fontSize: 8.5, fontWeight: 1000, letterSpacing: 1 }}>BOT EN INTERVENTION</div> : null}
             <div style={{ color: activeColor, fontSize: 13, fontWeight: 1100, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
             <div style={{ color: "#fff", fontSize: 43, lineHeight: .96, fontWeight: 1100, textShadow: `0 0 24px ${FIRE}44` }}>{state.score}</div>
-            <div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1000, letterSpacing: .65 }}>SCORE BRIGADE · COMBO x{(1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
+            <div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1000, letterSpacing: .65 }}>SCORE BRIGADE · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
             <div style={{ marginTop: 3, color: soft, fontSize: 8.2, fontWeight: 950 }}>{currentStats?.fireReduced || 0} niveaux supprimés · {currentStats?.firesExtinguished || 0} feux éteints · {pct(currentStats?.hits || 0, currentStats?.darts || 0)}%</div>
           </div>
           <div style={{ position: "relative", zIndex: 2, borderRadius: 16, display: "grid", alignContent: "center", textAlign: "center", background: "rgba(0,0,0,.32)", border: `1px solid ${FIRE}55` }}>
@@ -415,24 +407,28 @@ export default function DartsFirefighterPlay(props: any) {
 
       <section style={{ ...panelStyle(), marginBottom: 6, padding: 7, borderColor: `${FIRE}44`, position: "relative" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <div><div style={{ color: FIRE, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>CARTE D’INTERVENTION</div><div style={{ color: soft, fontSize: 8.2 }}>Touchez une zone pour la réserver au Bull / Canadair.</div></div>
+          <div><div style={{ color: FIRE, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>CARTE D’INTERVENTION</div><div style={{ color: soft, fontSize: 8.2 }}>{config.bullTargetMode === "priority" ? "Bull et Canadair ciblent automatiquement le danger prioritaire." : "Touchez une zone pour la réserver au Bull / Canadair."}</div></div>
           <div style={{ display: "flex", gap: 5 }}><button onClick={() => setShowTargets(true)} style={{ ...actionButton(GOLD), minHeight: 34, padding: "0 10px", fontSize: 9 }}>CIBLES 1–20</button><button onClick={() => setShowTimeline(true)} style={{ ...actionButton(WATER), minHeight: 34, padding: "0 10px", fontSize: 9 }}>JOURNAL</button></div>
         </div>
         <div style={{ height: "min(47vh,410px)", minHeight: 270, borderRadius: 15, overflow: "hidden", background: "radial-gradient(circle,rgba(255,92,35,.13),rgba(0,0,0,.38))", border: "1px solid rgba(255,255,255,.08)" }}>
           <TerritoriesMapView country={toCountry(config.mapId)} map={fireMap} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !botThinking} onSelectTerritory={selectTerritory} isSelectableTerritoryId={(id) => Boolean(state.territories.find((t) => t.id === id && t.playable && !t.destroyed))} style={{ width: "100%", height: "100%" }} />
         </div>
+        {config.forecastEnabled && forecastTerritories.length ? <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5, overflowX: "auto", paddingBottom: 1 }}>
+          <span style={{ flex: "0 0 auto", color: GOLD, fontSize: 8, fontWeight: 1000 }}>⚠ MENACES</span>
+          {forecastTerritories.map((territory: any) => <button key={territory.id} type="button" onClick={() => selectTerritory(territory.id)} style={{ flex: "0 0 auto", minHeight: 29, padding: "0 9px", borderRadius: 999, border: `1px solid ${FIRE}66`, background: `${FIRE}13`, color: "#ffd4c2", fontSize: 8.2, fontWeight: 950 }}>{territory.target} · {territory.name}</button>)}
+        </div> : null}
         {selectedTerritory ? <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderRadius: 13, padding: 8, background: `${fireTerritoryColor(fireStatus(selectedTerritory))}13`, border: `1px solid ${fireTerritoryColor(fireStatus(selectedTerritory))}77` }}>
           <div style={{ width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(0,0,0,.34)", color: GOLD, fontSize: 20, fontWeight: 1100 }}>{selectedTerritory.target}</div>
           <div style={{ minWidth: 0 }}><div style={{ color: selectedTerritory.critical ? GOLD : "#fff", fontSize: 11.5, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedTerritory.critical ? "⚠ " : ""}{selectedTerritory.name}</div><div style={{ color: soft, fontSize: 8.5 }}>{statusIcon(selectedTerritory)} {statusLabel(selectedTerritory)} · voisins {selectedTerritory.neighbors.length}</div></div>
-          <div style={{ color: WATER, fontSize: 9, fontWeight: 1000, textAlign: "right" }}>BULL<br />PRIORITAIRE</div>
+          <div style={{ color: WATER, fontSize: 9, fontWeight: 1000, textAlign: "right" }}>{config.bullTargetMode === "priority" ? <>CIBLE<br />OBSERVÉE</> : <>BULL<br />PRIORITAIRE</>}</div>
         </div> : null}
       </section>
 
       {latestVisit?.events?.length ? <section style={{ ...panelStyle(), marginBottom: 6, padding: 7, borderColor: `${latestVisit.events.some((event) => event.type === "destroyed") ? RED : WATER}44` }}><div style={{ display: "flex", gap: 6, overflowX: "auto" }}>{latestVisit.events.slice(-6).map((event: any, index: number) => <div key={`${event.type}-${index}`} style={{ flex: "0 0 auto", maxWidth: 250, padding: "6px 9px", borderRadius: 999, background: event.score < 0 ? `${RED}12` : `${WATER}10`, border: `1px solid ${event.score < 0 ? RED : WATER}44`, color: event.score < 0 ? "#ffb2ba" : "#dffaff", fontSize: 8.8, fontWeight: 900 }}>{event.type === "extinguished" ? "✅" : event.type === "destroyed" ? "⬛" : event.type === "canadair" ? "✈️" : event.type === "spread_blocked" ? "🛡" : event.type === "spread" ? "🔥" : "💧"} {event.label}</div>)}</div></section> : null}
 
       <section style={{ ...panelStyle(), padding: 6 }}>
-        {config.scoreInputMethod === "dartboard" ? <DartboardClickable multiplier={multiplier} disabled={botThinking || state.finished || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /> : null}
-        <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} safeBottomPad />
+        {config.scoreInputMethod === "dartboard" ? <DartboardClickable multiplier={multiplier} disabled={botThinking || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)} onHit={(segment, mult) => addDart(segment, mult)} /> : null}
+        <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === Number(config.dartsPerTurn || 3)} safeBottomPad />
       </section>
     </main>
 

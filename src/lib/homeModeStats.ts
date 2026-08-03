@@ -22,6 +22,7 @@ type ModeKey =
   | "shanghai"
   | "territories"
   | "darts_firefighter"
+  | "darts_poker"
   | "warfare"
   | "battle_royale"
   | "scram"
@@ -94,7 +95,7 @@ type ModeAgg = {
 
 const DARTS_MODE_KEYS = new Set<ModeKey>([
   "x01", "cricket", "enculette", "killer", "five_lives", "loterie", "golf", "shanghai",
-  "territories", "darts_firefighter", "warfare", "battle_royale", "scram", "capital", "batard",
+  "territories", "darts_firefighter", "darts_poker", "warfare", "battle_royale", "scram", "capital", "batard",
   "clock", "baseball", "bowling", "bobs_27", "halve_it", "shooter",
   "prisoner", "attrape_moi", "darts_racer", "president", "count_up",
   "game_170", "super_bull", "tic_tac_toe", "football", "rugby", "knockout",
@@ -112,6 +113,7 @@ const MODE_TITLES: Record<ModeKey, string> = {
   shanghai: "SHANGHAI",
   territories: "TERRITORIES",
   darts_firefighter: "DARTS FIREFIGHTER",
+  darts_poker: "DARTS POKER",
   warfare: "WARFARE",
   battle_royale: "BATTLE ROYALE",
   scram: "SCRAM",
@@ -202,6 +204,7 @@ export function detectHomeMode(record: any): ModeKey {
   if (tag.includes("golf")) return "golf";
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
+  if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
   if (tag.includes("territor") || tag.includes("departement")) return "territories";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("battle_royale") || (tag.includes("battle") && tag.includes("royale"))) return "battle_royale";
@@ -447,7 +450,7 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
   const score = firstFinite(
     merged?.score, merged?.totalScore, merged?.points, merged?.total,
     merged?.finalScore, merged?.runs, merged?.pins, merged?.netDistance,
-    merged?.cellsRevealed, merged?.marks, merged?.progress,
+    merged?.cellsRevealed, merged?.marks, merged?.progress, merged?.handsWon,
   );
   const avg = firstFinite(
     merged?.avg3D, merged?.avg3d, merged?.avg3, averages?.avg3d,
@@ -458,7 +461,7 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
   const best = firstFinite(
     merged?.bestVisit, merged?.bestScore, merged?.maxVolley, merged?.highGame,
     merged?.maxScore, merged?.bestTotal, merged?.bestMargin,
-    merged?.maxCellsInVisit, special?.bestVisit,
+    merged?.maxCellsInVisit, merged?.bestHandScore, special?.bestVisit,
   );
   const directRate = firstFinite(
     merged?.hitRate, merged?.accuracy, merged?.successRate,
@@ -491,6 +494,21 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     boosts: readSpecial(merged, detail, "boosts", "specialBoosts"),
     attacks: readSpecial(merged, detail, "attacksLanded", "attacks"),
     kills: readSpecial(merged, detail, "kills"),
+    handsPlayed: readSpecial(merged, detail, "handsPlayed"),
+    handsWon: readSpecial(merged, detail, "handsWon"),
+    cardsCollected: readSpecial(merged, detail, "cardsCollected"),
+    choicesUsed: readSpecial(merged, detail, "choicesUsed"),
+    exchangesUsed: readSpecial(merged, detail, "exchangesUsed"),
+    jokers: readSpecial(merged, detail, "jokers"),
+    pairs: readSpecial(merged, detail, "pairs"),
+    twoPairs: readSpecial(merged, detail, "twoPairs"),
+    threeOfAKinds: readSpecial(merged, detail, "threeOfAKinds"),
+    straights: readSpecial(merged, detail, "straights"),
+    flushes: readSpecial(merged, detail, "flushes"),
+    fullHouses: readSpecial(merged, detail, "fullHouses"),
+    fourOfAKinds: readSpecial(merged, detail, "fourOfAKinds"),
+    straightFlushes: readSpecial(merged, detail, "straightFlushes"),
+    royalFlushes: readSpecial(merged, detail, "royalFlushes"),
     fireReduced: readSpecial(merged, detail, "fireReduced", "totalFireReduced"),
     firesExtinguished: readSpecial(merged, detail, "firesExtinguished", "totalExtinguished"),
     propagationBlocked: readSpecial(merged, detail, "propagationBlocked"),
@@ -713,6 +731,15 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("captures", formatNumber(s.captures, 0)),
         row("évasions", formatNumber(s.escapes, 0)),
         row("best visit", formatNumber(bestMetric(agg), 0)),
+      ];
+    case "darts_poker":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("mains gagnées", formatNumber(s.handsWon || agg.scoreSum, 0)),
+        row("meilleure main", formatNumber(bestMetric(agg), 0)),
+        row("cartes", formatNumber(s.cardsCollected, 0)),
+        row("pouvoirs", formatNumber((s.choicesUsed || 0) + (s.exchangesUsed || 0) + (s.jokers || 0), 0)),
       ];
     case "darts_firefighter":
       return [

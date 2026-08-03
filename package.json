@@ -41,6 +41,7 @@
     "test:shooter": "node ./tools/run-ts-regressions.mjs --only tools/test-shooter-regression.ts",
     "test:loterie": "node ./tools/run-ts-regressions.mjs --only tools/test-loterie-regression.ts",
     "test:firefighter": "node ./tools/test-darts-firefighter-integration.mjs && node ./tools/run-ts-regressions.mjs --only tools/test-darts-firefighter-regression.ts",
+    "test:poker": "node ./tools/test-darts-poker-integration.mjs && node --experimental-strip-types ./tools/test-darts-poker-regression.ts",
     "test:linked-history": "node ./tools/run-ts-regressions.mjs --only tools/test-linked-profile-history.ts",
     "test:regressions": "node ./tools/run-ts-regressions.mjs",
     "test:auto": "npm run test:ci",

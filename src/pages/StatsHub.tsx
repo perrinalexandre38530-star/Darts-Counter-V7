@@ -306,6 +306,9 @@ const ShooterStatsTabFull = React.lazy(
 const DartsRacerStatsTabFull = React.lazy(
   () => import("../components/stats/DartsRacerStatsTabFull")
 );
+const DartsPokerStatsTabFull = React.lazy(
+  () => import("../components/stats/DartsPokerStatsTabFull")
+);
 const PrisonerStatsTabFull = React.lazy(
   () => import("../components/stats/PrisonerStatsTabFull")
 );
@@ -1224,7 +1227,7 @@ function useHistoryAPI(enabled = true): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "prisoner", "loterie", "warfare", "tour", "clock", "battle_royale", "territories", "darts_firefighter", "five_lives", "capital", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
       const toHydrate: string[] = [];
       for (const r of arr) {
         const mode = classifyRecordMode(r);
@@ -1531,6 +1534,7 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("bobs_27") || tag.includes("bobs27") || tag.includes("bob's 27") || tag.includes("bob’s 27")) return "bobs_27";
   if (tag.includes("bowling")) return "bowling";
   if (tag.includes("halve_it") || tag.includes("halve-it") || tag.includes("halve it") || tag.includes("half-it")) return "halve_it";
+  if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
   if (tag.includes("darts_racer") || tag.includes("darts racer") || tag.includes("dartsracer") || tag.includes("mario_kart")) return "darts_racer";
   if (tag.includes("shooter")) return "shooter";
   if (tag.includes("prisoner")) return "prisoner";
@@ -5202,6 +5206,7 @@ const modeDefs = React.useMemo(
               { key: "halve_it", label: "HALVE-IT" },
               { key: "shooter", label: "SHOOTER" },
               { key: "darts_racer", label: "DARTS RACER" },
+              { key: "darts_poker", label: "DARTS POKER" },
               { key: "prisoner", label: "Prisoner" },
               { key: "capital", label: "Capital" },
               { key: "loterie", label: "LOTERIE" },
@@ -6756,6 +6761,7 @@ const modeThemeColor: Record<string, string> = {
   halve_it: "#ffd76a",
   shooter: "#42d6ff",
   darts_racer: "#42d6ff",
+  darts_poker: "#f6c256",
   prisoner: "#e4c06b",
   capital: "#6ee36e",
   batard: "#9b5cff",
@@ -6799,6 +6805,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     halve_it: "HALVE-IT",
     shooter: "SHOOTER",
     darts_racer: "DARTS RACER",
+    darts_poker: "DARTS POKER",
     prisoner: "Prisoner",
     loterie: "LOTERIE",
     capital: "Capital",
@@ -6807,7 +6814,7 @@ const globalModeDashboard = React.useMemo<ModeDashboardCard[]>(() => {
     darts_firefighter: "DARTS FIREFIGHTER",
     clock: "Tour de l’horloge",
   };
-  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
+  const order = ["x01", "killer", "cricket", "shanghai", "golf", "battle_royale", "warfare", "five_lives", "scram", "baseball", "attrape_moi", "president", "bobs_27", "bowling", "halve_it", "shooter", "darts_racer", "darts_poker", "prisoner", "loterie", "capital", "batard", "territories", "darts_firefighter", "clock"];
   const n = (v: any, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   const sumNumericValues = (v: any): number => {
     if (!v || typeof v !== "object") return 0;
@@ -9521,6 +9528,24 @@ return (
               </div>
             )}
 
+{currentMode === "darts_poker" && (
+              <div style={card}>
+                {selectedPlayer ? (
+                  <React.Suspense fallback={<LazyFallback label="Chargement DARTS POKER…" />}>
+                    <DartsPokerStatsTabFull
+                      records={records as any[]}
+                      playerId={selectedPlayer.id}
+                      playerName={selectedPlayer.name}
+                    />
+                  </React.Suspense>
+                ) : (
+                  <div style={{ color: T.text70, fontSize: 13 }}>
+                    Sélectionne un joueur pour afficher ses statistiques DARTS POKER.
+                  </div>
+                )}
+              </div>
+            )}
+
 {currentMode === "prisoner" && (
               <div style={card}>
                 {selectedPlayer ? (
@@ -9631,6 +9656,7 @@ return (
                       halve_it: ["halve_it", "halve-it", "halve it", "half-it"],
                       shooter: ["shooter"],
                       darts_racer: ["darts_racer", "darts racer", "dartsracer", "mario_kart"],
+                      darts_poker: ["darts_poker", "darts poker", "dartspoker"],
                       prisoner: ["prisoner"],
                       capital: ["capital"],
                       batard: ["batard", "bâtard", "bastard"],
