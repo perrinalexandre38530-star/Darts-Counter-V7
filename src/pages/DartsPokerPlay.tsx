@@ -311,11 +311,11 @@ export default function DartsPokerPlay(props: any) {
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflow: "hidden" }}>
     <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
-    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "6px 8px 8px", boxSizing: "border-box", display: "grid", gridTemplateRows: "auto auto auto auto 1fr", gap: 6 }}>
+    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "4px 8px 8px", boxSizing: "border-box", display: "grid", gridTemplateRows: "auto auto auto auto 1fr", gap: 5, minHeight: "calc(100dvh - 150px)" }}>
       <section style={{ ...panel(), display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderColor: `${activeColor}55`, padding: 8 }}>
         <ProfileAvatar profile={activeProfile} size={44} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ color: activeColor, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
+          <div style={{ color: activeColor, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
           <div style={{ color: SOFT, fontSize: 8.5 }}>Manche {state.roundIndex}/{config.rounds} · {state.phase === "powers" ? "Phase pouvoirs" : `Fléchette ${Math.min(config.dartsPerHand, Number(activeHand?.dartsUsed || 0) + 1)}/${config.dartsPerHand}`}</div>
         </div>
         <div style={{ display: "flex", gap: 5 }}>
@@ -324,55 +324,52 @@ export default function DartsPokerPlay(props: any) {
         </div>
       </section>
 
-      <section style={{ ...panel(), borderColor: `${activeColor}44`, padding: 8 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "start" }}>
+      <button type="button" onClick={() => setQuickPanel("active")} style={{ ...panel(), borderColor: `${activeColor}44`, padding: 8, textAlign: "left", cursor: "pointer" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
           <div>
             <div style={{ color: activeColor, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>BLOC JOUEUR ACTIF</div>
-            <div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 9, marginTop: 3 }}>{liveEvaluation?.label || "Construis la meilleure main de 5 cartes"}</div>
+            <div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 8.8, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{liveEvaluation?.label || "Appuie pour ouvrir la main et les détails"}</div>
           </div>
           <div style={{ display: "flex", gap: 5 }}>
             <span style={{ borderRadius: 999, padding: "4px 7px", color: BLUE, border: `1px solid ${BLUE}55`, fontSize: 8, fontWeight: 1000 }}>↔ {activeHand?.exchangeTokens || 0}</span>
             <span style={{ borderRadius: 999, padding: "4px 7px", color: GOLD, border: `1px solid ${GOLD}55`, fontSize: 8, fontWeight: 1000 }}>✦ {activeHand?.choiceTokens || 0}</span>
           </div>
         </div>
-        <div style={{ marginTop: 7, display: "flex", gap: 4, minHeight: 62, overflowX: "auto" }}>
+        <div style={{ marginTop: 6, display: "flex", gap: 4, minHeight: 44 }}>
           {Array.from({ length: 5 }, (_, index) => {
             const card = activeHand?.cards?.[index];
-            return card ? <CardView key={`${card.id}-${index}`} card={card} small selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => exchangeCard(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} /> : <div key={`empty-${index}`} style={{ width: 42, height: 58, borderRadius: 9, border: "1px dashed rgba(255,255,255,.18)", background: "rgba(255,255,255,.02)" }} />;
+            return card ? <CardView key={`${card.id}-${index}`} card={card} small /> : <div key={`empty-${index}`} style={{ width: 30, height: 42, borderRadius: 8, border: "1px dashed rgba(255,255,255,.18)", background: "rgba(255,255,255,.02)" }} />;
           })}
         </div>
-        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
-          <MiniStat label="POINTS" value={`${activeStats?.handsWon || 0}`} color={GOLD} />
-          <MiniStat label="PRÉCISION" value={`${activeAccuracy}%`} color={GREEN} />
+        <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 4 }}>
+          <MiniStat label="PTS" value={`${activeStats?.handsWon || 0}`} color={GOLD} />
+          <MiniStat label="PRÉC." value={`${activeAccuracy}%`} color={GREEN} />
           <MiniStat label="CARTES" value={`${activeHand?.cards?.length || 0}/5`} color={BLUE} />
           <MiniStat label="RESTE" value={`${remainingDarts}`} color={RED} />
         </div>
-        {state.phase === "powers" ? <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={useChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={validateHand} style={action(GREEN)}>✓ VALIDER</button></div> : null}
-      </section>
+      </button>
 
-      <section style={{ ...panel(), padding: 8 }}>
+      <button type="button" onClick={() => setQuickPanel("objectives")} style={{ ...panel(), padding: 8, textAlign: "left", cursor: "pointer" }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
           <div>
             <div style={{ color: GOLD, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>OBJECTIF & SUGGESTION</div>
-            <div style={{ color: "#fff", fontSize: 10, fontWeight: 900, marginTop: 3 }}>{objective.title}</div>
-            <div style={{ color: SOFT, fontSize: 8.5, marginTop: 3, lineHeight: 1.35 }}>{objective.description}</div>
+            <div style={{ color: "#fff", fontSize: 10, fontWeight: 900, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objective.title}</div>
+            <div style={{ color: SOFT, fontSize: 8.2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bestTarget ? `Cible conseillée : ${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
           </div>
-          <button onClick={() => setQuickPanel("objectives")} style={{ ...action(GOLD), minHeight: 36, padding: "0 10px", fontSize: 8 }}>DÉTAILS</button>
+          <div style={{ ...action(GOLD), minHeight: 36, padding: "0 10px", fontSize: 8, display: "grid", placeItems: "center" }}>DÉTAILS</div>
         </div>
-        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
-          {marketTargets.map((target, index) => <button key={`${target.sector}-${index}`} type="button" onClick={() => setQuickPanel("market")} style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.10)"}`, background: index === 0 ? `${GOLD}12` : "rgba(255,255,255,.03)", color: "#fff", padding: "6px 5px", textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8, fontWeight: 1100 }}>SECTEUR {target.sector}</div><div style={{ marginTop: 4, display: "flex", justifyContent: "center" }}><CardView card={target.card} small /></div></button>)}
-        </div>
-      </section>
+      </button>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
-        <QuickLauncher label="Joueur" accent={activeColor} sub={liveEvaluation?.label || "Main en cours"} onClick={() => setQuickPanel("active")} />
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
+        <QuickLauncher label="Joueur" accent={activeColor} sub={`${activeHand?.cards?.length || 0} carte(s)`} onClick={() => setQuickPanel("active")} />
         <QuickLauncher label="Marché" accent={GOLD} sub={`${state.deck.length} cartes`} onClick={() => setQuickPanel("market")} />
+        <QuickLauncher label="Objectif" accent={GOLD} sub={bestTarget ? `S${bestTarget.sector}` : "conseil"} onClick={() => setQuickPanel("objectives")} />
         <QuickLauncher label="Table" accent={RED} sub={`${state.players.length} joueurs`} onClick={() => setQuickPanel("table")} />
         <QuickLauncher label="Stats" accent={GREEN} sub={`${state.visits.length} volées`} onClick={() => setQuickPanel("stats")} />
-        <QuickLauncher label={config.scoreInputMethod === "dartboard" ? "Cible" : "Journal"} accent={BLUE} sub={config.scoreInputMethod === "dartboard" ? "viser" : "historique"} onClick={() => config.scoreInputMethod === "dartboard" ? setQuickPanel("dartboard") : setShowTimeline(true)} />
+        <QuickLauncher label={config.scoreInputMethod === "dartboard" ? "Cible" : "Journal"} accent={BLUE} sub={config.scoreInputMethod === "dartboard" ? "ouvrir" : "historique"} onClick={() => config.scoreInputMethod === "dartboard" ? setQuickPanel("dartboard") : setShowTimeline(true)} />
       </section>
 
-      <section style={{ ...panel(), padding: 6, overflow: "hidden" }}>
+      <section style={{ ...panel(), padding: 6, overflow: "hidden", alignSelf: "end" }}>
         <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3 || throwDarts.length === remainingDarts} safeBottomPad />
       </section>
     </main>
@@ -388,28 +385,13 @@ export default function DartsPokerPlay(props: any) {
     {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 3 || remainingDarts <= throwDarts.length} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
-}
-
-function ChoiceModal({ cards, onChoose }: any) {
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(420px,100%)", background: "linear-gradient(180deg,#1a1013,#08090d)", borderColor: `${GOLD}66`, textAlign: "center", padding: 16 }}><div style={{ color: GOLD, fontSize: 13, fontWeight: 1100 }}>CHOISIS UNE CARTE</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>L’autre carte sera défaussée.</div><div style={{ marginTop: 15, display: "flex", justifyContent: "center", gap: 18 }}>{cards.map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} onClick={() => onChoose(index)} />)}</div></div></div>;
-}
-
-function RoundModal({ state, profilesById, onNext }: any) {
-  const round = state.rounds[state.rounds.length - 1];
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.88)", backdropFilter: "blur(8px)", overflow: "auto", padding: 8 }}><div style={{ ...panel(), width: "min(760px,100%)", margin: "12px auto", background: "linear-gradient(180deg,#171014,#07080b)", borderColor: `${GOLD}66`, padding: 14 }}><div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 11, fontWeight: 1100 }}>SHOWDOWN · MANCHE {round?.round}</div><div style={{ color: "#fff", fontSize: 19, fontWeight: 1200, marginTop: 3 }}>{round?.winnerIds?.length > 1 ? "ÉGALITÉ" : `${playerName(profilesById.get(String(round?.winnerIds?.[0])))} GAGNE`}</div></div><div style={{ marginTop: 12, display: "grid", gap: 7 }}>{round?.rows?.map((row: any) => <div key={row.playerId} style={{ padding: 9, borderRadius: 14, border: `1px solid ${row.win ? GOLD : "rgba(255,255,255,.09)"}`, background: row.win ? `${GOLD}0d` : "rgba(255,255,255,.025)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ color: row.win ? GOLD : "#fff" }}>#{row.rank} · {playerName(profilesById.get(String(row.playerId)))}</strong><strong style={{ color: GREEN }}>{row.evaluation.label}</strong></div><div style={{ marginTop: 7, display: "flex", gap: 4, overflowX: "auto" }}>{row.bestFive.map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} small />)}</div></div>)}</div><button onClick={onNext} style={{ ...action(state.roundIndex >= state.config.rounds ? RED : GREEN), width: "100%", marginTop: 12 }}>{state.roundIndex >= state.config.rounds ? "TERMINER LA PARTIE" : "MANCHE SUIVANTE"}</button></div></div>;
-}
-
-function TimelineModal({ state, profilesById, onClose }: any) {
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(820px,100%)", maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#111217,#050609)", borderColor: `${BLUE}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ color: BLUE, fontWeight: 1100 }}>JOURNAL DES VOLÉES</div><div style={{ color: SOFT, fontSize: 9 }}>{state.visits.length} volée{state.visits.length > 1 ? "s" : ""}</div></div><button onClick={onClose} style={action("#c9ced8")}>FERMER</button></div><div style={{ marginTop: 10, display: "grid", gap: 6 }}>{[...state.visits].reverse().map((visit) => <div key={visit.id} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · M{visit.round} · V{visit.visit}</strong><strong style={{ color: GOLD }}>{visit.labels.join(" / ")}</strong></div><div style={{ marginTop: 4, color: "#cfd5df", fontSize: 8.3 }}>{visit.events.map((event) => event.label).join(" · ") || "Aucun effet"}</div></div>)}</div></div></div>;
-}
-
 
 function QuickLauncher({ label, sub, accent, onClick }: any) {
   return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 56, borderRadius: 13, border: `1px solid ${accent}66`, background: `${accent}14`, color: "#fff", padding: "6px 4px", textAlign: "center" }}><div style={{ color: accent, fontSize: 9, fontWeight: 1100 }}>{label.toUpperCase()}</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div></button>;
 }
 
 function MiniStat({ label, value, color }: any) {
-  return <div style={{ minWidth: 0, padding: 6, borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center" }}><div style={{ color, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 950 }}>{label}</div></div>;
+  return <div style={{ minWidth: 0, padding: 6, borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center" }}><div style={{ color, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ color: SOFT, fontSize: 6.8, fontWeight: 950 }}>{label}</div></div>;
 }
 
 function FloatingPanel({ title, subtitle, onClose, children, accent = GOLD, width = "min(760px,100%)" }: any) {

@@ -42,6 +42,8 @@ import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
 import DartsFirefighterEnd from "./DartsFirefighterEnd";
 import "../styles/darts-firefighter-play.css";
 
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "5.0.1-territories-hotfix";
+
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
 const FIRE = "#ff5a25";
