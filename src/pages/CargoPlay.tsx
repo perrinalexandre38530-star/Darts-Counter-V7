@@ -8,6 +8,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
+import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
@@ -33,7 +34,7 @@ import tickerCargo from "../assets/tickers/ticker_cargo.png";
 import CargoEnd from "./CargoEnd";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
-type CargoOverlay = null | "manifest" | "standings" | "stats" | "timeline";
+type CargoOverlay = null | "truck" | "manifest" | "standings" | "stats" | "timeline";
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -182,81 +183,12 @@ function QuickButton({ icon, label, value, color, onClick, disabled = false }: a
 }
 
 
-function compactDartLabel(dart?: UiDart) {
-  if (!dart) return "—";
-  if (!dart.v) return "MISS";
-  if (dart.v === 25) return dart.mult === 2 ? "DBULL" : "BULL";
-  return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
-}
-
-function CargoCompactKeypad({
-  darts,
-  multiplier,
-  onMultiplier,
-  onNumber,
-  onBull,
-  onCancel,
-  onBackspace,
-  onValidate,
-  centerSlot,
-  noticeSlot,
-  disabled,
-  validateAttention,
-}: any) {
-  const rows = [[0,1,2,3,4,5,6],[7,8,9,10,11,12,13],[14,15,16,17,18,19,20]];
-  const keyStyle: React.CSSProperties = {
-    minWidth: 0,
-    height: "100%",
-    minHeight: 34,
-    borderRadius: 13,
-    border: "1px solid rgba(255,255,255,.09)",
-    background: "linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025))",
-    color: "#fff",
-    fontWeight: 1050,
-    fontSize: "clamp(13px,4.4vw,18px)",
-    cursor: disabled ? "default" : "pointer",
-  };
-  const controlStyle = (color: string, active = false): React.CSSProperties => ({
-    ...keyStyle,
-    minHeight: 38,
-    color,
-    fontSize: "clamp(11px,3.5vw,16px)",
-    borderColor: active ? `${color}cc` : `${color}44`,
-    background: active ? `linear-gradient(180deg,${color}32,${color}16)` : `linear-gradient(180deg,${color}18,rgba(255,255,255,.02))`,
-    boxShadow: active ? `0 0 16px ${color}26` : "none",
-  });
-  return <div style={{ width: "100%", height: "100%", maxHeight: 438, minHeight: 0, margin: "0 auto", padding: 7, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(20,20,23,.94),rgba(8,8,11,.98))", boxShadow: "0 14px 34px rgba(0,0,0,.34)", display: "grid", gridTemplateRows: "34px clamp(40px,6.2dvh,50px) 18px clamp(118px,21dvh,168px) clamp(40px,6.2dvh,50px)", gap: 5, alignContent: "space-between", opacity: disabled ? .5 : 1, pointerEvents: disabled ? "none" : "auto" }}>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-      {[0,1,2].map((index) => <button key={index} type="button" onClick={() => index === darts.length - 1 && onBackspace?.()} style={{ minWidth: 0, borderRadius: 11, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.55)", color: index === 0 ? "#edc4ff" : index === 1 ? "#c9e5ff" : "#ffe4b8", fontSize: 11, fontWeight: 1050, letterSpacing: .35 }}>{compactDartLabel(darts[index])}</button>)}
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr .82fr", gap: 7 }}>
-      <button type="button" onClick={() => onMultiplier(2)} style={controlStyle("#bfeaff", multiplier === 2)}>DOUBLE</button>
-      <button type="button" onClick={() => onMultiplier(3)} style={controlStyle("#ffccff", multiplier === 3)}>TRIPLE</button>
-      <button type="button" onClick={onCancel} style={controlStyle(RED, false)} aria-label="Annuler">↶</button>
-    </div>
-    <div style={{ minWidth: 0, display: "grid", placeItems: "center", overflow: "hidden" }}>{noticeSlot}</div>
-    <div style={{ display: "grid", gridTemplateRows: "repeat(3,minmax(0,1fr))", gap: 5, minHeight: 0 }}>
-      {rows.map((row, rowIndex) => <div key={rowIndex} style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 5, minHeight: 0 }}>{row.map((number) => <button key={number} type="button" onClick={() => onNumber(number)} style={keyStyle}>{number}</button>)}</div>)}
-    </div>
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(78px,.8fr) minmax(82px,.72fr) minmax(104px,1fr)", gap: 7, alignItems: "stretch" }}>
-      <button type="button" onClick={onBull} style={controlStyle(GREEN, false)}>BULL</button>
-      <div style={{ minWidth: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}>{centerSlot}</div>
-      <button type="button" onClick={onValidate} style={{ ...controlStyle(GOLD, validateAttention), color: "#15100a", background: validateAttention ? "linear-gradient(180deg,#fff7c4,#ffbd22)" : "linear-gradient(180deg,#ffc63a,#ffad00)", boxShadow: validateAttention ? "0 0 22px rgba(255,214,92,.55)" : "0 8px 18px rgba(255,170,0,.22)" }}>VALIDER</button>
-    </div>
-  </div>;
-}
-
-function CargoHeroTruck({ state, stats, onOpen }: any) {
-  const parcel = state.config.variant === "parcel_delivery";
-  const capacity = Math.max(1, Number(state.config.truckCapacity || state.config.targetWeight || 1000));
-  const value = parcel ? Number(stats?.parcelsDelivered || 0) : Number(stats?.totalWeight || 0);
-  const target = parcel ? Math.max(30, state.config.rounds * 5) : state.config.variant === "exact_load" ? Number(state.config.targetWeight || capacity) : capacity;
-  const fill = Math.min(100, value / Math.max(1, target) * 100);
-  return <button type="button" onClick={onOpen} style={{ position: "relative", minWidth: 0, height: "100%", overflow: "hidden", borderRadius: 16, border: "1px solid rgba(255,255,255,.09)", background: "radial-gradient(circle at 78% 12%,rgba(255,155,66,.18),transparent 33%),linear-gradient(180deg,#1a2026,#080b0f)", color: "#fff", padding: 0, cursor: "pointer", textAlign: "left" }}>
-    <div style={{ position: "absolute", zIndex: 3, left: 9, top: 8 }}><div style={{ color: parcel ? BLUE : ORANGE, fontSize: 8, fontWeight: 1100, letterSpacing: .7 }}>{parcel ? "TOURNÉE" : "QUAI"}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.48)", fontSize: 7 }}>{Math.round(fill)}% chargé</div></div>
-    <div style={{ position: "absolute", zIndex: 3, right: 9, top: 7, textAlign: "right" }}><div style={{ color: fill > 90 ? RED : GREEN, fontSize: 15, lineHeight: 1, fontWeight: 1100 }}>{value}</div><div style={{ color: SOFT, fontSize: 6.8 }}>{parcel ? "COLIS" : "KG"}</div></div>
-    <div style={{ position: "absolute", inset: "18px -10px -12px -6px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
-  </button>;
+function TruckMiniIcon({ size = 23 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3 6h11v10H3V6Zm11 4h3.6l3.4 3.6V16h-7v-6Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    <circle cx="7" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+    <circle cx="18" cy="17.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+  </svg>;
 }
 
 function Kpi({ label, value, detail, color = ORANGE }: any) {
@@ -380,20 +312,25 @@ export default function CargoPlay(props: any) {
   const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 18, fontWeight: 1200 }}>{activeScore} {scoreUnit}</div><div style={{ color: activeSeries ? GREEN : SOFT, fontSize: 8.5, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
   const keypadNotice = <div style={{ color: botThinking ? GOLD : SOFT, fontSize: 8.5, fontWeight: 900, textAlign: "center", lineHeight: 1.25 }}>{botThinking ? "BOT EN CHARGEMENT…" : notice}</div>;
 
-  return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(255,155,66,.22),#080a0e 43%,#020203 100%)", padding: "18px 16px max(4px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={72} tickerBottomGap={4} left={<BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} />} />
-    <main style={{ flex: 1, minHeight: 0, width: "min(980px,100%)", margin: "0 auto", padding: "4px 5px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "clamp(132px,20dvh,164px) 52px minmax(0,1fr)", gap: 5, overflow: "hidden" }}>
-      <section style={{ minHeight: 0, borderRadius: 18, overflow: "hidden", border: `1px solid ${activeColor}55`, background: "radial-gradient(circle at 18% 0%,rgba(255,155,66,.13),transparent 34%),linear-gradient(180deg,#17191e,#080a0e)", boxShadow: `0 0 22px ${activeColor}14,0 14px 34px rgba(0,0,0,.30)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(132px,.88fr) minmax(170px,1.32fr)", gap: 6, padding: 7 }}>
-          <div style={{ minWidth: 0, minHeight: 0, position: "relative", borderRadius: 16, overflow: "hidden", border: `1px solid ${activeColor}3d`, background: "linear-gradient(180deg,rgba(255,255,255,.045),rgba(0,0,0,.18))", display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gridTemplateRows: "auto 1fr", gap: "5px 7px", alignItems: "center", padding: 8 }}>
-            <div aria-hidden style={{ position: "absolute", right: -22, bottom: -34, opacity: .10, transform: "scale(2.1)", pointerEvents: "none" }}><ProfileAvatar profile={activeProfile} size={64} /></div>
-            <ProfileAvatar profile={activeProfile} size={40} />
-            <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}><div style={{ color: activeColor, fontSize: 11.5, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 7.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · T{Math.min(state.roundIndex, config.rounds)}/{config.rounds}</div></div>
-            <div style={{ gridColumn: "1 / 3", alignSelf: "end", position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr auto", gap: 5, alignItems: "end" }}><div style={{ minWidth: 0 }}><div style={{ color: activeSeries ? GREEN : GOLD, fontSize: 7.6, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "NOUVELLE SÉRIE"}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.48)", fontSize: 6.8, fontWeight: 850 }}>Rang #{activeStanding?.rank || 1}/{state.standings.length}</div></div><div style={{ textAlign: "right" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 26, lineHeight: .82, fontWeight: 1200 }}>{activeScore}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 6.8, fontWeight: 1000 }}>{scoreUnit}</div></div></div>
+  return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(255,155,66,.22),#080a0e 43%,#020203 100%)", padding: "10px 8px max(4px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={72} tickerBottomGap={3} left={<BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} />} />
+    <main style={{ flex: 1, minHeight: 0, width: "min(980px,100%)", margin: "0 auto", padding: "3px 4px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "104px 48px minmax(0,1fr)", gap: 5, overflow: "hidden" }}>
+      <section style={{ minHeight: 0, borderRadius: 18, overflow: "hidden", border: `1px solid ${activeColor}55`, background: "radial-gradient(circle at 12% 0%,rgba(255,155,66,.15),transparent 34%),linear-gradient(180deg,#17191e,#080a0e)", boxShadow: `0 0 22px ${activeColor}14,0 14px 34px rgba(0,0,0,.30)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 30px" }}>
+        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto 44px", gap: 8, alignItems: "center", padding: "7px 8px 5px", position: "relative" }}>
+          <div aria-hidden style={{ position: "absolute", left: 56, bottom: -42, opacity: .075, transform: "scale(2.2)", pointerEvents: "none" }}><ProfileAvatar profile={activeProfile} size={74} /></div>
+          <ProfileAvatar profile={activeProfile} size={46} />
+          <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
+            <div style={{ color: activeColor, fontSize: 13.5, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
+            <div style={{ marginTop: 4, color: SOFT, fontSize: 8.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds} · Rang #{activeStanding?.rank || 1}/{state.standings.length}</div>
+            <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 7, height: 7, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 10px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`} · ${activeContract?.label || activeSeries.labels?.[0] || "Chargement"}` : "Nouvelle série disponible"}</span></div>
           </div>
-          <CargoHeroTruck state={state} stats={activeStats} onOpen={() => setOverlay("manifest")} />
+          <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
+            <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 31, lineHeight: .82, fontWeight: 1200 }}>{activeScore}</div>
+            <div style={{ marginTop: 6, color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{scoreUnit}</div>
+          </div>
+          <button type="button" onClick={() => setOverlay("truck")} aria-label="Ouvrir le camion" title="Camion et chargement" style={{ width: 42, height: 42, borderRadius: 13, border: `1px solid ${ORANGE}66`, background: `linear-gradient(180deg,${ORANGE}20,rgba(255,255,255,.025))`, color: ORANGE, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: `0 0 16px ${ORANGE}18` }}><TruckMiniIcon /></button>
         </div>
-        <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "5px 8px", background: "rgba(0,0,0,.30)", borderTop: "1px solid rgba(255,255,255,.06)" }}><div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}><span style={{ flex: "0 0 auto", width: 7, height: 7, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 10px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: "rgba(255,255,255,.78)", fontSize: 8.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoCurrentObjective(state)}</span></div><span style={{ color: SOFT, fontSize: 7.2, fontWeight: 900 }}>{throwDarts.length}/3</span></div>
+        <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "4px 8px", background: "rgba(0,0,0,.34)", borderTop: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: "rgba(255,255,255,.80)", fontSize: 8.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoCurrentObjective(state)}</span><span style={{ color: SOFT, fontSize: 7.3, fontWeight: 900 }}>{throwDarts.length}/3</span></div>
       </section>
 
       <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
@@ -403,17 +340,45 @@ export default function CargoPlay(props: any) {
         <QuickButton icon="↺" label="JOURNAL" value={`${state.visits.length} volée${state.visits.length > 1 ? "s" : ""}`} color={BLUE} onClick={() => setOverlay("timeline")} disabled={!state.visits.length} />
       </section>
 
-      {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch" }}>
-        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(20,20,23,.94),rgba(8,8,11,.98))", padding: 7, display: "grid", gridTemplateRows: "minmax(0,1fr) 48px", gap: 6 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(310, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .37)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr .8fr 1fr", gap: 7 }}><button type="button" onClick={cancelOrUndo} style={action(RED)}>↶ ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} style={{ ...action(GOLD), color: "#171008", background: "linear-gradient(180deg,#ffc63a,#ffad00)" }}>VALIDER</button></div></div> : <CargoCompactKeypad darts={throwDarts} multiplier={multiplier} onMultiplier={setMultiplier} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0,-1))} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} disabled={botThinking} validateAttention={throwDarts.length === 3} />}
+      {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
+        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(20,20,23,.94),rgba(8,8,11,.98))", padding: 7, display: "grid", gridTemplateRows: "minmax(0,1fr) 48px", gap: 6 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(310, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .37)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr .8fr 1fr", gap: 7 }}><button type="button" onClick={cancelOrUndo} style={action(RED)}>↶ ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} style={{ ...action(GOLD), color: "#171008", background: "linear-gradient(180deg,#ffc63a,#ffad00)" }}>VALIDER</button></div></div> : <div style={{ width: "100%", opacity: botThinking ? .48 : 1, pointerEvents: botThinking ? "none" : "auto" }}><Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => setThrowDarts((prev) => prev.slice(0,-1))} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} safeBottomPad={false} footerGap={8} /></div>}
       </section> : null}
     </main>
 
+    {overlay === "truck" ? <TruckModal state={state} stats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "manifest" ? <ManifestModal state={state} activeStats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "standings" ? <StandingsModal state={state} profilesById={profilesById} onClose={() => setOverlay(null)} /> : null}
     {overlay === "stats" ? <StatsModal state={state} stats={activeStats} profile={activeProfile} onClose={() => setOverlay(null)} /> : null}
     {overlay === "timeline" ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setOverlay(null)} /> : null}
     {showEnd && state.phase === "finished" ? <CargoEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "cargo" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
+}
+
+function TruckModal({ state, stats, activeContract, onClose }: any) {
+  const parcel = state.config.variant === "parcel_delivery";
+  const capacity = Math.max(1, Number(state.config.truckCapacity || state.config.targetWeight || 1000));
+  const value = parcel ? Number(stats?.parcelsDelivered || 0) : Number(stats?.totalWeight || 0);
+  const target = parcel ? Math.max(30, state.config.rounds * 5) : state.config.variant === "exact_load" ? Number(state.config.targetWeight || capacity) : capacity;
+  const fill = Math.min(100, value / Math.max(1, target) * 100);
+  const activeSeries = stats?.currentSeries;
+  return <OverlayShell title={parcel ? "VÉHICULE DE LIVRAISON" : "CAMION & CHARGEMENT"} subtitle={`${Math.round(fill)}% de l’objectif · ${value} ${parcel ? "colis" : "kg"}`} color={ORANGE} onClose={onClose}>
+    <div style={{ height: 190, overflow: "hidden", borderRadius: 18, background: "radial-gradient(circle at 76% 12%,rgba(255,155,66,.18),transparent 34%),linear-gradient(180deg,#1b2026,#090c10)", border: "1px solid rgba(255,255,255,.09)", position: "relative" }}>
+      <div style={{ position: "absolute", inset: "22px 4px -4px" }}><CargoTruckSvg parcel={parcel} pallets={parcel ? stats?.parcelDeliveries : stats?.pallets} fill={fill} /></div>
+      <div style={{ position: "absolute", left: 12, top: 10, color: parcel ? BLUE : ORANGE, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>{parcel ? "TOURNÉE EN COURS" : "QUAI DE CHARGEMENT"}</div>
+      <div style={{ position: "absolute", right: 12, top: 8, textAlign: "right" }}><div style={{ color: fill > 90 ? RED : GREEN, fontSize: 22, fontWeight: 1200 }}>{value}</div><div style={{ color: SOFT, fontSize: 8 }}>{parcel ? "COLIS" : `KG / ${target}`}</div></div>
+    </div>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+      <Kpi label={parcel ? "LIVRAISONS" : "PALETTES"} value={parcel ? Number(stats?.parcelDeliveries || 0) : Number(stats?.pallets || 0)} detail={parcel ? `${Number(stats?.parcelBonuses || 0)} colis bonus` : `${Number(stats?.completedContracts || 0)} contrats terminés`} color={GOLD} />
+      <Kpi label="REMPLISSAGE" value={`${Math.round(fill)}%`} detail={parcel ? `${target} colis de référence` : `Capacité ${target} kg`} color={fill > 90 ? RED : GREEN} />
+      <Kpi label="MEILLEURE CHARGE" value={parcel ? Number(stats?.longestSeries || 0) : `${Number(stats?.bestPalletWeight || 0)} kg`} detail={parcel ? "plus longue série" : "palette record"} color={BLUE} />
+      <Kpi label="PERTES / SURCHARGES" value={parcel ? Number(stats?.failedContracts || 0) : `${Number(stats?.lostWeight || 0)} kg`} detail={parcel ? "livraisons interrompues" : `${Number(stats?.overloads || 0)} surcharge(s)`} color={RED} />
+    </div>
+    <div style={{ ...panel(`${ORANGE}44`), marginTop: 10, padding: 11 }}>
+      <div style={{ color: ORANGE, fontSize: 9, fontWeight: 1100 }}>CHARGEMENT ACTIF</div>
+      <div style={{ marginTop: 5, color: "#fff", fontSize: 15, fontWeight: 1100 }}>{activeContract?.label || (activeSeries ? activeSeries.labels?.[0] : null) || "Aucun chargement en cours"}</div>
+      <div style={{ marginTop: 4, color: SOFT, fontSize: 9 }}>{activeSeries ? `Progression ${activeSeries.count}/${activeContract?.targetCount || (parcel ? 5 : state.config.maxSeries)} · ${activeSeries.rawWeight || 0}${parcel ? " colis en série" : " kg provisoires"}` : "Sélectionne un contrat dans le manifeste puis commence la série correspondante."}</div>
+    </div>
+  </OverlayShell>;
 }
 
 function ManifestModal({ state, activeStats, activeContract, onClose }: any) {
