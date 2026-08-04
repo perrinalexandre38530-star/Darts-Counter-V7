@@ -1,5 +1,5 @@
 // /public/sw.js — minimal PWA SW, cache-safe + Push appels entrants
-const SW_VERSION = "dc-sw-2026-08-01-backup-background-fast-v37";
+const SW_VERSION = "dc-sw-2026-08-04-firefighter-play-territories-v5";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

@@ -125,6 +125,7 @@ export default function DartsPokerPlay(props: any) {
   const [showRound, setShowRound] = React.useState(state.phase === "round_result");
   const [showEnd, setShowEnd] = React.useState(state.phase === "finished");
   const [showTimeline, setShowTimeline] = React.useState(false);
+  const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "table" | "stats" | "objectives" | "dartboard">(null);
   const [botThinking, setBotThinking] = React.useState(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
@@ -303,44 +304,88 @@ export default function DartsPokerPlay(props: any) {
 
   const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 19, fontWeight: 1200 }}>{activeHand?.cards?.length || 0} CARTES</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 9, fontWeight: 1000 }}>{liveEvaluation?.label || `${remainingDarts} fléchette${remainingDarts > 1 ? "s" : ""} restante${remainingDarts > 1 ? "s" : ""}`}</div></div>;
   const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{botThinking ? "BOT EN RÉFLEXION…" : notice}</div>;
+  const marketTargets = rankMarketSuggestions(state, String(activePlayer?.id || ""), 4);
+  const bestTarget = marketTargets[0] || null;
+  const objective = buildPokerObjectiveHint(state, String(activePlayer?.id || ""), liveEvaluation, remainingDarts);
+  const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
 
-  return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", paddingBottom: 10 }}>
+  return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflow: "hidden" }}>
     <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
-    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "6px 8px", boxSizing: "border-box" }}>
-      <section style={{ ...panel(), display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 8, alignItems: "center", marginBottom: 6, borderColor: `${activeColor}55` }}>
-        <ProfileAvatar profile={activeProfile} size={46} />
-        <div style={{ minWidth: 0 }}><div style={{ color: activeColor, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div><div style={{ color: SOFT, fontSize: 8.5 }}>Manche {state.roundIndex}/{config.rounds} · {state.phase === "powers" ? "PHASE POUVOIRS" : `Fléchette ${Number(activeHand?.dartsUsed || 0) + 1}/${config.dartsPerHand}`}</div></div>
-        <div style={{ display: "flex", gap: 5 }}><button onClick={() => setShowTimeline(true)} style={{ ...action(BLUE), minHeight: 34, padding: "0 9px", fontSize: 8 }}>JOURNAL</button><button onClick={cancelOrUndo} style={{ ...action(RED), minHeight: 34, padding: "0 9px", fontSize: 8 }}>UNDO</button></div>
-      </section>
-
-      <section style={{ ...panel(), marginBottom: 6, padding: 7 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}><div><div style={{ color: GOLD, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>MARCHÉ DES 20 CARTES</div><div style={{ color: SOFT, fontSize: 8 }}>Touchez le secteur correspondant pour prendre sa carte.</div></div><div style={{ color: RED, fontSize: 9, fontWeight: 1000 }}>{state.deck.length} cartes dans le sabot</div></div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 4 }}>
-          {Array.from({ length: 20 }, (_, index) => index + 1).map((sector) => <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "4px 1px", borderRadius: 10, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ color: GOLD, fontSize: 10, fontWeight: 1100, marginBottom: 2 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", transform: "scale(.86)", transformOrigin: "top center", height: 52 }}><CardView card={state.market[sector]} small /></div></div>)}
+    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "6px 8px 8px", boxSizing: "border-box", display: "grid", gridTemplateRows: "auto auto auto auto 1fr", gap: 6 }}>
+      <section style={{ ...panel(), display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderColor: `${activeColor}55`, padding: 8 }}>
+        <ProfileAvatar profile={activeProfile} size={44} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: activeColor, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
+          <div style={{ color: SOFT, fontSize: 8.5 }}>Manche {state.roundIndex}/{config.rounds} · {state.phase === "powers" ? "Phase pouvoirs" : `Fléchette ${Math.min(config.dartsPerHand, Number(activeHand?.dartsUsed || 0) + 1)}/${config.dartsPerHand}`}</div>
+        </div>
+        <div style={{ display: "flex", gap: 5 }}>
+          <button onClick={() => setShowTimeline(true)} style={{ ...action(BLUE), minHeight: 34, padding: "0 9px", fontSize: 8 }}>JOURNAL</button>
+          <button onClick={cancelOrUndo} style={{ ...action(RED), minHeight: 34, padding: "0 9px", fontSize: 8 }}>UNDO</button>
         </div>
       </section>
 
-      <section style={{ ...panel(), marginBottom: 6, borderColor: `${activeColor}44` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><div><div style={{ color: activeColor, fontSize: 9, fontWeight: 1100 }}>MAIN ACTUELLE</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 8.5 }}>{liveEvaluation?.label || "Construis une main de 5 cartes"}</div></div><div style={{ display: "flex", gap: 5 }}><span style={{ borderRadius: 999, padding: "4px 7px", color: BLUE, border: `1px solid ${BLUE}55`, fontSize: 8, fontWeight: 1000 }}>↔ {activeHand?.exchangeTokens || 0}</span><span style={{ borderRadius: 999, padding: "4px 7px", color: GOLD, border: `1px solid ${GOLD}55`, fontSize: 8, fontWeight: 1000 }}>✦ {activeHand?.choiceTokens || 0}</span></div></div>
-        <div style={{ marginTop: 7, display: "flex", gap: 5, overflowX: "auto", minHeight: 79 }}>{(activeHand?.cards || []).map((card, index) => <CardView key={`${card.id}-${index}`} card={card} selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => exchangeCard(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} />)}{!(activeHand?.cards || []).length ? <div style={{ color: SOFT, fontSize: 10, padding: 20 }}>Aucune carte obtenue.</div> : null}</div>
-        {state.phase === "powers" ? <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={useChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={validateHand} style={action(GREEN)}>✓ VALIDER LA MAIN</button></div> : null}
+      <section style={{ ...panel(), borderColor: `${activeColor}44`, padding: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "start" }}>
+          <div>
+            <div style={{ color: activeColor, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>BLOC JOUEUR ACTIF</div>
+            <div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 9, marginTop: 3 }}>{liveEvaluation?.label || "Construis la meilleure main de 5 cartes"}</div>
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            <span style={{ borderRadius: 999, padding: "4px 7px", color: BLUE, border: `1px solid ${BLUE}55`, fontSize: 8, fontWeight: 1000 }}>↔ {activeHand?.exchangeTokens || 0}</span>
+            <span style={{ borderRadius: 999, padding: "4px 7px", color: GOLD, border: `1px solid ${GOLD}55`, fontSize: 8, fontWeight: 1000 }}>✦ {activeHand?.choiceTokens || 0}</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 7, display: "flex", gap: 4, minHeight: 62, overflowX: "auto" }}>
+          {Array.from({ length: 5 }, (_, index) => {
+            const card = activeHand?.cards?.[index];
+            return card ? <CardView key={`${card.id}-${index}`} card={card} small selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => exchangeCard(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} /> : <div key={`empty-${index}`} style={{ width: 42, height: 58, borderRadius: 9, border: "1px dashed rgba(255,255,255,.18)", background: "rgba(255,255,255,.02)" }} />;
+          })}
+        </div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+          <MiniStat label="POINTS" value={`${activeStats?.handsWon || 0}`} color={GOLD} />
+          <MiniStat label="PRÉCISION" value={`${activeAccuracy}%`} color={GREEN} />
+          <MiniStat label="CARTES" value={`${activeHand?.cards?.length || 0}/5`} color={BLUE} />
+          <MiniStat label="RESTE" value={`${remainingDarts}`} color={RED} />
+        </div>
+        {state.phase === "powers" ? <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={useChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={validateHand} style={action(GREEN)}>✓ VALIDER</button></div> : null}
       </section>
 
-      <section style={{ ...panel(), marginBottom: 6, padding: 7 }}>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${state.players.length},minmax(0,1fr))`, gap: 5 }}>
-          {state.players.map((player, index) => { const hand = state.handsByPlayer[player.id]; const stats = state.statsByPlayer[player.id]; const profile = profilesById.get(player.id) || player; const active = index === state.activePlayerIndex; const hidden = !config.openHands && !active && state.phase !== "round_result" && state.phase !== "finished"; return <div key={player.id} style={{ minWidth: 0, padding: 6, borderRadius: 12, border: `1px solid ${active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "rgba(255,255,255,.08)"}`, background: active ? `${PLAYER_COLORS[index % PLAYER_COLORS.length]}0c` : "rgba(255,255,255,.02)", textAlign: "center" }}><div style={{ display: "flex", justifyContent: "center" }}><ProfileAvatar profile={profile} size={30} /></div><div style={{ marginTop: 3, fontSize: 8, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}</div><div style={{ color: GOLD, fontSize: 12, fontWeight: 1100 }}>{stats?.handsWon || 0} pt</div><div style={{ color: SOFT, fontSize: 7 }}>{hidden ? "MAIN CACHÉE" : hand?.evaluation?.label || `${hand?.cards?.length || 0} cartes`}</div></div>; })}
+      <section style={{ ...panel(), padding: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+          <div>
+            <div style={{ color: GOLD, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>OBJECTIF & SUGGESTION</div>
+            <div style={{ color: "#fff", fontSize: 10, fontWeight: 900, marginTop: 3 }}>{objective.title}</div>
+            <div style={{ color: SOFT, fontSize: 8.5, marginTop: 3, lineHeight: 1.35 }}>{objective.description}</div>
+          </div>
+          <button onClick={() => setQuickPanel("objectives")} style={{ ...action(GOLD), minHeight: 36, padding: "0 10px", fontSize: 8 }}>DÉTAILS</button>
+        </div>
+        <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+          {marketTargets.map((target, index) => <button key={`${target.sector}-${index}`} type="button" onClick={() => setQuickPanel("market")} style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.10)"}`, background: index === 0 ? `${GOLD}12` : "rgba(255,255,255,.03)", color: "#fff", padding: "6px 5px", textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8, fontWeight: 1100 }}>SECTEUR {target.sector}</div><div style={{ marginTop: 4, display: "flex", justifyContent: "center" }}><CardView card={target.card} small /></div></button>)}
         </div>
       </section>
 
-      {state.phase === "throwing" ? <section style={{ ...panel(), padding: 6 }}>
-        {config.scoreInputMethod === "dartboard" ? <DartboardClickable multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3 || remainingDarts <= throwDarts.length} onHit={(segment, mult) => addDart(segment, mult)} /> : null}
+      <section style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+        <QuickLauncher label="Joueur" accent={activeColor} sub={liveEvaluation?.label || "Main en cours"} onClick={() => setQuickPanel("active")} />
+        <QuickLauncher label="Marché" accent={GOLD} sub={`${state.deck.length} cartes`} onClick={() => setQuickPanel("market")} />
+        <QuickLauncher label="Table" accent={RED} sub={`${state.players.length} joueurs`} onClick={() => setQuickPanel("table")} />
+        <QuickLauncher label="Stats" accent={GREEN} sub={`${state.visits.length} volées`} onClick={() => setQuickPanel("stats")} />
+        <QuickLauncher label={config.scoreInputMethod === "dartboard" ? "Cible" : "Journal"} accent={BLUE} sub={config.scoreInputMethod === "dartboard" ? "viser" : "historique"} onClick={() => config.scoreInputMethod === "dartboard" ? setQuickPanel("dartboard") : setShowTimeline(true)} />
+      </section>
+
+      <section style={{ ...panel(), padding: 6, overflow: "hidden" }}>
         <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3 || throwDarts.length === remainingDarts} safeBottomPad />
-      </section> : null}
+      </section>
     </main>
 
     {state.pendingChoice ? <ChoiceModal cards={state.pendingChoice.cards} onChoose={chooseCard} /> : null}
     {showRound && state.phase === "round_result" ? <RoundModal state={state} profilesById={profilesById} onNext={nextRound} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
+    {quickPanel === "active" ? <ActivePlayerModal state={state} activeProfile={activeProfile} activePlayer={activePlayer} activeHand={activeHand} activeColor={activeColor} activeStats={activeStats} liveEvaluation={liveEvaluation} onClose={() => setQuickPanel(null)} onExchange={exchangeCard} onChoice={useChoice} onValidate={validateHand} /> : null}
+    {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "table" ? <TableModal state={state} profilesById={profilesById} config={config} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "objectives" ? <ObjectivesModal objective={objective} suggestions={marketTargets} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 3 || remainingDarts <= throwDarts.length} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
@@ -356,4 +401,93 @@ function RoundModal({ state, profilesById, onNext }: any) {
 
 function TimelineModal({ state, profilesById, onClose }: any) {
   return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(820px,100%)", maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#111217,#050609)", borderColor: `${BLUE}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ color: BLUE, fontWeight: 1100 }}>JOURNAL DES VOLÉES</div><div style={{ color: SOFT, fontSize: 9 }}>{state.visits.length} volée{state.visits.length > 1 ? "s" : ""}</div></div><button onClick={onClose} style={action("#c9ced8")}>FERMER</button></div><div style={{ marginTop: 10, display: "grid", gap: 6 }}>{[...state.visits].reverse().map((visit) => <div key={visit.id} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · M{visit.round} · V{visit.visit}</strong><strong style={{ color: GOLD }}>{visit.labels.join(" / ")}</strong></div><div style={{ marginTop: 4, color: "#cfd5df", fontSize: 8.3 }}>{visit.events.map((event) => event.label).join(" · ") || "Aucun effet"}</div></div>)}</div></div></div>;
+}
+
+
+function QuickLauncher({ label, sub, accent, onClick }: any) {
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 56, borderRadius: 13, border: `1px solid ${accent}66`, background: `${accent}14`, color: "#fff", padding: "6px 4px", textAlign: "center" }}><div style={{ color: accent, fontSize: 9, fontWeight: 1100 }}>{label.toUpperCase()}</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div></button>;
+}
+
+function MiniStat({ label, value, color }: any) {
+  return <div style={{ minWidth: 0, padding: 6, borderRadius: 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center" }}><div style={{ color, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 950 }}>{label}</div></div>;
+}
+
+function FloatingPanel({ title, subtitle, onClose, children, accent = GOLD, width = "min(760px,100%)" }: any) {
+  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width, maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#13141a,#050609)", borderColor: `${accent}66`, padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><div><div style={{ color: accent, fontSize: 12, fontWeight: 1100 }}>{title}</div>{subtitle ? <div style={{ color: SOFT, fontSize: 9, marginTop: 2 }}>{subtitle}</div> : null}</div><button onClick={onClose} style={{ ...action("#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>FERMER</button></div><div style={{ marginTop: 12 }}>{children}</div></div></div>;
+}
+
+function ActivePlayerModal({ state, activeProfile, activePlayer, activeHand, activeColor, activeStats, liveEvaluation, onClose, onExchange, onChoice, onValidate }: any) {
+  return <FloatingPanel title="Bloc joueur actif" subtitle={playerName(activeProfile)} accent={activeColor} onClose={onClose} width="min(720px,100%)"><div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 10, alignItems: "center" }}><ProfileAvatar profile={activeProfile || activePlayer} size={52} /><div><div style={{ color: activeColor, fontWeight: 1100 }}>{playerName(activeProfile || activePlayer)}</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 10, marginTop: 3 }}>{liveEvaluation?.label || "Aucune combinaison encore verrouillée"}</div></div></div><div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>{(activeHand?.cards || []).map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => onExchange(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} />)}</div><div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}><MiniStat label="Mains gagnées" value={`${activeStats?.handsWon || 0}`} color={GOLD} /><MiniStat label="Précision" value={`${pct(activeStats?.hits || 0, activeStats?.darts || 0)}%`} color={GREEN} /><MiniStat label="Échanges" value={`${activeHand?.exchangeTokens || 0}`} color={BLUE} /><MiniStat label="Choix" value={`${activeHand?.choiceTokens || 0}`} color={RED} /></div>{state.phase === "powers" ? <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={onChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={onValidate} style={action(GREEN)}>✓ VALIDER LA MAIN</button></div> : null}</FloatingPanel>;
+}
+
+function MarketModal({ state, suggestions, onClose }: any) {
+  return <FloatingPanel title="Marché des 20 cartes" subtitle="Touchez un secteur sur la cible ou saisissez-le au clavier" accent={GOLD} onClose={onClose} width="min(860px,100%)"><div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>{Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => { const hot = suggestions.some((item: any) => item.sector === sector); return <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "6px 2px", borderRadius: 12, background: hot ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ color: hot ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", marginTop: 5 }}><CardView card={state.market[sector]} small /></div>{hot ? <div style={{ color: SOFT, fontSize: 7.2, marginTop: 4 }}>conseillé</div> : null}</div>; })}</div></FloatingPanel>;
+}
+
+function TableModal({ state, profilesById, config, onClose }: any) {
+  return <FloatingPanel title="Table & classement live" subtitle={`Manche ${state.roundIndex}/${config.rounds}`} accent={RED} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 7 }}>{state.players.map((player: any, index: number) => { const hand = state.handsByPlayer[player.id]; const stats = state.statsByPlayer[player.id]; const profile = profilesById.get(player.id) || player; const active = index === state.activePlayerIndex; const hidden = !config.openHands && !active && state.phase !== "round_result" && state.phase !== "finished"; return <div key={player.id} style={{ display: "grid", gridTemplateColumns: "42px minmax(0,1fr) repeat(3,minmax(56px,auto))", gap: 7, alignItems: "center", padding: 8, borderRadius: 14, border: `1px solid ${active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "rgba(255,255,255,.09)"}`, background: active ? `${PLAYER_COLORS[index % PLAYER_COLORS.length]}0d` : "rgba(255,255,255,.025)" }}><ProfileAvatar profile={profile} size={38} /><div style={{ minWidth: 0 }}><div style={{ color: active ? PLAYER_COLORS[index % PLAYER_COLORS.length] : "#fff", fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(profile)}</div><div style={{ color: SOFT, fontSize: 8.2 }}>{hidden ? "Main cachée" : hand?.evaluation?.label || `${hand?.cards?.length || 0} cartes`}</div></div><MiniStat label="PTS" value={`${stats?.handsWon || 0}`} color={GOLD} /><MiniStat label="PRÉC." value={`${pct(stats?.hits || 0, stats?.darts || 0)}%`} color={GREEN} /><MiniStat label="CARTES" value={`${hand?.cards?.length || 0}`} color={BLUE} /></div>; })}</div></FloatingPanel>;
+}
+
+function LiveStatsModal({ state, profilesById, onClose }: any) {
+  return <FloatingPanel title="Statistiques live" subtitle="Résumé rapide de la partie en cours" accent={GREEN} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 8 }}>{state.players.map((player: any) => { const stats = state.statsByPlayer[player.id] || {}; const profile = profilesById.get(player.id) || player; return <div key={player.id} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={profile} size={34} /><div style={{ color: "#fff", fontWeight: 1100 }}>{playerName(profile)}</div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label="Darts" value={`${stats.darts || 0}`} color={GOLD} /><MiniStat label="Hits" value={`${stats.hits || 0}`} color={GREEN} /><MiniStat label="Jokers" value={`${stats.jokers || 0}`} color={RED} /><MiniStat label="Visits" value={`${stats.visits || 0}`} color={BLUE} /></div></div>; })}</div></FloatingPanel>;
+}
+
+function ObjectivesModal({ objective, suggestions, onClose }: any) {
+  return <FloatingPanel title="Objectifs & suggestions" subtitle="Aide à la meilleure main" accent={GOLD} onClose={onClose} width="min(720px,100%)"><div style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: "#fff", fontWeight: 1100 }}>{objective.title}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{objective.description}</div></div><div style={{ marginTop: 12, display: "grid", gap: 7 }}>{suggestions.map((item: any, index: number) => <div key={`${item.sector}-${index}`} style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: 10, alignItems: "center", padding: 8, borderRadius: 13, background: index === 0 ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8.5, fontWeight: 1100 }}>SECTEUR {item.sector}</div><div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><CardView card={item.card} small /></div></div><div><div style={{ color: "#fff", fontWeight: 1000 }}>{index === 0 ? "Meilleur choix conseillé" : `Alternative ${index}`}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{item.reason}</div></div></div>)}</div></FloatingPanel>;
+}
+
+function DartboardPanel({ multiplier, onSetMultiplier, disabled, onHit, onClose }: any) {
+  return <FloatingPanel title="Cible interactive" subtitle="Touchez le secteur voulu" accent={BLUE} onClose={onClose} width="min(620px,100%)"><div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 10 }}><button onClick={() => onSetMultiplier(1)} style={{ ...action(multiplier === 1 ? GREEN : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>SIMPLE</button><button onClick={() => onSetMultiplier(2)} style={{ ...action(multiplier === 2 ? RED : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>DOUBLE</button><button onClick={() => onSetMultiplier(3)} style={{ ...action(multiplier === 3 ? GOLD : "#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>TRIPLE</button></div><DartboardClickable multiplier={multiplier} disabled={disabled} onHit={onHit} /></FloatingPanel>;
+}
+
+function rankMarketSuggestions(state: DartsPokerState, playerId: string, count = 4) {
+  const hand = state.handsByPlayer[playerId] || { cards: [] } as any;
+  const suggestions = Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => {
+    const card = state.market[sector] || null;
+    if (!card) return null;
+    const futureCards = [...(hand.cards || []), card];
+    const futureEval = futureCards.length >= 5 ? evaluateBestPokerHand(futureCards) : null;
+    const rankCounts = new Map<number, number>();
+    const suitCounts = new Map<string, number>();
+    futureCards.filter((c: any) => !c?.joker).forEach((c: any) => { rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1); suitCounts.set(String(c.suit), (suitCounts.get(String(c.suit)) || 0) + 1); });
+    const bestRank = Math.max(0, ...Array.from(rankCounts.values()));
+    const bestSuit = Math.max(0, ...Array.from(suitCounts.values()));
+    const score = Number(futureEval?.score || 0) + bestRank * 100000 + bestSuit * 1000 + Number(card.rank || 0);
+    return { sector, card, score, reason: describeSuggestionReason(hand.cards || [], card, futureEval, bestRank, bestSuit) };
+  }).filter(Boolean) as any[];
+  return suggestions.sort((a, b) => b.score - a.score).slice(0, count);
+}
+
+function describeSuggestionReason(currentCards: PokerCard[], card: PokerCard, evaluation: any, bestRankCount: number, bestSuitCount: number) {
+  if (card?.joker) return "Le Joker améliore presque toutes les combinaisons et sécurise un gros showdown.";
+  if (evaluation?.categoryRank >= 6) return `Cette carte peut te rapprocher d'une main premium : ${evaluation.label}.`;
+  if (bestRankCount >= 3) return `Très bon potentiel de brelan/carré avec ${pokerRankLabel(card.rank)}.`;
+  if (bestSuitCount >= 4) return `Fort potentiel de couleur en ${pokerSuitSymbol(card.suit)}.`;
+  const sameRank = currentCards.filter((row: any) => !row?.joker && row?.rank === card.rank).length;
+  if (sameRank >= 1) return `Elle renforce une paire ou un brelan de ${pokerRankLabel(card.rank)}.`;
+  return `Carte utile pour améliorer la valeur moyenne de la main avec ${pokerCardLabel(card)}.`;
+}
+
+function buildPokerObjectiveHint(state: DartsPokerState, playerId: string, liveEvaluation: any, remainingDarts: number) {
+  const hand = state.handsByPlayer[playerId] || ({ cards: [], exchangeTokens: 0, choiceTokens: 0 } as any);
+  if (state.phase === "powers") {
+    if (hand.choiceTokens > 0) return { title: "Utilise tes choix bonus", description: `Tu disposes de ${hand.choiceTokens} choix. Tire 2 cartes et garde la meilleure avant de valider.` };
+    if (hand.exchangeTokens > 0) return { title: "Affiner la main", description: `Tu peux encore échanger ${hand.exchangeTokens} carte${hand.exchangeTokens > 1 ? "s" : ""}. Remplace les cartes faibles avant validation.` };
+    return { title: "Valide le showdown", description: "La main est prête. Vérifie rapidement tes cartes puis valide pour passer au joueur suivant." };
+  }
+  const cards = hand.cards || [];
+  const nonJokers = cards.filter((card: any) => !card?.joker);
+  const rankCounts = new Map<number, number>();
+  const suitCounts = new Map<string, number>();
+  nonJokers.forEach((card: any) => { rankCounts.set(card.rank, (rankCounts.get(card.rank) || 0) + 1); suitCounts.set(String(card.suit), (suitCounts.get(String(card.suit)) || 0) + 1); });
+  let bestRank = 0; let bestRankCount = 0;
+  Array.from(rankCounts.entries()).forEach(([rank, count]) => { if (count > bestRankCount) { bestRank = rank; bestRankCount = count; } });
+  let bestSuit = ""; let bestSuitCount = 0;
+  Array.from(suitCounts.entries()).forEach(([suit, count]) => { if (count > bestSuitCount) { bestSuit = suit; bestSuitCount = count; } });
+  if (!cards.length) return { title: "Démarre par une base solide", description: "Cherche une carte haute ou un premier doublon. Les As, Rois et cartes assorties sont de très bons départs." };
+  if (liveEvaluation?.category === "pair" || bestRankCount >= 2) return { title: `Transformer ${pokerRankLabel(bestRank)} en brelan`, description: `Tu as déjà une paire. Il reste ${remainingDarts} fléchette${remainingDarts > 1 ? "s" : ""} pour viser un 3e ${pokerRankLabel(bestRank)} ou construire un full.` };
+  if (liveEvaluation?.category === "two_pair") return { title: "Chercher le full", description: "Ta double paire est déjà bonne. Priorité : compléter un full house plutôt que prendre une simple carte haute." };
+  if (bestSuitCount >= 3) return { title: `Pousser la couleur ${pokerSuitSymbol(bestSuit as any)}`, description: `Tu as ${bestSuitCount} cartes de la même couleur. Vise les secteurs qui exposent encore cette couleur pour préparer une flush.` };
+  if (liveEvaluation?.category === "straight") return { title: "Conserver la suite et monter en gamme", description: "Ta suite est déjà intéressante. Privilégie désormais la sécurité ou un potentiel de flush si le marché l'autorise." };
+  return { title: "Construire une paire forte", description: `Tu as encore ${remainingDarts} fléchette${remainingDarts > 1 ? "s" : ""}. Cherche un doublon ou des cartes assorties pour enclencher une vraie combinaison.` };
 }

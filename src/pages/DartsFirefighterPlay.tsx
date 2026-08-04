@@ -1,14 +1,13 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FIREFIGHTER — écran PLAY complet
-// Carte Territories, bots, undo, fin de partie, historique et stats.
+// DARTS FIREFIGHTER — PLAY / TERRITORIES LAYOUT
+// Interface compacte, guidée, carte intégrée, keypad immédiatement accessible.
 // =============================================================
 
 import React from "react";
 import BackDot from "../components/BackDot";
-import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
@@ -41,6 +40,7 @@ import { pushDartsFirefighterStats } from "../lib/dartsFirefighterStats";
 import { History } from "../lib/history";
 import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
 import DartsFirefighterEnd from "./DartsFirefighterEnd";
+import "../styles/darts-firefighter-play.css";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -124,6 +124,99 @@ function buildBotVisit(state: DartsFirefighterState, level: string): { darts: Ui
   return { darts, selectedId: target?.id || null };
 }
 
+
+type TacticalSuggestion = {
+  territory: FireTerritory;
+  shot: string;
+  power: number;
+  action: string;
+  reason: string;
+  color: string;
+  kind: "direct" | "bull" | "canadair";
+};
+
+type TacticalPlan = {
+  primary: TacticalSuggestion | null;
+  alternatives: TacticalSuggestion[];
+  clusterCount: number;
+};
+
+function directShotForTerritory(territory: FireTerritory, forecasted: boolean): TacticalSuggestion {
+  const requiredPower = territory.fireLevel > 0 || territory.smoke
+    ? Math.min(3, Math.max(1, Number(territory.fireLevel || 0) + (territory.smoke ? 1 : 0)))
+    : Math.max(1, 3 - Number(territory.protection || 0));
+  const bed = requiredPower >= 3 ? "T" : requiredPower === 2 ? "D" : "S";
+  const shot = `${bed}${territory.target}`;
+  let action = "Créer un pare-feu";
+  if (territory.smoke && territory.fireLevel > 0) action = "Dissiper la fumée et réduire le feu";
+  else if (territory.smoke) action = "Dissiper la fumée";
+  else if (territory.fireLevel === 3) action = "Frapper le foyer principal";
+  else if (territory.fireLevel === 2) action = "Éteindre le foyer actif";
+  else if (territory.fireLevel === 1) action = "Éteindre le départ de feu";
+  else if (forecasted) action = "Bloquer la prochaine propagation";
+  const reasonBits = [
+    territory.critical ? "ZONE CRITIQUE" : "",
+    territory.fireLevel ? `FEU N${territory.fireLevel}` : "",
+    territory.smoke ? "FUMÉE" : "",
+    forecasted ? "MENACÉE" : "",
+  ].filter(Boolean);
+  return {
+    territory,
+    shot,
+    power: requiredPower,
+    action,
+    reason: reasonBits.join(" · ") || `PROTECTION ${territory.protection}/3`,
+    color: fireTerritoryColor(fireStatus(territory)),
+    kind: "direct",
+  };
+}
+
+function buildTacticalPlan(state: DartsFirefighterState, config: DartsFirefighterConfigPayload): TacticalPlan {
+  const playable = state.territories.filter((territory) => territory.playable && !territory.destroyed);
+  if (!playable.length) return { primary: null, alternatives: [], clusterCount: 0 };
+  const forecast = new Set(state.forecastTerritoryIds || []);
+  const objectiveProtect = config.objective === "protect_critical";
+  const ranked = [...playable].sort((a, b) => {
+    const score = (territory: FireTerritory) =>
+      Number(territory.fireLevel || 0) * 130
+      + Number(territory.smoke) * 54
+      + Number(territory.critical) * (objectiveProtect ? 155 : 90)
+      + Number(forecast.has(territory.id)) * 78
+      + Math.max(0, 3 - Number(territory.protection || 0)) * (territory.critical ? 13 : 5)
+      - Number(territory.protection || 0) * 2;
+    return score(b) - score(a) || Number(b.critical) - Number(a.critical) || Number(b.fireLevel) - Number(a.fireLevel);
+  });
+  const danger = ranked.find((territory) => territory.fireLevel > 0 || territory.smoke)
+    || ranked.find((territory) => forecast.has(territory.id))
+    || ranked.find((territory) => territory.critical)
+    || ranked[0];
+  const incidentIds = new Set(playable.filter((territory) => territory.fireLevel > 0 || territory.smoke).map((territory) => territory.id));
+  const clusterCount = danger
+    ? [danger.id, ...(danger.neighbors || [])].filter((id) => incidentIds.has(id)).length
+    : 0;
+  const gaugeCost = Math.max(0, Number(config.canadairGaugeCost ?? 35));
+  const canadairReady = config.bullAirSupport !== false
+    && (!config.canadairRequiresGauge || Number(state.brigadeGauge || 0) >= gaugeCost);
+  const directPrimary = directShotForTerritory(danger, forecast.has(danger.id));
+  const primary: TacticalSuggestion = canadairReady && clusterCount >= 3
+    ? {
+        territory: danger,
+        shot: "DBULL",
+        power: 3,
+        action: `Déclencher le Canadair sur ${danger.name}`,
+        reason: `${clusterCount} foyers groupés · jauge ${Math.round(state.brigadeGauge)}%`,
+        color: WATER,
+        kind: "canadair",
+      }
+    : directPrimary;
+  const alternatives = ranked
+    .filter((territory) => territory.id !== danger.id && (territory.fireLevel > 0 || territory.smoke || forecast.has(territory.id) || territory.critical))
+    .slice(0, 2)
+    .map((territory) => directShotForTerritory(territory, forecast.has(territory.id)));
+  if (primary.kind === "canadair") alternatives.unshift(directPrimary);
+  return { primary, alternatives: alternatives.slice(0, 3), clusterCount };
+}
+
 export default function DartsFirefighterPlay(props: any) {
   const { theme } = useTheme();
   const config = React.useMemo(() => normalizeConfig(props), []);
@@ -165,11 +258,22 @@ export default function DartsFirefighterPlay(props: any) {
   const [undoStack, setUndoStack] = React.useState<DartsFirefighterState[]>([]);
   const [notice, setNotice] = React.useState("Sélectionne une zone pour préparer un Bull ou un Canadair.");
   const [showEnd, setShowEnd] = React.useState(false);
+  const [showMap, setShowMap] = React.useState(false);
   const [showTargets, setShowTargets] = React.useState(false);
   const [showTimeline, setShowTimeline] = React.useState(false);
   const [botThinking, setBotThinking] = React.useState(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-firefighter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
+
+  React.useEffect(() => {
+    try {
+      document.documentElement.dataset.dartsFirefighterPlay = DARTS_FIREFIGHTER_PLAY_UI_VERSION;
+      console.info(`[DARTS FIREFIGHTER] PLAY UI ${DARTS_FIREFIGHTER_PLAY_UI_VERSION}`);
+    } catch {}
+    return () => {
+      try { delete document.documentElement.dataset.dartsFirefighterPlay; } catch {}
+    };
+  }, []);
 
   const activePlayer = getActivePlayer(state);
   const activeProfile = profilesById.get(String(activePlayer?.id)) || activePlayer;
@@ -368,73 +472,208 @@ export default function DartsFirefighterPlay(props: any) {
     try { onFinish?.(record, { navigate: false }); } catch {}
   }, [state.finished]);
 
-  const keypadNotice = <div style={{ display: "grid", gap: 3 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, color: soft, fontSize: 9, fontWeight: 950 }}><span>{config.bullTargetMode === "priority" ? "BULL → PRIORITÉ AUTO" : selectedTerritory ? `BULL → ${selectedTerritory.name}` : "BULL → PRIORITÉ AUTO"}</span><span style={{ color: FIRE }}>{projectedLabels.join(" · ") || `${config.dartsPerTurn || 3} FLÉCHETTE${Number(config.dartsPerTurn || 3) > 1 ? "S" : ""}`}</span></div>
-    <div style={{ textAlign: "center", color: notice.includes("DÉTRUIT") || notice.includes("Propagation") ? RED : WATER, fontSize: 9.4, fontWeight: 1000 }}>{notice}</div>
-  </div>;
-  const centerScore = <div style={{ minWidth: 62, height: 46, padding: "0 8px", borderRadius: 13, display: "grid", placeItems: "center", background: "linear-gradient(180deg,#42dcff,#0a91d4)", border: "1px solid rgba(160,235,255,.8)", color: "#02131c", fontSize: 18, lineHeight: 1, fontWeight: 1100, boxShadow: "0 0 20px rgba(37,201,255,.34)" }}>💧{throwDarts.reduce((sum, dart) => sum + (dart.v === 0 ? 0 : dart.v === 25 ? (dart.mult === 2 ? 3 : 2) : dart.mult), 0)}</div>;
+  const tacticalPlan = React.useMemo(() => buildTacticalPlan(state, config), [state, config]);
+  const primarySuggestion = tacticalPlan.primary;
+  const focusTerritory = primarySuggestion?.territory || selectedTerritory || null;
+  const mapLabel = String((rawMap as any)?.name || (rawMap as any)?.label || config.mapId || "Carte");
 
-  return <div style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}25 0,${theme?.bg || "#080a11"} 46%,#020305 100%)`, paddingBottom: 8, overflowX: "hidden" }}>
-    <PageHeader tickerSrc={tickerFirefighter} tickerAlt="DARTS FIREFIGHTER" left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>} />
+  React.useEffect(() => {
+    const recommendedId = tacticalPlan.primary?.territory?.id;
+    if (!recommendedId || config.bullTargetMode === "priority") return;
+    const current = state.territories.find((territory) => territory.id === state.selectedTerritoryId);
+    const currentStillUseful = Boolean(current && !current.destroyed && (current.fireLevel > 0 || current.smoke || current.critical || state.forecastTerritoryIds.includes(current.id)));
+    if (!currentStillUseful && state.selectedTerritoryId !== recommendedId) {
+      setState((prev) => selectFireTerritory(prev, recommendedId));
+    }
+  }, [state.history.length, state.roundIndex, tacticalPlan.primary?.territory?.id]);
 
-    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "6px 8px", boxSizing: "border-box" }}>
-      <section style={{ ...panelStyle(), padding: 0, overflow: "hidden", marginBottom: 6, borderColor: `${activeColor}66` }}>
-        <div style={{ position: "relative", minHeight: 112, display: "grid", gridTemplateColumns: "minmax(0,1fr) 142px", gap: 4, padding: "7px 9px", background: "linear-gradient(110deg,rgba(14,13,13,.97),rgba(11,22,29,.96))" }}>
-          <div style={{ position: "absolute", left: -12, top: 5, opacity: .30, filter: `drop-shadow(0 0 12px ${activeColor}55)` }}><ProfileAvatar profile={activeProfile as any} size={95} showStars={false} /></div>
-          <div style={{ position: "relative", zIndex: 2, minWidth: 0, display: "grid", placeItems: "center", textAlign: "center" }}>
-            {botThinking ? <div style={{ color: WATER, fontSize: 8.5, fontWeight: 1000, letterSpacing: 1 }}>BOT EN INTERVENTION</div> : null}
-            <div style={{ color: activeColor, fontSize: 13, fontWeight: 1100, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
-            <div style={{ color: "#fff", fontSize: 43, lineHeight: .96, fontWeight: 1100, textShadow: `0 0 24px ${FIRE}44` }}>{state.score}</div>
-            <div style={{ color: GOLD, fontSize: 8.5, fontWeight: 1000, letterSpacing: .65 }}>SCORE BRIGADE · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
-            <div style={{ marginTop: 3, color: soft, fontSize: 8.2, fontWeight: 950 }}>{currentStats?.fireReduced || 0} niveaux supprimés · {currentStats?.firesExtinguished || 0} feux éteints · {pct(currentStats?.hits || 0, currentStats?.darts || 0)}%</div>
+  const currentWater = throwDarts.reduce((sum, dart) => sum + (dart.v === 0 ? 0 : dart.v === 25 ? (dart.mult === 2 ? 3 : 2) : dart.mult), 0);
+  const centerScore = <div style={{ minWidth: 64, height: 46, padding: "0 8px", borderRadius: 13, display: "grid", placeItems: "center", background: "linear-gradient(180deg,#55e5ff,#0b9edc)", border: "1px solid rgba(178,242,255,.9)", color: "#02131c", fontSize: 18, lineHeight: 1, fontWeight: 1100, boxShadow: "0 0 20px rgba(37,201,255,.34)" }}>💧{currentWater}</div>;
+
+  return <div className="dff-play" data-firefighter-play-version={DARTS_FIREFIGHTER_PLAY_UI_VERSION} style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}22 0,${theme?.bg || "#080a11"} 42%,#020305 100%)`, paddingBottom: "calc(8px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
+    <PageHeader tickerSrc={tickerFirefighter} tickerAlt="DARTS FIREFIGHTER" tickerHeight={92} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>} />
+
+    {state.players.length > 1 ? <FirefighterTurnCarousel players={state.players} activePlayerId={activePlayer?.id} profilesById={profilesById} playerStats={state.playerStats} /> : null}
+
+    <main className="dff-play__main" style={{ width: "min(760px,100%)", margin: "0 auto", padding: "5px 8px", boxSizing: "border-box" }}>
+      <section className="dff-play__player" style={{ ...panelStyle(), padding: 0, overflow: "hidden", marginBottom: 6, borderColor: `${activeColor}66` }}>
+        <div style={{ position: "relative", minHeight: 104, display: "grid", gridTemplateColumns: "minmax(0,1fr) 132px", gap: 5, padding: "7px 8px", background: "linear-gradient(110deg,rgba(14,13,13,.98),rgba(8,19,27,.97))" }}>
+          <div style={{ position: "absolute", left: -14, top: 2, opacity: .31, filter: `drop-shadow(0 0 12px ${activeColor}55)` }}><ProfileAvatar profile={activeProfile as any} size={98} showStars={false} /></div>
+          <div style={{ position: "relative", zIndex: 2, minWidth: 0, paddingLeft: 54, display: "grid", alignContent: "center", justifyItems: "center", textAlign: "center" }}>
+            <div style={{ color: botThinking ? WATER : activeColor, fontSize: 8, fontWeight: 1000, letterSpacing: .9 }}>{botThinking ? "BOT EN INTERVENTION" : "POMPIER ACTIF"}</div>
+            <div style={{ color: activeColor, fontSize: 12.5, fontWeight: 1100, textTransform: "uppercase", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{playerName(activeProfile)}</div>
+            <div style={{ color: "#fff", fontSize: 36, lineHeight: .95, fontWeight: 1100, textShadow: `0 0 22px ${FIRE}44` }}>{state.score}</div>
+            <div style={{ color: GOLD, fontSize: 7.5, fontWeight: 1000, letterSpacing: .45 }}>SCORE BRIGADE · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
           </div>
-          <div style={{ position: "relative", zIndex: 2, borderRadius: 16, display: "grid", alignContent: "center", textAlign: "center", background: "rgba(0,0,0,.32)", border: `1px solid ${FIRE}55` }}>
-            <div style={{ color: soft, fontSize: 8.2, fontWeight: 950 }}>ROUND</div><div style={{ color: FIRE, fontSize: 32, lineHeight: .95, fontWeight: 1100 }}>{Math.min(config.maxRounds, state.roundIndex + 1)}<span style={{ fontSize: 13, opacity: .55 }}>/{config.maxRounds}</span></div>
-            <div style={{ margin: "7px auto 0", width: "82%", height: 7, borderRadius: 999, background: "rgba(255,255,255,.09)", overflow: "hidden" }}><div style={{ width: `${state.brigadeGauge}%`, height: "100%", background: `linear-gradient(90deg,${WATER},#d9fbff)`, boxShadow: `0 0 10px ${WATER}` }} /></div>
-            <div style={{ color: WATER, fontSize: 8, fontWeight: 950, marginTop: 3 }}>PRESSION {Math.round(state.brigadeGauge)}%</div>
-            <div style={{ color: GOLD, fontSize: 7.8, fontWeight: 950, marginTop: 3 }}>{config.windEnabled ? state.windLabel : "VENT COUPÉ"}</div>
+          <div style={{ position: "relative", zIndex: 2, borderRadius: 15, padding: 7, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, background: "rgba(0,0,0,.32)", border: `1px solid ${FIRE}55` }}>
+            <HeaderMiniStat label="ROUND" value={`${Math.min(config.maxRounds, state.roundIndex + 1)}/${config.maxRounds}`} color={FIRE} />
+            <HeaderMiniStat label="INCIDENTS" value={incidents} color="#ff9c32" />
+            <HeaderMiniStat label="PRESSION" value={`${Math.round(state.brigadeGauge)}%`} color={WATER} />
+            <HeaderMiniStat label="DÉTRUITS" value={state.totalDestroyed} color={RED} />
+            <div style={{ gridColumn: "1 / -1", color: GOLD, fontSize: 7, fontWeight: 950, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{config.windEnabled ? state.windLabel : "VENT COUPÉ"} · CHARGE {fireLoad.toFixed(1)}</div>
           </div>
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginBottom: 6 }}>
-        <MiniKpi label="INCIDENTS" value={incidents} color={FIRE} icon="🔥" />
-        <MiniKpi label="CHARGE FEU" value={fireLoad.toFixed(1)} color="#ff9c32" icon="♨" />
-        <MiniKpi label="PROTÉGÉS" value={protections} color={WATER} icon="💧" />
-        <MiniKpi label="BLOQUÉS" value={state.propagationBlocked} color={GREEN} icon="🛡" />
-        <MiniKpi label="DÉTRUITS" value={state.totalDestroyed} color={RED} icon="⬛" />
+      <section className="dff-play__kpis" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginBottom: 6 }}>
+        <FirefighterKpiCard
+          title="OBJECTIF"
+          color={primarySuggestion?.color || WATER}
+          value={primarySuggestion?.shot || "—"}
+          subtitle={primarySuggestion?.action || "Analyse en cours"}
+          onClick={() => primarySuggestion?.territory && selectTerritory(primarySuggestion.territory.id)}
+          icon={primarySuggestion?.kind === "canadair" ? "✈️" : "🎯"}
+          emphasized
+        />
+        <FirefighterKpiCard
+          title="TERRITOIRE"
+          color={focusTerritory ? fireTerritoryColor(fireStatus(focusTerritory)) : activeColor}
+          value={focusTerritory?.name || "—"}
+          subtitle={focusTerritory ? `${focusTerritory.target} · ${statusLabel(focusTerritory)}${focusTerritory.critical ? " · CRITIQUE" : ""}` : "Aucune zone active"}
+          onClick={() => setShowMap(true)}
+          icon={focusTerritory ? statusIcon(focusTerritory) : "🗺️"}
+        />
+        <FirefighterMapCard
+          country={toCountry(config.mapId)}
+          map={fireMap}
+          ownerColors={FIRE_STATUS_OWNER_COLORS}
+          selectedTerritoryId={focusTerritory?.id || state.selectedTerritoryId || undefined}
+          mapLabel={mapLabel}
+          onClick={() => setShowMap(true)}
+        />
       </section>
 
-      <section style={{ ...panelStyle(), marginBottom: 6, padding: 7, borderColor: `${FIRE}44`, position: "relative" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
-          <div><div style={{ color: FIRE, fontSize: 9, fontWeight: 1100, letterSpacing: .8 }}>CARTE D’INTERVENTION</div><div style={{ color: soft, fontSize: 8.2 }}>{config.bullTargetMode === "priority" ? "Bull et Canadair ciblent automatiquement le danger prioritaire." : "Touchez une zone pour la réserver au Bull / Canadair."}</div></div>
-          <div style={{ display: "flex", gap: 5 }}><button onClick={() => setShowTargets(true)} style={{ ...actionButton(GOLD), minHeight: 34, padding: "0 10px", fontSize: 9 }}>CIBLES 1–20</button><button onClick={() => setShowTimeline(true)} style={{ ...actionButton(WATER), minHeight: 34, padding: "0 10px", fontSize: 9 }}>JOURNAL</button></div>
-        </div>
-        <div style={{ height: "min(47vh,410px)", minHeight: 270, borderRadius: 15, overflow: "hidden", background: "radial-gradient(circle,rgba(255,92,35,.13),rgba(0,0,0,.38))", border: "1px solid rgba(255,255,255,.08)" }}>
-          <TerritoriesMapView country={toCountry(config.mapId)} map={fireMap} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !botThinking} onSelectTerritory={selectTerritory} isSelectableTerritoryId={(id) => Boolean(state.territories.find((t) => t.id === id && t.playable && !t.destroyed))} style={{ width: "100%", height: "100%" }} />
-        </div>
-        {config.forecastEnabled && forecastTerritories.length ? <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5, overflowX: "auto", paddingBottom: 1 }}>
-          <span style={{ flex: "0 0 auto", color: GOLD, fontSize: 8, fontWeight: 1000 }}>⚠ MENACES</span>
-          {forecastTerritories.map((territory: any) => <button key={territory.id} type="button" onClick={() => selectTerritory(territory.id)} style={{ flex: "0 0 auto", minHeight: 29, padding: "0 9px", borderRadius: 999, border: `1px solid ${FIRE}66`, background: `${FIRE}13`, color: "#ffd4c2", fontSize: 8.2, fontWeight: 950 }}>{territory.target} · {territory.name}</button>)}
-        </div> : null}
-        {selectedTerritory ? <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "44px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderRadius: 13, padding: 8, background: `${fireTerritoryColor(fireStatus(selectedTerritory))}13`, border: `1px solid ${fireTerritoryColor(fireStatus(selectedTerritory))}77` }}>
-          <div style={{ width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(0,0,0,.34)", color: GOLD, fontSize: 20, fontWeight: 1100 }}>{selectedTerritory.target}</div>
-          <div style={{ minWidth: 0 }}><div style={{ color: selectedTerritory.critical ? GOLD : "#fff", fontSize: 11.5, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedTerritory.critical ? "⚠ " : ""}{selectedTerritory.name}</div><div style={{ color: soft, fontSize: 8.5 }}>{statusIcon(selectedTerritory)} {statusLabel(selectedTerritory)} · voisins {selectedTerritory.neighbors.length}</div></div>
-          <div style={{ color: WATER, fontSize: 9, fontWeight: 1000, textAlign: "right" }}>{config.bullTargetMode === "priority" ? <>CIBLE<br />OBSERVÉE</> : <>BULL<br />PRIORITAIRE</>}</div>
-        </div> : null}
-      </section>
+      <TacticalGuidance
+        primary={primarySuggestion}
+        alternatives={tacticalPlan.alternatives}
+        notice={notice}
+        selectedTerritory={selectedTerritory}
+        bullTargetMode={config.bullTargetMode || "selected"}
+        dartsPerTurn={Number(config.dartsPerTurn || 3)}
+        onSelect={selectTerritory}
+        onOpenTargets={() => setShowTargets(true)}
+        onOpenMap={() => setShowMap(true)}
+        onOpenTimeline={() => setShowTimeline(true)}
+      />
 
-      {latestVisit?.events?.length ? <section style={{ ...panelStyle(), marginBottom: 6, padding: 7, borderColor: `${latestVisit.events.some((event) => event.type === "destroyed") ? RED : WATER}44` }}><div style={{ display: "flex", gap: 6, overflowX: "auto" }}>{latestVisit.events.slice(-6).map((event: any, index: number) => <div key={`${event.type}-${index}`} style={{ flex: "0 0 auto", maxWidth: 250, padding: "6px 9px", borderRadius: 999, background: event.score < 0 ? `${RED}12` : `${WATER}10`, border: `1px solid ${event.score < 0 ? RED : WATER}44`, color: event.score < 0 ? "#ffb2ba" : "#dffaff", fontSize: 8.8, fontWeight: 900 }}>{event.type === "extinguished" ? "✅" : event.type === "destroyed" ? "⬛" : event.type === "canadair" ? "✈️" : event.type === "spread_blocked" ? "🛡" : event.type === "spread" ? "🔥" : "💧"} {event.label}</div>)}</div></section> : null}
-
-      <section style={{ ...panelStyle(), padding: 6 }}>
-        {config.scoreInputMethod === "dartboard" ? <DartboardClickable multiplier={multiplier} disabled={botThinking || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)} onHit={(segment, mult) => addDart(segment, mult)} /> : null}
-        <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === Number(config.dartsPerTurn || 3)} safeBottomPad />
+      <section className="dff-play__input" style={{ ...panelStyle(), marginTop: 6, padding: 4, borderColor: `${WATER}33`, background: "linear-gradient(180deg,rgba(8,20,28,.9),rgba(3,5,9,.98))" }}>
+        <ScoreInputHub
+          currentThrow={throwDarts as any}
+          multiplier={multiplier}
+          onSimple={() => setMultiplier(1)}
+          onDouble={() => setMultiplier(2)}
+          onTriple={() => setMultiplier(3)}
+          onCancel={cancelOrUndo}
+          onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))}
+          onNumber={(number) => addDart(number)}
+          onBull={() => addDart(25)}
+          onValidate={() => commitVisit()}
+          onDirectDart={(dart: any) => addDart(Number(dart?.v || 0), Number(dart?.mult || 1) as 1 | 2 | 3)}
+          onSetVisitDarts={(darts: any[]) => setThrowDarts((Array.isArray(darts) ? darts : []).slice(0, Number(config.dartsPerTurn || 3)) as UiDart[])}
+          preferredMethod={config.scoreInputMethod === "dartboard" ? "dartboard" : "keypad"}
+          enablePresets={false}
+          centerSlot={centerScore}
+          disabled={botThinking || state.finished}
+          switcherMode="hidden"
+          hideSwitcher
+          showPlaceholders={false}
+          lockContentHeight
+          fitToParent
+        />
       </section>
     </main>
 
+    {showMap ? <FirefighterMapModal state={state} country={toCountry(config.mapId)} map={fireMap} mapLabel={mapLabel} primary={primarySuggestion} onClose={() => setShowMap(false)} onSelect={selectTerritory} /> : null}
     {showTargets ? <TargetsModal state={state} onClose={() => setShowTargets(false)} onSelect={(id) => { selectTerritory(id); setShowTargets(false); }} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showEnd && state.finished ? <DartsFirefighterEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_firefighter" }); }} onHistory={() => { const record = buildHistoryRecord("finished"); try { pushDartsFirefighterStats(record); } catch {} try { onFinish?.(record, { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+  </div>;
+}
+
+function FirefighterTurnCarousel({ players, activePlayerId, profilesById, playerStats }: any) {
+  return <div className="dff-play__turns" aria-label="Ordre de passage">
+    {(players || []).map((player: any, index: number) => {
+      const active = String(player?.id) === String(activePlayerId);
+      const profile = profilesById?.get?.(String(player?.id)) || player;
+      const color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+      const stats = playerStats?.[player?.id] || {};
+      return <div key={String(player?.id || index)} className={`dff-play__turn ${active ? "is-active" : ""}`} style={{ borderColor: active ? color : "rgba(255,255,255,.10)", boxShadow: active ? `0 0 14px ${color}45` : "none" }}>
+        <ProfileAvatar profile={profile} size={28} ringColor={color} showStars={false} noFrame />
+        <div style={{ minWidth: 0, flex: 1 }}><div style={{ color: active ? color : "#c4cad4", fontSize: 7.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{playerName(profile)}</div><div style={{ color: "#7f8798", fontSize: 6.3, fontWeight: 900 }}>{Number(stats.fireReduced || 0)} eau · {Number(stats.firesExtinguished || 0)} feux</div></div>
+        {active ? <span style={{ color, fontSize: 8, fontWeight: 1100 }}>▶</span> : null}
+      </div>;
+    })}
+  </div>;
+}
+
+function HeaderMiniStat({ label, value, color }: any) {
+  return <div style={{ minWidth: 0, borderRadius: 10, padding: "5px 3px", textAlign: "center", background: `${color}0d`, border: `1px solid ${color}35` }}><div style={{ color: "#8f96a8", fontSize: 6.2, fontWeight: 1000, letterSpacing: .35 }}>{label}</div><div style={{ color, fontSize: 13.5, lineHeight: 1.05, fontWeight: 1100 }}>{value}</div></div>;
+}
+
+function FirefighterKpiCard({ title, color, value, subtitle, onClick, icon, emphasized }: any) {
+  return <button className="dff-play__kpi" type="button" onClick={onClick} style={{ position: "relative", minWidth: 0, height: 88, padding: "7px 6px", borderRadius: 15, overflow: "hidden", cursor: onClick ? "pointer" : "default", color: "#fff", background: `radial-gradient(circle at 50% 120%,${color}22,rgba(3,5,10,.96) 64%)`, border: `1px solid ${color}60`, boxShadow: emphasized ? `0 0 17px ${color}20` : "0 8px 20px rgba(0,0,0,.25)" }}>
+    <div aria-hidden style={{ position: "absolute", right: -4, bottom: -14, fontSize: 49, opacity: .10, filter: `drop-shadow(0 0 8px ${color})` }}>{icon}</div>
+    <div style={{ position: "relative", color, fontSize: 7.4, fontWeight: 1100, letterSpacing: .65 }}>{title}</div>
+    <div style={{ position: "relative", marginTop: 5, color: emphasized ? GOLD : "#fff", fontSize: emphasized ? 23 : 12.2, lineHeight: 1.05, fontWeight: 1100, textShadow: `0 0 12px ${color}55`, whiteSpace: emphasized ? "nowrap" : "normal", display: emphasized ? "block" : "-webkit-box", WebkitLineClamp: emphasized ? undefined : 2, WebkitBoxOrient: emphasized ? undefined : "vertical", overflow: "hidden" }}>{value}</div>
+    <div style={{ position: "relative", marginTop: 4, color: "#9da5b5", fontSize: 6.9, lineHeight: 1.15, fontWeight: 900, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{subtitle}</div>
+  </button>;
+}
+
+function FirefighterMapCard({ country, map, ownerColors, selectedTerritoryId, mapLabel, onClick }: any) {
+  return <button className="dff-play__kpi dff-play__map-card" type="button" onClick={onClick} style={{ position: "relative", minWidth: 0, height: 88, padding: 0, borderRadius: 15, overflow: "hidden", cursor: "pointer", color: "#fff", background: "radial-gradient(circle,rgba(255,93,35,.13),rgba(3,5,10,.97))", border: `1px solid ${FIRE}60`, boxShadow: "0 8px 20px rgba(0,0,0,.25)" }}>
+    <div style={{ position: "absolute", inset: 4, opacity: .82, pointerEvents: "none" }}><TerritoriesMapView country={country} map={map} ownerColors={ownerColors} selectedTerritoryId={selectedTerritoryId} activeColor={WATER} themeColor={FIRE} interactive={false} style={{ width: "100%", height: "100%" }} /></div>
+    <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.05) 48%,rgba(0,0,0,.82))" }} />
+    <div style={{ position: "absolute", left: 6, right: 6, top: 6, color: FIRE, fontSize: 7.4, fontWeight: 1100, letterSpacing: .65, textShadow: "0 1px 4px #000" }}>CARTE</div>
+    <div style={{ position: "absolute", left: 6, right: 6, bottom: 7, color: "#fff", fontSize: 7.3, fontWeight: 1000, textShadow: "0 1px 5px #000", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mapLabel} · OUVRIR</div>
+  </button>;
+}
+
+function TacticalGuidance({ primary, alternatives, notice, selectedTerritory, bullTargetMode, dartsPerTurn, onSelect, onOpenTargets, onOpenMap, onOpenTimeline }: any) {
+  const visitSequence = [primary, ...(alternatives || [])].filter(Boolean).slice(0, Math.max(1, Number(dartsPerTurn || 3))).map((suggestion: TacticalSuggestion) => suggestion.shot).join(" → ");
+  const dangerNotice = String(notice || "").toUpperCase().includes("DÉTRUIT") || String(notice || "").toUpperCase().includes("PROPAG");
+  return <section className="dff-play__guidance" style={{ ...panelStyle(), padding: 6, borderColor: `${primary?.color || WATER}48`, background: "linear-gradient(105deg,rgba(10,18,24,.96),rgba(16,10,8,.94))" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
+      <button type="button" disabled={!primary?.territory} onClick={() => primary?.territory && onSelect(primary.territory.id)} style={{ minWidth: 0, padding: 0, border: 0, background: "transparent", textAlign: "left", cursor: primary?.territory ? "pointer" : "default", color: "#fff" }}>
+        <div style={{ color: primary?.color || WATER, fontSize: 7.3, fontWeight: 1100, letterSpacing: .65 }}>PLAN D’INTERVENTION CONSEILLÉ</div>
+        <div style={{ marginTop: 2, display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}><strong style={{ color: GOLD, fontSize: 16.5, lineHeight: 1 }}>{primary?.shot || "—"}</strong><span style={{ minWidth: 0, color: "#fff", fontSize: 9.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{primary?.action || "Analyse du terrain"}</span></div>
+        <div style={{ marginTop: 2, color: GOLD, fontSize: 7.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>VOLÉE CONSEILLÉE · {visitSequence || "—"}</div>
+        <div style={{ marginTop: 1, color: "#929aac", fontSize: 7.1, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{primary ? `${primary.territory.name} · ${primary.reason}` : "Aucune priorité disponible"}</div>
+      </button>
+      <div style={{ display: "flex", gap: 4 }}>
+        <MiniActionButton label="CARTE" icon="🗺️" color={FIRE} onClick={onOpenMap} />
+        <MiniActionButton label="CIBLES" icon="🎯" color={GOLD} onClick={onOpenTargets} />
+        <MiniActionButton label="JOURNAL" icon="☰" color={WATER} onClick={onOpenTimeline} />
+      </div>
+    </div>
+    <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 5, overflowX: "auto", paddingBottom: 1 }}>
+      <span style={{ flex: "0 0 auto", color: "#8d95a7", fontSize: 6.8, fontWeight: 1000 }}>AUTRES</span>
+      {(alternatives || []).length ? alternatives.map((suggestion: TacticalSuggestion) => <button key={`${suggestion.territory.id}-${suggestion.shot}`} type="button" onClick={() => onSelect(suggestion.territory.id)} style={{ flex: "0 0 auto", minHeight: 25, padding: "0 8px", borderRadius: 999, border: `1px solid ${suggestion.color}55`, background: `${suggestion.color}10`, color: "#eefbff", fontSize: 7.3, fontWeight: 950 }}><strong style={{ color: GOLD }}>{suggestion.shot}</strong> · {suggestion.territory.name}</button>) : <span style={{ color: "#71798a", fontSize: 7.2 }}>Aucune autre urgence</span>}
+      <span style={{ flex: "0 0 auto", marginLeft: "auto", color: bullTargetMode === "priority" ? WATER : selectedTerritory ? WATER : "#737b8d", fontSize: 6.8, fontWeight: 1000 }}>{bullTargetMode === "priority" ? "BULL → AUTO" : selectedTerritory ? `BULL → ${selectedTerritory.target}` : "BULL → CONSEIL"}</span>
+    </div>
+    <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid rgba(255,255,255,.06)", color: dangerNotice ? "#ff9ba5" : WATER, textAlign: "center", fontSize: 7.5, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{notice}</div>
+  </section>;
+}
+
+function MiniActionButton({ label, icon, color, onClick }: any) {
+  return <button type="button" onClick={onClick} title={label} style={{ width: 41, height: 37, borderRadius: 10, border: `1px solid ${color}55`, background: `${color}0d`, color, display: "grid", placeItems: "center", alignContent: "center", gap: 1, cursor: "pointer", padding: 0 }}><span style={{ fontSize: 13, lineHeight: 1 }}>{icon}</span><span style={{ fontSize: 5.4, lineHeight: 1, fontWeight: 1000, letterSpacing: .2 }}>{label}</span></button>;
+}
+
+function FirefighterMapModal({ state, country, map, mapLabel, primary, onClose, onSelect }: any) {
+  const selected = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || primary?.territory || null;
+  const incidentRows = state.territories.filter((territory: FireTerritory) => territory.playable && !territory.destroyed && (territory.fireLevel > 0 || territory.smoke || territory.critical)).sort((a: FireTerritory, b: FireTerritory) => Number(b.critical) - Number(a.critical) || b.fireLevel - a.fireLevel).slice(0, 10);
+  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.88)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 7 }}>
+    <div style={{ width: "min(980px,100%)", height: "min(94dvh,820px)", borderRadius: 19, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0,1fr) auto", background: "linear-gradient(180deg,#120b08,#05070b)", border: `1px solid ${FIRE}77`, boxShadow: `0 0 36px ${FIRE}22,0 18px 70px rgba(0,0,0,.65)` }}>
+      <div style={{ minHeight: 51, padding: "7px 9px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <div style={{ minWidth: 0 }}><div style={{ color: FIRE, fontSize: 9, fontWeight: 1100, letterSpacing: .75 }}>CARTE D’INTERVENTION</div><div style={{ color: "#fff", fontSize: 12, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mapLabel}</div></div>
+        <div style={{ display: "flex", gap: 6 }}><button type="button" onClick={onClose} style={{ ...actionButton("#cbd2de"), minHeight: 34, padding: "0 12px", fontSize: 8 }}>FERMER</button></div>
+      </div>
+      <div style={{ position: "relative", minHeight: 0, background: "radial-gradient(circle,rgba(255,90,37,.15),rgba(0,0,0,.46))" }}>
+        <TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || primary?.territory?.id || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} style={{ width: "100%", height: "100%" }} />
+        {primary?.territory ? <button type="button" onClick={() => onSelect(primary.territory.id)} style={{ position: "absolute", left: 10, top: 10, maxWidth: "calc(100% - 20px)", minHeight: 55, padding: "7px 10px", borderRadius: 14, textAlign: "left", color: "#fff", background: "rgba(4,7,12,.91)", border: `1px solid ${primary.color}77`, boxShadow: `0 0 20px ${primary.color}25`, backdropFilter: "blur(8px)" }}><div style={{ color: primary.color, fontSize: 7.3, fontWeight: 1100 }}>OBJECTIF CONSEILLÉ</div><div style={{ marginTop: 2, display: "flex", alignItems: "baseline", gap: 6 }}><strong style={{ color: GOLD, fontSize: 18 }}>{primary.shot}</strong><span style={{ fontSize: 9.5, fontWeight: 1000 }}>{primary.territory.name}</span></div><div style={{ color: "#9ba3b4", fontSize: 7.3 }}>{primary.action} · {primary.reason}</div></button> : null}
+        {selected ? <div style={{ position: "absolute", left: 10, right: 10, bottom: 10, minHeight: 58, padding: "7px 9px", borderRadius: 14, display: "grid", gridTemplateColumns: "45px minmax(0,1fr) auto", gap: 8, alignItems: "center", background: "rgba(4,7,12,.92)", border: `1px solid ${fireTerritoryColor(fireStatus(selected))}77`, backdropFilter: "blur(8px)" }}><div style={{ width: 43, height: 43, borderRadius: 11, display: "grid", placeItems: "center", background: "rgba(0,0,0,.36)", color: GOLD, fontSize: 20, fontWeight: 1100 }}>{selected.target}</div><div style={{ minWidth: 0 }}><div style={{ color: selected.critical ? GOLD : "#fff", fontSize: 10.5, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selected.critical ? "⚠ " : ""}{selected.name}</div><div style={{ color: fireTerritoryColor(fireStatus(selected)), fontSize: 8, fontWeight: 950 }}>{statusIcon(selected)} {statusLabel(selected)} · PROTECTION {selected.protection}/3</div></div><button type="button" onClick={onClose} style={{ ...actionButton(WATER), minHeight: 38, padding: "0 10px", fontSize: 7.5 }}>VALIDER<br />CIBLE</button></div> : null}
+      </div>
+      <div style={{ padding: "7px 8px", display: "flex", gap: 5, overflowX: "auto", borderTop: "1px solid rgba(255,255,255,.08)" }}>{incidentRows.map((territory: FireTerritory) => { const suggestion = directShotForTerritory(territory, state.forecastTerritoryIds.includes(territory.id)); const color = fireTerritoryColor(fireStatus(territory)); return <button key={territory.id} type="button" onClick={() => onSelect(territory.id)} style={{ flex: "0 0 auto", minHeight: 34, padding: "0 9px", borderRadius: 999, border: `1px solid ${color}55`, background: `${color}0e`, color: "#fff", fontSize: 7.5, fontWeight: 950 }}><strong style={{ color: GOLD }}>{suggestion.shot}</strong> · {territory.name}</button>; })}</div>
+    </div>
   </div>;
 }
 

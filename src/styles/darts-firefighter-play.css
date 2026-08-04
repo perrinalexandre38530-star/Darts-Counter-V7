@@ -1,0 +1,142 @@
+/* DARTS FIREFIGHTER — PLAY
+   Structure volontairement calée sur TERRITORIES :
+   header > tour actif > joueur > OBJECTIF / TERRITOIRE / CARTE > aide > saisie. */
+
+.dff-play {
+  --dff-header-reserve: 92px;
+  --dff-bottom-reserve: 76px;
+  width: 100%;
+}
+
+.dff-play__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dff-play__turns {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 4px 8px 1px;
+  box-sizing: border-box;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.dff-play__turns::-webkit-scrollbar {
+  display: none;
+}
+
+.dff-play__turn {
+  flex: 0 0 min(164px, 45vw);
+  min-width: 0;
+  min-height: 39px;
+  padding: 4px 7px 4px 4px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(15,18,28,.96), rgba(4,7,12,.92));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: .68;
+  transition: opacity .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+.dff-play__turn.is-active {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.dff-play__kpis {
+  align-items: stretch;
+}
+
+.dff-play__kpi {
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+}
+
+.dff-play__map-card svg {
+  filter: drop-shadow(0 0 4px rgba(255,90,37,.42));
+}
+
+.dff-play__input {
+  min-height: 278px;
+  height: clamp(278px, calc(100dvh - 505px), 410px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dff-play__input > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 520px) {
+  .dff-play__main {
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+  }
+
+  .dff-play__turns {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .dff-play__player > div {
+    min-height: 92px !important;
+  }
+
+  .dff-play__kpis {
+    gap: 5px !important;
+  }
+
+  .dff-play__kpi {
+    height: 82px !important;
+    border-radius: 13px !important;
+  }
+
+  .dff-play__guidance {
+    border-radius: 14px !important;
+  }
+
+  .dff-play__input {
+    min-height: 268px;
+    height: clamp(268px, calc(100dvh - 490px), 380px);
+  }
+}
+
+@media (max-width: 390px) {
+  .dff-play__kpi {
+    height: 78px !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  .dff-play__input {
+    min-height: 255px;
+    height: clamp(255px, calc(100dvh - 475px), 360px);
+  }
+}
+
+@media (max-height: 760px) and (max-width: 520px) {
+  .dff-play__turns {
+    display: none;
+  }
+
+  .dff-play__player > div {
+    min-height: 82px !important;
+  }
+
+  .dff-play__kpi {
+    height: 73px !important;
+  }
+
+  .dff-play__input {
+    min-height: 242px;
+    height: calc(100dvh - 445px);
+  }
+}
