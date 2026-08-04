@@ -302,68 +302,67 @@ export default function DartsPokerPlay(props: any) {
     try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {}
   }, [state.phase]);
 
-  const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 15, fontWeight: 1200, lineHeight: 1 }}>{activeHand?.cards?.length || 0}</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 7.4, fontWeight: 1000, lineHeight: 1.1 }}>{liveEvaluation?.label || `${remainingDarts} reste`}</div></div>;
-  const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 8, fontWeight: 900, textAlign: "center", lineHeight: 1.2 }}>{botThinking ? "BOT…" : notice}</div>;
+  const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 18, fontWeight: 1200 }}>{activeHand?.cards?.length || 0} CARTES</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 8.5, fontWeight: 1000 }}>{liveEvaluation?.label || `${remainingDarts} fléchette${remainingDarts > 1 ? "s" : ""} restante${remainingDarts > 1 ? "s" : ""}`}</div></div>;
+  const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{botThinking ? "BOT EN RÉFLEXION…" : notice}</div>;
   const marketTargets = rankMarketSuggestions(state, String(activePlayer?.id || ""), 4);
   const bestTarget = marketTargets[0] || null;
   const objective = buildPokerObjectiveHint(state, String(activePlayer?.id || ""), liveEvaluation, remainingDarts);
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
+  const quickColumns = config.scoreInputMethod === "dartboard" ? 4 : 3;
 
-  return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflow: "hidden" }}>
-    <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" tickerHeight={72} tickerBottomGap={4} left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
-    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "2px 8px 8px", boxSizing: "border-box", display: "grid", gridTemplateRows: "auto auto auto 1fr", gap: 4, minHeight: "calc(100dvh - 122px)" }}>
-      <section style={{ ...panel(), display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderColor: `${activeColor}55`, padding: 7 }}>
+  return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflowX: "hidden" }}>
+    <PageHeader tickerSrc={tickerDartsPoker} tickerAlt="DARTS POKER" tickerHeight={84} tickerBottomGap={8} left={<BackDot onClick={backToConfig} color={GOLD} glow={`${GOLD}88`} />} right={<InfoDot title="Règles DARTS POKER" color={RED} glow={`${RED}88`} content={<Rules config={config} />} />} />
+    <main style={{ width: "min(980px,100%)", margin: "0 auto", padding: "4px 8px 10px", boxSizing: "border-box", display: "grid", gap: 6 }}>
+      <section style={{ ...panel(), display: "grid", gridTemplateColumns: "46px minmax(0,1fr) auto", gap: 8, alignItems: "center", borderColor: `${activeColor}55`, padding: 8 }}>
         <ProfileAvatar profile={activeProfile} size={42} />
-        <button type="button" onClick={() => setQuickPanel("active")} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer" }}>
-          <div style={{ color: activeColor, fontSize: 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
-          <div style={{ color: SOFT, fontSize: 8 }}>M{state.roundIndex}/{config.rounds} · F{Math.min(config.dartsPerHand, Number(activeHand?.dartsUsed || 0) + 1)}/{config.dartsPerHand}</div>
-          <div style={{ marginTop: 4, display: "flex", gap: 3, alignItems: "center", minHeight: 28 }}>
-            {Array.from({ length: 5 }, (_, index) => {
-              const card = activeHand?.cards?.[index];
-              return <div key={index} style={{ width: 22, height: 28, borderRadius: 6, border: card ? `1px solid ${card?.joker ? GOLD : 'rgba(255,255,255,.28)'}` : '1px dashed rgba(255,255,255,.18)', background: card ? (card?.joker ? 'linear-gradient(145deg,#16161d,#6d1721)' : 'linear-gradient(145deg,#fff,#e9e9ec)') : 'rgba(255,255,255,.02)', color: card?.joker ? GOLD : (card?.suit === 'H' || card?.suit === 'D') ? '#c3172b' : '#111', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 1100 }}>{card ? (card.joker ? '★' : pokerSuitSymbol(card.suit)) : ''}</div>;
-            })}
+        <button type="button" onClick={() => setQuickPanel("active")} style={{ background: "transparent", border: "none", padding: 0, textAlign: "left", minWidth: 0, cursor: "pointer", color: "inherit" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+            <div style={{ color: activeColor, fontSize: 12, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
+            <div style={{ color: SOFT, fontSize: 8, whiteSpace: "nowrap" }}>M{state.roundIndex}/{config.rounds} · F{Math.min(config.dartsPerHand, Number(activeHand?.dartsUsed || 0) + 1)}/{config.dartsPerHand}</div>
+          </div>
+          <div style={{ marginTop: 5, display: "flex", gap: 4, alignItems: "center", minHeight: 36 }}>
+            {Array.from({ length: 5 }, (_, index) => <MiniHandCard key={index} card={activeHand?.cards?.[index] || null} />)}
           </div>
         </button>
-        <div style={{ display: "grid", gap: 4, justifyItems: "end" }}>
-          <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "grid", gap: 5, justifyItems: "end" }}>
+          <div style={{ display: "flex", gap: 5 }}>
             <TinyIconButton accent={BLUE} label="Journal" onClick={() => setShowTimeline(true)}><IconList /></TinyIconButton>
             <TinyIconButton accent={RED} label="Undo" onClick={cancelOrUndo}><IconUndo /></TinyIconButton>
           </div>
           <div style={{ display: "flex", gap: 4 }}>
-            <span style={{ borderRadius: 999, padding: "3px 6px", color: BLUE, border: `1px solid ${BLUE}55`, fontSize: 7.4, fontWeight: 1000 }}>↔ {activeHand?.exchangeTokens || 0}</span>
-            <span style={{ borderRadius: 999, padding: "3px 6px", color: GOLD, border: `1px solid ${GOLD}55`, fontSize: 7.4, fontWeight: 1000 }}>✦ {activeHand?.choiceTokens || 0}</span>
+            <span title="Jetons échange" style={{ borderRadius: 999, padding: "3px 6px", color: BLUE, border: `1px solid ${BLUE}55`, fontSize: 7.5, fontWeight: 1000 }}>↔ {activeHand?.exchangeTokens || 0}</span>
+            <span title="Jetons choix" style={{ borderRadius: 999, padding: "3px 6px", color: GOLD, border: `1px solid ${GOLD}55`, fontSize: 7.5, fontWeight: 1000 }}>✦ {activeHand?.choiceTokens || 0}</span>
           </div>
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 4 }}>
-        <button type="button" onClick={() => setQuickPanel("objectives")} style={{ ...panel(), padding: 7, textAlign: "left", cursor: "pointer", minWidth: 0 }}>
-          <div style={{ color: GOLD, fontSize: 8.6, fontWeight: 1100, letterSpacing: .7 }}>OBJECTIF</div>
-          <div style={{ color: "#fff", fontSize: 9.8, fontWeight: 950, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objective.title}</div>
-          <div style={{ color: SOFT, fontSize: 7.8, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bestTarget ? `S${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 128px", gap: 6 }}>
+        <button type="button" onClick={() => setQuickPanel("objectives")} style={{ ...panel(), padding: 8, textAlign: "left", cursor: "pointer", minWidth: 0, color: "inherit" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <div style={{ color: GOLD, fontSize: 9, fontWeight: 1100, letterSpacing: .7 }}>OBJECTIF</div>
+            <IconTarget />
+          </div>
+          <div style={{ color: "#fff", fontSize: 10.5, fontWeight: 950, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objective.title}</div>
+          <div style={{ color: SOFT, fontSize: 8.2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bestTarget ? `Conseil : S${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
         </button>
-        <div style={{ ...panel(), padding: 6, width: 126 }}>
+        <div style={{ ...panel(), padding: 6 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 4 }}>
             <MiniStat label="PTS" value={`${activeStats?.handsWon || 0}`} color={GOLD} compact />
             <MiniStat label="PRÉC" value={`${activeAccuracy}%`} color={GREEN} compact />
-            <MiniStat label="C" value={`${activeHand?.cards?.length || 0}/5`} color={BLUE} compact />
-            <MiniStat label="R" value={`${remainingDarts}`} color={RED} compact />
+            <MiniStat label="CARTES" value={`${activeHand?.cards?.length || 0}/5`} color={BLUE} compact />
+            <MiniStat label="RESTE" value={`${remainingDarts}`} color={RED} compact />
           </div>
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(6,minmax(0,1fr))", gap: 4 }}>
-        <QuickLauncher label="MAIN" value={`${activeHand?.cards?.length || 0}`} accent={activeColor} icon={<IconUser />} onClick={() => setQuickPanel("active")} />
-        <QuickLauncher label="MKT" value={`${state.deck.length}`} accent={GOLD} icon={<IconGrid />} onClick={() => setQuickPanel("market")} />
-        <QuickLauncher label="OBJ" value={bestTarget ? `${bestTarget.sector}` : '•'} accent={GOLD} icon={<IconTarget />} onClick={() => setQuickPanel("objectives")} />
-        <QuickLauncher label="TAB" value={`${state.players.length}`} accent={RED} icon={<IconTable />} onClick={() => setQuickPanel("table")} />
-        <QuickLauncher label="STAT" value={`${state.visits.length}`} accent={GREEN} icon={<IconStats />} onClick={() => setQuickPanel("stats")} />
-        <QuickLauncher label={config.scoreInputMethod === "dartboard" ? "CIBLE" : "LOG"} value={config.scoreInputMethod === "dartboard" ? '🎯' : '≡'} accent={BLUE} icon={config.scoreInputMethod === "dartboard" ? <IconTarget /> : <IconList />} onClick={() => config.scoreInputMethod === "dartboard" ? setQuickPanel("dartboard") : setShowTimeline(true)} />
+      <section style={{ display: "grid", gridTemplateColumns: `repeat(${quickColumns},minmax(0,1fr))`, gap: 5 }}>
+        <QuickLauncher label="MARCHÉ" value={`${state.deck.length}`} accent={GOLD} icon={<IconGrid />} onClick={() => setQuickPanel("market")} />
+        <QuickLauncher label="TABLE" value={`${state.players.length}`} accent={RED} icon={<IconTable />} onClick={() => setQuickPanel("table")} />
+        <QuickLauncher label="STATS" value={`${state.visits.length}`} accent={GREEN} icon={<IconStats />} onClick={() => setQuickPanel("stats")} />
+        {config.scoreInputMethod === "dartboard" ? <QuickLauncher label="CIBLE" value="OUVRIR" accent={BLUE} icon={<IconTarget />} onClick={() => setQuickPanel("dartboard")} /> : null}
       </section>
 
-      <section style={{ ...panel(), padding: 5, overflow: "hidden", alignSelf: "end" }}>
-        <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3 || throwDarts.length === remainingDarts} safeBottomPad footerGap={6} hidePreview compact />
-      </section>
+      <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3 || throwDarts.length === remainingDarts} safeBottomPad />
     </main>
 
     {state.pendingChoice ? <ChoiceModal cards={state.pendingChoice.cards} onChoose={chooseCard} /> : null}
@@ -383,22 +382,27 @@ function TinyIconButton({ accent, label, onClick, children }: any) {
   return <button type="button" title={label} aria-label={label} onClick={onClick} style={{ width: 38, height: 38, borderRadius: 12, border: `1px solid ${accent}66`, background: `${accent}14`, color: accent, display: "grid", placeItems: "center", padding: 0, cursor: "pointer" }}>{children}</button>;
 }
 
+function MiniHandCard({ card }: { card: PokerCard | null }) {
+  if (!card) return <span style={{ width: 28, height: 36, borderRadius: 7, border: "1px dashed rgba(255,255,255,.20)", background: "rgba(255,255,255,.02)", flex: "0 0 auto" }} />;
+  const red = card.suit === "H" || card.suit === "D";
+  return <span style={{ position: "relative", width: 28, height: 36, borderRadius: 7, border: `1px solid ${card.joker ? GOLD : "rgba(255,255,255,.35)"}`, background: card.joker ? "linear-gradient(145deg,#17161d,#6d1721)" : "linear-gradient(145deg,#fff,#e8e8eb)", color: card.joker ? GOLD : red ? "#c3172b" : "#111", boxShadow: "0 3px 8px rgba(0,0,0,.30)", flex: "0 0 auto" }}><b style={{ position: "absolute", left: 3, top: 2, fontSize: 8, lineHeight: 1 }}>{card.joker ? "J" : pokerRankLabel(card.rank)}</b><span style={{ display: "grid", height: "100%", placeItems: "center", fontSize: 16 }}>{card.joker ? "★" : pokerSuitSymbol(card.suit)}</span></span>;
+}
+
 function QuickLauncher({ label, value, accent, icon, onClick }: any) {
-  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 46, borderRadius: 12, border: `1px solid ${accent}66`, background: `${accent}12`, color: "#fff", padding: "4px 2px", textAlign: "center" }}><div style={{ display: "grid", placeItems: "center", color: accent, marginBottom: 1 }}>{icon}</div><div style={{ color: accent, fontSize: 6.9, fontWeight: 1100, lineHeight: 1 }}>{label}</div><div style={{ color: SOFT, fontSize: 7.1, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></button>;
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 50, borderRadius: 13, border: `1px solid ${accent}66`, background: `${accent}12`, color: "#fff", padding: "5px 4px", textAlign: "center" }}><div style={{ display: "grid", placeItems: "center", color: accent }}>{icon}</div><div style={{ color: accent, fontSize: 8, fontWeight: 1100, marginTop: 2 }}>{label}</div><div style={{ color: SOFT, fontSize: 7.3, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></button>;
 }
 
 function MiniStat({ label, value, color, compact = false }: any) {
-  return <div style={{ minWidth: 0, padding: compact ? 4 : 6, borderRadius: compact ? 9 : 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center" }}><div style={{ color, fontSize: compact ? 9.5 : 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ color: SOFT, fontSize: compact ? 6.1 : 6.8, fontWeight: 950 }}>{label}</div></div>;
+  return <div style={{ minWidth: 0, padding: compact ? 4 : 6, borderRadius: compact ? 9 : 11, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", textAlign: "center" }}><div style={{ color, fontSize: compact ? 10 : 11, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div><div style={{ color: SOFT, fontSize: compact ? 6.2 : 6.8, fontWeight: 950 }}>{label}</div></div>;
 }
 
-function IconShell({ children }: any) { return <span style={{ width: 16, height: 16, display: "inline-grid", placeItems: "center" }}>{children}</span>; }
-function IconUser() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.8-4 14.2-4 16 0"/></svg></IconShell>; }
-function IconGrid() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></IconShell>; }
-function IconTarget() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></IconShell>; }
-function IconTable() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><path d="M8 4v16"/><path d="M16 4v16"/></svg></IconShell>; }
-function IconStats() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 19V10"/><path d="M12 19V5"/><path d="M19 19v-8"/></svg></IconShell>; }
-function IconList() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"/></svg></IconShell>; }
-function IconUndo() { return <IconShell><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 8 5 12l4 4"/><path d="M5 12h8a6 6 0 1 1 0 12"/></svg></IconShell>; }
+function IconShell({ children }: any) { return <span style={{ width: 17, height: 17, display: "inline-grid", placeItems: "center" }}>{children}</span>; }
+function IconGrid() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></IconShell>; }
+function IconTarget() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></IconShell>; }
+function IconTable() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7h18"/><path d="M3 12h18"/><path d="M3 17h18"/><path d="M8 4v16"/><path d="M16 4v16"/></svg></IconShell>; }
+function IconStats() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 19V10"/><path d="M12 19V5"/><path d="M19 19v-8"/></svg></IconShell>; }
+function IconList() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1" fill="currentColor" stroke="none"/></svg></IconShell>; }
+function IconUndo() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 8 5 12l4 4"/><path d="M5 12h8a6 6 0 1 1 0 12"/></svg></IconShell>; }
 
 function FloatingPanel({ title, subtitle, onClose, children, accent = GOLD, width = "min(760px,100%)" }: any) {
   return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width, maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#13141a,#050609)", borderColor: `${accent}66`, padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><div><div style={{ color: accent, fontSize: 12, fontWeight: 1100 }}>{title}</div>{subtitle ? <div style={{ color: SOFT, fontSize: 9, marginTop: 2 }}>{subtitle}</div> : null}</div><button onClick={onClose} style={{ ...action("#c9ced8"), minHeight: 36, padding: "0 12px", fontSize: 8 }}>FERMER</button></div><div style={{ marginTop: 12 }}>{children}</div></div></div>;
