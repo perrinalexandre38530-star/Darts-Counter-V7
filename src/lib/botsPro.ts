@@ -7,6 +7,7 @@
 
 import type { Profile } from "./types";
 import { resolveProBotCountryCode } from "./botCountries";
+import { resolveProBotDartsBrandKey, type ProBotDartsBrandKey } from "./botDartsBrands";
 
 // Ids internes des bots pro
 export type BotId =
@@ -48,10 +49,11 @@ export type ProBot = {
   targetAvg3: number;        // Objectif de moyenne (3 darts)
   checkoutSkill: "low" | "medium" | "high";
   countryCode: string;
+  dartsBrandKey: ProBotDartsBrandKey;
 };
 
 // Liste centrale des bots IA "pro"
-const PRO_BOTS_BASE: Array<Omit<ProBot, "countryCode">> = [
+const PRO_BOTS_BASE: Array<Omit<ProBot, "countryCode" | "dartsBrandKey">> = [
   {
     id: "pro_mvg",
     displayName: "Green Machine",
@@ -237,6 +239,7 @@ const PRO_BOTS_BASE: Array<Omit<ProBot, "countryCode">> = [
 export const PRO_BOTS: ProBot[] = PRO_BOTS_BASE.map((bot) => ({
   ...bot,
   countryCode: resolveProBotCountryCode(bot) || "",
+  dartsBrandKey: resolveProBotDartsBrandKey(bot) || "target",
 }));
 
 // ---------------------------------------------------
@@ -255,5 +258,7 @@ export function proBotToProfile(bot: ProBot): Profile {
     avatarKey: bot.avatarKey,
     countryCode: bot.countryCode,
     country: bot.countryCode,
+    dartsBrandKey: bot.dartsBrandKey,
+    dartBrandKey: bot.dartsBrandKey,
   } as Profile;
 }

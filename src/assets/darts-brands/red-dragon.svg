@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 96" role="img" aria-label="Red Dragon">
+  <path d="M12 58c10-28 26-43 51-43-8 9-11 17-8 25 8-7 17-10 27-8-10 7-16 15-18 23 10-4 19-3 27 4-13 1-25 8-35 21-3-9-9-14-19-15-8-1-16-3-25-7z" fill="#e2232e"/>
+  <path d="M52 29l7 8-10 1z" fill="#ffffff"/>
+  <text x="93" y="43" fill="#ffffff" font-family="Arial Black,Arial,sans-serif" font-size="30" font-weight="900">RED</text>
+  <text x="93" y="74" fill="#e2232e" font-family="Arial Black,Arial,sans-serif" font-size="30" font-weight="900">DRAGON</text>
+</svg>

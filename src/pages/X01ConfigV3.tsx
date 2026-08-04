@@ -10,6 +10,12 @@
 
 import React from "react";
 import { applyResolvedBotCountries } from "../lib/botCountries";
+import {
+  applyResolvedProBotDartsBrands,
+  getProBotDartsBrandLabel,
+  getProBotDartsBrandLogo,
+  type ProBotDartsBrandKey,
+} from "../lib/botDartsBrands";
 import type { X01ConfigV3 } from "../types/x01v3";
 import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -320,6 +326,8 @@ type BotLite = {
   botLevel?: string; // libellé ("Easy", "Standard", "Pro", "Légende", etc.)
   countryCode?: string | null;
   country?: string | null;
+  dartsBrandKey?: ProBotDartsBrandKey | null;
+  dartBrandKey?: ProBotDartsBrandKey | null;
 };
 
 type ResolvedPlayerPrefs = {
@@ -941,6 +949,42 @@ function X01CountryFlagBadge({ profile, accent, size = 30, style = {} }: { profi
       ) : (
         <span style={{ lineHeight: 1 }}>{fallback}</span>
       )}
+    </span>
+  );
+}
+
+function ProBotDartsBrandBadge({ bot, accent }: { bot: any; accent: string }) {
+  const logo = getProBotDartsBrandLogo(bot);
+  const label = getProBotDartsBrandLabel(bot);
+  if (!logo) return null;
+  return (
+    <span
+      title={label || undefined}
+      aria-label={label ? `Marque de fléchettes ${label}` : "Marque de fléchettes"}
+      style={{
+        position: "absolute",
+        left: 8,
+        bottom: 6,
+        zIndex: 7,
+        width: 42,
+        height: 30,
+        borderRadius: 10,
+        display: "grid",
+        placeItems: "center",
+        padding: "4px 5px",
+        boxSizing: "border-box",
+        background: "linear-gradient(180deg, rgba(9,14,27,.98), rgba(2,6,15,.98))",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 10px ${accent}55, 0 8px 18px rgba(0,0,0,.42)`,
+        overflow: "hidden",
+        pointerEvents: "none",
+      }}
+    >
+      <img
+        src={logo}
+        alt=""
+        style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+      />
     </span>
   );
 }
@@ -1719,7 +1763,7 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 // ------------------------------------------------------
 // BOTS IA "PRO" PRÉDÉFINIS
 // ------------------------------------------------------
-const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
+const PRO_BOTS: BotLite[] = applyResolvedProBotDartsBrands(applyResolvedBotCountries([
   { id: "bot_pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
   { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
   { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
@@ -1744,7 +1788,7 @@ const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
   { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-]) as BotLite[];
+])) as BotLite[];
 
 // API partagée par les autres modes de fléchettes : ils réutilisent ainsi
 // exactement les mêmes BOTS, équipes IA et sélecteurs que X01.
@@ -1772,6 +1816,8 @@ export function buildX01DartsBotTeams(botProfiles: any[] = []) {
             botLevel: byName?.botLevel || `${member?.botLevel || team?.botLevel || 1}/5`,
             countryCode: byName?.countryCode ?? byName?.country ?? member?.countryCode ?? member?.country ?? null,
             country: byName?.country ?? byName?.countryCode ?? member?.country ?? member?.countryCode ?? null,
+            dartsBrandKey: byName?.dartsBrandKey ?? byName?.dartBrandKey ?? member?.dartsBrandKey ?? member?.dartBrandKey ?? null,
+            dartBrandKey: byName?.dartBrandKey ?? byName?.dartsBrandKey ?? member?.dartBrandKey ?? member?.dartsBrandKey ?? null,
             targetAvg3: Number(member?.targetAvg3 || team?.avg3D || 0) || 0,
           };
         })
@@ -1977,7 +2023,7 @@ export function SelectedParticipantsCompactBlock({
                     <ProfileAvatar profile={mergedProfile} size={70} noFrame showStars={false} />
                   </div>
                 </div>
-                {!isBot ? <X01CountryFlagBadge profile={mergedProfile} accent={accent} size={30} /> : null}
+                <X01CountryFlagBadge profile={mergedProfile} accent={accent} size={30} />
                 {!isBot && onDartSetChange ? (
                   <PlayerDartBadge
                     profileId={id}
@@ -1986,6 +2032,8 @@ export function SelectedParticipantsCompactBlock({
                     compact
                     allProfiles={allProfiles}
                   />
+                ) : isBot ? (
+                  <ProBotDartsBrandBadge bot={mergedProfile} accent={accent} />
                 ) : null}
               </div>
               <div
@@ -2139,6 +2187,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           botLevel: b.botLevel || "",
           countryCode: (b as any).countryCode ?? (b as any).country ?? null,
           country: (b as any).country ?? (b as any).countryCode ?? null,
+          dartsBrandKey: (b as any).dartsBrandKey ?? (b as any).dartBrandKey ?? null,
+          dartBrandKey: (b as any).dartBrandKey ?? (b as any).dartsBrandKey ?? null,
         });
       }
     }

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 96" role="img" aria-label="Shot Darts">
+  <text x="10" y="67" fill="#ffffff" font-family="Arial Black,Arial,sans-serif" font-size="58" font-weight="900" letter-spacing="1">SH</text>
+  <circle cx="120" cy="48" r="25" fill="none" stroke="#ef2b33" stroke-width="10"/>
+  <circle cx="120" cy="48" r="7" fill="#ef2b33"/>
+  <text x="151" y="67" fill="#ffffff" font-family="Arial Black,Arial,sans-serif" font-size="58" font-weight="900">T</text>
+  <text x="166" y="87" fill="#ef2b33" font-family="Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="3">DARTS</text>
+</svg>

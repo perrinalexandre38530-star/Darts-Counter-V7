@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 96" role="img" aria-label="Target">
+  <g fill="none" stroke="#e51c2a" stroke-width="9">
+    <circle cx="38" cy="48" r="29"/><circle cx="38" cy="48" r="15"/>
+  </g>
+  <circle cx="38" cy="48" r="5" fill="#e51c2a"/>
+  <text x="79" y="63" fill="#ffffff" font-family="Arial Black,Arial,sans-serif" font-size="47" font-weight="900" letter-spacing="1">TARGET</text>
+</svg>

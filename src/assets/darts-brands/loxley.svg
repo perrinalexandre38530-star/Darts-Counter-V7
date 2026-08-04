@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 96" role="img" aria-label="Loxley">
+  <path d="M17 15h52v28c0 20-11 33-26 42C28 76 17 63 17 43z" fill="#153f2f" stroke="#d7b75a" stroke-width="5"/>
+  <path d="M30 32h26v8H46v25h-7V40h-9z" fill="#d7b75a"/>
+  <text x="82" y="63" fill="#ffffff" font-family="Georgia,serif" font-size="43" font-weight="700" letter-spacing="2">LOXLEY</text>
+</svg>

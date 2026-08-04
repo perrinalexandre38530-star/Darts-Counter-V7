@@ -60,14 +60,19 @@ assert.ok(play.includes('History as any).upsert(buildHistoryRecord("in_progress"
 assert.ok(play.includes('onFinish?.(record, { navigate: false })'), "sauvegarde finale absente");
 for (const token of [
   'ScoreInputHub',
-  'PLAN D’INTERVENTION CONSEILLÉ',
-  'FirefighterKpiCard',
+  '6.0.0-territories-clean',
+  'CompactInfoCard',
   'FirefighterMapCard',
   'FirefighterMapModal',
-  'title="OBJECTIF"',
-  'title="TERRITOIRE"',
+  'ObjectiveModal',
+  'TerritoryModal',
+  'StatsModal',
+  'OutlineIcon',
+  'Cible Bull / Canadair désélectionnée',
+  'selectedTerritoryId = null',
+  'tickerHeight={68}',
   'CARTE D’INTERVENTION',
-]) assert.ok(play.includes(token), `refonte Play Territories manquante: ${token}`);
+]) assert.ok(play.includes(token), `refonte Play V6 manquante: ${token}`);
 assert.ok(!play.includes('height: "min(47vh,410px)"'), "ancienne grande carte permanente encore présente");
 
 const history = read("src/pages/HistoryPage.tsx");
