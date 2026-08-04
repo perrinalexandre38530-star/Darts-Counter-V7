@@ -25,6 +25,7 @@ export type NormalizedMode =
   | "territories"
   | "darts_firefighter"
   | "darts_poker"
+  | "cargo"
   | "golf"
   | "batard"
   | "babyfoot"
@@ -171,6 +172,7 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
   if (blob.includes("shanghai")) return "shanghai";
   if (blob.includes("darts_firefighter") || blob.includes("darts firefighter") || blob.includes("firefighter")) return "darts_firefighter";
   if (blob.includes("darts_poker") || blob.includes("darts poker") || blob.includes("dartspoker")) return "darts_poker";
+  if (blob.includes("cargo")) return "cargo";
   if (blob.includes("territ") || blob.includes("departement")) return "territories";
   if (blob.includes("golf")) return "golf";
   if (blob.includes("batard") || blob.includes("bastard")) return "batard";

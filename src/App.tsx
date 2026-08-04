@@ -364,6 +364,8 @@ import DartsFirefighterConfig from "./pages/DartsFirefighterConfig";
 import DartsFirefighterPlay from "./pages/DartsFirefighterPlay";
 import DartsPokerConfig from "./pages/DartsPokerConfig";
 import DartsPokerPlay from "./pages/DartsPokerPlay";
+import CargoConfig from "./pages/CargoConfig";
+import CargoPlay from "./pages/CargoPlay";
 import EnculetteConfig from "./pages/EnculetteConfig";
 import EnculettePlay from "./pages/EnculettePlay";
 import CastJoinPage from "./pages/cast/CastJoinPage";
@@ -957,6 +959,8 @@ type Tab =
   | "darts_firefighter_play"
   | "darts_poker_config"
   | "darts_poker_play"
+  | "cargo_config"
+  | "cargo_play"
   | "enculette_config"
   | "enculette_play"
   | "auth_reset";
@@ -5353,6 +5357,23 @@ case "babyfoot_team_edit":
         );
         break;
 
+      case "cargo_config":
+        page = <CargoConfig store={store} go={go} setTab={go} params={routeParams} />;
+        break;
+      case "cargo_play":
+        page = (
+          <CargoPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "cargo", routeParams), options)
+            }
+          />
+        );
+        break;
+
       case "enculette_config":
         page = <EnculetteConfig setTab={go} params={routeParams} />;
         break;
@@ -5429,6 +5450,7 @@ case "babyfoot_team_edit":
     "departements_play",
     "darts_firefighter_play",
     "darts_poker_play",
+    "cargo_play",
     "enculette_play",
 
     // Tournois: match en cours (plein écran)

@@ -1,0 +1,131 @@
+{
+  "name": "PATCH_CARGO_BASE_DARTS_COUNTER_V7_18",
+  "displayName": "CARGO",
+  "technicalMode": "cargo",
+  "baseReference": "Darts-Counter-V7 (18).zip",
+  "baseReferenceSha256": "a6d0e9e5fd039f55ed2dcf49bc5f932a88d9c142837aa6808fa745b76ea3279c",
+  "generatedAt": "2026-08-04T12:31:16.821159+00:00",
+  "files": [
+    {
+      "path": "package.json",
+      "bytes": 6295,
+      "sha256": "87a67140393911b86e617449d7c85007ec6f7dc265d69c6bfd9d839c22af0cfd",
+      "status": "modified"
+    },
+    {
+      "path": "src/App.tsx",
+      "bytes": 226563,
+      "sha256": "f5f7998a372108d38b6eeff20f343eba5c1573842f1759e20667c30653105cd1",
+      "status": "modified"
+    },
+    {
+      "path": "src/pages/Games.tsx",
+      "bytes": 57089,
+      "sha256": "379573acdb6fb474a25d494edd90e034555e28722c78c0375ecf96eff3ed1c58",
+      "status": "modified"
+    },
+    {
+      "path": "src/games/dartsGameRegistry.ts",
+      "bytes": 41553,
+      "sha256": "6d98f022f6c86c4dd7319ba6ca69c211b57975ec4faba9ec4af7c8d1c8952b69",
+      "status": "modified"
+    },
+    {
+      "path": "src/pages/StatsHub.tsx",
+      "bytes": 398107,
+      "sha256": "83dfcbc648758ed08e92f3f6eba5033d68f08b14a674740a708bca5fe2447e65",
+      "status": "modified"
+    },
+    {
+      "path": "src/pages/HistoryPage.tsx",
+      "bytes": 251811,
+      "sha256": "433cd52484a70deff2c2acb73b9d0193a33df44d15cf66c2445d18c15c24e015",
+      "status": "modified"
+    },
+    {
+      "path": "src/lib/homeModeStats.ts",
+      "bytes": 33466,
+      "sha256": "a9250dd52664bce683ea4484f9cb8f76f798b02e34dc611780a020161478fa5d",
+      "status": "modified"
+    },
+    {
+      "path": "src/lib/matchCompactCodec.ts",
+      "bytes": 45946,
+      "sha256": "27b086862999676223d5c34dccb39143ef6f237d2e652a3f55f5a0f246f79208",
+      "status": "modified"
+    },
+    {
+      "path": "src/lib/statsNormalized.ts",
+      "bytes": 21236,
+      "sha256": "52470d5fd37b874bb057864959e7206b713b654a157c1e9fe4879a7ceb488929",
+      "status": "modified"
+    },
+    {
+      "path": "src/config/androidStoreV1.ts",
+      "bytes": 1903,
+      "sha256": "9c36cd2d7a3aa66ce79964c19951c985de522ae729157f31f9f4301b77087eb3",
+      "status": "modified"
+    },
+    {
+      "path": "src/lib/gameEngines/cargoEngine.ts",
+      "bytes": 42416,
+      "sha256": "21c5e79f2851b37b20672574989e044e8156b891a07b46bfdaee9cde0b70d34b",
+      "status": "created"
+    },
+    {
+      "path": "src/pages/CargoConfig.tsx",
+      "bytes": 20800,
+      "sha256": "2ed7a1fb1cbab55f951b0c702a21100e5e82765689d6edd6272439cce161527e",
+      "status": "created"
+    },
+    {
+      "path": "src/pages/CargoPlay.tsx",
+      "bytes": 25560,
+      "sha256": "375dce493553eb0c8b1268365661dfa4b9e1679ed31fb08eb6a0b2d02fc523b6",
+      "status": "created"
+    },
+    {
+      "path": "src/pages/CargoEnd.tsx",
+      "bytes": 4268,
+      "sha256": "07b70718bae3c0b30c3a3c7a765267eac08d16130c05e349aa9a8d068d873807",
+      "status": "created"
+    },
+    {
+      "path": "src/components/stats/CargoStatsTabFull.tsx",
+      "bytes": 8558,
+      "sha256": "9137b368310cd3d4e8947a5873ce764dba5f2a59b34cad98d2f7efb76ddd0595",
+      "status": "created"
+    },
+    {
+      "path": "src/components/history/CargoHistoryScoreBlock.tsx",
+      "bytes": 1639,
+      "sha256": "f139df3ea5fc932337c1413ea6dc58de1291d4cef2bf5caa9054c32c9c1880d5",
+      "status": "created"
+    },
+    {
+      "path": "src/assets/tickers/ticker_cargo.png",
+      "bytes": 89095,
+      "sha256": "bff81208192d59e3b296b1069754201819b6a4fb68c5ca77c138927ccba376b1",
+      "status": "created"
+    },
+    {
+      "path": "tools/test-cargo-integration.mjs",
+      "bytes": 3663,
+      "sha256": "2eb345876148fb86b8cd9e2976330d954dea5dfba384b6b7f557d0d5dc9f1c50",
+      "status": "created"
+    },
+    {
+      "path": "tools/test-cargo-regression.ts",
+      "bytes": 4211,
+      "sha256": "e41f584b15c754fb932cb90fdbd288007ec5b9af86366c8e7bcafb38da655aa8",
+      "status": "created"
+    }
+  ],
+  "validation": {
+    "cargoIntegrationContract": "passed",
+    "cargoEngineRegression": "passed",
+    "cargoCompactCodecRoundTrip": "passed",
+    "typescriptTsxSyntax": "passed",
+    "fullNpmBuild": "not_run_dependency_registry_missing_zustand_5.0.11"
+  }
+}

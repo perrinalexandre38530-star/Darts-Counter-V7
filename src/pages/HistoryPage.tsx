@@ -40,6 +40,7 @@ import logoBabyfoot from "../assets/games/logo-babyfoot.png";
 import victoryCup from "../assets/victory.webp";
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import ProfileAvatar from "../components/ProfileAvatar";
+import CargoHistoryScoreBlock from "../components/history/CargoHistoryScoreBlock";
 
 
 /* ---------- Icônes ---------- */
@@ -358,6 +359,7 @@ const SPORT_GAME_FILTERS: Record<string, { key: string; label: string; aliases: 
     { key: "territories", label: "Territories", aliases: ["territories", "territoires", "departement", "département"] },
     { key: "darts_firefighter", label: "DARTS FIREFIGHTER", aliases: ["darts_firefighter", "darts firefighter", "firefighter"] },
     { key: "darts_poker", label: "DARTS POKER", aliases: ["darts_poker", "darts poker", "dartspoker"] },
+    { key: "cargo", label: "CARGO", aliases: ["cargo"] },
     { key: "battle_royale", label: "Battle Royale", aliases: ["battle_royale", "battle", "royale"] },
     { key: "warfare", label: "Warfare", aliases: ["warfare"] },
     { key: "five_lives", label: "Les 5 vies", aliases: ["five_lives", "five lives", "5 vies", "cinq vies"] },
@@ -467,7 +469,7 @@ function inferSportKey(e: SavedEntry): string {
   if (/babyfoot|foosball/.test(joined)) return "babyfoot";
   if (/molkky|molky/.test(joined)) return "molkky";
   if (/dicegame|dice_game|dice/.test(joined)) return "dicegame";
-  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
+  if (/x01|leg|cricket|killer|shanghai|golf|baseball|attrape|catchme|president|bobs_27|bobs27|halve_it|halve-it|shooter|darts_racer|dartsracer|mario_kart|darts_firefighter|firefighter|darts_poker|dartspoker|poker|cargo|prisoner|loterie|lottery|batard|bastard|clock|countup|training|darts/.test(joined)) return "darts";
   return "darts";
 }
 
@@ -505,6 +507,7 @@ function isGenericDartsSummaryMode(mode: string): boolean {
     "darts_firefighter",
     "dartspoker",
     "darts_poker",
+    "cargo",
     "cricketcutthroat",
     "cricket_cut_throat",
     "cutthroat",
@@ -622,6 +625,7 @@ function modeLabel(e: SavedEntry) {
   if (m === "darts_racer" || m === "dartsracer" || m === "mario_kart" || m === "mariokart") return "DARTS RACER";
   if (m === "darts_firefighter" || m === "dartsfirefighter" || m === "firefighter") return "DARTS FIREFIGHTER";
   if (m === "darts_poker" || m === "dartspoker") return "DARTS POKER";
+  if (m === "cargo") return "CARGO";
   if (m === "x01") {
     const sc = getStartScore(e);
     const raw = [
@@ -809,6 +813,7 @@ const modeColor: Record<string, string> = {
   dartsfirefighter: "#ff6b27",
   firefighter: "#ff6b27",
   darts_poker: "#f6c256",
+  cargo: "#ff9b42",
   dartspoker: "#f6c256",
   battle_royale: "#ff455c",
   warfare: "#ff7a2f",
@@ -1801,6 +1806,9 @@ function renderRankScoreLine(players: HistoryScorePlayer[], theme: any, getScore
 }
 
 function HistoryScoreLine({ e, theme }: { e: SavedEntry; theme: any }) {
+  if (isCargoEntry(e)) {
+    return <CargoHistoryScoreBlock record={e} />;
+  }
   if (isDartsFirefighterHistoryEntry(e)) {
     return <DartsFirefighterHistoryScoreBlock e={e} theme={theme} />;
   }
@@ -2504,6 +2512,12 @@ function deriveHistoryWinnerName(e: SavedEntry): string {
   return "";
 }
 
+
+function isCargoEntry(e: any): boolean {
+  const blob = [e?.kind, e?.mode, e?.game?.mode, e?.summary?.kind, e?.summary?.mode, e?.payload?.kind, e?.payload?.mode]
+    .map((v) => String(v || "").toLowerCase()).join("|");
+  return blob.includes("cargo");
+}
 function summarizeScore(e: SavedEntry): string {
   const explicitScoreLine = cleanName((e as any)?.summary?.scoreLine || (e as any)?.scoreLine || "");
   if (explicitScoreLine) return explicitScoreLine;
@@ -4277,6 +4291,18 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
       return;
     }
 
+    // CARGO : reprise exacte du camion, des contrats, séries et volées.
+    if (isCargoEntry(e)) {
+      const payload: any = (e as any)?.decoded || ((e as any)?.payload && typeof (e as any).payload === "object" ? (e as any).payload : null);
+      const config = payload?.config || (e as any)?.resume?.config || (e as any)?.summary?.config || null;
+      const ok = safeGo(["cargo_play"], {
+        rec: e, resumeId, config, mode: "cargo",
+        from: preview ? "history_preview" : "history", preview: !!preview,
+      });
+      if (!ok) go("cargo_play", { rec: e, resumeId, config, mode: "cargo", from: preview ? "history_preview" : "history", preview: !!preview });
+      return;
+    }
+
     // LOTERIE : une partie `in_progress` possède désormais un snapshot complet
     // (cartons révélés, tour actif, darts en cours, événements et config). Elle doit
     // revenir dans LoteriePlay, jamais dans le résumé générique / X01.
@@ -4406,6 +4432,17 @@ ${count} partie(s) seront supprimée(s). Cette action nettoie les parties jouée
         matchId: e.id,
         resumeId,
         from: "history",
+      });
+      return;
+    }
+
+    // ✅ CARGO : panneau dédié dans le centre de statistiques.
+    if (isCargoEntry(e) || m === "cargo" || inferredMode === "cargo") {
+      const wid = (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || (e as any)?.payload?.players?.[0]?.id || null;
+      go("statsHub", {
+        tab: "stats", initialStatsSubTab: "cargo", initialPlayerId: firstPlayerId, playerId: firstPlayerId,
+        matchId: e.id, resumeId, from: "history",
       });
       return;
     }

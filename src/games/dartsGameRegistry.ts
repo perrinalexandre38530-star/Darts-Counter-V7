@@ -40,6 +40,7 @@ export type DartsGameTab =
   | "departements_config"
   | "darts_firefighter_config"
   | "darts_poker_config"
+  | "cargo_config"
   | "prisoner_config"
   | "tic_tac_toe_config"
   | "batard_config"
@@ -133,6 +134,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     infoTitle: "Darts Poker",
     infoBody:
       "Un marché dynamique associe une carte visible à chacun des secteurs 1 à 20. Une touche récupère la carte et la remplace. En 6 fléchettes, construis la meilleure main de 5 cartes. Double = jeton Échange, Triple et Bull = jeton Choix, Double Bull = Joker. La meilleure combinaison de poker gagne la manche.",
+  },
+  {
+    id: "cargo",
+    label: "CARGO",
+    category: "challenge",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "cargo_config",
+    popularityRank: 4,
+    ready: true,
+    isNew: true,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:cargo",
+    infoTitle: "CARGO",
+    infoBody:
+      "Complète des contrats de séries pour charger des palettes dans ton camion. Les variantes ajoutent charge libre, capacité exacte, marchandises fragiles, urgence, convoi, long trajet et livraison de colis avec bonus jusqu’à 5 touches.",
   },
   {
     id: "killer",
@@ -1216,6 +1235,7 @@ const READY_IDS = new Set<string>([
   "training_time_attack",
   "cricket",
   "darts_poker",
+  "cargo",
   "killer",
   "killer_progressive",
   "shanghai",

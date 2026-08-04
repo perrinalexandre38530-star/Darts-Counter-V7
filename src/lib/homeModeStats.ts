@@ -23,6 +23,7 @@ type ModeKey =
   | "territories"
   | "darts_firefighter"
   | "darts_poker"
+  | "cargo"
   | "warfare"
   | "battle_royale"
   | "scram"
@@ -95,7 +96,7 @@ type ModeAgg = {
 
 const DARTS_MODE_KEYS = new Set<ModeKey>([
   "x01", "cricket", "enculette", "killer", "five_lives", "loterie", "golf", "shanghai",
-  "territories", "darts_firefighter", "darts_poker", "warfare", "battle_royale", "scram", "capital", "batard",
+  "territories", "darts_firefighter", "darts_poker", "cargo", "warfare", "battle_royale", "scram", "capital", "batard",
   "clock", "baseball", "bowling", "bobs_27", "halve_it", "shooter",
   "prisoner", "attrape_moi", "darts_racer", "president", "count_up",
   "game_170", "super_bull", "tic_tac_toe", "football", "rugby", "knockout",
@@ -114,6 +115,7 @@ const MODE_TITLES: Record<ModeKey, string> = {
   territories: "TERRITORIES",
   darts_firefighter: "DARTS FIREFIGHTER",
   darts_poker: "DARTS POKER",
+  cargo: "CARGO",
   warfare: "WARFARE",
   battle_royale: "BATTLE ROYALE",
   scram: "SCRAM",
@@ -205,6 +207,7 @@ export function detectHomeMode(record: any): ModeKey {
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
+  if (tag.includes("cargo")) return "cargo";
   if (tag.includes("territor") || tag.includes("departement")) return "territories";
   if (tag.includes("warfare")) return "warfare";
   if (tag.includes("battle_royale") || (tag.includes("battle") && tag.includes("royale"))) return "battle_royale";
@@ -451,6 +454,7 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     merged?.score, merged?.totalScore, merged?.points, merged?.total,
     merged?.finalScore, merged?.runs, merged?.pins, merged?.netDistance,
     merged?.cellsRevealed, merged?.marks, merged?.progress, merged?.handsWon,
+    merged?.totalWeight, merged?.parcelsDelivered,
   );
   const avg = firstFinite(
     merged?.avg3D, merged?.avg3d, merged?.avg3, averages?.avg3d,
@@ -461,7 +465,7 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
   const best = firstFinite(
     merged?.bestVisit, merged?.bestScore, merged?.maxVolley, merged?.highGame,
     merged?.maxScore, merged?.bestTotal, merged?.bestMargin,
-    merged?.maxCellsInVisit, merged?.bestHandScore, special?.bestVisit,
+    merged?.maxCellsInVisit, merged?.bestHandScore, merged?.bestPalletWeight, merged?.longestSeries, special?.bestVisit,
   );
   const directRate = firstFinite(
     merged?.hitRate, merged?.accuracy, merged?.successRate,
@@ -509,6 +513,15 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     fourOfAKinds: readSpecial(merged, detail, "fourOfAKinds"),
     straightFlushes: readSpecial(merged, detail, "straightFlushes"),
     royalFlushes: readSpecial(merged, detail, "royalFlushes"),
+    cargoWeight: readSpecial(merged, detail, "totalWeight", "score"),
+    cargoPallets: readSpecial(merged, detail, "pallets"),
+    cargoContracts: readSpecial(merged, detail, "completedContracts"),
+    cargoParcels: readSpecial(merged, detail, "parcelsDelivered"),
+    cargoBonuses: readSpecial(merged, detail, "parcelBonuses"),
+    cargoLongestSeries: readSpecial(merged, detail, "longestSeries"),
+    cargoBestPallet: readSpecial(merged, detail, "bestPalletWeight"),
+    cargoLostWeight: readSpecial(merged, detail, "lostWeight"),
+    cargoOverloads: readSpecial(merged, detail, "overloads"),
     fireReduced: readSpecial(merged, detail, "fireReduced", "totalFireReduced"),
     firesExtinguished: readSpecial(merged, detail, "firesExtinguished", "totalExtinguished"),
     propagationBlocked: readSpecial(merged, detail, "propagationBlocked"),
@@ -740,6 +753,15 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("meilleure main", formatNumber(bestMetric(agg), 0)),
         row("cartes", formatNumber(s.cardsCollected, 0)),
         row("pouvoirs", formatNumber((s.choicesUsed || 0) + (s.exchangesUsed || 0) + (s.jokers || 0), 0)),
+      ];
+    case "cargo":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("poids", `${formatNumber(s.cargoWeight || agg.scoreSum, 0)} kg`),
+        row("palettes", formatNumber(s.cargoPallets, 0)),
+        row("contrats", formatNumber(s.cargoContracts, 0)),
+        row("best série", formatNumber(Math.max(mx.cargoLongestSeries || 0, bestMetric(agg)), 0)),
       ];
     case "darts_firefighter":
       return [

@@ -45,6 +45,7 @@ export type CompactMatchMode =
   | "territories"
   | "darts_firefighter"
   | "darts_poker"
+  | "cargo"
   | "scram"
   | "batard"
   | "babyfoot"
@@ -124,7 +125,8 @@ const NUMERIC_HINTS = [
   "bull", "dbull", "shield", "resurrection", "damage", "streak", "round", "turn", "visit", "duration",
   "assist", "goal", "goals", "penalty", "fanny", "mene", "throw", "throws", "closed", "open",
   "single", "double", "triple", "fire", "water", "smoke", "protect", "extinguish", "spread",
-  "canadair", "critical", "useless", "perfect", "accuracy", "hand", "card", "choice", "exchange", "joker"
+  "canadair", "critical", "useless", "perfect", "accuracy", "hand", "card", "choice", "exchange", "joker",
+  "cargo", "weight", "pallet", "contract", "parcel", "overload", "series", "crate", "carton", "route", "fragile", "urgent"
 ];
 
 const DROP_KEYS = new Set([
@@ -267,6 +269,7 @@ function inferMode(rec: any, payload: any): CompactMatchMode {
   if (raw.includes("battle_royale") || raw.includes("battle royale")) return "battle_royale";
   if (raw.includes("darts_racer") || raw.includes("darts racer")) return "darts_racer";
   if (raw.includes("darts_poker") || raw.includes("darts poker") || raw.includes("dartspoker")) return "darts_poker";
+  if (raw.includes("cargo")) return "cargo";
   if (raw.includes("bowling")) return "bowling";
   if (raw.includes("baseball")) return "baseball";
   if (raw.includes("shooter")) return "shooter";
@@ -543,6 +546,34 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
         roundsPlayed: summary?.roundsPlayed ?? matchStats?.roundsPlayed,
         configuredRounds: summary?.configuredRounds,
         dartsPerHand: summary?.dartsPerHand,
+        scoreLine: summary?.scoreLine,
+        durationMs: summary?.durationMs ?? matchStats?.durationMs,
+      }),
+    };
+  }
+
+  // CARGO : préserver le camion, les contrats, les séries et le journal complet.
+  // La sauvegarde compacte reste ainsi reprenable sans reconstruire le moteur.
+  if (mode === "cargo") {
+    const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const matchStats = payload?.stats?.match ?? payload?.stats?.global ?? summary?.matchStats ?? {};
+    const snapshot = payload?.stateSnapshot ?? payload?.resume?.state ?? null;
+    const cargoVisits = payload?.visitHistory ?? payload?.visits ?? summary?.visits ?? snapshot?.visits ?? [];
+    out.cg = {
+      config: stripHeavyPreserveKeys(payload?.config ?? snapshot?.config ?? {}),
+      stateSnapshot: snapshot ? stripHeavyPreserveKeys(snapshot) : undefined,
+      visits: stripHeavyPreserveKeys(cargoVisits),
+      matchStats: stripHeavyPreserveKeys(matchStats),
+      summary: stripHeavyPreserveKeys({
+        winnerId: summary?.winnerId,
+        winnerIds: summary?.winnerIds,
+        winnerName: summary?.winnerName,
+        variant: summary?.variant ?? payload?.config?.variant,
+        roundsPlayed: summary?.roundsPlayed ?? matchStats?.roundsPlayed,
+        configuredRounds: summary?.configuredRounds ?? payload?.config?.rounds,
+        totalWeight: summary?.totalWeight ?? matchStats?.totalWeight,
+        parcelsDelivered: summary?.parcelsDelivered ?? matchStats?.parcelsDelivered,
+        pallets: summary?.pallets ?? matchStats?.pallets,
         scoreLine: summary?.scoreLine,
         durationMs: summary?.durationMs ?? matchStats?.durationMs,
       }),
@@ -839,6 +870,44 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         alias("perfectVisits", "perfectvisits");
         alias("criticalInterventions", "criticalinterventio");
       }
+      if (compact.m === "cargo") {
+        const n = ps.n || {};
+        const c = ps.c || {};
+        const alias = (target: string, ...keys: string[]) => {
+          for (const key of keys) {
+            if (n[key] != null) { out[target] = n[key]; return; }
+            if (c[key] != null) { out[target] = c[key]; return; }
+          }
+        };
+        alias("darts", "dt", "darts");
+        alias("visits", "vis", "visits");
+        alias("hits", "hit", "hits");
+        alias("singles", "singles");
+        alias("doubles", "doubles");
+        alias("triples", "triples");
+        alias("bulls", "bulls");
+        alias("dbulls", "dbulls");
+        alias("misses", "mis", "misses");
+        alias("totalWeight", "totalweight", "sc", "score");
+        alias("pallets", "pallets");
+        alias("cartons", "cartons");
+        alias("crates", "crates");
+        alias("completedContracts", "completedcontracts");
+        alias("failedContracts", "failedcontracts");
+        alias("fragileCompleted", "fragilecompleted");
+        alias("fragileBroken", "fragilebroken");
+        alias("urgentCompleted", "urgentcompleted");
+        alias("lostWeight", "lostweight");
+        alias("rejectedWeight", "rejectedweight");
+        alias("overloads", "overloads");
+        alias("perfectLoads", "perfectloads");
+        alias("longestSeries", "longestseries");
+        alias("bestPalletWeight", "bestpalletweight");
+        alias("parcelsDelivered", "parcelsdelivered");
+        alias("parcelDeliveries", "parceldeliveries");
+        alias("parcelBonuses", "parcelbonuses");
+        alias("routeStagesCompleted", "routestagescomplet");
+      }
       if (compact.m === "darts_poker") {
         const n = ps.n || {};
         const c = ps.c || {};
@@ -913,6 +982,7 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
     }
     const firefighter = compact.m === "darts_firefighter" && compact.d?.ff && typeof compact.d.ff === "object" ? compact.d.ff : null;
     const poker = compact.m === "darts_poker" && compact.d?.pk && typeof compact.d.pk === "object" ? compact.d.pk : null;
+    const cargo = compact.m === "cargo" && compact.d?.cg && typeof compact.d.cg === "object" ? compact.d.cg : null;
     const summary = {
       players: playersMap,
       perPlayer: players,
@@ -928,6 +998,9 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       ...(poker?.matchStats ? { matchStats: poker.matchStats } : {}),
       ...(Array.isArray(poker?.rounds) ? { rounds: poker.rounds } : {}),
       ...(Array.isArray(poker?.visits) ? { visits: poker.visits } : {}),
+      ...(cargo?.summary || {}),
+      ...(cargo?.matchStats ? { matchStats: cargo.matchStats } : {}),
+      ...(Array.isArray(cargo?.visits) ? { visits: cargo.visits } : {}),
     };
     return {
       id: String(compact.id || ""),
@@ -953,6 +1026,12 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         stateSnapshot: poker.stateSnapshot,
         visits: Array.isArray(poker.visits) ? poker.visits : [],
         stats: { sport: "darts", mode: "darts_poker", players, match: poker.matchStats || {}, global: poker.matchStats || {} },
+      } : {}),
+      ...(cargo ? {
+        config: cargo.config || compact.o || {},
+        stateSnapshot: cargo.stateSnapshot,
+        visits: Array.isArray(cargo.visits) ? cargo.visits : [],
+        stats: { sport: "darts", mode: "cargo", players, match: cargo.matchStats || {}, global: cargo.matchStats || {} },
       } : {}),
       compact,
     };

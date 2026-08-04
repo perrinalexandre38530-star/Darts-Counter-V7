@@ -31,6 +31,16 @@ const registry = read("src/games/dartsGameRegistry.ts");
 assert.ok(registry.includes('id: "darts_poker"'), "carte Games absente");
 assert.ok(registry.includes('tab: "darts_poker_config"'), "carte Games non reliée à la config");
 
+// Anti-régression menu Jeux : Darts Poker doit rester actif et classé dans Fun.
+const pokerDefinition = registry.match(/\{\s*id:\s*"darts_poker"[\s\S]*?\n\s*\},/i)?.[0] || "";
+assert.ok(pokerDefinition, "définition Darts Poker introuvable dans le registry");
+assert.ok(pokerDefinition.includes('category: "fun"'), "Darts Poker doit être classé dans Fun");
+assert.ok(pokerDefinition.includes('subCategory: "strategie"'), "sous-catégorie Stratégie absente");
+assert.ok(pokerDefinition.includes('ready: true'), "Darts Poker ne doit pas être déclaré indisponible");
+
+const readyIdsSection = registry.match(/const READY_IDS = new Set<string>\(\[[\s\S]*?\]\);/i)?.[0] || "";
+assert.ok(readyIdsSection.includes('"darts_poker"'), "Darts Poker absent de READY_IDS : la carte serait grisée");
+
 const play = read("src/pages/DartsPokerPlay.tsx");
 assert.ok(play.includes("DartsPokerEnd"), "écran de fin non relié");
 assert.ok(play.includes('History as any).upsert(buildHistoryRecord("in_progress")'), "autosauvegarde en cours absente");

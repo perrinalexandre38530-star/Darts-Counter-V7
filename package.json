@@ -60,7 +60,8 @@
     "test:play-privacy": "node ./tools/test-play-privacy.mjs",
     "test:interstitial-every-match": "node ./tools/test-interstitial-every-match.mjs",
     "version:sync": "node ./tools/sync-release-version.mjs",
-    "version:check": "node ./tools/check-release-version.mjs"
+    "version:check": "node ./tools/check-release-version.mjs",
+    "test:cargo": "node tools/test-cargo-integration.mjs && node --experimental-strip-types tools/test-cargo-regression.ts"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
