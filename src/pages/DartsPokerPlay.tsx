@@ -215,7 +215,7 @@ export default function DartsPokerPlay(props: any) {
   }
 
   React.useEffect(() => {
-    if (!activePlayer || !isBot(activeProfile, botIds) || botThinking || state.phase === "round_result" || state.phase === "finished") return;
+    if (!activePlayer || !isBot(activeProfile, botIds) || botThinking || wonCardPopup || state.phase === "round_result" || state.phase === "finished") return;
     setBotThinking(true);
     const timer = window.setTimeout(() => {
       let next = state;
@@ -247,7 +247,7 @@ export default function DartsPokerPlay(props: any) {
       setState(next); setBotThinking(false);
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [state.phase, state.activePlayerIndex, activeHand?.dartsUsed, activeHand?.choiceTokens, activeHand?.exchangeTokens, state.roundIndex]);
+  }, [state.phase, state.activePlayerIndex, activeHand?.dartsUsed, activeHand?.choiceTokens, activeHand?.exchangeTokens, state.roundIndex, wonCardPopup]);
 
   function buildHistoryRecord(statusOverride?: "in_progress" | "finished") {
     const status = statusOverride || (state.phase === "finished" ? "finished" : "in_progress");

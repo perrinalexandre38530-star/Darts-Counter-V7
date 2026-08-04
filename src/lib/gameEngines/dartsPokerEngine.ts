@@ -512,7 +512,9 @@ export function playDartsPokerVisit(stateInput: DartsPokerState, dartsInput: Gam
   if (!player || !hand) return state;
   const stats = state.statsByPlayer[player.id] || (state.statsByPlayer[player.id] = emptyDartsPokerStats());
   const remaining = Math.max(0, state.config.dartsPerHand - hand.dartsUsed);
-  const darts = (Array.isArray(dartsInput) ? dartsInput : []).slice(0, Math.min(3, remaining));
+  // DARTS POKER se joue désormais fléchette par fléchette : chaque validation
+  // passe immédiatement la main au joueur suivant encore autorisé à lancer.
+  const darts = (Array.isArray(dartsInput) ? dartsInput : []).slice(0, Math.min(1, remaining));
   if (!darts.length) return state;
   const beforeCards = hand.cards.map((card) => ({ ...card }));
   const exchangeBefore = hand.exchangeTokens;
@@ -580,7 +582,32 @@ export function playDartsPokerVisit(stateInput: DartsPokerState, dartsInput: Gam
     choiceTokensBefore: choiceBefore, choiceTokensAfter: hand.choiceTokens, events,
   };
   state.visits.push(visit);
-  if (hand.dartsUsed >= state.config.dartsPerHand) state.phase = "powers";
+
+  // Rotation stricte après CHAQUE fléchette validée.
+  // On cherche le prochain joueur qui n'a pas encore lancé ses 6 fléchettes,
+  // en bouclant au début de la table si nécessaire.
+  let nextThrowerIndex = -1;
+  for (let offset = 1; offset <= state.players.length; offset += 1) {
+    const candidateIndex = (state.activePlayerIndex + offset) % state.players.length;
+    const candidate = state.players[candidateIndex];
+    const candidateHand = candidate ? state.handsByPlayer[candidate.id] : null;
+    if (candidateHand && candidateHand.dartsUsed < state.config.dartsPerHand) {
+      nextThrowerIndex = candidateIndex;
+      break;
+    }
+  }
+
+  if (nextThrowerIndex >= 0) {
+    state.activePlayerIndex = nextThrowerIndex;
+    state.phase = "throwing";
+  } else {
+    // Tous les joueurs ont lancé leurs 6 fléchettes. La phase des pouvoirs
+    // commence au premier joueur de la table, puis finishDartsPokerHand
+    // fera avancer les validations de main dans l'ordre.
+    const firstPendingIndex = state.players.findIndex((candidate) => !state.handsByPlayer[candidate.id]?.completed);
+    state.activePlayerIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
+    state.phase = "powers";
+  }
   return state;
 }
 
@@ -683,7 +710,9 @@ export function finishDartsPokerHand(stateInput: DartsPokerState, rng: () => num
 
   const nextIndex = state.players.findIndex((candidate, index) => index > state.activePlayerIndex && !state.handsByPlayer[candidate.id].completed);
   if (nextIndex >= 0) {
-    state.activePlayerIndex = nextIndex; state.phase = "throwing";
+    state.activePlayerIndex = nextIndex;
+    const nextHand = state.handsByPlayer[state.players[nextIndex].id];
+    state.phase = nextHand?.dartsUsed >= state.config.dartsPerHand ? "powers" : "throwing";
   } else {
     finalizeRound(state);
   }

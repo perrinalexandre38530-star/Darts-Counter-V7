@@ -48,22 +48,39 @@ let state = createDartsPokerState([{ id: "p1", name: "Alice" }, { id: "p2", name
 assert.equal(Object.keys(state.market).length, 20);
 assert.equal(state.deck.length, 32);
 
-state = playDartsPokerVisit(state, [
-  { bed: "S", number: 1 },
-  { bed: "D", number: 2 },
-  { bed: "T", number: 3 },
-], rng);
-state = playDartsPokerVisit(state, [
-  { bed: "OB" },
-  { bed: "IB" },
-  { bed: "MISS" },
-], rng);
+const rotationSequence = [
+  { playerId: "p1", dart: { bed: "S", number: 1 } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+  { playerId: "p1", dart: { bed: "D", number: 2 } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+  { playerId: "p1", dart: { bed: "T", number: 3 } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+  { playerId: "p1", dart: { bed: "OB" } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+  { playerId: "p1", dart: { bed: "IB" } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+  { playerId: "p1", dart: { bed: "MISS" } },
+  { playerId: "p2", dart: { bed: "MISS" } },
+] as const;
+
+rotationSequence.forEach((step, index) => {
+  assert.equal(state.players[state.activePlayerIndex]?.id, step.playerId, `mauvais joueur actif avant la fléchette ${index + 1}`);
+  state = playDartsPokerVisit(state, [step.dart as any], rng);
+  if (index < rotationSequence.length - 1) {
+    assert.notEqual(state.players[state.activePlayerIndex]?.id, step.playerId, `la main n'a pas tourné après la fléchette ${index + 1}`);
+  }
+});
+
 assert.equal(state.phase, "powers");
+assert.equal(state.activePlayerIndex, 0);
+assert.equal(state.handsByPlayer.p1.dartsUsed, 6);
+assert.equal(state.handsByPlayer.p2.dartsUsed, 6);
 assert.equal(state.handsByPlayer.p1.exchangeTokens, 1);
 assert.equal(state.handsByPlayer.p1.choiceTokens, 2);
 assert.equal(state.statsByPlayer.p1.jokers, 1);
 assert.equal(state.statsByPlayer.p1.darts, 6);
-assert.equal(state.visits.length, 2);
+assert.equal(state.statsByPlayer.p2.darts, 6);
+assert.equal(state.visits.length, 12);
 
 state = openDartsPokerChoice(state, rng);
 assert.equal(state.pendingChoice?.cards.length, 2);
@@ -73,13 +90,10 @@ state = useDartsPokerExchange(state, 0, rng);
 assert.equal(state.handsByPlayer.p1.exchangeTokens, 0);
 state = finishDartsPokerHand(state, rng);
 assert.equal(state.activePlayerIndex, 1);
-assert.equal(state.phase, "throwing");
+assert.equal(state.phase, "powers");
 assert.equal(state.statsByPlayer.p1.handsPlayed, 1);
 assert.ok(state.handsByPlayer.p1.evaluation);
 
-state = playDartsPokerVisit(state, [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }], rng);
-state = playDartsPokerVisit(state, [{ bed: "MISS" }, { bed: "MISS" }, { bed: "MISS" }], rng);
-assert.equal(state.phase, "powers");
 state = finishDartsPokerHand(state, rng);
 assert.equal(state.phase, "round_result");
 assert.equal(state.rounds.length, 1);
