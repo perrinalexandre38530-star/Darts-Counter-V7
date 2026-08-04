@@ -71,6 +71,9 @@ type Props = {
 
   /** Espace horizontal entre BULL, score central et VALIDER. Défaut: 10px. */
   footerGap?: number;
+
+  /** Version plus compacte pour les écrans très chargés (ex: Darts Poker). */
+  compact?: boolean;
 };
 
 /* ---------- Helpers ---------- */
@@ -224,9 +227,23 @@ export default function Keypad({
   validateAttention = false,
   safeBottomPad = true,
   footerGap = 10,
+  compact = false,
 }: Props) {
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
+  const wrapStyle: React.CSSProperties = {
+    ...wrapCard,
+    padding: compact ? 8 : wrapCard.padding,
+  };
+  const compactBtnBase: React.CSSProperties = compact ? { ...btnBase, height: "clamp(38px, 7.6vw, 44px)", borderRadius: 14, fontSize: 12 } : btnBase;
+  const compactBtnDouble: React.CSSProperties = compact ? { ...btnDouble, ...compactBtnBase } : btnDouble;
+  const compactBtnTriple: React.CSSProperties = compact ? { ...btnTriple, ...compactBtnBase } : btnTriple;
+  const compactBtnGold: React.CSSProperties = compact ? { ...btnGold, ...compactBtnBase } : btnGold;
+  const compactBtnCancel: React.CSSProperties = compact ? { ...btnCancel, ...compactBtnBase } : btnCancel;
+  const compactBtnBull: React.CSSProperties = compact ? { ...btnBull, ...compactBtnBase } : btnBull;
+  const compactCell: React.CSSProperties = compact ? { ...cell, ...compactBtnBase } : cell;
+  const compactChip: React.CSSProperties = compact ? { ...chip, minWidth: 44, padding: "7px 10px", borderRadius: 12, fontSize: 12 } : chip;
+  const compactTotalPill: React.CSSProperties = compact ? { ...totalPill, padding: "6px 8px", fontSize: 16, minWidth: 40 } : totalPill;
 
   const rows = [
     [0, 1, 2, 3, 4, 5, 6],
@@ -237,30 +254,30 @@ export default function Keypad({
   return (
     <div
       style={{
-        ...wrapCard,
+        ...wrapStyle,
         width: "100%",
         maxWidth: "100%",
         margin: "0 auto",
         paddingBottom: safeBottomPad
           ? "calc(12px + var(--safe-bottom))"
-          : wrapCard.padding,
+          : wrapStyle.padding,
       }}
     >
       {/* Badges de volée */}
       {!hidePreview && (
         <div
           style={{
-            marginBottom: 10,
+            marginBottom: compact ? 6 : 10,
             display: "flex",
             justifyContent: "center",
-            gap: 10,
+            gap: compact ? 6 : 10,
             flexWrap: "nowrap",
             width: "100%",
           }}
         >
-          <span style={{ ...chip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
-          <span style={{ ...chip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
-          <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
+          <span style={{ ...compactChip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
+          <span style={{ ...compactChip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
+          <span style={{ ...compactChip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
         </div>
       )}
 
@@ -269,8 +286,8 @@ export default function Keypad({
           style={{
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            marginBottom: 10,
+            gap: compact ? 6 : 10,
+            marginBottom: compact ? 6 : 10,
           }}
         >
           <button
@@ -278,7 +295,7 @@ export default function Keypad({
             onClick={singleRingSelector.onOuter}
             aria-pressed={singleRingSelector.value === "outer" && multiplier === 1}
             style={{
-              ...btnBase,
+              ...compactBtnBase,
               background: singleRingSelector.value === "outer" && multiplier === 1
                 ? "rgba(22,92,66,.35)"
                 : "rgba(255,255,255,.04)",
@@ -299,7 +316,7 @@ export default function Keypad({
             onClick={singleRingSelector.onInner}
             aria-pressed={singleRingSelector.value === "inner" && multiplier === 1}
             style={{
-              ...btnBase,
+              ...compactBtnBase,
               background: singleRingSelector.value === "inner" && multiplier === 1
                 ? "rgba(179,68,151,.20)"
                 : "rgba(255,255,255,.04)",
@@ -329,7 +346,7 @@ export default function Keypad({
         <button
           type="button"
           style={{
-            ...btnDouble,
+            ...compactBtnDouble,
             borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
           }}
           aria-pressed={multiplier === 2}
@@ -343,7 +360,7 @@ export default function Keypad({
         <button
           type="button"
           style={{
-            ...btnTriple,
+            ...compactBtnTriple,
             borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
           }}
           aria-pressed={multiplier === 3}
@@ -399,7 +416,7 @@ export default function Keypad({
         ) : (
           <button
             type="button"
-            style={btnCancel}
+            style={compactBtnCancel}
             onClick={onCancel}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -413,24 +430,24 @@ export default function Keypad({
         )}
       </div>
 
-      {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
+      {noticeSlot ? <div style={{ marginBottom: compact ? 5 : 8 }}>{noticeSlot}</div> : null}
 
       {/* Grille chiffres (pas de conteneur scrollable => ne peut pas “disparaître”) */}
-      <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "grid", gap: compact ? 6 : 8 }}>
         {rows.map((row, idx) => (
           <div
             key={idx}
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 8,
+              gap: compact ? 6 : 8,
             }}
           >
             {row.map((n) => (
               <button
                 key={n}
                 type="button"
-                style={cell}
+                style={compactCell}
                 onClick={() => onNumber(n)}
                 title={n === 0 ? "MISS" : String(n)}
               >
@@ -445,15 +462,15 @@ export default function Keypad({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(88px, .8fr) minmax(50px, .42fr) minmax(118px, 1fr)",
+          gridTemplateColumns: compact ? "minmax(74px, .75fr) minmax(42px, .36fr) minmax(92px, .9fr)" : "minmax(88px, .8fr) minmax(50px, .42fr) minmax(118px, 1fr)",
           alignItems: "center",
           gap: footerGap,
-          marginTop: 10,
+          marginTop: compact ? 6 : 10,
         }}
       >
         <button
           type="button"
-          style={{ ...btnBull, width: "100%" }}
+          style={{ ...compactBtnBull, width: "100%" }}
           onClick={onBull}
         >
           BULL
@@ -463,7 +480,7 @@ export default function Keypad({
           style={{
             display: "flex",
             justifyContent: "center",
-            minHeight: 40,
+            minHeight: compact ? 34 : 40,
             alignItems: "center",
             pointerEvents: "none",
           }}
@@ -473,14 +490,14 @@ export default function Keypad({
               {centerSlot}
             </div>
           ) : hideTotal ? null : (
-            <span style={totalPill}>{total}</span>
+            <span style={compactTotalPill}>{total}</span>
           )}
         </div>
 
         <button
           type="button"
           style={{
-            ...btnGold,
+            ...compactBtnGold,
             width: "100%",
             ...(validateAttention
               ? {
