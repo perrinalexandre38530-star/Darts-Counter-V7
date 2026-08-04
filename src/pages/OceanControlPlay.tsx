@@ -7,7 +7,6 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
-import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
@@ -88,7 +87,50 @@ function OceanGrid({ state, owner, own = false, onFocus, placement = false, plac
 }
 
 function QuickButton({ icon, label, value, color, onClick }: any) {
-  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 55, borderRadius: 14, border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}12,rgba(255,255,255,.025))`, color: "#fff", padding: "6px 4px", cursor: "pointer" }}><div style={{ color, fontSize: 17 }}>{icon}</div><div style={{ marginTop: 3, fontSize: 7.3, fontWeight: 1050, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></button>;
+  return <button type="button" onClick={onClick} className="ocean-quick-button" style={{ borderColor: `${color}55`, background: `linear-gradient(180deg,${color}12,rgba(255,255,255,.025))` }}><div style={{ color, fontSize: 16 }}>{icon}</div><div className="ocean-quick-button__label">{label}</div><div className="ocean-quick-button__value">{value}</div></button>;
+}
+
+function dartPreviewLabel(dart?: UiDart) {
+  if (!dart) return "—";
+  if (Number(dart.v) === 0) return "MISS";
+  if (Number(dart.v) === 25) return dart.mult === 2 ? "DB" : "B";
+  return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
+}
+
+function CompactDartPad({ currentThrow, multiplier, onSimple, onDouble, onTriple, onNumber, onBull, onCancel, onBackspace, onValidate, noticeSlot, disabled = false }: any) {
+  const rows = [
+    [0, 1, 2, 3, 4, 5, 6],
+    [7, 8, 9, 10, 11, 12, 13],
+    [14, 15, 16, 17, 18, 19, 20],
+  ];
+
+  return <div className="ocean-compact-pad">
+    <div className="ocean-pad-topline">
+      <div className="ocean-pad-preview-strip">
+        {[0, 1, 2].map((index) => <span key={index} className="ocean-pad-preview-chip">{dartPreviewLabel(currentThrow[index])}</span>)}
+      </div>
+      <div className="ocean-pad-count"><strong>{currentThrow.length}</strong><span>/3</span></div>
+    </div>
+
+    <div className="ocean-pad-action-row">
+      <button type="button" className={`ocean-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""}`} onClick={onSimple} disabled={disabled}>SIMPLE</button>
+      <button type="button" className={`ocean-pad-mode ${multiplier === 2 ? "is-active is-double" : ""}`} onClick={onDouble} disabled={disabled}>DOUBLE</button>
+      <button type="button" className={`ocean-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={onTriple} disabled={disabled}>TRIPLE</button>
+      <button type="button" className="ocean-pad-undo" onClick={onCancel} disabled={disabled}>↶</button>
+    </div>
+
+    {noticeSlot ? <div className="ocean-pad-notice">{noticeSlot}</div> : null}
+
+    <div className="ocean-pad-grid-rows">
+      {rows.map((row, rowIndex) => <div key={rowIndex} className="ocean-pad-grid-row">{row.map((n) => <button key={n} type="button" className={`ocean-pad-cell ${n === 0 ? "is-miss" : ""}`} onClick={() => onNumber(n)} disabled={disabled} title={n === 0 ? "MISS" : String(n)}>{n === 0 ? "MISS" : n}</button>)}</div>)}
+    </div>
+
+    <div className="ocean-pad-footer-row">
+      <button type="button" className={`ocean-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={onBull} disabled={disabled}>{multiplier === 2 ? "DBULL" : "BULL"}</button>
+      <button type="button" className="ocean-pad-backspace" onClick={onBackspace} disabled={disabled || !currentThrow.length}>⌫</button>
+      <button type="button" className="ocean-pad-validate" onClick={onValidate} disabled={disabled || !currentThrow.length}>VALIDER</button>
+    </div>
+  </div>;
 }
 
 function Kpi({ label, value, color = BLUE, detail }: any) { return <div style={{ borderRadius: 14, padding: 9, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 19, fontWeight: 1100 }}>{value}</div>{detail ? <div style={{ marginTop: 3, color: "rgba(255,255,255,.42)", fontSize: 7.3 }}>{detail}</div> : null}</div>; }
@@ -217,29 +259,30 @@ export default function OceanControlPlay(props: any) {
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
   React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
 
-  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => setPlacementReady(true)} orientation={orientation} setOrientation={setOrientation} onPlace={handlePlace} onReset={() => setState((prev) => resetOceanPlacementOwner(prev))} onAuto={autoPlaceCurrentOwner} /></div>;
+  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => setPlacementReady(true)} orientation={orientation} setOrientation={setOrientation} onPlace={handlePlace} onReset={() => setState((prev) => resetOceanPlacementOwner(prev))} onAuto={autoPlaceCurrentOwner} /></div>;
 
   const remainingShips = oceanControlRemainingDecks(targetOwner);
   const remainingCells = oceanControlRemainingCells(targetOwner);
   const noticeSlot = <div style={{ color: botThinking ? GOLD : SOFT, fontSize: 8.2, fontWeight: 900, textAlign: "center", lineHeight: 1.2 }}>{botThinking ? "BOT EN APPROCHE…" : notice}</div>;
 
   return <div className="ocean-control-page" style={{ color: theme?.text || "#fff" }}>
-    <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} />
+    <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" tickerHeight={78} tickerBottomGap={6} left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} />
     <main className="ocean-control-main">
       <section style={{ ...panel(`${activeColor}66`), overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "46px minmax(0,1fr) 84px", gap: 8, alignItems: "center", padding: "9px 10px 7px" }}><ProfileAvatar profile={activeProfile} size={44} /><div style={{ minWidth: 0 }}><div style={{ color: activeColor, fontSize: 12.5, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 8.2 }}>{ownOwner?.name} · Bataille {state.battleNumber}</div><div style={{ marginTop: 4, color: CYAN, fontSize: 8.4, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>CIBLE : {targetOwner?.name || "—"}</div></div><div style={{ textAlign: "right" }}><div style={{ color: RED, fontSize: 24, fontWeight: 1200, lineHeight: .9 }}>{remainingShips}</div><div style={{ color: SOFT, fontSize: 7.3, fontWeight: 1000 }}>NAVIRES</div><div style={{ marginTop: 4, color: GOLD, fontSize: 7.5, fontWeight: 950 }}>{remainingCells} zones</div></div></div>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px", gap: 7, alignItems: "center", padding: "7px 8px", background: "rgba(0,0,0,.28)", borderTop: "1px solid rgba(255,255,255,.07)" }}><div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}><span style={{ flex: "0 0 auto", width: 7, height: 7, borderRadius: 999, background: BLUE, boxShadow: `0 0 10px ${BLUE}` }} /><span style={{ color: "rgba(255,255,255,.76)", fontSize: 8.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{oceanControlTacticalHint(state)}</span></div><button onClick={cancelOrUndo} style={{ width: 42, height: 34, borderRadius: 11, border: `1px solid ${RED}55`, background: `${RED}12`, color: RED, fontWeight: 1100 }}>↶</button></div>
+        <div className="ocean-player-card"><ProfileAvatar profile={activeProfile} size={40} /><div style={{ minWidth: 0 }}><div style={{ color: activeColor, fontSize: 12.2, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div><div style={{ marginTop: 1, color: SOFT, fontSize: 8 }}>{ownOwner?.name} · Bataille {state.battleNumber}</div><div style={{ marginTop: 3, color: CYAN, fontSize: 8.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>CIBLE : {targetOwner?.name || "—"}</div></div><div className="ocean-player-score"><div className="ocean-player-score__value">{remainingShips}</div><div className="ocean-player-score__label">NAVIRES</div><div className="ocean-player-score__detail">{remainingCells} zones</div></div></div>
+        <div className="ocean-summary-row"><div className="ocean-summary-chip"><span className="ocean-summary-chip__label">VARIANTE</span><strong>{oceanControlVariantLabel(config.variant)}</strong></div><div className="ocean-summary-chip"><span className="ocean-summary-chip__label">FOCUS</span><strong>{state.focusNumber || "—"}</strong></div><div className="ocean-summary-chip"><span className="ocean-summary-chip__label">VOLÉE</span><strong>{throwDarts.length}/3</strong></div><button onClick={cancelOrUndo} className="ocean-summary-undo">↶</button></div>
+        <div className="ocean-tip-bar"><span className="ocean-tip-bar__dot" /><span className="ocean-tip-bar__text">{oceanControlTacticalHint(state)}</span></div>
       </section>
 
       <section style={{ ...panel(`${BLUE}33`), padding: 7 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}><div><div style={{ color: CYAN, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>GRILLE ENNEMIE</div><div style={{ color: SOFT, fontSize: 7.3 }}>Touchez une case pour cibler le sonar / DBULL.</div></div><div style={{ color: state.focusNumber ? GOLD : SOFT, fontSize: 10, fontWeight: 1100 }}>FOCUS {state.focusNumber || "—"}</div></div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}><div><div style={{ color: CYAN, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>GRILLE ENNEMIE</div><div style={{ color: SOFT, fontSize: 7.1 }}>Touchez une case pour cibler le sonar / DBULL.</div></div><div style={{ color: state.focusNumber ? GOLD : SOFT, fontSize: 9.5, fontWeight: 1100 }}>FOCUS {state.focusNumber || "—"}</div></div>
         <OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} />
       </section>
 
-      <section style={{ ...panel(), padding: 7 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><QuickButton icon="⚓" label="MA FLOTTE" value={`${oceanControlRemainingDecks(ownOwner)} navires`} color={GREEN} onClick={() => setOverlay("fleet")} /><QuickButton icon="🎯" label="CIBLES" value={`${state.owners.filter((owner) => owner.id !== ownOwner?.id && !owner.eliminated).length} ennemie(s)`} color={RED} onClick={() => setOverlay("targets")} /><QuickButton icon="📊" label="STATS" value={`${oceanControlAccuracy(activeStats)}% précision`} color={GOLD} onClick={() => setOverlay("stats")} /><QuickButton icon="📡" label="JOURNAL" value={`${state.visits.length} volées`} color={CYAN} onClick={() => setOverlay("log")} /></div></section>
+      <section style={{ ...panel(), padding: 6 }}><div className="ocean-floating-dock"><QuickButton icon="⚓" label="MA FLOTTE" value={`${oceanControlRemainingDecks(ownOwner)} navires`} color={GREEN} onClick={() => setOverlay("fleet")} /><QuickButton icon="🎯" label="CIBLES" value={`${state.owners.filter((owner) => owner.id !== ownOwner?.id && !owner.eliminated).length} ennemie(s)`} color={RED} onClick={() => setOverlay("targets")} /><QuickButton icon="📊" label="STATS" value={`${oceanControlAccuracy(activeStats)}% précision`} color={GOLD} onClick={() => setOverlay("stats")} /><QuickButton icon="📡" label="JOURNAL" value={`${state.visits.length} volées`} color={CYAN} onClick={() => setOverlay("log")} /></div></section>
 
       <section style={{ ...panel(), padding: 6 }}>
-        {config.scoreInputMethod === "dartboard" ? <div style={{ display: "grid", justifyItems: "center", gap: 6 }}><DartboardClickable onHit={(segment, mult) => addDart(segment, mult)} multiplier={multiplier} size={Math.min(310, typeof window !== "undefined" ? window.innerWidth - 34 : 300)} disabled={botThinking} /><button onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ width: "100%", minHeight: 44, borderRadius: 14, border: `1px solid ${GREEN}88`, background: throwDarts.length ? `${GREEN}18` : "rgba(255,255,255,.03)", color: throwDarts.length ? GREEN : SOFT, fontWeight: 1100 }}>VALIDER LA VOLÉE ({throwDarts.length}/3)</button></div> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} hidePreview={false} hideTotal centerSlot={<div style={{ textAlign: "center" }}><div style={{ color: CYAN, fontSize: 14, fontWeight: 1200 }}>{throwDarts.length}/3</div><div style={{ color: SOFT, fontSize: 6.5 }}>TORPILLES</div></div>} noticeSlot={noticeSlot} safeBottomPad={false} />}
+        {config.scoreInputMethod === "dartboard" ? <div style={{ display: "grid", justifyItems: "center", gap: 6 }}><div className="ocean-pad-topline"><div className="ocean-pad-preview-strip">{[0, 1, 2].map((index) => <span key={index} className="ocean-pad-preview-chip">{dartPreviewLabel(throwDarts[index])}</span>)}</div><div className="ocean-pad-count"><strong>{throwDarts.length}</strong><span>/3</span></div></div><DartboardClickable onHit={(segment, mult) => addDart(segment, mult)} multiplier={multiplier} size={Math.min(242, typeof window !== "undefined" ? window.innerWidth - 88 : 238)} disabled={botThinking} /><div className="ocean-pad-action-row" style={{ width: "100%" }}><button type="button" className={`ocean-pad-mode ${multiplier === 1 ? "is-active is-simple" : ""}`} onClick={() => setMultiplier(1)} disabled={botThinking}>SIMPLE</button><button type="button" className={`ocean-pad-mode ${multiplier === 2 ? "is-active is-double" : ""}`} onClick={() => setMultiplier(2)} disabled={botThinking}>DOUBLE</button><button type="button" className={`ocean-pad-mode ${multiplier === 3 ? "is-active is-triple" : ""}`} onClick={() => setMultiplier(3)} disabled={botThinking}>TRIPLE</button><button type="button" className="ocean-pad-undo" onClick={cancelOrUndo} disabled={botThinking}>↶</button></div><div className="ocean-pad-notice">{noticeSlot}</div><div className="ocean-pad-footer-row"><button type="button" className={`ocean-pad-bull ${multiplier === 2 ? "is-dbull" : ""}`} onClick={() => addDart(25)} disabled={botThinking}>{multiplier === 2 ? "DBULL" : "BULL"}</button><button type="button" className="ocean-pad-backspace" onClick={() => setThrowDarts((prev) => prev.slice(0, -1))} disabled={botThinking || !throwDarts.length}>⌫</button><button onClick={() => commitVisit()} disabled={!throwDarts.length || botThinking} className="ocean-pad-validate">VALIDER</button></div></div> : <CompactDartPad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} noticeSlot={noticeSlot} disabled={botThinking} />}
       </section>
     </main>
 

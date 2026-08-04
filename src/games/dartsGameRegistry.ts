@@ -1251,6 +1251,7 @@ const READY_IDS = new Set<string>([
   "five_lives",
   "scram",
   "baseball",
+  "football",
   "attrape_moi",
   "president",
   "bobs_27",

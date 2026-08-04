@@ -33,6 +33,11 @@ assert.ok(app.includes("<FootballPlay"), "FootballPlay non monté");
 
 const registry = read("src/games/dartsGameRegistry.ts");
 assert.ok(registry.includes("Football"));
+assert.match(
+  registry,
+  /const READY_IDS = new Set<string>\(\[[\s\S]*?["']football["'][\s\S]*?\]\);/,
+  "Football absent de READY_IDS : la carte serait affichée comme Bientôt disponible"
+);
 assert.ok(!/football[\s\S]{0,500}A implementer/i.test(registry), "la carte Football est encore marquée à implémenter");
 
 const stats = read("src/pages/StatsHub.tsx");
