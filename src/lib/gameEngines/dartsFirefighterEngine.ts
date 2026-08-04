@@ -41,6 +41,7 @@ export type DartsFirefighterConfigPayload = {
   initialFires: number;
   initialFireLevel?: DartsFirefighterInitialIntensity;
   initialSmoke?: number;
+  initialProtectedTerritories?: number;
   firePlacement?: DartsFirefighterFirePlacement;
   criticalTerritories: number;
   criticalLossEndsMission?: boolean;
@@ -52,6 +53,9 @@ export type DartsFirefighterConfigPayload = {
   destructionTurns?: number;
   protectionDecay?: number;
   propagationTiming?: DartsFirefighterPropagationTiming;
+  maxSpreadsPerCycle?: number;
+  reinforcementEveryRounds?: number;
+  reinforcementCount?: number;
   windEnabled: boolean;
   windStrength?: DartsFirefighterWindStrength;
   windChangeEvery?: number;
@@ -69,6 +73,7 @@ export type DartsFirefighterConfigPayload = {
   canadairNeighborCount?: 1 | 2 | 3 | 4;
   canadairRequiresGauge?: boolean;
   canadairGaugeCost?: number;
+  startingBrigadeGauge?: number;
   scoreInputMethod: DartsFirefighterInputMethod;
   randomOrder?: boolean;
 };
@@ -170,6 +175,7 @@ export type DartsFirefighterState = {
   roundIndex: number;
   turnIndex: number;
   propagationIndex: number;
+  lastReinforcementRound: number;
   selectedTerritoryId: string | null;
   windOffset: -3 | -2 | -1 | 1 | 2 | 3;
   windLabel: string;
@@ -243,6 +249,7 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
     initialFires: Math.max(1, Math.min(8, Number(raw?.initialFires || 3))),
     initialFireLevel: raw?.initialFireLevel === "mixed" || [1, 2, 3].includes(Number(raw?.initialFireLevel)) ? raw.initialFireLevel : "mixed",
     initialSmoke: Math.max(0, Math.min(8, Number(raw?.initialSmoke || 0))),
+    initialProtectedTerritories: Math.max(0, Math.min(8, Number(raw?.initialProtectedTerritories || 0))),
     firePlacement: ["random", "clustered", "critical_first"].includes(raw?.firePlacement) ? raw.firePlacement : "random",
     criticalTerritories: Math.max(0, Math.min(8, Number(raw?.criticalTerritories ?? 2))),
     criticalLossEndsMission: raw?.criticalLossEndsMission !== false,
@@ -254,6 +261,9 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
     destructionTurns: Math.max(1, Math.min(6, Number(raw?.destructionTurns || base.destructionTurns))),
     protectionDecay: clamp01(raw?.protectionDecay, base.protectionDecay),
     propagationTiming: raw?.propagationTiming === "after_round" ? "after_round" : "after_visit",
+    maxSpreadsPerCycle: Math.max(1, Math.min(8, Number(raw?.maxSpreadsPerCycle || 2))),
+    reinforcementEveryRounds: Math.max(0, Math.min(10, Number(raw?.reinforcementEveryRounds || 0))),
+    reinforcementCount: Math.max(1, Math.min(4, Number(raw?.reinforcementCount || 1))),
     windEnabled: raw?.windEnabled !== false,
     windStrength: ["light", "normal", "strong"].includes(raw?.windStrength) ? raw.windStrength : "normal",
     windChangeEvery: Math.max(1, Math.min(10, Number(raw?.windChangeEvery || 3))),
@@ -271,6 +281,7 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
     canadairNeighborCount: ([1, 2, 3, 4].includes(Number(raw?.canadairNeighborCount)) ? Number(raw.canadairNeighborCount) : 3) as any,
     canadairRequiresGauge: Boolean(raw?.canadairRequiresGauge),
     canadairGaugeCost: Math.max(0, Math.min(100, Number(raw?.canadairGaugeCost ?? 35))),
+    startingBrigadeGauge: Math.max(0, Math.min(100, Number(raw?.startingBrigadeGauge ?? 0))),
     scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
     randomOrder: Boolean(raw?.randomOrder),
   };
@@ -558,11 +569,13 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
   return result;
 }
 
-function resolvePropagation(state: DartsFirefighterState, events: FirefighterEvent[], playerId: string) {
+function resolvePropagation(state: DartsFirefighterState, events: FirefighterEvent[], playerId: string, completedBrigadeRound: boolean) {
   const cfg = effectiveRules(state.config);
   const active = state.territories.filter((t) => t.playable && !t.destroyed);
   const incomingSmoke = new Set<string>();
   const incomingFire = new Set<string>();
+  const maxSpreads = Math.max(1, Math.min(8, Number(state.config.maxSpreadsPerCycle || 2)));
+  let spreadAttempts = 0;
 
   for (const territory of active) {
     if (territory.protection > 0 && chance(state, cfg.protectionDecay)) {
@@ -590,7 +603,7 @@ function resolvePropagation(state: DartsFirefighterState, events: FirefighterEve
         addEvent(events, { type: "destroyed", territoryId: territory.id, territoryName: territory.name, score: territory.critical ? -1000 : -500, label: `${territory.critical ? "ZONE CRITIQUE PERDUE" : "TERRITOIRE DÉTRUIT"} · ${territory.name}` });
         continue;
       }
-      if (chance(state, cfg.spreadChance)) {
+      if (spreadAttempts < maxSpreads && chance(state, cfg.spreadChance)) {
         const currentIndex = active.findIndex((t) => t.id === territory.id);
         const windIndex = (currentIndex + state.windOffset + active.length) % active.length;
         const preferred = active[windIndex];
@@ -601,6 +614,7 @@ function resolvePropagation(state: DartsFirefighterState, events: FirefighterEve
         });
         const target = state.territories.find((t) => t.id === targetId);
         if (target) {
+          spreadAttempts += 1;
           if (target.protection > 0) {
             target.protection = Math.max(0, target.protection - 1) as any;
             state.propagationBlocked += 1;
@@ -638,6 +652,30 @@ function resolvePropagation(state: DartsFirefighterState, events: FirefighterEve
     state.totalSpread += 1;
     state.score -= 140;
     addEvent(events, { type: "spread", territoryId: target.id, territoryName: target.name, score: -140, label: `Propagation vers ${target.name}` });
+  }
+
+  const completedRound = state.roundIndex + 1;
+  const reinforcementEvery = Math.max(0, Number(state.config.reinforcementEveryRounds || 0));
+  if (completedBrigadeRound && reinforcementEvery > 0 && completedRound % reinforcementEvery === 0 && state.lastReinforcementRound !== completedRound) {
+    const count = Math.max(1, Math.min(4, Number(state.config.reinforcementCount || 1)));
+    const pool = state.territories.filter((t) => t.playable && !t.destroyed && t.fireLevel === 0 && !t.smoke);
+    for (let i = 0; i < count && pool.length; i += 1) {
+      const index = randomInt(state, pool.length);
+      const target = pool.splice(index, 1)[0];
+      if (!target) continue;
+      if (target.protection > 0) {
+        target.protection = Math.max(0, target.protection - 1) as any;
+        state.propagationBlocked += 1;
+        state.score += 100;
+        addEvent(events, { type: "spread_blocked", territoryId: target.id, territoryName: target.name, score: 100, label: `RENFORT BLOQUÉ PAR LE PARE-FEU · ${target.name}` });
+      } else {
+        target.smoke = true;
+        state.totalSpread += 1;
+        state.score -= 75;
+        addEvent(events, { type: "spread", territoryId: target.id, territoryName: target.name, score: -75, label: `NOUVEAU DÉPART PROGRAMMÉ · fumée à ${target.name}` });
+      }
+    }
+    state.lastReinforcementRound = completedRound;
   }
 
   const objective = state.config.objective || "extinguish_all";
@@ -773,13 +811,14 @@ export function createDartsFirefighterState(
     roundIndex: 0,
     turnIndex: 0,
     propagationIndex: 0,
+    lastReinforcementRound: 0,
     selectedTerritoryId: chosenIds[0] || null,
     windOffset: 1,
     windLabel: "BRISE EST",
     forecastTerritoryIds: [],
     combo: 0,
     score: 0,
-    brigadeGauge: 0,
+    brigadeGauge: normalizedConfig.startingBrigadeGauge || 0,
     propagationBlocked: 0,
     totalExtinguished: 0,
     totalDestroyed: 0,
@@ -845,6 +884,14 @@ export function createDartsFirefighterState(
     if (target) target.smoke = true;
   }
 
+  const protectionCount = Math.max(0, Math.min(active.length, Number(normalizedConfig.initialProtectedTerritories || 0)));
+  const protectionPool = active.filter((t) => t.fireLevel === 0 && !t.smoke && !t.destroyed);
+  for (let i = 0; i < protectionCount && protectionPool.length; i += 1) {
+    const index = randomInt(state, protectionPool.length);
+    const target = protectionPool.splice(index, 1)[0];
+    if (target) target.protection = 1;
+  }
+
   state.forecastTerritoryIds = computeForecast(state);
   return state;
 }
@@ -902,7 +949,7 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
 
   const endOfRound = next.activePlayerIndex >= next.players.length - 1;
   if (next.config.propagationTiming !== "after_round" || endOfRound) {
-    resolvePropagation(next, events, player.id);
+    resolvePropagation(next, events, player.id, endOfRound);
   } else {
     next.forecastTerritoryIds = computeForecast(next);
   }

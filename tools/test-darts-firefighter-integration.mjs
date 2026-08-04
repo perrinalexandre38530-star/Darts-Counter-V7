@@ -58,6 +58,17 @@ const play = read("src/pages/DartsFirefighterPlay.tsx");
 assert.ok(play.includes("DartsFirefighterEnd"), "écran de fin non relié");
 assert.ok(play.includes('History as any).upsert(buildHistoryRecord("in_progress")'), "autosauvegarde en cours absente");
 assert.ok(play.includes('onFinish?.(record, { navigate: false })'), "sauvegarde finale absente");
+for (const token of [
+  'ScoreInputHub',
+  'PLAN D’INTERVENTION CONSEILLÉ',
+  'FirefighterKpiCard',
+  'FirefighterMapCard',
+  'FirefighterMapModal',
+  'title="OBJECTIF"',
+  'title="TERRITOIRE"',
+  'CARTE D’INTERVENTION',
+]) assert.ok(play.includes(token), `refonte Play Territories manquante: ${token}`);
+assert.ok(!play.includes('height: "min(47vh,410px)"'), "ancienne grande carte permanente encore présente");
 
 const history = read("src/pages/HistoryPage.tsx");
 assert.ok(history.includes("DartsFirefighterHistoryScoreBlock"), "carte Historique enrichie absente");

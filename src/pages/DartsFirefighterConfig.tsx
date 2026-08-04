@@ -1,6 +1,6 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FIREFIGHTER — CONFIGURATION V2
+// DARTS FIREFIGHTER — CONFIGURATION V3
 // Configuration guidée + complète, reliée au moteur de jeu.
 // =============================================================
 
@@ -31,9 +31,9 @@ import {
 } from "./X01ConfigV3";
 import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
 
-const LS_KEY = "dc_modecfg_darts_firefighter_v2";
-const LEGACY_LS_KEY = "dc_modecfg_darts_firefighter_v1";
-const VIEW_KEY = "dc_firefighter_config_view_v2";
+const LS_KEY = "dc_modecfg_darts_firefighter_v3";
+const LEGACY_LS_KEYS = ["dc_modecfg_darts_firefighter_v2", "dc_modecfg_darts_firefighter_v1"];
+const VIEW_KEY = "dc_firefighter_config_view_v3";
 const FIRE = "#ff6128";
 const FIRE_2 = "#ff9b32";
 const WATER = "#27c9ff";
@@ -46,7 +46,7 @@ type ViewMode = "guided" | "complete";
 type StepKey = "mission" | "brigade" | "territory" | "ignition" | "propagation" | "resources" | "input" | "summary";
 
 function readSaved() {
-  for (const key of [LS_KEY, LEGACY_LS_KEY]) {
+  for (const key of [LS_KEY, ...LEGACY_LS_KEYS]) {
     try {
       const value = JSON.parse(localStorage.getItem(key) || "null");
       if (value && typeof value === "object") return value;
@@ -86,44 +86,44 @@ const PRESETS: Array<{ id: string; icon: string; title: string; subtitle: string
     id: "express", icon: "⚡", title: "Intervention express", subtitle: "Mission courte, lisible et accessible", accent: GOLD,
     patch: {
       difficulty: "recruit", objective: "extinguish_all", activeTerritories: 12, initialFires: 2, initialFireLevel: "mixed", initialSmoke: 0,
-      firePlacement: "random", criticalTerritories: 1, criticalLossEndsMission: true, maxRounds: 10, destructionLimit: 5,
-      propagationTiming: "after_round", windEnabled: true, windStrength: "light", windChangeEvery: 3, forecastEnabled: true,
+      firePlacement: "random", initialProtectedTerritories: 2, criticalTerritories: 1, criticalLossEndsMission: true, maxRounds: 10, destructionLimit: 5,
+      propagationTiming: "after_round", maxSpreadsPerCycle: 1, reinforcementEveryRounds: 0, reinforcementCount: 1, windEnabled: true, windStrength: "light", windChangeEvery: 3, forecastEnabled: true,
       forecastCount: 3, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 150,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 2,
-      canadairRequiresGauge: false, canadairGaugeCost: 35, targetOrder: "sequential",
+      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 25, targetOrder: "sequential",
     },
   },
   {
     id: "wildfire", icon: "🔥", title: "Feu de forêt", subtitle: "La mission équilibrée de référence", accent: FIRE,
     patch: {
       difficulty: "firefighter", objective: "extinguish_all", activeTerritories: 20, initialFires: 4, initialFireLevel: "mixed", initialSmoke: 2,
-      firePlacement: "clustered", criticalTerritories: 2, criticalLossEndsMission: true, maxRounds: 18, destructionLimit: 4,
-      propagationTiming: "after_visit", windEnabled: true, windStrength: "normal", windChangeEvery: 3, forecastEnabled: true,
+      firePlacement: "clustered", initialProtectedTerritories: 1, criticalTerritories: 2, criticalLossEndsMission: true, maxRounds: 18, destructionLimit: 4,
+      propagationTiming: "after_visit", maxSpreadsPerCycle: 2, reinforcementEveryRounds: 0, reinforcementCount: 1, windEnabled: true, windStrength: "normal", windChangeEvery: 3, forecastEnabled: true,
       forecastCount: 4, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 200,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 3,
-      canadairRequiresGauge: false, canadairGaugeCost: 35, targetOrder: "sequential",
+      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 15, targetOrder: "sequential",
     },
   },
   {
     id: "civil_protection", icon: "🛡️", title: "Protection civile", subtitle: "Tenir les zones critiques jusqu’aux renforts", accent: WATER,
     patch: {
       difficulty: "commander", objective: "protect_critical", activeTerritories: 16, initialFires: 3, initialFireLevel: 2, initialSmoke: 2,
-      firePlacement: "critical_first", criticalTerritories: 4, criticalLossEndsMission: true, maxRounds: 16, destructionLimit: 3,
-      propagationTiming: "after_visit", windEnabled: true, windStrength: "normal", windChangeEvery: 2, forecastEnabled: true,
+      firePlacement: "critical_first", initialProtectedTerritories: 3, criticalTerritories: 4, criticalLossEndsMission: true, maxRounds: 16, destructionLimit: 3,
+      propagationTiming: "after_visit", maxSpreadsPerCycle: 2, reinforcementEveryRounds: 4, reinforcementCount: 1, windEnabled: true, windStrength: "normal", windChangeEvery: 2, forecastEnabled: true,
       forecastCount: 5, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 250,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 4,
-      canadairRequiresGauge: true, canadairGaugeCost: 35, targetOrder: "random",
+      canadairRequiresGauge: true, canadairGaugeCost: 35, startingBrigadeGauge: 35, targetOrder: "random",
     },
   },
   {
     id: "inferno_survival", icon: "☠️", title: "Survie Inferno", subtitle: "Résister à un incendie qui ne s’arrête jamais", accent: RED,
     patch: {
       difficulty: "inferno", objective: "survival", activeTerritories: 20, initialFires: 6, initialFireLevel: 3, initialSmoke: 3,
-      firePlacement: "clustered", criticalTerritories: 3, criticalLossEndsMission: true, maxRounds: 20, destructionLimit: 2,
-      propagationTiming: "after_visit", windEnabled: true, windStrength: "strong", windChangeEvery: 1, forecastEnabled: true,
+      firePlacement: "clustered", initialProtectedTerritories: 0, criticalTerritories: 3, criticalLossEndsMission: true, maxRounds: 20, destructionLimit: 2,
+      propagationTiming: "after_visit", maxSpreadsPerCycle: 4, reinforcementEveryRounds: 2, reinforcementCount: 2, windEnabled: true, windStrength: "strong", windChangeEvery: 1, forecastEnabled: true,
       forecastCount: 4, dartsPerTurn: 3, missEndsTurn: true, comboEnabled: true, perfectVisitBonus: 350,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 2, canadairNeighborCount: 4,
-      canadairRequiresGauge: true, canadairGaugeCost: 45, targetOrder: "random",
+      canadairRequiresGauge: true, canadairGaugeCost: 45, startingBrigadeGauge: 0, targetOrder: "random",
     },
   },
 ];
@@ -243,12 +243,26 @@ export default function DartsFirefighterConfig(props: any) {
   }
   function handleDartSet(id: string, dartSetId: string | null) { setPlayerDartSets((prev) => ({ ...prev, [String(id)]: dartSetId || null })); }
   function back() { if (typeof go === "function") go("games"); }
+  function resetConfiguration() {
+    const wildfire = PRESETS.find((preset) => preset.id === "wildfire");
+    const fresh = normalizeDartsFirefighterConfig({ ...(wildfire?.patch || {}), missionPreset: "wildfire" });
+    setConfig(fresh);
+    setSelectedIds([]);
+    setPlayerDartSets({});
+    setBotsPanel(false);
+    setBotLevel("normal");
+    setShowExpert(false);
+    setStepIndex(0);
+    chooseView("guided");
+    try { localStorage.removeItem(LS_KEY); } catch {}
+  }
 
   React.useEffect(() => {
     setConfig((prev: any) => ({
       ...prev,
       initialFires: Math.min(prev.initialFires, Math.max(1, Math.floor(prev.activeTerritories / 2))),
       initialSmoke: Math.min(prev.initialSmoke, Math.max(0, prev.activeTerritories - prev.initialFires)),
+      initialProtectedTerritories: Math.min(prev.initialProtectedTerritories, Math.max(0, prev.activeTerritories - prev.initialFires - prev.initialSmoke)),
       criticalTerritories: Math.min(prev.criticalTerritories, Math.max(0, Math.floor(prev.activeTerritories / 2))),
     }));
   }, [config.activeTerritories]);
@@ -328,6 +342,7 @@ export default function DartsFirefighterConfig(props: any) {
       <OptionRow label="Foyers initiaux" hint="Territoires déjà en feu au lancement"><OptionSelect value={config.initialFires} options={Array.from({ length: Math.min(8, Math.max(1, Math.floor(config.activeTerritories / 2))) }, (_, i) => i + 1)} onChange={(v) => setField("initialFires", Number(v))} /></OptionRow>
       <OptionRow label="Intensité initiale" hint="Niveau de feu appliqué aux foyers"><OptionSelect value={String(config.initialFireLevel)} options={[{ value: "mixed", label: "Mix adapté à la difficulté" }, { value: "1", label: "Niveau 1" }, { value: "2", label: "Niveau 2" }, { value: "3", label: "Niveau 3" }]} onChange={(v) => setField("initialFireLevel", v === "mixed" ? v : Number(v))} /></OptionRow>
       <OptionRow label="Zones enfumées" hint="Départs de feu imminents en plus des flammes"><OptionSelect value={config.initialSmoke} options={Array.from({ length: Math.min(8, Math.max(0, config.activeTerritories - config.initialFires)) + 1 }, (_, i) => i)} onChange={(v) => setField("initialSmoke", Number(v))} /></OptionRow>
+      <OptionRow label="Zones pré-protégées" hint="Territoires sains déjà arrosés au lancement"><OptionSelect value={config.initialProtectedTerritories} options={Array.from({ length: Math.min(8, config.activeTerritories) + 1 }, (_, i) => i)} onChange={(v) => setField("initialProtectedTerritories", Number(v))} /></OptionRow>
       <OptionRow label="Disposition des foyers" hint="Répartition de la situation initiale"><OptionSelect value={config.firePlacement} options={[{ value: "random", label: "Aléatoire" }, { value: "clustered", label: "Front de feu groupé" }, { value: "critical_first", label: "Près des zones critiques" }]} onChange={(v) => setField("firePlacement", v)} /></OptionRow>
       <OptionRow label="Zones critiques" hint="Hôpitaux, villages ou infrastructures à sauver"><OptionSelect value={config.criticalTerritories} options={Array.from({ length: Math.min(8, Math.floor(config.activeTerritories / 2)) + 1 }, (_, i) => i)} onChange={(v) => setField("criticalTerritories", Number(v))} /></OptionRow>
       <OptionRow label="Perte critique = défaite" hint="Termine immédiatement la mission"><OptionToggle value={Boolean(config.criticalLossEndsMission)} onChange={(v) => setField("criticalLossEndsMission", v)} disabled={config.objective === "protect_critical"} /></OptionRow>
@@ -340,6 +355,9 @@ export default function DartsFirefighterConfig(props: any) {
     <SectionTitle icon="🌬️" title="PROPAGATION ET VENT" subtitle="Ces valeurs sont directement utilisées par le moteur après les volées." color={WATER} />
     <div style={{ display: "grid", gap: 7 }}>
       <OptionRow label="Propagation" hint="Moment où la carte évolue"><OptionSelect value={config.propagationTiming} options={[{ value: "after_visit", label: "Après chaque joueur" }, { value: "after_round", label: "Après la brigade complète" }]} onChange={(v) => setField("propagationTiming", v)} /></OptionRow>
+      <OptionRow label="Propagations maximales" hint="Nombre de nouvelles zones atteintes par cycle"><OptionSelect value={config.maxSpreadsPerCycle} options={[1,2,3,4,5,6]} onChange={(v) => setField("maxSpreadsPerCycle", Number(v))} /></OptionRow>
+      <OptionRow label="Nouveaux départs programmés" hint="Ajoute des fumées à intervalles réguliers"><OptionSelect value={config.reinforcementEveryRounds} options={[{ value: 0, label: "Désactivés" }, { value: 1, label: "Chaque round" }, { value: 2, label: "Tous les 2 rounds" }, { value: 3, label: "Tous les 3 rounds" }, { value: 4, label: "Tous les 4 rounds" }, { value: 5, label: "Tous les 5 rounds" }]} onChange={(v) => setField("reinforcementEveryRounds", Number(v))} /></OptionRow>
+      {Number(config.reinforcementEveryRounds) > 0 ? <OptionRow label="Nouveaux foyers potentiels" hint="Nombre de zones enfumées à chaque vague"><OptionSelect value={config.reinforcementCount} options={[1,2,3,4]} onChange={(v) => setField("reinforcementCount", Number(v))} /></OptionRow> : null}
       <OptionRow label="Vent dynamique" hint="Oriente le territoire menacé"><OptionToggle value={Boolean(config.windEnabled)} onChange={(v) => setField("windEnabled", v)} /></OptionRow>
       {config.windEnabled ? <>
         <OptionRow label="Force du vent" hint="Distance de propagation préférentielle"><OptionSelect value={config.windStrength} options={[{ value: "light", label: "Brise" }, { value: "normal", label: "Vent normal" }, { value: "strong", label: "Vent violent" }]} onChange={(v) => setField("windStrength", v)} /></OptionRow>
@@ -369,6 +387,7 @@ export default function DartsFirefighterConfig(props: any) {
         <OptionRow label="Puissance au centre" hint="Zone principale du largage"><OptionSelect value={config.canadairCenterPower} options={[{ value: 2, label: "2 unités" }, { value: 3, label: "3 unités" }]} onChange={(v) => setField("canadairCenterPower", Number(v))} /></OptionRow>
         <OptionRow label="Zones voisines arrosées" hint="Étendue latérale du largage"><OptionSelect value={config.canadairNeighborCount} options={[1,2,3,4]} onChange={(v) => setField("canadairNeighborCount", Number(v))} /></OptionRow>
         <OptionRow label="Puissance latérale" hint="Unités d’eau sur chaque voisin"><OptionSelect value={config.canadairNeighborPower} options={[{ value: 1, label: "1 unité" }, { value: 2, label: "2 unités" }]} onChange={(v) => setField("canadairNeighborPower", Number(v))} /></OptionRow>
+        <OptionRow label="Jauge Brigade initiale" hint="Réserve disponible au début de la mission"><OptionSelect value={config.startingBrigadeGauge} options={[0,10,20,25,35,50,75,100].map((n) => ({ value: n, label: `${n} %` }))} onChange={(v) => setField("startingBrigadeGauge", Number(v))} /></OptionRow>
         <OptionRow label="Canadair lié à la jauge" hint="Le DBULL déclenche l’avion uniquement si la réserve est suffisante"><OptionToggle value={Boolean(config.canadairRequiresGauge)} onChange={(v) => setField("canadairRequiresGauge", v)} /></OptionRow>
         {config.canadairRequiresGauge ? <OptionRow label="Coût de la mission aérienne" hint="Points consommés dans la jauge Brigade"><OptionSelect value={config.canadairGaugeCost} options={[20,25,30,35,40,45,50,60]} onChange={(v) => setField("canadairGaugeCost", Number(v))} /></OptionRow> : null}
       </> : null}
@@ -398,8 +417,8 @@ export default function DartsFirefighterConfig(props: any) {
       <div><strong style={{ color: FIRE_2 }}>MISSION :</strong> {PRESETS.find((p) => p.id === config.missionPreset)?.title || "Personnalisée"} · {difficultyLabel(config.difficulty)}</div>
       <div><strong style={{ color: WATER }}>OBJECTIF :</strong> {config.objective === "survival" ? `Survivre ${config.maxRounds} rounds` : config.objective === "protect_critical" ? `Protéger ${config.criticalTerritories} zones critiques` : "Éteindre tous les foyers"}</div>
       <div><strong style={{ color: GOLD }}>CARTE :</strong> {TERRITORY_MAPS[config.mapId]?.name || config.mapId} · {config.activeTerritories} zones · secteurs {config.targetOrder === "random" ? "aléatoires" : "ordonnés"}</div>
-      <div><strong style={{ color: FIRE }}>INCENDIE :</strong> {config.initialFires} foyers · {config.initialSmoke} fumées · propagation {config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}</div>
-      <div><strong style={{ color: WATER }}>MOYENS :</strong> Bull puissance {config.bullPower} · Canadair {config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}</div>
+      <div><strong style={{ color: FIRE }}>INCENDIE :</strong> {config.initialFires} foyers · {config.initialSmoke} fumées · {config.initialProtectedTerritories} zones protégées · propagation {config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}</div>
+      <div><strong style={{ color: WATER }}>MOYENS :</strong> Bull puissance {config.bullPower} · jauge initiale {config.startingBrigadeGauge}% · Canadair {config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}</div>
       <div><strong style={{ color: GREEN }}>VOLÉE :</strong> {config.dartsPerTurn} fléchette{config.dartsPerTurn > 1 ? "s" : ""} · {config.scoreInputMethod === "dartboard" ? "cible interactive" : "clavier"} · MISS {config.missEndsTurn ? "fatal" : "normal"}</div>
     </div>
     {!valid ? <div style={{ marginTop: 9, color: "#ff9aa8", textAlign: "center", fontSize: 10, fontWeight: 1000 }}>⚠ Sélectionne au moins un pompier dans l’étape Brigade.</div> : null}
@@ -414,6 +433,12 @@ export default function DartsFirefighterConfig(props: any) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
           <PillButton label="CONFIGURATION GUIDÉE" active={viewMode === "guided"} onClick={() => chooseView("guided")} primary={FIRE} primarySoft={`${FIRE}18`} />
           <PillButton label="CONFIGURATION COMPLÈTE" active={viewMode === "complete"} onClick={() => chooseView("complete")} primary={WATER} primarySoft={`${WATER}18`} />
+        </div>
+      </section>
+      <section style={{ ...card, padding: 9, marginBottom: 9, background: `linear-gradient(135deg,${FIRE}14,${WATER}10)`, border: `1px solid ${WATER}35` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div><div style={{ color: "#fff", fontSize: 10.8, fontWeight: 1100 }}>CONFIGURATION FIREFIGHTER V3</div><div style={{ marginTop: 2, color: soft, fontSize: 8.5 }}>8 étapes · 4 scénarios · réglages moteur complets · migration V2 automatique</div></div>
+          <button type="button" onClick={resetConfiguration} style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#dfe5ef", fontSize: 8.2, fontWeight: 1000 }}>RÉINITIALISER</button>
         </div>
       </section>
 
