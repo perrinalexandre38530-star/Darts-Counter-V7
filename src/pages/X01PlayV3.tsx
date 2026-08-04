@@ -47,6 +47,8 @@ import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } fro
 import { onlineApi } from "../lib/onlineApi";
 import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
 import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
+import { normalizeBotCountryCode, resolveProBotCountryCode } from "../lib/botCountries";
+import { getProBotDartsBrandLogo } from "../lib/botDartsBrands";
 import { getDartSetById } from "../lib/dartSetsStore";
 import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
@@ -95,6 +97,7 @@ type HeaderBlockProps = {
   countryFlagSrc?: string | null;
   dartSetThumbSrc?: string | null;
   dartSetBgColor?: string | null;
+  dartSetIsBrand?: boolean;
   onlineCameraPanel?: React.ReactNode;
   onlineCameraActive?: boolean;
   voiceScoreEnabled?: boolean;
@@ -195,6 +198,53 @@ function getDartSetMedallionBgById(dartSetId: any): string | null {
     }
   } catch {}
   return null;
+}
+
+function isProBotIdentity(player: any): boolean {
+  const ids = [player?.id, player?.botId, player?.avatarKey, player?.profile?.id, player?.profile?.avatarKey]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return ids.some((value) => /^(?:bot_)?pro_/.test(value)) || player?.source === "pro" || player?.isProBot === true;
+}
+
+function resolveX01PlayerCountryCode(player: any): string | null {
+  const candidates = [
+    player?.countryCode,
+    player?.country_code,
+    player?.country,
+    player?.countryName,
+    player?.nation,
+    player?.nationality,
+    player?.privateInfo?.countryCode,
+    player?.privateInfo?.country_code,
+    player?.privateInfo?.country,
+    player?.privateInfo?.countryName,
+    player?.private_info?.countryCode,
+    player?.private_info?.country_code,
+    player?.private_info?.country,
+    player?.private_info?.countryName,
+    player?.preferences?.countryCode,
+    player?.preferences?.country_code,
+    player?.preferences?.country,
+    player?.profile?.countryCode,
+    player?.profile?.country_code,
+    player?.profile?.country,
+    player?.profile?.privateInfo?.countryCode,
+    player?.profile?.privateInfo?.country,
+    player?.profile?.private_info?.countryCode,
+    player?.profile?.private_info?.country,
+  ];
+  for (const raw of candidates) {
+    const code = normalizeBotCountryCode(raw);
+    if (code) return normalizeCountryAssetCode(code);
+  }
+  const botCode = resolveProBotCountryCode(player);
+  return botCode ? normalizeCountryAssetCode(botCode) : null;
+}
+
+function getProBotBrandLogoForPlayer(player: any): string | null {
+  if (!isProBotIdentity(player)) return null;
+  return getProBotDartsBrandLogo(player);
 }
 
 function dartSetMedallionBackground(bgColor?: string | null): string {
@@ -1462,17 +1512,10 @@ const castAvatarPayloadFromAny = React.useCallback(
 const profileById = React.useMemo(() => {
   const m: Record<string, { avatarDataUrl: string | null; name: string; countryCode?: string | null }> = {};
   for (const p of players as any[]) {
-    const countryCode =
-      p?.countryCode ??
-      p?.country_code ??
-      p?.country ??
-      p?.profile?.countryCode ??
-      p?.profile?.country_code ??
-      null;
     m[p.id] = {
       avatarDataUrl: resolveAvatar(p),
       name: p.name,
-      countryCode: countryCode ? normalizeCountryAssetCode(String(countryCode)) : null,
+      countryCode: resolveX01PlayerCountryCode(p),
     };
   }
   return m;
@@ -1536,14 +1579,19 @@ const playersInTurnOrder = React.useMemo(() => {
   return out.length ? out : list;
 }, [players, (state as any)?.throwOrder]);
 
-const activePlayerDartSetThumb = React.useMemo(
-  () => getDartSetMedallionSrcById((activePlayer as any)?.dartSetId),
-  [(activePlayer as any)?.dartSetId]
-);
+const activePlayerDartSetThumb = React.useMemo(() => {
+  const actualDartSet = getDartSetMedallionSrcById((activePlayer as any)?.dartSetId);
+  return actualDartSet || getProBotBrandLogoForPlayer(activePlayer);
+}, [activePlayer]);
+
+const activePlayerDartSetIsBrand = React.useMemo(() => {
+  if (getDartSetMedallionSrcById((activePlayer as any)?.dartSetId)) return false;
+  return !!getProBotBrandLogoForPlayer(activePlayer);
+}, [activePlayer]);
 
 const activePlayerDartSetBg = React.useMemo(
-  () => getDartSetMedallionBgById((activePlayer as any)?.dartSetId),
-  [(activePlayer as any)?.dartSetId]
+  () => activePlayerDartSetIsBrand ? "#07101a" : getDartSetMedallionBgById((activePlayer as any)?.dartSetId),
+  [activePlayer, activePlayerDartSetIsBrand]
 );
 
 // ONLINE strict : X01PlayV3 est parfois lancé avec online/lobbyCode dans config sans props explicites.
@@ -1647,18 +1695,9 @@ const onlineStrictDebugLabel = effectiveOnline
   : "local";
 
 const activePlayerCountryFlagSrc = React.useMemo(() => {
-  const direct =
-    (activePlayer as any)?.countryCode ??
-    (activePlayer as any)?.country_code ??
-    (activePlayer as any)?.country ??
-    (activePlayer as any)?.countryName ??
-    (activePlayer as any)?.nation ??
-    (activePlayer as any)?.nationality ??
-    (activePlayer as any)?.profile?.countryCode ??
-    (activePlayer as any)?.profile?.country ??
-    (activePlayer ? profileById[String((activePlayer as any).id)]?.countryCode : null) ??
-    null;
-  return getCountryFlagSrc(direct ? normalizeCountryAssetCode(String(direct)) : undefined);
+  const direct = resolveX01PlayerCountryCode(activePlayer) ||
+    (activePlayer ? profileById[String((activePlayer as any).id)]?.countryCode || null : null);
+  return getCountryFlagSrc(direct || undefined);
 }, [activePlayer, profileById]);
 
 const [onlineChatOpen, setOnlineChatOpen] = React.useState(false);
@@ -2484,14 +2523,22 @@ const teamsView = React.useMemo(() => {
       const members = ids
         .map((id) => playersById[id])
         .filter(Boolean)
-        .map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          avatar: profileById[p.id]?.avatarDataUrl ?? null,
-          dartSetThumb: getDartSetMedallionSrcById((p as any)?.dartSetId),
-          dartSetBgColor: getDartSetMedallionBgById((p as any)?.dartSetId),
-          isActive: p.id === activePlayerId,
-        }));
+        .map((p: any) => {
+          const actualDartSetThumb = getDartSetMedallionSrcById((p as any)?.dartSetId);
+          const brandLogo = actualDartSetThumb ? null : getProBotBrandLogoForPlayer(p);
+          const countryCode = resolveX01PlayerCountryCode(p) || profileById[p.id]?.countryCode || null;
+          return {
+            id: p.id,
+            name: p.name,
+            avatar: profileById[p.id]?.avatarDataUrl ?? null,
+            dartSetThumb: actualDartSetThumb || brandLogo,
+            dartSetBgColor: brandLogo ? "#07101a" : getDartSetMedallionBgById((p as any)?.dartSetId),
+            dartSetIsBrand: !!brandLogo,
+            countryCode,
+            countryFlagSrc: getCountryFlagSrc(countryCode || undefined),
+            isActive: p.id === activePlayerId,
+          };
+        });
 
       const score =
         ids.length > 0 ? (scores as any)[ids[0]] ?? (scores as any)[activePlayerId] : (scores as any)[activePlayerId];
@@ -5448,6 +5495,7 @@ if (isLandscapeTablet) {
               teamSetsWon={(state as any).teamSetsWon ?? {}}
               teamId={activeTeam.id}
               checkoutText={checkoutText}
+              countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
               configuredScoreInputMethod={configuredScoreInputMethod}
             />
@@ -5466,8 +5514,10 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
+              countryFlagSrc={activePlayerCountryFlagSrc}
               dartSetThumbSrc={activePlayerDartSetThumb}
               dartSetBgColor={activePlayerDartSetBg}
+              dartSetIsBrand={activePlayerDartSetIsBrand}
               onlineCameraPanel={x01OnlineCameraPanel}
               onlineCameraActive={x01OnlineCameraActive}
               voiceScoreEnabled={voiceScoreEnabled}
@@ -5861,9 +5911,9 @@ if (isLandscapeTablet) {
                 teamLegsWon={(state as any).teamLegsWon ?? {}}
                 teamSetsWon={(state as any).teamSetsWon ?? {}}
                 checkoutText={checkoutText}
+                countryFlagSrc={activePlayerCountryFlagSrc}
                 onChatClick={effectiveOnline ? () => setOnlineChatOpen(true) : undefined}
                 unreadChatCount={onlineChatUnread}
-                countryFlagSrc={activePlayerCountryFlagSrc}
               showThrowCounter={showThrowCounter}
               configuredScoreInputMethod={configuredScoreInputMethod}
             />
@@ -5891,6 +5941,7 @@ if (isLandscapeTablet) {
                 countryFlagSrc={activePlayerCountryFlagSrc}
                 dartSetThumbSrc={activePlayerDartSetThumb}
                 dartSetBgColor={activePlayerDartSetBg}
+                dartSetIsBrand={activePlayerDartSetIsBrand}
                 onlineCameraPanel={x01OnlineCameraPanel}
                 onlineCameraActive={x01OnlineCameraActive}
                 voiceScoreEnabled={voiceScoreEnabled}
@@ -6312,6 +6363,7 @@ function HeaderBlock(props: HeaderBlockProps) {
     countryFlagSrc,
     dartSetThumbSrc,
     dartSetBgColor,
+    dartSetIsBrand = false,
     showThrowCounter = false,
     onlineCameraPanel = null,
     onlineCameraActive = false,
@@ -6459,25 +6511,27 @@ function HeaderBlock(props: HeaderBlockProps) {
             )}
             {dartSetThumbSrc ? (
               <span
-                aria-label="Set de fléchettes du joueur"
+                aria-label={dartSetIsBrand ? "Marque de fléchettes du bot professionnel" : "Set de fléchettes du joueur"}
                 style={{
                   position: "absolute",
                   left: -8,
                   bottom: -3,
-                  width: 34,
-                  height: 34,
-                  borderRadius: 999,
+                  width: dartSetIsBrand ? 44 : 34,
+                  height: dartSetIsBrand ? 30 : 34,
+                  borderRadius: dartSetIsBrand ? 9 : 999,
                   border: "2px solid rgba(255,207,87,.88)",
-                  background: dartSetMedallionBackground(dartSetBgColor),
+                  background: dartSetIsBrand ? "linear-gradient(180deg, rgba(9,16,28,.98), rgba(2,7,15,.98))" : dartSetMedallionBackground(dartSetBgColor),
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  padding: dartSetIsBrand ? "4px 5px" : 0,
+                  boxSizing: "border-box",
                   boxShadow: "0 0 16px rgba(255,207,87,.38), 0 10px 20px rgba(0,0,0,.45)",
                   overflow: "hidden",
                   zIndex: 6,
                 }}
               >
-                <img src={dartSetThumbSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={dartSetThumbSrc} alt="" style={{ width: "100%", height: "100%", objectFit: dartSetIsBrand ? "contain" : "cover" }} />
               </span>
             ) : null}
             {onChatClick ? (
@@ -6865,7 +6919,7 @@ function TeamHeaderBlock(props: {
   teamColor?: string;
   teamId: string;
   teamName: string;
-  teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; dartSetBgColor?: string | null; isActive: boolean }>;
+  teamPlayers: Array<{ id: string; name: string; avatar: string | null; dartSetThumb?: string | null; dartSetBgColor?: string | null; dartSetIsBrand?: boolean; countryFlagSrc?: string | null; isActive: boolean }>;
   teamLogoUrl?: string | null;
   activePlayerId: string;
   teamScore: number;
@@ -6878,6 +6932,9 @@ function TeamHeaderBlock(props: {
   teamLegsWon: Record<string, number>;
   teamSetsWon: Record<string, number>;
   checkoutText: string | null;
+  onChatClick?: () => void;
+  unreadChatCount?: number;
+  countryFlagSrc?: string | null;
   showThrowCounter?: boolean;
   configuredScoreInputMethod?: string;
 }) {
@@ -7041,7 +7098,7 @@ function TeamHeaderBlock(props: {
                     width: size,
                     height: size,
                     borderRadius: "50%",
-                    overflow: "hidden",
+                    overflow: "visible",
                     background: "linear-gradient(180deg,#1b1b1f,#111114)",
                     boxShadow: isActive
                       ? "0 0 0 2px rgba(255,195,26,.45), 0 10px 26px rgba(255,195,26,.18)"
@@ -7054,7 +7111,7 @@ function TeamHeaderBlock(props: {
                   {p.avatar ? (
                     <img
                       src={p.avatar}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", overflow: "hidden" }}
                     />
                   ) : (
                     <div
@@ -7071,27 +7128,52 @@ function TeamHeaderBlock(props: {
                       ?
                     </div>
                   )}
-                  {p.dartSetThumb ? (
+                  {isActive && p.dartSetThumb ? (
                     <span
-                      aria-hidden
+                      aria-label={(p as any).dartSetIsBrand ? "Marque de fléchettes du bot professionnel" : "Set de fléchettes du joueur"}
                       style={{
                         position: "absolute",
-                        left: -5,
+                        left: -7,
                         bottom: -4,
-                        width: 28,
-                        height: 28,
-                        borderRadius: 999,
+                        width: (p as any).dartSetIsBrand ? 40 : 28,
+                        height: (p as any).dartSetIsBrand ? 27 : 28,
+                        borderRadius: (p as any).dartSetIsBrand ? 8 : 999,
                         border: "2px solid rgba(255,207,87,.88)",
-                        background: dartSetMedallionBackground((p as any).dartSetBgColor),
+                        background: (p as any).dartSetIsBrand ? "linear-gradient(180deg, rgba(9,16,28,.98), rgba(2,7,15,.98))" : dartSetMedallionBackground((p as any).dartSetBgColor),
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        padding: (p as any).dartSetIsBrand ? "4px" : 0,
+                        boxSizing: "border-box",
                         overflow: "hidden",
                         boxShadow: "0 0 14px rgba(255,207,87,.45), 0 8px 16px rgba(0,0,0,.45)",
                         zIndex: 80,
                       }}
                     >
-                      <img src={p.dartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={p.dartSetThumb} alt="" style={{ width: "100%", height: "100%", objectFit: (p as any).dartSetIsBrand ? "contain" : "cover" }} />
+                    </span>
+                  ) : null}
+                  {isActive && ((p as any).countryFlagSrc || countryFlagSrc) ? (
+                    <span
+                      aria-label="Pays du joueur"
+                      style={{
+                        position: "absolute",
+                        right: -7,
+                        bottom: -4,
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        border: "2px solid rgba(255,255,255,.84)",
+                        background: "rgba(0,0,0,.72)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        boxShadow: "0 0 14px rgba(255,255,255,.22), 0 8px 16px rgba(0,0,0,.45)",
+                        zIndex: 81,
+                      }}
+                    >
+                      <img src={(p as any).countryFlagSrc || countryFlagSrc || ""} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     </span>
                   ) : null}
                 </div>
@@ -7288,6 +7370,34 @@ function TeamHeaderBlock(props: {
   );
 }
 
+function X01InlineCountryFlag({ player, profile, size = 18 }: { player: any; profile?: any; size?: number }) {
+  const code = profile?.countryCode || resolveX01PlayerCountryCode(player);
+  const src = getCountryFlagSrc(code || undefined);
+  if (!src) return null;
+  return (
+    <span
+      aria-label="Pays du joueur"
+      title={String(code || "")}
+      style={{
+        width: size,
+        height: size,
+        minWidth: size,
+        borderRadius: 999,
+        overflow: "hidden",
+        border: "1px solid rgba(255,255,255,.70)",
+        background: "rgba(0,0,0,.72)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 0 8px rgba(255,255,255,.14)",
+        verticalAlign: "middle",
+      }}
+    >
+      <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    </span>
+  );
+}
+
 function TeamsPlayersList(props: {
   cameraOpen: boolean;
   setCameraOpen: (v: boolean) => void;
@@ -7455,6 +7565,7 @@ function TeamsPlayersList(props: {
                         flexWrap: "wrap",
                       }}
                     >
+                      <X01InlineCountryFlag player={p} profile={prof} size={18} />
                       <div
                         style={{
                           fontWeight: 800,
@@ -7660,6 +7771,7 @@ function PlayersListOnly(props: {
                   flexWrap: "wrap",
                 }}
               >
+                <X01InlineCountryFlag player={p} profile={prof} size={18} />
                 <div
                   style={{
                     fontWeight: 800,

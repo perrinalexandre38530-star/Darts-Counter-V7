@@ -3,6 +3,7 @@ import React from "react";
 import ProfileStarRing from "./ProfileStarRing";
 import { getCountryFlagSrc } from "../lib/geoAssets";
 import { resolveProBotCountryCode } from "../lib/botCountries";
+import { getProBotDartsBrandLabel, getProBotDartsBrandLogo } from "../lib/botDartsBrands";
 
 export type BotPagedSelectorItem = {
   id: string;
@@ -92,6 +93,46 @@ function itemGroup(item: any): string {
 
 function countryCodeOf(item: any): string | null {
   return resolveProBotCountryCode(item);
+}
+
+function isProBotItem(bot: any): boolean {
+  const ids = [bot?.id, bot?.botId, bot?.avatarKey, bot?.profile?.id, bot?.profile?.avatarKey]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return ids.some((value) => /^(?:bot_)?pro_/.test(value)) || bot?.source === "pro" || bot?.isProBot === true;
+}
+
+function ProBotBrandBadge({ bot, accent, compact = false }: { bot: any; accent: string; compact?: boolean }) {
+  if (!isProBotItem(bot)) return null;
+  const logo = getProBotDartsBrandLogo(bot);
+  const label = getProBotDartsBrandLabel(bot);
+  if (!logo) return null;
+  return (
+    <span
+      title={label || undefined}
+      aria-label={label ? `Marque de fléchettes ${label}` : "Marque de fléchettes"}
+      style={{
+        position: "absolute",
+        left: compact ? -3 : -7,
+        bottom: compact ? 0 : -1,
+        width: compact ? 34 : 43,
+        height: compact ? 23 : 28,
+        borderRadius: compact ? 8 : 9,
+        padding: compact ? "3px 4px" : "4px 5px",
+        boxSizing: "border-box",
+        border: `1px solid ${accent}`,
+        background: "linear-gradient(180deg, rgba(10,15,28,.98), rgba(2,6,15,.98))",
+        boxShadow: `0 0 12px ${accent}55, 0 7px 14px rgba(0,0,0,.42)`,
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        zIndex: 8,
+        pointerEvents: "none",
+      }}
+    >
+      <img src={logo} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+    </span>
+  );
 }
 
 function CountryFlagBadge({ bot, accent, size = 26 }: { bot: any; accent: string; size?: number }) {
@@ -219,6 +260,7 @@ export default function BotPagedSelector({
                     <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                       {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
                     </div>
+                    <ProBotBrandBadge bot={bot} accent={accent} compact />
                     <CountryFlagBadge bot={bot} accent={accent} size={24} />
                     <button type="button" onClick={() => onToggle(bot.id)} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
                   </div>
@@ -323,6 +365,7 @@ export default function BotPagedSelector({
                         >
                           {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
                         </div>
+                        <ProBotBrandBadge bot={bot} accent={accent} />
                         <CountryFlagBadge bot={bot} accent={accent} size={29} />
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

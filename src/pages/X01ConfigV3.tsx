@@ -2140,8 +2140,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         id: p.id,
         name: p.name || "BOT",
         avatarDataUrl: p.avatarDataUrl ?? null,
-        countryCode: p.countryCode ?? p.country_code ?? p.country ?? null,
-        country: p.country ?? p.countryCode ?? p.country_code ?? null,
+        countryCode: x01GetProfileCountryCode(p) || null,
+        country: x01GetProfileCountryCode(p) || x01GetProfileCountryRaw(p) || null,
         botLevel:
           p.botLevel ??
           p.levelLabel ??
@@ -3094,8 +3094,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             avatarDataUrl: (human as any).avatarDataUrl ?? null,
             isBot: !!(human as any).isBot,
             botLevel: (human as any).botLevel ?? undefined,
-            countryCode: (human as any).countryCode ?? (human as any).country_code ?? (human as any).country ?? null,
-            country: (human as any).country ?? (human as any).countryCode ?? (human as any).country_code ?? null,
+            countryCode: x01GetProfileCountryCode(human) || null,
+            country: x01GetProfileCountryCode(human) || x01GetProfileCountryRaw(human) || null,
             dartSetId,
           };
         }
@@ -3109,8 +3109,10 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             avatarDataUrl: bot.avatarDataUrl ?? null,
             isBot: true,
             botLevel: bot.botLevel ?? undefined,
-            countryCode: (bot as any).countryCode ?? (bot as any).country ?? null,
-            country: (bot as any).country ?? (bot as any).countryCode ?? null,
+            countryCode: x01GetProfileCountryCode(bot) || null,
+            country: x01GetProfileCountryCode(bot) || x01GetProfileCountryRaw(bot) || null,
+            dartsBrandKey: (bot as any).dartsBrandKey ?? (bot as any).dartBrandKey ?? null,
+            dartBrandKey: (bot as any).dartBrandKey ?? (bot as any).dartsBrandKey ?? null,
             dartSetId: null,
           };
         }
