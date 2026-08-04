@@ -5,7 +5,7 @@ import ProfileStarRing from "./ProfileStarRing";
 import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
-import { getCountryFlagSrc } from "../lib/geoAssets";
+import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
 import {
   PROFILE_USAGE_UPDATED_EVENT,
   mergeProfileUsageFromHistory,
@@ -126,8 +126,8 @@ function profileCountryRaw(profile: any): string {
 function profileCountryCode(profile: any): string {
   const raw = profileCountryRaw(profile);
   if (!raw) return "";
-  const upper = raw.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper === "UK" ? "GB" : upper;
+  const normalizedAssetCode = normalizeCountryAssetCode(raw);
+  if (/^(?:[A-Z]{2}|ENG|SCO|WAL)$/.test(normalizedAssetCode)) return normalizedAssetCode;
 
   const chars = Array.from(raw);
   if (chars.length === 2) {

@@ -36,6 +36,7 @@ function isBotLike(profile: any) {
 function loadUserBots(): BotLite[] {
   try {
     return loadBotPlayers().map((bot: any) => ({
+      ...bot,
       id: String(bot.id), name: bot?.name || "BOT", avatarDataUrl: bot?.avatarDataUrl ?? bot?.avatarUrl ?? bot?.avatar ?? null,
       avatarUrl: bot?.avatarUrl ?? bot?.avatar ?? null, avatar: bot?.avatar ?? bot?.avatarUrl ?? bot?.avatarDataUrl ?? null,
       botLevel: bot?.botLevel ?? bot?.level ?? "", isBot: true,

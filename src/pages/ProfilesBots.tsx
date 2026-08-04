@@ -22,6 +22,8 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import TopTicker from "../components/TopTicker";
 import tickerBotsCpu from "../assets/tickers/ticker_bots_cpu.webp";
+import { getCountryFlagOptions, getCountryFlagSrc } from "../lib/geoAssets";
+import { normalizeBotCountryCode } from "../lib/botCountries";
 
 export type Bot = StoredBot;
 export type BotLevel = StoredBotLevel;
@@ -101,6 +103,34 @@ function BotAvatar({ bot, color, size = 42 }: { bot: Bot | null; color: string; 
         <span style={{ fontSize: Math.max(18, Math.round(size * 0.43)), fontWeight: 950, color: "#fff" }}>{letter}</span>
       )}
     </div>
+  );
+}
+
+function BotCountryBadge({ bot, color, size = 28 }: { bot: Bot | null; color: string; size?: number }) {
+  const code = normalizeBotCountryCode((bot as any)?.countryCode ?? (bot as any)?.country);
+  const src = getCountryFlagSrc(code);
+  if (!src) return null;
+  return (
+    <span
+      title={code || undefined}
+      style={{
+        position: "absolute",
+        right: 2,
+        bottom: 2,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: `1px solid ${color}`,
+        background: "#050914",
+        boxShadow: `0 0 10px ${color}77, 0 5px 12px rgba(0,0,0,.45)`,
+        display: "grid",
+        placeItems: "center",
+        zIndex: 8,
+      }}
+    >
+      <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    </span>
   );
 }
 
@@ -202,6 +232,7 @@ function BotGridCard({
           gapPx={-2}
         />
         <BotAvatar bot={bot} color={accent} size={82} />
+        <BotCountryBadge bot={bot} color={accent} size={28} />
       </div>
       <div
         style={{
@@ -226,8 +257,9 @@ export default function ProfilesBots({ store, go }: Props) {
   void store;
 
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const primary = theme.primary;
+  const countryOptions = React.useMemo(() => getCountryFlagOptions(lang), [lang]);
 
   const [bots, setBots] = React.useState<Bot[]>([]);
   const [section, setSection] = React.useState<BotSection>("list");
@@ -237,6 +269,7 @@ export default function ProfilesBots({ store, go }: Props) {
 
   const [createName, setCreateName] = React.useState("");
   const [createLevel, setCreateLevel] = React.useState<BotLevel>("medium");
+  const [createCountryCode, setCreateCountryCode] = React.useState("FR");
   const [createSeed, setCreateSeed] = React.useState("");
   const [createAvatarFile, setCreateAvatarFile] = React.useState<File | null>(null);
   const [createAvatarPreview, setCreateAvatarPreview] = React.useState<string | null>(null);
@@ -246,6 +279,7 @@ export default function ProfilesBots({ store, go }: Props) {
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editLevel, setEditLevel] = React.useState<BotLevel>("medium");
+  const [editCountryCode, setEditCountryCode] = React.useState("FR");
   const [editSeed, setEditSeed] = React.useState("");
   const [actionsOpen, setActionsOpen] = React.useState(false);
 
@@ -336,6 +370,7 @@ export default function ProfilesBots({ store, go }: Props) {
     }
     setEditName(selectedBot.name || "");
     setEditLevel((selectedBot.level || "medium") as BotLevel);
+    setEditCountryCode(normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country) || "FR");
     setEditSeed(selectedBot.avatarSeed || "");
   }, [selectedBot?.id]);
 
@@ -346,6 +381,7 @@ export default function ProfilesBots({ store, go }: Props) {
   function resetCreateForm() {
     setCreateName("");
     setCreateLevel("medium");
+    setCreateCountryCode("FR");
     setCreateSeed("");
     setCreateAvatarFile(null);
     setCreateAvatarPreview(null);
@@ -374,6 +410,8 @@ export default function ProfilesBots({ store, go }: Props) {
       name: cleanName,
       level: createLevel,
       botLevel: createLevel,
+      countryCode: normalizeBotCountryCode(createCountryCode) || "FR",
+      country: normalizeBotCountryCode(createCountryCode) || "FR",
       avatarSeed: createSeed.trim() || randomSeed(),
       avatarDataUrl,
       createdAt: now,
@@ -415,6 +453,7 @@ export default function ProfilesBots({ store, go }: Props) {
     if (!selectedBot) return;
     setEditName(selectedBot.name || "");
     setEditLevel((selectedBot.level || "medium") as BotLevel);
+    setEditCountryCode(normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country) || "FR");
     setEditSeed(selectedBot.avatarSeed || "");
     setIsEditing((value) => !value);
     setActionsOpen(false);
@@ -430,6 +469,8 @@ export default function ProfilesBots({ store, go }: Props) {
             name: editName.trim(),
             level: editLevel,
             botLevel: editLevel,
+            countryCode: normalizeBotCountryCode(editCountryCode) || "FR",
+            country: normalizeBotCountryCode(editCountryCode) || "FR",
             avatarSeed: editSeed.trim() || bot.avatarSeed || randomSeed(),
             updatedAt: now,
           }
@@ -737,6 +778,19 @@ export default function ProfilesBots({ store, go }: Props) {
               </label>
 
               <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.country.label", "Drapeau / pays")}</span>
+                <select
+                  value={createCountryCode}
+                  onChange={(event) => setCreateCountryCode(event.target.value)}
+                  style={fieldStyle}
+                >
+                  {countryOptions.map((option) => (
+                    <option key={option.code} value={option.code}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 5 }}>
                 <span style={{ color: "#fff", fontSize: 12, fontWeight: 850 }}>{t("bots.form.seed.label", "Seed d’avatar (optionnel)")}</span>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
                   <input
@@ -1008,7 +1062,10 @@ export default function ProfilesBots({ store, go }: Props) {
                         boxShadow: `0 0 34px ${primary}22`,
                       }}
                     >
-                      <BotAvatar bot={selectedBot} color={primary} size={124} />
+                      <div style={{ position: "relative", width: 124, height: 124 }}>
+                        <BotAvatar bot={selectedBot} color={primary} size={124} />
+                        <BotCountryBadge bot={selectedBot} color={primary} size={36} />
+                      </div>
                     </div>
                   </div>
 
@@ -1054,7 +1111,7 @@ export default function ProfilesBots({ store, go }: Props) {
                     style={{
                       marginTop: 11,
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                      gridTemplateColumns: "repeat(3, minmax(0,1fr))",
                       gap: 8,
                     }}
                   >
@@ -1070,6 +1127,15 @@ export default function ProfilesBots({ store, go }: Props) {
                       </div>
                       <div style={{ color: primary, fontSize: 11.5, fontWeight: 950, marginTop: 2, textTransform: "uppercase" }}>
                         {t("bots.detail.available", "Disponible")}
+                      </div>
+                    </div>
+                    <div style={{ borderRadius: 13, border: `1px solid ${primary}44`, background: `${primary}0D`, padding: "9px 8px", textAlign: "center" }}>
+                      <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 850, textTransform: "uppercase" }}>{t("bots.detail.country", "Pays")}</div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, color: "#fff", fontSize: 11, fontWeight: 900, marginTop: 2 }}>
+                        {getCountryFlagSrc(normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country)) ? (
+                          <img src={getCountryFlagSrc(normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country)) || ""} alt="" style={{ width: 22, height: 15, objectFit: "cover", borderRadius: 3 }} />
+                        ) : null}
+                        <span>{normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country) || "—"}</span>
                       </div>
                     </div>
                   </div>
@@ -1140,6 +1206,11 @@ export default function ProfilesBots({ store, go }: Props) {
                         <option value="strong">{t("bots.level.strong", "Fort")}</option>
                         <option value="pro">{t("bots.level.pro", "Pro")}</option>
                         <option value="legend">{t("bots.level.legend", "Légende")}</option>
+                      </select>
+                      <select value={editCountryCode} onChange={(event) => setEditCountryCode(event.target.value)} style={fieldStyle}>
+                        {countryOptions.map((option) => (
+                          <option key={option.code} value={option.code}>{option.label}</option>
+                        ))}
                       </select>
                       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8 }}>
                         <input

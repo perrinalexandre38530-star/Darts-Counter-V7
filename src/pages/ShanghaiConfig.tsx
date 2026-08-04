@@ -57,6 +57,7 @@ export type ShanghaiConfig = {
 function safeBots(): PlayerLite[] {
   try {
     return loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: String(b?.name || "BOT"),
       avatarDataUrl: b?.avatarDataUrl || b?.avatarUrl || b?.avatar || null,

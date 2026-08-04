@@ -1,0 +1,253 @@
+// @ts-nocheck
+// =============================================================
+// OCEAN CONTROL — écran de jeu compact + panneaux flottants
+// =============================================================
+
+import React from "react";
+import BackDot from "../components/BackDot";
+import DartboardClickable from "../components/DartboardClickable";
+import InfoDot from "../components/InfoDot";
+import Keypad from "../components/Keypad";
+import PageHeader from "../components/PageHeader";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { useTheme } from "../contexts/ThemeContext";
+import type { GameDart } from "../lib/types-game";
+import {
+  buildOceanControlMatchStats,
+  cloneOceanControlState,
+  createOceanControlState,
+  getOceanActivePlayer,
+  getOceanNextUnplacedShip,
+  getOceanOwnerForPlayer,
+  getOceanPlacementOwner,
+  getOceanTargetOwner,
+  normalizeOceanControlConfig,
+  oceanControlAccuracy,
+  oceanControlDifficultyLabel,
+  oceanControlFleetLabel,
+  oceanControlRemainingCells,
+  oceanControlRemainingDecks,
+  oceanControlTacticalHint,
+  oceanControlVariantLabel,
+  pickOceanControlBotDarts,
+  placeOceanControlShip,
+  playOceanControlVisit,
+  resetOceanPlacementOwner,
+  selectOceanControlFocus,
+  selectOceanControlTarget,
+  type OceanControlConfigPayload,
+  type OceanControlOrientation,
+  type OceanControlState,
+} from "../lib/gameEngines/oceanControlEngine";
+import { History } from "../lib/history";
+import tickerOcean from "../assets/tickers/ticker_ocean_control.png";
+import OceanControlEnd from "./OceanControlEnd";
+import "../styles/ocean-control-play.css";
+
+type UiDart = { v: number; mult: 1 | 2 | 3 };
+type Overlay = null | "fleet" | "targets" | "stats" | "log";
+
+const BLUE = "#30b9ff", CYAN = "#65e9ff", GREEN = "#65e5aa", GOLD = "#f5ca68", RED = "#ff6573", SOFT = "#aab4c7";
+const PLAYER_COLORS = [BLUE, "#ff6b74", GREEN, GOLD, "#a78bfa", "#ff63b8", "#6de1d2", "#d4d8e5"];
+
+function panel(accent = "rgba(255,255,255,.10)"): React.CSSProperties { return { borderRadius: 18, background: "linear-gradient(180deg,rgba(255,255,255,.055),rgba(0,0,0,.30))", border: `1px solid ${accent}`, boxShadow: "0 14px 34px rgba(0,0,0,.28)", boxSizing: "border-box" }; }
+function playerName(profile: any) { return profile?.name || profile?.displayName || profile?.display_name || profile?.pseudo || "Joueur"; }
+function isBot(profile: any, botIds: Set<string>) { return botIds.has(String(profile?.id || "")) || Boolean(profile?.isBot || profile?.bot || profile?.botLevel || profile?.kind === "bot"); }
+function uiToGameDart(dart: UiDart): GameDart { if (!dart || dart.v === 0) return { bed: "MISS" }; if (dart.v === 25) return { bed: dart.mult === 2 ? "IB" : "OB" }; return { bed: dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S", number: dart.v } as GameDart; }
+function gameToUiDart(dart: GameDart): UiDart { if (dart.bed === "MISS") return { v: 0, mult: 1 }; if (dart.bed === "OB") return { v: 25, mult: 1 }; if (dart.bed === "IB") return { v: 25, mult: 2 }; return { v: Number(dart.number || 0), mult: dart.bed === "T" ? 3 : dart.bed === "D" ? 2 : 1 }; }
+function normalizeConfig(props: any): OceanControlConfigPayload { const record = props?.params?.rec || props?.params?.record || props?.params?.match || null; const raw = props?.params?.config || record?.payload?.config || record?.resume?.config || record?.summary?.config || props?.config || props?.params || {}; return normalizeOceanControlConfig(raw); }
+
+function Rules({ config }: { config: OceanControlConfigPayload }) {
+  return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.46 }}>
+    <div><strong style={{ color: BLUE }}>{oceanControlVariantLabel(config.variant).toUpperCase()}</strong><br />Détruis la flotte adverse en attaquant les secteurs 1 à 20.</div>
+    <div><strong style={{ color: CYAN }}>ARMES</strong><br />{config.variant === "tactical" ? "Simple = 1 zone · Double = 2 zones · Triple = ligne de 3." : "S, D et T attaquent une seule zone."}</div>
+    <div><strong style={{ color: GREEN }}>SONAR</strong><br />Sélectionne une zone sur la grille puis touche le Bull pour analyser les cases voisines.</div>
+    <div><strong style={{ color: GOLD }}>DBULL</strong><br />Déclenche une frappe de précision sur la zone sélectionnée ou une cible inconnue.</div>
+  </div>;
+}
+
+function ShipStrip({ owner, reveal = false }: any) {
+  return <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{(owner?.ships || []).map((ship: any) => <div key={ship.id} title={ship.name} style={{ minWidth: 44, borderRadius: 11, padding: "5px 7px", textAlign: "center", background: ship.sunk ? `${RED}18` : `${BLUE}10`, border: `1px solid ${ship.sunk ? RED : BLUE}55`, opacity: ship.sunk ? .6 : 1 }}><div style={{ fontSize: 15, filter: !reveal && !ship.sunk ? "brightness(.78)" : "none" }}>{ship.sunk ? "💥" : ship.icon}</div><div style={{ color: ship.sunk ? RED : SOFT, fontSize: 6.8, fontWeight: 1000 }}>{ship.hits.length}/{ship.length}</div></div>)}</div>;
+}
+
+function OceanGrid({ state, owner, own = false, onFocus, placement = false, placementShip, onPlace }: any) {
+  const difficulty = state.config.difficulty;
+  return <div className="ocean-control-grid">{Array.from({ length: 20 }, (_, cell) => {
+    const number = state.gridNumbers[cell];
+    const status = owner?.attackedCells?.[String(cell)] || null;
+    const ship = own ? owner?.ships?.find((row: any) => row.cells.includes(cell)) : null;
+    const focused = Number(state.focusNumber) === Number(number);
+    const showNumber = difficulty !== "admiral" || status || focused || placement || own;
+    const className = ["ocean-control-cell", status ? `is-${status}` : "", focused ? "is-focused" : "", ship ? "has-ship" : "", placement ? "is-placement" : ""].filter(Boolean).join(" ");
+    return <button key={cell} type="button" className={className} onClick={() => placement ? onPlace?.(cell) : onFocus?.(number)}>
+      <span className="ocean-cell-number">{showNumber ? number : "•"}</span>
+      <span className="ocean-cell-mark">{status === "miss" ? "≈" : status === "hit" ? "✹" : status === "sunk" ? "💥" : ship ? ship.icon : ""}</span>
+      {placement && placementShip ? <span className="ocean-cell-coord">{String.fromCharCode(65 + Math.floor(cell / 5))}{(cell % 5) + 1}</span> : null}
+    </button>;
+  })}</div>;
+}
+
+function QuickButton({ icon, label, value, color, onClick }: any) {
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 55, borderRadius: 14, border: `1px solid ${color}55`, background: `linear-gradient(180deg,${color}12,rgba(255,255,255,.025))`, color: "#fff", padding: "6px 4px", cursor: "pointer" }}><div style={{ color, fontSize: 17 }}>{icon}</div><div style={{ marginTop: 3, fontSize: 7.3, fontWeight: 1050, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div></button>;
+}
+
+function Kpi({ label, value, color = BLUE, detail }: any) { return <div style={{ borderRadius: 14, padding: 9, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)", minWidth: 0 }}><div style={{ color: SOFT, fontSize: 7.2, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 19, fontWeight: 1100 }}>{value}</div>{detail ? <div style={{ marginTop: 3, color: "rgba(255,255,255,.42)", fontSize: 7.3 }}>{detail}</div> : null}</div>; }
+
+function OverlayShell({ title, subtitle, color, onClose, children }: any) {
+  return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,3,8,.86)", backdropFilter: "blur(9px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "8px 8px max(8px,env(safe-area-inset-bottom))" }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div style={{ width: "min(820px,100%)", maxHeight: "88dvh", overflow: "hidden", borderRadius: "23px 23px 15px 15px", background: "linear-gradient(180deg,#111c29,#05080c)", border: `1px solid ${color}55`, boxShadow: "0 28px 90px rgba(0,0,0,.72)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "12px 13px", borderBottom: "1px solid rgba(255,255,255,.08)" }}><div style={{ minWidth: 0 }}><div style={{ color, fontSize: 11.5, fontWeight: 1100, letterSpacing: .75 }}>{title}</div>{subtitle ? <div style={{ marginTop: 2, color: SOFT, fontSize: 8.5 }}>{subtitle}</div> : null}</div><button onClick={onClose} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.045)", color: "#fff", fontSize: 18 }}>×</button></div>
+      <div className="dc-scroll-thin" style={{ maxHeight: "calc(88dvh - 65px)", overflowY: "auto", padding: 12 }}>{children}</div>
+    </div>
+  </div>;
+}
+
+function PlacementScreen({ state, profilesById, ready, onReady, orientation, setOrientation, onPlace, onReset, onAuto }: any) {
+  const owner = getOceanPlacementOwner(state);
+  const ship = getOceanNextUnplacedShip(state);
+  const memberProfiles = (owner?.memberIds || []).map((id: string) => profilesById.get(String(id))).filter(Boolean);
+  if (!owner) return null;
+  if (!ready) return <div style={{ minHeight: "calc(100dvh - 76px)", display: "grid", placeItems: "center", padding: 16, boxSizing: "border-box" }}><div style={{ width: "min(520px,100%)", textAlign: "center", borderRadius: 24, padding: 20, background: "linear-gradient(180deg,rgba(48,185,255,.16),rgba(0,0,0,.44))", border: `1px solid ${BLUE}66` }}><div style={{ fontSize: 42 }}>🔒</div><div style={{ marginTop: 8, color: CYAN, fontWeight: 1150, fontSize: 18 }}>{owner.name}</div><div style={{ marginTop: 7, color: SOFT, fontSize: 10, lineHeight: 1.45 }}>Passe l’appareil au commandant de cette flotte. Les autres joueurs ne doivent pas regarder le placement.</div><div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 6 }}>{memberProfiles.map((profile: any) => <ProfileAvatar key={profile.id} profile={profile} size={42} />)}</div><button onClick={onReady} style={{ marginTop: 16, width: "100%", minHeight: 48, borderRadius: 15, border: `1px solid ${GREEN}88`, background: `linear-gradient(180deg,${GREEN},#239d70)`, color: "#03130d", fontWeight: 1200 }}>AFFICHER MA GRILLE</button></div></div>;
+  return <main style={{ width: "min(760px,100%)", margin: "0 auto", padding: "8px 9px 16px", boxSizing: "border-box" }}>
+    <section style={{ ...panel(`${BLUE}55`), padding: 12, textAlign: "center" }}><div style={{ color: CYAN, fontSize: 11, fontWeight: 1100 }}>PLACEMENT SECRET · {owner.name}</div><div style={{ marginTop: 5, color: "#fff", fontSize: 17, fontWeight: 1150 }}>{ship ? `${ship.icon} ${ship.name} · ${ship.length} zones` : "Flotte prête"}</div><div style={{ marginTop: 4, color: SOFT, fontSize: 8.5 }}>Choisis la première case du navire puis son orientation.</div></section>
+    <section style={{ ...panel(), padding: 8, marginTop: 8 }}><OceanGrid state={state} owner={owner} own placement placementShip={ship} onPlace={onPlace} /></section>
+    <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button onClick={() => setOrientation("horizontal")} style={{ minHeight: 42, borderRadius: 13, border: `1px solid ${orientation === "horizontal" ? CYAN : "rgba(255,255,255,.10)"}`, background: orientation === "horizontal" ? `${CYAN}18` : "rgba(255,255,255,.03)", color: orientation === "horizontal" ? CYAN : SOFT, fontWeight: 1050 }}>↔ HORIZONTAL</button><button onClick={() => setOrientation("vertical")} style={{ minHeight: 42, borderRadius: 13, border: `1px solid ${orientation === "vertical" ? CYAN : "rgba(255,255,255,.10)"}`, background: orientation === "vertical" ? `${CYAN}18` : "rgba(255,255,255,.03)", color: orientation === "vertical" ? CYAN : SOFT, fontWeight: 1050 }}>↕ VERTICAL</button></div>
+    <div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><button onClick={onReset} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${RED}55`, background: `${RED}10`, color: RED, fontWeight: 1000 }}>RECOMMENCER</button><button onClick={onAuto} style={{ minHeight: 40, borderRadius: 13, border: `1px solid ${GOLD}66`, background: `${GOLD}12`, color: GOLD, fontWeight: 1000 }}>PLACEMENT AUTO</button></div>
+  </main>;
+}
+
+export default function OceanControlPlay(props: any) {
+  const { theme } = useTheme();
+  const config = React.useMemo(() => normalizeConfig(props), []);
+  const store = props?.store;
+  const go = props?.go ?? props?.setTab;
+  const onFinish = props?.onFinish as ((record: any, options?: { navigate?: boolean }) => void) | undefined;
+  const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
+  const botIds = React.useMemo(() => new Set((config.botIds || []).map(String)), [config.botIds]);
+
+  const profiles = React.useMemo(() => {
+    const fromPayload = Array.isArray(config.playersList) ? config.playersList : [];
+    const resolved = typeof store?.resolveSelectedProfiles === "function" ? store.resolveSelectedProfiles(config.selectedIds || []) : [];
+    const pool = [...fromPayload, ...(Array.isArray(resolved) ? resolved : []), ...(Array.isArray(store?.profiles) ? store.profiles : [])];
+    const byId = new Map<string, any>();
+    pool.forEach((profile: any) => { const id = String(profile?.id || profile?.profileId || ""); if (id) byId.set(id, { ...(byId.get(id) || {}), ...profile, id, name: playerName(profile) }); });
+    const ordered = config.selectedIds.map((id) => byId.get(String(id))).filter(Boolean);
+    return ordered.length ? ordered : Array.from({ length: Math.max(2, config.players) }, (_, i) => ({ id: `p${i + 1}`, name: `Joueur ${i + 1}` }));
+  }, [store, config]);
+  const players = React.useMemo(() => profiles.map((profile: any) => ({ id: String(profile.id), name: playerName(profile) })), [profiles]);
+  const profilesById = React.useMemo(() => new Map(profiles.map((profile: any) => [String(profile.id), profile])), [profiles]);
+  const initialState = React.useMemo(() => { const snapshot = resumeRecord?.resume?.state || resumeRecord?.payload?.stateSnapshot || null; return snapshot?.mode === "ocean_control" ? cloneOceanControlState(snapshot) : createOceanControlState(players, config); }, []);
+
+  const [state, setState] = React.useState<OceanControlState>(initialState);
+  const [throwDarts, setThrowDarts] = React.useState<UiDart[]>([]);
+  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+  const [undoStack, setUndoStack] = React.useState<OceanControlState[]>([]);
+  const [notice, setNotice] = React.useState(oceanControlTacticalHint(initialState));
+  const [overlay, setOverlay] = React.useState<Overlay>(null);
+  const [showEnd, setShowEnd] = React.useState(initialState.phase === "finished");
+  const [botThinking, setBotThinking] = React.useState(false);
+  const [placementReady, setPlacementReady] = React.useState(false);
+  const [orientation, setOrientation] = React.useState<OceanControlOrientation>("horizontal");
+  const placementOwnerIdRef = React.useRef(getOceanPlacementOwner(initialState)?.id || "");
+  const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `ocean-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
+  const autoSavedRef = React.useRef("");
+
+  const activePlayer = getOceanActivePlayer(state);
+  const activeProfile = profilesById.get(String(activePlayer?.id)) || activePlayer;
+  const activeStats = state.statsByPlayer[String(activePlayer?.id || "")] || {};
+  const activeColor = PLAYER_COLORS[state.activePlayerIndex % PLAYER_COLORS.length];
+  const ownOwner = activePlayer ? getOceanOwnerForPlayer(state, activePlayer.id) : null;
+  const targetOwner = getOceanTargetOwner(state);
+  const lastVisit = state.visits[state.visits.length - 1];
+
+  function backToConfig() { if (typeof go === "function") go("ocean_control_config", config); }
+  function addDart(v: number, mult?: 1 | 2 | 3) { if (botThinking || state.phase !== "playing" || throwDarts.length >= 3) return; setThrowDarts((prev) => [...prev, { v: Number(v) || 0, mult: (mult || multiplier) as any }].slice(0, 3)); }
+  function commitVisit(source?: UiDart[]) { const darts = (source || throwDarts).slice(0, 3); if (!darts.length || state.phase !== "playing") return; setUndoStack((prev) => [...prev.slice(-29), cloneOceanControlState(state)]); const next = playOceanControlVisit(state, darts.map(uiToGameDart)); setState(next); setThrowDarts([]); setMultiplier(1); const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || oceanControlTacticalHint(next)); if (next.phase === "finished") setShowEnd(true); }
+  function cancelOrUndo() { if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice("Volée effacée."); return; } const previous = undoStack[undoStack.length - 1]; if (!previous) { setNotice("Aucune action à annuler."); return; } setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowEnd(false); autoSavedRef.current = ""; setNotice("Dernière volée annulée."); }
+  function resetMatch() { matchIdRef.current = `ocean-control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createOceanControlState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setPlacementReady(false); setNotice(oceanControlTacticalHint(next)); autoSavedRef.current = ""; }
+  function chooseTarget(ownerId: string) { setState((prev) => selectOceanControlTarget(prev, ownerId)); setOverlay(null); }
+  function chooseFocus(number: number) { setState((prev) => selectOceanControlFocus(prev, number)); setNotice(`Zone ${number} sélectionnée pour le sonar / DBULL.`); }
+  function handlePlace(cell: number) { const beforeOwner = getOceanPlacementOwner(state)?.id; const next = placeOceanControlShip(state, cell, orientation); const afterOwner = getOceanPlacementOwner(next)?.id; setState(next); if (beforeOwner !== afterOwner || next.phase !== "placement") setPlacementReady(false); }
+  function autoPlaceCurrentOwner() { let next = cloneOceanControlState(state); let safety = 0; while (next.phase === "placement" && getOceanPlacementOwner(next)?.id === getOceanPlacementOwner(state)?.id && safety < 300) { const ship = getOceanNextUnplacedShip(next); if (!ship) break; const cell = Math.floor(Math.random() * 20); const orient = Math.random() > .5 ? "horizontal" : "vertical"; const candidate = placeOceanControlShip(next, cell, orient as any); if (JSON.stringify(candidate) !== JSON.stringify(next)) next = candidate; safety += 1; } setState(next); setPlacementReady(false); }
+
+  React.useEffect(() => {
+    const ownerId = getOceanPlacementOwner(state)?.id || "";
+    if (ownerId !== placementOwnerIdRef.current) { placementOwnerIdRef.current = ownerId; setPlacementReady(false); }
+  }, [state.placementOwnerIndex, state.phase]);
+
+  React.useEffect(() => {
+    if (state.phase !== "placement") return;
+    const owner = getOceanPlacementOwner(state); if (!owner) return;
+    const allBot = owner.memberIds.every((id) => isBot(profilesById.get(String(id)), botIds));
+    if (!allBot) return;
+    const timer = window.setTimeout(autoPlaceCurrentOwner, 350);
+    return () => window.clearTimeout(timer);
+  }, [state.phase, state.placementOwnerIndex]);
+
+  React.useEffect(() => {
+    if (state.phase !== "playing" || !activePlayer || !isBot(activeProfile, botIds) || botThinking) return;
+    setBotThinking(true);
+    const timer = window.setTimeout(() => {
+      const plan = pickOceanControlBotDarts(state, config.botLevel);
+      let prepared = plan.focusNumber ? selectOceanControlFocus(state, plan.focusNumber) : state;
+      const next = playOceanControlVisit(prepared, plan.darts);
+      setUndoStack((prev) => [...prev.slice(-29), cloneOceanControlState(state)]); setState(next); setThrowDarts([]); setBotThinking(false);
+      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée."); if (next.phase === "finished") setShowEnd(true);
+    }, 650);
+    return () => { window.clearTimeout(timer); setBotThinking(false); };
+  }, [state.activePlayerIndex, state.roundIndex, state.battleNumber, state.phase]);
+
+  React.useEffect(() => { if (!overlay) return; const previous = document.body.style.overflow; document.body.style.overflow = "hidden"; const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOverlay(null); }; window.addEventListener("keydown", onKey); return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey); }; }, [overlay]);
+
+  function buildHistoryRecord(statusOverride?: "in_progress" | "finished") {
+    const status = statusOverride || (state.phase === "finished" ? "finished" : "in_progress");
+    const finished = status === "finished"; const now = finished ? (state.finishedAt || Date.now()) : Date.now();
+    const playerRows = state.players.map((player, index) => {
+      const profile = profilesById.get(String(player.id)) || player; const stats = state.statsByPlayer[player.id] || {}; const owner = getOceanOwnerForPlayer(state, player.id);
+      const visits = state.visits.filter((visit) => String(visit.playerId) === String(player.id));
+      const dartsDetail = visits.flatMap((visit) => visit.darts.map((dart, dartIndex) => ({ ...dart, label: visit.labels[dartIndex], battle: visit.battle, round: visit.round, visit: visit.visit, dartIndex: dartIndex + 1, events: visit.events })));
+      const won = finished && state.winnerPlayerIds.includes(player.id);
+      return { id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile), avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null, dartSetId: config.playerDartSets?.[player.id] ?? profile?.dartSetId ?? null, color: PLAYER_COLORS[index % PLAYER_COLORS.length], ownerId: owner?.id || null, ownerName: owner?.name || null, rank: won ? 1 : 2, win: won, winner: won, ...stats, accuracy: oceanControlAccuracy(stats), visitsHistory: visits, visitHistory: visits, dartsDetail, hitsBySegment: { ...(stats.hitsBySegment || {}) } };
+    });
+    const matchStats = buildOceanControlMatchStats(state);
+    const summary = { kind: "ocean_control", mode: "ocean_control", sport: "darts", variant: config.variant, variantLabel: oceanControlVariantLabel(config.variant), finished, statisticsVersion: 1, telemetryVersion: 1, winnerId: finished ? state.winnerPlayerIds[0] || null : null, winnerIds: finished ? state.winnerPlayerIds : [], winnerOwnerIds: finished ? state.winnerOwnerIds : [], winnerName: finished ? state.owners.filter((owner) => state.winnerOwnerIds.includes(owner.id)).map((owner) => owner.name).join(" / ") : null, battlesPlayed: state.battleNumber, configuredWins: config.winsNeeded, players: playerRows, perPlayer: playerRows, rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [], visits: state.visits, matchStats, config, scoreByOwner: state.scoreByOwner, scoreLine: `${oceanControlVariantLabel(config.variant)} · ${matchStats.shipsSunk} navires coulés · ${matchStats.totalDarts} fléchettes`, game: { mode: "ocean_control", variant: config.variant, winsNeeded: config.winsNeeded } };
+    return { id: matchIdRef.current, matchId: matchIdRef.current, kind: "ocean_control", mode: "ocean_control", sport: "darts", status, statisticsVersion: 1, telemetryVersion: 1, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now, ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName, players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneOceanControlState(state), updatedAt: now }, game: summary.game, summary, payload: { kind: "ocean_control", mode: "ocean_control", sport: "darts", variant: config.variant, statisticsVersion: 1, telemetryVersion: 1, config, players: playerRows, summary, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneOceanControlState(state), stats: { sport: "darts", mode: "ocean_control", variant: config.variant, players: playerRows, match: matchStats, global: matchStats } } };
+  }
+
+  React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
+  React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
+
+  if (state.phase === "placement") return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(48,185,255,.22),#07101b 43%,#020507 100%)" }}><PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Placement de la flotte" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} /><PlacementScreen state={state} profilesById={profilesById} ready={placementReady} onReady={() => setPlacementReady(true)} orientation={orientation} setOrientation={setOrientation} onPlace={handlePlace} onReset={() => setState((prev) => resetOceanPlacementOwner(prev))} onAuto={autoPlaceCurrentOwner} /></div>;
+
+  const remainingShips = oceanControlRemainingDecks(targetOwner);
+  const remainingCells = oceanControlRemainingCells(targetOwner);
+  const noticeSlot = <div style={{ color: botThinking ? GOLD : SOFT, fontSize: 8.2, fontWeight: 900, textAlign: "center", lineHeight: 1.2 }}>{botThinking ? "BOT EN APPROCHE…" : notice}</div>;
+
+  return <div className="ocean-control-page" style={{ color: theme?.text || "#fff" }}>
+    <PageHeader tickerSrc={tickerOcean} tickerAlt="OCEAN CONTROL" left={<BackDot onClick={backToConfig} color={BLUE} glow={`${BLUE}88`} />} right={<InfoDot title="Règles OCEAN CONTROL" color={CYAN} glow={`${CYAN}88`} content={<Rules config={config} />} />} />
+    <main className="ocean-control-main">
+      <section style={{ ...panel(`${activeColor}66`), overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "46px minmax(0,1fr) 84px", gap: 8, alignItems: "center", padding: "9px 10px 7px" }}><ProfileAvatar profile={activeProfile} size={44} /><div style={{ minWidth: 0 }}><div style={{ color: activeColor, fontSize: 12.5, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 8.2 }}>{ownOwner?.name} · Bataille {state.battleNumber}</div><div style={{ marginTop: 4, color: CYAN, fontSize: 8.4, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>CIBLE : {targetOwner?.name || "—"}</div></div><div style={{ textAlign: "right" }}><div style={{ color: RED, fontSize: 24, fontWeight: 1200, lineHeight: .9 }}>{remainingShips}</div><div style={{ color: SOFT, fontSize: 7.3, fontWeight: 1000 }}>NAVIRES</div><div style={{ marginTop: 4, color: GOLD, fontSize: 7.5, fontWeight: 950 }}>{remainingCells} zones</div></div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 42px", gap: 7, alignItems: "center", padding: "7px 8px", background: "rgba(0,0,0,.28)", borderTop: "1px solid rgba(255,255,255,.07)" }}><div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}><span style={{ flex: "0 0 auto", width: 7, height: 7, borderRadius: 999, background: BLUE, boxShadow: `0 0 10px ${BLUE}` }} /><span style={{ color: "rgba(255,255,255,.76)", fontSize: 8.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{oceanControlTacticalHint(state)}</span></div><button onClick={cancelOrUndo} style={{ width: 42, height: 34, borderRadius: 11, border: `1px solid ${RED}55`, background: `${RED}12`, color: RED, fontWeight: 1100 }}>↶</button></div>
+      </section>
+
+      <section style={{ ...panel(`${BLUE}33`), padding: 7 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}><div><div style={{ color: CYAN, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>GRILLE ENNEMIE</div><div style={{ color: SOFT, fontSize: 7.3 }}>Touchez une case pour cibler le sonar / DBULL.</div></div><div style={{ color: state.focusNumber ? GOLD : SOFT, fontSize: 10, fontWeight: 1100 }}>FOCUS {state.focusNumber || "—"}</div></div>
+        <OceanGrid state={state} owner={targetOwner} onFocus={chooseFocus} />
+      </section>
+
+      <section style={{ ...panel(), padding: 7 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><QuickButton icon="⚓" label="MA FLOTTE" value={`${oceanControlRemainingDecks(ownOwner)} navires`} color={GREEN} onClick={() => setOverlay("fleet")} /><QuickButton icon="🎯" label="CIBLES" value={`${state.owners.filter((owner) => owner.id !== ownOwner?.id && !owner.eliminated).length} ennemie(s)`} color={RED} onClick={() => setOverlay("targets")} /><QuickButton icon="📊" label="STATS" value={`${oceanControlAccuracy(activeStats)}% précision`} color={GOLD} onClick={() => setOverlay("stats")} /><QuickButton icon="📡" label="JOURNAL" value={`${state.visits.length} volées`} color={CYAN} onClick={() => setOverlay("log")} /></div></section>
+
+      <section style={{ ...panel(), padding: 6 }}>
+        {config.scoreInputMethod === "dartboard" ? <div style={{ display: "grid", justifyItems: "center", gap: 6 }}><DartboardClickable onHit={(segment, mult) => addDart(segment, mult)} multiplier={multiplier} size={Math.min(310, typeof window !== "undefined" ? window.innerWidth - 34 : 300)} disabled={botThinking} /><button onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ width: "100%", minHeight: 44, borderRadius: 14, border: `1px solid ${GREEN}88`, background: throwDarts.length ? `${GREEN}18` : "rgba(255,255,255,.03)", color: throwDarts.length ? GREEN : SOFT, fontWeight: 1100 }}>VALIDER LA VOLÉE ({throwDarts.length}/3)</button></div> : <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} hidePreview={false} hideTotal centerSlot={<div style={{ textAlign: "center" }}><div style={{ color: CYAN, fontSize: 14, fontWeight: 1200 }}>{throwDarts.length}/3</div><div style={{ color: SOFT, fontSize: 6.5 }}>TORPILLES</div></div>} noticeSlot={noticeSlot} safeBottomPad={false} />}
+      </section>
+    </main>
+
+    {overlay === "fleet" ? <OverlayShell title="MA FLOTTE" subtitle={ownOwner?.name} color={GREEN} onClose={() => setOverlay(null)}><ShipStrip owner={ownOwner} reveal /><div style={{ marginTop: 10 }}><OceanGrid state={state} owner={ownOwner} own onFocus={() => {}} /></div></OverlayShell> : null}
+    {overlay === "targets" ? <OverlayShell title="CHOISIR UNE FLOTTE ENNEMIE" subtitle="Change la cible de la prochaine volée" color={RED} onClose={() => setOverlay(null)}><div style={{ display: "grid", gap: 8 }}>{state.owners.filter((owner) => owner.id !== ownOwner?.id).map((owner) => <button key={owner.id} disabled={owner.eliminated} onClick={() => chooseTarget(owner.id)} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 11, borderRadius: 15, border: `1px solid ${state.targetOwnerId === owner.id ? RED : "rgba(255,255,255,.09)"}`, background: state.targetOwnerId === owner.id ? `${RED}14` : "rgba(255,255,255,.03)", color: owner.eliminated ? "rgba(255,255,255,.3)" : "#fff", textAlign: "left" }}><div><div style={{ fontWeight: 1100 }}>{owner.name}</div><div style={{ marginTop: 3, color: SOFT, fontSize: 8 }}>{oceanControlRemainingDecks(owner)} navires · {oceanControlRemainingCells(owner)} zones intactes</div></div><strong style={{ color: owner.eliminated ? RED : CYAN }}>{owner.eliminated ? "COULÉE" : state.targetOwnerId === owner.id ? "CIBLE" : "VISER"}</strong></button>)}</div></OverlayShell> : null}
+    {overlay === "stats" ? <OverlayShell title={`STATS · ${playerName(activeProfile).toUpperCase()}`} subtitle={oceanControlVariantLabel(config.variant)} color={GOLD} onClose={() => setOverlay(null)}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Kpi label="PRÉCISION" value={`${oceanControlAccuracy(activeStats)}%`} color={GREEN} detail={`${activeStats.shipHits || 0}/${activeStats.validShots || 0} tirs`} /><Kpi label="NAVIRES COULÉS" value={activeStats.shipsSunk || 0} color={RED} /><Kpi label="SONARS" value={activeStats.sonarUses || 0} color={CYAN} detail={`${activeStats.sonarContacts || 0} contacts`} /><Kpi label="FRAPPES DBULL" value={activeStats.precisionStrikes || 0} color={GOLD} /><Kpi label="ZONES TOUCHÉES" value={activeStats.shipHits || 0} color={BLUE} /><Kpi label="À L’EAU" value={activeStats.waterShots || 0} color={SOFT} /><Kpi label="DOUBLONS" value={activeStats.duplicateShots || 0} color={RED} /><Kpi label="FLÉCHETTES" value={activeStats.darts || 0} color="#fff" /></div></OverlayShell> : null}
+    {overlay === "log" ? <OverlayShell title="JOURNAL DE BORD" subtitle={`${state.visits.length} volée${state.visits.length > 1 ? "s" : ""}`} color={CYAN} onClose={() => setOverlay(null)}><div style={{ display: "grid", gap: 7 }}>{[...state.visits].reverse().map((visit) => <div key={visit.id} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · B{visit.battle} · T{visit.round}</strong><strong style={{ color: BLUE }}>{visit.labels.join(" / ")}</strong></div><div style={{ marginTop: 5, color: "#cfd8e4", fontSize: 8.2, lineHeight: 1.4 }}>{visit.events.map((event) => event.label).join(" · ") || "Aucun impact"}</div></div>)}</div></OverlayShell> : null}
+
+    {showEnd && state.phase === "finished" ? <OceanControlEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "ocean_control" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
+  </div>;
+}

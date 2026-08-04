@@ -4,6 +4,8 @@
 // Répartition du plus fort au moins fort, avec niveau global utilisé par ProfileStarRing.
 // ============================================
 
+import { resolveProBotCountryCode } from "./botCountries";
+
 export type BotTeamTier = "elite" | "pro" | "challenger" | "mix" | "rising";
 
 export type BotTeamMember = {
@@ -12,6 +14,7 @@ export type BotTeamMember = {
   avatarKey: string;
   botLevel: 1 | 2 | 3 | 3.5 | 4 | 4.5 | 5;
   targetAvg3: number;
+  countryCode: string;
 };
 
 export type BotProTeam = {
@@ -22,7 +25,7 @@ export type BotProTeam = {
   members: BotTeamMember[];
 };
 
-export const BOT_PRO_TEAMS: BotProTeam[] = [
+const BOT_PRO_TEAMS_BASE: Array<Omit<BotProTeam, "members"> & { members: Array<Omit<BotTeamMember, "countryCode">> }> = [
   {
     key: "elite",
     name: "BOT Élite IA",
@@ -84,5 +87,13 @@ export const BOT_PRO_TEAMS: BotProTeam[] = [
     ],
   },
 ];
+
+export const BOT_PRO_TEAMS: BotProTeam[] = BOT_PRO_TEAMS_BASE.map((team) => ({
+  ...team,
+  members: team.members.map((member) => ({
+    ...member,
+    countryCode: resolveProBotCountryCode(member) || "",
+  })),
+}));
 
 export const BOT_PRO_TEAM_BY_KEY = Object.fromEntries(BOT_PRO_TEAMS.map((team) => [team.key, team])) as Record<BotTeamTier, BotProTeam>;

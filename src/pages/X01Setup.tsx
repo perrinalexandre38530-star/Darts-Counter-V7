@@ -136,6 +136,7 @@ function normalizeStringArray(input: unknown): string[] {
 function loadBots(): Bot[] {
   try {
     return loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: b?.name || "BOT",
       avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? b?.avatar ?? null,

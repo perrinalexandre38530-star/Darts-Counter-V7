@@ -5,6 +5,7 @@ import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { botAvatarMediaKey, captureUserMediaFallback } from "./userMediaFallback";
+import { normalizeBotCountryCode, resolveProBotCountryCode } from "./botCountries";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -28,6 +29,8 @@ export type BotRecord = {
   avatarFullAssetId?: string | null;
   avatarCastAssetId?: string | null;
   avatarUpdatedAt?: string | number | null;
+  countryCode?: string | null;
+  country?: string | null;
   createdAt: string;
   updatedAt: string;
   isBot?: boolean;
@@ -49,6 +52,8 @@ export type BotPlayerLite = {
   avatarFullAssetId?: string | null;
   avatarCastAssetId?: string | null;
   avatarUpdatedAt?: string | number | null;
+  countryCode?: string | null;
+  country?: string | null;
   isBot: true;
   bot: true;
   type: "bot";
@@ -418,6 +423,9 @@ export function normalizeBotRecord(input: any): BotRecord {
   const avatarDataUrl = sanitizeAvatarDataUrl(
     input?.avatarDataUrl ?? input?.avatar ?? input?.avatarUrl ?? null
   );
+  const countryCode = normalizeBotCountryCode(
+    input?.countryCode ?? input?.country_code ?? input?.country ?? input?.countryName ?? input?.nation ?? input?.nationality ?? null
+  ) || resolveProBotCountryCode(input);
 
   return {
     ...input,
@@ -433,6 +441,8 @@ export function normalizeBotRecord(input: any): BotRecord {
     avatarFullAssetId: input?.avatarFullAssetId || null,
     avatarCastAssetId: input?.avatarCastAssetId || null,
     avatarUpdatedAt: input?.avatarUpdatedAt || null,
+    countryCode: countryCode || null,
+    country: countryCode || null,
     createdAt: String(input?.createdAt || nowIso),
     updatedAt: String(input?.updatedAt || nowIso),
     isBot: true,
@@ -664,6 +674,8 @@ export function toBotPlayerLite(input: any): BotPlayerLite {
     avatarFullAssetId: bot.avatarFullAssetId ?? null,
     avatarCastAssetId: bot.avatarCastAssetId ?? null,
     avatarUpdatedAt: bot.avatarUpdatedAt ?? null,
+    countryCode: bot.countryCode ?? bot.country ?? null,
+    country: bot.country ?? bot.countryCode ?? null,
     isBot: true,
     bot: true,
     type: "bot",

@@ -12,6 +12,7 @@
 // =============================================================
 
 import React from "react";
+import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers } from "../lib/bots";
 
 import { useTheme } from "../contexts/ThemeContext";
@@ -90,7 +91,7 @@ export type GolfConfigPayload = {
 const LS_CFG_KEY = "dc_modecfg_golf";
 type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
 
-const PRO_BOTS: BotLite[] = [
+const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
   { id: "pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
   { id: "pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
   { id: "pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
@@ -115,7 +116,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
   { id: "pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-];
+]) as BotLite[];
 
 const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }> = {
   gold: { label: "TEAM GOLD", color: "#ffcf57", logo: teamGoldLogo },
@@ -169,6 +170,7 @@ function TeamPillButton({
 function readUserBotsFromLS(): BotLite[] {
   try {
     return loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: b?.name || "BOT",
       avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? b?.avatar ?? null,

@@ -315,7 +315,6 @@ export default function SettingsAccount({ store, update }: Props) {
         </div>
       </section>
 
-      {
       {/* Annuaire / Partage direct */}
       <section style={{ ...S.card, marginTop: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -397,7 +396,7 @@ export default function SettingsAccount({ store, update }: Props) {
         </div>
       </section>
 
-/* Changement d'email */}
+{/* Changement d’email */}
       <section
         style={{
           padding: 16,

@@ -46,7 +46,7 @@ import { loadBots } from "./ProfilesBots";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 import { onlineApi } from "../lib/onlineApi";
 import { postMessage as postOnlineChatMessage, fetchMessages as fetchOnlineChatMessages, subscribeMessages as subscribeOnlineChatMessages } from "../lib/chatApi";
-import { getCountryFlagSrc } from "../lib/geoAssets";
+import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
 import { getDartSetById } from "../lib/dartSetsStore";
 import OnlineCameraPanel, { type OnlineCameraSignal } from "../online/client/OnlineCameraPanel";
 import type { OnlineCameraPlayerState } from "../online/client/useOnlineCamera";
@@ -1472,7 +1472,7 @@ const profileById = React.useMemo(() => {
     m[p.id] = {
       avatarDataUrl: resolveAvatar(p),
       name: p.name,
-      countryCode: countryCode ? String(countryCode).toUpperCase().slice(0, 2) : null,
+      countryCode: countryCode ? normalizeCountryAssetCode(String(countryCode)) : null,
     };
   }
   return m;
@@ -1651,9 +1651,14 @@ const activePlayerCountryFlagSrc = React.useMemo(() => {
     (activePlayer as any)?.countryCode ??
     (activePlayer as any)?.country_code ??
     (activePlayer as any)?.country ??
+    (activePlayer as any)?.countryName ??
+    (activePlayer as any)?.nation ??
+    (activePlayer as any)?.nationality ??
+    (activePlayer as any)?.profile?.countryCode ??
+    (activePlayer as any)?.profile?.country ??
     (activePlayer ? profileById[String((activePlayer as any).id)]?.countryCode : null) ??
     null;
-  return getCountryFlagSrc(direct ? String(direct).toUpperCase().slice(0, 2) : undefined);
+  return getCountryFlagSrc(direct ? normalizeCountryAssetCode(String(direct)) : undefined);
 }, [activePlayer, profileById]);
 
 const [onlineChatOpen, setOnlineChatOpen] = React.useState(false);

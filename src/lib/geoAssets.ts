@@ -4,16 +4,6 @@
 // Assets locaux (flags pays + logos régions FR) pour un rendu fiable sur tous navigateurs.
 // =============================================================
 
-import flagFR from "../assets/flags/FR.png";
-import flagBE from "../assets/flags/BE.png";
-import flagCH from "../assets/flags/CH.png";
-import flagES from "../assets/flags/ES.png";
-import flagIT from "../assets/flags/IT.png";
-import flagDE from "../assets/flags/DE.png";
-import flagPT from "../assets/flags/PT.png";
-import flagGB from "../assets/flags/GB.png";
-import flagUS from "../assets/flags/US.png";
-
 import regARA from "../assets/regions_fr/FR-ARA.png";
 import regBFC from "../assets/regions_fr/FR-BFC.png";
 import regBRE from "../assets/regions_fr/FR-BRE.png";
@@ -33,16 +23,42 @@ import regGF from "../assets/regions_fr/FR-GF.png";
 import regRE from "../assets/regions_fr/FR-RE.png";
 import regYT from "../assets/regions_fr/FR-YT.png";
 
-const COUNTRY_FLAGS: Record<string, string> = {
-  FR: flagFR,
-  BE: flagBE,
-  CH: flagCH,
-  ES: flagES,
-  IT: flagIT,
-  DE: flagDE,
-  PT: flagPT,
-  GB: flagGB,
-  US: flagUS,
+const FLAG_MODULES = import.meta.glob("../assets/flags/*.{png,svg,webp}", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+const COUNTRY_FLAGS: Record<string, string> = Object.fromEntries(
+  Object.entries(FLAG_MODULES)
+    .map(([path, src]) => {
+      const file = path.split("/").pop() || "";
+      const code = file.replace(/\.(png|svg|webp)$/i, "").toUpperCase();
+      return [code, src];
+    })
+    .filter(([code, src]) => Boolean(code && src))
+);
+
+const COUNTRY_CODE_ALIASES: Record<string, string> = {
+  UK: "GB",
+  "GB-ENG": "ENG",
+  ENGLAND: "ENG",
+  ANGLETERRE: "ENG",
+  "GB-SCT": "SCO",
+  "GB-SCO": "SCO",
+  SCOTLAND: "SCO",
+  ECOSSE: "SCO",
+  "ÉCOSSE": "SCO",
+  "GB-WLS": "WAL",
+  "GB-WAL": "WAL",
+  WALES: "WAL",
+  "PAYS DE GALLES": "WAL",
+};
+
+const SPECIAL_COUNTRY_LABELS: Record<string, Record<string, string>> = {
+  ENG: { fr: "Angleterre", en: "England" },
+  SCO: { fr: "Écosse", en: "Scotland" },
+  WAL: { fr: "Pays de Galles", en: "Wales" },
 };
 
 const FR_REGION_LOGOS: Record<string, string> = {
@@ -66,10 +82,11 @@ const FR_REGION_LOGOS: Record<string, string> = {
   "FR-YT": regYT,
 };
 
-function normCountry(code?: string) {
-  const c = String(code || "FR").toUpperCase().slice(0, 2);
-  if (c === "UK") return "GB";
-  return c;
+export function normalizeCountryAssetCode(code?: string | null): string {
+  const raw = String(code || "").trim();
+  if (!raw) return "";
+  const upper = raw.toUpperCase().replace(/_/g, "-");
+  return COUNTRY_CODE_ALIASES[upper] || upper;
 }
 
 function normRegion(code?: string) {
@@ -78,13 +95,38 @@ function normRegion(code?: string) {
   return r;
 }
 
-// -------------------------------------------------------------
-// Exports
-// -------------------------------------------------------------
+export function getCountryFlagSrc(countryCode?: string | null): string | null {
+  const code = normalizeCountryAssetCode(countryCode);
+  if (!code) return null;
+  return COUNTRY_FLAGS[code] || null;
+}
 
-export function getCountryFlagSrc(countryCode?: string): string | null {
-  const c = normCountry(countryCode);
-  return COUNTRY_FLAGS[c] || null;
+export type CountryFlagOption = { code: string; label: string; flagSrc: string };
+
+export function getCountryFlagOptions(locale = "fr"): CountryFlagOption[] {
+  const lang = String(locale || "fr").toLowerCase().startsWith("en") ? "en" : "fr";
+  let displayNames: Intl.DisplayNames | null = null;
+  try {
+    displayNames = new Intl.DisplayNames([lang], { type: "region" });
+  } catch {}
+
+  const options: CountryFlagOption[] = [];
+  for (const [code, flagSrc] of Object.entries(COUNTRY_FLAGS)) {
+    if (!flagSrc) continue;
+    if (SPECIAL_COUNTRY_LABELS[code]) {
+      options.push({ code, label: SPECIAL_COUNTRY_LABELS[code][lang] || SPECIAL_COUNTRY_LABELS[code].fr, flagSrc });
+      continue;
+    }
+    if (!/^[A-Z]{2}$/.test(code) || code === "UN" || code === "UK" || code === "EN") continue;
+    let label = "";
+    try {
+      label = String(displayNames?.of(code) || "").trim();
+    } catch {}
+    if (!label || label.toUpperCase() === code) continue;
+    options.push({ code, label, flagSrc });
+  }
+
+  return options.sort((a, b) => a.label.localeCompare(b.label, lang, { sensitivity: "base" }));
 }
 
 // Ancien nom (compat)
@@ -93,7 +135,6 @@ export function getFRRegionLogoSrc(regionCode?: string): string | null {
   return FR_REGION_LOGOS[r] || null;
 }
 
-// ✅ NOUVEAU nom standard (celui que tes pages importent)
 export function getRegionFlagSrc(regionCode?: string): string | null {
   return getFRRegionLogoSrc(regionCode);
 }

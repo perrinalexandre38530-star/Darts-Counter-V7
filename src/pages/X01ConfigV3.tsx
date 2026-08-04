@@ -9,6 +9,7 @@
 // =============================================================
 
 import React from "react";
+import { applyResolvedBotCountries } from "../lib/botCountries";
 import type { X01ConfigV3 } from "../types/x01v3";
 import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -39,7 +40,7 @@ import { useCurrentProfile } from "../contexts/StoreContext";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
-import { getCountryFlagSrc } from "../lib/geoAssets";
+import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import {
   findRememberedGeneratedTeam,
@@ -314,7 +315,11 @@ type BotLite = {
   id: string;
   name: string;
   avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatar?: string | null;
   botLevel?: string; // libellé ("Easy", "Standard", "Pro", "Légende", etc.)
+  countryCode?: string | null;
+  country?: string | null;
 };
 
 type ResolvedPlayerPrefs = {
@@ -672,6 +677,8 @@ function toBotLite(input: any): BotLite {
     avatarDataUrl: input?.avatarDataUrl ?? input?.avatarUrl ?? input?.avatar ?? null,
     avatarUrl: input?.avatarUrl ?? input?.avatar ?? null,
     avatar: input?.avatar ?? input?.avatarUrl ?? input?.avatarDataUrl ?? null,
+    countryCode: input?.countryCode ?? input?.country_code ?? input?.country ?? null,
+    country: input?.country ?? input?.countryCode ?? input?.country_code ?? null,
     botLevel:
       input?.botLevel ??
       input?.levelLabel ??
@@ -849,8 +856,8 @@ function x01CountryRawToIso2(value: any): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
 
-  const upper = raw.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper === "UK" ? "GB" : upper;
+  const normalizedAssetCode = normalizeCountryAssetCode(raw);
+  if (/^(?:[A-Z]{2}|ENG|SCO|WAL)$/.test(normalizedAssetCode)) return normalizedAssetCode;
 
   const chars = Array.from(raw);
   if (chars.length === 2) {
@@ -1712,7 +1719,7 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 // ------------------------------------------------------
 // BOTS IA "PRO" PRÉDÉFINIS
 // ------------------------------------------------------
-const PRO_BOTS: BotLite[] = [
+const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
   { id: "bot_pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
   { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
   { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
@@ -1737,7 +1744,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
   { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-];
+]) as BotLite[];
 
 // API partagée par les autres modes de fléchettes : ils réutilisent ainsi
 // exactement les mêmes BOTS, équipes IA et sélecteurs que X01.
@@ -1763,6 +1770,8 @@ export function buildX01DartsBotTeams(botProfiles: any[] = []) {
             name: byName?.name || member?.name || "BOT IA",
             avatarDataUrl: byName?.avatarDataUrl || byName?.avatarUrl || byName?.avatar || null,
             botLevel: byName?.botLevel || `${member?.botLevel || team?.botLevel || 1}/5`,
+            countryCode: byName?.countryCode ?? byName?.country ?? member?.countryCode ?? member?.country ?? null,
+            country: byName?.country ?? byName?.countryCode ?? member?.country ?? member?.countryCode ?? null,
             targetAvg3: Number(member?.targetAvg3 || team?.avg3D || 0) || 0,
           };
         })
@@ -2083,6 +2092,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
         id: p.id,
         name: p.name || "BOT",
         avatarDataUrl: p.avatarDataUrl ?? null,
+        countryCode: p.countryCode ?? p.country_code ?? p.country ?? null,
+        country: p.country ?? p.countryCode ?? p.country_code ?? null,
         botLevel:
           p.botLevel ??
           p.levelLabel ??
@@ -2126,6 +2137,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           avatar: (b as any).avatar ?? (b as any).avatarUrl ?? (b as any).avatarDataUrl ?? null,
           isBot: true,
           botLevel: b.botLevel || "",
+          countryCode: (b as any).countryCode ?? (b as any).country ?? null,
+          country: (b as any).country ?? (b as any).countryCode ?? null,
         });
       }
     }
@@ -3031,6 +3044,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             avatarDataUrl: (human as any).avatarDataUrl ?? null,
             isBot: !!(human as any).isBot,
             botLevel: (human as any).botLevel ?? undefined,
+            countryCode: (human as any).countryCode ?? (human as any).country_code ?? (human as any).country ?? null,
+            country: (human as any).country ?? (human as any).countryCode ?? (human as any).country_code ?? null,
             dartSetId,
           };
         }
@@ -3044,6 +3059,8 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             avatarDataUrl: bot.avatarDataUrl ?? null,
             isBot: true,
             botLevel: bot.botLevel ?? undefined,
+            countryCode: (bot as any).countryCode ?? (bot as any).country ?? null,
+            country: (bot as any).country ?? (bot as any).countryCode ?? null,
             dartSetId: null,
           };
         }

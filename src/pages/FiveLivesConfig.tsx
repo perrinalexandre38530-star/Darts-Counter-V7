@@ -12,6 +12,7 @@
 // =============================================================
 
 import React from "react";
+import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -91,7 +92,7 @@ type BotLite = {
   botLevel?: string;
 };
 
-const PRO_BOTS: BotLite[] = [
+const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
   { id: "bot_pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
   { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
   { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
@@ -116,7 +117,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
   { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-];
+]) as BotLite[];
 
 function clampInt(n: any, min: number, max: number, fb: number) {
   const x = Math.floor(Number(n));
@@ -157,6 +158,7 @@ function shuffleArray<T>(arr: T[]) {
 function loadUserBots(): BotLite[] {
   try {
     return loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: b?.name || "BOT",
       avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? b?.avatar ?? null,

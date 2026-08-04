@@ -41,6 +41,7 @@ export type DartsGameTab =
   | "darts_firefighter_config"
   | "darts_poker_config"
   | "cargo_config"
+  | "ocean_control_config"
   | "prisoner_config"
   | "tic_tac_toe_config"
   | "batard_config"
@@ -775,23 +776,24 @@ const rawDartsGameRegistry: DartsGameDef[] = [
       "Course arcade de fléchettes sur une piste à plusieurs tours. Simple = +1 case, Double = +2, Triple = +3, BULL = +4 et DBULL = +5. En ARCADE/CHAOS, des cases déclenchent boosts, attaques, boucliers et pièges. Jouable en solo ou en équipes, avec joueurs locaux et bots.",
   },
 
-  // 🚢 BATAILLE NAVALE (Darts Battleship)
+  // ⚓ OCEAN CONTROL — bataille navale stratégique
   {
-    id: "battleship",
-    label: "Bataille Navale",
-    category: "fun",
+    id: "ocean_control",
+    label: "OCEAN CONTROL",
+    category: "challenge",
     subCategory: "strategie",
     entry: "games",
-    tab: "mode_not_ready",
-    popularityRank: 58,
+    tab: "ocean_control_config",
+    popularityRank: 5,
     ready: true,
-    maxPlayers: 4,
+    isNew: true,
+    maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
-    statsKey: "game:battleship",
-    infoTitle: "Bataille Navale",
+    statsKey: "game:ocean_control",
+    infoTitle: "OCEAN CONTROL",
     infoBody:
-      "Chaque joueur place une flotte sur une grille de segments (ex: 1-20 + Bull, ou grille custom). Les tirs annoncent une case/segment: touche, coule, rate. Variantes: brouillard de guerre, radar (Bull), frappe multiple (DBull). Victoire: detruire la flotte adverse. A implementer.",
+      "Prends le contrôle des océans en détruisant la flotte adverse sur une grille de 20 zones reliées aux secteurs de la cible. Simple = tir standard, Double et Triple = frappes tactiques, Bull = sonar et Double Bull = frappe de précision. Jouable en duel, équipes, contre des bots, avec placement automatique ou manuel et matchs en plusieurs manches.",
   },
 
   // ♟️ TERRITORY / CONQUEST
@@ -1236,6 +1238,7 @@ const READY_IDS = new Set<string>([
   "cricket",
   "darts_poker",
   "cargo",
+  "ocean_control",
   "killer",
   "killer_progressive",
   "shanghai",

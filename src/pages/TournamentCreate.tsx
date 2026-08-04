@@ -35,6 +35,7 @@ import BotPagedSelector from "../components/BotPagedSelector";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { loadBots as loadStoredBots } from "../lib/bots";
+import { applyResolvedBotCountries, resolveProBotCountryCode } from "../lib/botCountries";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
@@ -450,7 +451,7 @@ async function safeAvg3DForProfile(profileRaw: any, store?: any): Promise<number
 ------------------------------ */
 
 // ✅ 1) Bots PRO (assets réels)
-const BOTS_PRO_ASSETS = [
+const BOTS_PRO_ASSETS = applyResolvedBotCountries([
   { id: "bot_green_machine", name: "Green Machine", rating: 100, botLevel: 5, avatarDataUrl: avatarGreenMachine },
   { id: "bot_wonder_kid", name: "Wonder Kid", rating: 100, botLevel: 5, avatarDataUrl: avatarWonderKid },
   { id: "bot_cool_hand", name: "Cool Hand", rating: 100, botLevel: 5, avatarDataUrl: avatarCoolHand },
@@ -471,7 +472,7 @@ const BOTS_PRO_ASSETS = [
   { id: "bot_voltage", name: "Voltage", rating: 70, botLevel: 3.5, avatarDataUrl: avatarVoltage },
   { id: "bot_one_dart", name: "One Dart", rating: 70, botLevel: 3.5, avatarDataUrl: avatarOneDart },
   { id: "bot_the_hammer", name: "The Hammer", rating: 60, botLevel: 3, avatarDataUrl: avatarTheHammer },
-];
+]);
 
 const BOT_PRO_AVATAR_BY_NAME: Record<string, any> = Object.fromEntries(
   BOTS_PRO_ASSETS.map((b) => [String(b.name || "").trim().toLowerCase(), b.avatarDataUrl])
@@ -614,6 +615,8 @@ function getBotsFromStore(store: any) {
       name,
       avatar,
       avatarDataUrl: avatar,
+      countryCode: resolveProBotCountryCode(p),
+      country: resolveProBotCountryCode(p),
       avg3D: Number(avg) || 0,
       isBot: true,
       raw: p,
@@ -1458,6 +1461,8 @@ const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({
       avatar: b.avatarDataUrl ?? null,
       avg3D: Number(b.rating) || 0,
       botLevel: b.botLevel,
+      countryCode: (b as any).countryCode ?? resolveProBotCountryCode(b),
+      country: (b as any).countryCode ?? resolveProBotCountryCode(b),
       isBot: true,
       raw: b,
     }));
@@ -2609,6 +2614,8 @@ async function createTournament() {
       avatarDataUrl: b.avatar ?? null,
       source: "bot",
       isBot: true,
+      countryCode: b.countryCode ?? b.country ?? resolveProBotCountryCode(b.raw || b),
+      country: b.country ?? b.countryCode ?? resolveProBotCountryCode(b.raw || b),
       avg3D: Number(b.avg3D) || 0,
       stars: starsFromAvg3D(Number(b.avg3D) || 0),
     }));
@@ -2638,6 +2645,8 @@ async function createTournament() {
       avatarDataUrl: b.avatar ?? null,
       source: "bot",
       isBot: true,
+      countryCode: b.countryCode ?? b.country ?? resolveProBotCountryCode(b.raw || b),
+      country: b.country ?? b.countryCode ?? resolveProBotCountryCode(b.raw || b),
       avg3D: Number(b.avg3D) || 0,
       stars: starsFromAvg3D(Number(b.avg3D) || 0),
     }));
@@ -4843,6 +4852,8 @@ function IdentityImageCard({ label, value, onChange, variant = "avatar", accent 
                     avatarDataUrl: b.avatar || b.avatarDataUrl || b.avatarUrl || null,
                     botLevel: b.botLevel || b.level || (Number(b.avg3D || 0) ? Number(b.avg3D) / 20 : undefined),
                     source: b.isUserBot ? "cpu" : undefined,
+                    countryCode: b.countryCode ?? b.country ?? resolveProBotCountryCode(b.raw || b),
+                    country: b.country ?? b.countryCode ?? resolveProBotCountryCode(b.raw || b),
                   }))}
                   selectedIds={botIds}
                   onToggle={(id: string) => setBotIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}

@@ -13,6 +13,7 @@ const allTests = [
   "tools/test-darts-racer-regression.ts",
   "tools/test-darts-firefighter-regression.ts",
   "tools/test-darts-poker-regression.ts",
+  "tools/test-ocean-control-regression.ts",
   "tools/test-linked-profile-history.ts",
   "tools/test-home-mode-stats.ts",
   "tools/test-history-integrity-regression.ts",

@@ -6,6 +6,7 @@
 // ============================================
 
 import type { Profile } from "./types";
+import { resolveProBotCountryCode } from "./botCountries";
 
 // Ids internes des bots pro
 export type BotId =
@@ -46,10 +47,11 @@ export type ProBot = {
   style: BotPlayStyle;
   targetAvg3: number;        // Objectif de moyenne (3 darts)
   checkoutSkill: "low" | "medium" | "high";
+  countryCode: string;
 };
 
 // Liste centrale des bots IA "pro"
-export const PRO_BOTS: ProBot[] = [
+const PRO_BOTS_BASE: Array<Omit<ProBot, "countryCode">> = [
   {
     id: "pro_mvg",
     displayName: "Green Machine",
@@ -232,6 +234,11 @@ export const PRO_BOTS: ProBot[] = [
   },
 ];
 
+export const PRO_BOTS: ProBot[] = PRO_BOTS_BASE.map((bot) => ({
+  ...bot,
+  countryCode: resolveProBotCountryCode(bot) || "",
+}));
+
 // ---------------------------------------------------
 // Adaptateur : ProBot -> Profile utilisable partout
 // ---------------------------------------------------
@@ -246,5 +253,7 @@ export function proBotToProfile(bot: ProBot): Profile {
     botLevel: bot.botLevel,
     // @ts-expect-error : dépend de ton système d'avatar
     avatarKey: bot.avatarKey,
+    countryCode: bot.countryCode,
+    country: bot.countryCode,
   } as Profile;
 }

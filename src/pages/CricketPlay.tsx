@@ -18,6 +18,7 @@
 // ============================================
 
 import React from "react";
+import { applyResolvedBotCountries } from "../lib/botCountries";
 import { loadBotPlayers, parseBotLevelValue } from "../lib/bots";
 import {
   createCricketMatch,
@@ -130,7 +131,7 @@ type BotLite = {
 };
 
 // BOTS IA "PRO" PRÉDÉFINIS (identique X01)
-const PRO_BOTS: BotLite[] = [
+const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
   { id: "bot_pro_mvg", name: "Green Machine", botLevel: "Légende", avatarDataUrl: avatarGreenMachine },
   { id: "bot_pro_wright", name: "Snake King", botLevel: "Pro", avatarDataUrl: avatarSnakeKing },
   { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "Prodige Pro", avatarDataUrl: avatarWonderKid },
@@ -152,7 +153,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_voltage", name: "Voltage", botLevel: "3.5/5", avatarDataUrl: avatarVoltage as any },
   { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3.5/5", avatarDataUrl: avatarOneDart as any },
   { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-];
+]) as BotLite[];
 
 // --------------------------------------------------
 // UI helpers style "config X01"
@@ -670,6 +671,7 @@ React.useEffect(() => {
   if (typeof window === "undefined") return;
   try {
     const mapped: BotLite[] = loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: b.name || "BOT",
       avatarDataUrl: b.avatarDataUrl ?? b.avatarUrl ?? b.avatar ?? null,

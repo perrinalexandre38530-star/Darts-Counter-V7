@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React from "react";
 import ProfileStarRing from "./ProfileStarRing";
+import { getCountryFlagSrc } from "../lib/geoAssets";
+import { resolveProBotCountryCode } from "../lib/botCountries";
 
 export type BotPagedSelectorItem = {
   id: string;
@@ -11,6 +13,8 @@ export type BotPagedSelectorItem = {
   avatarKey?: string | null;
   botLevel?: string | number | null;
   level?: string | number | null;
+  countryCode?: string | null;
+  country?: string | null;
 };
 
 function resolveLevelValue(raw: any): number {
@@ -84,6 +88,38 @@ function itemGroup(item: any): string {
   if (item?.groupLabel) return item.groupLabel;
   if (item?.isUserBot || item?.source === "cpu" || item?.source === "home") return "CPU Home";
   return groupLabel(resolveLevel(item));
+}
+
+function countryCodeOf(item: any): string | null {
+  return resolveProBotCountryCode(item);
+}
+
+function CountryFlagBadge({ bot, accent, size = 26 }: { bot: any; accent: string; size?: number }) {
+  const code = countryCodeOf(bot);
+  const src = getCountryFlagSrc(code);
+  if (!src) return null;
+  return (
+    <span
+      title={code || undefined}
+      style={{
+        position: "absolute",
+        right: -1,
+        bottom: 0,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: `1px solid ${accent}`,
+        background: "#050914",
+        boxShadow: `0 0 10px ${accent}77, 0 5px 12px rgba(0,0,0,.45)`,
+        display: "grid",
+        placeItems: "center",
+        zIndex: 8,
+      }}
+    >
+      <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    </span>
+  );
 }
 
 const GROUP_ORDER = ["Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
@@ -183,6 +219,7 @@ export default function BotPagedSelector({
                     <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                       {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
                     </div>
+                    <CountryFlagBadge bot={bot} accent={accent} size={24} />
                     <button type="button" onClick={() => onToggle(bot.id)} title="Retirer" style={{ position: "absolute", top: -2, right: -2, width: 22, height: 22, borderRadius: "50%", border: `1px solid ${accent}`, background: "rgba(0,0,0,.75)", color: accent, fontWeight: 1000, lineHeight: 1, cursor: "pointer" }}>×</button>
                   </div>
                   <div style={{ color: "#fff", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{bot.name}</div>
@@ -286,6 +323,7 @@ export default function BotPagedSelector({
                         >
                           {src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: accent, fontWeight: 950 }}>BOT</span>}
                         </div>
+                        <CountryFlagBadge bot={bot} accent={accent} size={29} />
                       </div>
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {bot.name}

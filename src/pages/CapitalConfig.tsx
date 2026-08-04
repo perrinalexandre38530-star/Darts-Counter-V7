@@ -281,6 +281,7 @@ function safeActiveProfileId(store: any): string | null {
 function safeCustomBotsProfiles(): any[] {
   try {
     return loadBotPlayers().map((b: any) => ({
+      ...b,
       id: String(b.id),
       name: String(b?.name || "BOT"),
       nickname: String(b?.name || "BOT"),

@@ -385,6 +385,7 @@ export default function DartsPokerPlay(props: any) {
     {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 3 || remainingDarts <= throwDarts.length} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
+}
 
 function QuickLauncher({ label, sub, accent, onClick }: any) {
   return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 56, borderRadius: 13, border: `1px solid ${accent}66`, background: `${accent}14`, color: "#fff", padding: "6px 4px", textAlign: "center" }}><div style={{ color: accent, fontSize: 9, fontWeight: 1100 }}>{label.toUpperCase()}</div><div style={{ color: SOFT, fontSize: 7.5, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div></button>;

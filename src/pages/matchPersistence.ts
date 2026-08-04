@@ -27,7 +27,7 @@ export type Visit = {
   // Une volée de 3 flèches max dans l’ordre réel
   at: number;               // timestamp
   by: string;               // playerId
-  darts: Array<{ mult: 1 | 2 | 3; value: 0 | 1|2|...|20 | 25 | 50 }>;
+  darts: Array<{ mult: 1 | 2 | 3; value: number }>;
   score: number;            // total de la volée
   bust?: boolean;
 };

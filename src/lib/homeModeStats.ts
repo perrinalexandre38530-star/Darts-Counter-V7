@@ -24,6 +24,7 @@ type ModeKey =
   | "darts_firefighter"
   | "darts_poker"
   | "cargo"
+  | "ocean_control"
   | "warfare"
   | "battle_royale"
   | "scram"
@@ -96,7 +97,7 @@ type ModeAgg = {
 
 const DARTS_MODE_KEYS = new Set<ModeKey>([
   "x01", "cricket", "enculette", "killer", "five_lives", "loterie", "golf", "shanghai",
-  "territories", "darts_firefighter", "darts_poker", "cargo", "warfare", "battle_royale", "scram", "capital", "batard",
+  "territories", "darts_firefighter", "darts_poker", "cargo", "ocean_control", "warfare", "battle_royale", "scram", "capital", "batard",
   "clock", "baseball", "bowling", "bobs_27", "halve_it", "shooter",
   "prisoner", "attrape_moi", "darts_racer", "president", "count_up",
   "game_170", "super_bull", "tic_tac_toe", "football", "rugby", "knockout",
@@ -116,6 +117,7 @@ const MODE_TITLES: Record<ModeKey, string> = {
   darts_firefighter: "DARTS FIREFIGHTER",
   darts_poker: "DARTS POKER",
   cargo: "CARGO",
+  ocean_control: "OCEAN CONTROL",
   warfare: "WARFARE",
   battle_royale: "BATTLE ROYALE",
   scram: "SCRAM",
@@ -207,6 +209,7 @@ export function detectHomeMode(record: any): ModeKey {
   if (tag.includes("shanghai")) return "shanghai";
   if (tag.includes("darts_firefighter") || tag.includes("darts firefighter") || tag.includes("firefighter")) return "darts_firefighter";
   if (tag.includes("darts_poker") || tag.includes("darts poker") || tag.includes("dartspoker")) return "darts_poker";
+  if (tag.includes("ocean_control") || tag.includes("ocean control") || tag.includes("oceancontrol")) return "ocean_control";
   if (tag.includes("cargo")) return "cargo";
   if (tag.includes("territor") || tag.includes("departement")) return "territories";
   if (tag.includes("warfare")) return "warfare";
@@ -522,6 +525,12 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     cargoBestPallet: readSpecial(merged, detail, "bestPalletWeight"),
     cargoLostWeight: readSpecial(merged, detail, "lostWeight"),
     cargoOverloads: readSpecial(merged, detail, "overloads"),
+    oceanShipHits: readSpecial(merged, detail, "shipHits", "totalHits"),
+    oceanShipsSunk: readSpecial(merged, detail, "shipsSunk"),
+    oceanValidShots: readSpecial(merged, detail, "validShots"),
+    oceanSonars: readSpecial(merged, detail, "sonarUses"),
+    oceanContacts: readSpecial(merged, detail, "sonarContacts"),
+    oceanStrikes: readSpecial(merged, detail, "precisionStrikes"),
     fireReduced: readSpecial(merged, detail, "fireReduced", "totalFireReduced"),
     firesExtinguished: readSpecial(merged, detail, "firesExtinguished", "totalExtinguished"),
     propagationBlocked: readSpecial(merged, detail, "propagationBlocked"),
@@ -753,6 +762,15 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("meilleure main", formatNumber(bestMetric(agg), 0)),
         row("cartes", formatNumber(s.cardsCollected, 0)),
         row("pouvoirs", formatNumber((s.choicesUsed || 0) + (s.exchangesUsed || 0) + (s.jokers || 0), 0)),
+      ];
+    case "ocean_control":
+      return [
+        row("parties", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("navires coulés", formatNumber(s.oceanShipsSunk, 0)),
+        row("précision", formatPct(s.oceanValidShots > 0 ? (s.oceanShipHits / s.oceanValidShots) : hitRate)),
+        row("sonars", formatNumber(s.oceanSonars, 0)),
+        row("frappes DBULL", formatNumber(s.oceanStrikes, 0)),
       ];
     case "cargo":
       return [
