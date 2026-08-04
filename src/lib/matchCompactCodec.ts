@@ -555,6 +555,32 @@ function compactDetailForMode(mode: CompactMatchMode, payload: any, playerIds: s
     };
   }
 
+  // DARTS FOOTBALL : préserver le terrain, la possession, les tirs, le gardien
+  // et le journal exact afin qu'une partie compacte reste reprenable.
+  if (mode === "football_darts") {
+    const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+    const matchStats = payload?.stats?.match ?? payload?.stats?.global ?? summary?.matchStats ?? {};
+    const snapshot = payload?.stateSnapshot ?? payload?.resume?.state ?? null;
+    const footballVisits = payload?.visitHistory ?? payload?.visits ?? summary?.visits ?? snapshot?.visits ?? [];
+    out.fb = {
+      config: stripHeavyPreserveKeys(payload?.config ?? snapshot?.config ?? {}),
+      stateSnapshot: snapshot ? stripHeavyPreserveKeys(snapshot) : undefined,
+      visits: stripHeavyPreserveKeys(footballVisits),
+      matchStats: stripHeavyPreserveKeys(matchStats),
+      summary: stripHeavyPreserveKeys({
+        winnerId: summary?.winnerId,
+        winnerIds: summary?.winnerIds,
+        winnerSideIds: summary?.winnerSideIds,
+        winnerName: summary?.winnerName,
+        draw: summary?.draw,
+        variant: summary?.variant ?? payload?.config?.variant,
+        scoreBySide: summary?.scoreBySide,
+        scoreLine: summary?.scoreLine,
+        durationMs: summary?.durationMs ?? matchStats?.durationMs,
+      }),
+    };
+  }
+
   // OCEAN CONTROL : préserver la flotte, les impacts, le sonar et la bataille active.
   // La partie compacte reste ainsi reprenable à la case et au tour exacts.
   if (mode === "ocean_control") {
@@ -800,6 +826,33 @@ export function encodeCompactMatch(input: any): CompactMatchV1 | null {
         for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
       }
 
+      if (mode === "football_darts") {
+        const modeStats: Array<[string, number | undefined]> = [
+          ["fb_vis", firstNum(pl?.visits)],
+          ["fb_dt", firstNum(pl?.darts, pl?.dartsThrown)],
+          ["fb_hit", firstNum(pl?.hits, pl?.hitsTotal)],
+          ["fb_mis", firstNum(pl?.misses)],
+          ["fb_s", firstNum(pl?.singles)],
+          ["fb_d", firstNum(pl?.doubles)],
+          ["fb_t", firstNum(pl?.triples)],
+          ["fb_b", firstNum(pl?.bulls)],
+          ["fb_db", firstNum(pl?.dbulls)],
+          ["fb_act", firstNum(pl?.successfulActions)],
+          ["fb_adv", firstNum(pl?.advances)],
+          ["fb_pass", firstNum(pl?.passes)],
+          ["fb_tac", firstNum(pl?.tackles)],
+          ["fb_int", firstNum(pl?.interceptions)],
+          ["fb_sh", firstNum(pl?.shots)],
+          ["fb_sot", firstNum(pl?.shotsOnTarget)],
+          ["fb_g", firstNum(pl?.goals)],
+          ["fb_sv", firstNum(pl?.saves)],
+          ["fb_pw", firstNum(pl?.possessionWins)],
+          ["fb_pl", firstNum(pl?.possessionLosses)],
+          ["fb_bp", firstNum(pl?.bestProgress)],
+        ];
+        for (const [key, value] of modeStats) if (value !== undefined) n[key] = value;
+      }
+
       if (mode === "cricket") {
         // Compteurs de bagues garantis dans le compact. Ils complètent compact.d.ce
         // et restent disponibles même si une sauvegarde allégée retire le journal.
@@ -967,6 +1020,37 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         alias("parcelBonuses", "parcelbonuses");
         alias("routeStagesCompleted", "routestagescomplet");
       }
+      if (compact.m === "football_darts") {
+        const n = ps.n || {};
+        const c = ps.c || {};
+        const alias = (target: string, ...keys: string[]) => {
+          for (const key of keys) {
+            if (n[key] != null) { out[target] = n[key]; return; }
+            if (c[key] != null) { out[target] = c[key]; return; }
+          }
+        };
+        alias("darts", "fb_dt", "dt", "darts");
+        alias("visits", "fb_vis", "vis", "visits");
+        alias("hits", "fb_hit", "hit", "hits");
+        alias("successfulActions", "fb_act", "successfulactions");
+        alias("goals", "fb_g", "goals");
+        alias("shots", "fb_sh", "shots");
+        alias("shotsOnTarget", "fb_sot", "shotsontarget");
+        alias("saves", "fb_sv", "saves");
+        alias("tackles", "fb_tac", "tackles");
+        alias("interceptions", "fb_int", "interceptions");
+        alias("advances", "fb_adv", "advances");
+        alias("passes", "fb_pass", "passes");
+        alias("bestProgress", "fb_bp", "bestprogress");
+        alias("possessionWins", "fb_pw", "possessionwins");
+        alias("possessionLosses", "fb_pl", "possessionlosses");
+        alias("singles", "fb_s", "singles");
+        alias("doubles", "fb_d", "doubles");
+        alias("triples", "fb_t", "triples");
+        alias("bulls", "fb_b", "bulls");
+        alias("dbulls", "fb_db", "dbulls");
+        alias("misses", "fb_mis", "mis", "misses");
+      }
       if (compact.m === "darts_poker") {
         const n = ps.n || {};
         const c = ps.c || {};
@@ -1043,6 +1127,7 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
     const poker = compact.m === "darts_poker" && compact.d?.pk && typeof compact.d.pk === "object" ? compact.d.pk : null;
     const cargo = compact.m === "cargo" && compact.d?.cg && typeof compact.d.cg === "object" ? compact.d.cg : null;
     const ocean = compact.m === "ocean_control" && compact.d?.oc && typeof compact.d.oc === "object" ? compact.d.oc : null;
+    const football = compact.m === "football_darts" && compact.d?.fb && typeof compact.d.fb === "object" ? compact.d.fb : null;
     const summary = {
       players: playersMap,
       perPlayer: players,
@@ -1064,6 +1149,9 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
       ...(ocean?.summary || {}),
       ...(ocean?.matchStats ? { matchStats: ocean.matchStats } : {}),
       ...(Array.isArray(ocean?.visits) ? { visits: ocean.visits } : {}),
+      ...(football?.summary || {}),
+      ...(football?.matchStats ? { matchStats: football.matchStats } : {}),
+      ...(Array.isArray(football?.visits) ? { visits: football.visits } : {}),
     };
     return {
       id: String(compact.id || ""),
@@ -1101,6 +1189,12 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         stateSnapshot: ocean.stateSnapshot,
         visits: Array.isArray(ocean.visits) ? ocean.visits : [],
         stats: { sport: "darts", mode: "ocean_control", players, match: ocean.matchStats || {}, global: ocean.matchStats || {} },
+      } : {}),
+      ...(football ? {
+        config: football.config || compact.o || {},
+        stateSnapshot: football.stateSnapshot,
+        visits: Array.isArray(football.visits) ? football.visits : [],
+        stats: { sport: "darts", mode: "football", players, match: football.matchStats || {}, global: football.matchStats || {} },
       } : {}),
       compact,
     };

@@ -137,7 +137,7 @@ const MODE_TITLES: Record<ModeKey, string> = {
   game_170: "170",
   super_bull: "SUPER BULL",
   tic_tac_toe: "TIC-TAC-TOE",
-  football: "FOOTBALL DARTS",
+  football: "DARTS FOOTBALL",
   rugby: "RUGBY DARTS",
   knockout: "KNOCKOUT",
   happy_mille: "HAPPY MILLE",
@@ -531,6 +531,12 @@ function extractMetrics(record: any, row: any, detail: any): MatchMetrics {
     oceanSonars: readSpecial(merged, detail, "sonarUses"),
     oceanContacts: readSpecial(merged, detail, "sonarContacts"),
     oceanStrikes: readSpecial(merged, detail, "precisionStrikes"),
+    footballGoals: readSpecial(merged, detail, "goals"),
+    footballShots: readSpecial(merged, detail, "shots"),
+    footballShotsOnTarget: readSpecial(merged, detail, "shotsOnTarget"),
+    footballSaves: readSpecial(merged, detail, "saves"),
+    footballInterceptions: readSpecial(merged, detail, "interceptions"),
+    footballAdvances: readSpecial(merged, detail, "advances"),
     fireReduced: readSpecial(merged, detail, "fireReduced", "totalFireReduced"),
     firesExtinguished: readSpecial(merged, detail, "firesExtinguished", "totalExtinguished"),
     propagationBlocked: readSpecial(merged, detail, "propagationBlocked"),
@@ -799,6 +805,15 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
         row("attaques", formatNumber(s.attacks, 0)),
         row("hit%", formatPct(hitRate)),
       ];
+    case "football":
+      return [
+        row("matchs", agg.sessions),
+        row("win%", formatPct(winRate)),
+        row("buts", formatNumber(s.footballGoals, 0)),
+        row("tirs cadrés", formatNumber(s.footballShotsOnTarget, 0)),
+        row("arrêts", formatNumber(s.footballSaves, 0)),
+        row("interceptions", formatNumber(s.footballInterceptions, 0)),
+      ];
     case "shanghai":
     case "capital":
     case "count_up":
@@ -822,7 +837,6 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
     case "batard":
     case "president":
     case "tic_tac_toe":
-    case "football":
     case "rugby":
     case "knockout":
     case "defi":

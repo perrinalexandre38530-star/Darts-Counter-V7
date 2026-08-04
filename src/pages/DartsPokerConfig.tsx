@@ -64,7 +64,7 @@ export default function DartsPokerConfig(props: any) {
   const [botsPanel, setBotsPanel] = React.useState(Boolean(saved.botsPanel));
   const [botLevel, setBotLevel] = React.useState<DartsPokerBotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [rounds, setRounds] = React.useState<3 | 5 | 7 | 10>(([3,5,7,10].includes(Number(saved.rounds)) ? Number(saved.rounds) : 5) as any);
-  const [dartsPerHand, setDartsPerHand] = React.useState<5 | 6 | 7>(([5,6,7].includes(Number(saved.dartsPerHand)) ? Number(saved.dartsPerHand) : 6) as any);
+  const dartsPerHand: 6 = 6;
   const [powersEnabled, setPowersEnabled] = React.useState(saved.powersEnabled !== false);
   const [jokerEnabled, setJokerEnabled] = React.useState(saved.jokerEnabled !== false);
   const autoDrawMissing = true;
@@ -122,7 +122,7 @@ export default function DartsPokerConfig(props: any) {
   const formatBlock = <section style={block}>
     <div style={{ color: RED, fontSize: 12, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>FORMAT DE PARTIE</div>
     <OptionRow label="Manches"><OptionSelect value={rounds} options={[3,5,7,10]} onChange={(v: any) => setRounds(Number(v) as any)} /></OptionRow>
-    <OptionRow label="Fléchettes par main"><OptionSelect value={dartsPerHand} options={[{ value: 5, label: "5 · Tendu" }, { value: 6, label: "6 · Standard" }, { value: 7, label: "7 · Généreux" }]} onChange={(v: any) => setDartsPerHand(Number(v) as any)} /></OptionRow>
+    <OptionRow label="Fléchettes par main"><strong style={{ color: GOLD }}>6 · Une par une</strong></OptionRow>
     <OptionRow label="Ordre aléatoire"><OptionToggle value={randomOrder} onChange={setRandomOrder} /></OptionRow>
     <OptionRow label="Mains adverses visibles"><OptionToggle value={openHands} onChange={setOpenHands} /></OptionRow>
   </section>;
@@ -137,7 +137,7 @@ export default function DartsPokerConfig(props: any) {
   const inputBlock = <section style={block}>
     <div style={{ color: GREEN, fontSize: 12, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>SAISIE & CONFORT</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Chaque volée et chaque impact S/D/T/Bull/DBull/Miss sont enregistrés pour l’historique et les statistiques.</div>
+    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Chaque fléchette est saisie et validée individuellement. Tous les impacts S/D/T/Bull/DBull/Miss sont enregistrés pour l’historique et les statistiques.</div>
   </section>;
 
   const summaryBlock = <section style={{ ...block, borderColor: `${GOLD}70`, background: `linear-gradient(135deg,${RED}16,${GOLD}0e)` }}>

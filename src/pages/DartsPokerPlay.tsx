@@ -40,6 +40,11 @@ import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
 import DartsPokerEnd from "./DartsPokerEnd";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
+type WonCardPopup = {
+  card: PokerCard;
+  dartLabel: string;
+  bonusLabel?: string | null;
+};
 
 const GOLD = "#f6c256";
 const RED = "#e83a43";
@@ -67,7 +72,7 @@ function normalizeConfig(props: any): DartsPokerConfigPayload {
     playerDartSets: raw?.playerDartSets || {}, botIds: Array.isArray(raw?.botIds) ? raw.botIds.map(String) : [], botsEnabled: Boolean(raw?.botsEnabled),
     botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
     rounds: ([3,5,7,10].includes(Number(raw?.rounds)) ? Number(raw.rounds) : 5) as any,
-    dartsPerHand: ([5,6,7].includes(Number(raw?.dartsPerHand)) ? Number(raw.dartsPerHand) : 6) as any,
+    dartsPerHand: 6,
     powersEnabled: raw?.powersEnabled !== false, jokerEnabled: raw?.jokerEnabled !== false, autoDrawMissing: true,
     openHands: raw?.openHands !== false, randomOrder: Boolean(raw?.randomOrder), scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
   };
@@ -125,6 +130,7 @@ export default function DartsPokerPlay(props: any) {
   const [showRound, setShowRound] = React.useState(state.phase === "round_result");
   const [showEnd, setShowEnd] = React.useState(state.phase === "finished");
   const [showTimeline, setShowTimeline] = React.useState(false);
+  const [wonCardPopup, setWonCardPopup] = React.useState<WonCardPopup | null>(null);
   const [quickPanel, setQuickPanel] = React.useState<null | "active" | "market" | "table" | "stats" | "objectives" | "dartboard">(null);
   const [botThinking, setBotThinking] = React.useState(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
@@ -140,24 +146,37 @@ export default function DartsPokerPlay(props: any) {
 
   function backToConfig() { if (typeof go === "function") go("darts_poker_config", config); }
   function addDart(v: number, mult?: 1 | 2 | 3) {
-    if (botThinking || state.phase !== "throwing" || throwDarts.length >= 3 || throwDarts.length >= remainingDarts) return;
-    const next = [...throwDarts, { v: Number(v) || 0, mult: (mult || multiplier) as any }].slice(0, Math.min(3, remainingDarts));
-    setThrowDarts(next);
+    if (botThinking || state.phase !== "throwing" || remainingDarts <= 0 || wonCardPopup) return;
+    const hit: UiDart = { v: Number(v) || 0, mult: (mult || multiplier) as 1 | 2 | 3 };
+    setThrowDarts([hit]);
+    setNotice(`${dartsPokerDartLabel(uiToGameDart(hit))} prêt à valider.`);
   }
   function commitVisit(source?: UiDart[]) {
-    const darts = (source || throwDarts).slice(0, Math.min(3, remainingDarts));
-    if (!darts.length || state.phase !== "throwing") return;
+    const hit = (source || throwDarts)[0];
+    if (!hit || state.phase !== "throwing" || remainingDarts <= 0) return;
     setUndoStack((prev) => [...prev.slice(-29), cloneDartsPokerState(state)]);
-    const next = playDartsPokerVisit(state, darts.map(uiToGameDart));
+    const next = playDartsPokerVisit(state, [uiToGameDart(hit)]);
     setState(next); setThrowDarts([]); setMultiplier(1);
     const visit = next.visits[next.visits.length - 1];
-    setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée validée.");
+    const cardEvent = visit?.events?.find((event) => Boolean(event.card) && (event.type === "market_card" || event.type === "joker"));
+    const bonusLabel = visit?.events
+      ?.filter((event) => event.type === "exchange_token" || event.type === "choice_token")
+      .map((event) => event.label)
+      .join(" · ");
+    if (cardEvent?.card) {
+      setWonCardPopup({
+        card: cardEvent.card,
+        dartLabel: visit?.labels?.[0] || dartsPokerDartLabel(uiToGameDart(hit)),
+        bonusLabel: bonusLabel || null,
+      });
+    }
+    setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Fléchette validée.");
   }
   function cancelOrUndo() {
-    if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice("Volée effacée."); return; }
+    if (throwDarts.length) { setThrowDarts([]); setMultiplier(1); setNotice("Saisie effacée."); return; }
     const previous = undoStack[undoStack.length - 1];
     if (!previous) { setNotice("Aucune action à annuler."); return; }
-    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowRound(false); setShowEnd(false); autoSavedRef.current = ""; setNotice("Dernière action annulée.");
+    setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowRound(false); setShowEnd(false); setWonCardPopup(null); autoSavedRef.current = ""; setNotice("Dernière action annulée.");
   }
   function useChoice() {
     setUndoStack((prev) => [...prev.slice(-29), cloneDartsPokerState(state)]);
@@ -192,7 +211,7 @@ export default function DartsPokerPlay(props: any) {
   }
   function resetMatch() {
     matchIdRef.current = `darts-poker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    autoSavedRef.current = ""; setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setNotice("Nouvelle table ouverte.");
+    autoSavedRef.current = ""; setState(createDartsPokerState(players, config)); setThrowDarts([]); setUndoStack([]); setShowRound(false); setShowEnd(false); setWonCardPopup(null); setNotice("Nouvelle table ouverte.");
   }
 
   React.useEffect(() => {
@@ -202,7 +221,7 @@ export default function DartsPokerPlay(props: any) {
       let next = state;
       if (next.phase === "throwing") {
         const hand = getDartsPokerActiveHand(next); const remaining = Math.max(0, config.dartsPerHand - Number(hand?.dartsUsed || 0));
-        const count = Math.min(3, remaining); const target = pickBestPokerMarketSector(next, activePlayer.id);
+        const count = Math.min(1, remaining); const target = pickBestPokerMarketSector(next, activePlayer.id);
         const missChance = config.botLevel === "hard" ? .05 : config.botLevel === "easy" ? .28 : .13;
         const darts: GameDart[] = Array.from({ length: count }, () => {
           if (Math.random() < missChance) return { bed: "MISS" } as GameDart;
@@ -302,7 +321,8 @@ export default function DartsPokerPlay(props: any) {
     try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {}
   }, [state.phase]);
 
-  const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: GOLD, fontSize: 18, fontWeight: 1200 }}>{activeHand?.cards?.length || 0} CARTES</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 8.5, fontWeight: 1000 }}>{liveEvaluation?.label || `${remainingDarts} fléchette${remainingDarts > 1 ? "s" : ""} restante${remainingDarts > 1 ? "s" : ""}`}</div></div>;
+  const selectedHitLabel = throwDarts[0] ? dartsPokerDartLabel(uiToGameDart(throwDarts[0])) : "—";
+  const centerScore = <div style={{ textAlign: "center", minWidth: 58 }}><div style={{ color: throwDarts[0] ? GOLD : SOFT, fontSize: 22, fontWeight: 1200, lineHeight: 1 }}>{selectedHitLabel}</div><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginTop: 3 }}>{remainingDarts} fléchette{remainingDarts > 1 ? "s" : ""} restante{remainingDarts > 1 ? "s" : ""}</div></div>;
   const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{botThinking ? "BOT EN RÉFLEXION…" : notice}</div>;
   const marketTargets = rankMarketSuggestions(state, String(activePlayer?.id || ""), 4);
   const bestTarget = marketTargets[0] || null;
@@ -362,9 +382,10 @@ export default function DartsPokerPlay(props: any) {
         {config.scoreInputMethod === "dartboard" ? <QuickLauncher label="CIBLE" value="OUVRIR" accent={BLUE} icon={<IconTarget />} onClick={() => setQuickPanel("dartboard")} /> : null}
       </section>
 
-      <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts((prev) => prev.slice(0, -1))} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3 || throwDarts.length === remainingDarts} safeBottomPad />
+      <Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onCancel={cancelOrUndo} onBackspace={() => setThrowDarts([])} onNumber={(n) => addDart(n)} onBull={() => addDart(25)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 1} hidePreview safeBottomPad />
     </main>
 
+    {wonCardPopup ? <WonCardModal popup={wonCardPopup} onClose={() => setWonCardPopup(null)} /> : null}
     {state.pendingChoice ? <ChoiceModal cards={state.pendingChoice.cards} onChoose={chooseCard} /> : null}
     {showRound && state.phase === "round_result" ? <RoundModal state={state} profilesById={profilesById} onNext={nextRound} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
@@ -373,7 +394,7 @@ export default function DartsPokerPlay(props: any) {
     {quickPanel === "table" ? <TableModal state={state} profilesById={profilesById} config={config} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "objectives" ? <ObjectivesModal objective={objective} suggestions={marketTargets} onClose={() => setQuickPanel(null)} /> : null}
-    {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 3 || remainingDarts <= throwDarts.length} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 1 || remainingDarts <= 0 || Boolean(wonCardPopup)} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
 }
@@ -405,6 +426,19 @@ function IconList() { return <IconShell><svg viewBox="0 0 24 24" width="17" heig
 function IconUndo() { return <IconShell><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 8 5 12l4 4"/><path d="M5 12h8a6 6 0 1 1 0 12"/></svg></IconShell>; }
 
 
+function WonCardModal({ popup, onClose }: { popup: WonCardPopup; onClose: () => void }) {
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.84)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}>
+    <div onClick={(event) => event.stopPropagation()} style={{ ...panel(), width: "min(330px,100%)", padding: 18, textAlign: "center", borderColor: `${GOLD}88`, background: "linear-gradient(180deg,#211317,#08090d)", boxShadow: `0 0 34px ${GOLD}25, 0 20px 60px rgba(0,0,0,.65)` }}>
+      <div style={{ color: GOLD, fontSize: 11, fontWeight: 1100, letterSpacing: 1 }}>CARTE REMPORTÉE</div>
+      <div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{popup.dartLabel}</div>
+      <div style={{ marginTop: 14, display: "flex", justifyContent: "center", transform: "scale(1.22)", transformOrigin: "center" }}><CardView card={popup.card} /></div>
+      <div style={{ color: "#fff", fontSize: 18, fontWeight: 1200, marginTop: 22 }}>{pokerCardLabel(popup.card)}</div>
+      {popup.bonusLabel ? <div style={{ color: GREEN, fontSize: 9, fontWeight: 1000, marginTop: 6 }}>{popup.bonusLabel}</div> : null}
+      <button type="button" onClick={onClose} style={{ ...action(GOLD), width: "100%", marginTop: 14 }}>CONTINUER</button>
+    </div>
+  </div>;
+}
+
 function ChoiceModal({ cards, onChoose }: any) {
   return <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(420px,100%)", background: "linear-gradient(180deg,#1a1013,#08090d)", borderColor: `${GOLD}66`, textAlign: "center", padding: 16 }}><div style={{ color: GOLD, fontSize: 13, fontWeight: 1100 }}>CHOISIS UNE CARTE</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>L’autre carte sera défaussée.</div><div style={{ marginTop: 15, display: "flex", justifyContent: "center", gap: 18 }}>{cards.map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} onClick={() => onChoose(index)} />)}</div></div></div>;
 }
@@ -415,7 +449,7 @@ function RoundModal({ state, profilesById, onNext }: any) {
 }
 
 function TimelineModal({ state, profilesById, onClose }: any) {
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(820px,100%)", maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#111217,#050609)", borderColor: `${BLUE}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ color: BLUE, fontWeight: 1100 }}>JOURNAL DES VOLÉES</div><div style={{ color: SOFT, fontSize: 9 }}>{state.visits.length} volée{state.visits.length > 1 ? "s" : ""}</div></div><button onClick={onClose} style={action("#c9ced8")}>FERMER</button></div><div style={{ marginTop: 10, display: "grid", gap: 6 }}>{[...state.visits].reverse().map((visit) => <div key={visit.id} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · M{visit.round} · V{visit.visit}</strong><strong style={{ color: GOLD }}>{visit.labels.join(" / ")}</strong></div><div style={{ marginTop: 4, color: "#cfd5df", fontSize: 8.3 }}>{visit.events.map((event) => event.label).join(" · ") || "Aucun effet"}</div></div>)}</div></div></div>;
+  return <div style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.86)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 8 }}><div style={{ ...panel(), width: "min(820px,100%)", maxHeight: "92dvh", overflow: "auto", background: "linear-gradient(180deg,#111217,#050609)", borderColor: `${BLUE}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ color: BLUE, fontWeight: 1100 }}>JOURNAL DES LANCERS</div><div style={{ color: SOFT, fontSize: 9 }}>{state.visits.length} lancer{state.visits.length > 1 ? "s" : ""}</div></div><button onClick={onClose} style={action("#c9ced8")}>FERMER</button></div><div style={{ marginTop: 10, display: "grid", gap: 6 }}>{[...state.visits].reverse().map((visit) => <div key={visit.id} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · M{visit.round} · L{visit.visit}</strong><strong style={{ color: GOLD }}>{visit.labels.join(" / ")}</strong></div><div style={{ marginTop: 4, color: "#cfd5df", fontSize: 8.3 }}>{visit.events.map((event) => event.label).join(" · ") || "Aucun effet"}</div></div>)}</div></div></div>;
 }
 
 function FloatingPanel({ title, subtitle, onClose, children, accent = GOLD, width = "min(760px,100%)" }: any) {
@@ -435,7 +469,7 @@ function TableModal({ state, profilesById, config, onClose }: any) {
 }
 
 function LiveStatsModal({ state, profilesById, onClose }: any) {
-  return <FloatingPanel title="Statistiques live" subtitle="Résumé rapide de la partie en cours" accent={GREEN} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 8 }}>{state.players.map((player: any) => { const stats = state.statsByPlayer[player.id] || {}; const profile = profilesById.get(player.id) || player; return <div key={player.id} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={profile} size={34} /><div style={{ color: "#fff", fontWeight: 1100 }}>{playerName(profile)}</div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label="Darts" value={`${stats.darts || 0}`} color={GOLD} /><MiniStat label="Hits" value={`${stats.hits || 0}`} color={GREEN} /><MiniStat label="Jokers" value={`${stats.jokers || 0}`} color={RED} /><MiniStat label="Visits" value={`${stats.visits || 0}`} color={BLUE} /></div></div>; })}</div></FloatingPanel>;
+  return <FloatingPanel title="Statistiques live" subtitle="Résumé rapide de la partie en cours" accent={GREEN} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 8 }}>{state.players.map((player: any) => { const stats = state.statsByPlayer[player.id] || {}; const profile = profilesById.get(player.id) || player; return <div key={player.id} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={profile} size={34} /><div style={{ color: "#fff", fontWeight: 1100 }}>{playerName(profile)}</div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label="Darts" value={`${stats.darts || 0}`} color={GOLD} /><MiniStat label="Hits" value={`${stats.hits || 0}`} color={GREEN} /><MiniStat label="Jokers" value={`${stats.jokers || 0}`} color={RED} /><MiniStat label="Lancers" value={`${stats.visits || 0}`} color={BLUE} /></div></div>; })}</div></FloatingPanel>;
 }
 
 function ObjectivesModal({ objective, suggestions, onClose }: any) {

@@ -62,7 +62,8 @@
     "version:sync": "node ./tools/sync-release-version.mjs",
     "version:check": "node ./tools/check-release-version.mjs",
     "test:cargo": "node tools/test-cargo-integration.mjs && node --experimental-strip-types tools/test-cargo-regression.ts",
-    "test:ocean-control": "node tools/test-ocean-control-integration.mjs && node ./tools/run-ts-regressions.mjs --only tools/test-ocean-control-regression.ts"
+    "test:ocean-control": "node tools/test-ocean-control-integration.mjs && node ./tools/run-ts-regressions.mjs --only tools/test-ocean-control-regression.ts",
+    "test:football": "node tools/test-football-integration.mjs && node --experimental-strip-types tools/test-football-regression.ts && node --experimental-strip-types tools/test-football-codec.ts"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

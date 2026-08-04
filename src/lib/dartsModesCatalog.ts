@@ -39,7 +39,7 @@ export const DARTS_NEW_MODES: DartsModeDef[] = [
     infoTitle:"170 (Checkout)", infoBody:"Defi checkout. Objectif: reussir 170 (T20 T20 Bull) ou suite de fins imposees.",
     defaultRounds:10, defaultDarts:3 },
   { id:"football", label:"Football", category:"fun",
-    infoTitle:"Football", infoBody:"Jeu a etapes (possession + tir). Variante generique: Bull pour possession puis zone pour marquer.",
+    infoTitle:"Darts Football", infoBody:"Match complet sur terrain : possession, attaque, défense, tirs, gardien, buts, prolongation et penalties. Variantes Match, Golden Goal, Penalties et Classic.",
     defaultRounds:10, defaultDarts:3 },
   { id:"rugby", label:"Rugby", category:"fun",
     infoTitle:"Rugby", infoBody:"Jeu de territoires/essais. Variante generique a etapes (progression puis essai + transformation).",

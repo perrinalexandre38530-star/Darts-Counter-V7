@@ -534,9 +534,9 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     supportsTeams: true,
     supportsBots: true,
     statsKey: "game:football",
-    infoTitle: "Football",
+    infoTitle: "DARTS FOOTBALL",
     infoBody:
-      "Jeu a etapes: possession (Bull) puis tir/but sur zones. Variantes multiples. A implementer.",
+      "Un véritable match de football aux fléchettes : terrain, possession, attaque, défense, tirs, gardien, buts, prolongation et tirs au but. Simple fait progresser ou repousse le ballon, Double intercepte ou accélère, Triple déclenche une contre-attaque ou une frappe directe. Variantes Match, Golden Goal, Penalties et Classic, en duel, équipes et avec BOTS IA.",
   },
   {
     id: "rugby",

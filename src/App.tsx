@@ -5280,10 +5280,20 @@ case "babyfoot_team_edit":
         break;
 
       case "football_config":
-        page = <FootballConfig setTab={go} params={routeParams} />;
+        page = <FootballConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "football_play":
-        page = <FootballPlay setTab={go} params={routeParams} />;
+        page = (
+          <FootballPlay
+            store={store}
+            go={go}
+            setTab={go}
+            params={routeParams}
+            onFinish={(m: any, options?: { navigate?: boolean }) =>
+              pushHistory(enrichOnlineMatchForHistory(m, "football", routeParams), options)
+            }
+          />
+        );
         break;
 
       case "batard_config":
