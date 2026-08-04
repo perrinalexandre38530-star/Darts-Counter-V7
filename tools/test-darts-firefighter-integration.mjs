@@ -60,7 +60,7 @@ assert.ok(play.includes('History as any).upsert(buildHistoryRecord("in_progress"
 assert.ok(play.includes('onFinish?.(record, { navigate: false })'), "sauvegarde finale absente");
 for (const token of [
   'ScoreInputHub',
-  '6.0.0-territories-clean',
+  '6.2.0-map-visible-assets-kpi',
   'CompactInfoCard',
   'FirefighterMapCard',
   'FirefighterMapModal',
@@ -72,6 +72,8 @@ for (const token of [
   'selectedTerritoryId = null',
   'tickerHeight={68}',
   'CARTE D’INTERVENTION',
+  'dff-play__map-flag-background',
+  'ACTION CONSEILLÉE',
 ]) assert.ok(play.includes(token), `refonte Play V6 manquante: ${token}`);
 assert.ok(!play.includes('height: "min(47vh,410px)"'), "ancienne grande carte permanente encore présente");
 
