@@ -20,6 +20,7 @@ import {
   activeIncidents,
   buildFireMapForView,
   cloneDartsFirefighterState,
+  computeDartsFirefighterMissionGrade,
   createDartsFirefighterState,
   dartLabel,
   difficultyLabel,
@@ -44,7 +45,7 @@ import { getCountryFlagSrc, getRegionFlagSrc } from "../lib/geoAssets";
 import { getFrenchDepartmentFlagUrl } from "../territories/frDepartmentFlags";
 import "../styles/darts-firefighter-play.css";
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "6.2.0-map-visible-assets-kpi";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.0.0-flexible-volley-rank";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -467,8 +468,9 @@ export default function DartsFirefighterPlay(props: any) {
     const totalHits = playerRows.reduce((sum, row) => sum + Number(row.hits || 0), 0);
     const totalScore = Number(state.score || 0);
     const canadairs = state.history.flatMap((visit) => visit.events || []).filter((event) => event.type === "canadair").length;
+    const missionGrade = isFinished ? computeDartsFirefighterMissionGrade(state) : null;
     const matchStats = {
-      statisticsVersion: 1, telemetryVersion: 1,
+      statisticsVersion: 2, telemetryVersion: 2,
       score: totalScore,
       durationMs: Math.max(0, now - state.startedAt),
       totalDarts, totalHits, accuracy: pct(totalHits, totalDarts),
@@ -485,6 +487,13 @@ export default function DartsFirefighterPlay(props: any) {
       dbulls: playerRows.reduce((sum, row) => sum + Number(row.dbulls || 0), 0),
       misses: playerRows.reduce((sum, row) => sum + Number(row.misses || 0), 0),
       perfectVisits: playerRows.reduce((sum, row) => sum + Number(row.perfectVisits || 0), 0),
+      earlyValidatedVisits: playerRows.reduce((sum, row) => sum + Number(row.earlyValidatedVisits || 0), 0),
+      dartsSaved: playerRows.reduce((sum, row) => sum + Number(row.dartsSaved || 0), 0),
+      oneDartVisits: playerRows.reduce((sum, row) => sum + Number(row.oneDartVisits || 0), 0),
+      twoDartVisits: playerRows.reduce((sum, row) => sum + Number(row.twoDartVisits || 0), 0),
+      threeDartVisits: playerRows.reduce((sum, row) => sum + Number(row.threeDartVisits || 0), 0),
+      missionGrade: missionGrade?.grade || null,
+      missionRating: missionGrade?.rating || 0,
       bestVisitScore: Math.max(0, ...playerRows.map((row) => Number(row.bestVisitScore || 0))),
       roundsPlayed: Math.max(1, state.roundIndex || 1),
       activeTerritories: config.activeTerritories,
@@ -500,7 +509,7 @@ export default function DartsFirefighterPlay(props: any) {
     const finalTerritories = state.territories.filter((t) => t.playable).map((t) => ({ id: t.id, name: t.name, target: t.target, critical: t.critical, fireLevel: t.fireLevel, smoke: t.smoke, protection: t.protection, destroyed: t.destroyed, status: fireStatus(t), neighbors: t.neighbors }));
     const summary = {
       kind: "darts_firefighter", mode: "darts_firefighter", sport: "darts", finished: isFinished,
-      statisticsVersion: 1, telemetryVersion: 1,
+      statisticsVersion: 2, telemetryVersion: 2,
       won: isFinished && state.won, winnerId: isFinished && state.won ? state.players[0]?.id || null : null,
       winnerIds: isFinished && state.won ? state.players.map((player) => String(player.id)) : [],
       winnerName: isFinished ? (state.won ? "BRIGADE D’INTERVENTION" : "INCENDIE") : null,
@@ -511,15 +520,17 @@ export default function DartsFirefighterPlay(props: any) {
       roundsPlayed: matchStats.roundsPlayed, durationMs: matchStats.durationMs,
       finishReason: state.finishReason, totalExtinguished: state.totalExtinguished, totalDestroyed: state.totalDestroyed,
       totalSpread: state.totalSpread, propagationBlocked: state.propagationBlocked,
+      missionGrade: missionGrade?.grade || null, missionRating: missionGrade?.rating || 0,
+      dartsSaved: matchStats.dartsSaved, earlyValidatedVisits: matchStats.earlyValidatedVisits,
       players: playerRows, perPlayer: playerRows, rankings: isFinished ? [...playerRows].sort((a, b) => b.score - a.score) : [],
       matchStats, finalTerritories, visits: state.history,
-      scoreLine: `${isFinished ? (state.won ? "VICTOIRE" : "DÉFAITE") : "EN COURS"} · ${totalScore} pts · ${state.totalExtinguished} feux éteints · ${state.totalDestroyed} zones perdues`,
+      scoreLine: `${isFinished ? (state.won ? "VICTOIRE" : "DÉFAITE") : "EN COURS"}${missionGrade ? ` · GRADE ${missionGrade.grade}` : ""} · ${totalScore} pts · ${state.totalExtinguished} feux éteints · ${state.totalDestroyed} zones perdues`,
       game: { mode: "darts_firefighter", mapId: config.mapId, difficulty: config.difficulty },
     };
     return {
       id: matchIdRef.current, matchId: matchIdRef.current,
       kind: "darts_firefighter", mode: "darts_firefighter", sport: "darts", status: recordStatus,
-      statisticsVersion: 1, telemetryVersion: 1,
+      statisticsVersion: 2, telemetryVersion: 2,
       createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now,
       ...(isFinished ? { finishedAt: now, endedAt: now } : {}),
       winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName, players: playerRows,
@@ -528,7 +539,7 @@ export default function DartsFirefighterPlay(props: any) {
       game: summary.game, summary,
       payload: {
         kind: "darts_firefighter", mode: "darts_firefighter", sport: "darts",
-        statisticsVersion: 1, telemetryVersion: 1, won: state.won, finishReason: state.finishReason,
+        statisticsVersion: 2, telemetryVersion: 2, won: state.won, finishReason: state.finishReason,
         config, players: playerRows, summary, visits: state.history, visitHistory: state.history,
         stateSnapshot: cloneDartsFirefighterState(state),
         finalTerritories,
@@ -567,7 +578,10 @@ export default function DartsFirefighterPlay(props: any) {
 
 
   const currentWater = throwDarts.reduce((sum, dart) => sum + (dart.v === 0 ? 0 : dart.v === 25 ? (dart.mult === 2 ? 3 : 2) : dart.mult), 0);
-  const centerScore = <div className="dff-play__water-score">💧{currentWater}</div>;
+  const maxDartsThisVisit = Math.max(1, Math.min(3, Number(config.dartsPerTurn || 3)));
+  const canValidateVisit = throwDarts.length > 0 && !botThinking && !state.finished;
+  const validateVisitLabel = throwDarts.length > 0 ? `VALIDER ${throwDarts.length}/${maxDartsThisVisit}` : "VALIDER";
+  const centerScore = <div className="dff-play__water-score"><strong>💧{currentWater}</strong><small>{throwDarts.length}/{maxDartsThisVisit}</small></div>;
   const suggestions = [primarySuggestion, ...(tacticalPlan.alternatives || [])].filter(Boolean).slice(0, Math.max(1, Number(config.dartsPerTurn || 3)));
 
   return <div className="dff-play" data-firefighter-play-version={DARTS_FIREFIGHTER_PLAY_UI_VERSION} style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}22 0,${theme?.bg || "#080a11"} 42%,#020305 100%)`, paddingBottom: "calc(8px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
@@ -638,6 +652,8 @@ export default function DartsFirefighterPlay(props: any) {
           preferredMethod={config.scoreInputMethod === "dartboard" ? "dartboard" : "keypad"}
           enablePresets={false}
           centerSlot={centerScore}
+          validateLabel={validateVisitLabel}
+          validateDisabled={!canValidateVisit}
           disabled={botThinking || state.finished}
           switcherMode="hidden"
           hideSwitcher
@@ -654,7 +670,7 @@ export default function DartsFirefighterPlay(props: any) {
     {showTargets ? <TargetsModal state={state} onClose={() => setShowTargets(false)} onSelect={selectTerritory} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showStats ? <StatsModal state={state} currentStats={currentStats} activeProfile={activeProfile} config={config} onClose={() => setShowStats(false)} /> : null}
-    {showEnd && state.finished ? <DartsFirefighterEnd state={state} profilesById={profilesById} onReplay={resetMatch} onStats={() => go?.("statsHub", { initialStatsSubTab: "darts_firefighter" })} onHistory={() => go?.("history")} onMenu={() => go?.("games")} /> : null}
+    {showEnd && state.finished ? <DartsFirefighterEnd state={state} profilesById={profilesById} onReplay={resetMatch} onStats={() => go?.("statsHub", { initialStatsSubTab: "darts_firefighter" })} onHistory={() => go?.("history")} onClose={() => go?.("games")} /> : null}
   </div>;
 }
 
@@ -827,6 +843,6 @@ function StatsModal({ state, currentStats, activeProfile, config, onClose }: any
   const totalHits = Object.values(state.playerStats || {}).reduce((sum: number, stats: any) => sum + Number(stats?.hits || 0), 0);
   return <FloatingPanel title="STATISTIQUES DE MISSION" subtitle={playerName(activeProfile)} accent={GREEN} onClose={onClose}>
     <div className="dff-stats-grid"><MiniKpi label="SCORE" value={state.score} color={GOLD} /><MiniKpi label="PRÉCISION" value={`${pct(totalHits, totalDarts)}%`} color={GREEN} /><MiniKpi label="FEUX ÉTEINTS" value={state.totalExtinguished} color={WATER} /><MiniKpi label="ZONES PERDUES" value={state.totalDestroyed} color={RED} /><MiniKpi label="EAU JOUEUR" value={Number(currentStats?.waterApplied || 0)} color={WATER} /><MiniKpi label="PARE-FEUX" value={Number(currentStats?.protectionsPlaced || 0)} color={GREEN} /><MiniKpi label="PROPAGATIONS" value={state.totalSpread} color={FIRE} /><MiniKpi label="BLOQUÉES" value={state.propagationBlocked} color={GOLD} /></div>
-    <div className="dff-help-box"><b>MISSION</b><span>{difficultyLabel(config.difficulty)} · {config.maxRounds} rounds · {config.dartsPerTurn} fléchette{Number(config.dartsPerTurn) > 1 ? "s" : ""} par volée.</span><span>{config.windEnabled ? state.windLabel : "Vent désactivé"} · charge actuelle {totalFire(state).toFixed(1)}.</span></div>
+    <div className="dff-help-box"><b>MISSION</b><span>{difficultyLabel(config.difficulty)} · {config.maxRounds} rounds · jusqu’à {config.dartsPerTurn} fléchette{Number(config.dartsPerTurn) > 1 ? "s" : ""} par volée.</span><span>{config.windEnabled ? state.windLabel : "Vent désactivé"} · charge actuelle {totalFire(state).toFixed(1)}.</span></div>
   </FloatingPanel>;
 }

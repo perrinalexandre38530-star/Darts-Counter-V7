@@ -139,6 +139,12 @@ export type FirefighterVisit = {
   selectedTerritoryId?: string | null;
   events: FirefighterEvent[];
   endedByMiss?: boolean;
+  /** Maximum autorisé pour cette volée. */
+  maxDarts?: number;
+  /** Fléchettes non lancées à la fin de la volée. */
+  unusedDarts?: number;
+  /** Vrai lorsque le joueur a volontairement validé avant la limite. */
+  voluntaryStop?: boolean;
 };
 
 export type FirefighterPlayerStats = {
@@ -162,6 +168,11 @@ export type FirefighterPlayerStats = {
   bestVisitScore: number;
   perfectVisits: number;
   criticalInterventions: number;
+  oneDartVisits: number;
+  twoDartVisits: number;
+  threeDartVisits: number;
+  earlyValidatedVisits: number;
+  dartsSaved: number;
   hitsBySegment: Record<string, number>;
 };
 
@@ -340,7 +351,8 @@ export function emptyFirefighterStats(): FirefighterPlayerStats {
     darts: 0, visits: 0, hits: 0, singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0,
     waterApplied: 0, fireReduced: 0, firesExtinguished: 0, smokeCleared: 0, protectionsPlaced: 0,
     propagationBlocked: 0, uselessDarts: 0, score: 0, bestVisitScore: 0, perfectVisits: 0,
-    criticalInterventions: 0, hitsBySegment: {},
+    criticalInterventions: 0, oneDartVisits: 0, twoDartVisits: 0, threeDartVisits: 0,
+    earlyValidatedVisits: 0, dartsSaved: 0, hitsBySegment: {},
   };
 }
 
@@ -907,7 +919,11 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   if (state.finished) return state;
   const next = cloneDartsFirefighterState(state);
   const player = getActivePlayer(next);
-  const stats = next.playerStats[player.id] || (next.playerStats[player.id] = emptyFirefighterStats());
+  const stats = next.playerStats[player.id] = {
+    ...emptyFirefighterStats(),
+    ...(next.playerStats[player.id] || {}),
+    hitsBySegment: { ...((next.playerStats[player.id] || {}).hitsBySegment || {}) },
+  };
   const dartsPerTurn = Math.max(1, Math.min(3, Number(next.config.dartsPerTurn || 3)));
   const safeDarts = (darts || []).slice(0, dartsPerTurn);
   const processedDarts: GameDart[] = [];
@@ -937,6 +953,15 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   }
   const comboMultiplier = next.config.comboEnabled !== false ? 1 + Math.min(.75, comboBefore * .05) : 1;
   visitScore = Math.round(visitScore * comboMultiplier);
+  const unusedDarts = Math.max(0, dartsPerTurn - processedDarts.length);
+  const voluntaryStop = !endedByMiss && processedDarts.length > 0 && processedDarts.length < dartsPerTurn;
+  if (processedDarts.length === 1) stats.oneDartVisits += 1;
+  else if (processedDarts.length === 2) stats.twoDartVisits += 1;
+  else if (processedDarts.length >= 3) stats.threeDartVisits += 1;
+  if (voluntaryStop) {
+    stats.earlyValidatedVisits += 1;
+    stats.dartsSaved += unusedDarts;
+  }
   if (processedDarts.length === dartsPerTurn && usefulDarts === dartsPerTurn) {
     visitScore += Math.max(0, Number(next.config.perfectVisitBonus ?? 200));
     stats.perfectVisits += 1;
@@ -969,6 +994,9 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
     selectedTerritoryId: next.selectedTerritoryId,
     events,
     endedByMiss,
+    maxDarts: dartsPerTurn,
+    unusedDarts,
+    voluntaryStop,
   };
   next.history.push(visit);
   next.turnIndex += 1;
@@ -976,6 +1004,31 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   if (next.activePlayerIndex === 0) next.roundIndex += 1;
   evaluateEnd(next);
   return next;
+}
+
+export type DartsFirefighterMissionGrade = "S" | "A" | "B" | "C" | "D";
+
+export function computeDartsFirefighterMissionGrade(state: DartsFirefighterState) {
+  const playerStats = Object.values(state.playerStats || {});
+  const darts = playerStats.reduce((sum, stats) => sum + Number(stats?.darts || 0), 0);
+  const hits = playerStats.reduce((sum, stats) => sum + Number(stats?.hits || 0), 0);
+  const dartsSaved = playerStats.reduce((sum, stats) => sum + Number(stats?.dartsSaved || 0), 0);
+  const accuracy = darts > 0 ? (hits / darts) * 100 : 0;
+  const active = state.territories.filter((territory) => territory.playable).length || 1;
+  const preservationRate = Math.max(0, Math.min(100, ((active - Number(state.totalDestroyed || 0)) / active) * 100));
+  const incidents = activeIncidents(state);
+  let rating = 55;
+  rating += accuracy * .18;
+  rating += preservationRate * .17;
+  rating += Math.min(8, Number(state.propagationBlocked || 0) * 2);
+  rating += Math.min(5, dartsSaved);
+  rating += state.won && incidents === 0 ? 5 : 0;
+  rating -= Math.min(20, incidents * 3);
+  rating = Math.max(0, Math.min(100, Math.round(rating)));
+  if (!state.won) rating = Math.min(49, rating);
+  const grade: DartsFirefighterMissionGrade = rating >= 90 ? "S" : rating >= 80 ? "A" : rating >= 68 ? "B" : rating >= 55 ? "C" : "D";
+  const label = grade === "S" ? "LÉGENDE DU FEU" : grade === "A" ? "COMMANDANT D’ÉLITE" : grade === "B" ? "BRIGADE EFFICACE" : grade === "C" ? "MISSION VALIDÉE" : "INTERVENTION À REVOIR";
+  return { grade, label, rating, accuracy: Math.round(accuracy * 10) / 10, preservationRate: Math.round(preservationRate * 10) / 10, dartsSaved };
 }
 
 export function fireTerritoryColor(status: FireStatus): string {

@@ -65,6 +65,10 @@ type Props = {
 
   /** Met le bouton VALIDER en surbrillance quand une volée vocale est prête. */
   validateAttention?: boolean;
+  /** Libellé personnalisé du bouton de validation (défaut : VALIDER). */
+  validateLabel?: React.ReactNode;
+  /** Désactive uniquement la validation, sans bloquer le reste du keypad. */
+  validateDisabled?: boolean;
 
   /** Ajoute un padding bas safe-area (par défaut: true) */
   safeBottomPad?: boolean;
@@ -222,6 +226,8 @@ export default function Keypad({
   singleRingSelector = null,
   noticeSlot = null,
   validateAttention = false,
+  validateLabel = "VALIDER",
+  validateDisabled = false,
   safeBottomPad = true,
   footerGap = 10,
 }: Props) {
@@ -491,12 +497,22 @@ export default function Keypad({
                   animation: "dcVoiceGlow .9s ease-in-out infinite",
                 }
               : null),
+            ...(validateDisabled
+              ? {
+                  opacity: .48,
+                  cursor: "not-allowed",
+                  boxShadow: "none",
+                  filter: "saturate(.55)",
+                }
+              : null),
           }}
           onClick={onValidate}
+          disabled={validateDisabled}
           title={validateAttention ? "Volée vocale prête : clique pour valider" : "Valider la volée"}
           aria-label={validateAttention ? "Valider la volée vocale" : "Valider la volée"}
+          aria-disabled={validateDisabled}
         >
-          VALIDER
+          {validateLabel}
         </button>
       </div>
     </div>

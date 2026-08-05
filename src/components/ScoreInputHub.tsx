@@ -75,6 +75,10 @@ type Props = {
 
   /** Désactive toutes les saisies */
   disabled?: boolean;
+  /** Libellé personnalisé du bouton VALIDER. */
+  validateLabel?: React.ReactNode;
+  /** Désactive uniquement la validation de la volée. */
+  validateDisabled?: boolean;
   /** Autorise les cartes d’aide pour les méthodes assistées. */
   showPlaceholders?: boolean;
   /** Ancien prop déjà utilisé par certaines pages : masque le sélecteur de méthode. */
@@ -167,6 +171,8 @@ export default function ScoreInputHub({
   hideTotal,
   centerSlot,
   disabled = false,
+  validateLabel = "VALIDER",
+  validateDisabled = false,
   showPlaceholders: _showPlaceholders = true,
   switcherMode = "hidden",
   hideSwitcher = true,
@@ -372,6 +378,8 @@ export default function ScoreInputHub({
       auxAction={keypadAuxAction}
       noticeSlot={voiceNotice}
       validateAttention={voiceAwaitingManualValidate}
+      validateLabel={validateLabel}
+      validateDisabled={disabled || validateDisabled}
     />
   );
 
@@ -417,6 +425,8 @@ export default function ScoreInputHub({
           onNumber={onNumber}
           onCancel={onCancel}
           onValidate={onValidate}
+          validateLabel={validateLabel}
+          validateDisabled={disabled || validateDisabled || safeCurrentThrow.length === 0}
           fitToParent={fitToParent}
           contentBoxStyle={contentBoxStyle}
           fitOuterRef={fitOuterRef}
@@ -710,6 +720,8 @@ function DartboardInput({
   onNumber,
   onCancel,
   onValidate,
+  validateLabel,
+  validateDisabled,
   fitToParent,
   contentBoxStyle,
   fitOuterRef,
@@ -728,6 +740,8 @@ function DartboardInput({
   onNumber: (n: number) => void;
   onCancel: () => void;
   onValidate: () => void;
+  validateLabel: React.ReactNode;
+  validateDisabled: boolean;
   fitToParent: boolean;
   contentBoxStyle: React.CSSProperties;
   fitOuterRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -831,8 +845,8 @@ function DartboardInput({
             <button type="button" style={btnDarkSmall} disabled={disabled || currentThrow.length === 0} onClick={onCancel}>
               ANNULER
             </button>
-            <button type="button" style={btnGoldSmall} disabled={disabled || currentThrow.length === 0} onClick={onValidate}>
-              VALIDER
+            <button type="button" style={{ ...btnGoldSmall, opacity: validateDisabled ? .48 : 1, cursor: validateDisabled ? "not-allowed" : "pointer" }} disabled={validateDisabled} onClick={onValidate}>
+              {validateLabel}
             </button>
           </div>
         </div>

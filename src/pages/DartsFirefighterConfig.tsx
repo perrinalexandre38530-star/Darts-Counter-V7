@@ -397,7 +397,7 @@ export default function DartsFirefighterConfig(props: any) {
   const inputBlock = <section style={block}>
     <SectionTitle icon="🎯" title="DÉROULEMENT DE LA PARTIE" subtitle="Définis le nombre de fléchettes, la saisie et le système de score." color={WATER} />
     <div style={{ display: "grid", gap: 7 }}>
-      <OptionRow label="Fléchettes par volée" hint="Le moteur et les Bots respectent cette limite"><OptionSelect value={config.dartsPerTurn} options={[{ value: 1, label: "1 · Intervention éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></OptionRow>
+      <OptionRow label="Maximum par volée" hint="Tu peux valider librement après 1, 2 ou 3 fléchettes"><OptionSelect value={config.dartsPerTurn} options={[{ value: 1, label: "1 · Intervention éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></OptionRow>
       <OptionRow label="MISS termine la volée" hint="Les fléchettes restantes ne sont pas jouées"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></OptionRow>
       <OptionRow label="Multiplicateur de brigade" hint="Les interventions utiles consécutives augmentent le score"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></OptionRow>
       <OptionRow label="Bonus volée parfaite" hint="Toutes les fléchettes produisent une action utile"><OptionSelect value={config.perfectVisitBonus} options={[0,50,100,150,200,250,300,400,500]} onChange={(v) => setField("perfectVisitBonus", Number(v))} /></OptionRow>
@@ -419,7 +419,7 @@ export default function DartsFirefighterConfig(props: any) {
       <div><strong style={{ color: GOLD }}>CARTE :</strong> {TERRITORY_MAPS[config.mapId]?.name || config.mapId} · {config.activeTerritories} zones · secteurs {config.targetOrder === "random" ? "aléatoires" : "ordonnés"}</div>
       <div><strong style={{ color: FIRE }}>INCENDIE :</strong> {config.initialFires} foyers · {config.initialSmoke} fumées · {config.initialProtectedTerritories} zones protégées · propagation {config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}</div>
       <div><strong style={{ color: WATER }}>MOYENS :</strong> Bull puissance {config.bullPower} · jauge initiale {config.startingBrigadeGauge}% · Canadair {config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}</div>
-      <div><strong style={{ color: GREEN }}>VOLÉE :</strong> {config.dartsPerTurn} fléchette{config.dartsPerTurn > 1 ? "s" : ""} · {config.scoreInputMethod === "dartboard" ? "cible interactive" : "clavier"} · MISS {config.missEndsTurn ? "fatal" : "normal"}</div>
+      <div><strong style={{ color: GREEN }}>VOLÉE :</strong> jusqu’à {config.dartsPerTurn} fléchette{config.dartsPerTurn > 1 ? "s" : ""}, validation possible à tout moment · {config.scoreInputMethod === "dartboard" ? "cible interactive" : "clavier"} · MISS {config.missEndsTurn ? "fatal" : "normal"}</div>
     </div>
     {!valid ? <div style={{ marginTop: 9, color: "#ff9aa8", textAlign: "center", fontSize: 10, fontWeight: 1000 }}>⚠ Sélectionne au moins un pompier dans l’étape Brigade.</div> : null}
   </section>;
@@ -437,7 +437,7 @@ export default function DartsFirefighterConfig(props: any) {
       </section>
       <section style={{ ...card, padding: 9, marginBottom: 9, background: `linear-gradient(135deg,${FIRE}14,${WATER}10)`, border: `1px solid ${WATER}35` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div><div style={{ color: "#fff", fontSize: 10.8, fontWeight: 1100 }}>CONFIGURATION FIREFIGHTER V3</div><div style={{ marginTop: 2, color: soft, fontSize: 8.5 }}>8 étapes · 4 scénarios · réglages moteur complets · migration V2 automatique</div></div>
+          <div><div style={{ color: "#fff", fontSize: 10.8, fontWeight: 1100 }}>CONFIGURATION FIREFIGHTER V4</div><div style={{ marginTop: 2, color: soft, fontSize: 8.5 }}>8 étapes · volées flexibles 1–3 · 4 scénarios · réglages moteur complets</div></div>
           <button type="button" onClick={resetConfiguration} style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#dfe5ef", fontSize: 8.2, fontWeight: 1000 }}>RÉINITIALISER</button>
         </div>
       </section>

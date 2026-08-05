@@ -199,7 +199,9 @@
     flex-direction: column;
   }
   .dff-play__input > * { flex: 1 1 auto; min-height: 0; }
-  .dff-play__water-score { min-width: 62px; height: 43px; padding: 0 8px; border-radius: 13px; display: grid; place-items: center; background: linear-gradient(180deg,#55e5ff,#0b9edc); border: 1px solid rgba(178,242,255,.9); color: #02131c; font-size: 17px; line-height: 1; font-weight: 1100; box-shadow: 0 0 18px rgba(37,201,255,.3); }
+  .dff-play__water-score { min-width: 62px; height: 43px; padding: 0 8px; border-radius: 13px; display: grid; place-items: center; align-content: center; gap: 2px; background: linear-gradient(180deg,#55e5ff,#0b9edc); border: 1px solid rgba(178,242,255,.9); color: #02131c; line-height: 1; font-weight: 1100; box-shadow: 0 0 18px rgba(37,201,255,.3); }
+  .dff-play__water-score strong { font-size: 16px; }
+  .dff-play__water-score small { font-size: 7px; font-weight: 1100; letter-spacing: .45px; opacity: .78; }
   
   .dff-modal {
     position: fixed;

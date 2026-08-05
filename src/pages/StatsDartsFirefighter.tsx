@@ -94,6 +94,12 @@ export default function StatsDartsFirefighter(props: any) {
       bulls: scoped.reduce((s, m) => s + n(m.bulls), 0),
       dbulls: scoped.reduce((s, m) => s + n(m.dbulls), 0),
       misses: scoped.reduce((s, m) => s + n(m.misses), 0),
+      perfectVisits: scoped.reduce((s, m) => s + n(m.perfectVisits), 0),
+      earlyValidatedVisits: scoped.reduce((s, m) => s + n(m.earlyValidatedVisits), 0),
+      dartsSaved: scoped.reduce((s, m) => s + n(m.dartsSaved), 0),
+      gradeS: scoped.filter((m) => String(m.missionGrade || "").toUpperCase() === "S").length,
+      gradeA: scoped.filter((m) => String(m.missionGrade || "").toUpperCase() === "A").length,
+      avgRating: total ? scoped.reduce((s, m) => s + n(m.missionRating), 0) / total : 0,
       avgRounds: total ? scoped.reduce((s, m) => s + n(m.roundsPlayed), 0) / total : 0,
       avgDuration: total ? duration / total : 0,
     };
@@ -145,6 +151,10 @@ export default function StatsDartsFirefighter(props: any) {
         <Kpi label="Feu supprimé" value={agg.fireReduced} color={FIRE} icon="🔥" />
         <Kpi label="Propag. bloquées" value={agg.blocked} color={WATER} icon="🛡" />
         <Kpi label="Zones perdues" value={agg.destroyed} color={RED} icon="⬛" />
+        <Kpi label="Grades S / A" value={`${agg.gradeS} / ${agg.gradeA}`} color={GOLD} icon="🎖" />
+        <Kpi label="Note moyenne" value={`${agg.avgRating.toFixed(0)}/100`} color={WATER} icon="📋" />
+        <Kpi label="Volées courtes" value={agg.earlyValidatedVisits} color={GREEN} icon="⚡" />
+        <Kpi label="Flèches économisées" value={agg.dartsSaved} color={GOLD} icon="🎯" />
       </section>
 
       <section style={{ ...panel(), marginBottom: 7 }}>
@@ -158,6 +168,10 @@ export default function StatsDartsFirefighter(props: any) {
           <Mini label="Bull / DBull" value={`${agg.bulls} / ${agg.dbulls}`} color={GOLD} />
           <Mini label="Rounds moyens" value={agg.avgRounds.toFixed(1)} color={FIRE} />
           <Mini label="Durée moyenne" value={fmtDuration(agg.avgDuration)} color="#d8dce6" />
+          <Mini label="Volées parfaites" value={agg.perfectVisits} color={GREEN} />
+          <Mini label="Validation anticipée" value={agg.earlyValidatedVisits} color={WATER} />
+          <Mini label="Flèches économisées" value={agg.dartsSaved} color={GOLD} />
+          <Mini label="Économie / mission" value={agg.total ? (agg.dartsSaved / agg.total).toFixed(1) : "0.0"} color={GOLD} />
         </div>
         <div style={{ marginTop: 9 }}><RatioBar label="Taux de victoire" value={agg.winRate} color={GREEN} /><RatioBar label="Propagation bloquée" value={pct(agg.blocked, agg.blocked + agg.spread)} color={WATER} /><RatioBar label="Territoires préservés" value={pct(Math.max(0, scoped.reduce((s,m)=>s+n(m.activeTerritories),0)-agg.destroyed), scoped.reduce((s,m)=>s+n(m.activeTerritories),0))} color={GOLD} /></div>
       </section>
@@ -169,7 +183,7 @@ export default function StatsDartsFirefighter(props: any) {
 
       <section style={{ ...panel(), marginBottom: 7 }}><SectionTitle title="CONTRIBUTION DES POMPIERS" color={WATER} subtitle="Statistiques individuelles au sein de la brigade" /><div style={{ marginTop: 8, display: "grid", gap: 7 }}>{contributors.slice(0, 12).map((row, index) => <div key={row.id} style={{ display: "grid", gridTemplateColumns: "28px 39px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 8, borderRadius: 13, background: "rgba(255,255,255,.035)", border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.07)"}` }}><div style={{ color: index === 0 ? GOLD : "#aab1bf", fontWeight: 1100, textAlign: "center" }}>#{index + 1}</div><ProfileAvatar profile={row} size={37} showStars={false} /><div style={{ minWidth: 0 }}><div style={{ color: index === 0 ? GOLD : "#fff", fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</div><div style={{ color: "#9097a8", fontSize: 8.2 }}>{row.games} mission(s) · {row.fireReduced} niveaux · {row.extinguished} extinctions · {row.blocked} blocages · {pct(row.hits,row.darts)}%</div></div><div style={{ color: WATER, fontSize: 16, fontWeight: 1100 }}>{row.score}</div></div>)}</div></section>
 
-      <section style={panel()}><SectionTitle title="DERNIÈRES MISSIONS" color={FIRE} subtitle="Historique détaillé des interventions" /><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{scoped.slice(0, 12).map((match) => <div key={match.id} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: match.won ? `${GREEN}09` : `${RED}09`, border: `1px solid ${match.won ? GREEN : RED}2f` }}><div style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: match.won ? `${GREEN}18` : `${RED}18`, fontSize: 17 }}>{match.won ? "✅" : "🚨"}</div><div style={{ minWidth: 0 }}><div style={{ color: match.won ? GREEN : RED, fontSize: 9.8, fontWeight: 1050 }}>{match.won ? "INCENDIE MAÎTRISÉ" : finishReasonLabel(match.finishReason)}</div><div style={{ color: "#fff", fontSize: 9.2, fontWeight: 950 }}>{match.mapId} · {difficultyLabel(match.difficulty)} · {match.roundsPlayed} rounds · {fmtDuration(match.durationMs)}</div><div style={{ color: "#8e95a6", fontSize: 8 }}>{fmtDate(match.ts)} · {match.totalExtinguished} extinctions · {match.totalDestroyed} perdue(s) · {match.propagationBlocked} bloquée(s)</div></div><div style={{ color: GOLD, fontSize: 16, fontWeight: 1100 }}>{match.score}</div></div>)}</div></section>
+      <section style={panel()}><SectionTitle title="DERNIÈRES MISSIONS" color={FIRE} subtitle="Historique détaillé des interventions" /><div style={{ marginTop: 8, display: "grid", gap: 6 }}>{scoped.slice(0, 12).map((match) => <div key={match.id} style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: match.won ? `${GREEN}09` : `${RED}09`, border: `1px solid ${match.won ? GREEN : RED}2f` }}><div style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", background: match.won ? `${GREEN}18` : `${RED}18`, fontSize: 17 }}>{match.won ? "✅" : "🚨"}</div><div style={{ minWidth: 0 }}><div style={{ color: match.won ? GREEN : RED, fontSize: 9.8, fontWeight: 1050 }}>{match.won ? "INCENDIE MAÎTRISÉ" : finishReasonLabel(match.finishReason)}{match.missionGrade ? ` · GRADE ${match.missionGrade}` : ""}</div><div style={{ color: "#fff", fontSize: 9.2, fontWeight: 950 }}>{match.mapId} · {difficultyLabel(match.difficulty)} · {match.roundsPlayed} rounds · {fmtDuration(match.durationMs)}</div><div style={{ color: "#8e95a6", fontSize: 8 }}>{fmtDate(match.ts)} · {match.totalExtinguished} extinctions · {match.totalDestroyed} perdue(s) · {match.propagationBlocked} bloquée(s)</div></div><div style={{ color: GOLD, fontSize: 16, fontWeight: 1100 }}>{match.score}</div></div>)}</div></section>
     </>}
   </main>;
 

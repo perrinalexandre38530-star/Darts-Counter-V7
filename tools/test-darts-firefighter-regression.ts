@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   activeIncidents,
   buildFireMapForView,
+  computeDartsFirefighterMissionGrade,
   createDartsFirefighterState,
   fireStatus,
   normalizeDartsFirefighterConfig,
@@ -167,6 +168,24 @@ miss = playDartsFirefighterVisit(miss, [{ bed: "MISS" }, { bed: "T", number: tar
 assert.equal(miss.history[0].endedByMiss, true);
 assert.equal(miss.history[0].darts.length, 1, "la télémétrie ne doit garder que le MISS réellement joué");
 assert.equal(miss.playerStats.p1.darts, 1);
+
+// Une volée peut être validée volontairement après 1 ou 2 fléchettes sans créer de MISS fictifs.
+let flexible = createDartsFirefighterState(players, config({ dartsPerTurn: 3, missEndsTurn: false }), fakeMap(), 1_700_000_000_045);
+const flexibleTarget = flexible.territories.find((territory) => territory.playable)!;
+flexible = playDartsFirefighterVisit(flexible, [{ bed: "S", number: flexibleTarget.target }]);
+assert.equal(flexible.history[0].darts.length, 1);
+assert.equal(flexible.history[0].maxDarts, 3);
+assert.equal(flexible.history[0].unusedDarts, 2);
+assert.equal(flexible.history[0].voluntaryStop, true);
+assert.equal(flexible.playerStats.p1.oneDartVisits, 1);
+assert.equal(flexible.playerStats.p1.earlyValidatedVisits, 1);
+assert.equal(flexible.playerStats.p1.dartsSaved, 2);
+assert.equal(flexible.playerStats.p1.misses, 0, "les fléchettes non lancées ne doivent jamais devenir des MISS");
+for (const territory of flexible.territories) { territory.fireLevel = 0; territory.smoke = false; }
+flexible.finished = true; flexible.won = true; flexible.totalDestroyed = 0;
+const grade = computeDartsFirefighterMissionGrade(flexible);
+assert.ok(["S", "A", "B", "C"].includes(grade.grade), "une mission réussie doit obtenir un grade opérationnel");
+assert.ok(grade.rating >= 55 && grade.rating <= 100);
 
 // La carte visuelle doit transporter l'état d'incendie sans modifier la carte source.
 const rendered = buildFireMapForView(canadair);

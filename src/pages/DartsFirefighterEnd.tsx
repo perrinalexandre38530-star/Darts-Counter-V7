@@ -8,6 +8,7 @@ import React from "react";
 import ProfileAvatar from "../components/ProfileAvatar";
 import {
   activeIncidents,
+  computeDartsFirefighterMissionGrade,
   difficultyLabel,
   finishReasonLabel,
   fireStatus,
@@ -59,6 +60,9 @@ function panelStyle(): React.CSSProperties {
     boxSizing: "border-box",
   };
 }
+function gradeColor(grade: string) {
+  return grade === "S" ? GOLD : grade === "A" ? WATER : grade === "B" ? GREEN : grade === "C" ? "#d5d9e2" : RED;
+}
 function actionButton(color: string): React.CSSProperties {
   return {
     minHeight: 44,
@@ -83,6 +87,7 @@ export type DartsFirefighterEndProps = {
 export default function DartsFirefighterEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: DartsFirefighterEndProps) {
   const [tab, setTab] = React.useState<"summary" | "brigade" | "map" | "timeline">("summary");
   const duration = Math.max(0, (state.finishedAt || Date.now()) - state.startedAt);
+  const missionGrade = computeDartsFirefighterMissionGrade(state);
   const playerRows = state.players
     .map((player: any, index: number) => ({
       player,
@@ -91,6 +96,14 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
       color: PLAYER_COLORS[index % PLAYER_COLORS.length],
     }))
     .sort((a: any, b: any) => Number(b.stats.score || 0) - Number(a.stats.score || 0));
+  const awardSource = playerRows.map((row: any) => ({ ...row, accuracy: pct(Number(row.stats.hits || 0), Number(row.stats.darts || 0)) }));
+  const pickBest = (getter: (row: any) => number) => [...awardSource].sort((a, b) => getter(b) - getter(a))[0] || null;
+  const awards = [
+    { icon: "🔥", label: "LANCE HAUTE PRESSION", row: pickBest((r) => Number(r.stats.fireReduced || 0)), value: (r: any) => `${r.stats.fireReduced || 0} niveaux` },
+    { icon: "🛡", label: "BOUCLIER DE LA BRIGADE", row: pickBest((r) => Number(r.stats.protectionsPlaced || 0) + Number(r.stats.propagationBlocked || 0)), value: (r: any) => `${Number(r.stats.protectionsPlaced || 0) + Number(r.stats.propagationBlocked || 0)} protections` },
+    { icon: "🎯", label: "TIR LE PLUS PRÉCIS", row: pickBest((r) => r.accuracy), value: (r: any) => `${r.accuracy}%` },
+    { icon: "⚡", label: "INTERVENTION EXPRESS", row: pickBest((r) => Number(r.stats.dartsSaved || 0)), value: (r: any) => `${r.stats.dartsSaved || 0} fléchettes économisées` },
+  ].filter((award) => award.row);
   const totals = playerRows.reduce((acc: any, row: any) => {
     const stats = row.stats;
     acc.darts += Number(stats.darts || 0);
@@ -100,8 +113,10 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
     acc.protected += Number(stats.protectionsPlaced || 0);
     acc.extinguished += Number(stats.firesExtinguished || 0);
     acc.score += Number(stats.score || 0);
+    acc.dartsSaved += Number(stats.dartsSaved || 0);
+    acc.earlyValidated += Number(stats.earlyValidatedVisits || 0);
     return acc;
-  }, { darts: 0, hits: 0, fire: 0, water: 0, protected: 0, extinguished: 0, score: 0 });
+  }, { darts: 0, hits: 0, fire: 0, water: 0, protected: 0, extinguished: 0, score: 0, dartsSaved: 0, earlyValidated: 0 });
   const finalZones = state.territories.filter((territory: FireTerritory) => territory.playable);
   const tabs = [
     ["summary", "RÉSUMÉ", "🚒"],
@@ -117,6 +132,10 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
         <div style={{ marginTop: 3, color: "#fff", fontSize: 24, fontWeight: 1100 }}>{finishReasonLabel(state.finishReason)}</div>
         <div style={{ color: WATER, fontSize: 10, fontWeight: 950 }}>{difficultyLabel(state.config.difficulty)} · {state.config.mapId} · {state.score} POINTS</div>
         <div style={{ marginTop: 2, color: "#aeb5c5", fontSize: 8.5, fontWeight: 900 }}>{state.config.objective === "survival" ? `SURVIE · ${state.config.maxRounds} ROUNDS` : state.config.objective === "protect_critical" ? `PROTECTION · ${state.config.criticalTerritories} ZONES CRITIQUES` : "EXTINCTION TOTALE"}</div>
+        <div style={{ margin: "8px auto 0", width: "fit-content", minWidth: 148, padding: "7px 15px", borderRadius: 14, border: `1px solid ${gradeColor(missionGrade.grade)}77`, background: `${gradeColor(missionGrade.grade)}12`, boxShadow: `0 0 20px ${gradeColor(missionGrade.grade)}22` }}>
+          <div style={{ color: gradeColor(missionGrade.grade), fontSize: 24, lineHeight: 1, fontWeight: 1200 }}>GRADE {missionGrade.grade}</div>
+          <div style={{ marginTop: 3, color: "#d8dde6", fontSize: 8, fontWeight: 1000 }}>{missionGrade.label} · {missionGrade.rating}/100</div>
+        </div>
       </div>
 
       <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
@@ -133,6 +152,8 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
           <EndKpi label="Rounds" value={Math.max(1, state.roundIndex)} color={WATER} />
           <EndKpi label="Précision" value={`${pct(totals.hits, totals.darts)}%`} color={GREEN} />
           <EndKpi label="Durée" value={fmtDuration(duration)} color="#d5d9e2" />
+          <EndKpi label="Volées courtes" value={totals.earlyValidated} color={WATER} />
+          <EndKpi label="Flèches économisées" value={totals.dartsSaved} color={GOLD} />
         </div>
         <div style={{ marginTop: 10, padding: 10, borderRadius: 14, background: state.won ? `${GREEN}0c` : `${RED}0c`, border: `1px solid ${state.won ? GREEN : RED}35`, color: "#d9dde5", fontSize: 10.5, lineHeight: 1.45 }}>
           {state.won
@@ -146,12 +167,16 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
       </> : null}
 
       {tab === "brigade" ? <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+          {awards.map((award: any) => <div key={award.label} style={{ padding: 8, borderRadius: 13, background: `${WATER}09`, border: `1px solid ${WATER}2d`, minWidth: 0 }}><div style={{ color: GOLD, fontSize: 8, fontWeight: 1050 }}>{award.icon} {award.label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 10, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(award.row.profile)}</div><div style={{ color: "#9299aa", fontSize: 7.8 }}>{award.value(award.row)}</div></div>)}
+        </div>
         {playerRows.map((row: any, index: number) => <div key={row.player.id} style={{ padding: 9, borderRadius: 14, border: `1px solid ${row.color}44`, background: `${row.color}0b`, display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
           <ProfileAvatar profile={row.profile} size={40} showStars={false} />
           <div style={{ minWidth: 0 }}>
             <div style={{ color: row.color, fontWeight: 1050 }}>{index + 1}. {playerName(row.profile)}</div>
             <div style={{ color: "#9299aa", fontSize: 8.5 }}>{row.stats.fireReduced || 0} niveaux · {row.stats.firesExtinguished || 0} extinctions · {row.stats.propagationBlocked || 0} blocages</div>
             <div style={{ color: "#cfd5df", fontSize: 8.3 }}>S {row.stats.singles || 0} · D {row.stats.doubles || 0} · T {row.stats.triples || 0} · B {row.stats.bulls || 0} · DB {row.stats.dbulls || 0} · MISS {row.stats.misses || 0}</div>
+            <div style={{ color: WATER, fontSize: 7.8 }}>Volées 1D {row.stats.oneDartVisits || 0} · 2D {row.stats.twoDartVisits || 0} · 3D {row.stats.threeDartVisits || 0} · {row.stats.dartsSaved || 0} économisée(s)</div>
           </div>
           <div style={{ color: GOLD, fontSize: 17, fontWeight: 1100 }}>{row.stats.score || 0}</div>
         </div>)}
@@ -171,7 +196,7 @@ export default function DartsFirefighterEnd({ state, profilesById, onClose, onRe
       {tab === "timeline" ? <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
         {[...state.history].reverse().slice(0, 30).map((visit: any) => <div key={visit.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · R{visit.round} · {visit.labels.join(" / ")}</strong>
+            <strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · R{visit.round} · {visit.labels.join(" / ")}{visit.voluntaryStop ? ` · ARRÊT ${visit.darts.length}/${visit.maxDarts || state.config.dartsPerTurn}` : ""}</strong>
             <strong style={{ color: visit.score >= 0 ? GREEN : RED }}>{visit.score >= 0 ? "+" : ""}{visit.score}</strong>
           </div>
           <div style={{ color: "#8e95a7", fontSize: 8.2 }}>{visit.events.slice(-3).map((event: any) => event.label).join(" · ") || "Aucun effet"}</div>
