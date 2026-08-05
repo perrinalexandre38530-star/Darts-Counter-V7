@@ -53,7 +53,7 @@ import levelFire2 from "../assets/firefighter_levels/fire2.png";
 import levelCritical from "../assets/firefighter_levels/critical.png";
 import "../styles/darts-firefighter-play.css";
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.1.0-fullmap-territory-panels";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.0.0-flexible-volley-rank";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -116,6 +116,17 @@ function statusIcon(t: FireTerritory) {
   if (t.smoke) return "💨";
   if (t.protection > 0) return "💧";
   return "✓";
+}
+function statusHeadline(t: FireTerritory) {
+  if (t.destroyed) return "TERRITOIRE DÉTRUIT";
+  if (t.fireLevel >= 3) return "INCENDIE CRITIQUE";
+  if (t.fireLevel === 2) return "FOYER IMPORTANT";
+  if (t.fireLevel === 1) return "DÉPART DE FEU";
+  if (t.smoke) return "ALERTE FUMÉE";
+  if (t.protection >= 3) return "PROTECTION MAXIMALE";
+  if (t.protection === 2) return "PROTECTION RENFORCÉE";
+  if (t.protection === 1) return "PROTECTION LÉGÈRE";
+  return "ZONE SAINE";
 }
 function normalizeConfig(props: any): DartsFirefighterConfigPayload {
   const record = props?.params?.rec || props?.params?.record || props?.params?.match || null;
@@ -256,45 +267,86 @@ function TerritorySilhouetteBadge(props: { country: TerritoriesCountry; territor
   );
 }
 
+function AdjacentTerritoryRail({ neighbors, country }: { neighbors: FireTerritory[]; country: TerritoriesCountry }) {
+  if (!neighbors.length) return <div className="dff-adjacent-empty">Aucune zone adjacente menacée actuellement.</div>;
+  const rows = neighbors.length > 2 ? [...neighbors, ...neighbors] : neighbors;
+  return <div className="dff-adjacent-rail" aria-label="Zones adjacentes menacées">
+    <div className={`dff-adjacent-track ${neighbors.length > 2 ? "is-animated" : ""}`}>
+      {rows.map((neighbor, index) => {
+        const color = fireTerritoryColor(fireStatus(neighbor));
+        return <div key={`${neighbor.id}-${index}`} className="dff-adjacent-card" style={{ borderColor: `${color}60` }} aria-hidden={index >= neighbors.length ? true : undefined}>
+          <div className="dff-adjacent-card__top">
+            <div className="dff-adjacent-card__shape"><TerritorySilhouetteBadge country={country} territory={neighbor} color={color} height={38} showValue={false} /></div>
+            <strong style={{ color }}>{neighbor.target}</strong>
+          </div>
+          <span>{neighbor.name}</span>
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
 function TerritoryInsightBody({ territory, state, country, compact = false }: any) {
   const color = fireTerritoryColor(fireStatus(territory));
   const status = statusLabel(territory);
-  const neighbors = territory.neighbors.map((id: string) => state.territories.find((item: FireTerritory) => item.id === id)).filter(Boolean).slice(0, compact ? 6 : 8);
-  const adjacentHot = neighbors.filter((neighbor: FireTerritory) => neighbor.fireLevel > 0 || neighbor.smoke).length;
+  const neighbors = territory.neighbors.map((id: string) => state.territories.find((item: FireTerritory) => item.id === id)).filter(Boolean).slice(0, 10);
+  const threatenedNeighbors = neighbors.filter((neighbor: FireTerritory) => neighbor.fireLevel > 0 || neighbor.smoke || state.forecastTerritoryIds.includes(neighbor.id));
+  const adjacentHot = threatenedNeighbors.length;
   const threatened = state.forecastTerritoryIds.includes(territory.id) || adjacentHot > 0;
   const stageSrc = statusTickerSrc(territory);
   const recommendedAction = territory.destroyed
-    ? "Zone perdue : concentre l’intervention sur les territoires en bordure pour éviter l’embrasement général."
+    ? "Sécurise immédiatement les zones limitrophes pour stopper le front de feu."
     : territory.fireLevel >= 3
-      ? `Urgence absolue : T${territory.target} ou Canadair recommandés pour casser le front de flammes.`
+      ? `Urgence absolue : vise T${territory.target} ou déclenche le Canadair.`
       : territory.fireLevel === 2
-        ? `Foyer établi : vise D${territory.target} ou T${territory.target} pour reprendre la main rapidement.`
+        ? `Foyer établi : vise D${territory.target} ou T${territory.target}.`
         : territory.fireLevel === 1 || territory.smoke
-          ? `Intervention préventive : S${territory.target} suffit, le surplus servira à créer un pare-feu.`
+          ? `Intervention rapide : vise S${territory.target}, puis renforce la protection.`
           : territory.protection > 0
-            ? "Zone refroidie : maintiens la protection si les voisins s’enflamment."
-            : "Zone saine : un tir de confort peut préparer une ligne de défense.";
-  return <div className={`dff-territory-stage ${compact ? "is-compact" : ""}`} style={{ borderColor: `${color}55` }}>
-    <img className="dff-territory-stage__bg" src={stageSrc} alt="" aria-hidden />
-    <div className="dff-territory-stage__shade" />
-    <div className="dff-territory-stage__hero">
-      <div className="dff-territory-stage__shape"><TerritorySilhouetteBadge country={country} territory={territory} color={color} showValue /></div>
-      <div className="dff-territory-stage__meta">
-        <small>TERRITOIRE CIBLÉ</small>
+            ? "Maintiens cette zone protégée tant que les territoires voisins restent sous tension."
+            : "Prépare un pare-feu si la propagation se rapproche de cette zone.";
+  return <div className={`dff-territory-panel ${compact ? "is-compact" : ""}`} style={{ borderColor: `${color}65` }}>
+    <section className="dff-territory-panel__header" style={{ borderColor: `${color}42` }}>
+      <img className="dff-territory-panel__header-bg" src={stageSrc} alt="" aria-hidden />
+      <div className="dff-territory-panel__header-shade" />
+      <div className="dff-territory-panel__shape"><TerritorySilhouetteBadge country={country} territory={territory} color={color} height={compact ? 82 : 96} showValue /></div>
+      <div className="dff-territory-panel__identity">
+        <small>TERRITOIRE SÉLECTIONNÉ</small>
         <strong>{territory.name}</strong>
-        <span style={{ color }}>{status}{territory.critical ? " · CRITIQUE" : ""}</span>
-        <em>{territory.critical ? "Zone critique à défendre en priorité" : `Zone ${territory.target} du périmètre actif`}</em>
+        <span>SECTEUR {territory.target}{territory.critical ? " · ZONE CRITIQUE" : ""}</span>
+        <em>{territory.critical ? "Infrastructure prioritaire à défendre" : "Zone du périmètre opérationnel"}</em>
       </div>
-    </div>
-    <div className={`dff-territory-stage__kpis ${compact ? "is-compact" : ""}`}>
-      <MiniKpi icon="fire" label="FEU" value={`${territory.fireLevel}/3`} hint={territory.fireLevel ? "Intensité du foyer" : "Aucun foyer"} color={FIRE} />
-      <MiniKpi icon="smoke" label="FUMÉE" value={territory.smoke ? "OUI" : "NON"} hint={territory.smoke ? "Risque imminent" : "Alerte absente"} color="#b8c0cd" />
-      <MiniKpi icon="shield" label="PROTECTION" value={`${territory.protection}/3`} hint={territory.protection ? "Pare-feu disponible" : "Aucune défense"} color={WATER} />
-      <MiniKpi icon="warning" label="MENACE" value={threatened ? "ÉLEVÉE" : "STABLE"} hint={threatened ? `${adjacentHot} voisin${adjacentHot > 1 ? "s" : ""} sous tension` : "Aucun front proche"} color={GOLD} />
-      <MiniKpi icon="map" label="ADJACENTS" value={neighbors.length} hint={neighbors.length ? "Territoires au contact" : "Zone isolée"} color={GREEN} />
-    </div>
-    <div className="dff-territory-advice dff-territory-advice--overlay" style={{ borderColor: `${color}45`, background: `${color}0f` }}><OutlineIcon name={territory.fireLevel > 0 ? "fire" : territory.protection > 0 ? "shield" : "target"} size={20} /><div><b>PRIORITÉ TACTIQUE</b><span>{recommendedAction}</span></div></div>
-    {neighbors.length ? <div className="dff-neighbors dff-neighbors--detailed"><b>ZONES ADJACENTES EN CONTACT DIRECT</b><div>{neighbors.map((neighbor: FireTerritory) => <span key={neighbor.id} style={{ borderColor: `${fireTerritoryColor(fireStatus(neighbor))}55` }}>{neighbor.name}</span>)}</div></div> : null}
+    </section>
+
+    <section className="dff-territory-status-banner" style={{ borderColor: `${color}65` }}>
+      <img src={stageSrc} alt="" aria-hidden />
+      <div className="dff-territory-status-banner__shade" />
+      <div className="dff-territory-status-banner__copy">
+        <strong>{statusHeadline(territory)}</strong>
+        <span>{status}{territory.critical ? " · PRIORITÉ ABSOLUE" : ""}</span>
+      </div>
+    </section>
+
+    <section className="dff-territory-operations">
+      <div className="dff-territory-operations__title"><OutlineIcon name="journal" size={17} /><span>INFORMATIONS OPÉRATIONNELLES</span></div>
+      <div className="dff-territory-kpi-grid">
+        <MiniKpi icon="fire" label="FEU" value={`${territory.fireLevel}/3`} hint={territory.fireLevel ? "Intensité" : "Aucun foyer"} color={FIRE} />
+        <MiniKpi icon="smoke" label="FUMÉE" value={territory.smoke ? "OUI" : "NON"} hint={territory.smoke ? "Départ imminent" : "Aucune alerte"} color="#c3cad5" />
+        <MiniKpi icon="shield" label="PROTECTION" value={`${territory.protection}/3`} hint={territory.protection ? "Pare-feu actif" : "Aucune défense"} color={WATER} />
+        <MiniKpi icon="warning" label="MENACE" value={threatened ? "ÉLEVÉE" : "STABLE"} hint={threatened ? `${adjacentHot} zone${adjacentHot > 1 ? "s" : ""} exposée${adjacentHot > 1 ? "s" : ""}` : "Front éloigné"} color={GOLD} />
+        <MiniKpi icon="map" label="ADJACENTS" value={neighbors.length} hint="Contact direct" color={GREEN} />
+      </div>
+    </section>
+
+    <section className="dff-territory-advice dff-territory-advice--clear" style={{ borderColor: `${color}55`, background: `${color}12` }}>
+      <OutlineIcon name={territory.fireLevel > 0 ? "fire" : territory.protection > 0 ? "shield" : "target"} size={22} />
+      <div><b>ACTION CONSEILLÉE</b><span>{recommendedAction}</span></div>
+    </section>
+
+    <section className="dff-adjacent-section">
+      <div className="dff-adjacent-section__title">ZONES ADJACENTES MENACÉES</div>
+      <AdjacentTerritoryRail neighbors={threatenedNeighbors} country={country} />
+    </section>
   </div>;
 }
 
@@ -881,7 +933,7 @@ function OutlineActionButton({ name, label, color, onClick }: any) {
   return <button type="button" className="dff-play__outline-action" onClick={onClick} style={{ color, borderColor: `${color}52`, background: `${color}0c` }} title={label}><OutlineIcon name={name} size={19} /><span>{label}</span></button>;
 }
 
-function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wide = false }: any) {
+function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wide = false, panelClassName = "", bodyClassName = "" }: any) {
   React.useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -890,9 +942,9 @@ function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wid
     return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey); };
   }, [onClose]);
   return <div className="dff-modal" role="dialog" aria-modal="true" onClick={onClose}>
-    <div className={`dff-modal__panel ${wide ? "is-wide" : ""}`} onClick={(event) => event.stopPropagation()} style={{ borderColor: `${accent}66` }}>
+    <div className={`dff-modal__panel ${wide ? "is-wide" : ""} ${panelClassName}`.trim()} onClick={(event) => event.stopPropagation()} style={{ borderColor: `${accent}66` }}>
       <header className="dff-modal__header"><div><div className="dff-modal__title" style={{ color: accent }}>{title}</div>{subtitle ? <div className="dff-modal__subtitle">{subtitle}</div> : null}</div><button type="button" className="dff-modal__close" onClick={onClose} aria-label="Fermer"><OutlineIcon name="close" size={24} /></button></header>
-      <div className="dff-modal__body">{children}</div>
+      <div className={`dff-modal__body ${bodyClassName}`.trim()}>{children}</div>
     </div>
   </div>;
 }
@@ -916,24 +968,19 @@ function TerritoryModal({ territory, state, country, onOpenMap, onClear, onClose
 
 function FirefighterMapModal({ state, country, map, mapLabel, profilesById, activePlayerId, onClose, onSelect }: any) {
   const selected = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
-  const badgeSrc = getTerritoryDepartmentVisual(country, selected) || getMapBadgeAsset(country, selected);
   const countryFlag = getCountryMapFlag(country);
-  const activePlayer = state.players.find((player: any) => String(player?.id) === String(activePlayerId)) || state.players[0] || null;
-  const activeProfile = activePlayer ? (profilesById?.get?.(String(activePlayer.id)) || activePlayer) : null;
   const accent = selected ? fireTerritoryColor(fireStatus(selected)) : FIRE;
-  return <FloatingPanel title="CARTE D’INTERVENTION" subtitle={mapLabel} accent={accent} onClose={onClose} wide>
-    <div className="dff-map-modal">
-      {state.players?.length > 1 ? <div className="dff-map-modal__turns"><FirefighterTurnCarousel players={state.players} activePlayerId={activePlayerId} profilesById={profilesById} playerStats={state.playerStats} /></div> : null}
+  return <FloatingPanel title="CARTE D’INTERVENTION" subtitle={mapLabel} accent={accent} onClose={onClose} wide panelClassName="dff-map-panel" bodyClassName="dff-map-panel__body">
+    <div className={`dff-map-modal ${selected ? "has-territory" : ""}`}>
       <div className="dff-map-modal__viewport-wrap">
-        {countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
-        {selected ? <div className="dff-map-modal__territory-hero" style={{ borderColor: `${accent}55` }}>
-          {badgeSrc ? <div className="dff-map-modal__territory-badge"><img src={badgeSrc} alt="" aria-hidden /></div> : <div className="dff-map-modal__territory-badge is-fallback">{selected.target}</div>}
-          <div className="dff-map-modal__territory-meta"><strong style={{ color: GOLD }}>{selected.target}</strong><span>{selected.name}</span><small style={{ color: accent }}>{statusLabel(selected)}{selected.critical ? " · CRITIQUE" : ""}</small></div>
-          {activeProfile ? <div className="dff-map-modal__territory-avatar"><ProfileAvatar profile={activeProfile as any} size={54} ringColor={accent} showStars={false} noFrame /></div> : null}
+        {!selected && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
+        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !selected} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} style={{ width: "100%", height: "100%" }} /></div>
+        {selected ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${selected.name}`}>
+          <TerritoryInsightBody territory={selected} state={state} country={country} compact />
+          <button type="button" className="dff-map-clear dff-map-clear--overlay" onClick={() => onSelect(selected.id)}><OutlineIcon name="close" size={18} /> DÉSÉLECTIONNER</button>
         </div> : null}
-        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} style={{ width: "100%", height: "100%" }} /></div>
       </div>
-      <div className={`dff-map-modal__footer ${selected ? "has-selection" : ""}`}>{selected ? <><div className="dff-map-selected-wrap"><TerritoryInsightBody territory={selected} state={state} country={country} compact /></div><button type="button" className="dff-map-clear" onClick={() => onSelect(selected.id)}><OutlineIcon name="close" size={18} /> DÉSÉLECTIONNER</button></> : <div className="dff-map-hint">Touchez une zone pour la sélectionner. Touchez-la une seconde fois pour la désélectionner.</div>}</div>
+      {!selected ? <div className="dff-map-modal__footer"><div className="dff-map-hint">Touchez une zone pour afficher sa fiche d’intervention. Pincez ou utilisez les boutons pour zoomer.</div></div> : null}
     </div>
   </FloatingPanel>;
 }

@@ -390,3 +390,408 @@
   .dff-map-clear { width: 100%; }
   .dff-territory-stage__kpis,.dff-territory-stage__kpis.is-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.2 — fiche territoire compacte au-dessus de la carte
+   ============================================================= */
+.dff-map-panel {
+  width: min(700px, 100%);
+  height: min(94dvh, 860px) !important;
+  max-height: 94dvh;
+}
+.dff-map-panel__body {
+  overflow: hidden !important;
+  padding: 7px !important;
+}
+.dff-map-modal {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0,1fr) auto;
+  gap: 7px;
+}
+.dff-map-modal.has-territory {
+  grid-template-rows: minmax(0,1fr);
+}
+.dff-map-modal__viewport-wrap {
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 15px;
+  isolation: isolate;
+}
+.dff-map-modal__viewport {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+}
+.dff-map-territory-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.dff-map-territory-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(0,0,0,.58);
+  backdrop-filter: blur(4px);
+}
+
+.dff-territory-panel {
+  width: min(570px,100%);
+  max-height: calc(100% - 48px);
+  overflow: hidden;
+  padding: 7px;
+  border: 1px solid;
+  border-radius: 17px;
+  background: linear-gradient(180deg,rgba(7,11,17,.99),rgba(2,5,9,.99));
+  box-shadow: 0 18px 55px rgba(0,0,0,.78), inset 0 0 0 1px rgba(255,255,255,.035);
+  display: grid;
+  gap: 7px;
+}
+.dff-territory-panel__header {
+  position: relative;
+  min-height: 106px;
+  overflow: hidden;
+  padding: 8px 10px;
+  border: 1px solid;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 94px minmax(0,1fr);
+  gap: 10px;
+  align-items: center;
+  background: #080c12;
+}
+.dff-territory-panel__header-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .30;
+  pointer-events: none;
+}
+.dff-territory-panel__header-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,rgba(2,5,9,.42),rgba(2,5,9,.78) 46%,rgba(2,5,9,.94));
+  pointer-events: none;
+}
+.dff-territory-panel__shape,
+.dff-territory-panel__identity {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.dff-territory-panel__shape {
+  display: grid;
+  place-items: center;
+}
+.dff-territory-panel__identity {
+  display: grid;
+  gap: 3px;
+}
+.dff-territory-panel__identity small {
+  color: #9ca7b8;
+  font-size: 6.8px;
+  font-weight: 1100;
+  letter-spacing: .75px;
+}
+.dff-territory-panel__identity strong {
+  color: #fff;
+  font-size: 17px;
+  line-height: 1.05;
+  font-weight: 1100;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 2px 10px rgba(0,0,0,.9);
+}
+.dff-territory-panel__identity span {
+  color: #ffd76a;
+  font-size: 8.2px;
+  font-weight: 1100;
+  letter-spacing: .35px;
+}
+.dff-territory-panel__identity em {
+  color: #c5ccd7;
+  font-size: 7.5px;
+  line-height: 1.25;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.dff-territory-status-banner {
+  position: relative;
+  min-height: 55px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 13px;
+  background: #05080c;
+}
+.dff-territory-status-banner > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  pointer-events: none;
+}
+.dff-territory-status-banner__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,rgba(0,0,0,.58),rgba(0,0,0,.22) 50%,rgba(0,0,0,.58));
+}
+.dff-territory-status-banner__copy {
+  position: relative;
+  z-index: 1;
+  min-height: 55px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 5px 12px;
+  text-shadow: 0 2px 10px rgba(0,0,0,.95);
+}
+.dff-territory-status-banner__copy strong {
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.05;
+  font-weight: 1200;
+  letter-spacing: .75px;
+}
+.dff-territory-status-banner__copy span {
+  margin-top: 3px;
+  color: rgba(255,255,255,.86);
+  font-size: 7px;
+  font-weight: 1000;
+  letter-spacing: .5px;
+}
+
+.dff-territory-operations {
+  padding: 7px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.075);
+  background: rgba(255,255,255,.022);
+}
+.dff-territory-operations__title {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #dce3ed;
+  font-size: 7px;
+  font-weight: 1100;
+  letter-spacing: .55px;
+}
+.dff-territory-operations__title svg { color: #25c9ff; }
+.dff-territory-kpi-grid {
+  margin-top: 5px;
+  display: grid;
+  grid-template-columns: repeat(6,minmax(0,1fr));
+  gap: 5px;
+}
+.dff-territory-kpi-grid > .dff-mini-kpi:nth-child(1),
+.dff-territory-kpi-grid > .dff-mini-kpi:nth-child(2) { grid-column: span 3; }
+.dff-territory-kpi-grid > .dff-mini-kpi:nth-child(3),
+.dff-territory-kpi-grid > .dff-mini-kpi:nth-child(4),
+.dff-territory-kpi-grid > .dff-mini-kpi:nth-child(5) { grid-column: span 2; }
+.dff-territory-kpi-grid .dff-mini-kpi,
+.dff-territory-kpi-grid .dff-mini-kpi.is-detailed {
+  min-height: 61px;
+  padding: 5px 3px;
+  border-radius: 11px;
+  justify-content: center;
+}
+.dff-territory-kpi-grid .dff-mini-kpi__icon {
+  min-height: 15px;
+}
+.dff-territory-kpi-grid .dff-mini-kpi__icon svg {
+  width: 15px;
+  height: 15px;
+}
+.dff-territory-kpi-grid .dff-mini-kpi strong {
+  margin-top: 2px;
+  font-size: 13px;
+}
+.dff-territory-kpi-grid .dff-mini-kpi .dff-mini-kpi__label {
+  margin-top: 3px;
+  font-size: 5.8px;
+}
+.dff-territory-kpi-grid .dff-mini-kpi small {
+  margin-top: 2px;
+  font-size: 5.3px;
+  line-height: 1.1;
+}
+
+.dff-territory-advice--clear {
+  margin-top: 0;
+  min-height: 52px;
+  padding: 8px 10px;
+  grid-template-columns: 28px minmax(0,1fr);
+  gap: 9px;
+}
+.dff-territory-advice--clear b {
+  font-size: 7.4px;
+  letter-spacing: .55px;
+}
+.dff-territory-advice--clear span {
+  margin-top: 3px;
+  color: #eef2f7;
+  font-size: 8.4px;
+  line-height: 1.3;
+  font-weight: 950;
+}
+
+.dff-adjacent-section {
+  min-width: 0;
+  padding: 3px 1px 1px;
+}
+.dff-adjacent-section__title {
+  color: #aab3c2;
+  font-size: 6.7px;
+  font-weight: 1100;
+  letter-spacing: .55px;
+}
+.dff-adjacent-rail {
+  width: 100%;
+  margin-top: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+.dff-adjacent-rail::-webkit-scrollbar { display: none; }
+.dff-adjacent-track {
+  width: max-content;
+  display: flex;
+  gap: 6px;
+  will-change: transform;
+}
+.dff-adjacent-track.is-animated {
+  animation: dff-adjacent-marquee 24s linear infinite;
+}
+.dff-adjacent-rail:hover .dff-adjacent-track,
+.dff-adjacent-rail:active .dff-adjacent-track,
+.dff-adjacent-rail:focus-within .dff-adjacent-track {
+  animation-play-state: paused;
+}
+.dff-adjacent-card {
+  flex: 0 0 112px;
+  min-width: 112px;
+  height: 62px;
+  padding: 5px 6px;
+  border: 1px solid;
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+  display: grid;
+  grid-template-rows: 39px minmax(0,1fr);
+  gap: 2px;
+}
+.dff-adjacent-card__top {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 54px minmax(0,1fr);
+  gap: 3px;
+  align-items: center;
+}
+.dff-adjacent-card__shape {
+  min-width: 0;
+  height: 38px;
+  overflow: hidden;
+}
+.dff-adjacent-card__top strong {
+  font-size: 19px;
+  line-height: 1;
+  font-weight: 1200;
+  text-align: center;
+  text-shadow: 0 0 10px rgba(255,255,255,.12);
+}
+.dff-adjacent-card > span {
+  color: #edf1f7;
+  font-size: 6.8px;
+  line-height: 1.1;
+  font-weight: 950;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.dff-adjacent-empty {
+  min-height: 34px;
+  margin-top: 5px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(92,230,168,.30);
+  border-radius: 10px;
+  color: #8fc8ae;
+  font-size: 7.2px;
+  font-weight: 900;
+}
+@keyframes dff-adjacent-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-50% - 3px)); }
+}
+
+.dff-map-clear--overlay {
+  position: relative;
+  z-index: 1;
+  width: min(570px,100%);
+  min-height: 39px;
+  margin: 0 auto;
+  background: rgba(7,10,15,.96);
+  box-shadow: 0 10px 26px rgba(0,0,0,.5);
+}
+
+@media (max-width: 520px) {
+  .dff-map-panel {
+    height: 96dvh !important;
+    max-height: 96dvh;
+  }
+  .dff-map-panel__body { padding: 5px !important; }
+  .dff-map-territory-overlay { padding: 5px; gap: 5px; }
+  .dff-territory-panel { padding: 5px; gap: 5px; border-radius: 15px; }
+  .dff-territory-panel__header { min-height: 94px; grid-template-columns: 82px minmax(0,1fr); padding: 6px 8px; gap: 8px; }
+  .dff-territory-panel__identity strong { font-size: 15px; }
+  .dff-territory-status-banner,.dff-territory-status-banner__copy { min-height: 50px; }
+  .dff-territory-status-banner__copy strong { font-size: 11.5px; }
+  .dff-territory-operations { padding: 5px; }
+  .dff-territory-kpi-grid { gap: 4px; }
+  .dff-territory-kpi-grid .dff-mini-kpi,
+  .dff-territory-kpi-grid .dff-mini-kpi.is-detailed { min-height: 56px; }
+  .dff-territory-advice--clear { min-height: 48px; padding: 7px 8px; }
+  .dff-territory-advice--clear span { font-size: 7.8px; }
+  .dff-adjacent-card { flex-basis: 103px; min-width: 103px; height: 58px; }
+}
+
+@media (max-height: 720px) and (max-width: 560px) {
+  .dff-modal__header { min-height: 47px; padding-top: 5px; padding-bottom: 5px; }
+  .dff-modal__close { width: 34px; height: 34px; }
+  .dff-territory-panel__header { min-height: 78px; grid-template-columns: 70px minmax(0,1fr); }
+  .dff-territory-panel__identity small,
+  .dff-territory-panel__identity em { display: none; }
+  .dff-territory-status-banner,.dff-territory-status-banner__copy { min-height: 43px; }
+  .dff-territory-operations__title { display: none; }
+  .dff-territory-kpi-grid { margin-top: 0; }
+  .dff-territory-kpi-grid .dff-mini-kpi,
+  .dff-territory-kpi-grid .dff-mini-kpi.is-detailed { min-height: 48px; }
+  .dff-territory-kpi-grid .dff-mini-kpi small { display: none; }
+  .dff-territory-advice--clear { min-height: 43px; }
+  .dff-adjacent-section__title { display: none; }
+  .dff-adjacent-card { height: 50px; grid-template-rows: 32px minmax(0,1fr); }
+  .dff-adjacent-card__shape { height: 31px; }
+  .dff-map-clear--overlay { min-height: 35px; }
+}
