@@ -981,6 +981,12 @@ export function decodeCompactMatch(compact: any): DecodedCompactMatch | null {
         alias("bulls", "bulls");
         alias("dbulls", "dbulls");
         alias("misses", "mis", "misses");
+        alias("successfulVisits", "successfulvisits");
+        alias("perfectVisits", "perfectvisits");
+        alias("multiHitVisits", "multihitvisits");
+        alias("bestVisitHits", "bestvisithits");
+        alias("currentHitStreak", "currenthitstreak");
+        alias("bestHitStreak", "besthitstreak");
       }
       if (compact.m === "cargo") {
         const n = ps.n || {};

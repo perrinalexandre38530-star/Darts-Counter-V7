@@ -23,7 +23,7 @@ assert.equal(png.readUInt32BE(16), 800, "ticker OCEAN CONTROL: largeur attendue 
 assert.equal(png.readUInt32BE(20), 230, "ticker OCEAN CONTROL: hauteur attendue 230");
 
 const engine = read("src/lib/gameEngines/oceanControlEngine.ts");
-for (const token of ["classic", "tactical", "recruit", "captain", "admiral", "automatic", "manual", "teams", "playOceanControlVisit", "placeOceanControlShip", "pickOceanControlBotDarts", "buildOceanControlMatchStats", "resolveSonar", "resolvePrecisionStrike"]) {
+for (const token of ["classic", "tactical", "recruit", "captain", "admiral", "automatic", "manual", "teams", "playOceanControlVisit", "placeOceanControlShip", "pickOceanControlBotDarts", "buildOceanControlMatchStats", "resolveSonar", "resolvePrecisionStrike", "sonarScans", "battleHistory", "bestHitStreak", "perfectVisits", "oceanControlLatestSonarScan"]) {
   assert.ok(engine.includes(token), `moteur OCEAN CONTROL incomplet: ${token}`);
 }
 
@@ -33,7 +33,7 @@ for (const token of ["CONFIGURATION GUIDÉE", "CONFIGURATION COMPLÈTE", "LANCER
 }
 
 const play = read("src/pages/OceanControlPlay.tsx");
-for (const token of ["OceanControlEnd", "History as any).upsert(buildHistoryRecord(\"in_progress\")", "onFinish?.(buildHistoryRecord(\"finished\"), { navigate: false })", "Keypad", "DartboardClickable", "GRILLE ENNEMIE", "MA FLOTTE", "JOURNAL DE BORD", "selectOceanControlTarget"]) {
+for (const token of ["OceanControlEnd", "History as any).upsert(buildHistoryRecord(\"in_progress\")", "onFinish?.(buildHistoryRecord(\"finished\"), { navigate: false })", "Keypad", "DartboardClickable", "GRILLE ENNEMIE", "MA FLOTTE", "JOURNAL DE BORD", "selectOceanControlTarget", "CENTRE TACTIQUE", "ImpactFeedback", "HISTORIQUE SONAR", "oceanControlLatestSonarScan"]) {
   assert.ok(play.includes(token), `écran Play OCEAN CONTROL incomplet: ${token}`);
 }
 

@@ -80,8 +80,40 @@ export type OceanControlPlayerStats = {
   dbulls: number;
   misses: number;
   wins: number;
+  successfulVisits: number;
+  perfectVisits: number;
+  multiHitVisits: number;
+  bestVisitHits: number;
+  currentHitStreak: number;
+  bestHitStreak: number;
   hitsBySegment: Record<string, number>;
   shotsBySegment: Record<string, number>;
+};
+
+export type OceanControlSonarScan = {
+  id: string;
+  battle: number;
+  visit: number;
+  playerId: string;
+  targetOwnerId: string;
+  focusNumber: number;
+  centerCell: number;
+  cells: number[];
+  contactCount: number;
+  createdAt: number;
+};
+
+export type OceanControlBattleResult = {
+  battle: number;
+  winnerOwnerId: string;
+  winnerPlayerId: string;
+  scoreByOwner: Record<string, number>;
+  visits: number;
+  darts: number;
+  hits: number;
+  shipsSunk: number;
+  durationMs: number;
+  finishedAt: number;
 };
 
 export type OceanControlEvent = {
@@ -94,6 +126,7 @@ export type OceanControlEvent = {
   shipId?: string;
   shipName?: string;
   contactCount?: number;
+  scanCells?: number[];
 };
 
 export type OceanControlVisit = {
@@ -125,11 +158,14 @@ export type OceanControlState = {
   scoreByOwner: Record<string, number>;
   statsByPlayer: Record<string, OceanControlPlayerStats>;
   visits: OceanControlVisit[];
+  sonarScans: OceanControlSonarScan[];
+  battleHistory: OceanControlBattleResult[];
   phase: OceanControlPhase;
   placementOwnerIndex: number;
   winnerOwnerIds: string[];
   winnerPlayerIds: string[];
   startedAt: number;
+  battleStartedAt: number;
   finishedAt: number | null;
 };
 
@@ -238,8 +274,22 @@ function emptyStats(): OceanControlPlayerStats {
     darts: 0, visits: 0, validShots: 0, duplicateShots: 0, waterShots: 0, shipHits: 0, shipsSunk: 0,
     sonarUses: 0, sonarContacts: 0, precisionStrikes: 0, cellsAffected: 0,
     singles: 0, doubles: 0, triples: 0, bulls: 0, dbulls: 0, misses: 0, wins: 0,
+    successfulVisits: 0, perfectVisits: 0, multiHitVisits: 0, bestVisitHits: 0,
+    currentHitStreak: 0, bestHitStreak: 0,
     hitsBySegment: {}, shotsBySegment: {},
   };
+}
+
+function normalizePlayerStats(raw: Partial<OceanControlPlayerStats> | null | undefined): OceanControlPlayerStats {
+  const base = emptyStats();
+  const out = { ...base, ...(raw || {}) } as OceanControlPlayerStats;
+  out.hitsBySegment = raw?.hitsBySegment && typeof raw.hitsBySegment === "object" ? { ...raw.hitsBySegment } : {};
+  out.shotsBySegment = raw?.shotsBySegment && typeof raw.shotsBySegment === "object" ? { ...raw.shotsBySegment } : {};
+  for (const key of Object.keys(base) as Array<keyof OceanControlPlayerStats>) {
+    if (key === "hitsBySegment" || key === "shotsBySegment") continue;
+    (out as any)[key] = Number.isFinite(Number((out as any)[key])) ? Number((out as any)[key]) : 0;
+  }
+  return out;
 }
 
 function ownerDefinitions(players: Player[], config: OceanControlConfigPayload) {
@@ -297,6 +347,8 @@ function rebuildBattle(state: OceanControlState, rng: () => number): OceanContro
   }));
   state.phase = state.config.placement === "manual" ? "placement" : "playing";
   state.placementOwnerIndex = 0;
+  state.sonarScans = [];
+  state.battleStartedAt = Date.now();
   state.targetOwnerId = defaultTargetOwnerId(state, state.players[state.activePlayerIndex]?.id);
   state.focusNumber = state.gridNumbers[0] || 1;
   return state;
@@ -316,15 +368,20 @@ export function createOceanControlState(playersInput: Player[], configInput: Oce
   const state: OceanControlState = {
     mode: "ocean_control", config, players: orderedPlayers, owners, playerOwnerId, gridNumbers,
     activePlayerIndex: 0, targetOwnerId: null, focusNumber: gridNumbers[0] || 1,
-    battleNumber: 1, roundIndex: 1, visitIndex: 0, scoreByOwner, statsByPlayer, visits: [],
+    battleNumber: 1, roundIndex: 1, visitIndex: 0, scoreByOwner, statsByPlayer, visits: [], sonarScans: [], battleHistory: [],
     phase: config.placement === "manual" ? "placement" : "playing", placementOwnerIndex: 0,
-    winnerOwnerIds: [], winnerPlayerIds: [], startedAt: Date.now(), finishedAt: null,
+    winnerOwnerIds: [], winnerPlayerIds: [], startedAt: Date.now(), battleStartedAt: Date.now(), finishedAt: null,
   };
   return rebuildBattle(state, rng);
 }
 
 export function cloneOceanControlState(state: OceanControlState): OceanControlState {
-  return JSON.parse(JSON.stringify(state));
+  const cloned = JSON.parse(JSON.stringify(state)) as OceanControlState;
+  cloned.sonarScans = Array.isArray(cloned.sonarScans) ? cloned.sonarScans : [];
+  cloned.battleHistory = Array.isArray(cloned.battleHistory) ? cloned.battleHistory : [];
+  cloned.battleStartedAt = Number(cloned.battleStartedAt || cloned.startedAt || Date.now());
+  cloned.statsByPlayer = Object.fromEntries(Object.entries(cloned.statsByPlayer || {}).map(([id, stats]) => [id, normalizePlayerStats(stats)]));
+  return cloned;
 }
 
 export function getOceanActivePlayer(state: OceanControlState): Player | null {
@@ -463,13 +520,14 @@ function recordDartType(stats: OceanControlPlayerStats, dart: GameDart) {
 }
 
 function attackCell(state: OceanControlState, owner: OceanControlFleetOwner, cell: number, playerId: string, events: OceanControlEvent[]) {
-  const stats = state.statsByPlayer[playerId];
+  const stats = state.statsByPlayer[playerId] || (state.statsByPlayer[playerId] = normalizePlayerStats(null));
   if (cell < 0 || cell >= 20) return;
   const number = numberForCell(state, cell);
   stats.cellsAffected += 1;
   stats.shotsBySegment[String(number)] = (stats.shotsBySegment[String(number)] || 0) + 1;
   if (owner.attackedCells[String(cell)]) {
     stats.duplicateShots += 1;
+    stats.currentHitStreak = 0;
     events.push({ type: "duplicate", label: `${number} déjà contrôlé`, playerId, targetOwnerId: owner.id, number, cell });
     return;
   }
@@ -478,12 +536,15 @@ function attackCell(state: OceanControlState, owner: OceanControlFleetOwner, cel
   if (!ship) {
     owner.attackedCells[String(cell)] = "miss";
     stats.waterShots += 1;
+    stats.currentHitStreak = 0;
     events.push({ type: "water", label: `${number} · À L’EAU`, playerId, targetOwnerId: owner.id, number, cell });
     return;
   }
   owner.attackedCells[String(cell)] = "hit";
   if (!ship.hits.includes(cell)) ship.hits.push(cell);
   stats.shipHits += 1;
+  stats.currentHitStreak += 1;
+  stats.bestHitStreak = Math.max(stats.bestHitStreak, stats.currentHitStreak);
   stats.hitsBySegment[String(number)] = (stats.hitsBySegment[String(number)] || 0) + 1;
   const wasSunk = ship.sunk;
   markShipSunk(owner, ship);
@@ -497,7 +558,7 @@ function attackCell(state: OceanControlState, owner: OceanControlFleetOwner, cel
 }
 
 function resolveSonar(state: OceanControlState, owner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[]) {
-  const stats = state.statsByPlayer[playerId];
+  const stats = state.statsByPlayer[playerId] || (state.statsByPlayer[playerId] = normalizePlayerStats(null));
   stats.sonarUses += 1;
   const focusNumber = state.focusNumber && state.gridNumbers.includes(state.focusNumber) ? state.focusNumber : state.gridNumbers.find((number) => !owner.attackedCells[String(cellForNumber(state, number))]) || state.gridNumbers[0];
   const focusCell = cellForNumber(state, Number(focusNumber));
@@ -507,11 +568,24 @@ function resolveSonar(state: OceanControlState, owner: OceanControlFleetOwner, p
     return Boolean(ship && !ship.hits.includes(cell));
   }).length;
   stats.sonarContacts += contacts;
-  events.push({ type: "sonar", label: contacts ? `SONAR ${focusNumber} · ${contacts} contact${contacts > 1 ? "s" : ""}` : `SONAR ${focusNumber} · ZONE CLAIRE`, playerId, targetOwnerId: owner.id, number: Number(focusNumber), cell: focusCell, contactCount: contacts });
+  const scan: OceanControlSonarScan = {
+    id: `sonar-${state.battleNumber}-${state.visitIndex + 1}-${Date.now()}`,
+    battle: state.battleNumber,
+    visit: state.visitIndex + 1,
+    playerId,
+    targetOwnerId: owner.id,
+    focusNumber: Number(focusNumber),
+    centerCell: focusCell,
+    cells: area,
+    contactCount: contacts,
+    createdAt: Date.now(),
+  };
+  state.sonarScans = [...(state.sonarScans || []), scan].slice(-24);
+  events.push({ type: "sonar", label: contacts ? `SONAR ${focusNumber} · ${contacts} contact${contacts > 1 ? "s" : ""}` : `SONAR ${focusNumber} · ZONE CLAIRE`, playerId, targetOwnerId: owner.id, number: Number(focusNumber), cell: focusCell, contactCount: contacts, scanCells: area });
 }
 
 function resolvePrecisionStrike(state: OceanControlState, owner: OceanControlFleetOwner, playerId: string, events: OceanControlEvent[]) {
-  const stats = state.statsByPlayer[playerId];
+  const stats = state.statsByPlayer[playerId] || (state.statsByPlayer[playerId] = normalizePlayerStats(null));
   stats.precisionStrikes += 1;
   let cell = state.focusNumber ? cellForNumber(state, state.focusNumber) : -1;
   if (cell < 0 || owner.attackedCells[String(cell)]) {
@@ -531,9 +605,24 @@ function completeBattle(state: OceanControlState, winningOwner: OceanControlFlee
   state.scoreByOwner[winningOwner.id] = (state.scoreByOwner[winningOwner.id] || 0) + 1;
   state.statsByPlayer[playerId].wins += 1;
   events.push({ type: "battle_win", label: `${winningOwner.name.toUpperCase()} CONTRÔLE L’OCÉAN`, playerId, targetOwnerId: winningOwner.id });
+  const battleVisits = state.visits.filter((visit) => visit.battle === state.battleNumber);
+  const battleEvents = battleVisits.flatMap((visit) => visit.events || []);
+  const finishedAt = Date.now();
+  state.battleHistory = [...(state.battleHistory || []), {
+    battle: state.battleNumber,
+    winnerOwnerId: winningOwner.id,
+    winnerPlayerId: playerId,
+    scoreByOwner: { ...state.scoreByOwner },
+    visits: battleVisits.length,
+    darts: battleVisits.reduce((sum, visit) => sum + (visit.darts?.length || 0), 0),
+    hits: battleEvents.filter((event) => event.type === "hit" || event.type === "sunk").length,
+    shipsSunk: battleEvents.filter((event) => event.type === "sunk").length,
+    durationMs: Math.max(0, finishedAt - Number(state.battleStartedAt || state.startedAt || finishedAt)),
+    finishedAt,
+  }];
   if (state.scoreByOwner[winningOwner.id] >= state.config.winsNeeded) {
     state.phase = "finished";
-    state.finishedAt = Date.now();
+    state.finishedAt = finishedAt;
     state.winnerOwnerIds = [winningOwner.id];
     state.winnerPlayerIds = [...winningOwner.memberIds];
     return;
@@ -567,13 +656,14 @@ export function playOceanControlVisit(stateInput: OceanControlState, dartsInput:
   const owner = getOceanTargetOwner(state);
   if (!owner) return state;
   const darts = (dartsInput || []).slice(0, state.config.dartsPerTurn);
-  const stats = state.statsByPlayer[player.id] || (state.statsByPlayer[player.id] = emptyStats());
+  const stats = state.statsByPlayer[player.id] = normalizePlayerStats(state.statsByPlayer[player.id]);
   const events: OceanControlEvent[] = [];
   const labels = darts.map(labelDart);
   stats.visits += 1;
   for (const dart of darts) {
     recordDartType(stats, dart);
     if (dart.bed === "MISS") {
+      stats.currentHitStreak = 0;
       events.push({ type: "miss", label: "MISS · TIR PERDU", playerId: player.id, targetOwnerId: owner.id });
       continue;
     }
@@ -599,6 +689,12 @@ export function playOceanControlVisit(stateInput: OceanControlState, dartsInput:
     if (owner.eliminated) break;
   }
   state.visitIndex += 1;
+  const visitHits = events.filter((event) => event.type === "hit" || event.type === "sunk").length;
+  const visitFailures = events.filter((event) => event.type === "water" || event.type === "duplicate" || event.type === "miss").length;
+  if (visitHits > 0) stats.successfulVisits += 1;
+  if (visitHits > 1) stats.multiHitVisits += 1;
+  if (visitHits > 0 && visitFailures === 0) stats.perfectVisits += 1;
+  stats.bestVisitHits = Math.max(stats.bestVisitHits, visitHits);
   state.visits.push({ id: `ocean-visit-${state.battleNumber}-${state.visitIndex}-${Date.now()}`, battle: state.battleNumber, round: state.roundIndex, visit: state.visitIndex, playerId: player.id, targetOwnerId: owner.id, darts, labels, events, createdAt: Date.now() });
 
   if (owner.eliminated || activeOwnerCount(state) <= 1) {
@@ -632,6 +728,12 @@ export function oceanControlTacticalHint(state: OceanControlState): string {
   }
   const unknownNumber = state.gridNumbers.find((number) => !target.attackedCells[String(cellForNumber(state, number))]);
   return unknownNumber ? `Balaye la zone ${unknownNumber} ou utilise le Bull pour le sonar.` : "Toutes les zones ont été contrôlées.";
+}
+
+export function oceanControlLatestSonarScan(state: OceanControlState, ownerId?: string | null): OceanControlSonarScan | null {
+  const scans = Array.isArray(state?.sonarScans) ? state.sonarScans : [];
+  const filtered = ownerId ? scans.filter((scan) => scan.targetOwnerId === ownerId) : scans;
+  return filtered.length ? filtered[filtered.length - 1] : null;
 }
 
 function targetCandidates(state: OceanControlState, owner: OceanControlFleetOwner): number[] {
@@ -677,6 +779,13 @@ export function buildOceanControlMatchStats(state: OceanControlState) {
     shipsSunk: rows.reduce((sum, row) => sum + Number(row.shipsSunk || 0), 0),
     sonarUses: rows.reduce((sum, row) => sum + Number(row.sonarUses || 0), 0),
     precisionStrikes: rows.reduce((sum, row) => sum + Number(row.precisionStrikes || 0), 0),
+    successfulVisits: rows.reduce((sum, row) => sum + Number(row.successfulVisits || 0), 0),
+    perfectVisits: rows.reduce((sum, row) => sum + Number(row.perfectVisits || 0), 0),
+    multiHitVisits: rows.reduce((sum, row) => sum + Number(row.multiHitVisits || 0), 0),
+    bestHitStreak: rows.reduce((best, row) => Math.max(best, Number(row.bestHitStreak || 0)), 0),
+    bestVisitHits: rows.reduce((best, row) => Math.max(best, Number(row.bestVisitHits || 0)), 0),
+    sonarScans: state.sonarScans?.length || 0,
+    battleHistory: state.battleHistory || [],
     visits: state.visits.length,
   };
 }

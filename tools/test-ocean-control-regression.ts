@@ -8,6 +8,7 @@ import {
   getOceanTargetOwner,
   normalizeOceanControlConfig,
   oceanControlAccuracy,
+  oceanControlLatestSonarScan,
   placeOceanControlShip,
   playOceanControlVisit,
   selectOceanControlFocus,
@@ -66,6 +67,9 @@ sonar = playOceanControlVisit(sonar, [{ bed: "OB" }] as any);
 assert.equal(sonar.statsByPlayer.p1.sonarUses, 1);
 assert.ok(sonar.statsByPlayer.p1.sonarContacts >= 1);
 assert.ok(sonar.visits[0].events.some((event) => event.type === "sonar"));
+assert.equal(sonar.sonarScans.length, 1);
+assert.equal(oceanControlLatestSonarScan(sonar, sonarTarget.id)?.focusNumber, sonar.gridNumbers[sonarCell]);
+assert.ok((oceanControlLatestSonarScan(sonar, sonarTarget.id)?.cells.length || 0) >= 3);
 
 // Double Bull : frappe de précision sur le focus.
 let strike = createOceanControlState(players, baseConfig, () => 0.53);
@@ -97,11 +101,18 @@ assert.equal(finalShot.phase, "finished");
 assert.deepEqual(finalShot.winnerPlayerIds, ["p1"]);
 assert.equal(finalShot.statsByPlayer.p1.shipsSunk, 1);
 assert.ok(finalShot.visits[0].events.some((event) => event.type === "battle_win"));
+assert.equal(finalShot.battleHistory.length, 1);
+assert.equal(finalShot.battleHistory[0].winnerOwnerId, finalShot.winnerOwnerIds[0]);
+assert.equal(finalShot.statsByPlayer.p1.successfulVisits, 1);
+assert.equal(finalShot.statsByPlayer.p1.perfectVisits, 1);
+assert.equal(finalShot.statsByPlayer.p1.bestHitStreak, 1);
 
 // Statistiques match + codec compact : la reprise doit préserver toute la flotte et les volées.
 const stats = buildOceanControlMatchStats(strike);
 assert.equal(stats.totalDarts, 1);
 assert.equal(stats.totalHits, 1);
+assert.equal(stats.successfulVisits, 1);
+assert.equal(stats.bestHitStreak, 1);
 const rows = strike.players.map((player) => ({ id: player.id, playerId: player.id, name: player.name, ...strike.statsByPlayer[player.id] }));
 const record: any = {
   id: "ocean-test",
@@ -132,5 +143,7 @@ assert.equal(decoded?.stateSnapshot?.mode, "ocean_control");
 assert.equal(decoded?.visits?.length, 1);
 assert.equal(decoded?.stats?.mode, "ocean_control");
 assert.equal(decoded?.players?.[0]?.precisionStrikes, 1);
+assert.equal(decoded?.players?.[0]?.successfulVisits, 1);
+assert.equal(decoded?.players?.[0]?.bestHitStreak, 1);
 
 console.log("✅ OCEAN CONTROL REGRESSION OK");
