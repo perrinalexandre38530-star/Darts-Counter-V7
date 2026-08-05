@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import {
+  buildCargoMatchStats,
+  cargoEventPresentation,
   cloneCargoState,
+  computeCargoMissionGrade,
   createCargoState,
   normalizeCargoConfig,
   playCargoVisit,
@@ -40,6 +43,16 @@ while ((classic.statsByPlayer.p1.completedContracts || 0) === 0) {
 assert.ok(classic.statsByPlayer.p1.completedContracts >= 1, "le contrat doit être terminé");
 assert.ok(classic.statsByPlayer.p1.totalWeight >= contract.finalWeight, "le poids du contrat doit être chargé");
 assert.ok(!classic.contracts.some((c) => c.id === contract.id), "le contrat terminé doit être remplacé");
+const classicStats = buildCargoMatchStats(classic);
+assert.equal(classicStats.statisticsVersion, 2);
+assert.ok(classicStats.totalVisits >= 1);
+assert.ok(classicStats.bestPalletWeight >= contract.finalWeight);
+const grade = computeCargoMissionGrade(classic, "p1");
+assert.ok(["S", "A", "B", "C", "D"].includes(grade.grade));
+assert.ok(grade.rating >= 0 && grade.rating <= 100);
+const completionEvent = classic.visits.flatMap((visit) => visit.events).find((event) => event.type === "contract_complete");
+assert.ok(completionEvent, "un événement de contrat terminé doit être enregistré");
+assert.equal(cargoEventPresentation(completionEvent).title, "CONTRAT CHARGÉ");
 
 // Exact Load : une palette qui dépasse la capacité est rejetée.
 let exact = createCargoState(players as any, normalizeCargoConfig({ variant: "exact_load", rounds: 3, truckCapacity: 100, targetWeight: 100, overloadRule: "reject_last", dbullRule: "weight" } as any));

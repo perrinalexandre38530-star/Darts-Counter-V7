@@ -1038,23 +1038,129 @@ export function pickCargoBotDarts(state: CargoState): GameDart[] {
   });
 }
 
+export type CargoMissionGrade = {
+  grade: "S" | "A" | "B" | "C" | "D";
+  label: string;
+  rating: number;
+  precision: number;
+  completion: number;
+  safety: number;
+  efficiency: number;
+};
+
+export type CargoEventPresentation = {
+  icon: string;
+  title: string;
+  color: string;
+  priority: number;
+};
+
+function cargoPercent(part: number, total: number): number {
+  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
+}
+
+export function cargoEventPresentation(event: CargoVisitEvent | null | undefined): CargoEventPresentation {
+  switch (event?.type) {
+    case "perfect_load": return { icon: "★", title: "CHARGEMENT PARFAIT", color: "#f6c256", priority: 5 };
+    case "contract_complete": return { icon: "▣", title: "CONTRAT CHARGÉ", color: "#62e6a7", priority: 4 };
+    case "free_load_complete": return { icon: "▤", title: "PALETTE CHARGÉE", color: "#ff9b42", priority: 4 };
+    case "parcel_delivery": return { icon: "⌂", title: "LIVRAISON EFFECTUÉE", color: "#56c9ff", priority: 4 };
+    case "route_stage": return { icon: "➜", title: "NOUVELLE ÉTAPE", color: "#56c9ff", priority: 4 };
+    case "overload": return { icon: "⚠", title: "SURCHARGE", color: "#ef5261", priority: 5 };
+    case "series_lost": return { icon: "×", title: "CHARGEMENT PERDU", color: "#ef5261", priority: 4 };
+    case "contract_expired": return { icon: "⌛", title: "CONTRAT EXPIRÉ", color: "#ef5261", priority: 4 };
+    case "dbull_validate": return { icon: "◎", title: "VALIDATION DBULL", color: "#f6c256", priority: 3 };
+    case "dbull_protect": return { icon: "◆", title: "PALETTE PROTÉGÉE", color: "#56c9ff", priority: 3 };
+    case "bull_secure": return { icon: "✓", title: "CHARGE SÉCURISÉE", color: "#62e6a7", priority: 3 };
+    case "bull_joker": return { icon: "✦", title: "JOKER BULL", color: "#f6c256", priority: 2 };
+    case "series_secure": return { icon: "✓", title: "CHARGE PARTIELLE", color: "#62e6a7", priority: 2 };
+    case "series_start": return { icon: "●", title: "NOUVELLE SÉRIE", color: "#ff9b42", priority: 1 };
+    case "series_progress": return { icon: "+", title: "SÉRIE EN COURS", color: "#62e6a7", priority: 1 };
+    case "miss": return { icon: "–", title: "MISS", color: "#ef5261", priority: 1 };
+    default: return { icon: "•", title: "CARGO", color: "#aab1bf", priority: 0 };
+  }
+}
+
+export function computeCargoMissionGrade(state: CargoState, playerId?: string): CargoMissionGrade {
+  const selectedId = String(playerId || state.standings[0]?.id || state.players[0]?.id || "");
+  const stats = state.statsByPlayer[selectedId] || emptyPlayerStats();
+  const standing = state.standings.find((row) => String(row.id) === selectedId);
+  const attempts = stats.completedContracts + stats.failedContracts;
+  const precision = cargoPercent(stats.hits, stats.darts);
+  const completion = state.config.variant === "parcel_delivery"
+    ? clamp((stats.longestSeries / 5) * 55 + Math.min(45, stats.parcelDeliveries * 4), 0, 100)
+    : attempts > 0
+      ? cargoPercent(stats.completedContracts, attempts)
+      : clamp(stats.pallets * 12, 0, 100);
+  const lossBase = stats.totalWeight + stats.lostWeight + stats.rejectedWeight;
+  const lossRate = lossBase > 0 ? ((stats.lostWeight + stats.rejectedWeight) / lossBase) * 100 : 0;
+  const safety = clamp(100 - lossRate - stats.overloads * 12 - stats.fragileBroken * 10, 0, 100);
+  const efficiency = state.config.variant === "parcel_delivery"
+    ? clamp((stats.parcelsDelivered / Math.max(1, stats.darts)) * 70, 0, 100)
+    : clamp((stats.totalWeight / Math.max(1, stats.darts)) * 4.5, 0, 100);
+  const rankScore = standing?.rank === 1 ? 100 : standing?.rank === 2 ? 82 : standing?.rank === 3 ? 68 : standing?.rank ? Math.max(35, 72 - standing.rank * 7) : 50;
+  const rating = Math.round(clamp(precision * .22 + completion * .25 + safety * .22 + efficiency * .21 + rankScore * .10, 0, 100));
+  const grade: CargoMissionGrade["grade"] = rating >= 90 ? "S" : rating >= 78 ? "A" : rating >= 64 ? "B" : rating >= 48 ? "C" : "D";
+  const label = grade === "S" ? "Logistique d’élite" : grade === "A" ? "Mission maîtrisée" : grade === "B" ? "Transport solide" : grade === "C" ? "Chargement perfectible" : "Mission à reprendre";
+  return {
+    grade,
+    label,
+    rating,
+    precision: Math.round(precision),
+    completion: Math.round(completion),
+    safety: Math.round(safety),
+    efficiency: Math.round(efficiency),
+  };
+}
+
 export function buildCargoMatchStats(state: CargoState): any {
   const rows = state.players.map((player) => ({ id: player.id, ...(state.statsByPlayer[player.id] || emptyPlayerStats()) }));
-  const totalDarts = rows.reduce((sum, row) => sum + row.darts, 0);
-  const totalHits = rows.reduce((sum, row) => sum + row.hits, 0);
+  const sum = (key: keyof CargoPlayerStats) => rows.reduce((total, row) => total + Number((row as any)?.[key] || 0), 0);
+  const totalDarts = sum("darts");
+  const totalHits = sum("hits");
+  const totalWeight = sum("totalWeight");
+  const totalParcels = sum("parcelsDelivered");
+  const totalVisits = sum("visits");
   return {
-    statisticsVersion: 1,
-    telemetryVersion: 1,
+    statisticsVersion: 2,
+    telemetryVersion: 2,
     variant: state.config.variant,
+    participantMode: state.config.participantMode,
     roundsPlayed: Math.min(state.config.rounds, state.roundIndex),
     configuredRounds: state.config.rounds,
     totalDarts,
+    totalVisits,
     totalHits,
-    accuracy: totalDarts ? Math.round((totalHits / totalDarts) * 1000) / 10 : 0,
-    totalWeight: rows.reduce((sum, row) => sum + row.totalWeight, 0),
-    totalPallets: rows.reduce((sum, row) => sum + row.pallets, 0),
-    totalContracts: rows.reduce((sum, row) => sum + row.completedContracts, 0),
-    totalParcels: rows.reduce((sum, row) => sum + row.parcelsDelivered, 0),
+    singles: sum("singles"),
+    doubles: sum("doubles"),
+    triples: sum("triples"),
+    bulls: sum("bulls"),
+    dbulls: sum("dbulls"),
+    misses: sum("misses"),
+    accuracy: cargoPercent(totalHits, totalDarts),
+    totalWeight,
+    totalPallets: sum("pallets"),
+    totalCartons: sum("cartons"),
+    totalCrates: sum("crates"),
+    totalFullPallets: sum("fullPallets"),
+    totalContracts: sum("completedContracts"),
+    failedContracts: sum("failedContracts"),
+    fragileCompleted: sum("fragileCompleted"),
+    fragileBroken: sum("fragileBroken"),
+    urgentCompleted: sum("urgentCompleted"),
+    lostWeight: sum("lostWeight"),
+    rejectedWeight: sum("rejectedWeight"),
+    overloads: sum("overloads"),
+    perfectLoads: sum("perfectLoads"),
+    bestPalletWeight: Math.max(0, ...rows.map((row) => Number(row.bestPalletWeight || 0))),
+    longestSeries: Math.max(0, ...rows.map((row) => Number(row.longestSeries || 0))),
+    totalParcels,
+    totalParcelDeliveries: sum("parcelDeliveries"),
+    totalParcelBonuses: sum("parcelBonuses"),
+    routeStagesCompleted: Math.max(0, ...rows.map((row) => Number(row.routeStagesCompleted || 0))),
+    avgWeightPerDart: totalDarts ? Math.round((totalWeight / totalDarts) * 100) / 100 : 0,
+    avgWeightPerVisit: totalVisits ? Math.round((totalWeight / totalVisits) * 10) / 10 : 0,
+    avgParcelsPerDart: totalDarts ? Math.round((totalParcels / totalDarts) * 100) / 100 : 0,
     durationMs: Math.max(0, Number(state.finishedAt || Date.now()) - state.startedAt),
   };
 }

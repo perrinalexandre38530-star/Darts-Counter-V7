@@ -18,6 +18,7 @@ import {
   buildCargoMatchStats,
   cargoContractTargetLabel,
   cargoCurrentObjective,
+  cargoEventPresentation,
   cargoVariantLabel,
   cloneCargoState,
   createCargoState,
@@ -35,6 +36,7 @@ import CargoEnd from "./CargoEnd";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 type CargoOverlay = null | "truck" | "manifest" | "standings" | "stats" | "timeline";
+type CargoToast = { id: string; icon: string; title: string; label: string; color: string; priority: number } | null;
 
 const ORANGE = "#ff9b42";
 const GOLD = "#f6c256";
@@ -195,6 +197,22 @@ function Kpi({ label, value, detail, color = ORANGE }: any) {
   return <div style={{ minWidth: 0, borderRadius: 14, padding: 10, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: SOFT, fontSize: 7.5, fontWeight: 1000, letterSpacing: .55 }}>{label}</div><div style={{ marginTop: 3, color, fontSize: 20, fontWeight: 1100, lineHeight: 1 }}>{value}</div>{detail ? <div style={{ marginTop: 4, color: "rgba(255,255,255,.42)", fontSize: 7.5 }}>{detail}</div> : null}</div>;
 }
 
+
+function EventToast({ toast, onClose }: { toast: Exclude<CargoToast, null>; onClose: () => void }) {
+  return <button type="button" onClick={onClose} aria-label="Fermer la notification CARGO" style={{ position: "fixed", zIndex: 9997, top: "calc(env(safe-area-inset-top) + 84px)", left: "50%", transform: "translateX(-50%)", width: "min(420px,calc(100% - 22px))", minHeight: 58, padding: "8px 10px", borderRadius: 16, border: `1px solid ${toast.color}77`, background: "linear-gradient(180deg,rgba(20,23,28,.98),rgba(7,9,12,.98))", boxShadow: `0 16px 42px rgba(0,0,0,.58),0 0 22px ${toast.color}22`, display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 8, alignItems: "center", color: "#fff", textAlign: "left", cursor: "pointer", animation: "cargo-toast-in .24s ease-out" }}>
+    <span style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", color: toast.color, background: `${toast.color}14`, border: `1px solid ${toast.color}44`, fontSize: 18, fontWeight: 1100 }}>{toast.icon}</span>
+    <span style={{ minWidth: 0 }}><span style={{ display: "block", color: toast.color, fontSize: 8.5, fontWeight: 1100, letterSpacing: .7 }}>{toast.title}</span><span style={{ display: "block", marginTop: 3, color: "#e5e8ee", fontSize: 9.5, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{toast.label}</span></span>
+    <span style={{ color: "rgba(255,255,255,.40)", fontSize: 16 }}>×</span>
+  </button>;
+}
+
+function notableToast(events: any[]): CargoToast {
+  const ranked = (events || []).map((event: any, index: number) => ({ event, index, presentation: cargoEventPresentation(event) })).filter((item: any) => item.presentation.priority >= 2).sort((a: any, b: any) => b.presentation.priority - a.presentation.priority || b.index - a.index);
+  const hit = ranked[0];
+  if (!hit) return null;
+  return { id: `${Date.now()}-${hit.index}`, icon: hit.presentation.icon, title: hit.presentation.title, label: hit.event.label, color: hit.presentation.color, priority: hit.presentation.priority };
+}
+
 function OverlayShell({ title, subtitle, color, onClose, children }: any) {
   return <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.84)", backdropFilter: "blur(9px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "8px 8px max(8px,env(safe-area-inset-bottom))" }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div style={{ width: "min(820px,100%)", maxHeight: "88dvh", overflow: "hidden", borderRadius: "23px 23px 15px 15px", background: "linear-gradient(180deg,#171a20,#080a0e)", border: `1px solid ${color}55`, boxShadow: "0 28px 90px rgba(0,0,0,.72)" }}>
@@ -238,6 +256,7 @@ export default function CargoPlay(props: any) {
   const [overlay, setOverlay] = React.useState<CargoOverlay>(null);
   const [showEnd, setShowEnd] = React.useState(initialState.phase === "finished");
   const [botThinking, setBotThinking] = React.useState(false);
+  const [eventToast, setEventToast] = React.useState<CargoToast>(null);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
 
@@ -261,6 +280,8 @@ export default function CargoPlay(props: any) {
     setState(next); setThrowDarts([]); setMultiplier(1);
     const visit = next.visits[next.visits.length - 1];
     setNotice(visit?.events?.map((event) => event.label).join(" · ") || cargoCurrentObjective(next));
+    const toast = notableToast(visit?.events || []);
+    if (toast) setEventToast(toast);
     if (next.phase === "finished") setShowEnd(true);
   }
   function cancelOrUndo() {
@@ -268,7 +289,7 @@ export default function CargoPlay(props: any) {
     const previous = undoStack[undoStack.length - 1]; if (!previous) { setNotice("Aucune action à annuler."); return; }
     setState(previous); setUndoStack((prev) => prev.slice(0, -1)); setShowEnd(false); autoSavedRef.current = ""; setNotice("Dernière volée annulée.");
   }
-  function resetMatch() { matchIdRef.current = `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createCargoState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setNotice(cargoCurrentObjective(next)); autoSavedRef.current = ""; }
+  function resetMatch() { matchIdRef.current = `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const next = createCargoState(players, config); setState(next); setThrowDarts([]); setUndoStack([]); setShowEnd(false); setOverlay(null); setEventToast(null); setNotice(cargoCurrentObjective(next)); autoSavedRef.current = ""; }
 
   React.useEffect(() => {
     if (state.phase !== "playing" || !activePlayer || !isBot(activeProfile, botIds) || botThinking) return;
@@ -277,10 +298,16 @@ export default function CargoPlay(props: any) {
       const darts = pickCargoBotDarts(state).map((dart: any) => dart?.bed === "MISS" ? ({ v: 0, mult: 1 }) : dart?.bed === "OB" || dart?.bed === "BULL" ? ({ v: 25, mult: 1 }) : dart?.bed === "IB" || dart?.bed === "DBULL" ? ({ v: 25, mult: 2 }) : ({ v: Number(dart?.number || 0), mult: dart?.bed === "T" ? 3 : dart?.bed === "D" ? 2 : 1 }));
       const next = playCargoVisit(state, darts.map(uiToGameDart));
       setUndoStack((prev) => [...prev.slice(-29), cloneCargoState(state)]); setState(next); setThrowDarts([]); setBotThinking(false);
-      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée."); if (next.phase === "finished") setShowEnd(true);
+      const visit = next.visits[next.visits.length - 1]; setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Volée BOT validée."); const toast = notableToast(visit?.events || []); if (toast) setEventToast(toast); if (next.phase === "finished") setShowEnd(true);
     }, 620);
     return () => { window.clearTimeout(timer); setBotThinking(false); };
   }, [state.activePlayerIndex, state.roundIndex, state.phase]);
+
+  React.useEffect(() => {
+    if (!eventToast) return;
+    const timer = window.setTimeout(() => setEventToast(null), eventToast.priority >= 4 ? 2600 : 1900);
+    return () => window.clearTimeout(timer);
+  }, [eventToast?.id]);
 
   React.useEffect(() => {
     if (!overlay) return;
@@ -302,8 +329,8 @@ export default function CargoPlay(props: any) {
     });
     const matchStats = buildCargoMatchStats(state);
     const scoreWord = config.variant === "parcel_delivery" ? "colis" : "kg";
-    const summary = { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, variantLabel: cargoVariantLabel(config.variant), finished, statisticsVersion: 1, telemetryVersion: 1, winnerId: finished ? state.winnerIds[0] || null : null, winnerIds: finished ? state.winnerIds : [], winnerName: finished ? state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ") : null, roundsPlayed: Math.min(config.rounds, state.roundIndex), configuredRounds: config.rounds, players: playerRows, perPlayer: playerRows, rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [], visits: state.visits, matchStats, config, scoreLine: `${cargoVariantLabel(config.variant)} · ${config.variant === "parcel_delivery" ? matchStats.totalParcels : matchStats.totalWeight} ${scoreWord} · ${matchStats.totalDarts} fléchettes`, game: { mode: "cargo", variant: config.variant, rounds: config.rounds } };
-    return { id: matchIdRef.current, matchId: matchIdRef.current, kind: "cargo", mode: "cargo", sport: "darts", status, statisticsVersion: 1, telemetryVersion: 1, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now, ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName, players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneCargoState(state), updatedAt: now }, game: summary.game, summary, payload: { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, statisticsVersion: 1, telemetryVersion: 1, config, players: playerRows, summary, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneCargoState(state), stats: { sport: "darts", mode: "cargo", variant: config.variant, players: playerRows, match: matchStats, global: matchStats } } };
+    const summary = { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, variantLabel: cargoVariantLabel(config.variant), finished, statisticsVersion: 2, telemetryVersion: 2, winnerId: finished ? state.winnerIds[0] || null : null, winnerIds: finished ? state.winnerIds : [], winnerName: finished ? state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ") : null, roundsPlayed: Math.min(config.rounds, state.roundIndex), configuredRounds: config.rounds, players: playerRows, perPlayer: playerRows, rankings: finished ? playerRows.slice().sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999)) : [], visits: state.visits, matchStats, config, scoreLine: `${cargoVariantLabel(config.variant)} · ${config.variant === "parcel_delivery" ? matchStats.totalParcels : matchStats.totalWeight} ${scoreWord} · ${matchStats.totalDarts} fléchettes`, game: { mode: "cargo", variant: config.variant, rounds: config.rounds } };
+    return { id: matchIdRef.current, matchId: matchIdRef.current, kind: "cargo", mode: "cargo", sport: "darts", status, statisticsVersion: 2, telemetryVersion: 2, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now, ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName, players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneCargoState(state), updatedAt: now }, game: summary.game, summary, payload: { kind: "cargo", mode: "cargo", sport: "darts", variant: config.variant, statisticsVersion: 2, telemetryVersion: 2, config, players: playerRows, summary, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneCargoState(state), stats: { sport: "darts", mode: "cargo", variant: config.variant, players: playerRows, match: matchStats, global: matchStats } } };
   }
 
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
@@ -345,6 +372,8 @@ export default function CargoPlay(props: any) {
       </section> : null}
     </main>
 
+    <style>{`@keyframes cargo-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}`}</style>
+    {eventToast ? <EventToast toast={eventToast} onClose={() => setEventToast(null)} /> : null}
     {overlay === "truck" ? <TruckModal state={state} stats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "manifest" ? <ManifestModal state={state} activeStats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "standings" ? <StandingsModal state={state} profilesById={profilesById} onClose={() => setOverlay(null)} /> : null}
@@ -371,8 +400,9 @@ function TruckModal({ state, stats, activeContract, onClose }: any) {
       <Kpi label={parcel ? "LIVRAISONS" : "PALETTES"} value={parcel ? Number(stats?.parcelDeliveries || 0) : Number(stats?.pallets || 0)} detail={parcel ? `${Number(stats?.parcelBonuses || 0)} colis bonus` : `${Number(stats?.completedContracts || 0)} contrats terminés`} color={GOLD} />
       <Kpi label="REMPLISSAGE" value={`${Math.round(fill)}%`} detail={parcel ? `${target} colis de référence` : `Capacité ${target} kg`} color={fill > 90 ? RED : GREEN} />
       <Kpi label="MEILLEURE CHARGE" value={parcel ? Number(stats?.longestSeries || 0) : `${Number(stats?.bestPalletWeight || 0)} kg`} detail={parcel ? "plus longue série" : "palette record"} color={BLUE} />
-      <Kpi label="PERTES / SURCHARGES" value={parcel ? Number(stats?.failedContracts || 0) : `${Number(stats?.lostWeight || 0)} kg`} detail={parcel ? "livraisons interrompues" : `${Number(stats?.overloads || 0)} surcharge(s)`} color={RED} />
+      <Kpi label={state.config.variant === "exact_load" ? "CHARGE RESTANTE" : "PERTES / SURCHARGES"} value={state.config.variant === "exact_load" ? `${Math.max(0, target - value)} kg` : parcel ? Number(stats?.failedContracts || 0) : `${Number(stats?.lostWeight || 0)} kg`} detail={state.config.variant === "exact_load" ? `${Number(stats?.perfectLoads || 0)} chargement(s) parfait(s)` : parcel ? "livraisons interrompues" : `${Number(stats?.overloads || 0)} surcharge(s)`} color={state.config.variant === "exact_load" && target - value === 0 ? GOLD : RED} />
     </div>
+    {state.config.variant === "long_haul" ? <div style={{ ...panel(`${BLUE}44`), marginTop: 10, padding: 10 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 8 }}><strong style={{ color: BLUE, fontSize: 9 }}>ITINÉRAIRE LONG HAUL</strong><span style={{ color: SOFT, fontSize: 8 }}>Étape {state.routeStage + 1}/{state.routeStages.length}</span></div><div style={{ display: "grid", gridTemplateColumns: `repeat(${state.routeStages.length},minmax(0,1fr))`, gap: 4 }}>{state.routeStages.map((stage: string, index: number) => <div key={stage} style={{ minWidth: 0, padding: "7px 3px", borderRadius: 10, textAlign: "center", background: index <= state.routeStage ? `${BLUE}14` : "rgba(255,255,255,.025)", border: `1px solid ${index === state.routeStage ? BLUE : index < state.routeStage ? GREEN + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: index < state.routeStage ? GREEN : index === state.routeStage ? BLUE : SOFT, fontSize: 12 }}>{index < state.routeStage ? "✓" : index === state.routeStage ? "●" : "○"}</div><div style={{ marginTop: 3, color: index <= state.routeStage ? "#dfe5ed" : SOFT, fontSize: 6.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage}</div></div>)}</div></div> : null}
     <div style={{ ...panel(`${ORANGE}44`), marginTop: 10, padding: 11 }}>
       <div style={{ color: ORANGE, fontSize: 9, fontWeight: 1100 }}>CHARGEMENT ACTIF</div>
       <div style={{ marginTop: 5, color: "#fff", fontSize: 15, fontWeight: 1100 }}>{activeContract?.label || (activeSeries ? activeSeries.labels?.[0] : null) || "Aucun chargement en cours"}</div>
