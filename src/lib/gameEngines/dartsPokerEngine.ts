@@ -20,6 +20,22 @@ export type PokerCategory =
 
 export type DartsPokerBotLevel = "easy" | "normal" | "hard";
 export type DartsPokerScoreInputMethod = "keypad" | "dartboard";
+export type DartsPokerContractKey =
+  | "pair"
+  | "two_pair"
+  | "three_of_a_kind"
+  | "straight"
+  | "flush"
+  | "full_house"
+  | "joker";
+
+export type DartsPokerRoundContract = {
+  key: DartsPokerContractKey;
+  label: string;
+  description: string;
+  bonusPoints: 1;
+  minimumCategoryRank?: number;
+};
 
 export type DartsPokerConfigPayload = {
   mode: "darts_poker";
@@ -34,6 +50,7 @@ export type DartsPokerConfigPayload = {
   dartsPerHand: 5 | 6 | 7;
   powersEnabled: boolean;
   jokerEnabled: boolean;
+  contractsEnabled?: boolean;
   autoDrawMissing: boolean;
   openHands: boolean;
   randomOrder: boolean;
@@ -98,6 +115,8 @@ export type DartsPokerPlayerStats = {
   cardsByRank: Record<string, number>;
   cardsBySuit: Record<string, number>;
   handScores: number[];
+  contractHits: number;
+  contractBonusPoints: number;
 };
 
 export type DartsPokerHandState = {
@@ -151,7 +170,11 @@ export type DartsPokerRoundResult = {
     evaluation: PokerEvaluation;
     cards: PokerCard[];
     bestFive: PokerCard[];
+    contractCompleted?: boolean;
+    contractBonus?: number;
+    pointsAwarded?: number;
   }>;
+  contract?: DartsPokerRoundContract | null;
 };
 
 export type DartsPokerPendingChoice = {
@@ -170,7 +193,9 @@ export type DartsPokerState = {
   deck: PokerCard[];
   discard: PokerCard[];
   roundIndex: number;
+  dealerIndex: number;
   activePlayerIndex: number;
+  roundContract: DartsPokerRoundContract | null;
   phase: DartsPokerPhase;
   handsByPlayer: Record<string, DartsPokerHandState>;
   statsByPlayer: Record<string, DartsPokerPlayerStats>;
@@ -185,6 +210,8 @@ export type DartsPokerState = {
     tied: boolean;
     wins: number;
     ties: number;
+    points: number;
+    contractHits: number;
     bestHandScore: number;
     bestHandLabel: string | null;
     averageHandScore: number;
@@ -221,6 +248,33 @@ const CATEGORY_LABEL: Record<PokerCategory, string> = {
   straight_flush: "Quinte flush",
   royal_flush: "Quinte flush royale",
 };
+
+export const DARTS_POKER_CONTRACTS: DartsPokerRoundContract[] = [
+  { key: "pair", label: "Paire ou mieux", description: "Terminer la manche avec au minimum une paire.", bonusPoints: 1, minimumCategoryRank: 1 },
+  { key: "two_pair", label: "Double paire ou mieux", description: "Construire au minimum une double paire.", bonusPoints: 1, minimumCategoryRank: 2 },
+  { key: "three_of_a_kind", label: "Brelan ou mieux", description: "Obtenir au minimum un brelan.", bonusPoints: 1, minimumCategoryRank: 3 },
+  { key: "straight", label: "Suite ou mieux", description: "Former une suite, une couleur ou une combinaison supérieure.", bonusPoints: 1, minimumCategoryRank: 4 },
+  { key: "flush", label: "Couleur ou mieux", description: "Réunir cinq cartes de la même couleur ou une main supérieure.", bonusPoints: 1, minimumCategoryRank: 5 },
+  { key: "full_house", label: "Full ou mieux", description: "Atteindre un full, un carré ou une quinte flush.", bonusPoints: 1, minimumCategoryRank: 6 },
+  { key: "joker", label: "Main avec Joker", description: "Terminer la main avec le Joker obtenu au Double Bull.", bonusPoints: 1 },
+];
+
+export function drawDartsPokerContract(roundIndex: number, rng: () => number = Math.random): DartsPokerRoundContract {
+  const maxDifficulty = roundIndex <= 1 ? 2 : roundIndex <= 3 ? 4 : DARTS_POKER_CONTRACTS.length;
+  const pool = DARTS_POKER_CONTRACTS.slice(0, Math.max(1, maxDifficulty));
+  const index = Math.floor(Math.max(0, Math.min(.999999999, rng())) * pool.length);
+  return { ...pool[index] };
+}
+
+export function isDartsPokerContractCompleted(
+  contract: DartsPokerRoundContract | null | undefined,
+  evaluation: PokerEvaluation | null | undefined,
+  cards: PokerCard[] = [],
+): boolean {
+  if (!contract || !evaluation) return false;
+  if (contract.key === "joker") return cards.some((card) => Boolean(card?.joker));
+  return evaluation.categoryRank >= Number(contract.minimumCategoryRank || 0);
+}
 
 export function createPokerDeck(): PokerCard[] {
   const cards: PokerCard[] = [];
@@ -389,6 +443,7 @@ export function emptyDartsPokerStats(): DartsPokerPlayerStats {
     highCardHands: 0, pairs: 0, twoPairs: 0, threeOfAKinds: 0, straights: 0, flushes: 0,
     fullHouses: 0, fourOfAKinds: 0, straightFlushes: 0, royalFlushes: 0,
     perfectVisits: 0, emptyVisits: 0, hitsBySegment: {}, cardsByRank: {}, cardsBySuit: {}, handScores: [],
+    contractHits: 0, contractBonusPoints: 0,
   };
 }
 
@@ -411,8 +466,9 @@ function normalizePlayers(input: Player[]): Player[] {
 function occupiedCardIds(state: DartsPokerState): Set<string> {
   const ids = new Set<string>();
   Object.values(state.market || {}).forEach((card) => { if (card && !card.joker) ids.add(card.id); });
-  const active = state.players[state.activePlayerIndex];
-  (state.handsByPlayer?.[active?.id]?.cards || []).forEach((card) => { if (!card.joker) ids.add(card.id); });
+  Object.values(state.handsByPlayer || {}).forEach((hand) => {
+    (hand?.cards || []).forEach((card) => { if (card && !card.joker) ids.add(card.id); });
+  });
   return ids;
 }
 
@@ -448,6 +504,7 @@ export function createDartsPokerState(playersInput: Player[], configInput: Darts
     dartsPerHand: ([5, 6, 7].includes(Number(configInput?.dartsPerHand)) ? Number(configInput.dartsPerHand) : 6) as any,
     powersEnabled: configInput?.powersEnabled !== false,
     jokerEnabled: configInput?.jokerEnabled !== false,
+    contractsEnabled: configInput?.contractsEnabled !== false,
     autoDrawMissing: true,
     openHands: configInput?.openHands !== false,
     randomOrder: Boolean(configInput?.randomOrder),
@@ -460,7 +517,9 @@ export function createDartsPokerState(playersInput: Player[], configInput: Darts
   const state: DartsPokerState = {
     sport: "darts", mode: "darts_poker", config, players,
     market: {}, deck: shufflePokerCards(createPokerDeck(), rng), discard: [],
-    roundIndex: 1, activePlayerIndex: 0, phase: "throwing", handsByPlayer, statsByPlayer,
+    roundIndex: 1, dealerIndex: 0, activePlayerIndex: 0,
+    roundContract: config.contractsEnabled ? drawDartsPokerContract(1, rng) : null,
+    phase: "throwing", handsByPlayer, statsByPlayer,
     visits: [], rounds: [], pendingChoice: null, winnerIds: [], standings: [], startedAt: Date.now(),
   };
   dealMarket(state, rng);
@@ -468,7 +527,19 @@ export function createDartsPokerState(playersInput: Player[], configInput: Darts
 }
 
 export function cloneDartsPokerState(state: DartsPokerState): DartsPokerState {
-  return JSON.parse(JSON.stringify(state));
+  const cloned = JSON.parse(JSON.stringify(state)) as DartsPokerState;
+  cloned.config = { ...cloned.config, contractsEnabled: cloned.config?.contractsEnabled !== false };
+  cloned.dealerIndex = Number.isInteger(cloned.dealerIndex) ? cloned.dealerIndex : 0;
+  cloned.activePlayerIndex = Number.isInteger(cloned.activePlayerIndex) ? cloned.activePlayerIndex : cloned.dealerIndex;
+  cloned.roundContract = cloned.config.contractsEnabled
+    ? (cloned.roundContract || { ...DARTS_POKER_CONTRACTS[(Math.max(1, cloned.roundIndex || 1) - 1) % DARTS_POKER_CONTRACTS.length] })
+    : null;
+  Object.values(cloned.statsByPlayer || {}).forEach((stats: any) => {
+    stats.contractHits = Number(stats.contractHits || 0);
+    stats.contractBonusPoints = Number(stats.contractBonusPoints || 0);
+    stats.roundPoints = Number(stats.roundPoints || stats.handsWon || 0);
+  });
+  return cloned;
 }
 
 export function getDartsPokerActivePlayer(state: DartsPokerState): Player | null {
@@ -604,8 +675,10 @@ export function playDartsPokerVisit(stateInput: DartsPokerState, dartsInput: Gam
     // Tous les joueurs ont lancé leurs 6 fléchettes. La phase des pouvoirs
     // commence au premier joueur de la table, puis finishDartsPokerHand
     // fera avancer les validations de main dans l'ordre.
-    const firstPendingIndex = state.players.findIndex((candidate) => !state.handsByPlayer[candidate.id]?.completed);
-    state.activePlayerIndex = firstPendingIndex >= 0 ? firstPendingIndex : 0;
+    const dealer = state.players[state.dealerIndex];
+    const dealerPending = dealer && !state.handsByPlayer[dealer.id]?.completed ? state.dealerIndex : -1;
+    const firstPendingIndex = dealerPending >= 0 ? dealerPending : findNextIncompletePlayerIndex(state, state.dealerIndex - 1);
+    state.activePlayerIndex = firstPendingIndex >= 0 ? firstPendingIndex : state.dealerIndex;
     state.phase = "powers";
   }
   return state;
@@ -680,12 +753,33 @@ function finalizeRound(state: DartsPokerState) {
     const win = winnerIds.includes(row.playerId);
     const hand = state.handsByPlayer[row.playerId]; hand.rank = rank; hand.tied = tied; hand.roundWin = win;
     const stats = state.statsByPlayer[row.playerId];
-    if (win) { stats.handsWon += 1; stats.roundPoints += 1; }
+    const contractCompleted = Boolean(state.config.contractsEnabled) && isDartsPokerContractCompleted(state.roundContract, row.evaluation, row.cards);
+    const contractBonus = contractCompleted ? Number(state.roundContract?.bonusPoints || 1) : 0;
+    const winPoints = win ? 1 : 0;
+    const pointsAwarded = winPoints + contractBonus;
+    if (win) stats.handsWon += 1;
     if (win && winnerIds.length > 1) stats.handsTied += 1;
-    return { playerId: row.playerId, rank, tied, win, evaluation: row.evaluation, cards: row.cards, bestFive: row.bestFive };
+    if (contractCompleted) {
+      stats.contractHits += 1;
+      stats.contractBonusPoints += contractBonus;
+    }
+    stats.roundPoints += pointsAwarded;
+    return {
+      playerId: row.playerId, rank, tied, win, evaluation: row.evaluation,
+      cards: row.cards, bestFive: row.bestFive, contractCompleted, contractBonus, pointsAwarded,
+    };
   });
-  state.rounds.push({ round: state.roundIndex, winnerIds, rows: roundRows });
+  state.rounds.push({ round: state.roundIndex, winnerIds, rows: roundRows, contract: state.roundContract ? { ...state.roundContract } : null });
   state.phase = "round_result";
+}
+
+function findNextIncompletePlayerIndex(state: DartsPokerState, fromIndex: number): number {
+  for (let offset = 1; offset <= state.players.length; offset += 1) {
+    const index = (fromIndex + offset) % state.players.length;
+    const player = state.players[index];
+    if (player && !state.handsByPlayer[player.id]?.completed) return index;
+  }
+  return -1;
 }
 
 export function finishDartsPokerHand(stateInput: DartsPokerState, rng: () => number = Math.random): DartsPokerState {
@@ -705,10 +799,9 @@ export function finishDartsPokerHand(stateInput: DartsPokerState, rng: () => num
   const stats = state.statsByPlayer[player.id];
   stats.handsPlayed += 1; stats.totalHandScore += evaluation.score; stats.handScores.push(evaluation.score); incrementCategory(stats, evaluation.category);
   if (evaluation.score > stats.bestHandScore) { stats.bestHandScore = evaluation.score; stats.bestHandCategory = evaluation.category; stats.bestHandLabel = evaluation.label; }
-  hand.cards.filter((card) => !card.joker).forEach((card) => state.discard.push(card));
   hand.exchangeTokens = 0; hand.choiceTokens = 0;
 
-  const nextIndex = state.players.findIndex((candidate, index) => index > state.activePlayerIndex && !state.handsByPlayer[candidate.id].completed);
+  const nextIndex = findNextIncompletePlayerIndex(state, state.activePlayerIndex);
   if (nextIndex >= 0) {
     state.activePlayerIndex = nextIndex;
     const nextHand = state.handsByPlayer[state.players[nextIndex].id];
@@ -724,17 +817,18 @@ function buildStandings(state: DartsPokerState) {
     const stats = state.statsByPlayer[player.id];
     return {
       id: player.id, name: player.name, wins: stats.handsWon, ties: stats.handsTied,
+      points: stats.roundPoints, contractHits: stats.contractHits,
       bestHandScore: stats.bestHandScore, bestHandLabel: stats.bestHandLabel,
       averageHandScore: stats.handsPlayed ? stats.totalHandScore / stats.handsPlayed : 0,
       darts: stats.darts, hits: stats.hits,
     };
-  }).sort((a, b) => b.wins - a.wins || b.bestHandScore - a.bestHandScore || b.averageHandScore - a.averageHandScore || b.hits - a.hits);
+  }).sort((a, b) => b.points - a.points || b.wins - a.wins || b.bestHandScore - a.bestHandScore || b.averageHandScore - a.averageHandScore || b.hits - a.hits);
   let rank = 0; let previousKey = "";
   return rows.map((row, index) => {
-    const key = `${row.wins}|${row.bestHandScore}|${row.averageHandScore}|${row.hits}`;
+    const key = `${row.points}|${row.wins}|${row.bestHandScore}|${row.averageHandScore}|${row.hits}`;
     if (key !== previousKey) rank = index + 1;
     previousKey = key;
-    const tied = rows.filter((candidate) => `${candidate.wins}|${candidate.bestHandScore}|${candidate.averageHandScore}|${candidate.hits}` === key).length > 1;
+    const tied = rows.filter((candidate) => `${candidate.points}|${candidate.wins}|${candidate.bestHandScore}|${candidate.averageHandScore}|${candidate.hits}` === key).length > 1;
     return { ...row, rank, tied };
   });
 }
@@ -749,8 +843,15 @@ export function advanceDartsPokerRound(stateInput: DartsPokerState, rng: () => n
     state.phase = "finished"; state.finishedAt = Date.now();
     return state;
   }
-  state.roundIndex += 1; state.activePlayerIndex = 0; state.pendingChoice = null;
-  state.players.forEach((player) => { state.handsByPlayer[player.id] = emptyHand(player.id); });
+  state.roundIndex += 1;
+  state.dealerIndex = state.players.length ? (state.dealerIndex + 1) % state.players.length : 0;
+  state.activePlayerIndex = state.dealerIndex;
+  state.pendingChoice = null;
+  state.roundContract = state.config.contractsEnabled ? drawDartsPokerContract(state.roundIndex, rng) : null;
+  state.players.forEach((player) => {
+    (state.handsByPlayer[player.id]?.cards || []).forEach((card) => { if (card && !card.joker) state.discard.push({ ...card }); });
+    state.handsByPlayer[player.id] = emptyHand(player.id);
+  });
   dealMarket(state, rng);
   state.phase = "throwing";
   return state;

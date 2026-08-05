@@ -35,11 +35,11 @@ function shuffle<T>(items: T[]): T[] { const out = [...items]; for (let i = out.
 function Rules() {
   return <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.48 }}>
     <div><strong style={{ color: GOLD }}>MARCHÉ</strong><br />Les secteurs 1 à 20 portent chacun une carte visible. Une carte gagnée est immédiatement remplacée.</div>
-    <div><strong style={{ color: RED }}>MAIN</strong><br />Chaque joueur dispose de 5, 6 ou 7 fléchettes pour construire la meilleure combinaison de 5 cartes.</div>
+    <div><strong style={{ color: RED }}>MAIN</strong><br />Chaque joueur dispose de 6 fléchettes, jouées une par une, pour construire la meilleure combinaison de 5 cartes.</div>
     <div><strong style={{ color: GREEN }}>POUVOIRS</strong><br />Simple = carte. Double = carte + Échange. Triple = carte + Choix de 2 cartes.</div>
     <div><strong style={{ color: GOLD }}>BULLS</strong><br />Bull = Choix de 2 cartes. Double Bull = Joker, limité à un Joker par main.</div>
     <div><strong style={{ color: "#fff" }}>CLASSEMENT</strong><br />Carte haute, paire, double paire, brelan, suite, couleur, full, carré, quinte flush et quinte flush royale.</div>
-    <div><strong style={{ color: RED }}>VICTOIRE</strong><br />Une main gagnée rapporte un point. Après toutes les manches, le plus grand nombre de victoires l’emporte.</div>
+    <div><strong style={{ color: GOLD }}>CONTRAT</strong><br />Chaque manche peut proposer un objectif bonus. Le réussir rapporte un point supplémentaire.</div><div><strong style={{ color: RED }}>VICTOIRE</strong><br />La meilleure main rapporte un point. Le classement final se joue au total de points, puis aux victoires.</div>
   </div>;
 }
 
@@ -67,6 +67,7 @@ export default function DartsPokerConfig(props: any) {
   const dartsPerHand: 6 = 6;
   const [powersEnabled, setPowersEnabled] = React.useState(saved.powersEnabled !== false);
   const [jokerEnabled, setJokerEnabled] = React.useState(saved.jokerEnabled !== false);
+  const [contractsEnabled, setContractsEnabled] = React.useState(saved.contractsEnabled !== false);
   const autoDrawMissing = true;
   const [openHands, setOpenHands] = React.useState(saved.openHands !== false);
   const [randomOrder, setRandomOrder] = React.useState(Boolean(saved.randomOrder));
@@ -97,7 +98,7 @@ export default function DartsPokerConfig(props: any) {
     const payload: DartsPokerConfigPayload = {
       mode: "darts_poker", players: ids.length, selectedIds: ids, playersList, playerDartSets,
       botIds, botsEnabled: botIds.length > 0, botLevel, rounds, dartsPerHand, powersEnabled,
-      jokerEnabled, autoDrawMissing, openHands, randomOrder, scoreInputMethod,
+      jokerEnabled, contractsEnabled, autoDrawMissing, openHands, randomOrder, scoreInputMethod,
     };
     try { localStorage.setItem(LS_KEY, JSON.stringify({ ...payload, botsPanel })); } catch {}
     try { recordProfileUsageForMode("darts_poker", ids); } catch {}
@@ -131,7 +132,8 @@ export default function DartsPokerConfig(props: any) {
     <div style={{ color: GOLD, fontSize: 12, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>POUVOIRS POKER</div>
     <OptionRow label="Doubles / Triples spéciaux"><OptionToggle value={powersEnabled} onChange={setPowersEnabled} /></OptionRow>
     <OptionRow label="Double Bull = Joker"><OptionToggle value={jokerEnabled} onChange={setJokerEnabled} /></OptionRow>
-    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Les pouvoirs non utilisés sont perdus à la validation de la main. Le moteur conserve automatiquement la meilleure combinaison de 5 cartes.</div>
+    <OptionRow label="Contrat bonus par manche"><OptionToggle value={contractsEnabled} onChange={setContractsEnabled} /></OptionRow>
+    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Les pouvoirs non utilisés sont perdus à la validation. Un contrat réussi rapporte 1 point bonus. Le moteur conserve automatiquement la meilleure combinaison de 5 cartes.</div>
   </section>;
 
   const inputBlock = <section style={block}>
@@ -142,9 +144,9 @@ export default function DartsPokerConfig(props: any) {
 
   const summaryBlock = <section style={{ ...block, borderColor: `${GOLD}70`, background: `linear-gradient(135deg,${RED}16,${GOLD}0e)` }}>
     <div style={{ textAlign: "center", color: "#fff", fontSize: 15, fontWeight: 1100 }}>TABLE PRÊTE</div>
-    <div style={{ textAlign: "center", color: GOLD, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{rounds} manches · {dartsPerHand} fléchettes · {powersEnabled ? "Pouvoirs actifs" : "Poker pur"}</div>
+    <div style={{ textAlign: "center", color: GOLD, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{rounds} manches · {dartsPerHand} fléchettes · {powersEnabled ? "Pouvoirs actifs" : "Poker pur"} · {contractsEnabled ? "Contrats ON" : "Contrats OFF"}</div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-      {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["JOKER", jokerEnabled ? "OUI" : "NON"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
+      {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["CONTRAT", contractsEnabled ? "OUI" : "NON"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
     </div>
   </section>;
 

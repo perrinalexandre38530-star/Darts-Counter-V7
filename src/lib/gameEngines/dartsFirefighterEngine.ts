@@ -2,7 +2,8 @@
 // =============================================================
 // DARTS FIREFIGHTER — moteur de jeu autonome
 // - Carte issue de TERRITORIES
-// - 20 zones actives reliées en graphe déterministe
+// - nombre de zones configurable, jusqu’à la carte complète
+// - propagation basée en priorité sur une vraie proximité géographique approximative
 // - S/D/T = 1/2/3 unités d'eau
 // - Bull = largage ciblé, DBull = Canadair
 // - Croissance, fumée, propagation, protection, destruction
@@ -11,6 +12,7 @@
 
 import type { GameDart } from "../types-game";
 import type { TerritoriesMap, Territory } from "../../territories/types";
+import { getBaseSvgForCountry } from "../../territories/map";
 
 export type DartsFirefighterDifficulty = "recruit" | "firefighter" | "commander" | "inferno";
 export type DartsFirefighterInputMethod = "keypad" | "dartboard";
@@ -36,7 +38,7 @@ export type DartsFirefighterConfigPayload = {
   difficulty: DartsFirefighterDifficulty;
   missionPreset?: "express" | "wildfire" | "civil_protection" | "inferno_survival" | "custom";
   objective?: DartsFirefighterObjective;
-  activeTerritories: 8 | 12 | 16 | 20;
+  activeTerritories: number;
   targetOrder?: DartsFirefighterTargetOrder;
   initialFires: number;
   initialFireLevel?: DartsFirefighterInitialIntensity;
@@ -240,7 +242,10 @@ function effectiveRules(config: DartsFirefighterConfigPayload) {
 export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterConfigPayload> | any = {}): DartsFirefighterConfigPayload {
   const difficulty: DartsFirefighterDifficulty = ["recruit", "firefighter", "commander", "inferno"].includes(raw?.difficulty) ? raw.difficulty : "firefighter";
   const base = DIFFICULTY[difficulty];
-  const active = [8, 12, 16, 20].includes(Number(raw?.activeTerritories)) ? Number(raw.activeTerritories) : 20;
+  const requestedActive = Number(raw?.activeTerritories);
+  const active = Number.isFinite(requestedActive)
+    ? Math.max(8, Math.min(240, Math.round(requestedActive)))
+    : 20;
   const objective: DartsFirefighterObjective = ["extinguish_all", "protect_critical", "survival"].includes(raw?.objective) ? raw.objective : "extinguish_all";
   return {
     mode: "darts_firefighter",
@@ -400,7 +405,11 @@ export function getActivePlayer(state: DartsFirefighterState): DartsFirefighterP
 }
 
 export function getTargetTerritory(state: DartsFirefighterState, number: number): FireTerritory | null {
-  return state.territories.find((t) => t.playable && !t.destroyed && t.target === number) || null;
+  const rows = state.territories.filter((t) => t.playable && !t.destroyed && t.target === number);
+  if (!rows.length) return null;
+  const selected = rows.find((territory) => territory.id === state.selectedTerritoryId);
+  if (selected) return selected;
+  return rows.sort((a, b) => Number(b.critical) - Number(a.critical) || b.fireLevel - a.fireLevel || Number(b.smoke) - Number(a.smoke) || a.protection - b.protection || a.name.localeCompare(b.name))[0] || null;
 }
 
 function chooseActiveTerritories(map: TerritoriesMap, count: number): Territory[] {
@@ -420,7 +429,216 @@ function chooseActiveTerritories(map: TerritoriesMap, count: number): Territory[
   return out;
 }
 
-function buildNeighbors(ids: string[]): Record<string, string[]> {
+type TerritoryBounds = { x1: number; y1: number; x2: number; y2: number; cx: number; cy: number; width: number; height: number };
+const territoryBoundsCache = new Map<string, Record<string, TerritoryBounds>>();
+
+function parseNumericPathBounds(pathData: string): TerritoryBounds | null {
+  if (!pathData) return null;
+  const tokens = (pathData.match(/[a-zA-Z]|-?\d*\.?\d+(?:e[-+]?\d+)?/g) || []);
+  let i = 0;
+  let cmd = "";
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const touch = (px: number, py: number) => {
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return;
+    minX = Math.min(minX, px);
+    minY = Math.min(minY, py);
+    maxX = Math.max(maxX, px);
+    maxY = Math.max(maxY, py);
+  };
+  const isCmd = (value: string) => /^[a-zA-Z]$/.test(value);
+  const hasNumber = () => i < tokens.length && !isCmd(tokens[i]);
+  const read = () => Number(tokens[i++]);
+
+  while (i < tokens.length) {
+    if (isCmd(tokens[i])) cmd = tokens[i++];
+    if (!cmd) break;
+    const lower = cmd.toLowerCase();
+    const rel = cmd === lower;
+
+    if (lower === "m") {
+      if (!hasNumber()) continue;
+      const px = read();
+      const py = read();
+      x = rel ? x + px : px;
+      y = rel ? y + py : py;
+      startX = x;
+      startY = y;
+      touch(x, y);
+      while (hasNumber()) {
+        const lx = read();
+        const ly = read();
+        x = rel ? x + lx : lx;
+        y = rel ? y + ly : ly;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "z") {
+      x = startX;
+      y = startY;
+      touch(x, y);
+      continue;
+    }
+
+    if (lower === "l" || lower === "t") {
+      while (hasNumber()) {
+        const px = read();
+        const py = read();
+        x = rel ? x + px : px;
+        y = rel ? y + py : py;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "h") {
+      while (hasNumber()) {
+        const px = read();
+        x = rel ? x + px : px;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "v") {
+      while (hasNumber()) {
+        const py = read();
+        y = rel ? y + py : py;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "c") {
+      while (hasNumber()) {
+        const x1 = read(); const y1 = read();
+        const x2 = read(); const y2 = read();
+        const x3 = read(); const y3 = read();
+        touch(rel ? x + x1 : x1, rel ? y + y1 : y1);
+        touch(rel ? x + x2 : x2, rel ? y + y2 : y2);
+        x = rel ? x + x3 : x3;
+        y = rel ? y + y3 : y3;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "s" || lower === "q") {
+      while (hasNumber()) {
+        const x1 = read(); const y1 = read();
+        const x2 = read(); const y2 = read();
+        touch(rel ? x + x1 : x1, rel ? y + y1 : y1);
+        x = rel ? x + x2 : x2;
+        y = rel ? y + y2 : y2;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "a") {
+      while (hasNumber()) {
+        read(); read(); read(); read(); read();
+        const px = read();
+        const py = read();
+        x = rel ? x + px : px;
+        y = rel ? y + py : py;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    if (lower === "r") {
+      while (hasNumber()) {
+        const px = read();
+        const py = read();
+        x = rel ? x + px : px;
+        y = rel ? y + py : py;
+        touch(x, y);
+      }
+      continue;
+    }
+
+    i += 1;
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null;
+  return {
+    x1: minX,
+    y1: minY,
+    x2: maxX,
+    y2: maxY,
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
+function translateBounds(bounds: TerritoryBounds, tx = 0, ty = 0, scale = 1): TerritoryBounds {
+  const x1 = bounds.x1 * scale + tx;
+  const y1 = bounds.y1 * scale + ty;
+  const x2 = bounds.x2 * scale + tx;
+  const y2 = bounds.y2 * scale + ty;
+  return {
+    x1, y1, x2, y2,
+    cx: (x1 + x2) / 2,
+    cy: (y1 + y2) / 2,
+    width: Math.max(1, x2 - x1),
+    height: Math.max(1, y2 - y1),
+  };
+}
+
+function parseTransform(transform?: string | null): { tx: number; ty: number; scale: number } {
+  const raw = String(transform || "");
+  const translate = /translate\(([-\d.]+)(?:[ ,]+([-\d.]+))?\)/.exec(raw);
+  const scale = /scale\(([-\d.]+)/.exec(raw);
+  return {
+    tx: translate ? Number(translate[1] || 0) : 0,
+    ty: translate ? Number(translate[2] || 0) : 0,
+    scale: scale ? Number(scale[1] || 1) : 1,
+  };
+}
+
+function buildBoundsForMap(country: string, activeTerritories: Territory[]): Record<string, TerritoryBounds> {
+  const cacheKey = `${country}|${activeTerritories.map((territory) => territory.id).join("|")}`;
+  const cached = territoryBoundsCache.get(cacheKey);
+  if (cached) return cached;
+  const fallback: Record<string, TerritoryBounds> = {};
+  try {
+    if (typeof DOMParser === "undefined") throw new Error("dom-unavailable");
+    const rawSvg = getBaseSvgForCountry(String(country || "FR") as any);
+    const doc = new DOMParser().parseFromString(rawSvg, "image/svg+xml");
+    const paths = Array.from(doc.querySelectorAll("path"));
+    for (const territory of activeTerritories) {
+      const searchId = String(territory.svgPathId || "").trim();
+      const path = paths.find((candidate) => {
+        if (String(country).toUpperCase() === "FR") {
+          return String(candidate.getAttribute("data-numerodepartement") || "") === searchId.replace(/^FR-/, "");
+        }
+        return String(candidate.getAttribute("id") || "") === searchId || String(candidate.getAttribute("id") || "") === territory.id;
+      });
+      const d = path?.getAttribute("d") || "";
+      const parsed = parseNumericPathBounds(d);
+      if (!parsed) continue;
+      const { tx, ty, scale } = parseTransform(path?.getAttribute("transform"));
+      fallback[territory.id] = translateBounds(parsed, tx, ty, scale);
+    }
+  } catch {
+    // fallback returned below
+  }
+  territoryBoundsCache.set(cacheKey, fallback);
+  return fallback;
+}
+
+function buildFallbackNeighbors(ids: string[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   const n = ids.length;
   ids.forEach((id, index) => {
@@ -430,6 +648,47 @@ function buildNeighbors(ids: string[]): Record<string, string[]> {
     out[id] = indexes.map((x) => ids[x]);
   });
   return out;
+}
+
+function buildNeighbors(map: TerritoriesMap, activeTerritories: Territory[]): Record<string, string[]> {
+  const ids = activeTerritories.map((territory) => territory.id);
+  if (ids.length <= 1) return buildFallbackNeighbors(ids);
+  const boxes = buildBoundsForMap(map.country, activeTerritories);
+  if (Object.keys(boxes).length < Math.max(2, Math.floor(ids.length * 0.35))) return buildFallbackNeighbors(ids);
+
+  const out: Record<string, string[]> = {};
+  for (const territory of activeTerritories) {
+    const boxA = boxes[territory.id];
+    if (!boxA) continue;
+    const candidates: Array<{ id: string; score: number; overlap: boolean }> = [];
+    for (const other of activeTerritories) {
+      if (other.id === territory.id) continue;
+      const boxB = boxes[other.id];
+      if (!boxB) continue;
+      const tolerance = Math.max(2.5, Math.min(boxA.width, boxA.height, boxB.width, boxB.height) * 0.18);
+      const overlapX = Math.min(boxA.x2 + tolerance, boxB.x2 + tolerance) - Math.max(boxA.x1 - tolerance, boxB.x1 - tolerance);
+      const overlapY = Math.min(boxA.y2 + tolerance, boxB.y2 + tolerance) - Math.max(boxA.y1 - tolerance, boxB.y1 - tolerance);
+      const overlap = overlapX >= 0 && overlapY >= 0;
+      const dx = boxA.cx - boxB.cx;
+      const dy = boxA.cy - boxB.cy;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const score = overlap ? distance : distance + 1000;
+      candidates.push({ id: other.id, score, overlap });
+    }
+    candidates.sort((left, right) => left.score - right.score);
+    const touching = candidates.filter((candidate) => candidate.overlap).slice(0, 8).map((candidate) => candidate.id);
+    const nearest = candidates.slice(0, Math.min(6, candidates.length)).map((candidate) => candidate.id);
+    out[territory.id] = Array.from(new Set([...(touching.length ? touching : []), ...nearest])).slice(0, 8);
+  }
+
+  for (const territory of activeTerritories) {
+    const neighbors = out[territory.id] || [];
+    for (const neighborId of neighbors) {
+      out[neighborId] = Array.from(new Set([...(out[neighborId] || []), territory.id])).slice(0, 8);
+    }
+  }
+
+  return Object.keys(out).length ? out : buildFallbackNeighbors(ids);
 }
 
 function randomWind(state: DartsFirefighterState): void {
@@ -768,14 +1027,16 @@ export function createDartsFirefighterState(
 ): DartsFirefighterState {
   const normalizedConfig = normalizeDartsFirefighterConfig(config);
   const safePlayers = players.length ? players : [{ id: "p1", name: "Joueur 1" }];
-  const activeCount = Math.max(6, Math.min(20, Number(normalizedConfig.activeTerritories || 20)));
+  const totalTerritories = Math.max(1, Number(rawMap.territories?.length || 0));
+  const activeCount = Math.max(6, Math.min(totalTerritories, Number(normalizedConfig.activeTerritories || Math.min(20, totalTerritories))));
   const chosen = chooseActiveTerritories(rawMap, activeCount);
   const chosenIds = chosen.map((t) => t.id);
-  const neighbors = buildNeighbors(chosenIds);
+  const neighbors = buildNeighbors(rawMap, chosen);
   const activeIdSet = new Set(chosenIds);
   const seedBase = hash(`${normalizedConfig.mapId}|${normalizedConfig.difficulty}|${now}|${safePlayers.map((p) => p.id).join("|")}`);
 
-  const targetNumbers = Array.from({ length: chosen.length }, (_, index) => index + 1);
+  const sequentialMax = chosen.length <= 20 ? chosen.length : 20;
+  const targetNumbers = Array.from({ length: chosen.length }, (_, index) => sequentialMax <= 0 ? 0 : (index % sequentialMax) + 1);
   if (normalizedConfig.targetOrder === "random") {
     let targetSeed = seedBase;
     for (let i = targetNumbers.length - 1; i > 0; i -= 1) {

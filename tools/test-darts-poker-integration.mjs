@@ -47,6 +47,9 @@ assert.ok(play.includes('History as any).upsert(buildHistoryRecord("in_progress"
 assert.ok(play.includes('initialStatsSubTab: "darts_poker"'), "raccourci stats de fin absent");
 assert.ok(play.includes("stateSnapshot"), "snapshot de reprise absent");
 assert.ok(play.includes("hitsBySegment"), "télémétrie S/D/T absente");
+assert.ok(play.includes("roundContract"), "contrat de manche non affiché");
+assert.ok(play.includes("dealerIndex"), "rotation du dealer absente");
+assert.ok(play.includes("contractHits"), "statistiques de contrats absentes");
 
 const history = read("src/pages/HistoryPage.tsx");
 assert.ok(history.includes('go("darts_poker_play"'), "reprise Historique absente");

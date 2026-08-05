@@ -33,8 +33,10 @@
 
   /* Le carousel principal reste clairement séparé du ticker sticky. */
   .dff-play > .dff-play__turns {
-    margin-top: 6px;
-    padding-top: 0;
+    margin-top: 10px;
+    padding-top: 3px;
+    padding-bottom: 4px;
+    overflow-y: visible;
   }
   .dff-play__turn {
     flex: 0 0 min(154px,42vw);
@@ -266,6 +268,33 @@
   .dff-neighbors > b { color: #9ba3b3; font-size: 6.5px; line-height: 1.3; }
   .dff-neighbors > div { margin-top: 5px; display: flex; gap: 4px; overflow-x: auto; }
   .dff-neighbors span { flex: 0 0 auto; padding: 6px 8px; border: 1px solid; border-radius: 999px; color: #dfe4ec; font-size: 7px; font-weight: 900; }
+  .dff-territory-stage {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(4,8,14,.94);
+    padding: 10px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 12px 28px rgba(0,0,0,.24);
+  }
+  .dff-territory-stage.is-compact { padding: 9px; }
+  .dff-territory-stage__bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .34; pointer-events: none; }
+  .dff-territory-stage__shade { position: absolute; inset: 0; background: linear-gradient(180deg,rgba(4,7,12,.38),rgba(4,7,12,.9) 72%); pointer-events: none; }
+  .dff-territory-stage__hero, .dff-territory-stage__kpis, .dff-territory-advice--overlay, .dff-neighbors--detailed { position: relative; z-index: 1; }
+  .dff-territory-stage__hero { display: grid; grid-template-columns: 104px minmax(0,1fr); gap: 10px; align-items: center; }
+  .dff-territory-stage.is-compact .dff-territory-stage__hero { grid-template-columns: 78px minmax(0,1fr); gap: 8px; }
+  .dff-territory-stage__shape { min-width: 0; }
+  .dff-territory-shape-fallback { width: 100%; height: 96px; border-radius: 22px; border: 2px solid; background: radial-gradient(circle, rgba(255,255,255,.08), rgba(0,0,0,.42) 70%); display: grid; place-items: center; color: #fff; font-size: 40px; font-weight: 1100; }
+  .dff-territory-stage__meta { min-width: 0; display: grid; gap: 3px; }
+  .dff-territory-stage__meta small { color: #97a3b5; font-size: 7px; font-weight: 1000; letter-spacing: .55px; }
+  .dff-territory-stage__meta strong { color: #fff; font-size: 18px; line-height: 1.02; font-weight: 1100; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dff-territory-stage__meta span { font-size: 10px; font-weight: 1100; letter-spacing: .35px; }
+  .dff-territory-stage__meta em { color: #c8d0dc; font-style: normal; font-size: 8px; line-height: 1.3; }
+  .dff-territory-stage__kpis { margin-top: 9px; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 6px; }
+  .dff-territory-stage__kpis.is-compact { grid-template-columns: repeat(5,minmax(0,1fr)); gap: 5px; }
+  .dff-map-selected-wrap { flex: 1 1 auto; min-width: 0; }
+  .dff-map-modal__footer.has-selection { align-items: stretch; }
+
   .dff-modal__actions { margin-top: 10px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
   .dff-modal__actions button,.dff-map-clear { min-height: 42px; border-radius: 12px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.045); color: #fff; font-size: 8px; font-weight: 1000; display: flex; align-items: center; justify-content: center; gap: 6px; }
   
@@ -295,7 +324,7 @@
   .dff-map-selected b { font-size: 10px; }
   .dff-map-selected span { margin-top: 2px; font-size: 7.5px; font-weight: 950; }
   .dff-map-selected small { margin-top: 3px; color: #93a0b7; font-size: 6.8px; font-weight: 900; }
-  .dff-map-clear { flex: 0 0 auto; min-height: 38px; padding: 0 9px; color: #ff9aa2; border-color: rgba(255,76,85,.32); }
+  .dff-map-clear { flex: 0 0 auto; align-self: center; min-height: 42px; padding: 0 10px; color: #ff9aa2; border-color: rgba(255,76,85,.32); }
   .dff-map-hint { width: 100%; color: #a4acbb; text-align: center; font-size: 8px; font-weight: 900; }
   
   .dff-target-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 6px; }
@@ -333,6 +362,9 @@
     .dff-play__info-card { height: 60px; }
     .dff-play__input { min-height: 248px; height: calc(100dvh - 355px); }
     .dff-territory-grid,.dff-stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .dff-territory-stage__hero { grid-template-columns: 82px minmax(0,1fr); }
+    .dff-territory-stage__meta strong { font-size: 15px; }
+    .dff-territory-stage__kpis,.dff-territory-stage__kpis.is-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .dff-mini-kpi.is-detailed { min-height: 82px; }
   }
   
@@ -353,4 +385,8 @@
   .dff-map-modal__territory-meta span { font-size: 11px; }
   .dff-map-modal__territory-meta small { font-size: 7.5px; }
   .dff-map-modal__territory-avatar > * { transform: scale(.9); }
+  .dff-map-modal__footer.has-selection { flex-direction: column; }
+  .dff-map-selected-wrap { width: 100%; }
+  .dff-map-clear { width: 100%; }
+  .dff-territory-stage__kpis,.dff-territory-stage__kpis.is-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }

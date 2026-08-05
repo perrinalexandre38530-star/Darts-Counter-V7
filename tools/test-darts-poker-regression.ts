@@ -38,6 +38,7 @@ const config: DartsPokerConfigPayload = {
   dartsPerHand: 6,
   powersEnabled: true,
   jokerEnabled: true,
+  contractsEnabled: true,
   autoDrawMissing: true,
   openHands: true,
   randomOrder: false,
@@ -47,6 +48,8 @@ const rng = () => 0.314159;
 let state = createDartsPokerState([{ id: "p1", name: "Alice" }, { id: "p2", name: "Bob" }], config, rng);
 assert.equal(Object.keys(state.market).length, 20);
 assert.equal(state.deck.length, 32);
+assert.equal(state.dealerIndex, 0);
+assert.equal(state.roundContract?.key, "pair");
 
 const rotationSequence = [
   { playerId: "p1", dart: { bed: "S", number: 1 } },
@@ -81,6 +84,11 @@ assert.equal(state.statsByPlayer.p1.jokers, 1);
 assert.equal(state.statsByPlayer.p1.darts, 6);
 assert.equal(state.statsByPlayer.p2.darts, 6);
 assert.equal(state.visits.length, 12);
+const occupiedIds = [
+  ...Object.values(state.market).filter(Boolean).map((entry: any) => entry.id),
+  ...Object.values(state.handsByPlayer).flatMap((hand: any) => hand.cards.filter((entry: any) => !entry.joker).map((entry: any) => entry.id)),
+];
+assert.equal(new Set(occupiedIds).size, occupiedIds.length, "une carte physique ne doit pas exister deux fois pendant la même manche");
 
 state = openDartsPokerChoice(state, rng);
 assert.equal(state.pendingChoice?.cards.length, 2);
@@ -99,11 +107,18 @@ assert.equal(state.phase, "round_result");
 assert.equal(state.rounds.length, 1);
 assert.equal(state.statsByPlayer.p2.autoDraws, 5);
 assert.equal(state.rounds[0].rows.length, 2);
+assert.equal(state.rounds[0].contract?.key, "pair");
+assert.ok(state.rounds[0].rows.every((row) => typeof row.pointsAwarded === "number"));
+assert.ok(state.rounds[0].rows.every((row) => typeof row.contractCompleted === "boolean"));
+assert.ok(state.rounds[0].rows.every((row) => Number(row.pointsAwarded) >= (row.win ? 1 : 0)));
+assert.ok(Object.values(state.statsByPlayer).every((stats) => stats.roundPoints >= stats.handsWon));
 
 state = advanceDartsPokerRound(state, rng);
 assert.equal(state.phase, "throwing");
 assert.equal(state.roundIndex, 2);
-assert.equal(state.activePlayerIndex, 0);
+assert.equal(state.dealerIndex, 1);
+assert.equal(state.activePlayerIndex, 1);
+assert.ok(state.roundContract);
 assert.equal(state.handsByPlayer.p1.cards.length, 0);
 assert.equal(Object.keys(state.market).length, 20);
 

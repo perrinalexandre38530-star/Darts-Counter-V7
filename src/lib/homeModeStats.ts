@@ -764,10 +764,10 @@ function rowsForMode(agg: ModeAgg): HomeModeSlide["rows"] {
       return [
         row("parties", agg.sessions),
         row("win%", formatPct(winRate)),
-        row("mains gagnées", formatNumber(s.handsWon || agg.scoreSum, 0)),
+        row("points", formatNumber(s.roundPoints || s.handsWon || agg.scoreSum, 0)),
+        row("mains gagnées", formatNumber(s.handsWon, 0)),
+        row("contrats", formatNumber(s.contractHits, 0)),
         row("meilleure main", formatNumber(bestMetric(agg), 0)),
-        row("cartes", formatNumber(s.cardsCollected, 0)),
-        row("pouvoirs", formatNumber((s.choicesUsed || 0) + (s.exchangesUsed || 0) + (s.jokers || 0), 0)),
       ];
     case "ocean_control":
       return [

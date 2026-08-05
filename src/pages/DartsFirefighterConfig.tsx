@@ -16,6 +16,7 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
 import { TERRITORY_MAPS } from "../lib/territories/maps";
+import { buildTerritoriesMap } from "../territories/map";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
 import {
   dartsFirefighterDifficultyRules,
@@ -212,6 +213,28 @@ export default function DartsFirefighterConfig(props: any) {
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
   const [showExpert, setShowExpert] = React.useState(Boolean(saved.showExpert));
 
+  const mapTerritoryCount = React.useMemo(() => {
+    try { return Math.max(1, Number(buildTerritoriesMap(String(config?.mapId || "FR") as any).territories?.length || 1)); }
+    catch { return 20; }
+  }, [config?.mapId]);
+  const territoryOptions = React.useMemo(() => {
+    const presets = [8, 12, 16, 20].filter((value, index, rows) => value < mapTerritoryCount && rows.indexOf(value) === index);
+    const values = Array.from(new Set([...presets, mapTerritoryCount])).sort((a, b) => a - b);
+    return values.map((value) => ({
+      value,
+      label: value === mapTerritoryCount
+        ? `${value} · Carte complète`
+        : value <= 12
+          ? `${value} · Mission rapide`
+          : value <= 20
+            ? `${value} · Standard`
+            : `${value} · Grande carte`,
+    }));
+  }, [mapTerritoryCount]);
+  const sectorSummary = Number(config?.activeTerritories || 0) > 20
+    ? (config?.targetOrder === "random" ? "1-20 / mélangés" : "1-20 / répétés")
+    : (config?.targetOrder === "random" ? "MÉLANGÉS" : `1-${config?.activeTerritories || 20}`);
+
   const selectedItems = selectedIds.map((id) => byId.get(id)).filter(Boolean);
   const selectedBots = selectedItems.filter(isBotLike);
   const valid = selectedIds.length >= 1 && selectedIds.length <= 8;
@@ -258,14 +281,18 @@ export default function DartsFirefighterConfig(props: any) {
   }
 
   React.useEffect(() => {
-    setConfig((prev: any) => ({
-      ...prev,
-      initialFires: Math.min(prev.initialFires, Math.max(1, Math.floor(prev.activeTerritories / 2))),
-      initialSmoke: Math.min(prev.initialSmoke, Math.max(0, prev.activeTerritories - prev.initialFires)),
-      initialProtectedTerritories: Math.min(prev.initialProtectedTerritories, Math.max(0, prev.activeTerritories - prev.initialFires - prev.initialSmoke)),
-      criticalTerritories: Math.min(prev.criticalTerritories, Math.max(0, Math.floor(prev.activeTerritories / 2))),
-    }));
-  }, [config.activeTerritories]);
+    setConfig((prev: any) => {
+      const activeTerritories = Math.max(8, Math.min(mapTerritoryCount, Number(prev.activeTerritories || mapTerritoryCount)));
+      return {
+        ...prev,
+        activeTerritories,
+        initialFires: Math.min(prev.initialFires, Math.max(1, Math.floor(activeTerritories / 2))),
+        initialSmoke: Math.min(prev.initialSmoke, Math.max(0, activeTerritories - prev.initialFires)),
+        initialProtectedTerritories: Math.min(prev.initialProtectedTerritories, Math.max(0, activeTerritories - prev.initialFires - prev.initialSmoke)),
+        criticalTerritories: Math.min(prev.criticalTerritories, Math.max(0, Math.floor(activeTerritories / 2))),
+      };
+    });
+  }, [config.activeTerritories, mapTerritoryCount]);
 
   React.useEffect(() => {
     if (config.objective === "protect_critical" && config.criticalTerritories < 1) setConfig((prev: any) => ({ ...prev, criticalTerritories: 2, criticalLossEndsMission: true }));
@@ -329,10 +356,10 @@ export default function DartsFirefighterConfig(props: any) {
     <SectionTitle icon="🗺️" title="TERRITOIRE D’INTERVENTION" subtitle="Toutes les cartes disponibles dans Territories sont proposées." color={GOLD} />
     <div style={{ display: "grid", gap: 7 }}>
       <OptionRow label="Carte" hint="Pays, continent ou carte mondiale"><OptionSelect value={config.mapId} options={MAP_OPTIONS} onChange={(v) => setField("mapId", v)} /></OptionRow>
-      <OptionRow label="Zones actives" hint="Nombre de territoires réellement attribués à la cible"><OptionSelect value={config.activeTerritories} options={[{ value: 8, label: "8 · Mini mission" }, { value: 12, label: "12 · Rapide" }, { value: 16, label: "16 · Standard" }, { value: 20, label: "20 · Carte complète" }]} onChange={(v) => setField("activeTerritories", Number(v))} /></OptionRow>
-      <OptionRow label="Attribution des secteurs" hint="Secteurs 1 à N dans l’ordre ou mélangés"><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre 1 → N" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></OptionRow>
+      <OptionRow label="Zones actives" hint="De la mini-mission à la carte complète"><OptionSelect value={config.activeTerritories} options={territoryOptions} onChange={(v) => setField("activeTerritories", Number(v))} /></OptionRow>
+      <OptionRow label="Attribution des secteurs" hint="Au-delà de 20 zones, les secteurs 1 à 20 sont réutilisés sur plusieurs territoires"><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></OptionRow>
     </div>
-    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🗺️" label="CARTE" value={TERRITORY_MAPS[config.mapId]?.name || config.mapId} color={GOLD} /><MiniMetric icon="📍" label="ZONES" value={config.activeTerritories} color={WATER} /><MiniMetric icon="🎯" label="SECTEURS" value={config.targetOrder === "random" ? "MÉLANGÉS" : `1-${config.activeTerritories}`} color={FIRE_2} /></div>
+    <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🗺️" label="CARTE" value={TERRITORY_MAPS[config.mapId]?.name || config.mapId} color={GOLD} /><MiniMetric icon="📍" label="ZONES" value={`${config.activeTerritories}/${mapTerritoryCount}`} color={WATER} /><MiniMetric icon="🎯" label="SECTEURS" value={sectorSummary} color={FIRE_2} /></div>
   </section>;
 
   const ignitionBlock = <section style={block}>
@@ -416,7 +443,7 @@ export default function DartsFirefighterConfig(props: any) {
     <div style={{ marginTop: 8, padding: 10, borderRadius: 13, background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.08)", display: "grid", gap: 5, fontSize: 9.2 }}>
       <div><strong style={{ color: FIRE_2 }}>MISSION :</strong> {PRESETS.find((p) => p.id === config.missionPreset)?.title || "Personnalisée"} · {difficultyLabel(config.difficulty)}</div>
       <div><strong style={{ color: WATER }}>OBJECTIF :</strong> {config.objective === "survival" ? `Survivre ${config.maxRounds} rounds` : config.objective === "protect_critical" ? `Protéger ${config.criticalTerritories} zones critiques` : "Éteindre tous les foyers"}</div>
-      <div><strong style={{ color: GOLD }}>CARTE :</strong> {TERRITORY_MAPS[config.mapId]?.name || config.mapId} · {config.activeTerritories} zones · secteurs {config.targetOrder === "random" ? "aléatoires" : "ordonnés"}</div>
+      <div><strong style={{ color: GOLD }}>CARTE :</strong> {TERRITORY_MAPS[config.mapId]?.name || config.mapId} · {config.activeTerritories}/{mapTerritoryCount} zones · secteurs {Number(config.activeTerritories) > 20 ? "1 à 20 répétés" : config.targetOrder === "random" ? "aléatoires" : "ordonnés"}</div>
       <div><strong style={{ color: FIRE }}>INCENDIE :</strong> {config.initialFires} foyers · {config.initialSmoke} fumées · {config.initialProtectedTerritories} zones protégées · propagation {config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}</div>
       <div><strong style={{ color: WATER }}>MOYENS :</strong> Bull puissance {config.bullPower} · jauge initiale {config.startingBrigadeGauge}% · Canadair {config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}</div>
       <div><strong style={{ color: GREEN }}>VOLÉE :</strong> jusqu’à {config.dartsPerTurn} fléchette{config.dartsPerTurn > 1 ? "s" : ""}, validation possible à tout moment · {config.scoreInputMethod === "dartboard" ? "cible interactive" : "clavier"} · MISS {config.missEndsTurn ? "fatal" : "normal"}</div>
