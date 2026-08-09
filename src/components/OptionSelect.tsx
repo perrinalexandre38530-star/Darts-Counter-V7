@@ -36,6 +36,8 @@ export default function OptionSelect(props: {
         fontWeight: 900,
         outline: "none",
         minWidth: 120,
+        width: "100%",
+        maxWidth: "100%",
       }}
     >
       {normalized.map((o) => (

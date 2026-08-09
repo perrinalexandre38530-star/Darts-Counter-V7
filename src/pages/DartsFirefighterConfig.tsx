@@ -7,6 +7,7 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
+import InfoMini from "../components/InfoMini";
 import InfoDot from "../components/InfoDot";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
@@ -48,6 +49,13 @@ const WATER = "#27c9ff";
 const GOLD = "#ffd66b";
 const GREEN = "#61e8a9";
 const RED = "#ff6472";
+
+const HELP_MAX_DARTS = "Définit le nombre maximal de fléchettes autorisées avant validation. Sur les grandes cartes à cibles uniques, le moteur bloque à 3 pour garantir que chaque objectif reste atteignable, mais la validation anticipée après 1 ou 2 fléchettes reste possible.";
+const HELP_MISS_RULE = "Si cette option est activée, un MISS termine immédiatement la volée en cours. Sinon, les fléchettes restantes peuvent encore être jouées normalement.";
+const HELP_COMBO = "Le combo brigade augmente le score quand plusieurs actions utiles s’enchaînent sans relâche. Idéal si tu veux valoriser les bonnes séries.";
+const HELP_PERFECT = "Une volée parfaite récompense une séquence où chaque fléchette déclenche une action utile. Ce bonus est ajouté au score de brigade.";
+const HELP_INPUT_METHOD = "Clavier : saisie simple des touches. Cible interactive : sélection plus visuelle directement comme sur un vrai jeu de fléchettes.";
+const HELP_TARGET_ASSIGNMENT = "Avec 20 zones ou moins, chaque territoire reçoit un secteur 1 à 20. Au-delà, le moteur génère des cibles uniques adaptées à la taille des territoires et au niveau estimé de la brigade.";
 
 type BotLevel = "easy" | "normal" | "hard";
 type ViewMode = "guided" | "complete";
@@ -274,6 +282,26 @@ function MiniMetric({ label, value, color = "#fff", icon }: any) {
   </div>;
 }
 
+function LabelWithInfo({ label, info, onInfo }: { label: string; info?: string; onInfo: (t: string, c: string) => void }) {
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+    <span>{label}</span>
+    {info ? <InfoMini title={label} content={info} onOpen={onInfo} size={16} /> : null}
+  </span>;
+}
+
+function InfoModalCard({ title, content, onClose }: { title: string; content: string; onClose: () => void }) {
+  return <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(2,4,8,.72)", display: "grid", placeItems: "center", padding: 16 }}>
+    <button type="button" aria-label="Fermer" onClick={onClose} style={{ position: "absolute", inset: 0, border: "none", background: "transparent", cursor: "default" }} />
+    <div style={{ position: "relative", width: "min(420px, 100%)", borderRadius: 18, padding: 14, background: "linear-gradient(180deg, rgba(8,12,20,.98), rgba(5,8,14,.98))", border: `1px solid ${WATER}48`, boxShadow: "0 18px 46px rgba(0,0,0,.42)", color: "#fff" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ color: WATER, fontSize: 11.2, fontWeight: 1100, letterSpacing: .5 }}>{title}</div>
+        <button type="button" onClick={onClose} style={{ width: 32, height: 32, borderRadius: 999, border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", fontSize: 16, fontWeight: 1000 }}>×</button>
+      </div>
+      <div style={{ marginTop: 10, color: "#d5dcea", fontSize: 12.2, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{content}</div>
+    </div>
+  </div>;
+}
+
 function Rules({ config }: { config: any }) {
   const objective = config.objective === "survival" ? "Résister jusqu’à la fin des rounds." : config.objective === "protect_critical" ? "Protéger les zones critiques jusqu’aux renforts." : "Éteindre tous les foyers.";
   return <div style={{ display: "grid", gap: 11, fontSize: 13, lineHeight: 1.48 }}>
@@ -316,6 +344,7 @@ export default function DartsFirefighterConfig(props: any) {
   const [botLevel, setBotLevel] = React.useState<BotLevel>(saved.botLevel === "easy" || saved.botLevel === "hard" ? saved.botLevel : "normal");
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>(saved.playerDartSets || {});
   const [showExpert, setShowExpert] = React.useState(Boolean(saved.showExpert));
+  const [infoModal, setInfoModal] = React.useState<{ title: string; content: string } | null>(null);
 
   const mapTerritoryCount = React.useMemo(() => {
     try { return Math.max(1, Number(buildTerritoriesMap(String(config?.mapId || "FR") as any).territories?.length || 1)); }
@@ -381,6 +410,7 @@ export default function DartsFirefighterConfig(props: any) {
   }
   function handleDartSet(id: string, dartSetId: string | null) { setPlayerDartSets((prev) => ({ ...prev, [String(id)]: dartSetId || null })); }
   function back() { if (typeof go === "function") go("games"); }
+  function openInfo(title: string, content: string) { setInfoModal({ title, content }); }
   function resetConfiguration() {
     const wildfire = PRESETS.find((preset) => preset.id === "wildfire");
     const fresh = normalizeDartsFirefighterConfig({ ...(wildfire?.patch || {}), missionPreset: "wildfire" });
@@ -532,7 +562,7 @@ export default function DartsFirefighterConfig(props: any) {
           <div style={{ color: "#929bad", fontSize: 7.8, lineHeight: 1.4 }}>Le niveau est calculé au lancement à partir des statistiques des joueurs sélectionnés et du niveau des Bots. Pour une brigade débutante, le moteur privilégie les scores les plus accessibles ; pour une brigade experte, il décale les objectifs vers des scores plus exigeants.</div>
         </div>
       </ConfigAccordion> : <ConfigAccordion title="Numérotation des secteurs" subtitle="Un secteur unique par territoire" icon="🎯" color={FIRE_2} badge={sectorSummary}>
-        <OptionRow label="Attribution des secteurs" hint="Avec 20 zones ou moins, chaque territoire conserve un secteur 1 à 20 unique"><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Numérotation" info={HELP_TARGET_ASSIGNMENT} onInfo={openInfo} />} hint={Number(config.activeTerritories) > 20 ? "Cibles uniques auto" : "Ordre des secteurs"}><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></OptionRow>
       </ConfigAccordion>}
     </div>
   </section>;
@@ -617,13 +647,13 @@ export default function DartsFirefighterConfig(props: any) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🎯" label="VOLÉE" value={`${config.dartsPerTurn} MAX`} color={WATER} /><MiniMetric icon="💧" label="MISS" value={config.missEndsTurn ? "FATAL" : "NORMAL"} color={FIRE} /><MiniMetric icon="⌨️" label="SAISIE" value={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"} color={GREEN} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
       <ConfigAccordion title="Volée et MISS" subtitle="Nombre de fléchettes et fin anticipée" icon="🎯" color={WATER} badge={`${config.dartsPerTurn} FLÉCHETTE${config.dartsPerTurn > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
-        <OptionRow label="Maximum par volée" hint={Number(config.activeTerritories) > 20 ? "3 fléchettes maximum nécessaires pour garantir une cible unique atteignable ; tu peux toujours valider après 1 ou 2." : "Tu peux valider librement après 1, 2 ou 3 fléchettes"}><OptionSelect value={Number(config.activeTerritories) > 20 ? 3 : config.dartsPerTurn} options={Number(config.activeTerritories) > 20 ? [{ value: 3, label: "3 · Cibles uniques (validation anticipée autorisée)" }] : [{ value: 1, label: "1 · Intervention éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></OptionRow>
-        <OptionRow label="MISS termine la volée" hint="Les fléchettes restantes ne sont pas jouées"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Volée max" info={HELP_MAX_DARTS} onInfo={openInfo} />} hint={Number(config.activeTerritories) > 20 ? "3 max · validation libre" : "1 à 3 fléchettes"}><OptionSelect value={Number(config.activeTerritories) > 20 ? 3 : config.dartsPerTurn} options={Number(config.activeTerritories) > 20 ? [{ value: 3, label: "3 · Cibles uniques" }] : [{ value: 1, label: "1 · Éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Règle du MISS" info={HELP_MISS_RULE} onInfo={openInfo} />} hint="Arrêt immédiat si activé"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></OptionRow>
       </ConfigAccordion>
       <ConfigAccordion title="Score et méthode de saisie" subtitle="Combo, bonus et clavier/cible" icon="🏆" color={GREEN} badge={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"}>
-        <OptionRow label="Multiplicateur de brigade" hint="Les interventions utiles consécutives augmentent le score"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></OptionRow>
-        <OptionRow label="Bonus volée parfaite" hint="Toutes les fléchettes produisent une action utile"><OptionSelect value={config.perfectVisitBonus} options={[0,50,100,150,200,250,300,400,500]} onChange={(v) => setField("perfectVisitBonus", Number(v))} /></OptionRow>
-        <OptionRow label="Méthode de saisie" hint="Clavier classique ou cible interactive"><OptionSelect value={config.scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible interactive" }]} onChange={(v) => setField("scoreInputMethod", v)} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Combo brigade" info={HELP_COMBO} onInfo={openInfo} />} hint="Bonus de série"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Bonus parfait" info={HELP_PERFECT} onInfo={openInfo} />} hint="Toutes les fléchettes utiles"><OptionSelect value={config.perfectVisitBonus} options={[0,50,100,150,200,250,300,400,500]} onChange={(v) => setField("perfectVisitBonus", Number(v))} /></OptionRow>
+        <OptionRow label={<LabelWithInfo label="Saisie" info={HELP_INPUT_METHOD} onInfo={openInfo} />} hint="Clavier ou cible"><OptionSelect value={config.scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible interactive" }]} onChange={(v) => setField("scoreInputMethod", v)} /></OptionRow>
       </ConfigAccordion>
     </div>
   </section>;
@@ -683,5 +713,6 @@ export default function DartsFirefighterConfig(props: any) {
         <button type="button" disabled={!valid} onClick={start} style={{ width: "100%", minHeight: 54, borderRadius: 16, border: `1px solid ${valid ? FIRE : "#555"}`, background: valid ? `linear-gradient(135deg,${FIRE},#d73c15)` : "#282a30", color: "#fff", fontWeight: 1100, boxShadow: valid ? `0 0 24px ${FIRE}55` : "none" }}>🔥 LANCER DARTS FIREFIGHTER</button>
       </>}
     </main>
+    {infoModal ? <InfoModalCard title={infoModal.title} content={infoModal.content} onClose={() => setInfoModal(null)} /> : null}
   </div>;
 }
