@@ -13,6 +13,8 @@
 import type { GameDart } from "../types-game";
 import type { TerritoriesMap, Territory } from "../../territories/types";
 import { getBaseSvgForCountry } from "../../territories/map";
+import { applyBalancedTerritoryValues, buildTerritoryValueCalibration } from "../../territories/territoryValueBalancing";
+import { MAX_PLAYABLE_TERRITORIES } from "../../territories/territoryValueRules";
 
 export type DartsFirefighterDifficulty = "recruit" | "firefighter" | "commander" | "inferno";
 export type DartsFirefighterInputMethod = "keypad" | "dartboard";
@@ -20,6 +22,7 @@ export type DartsFirefighterObjective = "extinguish_all" | "protect_critical" | 
 export type DartsFirefighterPropagationTiming = "after_visit" | "after_round";
 export type DartsFirefighterFirePlacement = "random" | "clustered" | "critical_first";
 export type DartsFirefighterTargetOrder = "sequential" | "random";
+export type DartsFirefighterTargetMode = "sector" | "visit_score";
 export type DartsFirefighterWindStrength = "light" | "normal" | "strong";
 export type DartsFirefighterInitialIntensity = "mixed" | 1 | 2 | 3;
 export type DartsFirefighterFinishReason = "all_fires_out" | "objective_complete" | "critical_lost" | "destruction_limit" | "round_limit" | null;
@@ -147,6 +150,11 @@ export type FirefighterVisit = {
   unusedDarts?: number;
   /** Vrai lorsque le joueur a volontairement validé avant la limite. */
   voluntaryStop?: boolean;
+  /** Total réel marqué aux fléchettes dans le mode cibles uniques. */
+  rawDartScore?: number;
+  /** Valeur exacte atteinte lorsqu’un territoire a été activé. */
+  matchedTargetScore?: number | null;
+  targetMode?: DartsFirefighterTargetMode;
 };
 
 export type FirefighterPlayerStats = {
@@ -208,6 +216,10 @@ export type DartsFirefighterState = {
   history: FirefighterVisit[];
   playerStats: Record<string, FirefighterPlayerStats>;
   seed: number;
+  /** Mode secteur classique jusqu’à 20 zones, score exact unique au-delà. */
+  targetMode?: DartsFirefighterTargetMode;
+  /** Calibration calculée au lancement à partir du niveau réel de la brigade. */
+  targetCalibration?: { referenceAvg3: number; minTarget: number; maxTarget: number; label: string; playerCount: number };
 };
 
 const DIFFICULTY = {
@@ -244,7 +256,7 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
   const base = DIFFICULTY[difficulty];
   const requestedActive = Number(raw?.activeTerritories);
   const active = Number.isFinite(requestedActive)
-    ? Math.max(8, Math.min(240, Math.round(requestedActive)))
+    ? Math.max(8, Math.min(MAX_PLAYABLE_TERRITORIES, Math.round(requestedActive)))
     : 20;
   const objective: DartsFirefighterObjective = ["extinguish_all", "protect_critical", "survival"].includes(raw?.objective) ? raw.objective : "extinguish_all";
   return {
@@ -285,7 +297,7 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
     windChangeEvery: Math.max(1, Math.min(10, Number(raw?.windChangeEvery || 3))),
     forecastEnabled: raw?.forecastEnabled !== false,
     forecastCount: Math.max(1, Math.min(6, Number(raw?.forecastCount || 4))),
-    dartsPerTurn: ([1, 2, 3].includes(Number(raw?.dartsPerTurn)) ? Number(raw.dartsPerTurn) : 3) as any,
+    dartsPerTurn: (active > 20 ? 3 : ([1, 2, 3].includes(Number(raw?.dartsPerTurn)) ? Number(raw.dartsPerTurn) : 3)) as any,
     missEndsTurn: Boolean(raw?.missEndsTurn),
     comboEnabled: raw?.comboEnabled !== false,
     perfectVisitBonus: Math.max(0, Math.min(1000, Number(raw?.perfectVisitBonus ?? 200))),
@@ -376,6 +388,35 @@ export function dartWaterPower(dart: GameDart): number {
   if (dart.bed === "OB") return 2;
   if (dart.bed === "IB") return 3;
   return 0;
+}
+
+export function dartScoreValue(dart: GameDart): number {
+  if (!dart || dart.bed === "MISS") return 0;
+  if (dart.bed === "OB") return 25;
+  if (dart.bed === "IB") return 50;
+  const number = Math.max(0, Math.min(20, Number(dart.number || 0)));
+  if (dart.bed === "D") return number * 2;
+  if (dart.bed === "T") return number * 3;
+  return number;
+}
+
+function recordDartStatsOnly(stats: FirefighterPlayerStats, dart: GameDart) {
+  const label = dartLabel(dart);
+  stats.darts += 1;
+  stats.hitsBySegment[label] = Number(stats.hitsBySegment[label] || 0) + 1;
+  if (dart.bed === "MISS") { stats.misses += 1; return; }
+  stats.hits += 1;
+  if (dart.bed === "S") stats.singles += 1;
+  else if (dart.bed === "D") stats.doubles += 1;
+  else if (dart.bed === "T") stats.triples += 1;
+  else if (dart.bed === "OB") stats.bulls += 1;
+  else if (dart.bed === "IB") stats.dbulls += 1;
+}
+
+function resolveVisitScoreTarget(state: DartsFirefighterState, rawScore: number): FireTerritory | null {
+  const selected = state.territories.find((territory) => territory.id === state.selectedTerritoryId && territory.playable && !territory.destroyed) || null;
+  if (selected) return selected;
+  return state.territories.find((territory) => territory.playable && !territory.destroyed && territory.target === rawScore) || null;
 }
 
 export function fireStatus(territory: FireTerritory): FireStatus {
@@ -1028,22 +1069,42 @@ export function createDartsFirefighterState(
   const normalizedConfig = normalizeDartsFirefighterConfig(config);
   const safePlayers = players.length ? players : [{ id: "p1", name: "Joueur 1" }];
   const totalTerritories = Math.max(1, Number(rawMap.territories?.length || 0));
-  const activeCount = Math.max(6, Math.min(totalTerritories, Number(normalizedConfig.activeTerritories || Math.min(20, totalTerritories))));
+  const activeCount = Math.max(6, Math.min(totalTerritories, MAX_PLAYABLE_TERRITORIES, Number(normalizedConfig.activeTerritories || Math.min(20, totalTerritories))));
   const chosen = chooseActiveTerritories(rawMap, activeCount);
   const chosenIds = chosen.map((t) => t.id);
   const neighbors = buildNeighbors(rawMap, chosen);
   const activeIdSet = new Set(chosenIds);
   const seedBase = hash(`${normalizedConfig.mapId}|${normalizedConfig.difficulty}|${now}|${safePlayers.map((p) => p.id).join("|")}`);
 
-  const sequentialMax = chosen.length <= 20 ? chosen.length : 20;
-  const targetNumbers = Array.from({ length: chosen.length }, (_, index) => sequentialMax <= 0 ? 0 : (index % sequentialMax) + 1);
-  if (normalizedConfig.targetOrder === "random") {
-    let targetSeed = seedBase;
-    for (let i = targetNumbers.length - 1; i > 0; i -= 1) {
-      const [r, nextSeed] = nextRandom(targetSeed);
-      targetSeed = nextSeed;
-      const j = Math.floor(r * (i + 1));
-      [targetNumbers[i], targetNumbers[j]] = [targetNumbers[j], targetNumbers[i]];
+  const targetMode: DartsFirefighterTargetMode = chosen.length > 20 ? "visit_score" : "sector";
+  const calibrationProfiles = Array.isArray((normalizedConfig as any).playersList) && (normalizedConfig as any).playersList.length
+    ? (normalizedConfig as any).playersList
+    : safePlayers;
+  const targetCalibration = buildTerritoryValueCalibration(calibrationProfiles, String((normalizedConfig as any).botLevel || "normal"));
+
+  let targetNumbers: number[] = [];
+  if (targetMode === "visit_score") {
+    // Réutilise exactement la logique de TERRITORIES : valeurs uniques, atteignables
+    // en une volée de 3 fléchettes, calibrées sur le niveau du groupe et réparties
+    // selon la surface réelle des territoires. Les petites zones reçoivent les
+    // objectifs les plus accessibles, les grandes les plus exigeants.
+    const balanced = applyBalancedTerritoryValues(
+      { ...rawMap, territories: chosen.map((territory) => ({ ...territory })) },
+      String(rawMap.country || normalizedConfig.mapId || "FR") as any,
+      targetCalibration,
+    );
+    const valueById = new Map((balanced.territories || []).map((territory) => [territory.id, Number(territory.value || 0)]));
+    targetNumbers = chosen.map((territory, index) => valueById.get(territory.id) || index + 1);
+  } else {
+    targetNumbers = Array.from({ length: chosen.length }, (_, index) => index + 1);
+    if (normalizedConfig.targetOrder === "random") {
+      let targetSeed = seedBase;
+      for (let i = targetNumbers.length - 1; i > 0; i -= 1) {
+        const [r, nextSeed] = nextRandom(targetSeed);
+        targetSeed = nextSeed;
+        const j = Math.floor(r * (i + 1));
+        [targetNumbers[i], targetNumbers[j]] = [targetNumbers[j], targetNumbers[i]];
+      }
     }
   }
 
@@ -1069,7 +1130,10 @@ export function createDartsFirefighterState(
 
   const map: TerritoriesMap = {
     ...rawMap,
-    territories: rawMap.territories.map((territory) => ({ ...territory, playable: activeIdSet.has(territory.id) })),
+    territories: rawMap.territories.map((territory) => {
+      const activeIndex = chosen.findIndex((item) => item.id === territory.id);
+      return { ...territory, playable: activeIdSet.has(territory.id), value: activeIndex >= 0 ? targetNumbers[activeIndex] : territory.value };
+    }),
     playableTerritoryCount: activeIdSet.size,
     disabledTerritoryCount: Math.max(0, rawMap.territories.length - activeIdSet.size),
   };
@@ -1103,6 +1167,8 @@ export function createDartsFirefighterState(
     history: [],
     playerStats: {},
     seed: seedBase,
+    targetMode,
+    targetCalibration,
   };
   safePlayers.forEach((p) => { state.playerStats[p.id] = emptyFirefighterStats(); });
   randomWind(state);
@@ -1195,14 +1261,58 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   let usefulDarts = 0;
   let endedByMiss = false;
 
-  for (const dart of safeDarts) {
-    processedDarts.push(dart);
-    const result = applyDart(next, dart, player.id, events);
-    visitScore += Number(result.score || 0);
-    if (result.useful) usefulDarts += 1;
-    if (dart.bed === "MISS" && next.config.missEndsTurn) {
-      endedByMiss = true;
-      break;
+  const scoreTargetMode = next.targetMode === "visit_score" || Number(next.config.activeTerritories || 0) > 20;
+  const singleBullSupport = scoreTargetMode && safeDarts.length === 1 && (safeDarts[0]?.bed === "OB" || safeDarts[0]?.bed === "IB");
+  let rawDartScore = 0;
+  let matchedTargetScore: number | null = null;
+
+  if (scoreTargetMode && !singleBullSupport) {
+    for (const dart of safeDarts) {
+      processedDarts.push(dart);
+      recordDartStatsOnly(stats, dart);
+      rawDartScore += dartScoreValue(dart);
+      if (dart.bed === "MISS" && next.config.missEndsTurn) {
+        endedByMiss = true;
+        break;
+      }
+    }
+
+    const target = resolveVisitScoreTarget(next, rawDartScore);
+    const exact = Boolean(target && Number(target.target) === Number(rawDartScore));
+    if (exact && target) {
+      if (!next.selectedTerritoryId) next.selectedTerritoryId = target.id;
+      matchedTargetScore = target.target;
+      const power = Math.max(1, ...processedDarts.filter((dart) => dart.bed !== "MISS").map((dart) => dartWaterPower(dart)));
+      const result = applyWater(next, target, power, player.id, events, `CIBLE ${target.target} · `);
+      visitScore += Number(result.score || 0);
+      usefulDarts = result.useful ? Math.max(1, processedDarts.filter((dart) => dart.bed !== "MISS").length) : 0;
+      stats.waterApplied += power;
+      stats.fireReduced += Number(result.fireReduced || 0);
+      stats.protectionsPlaced += Number(result.protected || 0);
+      stats.firesExtinguished += result.extinguished ? 1 : 0;
+      stats.smokeCleared += result.smokeCleared ? 1 : 0;
+      if (result.extinguished) next.totalExtinguished += 1;
+      if (!result.useful) stats.uselessDarts += processedDarts.length;
+      if (result.useful) next.brigadeGauge = Math.min(100, next.brigadeGauge + 7 + Number(result.fireReduced || 0) * 4);
+      addEvent(events, { type: "water", territoryId: target.id, territoryName: target.name, value: rawDartScore, score: 0, label: `CIBLE EXACTE ${rawDartScore} · ${target.name} · puissance ${power}` });
+    } else {
+      const selected = next.territories.find((territory) => territory.id === next.selectedTerritoryId && territory.playable && !territory.destroyed) || null;
+      const delta = selected ? rawDartScore - selected.target : 0;
+      const deltaLabel = selected ? (delta === 0 ? "" : delta > 0 ? ` +${delta}` : ` ${delta}`) : "";
+      addEvent(events, { type: "useless", territoryId: selected?.id, territoryName: selected?.name, value: rawDartScore, score: 0, label: selected ? `CIBLE ${selected.target} · ${rawDartScore} pts${deltaLabel} · intervention non déclenchée` : `VOLÉE ${rawDartScore} pts · aucune cible unique correspondante` });
+      stats.uselessDarts += processedDarts.length;
+    }
+  } else {
+    for (const dart of safeDarts) {
+      processedDarts.push(dart);
+      const result = applyDart(next, dart, player.id, events);
+      visitScore += Number(result.score || 0);
+      if (result.useful) usefulDarts += 1;
+      rawDartScore += dartScoreValue(dart);
+      if (dart.bed === "MISS" && next.config.missEndsTurn) {
+        endedByMiss = true;
+        break;
+      }
     }
   }
 
@@ -1258,6 +1368,9 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
     maxDarts: dartsPerTurn,
     unusedDarts,
     voluntaryStop,
+    rawDartScore,
+    matchedTargetScore,
+    targetMode: next.targetMode,
   };
   next.history.push(visit);
   next.turnIndex += 1;
