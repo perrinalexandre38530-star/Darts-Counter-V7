@@ -498,7 +498,8 @@ export default function DartsFirefighterPlay(props: any) {
   }, [store, config.selectedIds, config.playersList, config.players]);
   const players = React.useMemo(() => profiles.map((profile: any) => ({ id: String(profile.id), name: playerName(profile), avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null, dartSetId: config.playerDartSets?.[String(profile.id)] ?? profile?.dartSetId ?? null, isBot: isBot(profile, botIds) })), [profiles, botIds]);
   const profilesById = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
-  const rawMap = React.useMemo(() => buildTerritoriesMap(toCountry(config.mapId)), [config.mapId]);
+  const country = React.useMemo(() => toCountry(config.mapId), [config.mapId]);
+  const rawMap = React.useMemo(() => buildTerritoriesMap(country), [country]);
   const resumeRecord = props?.params?.rec || props?.params?.record || props?.params?.match || null;
   const resumeState = resumeRecord?.payload?.stateSnapshot || resumeRecord?.resume?.state || resumeRecord?.payload?.resume?.state || null;
   const initialState = React.useMemo(() => {
@@ -819,8 +820,8 @@ export default function DartsFirefighterPlay(props: any) {
 
       <section className="dff-play__cards">
         <CompactInfoCard title="OBJECTIF" value={primarySuggestion?.territory?.target || "—"} subtitle={primarySuggestion?.action || "Analyse en cours"} color={primarySuggestion?.territory ? fireTerritoryColor(fireStatus(primarySuggestion.territory)) : (primarySuggestion?.color || WATER)} onClick={() => setShowObjective(true)} />
-        <CompactInfoCard title="TERRITOIRE" value={focusTerritory?.name || "AUCUN"} subtitle={focusTerritory ? `Secteur ${focusTerritory.target} · ${statusLabel(focusTerritory)}${focusTerritory.critical ? " · ZONE CRITIQUE" : ""}` : "Touchez une suggestion ou la carte"} color={focusTerritory ? fireTerritoryColor(fireStatus(focusTerritory)) : activeColor} backgroundSrc={getTerritoryDepartmentVisual(toCountry(config.mapId), focusTerritory) || undefined} valueClassName="is-territory" onClick={() => setShowTerritory(true)} />
-        <FirefighterMapCard country={toCountry(config.mapId)} mapLabel={mapLabel} territory={focusTerritory} onClick={() => setShowMap(true)} />
+        <CompactInfoCard title="TERRITOIRE" value={focusTerritory?.name || "AUCUN"} subtitle={focusTerritory ? `Secteur ${focusTerritory.target} · ${statusLabel(focusTerritory)}${focusTerritory.critical ? " · ZONE CRITIQUE" : ""}` : "Touchez une suggestion ou la carte"} color={focusTerritory ? fireTerritoryColor(fireStatus(focusTerritory)) : activeColor} backgroundSrc={getTerritoryDepartmentVisual(country, focusTerritory) || undefined} valueClassName="is-territory" onClick={() => setShowTerritory(true)} />
+        <FirefighterMapCard country={country} mapLabel={mapLabel} territory={focusTerritory} onClick={() => setShowMap(true)} />
       </section>
 
       <section className="dff-play__utility">
@@ -861,7 +862,7 @@ export default function DartsFirefighterPlay(props: any) {
 
     {showObjective ? <ObjectiveModal primary={primarySuggestion} alternatives={tacticalPlan.alternatives} config={config} onSelect={(id: string) => { selectTerritory(id); setShowObjective(false); }} onClose={() => setShowObjective(false)} /> : null}
     {showTerritory ? <TerritoryModal territory={focusTerritory} state={state} country={country} onOpenMap={() => { setShowTerritory(false); setShowMap(true); }} onClear={() => { if (state.selectedTerritoryId) selectTerritory(state.selectedTerritoryId); }} onClose={() => setShowTerritory(false)} /> : null}
-    {showMap ? <FirefighterMapModal state={state} country={toCountry(config.mapId)} map={fireMap} mapLabel={mapLabel} profilesById={profilesById} activePlayerId={activePlayer?.id} onClose={() => setShowMap(false)} onSelect={selectTerritory} /> : null}
+    {showMap ? <FirefighterMapModal state={state} country={country} map={fireMap} mapLabel={mapLabel} profilesById={profilesById} activePlayerId={activePlayer?.id} onClose={() => setShowMap(false)} onSelect={selectTerritory} /> : null}
     {showTargets ? <TargetsModal state={state} onClose={() => setShowTargets(false)} onSelect={selectTerritory} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showStats ? <StatsModal state={state} currentStats={currentStats} activeProfile={activeProfile} config={config} onClose={() => setShowStats(false)} /> : null}
