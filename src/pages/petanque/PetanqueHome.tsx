@@ -519,7 +519,7 @@ function safeActiveProfile(store: Store): Profile | null {
 }
 
 /**
- * ✅ Important: "PETANQUE COUNTER" ne doit JAMAIS être coupé.
+ * ✅ Important: "PETANQUE SCORING" ne doit JAMAIS être coupé.
  * On garde 1 ligne (nowrap) et on scale automatiquement si ça dépasse.
  */
 function useAutoFitTitle(deps: any[] = []) {
@@ -879,7 +879,7 @@ const secondaryTicker = tickerItems.length
                 transformOrigin: "center",
               }}
             >
-              PETANQUE COUNTER
+              PETANQUE SCORING
             </div>
           </div>
         </div>

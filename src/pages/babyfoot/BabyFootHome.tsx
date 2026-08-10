@@ -132,7 +132,7 @@ function pickHomeBg(key: HomeKey, seed: string, opts?: { avoid?: string[] }) {
 }
 
 /**
- * ✅ Important : "BABYFOOT COUNTER" ne doit JAMAIS être coupé.
+ * ✅ Important : "BABYFOOT SCORING" ne doit JAMAIS être coupé.
  */
 function useAutoFitTitle(deps: any[] = []) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -801,7 +801,7 @@ export default function BabyFootHome({ store, go }: Props) {
                 transformOrigin: "center",
               }}
             >
-              BABYFOOT COUNTER
+              BABYFOOT SCORING
             </div>
           </div>
         </div>

@@ -91,7 +91,7 @@ export default function GameSelect({ go }: Props) {
   }> = [
     {
       id: "darts",
-      label: "Darts Counter",
+      label: "Darts Scoring",
       logo: logoDarts,
       enabled: true,
       onClick: () => {
@@ -101,7 +101,7 @@ export default function GameSelect({ go }: Props) {
     },
     {
       id: "petanque",
-      label: "Pétanque Counter",
+      label: "Pétanque Scoring",
       logo: logoPetanque,
       enabled: true,
       onClick: () => {
@@ -111,7 +111,7 @@ export default function GameSelect({ go }: Props) {
     },
     {
       id: "pingpong",
-      label: "Ping-Pong Counter",
+      label: "Ping-Pong Scoring",
       logo: logoPingPong,
       enabled: true,
       onClick: () => {
@@ -121,7 +121,7 @@ export default function GameSelect({ go }: Props) {
     },
     {
       id: "babyfoot",
-      label: "Baby-Foot Counter",
+      label: "Baby-Foot Scoring",
       logo: logoBabyFoot,
       enabled: true,
       onClick: () => {

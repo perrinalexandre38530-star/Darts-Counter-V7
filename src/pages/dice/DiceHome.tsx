@@ -91,7 +91,7 @@ const D_TICKER_HERO = svgToDataUri(`
   <g transform="translate(620 78)">
     <rect x="0" y="0" width="500" height="200" rx="26" fill="rgba(0,0,0,0.40)" stroke="rgba(255,255,255,0.14)"/>
     <text x="250" y="92" text-anchor="middle" font-family="Arial" font-size="56" font-weight="900" fill="url(#g)" filter="url(#glow)">DICE</text>
-    <text x="250" y="138" text-anchor="middle" font-family="Arial" font-size="22" font-weight="800" fill="rgba(255,255,255,0.86)">COUNTER</text>
+    <text x="250" y="138" text-anchor="middle" font-family="Arial" font-size="22" font-weight="800" fill="rgba(255,255,255,0.86)">SCORING</text>
   </g>
   <g transform="translate(160 85)">
     <rect x="0" y="0" width="180" height="180" rx="30" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.14)"/>
@@ -167,7 +167,7 @@ export default function DiceHome({ store, update, go }: Props) {
               textShadow: `0 0 18px ${(theme.primary ?? "#8b5cf6") + "55"}`,
             }}
           >
-            Dice Counter
+            Dice Scoring
           </div>
         </div>
       </div>

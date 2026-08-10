@@ -2521,11 +2521,11 @@ export default function Home({ store, go, activeSport }: Props) {
 
   const sportTitle = useMemo(() => {
     const s = String(sport).toLowerCase();
-    if (s === "petanque") return "PETANQUE COUNTER";
-    if (s === "babyfoot") return "BABY-FOOT COUNTER";
-    if (s === "pingpong") return "PING-PONG COUNTER";
-    if (s === "molkky") return "MÖLKKY COUNTER";
-    if (s === "dicegame") return "DICE COUNTER";
+    if (s === "petanque") return "PETANQUE SCORING";
+    if (s === "babyfoot") return "BABY-FOOT SCORING";
+    if (s === "pingpong") return "PING-PONG SCORING";
+    if (s === "molkky") return "MÖLKKY SCORING";
+    if (s === "dicegame") return "DICE SCORING";
     if (s === "foot") return "FOOT SCORING";
     return "DARTS SCORING";
   }, [sport]);
