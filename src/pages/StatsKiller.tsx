@@ -8,6 +8,9 @@ import {
   ResponsiveContainer,
   BarChart as ReBarChart,
   Bar,
+  LineChart as ReLineChart,
+  Line,
+  CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
@@ -207,16 +210,40 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       const matchAgg = computeKillerStatsAggForProfile([r], String(playerId));
       const rank = rankOfRecord(r, String(playerId));
       const when = recTs(r);
+      const darts = num(matchAgg?.dartsTotal);
+      const hits = num(matchAgg?.totalHits);
+      const kills = num(matchAgg?.killsTotal);
+      const livesTaken = num(matchAgg?.livesTakenTotal);
+      const livesLost = num(matchAgg?.livesLostTotal);
+      const tacticalActions =
+        num(matchAgg?.disarmsTriggeredTotal) +
+        num(matchAgg?.shieldBreaksTotal) +
+        num(matchAgg?.shieldHalfBreaksTotal) +
+        num(matchAgg?.resurrectionsGivenTotal);
+      const specialActions =
+        num(matchAgg?.autoKillsTotal) +
+        num(matchAgg?.autoHitsTotal) +
+        num(matchAgg?.livesStolenTotal) +
+        num(matchAgg?.livesHealedTotal) +
+        tacticalActions;
       return {
         when,
         win: rank === 1 || Boolean(matchAgg?.wins),
+        podium: rank > 0 && rank <= 3,
         rank,
-        kills: num(matchAgg?.killsTotal),
-        hits: num(matchAgg?.totalHits),
-        livesTaken: num(matchAgg?.livesTakenTotal),
-        livesDelta: num(matchAgg?.livesTakenTotal) - num(matchAgg?.livesLostTotal),
+        kills,
+        deaths: num(matchAgg?.deathsTotal),
+        darts,
+        hits,
+        hitRate: darts > 0 ? Math.min(100, (hits / darts) * 100) : 0,
+        killsPer100Darts: darts > 0 ? (kills / darts) * 100 : 0,
+        livesTaken,
+        livesLost,
+        livesDelta: livesTaken - livesLost,
         precisionKiller: num(matchAgg?.precisionKiller),
         precisionOffensive: num(matchAgg?.precisionOffensive),
+        tacticalActions,
+        specialActions,
       };
     });
 
@@ -233,17 +260,33 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
     const bestLivesDelta = maxRecord("livesDelta");
     const bestPrecisionKiller = maxRecord("precisionKiller");
     const bestPrecisionOffensive = maxRecord("precisionOffensive");
+    const bestHitRate = maxRecord("hitRate");
+    const bestKillsPer100Darts = maxRecord("killsPer100Darts");
+    const bestTacticalActions = maxRecord("tacticalActions");
+    const bestSpecialActions = maxRecord("specialActions");
+    const fastestWin = recordMatches
+      .filter((r: any) => r.win && num(r.darts) > 0)
+      .sort((a: any, b: any) => num(a.darts) - num(b.darts))[0] || null;
 
     const ranked = recordMatches.filter((r: any) => num(r.rank) > 0);
     const bestRank = ranked.length ? Math.min(...ranked.map((r: any) => num(r.rank))) : 0;
     let currentWinStreak = 0;
     let bestWinStreak = 0;
-    for (const row of recordMatches.slice().sort((a: any, b: any) => num(a.when) - num(b.when))) {
+    let currentPodiumStreak = 0;
+    let bestPodiumStreak = 0;
+    const chronoRecords = recordMatches.slice().sort((a: any, b: any) => num(a.when) - num(b.when));
+    for (const row of chronoRecords) {
       if (row.win) {
         currentWinStreak += 1;
         bestWinStreak = Math.max(bestWinStreak, currentWinStreak);
       } else {
         currentWinStreak = 0;
+      }
+      if (row.podium) {
+        currentPodiumStreak += 1;
+        bestPodiumStreak = Math.max(bestPodiumStreak, currentPodiumStreak);
+      } else {
+        currentPodiumStreak = 0;
       }
     }
 
@@ -254,7 +297,15 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       bestLivesDelta: { value: num(bestLivesDelta?.livesDelta), when: num(bestLivesDelta?.when) },
       bestPrecisionKiller: { value: num(bestPrecisionKiller?.precisionKiller), when: num(bestPrecisionKiller?.when) },
       bestPrecisionOffensive: { value: num(bestPrecisionOffensive?.precisionOffensive), when: num(bestPrecisionOffensive?.when) },
+      bestHitRate: { value: num(bestHitRate?.hitRate), when: num(bestHitRate?.when) },
+      bestKillsPer100Darts: { value: num(bestKillsPer100Darts?.killsPer100Darts), when: num(bestKillsPer100Darts?.when) },
+      bestTacticalActions: { value: num(bestTacticalActions?.tacticalActions), when: num(bestTacticalActions?.when) },
+      bestSpecialActions: { value: num(bestSpecialActions?.specialActions), when: num(bestSpecialActions?.when) },
+      fastestWin: { value: num(fastestWin?.darts), when: num(fastestWin?.when) },
       bestWinStreak,
+      bestPodiumStreak,
+      currentWinStreak,
+      currentPodiumStreak,
       bestRank,
       matchCount: recordMatches.length,
     };
@@ -289,8 +340,27 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
         deaths: num(matchAgg?.deathsTotal),
         darts: num(matchAgg?.dartsTotal),
         hits: num(matchAgg?.totalHits),
+        hitRate: num(matchAgg?.dartsTotal) > 0 ? Math.min(100, (num(matchAgg?.totalHits) / num(matchAgg?.dartsTotal)) * 100) : 0,
+        killsPer100Darts: num(matchAgg?.dartsTotal) > 0 ? (num(matchAgg?.killsTotal) / num(matchAgg?.dartsTotal)) * 100 : 0,
+        precisionOffensive: num(matchAgg?.precisionOffensive),
+        precisionKiller: num(matchAgg?.precisionKiller),
         livesTaken: num(matchAgg?.livesTakenTotal),
         livesLost: num(matchAgg?.livesLostTotal),
+        livesDelta: num(matchAgg?.livesTakenTotal) - num(matchAgg?.livesLostTotal),
+        tacticalActions:
+          num(matchAgg?.disarmsTriggeredTotal) +
+          num(matchAgg?.shieldBreaksTotal) +
+          num(matchAgg?.shieldHalfBreaksTotal) +
+          num(matchAgg?.resurrectionsGivenTotal),
+        specialActions:
+          num(matchAgg?.autoKillsTotal) +
+          num(matchAgg?.autoHitsTotal) +
+          num(matchAgg?.livesStolenTotal) +
+          num(matchAgg?.livesHealedTotal) +
+          num(matchAgg?.disarmsTriggeredTotal) +
+          num(matchAgg?.shieldBreaksTotal) +
+          num(matchAgg?.shieldHalfBreaksTotal) +
+          num(matchAgg?.resurrectionsGivenTotal),
       };
     });
 
@@ -320,6 +390,28 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
   const avgPlacement = placementCount
     ? placementRows.reduce((s, r) => s + r.rank * r.count, 0) / placementCount
     : 0;
+  const played = Math.max(0, num(agg.played));
+  const hitRate = num(agg.dartsTotal) > 0 ? Math.min(100, (num(agg.totalHits) / num(agg.dartsTotal)) * 100) : 0;
+  const killsPer100Darts = num(agg.dartsTotal) > 0 ? (num(agg.killsTotal) / num(agg.dartsTotal)) * 100 : 0;
+  const podiumRate = played > 0 ? (totalPodium / played) * 100 : 0;
+  const top2Rate = played > 0 ? ((num(agg.firsts) + num(agg.seconds)) / played) * 100 : 0;
+  const noDeathMatches = Math.max(0, played - Math.min(played, num(agg.deathsTotal)));
+  const noDeathRate = played > 0 ? (noDeathMatches / played) * 100 : 0;
+  const hitsAvg = played > 0 ? num(agg.totalHits) / played : 0;
+  const livesTakenAvg = played > 0 ? num(agg.livesTakenTotal) / played : 0;
+  const livesLostAvg = played > 0 ? num(agg.livesLostTotal) / played : 0;
+  const tacticalTotal =
+    num(agg.disarmsTriggeredTotal) +
+    num(agg.shieldBreaksTotal) +
+    num(agg.shieldHalfBreaksTotal) +
+    num(agg.resurrectionsGivenTotal);
+  const specialTotal =
+    num(agg.autoKillsTotal) +
+    num(agg.autoHitsTotal) +
+    num(agg.livesStolenTotal) +
+    num(agg.livesHealedTotal) +
+    tacticalTotal;
+  const specialAvg = played > 0 ? specialTotal / played : 0;
 
   const kpiTop = [
     { label: "Matchs", value: agg.played || 0, sub: `${agg.wins || 0} victoire${num(agg.wins) > 1 ? "s" : ""}`, color: "#47B5FF", icon: "sessions" },
@@ -333,10 +425,58 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
     .sort((a, b) => num(b[1]) - num(a[1]))
     .slice(0, 10);
   const segmentData = segmentEntries.map(([name, value]) => ({ name, value: num(value) }));
+  const numberData = Object.entries((agg?.hitsByNumberAgg || {}) as Record<string, number>)
+    .filter(([k, v]) => num(k) > 0 && num(v) > 0)
+    .sort((a, b) => num(b[1]) - num(a[1]))
+    .slice(0, 10)
+    .map(([name, value]) => ({ name: name === "25" ? "BULL" : name, value: num(value) }));
+  const ringTotals = Object.entries((agg?.hitsBySegmentAgg || {}) as Record<string, number>).reduce(
+    (acc: any, [key, value]) => {
+      const k = safeStr(key).toUpperCase().trim();
+      const v = num(value);
+      if (v <= 0) return acc;
+      if (k === "SB" || k === "BULL") acc.Bull += v;
+      else if (k === "DB" || k === "DBULL") acc["Double Bull"] += v;
+      else if (/^T\d+$/.test(k)) acc.Triples += v;
+      else if (/^D\d+$/.test(k)) acc.Doubles += v;
+      else if (/^S\d+$/.test(k)) acc.Simples += v;
+      else acc["Autres / legacy"] += v;
+      return acc;
+    },
+    { Simples: 0, Doubles: 0, Triples: 0, Bull: 0, "Double Bull": 0, "Autres / legacy": 0 }
+  );
+  const ringPie = Object.entries(ringTotals).map(([name, value]) => ({ name, value: num(value) })).filter((x) => x.value > 0);
 
   const recentForTrend = (data.items || []).slice(0, 12).reverse();
   const killTrend = recentForTrend.map((it: any) => ({ label: it.dateLabel, value: num(it.kills) }));
   const rankTrend = recentForTrend.filter((it: any) => num(it.rank) > 0).map((it: any) => ({ label: it.dateLabel, value: num(it.rank) }));
+  const combatTrend = recentForTrend.map((it: any) => ({
+    label: it.dateLabel,
+    kills: num(it.kills),
+    deaths: num(it.deaths),
+  }));
+  const livesTrend = recentForTrend.map((it: any) => ({
+    label: it.dateLabel,
+    taken: num(it.livesTaken),
+    lost: num(it.livesLost),
+  }));
+  const efficiencyTrend = recentForTrend.map((it: any) => ({
+    label: it.dateLabel,
+    hitRate: num(it.hitRate),
+    killerPrecision: num(it.precisionKiller),
+  }));
+  const recentFive = (data.items || []).slice(0, 5);
+  const previousFive = (data.items || []).slice(5, 10);
+  const avgOf = (rows: any[], key: string) => rows.length ? rows.reduce((s: number, r: any) => s + num(r?.[key]), 0) / rows.length : 0;
+  const winRateOf = (rows: any[]) => rows.length ? (rows.filter((r: any) => r?.win).length / rows.length) * 100 : 0;
+  const recentWinRate = winRateOf(recentFive);
+  const previousWinRate = winRateOf(previousFive);
+  const recentKillsAvg = avgOf(recentFive, "kills");
+  const previousKillsAvg = avgOf(previousFive, "kills");
+  const recentHitRate = avgOf(recentFive, "hitRate");
+  const previousHitRate = avgOf(previousFive, "hitRate");
+  const recentLivesDelta = avgOf(recentFive, "livesDelta");
+  const previousLivesDelta = avgOf(previousFive, "livesDelta");
 
   const resultPie = [
     { name: "Victoires", value: num(agg.wins) },
@@ -351,6 +491,20 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
     { name: "Boucliers", value: shieldCounters },
     { name: "Auto-hits", value: num(agg.autoHitsTotal) },
   ].filter((x) => x.value > 0);
+  const performanceProfile = [
+    { name: "Win rate", value: num(agg.winRate) },
+    { name: "Podiums", value: podiumRate },
+    { name: "Top 2", value: top2Rate },
+    { name: "Précision off.", value: num(agg.precisionOffensive) },
+    { name: "Précision Killer", value: num(agg.precisionKiller) },
+    { name: "Sans death", value: noDeathRate },
+  ];
+  const combatBalance = [
+    { name: "Kills", value: num(agg.killsTotal) },
+    { name: "Deaths", value: num(agg.deathsTotal) },
+    { name: "Vies prises", value: num(agg.livesTakenTotal) },
+    { name: "Vies perdues", value: num(agg.livesLostTotal) },
+  ];
 
   const placementData = placementRows.slice(0, 10).map((row) => ({ name: `${row.rank}e`, value: row.count }));
 
@@ -443,6 +597,51 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
             </ChartCard>
           </div>
 
+          <TablePanel theme={theme} title="Forme récente — 5 derniers matchs">
+            <RecentForm
+              theme={theme}
+              items={recentFive}
+              winRate={recentWinRate}
+              winRateDelta={recentWinRate - previousWinRate}
+              killsAvg={recentKillsAvg}
+              killsDelta={recentKillsAvg - previousKillsAvg}
+              hitRate={recentHitRate}
+              hitRateDelta={recentHitRate - previousHitRate}
+              livesDelta={recentLivesDelta}
+              livesDeltaChange={recentLivesDelta - previousLivesDelta}
+              currentWinStreak={data.records?.currentWinStreak || 0}
+            />
+          </TablePanel>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+            <ChartCard theme={theme} title="Kills vs deaths" subtitle="Évolution sur les 12 derniers matchs">
+              <MultiLineTrend
+                theme={theme}
+                data={combatTrend}
+                series={[
+                  { key: "kills", label: "Kills", color: "#FF6FB5" },
+                  { key: "deaths", label: "Deaths", color: "#47B5FF" },
+                ]}
+              />
+            </ChartCard>
+            <ChartCard theme={theme} title="Profil de performance" subtitle="Taux clés de la période">
+              <PercentBars theme={theme} data={performanceProfile} />
+            </ChartCard>
+          </div>
+
+          <TablePanel theme={theme} title="Moyennes & efficacité">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+              <MiniStat theme={theme} label="Hits / match" value={fmt2(hitsAvg)} sub={`${agg.totalHits || 0} hits`} />
+              <MiniStat theme={theme} label="Hits / darts" value={fmtPct(hitRate)} sub={`${agg.dartsTotal || 0} darts`} />
+              <MiniStat theme={theme} label="Kills / 100 darts" value={fmt2(killsPer100Darts)} />
+              <MiniStat theme={theme} label="Actions spéciales / match" value={fmt2(specialAvg)} sub={`${specialTotal} actions`} />
+              <MiniStat theme={theme} label="Vies prises / match" value={fmt2(livesTakenAvg)} />
+              <MiniStat theme={theme} label="Vies perdues / match" value={fmt2(livesLostAvg)} />
+              <MiniStat theme={theme} label="Taux de podium" value={fmtPct(podiumRate)} sub={`${totalPodium} podiums`} />
+              <MiniStat theme={theme} label="Matchs sans death" value={fmtPct(noDeathRate)} sub={`${noDeathMatches}/${played || 0}`} />
+            </div>
+          </TablePanel>
+
           <TablePanel theme={theme} title="Synthèse joueur">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
               <MiniStat theme={theme} label="Dernière partie" value={fmtDate(data.lastAt)} small />
@@ -451,6 +650,8 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
               <MiniStat theme={theme} label="Podiums" value={totalPodium} sub={`${agg.firsts || 0} titre${num(agg.firsts) > 1 ? "s" : ""}`} />
               <MiniStat theme={theme} label="Darts / match" value={fmt2(agg.dartsAvg || 0)} sub={`${agg.dartsTotal || 0} darts`} />
               <MiniStat theme={theme} label="Ratio K/D" value={fmt2(killDeathRatio)} sub={`${agg.deathsTotal || 0} deaths`} />
+              <MiniStat theme={theme} label="Top 2" value={fmtPct(top2Rate)} sub={`${num(agg.firsts) + num(agg.seconds)} matchs`} />
+              <MiniStat theme={theme} label="Actions tactiques" value={tacticalTotal} sub={`${played ? fmt2(tacticalTotal / played) : "0.00"} / match`} />
             </div>
           </TablePanel>
 
@@ -462,7 +663,13 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
               <RecordStat theme={theme} label="Meilleur delta vies" value={`${num(data.records?.bestLivesDelta?.value) >= 0 ? "+" : ""}${num(data.records?.bestLivesDelta?.value)}`} when={data.records?.bestLivesDelta?.when} color="#B996FF" />
               <RecordStat theme={theme} label="Précision Killer" value={fmtPct(data.records?.bestPrecisionKiller?.value || 0)} when={data.records?.bestPrecisionKiller?.when} color="#F6C256" />
               <RecordStat theme={theme} label="Précision offensive" value={fmtPct(data.records?.bestPrecisionOffensive?.value || 0)} when={data.records?.bestPrecisionOffensive?.when} color="#5DE2E7" />
+              <RecordStat theme={theme} label="Meilleur hit rate" value={fmtPct(data.records?.bestHitRate?.value || 0)} when={data.records?.bestHitRate?.when} color="#77FF9B" />
+              <RecordStat theme={theme} label="Kills / 100 darts" value={fmt2(data.records?.bestKillsPer100Darts?.value || 0)} when={data.records?.bestKillsPer100Darts?.when} color="#FF6FB5" />
+              <RecordStat theme={theme} label="Actions tactiques / match" value={data.records?.bestTacticalActions?.value || 0} when={data.records?.bestTacticalActions?.when} color="#47B5FF" />
+              <RecordStat theme={theme} label="Actions spéciales / match" value={data.records?.bestSpecialActions?.value || 0} when={data.records?.bestSpecialActions?.when} color="#B996FF" />
+              <RecordStat theme={theme} label="Victoire la + rapide" value={data.records?.fastestWin?.value ? `${data.records.fastestWin.value} darts` : "—"} when={data.records?.fastestWin?.when} color="#5DE2E7" />
               <RecordStat theme={theme} label="Série de victoires" value={data.records?.bestWinStreak || 0} sub="victoires consécutives" color="#FF8A65" />
+              <RecordStat theme={theme} label="Série de podiums" value={data.records?.bestPodiumStreak || 0} sub="podiums consécutifs" color="#F6C256" />
               <RecordStat theme={theme} label="Meilleure place" value={data.records?.bestRank ? `${data.records.bestRank}${data.records.bestRank === 1 ? "er" : "e"}` : "—"} sub={`${data.records?.matchCount || 0} matchs Killer analysés`} color="#F6C256" />
             </div>
           </TablePanel>
@@ -478,9 +685,46 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
             <MiniKpi label="Delta vies" value={`${livesDelta >= 0 ? "+" : ""}${livesDelta}`} color="#47B5FF" />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+            <ChartCard theme={theme} title="Balance de combat" subtitle="Kills, deaths et vies échangées">
+              <SimpleBars theme={theme} data={combatBalance} />
+            </ChartCard>
+            <ChartCard theme={theme} title="Vies prises vs perdues" subtitle="Évolution sur les 12 derniers matchs">
+              <MultiLineTrend
+                theme={theme}
+                data={livesTrend}
+                series={[
+                  { key: "taken", label: "Prises", color: "#77FF9B" },
+                  { key: "lost", label: "Perdues", color: "#FF8A65" },
+                ]}
+              />
+            </ChartCard>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
+            <ChartCard theme={theme} title="Précision récente" subtitle="Hit rate et précision Killer">
+              <MultiLineTrend
+                theme={theme}
+                data={efficiencyTrend}
+                yMax={100}
+                suffix="%"
+                series={[
+                  { key: "hitRate", label: "Hits/darts", color: "#77FF9B" },
+                  { key: "killerPrecision", label: "Killer", color: "#F6C256" },
+                ]}
+              />
+            </ChartCard>
+            <ChartCard theme={theme} title="Répartition des zones" subtitle="Simples, doubles, triples et Bulls">
+              <PieStatChart theme={theme} data={ringPie} centerLabel={`${ringPie.reduce((s, x) => s + x.value, 0)}`} centerSub="hits classés" />
+            </ChartCard>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
             <ChartCard theme={theme} title="Hits par segment" subtitle="Top 10 des segments les plus touchés">
               <BarsBySegment theme={theme} data={segmentData} />
+            </ChartCard>
+            <ChartCard theme={theme} title="Top numéros" subtitle="Numéros les plus touchés, tous multiplicateurs confondus">
+              <BarsBySegment theme={theme} data={numberData} />
             </ChartCard>
             <ChartCard theme={theme} title="Actions de combat" subtitle="Répartition des événements Killer suivis">
               <PieStatChart theme={theme} data={specialPie} centerLabel={`${specialPie.reduce((s, x) => s + x.value, 0)}`} centerSub="actions" />
@@ -505,6 +749,18 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
             <MiniKpi label="Place moyenne" value={avgPlacement ? fmt2(avgPlacement) : "—"} color="#47B5FF" />
             <MiniKpi label="Victoires" value={agg.wins || 0} color="#FF6FB5" />
           </div>
+
+          <TablePanel theme={theme} title="Régularité & séries">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+              <MiniStat theme={theme} label="Taux de podium" value={fmtPct(podiumRate)} sub={`${totalPodium}/${played || 0}`} />
+              <MiniStat theme={theme} label="Taux Top 2" value={fmtPct(top2Rate)} sub={`${num(agg.firsts) + num(agg.seconds)} matchs`} />
+              <MiniStat theme={theme} label="Série victoires record" value={data.records?.bestWinStreak || 0} />
+              <MiniStat theme={theme} label="Série podiums record" value={data.records?.bestPodiumStreak || 0} />
+            </div>
+            <div style={{ marginTop: 9 }}>
+              <FormStrip theme={theme} items={(data.items || []).slice(0, 12).reverse()} />
+            </div>
+          </TablePanel>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
             <ChartCard theme={theme} title="Répartition des places" subtitle="Classements finaux enregistrés">
@@ -807,6 +1063,185 @@ function PieStatChart({ theme, data, centerLabel, centerSub }: any) {
   );
 }
 
+
+function MultiLineTrend({ theme, data, series, yMax, suffix = "" }: any) {
+  const rows = (Array.isArray(data) ? data : []).filter((row: any) =>
+    (Array.isArray(series) ? series : []).some((s: any) => Number.isFinite(Number(row?.[s?.key])))
+  );
+  if (rows.length < 2) return <EmptyText theme={theme}>Pas assez de matchs pour tracer cette évolution.</EmptyText>;
+  return (
+    <div>
+      <div style={{ width: "100%", height: 190 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ReLineChart data={rows} margin={{ top: 8, right: 8, bottom: 2, left: -25 }}>
+            <CartesianGrid stroke="rgba(255,255,255,.055)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: theme.textSoft, fontSize: 8.5 }} axisLine={false} tickLine={false} minTickGap={14} />
+            <YAxis domain={yMax ? [0, yMax] : [0, "auto"]} tick={{ fill: theme.textSoft, fontSize: 8.5 }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip
+              contentStyle={{ background: "#0b1020", border: `1px solid ${theme.borderSoft}`, borderRadius: 10, color: theme.text, fontSize: 10.5 }}
+              formatter={(v: any, name: any) => [`${fmt2(v)}${suffix}`, name]}
+            />
+            {(Array.isArray(series) ? series : []).map((s: any) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.color}
+                strokeWidth={2.4}
+                dot={{ r: 2.5, fill: s.color, strokeWidth: 0 }}
+                activeDot={{ r: 4 }}
+                connectNulls
+              />
+            ))}
+          </ReLineChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{ marginTop: 5, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {(Array.isArray(series) ? series : []).map((s: any) => (
+          <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: theme.textSoft, fontSize: 9.5, fontWeight: 800 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SimpleBars({ theme, data }: any) {
+  const rows = (Array.isArray(data) ? data : []).filter((r: any) => safeStr(r?.name) && num(r?.value) >= 0);
+  if (!rows.length) return <EmptyText theme={theme}>Aucune donnée exploitable pour ce graphique.</EmptyText>;
+  return (
+    <div style={{ width: "100%", height: 205 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ReBarChart data={rows} margin={{ top: 8, right: 8, bottom: 2, left: -22 }}>
+          <CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: theme.textSoft, fontSize: 8.5 }} axisLine={false} tickLine={false} interval={0} />
+          <YAxis allowDecimals={false} tick={{ fill: theme.textSoft, fontSize: 8.5 }} axisLine={false} tickLine={false} />
+          <Tooltip cursor={{ fill: "rgba(255,255,255,.035)" }} contentStyle={{ background: "#0b1020", border: `1px solid ${theme.borderSoft}`, borderRadius: 10, color: theme.text, fontSize: 10.5 }} formatter={(v: any) => [v, "Total"]} />
+          <Bar dataKey="value" fill="#47B5FF" radius={[7, 7, 2, 2]} maxBarSize={28} />
+        </ReBarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function PercentBars({ theme, data }: any) {
+  const rows = (Array.isArray(data) ? data : []).filter((r: any) => safeStr(r?.name));
+  if (!rows.length) return <EmptyText theme={theme}>Aucun taux disponible.</EmptyText>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {rows.map((row: any, idx: number) => {
+        const value = Math.max(0, Math.min(100, num(row.value)));
+        const color = PIE_COLORS[idx % PIE_COLORS.length];
+        return (
+          <div key={row.name}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 9.8 }}>
+              <span style={{ color: theme.textSoft, minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+              <strong style={{ color: theme.text, flex: "0 0 auto" }}>{fmtPct(value)}</strong>
+            </div>
+            <div style={{ height: 7, borderRadius: 99, background: "rgba(255,255,255,.055)", overflow: "hidden", marginTop: 4 }}>
+              <div style={{ height: "100%", width: `${value}%`, minWidth: value > 0 ? 2 : 0, borderRadius: 99, background: color, boxShadow: `0 0 8px ${color}55` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function deltaText(value: number, suffix = "") {
+  if (!Number.isFinite(Number(value))) return "—";
+  const n = Number(value);
+  return `${n > 0 ? "+" : ""}${n.toFixed(1)}${suffix}`;
+}
+
+function DeltaBadge({ value, suffix = "" }: any) {
+  const n = num(value);
+  const positive = n > 0.05;
+  const negative = n < -0.05;
+  const color = positive ? "#77FF9B" : negative ? "#FF8A65" : "rgba(255,255,255,.48)";
+  return (
+    <span style={{ fontSize: 8.5, fontWeight: 900, color, whiteSpace: "nowrap" }}>
+      {positive ? "▲ " : negative ? "▼ " : "• "}{deltaText(n, suffix)}
+    </span>
+  );
+}
+
+function RecentForm({ theme, items, winRate, winRateDelta, killsAvg, killsDelta, hitRate, hitRateDelta, livesDelta, livesDeltaChange, currentWinStreak }: any) {
+  const rows = Array.isArray(items) ? items : [];
+  return (
+    <div>
+      <FormStrip theme={theme} items={rows.slice().reverse()} />
+      <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6 }}>
+        <MiniTrendStat theme={theme} label="Win rate L5" value={fmtPct(winRate)} delta={<DeltaBadge value={winRateDelta} suffix=" pts" />} />
+        <MiniTrendStat theme={theme} label="Kills / match L5" value={fmt2(killsAvg)} delta={<DeltaBadge value={killsDelta} />} />
+        <MiniTrendStat theme={theme} label="Hit rate L5" value={fmtPct(hitRate)} delta={<DeltaBadge value={hitRateDelta} suffix=" pts" />} />
+        <MiniTrendStat theme={theme} label="Δ vies / match L5" value={`${num(livesDelta) >= 0 ? "+" : ""}${fmt2(livesDelta)}`} delta={<DeltaBadge value={livesDeltaChange} />} />
+      </div>
+      <div style={{ marginTop: 7, color: theme.textSoft, fontSize: 9.3 }}>
+        Comparaison avec les 5 matchs précédents · série de victoires actuelle : <b style={{ color: theme.text }}>{currentWinStreak || 0}</b>
+      </div>
+    </div>
+  );
+}
+
+function MiniTrendStat({ theme, label, value, delta }: any) {
+  return (
+    <div style={{ minWidth: 0, borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.02)", padding: "7px 8px" }}>
+      <div style={{ color: theme.textSoft, fontSize: 8.6, fontWeight: 900, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ marginTop: 3, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+        <strong style={{ color: theme.text, fontSize: 15, lineHeight: 1 }}>{value}</strong>
+        {delta}
+      </div>
+    </div>
+  );
+}
+
+function FormStrip({ theme, items }: any) {
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length) return <EmptyText theme={theme}>Pas encore de forme récente exploitable.</EmptyText>;
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, rows.length)}, minmax(0,1fr))`, gap: 4 }}>
+        {rows.map((item: any, idx: number) => {
+          const rank = num(item?.rank);
+          const win = Boolean(item?.win) || rank === 1;
+          const podium = rank > 0 && rank <= 3;
+          const color = win ? "#77FF9B" : podium ? "#F6C256" : rank > 0 ? "#47B5FF" : "rgba(255,255,255,.28)";
+          return (
+            <div
+              key={`${item?.when || idx}-${idx}`}
+              title={`${item?.dateLabel || "Match"} · ${win ? "Victoire" : rank > 0 ? `${rank}e` : "Sans classement"}`}
+              style={{
+                minWidth: 0,
+                height: 25,
+                borderRadius: 8,
+                border: `1px solid ${color}66`,
+                background: `${color}16`,
+                color,
+                display: "grid",
+                placeItems: "center",
+                fontSize: 8.5,
+                fontWeight: 1000,
+                boxShadow: win ? `0 0 9px ${color}30` : "none",
+              }}
+            >
+              {win ? "W" : rank > 0 ? rank : "—"}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 5, display: "flex", gap: 9, flexWrap: "wrap", color: theme.textSoft, fontSize: 8.5 }}>
+        <span><b style={{ color: "#77FF9B" }}>W</b> victoire</span>
+        <span><b style={{ color: "#F6C256" }}>2/3</b> podium</span>
+        <span><b style={{ color: "#47B5FF" }}>4+</b> autre place</span>
+      </div>
+    </div>
+  );
+}
+
 function MetricClusterCompact({ theme, title, color, items }: any) {
   return (
     <div style={{ borderRadius: 16, border: `1px solid ${color}45`, padding: 9, background: "rgba(255,255,255,.018)" }}>
@@ -877,6 +1312,8 @@ function HistoryRow({ theme, item }: any) {
             <span>Deaths <b style={{ color: "#47B5FF" }}>{item.deaths || 0}</b></span>
             <span>Darts <b style={{ color: theme.text }}>{item.darts || 0}</b></span>
             <span>Hits <b style={{ color: "#77FF9B" }}>{item.hits || 0}</b></span>
+            <span>Hit rate <b style={{ color: "#77FF9B" }}>{fmtPct(item.hitRate || 0)}</b></span>
+            <span>Δ vies <b style={{ color: num(item.livesDelta) >= 0 ? "#77FF9B" : "#FF8A65" }}>{num(item.livesDelta) >= 0 ? "+" : ""}{num(item.livesDelta)}</b></span>
           </div>
         </div>
         <div style={{ textAlign: "right", minWidth: 64 }}>
