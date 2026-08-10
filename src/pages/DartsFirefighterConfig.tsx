@@ -9,7 +9,6 @@ import BackDot from "../components/BackDot";
 import BotPagedSelector from "../components/BotPagedSelector";
 import InfoMini from "../components/InfoMini";
 import InfoDot from "../components/InfoDot";
-import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";
 import OptionToggle from "../components/OptionToggle";
 import PageHeader from "../components/PageHeader";
@@ -56,6 +55,101 @@ const HELP_COMBO = "Le combo brigade augmente le score quand plusieurs actions u
 const HELP_PERFECT = "Une volée parfaite récompense une séquence où chaque fléchette déclenche une action utile. Ce bonus est ajouté au score de brigade.";
 const HELP_INPUT_METHOD = "Clavier : saisie simple des touches. Cible interactive : sélection plus visuelle directement comme sur un vrai jeu de fléchettes.";
 const HELP_TARGET_ASSIGNMENT = "Avec 20 zones ou moins, chaque territoire reçoit un secteur 1 à 20. Au-delà, le moteur génère des cibles uniques adaptées à la taille des territoires et au niveau estimé de la brigade.";
+
+
+const OPTION_INFO: Record<string, string> = {
+  "Difficulté générale": "Charge automatiquement un comportement cohérent du feu : croissance, propagation, fumée, usure des protections et tolérance aux pertes. Recrue est la plus accessible ; Inferno la plus agressive.",
+  "Niveau tactique des Bots": "Règle la précision des Bots et leur capacité à choisir les territoires les plus urgents. Cela n'altère pas le niveau des joueurs humains.",
+  "Ordre de passage aléatoire": "Mélange l'ordre de la brigade au lancement. Désactivé, l'ordre sélectionné est conservé.",
+  "Carte": "Choisis le territoire de jeu : pays, continent ou carte mondiale. Les zones disponibles et les formes affichées dépendent directement de cette carte.",
+  "Zones actives": "Définit la taille réelle de la mission. Carte complète active toutes les zones disponibles. Sur une grande carte, chaque territoire reçoit automatiquement une cible unique.",
+  "Attribution des secteurs": HELP_TARGET_ASSIGNMENT,
+  "Numérotation": HELP_TARGET_ASSIGNMENT,
+  "Foyers initiaux": "Nombre de territoires déjà en feu au début de l'intervention.",
+  "Intensité initiale": "Niveau de départ des foyers. Auto adapte le mélange au niveau général de difficulté.",
+  "Zones enfumées": "Zones en alerte au lancement. Elles ne brûlent pas encore mais peuvent devenir de nouveaux foyers.",
+  "Zones pré-protégées": "Territoires déjà sécurisés par une protection au lancement. Une protection peut absorber une propagation.",
+  "Zones critiques": "Nombre d'infrastructures prioritaires à préserver : villages, hôpitaux ou zones sensibles.",
+  "Perte critique = défaite": "Si activé, perdre une zone critique termine immédiatement la mission. Le mode Protection civile force cette règle.",
+  "Disposition des foyers": "Aléatoire disperse les départs, Front les regroupe, Critiques les rapproche des zones prioritaires.",
+  "Territoires détruits tolérés": "Nombre maximal de territoires pouvant être perdus avant l'échec de la mission.",
+  "Durée maximale": "Nombre maximal de rounds. Selon l'objectif, atteindre cette limite peut provoquer la victoire ou l'échec.",
+  "Propagation": "Choisit quand le moteur incendie évolue : après chaque joueur ou après le tour complet de la brigade.",
+  "Propagations maximales": "Limite le nombre de nouvelles zones pouvant être atteintes pendant un cycle de propagation.",
+  "Nouveaux départs programmés": "Ajoute périodiquement de nouvelles alertes fumée pour maintenir la pression pendant la mission.",
+  "Nouveaux foyers potentiels": "Nombre de nouvelles zones mises en alerte à chaque vague programmée.",
+  "Vent dynamique": "Active une direction de vent qui favorise la propagation vers un côté de la carte. La direction est visible sur la boussole en partie.",
+  "Force du vent": "Plus le vent est fort, plus son influence sur la propagation est importante.",
+  "Changement du vent": "Définit après combien de cycles la direction du vent peut changer.",
+  "Prévision des menaces": "Affiche les territoires les plus exposés avant la prochaine propagation.",
+  "Menaces affichées": "Nombre maximal de territoires prévisionnels affichés comme menacés.",
+  "Croissance du feu": "Probabilité qu'un foyer augmente d'un niveau lors d'un cycle.",
+  "Chance de propagation": "Probabilité de propagation d'un foyer critique vers un territoire adjacent.",
+  "Propagation par fumée": "Détermine si une propagation crée d'abord une alerte fumée plutôt qu'un feu direct.",
+  "Destruction d’un feu N3": "Nombre de cycles qu'un feu niveau 3 peut rester incontrôlé avant destruction du territoire.",
+  "Usure des protections": "Probabilité qu'une protection disparaisse naturellement au fil des cycles.",
+  "Cible du Bull": "Zone sélectionnée : le Bull agit sur ton choix. Priorité auto : le moteur vise automatiquement le danger le plus urgent.",
+  "Puissance du Bull": "Quantité d'eau appliquée par un Bull sur la zone ciblée.",
+  "DBULL appelle le Canadair": "Activé, le Double Bull déclenche le Canadair. Désactivé, il agit simplement comme un Bull renforcé.",
+  "Puissance au centre": "Puissance du Canadair sur la zone principale du largage.",
+  "Zones voisines arrosées": "Nombre de territoires adjacents également touchés par le largage aérien.",
+  "Puissance latérale": "Quantité d'eau appliquée sur chacun des territoires voisins touchés.",
+  "Jauge Brigade initiale": "Réserve de brigade disponible dès le début de la mission.",
+  "Canadair lié à la jauge": "Impose une réserve suffisante dans la jauge Brigade pour autoriser un largage Canadair.",
+  "Coût de la mission aérienne": "Quantité de jauge Brigade consommée par un déclenchement du Canadair.",
+  "Volée max": HELP_MAX_DARTS,
+  "Règle du MISS": HELP_MISS_RULE,
+  "Combo brigade": HELP_COMBO,
+  "Bonus parfait": HELP_PERFECT,
+  "Saisie": HELP_INPUT_METHOD,
+};
+
+const OPTION_SHORT: Record<string, string> = {
+  "Difficulté générale": "Profil moteur",
+  "Niveau tactique des Bots": "Précision IA",
+  "Ordre de passage aléatoire": "Fixe / aléatoire",
+  "Carte": "Zone de jeu",
+  "Zones actives": "Taille mission",
+  "Attribution des secteurs": "Ordre 1–20",
+  "Numérotation": "Ordre 1–20",
+  "Foyers initiaux": "Au départ",
+  "Intensité initiale": "Niveau feu",
+  "Zones enfumées": "Alertes départ",
+  "Zones pré-protégées": "Défense initiale",
+  "Zones critiques": "À protéger",
+  "Perte critique = défaite": "Échec immédiat",
+  "Disposition des foyers": "Placement",
+  "Territoires détruits tolérés": "Limite pertes",
+  "Durée maximale": "Rounds",
+  "Propagation": "Quand ?",
+  "Propagations maximales": "Par cycle",
+  "Nouveaux départs programmés": "Vagues",
+  "Nouveaux foyers potentiels": "Par vague",
+  "Vent dynamique": "Direction active",
+  "Force du vent": "Intensité",
+  "Changement du vent": "Fréquence",
+  "Prévision des menaces": "Anticipation",
+  "Menaces affichées": "Nombre",
+  "Croissance du feu": "Probabilité",
+  "Chance de propagation": "Probabilité",
+  "Propagation par fumée": "Fumée d'abord",
+  "Destruction d’un feu N3": "Délai critique",
+  "Usure des protections": "Probabilité",
+  "Cible du Bull": "Manuel / auto",
+  "Puissance du Bull": "Eau ciblée",
+  "DBULL appelle le Canadair": "Appui aérien",
+  "Puissance au centre": "Zone cible",
+  "Zones voisines arrosées": "Étendue",
+  "Puissance latérale": "Voisins",
+  "Jauge Brigade initiale": "Réserve départ",
+  "Canadair lié à la jauge": "Réserve requise",
+  "Coût de la mission aérienne": "Coût jauge",
+  "Volée max": "1 à 3 fléchettes",
+  "Règle du MISS": "Fin de volée",
+  "Combo brigade": "Bonus série",
+  "Bonus parfait": "Volée utile",
+  "Saisie": "Clavier / cible",
+};
 
 type BotLevel = "easy" | "normal" | "hard";
 type ViewMode = "guided" | "complete";
@@ -282,12 +376,6 @@ function MiniMetric({ label, value, color = "#fff", icon }: any) {
   </div>;
 }
 
-function LabelWithInfo({ label, info, onInfo }: { label: string; info?: string; onInfo: (t: string, c: string) => void }) {
-  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-    <span>{label}</span>
-    {info ? <InfoMini title={label} content={info} onOpen={onInfo} size={16} /> : null}
-  </span>;
-}
 
 function InfoModalCard({ title, content, onClose }: { title: string; content: string; onClose: () => void }) {
   return <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(2,4,8,.72)", display: "grid", placeItems: "center", padding: 16 }}>
@@ -411,6 +499,32 @@ export default function DartsFirefighterConfig(props: any) {
   function handleDartSet(id: string, dartSetId: string | null) { setPlayerDartSets((prev) => ({ ...prev, [String(id)]: dartSetId || null })); }
   function back() { if (typeof go === "function") go("games"); }
   function openInfo(title: string, content: string) { setInfoModal({ title, content }); }
+  const CfgOption = ({ label, hint, info, children }: any) => {
+    const labelText = typeof label === "string" ? label : "";
+    const infoText = info || (labelText ? OPTION_INFO[labelText] : "") || (typeof hint === "string" ? hint : "");
+    const short = labelText ? (OPTION_SHORT[labelText] || "") : "";
+    const mobile = typeof window !== "undefined" && window.innerWidth <= 560;
+    return <div style={{
+      display: "grid",
+      gridTemplateColumns: mobile ? "minmax(0,.9fr) minmax(124px,1.1fr)" : "minmax(0,1fr) minmax(150px,auto)",
+      gap: 8,
+      alignItems: "center",
+      padding: mobile ? "8px 9px" : "9px 10px",
+      borderRadius: 13,
+      border: "1px solid rgba(255,255,255,.09)",
+      background: "rgba(255,255,255,.035)",
+      minWidth: 0,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          <strong style={{ minWidth: 0, color: "#f2f5fa", fontSize: mobile ? 10.2 : 11, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</strong>
+          {labelText && infoText ? <InfoMini title={labelText} content={infoText} onOpen={openInfo} size={16} /> : null}
+        </div>
+        {short ? <div style={{ marginTop: 3, color: "#8f98aa", fontSize: mobile ? 7.6 : 8.1, lineHeight: 1.15 }}>{short}</div> : null}
+      </div>
+      <div style={{ minWidth: 0, width: "100%", justifySelf: "end" }}>{children}</div>
+    </div>;
+  };
   function resetConfiguration() {
     const wildfire = PRESETS.find((preset) => preset.id === "wildfire");
     const fresh = normalizeDartsFirefighterConfig({ ...(wildfire?.patch || {}), missionPreset: "wildfire" });
@@ -469,7 +583,7 @@ export default function DartsFirefighterConfig(props: any) {
   }
 
   const missionBlock = <section style={block}>
-    <SectionTitle icon="🚨" title="TYPE DE MISSION" subtitle="Fais défiler les cartes et sélectionne un scénario prêt à jouer." color={FIRE} />
+    <SectionTitle icon="🚨" title="TYPE DE MISSION" subtitle="Choisis un scénario." color={FIRE} />
     <div style={{ margin: "0 -2px", padding: "2px 2px 7px", display: "flex", gap: 10, overflowX: "auto", overflowY: "visible", scrollSnapType: "x mandatory", scrollbarWidth: "thin", WebkitOverflowScrolling: "touch" }}>
       {PRESETS.map((preset) => {
         const meta = MISSION_META[preset.id] || MISSION_META.custom;
@@ -510,169 +624,173 @@ export default function DartsFirefighterConfig(props: any) {
     <div style={{ marginTop: 3, color: "#7f8797", fontSize: 7.5, fontWeight: 900, textAlign: "center", letterSpacing: .35 }}>GLISSE HORIZONTALEMENT POUR VOIR TOUTES LES MISSIONS</div>
     {guidedPresetLocked ? <PresetConfigurationNotice preset={activeMissionPreset} config={config} onCustomize={() => setField("missionPreset", "custom", false)} /> : null}
     {!guidedPresetLocked ? <div style={{ marginTop: 9, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Objectif principal" subtitle="Détermine la condition de victoire" icon="🎯" color={WATER} badge={config.objective === "survival" ? "SURVIE" : config.objective === "protect_critical" ? "DÉFENSE" : "EXTINCTION"} defaultOpen={isCustomMission}>
+      <ConfigAccordion title="Objectif principal" subtitle="Condition de victoire" icon="🎯" color={WATER} badge={config.objective === "survival" ? "SURVIE" : config.objective === "protect_critical" ? "DÉFENSE" : "EXTINCTION"} defaultOpen={isCustomMission}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 6 }}>
-          <ChoiceCard active={config.objective === "extinguish_all"} icon="💧" title="Tout éteindre" subtitle="Victoire lorsque la carte ne contient plus aucun incident." accent={WATER} onClick={() => setField("objective", "extinguish_all")} />
-          <ChoiceCard active={config.objective === "protect_critical"} icon="🏥" title="Protéger" subtitle="Tenir les zones critiques jusqu’à l’arrivée des renforts." accent={GOLD} onClick={() => setField("objective", "protect_critical")} />
-          <ChoiceCard active={config.objective === "survival"} icon="🔥" title="Survivre" subtitle="Résister jusqu’au dernier round malgré les nouveaux départs." accent={RED} onClick={() => setField("objective", "survival")} />
+          <ChoiceCard active={config.objective === "extinguish_all"} icon="💧" title="Tout éteindre" subtitle="Éteindre tous les incidents." accent={WATER} onClick={() => setField("objective", "extinguish_all")} />
+          <ChoiceCard active={config.objective === "protect_critical"} icon="🏥" title="Protéger" subtitle="Sauver les zones critiques." accent={GOLD} onClick={() => setField("objective", "protect_critical")} />
+          <ChoiceCard active={config.objective === "survival"} icon="🔥" title="Survivre" subtitle="Tenir jusqu’au dernier round." accent={RED} onClick={() => setField("objective", "survival")} />
         </div>
       </ConfigAccordion>
-      <ConfigAccordion title="Niveau général" subtitle="Charge un comportement de feu cohérent" icon="📈" color={FIRE_2} badge={difficultyLabel(config.difficulty).toUpperCase()}>
-        <OptionRow label="Difficulté générale" hint="Ajuste automatiquement les probabilités du moteur"><OptionSelect value={config.difficulty} options={[{ value: "recruit", label: "Recrue" }, { value: "firefighter", label: "Pompier" }, { value: "commander", label: "Commandant" }, { value: "inferno", label: "Inferno" }]} onChange={setDifficulty} /></OptionRow>
+      <ConfigAccordion title="Niveau général" subtitle="Profil du moteur" icon="📈" color={FIRE_2} badge={difficultyLabel(config.difficulty).toUpperCase()}>
+        <CfgOption label="Difficulté générale" hint="Ajuste automatiquement les probabilités du moteur"><OptionSelect value={config.difficulty} options={[{ value: "recruit", label: "Recrue" }, { value: "firefighter", label: "Pompier" }, { value: "commander", label: "Commandant" }, { value: "inferno", label: "Inferno" }]} onChange={setDifficulty} /></CfgOption>
       </ConfigAccordion>
     </div> : null}
   </section>;
 
   const brigadeBlock = <section style={block}>
-    <SectionTitle icon="👨‍🚒" title="BRIGADE D’INTERVENTION" subtitle="Compose l’équipe sans afficher tous les sélecteurs en permanence." color={WATER} />
+    <SectionTitle icon="👨‍🚒" title="BRIGADE D’INTERVENTION" subtitle="Compose la brigade." color={WATER} />
     <SelectedParticipantsCompactBlock items={selectedItems} accent={WATER} onRemove={togglePlayer} playerDartSets={playerDartSets} onDartSetChange={handleDartSet} allProfiles={humanProfiles} />
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Ajouter des pompiers" subtitle="Profils locaux et joueur actif" icon="👨‍🚒" color={WATER} badge={`${selectedIds.length}/8`} defaultOpen={!selectedIds.length}>
+      <ConfigAccordion title="Ajouter des pompiers" subtitle="Joueurs disponibles" icon="👨‍🚒" color={WATER} badge={`${selectedIds.length}/8`} defaultOpen={!selectedIds.length}>
         <PlayerPagedSelector usageMode="darts_firefighter" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={WATER} pageSize={9} modalTitle="Choisir les pompiers" showSelectedSummary={false} />
       </ConfigAccordion>
-      <ConfigAccordion title="Bots pompiers" subtitle="Ajouter et régler les équipiers IA" icon="🤖" color={WATER} badge={selectedBots.length ? `${selectedBots.length} ACTIF${selectedBots.length > 1 ? "S" : ""}` : "OPTIONNEL"} defaultOpen={botsPanel || Boolean(selectedBots.length)}>
+      <ConfigAccordion title="Bots pompiers" subtitle="Équipiers IA" icon="🤖" color={WATER} badge={selectedBots.length ? `${selectedBots.length} ACTIF${selectedBots.length > 1 ? "S" : ""}` : "OPTIONNEL"} defaultOpen={botsPanel || Boolean(selectedBots.length)}>
         <button type="button" onClick={() => setBotsPanel((v) => !v)} style={{ minHeight: 36, borderRadius: 11, border: `1px solid ${WATER}66`, background: botsPanel ? `${WATER}18` : "rgba(255,255,255,.035)", color: WATER, fontWeight: 1000 }}>🤖 SÉLECTION DES BOTS {botsPanel ? "▲" : "▼"}</button>
         {botsPanel ? <BotPagedSelector bots={customBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={WATER} label="BOTS POMPIERS" showCheckbox={false} showSelectedSummary={false} /> : null}
-        {selectedBots.length ? <OptionRow label="Niveau tactique des Bots" hint="Précision et choix des zones prioritaires"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Recrue" }, { value: "normal", label: "Confirmé" }, { value: "hard", label: "Élite" }]} onChange={setBotLevel} /></OptionRow> : null}
+        {selectedBots.length ? <CfgOption label="Niveau tactique des Bots" hint="Précision et choix des zones prioritaires"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Recrue" }, { value: "normal", label: "Confirmé" }, { value: "hard", label: "Élite" }]} onChange={setBotLevel} /></CfgOption> : null}
       </ConfigAccordion>
-      <ConfigAccordion title="Ordre de passage" subtitle="Réglage secondaire de la brigade" icon="🔀" color={GREEN} badge={config.randomOrder ? "ALÉATOIRE" : "FIXE"}>
-        <OptionRow label="Ordre de passage aléatoire" hint="Mélange la brigade au lancement"><OptionToggle value={Boolean(config.randomOrder)} onChange={(v) => setField("randomOrder", v)} /></OptionRow>
+      <ConfigAccordion title="Ordre de passage" subtitle="Ordre des joueurs" icon="🔀" color={GREEN} badge={config.randomOrder ? "ALÉATOIRE" : "FIXE"}>
+        <CfgOption label="Ordre de passage aléatoire" hint="Mélange la brigade au lancement"><OptionToggle value={Boolean(config.randomOrder)} onChange={(v) => setField("randomOrder", v)} /></CfgOption>
       </ConfigAccordion>
     </div>
   </section>;
 
   const territoryBlock = <section style={block}>
-    <SectionTitle icon="🗺️" title="TERRITOIRE D’INTERVENTION" subtitle="Le résumé reste visible ; les options se déplient seulement si nécessaire." color={GOLD} />
+    <SectionTitle icon="🗺️" title="TERRITOIRE D’INTERVENTION" subtitle="Carte et zones." color={GOLD} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🗺️" label="CARTE" value={TERRITORY_MAPS[config.mapId]?.name || config.mapId} color={GOLD} /><MiniMetric icon="📍" label="ZONES" value={`${config.activeTerritories}/${mapTerritoryCount}`} color={WATER} /><MiniMetric icon="🎯" label={Number(config.activeTerritories) > 20 ? "CIBLES" : "SECTEURS"} value={sectorSummary} color={FIRE_2} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Carte et taille de mission" subtitle="Pays, continent et nombre de zones actives" icon="🗺️" color={GOLD} badge={`${config.activeTerritories} ZONES`} defaultOpen={guidedAutoOpen}>
-        <OptionRow label="Carte" hint="Pays, continent ou carte mondiale"><OptionSelect value={config.mapId} options={MAP_OPTIONS} onChange={(v) => setField("mapId", v)} /></OptionRow>
-        <OptionRow label="Zones actives" hint="De la mini-mission à la carte complète"><OptionSelect value={config.activeTerritories} options={territoryOptions} onChange={(v) => setField("activeTerritories", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Carte et taille de mission" subtitle="Carte + taille" icon="🗺️" color={GOLD} badge={`${config.activeTerritories} ZONES`} defaultOpen={guidedAutoOpen}>
+        <CfgOption label="Carte" hint="Pays, continent ou carte mondiale"><OptionSelect value={config.mapId} options={MAP_OPTIONS} onChange={(v) => setField("mapId", v)} /></CfgOption>
+        <CfgOption label="Zones actives" hint="De la mini-mission à la carte complète"><OptionSelect value={config.activeTerritories} options={territoryOptions} onChange={(v) => setField("activeTerritories", Number(v))} /></CfgOption>
       </ConfigAccordion>
-      {Number(config.activeTerritories) > 20 ? <ConfigAccordion title="Cibles uniques automatiques" subtitle="Une valeur différente par territoire, calculée selon sa surface et le niveau de la brigade" icon="🎯" color={FIRE_2} badge={sectorSummary}>
+      {Number(config.activeTerritories) > 20 ? <ConfigAccordion title="Cibles uniques automatiques" subtitle="Une cible par zone" icon="🎯" color={FIRE_2} badge={sectorSummary}>
         <div style={{ display: "grid", gap: 7, padding: "2px 1px" }}>
-          <div style={{ padding: 9, borderRadius: 12, background: `${FIRE_2}0d`, border: `1px solid ${FIRE_2}30`, color: "#dce3ee", fontSize: 8.8, lineHeight: 1.45 }}>
-            <strong style={{ color: FIRE_2 }}>AUCUN DOUBLON.</strong> Les {config.activeTerritories} territoires reçoivent chacun un score exact unique atteignable en 1 à 3 fléchettes. Les petites zones reçoivent les cibles les plus accessibles ; les grandes les plus exigeantes.
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 9px", borderRadius: 11, background: `${FIRE_2}0d`, border: `1px solid ${FIRE_2}30` }}>
+            <strong style={{ color: FIRE_2, fontSize: 8.3, letterSpacing: .4 }}>CIBLES UNIQUES · AUCUN DOUBLON</strong>
+            <InfoMini title="Cibles uniques" content={HELP_TARGET_ASSIGNMENT + " Les petites zones reçoivent les objectifs les plus accessibles ; les grandes les plus exigeants. Le niveau de brigade ajuste ensuite la plage globale."} onOpen={openInfo} size={17} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>
             <MiniMetric icon="👤" label="NIVEAU BRIGADE" value={targetCalibration.label.toUpperCase()} color={WATER} />
             <MiniMetric icon="📊" label="MOY. 3 FL." value={Math.round(targetCalibration.referenceAvg3)} color={GREEN} />
             <MiniMetric icon="🎯" label="PLAGE CIBLES" value={`${targetRangeMin}-${targetRangeMax}`} color={FIRE_2} />
           </div>
-          <div style={{ color: "#929bad", fontSize: 7.8, lineHeight: 1.4 }}>Le niveau est calculé au lancement à partir des statistiques des joueurs sélectionnés et du niveau des Bots. Pour une brigade débutante, le moteur privilégie les scores les plus accessibles ; pour une brigade experte, il décale les objectifs vers des scores plus exigeants.</div>
         </div>
-      </ConfigAccordion> : <ConfigAccordion title="Numérotation des secteurs" subtitle="Un secteur unique par territoire" icon="🎯" color={FIRE_2} badge={sectorSummary}>
-        <OptionRow label={<LabelWithInfo label="Numérotation" info={HELP_TARGET_ASSIGNMENT} onInfo={openInfo} />} hint={Number(config.activeTerritories) > 20 ? "Cibles uniques auto" : "Ordre des secteurs"}><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></OptionRow>
+      </ConfigAccordion> : <ConfigAccordion title="Numérotation des secteurs" subtitle="Secteurs 1–20" icon="🎯" color={FIRE_2} badge={sectorSummary}>
+        <CfgOption label="Numérotation" info={HELP_TARGET_ASSIGNMENT} hint={Number(config.activeTerritories) > 20 ? "Cibles uniques auto" : "Ordre des secteurs"}><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></CfgOption>
       </ConfigAccordion>}
     </div>
   </section>;
 
   const ignitionBlock = <section style={block}>
-    <SectionTitle icon="🔥" title="DÉPART DE L’INCENDIE" subtitle="Les valeurs principales sont résumées ; les détails restent repliés." color={FIRE} />
+    <SectionTitle icon="🔥" title="DÉPART DE L’INCENDIE" subtitle="Situation initiale." color={FIRE} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}><MiniMetric icon="🔥" label="FOYERS" value={config.initialFires} color={FIRE} /><MiniMetric icon="💨" label="FUMÉES" value={config.initialSmoke} color={GOLD} /><MiniMetric icon="🛡️" label="PROTÉGÉES" value={config.initialProtectedTerritories} color={WATER} /><MiniMetric icon="⏱️" label="ROUNDS" value={config.maxRounds} color={GREEN} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Situation de départ" subtitle="Foyers, intensité et fumée initiale" icon="🔥" color={FIRE} badge={`${config.initialFires} FEU${config.initialFires > 1 ? "X" : ""}`} defaultOpen={guidedAutoOpen}>
-        <OptionRow label="Foyers initiaux" hint="Territoires déjà en feu au lancement"><OptionSelect value={config.initialFires} options={Array.from({ length: Math.min(8, Math.max(1, Math.floor(config.activeTerritories / 2))) }, (_, i) => i + 1)} onChange={(v) => setField("initialFires", Number(v))} /></OptionRow>
-        <OptionRow label="Intensité initiale" hint="Niveau de feu appliqué aux foyers"><OptionSelect value={String(config.initialFireLevel)} options={[{ value: "mixed", label: "Mix adapté à la difficulté" }, { value: "1", label: "Niveau 1" }, { value: "2", label: "Niveau 2" }, { value: "3", label: "Niveau 3" }]} onChange={(v) => setField("initialFireLevel", v === "mixed" ? v : Number(v))} /></OptionRow>
-        <OptionRow label="Zones enfumées" hint="Départs de feu imminents en plus des flammes"><OptionSelect value={config.initialSmoke} options={Array.from({ length: Math.min(8, Math.max(0, config.activeTerritories - config.initialFires)) + 1 }, (_, i) => i)} onChange={(v) => setField("initialSmoke", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Situation de départ" subtitle="Feu + fumée" icon="🔥" color={FIRE} badge={`${config.initialFires} FEU${config.initialFires > 1 ? "X" : ""}`} defaultOpen={guidedAutoOpen}>
+        <CfgOption label="Foyers initiaux" hint="Territoires déjà en feu au lancement"><OptionSelect value={config.initialFires} options={Array.from({ length: Math.min(8, Math.max(1, Math.floor(config.activeTerritories / 2))) }, (_, i) => i + 1)} onChange={(v) => setField("initialFires", Number(v))} /></CfgOption>
+        <CfgOption label="Intensité initiale" hint="Niveau de feu appliqué aux foyers"><OptionSelect value={String(config.initialFireLevel)} options={[{ value: "mixed", label: "Auto adapté" }, { value: "1", label: "Niveau 1" }, { value: "2", label: "Niveau 2" }, { value: "3", label: "Niveau 3" }]} onChange={(v) => setField("initialFireLevel", v === "mixed" ? v : Number(v))} /></CfgOption>
+        <CfgOption label="Zones enfumées" hint="Départs de feu imminents en plus des flammes"><OptionSelect value={config.initialSmoke} options={Array.from({ length: Math.min(8, Math.max(0, config.activeTerritories - config.initialFires)) + 1 }, (_, i) => i)} onChange={(v) => setField("initialSmoke", Number(v))} /></CfgOption>
       </ConfigAccordion>
-      {(config.objective === "protect_critical" || isCustomMission || viewMode === "complete" || config.initialProtectedTerritories > 0) ? <ConfigAccordion title="Protection et zones critiques" subtitle="Défenses initiales et infrastructures prioritaires" icon="🛡️" color={WATER} badge={`${config.criticalTerritories} CRITIQUE${config.criticalTerritories > 1 ? "S" : ""}`}>
-        <OptionRow label="Zones pré-protégées" hint="Territoires sains déjà arrosés au lancement"><OptionSelect value={config.initialProtectedTerritories} options={Array.from({ length: Math.min(8, config.activeTerritories) + 1 }, (_, i) => i)} onChange={(v) => setField("initialProtectedTerritories", Number(v))} /></OptionRow>
-        <OptionRow label="Zones critiques" hint="Hôpitaux, villages ou infrastructures à sauver"><OptionSelect value={config.criticalTerritories} options={Array.from({ length: Math.min(8, Math.floor(config.activeTerritories / 2)) + 1 }, (_, i) => i)} onChange={(v) => setField("criticalTerritories", Number(v))} /></OptionRow>
-        <OptionRow label="Perte critique = défaite" hint="Termine immédiatement la mission"><OptionToggle value={Boolean(config.criticalLossEndsMission)} onChange={(v) => setField("criticalLossEndsMission", v)} disabled={config.objective === "protect_critical"} /></OptionRow>
+      {(config.objective === "protect_critical" || isCustomMission || viewMode === "complete" || config.initialProtectedTerritories > 0) ? <ConfigAccordion title="Protection et zones critiques" subtitle="Défense + critiques" icon="🛡️" color={WATER} badge={`${config.criticalTerritories} CRITIQUE${config.criticalTerritories > 1 ? "S" : ""}`}>
+        <CfgOption label="Zones pré-protégées" hint="Territoires sains déjà arrosés au lancement"><OptionSelect value={config.initialProtectedTerritories} options={Array.from({ length: Math.min(8, config.activeTerritories) + 1 }, (_, i) => i)} onChange={(v) => setField("initialProtectedTerritories", Number(v))} /></CfgOption>
+        <CfgOption label="Zones critiques" hint="Hôpitaux, villages ou infrastructures à sauver"><OptionSelect value={config.criticalTerritories} options={Array.from({ length: Math.min(8, Math.floor(config.activeTerritories / 2)) + 1 }, (_, i) => i)} onChange={(v) => setField("criticalTerritories", Number(v))} /></CfgOption>
+        <CfgOption label="Perte critique = défaite" hint="Termine immédiatement la mission"><OptionToggle value={Boolean(config.criticalLossEndsMission)} onChange={(v) => setField("criticalLossEndsMission", v)} disabled={config.objective === "protect_critical"} /></CfgOption>
       </ConfigAccordion> : null}
-      <ConfigAccordion title="Répartition et limites" subtitle="Placement des foyers, tolérance et durée" icon="⚙️" color={FIRE_2} badge={`${config.maxRounds} ROUNDS`}>
-        <OptionRow label="Disposition des foyers" hint="Répartition de la situation initiale"><OptionSelect value={config.firePlacement} options={[{ value: "random", label: "Aléatoire" }, { value: "clustered", label: "Front de feu groupé" }, { value: "critical_first", label: "Près des zones critiques" }]} onChange={(v) => setField("firePlacement", v)} /></OptionRow>
-        <OptionRow label="Territoires détruits tolérés" hint="Seuil global avant défaite"><OptionSelect value={config.destructionLimit} options={[1,2,3,4,5,6,7,8]} onChange={(v) => setField("destructionLimit", Number(v))} /></OptionRow>
-        <OptionRow label="Durée maximale" hint={config.objective === "extinguish_all" ? "Échec si le feu subsiste après la limite" : "Victoire si la brigade tient jusqu’à cette limite"}><OptionSelect value={config.maxRounds} options={[6,8,10,12,15,18,20,25,30,40,50]} onChange={(v) => setField("maxRounds", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Répartition et limites" subtitle="Placement + limites" icon="⚙️" color={FIRE_2} badge={`${config.maxRounds} ROUNDS`}>
+        <CfgOption label="Disposition des foyers" hint="Répartition de la situation initiale"><OptionSelect value={config.firePlacement} options={[{ value: "random", label: "Aléatoire" }, { value: "clustered", label: "Front groupé" }, { value: "critical_first", label: "Près critiques" }]} onChange={(v) => setField("firePlacement", v)} /></CfgOption>
+        <CfgOption label="Territoires détruits tolérés" hint="Seuil global avant défaite"><OptionSelect value={config.destructionLimit} options={[1,2,3,4,5,6,7,8]} onChange={(v) => setField("destructionLimit", Number(v))} /></CfgOption>
+        <CfgOption label="Durée maximale" hint={config.objective === "extinguish_all" ? "Échec si le feu subsiste après la limite" : "Victoire si la brigade tient jusqu’à cette limite"}><OptionSelect value={config.maxRounds} options={[6,8,10,12,15,18,20,25,30,40,50]} onChange={(v) => setField("maxRounds", Number(v))} /></CfgOption>
       </ConfigAccordion>
     </div>
   </section>;
 
   const propagationBlock = <section style={block}>
-    <SectionTitle icon="🌬️" title="PROPAGATION ET VENT" subtitle="Le moteur reste préconfiguré ; ouvre uniquement la rubrique à modifier." color={WATER} />
+    <SectionTitle icon="🌬️" title="PROPAGATION ET VENT" subtitle="Rythme, vent, risque." color={WATER} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}><MiniMetric icon="📈" label="CROISSANCE" value={pct(config.growthChance)} color={FIRE_2} /><MiniMetric icon="🔥" label="PROPAGATION" value={pct(config.spreadChance)} color={FIRE} /><MiniMetric icon="💨" label="FUMÉE" value={pct(config.smokeChance)} color={GOLD} /><MiniMetric icon="🛡️" label="USURE" value={pct(config.protectionDecay)} color={WATER} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Rythme de propagation" subtitle="Moment et nombre maximal de nouvelles zones" icon="🔥" color={FIRE} badge={config.propagationTiming === "after_round" ? "PAR ROUND" : "PAR JOUEUR"} defaultOpen={guidedAutoOpen}>
-        <OptionRow label="Propagation" hint="Moment où la carte évolue"><OptionSelect value={config.propagationTiming} options={[{ value: "after_visit", label: "Après chaque joueur" }, { value: "after_round", label: "Après la brigade complète" }]} onChange={(v) => setField("propagationTiming", v)} /></OptionRow>
-        <OptionRow label="Propagations maximales" hint="Nombre de nouvelles zones atteintes par cycle"><OptionSelect value={config.maxSpreadsPerCycle} options={[1,2,3,4,5,6]} onChange={(v) => setField("maxSpreadsPerCycle", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Rythme de propagation" subtitle="Moment + volume" icon="🔥" color={FIRE} badge={config.propagationTiming === "after_round" ? "PAR ROUND" : "PAR JOUEUR"} defaultOpen={guidedAutoOpen}>
+        <CfgOption label="Propagation" hint="Moment où la carte évolue"><OptionSelect value={config.propagationTiming} options={[{ value: "after_visit", label: "Après joueur" }, { value: "after_round", label: "Après round" }]} onChange={(v) => setField("propagationTiming", v)} /></CfgOption>
+        <CfgOption label="Propagations maximales" hint="Nombre de nouvelles zones atteintes par cycle"><OptionSelect value={config.maxSpreadsPerCycle} options={[1,2,3,4,5,6]} onChange={(v) => setField("maxSpreadsPerCycle", Number(v))} /></CfgOption>
       </ConfigAccordion>
-      {(config.objective === "survival" || isCustomMission || viewMode === "complete" || Number(config.reinforcementEveryRounds) > 0) ? <ConfigAccordion title="Nouveaux départs" subtitle="Vagues de fumée ou foyers supplémentaires" icon="💨" color={GOLD} badge={Number(config.reinforcementEveryRounds) > 0 ? `TOUS LES ${config.reinforcementEveryRounds}` : "OFF"}>
-        <OptionRow label="Nouveaux départs programmés" hint="Ajoute des fumées à intervalles réguliers"><OptionSelect value={config.reinforcementEveryRounds} options={[{ value: 0, label: "Désactivés" }, { value: 1, label: "Chaque round" }, { value: 2, label: "Tous les 2 rounds" }, { value: 3, label: "Tous les 3 rounds" }, { value: 4, label: "Tous les 4 rounds" }, { value: 5, label: "Tous les 5 rounds" }]} onChange={(v) => setField("reinforcementEveryRounds", Number(v))} /></OptionRow>
-        {Number(config.reinforcementEveryRounds) > 0 ? <OptionRow label="Nouveaux foyers potentiels" hint="Nombre de zones enfumées à chaque vague"><OptionSelect value={config.reinforcementCount} options={[1,2,3,4]} onChange={(v) => setField("reinforcementCount", Number(v))} /></OptionRow> : null}
+      {(config.objective === "survival" || isCustomMission || viewMode === "complete" || Number(config.reinforcementEveryRounds) > 0) ? <ConfigAccordion title="Nouveaux départs" subtitle="Vagues supplémentaires" icon="💨" color={GOLD} badge={Number(config.reinforcementEveryRounds) > 0 ? `TOUS LES ${config.reinforcementEveryRounds}` : "OFF"}>
+        <CfgOption label="Nouveaux départs programmés" hint="Ajoute des fumées à intervalles réguliers"><OptionSelect value={config.reinforcementEveryRounds} options={[{ value: 0, label: "OFF" }, { value: 1, label: "Chaque round" }, { value: 2, label: "Tous les 2 rounds" }, { value: 3, label: "Tous les 3 rounds" }, { value: 4, label: "Tous les 4 rounds" }, { value: 5, label: "Tous les 5 rounds" }]} onChange={(v) => setField("reinforcementEveryRounds", Number(v))} /></CfgOption>
+        {Number(config.reinforcementEveryRounds) > 0 ? <CfgOption label="Nouveaux foyers potentiels" hint="Nombre de zones enfumées à chaque vague"><OptionSelect value={config.reinforcementCount} options={[1,2,3,4]} onChange={(v) => setField("reinforcementCount", Number(v))} /></CfgOption> : null}
       </ConfigAccordion> : null}
-      <ConfigAccordion title="Vent et prévisions" subtitle="Orientation du danger et zones menacées" icon="🌬️" color={WATER} badge={config.windEnabled ? String(config.windStrength || "normal").toUpperCase() : "VENT OFF"}>
-        <OptionRow label="Vent dynamique" hint="Oriente le territoire menacé"><OptionToggle value={Boolean(config.windEnabled)} onChange={(v) => setField("windEnabled", v)} /></OptionRow>
+      <ConfigAccordion title="Vent et prévisions" subtitle="Vent + menaces" icon="🌬️" color={WATER} badge={config.windEnabled ? String(config.windStrength || "normal").toUpperCase() : "VENT OFF"}>
+        <CfgOption label="Vent dynamique" hint="Oriente le territoire menacé"><OptionToggle value={Boolean(config.windEnabled)} onChange={(v) => setField("windEnabled", v)} /></CfgOption>
         {config.windEnabled ? <>
-          <OptionRow label="Force du vent" hint="Distance de propagation préférentielle"><OptionSelect value={config.windStrength} options={[{ value: "light", label: "Brise" }, { value: "normal", label: "Vent normal" }, { value: "strong", label: "Vent violent" }]} onChange={(v) => setField("windStrength", v)} /></OptionRow>
-          <OptionRow label="Changement du vent" hint="Nombre de cycles de propagation"><OptionSelect value={config.windChangeEvery} options={[1,2,3,4,5,6,8,10].map((n) => ({ value: n, label: `Tous les ${n} cycle${n > 1 ? "s" : ""}` }))} onChange={(v) => setField("windChangeEvery", Number(v))} /></OptionRow>
+          <CfgOption label="Force du vent" hint="Distance de propagation préférentielle"><OptionSelect value={config.windStrength} options={[{ value: "light", label: "Brise" }, { value: "normal", label: "Normal" }, { value: "strong", label: "Fort" }]} onChange={(v) => setField("windStrength", v)} /></CfgOption>
+          <CfgOption label="Changement du vent" hint="Nombre de cycles de propagation"><OptionSelect value={config.windChangeEvery} options={[1,2,3,4,5,6,8,10].map((n) => ({ value: n, label: `Tous les ${n} cycle${n > 1 ? "s" : ""}` }))} onChange={(v) => setField("windChangeEvery", Number(v))} /></CfgOption>
         </> : null}
-        <OptionRow label="Prévision des menaces" hint="Affiche les prochaines zones exposées"><OptionToggle value={Boolean(config.forecastEnabled)} onChange={(v) => setField("forecastEnabled", v)} /></OptionRow>
-        {config.forecastEnabled ? <OptionRow label="Menaces affichées" hint="Nombre maximal de territoires prévus"><OptionSelect value={config.forecastCount} options={[1,2,3,4,5,6]} onChange={(v) => setField("forecastCount", Number(v))} /></OptionRow> : null}
+        <CfgOption label="Prévision des menaces" hint="Affiche les prochaines zones exposées"><OptionToggle value={Boolean(config.forecastEnabled)} onChange={(v) => setField("forecastEnabled", v)} /></CfgOption>
+        {config.forecastEnabled ? <CfgOption label="Menaces affichées" hint="Nombre maximal de territoires prévus"><OptionSelect value={config.forecastCount} options={[1,2,3,4,5,6]} onChange={(v) => setField("forecastCount", Number(v))} /></CfgOption> : null}
       </ConfigAccordion>
-      <ConfigAccordion title="Réglages experts du moteur" subtitle="Probabilités fines et usure des protections" icon="⚙️" color={RED} badge="AVANCÉ">
-        <OptionRow label="Croissance du feu" hint="Chance de gagner un niveau à chaque cycle"><OptionSelect value={config.growthChance} options={[.15,.25,.35,.45,.55,.65,.75,.9].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("growthChance", Number(v))} /></OptionRow>
-        <OptionRow label="Chance de propagation" hint="Pour un foyer de niveau 3"><OptionSelect value={config.spreadChance} options={[.2,.35,.45,.55,.65,.75,.85,.95].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("spreadChance", Number(v))} /></OptionRow>
-        <OptionRow label="Propagation par fumée" hint="Sinon la zone prend feu directement"><OptionSelect value={config.smokeChance} options={[.25,.4,.55,.7,.8,.9,1].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("smokeChance", Number(v))} /></OptionRow>
-        <OptionRow label="Destruction d’un feu N3" hint="Cycles avant perte du territoire"><OptionSelect value={config.destructionTurns} options={[1,2,3,4,5,6].map((n) => ({ value: n, label: `${n} cycle${n > 1 ? "s" : ""}` }))} onChange={(v) => setField("destructionTurns", Number(v))} /></OptionRow>
-        <OptionRow label="Usure des protections" hint="Chance de perdre une protection naturellement"><OptionSelect value={config.protectionDecay} options={[0,.1,.2,.3,.4,.5,.6,.75].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("protectionDecay", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Réglages experts du moteur" subtitle="Paramètres avancés" icon="⚙️" color={RED} badge="AVANCÉ">
+        <CfgOption label="Croissance du feu" hint="Chance de gagner un niveau à chaque cycle"><OptionSelect value={config.growthChance} options={[.15,.25,.35,.45,.55,.65,.75,.9].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("growthChance", Number(v))} /></CfgOption>
+        <CfgOption label="Chance de propagation" hint="Pour un foyer de niveau 3"><OptionSelect value={config.spreadChance} options={[.2,.35,.45,.55,.65,.75,.85,.95].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("spreadChance", Number(v))} /></CfgOption>
+        <CfgOption label="Propagation par fumée" hint="Sinon la zone prend feu directement"><OptionSelect value={config.smokeChance} options={[.25,.4,.55,.7,.8,.9,1].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("smokeChance", Number(v))} /></CfgOption>
+        <CfgOption label="Destruction d’un feu N3" hint="Cycles avant perte du territoire"><OptionSelect value={config.destructionTurns} options={[1,2,3,4,5,6].map((n) => ({ value: n, label: `${n} cycle${n > 1 ? "s" : ""}` }))} onChange={(v) => setField("destructionTurns", Number(v))} /></CfgOption>
+        <CfgOption label="Usure des protections" hint="Chance de perdre une protection naturellement"><OptionSelect value={config.protectionDecay} options={[0,.1,.2,.3,.4,.5,.6,.75].map((n) => ({ value: n, label: pct(n) }))} onChange={(v) => setField("protectionDecay", Number(v))} /></CfgOption>
       </ConfigAccordion>
     </div>
   </section>;
 
   const resourcesBlock = <section style={block}>
-    <SectionTitle icon="🚒" title="MOYENS D’INTERVENTION" subtitle="Le Bull et le Canadair sont séparés en deux rubriques simples." color={GOLD} />
+    <SectionTitle icon="🚒" title="MOYENS D’INTERVENTION" subtitle="Bull et Canadair." color={GOLD} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🎯" label="BULL" value={`${config.bullPower} EAU`} color={WATER} /><MiniMetric icon="✈️" label="CANADAIR" value={config.bullAirSupport ? "ACTIF" : "OFF"} color={GOLD} /><MiniMetric icon="🚒" label="JAUGE" value={`${config.startingBrigadeGauge}%`} color={GREEN} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Intervention au Bull" subtitle="Cible et puissance du largage précis" icon="🎯" color={WATER} badge={`${config.bullPower} UNITÉ${config.bullPower > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
-        <OptionRow label="Cible du Bull" hint="Zone choisie sur la carte ou priorité automatique"><OptionSelect value={config.bullTargetMode} options={[{ value: "selected", label: "Zone sélectionnée" }, { value: "priority", label: "Danger prioritaire" }]} onChange={(v) => setField("bullTargetMode", v)} /></OptionRow>
-        <OptionRow label="Puissance du Bull" hint="Unités d’eau du largage précis"><OptionSelect value={config.bullPower} options={[{ value: 1, label: "1 unité" }, { value: 2, label: "2 unités" }, { value: 3, label: "3 unités" }]} onChange={(v) => setField("bullPower", Number(v))} /></OptionRow>
+      <ConfigAccordion title="Intervention au Bull" subtitle="Cible + puissance" icon="🎯" color={WATER} badge={`${config.bullPower} UNITÉ${config.bullPower > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
+        <CfgOption label="Cible du Bull" hint="Zone choisie sur la carte ou priorité automatique"><OptionSelect value={config.bullTargetMode} options={[{ value: "selected", label: "Zone choisie" }, { value: "priority", label: "Priorité auto" }]} onChange={(v) => setField("bullTargetMode", v)} /></CfgOption>
+        <CfgOption label="Puissance du Bull" hint="Unités d’eau du largage précis"><OptionSelect value={config.bullPower} options={[{ value: 1, label: "1 unité" }, { value: 2, label: "2 unités" }, { value: 3, label: "3 unités" }]} onChange={(v) => setField("bullPower", Number(v))} /></CfgOption>
       </ConfigAccordion>
-      <ConfigAccordion title="Canadair au Double Bull" subtitle="Étendue, puissance et consommation de jauge" icon="✈️" color={GOLD} badge={config.bullAirSupport ? "ACTIF" : "DÉSACTIVÉ"}>
-        <OptionRow label="DBULL appelle le Canadair" hint="Sinon le Double Bull agit comme un Bull renforcé"><OptionToggle value={Boolean(config.bullAirSupport)} onChange={(v) => setField("bullAirSupport", v)} /></OptionRow>
+      <ConfigAccordion title="Canadair au Double Bull" subtitle="Étendue + jauge" icon="✈️" color={GOLD} badge={config.bullAirSupport ? "ACTIF" : "DÉSACTIVÉ"}>
+        <CfgOption label="DBULL appelle le Canadair" hint="Sinon le Double Bull agit comme un Bull renforcé"><OptionToggle value={Boolean(config.bullAirSupport)} onChange={(v) => setField("bullAirSupport", v)} /></CfgOption>
         {config.bullAirSupport ? <>
-          <OptionRow label="Puissance au centre" hint="Zone principale du largage"><OptionSelect value={config.canadairCenterPower} options={[{ value: 2, label: "2 unités" }, { value: 3, label: "3 unités" }]} onChange={(v) => setField("canadairCenterPower", Number(v))} /></OptionRow>
-          <OptionRow label="Zones voisines arrosées" hint="Étendue latérale du largage"><OptionSelect value={config.canadairNeighborCount} options={[1,2,3,4]} onChange={(v) => setField("canadairNeighborCount", Number(v))} /></OptionRow>
-          <OptionRow label="Puissance latérale" hint="Unités d’eau sur chaque voisin"><OptionSelect value={config.canadairNeighborPower} options={[{ value: 1, label: "1 unité" }, { value: 2, label: "2 unités" }]} onChange={(v) => setField("canadairNeighborPower", Number(v))} /></OptionRow>
-          <OptionRow label="Jauge Brigade initiale" hint="Réserve disponible au début de la mission"><OptionSelect value={config.startingBrigadeGauge} options={[0,10,20,25,35,50,75,100].map((n) => ({ value: n, label: `${n} %` }))} onChange={(v) => setField("startingBrigadeGauge", Number(v))} /></OptionRow>
-          <OptionRow label="Canadair lié à la jauge" hint="Le DBULL déclenche l’avion uniquement si la réserve est suffisante"><OptionToggle value={Boolean(config.canadairRequiresGauge)} onChange={(v) => setField("canadairRequiresGauge", v)} /></OptionRow>
-          {config.canadairRequiresGauge ? <OptionRow label="Coût de la mission aérienne" hint="Points consommés dans la jauge Brigade"><OptionSelect value={config.canadairGaugeCost} options={[20,25,30,35,40,45,50,60]} onChange={(v) => setField("canadairGaugeCost", Number(v))} /></OptionRow> : null}
+          <CfgOption label="Puissance au centre" hint="Zone principale du largage"><OptionSelect value={config.canadairCenterPower} options={[{ value: 2, label: "2 unités" }, { value: 3, label: "3 unités" }]} onChange={(v) => setField("canadairCenterPower", Number(v))} /></CfgOption>
+          <CfgOption label="Zones voisines arrosées" hint="Étendue latérale du largage"><OptionSelect value={config.canadairNeighborCount} options={[1,2,3,4]} onChange={(v) => setField("canadairNeighborCount", Number(v))} /></CfgOption>
+          <CfgOption label="Puissance latérale" hint="Unités d’eau sur chaque voisin"><OptionSelect value={config.canadairNeighborPower} options={[{ value: 1, label: "1 unité" }, { value: 2, label: "2 unités" }]} onChange={(v) => setField("canadairNeighborPower", Number(v))} /></CfgOption>
+          <CfgOption label="Jauge Brigade initiale" hint="Réserve disponible au début de la mission"><OptionSelect value={config.startingBrigadeGauge} options={[0,10,20,25,35,50,75,100].map((n) => ({ value: n, label: `${n} %` }))} onChange={(v) => setField("startingBrigadeGauge", Number(v))} /></CfgOption>
+          <CfgOption label="Canadair lié à la jauge" hint="Le DBULL déclenche l’avion uniquement si la réserve est suffisante"><OptionToggle value={Boolean(config.canadairRequiresGauge)} onChange={(v) => setField("canadairRequiresGauge", v)} /></CfgOption>
+          {config.canadairRequiresGauge ? <CfgOption label="Coût de la mission aérienne" hint="Points consommés dans la jauge Brigade"><OptionSelect value={config.canadairGaugeCost} options={[20,25,30,35,40,45,50,60]} onChange={(v) => setField("canadairGaugeCost", Number(v))} /></CfgOption> : null}
         </> : null}
       </ConfigAccordion>
     </div>
   </section>;
 
   const inputBlock = <section style={block}>
-    <SectionTitle icon="🎯" title="DÉROULEMENT DE LA PARTIE" subtitle="Deux rubriques remplacent la longue liste d’options." color={WATER} />
+    <SectionTitle icon="🎯" title="DÉROULEMENT DE LA PARTIE" subtitle="Volée et saisie." color={WATER} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🎯" label="VOLÉE" value={`${config.dartsPerTurn} MAX`} color={WATER} /><MiniMetric icon="💧" label="MISS" value={config.missEndsTurn ? "FATAL" : "NORMAL"} color={FIRE} /><MiniMetric icon="⌨️" label="SAISIE" value={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"} color={GREEN} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
-      <ConfigAccordion title="Volée et MISS" subtitle="Nombre de fléchettes et fin anticipée" icon="🎯" color={WATER} badge={`${config.dartsPerTurn} FLÉCHETTE${config.dartsPerTurn > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
-        <OptionRow label={<LabelWithInfo label="Volée max" info={HELP_MAX_DARTS} onInfo={openInfo} />} hint={Number(config.activeTerritories) > 20 ? "3 max · validation libre" : "1 à 3 fléchettes"}><OptionSelect value={Number(config.activeTerritories) > 20 ? 3 : config.dartsPerTurn} options={Number(config.activeTerritories) > 20 ? [{ value: 3, label: "3 · Cibles uniques" }] : [{ value: 1, label: "1 · Éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></OptionRow>
-        <OptionRow label={<LabelWithInfo label="Règle du MISS" info={HELP_MISS_RULE} onInfo={openInfo} />} hint="Arrêt immédiat si activé"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></OptionRow>
+      <ConfigAccordion title="Volée et MISS" subtitle="Volée + MISS" icon="🎯" color={WATER} badge={`${config.dartsPerTurn} FLÉCHETTE${config.dartsPerTurn > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
+        <CfgOption label="Volée max" info={HELP_MAX_DARTS} hint={Number(config.activeTerritories) > 20 ? "3 max · validation libre" : "1 à 3 fléchettes"}><OptionSelect value={Number(config.activeTerritories) > 20 ? 3 : config.dartsPerTurn} options={Number(config.activeTerritories) > 20 ? [{ value: 3, label: "3 · Cibles uniques" }] : [{ value: 1, label: "1 · Éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></CfgOption>
+        <CfgOption label="Règle du MISS" info={HELP_MISS_RULE} hint="Arrêt immédiat si activé"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></CfgOption>
       </ConfigAccordion>
-      <ConfigAccordion title="Score et méthode de saisie" subtitle="Combo, bonus et clavier/cible" icon="🏆" color={GREEN} badge={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"}>
-        <OptionRow label={<LabelWithInfo label="Combo brigade" info={HELP_COMBO} onInfo={openInfo} />} hint="Bonus de série"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></OptionRow>
-        <OptionRow label={<LabelWithInfo label="Bonus parfait" info={HELP_PERFECT} onInfo={openInfo} />} hint="Toutes les fléchettes utiles"><OptionSelect value={config.perfectVisitBonus} options={[0,50,100,150,200,250,300,400,500]} onChange={(v) => setField("perfectVisitBonus", Number(v))} /></OptionRow>
-        <OptionRow label={<LabelWithInfo label="Saisie" info={HELP_INPUT_METHOD} onInfo={openInfo} />} hint="Clavier ou cible"><OptionSelect value={config.scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible interactive" }]} onChange={(v) => setField("scoreInputMethod", v)} /></OptionRow>
+      <ConfigAccordion title="Score et méthode de saisie" subtitle="Score + saisie" icon="🏆" color={GREEN} badge={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"}>
+        <CfgOption label="Combo brigade" info={HELP_COMBO} hint="Bonus de série"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></CfgOption>
+        <CfgOption label="Bonus parfait" info={HELP_PERFECT} hint="Toutes les fléchettes utiles"><OptionSelect value={config.perfectVisitBonus} options={[0,50,100,150,200,250,300,400,500]} onChange={(v) => setField("perfectVisitBonus", Number(v))} /></CfgOption>
+        <CfgOption label="Saisie" info={HELP_INPUT_METHOD} hint="Clavier ou cible"><OptionSelect value={config.scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible" }]} onChange={(v) => setField("scoreInputMethod", v)} /></CfgOption>
       </ConfigAccordion>
     </div>
   </section>;
 
   const summaryBlock = <section style={{ ...block, borderColor: `${FIRE}6b`, background: `linear-gradient(135deg,${FIRE}16,${WATER}0d)` }}>
-    <SectionTitle icon="✅" title="ORDRE DE MISSION" subtitle="Tous les réglages ci-dessous seront appliqués au lancement." color={GREEN} />
+    <SectionTitle icon="✅" title="ORDRE DE MISSION" subtitle="Vérifie et lance." color={GREEN} />
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
       <MiniMetric icon="👨‍🚒" label="BRIGADE" value={selectedIds.length || "—"} color={WATER} />
       <MiniMetric icon="🗺️" label="ZONES" value={config.activeTerritories} color={GOLD} />
       <MiniMetric icon="🔥" label="FOYERS" value={`${config.initialFires}+${config.initialSmoke}💨`} color={FIRE} />
       <MiniMetric icon="⏱️" label="ROUNDS" value={config.maxRounds} color={GREEN} />
     </div>
-    <div style={{ marginTop: 8, padding: 10, borderRadius: 13, background: "rgba(0,0,0,.28)", border: "1px solid rgba(255,255,255,.08)", display: "grid", gap: 5, fontSize: 9.2 }}>
-      <div><strong style={{ color: FIRE_2 }}>MISSION :</strong> {PRESETS.find((p) => p.id === config.missionPreset)?.title || "Personnalisée"} · {difficultyLabel(config.difficulty)}</div>
-      <div><strong style={{ color: WATER }}>OBJECTIF :</strong> {config.objective === "survival" ? `Survivre ${config.maxRounds} rounds` : config.objective === "protect_critical" ? `Protéger ${config.criticalTerritories} zones critiques` : "Éteindre tous les foyers"}</div>
-      <div><strong style={{ color: GOLD }}>CARTE :</strong> {TERRITORY_MAPS[config.mapId]?.name || config.mapId} · {config.activeTerritories}/{mapTerritoryCount} zones · {Number(config.activeTerritories) > 20 ? `cibles uniques ${targetRangeMin}-${targetRangeMax} · niveau ${targetCalibration.label}` : `secteurs ${config.targetOrder === "random" ? "aléatoires" : "ordonnés"}`}</div>
-      <div><strong style={{ color: FIRE }}>INCENDIE :</strong> {config.initialFires} foyers · {config.initialSmoke} fumées · {config.initialProtectedTerritories} zones protégées · propagation {config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}</div>
-      <div><strong style={{ color: WATER }}>MOYENS :</strong> Bull puissance {config.bullPower} · jauge initiale {config.startingBrigadeGauge}% · Canadair {config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}</div>
-      <div><strong style={{ color: GREEN }}>VOLÉE :</strong> jusqu’à {config.dartsPerTurn} fléchette{config.dartsPerTurn > 1 ? "s" : ""}, validation possible à tout moment · {config.scoreInputMethod === "dartboard" ? "cible interactive" : "clavier"} · MISS {config.missEndsTurn ? "fatal" : "normal"}</div>
+    <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+      {[
+        { icon: "🚨", label: "MISSION", value: PRESETS.find((p) => p.id === config.missionPreset)?.title || "Personnalisée", color: FIRE_2, info: `${difficultyLabel(config.difficulty)} · ${config.objective === "survival" ? `Survivre ${config.maxRounds} rounds` : config.objective === "protect_critical" ? `Protéger ${config.criticalTerritories} zones critiques` : "Éteindre tous les foyers"}.` },
+        { icon: "🗺️", label: "CARTE", value: `${TERRITORY_MAPS[config.mapId]?.name || config.mapId} · ${config.activeTerritories}`, color: GOLD, info: Number(config.activeTerritories) > 20 ? `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Cibles uniques ${targetRangeMin}-${targetRangeMax}, calibrées au niveau ${targetCalibration.label}.` : `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Secteurs ${config.targetOrder === "random" ? "mélangés" : "ordonnés"}.` },
+        { icon: "🔥", label: "INCENDIE", value: `${config.initialFires} + ${config.initialSmoke}💨`, color: FIRE, info: `${config.initialFires} foyers, ${config.initialSmoke} fumées, ${config.initialProtectedTerritories} protections. Propagation ${config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}.` },
+        { icon: "🚒", label: "MOYENS", value: config.bullAirSupport ? `BULL ${config.bullPower} · ✈️` : `BULL ${config.bullPower}`, color: WATER, info: `Bull puissance ${config.bullPower}. Jauge initiale ${config.startingBrigadeGauge}%. Canadair ${config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}. Volée ${config.dartsPerTurn} max, saisie ${config.scoreInputMethod === "dartboard" ? "cible" : "clavier"}, MISS ${config.missEndsTurn ? "fatal" : "normal"}.` },
+      ].map((item) => <div key={item.label} style={{ minHeight: 56, padding: 8, borderRadius: 12, border: `1px solid ${item.color}35`, background: `${item.color}0d`, display: "grid", gridTemplateColumns: "26px minmax(0,1fr) 18px", gap: 7, alignItems: "center" }}>
+        <span style={{ fontSize: 15, textAlign: "center" }}>{item.icon}</span>
+        <span style={{ minWidth: 0 }}><small style={{ display: "block", color: "#8f98aa", fontSize: 6.5, fontWeight: 1000 }}>{item.label}</small><strong style={{ display: "block", marginTop: 2, color: item.color, fontSize: 9.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.value}</strong></span>
+        <InfoMini title={item.label} content={item.info} onOpen={openInfo} size={17} />
+      </div>)}
     </div>
     {!valid ? <div style={{ marginTop: 9, color: "#ff9aa8", textAlign: "center", fontSize: 10, fontWeight: 1000 }}>⚠ Sélectionne au moins un pompier dans l’étape Brigade.</div> : null}
   </section>;
@@ -690,7 +808,7 @@ export default function DartsFirefighterConfig(props: any) {
       </section>
       <section style={{ ...card, padding: 9, marginBottom: 9, background: `linear-gradient(135deg,${FIRE}14,${WATER}10)`, border: `1px solid ${WATER}35` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div><div style={{ color: "#fff", fontSize: 10.8, fontWeight: 1100 }}>CONFIGURATION FIREFIGHTER V4</div><div style={{ marginTop: 2, color: soft, fontSize: 8.5 }}>8 étapes · volées flexibles 1–3 · 4 scénarios · réglages moteur complets</div></div>
+          <div><div style={{ color: "#fff", fontSize: 10.8, fontWeight: 1100 }}>CONFIGURATION FIREFIGHTER V4</div><div style={{ marginTop: 2, color: soft, fontSize: 8.5 }}>8 étapes · 4 scénarios · réglages avancés</div></div>
           <button type="button" onClick={resetConfiguration} style={{ borderRadius: 999, padding: "7px 10px", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#dfe5ef", fontSize: 8.2, fontWeight: 1000 }}>RÉINITIALISER</button>
         </div>
       </section>

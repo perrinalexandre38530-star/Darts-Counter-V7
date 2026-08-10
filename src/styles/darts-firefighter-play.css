@@ -795,3 +795,83 @@
   .dff-adjacent-card__shape { height: 31px; }
   .dff-map-clear--overlay { min-height: 35px; }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER — boussole vent / objectif pays
+   ============================================================= */
+.dff-wind-compass {
+  position: absolute;
+  z-index: 16;
+  top: 10px;
+  right: 10px;
+  width: 74px;
+  height: 74px;
+  border-radius: 22px;
+  border: 1px solid rgba(37,201,255,.36);
+  background: linear-gradient(180deg,rgba(6,10,17,.92),rgba(3,6,11,.88));
+  color: #25c9ff;
+  box-shadow: 0 0 18px rgba(37,201,255,.16), 0 10px 24px rgba(0,0,0,.34);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.dff-wind-compass.is-off { color: #687181; border-color: rgba(255,255,255,.13); }
+.dff-wind-compass__icon { position: absolute; left: 24px; top: 20px; filter: drop-shadow(0 0 8px currentColor); }
+.dff-wind-compass__point {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #8d98aa;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 1100;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.dff-wind-compass__point.is-active {
+  color: #ffb43f;
+  border-color: rgba(255,180,63,.55);
+  background: rgba(255,107,36,.18);
+  box-shadow: 0 0 12px rgba(255,107,36,.32);
+}
+.dff-wind-compass__point.is-n { top: 2px; left: 28px; }
+.dff-wind-compass__point.is-s { bottom: 10px; left: 28px; }
+.dff-wind-compass__point.is-o { left: 2px; top: 28px; }
+.dff-wind-compass__point.is-e { right: 2px; top: 28px; }
+.dff-wind-compass small {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1px;
+  color: currentColor;
+  text-align: center;
+  font-size: 5.6px;
+  font-weight: 1100;
+  letter-spacing: .45px;
+}
+
+/* Le drapeau du territoire objectif reste un filigrane et ne concurrence pas le score. */
+.dff-play__info-card.has-visual-background:first-child .dff-play__info-background {
+  object-fit: cover;
+  opacity: .27;
+  filter: saturate(.95) brightness(.68) contrast(1.04);
+}
+.dff-play__info-card:first-child .dff-play__info-badge {
+  width: 22px;
+  height: 17px;
+  border-radius: 5px;
+  padding: 1px;
+}
+.dff-play__info-card:first-child .dff-play__info-badge img { object-fit: cover; border-radius: 3px; }
+
+@media (max-width: 520px) {
+  .dff-wind-compass { width: 66px; height: 66px; top: 8px; right: 8px; border-radius: 19px; }
+  .dff-wind-compass__icon { width: 23px; height: 23px; left: 21px; top: 18px; }
+  .dff-wind-compass__point { width: 16px; height: 16px; font-size: 7px; }
+  .dff-wind-compass__point.is-n { left: 25px; }
+  .dff-wind-compass__point.is-s { left: 25px; bottom: 9px; }
+  .dff-wind-compass__point.is-o { top: 25px; }
+  .dff-wind-compass__point.is-e { top: 25px; }
+}

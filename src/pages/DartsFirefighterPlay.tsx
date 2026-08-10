@@ -54,6 +54,9 @@ import levelFire2 from "../assets/firefighter_levels/fire2.png";
 import levelCritical from "../assets/firefighter_levels/critical.png";
 import "../styles/darts-firefighter-play.css";
 
+const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
+const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
+
 export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.0.0-flexible-volley-rank";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
@@ -173,6 +176,25 @@ function extractTerritoryFlagCode(country: TerritoriesCountry, territory?: FireT
   if (country === "UK") return "GB";
   const byPrefix = raw.split("-")[0];
   return byPrefix || country;
+}
+
+function findFirefighterUnRegionFlag(territory?: FireTerritory | null): string | null {
+  const wanted = String(territory?.id || "").replace(/^UN-/i, "").trim().toLowerCase();
+  if (!wanted) return null;
+  for (const [path, src] of Object.entries(FIREFIGHTER_UN_REGION_FLAGS)) {
+    const filename = String(path.split("/").pop() || "").replace(/\.png$/i, "").toLowerCase();
+    if (filename === wanted) return src;
+  }
+  return null;
+}
+
+function getObjectiveCountryFlag(country: TerritoriesCountry, territory?: FireTerritory | null): string | null {
+  if (!territory || !FIREFIGHTER_MACRO_MAPS.has(country)) return null;
+  if (country === "UN") return findFirefighterUnRegionFlag(territory);
+  let code = extractTerritoryFlagCode(country, territory);
+  if (code === "KV") code = "XK";
+  if (code === "UK") code = "GB";
+  return getCountryFlagSrc(code);
 }
 
 function extractFrRegionCode(territory?: FireTerritory | null) {
@@ -843,6 +865,7 @@ export default function DartsFirefighterPlay(props: any) {
     ? <div className="dff-play__water-score"><strong>🎯{currentVisitPoints}</strong><small>{selectedScoreTarget ? `/${selectedScoreTarget.target}` : `${throwDarts.length}/${maxDartsThisVisit}`}</small></div>
     : <div className="dff-play__water-score"><strong>💧{currentWater}</strong><small>{throwDarts.length}/{maxDartsThisVisit}</small></div>;
   const suggestions = [primarySuggestion, ...(tacticalPlan.alternatives || [])].filter(Boolean).slice(0, Math.max(1, Number(config.dartsPerTurn || 3)));
+  const objectiveFlagSrc = getObjectiveCountryFlag(country, primarySuggestion?.territory || focusTerritory);
 
   return <div className="dff-play" data-firefighter-play-version={DARTS_FIREFIGHTER_PLAY_UI_VERSION} style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}22 0,${theme?.bg || "#080a11"} 42%,#020305 100%)`, paddingBottom: "calc(8px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
     <PageHeader
@@ -883,7 +906,7 @@ export default function DartsFirefighterPlay(props: any) {
       </section>
 
       <section className="dff-play__cards">
-        <CompactInfoCard title="OBJECTIF" value={primarySuggestion?.territory?.target || "—"} subtitle={primarySuggestion?.action || "Analyse en cours"} color={primarySuggestion?.territory ? fireTerritoryColor(fireStatus(primarySuggestion.territory)) : (primarySuggestion?.color || WATER)} onClick={() => setShowObjective(true)} />
+        <CompactInfoCard title="OBJECTIF" value={primarySuggestion?.territory?.target || "—"} subtitle={primarySuggestion?.action || "Analyse en cours"} color={primarySuggestion?.territory ? fireTerritoryColor(fireStatus(primarySuggestion.territory)) : (primarySuggestion?.color || WATER)} backgroundSrc={objectiveFlagSrc || undefined} badgeSrc={objectiveFlagSrc || undefined} onClick={() => setShowObjective(true)} />
         <CompactInfoCard title="TERRITOIRE" value={focusTerritory?.name || "AUCUN"} subtitle={focusTerritory ? `${scoreTargetMode ? `Cible ${focusTerritory.target} pts` : `Secteur ${focusTerritory.target}`} · ${statusLabel(focusTerritory)}${focusTerritory.critical ? " · ZONE CRITIQUE" : ""}` : "Touchez une suggestion ou la carte"} color={focusTerritory ? fireTerritoryColor(fireStatus(focusTerritory)) : activeColor} backgroundSrc={getTerritoryDepartmentVisual(country, focusTerritory) || undefined} valueClassName="is-territory" onClick={() => setShowTerritory(true)} />
         <FirefighterMapCard country={country} mapLabel={mapLabel} territory={focusTerritory} onClick={() => setShowMap(true)} />
       </section>
@@ -1031,6 +1054,24 @@ function TerritoryModal({ territory, state, country, onOpenMap, onClear, onClose
   </FloatingPanel>;
 }
 
+function WindCompass({ enabled, label }: { enabled: boolean; label?: string }) {
+  const raw = String(label || "").toUpperCase();
+  const active = !enabled ? "" : raw.includes("OUEST") ? "O" : raw.includes("EST") ? "E" : raw.includes("NORD") ? "N" : raw.includes("SUD") ? "S" : "";
+  const strength = !enabled ? "VENT OFF" : raw.includes("FORT") ? "FORT" : raw.includes("BRISE") ? "BRISE" : "VENT";
+  return <div className={`dff-wind-compass ${enabled ? "is-on" : "is-off"}`} aria-label={enabled ? `Vent ${label || "variable"}` : "Vent désactivé"}>
+    <svg className="dff-wind-compass__icon" width="26" height="26" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 4.2 14.2 12 12 19.8 9.8 12 12 4.2Z" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+    <span className={`dff-wind-compass__point is-n ${active === "N" ? "is-active" : ""}`}>N</span>
+    <span className={`dff-wind-compass__point is-s ${active === "S" ? "is-active" : ""}`}>S</span>
+    <span className={`dff-wind-compass__point is-o ${active === "O" ? "is-active" : ""}`}>O</span>
+    <span className={`dff-wind-compass__point is-e ${active === "E" ? "is-active" : ""}`}>E</span>
+    <small>{strength}</small>
+  </div>;
+}
+
 function FirefighterMapModal({ state, country, map, mapLabel, profilesById, activePlayerId, onClose, onSelect }: any) {
   const selected = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
   const countryFlag = getCountryMapFlag(country);
@@ -1039,6 +1080,7 @@ function FirefighterMapModal({ state, country, map, mapLabel, profilesById, acti
     <div className={`dff-map-modal ${selected ? "has-territory" : ""}`}>
       <div className="dff-map-modal__viewport-wrap">
         {!selected && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
+        {!selected ? <WindCompass enabled={Boolean(state.config?.windEnabled)} label={state.windLabel} /> : null}
         <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !selected} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} style={{ width: "100%", height: "100%" }} /></div>
         {selected ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${selected.name}`}>
           <TerritoryInsightBody territory={selected} state={state} country={country} compact />
