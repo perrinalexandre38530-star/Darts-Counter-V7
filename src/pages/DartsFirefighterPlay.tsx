@@ -769,9 +769,18 @@ export default function DartsFirefighterPlay(props: any) {
       oneDartVisits: playerRows.reduce((sum, row) => sum + Number(row.oneDartVisits || 0), 0),
       twoDartVisits: playerRows.reduce((sum, row) => sum + Number(row.twoDartVisits || 0), 0),
       threeDartVisits: playerRows.reduce((sum, row) => sum + Number(row.threeDartVisits || 0), 0),
+      singles: playerRows.reduce((sum, row) => sum + Number(row.singles || 0), 0),
+      doubles: playerRows.reduce((sum, row) => sum + Number(row.doubles || 0), 0),
+      triples: playerRows.reduce((sum, row) => sum + Number(row.triples || 0), 0),
+      smokeCleared: playerRows.reduce((sum, row) => sum + Number(row.smokeCleared || 0), 0),
+      uselessDarts: playerRows.reduce((sum, row) => sum + Number(row.uselessDarts || 0), 0),
+      criticalInterventions: playerRows.reduce((sum, row) => sum + Number(row.criticalInterventions || 0), 0),
+      bestVisitScore: Math.max(0, ...playerRows.map((row) => Number(row.bestVisitScore || 0))),
+      exactTargetAttempts: state.history.filter((visit) => visit.targetMode === "visit_score").length,
+      exactTargetHits: state.history.filter((visit) => visit.targetMode === "visit_score" && Number(visit.matchedTargetScore || 0) > 0).length,
+      maxCombo: Math.max(0, state.combo, ...state.history.map((visit) => Number(visit.comboAfter || 0))),
       missionGrade: missionGrade?.grade || null,
       missionRating: missionGrade?.rating || 0,
-      bestVisitScore: Math.max(0, ...playerRows.map((row) => Number(row.bestVisitScore || 0))),
       roundsPlayed: Math.max(1, state.roundIndex || 1),
       activeTerritories: config.activeTerritories,
       objective: config.objective,
@@ -782,6 +791,10 @@ export default function DartsFirefighterPlay(props: any) {
       destructionLimit: config.destructionLimit,
       incidentsRemaining: activeIncidents(state),
       protectedTerritories: protectedCount(state),
+      targetMode: state.targetMode || (Number(config.activeTerritories || 0) > 20 ? "visit_score" : "sector"),
+      targetCalibration: state.targetCalibration || null,
+      hitsBySegment: playerRows.reduce((acc, row) => { Object.entries(row.hitsBySegment || {}).forEach(([key, value]) => { acc[key] = Number(acc[key] || 0) + Number(value || 0); }); return acc; }, {} as Record<string, number>),
+      finalStatusCounts: state.territories.filter((territory) => territory.playable).reduce((acc, territory) => { const key = String(fireStatus(territory) || "safe"); acc[key] = Number(acc[key] || 0) + 1; return acc; }, {} as Record<string, number>),
     };
     const finalTerritories = state.territories.filter((t) => t.playable).map((t) => ({ id: t.id, name: t.name, target: t.target, critical: t.critical, fireLevel: t.fireLevel, smoke: t.smoke, protection: t.protection, destroyed: t.destroyed, status: fireStatus(t), neighbors: t.neighbors }));
     const summary = {
@@ -1057,18 +1070,27 @@ function TerritoryModal({ territory, state, country, onOpenMap, onClear, onClose
 function WindCompass({ enabled, label }: { enabled: boolean; label?: string }) {
   const raw = String(label || "").toUpperCase();
   const active = !enabled ? "" : raw.includes("OUEST") ? "O" : raw.includes("EST") ? "E" : raw.includes("NORD") ? "N" : raw.includes("SUD") ? "S" : "";
-  const strength = !enabled ? "VENT OFF" : raw.includes("FORT") ? "FORT" : raw.includes("BRISE") ? "BRISE" : "VENT";
-  return <div className={`dff-wind-compass ${enabled ? "is-on" : "is-off"}`} aria-label={enabled ? `Vent ${label || "variable"}` : "Vent désactivé"}>
-    <svg className="dff-wind-compass__icon" width="26" height="26" viewBox="0 0 24 24" aria-hidden>
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M12 4.2 14.2 12 12 19.8 9.8 12 12 4.2Z" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-    </svg>
-    <span className={`dff-wind-compass__point is-n ${active === "N" ? "is-active" : ""}`}>N</span>
-    <span className={`dff-wind-compass__point is-s ${active === "S" ? "is-active" : ""}`}>S</span>
-    <span className={`dff-wind-compass__point is-o ${active === "O" ? "is-active" : ""}`}>O</span>
-    <span className={`dff-wind-compass__point is-e ${active === "E" ? "is-active" : ""}`}>E</span>
-    <small>{strength}</small>
+  const rotation = active === "E" ? 90 : active === "S" ? 180 : active === "O" ? 270 : 0;
+  const strength = !enabled ? "OFF" : raw.includes("FORT") ? "FORT" : raw.includes("BRISE") ? "BRISE" : "NORMAL";
+  return <div className={`dff-wind-compass ${enabled ? "is-on" : "is-off"}`} aria-label={enabled ? `Sens du vent : ${label || "variable"}` : "Vent désactivé"}>
+    <div className="dff-wind-compass__navicon" aria-hidden>
+      <svg width="24" height="24" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 5V3M19 12h2M12 21v-2M3 12h2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </div>
+    <div className="dff-wind-compass__dial" aria-hidden>
+      <span className="dff-wind-compass__point is-n">N</span>
+      <span className="dff-wind-compass__point is-s">S</span>
+      <span className="dff-wind-compass__point is-o">O</span>
+      <span className="dff-wind-compass__point is-e">E</span>
+      <svg className="dff-wind-compass__arrow" viewBox="0 0 34 34" style={{ transform: `rotate(${rotation}deg)` }}>
+        <path d="M17 29V8" fill="none" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" />
+        <path d="m10.5 14.5 6.5-7 6.5 7" fill="none" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+    <div className="dff-wind-compass__copy"><b>SENS DU VENT</b><span>{enabled ? `${active || "?"} · ${strength}` : "DÉSACTIVÉ"}</span></div>
   </div>;
 }
 

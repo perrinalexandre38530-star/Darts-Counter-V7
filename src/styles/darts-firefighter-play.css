@@ -804,53 +804,75 @@
   z-index: 16;
   top: 10px;
   right: 10px;
-  width: 74px;
-  height: 74px;
-  border-radius: 22px;
-  border: 1px solid rgba(37,201,255,.36);
-  background: linear-gradient(180deg,rgba(6,10,17,.92),rgba(3,6,11,.88));
+  width: 118px;
+  min-height: 78px;
+  padding: 8px 8px 7px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  border: 1px solid rgba(37,201,255,.40);
+  background: linear-gradient(180deg,rgba(6,10,17,.94),rgba(3,6,11,.91));
   color: #25c9ff;
   box-shadow: 0 0 18px rgba(37,201,255,.16), 0 10px 24px rgba(0,0,0,.34);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(7px);
   pointer-events: none;
+  display: grid;
+  grid-template-columns: 30px 46px;
+  grid-template-rows: 48px auto;
+  align-items: center;
+  justify-content: center;
+  column-gap: 5px;
 }
 .dff-wind-compass.is-off { color: #687181; border-color: rgba(255,255,255,.13); }
-.dff-wind-compass__icon { position: absolute; left: 24px; top: 20px; filter: drop-shadow(0 0 8px currentColor); }
-.dff-wind-compass__point {
-  position: absolute;
-  width: 18px;
-  height: 18px;
+.dff-wind-compass__navicon {
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
-  color: #8d98aa;
-  font-size: 8px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  background: rgba(37,201,255,.08);
+  filter: drop-shadow(0 0 7px rgba(37,201,255,.28));
+}
+.dff-wind-compass.is-off .dff-wind-compass__navicon { background: rgba(255,255,255,.03); filter: none; }
+.dff-wind-compass__dial { position: relative; width: 46px; height: 46px; }
+.dff-wind-compass__arrow {
+  position: absolute;
+  inset: 6px;
+  width: 34px;
+  height: 34px;
+  color: #ffad38;
+  transform-origin: 50% 50%;
+  transition: transform .25s ease;
+  filter: drop-shadow(0 0 7px rgba(255,107,36,.55));
+}
+.dff-wind-compass.is-off .dff-wind-compass__arrow { color: #687181; filter: none; }
+.dff-wind-compass__point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  display: grid;
+  place-items: center;
+  color: #a3adbd;
+  font-size: 6.5px;
   line-height: 1;
   font-weight: 1100;
-  background: rgba(255,255,255,.035);
-  border: 1px solid rgba(255,255,255,.08);
 }
-.dff-wind-compass__point.is-active {
-  color: #ffb43f;
-  border-color: rgba(255,180,63,.55);
-  background: rgba(255,107,36,.18);
-  box-shadow: 0 0 12px rgba(255,107,36,.32);
+.dff-wind-compass__point.is-n { top: -2px; left: 17px; }
+.dff-wind-compass__point.is-s { bottom: -2px; left: 17px; }
+.dff-wind-compass__point.is-o { left: -2px; top: 17px; }
+.dff-wind-compass__point.is-e { right: -2px; top: 17px; }
+.dff-wind-compass__copy {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 1px;
+  white-space: nowrap;
 }
-.dff-wind-compass__point.is-n { top: 2px; left: 28px; }
-.dff-wind-compass__point.is-s { bottom: 10px; left: 28px; }
-.dff-wind-compass__point.is-o { left: 2px; top: 28px; }
-.dff-wind-compass__point.is-e { right: 2px; top: 28px; }
-.dff-wind-compass small {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 1px;
-  color: currentColor;
-  text-align: center;
-  font-size: 5.6px;
-  font-weight: 1100;
-  letter-spacing: .45px;
-}
+.dff-wind-compass__copy b { color: #dce6f2; font-size: 6.1px; letter-spacing: .55px; font-weight: 1100; }
+.dff-wind-compass__copy span { color: currentColor; font-size: 6.3px; font-weight: 1100; }
 
 /* Le drapeau du territoire objectif reste un filigrane et ne concurrence pas le score. */
 .dff-play__info-card.has-visual-background:first-child .dff-play__info-background {
@@ -867,11 +889,13 @@
 .dff-play__info-card:first-child .dff-play__info-badge img { object-fit: cover; border-radius: 3px; }
 
 @media (max-width: 520px) {
-  .dff-wind-compass { width: 66px; height: 66px; top: 8px; right: 8px; border-radius: 19px; }
-  .dff-wind-compass__icon { width: 23px; height: 23px; left: 21px; top: 18px; }
-  .dff-wind-compass__point { width: 16px; height: 16px; font-size: 7px; }
-  .dff-wind-compass__point.is-n { left: 25px; }
-  .dff-wind-compass__point.is-s { left: 25px; bottom: 9px; }
-  .dff-wind-compass__point.is-o { top: 25px; }
-  .dff-wind-compass__point.is-e { top: 25px; }
+  .dff-wind-compass { width: 108px; min-height: 72px; top: 8px; right: 8px; border-radius: 18px; grid-template-columns: 27px 42px; grid-template-rows: 44px auto; padding: 7px; }
+  .dff-wind-compass__navicon { width: 27px; height: 27px; border-radius: 9px; }
+  .dff-wind-compass__navicon svg { width: 21px; height: 21px; }
+  .dff-wind-compass__dial { width: 42px; height: 42px; }
+  .dff-wind-compass__arrow { inset: 5px; width: 32px; height: 32px; }
+  .dff-wind-compass__point.is-n,.dff-wind-compass__point.is-s { left: 15px; }
+  .dff-wind-compass__point.is-o,.dff-wind-compass__point.is-e { top: 15px; }
+  .dff-wind-compass__copy b { font-size: 5.7px; }
+  .dff-wind-compass__copy span { font-size: 5.9px; }
 }
