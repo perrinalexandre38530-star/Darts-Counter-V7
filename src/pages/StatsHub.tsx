@@ -76,7 +76,13 @@ function toArrLoc<T,>(v: any): T[] {
   // Support object maps (id -> value)
   if (v && typeof v === "object") {
     try {
-      return Object.values(v) as T[];
+      return Object.entries(v).map(([key, raw]: [string, any]) => {
+        if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+          const hasIdentity = raw.id != null || raw.playerId != null || raw.profileId != null;
+          return (hasIdentity ? raw : { id: key, playerId: key, ...raw }) as T;
+        }
+        return raw as T;
+      });
     } catch {
       return [];
     }
@@ -104,15 +110,15 @@ type DiceUnified = {
 
 function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows: any[]): PlayerDashboardStats {
   const mine = (rows || []).filter((r: any) =>
-    (r?.payload?.stats?.players || []).some((p: any) => p?.id === playerId)
+    toArrLoc<any>(r?.payload?.stats?.players).some((p: any) => p?.id === playerId)
   );
 
   const sessions = mine.length || 0;
-  const wins = mine.filter((r: any) => (r?.payload?.stats?.players || []).some((p: any) => p?.id === playerId && p?.win)).length;
+  const wins = mine.filter((r: any) => toArrLoc<any>(r?.payload?.stats?.players).some((p: any) => p?.id === playerId && p?.win)).length;
   const winRatePct = sessions ? Math.round((wins / sessions) * 100) : 0;
 
   const scores = mine.map((r: any) => {
-    const p = (r?.payload?.stats?.players || []).find((x: any) => x?.id === playerId);
+    const p = toArrLoc<any>(r?.payload?.stats?.players).find((x: any) => x?.id === playerId);
     return Number(p?.score ?? 0) || 0;
   });
 
@@ -133,7 +139,7 @@ function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows:
   // Distribution: on utilise avgScore pour ranger dans des buckets "darts-like" sans crasher l'UI.
   const dist: any = { "50+": 0, "80+": 0, "100+": 0, "120+": 0, "140+": 0 };
   mine.forEach((r: any) => {
-    const p = (r?.payload?.stats?.players || []).find((x: any) => x?.id === playerId);
+    const p = toArrLoc<any>(r?.payload?.stats?.players).find((x: any) => x?.id === playerId);
     const sc = Number(p?.score ?? 0) || 0;
     if (sc >= 50) dist["50+"]++;
     if (sc >= 80) dist["80+"]++;
@@ -5935,9 +5941,9 @@ const dbg = React.useMemo(() => {
   };
 
   const matchCount = {
-    by_id: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.id ?? "") === selectedId)).length,
-    by_playerId: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.playerId ?? "") === selectedId)).length,
-    by_profileId: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.profileId ?? "") === selectedId)).length,
+    by_id: nm.filter((m: any) => toArrLoc<any>(m?.players).some((p: any) => String(p?.id ?? "") === selectedId)).length,
+    by_playerId: nm.filter((m: any) => toArrLoc<any>(m?.players).some((p: any) => String(p?.playerId ?? "") === selectedId)).length,
+    by_profileId: nm.filter((m: any) => toArrLoc<any>(m?.players).some((p: any) => String(p?.profileId ?? "") === selectedId)).length,
   };
 
   return {
@@ -6032,8 +6038,8 @@ const [liveDashboard, setLiveDashboard] =
           let candidateId: string | null = null;
           for (const r of rows as any[]) {
             const session = r?.payload?.session || r?.payload || r;
-            const players = session?.players || session?.session?.players || [];
-            const found = (players || []).find(
+            const players = toArrLoc<any>(session?.players ?? session?.session?.players);
+            const found = players.find(
               (pl: any) => lc(pl?.name ?? pl?.public_name).trim() === target
             );
             if (found?.id) {
@@ -6311,6 +6317,8 @@ React.useEffect(() => {
 
 // ============================================================
 // ✅ BLOC 3 — KILLER (agrégat "résumé" pour le Dashboard)
+// Conservé pour compatibilité/futur usage. Les collections legacy sont
+// normalisées avant .find() afin d'éviter le crash StatsHub.
 // ============================================================
 type KillerAgg = {
   matches: number;
@@ -6354,14 +6362,17 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     if ((r as any)?.winnerId === pid) wins++;
 
     const ss: any = (r as any)?.summary ?? (r as any)?.payload?.summary ?? {};
-    const per: any[] =
+    const perSource: any =
       ss?.perPlayer ??
       ss?.players ??
       (r as any)?.payload?.summary?.perPlayer ??
       [];
+    // Legacy Killer snapshots may store perPlayer/players as an object map.
+    // Normalise before .find() so both array and object shapes are accepted.
+    const per: any[] = toArrLoc<any>(perSource);
 
     const pstat =
-      per.find((x) => x?.playerId === pid || x?.id === pid) ??
+      per.find((x) => x?.playerId === pid || x?.profileId === pid || x?.id === pid) ??
       ss?.[pid] ??
       ss?.players?.[pid] ??
       ss?.perPlayer?.[pid] ??

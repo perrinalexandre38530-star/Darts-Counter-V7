@@ -143,6 +143,10 @@ function extractPerPlayer(summary: any): Record<string, any> {
   const out: Record<string, any> = {};
 
   const directMaps = [
+    // Legacy Killer snapshots can store these collections either as arrays
+    // or as object maps keyed by playerId. Keep both shapes supported.
+    summary.perPlayer,
+    summary.players,
     summary.detailedByPlayer,
     summary.perPlayerMap,
     summary.playersMap,
@@ -189,8 +193,13 @@ function extractUnifiedStatsPlayer(rec: any, playerId: string): any {
     if (found) return found;
   }
   const maps = [
+    rec?.payload?.stats?.players,
+    rec?.summary?.players,
+    rec?.summary?.perPlayer,
     rec?.summary?.detailedByPlayer,
     rec?.summary?.perPlayerMap,
+    rec?.payload?.summary?.players,
+    rec?.payload?.summary?.perPlayer,
     rec?.payload?.summary?.detailedByPlayer,
     rec?.payload?.summary?.perPlayerMap,
   ];
