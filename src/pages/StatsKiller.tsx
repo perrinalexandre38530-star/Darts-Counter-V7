@@ -198,6 +198,67 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
     const filtered = playerId ? scoped.filter((r) => recordHasPlayer(r, String(playerId))) : scoped;
     const agg = playerId ? computeKillerStatsAggForProfile(filtered, String(playerId)) : null;
 
+    // Records personnels : toujours calculés sur TOUT l'historique Killer du joueur,
+    // indépendamment du filtre de période affiché dans le dashboard.
+    const allPlayerRecords = playerId
+      ? killer.filter((r: any) => recordHasPlayer(r, String(playerId)))
+      : [];
+    const recordMatches = allPlayerRecords.map((r: any) => {
+      const matchAgg = computeKillerStatsAggForProfile([r], String(playerId));
+      const rank = rankOfRecord(r, String(playerId));
+      const when = recTs(r);
+      return {
+        when,
+        win: rank === 1 || Boolean(matchAgg?.wins),
+        rank,
+        kills: num(matchAgg?.killsTotal),
+        hits: num(matchAgg?.totalHits),
+        livesTaken: num(matchAgg?.livesTakenTotal),
+        livesDelta: num(matchAgg?.livesTakenTotal) - num(matchAgg?.livesLostTotal),
+        precisionKiller: num(matchAgg?.precisionKiller),
+        precisionOffensive: num(matchAgg?.precisionOffensive),
+      };
+    });
+
+    const maxRecord = (key: string) => {
+      let best: any = null;
+      for (const row of recordMatches) {
+        if (!best || num(row?.[key]) > num(best?.[key])) best = row;
+      }
+      return best;
+    };
+    const bestKills = maxRecord("kills");
+    const bestHits = maxRecord("hits");
+    const bestLivesTaken = maxRecord("livesTaken");
+    const bestLivesDelta = maxRecord("livesDelta");
+    const bestPrecisionKiller = maxRecord("precisionKiller");
+    const bestPrecisionOffensive = maxRecord("precisionOffensive");
+
+    const ranked = recordMatches.filter((r: any) => num(r.rank) > 0);
+    const bestRank = ranked.length ? Math.min(...ranked.map((r: any) => num(r.rank))) : 0;
+    let currentWinStreak = 0;
+    let bestWinStreak = 0;
+    for (const row of recordMatches.slice().sort((a: any, b: any) => num(a.when) - num(b.when))) {
+      if (row.win) {
+        currentWinStreak += 1;
+        bestWinStreak = Math.max(bestWinStreak, currentWinStreak);
+      } else {
+        currentWinStreak = 0;
+      }
+    }
+
+    const records = {
+      bestKills: { value: num(bestKills?.kills), when: num(bestKills?.when) },
+      bestHits: { value: num(bestHits?.hits), when: num(bestHits?.when) },
+      bestLivesTaken: { value: num(bestLivesTaken?.livesTaken), when: num(bestLivesTaken?.when) },
+      bestLivesDelta: { value: num(bestLivesDelta?.livesDelta), when: num(bestLivesDelta?.when) },
+      bestPrecisionKiller: { value: num(bestPrecisionKiller?.precisionKiller), when: num(bestPrecisionKiller?.when) },
+      bestPrecisionOffensive: { value: num(bestPrecisionOffensive?.precisionOffensive), when: num(bestPrecisionOffensive?.when) },
+      bestWinStreak,
+      bestRank,
+      matchCount: recordMatches.length,
+    };
+
     // On limite la série graphique/historique aux parties récentes : l'agrégat global
     // reste calculé sur toute la période mais le rendu demeure rapide même avec un gros historique.
     const recentRecords = filtered
@@ -240,6 +301,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       wins: agg?.wins || 0,
       lastAt: agg?.lastAt || items[0]?.when || 0,
       placements: agg?.placements || {},
+      records,
     };
   }, [memHistory, period, playerId, profiles]);
 
@@ -362,14 +424,16 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
 
       <TabBar active={activeTab} onChange={setActiveTab} theme={theme} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-        {kpiTop.map((item) => (
-          <NeonKpi key={item.label} {...item} />
-        ))}
-      </div>
-
       {activeTab === "overview" && (
         <>
+          <TablePanel theme={theme} title="Dashboard Killer — résumé">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+              {kpiTop.map((item) => (
+                <NeonKpi key={item.label} {...item} />
+              ))}
+            </div>
+          </TablePanel>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 10 }}>
             <ChartCard theme={theme} title="Kills — tendance récente" subtitle="Sparkline des 12 derniers matchs">
               <Sparkline theme={theme} points={killTrend} color="#FF6FB5" emptyLabel="Pas assez de matchs pour tracer la tendance." />
@@ -387,6 +451,19 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
               <MiniStat theme={theme} label="Podiums" value={totalPodium} sub={`${agg.firsts || 0} titre${num(agg.firsts) > 1 ? "s" : ""}`} />
               <MiniStat theme={theme} label="Darts / match" value={fmt2(agg.dartsAvg || 0)} sub={`${agg.dartsTotal || 0} darts`} />
               <MiniStat theme={theme} label="Ratio K/D" value={fmt2(killDeathRatio)} sub={`${agg.deathsTotal || 0} deaths`} />
+            </div>
+          </TablePanel>
+
+          <TablePanel theme={theme} title="Records personnels — tous temps">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+              <RecordStat theme={theme} label="Kills sur un match" value={data.records?.bestKills?.value || 0} when={data.records?.bestKills?.when} color="#FF6FB5" />
+              <RecordStat theme={theme} label="Hits sur un match" value={data.records?.bestHits?.value || 0} when={data.records?.bestHits?.when} color="#77FF9B" />
+              <RecordStat theme={theme} label="Vies prises / match" value={data.records?.bestLivesTaken?.value || 0} when={data.records?.bestLivesTaken?.when} color="#47B5FF" />
+              <RecordStat theme={theme} label="Meilleur delta vies" value={`${num(data.records?.bestLivesDelta?.value) >= 0 ? "+" : ""}${num(data.records?.bestLivesDelta?.value)}`} when={data.records?.bestLivesDelta?.when} color="#B996FF" />
+              <RecordStat theme={theme} label="Précision Killer" value={fmtPct(data.records?.bestPrecisionKiller?.value || 0)} when={data.records?.bestPrecisionKiller?.when} color="#F6C256" />
+              <RecordStat theme={theme} label="Précision offensive" value={fmtPct(data.records?.bestPrecisionOffensive?.value || 0)} when={data.records?.bestPrecisionOffensive?.when} color="#5DE2E7" />
+              <RecordStat theme={theme} label="Série de victoires" value={data.records?.bestWinStreak || 0} sub="victoires consécutives" color="#FF8A65" />
+              <RecordStat theme={theme} label="Meilleure place" value={data.records?.bestRank ? `${data.records.bestRank}${data.records.bestRank === 1 ? "er" : "e"}` : "—"} sub={`${data.records?.matchCount || 0} matchs Killer analysés`} color="#F6C256" />
             </div>
           </TablePanel>
         </>
@@ -470,7 +547,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
 
 function TabBar({ active, onChange, theme }: { active: KillerTab; onChange: (v: KillerTab) => void; theme: any }) {
   const tabs: Array<{ key: KillerTab; label: string; icon: string }> = [
-    { key: "overview", label: "Vue", icon: "overview" },
+    { key: "overview", label: "Résumé", icon: "overview" },
     { key: "combat", label: "Combat", icon: "combat" },
     { key: "ranking", label: "Classement", icon: "ranking" },
     { key: "history", label: "Historique", icon: "history" },
@@ -752,6 +829,20 @@ function MiniStat({ theme, label, value, sub, small = false }: any) {
       <div style={{ fontSize: 8.8, color: theme.textSoft, fontWeight: 800, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
       <div style={{ marginTop: 3, fontSize: small ? 10.5 : 16, lineHeight: small ? 1.15 : 1, fontWeight: 900, color: theme.primary, overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
       {sub ? <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 8.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
+    </div>
+  );
+}
+
+function RecordStat({ theme, label, value, when, sub, color = "#F6C256" }: any) {
+  const detail = sub || (num(when) > 0 ? `le ${fmtShortDate(when)}` : "record tous temps");
+  return (
+    <div style={{ minWidth: 0, borderRadius: 13, border: `1px solid ${color}55`, padding: "7px 8px", background: `linear-gradient(180deg, ${color}0B, rgba(255,255,255,.018))` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, color: color, fontSize: 8.8, fontWeight: 900, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <span aria-hidden="true" style={{ fontSize: 10 }}>★</span>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      </div>
+      <div style={{ marginTop: 4, color: theme.text, fontSize: 17, lineHeight: 1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
+      <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 8.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{detail}</div>
     </div>
   );
 }
