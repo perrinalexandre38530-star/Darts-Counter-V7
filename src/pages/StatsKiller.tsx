@@ -362,7 +362,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
 
       <TabBar active={activeTab} onChange={setActiveTab} theme={theme} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {kpiTop.map((item) => (
           <NeonKpi key={item.label} {...item} />
         ))}
@@ -380,7 +380,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
           </div>
 
           <TablePanel theme={theme} title="Synthèse joueur">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
               <MiniStat theme={theme} label="Dernière partie" value={fmtDate(data.lastAt)} small />
               <MiniStat theme={theme} label="Segment favori" value={agg.favSegment || "—"} sub={`${agg.favSegmentHits || 0} hits`} />
               <MiniStat theme={theme} label="Numéro favori" value={fmtFavNum(agg.favNumber)} sub={`${agg.favNumberHits || 0} hits`} />
@@ -394,7 +394,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
 
       {activeTab === "combat" && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
             <MiniKpi label="Précision offensive" value={fmtPct(agg.precisionOffensive || 0)} color="#77FF9B" />
             <MiniKpi label="Précision Killer" value={fmtPct(agg.precisionKiller || 0)} color="#F6C256" />
             <MiniKpi label="Ratio K/D" value={fmt2(killDeathRatio)} color="#FF6FB5" />
@@ -422,7 +422,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
 
       {activeTab === "ranking" && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
             <MiniKpi label="Podiums" value={totalPodium} color="#F6C256" />
             <MiniKpi label="Titres" value={agg.firsts || 0} color="#77FF9B" />
             <MiniKpi label="Place moyenne" value={avgPlacement ? fmt2(avgPlacement) : "—"} color="#47B5FF" />
@@ -444,7 +444,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
               <PlaceBox theme={theme} rank="2e" count={agg.seconds || 0} />
               <PlaceBox theme={theme} rank="3e" count={agg.thirds || 0} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 7 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
               {placementRows.map((row) => (
                 <MiniStat key={row.rank} theme={theme} label={`${row.rank}e place`} value={row.count} />
               ))}
@@ -579,24 +579,24 @@ function SectionTitle({ theme, title }: any) {
 
 function NeonKpi({ label, value, sub, color, icon }: any) {
   return (
-    <div style={{ borderRadius: 17, padding: "10px 11px", minHeight: 86, background: "linear-gradient(180deg, rgba(18,20,28,.95), rgba(12,13,18,.98))", border: `1px solid ${color}88`, boxShadow: `0 0 12px ${color}20, inset 0 0 12px ${color}0C`, minWidth: 0 }}>
+    <div style={{ borderRadius: 16, padding: "8px 9px", minHeight: 72, background: "linear-gradient(180deg, rgba(18,20,28,.95), rgba(12,13,18,.98))", border: `1px solid ${color}88`, boxShadow: `0 0 10px ${color}1A, inset 0 0 10px ${color}0A`, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <div style={{ color: "rgba(255,255,255,.74)", fontSize: 10.5, fontWeight: 900, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
-        <span style={{ width: 27, height: 27, borderRadius: 9, display: "grid", placeItems: "center", background: `${color}12`, border: `1px solid ${color}45`, flex: "0 0 auto" }}>
+        <div style={{ color: "rgba(255,255,255,.72)", fontSize: 9.5, fontWeight: 900, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+        <span style={{ width: 23, height: 23, borderRadius: 8, display: "grid", placeItems: "center", background: `${color}12`, border: `1px solid ${color}45`, flex: "0 0 auto" }}>
           <KpiIcon kind={icon} color={color} />
         </span>
       </div>
-      <div style={{ marginTop: 5, color, fontSize: 25, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 9px ${color}45`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
-      <div style={{ marginTop: 5, color: "rgba(255,255,255,.55)", fontSize: 10.5, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+      <div style={{ marginTop: 3, color, fontSize: 18, lineHeight: 1, fontWeight: 900, textShadow: `0 0 8px ${color}38`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
+      <div style={{ marginTop: 3, color: "rgba(255,255,255,.52)", fontSize: 9.2, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
     </div>
   );
 }
 
 function MiniKpi({ label, value, color }: any) {
   return (
-    <div style={{ borderRadius: 15, padding: "9px 10px", border: `1px solid ${color}55`, background: "rgba(255,255,255,.025)", minWidth: 0 }}>
-      <div style={{ color: "rgba(255,255,255,.55)", fontSize: 9.5, fontWeight: 900, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
-      <div style={{ marginTop: 4, color, fontSize: 21, fontWeight: 1000, lineHeight: 1 }}>{String(value ?? "—")}</div>
+    <div style={{ borderRadius: 14, padding: "7px 8px", minHeight: 54, border: `1px solid ${color}55`, background: "rgba(255,255,255,.025)", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <div style={{ color: "rgba(255,255,255,.55)", fontSize: 8.8, fontWeight: 900, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+      <div style={{ marginTop: 3, color, fontSize: 17, fontWeight: 900, lineHeight: 1 }}>{String(value ?? "—")}</div>
     </div>
   );
 }
@@ -748,10 +748,10 @@ function MetricClusterCompact({ theme, title, color, items }: any) {
 
 function MiniStat({ theme, label, value, sub, small = false }: any) {
   return (
-    <div style={{ minWidth: 0, borderRadius: 14, border: `1px solid ${theme.borderSoft}`, padding: "8px 9px", background: "rgba(255,255,255,.02)" }}>
-      <div style={{ fontSize: 9.5, color: theme.textSoft, fontWeight: 800, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ marginTop: 4, fontSize: small ? 12 : 19, lineHeight: small ? 1.2 : 1, fontWeight: 1000, color: theme.primary, overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
-      {sub ? <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
+    <div style={{ minWidth: 0, borderRadius: 13, border: `1px solid ${theme.borderSoft}`, padding: "7px 8px", background: "rgba(255,255,255,.02)" }}>
+      <div style={{ fontSize: 8.8, color: theme.textSoft, fontWeight: 800, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ marginTop: 3, fontSize: small ? 10.5 : 16, lineHeight: small ? 1.15 : 1, fontWeight: 900, color: theme.primary, overflow: "hidden", textOverflow: "ellipsis" }}>{String(value ?? "—")}</div>
+      {sub ? <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 8.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
     </div>
   );
 }
