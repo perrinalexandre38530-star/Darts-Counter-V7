@@ -1492,3 +1492,231 @@ button.dff-adjacent-card:active { transform: scale(.985); }
   box-shadow: 0 0 14px rgba(255,215,106,.08);
 }
 .dff-map-territory-action button:active { transform: translateY(1px); }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.4 — tactique / vent 16 directions / objectifs
+   ============================================================= */
+.dff-play > .dff-play__turns {
+  margin-top: 2px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  min-height: 48px;
+  align-items: center;
+}
+.dff-play__turn {
+  min-height: 38px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  overflow: visible;
+}
+.dff-play__turn-copy small {
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dff-play__turn-copy small b { font-weight: 1100; }
+
+/* Objectifs conseillés : points visibles et Canadair immédiatement identifiable. */
+.dff-objective-row {
+  position: relative;
+  overflow: hidden;
+  grid-template-columns: 58px minmax(0,1fr) auto;
+  gap: 9px;
+  isolation: isolate;
+}
+.dff-objective-row > strong,
+.dff-objective-row__copy,
+.dff-objective-row__points { position: relative; z-index: 2; }
+.dff-objective-row__points {
+  min-width: 58px;
+  padding: 7px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(92,230,168,.34);
+  background: rgba(92,230,168,.08);
+  text-align: center;
+  align-self: center;
+}
+.dff-objective-row__points b {
+  display: block;
+  color: #5ce6a8;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 1100;
+}
+.dff-objective-row__points small {
+  display: block;
+  margin-top: 2px;
+  color: #8da8a0;
+  font-size: 5.8px;
+  font-weight: 1000;
+  letter-spacing: .5px;
+}
+.dff-objective-row.is-canadair {
+  background: linear-gradient(110deg,rgba(255,90,37,.12),rgba(6,15,23,.94));
+}
+.dff-canadair-watermark {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: .15;
+}
+.dff-canadair-watermark > span {
+  position: absolute;
+  right: 10%;
+  top: 45%;
+  transform: translateY(-50%) rotate(-12deg);
+  font-size: 62px;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px rgba(37,201,255,.28));
+}
+.dff-canadair-watermark > i {
+  position: absolute;
+  right: 4%;
+  bottom: 6%;
+  color: #25c9ff;
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 4px;
+  transform: rotate(-8deg);
+}
+
+.dff-canadair-impact {
+  position: relative;
+  z-index: 2;
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dff-canadair-impact::-webkit-scrollbar { display: none; }
+.dff-canadair-impact__item {
+  flex: 0 0 58px;
+  min-width: 58px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(2,5,9,.72);
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  grid-template-rows: 20px auto;
+  gap: 1px 3px;
+  align-items: center;
+}
+.dff-canadair-impact__item.is-center { box-shadow: inset 0 0 0 1px rgba(37,201,255,.20); }
+.dff-canadair-impact__shape { width: 26px; height: 24px; grid-row: 1 / 3; display: grid; place-items: center; }
+.dff-canadair-impact__item b { color: #ffd76a; font-size: 9px; line-height: 1; }
+.dff-canadair-impact__item span { color: #dce5ef; font-size: 5.8px; line-height: 1.1; font-weight: 1000; white-space: nowrap; }
+
+.dff-action-row { position: relative; overflow: hidden; isolation: isolate; }
+.dff-action-row > header,
+.dff-action-row > .dff-action-row__detail,
+.dff-action-row > p,
+.dff-action-row > .dff-canadair-impact { position: relative; z-index: 2; }
+.dff-action-row.is-canadair { background: linear-gradient(110deg,rgba(255,90,37,.13),rgba(5,13,20,.92)) !important; }
+
+/* Légende = filtre de carte cliquable. */
+.dff-map-legend__chip {
+  appearance: none;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.dff-map-legend__chip > span { font-size: 9px; line-height: 1; }
+.dff-map-legend__chip > b { font-size: 7px; line-height: 1; }
+.dff-map-legend__chip > small {
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.08);
+  color: #dce4ef;
+  font-size: 5.8px;
+  font-weight: 1000;
+}
+.dff-map-legend__chip.is-active {
+  background: rgba(255,255,255,.12);
+  border-color: currentColor;
+  box-shadow: 0 0 14px currentColor;
+  transform: translateY(-1px);
+}
+.dff-map-legend__chip.is-protected { border-color: rgba(37,201,255,.42); color: #7be4ff; }
+
+/* Rose des vents 16 points : origine et destination explicites. */
+.dff-wind-compass {
+  width: 154px;
+  min-height: 118px;
+  padding: 8px 9px;
+}
+.dff-wind-compass__rose {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  margin: 0 auto;
+  display: block;
+  color: #ffb343;
+}
+.dff-wind-compass__star { position: absolute; inset: 9px; width: 64px; height: 64px; }
+.dff-wind-compass__arrow {
+  position: absolute;
+  inset: 23px;
+  width: 36px;
+  height: 36px;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 0 8px rgba(255,176,64,.30));
+}
+.dff-wind-compass__dir {
+  position: absolute;
+  transform: translate(-50%,-50%);
+  color: #9ea8b7;
+  font-size: 4.9px;
+  line-height: 1;
+  font-weight: 1000;
+  white-space: nowrap;
+  letter-spacing: -.15px;
+}
+.dff-wind-compass__dir.is-from {
+  color: #25c9ff;
+  font-size: 5.8px;
+  text-shadow: 0 0 7px rgba(37,201,255,.70);
+}
+.dff-wind-compass__dir.is-to {
+  color: #ffb343;
+  font-size: 5.8px;
+  text-shadow: 0 0 7px rgba(255,179,67,.75);
+}
+.dff-wind-compass__meta { margin-top: 0; }
+
+@media (max-width: 520px) {
+  .dff-play > .dff-play__turns { margin-top: 1px; padding-top: 5px; padding-bottom: 5px; min-height: 46px; }
+  .dff-objective-row { grid-template-columns: 48px minmax(0,1fr) 52px; gap: 6px; padding: 7px; }
+  .dff-objective-row > strong { font-size: 19px; }
+  .dff-objective-row__points { min-width: 50px; padding: 6px 5px; }
+  .dff-objective-row__points b { font-size: 13px; }
+  .dff-canadair-impact__item { flex-basis: 54px; min-width: 54px; }
+  .dff-wind-compass { width: 140px; min-height: 108px; padding: 7px 8px; }
+  .dff-wind-compass__rose { width: 74px; height: 74px; }
+  .dff-wind-compass__star { inset: 8px; width: 58px; height: 58px; }
+  .dff-wind-compass__arrow { inset: 20px; width: 34px; height: 34px; }
+  .dff-wind-compass__dir { font-size: 4.4px; }
+  .dff-wind-compass__dir.is-from,.dff-wind-compass__dir.is-to { font-size: 5.2px; }
+}
+.dff-canadair-scene {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .16;
+  filter: saturate(.95) contrast(1.08) brightness(.70);
+  pointer-events: none;
+}

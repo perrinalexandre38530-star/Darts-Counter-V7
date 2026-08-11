@@ -61,7 +61,7 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.3.0-mixed-volley-skill-scoring";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.4.0-tactical-map-wind16-multizone";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -233,21 +233,75 @@ function applyCurrentCombo(points: number, state: DartsFirefighterState) {
 
 function canonicalExactShots(targetRaw: number) {
   const target = Math.max(1, Number(targetRaw || 0));
+  const options: UiDart[] = [];
+  for (let value = 1; value <= 20; value += 1) {
+    options.push({ v: value, mult: 1 }, { v: value, mult: 2 }, { v: value, mult: 3 });
+  }
+  const shotDifficulty = (dart: UiDart) => dart.mult === 3 ? 30 : dart.mult === 2 ? 18 : 6;
+  const comboDifficulty = (darts: UiDart[]) => darts.length * 55 + darts.reduce((sum, dart) => sum + shotDifficulty(dart), 0);
+  const makeRow = (darts: UiDart[], note: string) => ({
+    label: darts.map(uiLabel).join(" + "),
+    power: Math.max(1, ...darts.map((dart) => Number(dart.mult || 1))),
+    note,
+    darts,
+  });
   const out: { label: string; power: number; note?: string; darts: UiDart[] }[] = [];
-  if (target <= 20) out.push({ label: `S${target}`, power: 1, darts: [{ v: target, mult: 1 }] });
-  if (target % 2 === 0 && target / 2 >= 1 && target / 2 <= 20) out.push({ label: `D${target / 2}`, power: 2, darts: [{ v: target / 2, mult: 2 }] });
-  if (target % 3 === 0 && target / 3 >= 1 && target / 3 <= 20) out.push({ label: `T${target / 3}`, power: 3, darts: [{ v: target / 3, mult: 3 }] });
-  if (!out.length) {
-    const checkout = findCheckoutForTarget(target, 3) || [];
-    if (checkout.length) {
-      const usesBull = checkout.some((dart) => Number(dart.v) === 25);
-      const comboLabel = `${checkout.map((dart) => uiLabel(dart)).join(" + ")}${usesBull ? " · CIBLE" : ""}`;
-      out.push({ label: comboLabel, power: Math.max(1, ...checkout.map((dart) => Number(dart.mult || 1))), note: usesBull ? "combinaison exacte · Bull intégré (pas d’action spéciale)" : "combinaison exacte", darts: checkout });
+
+  const singles = options.filter((dart) => uiDartScore(dart) === target).sort((a, b) => shotDifficulty(b) - shotDifficulty(a));
+  if (singles[0]) out.push(makeRow([singles[0]], "tir exact"));
+
+  let bestPair: UiDart[] | null = null;
+  let bestPairDifficulty = -1;
+  for (let i = 0; i < options.length; i += 1) {
+    for (let j = i; j < options.length; j += 1) {
+      const pair = [options[i], options[j]];
+      if (uiDartScore(pair[0]) + uiDartScore(pair[1]) !== target) continue;
+      const difficulty = comboDifficulty(pair);
+      if (difficulty > bestPairDifficulty) { bestPair = pair; bestPairDifficulty = difficulty; }
     }
   }
-  return out;
+  if (bestPair) out.push(makeRow(bestPair, "combinaison exacte · 2 fléchettes"));
+
+  const bestByScore = new Map<number, UiDart>();
+  for (const dart of options) {
+    const score = uiDartScore(dart);
+    const current = bestByScore.get(score);
+    if (!current || shotDifficulty(dart) > shotDifficulty(current)) bestByScore.set(score, dart);
+  }
+  let bestTriple: UiDart[] | null = null;
+  let bestTripleDifficulty = -1;
+  for (let i = 0; i < options.length; i += 1) {
+    for (let j = i; j < options.length; j += 1) {
+      const remain = target - uiDartScore(options[i]) - uiDartScore(options[j]);
+      const third = bestByScore.get(remain);
+      if (!third) continue;
+      const triple = [options[i], options[j], third];
+      const difficulty = comboDifficulty(triple);
+      if (difficulty > bestTripleDifficulty) { bestTriple = triple; bestTripleDifficulty = difficulty; }
+    }
+  }
+  if (bestTriple) out.push(makeRow(bestTriple, "combinaison exacte · 3 fléchettes"));
+
+  // Déduplique d'éventuelles représentations identiques.
+  const unique = out.filter((row, index, rows) => rows.findIndex((candidate) => candidate.label === row.label) === index);
+  if (unique.length) return unique.slice(0, 3);
+
+  // Ultime recours : une cible peut nécessiter un Bull. Il est alors consommé
+  // par la combinaison et ne déclenche pas son action spéciale.
+  const checkout = findCheckoutForTarget(target, 3) || [];
+  if (checkout.length) {
+    const usesBull = checkout.some((dart) => Number(dart.v) === 25);
+    return [{
+      label: checkout.map((dart) => uiLabel(dart)).join(" + "),
+      power: Math.max(1, ...checkout.map((dart) => Number(dart.mult || 1))),
+      note: usesBull ? "combinaison exacte · Bull intégré" : "combinaison exacte",
+      darts: checkout,
+    }];
+  }
+  return [];
 }
 
+type CanadairImpactPreview = { territory: FireTerritory; power: number; result: string };
 type TerritoryActionRow = {
   label: string;
   detail: string;
@@ -255,6 +309,8 @@ type TerritoryActionRow = {
   color: string;
   points: number;
   best?: boolean;
+  kind?: "direct" | "bull" | "canadair";
+  impacts?: CanadairImpactPreview[];
 };
 
 function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefighterState): TerritoryActionRow[] {
@@ -267,7 +323,7 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
     const execution = darts?.length ? dartsFirefighterExactExecutionBonus(darts.map(uiToGameDart), territory.target, state) : 0;
     const points = applyCurrentCombo(estimateWaterPoints(territory, power, state) + execution, state);
     const executionHint = execution > 0 ? ` · adresse +${execution}` : "";
-    rows.push({ label, detail: `${detail}${executionHint}`, result: outcome.summary, color, points });
+    rows.push({ label, detail: `${detail}${executionHint}`, result: outcome.summary, color, points, kind: "direct" });
   };
 
   if (scoreTargetMode) {
@@ -284,7 +340,7 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
   const bullOutcome = simulateTerritoryImpact(territory, bullPower);
   const bullExecution = dartsFirefighterSpecialExecutionBonus("bull", state);
   const bullPoints = applyCurrentCombo(estimateWaterPoints(territory, bullPower, state) + bullExecution, state);
-  rows.push({ label: "BULL", detail: `largage ciblé · puissance ${bullPower}`, result: bullOutcome.summary, color: WATER, points: bullPoints });
+  rows.push({ label: "BULL", detail: `largage ciblé · puissance ${bullPower}`, result: bullOutcome.summary, color: WATER, points: bullPoints, kind: "bull" });
 
   const canUseCanadair = Boolean(state?.config?.bullAirSupport);
   const centerPower = Math.max(1, Number(state?.config?.canadairCenterPower || 3));
@@ -293,14 +349,19 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
   const gaugeCost = Math.max(0, Number(state?.config?.canadairGaugeCost ?? 35));
   const gaugeReady = !state?.config?.canadairRequiresGauge || Number(state?.brigadeGauge || 0) >= gaugeCost;
   let dbullPoints = 0;
-  let dbullPower = bullPower;
   let dbullResult = simulateTerritoryImpact(territory, bullPower).summary;
   let dbullDetail = `largage précis · puissance ${bullPower}`;
+  let dbullKind: TerritoryActionRow["kind"] = "bull";
+  let dbullImpacts: CanadairImpactPreview[] = [];
 
   if (canUseCanadair && gaugeReady) {
-    dbullPower = centerPower;
+    dbullKind = "canadair";
     dbullPoints = estimateWaterPoints(territory, centerPower, state);
     const neighbors = (territory.neighbors || []).slice(0, neighborCount).map((id) => state.territories.find((item) => item.id === id)).filter(Boolean) as FireTerritory[];
+    dbullImpacts = [
+      { territory, power: centerPower, result: simulateTerritoryImpact(territory, centerPower).summary },
+      ...neighbors.map((neighbor) => ({ territory: neighbor, power: neighborPower, result: simulateTerritoryImpact(neighbor, neighborPower).summary })),
+    ];
     for (const neighbor of neighbors) dbullPoints += estimateWaterPoints(neighbor, neighborPower, state);
     dbullPoints += dartsFirefighterSpecialExecutionBonus("dbull", state);
     dbullResult = `${simulateTerritoryImpact(territory, centerPower).summary} · ${neighbors.length} voisin${neighbors.length > 1 ? "s" : ""} arrosé${neighbors.length > 1 ? "s" : ""}`;
@@ -311,23 +372,39 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
   } else {
     dbullPoints = estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialExecutionBonus("dbull", state);
   }
-  rows.push({ label: "DBULL", detail: dbullDetail, result: dbullResult, color: FIRE, points: applyCurrentCombo(dbullPoints, state) });
+  dbullPoints = Math.min(360, dbullPoints);
+  rows.push({ label: "DBULL", detail: dbullDetail, result: dbullResult, color: FIRE, points: applyCurrentCombo(dbullPoints, state), kind: dbullKind, impacts: dbullImpacts });
 
   rows.sort((a, b) => Number(b.points || 0) - Number(a.points || 0) || Number((b.label === "DBULL")) - Number((a.label === "DBULL")));
   if (rows[0]) rows[0].best = true;
   return rows;
 }
 
+const WIND_16_UI = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"] as const;
 function windMeta(state: DartsFirefighterState) {
   const raw = String(state?.windLabel || "").toUpperCase();
-  const source = raw.includes("OUEST") ? "O" : raw.includes("EST") ? "E" : raw.includes("NORD") ? "N" : raw.includes("SUD") ? "S" : "?";
-  const target = source === "O" ? "E" : source === "E" ? "O" : source === "N" ? "S" : source === "S" ? "N" : "?";
-  const strength = raw.includes("FORT") ? "FORT" : raw.includes("BRISE") ? "BRISE" : raw.includes("LÉGER") ? "LÉGER" : "NORMAL";
+  const explicitSource = String((state as any)?.windFromCode || "").toUpperCase();
+  const sourceIndex = WIND_16_UI.indexOf(explicitSource as any) >= 0
+    ? WIND_16_UI.indexOf(explicitSource as any)
+    : (() => {
+        const arrow = raw.match(/(NNE|ENE|ESE|SSE|SSO|OSO|ONO|NNO|NE|SE|SO|NO|N|E|S|O)\s*[→>-]/);
+        if (arrow) return Math.max(0, WIND_16_UI.indexOf(arrow[1] as any));
+        if (raw.includes("OUEST")) return 12;
+        if (raw.includes("EST")) return 4;
+        if (raw.includes("NORD")) return 0;
+        if (raw.includes("SUD")) return 8;
+        return 4;
+      })();
+  const source = WIND_16_UI[sourceIndex] || "E";
+  const targetIndex = (sourceIndex + 8) % 16;
+  const target = String((state as any)?.windToCode || WIND_16_UI[targetIndex]);
+  const resolvedTargetIndex = Math.max(0, WIND_16_UI.indexOf(target as any));
+  const strength = raw.includes("FORT") ? "FORT" : raw.includes("LÉGER") ? "LÉGER" : "BRISE";
   const changeEvery = Math.max(1, Number(state?.config?.windChangeEvery || 3));
   const progress = Number(state?.propagationIndex || 0) % changeEvery;
   const turnsLeft = progress === 0 ? changeEvery : changeEvery - progress;
-  const rotation = target === "E" ? 90 : target === "S" ? 180 : target === "O" ? 270 : 0;
-  return { source, target, strength, turnsLeft, rotation };
+  const rotation = resolvedTargetIndex * 22.5;
+  return { source, target, sourceIndex, targetIndex: resolvedTargetIndex, strength, turnsLeft, rotation };
 }
 
 function normalizeConfig(props: any): DartsFirefighterConfigPayload {
@@ -508,6 +585,24 @@ function AdjacentTerritoryRail({ neighbors, country, onSelect }: { neighbors: Fi
   </div>;
 }
 
+function CanadairImpactStrip({ impacts, country }: { impacts?: CanadairImpactPreview[]; country: TerritoriesCountry }) {
+  const rows = (impacts || []).slice(0, 5);
+  if (!rows.length) return null;
+  return <div className="dff-canadair-impact" aria-label="Territoires concernés par le Canadair">
+    {rows.map((impact, index) => {
+      const color = fireTerritoryColor(fireStatus(impact.territory));
+      const outcome = simulateTerritoryImpact(impact.territory, impact.power);
+      const before = impact.territory.fireLevel > 0 ? `🔥${impact.territory.fireLevel}` : impact.territory.smoke ? "💨" : `💧${impact.territory.protection}`;
+      const after = outcome.fireLevel > 0 ? `🔥${outcome.fireLevel}` : outcome.smoke ? "💨" : outcome.protection > 0 ? `💧${outcome.protection}` : "✓";
+      return <div key={`${impact.territory.id}-${index}`} className={`dff-canadair-impact__item ${index === 0 ? "is-center" : ""}`} style={{ borderColor: `${color}55` }}>
+        <div className="dff-canadair-impact__shape"><TerritorySilhouetteBadge country={country} territory={impact.territory} color={color} height={32} showValue={false} visualMode="status" /></div>
+        <b>{impact.territory.target}</b>
+        <span>{before}→{after}</span>
+      </div>;
+    })}
+  </div>;
+}
+
 function TerritoryInsightBody({ territory, state, country, compact = false, onClear, onOpenAdvice, onSelectTerritory }: any) {
   const color = fireTerritoryColor(fireStatus(territory));
   const status = statusLabel(territory);
@@ -567,7 +662,7 @@ function Rules({ config }: { config: DartsFirefighterConfigPayload }) {
   return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
     <div><strong style={{ color: FIRE }}>OBJECTIF</strong><br />{config.objective === "survival" ? `Résiste pendant ${config.maxRounds} rounds.` : config.objective === "protect_critical" ? `Protège les zones critiques pendant ${config.maxRounds} rounds.` : "Éteins tous les foyers avant la limite."}</div>
     <div><strong style={{ color: WATER }}>PUISSANCE</strong><br />Simple 1 · Double 2 · Triple 3. Le surplus crée une protection qui absorbe une future propagation.</div>
-    <div><strong style={{ color: GOLD }}>CIBLES</strong><br />{Number(config.activeTerritories || 0) > 20 ? "Carte étendue : les fléchettes numérotées de la volée sont additionnées pour former UNE cible exacte. D1 + T4 + S8 = 22 : une seule intervention sur la cible 22, pas trois territoires différents." : "Carte 1-20 : chaque fléchette agit séparément sur son secteur. D1, T4 et S8 interviennent donc sur les territoires 1, 4 et 8."}</div>
+    <div><strong style={{ color: GOLD }}>CIBLES</strong><br />{Number(config.activeTerritories || 0) > 20 ? "Carte étendue : le moteur teste toutes les combinaisons possibles de 1 à 3 fléchettes numérotées et retient UNE seule intervention normale, la plus intéressante parmi les cibles exactes atteignables. D1 + T4 + S8 peut donc viser 2, 8, 10, 12, 14, 20 ou 22 selon les cibles actives ; jamais trois territoires différents sur la même volée normale." : config.multiInterventionPerDart !== false ? "Carte 1-20 en mode multi-zones : chaque fléchette agit séparément sur son secteur. D1, T4 et S8 interviennent donc sur les territoires 1, 4 et 8." : "Carte 1-20 en mode intervention unique : une seule action normale est retenue dans la volée ; Bull et DBull restent séparés."}</div>
     <div><strong style={{ color: WATER }}>BULL / DBULL</strong><br />{`Bull et DBull sont d’abord réservés aux actions spéciales. Ainsi T19 + DBULL + D16 peut produire 89 points exacts avec T19+D16 ET un DBULL séparé. Si une cible exacte n’est atteignable qu’en comptant le Bull/DBull dans son total, celui-ci est alors consommé par la combinaison et ne déclenche pas de largage. ${config.bullTargetMode === "priority" ? "Le largage spécial vise automatiquement la priorité tactique." : "Le largage spécial vise la zone sélectionnée."} ${config.bullAirSupport ? "Le Double Bull appelle le Canadair si la jauge le permet." : "Canadair désactivé."}`}</div>
     <div><strong style={{ color: FIRE }}>VENT</strong><br />{config.windEnabled ? `Vent ${config.windStrength || "normal"}, changement tous les ${config.windChangeEvery || 3} cycles.` : "Vent désactivé."}</div>
   </div>;
@@ -618,6 +713,7 @@ type TacticalSuggestion = {
   reason: string;
   color: string;
   kind: "direct" | "bull" | "canadair";
+  estimatedPoints?: number;
 };
 
 type TacticalPlan = {
@@ -657,6 +753,13 @@ function directShotForTerritory(territory: FireTerritory, forecasted: boolean, s
   };
 }
 
+function estimateSuggestionPoints(suggestion: TacticalSuggestion, state: DartsFirefighterState) {
+  const rows = buildTerritoryActionRows(suggestion.territory, state);
+  if (suggestion.kind === "canadair") return Number(rows.find((row) => row.kind === "canadair")?.points || 0);
+  const directRows = rows.filter((row) => row.kind === "direct");
+  return Number((directRows.sort((a, b) => b.points - a.points)[0] || rows[0])?.points || 0);
+}
+
 function buildTacticalPlan(state: DartsFirefighterState, config: DartsFirefighterConfigPayload): TacticalPlan {
   const playable = state.territories.filter((territory) => territory.playable && !territory.destroyed);
   if (!playable.length) return { primary: null, alternatives: [], clusterCount: 0 };
@@ -684,8 +787,7 @@ function buildTacticalPlan(state: DartsFirefighterState, config: DartsFirefighte
   const canadairReady = config.bullAirSupport !== false
     && (!config.canadairRequiresGauge || Number(state.brigadeGauge || 0) >= gaugeCost);
   const scoreTargetMode = state.targetMode === "visit_score" || Number(config.activeTerritories || 0) > 20;
-  const directPrimary = directShotForTerritory(danger, forecast.has(danger.id), scoreTargetMode);
-  const primary: TacticalSuggestion = canadairReady && clusterCount >= 3
+  const firstSuggestion: TacticalSuggestion = canadairReady && clusterCount >= 3
     ? {
         territory: danger,
         shot: "DBULL",
@@ -695,12 +797,20 @@ function buildTacticalPlan(state: DartsFirefighterState, config: DartsFirefighte
         color: WATER,
         kind: "canadair",
       }
-    : directPrimary;
-  const alternatives = ranked
-    .filter((territory) => territory.id !== danger.id && (territory.fireLevel > 0 || territory.smoke || forecast.has(territory.id) || territory.critical))
-    .slice(0, 2)
-    .map((territory) => directShotForTerritory(territory, forecast.has(territory.id), scoreTargetMode));
-  return { primary, alternatives: alternatives.slice(0, 3), clusterCount };
+    : directShotForTerritory(danger, forecast.has(danger.id), scoreTargetMode);
+  const candidateRows: TacticalSuggestion[] = [
+    firstSuggestion,
+    ...ranked
+      .filter((territory) => territory.id !== danger.id && (territory.fireLevel > 0 || territory.smoke || forecast.has(territory.id) || territory.critical))
+      .slice(0, 5)
+      .map((territory) => directShotForTerritory(territory, forecast.has(territory.id), scoreTargetMode)),
+  ];
+  const scored = candidateRows
+    .map((suggestion) => ({ ...suggestion, estimatedPoints: estimateSuggestionPoints(suggestion, state) }))
+    .sort((a, b) => Number(b.estimatedPoints || 0) - Number(a.estimatedPoints || 0)
+      || Number(b.territory.fireLevel || 0) - Number(a.territory.fireLevel || 0)
+      || Number(b.territory.target || 0) - Number(a.territory.target || 0));
+  return { primary: scored[0] || null, alternatives: scored.slice(1, 4), clusterCount };
 }
 
 function dedupeTacticalSuggestions(rows: Array<TacticalSuggestion | null | undefined>) {
@@ -1062,7 +1172,7 @@ export default function DartsFirefighterPlay(props: any) {
       tickerSrc={tickerFirefighter}
       tickerAlt="DARTS FIREFIGHTER"
       tickerHeight={68}
-      tickerBottomGap={24}
+      tickerBottomGap={6}
       tickerFit="cover"
       left={<div style={{ marginLeft: 4 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>}
       right={<div style={{ marginRight: 4 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>}
@@ -1137,13 +1247,13 @@ export default function DartsFirefighterPlay(props: any) {
       </section>
     </main>
 
-    {showObjective ? <ObjectiveModal primary={primarySuggestion} alternatives={tacticalPlan.alternatives} config={config} onSelect={(id: string) => { selectTerritory(id); setShowObjective(false); }} onClose={() => setShowObjective(false)} /> : null}
-    {showTerritory ? <TerritoryModal territory={focusTerritory} state={state} country={country} onOpenMap={() => { setShowTerritory(false); setShowMap(true); }} onClear={clearTerritorySelection} onSelectTerritory={selectTerritory} onOpenAdvice={() => setShowActionPlanner(true)} onClose={() => setShowTerritory(false)} /> : null}
+    {showObjective ? <ObjectiveModal primary={primarySuggestion} alternatives={tacticalPlan.alternatives} config={config} state={state} country={country} onSelect={(id: string) => { selectTerritory(id); setShowObjective(false); }} onClose={() => setShowObjective(false)} /> : null}
+    {showTerritory ? <TerritoryModal territory={focusTerritory} state={state} country={country} onOpenMap={(id: string) => { if (id) selectTerritory(id); setShowTerritory(false); setShowMap(true); }} onClear={clearTerritorySelection} onSelectTerritory={selectTerritory} onOpenAdvice={() => setShowActionPlanner(true)} onClose={() => setShowTerritory(false)} /> : null}
     {showMap ? <FirefighterMapModal state={state} country={country} map={fireMap} mapLabel={mapLabel} onClose={() => setShowMap(false)} onSelect={selectTerritory} onClearSelection={clearTerritorySelection} onOpenAdvice={() => setShowActionPlanner(true)} /> : null}
     {showTargets ? <TargetsModal state={state} country={country} onClose={() => setShowTargets(false)} onSelect={toggleTerritorySelection} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showStats ? <StatsModal state={state} currentStats={currentStats} activeProfile={activeProfile} config={config} onClose={() => setShowStats(false)} /> : null}
-    {showActionPlanner && focusTerritory ? <ActionPlannerModal territory={focusTerritory} state={state} onClose={() => setShowActionPlanner(false)} /> : null}
+    {showActionPlanner && focusTerritory ? <ActionPlannerModal territory={focusTerritory} state={state} country={country} onClose={() => setShowActionPlanner(false)} /> : null}
     {showEnd && state.finished ? <DartsFirefighterEnd state={state} profilesById={profilesById} onReplay={resetMatch} onStats={() => go?.("statsHub", { initialStatsSubTab: "darts_firefighter" })} onHistory={() => go?.("history")} onClose={() => go?.("games")} /> : null}
   </div>;
 }
@@ -1157,7 +1267,7 @@ function FirefighterTurnCarousel({ players, activePlayerId, profilesById, player
       const stats = playerStats?.[player?.id] || {};
       return <div key={String(player?.id || index)} className={`dff-play__turn ${active ? "is-active" : ""}`} style={{ borderColor: active ? color : "rgba(255,255,255,.10)", boxShadow: active ? `0 0 14px ${color}45` : "none" }}>
         <ProfileAvatar profile={profile} size={27} ringColor={color} showStars={false} noFrame />
-        <div className="dff-play__turn-copy"><div style={{ color: active ? color : "#c4cad4" }}>{playerName(profile)}</div><small>{Number(stats.fireReduced || 0)} eau · {Number(stats.firesExtinguished || 0)} feux</small></div>
+        <div className="dff-play__turn-copy"><div style={{ color: active ? color : "#c4cad4" }}>{playerName(profile)}</div><small><b style={{ color: active ? color : "#d7dce6" }}>{Number(stats.score || 0)} pts</b> · {Number(stats.fireReduced || 0)} eau · {Number(stats.firesExtinguished || 0)} feux</small></div>
         {active ? <span className="dff-play__turn-arrow" style={{ color }}>›</span> : null}
       </div>;
     })}
@@ -1202,6 +1312,7 @@ function OutlineIcon({ name, size = 21 }: { name: string; size?: number }) {
   if (name === "smoke") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 8h9a3 3 0 1 0-3-3M3 12h14a3 3 0 1 1-3 3M5 16h5" /></svg>;
   if (name === "shield") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/><path {...p} d="m9 12 2 2 4-5"/></svg>;
   if (name === "warning") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M12 3 2.8 20h18.4L12 3Z"/><path {...p} d="M12 9v5M12 17h.01"/></svg>;
+  if (name === "wind") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M3 8h10a3 3 0 1 0-3-3"/><path {...p} d="M2 12h15a3 3 0 1 1-3 3"/><path {...p} d="M4 16h7"/></svg>;
   if (name === "map") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15" /></svg>;
   if (name === "clear") return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg>;
   return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...p} cx="12" cy="12" r="9" /><path {...p} d="M12 10v6M12 7h.01" /></svg>;
@@ -1227,22 +1338,23 @@ function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wid
   </div>;
 }
 
-function ObjectiveModal({ primary, alternatives, config, onSelect, onClose }: any) {
+function ObjectiveModal({ primary, alternatives, config, state, country, onSelect, onClose }: any) {
   const rows = dedupeTacticalSuggestions([primary, ...(alternatives || [])]);
   return <FloatingPanel title="OBJECTIFS CONSEILLÉS" subtitle="Touchez une cible pour préparer vos options d’intervention." accent={primary?.color || WATER} onClose={onClose}>
     <div className="dff-objective-list">{rows.length ? rows.map((suggestion: TacticalSuggestion, index: number) => {
       const territoryColor = fireTerritoryColor(fireStatus(suggestion.territory));
       const meta = statusMeta(suggestion.territory);
-      return <button key={`${suggestion.territory.id}-${index}`} type="button" className="dff-objective-row" onClick={() => onSelect(suggestion.territory.id)} style={{ borderColor: `${territoryColor}55` }}>
+      const actionRows = buildTerritoryActionRows(suggestion.territory, state);
+      const canadairRow = suggestion.kind === "canadair" ? actionRows.find((row) => row.kind === "canadair") : null;
+      const points = Number(suggestion.estimatedPoints || estimateSuggestionPoints(suggestion, state));
+      return <button key={`${suggestion.territory.id}-${index}`} type="button" className={`dff-objective-row ${suggestion.kind === "canadair" ? "is-canadair" : ""}`} onClick={() => onSelect(suggestion.territory.id)} style={{ borderColor: `${territoryColor}55` }}>
+        {suggestion.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
         <strong style={{ color: territoryColor }}>{suggestion.territory.target}</strong>
-        <div>
-          <b>{suggestion.territory.name}</b>
-          <span>{suggestion.action}</span>
-          <small className="dff-objective-status"><OutlineIcon name={meta.icon} size={13} /><b style={{ color: meta.color }}>{meta.value}</b></small>
-        </div>
+        <div className="dff-objective-row__copy"><b>{suggestion.territory.name}</b><span>{suggestion.action}</span><small><span className="dff-inline-status-pill is-compact" style={{ color: meta.color }}><OutlineIcon name={meta.icon} size={12} /><b>{meta.value}</b></span></small>{canadairRow?.impacts?.length ? <CanadairImpactStrip impacts={canadairRow.impacts} country={country} /> : null}</div>
+        <div className="dff-objective-row__points"><b>+{points}</b><small>PTS</small></div>
       </button>;
     }) : <div className="dff-empty">Aucune urgence détectée.</div>}</div>
-    <div className="dff-help-box"><b>RÈGLE CLAIRE</b>{Number(config.activeTerritories || 0) > 20 ? <><span>Chaque zone possède une cible unique. Sélectionne-la puis réalise exactement son score en 1 à 3 fléchettes.</span><span>La puissance d’eau dépend du meilleur multiplicateur utilisé dans la combinaison : Simple 1 · Double 2 · Triple 3.</span></> : <><span>Un chiffre du keypad agit toujours sur le territoire portant ce numéro. La sélection affichée sert au Bull et au Double Bull seulement.</span><span>Simple = 1 eau · Double = 2 · Triple = 3.</span></>}</div>
+    <div className="dff-help-box"><b>RÈGLE CLAIRE</b>{Number(config.activeTerritories || 0) > 20 ? <><span>Grande carte : une seule intervention normale est résolue par volée à partir des fléchettes numérotées. Bull/DBull restent séparés s’ils ne sont pas consommés par la combinaison exacte.</span><span>La première carte est l’action estimée la plus rentable selon danger, difficulté du geste, taille de la cible et effet réel.</span></> : <><span>Petite carte : {config.multiInterventionPerDart !== false ? "mode multi-zones actif, chaque fléchette numérotée peut agir sur un territoire différent." : "une seule intervention normale par volée."}</span><span>Simple = 1 eau · Double = 2 · Triple = 3.</span></>}</div>
   </FloatingPanel>;
 }
 
@@ -1251,7 +1363,7 @@ function TerritoryModal({ territory, state, country, onOpenMap, onClear, onSelec
   const color = fireTerritoryColor(fireStatus(territory));
   return <FloatingPanel title={territory.name} subtitle={null} accent={color} onClose={onClose}>
     <TerritoryInsightBody territory={territory} state={state} country={country} onClear={state.selectedTerritoryId ? onClear : undefined} onOpenAdvice={onOpenAdvice} onSelectTerritory={onSelectTerritory} />
-    <div className="dff-modal__actions"><button type="button" onClick={onOpenMap}><OutlineIcon name="map" /> VOIR SUR LA CARTE</button>{state.selectedTerritoryId ? <button type="button" onClick={onClear}><OutlineIcon name="close" /> DÉSÉLECTIONNER</button> : null}{onOpenAdvice ? <button type="button" onClick={onOpenAdvice}><OutlineIcon name="target" /> ACTIONS</button> : null}</div>
+    <div className="dff-modal__actions"><button type="button" onClick={() => onOpenMap?.(territory.id)}><OutlineIcon name="map" /> VOIR SUR LA CARTE</button>{state.selectedTerritoryId ? <button type="button" onClick={onClear}><OutlineIcon name="close" /> DÉSÉLECTIONNER</button> : null}{onOpenAdvice ? <button type="button" onClick={onOpenAdvice}><OutlineIcon name="target" /> ACTIONS</button> : null}</div>
   </FloatingPanel>;
 }
 
@@ -1263,58 +1375,83 @@ function WindCompass({ enabled, state }: { enabled: boolean; state: DartsFirefig
       <div className="dff-wind-compass__copy"><b>VENT</b><span>{enabled ? `${meta.source} → ${meta.target}` : "DÉSACTIVÉ"}</span></div>
     </div>
     <div className="dff-wind-compass__rose" aria-hidden>
-      <span className="dff-wind-compass__point is-n">N</span>
-      <span className="dff-wind-compass__point is-s">S</span>
-      <span className="dff-wind-compass__point is-o">O</span>
-      <span className="dff-wind-compass__point is-e">E</span>
+      {WIND_16_UI.map((code, index) => {
+        const angle = (index * Math.PI) / 8;
+        const radius = 43;
+        const x = 50 + Math.sin(angle) * radius;
+        const y = 50 - Math.cos(angle) * radius;
+        const activeFrom = enabled && index === meta.sourceIndex;
+        const activeTo = enabled && index === meta.targetIndex;
+        return <span key={code} className={`dff-wind-compass__dir ${activeFrom ? "is-from" : ""} ${activeTo ? "is-to" : ""}`} style={{ left: `${x}%`, top: `${y}%` }}>{code}</span>;
+      })}
       <svg className="dff-wind-compass__star" viewBox="0 0 80 80">
-        <g fill="none" stroke="currentColor" strokeOpacity=".3" strokeWidth="1.2">
-          <path d="M40 8 46 30 40 72 34 30Z" fill="currentColor" fillOpacity=".14" />
-          <path d="M8 40 30 34 72 40 30 46Z" fill="currentColor" fillOpacity=".12" />
-          <path d="M18 18 34 30 62 62 30 46Z" fill="currentColor" fillOpacity=".08" />
-          <path d="M62 18 46 30 18 62 40 46Z" fill="currentColor" fillOpacity=".08" />
+        <g fill="none" stroke="currentColor" strokeOpacity=".28" strokeWidth="1.1">
+          <circle cx="40" cy="40" r="23" />
+          <circle cx="40" cy="40" r="13" />
+          <path d="M40 7 46 31 40 73 34 31Z" fill="currentColor" fillOpacity=".12" />
+          <path d="M7 40 31 34 73 40 31 46Z" fill="currentColor" fillOpacity=".10" />
+          <path d="M17 17 35 31 63 63 31 45Z" fill="currentColor" fillOpacity=".06" />
+          <path d="M63 17 45 31 17 63 39 45Z" fill="currentColor" fillOpacity=".06" />
         </g>
       </svg>
       <svg className="dff-wind-compass__arrow" viewBox="0 0 40 40" style={{ transform: `rotate(${meta.rotation}deg)` }}>
-        <path d="M7 20h20" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" />
-        <path d="m21 12 9 8-9 8" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="20" cy="20" r="3.2" fill="currentColor" opacity=".95" />
+        <path d="M20 31V10" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" />
+        <path d="m12 17 8-9 8 9" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="20" cy="26" r="3" fill="currentColor" opacity=".92" />
       </svg>
     </div>
     <div className="dff-wind-compass__meta"><span>PUISS. <b>{enabled ? meta.strength : "OFF"}</b></span><span>CHGT <b>{enabled ? `${meta.turnsLeft}T` : "—"}</b></span></div>
   </div>;
 }
 
-function ActionPlannerModal({ territory, state, onClose }: any) {
+function ActionPlannerModal({ territory, state, country, onClose }: any) {
   const color = fireTerritoryColor(fireStatus(territory));
   const rows = buildTerritoryActionRows(territory, state);
   return <FloatingPanel title="ACTIONS POSSIBLES" subtitle={territory ? `${territory.name} · cible ${territory.target}` : ""} accent={color} onClose={onClose}>
-    <div className="dff-action-planner">{rows.map((row, index) => <article key={`${row.label}-${index}`} className={`dff-action-row ${row.best ? "is-best" : ""}`} style={{ borderColor: `${row.color}66`, background: `linear-gradient(180deg, ${row.color}${row.best ? "1d" : "12"}, rgba(5,8,14,.74))` }}>
+    <div className="dff-action-planner">{rows.map((row, index) => <article key={`${row.label}-${index}`} className={`dff-action-row ${row.best ? "is-best" : ""} ${row.kind === "canadair" ? "is-canadair" : ""}`} style={{ borderColor: `${row.color}66`, background: `linear-gradient(180deg, ${row.color}${row.best ? "1d" : "12"}, rgba(5,8,14,.74))` }}>
+      {row.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
       <header>
         <div className="dff-action-row__name"><strong style={{ color: row.color }}>{row.label}</strong>{row.best ? <span>MEILLEURE ACTION</span> : null}</div>
         <div className="dff-action-row__score"><b>+{row.points}</b><small>PTS</small></div>
       </header>
       <div className="dff-action-row__detail">{row.detail}</div>
       <p>{row.result}</p>
+      {row.kind === "canadair" ? <CanadairImpactStrip impacts={row.impacts} country={country} /> : null}
     </article>)}</div>
-    <div className="dff-help-box"><b>POINTS ESTIMÉS</b><span>Le score combine difficulté d’exécution, danger réel, taille de la cible et effet obtenu.</span><span>Une combinaison exacte à 2/3 fléchettes est mieux récompensée qu’un tir spécial équivalent. Le Canadair peut toutefois dépasser ce score s’il traite réellement plusieurs zones dangereuses.</span><span>La meilleure action disponible est toujours placée en première position.</span></div>
+    <div className="dff-help-box"><b>POINTS ESTIMÉS</b><span>Le score combine difficulté d’exécution, danger réel, taille de la cible et effet obtenu.</span><span>Une combinaison exacte difficile peut dépasser un DBULL isolé. Le Canadair prend l’avantage seulement s’il produit réellement plusieurs effets utiles.</span><span>La meilleure action disponible est toujours placée en première position.</span></div>
   </FloatingPanel>;
 }
 
 function FirefighterMapModal({ state, country, map, mapLabel, onClose, onSelect, onClearSelection, onOpenAdvice }: any) {
-  const selected = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
   const countryFlag = getCountryMapFlag(country);
-  const accent = selected ? fireTerritoryColor(fireStatus(selected)) : FIRE;
   const [showMapControls, setShowMapControls] = React.useState(false);
+  const [detailsTerritoryId, setDetailsTerritoryId] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+  const selectedTarget = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
+  const detailsTerritory = state.territories.find((territory: FireTerritory) => territory.id === detailsTerritoryId) || null;
+  const accent = detailsTerritory ? fireTerritoryColor(fireStatus(detailsTerritory)) : selectedTarget ? fireTerritoryColor(fireStatus(selectedTarget)) : FIRE;
+  const filterIds = statusFilter ? state.territories.filter((territory: FireTerritory) => territory.playable && fireStatus(territory) === statusFilter).map((territory: FireTerritory) => territory.id) : [];
+  const filterButtons = [
+    { key: "smoke", label: "💨", value: "1" },
+    { key: "fire1", label: "🔥", value: "1" },
+    { key: "fire2", label: "🔥", value: "2" },
+    { key: "fire3", label: "🔥", value: "3" },
+    { key: "protected", label: "💧", value: "1-3" },
+  ];
+  const handleMapSelect = (id: string) => { onSelect?.(id); setDetailsTerritoryId(id); };
+  const clearDetails = () => { setDetailsTerritoryId(null); onClearSelection?.(); };
   return <FloatingPanel title="CARTE D’INTERVENTION" subtitle={mapLabel} accent={accent} onClose={onClose} wide panelClassName="dff-map-panel" bodyClassName="dff-map-panel__body">
-    <div className={`dff-map-modal ${selected ? "has-territory" : ""}`}>
-      {!selected ? <div className="dff-map-legend"><span className="dff-map-legend__chip is-smoke">💨 1</span><span className="dff-map-legend__chip is-fire1">🔥 1</span><span className="dff-map-legend__chip is-fire2">🔥 2</span><span className="dff-map-legend__chip is-fire3">🔥 3</span><span className="dff-map-legend__chip is-water">💧 1-3</span></div> : null}
+    <div className={`dff-map-modal ${detailsTerritory ? "has-territory" : ""}`}>
+      {!detailsTerritory ? <div className="dff-map-legend">{filterButtons.map((item) => {
+        const count = state.territories.filter((territory: FireTerritory) => territory.playable && fireStatus(territory) === item.key).length;
+        return <button key={item.key} type="button" className={`dff-map-legend__chip is-${item.key} ${statusFilter === item.key ? "is-active" : ""}`} onClick={() => setStatusFilter((current) => current === item.key ? null : item.key)} title={`Mettre en surbrillance : ${item.key}`}><span>{item.label}</span><b>{item.value}</b><small>{count}</small></button>;
+      })}</div> : null}
       <div className="dff-map-modal__viewport-wrap">
-        {!selected && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
-        {!selected ? <WindCompass enabled={Boolean(state.config?.windEnabled)} state={state} /> : null}
-        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !selected} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} showViewportControls={showMapControls} showViewportHint={false} style={{ width: "100%", height: "100%" }} /></div>
-        {selected ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${selected.name}`}><TerritoryInsightBody territory={selected} state={state} country={country} compact onClear={onClearSelection} onOpenAdvice={() => onOpenAdvice?.(selected)} onSelectTerritory={onSelect} /></div> : null}
-        {!selected ? <button type="button" className={`dff-map-controls-toggle ${showMapControls ? "is-active" : ""}`} onClick={() => setShowMapControls((value) => !value)}>{showMapControls ? "MASQUER COMMANDES" : "COMMANDES CARTE"}</button> : null}
+        {!detailsTerritory && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
+        {!detailsTerritory ? <WindCompass enabled={Boolean(state.config?.windEnabled)} state={state} /> : null}
+        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} highlightTerritoryIds={filterIds} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !detailsTerritory} onSelectTerritory={handleMapSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} showViewportControls={showMapControls} showViewportHint={false} style={{ width: "100%", height: "100%" }} /></div>
+        {detailsTerritory ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${detailsTerritory.name}`}><TerritoryInsightBody territory={detailsTerritory} state={state} country={country} compact onClear={clearDetails} onOpenAdvice={() => onOpenAdvice?.(detailsTerritory)} onSelectTerritory={(id: string) => { onSelect?.(id); setDetailsTerritoryId(id); }} /></div> : null}
+        {!detailsTerritory ? <button type="button" className={`dff-map-controls-toggle ${showMapControls ? "is-active" : ""}`} onClick={() => setShowMapControls((value) => !value)}>{showMapControls ? "MASQUER COMMANDES" : "COMMANDES CARTE"}</button> : null}
       </div>
     </div>
   </FloatingPanel>;

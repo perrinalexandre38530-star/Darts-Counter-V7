@@ -27,6 +27,8 @@ export interface TerritoriesMapViewProps {
   style?: React.CSSProperties;
   showViewportControls?: boolean;
   showViewportHint?: boolean;
+  /** Met en surbrillance un groupe de territoires (ex. filtre feu/fumée/protection). */
+  highlightTerritoryIds?: string[];
 }
 
 const SCALE_MIN = 1;
@@ -251,8 +253,11 @@ function injectStylesAndFills(params: {
   selectedTerritoryId?: string;
   activeColor: string;
   themeColor: string;
+  highlightTerritoryIds?: string[];
 }): string {
-  const { svgRaw, country, map, fillByTerritoryId, selectedTerritoryId, activeColor, themeColor } = params;
+  const { svgRaw, country, map, fillByTerritoryId, selectedTerritoryId, activeColor, themeColor, highlightTerritoryIds = [] } = params;
+  const highlightSet = new Set(highlightTerritoryIds.map(String));
+  const hasHighlightFilter = highlightSet.size > 0;
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgRaw, "image/svg+xml");
   const svg = doc.documentElement as unknown as SVGSVGElement;
@@ -271,6 +276,15 @@ function injectStylesAndFills(params: {
       filter: drop-shadow(0 0 6px ${activeColor}) drop-shadow(0 0 14px ${activeColor});
       animation: territoryPulse 1.2s ease-in-out infinite;
     }
+    .territory-highlighted {
+      stroke:#ffffff!important;
+      stroke-width:2.4!important;
+      opacity:1!important;
+      filter:drop-shadow(0 0 5px ${activeColor}) drop-shadow(0 0 12px ${activeColor});
+      animation: territoryFilterPulse 1.05s ease-in-out infinite;
+    }
+    .territory-filter-muted { opacity:.22!important; filter:saturate(.55) brightness(.62); }
+    @keyframes territoryFilterPulse { 0%,100%{opacity:1} 50%{opacity:.72} }
     @keyframes territoryPulse {
       0%,100% { opacity:1; }
       50% { opacity:.82; }
@@ -300,6 +314,8 @@ function injectStylesAndFills(params: {
         hasFortress,
         hasFortress && ownerFill ? ensureFortressHatchPattern(svg, ownerFill) : undefined,
       );
+      path.classList.toggle("territory-highlighted", highlightSet.has(territoryId));
+      path.classList.toggle("territory-filter-muted", hasHighlightFilter && !highlightSet.has(territoryId) && selectedTerritoryId !== territoryId);
     }
     return svg.outerHTML;
   }
@@ -343,6 +359,8 @@ function injectStylesAndFills(params: {
       hasFortress,
       hasFortress && ownerFill ? ensureFortressHatchPattern(svg, ownerFill) : undefined,
     );
+    path.classList.toggle("territory-highlighted", highlightSet.has(territory.id));
+    path.classList.toggle("territory-filter-muted", hasHighlightFilter && !highlightSet.has(territory.id) && selectedTerritoryId !== territory.id);
   }
 
   return svg.outerHTML;
@@ -518,6 +536,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     style,
     showViewportControls = true,
     showViewportHint = true,
+    highlightTerritoryIds = [],
   } = props;
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -547,8 +566,9 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
       selectedTerritoryId,
       activeColor,
       themeColor,
+      highlightTerritoryIds,
     });
-  }, [baseSvgRaw, country, map, fillIndex, selectedTerritoryId, activeColor, themeColor]);
+  }, [baseSvgRaw, country, map, fillIndex, selectedTerritoryId, activeColor, themeColor, highlightTerritoryIds]);
 
   const overlaySvgHtml = React.useMemo(() => {
     if (!overlayRaw) return null;
