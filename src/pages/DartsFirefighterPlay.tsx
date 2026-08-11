@@ -59,6 +59,10 @@ import canadairScene1 from "../assets/firefighter_canadair/canadair_01.png";
 import canadairScene2 from "../assets/firefighter_canadair/canadair_02.png";
 import canadairScene3 from "../assets/firefighter_canadair/canadair_03.png";
 import canadairScene4 from "../assets/firefighter_canadair/canadair_04.png";
+import canadairScene5 from "../assets/firefighter_canadair/canadair_05.png";
+import canadairScene6 from "../assets/firefighter_canadair/canadair_06.png";
+import canadairScene7 from "../assets/firefighter_canadair/canadair_07.png";
+import canadairScene8 from "../assets/firefighter_canadair/canadair_08.png";
 import "../styles/darts-firefighter-play.css";
 
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
@@ -73,12 +77,32 @@ const WATER = "#25c9ff";
 const GOLD = "#ffd76a";
 const RED = "#ff4c55";
 const GREEN = "#5ce6a8";
-const CANADAIR_SCENES = [canadairScene1, canadairScene2, canadairScene3, canadairScene4];
+const CANADAIR_SCENE_SOURCE = [
+  canadairScene1,
+  canadairScene2,
+  canadairScene3,
+  canadairScene4,
+  canadairScene5,
+  canadairScene6,
+  canadairScene7,
+  canadairScene8,
+];
+
+// Mélange une seule fois au chargement : les 8 images tournent aléatoirement
+// d'une session à l'autre, tout en restant stables pendant un même affichage.
+const CANADAIR_SCENES = (() => {
+  const scenes = [...CANADAIR_SCENE_SOURCE];
+  for (let index = scenes.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [scenes[index], scenes[swapIndex]] = [scenes[swapIndex], scenes[index]];
+  }
+  return scenes;
+})();
 
 function canadairSceneForTerritory(id: string) {
   const raw = String(id || "canadair");
   let hash = 0;
-  for (let i = 0; i < raw.length; i += 1) hash = ((hash * 31) + raw.charCodeAt(i)) >>> 0;
+  for (let index = 0; index < raw.length; index += 1) hash = ((hash * 31) + raw.charCodeAt(index)) >>> 0;
   return CANADAIR_SCENES[hash % CANADAIR_SCENES.length] || canadairScene1;
 }
 const PLAYER_COLORS = ["#25c9ff", "#ffbf45", "#ff6aa9", "#8d7dff", "#62e9aa", "#ff8a5b", "#d4d8e5", "#66a7ff"];
