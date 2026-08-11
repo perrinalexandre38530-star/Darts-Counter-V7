@@ -8,7 +8,6 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
-import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -56,12 +55,16 @@ import levelSmoke from "../assets/firefighter_levels/smoke.png";
 import levelFire1 from "../assets/firefighter_levels/fire1.png";
 import levelFire2 from "../assets/firefighter_levels/fire2.png";
 import levelCritical from "../assets/firefighter_levels/critical.png";
+import canadairScene1 from "../assets/firefighter_canadair/canadair_01.png";
+import canadairScene2 from "../assets/firefighter_canadair/canadair_02.png";
+import canadairScene3 from "../assets/firefighter_canadair/canadair_03.png";
+import canadairScene4 from "../assets/firefighter_canadair/canadair_04.png";
 import "../styles/darts-firefighter-play.css";
 
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.4.0-tactical-map-wind16-multizone";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.8.0-killer-header-x01-score-final";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -70,6 +73,14 @@ const WATER = "#25c9ff";
 const GOLD = "#ffd76a";
 const RED = "#ff4c55";
 const GREEN = "#5ce6a8";
+const CANADAIR_SCENES = [canadairScene1, canadairScene2, canadairScene3, canadairScene4];
+
+function canadairSceneForTerritory(id: string) {
+  const raw = String(id || "canadair");
+  let hash = 0;
+  for (let i = 0; i < raw.length; i += 1) hash = ((hash * 31) + raw.charCodeAt(i)) >>> 0;
+  return CANADAIR_SCENES[hash % CANADAIR_SCENES.length] || canadairScene1;
+}
 const PLAYER_COLORS = ["#25c9ff", "#ffbf45", "#ff6aa9", "#8d7dff", "#62e9aa", "#ff8a5b", "#d4d8e5", "#66a7ff"];
 const FR_DEPARTMENT_TO_REGION: Record<string, string> = {
   "01": "ARA", "03": "ARA", "07": "ARA", "15": "ARA", "26": "ARA", "38": "ARA", "42": "ARA", "43": "ARA", "63": "ARA", "69": "ARA", "73": "ARA", "74": "ARA",
@@ -1169,27 +1180,53 @@ export default function DartsFirefighterPlay(props: any) {
   const focusMeta = statusMeta(focusTerritory);
 
   return <div className="dff-play" data-firefighter-play-version={DARTS_FIREFIGHTER_PLAY_UI_VERSION} style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}22 0,${theme?.bg || "#080a11"} 42%,#020305 100%)`, paddingBottom: "calc(8px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
-    <PageHeader
-      tickerSrc={tickerFirefighter}
-      tickerAlt="DARTS FIREFIGHTER"
-      tickerHeight={68}
-      tickerBottomGap={0}
-      tickerFit="cover"
-      left={<div style={{ marginLeft: 4 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>}
-      right={<div style={{ marginRight: 4 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>}
-    />
-
-    {state.players.length > 1 ? <FirefighterTurnCarousel players={state.players} activePlayerId={activePlayer?.id} profilesById={profilesById} playerStats={state.playerStats} /> : null}
+    <div
+      className="dff-play__killer-header"
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 60,
+        paddingTop: "env(safe-area-inset-top)",
+        marginTop: -18,
+        marginLeft: -16,
+        marginRight: -16,
+        width: "calc(100% + 32px)",
+        marginBottom: 8,
+        background: "linear-gradient(180deg,rgba(5,5,7,.995),rgba(5,5,7,.98))",
+        borderBottom: "1px solid rgba(255,255,255,.06)",
+        overflow: "visible",
+      }}
+    >
+      <div style={{ position: "relative", width: "100%", height: 68, overflow: "hidden", background: "#050507" }}>
+        <img src={tickerFirefighter} alt="DARTS FIREFIGHTER" draggable={false} style={{ width: "100%", height: 68, objectFit: "cover", display: "block" }} />
+        <div aria-hidden style={{ position: "absolute", inset: "0 auto 0 0", width: 40, pointerEvents: "none", background: "linear-gradient(90deg,rgba(5,5,7,.95),rgba(5,5,7,0))" }} />
+        <div aria-hidden style={{ position: "absolute", inset: "0 0 0 auto", width: 40, pointerEvents: "none", background: "linear-gradient(270deg,rgba(5,5,7,.95),rgba(5,5,7,0))" }} />
+        <div style={{ position: "absolute", inset: 0, zIndex: 3, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto" }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" size={38} /></div>
+          <div style={{ pointerEvents: "auto" }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} size={38} /></div>
+        </div>
+      </div>
+      {state.players.length > 1 ? (
+        <div style={{ margin: "6px 10px 8px", padding: 6, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "linear-gradient(180deg,rgba(12,14,20,.96),rgba(5,7,11,.96))", boxShadow: "0 12px 28px rgba(0,0,0,.38)", overflow: "visible" }}>
+          <FirefighterTurnCarousel players={state.players} activePlayerId={activePlayer?.id} profilesById={profilesById} playerStats={state.playerStats} />
+        </div>
+      ) : null}
+    </div>
 
     <main className="dff-play__main">
       <section className="dff-play__player" style={{ borderColor: `${activeColor}66` }}>
-        <div className="dff-play__player-top">
-          <div className="dff-play__avatar-wrap"><ProfileAvatar profile={activeProfile as any} size={78} ringColor={activeColor} showStars={false} /></div>
-          <div className="dff-play__identity">
+        <div className="dff-play__player-top dff-play__player-top--x01">
+          <div className="dff-play__avatar-column">
             <div className="dff-play__eyebrow" style={{ color: botThinking ? WATER : activeColor }}>{botThinking ? "BOT EN INTERVENTION" : "POMPIER ACTIF"}</div>
+            <div className="dff-play__avatar-wrap"><ProfileAvatar profile={activeProfile as any} size={82} ringColor={activeColor} showStars={false} /></div>
             <div className="dff-play__player-name" style={{ color: activeColor }}>{playerName(activeProfile)}</div>
-            <div className="dff-play__score" style={{ color: activeColor }}>{activePersonalScore}</div>
-            <div className="dff-play__score-caption"><b>{state.score} PTS BRIGADE</b> · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
+          </div>
+          <div className="dff-play__identity dff-play__identity--x01">
+            <div className="dff-play__score dff-play__score--x01" style={{ color: activeColor }}>{activePersonalScore}</div>
+            <div className="dff-play__score-kpis">
+              <div className="dff-play__score-kpi is-brigade"><small>SCORE BRIGADE</small><b>{state.score} PTS</b></div>
+              <div className="dff-play__score-kpi is-combo"><small>COMBO</small><b>x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</b></div>
+            </div>
           </div>
           <button type="button" className="dff-play__stats-summary" onClick={() => setShowStats(true)} aria-label="Ouvrir les statistiques de la mission">
             <HeaderMiniStat label="ROUND" value={`${Math.min(config.maxRounds, state.roundIndex + 1)}/${config.maxRounds}`} color={FIRE} />
@@ -1200,9 +1237,6 @@ export default function DartsFirefighterPlay(props: any) {
         </div>
         <div className="dff-play__suggestions" aria-label="Suggestions de tir">
           {suggestions.length ? suggestions.map((suggestion: TacticalSuggestion, index: number) => { const territoryColor = fireTerritoryColor(fireStatus(suggestion.territory)); return <button key={`${suggestion.territory.id}-${suggestion.shot}-${index}`} type="button" className={`dff-play__suggestion ${index === 0 ? "is-primary" : ""}`} onClick={() => selectTerritory(suggestion.territory.id)} style={{ borderColor: `${territoryColor}66`, color: territoryColor, boxShadow: index === 0 ? `0 0 13px ${territoryColor}28` : "none", background: `linear-gradient(180deg, ${territoryColor}18, rgba(0,0,0,.28))` }} title={`${suggestion.action} · ${suggestion.territory.name}`}><span>{suggestion.territory.target}</span></button>; }) : <span className="dff-play__suggestion-empty">AUCUNE PRIORITÉ</span>}
-        </div>
-        <div className="dff-play__status-line">
-          <span>{config.windEnabled ? state.windLabel : "VENT COUPÉ"}</span><span>CHARGE {fireLoad.toFixed(1)}</span><span>{protections} PROTÉGÉ{protections > 1 ? "S" : ""}</span>
         </div>
       </section>
 
@@ -1274,22 +1308,66 @@ function FirefighterTurnCarousel({ players, activePlayerId, profilesById, player
     if (Math.abs(delta) > 2) wrap.scrollBy({ left: delta, behavior: "smooth" });
   }, [activePlayerId, (players || []).length]);
 
-  return <div className="dff-play__turns-shell" aria-label="Ordre de passage">
-    <div ref={wrapRef} className="dff-play__turns">
-      {(players || []).map((player: any, index: number) => {
-        const id = String(player?.id || index);
-        const active = id === String(activePlayerId);
-        const profile = profilesById?.get?.(id) || player;
-        const color = PLAYER_COLORS[index % PLAYER_COLORS.length];
-        const stats = playerStats?.[player?.id] || {};
-        const score = Number(stats?.score || 0);
-        return <div key={id} ref={(node) => { itemRefs.current[id] = node; }} className={`dff-play__turn ${active ? "is-active" : ""}`} style={{ borderColor: active ? color : "rgba(255,255,255,.18)", boxShadow: active ? `0 0 0 1px ${color}35, 0 0 18px ${color}35, 0 0 38px ${color}18` : "none" }} title={`${playerName(profile)} · ${score} pts`}>
-          <div className="dff-play__turn-avatar"><ProfileAvatar profile={profile} size={42} ringColor={color} showStars={false} noFrame /></div>
-          <div className="dff-play__turn-score" style={{ color }}><strong>{score}</strong><small>PTS</small></div>
-        </div>;
-      })}
+  return (
+    <div style={{ padding: "2px 2px 0px", marginTop: 2, overflow: "visible" }} aria-label="Ordre de passage">
+      <div
+        ref={wrapRef}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          overflowX: "auto",
+          overflowY: "visible",
+          paddingTop: 4,
+          paddingBottom: 5,
+          WebkitOverflowScrolling: "touch",
+          scrollbarWidth: "none",
+          minHeight: 51,
+        }}
+      >
+        {(players || []).map((player: any, index: number) => {
+          const id = String(player?.id || index);
+          const active = id === String(activePlayerId);
+          const profile = profilesById?.get?.(id) || player;
+          const color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+          const stats = playerStats?.[player?.id] || {};
+          const score = Number(stats?.score || 0);
+          const avatarSrc = profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? player?.avatarDataUrl ?? null;
+          const initial = String(playerName(profile) || "J").trim().slice(0, 1).toUpperCase();
+          return (
+            <div
+              key={id}
+              ref={(node) => { itemRefs.current[id] = node; }}
+              title={`${playerName(profile)} · ${score} pts`}
+              style={{
+                flex: "0 0 min(154px,42vw)",
+                width: "min(154px,42vw)",
+                height: 42,
+                minHeight: 42,
+                borderRadius: 999,
+                overflow: "hidden",
+                display: "grid",
+                gridTemplateColumns: "52px minmax(0,1fr)",
+                alignItems: "stretch",
+                border: `1px solid ${active ? color : "rgba(255,255,255,.18)"}`,
+                background: "linear-gradient(180deg,rgba(15,18,28,.97),rgba(4,7,12,.94))",
+                opacity: active ? 1 : .58,
+                boxShadow: active ? `0 0 0 1px ${color}35, 0 0 18px ${color}35, 0 0 38px ${color}18` : "none",
+              }}
+            >
+              <div style={{ position: "relative", width: 52, height: 42, overflow: "hidden", background: "rgba(255,255,255,.025)" }}>
+                {avatarSrc ? <img src={avatarSrc} alt="" draggable={false} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.35) translateY(2px)", transformOrigin: "center", filter: "contrast(1.05) saturate(1.05)" }} /> : <span style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", color: "#dce4ef", fontSize: 15, fontWeight: 1000 }}>{initial}</span>}
+              </div>
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "0 10px", color, textShadow: "0 0 12px currentColor" }}>
+                <strong style={{ fontSize: 22, lineHeight: 1, fontWeight: 1000, letterSpacing: .5 }}>{score}</strong>
+                <small style={{ marginTop: 3, color: "#9aa4b4", fontSize: 6, lineHeight: 1, fontWeight: 1000, letterSpacing: .45 }}>PTS</small>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>;
+  );
 }
 
 function HeaderMiniStat({ label, value, color }: any) {
@@ -1366,9 +1444,16 @@ function ObjectiveModal({ primary, alternatives, config, state, country, onSelec
       const canadairRow = suggestion.kind === "canadair" ? actionRows.find((row) => row.kind === "canadair") : null;
       const points = Number(suggestion.estimatedPoints || estimateSuggestionPoints(suggestion, state));
       return <button key={`${suggestion.territory.id}-${index}`} type="button" className={`dff-objective-row ${suggestion.kind === "canadair" ? "is-canadair" : ""}`} onClick={() => onSelect(suggestion.territory.id)} style={{ borderColor: `${territoryColor}55` }}>
-        {suggestion.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+        {suggestion.kind === "canadair" ? <><img src={canadairSceneForTerritory(suggestion.territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><i>💧 💧 💧</i></div></> : null}
         <strong style={{ color: territoryColor }}>{suggestion.territory.target}</strong>
-        <div className="dff-objective-row__copy"><b>{suggestion.territory.name}</b><span>{suggestion.action}</span><small><span className="dff-inline-status-pill is-compact" style={{ color: meta.color }}><OutlineIcon name={meta.icon} size={12} /><b>{meta.value}</b></span></small>{canadairRow?.impacts?.length ? <CanadairImpactStrip impacts={canadairRow.impacts} country={country} /> : null}</div>
+        <div className="dff-objective-row__copy">
+          <div className="dff-objective-row__name" style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "nowrap", minWidth: 0 }}>
+            <b style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{suggestion.territory.name}</b>
+            <span className="dff-inline-status-pill is-compact" style={{ flex: "0 0 auto", margin: 0, color: meta.color, borderColor: `${meta.color}66`, background: `${meta.color}12`, display: "inline-flex", alignItems: "center", gap: 4 }}><OutlineIcon name={meta.icon} size={12} /><b>{meta.value}</b></span>
+          </div>
+          <span>{suggestion.action}</span>
+          {canadairRow?.impacts?.length ? <CanadairImpactStrip impacts={canadairRow.impacts} country={country} /> : null}
+        </div>
         <div className="dff-objective-row__points"><b>+{points}</b><small>PTS</small></div>
       </button>;
     }) : <div className="dff-empty">Aucune urgence détectée.</div>}</div>
@@ -1427,7 +1512,7 @@ function ActionPlannerModal({ territory, state, country, onClose }: any) {
   const rows = buildTerritoryActionRows(territory, state);
   return <FloatingPanel title="ACTIONS POSSIBLES" subtitle={territory ? `${territory.name} · cible ${territory.target}` : ""} accent={color} onClose={onClose}>
     <div className="dff-action-planner">{rows.map((row, index) => <article key={`${row.label}-${index}`} className={`dff-action-row ${row.best ? "is-best" : ""} ${row.kind === "canadair" ? "is-canadair" : ""}`} style={{ borderColor: `${row.color}66`, background: `linear-gradient(180deg, ${row.color}${row.best ? "1d" : "12"}, rgba(5,8,14,.74))` }}>
-      {row.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+      {row.kind === "canadair" ? <><img src={canadairSceneForTerritory(territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><i>💧 💧 💧</i></div></> : null}
       <header>
         <div className="dff-action-row__name"><strong style={{ color: row.color }}>{row.label}</strong>{row.best ? <span>MEILLEURE ACTION</span> : null}</div>
         <div className="dff-action-row__score"><b>+{row.points}</b><small>PTS</small></div>
