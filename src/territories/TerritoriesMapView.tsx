@@ -25,6 +25,8 @@ export interface TerritoriesMapViewProps {
   isSelectableTerritoryId?: (territoryId: string) => boolean;
   className?: string;
   style?: React.CSSProperties;
+  showViewportControls?: boolean;
+  showViewportHint?: boolean;
 }
 
 const SCALE_MIN = 1;
@@ -514,6 +516,8 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     isSelectableTerritoryId,
     className,
     style,
+    showViewportControls = true,
+    showViewportHint = true,
   } = props;
 
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
@@ -862,7 +866,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
         </div>
       </div>
 
-      <div
+      {showViewportControls ? <div
         style={{
           position: "absolute",
           right: 10,
@@ -885,9 +889,9 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
           }}
         />
         <IconButton label="⌂" title="Recentrer la carte" onClick={resetView} disabled={!showReset} />
-      </div>
+      </div> : null}
 
-      <div
+      {showViewportHint ? <div
         style={{
           position: "absolute",
           left: 10,
@@ -907,7 +911,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
         }}
       >
         Pincer ou utiliser +/− pour zoomer · faire glisser pour parcourir
-      </div>
+      </div> : null}
     </div>
   );
 }

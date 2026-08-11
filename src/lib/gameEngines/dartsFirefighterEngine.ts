@@ -1433,13 +1433,13 @@ export function buildFireMapForView(state: DartsFirefighterState): TerritoriesMa
 }
 
 export const FIRE_STATUS_OWNER_COLORS: Record<string, string> = {
-  "fire-status-safe": "rgba(255,255,255,.04)",
-  "fire-status-protected": "#25c9ff",
-  "fire-status-smoke": "#9c7b57",
-  "fire-status-fire1": "#ffb11f",
-  "fire-status-fire2": "#ff6a1f",
-  "fire-status-fire3": "#ff2b1f",
-  "fire-status-destroyed": "#3f4650",
+  "fire-status-safe": "#3a2f2d",
+  "fire-status-protected": "#36d7ff",
+  "fire-status-smoke": "#b8956c",
+  "fire-status-fire1": "#ffbf2d",
+  "fire-status-fire2": "#ff7d2d",
+  "fire-status-fire3": "#ff4036",
+  "fire-status-destroyed": "#4c5562",
 };
 
 export function difficultyLabel(value: DartsFirefighterDifficulty): string {

@@ -899,3 +899,255 @@
   .dff-wind-compass__copy b { font-size: 5.7px; }
   .dff-wind-compass__copy span { font-size: 5.9px; }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.3 — lisibilité carte / vent / actions territoire
+   ============================================================= */
+.dff-play__cards > :nth-child(2) .dff-play__info-background {
+  opacity: .52;
+  filter: saturate(1.02) brightness(.82) contrast(1.05);
+}
+.dff-play__cards > :nth-child(2) .dff-play__info-shade {
+  background: linear-gradient(180deg,rgba(2,4,8,.32),rgba(2,4,8,.54) 44%,rgba(2,4,8,.90));
+}
+.dff-play__info-subtitle {
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dff-card-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dff-card-status-row--left {
+  justify-content: flex-start;
+}
+.dff-card-status-pill,
+.dff-inline-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06);
+  line-height: 1;
+  white-space: nowrap;
+}
+.dff-card-status-pill b,
+.dff-inline-status-pill b {
+  font-size: 8px;
+  font-weight: 1100;
+}
+.dff-card-status-pill small,
+.dff-inline-status-pill em {
+  font-size: 5.8px;
+  font-style: normal;
+  font-weight: 1000;
+  opacity: .92;
+  letter-spacing: .22px;
+}
+.dff-card-status-pill.is-critical {
+  color: #ffd45c;
+  border-color: rgba(255,212,92,.36);
+  background: rgba(255,212,92,.11);
+}
+.dff-play__map-status {
+  position: absolute;
+  z-index: 3;
+  right: 5px;
+  bottom: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(2,5,9,.86);
+  color: #fff;
+}
+.dff-play__map-status b {
+  font-size: 8px;
+  font-weight: 1100;
+}
+
+.dff-map-modal {
+  grid-template-rows: auto auto minmax(0,1fr);
+  gap: 6px;
+}
+.dff-map-modal.has-territory {
+  grid-template-rows: auto auto minmax(0,1fr);
+}
+.dff-map-modal__toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dff-map-toolbar-btn {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(37,201,255,.24);
+  background: rgba(4,8,14,.94);
+  color: #b8dff0;
+  font-size: 6.9px;
+  font-weight: 1100;
+  letter-spacing: .45px;
+}
+.dff-map-toolbar-btn.is-active {
+  color: #25c9ff;
+  border-color: rgba(37,201,255,.42);
+  box-shadow: 0 0 16px rgba(37,201,255,.12);
+}
+.dff-map-modal__help {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+  color: #b7bfcc;
+  font-size: 7.3px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+.dff-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.dff-map-legend__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(6,10,16,.92);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 1100;
+}
+.dff-map-legend__chip.is-smoke { border-color: rgba(200,177,144,.42); color: #d6bea0; }
+.dff-map-legend__chip.is-fire1 { border-color: rgba(255,177,31,.42); color: #ffca52; }
+.dff-map-legend__chip.is-fire2 { border-color: rgba(255,106,31,.42); color: #ff9d52; }
+.dff-map-legend__chip.is-fire3 { border-color: rgba(255,43,31,.42); color: #ff847b; }
+.dff-map-legend__chip.is-water { border-color: rgba(37,201,255,.42); color: #7be4ff; }
+
+.dff-territory-panel__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.dff-territory-panel__clear {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,92,110,.42);
+  background: rgba(255,58,76,.12);
+  color: #ff8d9c;
+  display: grid;
+  place-items: center;
+}
+.dff-territory-panel__identity span,
+.dff-territory-panel__identity em {
+  display: none;
+}
+.dff-territory-tools {
+  display: grid;
+  place-items: center;
+}
+.dff-territory-tool {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255,212,92,.36);
+  background: rgba(255,212,92,.10);
+  color: #ffd45c;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 16px rgba(255,212,92,.10);
+}
+
+.dff-action-planner {
+  display: grid;
+  gap: 8px;
+}
+.dff-action-row {
+  padding: 9px 10px;
+  border-radius: 13px;
+  border: 1px solid;
+}
+.dff-action-row header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dff-action-row header strong {
+  font-size: 13px;
+  letter-spacing: .5px;
+}
+.dff-action-row header span {
+  color: #aeb8c6;
+  font-size: 7px;
+  font-weight: 1000;
+  text-align: right;
+}
+.dff-action-row p {
+  margin: 6px 0 0;
+  color: #edf2f7;
+  font-size: 8.2px;
+  line-height: 1.35;
+  font-weight: 950;
+}
+
+.dff-inline-status-pill {
+  margin-top: 3px;
+  width: fit-content;
+}
+
+.dff-wind-compass {
+  width: 138px;
+  min-height: 92px;
+  grid-template-columns: 32px 52px;
+  grid-template-rows: 50px auto auto;
+  padding: 8px;
+}
+.dff-wind-compass__copy {
+  margin-top: 0;
+}
+.dff-wind-compass__copy b { font-size: 6px; }
+.dff-wind-compass__copy span { font-size: 7.2px; }
+.dff-wind-compass__meta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #a8b2c0;
+  font-size: 5.9px;
+  font-weight: 1100;
+  letter-spacing: .3px;
+}
+.dff-wind-compass__meta b {
+  color: #dce6f2;
+  font-size: 6.6px;
+}
+
+@media (max-width: 520px) {
+  .dff-map-modal__toolbar { gap: 5px; }
+  .dff-map-toolbar-btn { font-size: 6.3px; padding: 0 8px; }
+  .dff-map-modal__help { font-size: 6.8px; }
+  .dff-map-legend__chip { font-size: 6.4px; min-height: 20px; }
+  .dff-wind-compass { width: 126px; min-height: 86px; grid-template-columns: 30px 48px; }
+  .dff-wind-compass__meta { gap: 8px; font-size: 5.5px; }
+  .dff-action-row header strong { font-size: 12px; }
+  .dff-action-row p { font-size: 7.6px; }
+}
