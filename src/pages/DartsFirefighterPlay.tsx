@@ -25,6 +25,8 @@ import {
   dartLabel,
   dartScoreValue,
   dartsFirefighterDifficultyRules,
+  dartsFirefighterTerritoryScoreFactor,
+  dartsFirefighterSpecialActionBonus,
   difficultyLabel,
   finishReasonLabel,
   fireStatus,
@@ -58,7 +60,7 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.1.0-action-score-danger-list";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.2.0-dedup-risk-size-scoring";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -219,7 +221,8 @@ function estimateWaterPoints(territory: FireTerritory, power: number, state: Dar
   if (outcome.extinguished) raw += 200 + (territory.critical ? 120 : 0);
   raw += Number(outcome.added || 0) * 50;
   const rules = dartsFirefighterDifficultyRules(state.config.difficulty);
-  return Math.round(raw * Number(rules.scoreMultiplier || 1));
+  const tacticalFactor = dartsFirefighterTerritoryScoreFactor(territory, state);
+  return Math.round(raw * Number(rules.scoreMultiplier || 1) * tacticalFactor);
 }
 
 function applyCurrentCombo(points: number, state: DartsFirefighterState) {
@@ -272,7 +275,7 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
 
   const bullPower = Math.max(1, Number(state?.config?.bullPower || 2));
   const bullOutcome = simulateTerritoryImpact(territory, bullPower);
-  const bullPoints = applyCurrentCombo(estimateWaterPoints(territory, bullPower, state) + 80, state);
+  const bullPoints = applyCurrentCombo(estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialActionBonus(80, territory, state), state);
   rows.push({ label: "BULL", detail: `largage ciblé · puissance ${bullPower}`, result: bullOutcome.summary, color: WATER, points: bullPoints });
 
   const canUseCanadair = Boolean(state?.config?.bullAirSupport);
@@ -291,14 +294,14 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
     dbullPoints = estimateWaterPoints(territory, centerPower, state);
     const neighbors = (territory.neighbors || []).slice(0, neighborCount).map((id) => state.territories.find((item) => item.id === id)).filter(Boolean) as FireTerritory[];
     for (const neighbor of neighbors) dbullPoints += estimateWaterPoints(neighbor, neighborPower, state);
-    dbullPoints += 250;
+    dbullPoints += dartsFirefighterSpecialActionBonus(250, territory, state);
     dbullResult = `${simulateTerritoryImpact(territory, centerPower).summary} · ${neighbors.length} voisin${neighbors.length > 1 ? "s" : ""} arrosé${neighbors.length > 1 ? "s" : ""}`;
     dbullDetail = `Canadair · centre ${centerPower} · voisins ${neighborPower} ×${neighbors.length}`;
   } else if (canUseCanadair && !gaugeReady) {
     dbullPoints = estimateWaterPoints(territory, bullPower, state);
     dbullDetail = `Canadair indisponible · jauge ${Math.round(Number(state.brigadeGauge || 0))}/${gaugeCost}`;
   } else {
-    dbullPoints = estimateWaterPoints(territory, bullPower, state) + 80;
+    dbullPoints = estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialActionBonus(80, territory, state);
   }
   rows.push({ label: "DBULL", detail: dbullDetail, result: dbullResult, color: FIRE, points: applyCurrentCombo(dbullPoints, state) });
 
@@ -688,8 +691,18 @@ function buildTacticalPlan(state: DartsFirefighterState, config: DartsFirefighte
     .filter((territory) => territory.id !== danger.id && (territory.fireLevel > 0 || territory.smoke || forecast.has(territory.id) || territory.critical))
     .slice(0, 2)
     .map((territory) => directShotForTerritory(territory, forecast.has(territory.id), scoreTargetMode));
-  if (primary.kind === "canadair") alternatives.unshift(directPrimary);
   return { primary, alternatives: alternatives.slice(0, 3), clusterCount };
+}
+
+function dedupeTacticalSuggestions(rows: Array<TacticalSuggestion | null | undefined>) {
+  const seen = new Set<string>();
+  return rows.filter((item): item is TacticalSuggestion => {
+    if (!item?.territory?.id) return false;
+    const key = String(item.territory.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export default function DartsFirefighterPlay(props: any) {
@@ -1031,7 +1044,7 @@ export default function DartsFirefighterPlay(props: any) {
   const centerScore = scoreTargetMode
     ? <div className="dff-play__water-score"><strong>🎯{currentVisitPoints}</strong><small>{selectedScoreTarget ? `/${selectedScoreTarget.target}` : `${throwDarts.length}/${maxDartsThisVisit}`}</small></div>
     : <div className="dff-play__water-score"><strong>💧{currentWater}</strong><small>{throwDarts.length}/{maxDartsThisVisit}</small></div>;
-  const suggestions = [primarySuggestion, ...(tacticalPlan.alternatives || [])].filter(Boolean).slice(0, Math.max(1, Number(config.dartsPerTurn || 3)));
+  const suggestions = dedupeTacticalSuggestions([primarySuggestion, ...(tacticalPlan.alternatives || [])]).slice(0, Math.max(1, Number(config.dartsPerTurn || 3)));
   const objectiveFlagSrc = getObjectiveCountryFlag(country, primarySuggestion?.territory || focusTerritory);
   const focusMeta = statusMeta(focusTerritory);
 
@@ -1206,7 +1219,7 @@ function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wid
 }
 
 function ObjectiveModal({ primary, alternatives, config, onSelect, onClose }: any) {
-  const rows = [primary, ...(alternatives || [])].filter(Boolean);
+  const rows = dedupeTacticalSuggestions([primary, ...(alternatives || [])]);
   return <FloatingPanel title="OBJECTIFS CONSEILLÉS" subtitle="Touchez une cible pour préparer vos options d’intervention." accent={primary?.color || WATER} onClose={onClose}>
     <div className="dff-objective-list">{rows.length ? rows.map((suggestion: TacticalSuggestion, index: number) => {
       const territoryColor = fireTerritoryColor(fireStatus(suggestion.territory));

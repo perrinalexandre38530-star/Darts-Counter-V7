@@ -754,6 +754,33 @@ function addEvent(events: FirefighterEvent[], event: FirefighterEvent) {
   events.push(event);
 }
 
+/**
+ * Pondération tactique du score Firefighter.
+ * Le danger reste le facteur dominant ; sur les cartes à cibles uniques,
+ * la valeur de cible (issue de la surface + calibration de niveau) ajoute
+ * un bonus de difficulté. Une grande zone saine ne doit donc jamais être
+ * plus rentable qu'un foyer réellement dangereux à difficulté comparable.
+ */
+export function dartsFirefighterTerritoryScoreFactor(territory: FireTerritory | null | undefined, state: DartsFirefighterState) {
+  if (!territory || territory.destroyed) return 0;
+  const fire = Math.max(0, Math.min(3, Number(territory.fireLevel || 0)));
+  let dangerFactor = fire >= 3 ? 4.2 : fire === 2 ? 2.7 : fire === 1 ? 1.4 : territory.smoke ? 1.05 : 0.40;
+  if (territory.smoke && fire > 0) dangerFactor += 0.28;
+  if (territory.critical) dangerFactor *= 1.22;
+  if (Array.isArray(state.forecastTerritoryIds) && state.forecastTerritoryIds.includes(territory.id)) dangerFactor *= 1.12;
+
+  const uniqueTargetMode = state.targetMode === "visit_score" || Number(state.config?.activeTerritories || 0) > 20;
+  const target = Math.max(1, Number(territory.target || 1));
+  const targetFactor = uniqueTargetMode ? 0.85 + Math.min(0.70, target / 130) : 1;
+  return Math.max(0.2, dangerFactor * targetFactor);
+}
+
+export function dartsFirefighterSpecialActionBonus(basePoints: number, territory: FireTerritory | null | undefined, state: DartsFirefighterState) {
+  if (!territory || basePoints <= 0) return 0;
+  const rules = effectiveRules(state.config);
+  return Math.round(basePoints * dartsFirefighterTerritoryScoreFactor(territory, state) * Number(rules.scoreMultiplier || 1));
+}
+
 function applyWater(
   state: DartsFirefighterState,
   territory: FireTerritory | null,
@@ -767,6 +794,7 @@ function applyWater(
   const beforeFire = territory.fireLevel;
   const beforeSmoke = territory.smoke;
   const beforeProtection = territory.protection;
+  const tacticalScoreFactor = dartsFirefighterTerritoryScoreFactor(territory, state);
   let remaining = power;
   let score = 0;
   let smokeCleared = false;
@@ -803,7 +831,7 @@ function applyWater(
   }
 
   territory.lastActionBy = playerId;
-  score = Math.round(score * rules.scoreMultiplier);
+  score = Math.round(score * rules.scoreMultiplier * tacticalScoreFactor);
   const useful = reduced > 0 || protectedAdded > 0 || smokeCleared || territory.protection > beforeProtection;
   if (!useful) addEvent(events, { type: "useless", territoryId: territory.id, territoryName: territory.name, score: 0, label: `${labelPrefix}Intervention sans effet · ${territory.name}` });
   return { score, useful, fireReduced: reduced, protected: protectedAdded, extinguished, smokeCleared };
@@ -850,8 +878,9 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
           result.smokeCleared = result.smokeCleared || extra.smokeCleared;
           result.useful = result.useful || extra.useful;
         }
-        addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: 250, label: `CANADAIR engagé sur ${center.name}` });
-        result.score += 250;
+        const canadairBonus = dartsFirefighterSpecialActionBonus(250, center, state);
+        addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: canadairBonus, label: `CANADAIR engagé sur ${center.name}` });
+        result.score += canadairBonus;
         state.brigadeGauge = Math.max(0, state.brigadeGauge - gaugeCost);
       }
     } else {
@@ -863,8 +892,9 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
     const target = selectedOrWorst(state);
     const power = Number(state.config.bullPower || 2);
     result = applyWater(state, target, power, playerId, events, `${dart.bed === "IB" ? "DBULL" : "BULL"} · `);
-    if (target) addEvent(events, { type: "bull_drop", territoryId: target.id, territoryName: target.name, score: 80, label: `Largage précis sur ${target.name}` });
-    result.score += target ? 80 : 0;
+    const bullBonus = target ? dartsFirefighterSpecialActionBonus(80, target, state) : 0;
+    if (target) addEvent(events, { type: "bull_drop", territoryId: target.id, territoryName: target.name, score: bullBonus, label: `Largage précis sur ${target.name}` });
+    result.score += bullBonus;
   } else {
     const target = getTargetTerritory(state, Number(dart.number || 0));
     result = applyWater(state, target, dartWaterPower(dart), playerId, events);
