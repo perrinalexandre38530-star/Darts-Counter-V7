@@ -1222,3 +1222,251 @@
   width: 100% !important;
   height: 100% !important;
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.1 — ACTIONS / ADJACENTS / LISTE DANGER
+   ============================================================= */
+
+/* Objectifs conseillés : icône + niveau STRICTEMENT sur la même ligne. */
+.dff-objective-row .dff-objective-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start;
+  gap: 5px;
+  width: fit-content;
+  min-height: 22px;
+  margin-top: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.045);
+  color: #dce3ec;
+  line-height: 1;
+}
+.dff-objective-row .dff-objective-status svg {
+  flex: 0 0 auto;
+  display: block;
+}
+.dff-objective-row .dff-objective-status b {
+  display: inline !important;
+  margin: 0 !important;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 1200;
+}
+
+/* Bande adjacente : vraies cartes cliquables. */
+button.dff-adjacent-card {
+  appearance: none;
+  -webkit-appearance: none;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .14s ease, background .14s ease, box-shadow .14s ease;
+}
+button.dff-adjacent-card:hover,
+button.dff-adjacent-card:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,.055);
+  box-shadow: 0 0 16px rgba(255,255,255,.07);
+  outline: none;
+}
+button.dff-adjacent-card:active { transform: scale(.985); }
+
+/* Actions : score visible + meilleure option immédiatement identifiable. */
+.dff-action-row {
+  position: relative;
+  overflow: hidden;
+}
+.dff-action-row.is-best {
+  box-shadow: 0 0 22px rgba(255,215,106,.14), inset 0 0 0 1px rgba(255,215,106,.12);
+}
+.dff-action-row header {
+  align-items: center;
+}
+.dff-action-row__name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dff-action-row__name > strong {
+  font-size: 15px !important;
+  line-height: 1;
+}
+.dff-action-row__name > span {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 20px;
+  margin: 0 !important;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,215,106,.42);
+  background: rgba(255,215,106,.12);
+  color: #ffd76a !important;
+  font-size: 6px !important;
+  line-height: 1;
+  font-weight: 1200 !important;
+  letter-spacing: .45px;
+  white-space: nowrap;
+}
+.dff-action-row__score {
+  flex: 0 0 auto;
+  min-width: 64px;
+  min-height: 42px;
+  padding: 5px 8px;
+  border-radius: 11px;
+  border: 1px solid rgba(92,230,168,.34);
+  background: rgba(92,230,168,.08);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+}
+.dff-action-row__score b {
+  color: #5ce6a8;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 1200;
+}
+.dff-action-row__score small {
+  color: #8fa79e;
+  font-size: 5.8px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .45px;
+}
+.dff-action-row__detail {
+  margin-top: 5px;
+  color: #aeb8c6;
+  font-size: 7.2px;
+  line-height: 1.25;
+  font-weight: 950;
+}
+.dff-action-row p {
+  margin-top: 5px;
+}
+
+/* Liste complète des cibles : carte colorée selon le danger, zones saines en retrait. */
+.dff-target-grid {
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 7px;
+}
+.dff-target-row {
+  min-height: 74px;
+  padding: 7px 8px;
+  grid-template-columns: 48px 38px minmax(0,1fr) !important;
+  gap: 6px;
+  border-width: 1px;
+  background: rgba(255,255,255,.018);
+  opacity: .72;
+  transition: opacity .14s ease, transform .14s ease, background .14s ease, box-shadow .14s ease;
+}
+.dff-target-row:hover,
+.dff-target-row:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+  outline: none;
+}
+.dff-target-row__shape {
+  width: 46px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  opacity: .58;
+  filter: saturate(.72);
+}
+.dff-target-row > strong {
+  font-size: 18px;
+  color: #aab1bd;
+}
+.dff-target-row__copy {
+  min-width: 0;
+}
+.dff-target-row__copy > b {
+  display: block;
+  color: #c5cad3;
+  font-size: 8.8px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dff-target-row__copy > span {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin-top: 5px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  font-size: 6.4px;
+  line-height: 1;
+  font-weight: 1100;
+  white-space: nowrap;
+}
+.dff-target-row__copy > span strong {
+  display: inline !important;
+  margin: 0;
+  font-size: 8px;
+  line-height: 1;
+}
+.dff-target-row__copy > span em {
+  display: inline;
+  color: #ffd76a;
+  font-style: normal;
+  font-size: 5.6px;
+  font-weight: 1200;
+  letter-spacing: .25px;
+}
+.dff-target-row__copy .is-safe-label {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #656d79 !important;
+  opacity: .65;
+}
+
+/* Danger : beaucoup plus présent que les zones saines. */
+.dff-target-row.is-fire1,
+.dff-target-row.is-fire2,
+.dff-target-row.is-fire3,
+.dff-target-row.is-smoke,
+.dff-target-row.is-protected {
+  opacity: 1;
+}
+.dff-target-row.is-fire1 { background: linear-gradient(110deg,rgba(255,177,31,.16),rgba(255,177,31,.035) 60%,rgba(5,8,13,.96)); }
+.dff-target-row.is-fire2 { background: linear-gradient(110deg,rgba(255,106,31,.22),rgba(255,106,31,.045) 60%,rgba(5,8,13,.96)); }
+.dff-target-row.is-fire3 { background: linear-gradient(110deg,rgba(255,43,31,.28),rgba(255,43,31,.055) 60%,rgba(5,8,13,.96)); }
+.dff-target-row.is-smoke { background: linear-gradient(110deg,rgba(156,123,87,.20),rgba(156,123,87,.04) 60%,rgba(5,8,13,.96)); }
+.dff-target-row.is-protected { background: linear-gradient(110deg,rgba(37,201,255,.17),rgba(37,201,255,.035) 60%,rgba(5,8,13,.96)); }
+.dff-target-row.is-destroyed { opacity: .42; filter: grayscale(.75); }
+.dff-target-row.is-fire1 .dff-target-row__shape,
+.dff-target-row.is-fire2 .dff-target-row__shape,
+.dff-target-row.is-fire3 .dff-target-row__shape,
+.dff-target-row.is-smoke .dff-target-row__shape,
+.dff-target-row.is-protected .dff-target-row__shape {
+  opacity: 1;
+  filter: saturate(1.12) drop-shadow(0 0 7px rgba(255,255,255,.08));
+}
+.dff-target-row.is-fire1 .dff-target-row__copy > b,
+.dff-target-row.is-fire2 .dff-target-row__copy > b,
+.dff-target-row.is-fire3 .dff-target-row__copy > b,
+.dff-target-row.is-smoke .dff-target-row__copy > b,
+.dff-target-row.is-protected .dff-target-row__copy > b { color: #fff; }
+.dff-target-row.is-selected { opacity: 1; }
+
+@media (max-width: 420px) {
+  .dff-target-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; }
+  .dff-target-row { min-height: 68px; padding: 6px; grid-template-columns: 41px 31px minmax(0,1fr) !important; gap: 4px; }
+  .dff-target-row__shape { width: 40px; height: 42px; }
+  .dff-target-row > strong { font-size: 16px; }
+  .dff-target-row__copy > b { font-size: 7.8px; }
+  .dff-target-row__copy > span { font-size: 5.8px; padding: 3px 5px; }
+  .dff-action-row__score { min-width: 58px; }
+  .dff-action-row__score b { font-size: 14px; }
+}
