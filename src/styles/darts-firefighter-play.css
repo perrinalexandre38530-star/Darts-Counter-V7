@@ -1720,3 +1720,92 @@ button.dff-adjacent-card:active { transform: scale(.985); }
   filter: saturate(.95) contrast(1.08) brightness(.70);
   pointer-events: none;
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.5 — carrousel joueurs calé sur KILLER
+   ============================================================= */
+.dff-play__turns-shell {
+  width: min(760px,100%);
+  margin: 0 auto;
+  padding: 2px 2px 0;
+  position: relative;
+  overflow: visible;
+}
+.dff-play__turns-shell .dff-play__turns {
+  width: 100%;
+  margin: 0;
+  padding: 4px 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  min-height: 50px;
+}
+.dff-play__turns-shell .dff-play__turns::-webkit-scrollbar { display: none; }
+.dff-play__turns-shell .dff-play__turn {
+  flex: 0 0 min(154px,42vw);
+  width: min(154px,42vw);
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 52px minmax(0,1fr);
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: linear-gradient(180deg,rgba(15,18,28,.97),rgba(4,7,12,.94));
+  opacity: .58;
+  box-sizing: border-box;
+}
+.dff-play__turns-shell .dff-play__turn.is-active { opacity: 1; }
+.dff-play__turn-avatar {
+  width: 52px;
+  height: 42px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.025);
+}
+.dff-play__turn-avatar > * {
+  transform: scale(1.08);
+  transform-origin: center;
+}
+.dff-play__turn-score {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px 0 8px;
+  text-align: center;
+  text-shadow: 0 0 12px currentColor;
+}
+.dff-play__turn-score strong {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .4px;
+}
+.dff-play__turn-score small {
+  margin-top: 2px;
+  color: #9aa4b4;
+  font-size: 5.7px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .45px;
+}
+.dff-play__score-caption b {
+  color: #fff;
+  font-weight: 1100;
+}
+
+@media (max-width: 520px) {
+  .dff-play__turns-shell { padding-top: 2px; padding-bottom: 0; }
+  .dff-play__turns-shell .dff-play__turns { padding-top: 4px; padding-bottom: 4px; min-height: 50px; }
+  .dff-play__turns-shell .dff-play__turn { flex-basis: min(150px,44vw); width: min(150px,44vw); }
+}

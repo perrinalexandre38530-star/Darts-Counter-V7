@@ -901,6 +901,7 @@ export default function DartsFirefighterPlay(props: any) {
   const protections = protectedCount(state);
   const latestVisit = state.history[state.history.length - 1];
   const currentStats = state.playerStats[activePlayer?.id] || {};
+  const activePersonalScore = Number(currentStats?.score || 0);
   const projectedLabels = throwDarts.map(uiLabel);
   const forecastTerritories = config.forecastEnabled
     ? state.forecastTerritoryIds.map((id) => state.territories.find((territory) => territory.id === id)).filter(Boolean)
@@ -1172,7 +1173,7 @@ export default function DartsFirefighterPlay(props: any) {
       tickerSrc={tickerFirefighter}
       tickerAlt="DARTS FIREFIGHTER"
       tickerHeight={68}
-      tickerBottomGap={6}
+      tickerBottomGap={0}
       tickerFit="cover"
       left={<div style={{ marginLeft: 4 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>}
       right={<div style={{ marginRight: 4 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>}
@@ -1187,8 +1188,8 @@ export default function DartsFirefighterPlay(props: any) {
           <div className="dff-play__identity">
             <div className="dff-play__eyebrow" style={{ color: botThinking ? WATER : activeColor }}>{botThinking ? "BOT EN INTERVENTION" : "POMPIER ACTIF"}</div>
             <div className="dff-play__player-name" style={{ color: activeColor }}>{playerName(activeProfile)}</div>
-            <div className="dff-play__score">{state.score}</div>
-            <div className="dff-play__score-caption">SCORE BRIGADE · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
+            <div className="dff-play__score" style={{ color: activeColor }}>{activePersonalScore}</div>
+            <div className="dff-play__score-caption"><b>{state.score} PTS BRIGADE</b> · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
           </div>
           <button type="button" className="dff-play__stats-summary" onClick={() => setShowStats(true)} aria-label="Ouvrir les statistiques de la mission">
             <HeaderMiniStat label="ROUND" value={`${Math.min(config.maxRounds, state.roundIndex + 1)}/${config.maxRounds}`} color={FIRE} />
@@ -1259,18 +1260,35 @@ export default function DartsFirefighterPlay(props: any) {
 }
 
 function FirefighterTurnCarousel({ players, activePlayerId, profilesById, playerStats }: any) {
-  return <div className="dff-play__turns" aria-label="Ordre de passage">
-    {(players || []).map((player: any, index: number) => {
-      const active = String(player?.id) === String(activePlayerId);
-      const profile = profilesById?.get?.(String(player?.id)) || player;
-      const color = PLAYER_COLORS[index % PLAYER_COLORS.length];
-      const stats = playerStats?.[player?.id] || {};
-      return <div key={String(player?.id || index)} className={`dff-play__turn ${active ? "is-active" : ""}`} style={{ borderColor: active ? color : "rgba(255,255,255,.10)", boxShadow: active ? `0 0 14px ${color}45` : "none" }}>
-        <ProfileAvatar profile={profile} size={27} ringColor={color} showStars={false} noFrame />
-        <div className="dff-play__turn-copy"><div style={{ color: active ? color : "#c4cad4" }}>{playerName(profile)}</div><small><b style={{ color: active ? color : "#d7dce6" }}>{Number(stats.score || 0)} pts</b> · {Number(stats.fireReduced || 0)} eau · {Number(stats.firesExtinguished || 0)} feux</small></div>
-        {active ? <span className="dff-play__turn-arrow" style={{ color }}>›</span> : null}
-      </div>;
-    })}
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const itemRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
+
+  React.useEffect(() => {
+    if (!activePlayerId) return;
+    const wrap = wrapRef.current;
+    const el = itemRefs.current[String(activePlayerId)];
+    if (!wrap || !el) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const delta = (elRect.left + elRect.width / 2) - (wrapRect.left + wrapRect.width / 2);
+    if (Math.abs(delta) > 2) wrap.scrollBy({ left: delta, behavior: "smooth" });
+  }, [activePlayerId, (players || []).length]);
+
+  return <div className="dff-play__turns-shell" aria-label="Ordre de passage">
+    <div ref={wrapRef} className="dff-play__turns">
+      {(players || []).map((player: any, index: number) => {
+        const id = String(player?.id || index);
+        const active = id === String(activePlayerId);
+        const profile = profilesById?.get?.(id) || player;
+        const color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+        const stats = playerStats?.[player?.id] || {};
+        const score = Number(stats?.score || 0);
+        return <div key={id} ref={(node) => { itemRefs.current[id] = node; }} className={`dff-play__turn ${active ? "is-active" : ""}`} style={{ borderColor: active ? color : "rgba(255,255,255,.18)", boxShadow: active ? `0 0 0 1px ${color}35, 0 0 18px ${color}35, 0 0 38px ${color}18` : "none" }} title={`${playerName(profile)} · ${score} pts`}>
+          <div className="dff-play__turn-avatar"><ProfileAvatar profile={profile} size={42} ringColor={color} showStars={false} noFrame /></div>
+          <div className="dff-play__turn-score" style={{ color }}><strong>{score}</strong><small>PTS</small></div>
+        </div>;
+      })}
+    </div>
   </div>;
 }
 

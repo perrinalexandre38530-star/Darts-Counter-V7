@@ -35,7 +35,7 @@ export default function PageHeader(props: {
   } = props;
 
   const hasTicker = !!tickerSrc;
-  const effectiveTickerBottomGap = hasTicker ? Math.max(10, tickerBottomGap) : 0;
+  const effectiveTickerBottomGap = hasTicker ? Math.max(0, tickerBottomGap) : 0;
   // Correspond au padding de .container (src/index.css)
   const CONTAINER_PAD_TOP = 18;
   const CONTAINER_PAD_X = 16;
