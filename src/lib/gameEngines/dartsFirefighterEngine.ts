@@ -756,29 +756,57 @@ function addEvent(events: FirefighterEvent[], event: FirefighterEvent) {
 
 /**
  * Pondération tactique du score Firefighter.
- * Le danger reste le facteur dominant ; sur les cartes à cibles uniques,
- * la valeur de cible (issue de la surface + calibration de niveau) ajoute
- * un bonus de difficulté. Une grande zone saine ne doit donc jamais être
- * plus rentable qu'un foyer réellement dangereux à difficulté comparable.
+ *
+ * V8.1 : le danger reste prioritaire, mais le facteur est volontairement
+ * contenu afin de garder les scores dans une échelle de quelques centaines.
+ * La taille/difficulté de la cible augmente progressivement la valeur sans
+ * pouvoir écraser le niveau réel d'urgence du territoire.
  */
 export function dartsFirefighterTerritoryScoreFactor(territory: FireTerritory | null | undefined, state: DartsFirefighterState) {
   if (!territory || territory.destroyed) return 0;
   const fire = Math.max(0, Math.min(3, Number(territory.fireLevel || 0)));
-  let dangerFactor = fire >= 3 ? 4.2 : fire === 2 ? 2.7 : fire === 1 ? 1.4 : territory.smoke ? 1.05 : 0.40;
-  if (territory.smoke && fire > 0) dangerFactor += 0.28;
-  if (territory.critical) dangerFactor *= 1.22;
-  if (Array.isArray(state.forecastTerritoryIds) && state.forecastTerritoryIds.includes(territory.id)) dangerFactor *= 1.12;
+  let dangerFactor = fire >= 3 ? 1.55 : fire === 2 ? 1.30 : fire === 1 ? 1.08 : territory.smoke ? .92 : .62;
+  if (territory.smoke && fire > 0) dangerFactor += .08;
+  if (territory.critical) dangerFactor += .14;
+  if (Array.isArray(state.forecastTerritoryIds) && state.forecastTerritoryIds.includes(territory.id)) dangerFactor += .08;
 
   const uniqueTargetMode = state.targetMode === "visit_score" || Number(state.config?.activeTerritories || 0) > 20;
   const target = Math.max(1, Number(territory.target || 1));
-  const targetFactor = uniqueTargetMode ? 0.85 + Math.min(0.70, target / 130) : 1;
-  return Math.max(0.2, dangerFactor * targetFactor);
+  const targetFactor = uniqueTargetMode ? .90 + Math.min(.25, target / 360) : 1;
+  return Math.max(.45, dangerFactor * targetFactor);
 }
 
+/**
+ * Bonus d'adresse d'une combinaison exacte sur carte étendue.
+ * Un checkout à 2/3 fléchettes avec doubles/triples doit valoir sensiblement
+ * plus qu'un simple Bull/DBull, indépendamment de l'effet tactique produit.
+ */
+export function dartsFirefighterExactExecutionBonus(darts: GameDart[], targetScore: number, state: DartsFirefighterState) {
+  const direct = (darts || []).filter((dart) => dart && dart.bed !== "MISS");
+  if (!direct.length) return 0;
+  const dartCountBonus = direct.length >= 3 ? 72 : direct.length === 2 ? 38 : 0;
+  const bedBonus = direct.reduce((sum, dart) => sum + (dart.bed === "IB" ? 44 : dart.bed === "OB" ? 30 : dart.bed === "T" ? 34 : dart.bed === "D" ? 22 : 7), 0);
+  const targetBonus = Math.min(72, Math.round(Math.max(1, Number(targetScore || 1)) * .48));
+  const base = 18 + dartCountBonus + bedBonus + targetBonus;
+  const difficultyScale = Math.min(1.25, .92 + (Number(effectiveRules(state.config).scoreMultiplier || 1) - 1) * .35);
+  return Math.max(15, Math.round(base * difficultyScale));
+}
+
+/** Bonus d'adresse propre aux actions spéciales. */
+export function dartsFirefighterSpecialExecutionBonus(kind: "bull" | "dbull", state: DartsFirefighterState) {
+  const base = kind === "dbull" ? 68 : 44;
+  const difficultyScale = Math.min(1.20, .95 + (Number(effectiveRules(state.config).scoreMultiplier || 1) - 1) * .25);
+  return Math.round(base * difficultyScale);
+}
+
+/**
+ * Conservé pour compatibilité avec les anciens appels UI. Le bonus est
+ * désormais plafonné et n'est plus multiplié par un facteur de danger massif.
+ */
 export function dartsFirefighterSpecialActionBonus(basePoints: number, territory: FireTerritory | null | undefined, state: DartsFirefighterState) {
   if (!territory || basePoints <= 0) return 0;
-  const rules = effectiveRules(state.config);
-  return Math.round(basePoints * dartsFirefighterTerritoryScoreFactor(territory, state) * Number(rules.scoreMultiplier || 1));
+  const factor = dartsFirefighterTerritoryScoreFactor(territory, state);
+  return Math.min(95, Math.round(Math.max(8, basePoints * .20) * (.8 + factor * .25)));
 }
 
 function applyWater(
@@ -803,31 +831,32 @@ function applyWater(
     territory.smoke = false;
     remaining -= 1;
     smokeCleared = true;
-    score += 90;
-    addEvent(events, { type: "smoke_cleared", territoryId: territory.id, territoryName: territory.name, value: 1, score: 90, label: `${labelPrefix}Fumée dissipée · ${territory.name}` });
+    score += 20;
+    addEvent(events, { type: "smoke_cleared", territoryId: territory.id, territoryName: territory.name, value: 1, score: 20, label: `${labelPrefix}Fumée dissipée · ${territory.name}` });
   }
 
   const reduced = Math.min(territory.fireLevel, remaining);
   if (reduced > 0) {
     territory.fireLevel = Math.max(0, territory.fireLevel - reduced) as any;
     remaining -= reduced;
-    score += reduced * 100;
-    addEvent(events, { type: "water", territoryId: territory.id, territoryName: territory.name, value: reduced, score: reduced * 100, label: `${labelPrefix}${reduced} niveau${reduced > 1 ? "x" : ""} de feu supprimé${reduced > 1 ? "s" : ""} · ${territory.name}` });
+    score += reduced * 35;
+    addEvent(events, { type: "water", territoryId: territory.id, territoryName: territory.name, value: reduced, score: reduced * 35, label: `${labelPrefix}${reduced} niveau${reduced > 1 ? "x" : ""} de feu supprimé${reduced > 1 ? "s" : ""} · ${territory.name}` });
   }
 
   const extinguished = beforeFire > 0 && territory.fireLevel === 0;
   if (extinguished) {
-    score += 200 + (territory.critical ? 120 : 0);
+    const extinguishPoints = 45 + (territory.critical ? 25 : 0);
+    score += extinguishPoints;
     territory.burnTurns = 0;
-    addEvent(events, { type: "extinguished", territoryId: territory.id, territoryName: territory.name, value: beforeFire, score: 200 + (territory.critical ? 120 : 0), label: `${labelPrefix}INCENDIE ÉTEINT · ${territory.name}${territory.critical ? " · ZONE CRITIQUE" : ""}` });
+    addEvent(events, { type: "extinguished", territoryId: territory.id, territoryName: territory.name, value: beforeFire, score: extinguishPoints, label: `${labelPrefix}INCENDIE ÉTEINT · ${territory.name}${territory.critical ? " · ZONE CRITIQUE" : ""}` });
   }
 
   const room = Math.max(0, 3 - territory.protection);
   const protectedAdded = Math.min(room, remaining);
   if (protectedAdded > 0) {
     territory.protection = Math.min(3, territory.protection + protectedAdded) as any;
-    score += protectedAdded * 50;
-    addEvent(events, { type: "protected", territoryId: territory.id, territoryName: territory.name, value: protectedAdded, score: protectedAdded * 50, label: `${labelPrefix}Zone refroidie +${protectedAdded} · ${territory.name}` });
+    score += protectedAdded * 15;
+    addEvent(events, { type: "protected", territoryId: territory.id, territoryName: territory.name, value: protectedAdded, score: protectedAdded * 15, label: `${labelPrefix}Zone refroidie +${protectedAdded} · ${territory.name}` });
   }
 
   territory.lastActionBy = playerId;
@@ -878,8 +907,8 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
           result.smokeCleared = result.smokeCleared || extra.smokeCleared;
           result.useful = result.useful || extra.useful;
         }
-        const canadairBonus = dartsFirefighterSpecialActionBonus(250, center, state);
-        addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: canadairBonus, label: `CANADAIR engagé sur ${center.name}` });
+        const canadairBonus = dartsFirefighterSpecialExecutionBonus("dbull", state);
+        addEvent(events, { type: "canadair", territoryId: center.id, territoryName: center.name, score: canadairBonus, label: `CANADAIR engagé sur ${center.name} · adresse +${canadairBonus}` });
         result.score += canadairBonus;
         state.brigadeGauge = Math.max(0, state.brigadeGauge - gaugeCost);
       }
@@ -892,12 +921,17 @@ function applyDart(state: DartsFirefighterState, dart: GameDart, playerId: strin
     const target = selectedOrWorst(state);
     const power = Number(state.config.bullPower || 2);
     result = applyWater(state, target, power, playerId, events, `${dart.bed === "IB" ? "DBULL" : "BULL"} · `);
-    const bullBonus = target ? dartsFirefighterSpecialActionBonus(80, target, state) : 0;
-    if (target) addEvent(events, { type: "bull_drop", territoryId: target.id, territoryName: target.name, score: bullBonus, label: `Largage précis sur ${target.name}` });
+    const bullBonus = target ? dartsFirefighterSpecialExecutionBonus(dart.bed === "IB" ? "dbull" : "bull", state) : 0;
+    if (target) addEvent(events, { type: "bull_drop", territoryId: target.id, territoryName: target.name, score: bullBonus, label: `Largage précis sur ${target.name} · adresse +${bullBonus}` });
     result.score += bullBonus;
   } else {
     const target = getTargetTerritory(state, Number(dart.number || 0));
     result = applyWater(state, target, dartWaterPower(dart), playerId, events);
+    if (target && result.useful) {
+      const executionBonus = dart.bed === "T" ? 30 : dart.bed === "D" ? 18 : 6;
+      result.score += executionBonus;
+      addEvent(events, { type: "water", territoryId: target.id, territoryName: target.name, score: executionBonus, label: `${dartLabel(dart)} · adresse +${executionBonus}` });
+    }
   }
 
   stats.waterApplied += dartWaterPower(dart);
@@ -1292,47 +1326,89 @@ export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: G
   let endedByMiss = false;
 
   const scoreTargetMode = next.targetMode === "visit_score" || Number(next.config.activeTerritories || 0) > 20;
-  const singleBullSupport = scoreTargetMode && safeDarts.length === 1 && (safeDarts[0]?.bed === "OB" || safeDarts[0]?.bed === "IB");
   let rawDartScore = 0;
   let matchedTargetScore: number | null = null;
 
-  if (scoreTargetMode && !singleBullSupport) {
+  if (scoreTargetMode) {
+    // CARTE ÉTENDUE — résolution déterministe en deux canaux :
+    // 1) les darts numérotées construisent une cible exacte ;
+    // 2) Bull / DBull restent des actions spéciales indépendantes.
+    // Exception de compatibilité : si la cible exacte n'est atteignable qu'en
+    // comptant un Bull/DBull dans le total, celui-ci est consommé par la
+    // combinaison et ne déclenche alors PAS son action spéciale.
+    const numberedDarts: GameDart[] = [];
+    const bullDarts: GameDart[] = [];
+
     for (const dart of safeDarts) {
       processedDarts.push(dart);
-      recordDartStatsOnly(stats, dart);
       rawDartScore += dartScoreValue(dart);
-      if (dart.bed === "MISS" && next.config.missEndsTurn) {
-        endedByMiss = true;
-        break;
+      if (dart.bed === "MISS") {
+        recordDartStatsOnly(stats, dart);
+        if (next.config.missEndsTurn) {
+          endedByMiss = true;
+          break;
+        }
+        continue;
+      }
+      if (dart.bed === "OB" || dart.bed === "IB") bullDarts.push(dart);
+      else numberedDarts.push(dart);
+    }
+
+    const numberedScore = numberedDarts.reduce((sum, dart) => sum + dartScoreValue(dart), 0);
+    const fullDirectDarts = [...numberedDarts, ...bullDarts];
+    const fullScore = fullDirectDarts.reduce((sum, dart) => sum + dartScoreValue(dart), 0);
+    const numberedTarget = numberedDarts.length ? resolveVisitScoreTarget(next, numberedScore) : null;
+    const numberedExact = Boolean(numberedTarget && Number(numberedTarget.target) === Number(numberedScore));
+    const fullTarget = !numberedExact && fullDirectDarts.length ? resolveVisitScoreTarget(next, fullScore) : null;
+    const fullExact = Boolean(!numberedExact && fullTarget && Number(fullTarget.target) === Number(fullScore));
+
+    const directDarts = numberedExact ? numberedDarts : fullExact ? fullDirectDarts : numberedDarts;
+    const directScore = numberedExact ? numberedScore : fullExact ? fullScore : numberedScore;
+    const directTarget = numberedExact ? numberedTarget : fullExact ? fullTarget : numberedTarget;
+    const consumedBulls = fullExact && !numberedExact;
+    const specialBulls = consumedBulls ? [] : bullDarts;
+
+    // Les darts affectées à la combinaison exacte ne doivent être comptées
+    // qu'une seule fois dans les stats. Les Bulls spéciaux seront comptés par applyDart.
+    for (const dart of directDarts) recordDartStatsOnly(stats, dart);
+
+    if (directDarts.length > 0) {
+      const exact = Boolean(directTarget && Number(directTarget.target) === Number(directScore));
+      if (exact && directTarget) {
+        if (!next.selectedTerritoryId) next.selectedTerritoryId = directTarget.id;
+        matchedTargetScore = directTarget.target;
+        const power = Math.max(1, ...directDarts.map((dart) => dartWaterPower(dart)));
+        const result = applyWater(next, directTarget, power, player.id, events, `CIBLE ${directTarget.target} · `);
+        const executionBonus = result.useful ? dartsFirefighterExactExecutionBonus(directDarts, directTarget.target, next) : 0;
+        visitScore += Number(result.score || 0) + executionBonus;
+        usefulDarts += result.useful ? directDarts.length : 0;
+        stats.waterApplied += power;
+        stats.fireReduced += Number(result.fireReduced || 0);
+        stats.protectionsPlaced += Number(result.protected || 0);
+        stats.firesExtinguished += result.extinguished ? 1 : 0;
+        stats.smokeCleared += result.smokeCleared ? 1 : 0;
+        if (result.extinguished) next.totalExtinguished += 1;
+        if (!result.useful) stats.uselessDarts += directDarts.length;
+        if (result.useful) next.brigadeGauge = Math.min(100, next.brigadeGauge + 7 + Number(result.fireReduced || 0) * 4);
+        addEvent(events, { type: "water", territoryId: directTarget.id, territoryName: directTarget.name, value: directScore, score: executionBonus, label: `CIBLE EXACTE ${directScore} · ${directTarget.name} · puissance ${power}${consumedBulls ? " · Bull intégré à la combinaison" : ""}${executionBonus ? ` · adresse +${executionBonus}` : ""}` });
+      } else {
+        const selected = next.territories.find((territory) => territory.id === next.selectedTerritoryId && territory.playable && !territory.destroyed) || null;
+        const delta = selected ? directScore - selected.target : 0;
+        const deltaLabel = selected ? (delta === 0 ? "" : delta > 0 ? ` +${delta}` : ` ${delta}`) : "";
+        addEvent(events, { type: "useless", territoryId: selected?.id, territoryName: selected?.name, value: directScore, score: 0, label: selected ? `CIBLE ${selected.target} · ${directScore} pts${deltaLabel} · intervention directe non déclenchée` : `COMBINAISON ${directScore} pts · aucune cible unique correspondante` });
+        stats.uselessDarts += directDarts.length;
       }
     }
 
-    const target = resolveVisitScoreTarget(next, rawDartScore);
-    const exact = Boolean(target && Number(target.target) === Number(rawDartScore));
-    if (exact && target) {
-      if (!next.selectedTerritoryId) next.selectedTerritoryId = target.id;
-      matchedTargetScore = target.target;
-      const power = Math.max(1, ...processedDarts.filter((dart) => dart.bed !== "MISS").map((dart) => dartWaterPower(dart)));
-      const result = applyWater(next, target, power, player.id, events, `CIBLE ${target.target} · `);
+    // Les actions spéciales sont résolues APRÈS la combinaison directe afin
+    // que la même volée puisse, par exemple, réussir 89 points puis appeler le Canadair.
+    for (const dart of specialBulls) {
+      const result = applyDart(next, dart, player.id, events);
       visitScore += Number(result.score || 0);
-      usefulDarts = result.useful ? Math.max(1, processedDarts.filter((dart) => dart.bed !== "MISS").length) : 0;
-      stats.waterApplied += power;
-      stats.fireReduced += Number(result.fireReduced || 0);
-      stats.protectionsPlaced += Number(result.protected || 0);
-      stats.firesExtinguished += result.extinguished ? 1 : 0;
-      stats.smokeCleared += result.smokeCleared ? 1 : 0;
-      if (result.extinguished) next.totalExtinguished += 1;
-      if (!result.useful) stats.uselessDarts += processedDarts.length;
-      if (result.useful) next.brigadeGauge = Math.min(100, next.brigadeGauge + 7 + Number(result.fireReduced || 0) * 4);
-      addEvent(events, { type: "water", territoryId: target.id, territoryName: target.name, value: rawDartScore, score: 0, label: `CIBLE EXACTE ${rawDartScore} · ${target.name} · puissance ${power}` });
-    } else {
-      const selected = next.territories.find((territory) => territory.id === next.selectedTerritoryId && territory.playable && !territory.destroyed) || null;
-      const delta = selected ? rawDartScore - selected.target : 0;
-      const deltaLabel = selected ? (delta === 0 ? "" : delta > 0 ? ` +${delta}` : ` ${delta}`) : "";
-      addEvent(events, { type: "useless", territoryId: selected?.id, territoryName: selected?.name, value: rawDartScore, score: 0, label: selected ? `CIBLE ${selected.target} · ${rawDartScore} pts${deltaLabel} · intervention non déclenchée` : `VOLÉE ${rawDartScore} pts · aucune cible unique correspondante` });
-      stats.uselessDarts += processedDarts.length;
+      if (result.useful) usefulDarts += 1;
     }
   } else {
+    // CARTE 1-20 : chaque fléchette numérotée agit séparément sur son secteur.
     for (const dart of safeDarts) {
       processedDarts.push(dart);
       const result = applyDart(next, dart, player.id, events);

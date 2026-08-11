@@ -1470,3 +1470,25 @@ button.dff-adjacent-card:active { transform: scale(.985); }
   .dff-action-row__score { min-width: 58px; }
   .dff-action-row__score b { font-size: 14px; }
 }
+
+/* V7.3 — action disponible directement depuis la fiche territoire superposée à la carte */
+.dff-map-territory-action {
+  display: grid;
+  margin-top: 2px;
+}
+.dff-map-territory-action button {
+  min-height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,215,106,.34);
+  background: linear-gradient(180deg,rgba(255,215,106,.10),rgba(6,9,14,.88));
+  color: #ffd76a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 8px;
+  font-weight: 1100;
+  letter-spacing: .45px;
+  box-shadow: 0 0 14px rgba(255,215,106,.08);
+}
+.dff-map-territory-action button:active { transform: translateY(1px); }

@@ -26,7 +26,8 @@ import {
   dartScoreValue,
   dartsFirefighterDifficultyRules,
   dartsFirefighterTerritoryScoreFactor,
-  dartsFirefighterSpecialActionBonus,
+  dartsFirefighterExactExecutionBonus,
+  dartsFirefighterSpecialExecutionBonus,
   difficultyLabel,
   finishReasonLabel,
   fireStatus,
@@ -60,7 +61,7 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.2.0-dedup-risk-size-scoring";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.3.0-mixed-volley-skill-scoring";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -216,10 +217,10 @@ function simulateTerritoryImpact(territory: FireTerritory, power: number) {
 function estimateWaterPoints(territory: FireTerritory, power: number, state: DartsFirefighterState) {
   const outcome = simulateTerritoryImpact(territory, power);
   let raw = 0;
-  if (outcome.smokeCleared) raw += 90;
-  raw += Number(outcome.reduced || 0) * 100;
-  if (outcome.extinguished) raw += 200 + (territory.critical ? 120 : 0);
-  raw += Number(outcome.added || 0) * 50;
+  if (outcome.smokeCleared) raw += 20;
+  raw += Number(outcome.reduced || 0) * 35;
+  if (outcome.extinguished) raw += 45 + (territory.critical ? 25 : 0);
+  raw += Number(outcome.added || 0) * 15;
   const rules = dartsFirefighterDifficultyRules(state.config.difficulty);
   const tacticalFactor = dartsFirefighterTerritoryScoreFactor(territory, state);
   return Math.round(raw * Number(rules.scoreMultiplier || 1) * tacticalFactor);
@@ -232,13 +233,17 @@ function applyCurrentCombo(points: number, state: DartsFirefighterState) {
 
 function canonicalExactShots(targetRaw: number) {
   const target = Math.max(1, Number(targetRaw || 0));
-  const out: { label: string; power: number; note?: string }[] = [];
-  if (target <= 20) out.push({ label: `S${target}`, power: 1 });
-  if (target % 2 === 0 && target / 2 >= 1 && target / 2 <= 20) out.push({ label: `D${target / 2}`, power: 2 });
-  if (target % 3 === 0 && target / 3 >= 1 && target / 3 <= 20) out.push({ label: `T${target / 3}`, power: 3 });
+  const out: { label: string; power: number; note?: string; darts: UiDart[] }[] = [];
+  if (target <= 20) out.push({ label: `S${target}`, power: 1, darts: [{ v: target, mult: 1 }] });
+  if (target % 2 === 0 && target / 2 >= 1 && target / 2 <= 20) out.push({ label: `D${target / 2}`, power: 2, darts: [{ v: target / 2, mult: 2 }] });
+  if (target % 3 === 0 && target / 3 >= 1 && target / 3 <= 20) out.push({ label: `T${target / 3}`, power: 3, darts: [{ v: target / 3, mult: 3 }] });
   if (!out.length) {
     const checkout = findCheckoutForTarget(target, 3) || [];
-    if (checkout.length) out.push({ label: checkout.map((dart) => uiLabel(dart)).join(" + "), power: Math.max(1, ...checkout.map((dart) => Number(dart.mult || 1))), note: "combinaison exacte" });
+    if (checkout.length) {
+      const usesBull = checkout.some((dart) => Number(dart.v) === 25);
+      const comboLabel = `${checkout.map((dart) => uiLabel(dart)).join(" + ")}${usesBull ? " · CIBLE" : ""}`;
+      out.push({ label: comboLabel, power: Math.max(1, ...checkout.map((dart) => Number(dart.mult || 1))), note: usesBull ? "combinaison exacte · Bull intégré (pas d’action spéciale)" : "combinaison exacte", darts: checkout });
+    }
   }
   return out;
 }
@@ -257,15 +262,17 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
   const rows: TerritoryActionRow[] = [];
   if (territory.destroyed) return [{ label: "—", detail: "Territoire détruit", result: "Intervention locale impossible", color: "#6f7a88", points: 0, best: true }];
 
-  const addDirectRow = (label: string, power: number, detail: string, color: string) => {
+  const addDirectRow = (label: string, power: number, detail: string, color: string, darts?: UiDart[]) => {
     const outcome = simulateTerritoryImpact(territory, power);
-    const points = applyCurrentCombo(estimateWaterPoints(territory, power, state), state);
-    rows.push({ label, detail, result: outcome.summary, color, points });
+    const execution = darts?.length ? dartsFirefighterExactExecutionBonus(darts.map(uiToGameDart), territory.target, state) : 0;
+    const points = applyCurrentCombo(estimateWaterPoints(territory, power, state) + execution, state);
+    const executionHint = execution > 0 ? ` · adresse +${execution}` : "";
+    rows.push({ label, detail: `${detail}${executionHint}`, result: outcome.summary, color, points });
   };
 
   if (scoreTargetMode) {
     for (const shot of canonicalExactShots(territory.target)) {
-      addDirectRow(shot.label, shot.power, `${territory.target} pts exacts · puissance ${shot.power}${shot.note ? ` · ${shot.note}` : ""}`, shot.power >= 3 ? FIRE : shot.power === 2 ? GOLD : WATER);
+      addDirectRow(shot.label, shot.power, `${territory.target} pts exacts · puissance ${shot.power}${shot.note ? ` · ${shot.note}` : ""}`, shot.power >= 3 ? FIRE : shot.power === 2 ? GOLD : WATER, shot.darts);
     }
   } else {
     addDirectRow(`S${territory.target}`, 1, "1 unité d’eau", WATER);
@@ -275,7 +282,8 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
 
   const bullPower = Math.max(1, Number(state?.config?.bullPower || 2));
   const bullOutcome = simulateTerritoryImpact(territory, bullPower);
-  const bullPoints = applyCurrentCombo(estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialActionBonus(80, territory, state), state);
+  const bullExecution = dartsFirefighterSpecialExecutionBonus("bull", state);
+  const bullPoints = applyCurrentCombo(estimateWaterPoints(territory, bullPower, state) + bullExecution, state);
   rows.push({ label: "BULL", detail: `largage ciblé · puissance ${bullPower}`, result: bullOutcome.summary, color: WATER, points: bullPoints });
 
   const canUseCanadair = Boolean(state?.config?.bullAirSupport);
@@ -294,14 +302,14 @@ function buildTerritoryActionRows(territory: FireTerritory, state: DartsFirefigh
     dbullPoints = estimateWaterPoints(territory, centerPower, state);
     const neighbors = (territory.neighbors || []).slice(0, neighborCount).map((id) => state.territories.find((item) => item.id === id)).filter(Boolean) as FireTerritory[];
     for (const neighbor of neighbors) dbullPoints += estimateWaterPoints(neighbor, neighborPower, state);
-    dbullPoints += dartsFirefighterSpecialActionBonus(250, territory, state);
+    dbullPoints += dartsFirefighterSpecialExecutionBonus("dbull", state);
     dbullResult = `${simulateTerritoryImpact(territory, centerPower).summary} · ${neighbors.length} voisin${neighbors.length > 1 ? "s" : ""} arrosé${neighbors.length > 1 ? "s" : ""}`;
     dbullDetail = `Canadair · centre ${centerPower} · voisins ${neighborPower} ×${neighbors.length}`;
   } else if (canUseCanadair && !gaugeReady) {
-    dbullPoints = estimateWaterPoints(territory, bullPower, state);
+    dbullPoints = estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialExecutionBonus("dbull", state);
     dbullDetail = `Canadair indisponible · jauge ${Math.round(Number(state.brigadeGauge || 0))}/${gaugeCost}`;
   } else {
-    dbullPoints = estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialActionBonus(80, territory, state);
+    dbullPoints = estimateWaterPoints(territory, bullPower, state) + dartsFirefighterSpecialExecutionBonus("dbull", state);
   }
   rows.push({ label: "DBULL", detail: dbullDetail, result: dbullResult, color: FIRE, points: applyCurrentCombo(dbullPoints, state) });
 
@@ -551,6 +559,7 @@ function TerritoryInsightBody({ territory, state, country, compact = false, onCl
       <div className="dff-adjacent-section__title">ZONES ADJACENTES MENACÉES</div>
       <AdjacentTerritoryRail neighbors={threatenedNeighbors} country={country} onSelect={onSelectTerritory} />
     </section>
+    {compact && onOpenAdvice ? <section className="dff-map-territory-action"><button type="button" onClick={onOpenAdvice}><OutlineIcon name="target" size={18} /><span>ACTIONS</span></button></section> : null}
   </div>;
 }
 
@@ -558,8 +567,8 @@ function Rules({ config }: { config: DartsFirefighterConfigPayload }) {
   return <div style={{ display: "grid", gap: 10, fontSize: 13, lineHeight: 1.45 }}>
     <div><strong style={{ color: FIRE }}>OBJECTIF</strong><br />{config.objective === "survival" ? `Résiste pendant ${config.maxRounds} rounds.` : config.objective === "protect_critical" ? `Protège les zones critiques pendant ${config.maxRounds} rounds.` : "Éteins tous les foyers avant la limite."}</div>
     <div><strong style={{ color: WATER }}>PUISSANCE</strong><br />Simple 1 · Double 2 · Triple 3. Le surplus crée une protection qui absorbe une future propagation.</div>
-    <div><strong style={{ color: GOLD }}>CIBLES</strong><br />{Number(config.activeTerritories || 0) > 20 ? "Carte étendue : chaque territoire possède un score exact unique, calibré sur la brigade et la taille de la zone. Sélectionne une zone puis réalise sa valeur en 1 à 3 fléchettes." : "Chaque territoire actif porte un secteur unique. Une touche agit automatiquement sur le territoire correspondant."}</div>
-    <div><strong style={{ color: WATER }}>BULL</strong><br />{`Bull = ${config.bullPower || 2} unités sur ${config.bullTargetMode === "priority" ? "la priorité automatique" : "la zone sélectionnée"}. ${config.bullAirSupport ? "Le Double Bull appelle le Canadair." : "Canadair désactivé."}`}</div>
+    <div><strong style={{ color: GOLD }}>CIBLES</strong><br />{Number(config.activeTerritories || 0) > 20 ? "Carte étendue : les fléchettes numérotées de la volée sont additionnées pour former UNE cible exacte. D1 + T4 + S8 = 22 : une seule intervention sur la cible 22, pas trois territoires différents." : "Carte 1-20 : chaque fléchette agit séparément sur son secteur. D1, T4 et S8 interviennent donc sur les territoires 1, 4 et 8."}</div>
+    <div><strong style={{ color: WATER }}>BULL / DBULL</strong><br />{`Bull et DBull sont d’abord réservés aux actions spéciales. Ainsi T19 + DBULL + D16 peut produire 89 points exacts avec T19+D16 ET un DBULL séparé. Si une cible exacte n’est atteignable qu’en comptant le Bull/DBull dans son total, celui-ci est alors consommé par la combinaison et ne déclenche pas de largage. ${config.bullTargetMode === "priority" ? "Le largage spécial vise automatiquement la priorité tactique." : "Le largage spécial vise la zone sélectionnée."} ${config.bullAirSupport ? "Le Double Bull appelle le Canadair si la jauge le permet." : "Canadair désactivé."}`}</div>
     <div><strong style={{ color: FIRE }}>VENT</strong><br />{config.windEnabled ? `Vent ${config.windStrength || "normal"}, changement tous les ${config.windChangeEvery || 3} cycles.` : "Vent désactivé."}</div>
   </div>;
 }
@@ -1288,7 +1297,7 @@ function ActionPlannerModal({ territory, state, onClose }: any) {
       <div className="dff-action-row__detail">{row.detail}</div>
       <p>{row.result}</p>
     </article>)}</div>
-    <div className="dff-help-box"><b>POINTS ESTIMÉS</b><span>Les points affichés tiennent compte de la difficulté et du combo actuel de la brigade.</span><span>La meilleure action disponible est toujours placée en première position.</span></div>
+    <div className="dff-help-box"><b>POINTS ESTIMÉS</b><span>Le score combine difficulté d’exécution, danger réel, taille de la cible et effet obtenu.</span><span>Une combinaison exacte à 2/3 fléchettes est mieux récompensée qu’un tir spécial équivalent. Le Canadair peut toutefois dépasser ce score s’il traite réellement plusieurs zones dangereuses.</span><span>La meilleure action disponible est toujours placée en première position.</span></div>
   </FloatingPanel>;
 }
 
