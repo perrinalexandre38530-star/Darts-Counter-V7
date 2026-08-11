@@ -1177,3 +1177,48 @@
   .dff-wind-compass__meta { font-size: 5.4px; }
   .dff-wind-compass__meta b { font-size: 6.6px; }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.0.1 — stabilité carte / sélection territoire
+   Le viewport ne doit jamais dépendre de la présence de la légende.
+   ============================================================= */
+.dff-map-panel__body {
+  min-height: 0 !important;
+}
+.dff-map-modal,
+.dff-map-modal.has-territory {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  gap: 6px !important;
+}
+.dff-map-legend {
+  flex: 0 0 auto;
+}
+.dff-map-modal__viewport-wrap {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-height: 240px !important;
+  height: auto !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.dff-map-modal.has-territory .dff-map-modal__viewport-wrap {
+  flex: 1 1 100% !important;
+  min-height: 0 !important;
+}
+.dff-map-modal__viewport {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.dff-map-territory-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+  width: 100% !important;
+  height: 100% !important;
+}

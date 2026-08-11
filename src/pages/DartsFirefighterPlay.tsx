@@ -57,7 +57,7 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.0.0-flexible-volley-rank";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.0.1-map-selection-stability";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -730,12 +730,22 @@ export default function DartsFirefighterPlay(props: any) {
   }
   function selectTerritory(id: string) {
     if (state.finished) return;
-    const same = String(state.selectedTerritoryId || "") === String(id || "");
-    const nextId = same ? null : id;
     const territory = state.territories.find((zone) => zone.id === id) || null;
-    setState((prev) => selectFireTerritory(prev, nextId));
-    if (same) setNotice("Cible Bull / Canadair désélectionnée.");
-    else if (territory) setNotice(`${territory.name} · ${state.targetMode === "visit_score" ? `cible ${territory.target} pts` : `secteur ${territory.target}`} · ${statusLabel(territory)}`);
+    if (!territory || !territory.playable || territory.destroyed) return;
+    setState((prev) => selectFireTerritory(prev, id));
+    setNotice(`${territory.name} · ${state.targetMode === "visit_score" ? `cible ${territory.target} pts` : `secteur ${territory.target}`} · ${statusLabel(territory)}`);
+  }
+  function clearTerritorySelection() {
+    if (state.finished || !state.selectedTerritoryId) return;
+    setState((prev) => selectFireTerritory(prev, null));
+    setNotice("Cible Bull / Canadair désélectionnée.");
+  }
+  function toggleTerritorySelection(id: string) {
+    if (String(state.selectedTerritoryId || "") === String(id || "")) {
+      clearTerritorySelection();
+      return;
+    }
+    selectTerritory(id);
   }
   function addDart(v: number, mult?: 1 | 2 | 3) {
     if (botThinking || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)) return;
@@ -1057,9 +1067,9 @@ export default function DartsFirefighterPlay(props: any) {
     </main>
 
     {showObjective ? <ObjectiveModal primary={primarySuggestion} alternatives={tacticalPlan.alternatives} config={config} onSelect={(id: string) => { selectTerritory(id); setShowObjective(false); }} onClose={() => setShowObjective(false)} /> : null}
-    {showTerritory ? <TerritoryModal territory={focusTerritory} state={state} country={country} onOpenMap={() => { setShowTerritory(false); setShowMap(true); }} onClear={() => { if (state.selectedTerritoryId) selectTerritory(state.selectedTerritoryId); }} onOpenAdvice={() => setShowActionPlanner(true)} onClose={() => setShowTerritory(false)} /> : null}
-    {showMap ? <FirefighterMapModal state={state} country={country} map={fireMap} mapLabel={mapLabel} onClose={() => setShowMap(false)} onSelect={selectTerritory} onOpenAdvice={() => setShowActionPlanner(true)} /> : null}
-    {showTargets ? <TargetsModal state={state} onClose={() => setShowTargets(false)} onSelect={selectTerritory} /> : null}
+    {showTerritory ? <TerritoryModal territory={focusTerritory} state={state} country={country} onOpenMap={() => { setShowTerritory(false); setShowMap(true); }} onClear={clearTerritorySelection} onOpenAdvice={() => setShowActionPlanner(true)} onClose={() => setShowTerritory(false)} /> : null}
+    {showMap ? <FirefighterMapModal state={state} country={country} map={fireMap} mapLabel={mapLabel} onClose={() => setShowMap(false)} onSelect={selectTerritory} onClearSelection={clearTerritorySelection} onOpenAdvice={() => setShowActionPlanner(true)} /> : null}
+    {showTargets ? <TargetsModal state={state} onClose={() => setShowTargets(false)} onSelect={toggleTerritorySelection} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showStats ? <StatsModal state={state} currentStats={currentStats} activeProfile={activeProfile} config={config} onClose={() => setShowStats(false)} /> : null}
     {showActionPlanner && focusTerritory ? <ActionPlannerModal territory={focusTerritory} state={state} onClose={() => setShowActionPlanner(false)} /> : null}
@@ -1202,7 +1212,7 @@ function ActionPlannerModal({ territory, state, onClose }: any) {
   </FloatingPanel>;
 }
 
-function FirefighterMapModal({ state, country, map, mapLabel, onClose, onSelect, onOpenAdvice }: any) {
+function FirefighterMapModal({ state, country, map, mapLabel, onClose, onSelect, onClearSelection, onOpenAdvice }: any) {
   const selected = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
   const countryFlag = getCountryMapFlag(country);
   const accent = selected ? fireTerritoryColor(fireStatus(selected)) : FIRE;
@@ -1214,8 +1224,8 @@ function FirefighterMapModal({ state, country, map, mapLabel, onClose, onSelect,
         {!selected && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
         {!selected ? <WindCompass enabled={Boolean(state.config?.windEnabled)} state={state} /> : null}
         <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !selected} onSelectTerritory={onSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} showViewportControls={showMapControls} showViewportHint={false} style={{ width: "100%", height: "100%" }} /></div>
-        {selected ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${selected.name}`}><TerritoryInsightBody territory={selected} state={state} country={country} compact onClear={() => onSelect(selected.id)} onOpenAdvice={() => onOpenAdvice?.(selected)} /></div> : null}
-        <button type="button" className={`dff-map-controls-toggle ${showMapControls ? "is-active" : ""}`} onClick={() => setShowMapControls((value) => !value)}>{showMapControls ? "MASQUER COMMANDES" : "COMMANDES CARTE"}</button>
+        {selected ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${selected.name}`}><TerritoryInsightBody territory={selected} state={state} country={country} compact onClear={onClearSelection} onOpenAdvice={() => onOpenAdvice?.(selected)} /></div> : null}
+        {!selected ? <button type="button" className={`dff-map-controls-toggle ${showMapControls ? "is-active" : ""}`} onClick={() => setShowMapControls((value) => !value)}>{showMapControls ? "MASQUER COMMANDES" : "COMMANDES CARTE"}</button> : null}
       </div>
     </div>
   </FloatingPanel>;
