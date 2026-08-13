@@ -70,7 +70,9 @@ export async function fileToAvatarVariants(file: File): Promise<AvatarVariants> 
   const bitmap = await bitmapFromFile(file);
   const thumbDataUrl = sanitizeAvatarDataUrl(renderBitmapToDataUrl(bitmap, 160, 0.84), 180_000);
   const fullDataUrl = sanitizeAvatarDataUrl(renderBitmapToDataUrl(bitmap, 320, 0.86), 280_000);
-  const castDataUrl = sanitizeAvatarDataUrl(renderBitmapToDataUrl(bitmap, 320, 0.86), 280_000);
+  // Cast et full utilisaient exactement le même rendu 320px mais étaient encodés
+  // deux fois. On réutilise la même chaîne immuable : zéro canvas/base64 dupliqué.
+  const castDataUrl = fullDataUrl;
   try { (bitmap as any).close?.(); } catch {}
   if (!thumbDataUrl || !fullDataUrl || !castDataUrl) throw new Error("avatar_variant_too_large");
   return { thumbDataUrl, fullDataUrl, castDataUrl };

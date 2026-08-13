@@ -32,6 +32,9 @@ export type UserMediaFallbackEntry = {
   dataUrl: string;
   updatedAt: number;
   sourceUrl?: string | null;
+  // Signature légère de la source d'origine. Elle évite de reconvertir et
+  // réécrire la même image à chaque saveStore.
+  sourceSig?: string | null;
 };
 
 export type UserMediaFallbackSnapshot = {
@@ -47,7 +50,61 @@ const MAX_SNAPSHOT_ENTRIES = 500;
 const MAX_SNAPSHOT_CHARS = 14_000_000;
 const REMOTE_TIMEOUT_MS = 4_000;
 
+// IMPORTANT MÉMOIRE : ce Map contenait historiquement jusqu'à 1200 data:image
+// (certaines > 1 Mo) et ne libérait jamais les chaînes. Sur Chrome cela pouvait
+// à lui seul retenir plusieurs Go de heap. Il devient un petit LRU borné.
+const MEMORY_MAX_ENTRIES = 36;
+const MEMORY_MAX_CHARS = 4_000_000;
+const MEMORY_MAX_ENTRY_CHARS = 420_000;
 const memory = new Map<string, UserMediaFallbackEntry>();
+let memoryChars = 0;
+
+function forgetRememberedEntry(key: string): void {
+  const previous = memory.get(key);
+  if (!previous) return;
+  memory.delete(key);
+  memoryChars = Math.max(0, memoryChars - String(previous.dataUrl || "").length);
+}
+
+function rememberEntry(entry: UserMediaFallbackEntry | null | undefined): void {
+  if (!entry?.key || !isImageDataUrl(entry.dataUrl)) return;
+  const chars = String(entry.dataUrl || "").length;
+  forgetRememberedEntry(entry.key);
+
+  // Les grands visuels restent dans IndexedDB mais ne sont jamais retenus en RAM.
+  if (chars > MEMORY_MAX_ENTRY_CHARS) return;
+
+  memory.set(entry.key, entry);
+  memoryChars += chars;
+  while (memory.size > MEMORY_MAX_ENTRIES || memoryChars > MEMORY_MAX_CHARS) {
+    const oldestKey = memory.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    forgetRememberedEntry(oldestKey);
+  }
+}
+
+function rememberedEntry(key: string): UserMediaFallbackEntry | null {
+  const entry = memory.get(key) || null;
+  if (!entry) return null;
+  // touche LRU sans recopier la data URL
+  memory.delete(key);
+  memory.set(key, entry);
+  return entry;
+}
+
+export function getUserMediaMemoryDiagnostics() {
+  return {
+    entries: memory.size,
+    chars: memoryChars,
+    pendingCaptures: pendingCapture.size,
+    pendingResolves: pendingResolve.size,
+  };
+}
+
+try {
+  (globalThis as any).__dcUserMediaMemoryDiagnostics = getUserMediaMemoryDiagnostics;
+} catch {}
+
 const pendingResolve = new Map<string, Promise<string>>();
 const pendingCapture = new Map<string, Promise<string>>();
 let localVaultHydration: Promise<void> | null = null;
@@ -116,6 +173,14 @@ function isImageDataUrl(value: unknown): boolean {
   return typeof value === "string" && /^data:image\/(png|jpe?g|webp|gif|avif);base64,/i.test(value.trim());
 }
 
+function sourceSignature(value: string): string {
+  const s = String(value || "").trim();
+  if (!s) return "";
+  // Pas de hash complet : scanner plusieurs Mo à chaque save serait contre-productif.
+  // Longueur + bords de la chaîne suffisent ici pour détecter les sauvegardes identiques.
+  return `${s.length}:${s.slice(0, 48)}:${s.slice(-48)}`;
+}
+
 function imagePolicy(kind: string) {
   if (kind === "profile_avatar" || kind === "local_profile_avatar" || kind === "bot_avatar" || kind === "online_avatar" || kind === "group_avatar" || kind === "team_logo" || kind === "gallery_item" || kind === "avatar_ai_gallery") {
     return { maxEdge: 320, quality: 0.82, maxChars: 260_000 };
@@ -125,16 +190,33 @@ function imagePolicy(kind: string) {
   return { maxEdge: 900, quality: 0.82, maxChars: 1_100_000 };
 }
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: "key" });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        try { db.close(); } catch {}
+        dbPromise = null;
+      };
+      try {
+        (db as any).onclose = () => { dbPromise = null; };
+      } catch {}
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
   });
+  return dbPromise;
 }
 
 async function idbGet(key: string): Promise<UserMediaFallbackEntry | null> {
@@ -189,7 +271,7 @@ export async function readFirstLocalUserMediaFallback(keysInput: string[]): Prom
   if (!keys.length) return "";
 
   for (const key of keys) {
-    const cached = memory.get(key);
+    const cached = rememberedEntry(key);
     if (cached?.dataUrl && isImageDataUrl(cached.dataUrl)) return cached.dataUrl;
   }
 
@@ -229,7 +311,7 @@ export async function readFirstLocalUserMediaFallback(keysInput: string[]): Prom
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       if (!row?.dataUrl || !isImageDataUrl(row.dataUrl)) continue;
-      memory.set(keys[index], row);
+      rememberEntry(row);
       return row.dataUrl;
     }
   } catch {}
@@ -285,7 +367,7 @@ async function idbPutMany(entries: UserMediaFallbackEntry[]): Promise<void> {
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
   });
-  for (const entry of entries) memory.set(entry.key, entry);
+  for (const entry of entries) rememberEntry(entry);
   scheduleTrimLocalDb();
 }
 
@@ -468,18 +550,18 @@ async function compactSource(source: string, kind: string): Promise<string> {
 }
 
 async function storeEntry(entry: UserMediaFallbackEntry): Promise<void> {
-  memory.set(entry.key, entry);
+  rememberEntry(entry);
   await idbPut(entry);
 }
 
 export async function readLocalUserMediaFallback(keyInput: string): Promise<string> {
   const key = cleanKey(keyInput);
   if (!key) return "";
-  const mem = memory.get(key);
+  const mem = rememberedEntry(key);
   if (mem?.dataUrl) return mem.dataUrl;
   const row = await idbGet(key);
   if (row?.dataUrl && isImageDataUrl(row.dataUrl)) {
-    memory.set(key, row);
+    rememberEntry(row);
     return row.dataUrl;
   }
   return "";
@@ -498,23 +580,51 @@ export async function captureUserMediaFallback(
 
   const task = (async () => {
     const kind = String(opts.kind || key.split(":")[0] || "user_image");
-    const updatedAt = Number(opts.updatedAt || Date.now()) || Date.now();
+    const explicitUpdatedAt = Number(opts.updatedAt || 0);
+    const updatedAt = explicitUpdatedAt > 0 ? explicitUpdatedAt : Date.now();
     const mirrorR2 = opts.mirrorR2 !== false && canAttemptDirectR2FromStoredSession();
+    const sourceSig = sourceSignature(source);
+
+    // Dédup locale AVANT FileReader/canvas/IDB. C'était le point chaud principal :
+    // saveStore recapturait la même image des dizaines de fois.
+    let localEntry = rememberedEntry(key);
+    if (!localEntry) localEntry = await idbGet(key);
+    const sourceIsInline = isImageDataUrl(source);
+    const sourceVersionCompatible = sourceIsInline || explicitUpdatedAt <= 0 || Number(localEntry?.updatedAt || 0) >= explicitUpdatedAt;
+    const sameSource = !!localEntry?.dataUrl && sourceVersionCompatible && (
+      (!!sourceSig && localEntry.sourceSig === sourceSig) ||
+      (sourceIsInline && localEntry.dataUrl === source) ||
+      (!sourceIsInline && String(localEntry.sourceUrl || "") === source)
+    );
+
+    if (sameSource && localEntry) {
+      rememberEntry(localEntry);
+      if (mirrorR2) {
+        try {
+          if (!(await isDirectR2MediaFresh({ key, updatedAt: Number(localEntry.updatedAt || updatedAt) }))) {
+            await uploadDirectR2MediaFallback(localEntry);
+          }
+        } catch {}
+      }
+      return localEntry.dataUrl;
+    }
 
     // Chemin ultra-rapide des sauvegardes suivantes : si R2 possède déjà cette
     // version, on ne relit PAS l'image, on ne crée PAS de canvas et on ne refait
-    // aucun POST. Une seule lecture du manifeste couvre des centaines de médias.
+    // aucun POST.
     if (mirrorR2) {
       try {
         if (await isDirectR2MediaFresh({ key, updatedAt })) {
           const local = await readLocalUserMediaFallback(key);
-          return local || source;
+          return local || (isImageDataUrl(source) ? source : "");
         }
       } catch {}
     }
 
-    // Nouveau média ou média modifié : on capture alors seulement son contenu.
-    let mirrored = await exactSourceDataUrl(source);
+    // Respecte enfin imagePolicy : l'ancien chemin exactSourceDataUrl conservait
+    // les originaux multi-Mo avant même d'essayer la compression.
+    const policy = imagePolicy(kind);
+    let mirrored = isImageDataUrl(source) && source.length <= policy.maxChars ? source : "";
     if (!mirrored) mirrored = await compactSource(source, kind);
     if (!mirrored) return "";
     const entry: UserMediaFallbackEntry = {
@@ -523,6 +633,7 @@ export async function captureUserMediaFallback(
       dataUrl: mirrored,
       updatedAt,
       sourceUrl: opts.sourceUrl || (!isImageDataUrl(source) ? source : null),
+      sourceSig: sourceSig || null,
     };
     await storeEntry(entry);
     if (mirrorR2) {
@@ -819,12 +930,12 @@ export async function captureStoreUserMedia(
   opts: { mirrorR2?: boolean } = {},
 ): Promise<void> {
   type MediaJob = { key: string; source: string; kind: UserMediaKind | string; updatedAt?: number };
-  const jobs: MediaJob[] = [];
+  const jobsByKey = new Map<string, MediaJob>();
   const knownInlineHashes = new Set<string>();
   const enqueue = (key: string, source: string, kind: UserMediaKind | string, updatedAt?: number) => {
     if (!key || !source) return;
     if (isImageDataUrl(source)) knownInlineHashes.add(fastImageHash(source));
-    jobs.push({ key, source, kind, updatedAt });
+    jobsByKey.set(key, { key, source, kind, updatedAt });
   };
 
   try {
@@ -934,10 +1045,11 @@ export async function captureStoreUserMedia(
     walk(store);
   } catch {}
 
+  const jobs = Array.from(jobsByKey.values());
   if (jobs.length) {
-    // Trois captures maximum en parallèle : assez rapide pour rattraper un ancien
-    // compte, sans lancer 200 FileReader/canvas/fetch en même temps dans la WebView.
-    await mapWithConcurrency(jobs, 3, async (job) => {
+    // Deux captures maximum en parallèle : les data URLs/canvas sont lourds et
+    // doivent rester sous contrôle sur Chrome/Android.
+    await mapWithConcurrency(jobs, 2, async (job) => {
       await captureUserMediaFallback(job.key, job.source, {
         kind: job.kind,
         updatedAt: job.updatedAt,

@@ -26,7 +26,11 @@ export type AvatarGalleryItem = {
 
 export const AVATAR_GALLERY_EVENT = "dc:avatar-gallery-changed";
 const BASE_KEY = "dc_avatar_gallery_v1";
-const MAX_ITEMS = 260;
+const MAX_ITEMS = 180;
+// localStorage est réservé à un index léger. Les originaux sont dans IndexedDB/R2.
+const MAX_LOCAL_STORAGE_CHARS = 600_000;
+const MAX_LOCAL_STORAGE_ITEMS = 64;
+const MAX_INLINE_SRC_CHARS = 60_000;
 
 function now() {
   return Date.now();
@@ -68,6 +72,91 @@ export function avatarGalleryHash(src: string): string {
   return `h${(h >>> 0).toString(16)}`;
 }
 
+const pendingGalleryCaptures = new Map<string, AvatarGalleryItem>();
+let galleryCaptureRunning = false;
+let galleryCaptureTimer: number | null = null;
+
+function persistableGalleryItems(items: AvatarGalleryItem[]): AvatarGalleryItem[] {
+  const out: AvatarGalleryItem[] = [];
+  let chars = 2;
+  for (const item of items) {
+    if (out.length >= MAX_LOCAL_STORAGE_ITEMS) break;
+    const src = String(item?.src || "").trim();
+    if (!src) continue;
+    // Les grosses data URLs ne doivent jamais revenir dans localStorage. Elles
+    // restent disponibles via le coffre média IndexedDB/R2 et les profils sources.
+    if (src.startsWith("data:image/") && src.length > MAX_INLINE_SRC_CHARS) continue;
+    let rowChars = 0;
+    try { rowChars = JSON.stringify(item).length + 1; } catch { continue; }
+    if (chars + rowChars > MAX_LOCAL_STORAGE_CHARS) continue;
+    out.push(item);
+    chars += rowChars;
+  }
+  return out;
+}
+
+function persistGalleryIndex(
+  accountId: string | null | undefined,
+  items: AvatarGalleryItem[],
+): { items: AvatarGalleryItem[]; changed: boolean } {
+  if (typeof window === "undefined") return { items, changed: false };
+  const compact = persistableGalleryItems(items);
+  try {
+    const key = avatarGalleryKey(accountId);
+    const serialized = JSON.stringify(compact);
+    const previous = window.localStorage.getItem(key);
+    if (previous !== serialized) {
+      window.localStorage.setItem(key, serialized);
+      return { items: compact, changed: true };
+    }
+    return { items: compact, changed: false };
+  } catch {
+    try {
+      const key = avatarGalleryKey(accountId);
+      const fallback = compact.slice(0, 32);
+      const serialized = JSON.stringify(fallback);
+      const previous = window.localStorage.getItem(key);
+      if (previous !== serialized) {
+        window.localStorage.removeItem(key);
+        window.localStorage.setItem(key, serialized);
+        return { items: fallback, changed: true };
+      }
+      return { items: fallback, changed: false };
+    } catch {}
+  }
+  return { items: compact, changed: false };
+}
+
+function scheduleGalleryCaptures(items: AvatarGalleryItem[]): void {
+  for (const item of items) {
+    if (!item?.id || !item?.src) continue;
+    pendingGalleryCaptures.set(String(item.id), item);
+  }
+  if (galleryCaptureRunning || galleryCaptureTimer != null || typeof window === "undefined") return;
+  galleryCaptureTimer = window.setTimeout(() => {
+    galleryCaptureTimer = null;
+    void (async () => {
+      if (galleryCaptureRunning) return;
+      galleryCaptureRunning = true;
+      try {
+        while (pendingGalleryCaptures.size > 0) {
+          const first = pendingGalleryCaptures.entries().next().value as [string, AvatarGalleryItem] | undefined;
+          if (!first) break;
+          pendingGalleryCaptures.delete(first[0]);
+          const item = first[1];
+          await captureUserMediaFallback(galleryItemMediaKey(item.id), String(item.src || ""), {
+            kind: "gallery_item",
+            updatedAt: Number(item.updatedAt || Date.now()),
+          }).catch(() => "");
+        }
+      } finally {
+        galleryCaptureRunning = false;
+        if (pendingGalleryCaptures.size > 0) scheduleGalleryCaptures([]);
+      }
+    })();
+  }, 350);
+}
+
 function normalizeItem(input: Partial<AvatarGalleryItem>): AvatarGalleryItem | null {
   const src = String(input.src || "").trim();
   if (!isValidSrc(src)) return null;
@@ -90,9 +179,14 @@ function normalizeItem(input: Partial<AvatarGalleryItem>): AvatarGalleryItem | n
 
 export function readAvatarGallery(accountId?: string | null): AvatarGalleryItem[] {
   if (typeof window === "undefined") return [];
-  const raw = safeJsonParse<any[]>(window.localStorage.getItem(avatarGalleryKey(accountId)), []);
+  const key = avatarGalleryKey(accountId);
+  const rawText = window.localStorage.getItem(key);
+  const raw = safeJsonParse<any[]>(rawText, []);
   if (!Array.isArray(raw)) return [];
-  return raw.map(normalizeItem).filter(Boolean).sort((a, b) => b!.updatedAt - a!.updatedAt) as AvatarGalleryItem[];
+  const items = raw.map(normalizeItem).filter(Boolean).sort((a, b) => b!.updatedAt - a!.updatedAt) as AvatarGalleryItem[];
+  // Migration automatique d'une ancienne galerie base64 surdimensionnée.
+  if ((rawText || "").length > MAX_LOCAL_STORAGE_CHARS) persistGalleryIndex(accountId, items);
+  return items;
 }
 
 export function writeAvatarGallery(accountId: string | null | undefined, items: AvatarGalleryItem[]): AvatarGalleryItem[] {
@@ -105,46 +199,18 @@ export function writeAvatarGallery(accountId: string | null | undefined, items: 
     if (!prev || item.updatedAt >= prev.updatedAt) map.set(key, { ...prev, ...item, createdAt: prev?.createdAt || item.createdAt });
   }
   const safe = Array.from(map.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_ITEMS);
-  if (typeof window !== "undefined") {
-    try {
-      const key = avatarGalleryKey(accountId);
-      const serialized = JSON.stringify(safe);
-      const previous = window.localStorage.getItem(key);
-      if (previous !== serialized) {
-        window.localStorage.setItem(key, serialized);
-        window.setTimeout(() => {
-          window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: safe.length } }));
-        }, 0);
-      }
-    } catch (error) {
-      // En cas de quota, on conserve les entrées récentes et on réessaie.
-      try {
-        const compact = safe.slice(0, 120);
-        const key = avatarGalleryKey(accountId);
-        const serialized = JSON.stringify(compact);
-        const previous = window.localStorage.getItem(key);
-        if (previous !== serialized) {
-          window.localStorage.setItem(key, serialized);
-          window.setTimeout(() => {
-            window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: compact.length } }));
-          }, 0);
-        }
-        return compact;
-      } catch {}
-    }
+  const persisted = persistGalleryIndex(accountId, safe);
+
+  if (typeof window !== "undefined" && persisted.changed) {
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(AVATAR_GALLERY_EVENT, { detail: { accountId, count: safe.length, persisted: persisted.items.length } }));
+    }, 0);
   }
   try { emitCloudChange("avatar-gallery:changed"); } catch {}
 
-  // Chaque élément de galerie est aussi un objet R2 autonome. On ne dépend donc
-  // plus du localStorage ni du NAS pour retrouver l'image originale.
-  for (const item of safe) {
-    const src = String(item?.src || "").trim();
-    if (!src) continue;
-    void captureUserMediaFallback(galleryItemMediaKey(item.id), src, {
-      kind: "gallery_item",
-      updatedAt: Number(item.updatedAt || Date.now()),
-    }).catch(() => undefined);
-  }
+  // Capture séquentielle bornée : l'ancienne boucle lançait jusqu'à 260 conversions
+  // image/R2 en parallèle et pouvait provoquer un pic mémoire massif.
+  scheduleGalleryCaptures(safe);
   return safe;
 }
 

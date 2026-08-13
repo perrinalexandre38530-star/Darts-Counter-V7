@@ -83,6 +83,9 @@ const CREDIT_PACKS: CreditPack[] = [
   { id: "pack100", label: "100 avatars IA", credits: 100, price: "9,99 €" },
 ];
 const GALLERY_STORAGE_KEY = "msc_avatar_ia_gallery_v1";
+const LOCAL_GALLERY_MAX_CHARS = 450_000;
+const LOCAL_GALLERY_MAX_ITEMS = 20;
+const LOCAL_GALLERY_MAX_INLINE_CHARS = 80_000;
 
 const MEDALLION_COLORS = [
   {
@@ -400,13 +403,43 @@ type GalleryAvatar = {
   updatedAt?: string;
 };
 
+function localGallerySnapshot(items: GalleryAvatar[]): GalleryAvatar[] {
+  const out: GalleryAvatar[] = [];
+  let chars = 2;
+  for (const item of items) {
+    if (out.length >= LOCAL_GALLERY_MAX_ITEMS) break;
+    const dataUrl = String(item?.dataUrl || "");
+    if (!dataUrl.startsWith("data:image/") || dataUrl.length > LOCAL_GALLERY_MAX_INLINE_CHARS) continue;
+    let rowChars = 0;
+    try { rowChars = JSON.stringify(item).length + 1; } catch { continue; }
+    if (chars + rowChars > LOCAL_GALLERY_MAX_CHARS) continue;
+    out.push(item);
+    chars += rowChars;
+  }
+  return out;
+}
+
+function persistLocalGallerySnapshot(items: GalleryAvatar[]): void {
+  const compact = localGallerySnapshot(items);
+  try {
+    localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(compact));
+  } catch {
+    try {
+      localStorage.removeItem(GALLERY_STORAGE_KEY);
+      localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(compact.slice(0, 8)));
+    } catch {}
+  }
+}
+
 function readGallery(): GalleryAvatar[] {
   try {
     const raw = localStorage.getItem(GALLERY_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
+    const safe = Array.isArray(parsed)
       ? parsed.filter((x) => x && typeof x.dataUrl === "string").slice(0, 48)
       : [];
+    if ((raw || "").length > LOCAL_GALLERY_MAX_CHARS) persistLocalGallerySnapshot(safe);
+    return safe;
   } catch {
     return [];
   }
@@ -416,9 +449,9 @@ function writeGallery(items: GalleryAvatar[]): GalleryAvatar[] {
   const safe = items
     .filter((x) => x && typeof x.dataUrl === "string")
     .slice(0, 48);
-  try {
-    localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(safe));
-  } catch {}
+  // L'UI/NAS peut conserver 48 éléments, mais localStorage ne reçoit qu'un
+  // petit cache de secours. Les originaux restent côté NAS + galerie centrale.
+  persistLocalGallerySnapshot(safe);
   return safe;
 }
 

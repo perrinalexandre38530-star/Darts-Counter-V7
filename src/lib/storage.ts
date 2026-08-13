@@ -39,6 +39,40 @@ let lastQuotaEstimateAt = 0;
 let lastQuotaEstimateValue: { quota: number | null; usage: number | null } = { quota: null, usage: null };
 let lastSavedStoreJsonByScope = new Map<string, string>();
 
+// MEDIA CAPTURE PERF/MEMORY GUARD
+// Avant ce garde-fou, chaque saveStore lançait un scan média asynchrone sans
+// attendre le précédent. Plusieurs scans du même gros store pouvaient donc
+// coexister et retenir des data URLs/canvas en mémoire. On ne garde désormais
+// qu'un seul scan en vol + le dernier store demandé.
+let storeMediaCaptureInFlight = false;
+let pendingStoreMediaCapture: any = null;
+let storeMediaCaptureTimer: any = null;
+
+function scheduleStoreUserMediaCapture(store: any): void {
+  pendingStoreMediaCapture = store;
+  if (storeMediaCaptureInFlight || storeMediaCaptureTimer != null) return;
+
+  const run = async () => {
+    storeMediaCaptureTimer = null;
+    if (storeMediaCaptureInFlight) return;
+    const latest = pendingStoreMediaCapture;
+    pendingStoreMediaCapture = null;
+    if (!latest) return;
+    storeMediaCaptureInFlight = true;
+    try {
+      await captureStoreUserMedia(latest, { mirrorR2: false });
+    } catch {}
+    storeMediaCaptureInFlight = false;
+    if (pendingStoreMediaCapture) scheduleStoreUserMediaCapture(pendingStoreMediaCapture);
+  };
+
+  try {
+    storeMediaCaptureTimer = setTimeout(() => { void run(); }, 900);
+  } catch {
+    void run();
+  }
+}
+
 function storageNowMs() {
   try {
     return typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -185,15 +219,29 @@ function writeProfilesSafetyCache(store: any) {
     if (typeof localStorage === "undefined") return;
     const profiles = validProfileList(store?.profiles);
     if (profiles.length <= 0) return;
+
+    // Ce cache anti-disparition n'a besoin que des données de profil. Les anciennes
+    // versions y recopiaient aussi les avatars base64, ce qui doublait facilement
+    // plusieurs Mo dans localStorage à chaque saveStore.
+    const compactProfiles = validProfileList(stripHeavyInlineImagesDeep(profiles));
     const payload: ProfileSafetyCache = {
       _v: 1,
       scopedStoreKey: scopedStorageKey(STORE_KEY),
       userId: getStorageUser(),
       updatedAt: Date.now(),
-      profiles,
+      profiles: compactProfiles,
       activeProfileId: store?.activeProfileId ? String(store.activeProfileId) : null,
     };
-    localStorage.setItem(profileSafetyCacheKey(), safeJsonStringify(payload));
+    const key = profileSafetyCacheKey();
+    const raw = safeJsonStringify(payload);
+    try {
+      localStorage.setItem(key, raw);
+    } catch {
+      // Si l'ancienne entrée géante occupe déjà le quota, on la retire avant
+      // d'écrire sa version compacte.
+      try { localStorage.removeItem(key); } catch {}
+      try { localStorage.setItem(key, raw); } catch {}
+    }
   } catch {}
 }
 
@@ -1306,8 +1354,11 @@ async function decompressGzip(payload: ArrayBuffer | Uint8Array | string): Promi
 }
 
 /* ---------- Mini-wrapper IndexedDB (aucune lib externe) ---------- */
+let mainDbPromise: Promise<IDBDatabase> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (mainDbPromise) return mainDbPromise;
+  mainDbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
 
     req.onupgradeneeded = () => {
@@ -1317,9 +1368,23 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        try { db.close(); } catch {}
+        mainDbPromise = null;
+      };
+      try {
+        (db as any).onclose = () => { mainDbPromise = null; };
+      } catch {}
+      resolve(db);
+    };
+    req.onerror = () => {
+      mainDbPromise = null;
+      reject(req.error);
+    };
   });
+  return mainDbPromise;
 }
 
 async function idbGet<T = unknown>(key: IDBValidKey): Promise<T | undefined> {
@@ -1845,7 +1910,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   // sont répliqués vers R2 sans dépendre du NAS.
   // Sauvegarde locale uniquement à chaque mutation du store. La réplication R2
   // est déclenchée par le pipeline cloud dédié, jamais par un simple rendu/navigation.
-  void captureStoreUserMedia(guardedInput as any, { mirrorR2: false }).catch(() => undefined);
+  scheduleStoreUserMediaCapture(guardedInput as any);
   const startedAt = storageNowMs();
 
   try {
