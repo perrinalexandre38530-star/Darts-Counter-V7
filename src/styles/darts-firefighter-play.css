@@ -1809,3 +1809,273 @@ button.dff-adjacent-card:active { transform: scale(.985); }
   .dff-play__turns-shell .dff-play__turns { padding-top: 4px; padding-bottom: 4px; min-height: 50px; }
   .dff-play__turns-shell .dff-play__turn { flex-basis: min(150px,44vw); width: min(150px,44vw); }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.5 — cartes d'action animées + feedback terrain
+   ============================================================= */
+.dff-action-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  pointer-events: auto;
+  overflow: hidden;
+}
+.dff-action-reveal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 44%, rgba(0,0,0,.18), rgba(0,0,0,.72) 72%);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: dffActionBackdrop 1.05s ease both;
+}
+.dff-action-reveal__card {
+  position: relative;
+  width: min(360px, 92vw);
+  min-height: 210px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 24px;
+  background: #080b11;
+  color: #fff;
+  transform-origin: 50% 65%;
+  animation: dffActionCardIn 1.05s cubic-bezier(.16,.84,.22,1) both;
+}
+.dff-action-reveal__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: .48;
+  filter: saturate(1.08) contrast(1.05) brightness(.82);
+  transform: scale(1.08);
+  animation: dffActionBgDrift 2s ease-out both;
+}
+.dff-action-reveal__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, rgba(3,6,10,.94) 0%, rgba(3,6,10,.78) 48%, rgba(3,6,10,.36) 100%), linear-gradient(180deg, rgba(0,0,0,.12), rgba(0,0,0,.72));
+}
+.dff-action-reveal__eyebrow {
+  position: relative;
+  z-index: 2;
+  padding: 14px 16px 0;
+  color: #a9b4c4;
+  font-size: 8px;
+  font-weight: 1100;
+  letter-spacing: 1.1px;
+}
+.dff-action-reveal__content {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 118px minmax(0,1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 128px;
+  padding: 4px 15px 8px 10px;
+}
+.dff-action-reveal__shape {
+  min-width: 0;
+  filter: drop-shadow(0 0 14px rgba(255,255,255,.16));
+  animation: dffActionShapePop .72s .08s cubic-bezier(.2,.9,.2,1) both;
+}
+.dff-action-reveal__plane {
+  display: grid;
+  place-items: center;
+  min-height: 100px;
+  color: #ffb03f;
+  font-size: 64px;
+  transform: rotate(-8deg);
+  text-shadow: 0 0 22px rgba(255,137,32,.45);
+  animation: dffCanadairFly .92s cubic-bezier(.15,.8,.2,1) both;
+}
+.dff-action-reveal__copy {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+.dff-action-reveal__copy > strong {
+  font-size: 13px;
+  line-height: 1.05;
+  font-weight: 1200;
+  letter-spacing: .3px;
+  text-shadow: 0 0 16px currentColor;
+}
+.dff-action-reveal__copy > b {
+  font-size: 22px;
+  line-height: 1.05;
+  font-weight: 1100;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dff-action-reveal__copy > span {
+  color: #d0d7e1;
+  font-size: 8.4px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+.dff-action-reveal__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: rgba(0,0,0,.42);
+}
+.dff-action-reveal__status b { font-size: 10px; }
+.dff-action-reveal__status small { font-size: 6px; font-weight: 1100; letter-spacing: .35px; }
+.dff-action-reveal__affected {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  padding: 0 14px 9px;
+  overflow: hidden;
+}
+.dff-action-reveal__affected-item {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 5px;
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(4,7,11,.68);
+}
+.dff-action-reveal__affected-item b {
+  font-size: 11px;
+  color: #fff;
+}
+.dff-action-reveal__footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(255,255,255,.09);
+  background: rgba(3,6,10,.78);
+}
+.dff-action-reveal__footer span {
+  color: #9ea8b7;
+  font-size: 6.8px;
+  font-weight: 1100;
+  letter-spacing: .7px;
+}
+.dff-action-reveal__footer strong {
+  font-size: 18px;
+  font-weight: 1200;
+  text-shadow: 0 0 14px currentColor;
+}
+.dff-action-reveal__sweep {
+  position: absolute;
+  z-index: 3;
+  top: -20%;
+  bottom: -20%;
+  left: -38%;
+  width: 26%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+  filter: blur(2px);
+  animation: dffActionSweep 1.05s .12s ease-out both;
+  pointer-events: none;
+}
+.dff-action-reveal.is-canadair .dff-action-reveal__card {
+  animation-name: dffCanadairCardIn;
+  animation-duration: 1.75s;
+}
+.dff-action-reveal.is-canadair .dff-action-reveal__backdrop { animation-duration: 1.75s; }
+.dff-action-reveal.is-extinguished .dff-action-reveal__card,
+.dff-action-reveal.is-extinguished .dff-action-reveal__backdrop { animation-duration: 1.35s; }
+.dff-action-reveal.is-canadair .dff-action-reveal__bg {
+  opacity: .56;
+  filter: saturate(1.18) contrast(1.08) brightness(.82);
+}
+.dff-action-reveal.is-extinguished .dff-action-reveal__card::after,
+.dff-action-reveal.is-protected .dff-action-reveal__card::after {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  z-index: 1;
+  background: radial-gradient(circle, rgba(65,220,255,.20), transparent 58%);
+  animation: dffWaterPulse .8s ease-out both;
+  pointer-events: none;
+}
+
+@keyframes dffActionBackdrop {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes dffActionCardIn {
+  0% { opacity: 0; transform: translateY(44px) scale(.72) rotateX(12deg); filter: blur(8px); }
+  48% { opacity: 1; transform: translateY(-4px) scale(1.035) rotateX(0); filter: blur(0); }
+  68% { transform: translateY(0) scale(1); }
+  88% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.97); }
+}
+@keyframes dffCanadairCardIn {
+  0% { opacity: 0; transform: translateX(70px) scale(.82) rotate(2deg); filter: blur(8px); }
+  36% { opacity: 1; transform: translateX(-5px) scale(1.03) rotate(-.4deg); filter: blur(0); }
+  58% { transform: translateX(0) scale(1); }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-18px) scale(.98); }
+}
+@keyframes dffActionShapePop {
+  0% { opacity: 0; transform: scale(.35) rotate(-7deg); }
+  58% { opacity: 1; transform: scale(1.10) rotate(1deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes dffActionBgDrift {
+  from { transform: scale(1.12) translate3d(-1.5%,0,0); }
+  to { transform: scale(1.04) translate3d(1.5%,0,0); }
+}
+@keyframes dffActionSweep {
+  0% { left: -38%; opacity: 0; }
+  18% { opacity: .85; }
+  100% { left: 124%; opacity: 0; }
+}
+@keyframes dffCanadairFly {
+  0% { opacity: 0; transform: translateX(90px) translateY(-18px) rotate(-14deg) scale(.5); }
+  55% { opacity: 1; transform: translateX(-8px) translateY(3px) rotate(-6deg) scale(1.08); }
+  100% { opacity: 1; transform: translateX(0) translateY(0) rotate(-8deg) scale(1); }
+}
+@keyframes dffWaterPulse {
+  0% { opacity: 0; transform: scale(.5); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+
+@media (max-width: 520px) {
+  .dff-action-reveal { padding: 12px; }
+  .dff-action-reveal__card { width: min(340px, 94vw); min-height: 196px; border-radius: 21px; }
+  .dff-action-reveal__content { grid-template-columns: 104px minmax(0,1fr); min-height: 118px; padding-left: 8px; }
+  .dff-action-reveal__copy > strong { font-size: 11.5px; }
+  .dff-action-reveal__copy > b { font-size: 19px; }
+  .dff-action-reveal__copy > span { font-size: 7.7px; }
+  .dff-action-reveal__footer strong { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dff-action-reveal *, .dff-action-reveal *::before, .dff-action-reveal *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

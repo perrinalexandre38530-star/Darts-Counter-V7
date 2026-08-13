@@ -43,6 +43,7 @@ import {
   type FireTerritory,
 } from "../lib/gameEngines/dartsFirefighterEngine";
 import { pushDartsFirefighterStats } from "../lib/dartsFirefighterStats";
+import { playDartsFirefighterSfx, preloadDartsFirefighterSfx, type FirefighterSfxKey } from "../lib/dartsFirefighterSfx";
 import { History } from "../lib/history";
 import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
 import DartsFirefighterEnd from "./DartsFirefighterEnd";
@@ -61,7 +62,7 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.4.0-tactical-map-wind16-multizone";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.5.0-action-cards-sfx";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -824,6 +825,159 @@ function dedupeTacticalSuggestions(rows: Array<TacticalSuggestion | null | undef
   });
 }
 
+
+type FirefighterActionReveal = {
+  id: string;
+  territoryId?: string | null;
+  title: string;
+  detail: string;
+  score: number;
+  color: string;
+  sound: FirefighterSfxKey;
+  kind: "water" | "extinguished" | "protected" | "smoke" | "canadair" | "no_effect";
+  affectedIds?: string[];
+};
+
+const ACTION_EVENT_TYPES = new Set(["water", "extinguished", "protected", "smoke_cleared", "canadair", "bull_drop", "useless"]);
+
+function actionEventRank(type: string) {
+  if (type === "canadair") return 100;
+  if (type === "extinguished") return 90;
+  if (type === "smoke_cleared") return 75;
+  if (type === "protected") return 65;
+  if (type === "water") return 55;
+  if (type === "bull_drop") return 50;
+  if (type === "useless") return 10;
+  return 0;
+}
+
+function cleanActionLabel(label: string) {
+  return String(label || "")
+    .replace(/^(CANADAIR|LARGAGE LATÉRAL|DBULL|BULL)\s*·\s*/i, "")
+    .replace(/\s*·\s*adresse\s*\+\d+/i, "")
+    .trim();
+}
+
+function buildVisitActionReveals(visit: any, nextState: DartsFirefighterState): FirefighterActionReveal[] {
+  const events = Array.isArray(visit?.events) ? visit.events : [];
+  const meaningful = events.filter((event: any) => ACTION_EVENT_TYPES.has(String(event?.type || "")));
+  if (!meaningful.length) return [];
+
+  const canadairEvent = meaningful.find((event: any) => event?.type === "canadair");
+  if (canadairEvent) {
+    const affectedIds = Array.from(new Set(meaningful
+      .filter((event: any) => event?.territoryId && ["water", "extinguished", "protected", "smoke_cleared", "canadair"].includes(String(event.type)))
+      .map((event: any) => String(event.territoryId))));
+    const center = nextState.territories.find((territory) => String(territory.id) === String(canadairEvent.territoryId)) || null;
+    return [{
+      id: `ff-reveal-${visit?.id || visit?.index || Date.now()}-canadair`,
+      territoryId: canadairEvent.territoryId || center?.id || null,
+      title: "CANADAIR EN INTERVENTION",
+      detail: `${center?.name || canadairEvent?.territoryName || "Zone ciblée"} · ${affectedIds.length || 1} territoire${(affectedIds.length || 1) > 1 ? "s" : ""} arrosé${(affectedIds.length || 1) > 1 ? "s" : ""}`,
+      score: Math.max(0, Number(visit?.score || canadairEvent?.score || 0)),
+      color: FIRE,
+      sound: "canadair",
+      kind: "canadair",
+      affectedIds,
+    }];
+  }
+
+  const groups = new Map<string, any[]>();
+  meaningful.forEach((event: any, index: number) => {
+    const key = event?.territoryId ? String(event.territoryId) : `__no-territory-${index}`;
+    const row = groups.get(key) || [];
+    row.push(event);
+    groups.set(key, row);
+  });
+
+  const reveals: FirefighterActionReveal[] = [];
+  groups.forEach((group, key) => {
+    const territoryId = key.startsWith("__") ? null : key;
+    const territory = territoryId ? nextState.territories.find((item) => String(item.id) === territoryId) || null : null;
+    const ranked = [...group].sort((a, b) => actionEventRank(String(b?.type)) - actionEventRank(String(a?.type)));
+    const primaryEvent = ranked[0];
+    if (!primaryEvent) return;
+
+    let title = "INTERVENTION RÉALISÉE";
+    let kind: FirefighterActionReveal["kind"] = "water";
+    let sound: FirefighterSfxKey = "water1";
+    let color = territory ? fireTerritoryColor(fireStatus(territory)) : WATER;
+
+    if (group.some((event: any) => event?.type === "extinguished")) {
+      title = "INCENDIE ÉTEINT"; kind = "extinguished"; sound = "extinguished"; color = GREEN;
+    } else if (group.some((event: any) => event?.type === "smoke_cleared")) {
+      title = "FUMÉE DISSIPÉE"; kind = "smoke"; sound = "smoke"; color = "#c9d0d9";
+    } else if (group.some((event: any) => event?.type === "water" && /niveau|feu supprim/i.test(String(event?.label || "")))) {
+      const effectiveWaterEvents = group.filter((event: any) => event?.type === "water" && /niveau|feu supprim/i.test(String(event?.label || "")));
+      const waterLevel = Math.max(1, Math.min(3, ...effectiveWaterEvents.map((event: any) => Math.max(1, Number(event?.value || 1)))));
+      title = waterLevel >= 2 ? "FEU FORTEMENT RÉDUIT" : "FEU CONTENU";
+      kind = "water";
+      sound = (`water${waterLevel}` as FirefighterSfxKey);
+      color = waterLevel >= 3 ? FIRE : waterLevel === 2 ? GOLD : WATER;
+    } else if (group.some((event: any) => event?.type === "protected")) {
+      title = "ZONE PROTÉGÉE"; kind = "protected"; sound = "protected"; color = WATER;
+    } else if (group.some((event: any) => event?.type === "water")) {
+      title = "INTERVENTION RÉUSSIE"; kind = "water"; sound = "water1"; color = WATER;
+    } else if (primaryEvent?.type === "useless") {
+      title = "INTERVENTION SANS EFFET"; kind = "no_effect"; sound = "no_effect"; color = "#8e97a6";
+    }
+
+    const positiveEventScore = group.reduce((sum: number, event: any) => sum + Math.max(0, Number(event?.score || 0)), 0);
+    const bestLabel = ranked.map((event: any) => cleanActionLabel(event?.label)).find(Boolean) || primaryEvent?.territoryName || "Action terminée";
+    reveals.push({
+      id: `ff-reveal-${visit?.id || visit?.index || Date.now()}-${territoryId || reveals.length}`,
+      territoryId,
+      title,
+      detail: bestLabel,
+      score: positiveEventScore,
+      color,
+      sound,
+      kind,
+    });
+  });
+
+  // Une volée multi-zone peut produire plusieurs cartes, mais on limite volontairement
+  // la séquence à trois résultats pour garder le rythme de jeu fluide.
+  return reveals
+    .filter((item) => item.territoryId || item.kind === "no_effect")
+    .sort((a, b) => (b.kind === "extinguished" ? 2 : b.kind === "protected" ? 1 : 0) - (a.kind === "extinguished" ? 2 : a.kind === "protected" ? 1 : 0))
+    .slice(0, 3);
+}
+
+function FirefighterActionRevealOverlay({ item, state, country }: { item: FirefighterActionReveal | null; state: DartsFirefighterState; country: TerritoriesCountry }) {
+  if (!item) return null;
+  const territory = item.territoryId ? state.territories.find((row) => String(row.id) === String(item.territoryId)) || null : null;
+  const background = item.kind === "canadair" ? levelFire2 : statusTickerSrc(territory);
+  const affected = (item.affectedIds || []).map((id) => state.territories.find((row) => String(row.id) === String(id))).filter(Boolean).slice(0, 5) as FireTerritory[];
+  const status = territory ? statusMeta(territory) : null;
+  return <div className={`dff-action-reveal is-${item.kind}`} role="status" aria-live="assertive">
+    <div className="dff-action-reveal__backdrop" />
+    <article className="dff-action-reveal__card" style={{ borderColor: `${item.color}88`, boxShadow: `0 0 32px ${item.color}32, 0 22px 56px rgba(0,0,0,.56)` }}>
+      <img className="dff-action-reveal__bg" src={background} alt="" aria-hidden />
+      <div className="dff-action-reveal__shade" />
+      <div className="dff-action-reveal__eyebrow">ACTION RÉALISÉE</div>
+      <div className="dff-action-reveal__content">
+        {territory ? <div className="dff-action-reveal__shape"><TerritorySilhouetteBadge country={country} territory={territory} color={item.color} height={106} showValue /></div> : <div className="dff-action-reveal__plane" aria-hidden>✈</div>}
+        <div className="dff-action-reveal__copy">
+          <strong style={{ color: item.color }}>{item.title}</strong>
+          <b>{territory?.name || "Intervention"}</b>
+          <span>{item.detail}</span>
+          {status ? <div className="dff-action-reveal__status" style={{ color: status.color }}><OutlineIcon name={status.icon} size={14} /><b>{status.value}</b><small>{status.label}</small></div> : null}
+        </div>
+      </div>
+      {affected.length > 1 ? <div className="dff-action-reveal__affected">{affected.map((row) => {
+        const color = fireTerritoryColor(fireStatus(row));
+        return <div key={row.id} className="dff-action-reveal__affected-item" style={{ borderColor: `${color}60` }}><TerritorySilhouetteBadge country={country} territory={row} color={color} height={34} showValue={false} visualMode="status" /><b>{row.target}</b></div>;
+      })}</div> : null}
+      <div className="dff-action-reveal__footer">
+        <span>{item.kind === "canadair" ? "LARGAGE AÉRIEN" : "INTERVENTION TERRAIN"}</span>
+        <strong style={{ color: item.color }}>{item.score > 0 ? `+${Math.round(item.score)} PTS` : "ACTION"}</strong>
+      </div>
+      <div className="dff-action-reveal__sweep" aria-hidden />
+    </article>
+  </div>;
+}
+
 export default function DartsFirefighterPlay(props: any) {
   const { theme } = useTheme();
   const config = React.useMemo(() => normalizeConfig(props), []);
@@ -877,6 +1031,7 @@ export default function DartsFirefighterPlay(props: any) {
   const [showTerritory, setShowTerritory] = React.useState(false);
   const [showStats, setShowStats] = React.useState(false);
   const [showActionPlanner, setShowActionPlanner] = React.useState(false);
+  const [actionRevealQueue, setActionRevealQueue] = React.useState<FirefighterActionReveal[]>([]);
   const [botThinking, setBotThinking] = React.useState(false);
   const matchIdRef = React.useRef(String(resumeRecord?.id || resumeRecord?.matchId || `darts-firefighter-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`));
   const autoSavedRef = React.useRef("");
@@ -890,6 +1045,8 @@ export default function DartsFirefighterPlay(props: any) {
       try { delete document.documentElement.dataset.dartsFirefighterPlay; } catch {}
     };
   }, []);
+
+  React.useEffect(() => { preloadDartsFirefighterSfx(); }, []);
 
   const activePlayer = getActivePlayer(state);
   const activeProfile = profilesById.get(String(activePlayer?.id)) || activePlayer;
@@ -906,6 +1063,21 @@ export default function DartsFirefighterPlay(props: any) {
   const forecastTerritories = config.forecastEnabled
     ? state.forecastTerritoryIds.map((id) => state.territories.find((territory) => territory.id === id)).filter(Boolean)
     : [];
+  const actionReveal = actionRevealQueue[0] || null;
+  const firefighterSfxVolume = Math.max(0, Math.min(1, Number((config as any)?.sfxVolume ?? 0.78)));
+
+  React.useEffect(() => {
+    if (!actionReveal) return;
+    playDartsFirefighterSfx(actionReveal.sound, firefighterSfxVolume);
+    const duration = actionReveal.kind === "canadair" ? 1750 : actionReveal.kind === "extinguished" ? 1350 : 1050;
+    const timer = window.setTimeout(() => setActionRevealQueue((rows) => rows.slice(1)), duration);
+    return () => window.clearTimeout(timer);
+  }, [actionReveal?.id]);
+
+  function triggerVisitFeedback(visit: any, nextState: DartsFirefighterState) {
+    const rows = buildVisitActionReveals(visit, nextState);
+    if (rows.length) setActionRevealQueue(rows);
+  }
 
   function backToConfig() {
     if (typeof go === "function") go("darts_firefighter_config", config);
@@ -930,7 +1102,7 @@ export default function DartsFirefighterPlay(props: any) {
     selectTerritory(id);
   }
   function addDart(v: number, mult?: 1 | 2 | 3) {
-    if (botThinking || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)) return;
+    if (botThinking || actionRevealQueue.length > 0 || state.finished || throwDarts.length >= Number(config.dartsPerTurn || 3)) return;
     const dart = { v: Number(v) || 0, mult: (mult || multiplier) as 1 | 2 | 3 };
 
     const scoreTargetMode = state.targetMode === "visit_score" || Number(config.activeTerritories || 0) > 20;
@@ -956,13 +1128,14 @@ export default function DartsFirefighterPlay(props: any) {
   }
   function commitVisit(source?: UiDart[]) {
     const darts = (source || throwDarts).slice(0, Number(config.dartsPerTurn || 3));
-    if (!darts.length || state.finished) return;
+    if (!darts.length || actionRevealQueue.length > 0 || state.finished) return;
     setUndoStack((prev) => [...prev.slice(-19), cloneDartsFirefighterState(state)]);
     const next = playDartsFirefighterVisit(state, darts.map(uiToGameDart));
     setState(next);
     setThrowDarts([]);
     setMultiplier(1);
     const visit = next.history[next.history.length - 1];
+    triggerVisitFeedback(visit, next);
     const important = [...(visit?.events || [])].reverse().find((event: any) => scoreTargetMode
       ? ["extinguished","destroyed","spread_blocked","canadair","spread","water","useless"].includes(event.type)
       : ["extinguished","destroyed","spread_blocked","canadair","spread"].includes(event.type));
@@ -987,11 +1160,12 @@ export default function DartsFirefighterPlay(props: any) {
     setThrowDarts([]);
     setUndoStack([]);
     setShowEnd(false);
+    setActionRevealQueue([]);
     setNotice("Nouvelle intervention engagée.");
   }
 
   React.useEffect(() => {
-    if (!activePlayer || !isBot(activeProfile, botIds) || state.finished || botThinking || throwDarts.length) return;
+    if (!activePlayer || !isBot(activeProfile, botIds) || state.finished || botThinking || actionRevealQueue.length > 0 || throwDarts.length) return;
     setBotThinking(true);
     const timer = window.setTimeout(() => {
       const plan = buildBotVisit(state, config.botLevel || "normal");
@@ -1001,11 +1175,12 @@ export default function DartsFirefighterPlay(props: any) {
       const next = playDartsFirefighterVisit(prepared, plan.darts.map(uiToGameDart));
       setState(next);
       const visit = next.history[next.history.length - 1];
+      triggerVisitFeedback(visit, next);
       setNotice(`BOT ${activePlayer.name} · ${visit?.labels?.join(" / ")} · ${visit?.score >= 0 ? "+" : ""}${visit?.score || 0}`);
       setBotThinking(false);
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [state.turnIndex, state.finished, activePlayer?.id]);
+  }, [state.turnIndex, state.finished, activePlayer?.id, actionRevealQueue.length]);
 
   function buildHistoryRecord(statusOverride?: "in_progress" | "finished") {
     const recordStatus = statusOverride || (state.finished ? "finished" : "in_progress");
@@ -1238,7 +1413,7 @@ export default function DartsFirefighterPlay(props: any) {
           centerSlot={centerScore}
           validateLabel={validateVisitLabel}
           validateDisabled={!canValidateVisit}
-          disabled={botThinking || state.finished}
+          disabled={botThinking || actionRevealQueue.length > 0 || state.finished}
           switcherMode="hidden"
           hideSwitcher
           showPlaceholders={false}
@@ -1255,6 +1430,7 @@ export default function DartsFirefighterPlay(props: any) {
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {showStats ? <StatsModal state={state} currentStats={currentStats} activeProfile={activeProfile} config={config} onClose={() => setShowStats(false)} /> : null}
     {showActionPlanner && focusTerritory ? <ActionPlannerModal territory={focusTerritory} state={state} country={country} onClose={() => setShowActionPlanner(false)} /> : null}
+    <FirefighterActionRevealOverlay item={actionReveal} state={state} country={country} />
     {showEnd && state.finished ? <DartsFirefighterEnd state={state} profilesById={profilesById} onReplay={resetMatch} onStats={() => go?.("statsHub", { initialStatsSubTab: "darts_firefighter" })} onHistory={() => go?.("history")} onClose={() => go?.("games")} /> : null}
   </div>;
 }
