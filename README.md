@@ -1,7 +1,7 @@
 # MULTISPORTS SCORING
 
-Version de référence : **1.0.0-rc3**  
-Code Google Play : **4**  
+Version de référence : **1.0.0-rc4**  
+Code Google Play : **5**  
 Package Android : `com.multisportsscoring.app`
 
 La source unique de version est `config/release-version.json`.

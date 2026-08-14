@@ -56,6 +56,14 @@ import levelSmoke from "../assets/firefighter_levels/smoke.png";
 import levelFire1 from "../assets/firefighter_levels/fire1.png";
 import levelFire2 from "../assets/firefighter_levels/fire2.png";
 import levelCritical from "../assets/firefighter_levels/critical.png";
+import canadairScene1 from "../assets/firefighter_canadair/canadair_01.png";
+import canadairScene2 from "../assets/firefighter_canadair/canadair_02.png";
+import canadairScene3 from "../assets/firefighter_canadair/canadair_03.png";
+import canadairScene4 from "../assets/firefighter_canadair/canadair_04.png";
+import canadairScene5 from "../assets/firefighter_canadair/canadair_05.png";
+import canadairScene6 from "../assets/firefighter_canadair/canadair_06.png";
+import canadairScene7 from "../assets/firefighter_canadair/canadair_07.png";
+import canadairScene8 from "../assets/firefighter_canadair/canadair_08.png";
 import "../styles/darts-firefighter-play.css";
 
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
@@ -73,6 +81,29 @@ const WATER = "#25c9ff";
 const GOLD = "#ffd76a";
 const RED = "#ff4c55";
 const GREEN = "#5ce6a8";
+const CANADAIR_SCENE_SOURCE = [
+  canadairScene1, canadairScene2, canadairScene3, canadairScene4,
+  canadairScene5, canadairScene6, canadairScene7, canadairScene8,
+];
+
+// Mélange une seule fois par chargement de l'application : l'ordre change d'une
+// session à l'autre, mais reste stable pendant la session pour éviter tout flicker.
+const CANADAIR_SCENES = (() => {
+  const scenes = [...CANADAIR_SCENE_SOURCE];
+  for (let index = scenes.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [scenes[index], scenes[swapIndex]] = [scenes[swapIndex], scenes[index]];
+  }
+  return scenes;
+})();
+
+function canadairSceneForTerritory(id: string | number | null | undefined) {
+  const raw = String(id ?? "canadair");
+  let hash = 0;
+  for (let index = 0; index < raw.length; index += 1) hash = ((hash * 31) + raw.charCodeAt(index)) >>> 0;
+  return CANADAIR_SCENES[hash % CANADAIR_SCENES.length] || canadairScene1;
+}
+
 const PLAYER_COLORS = ["#25c9ff", "#ffbf45", "#ff6aa9", "#8d7dff", "#62e9aa", "#ff8a5b", "#d4d8e5", "#66a7ff"];
 const FR_DEPARTMENT_TO_REGION: Record<string, string> = {
   "01": "ARA", "03": "ARA", "07": "ARA", "15": "ARA", "26": "ARA", "38": "ARA", "42": "ARA", "43": "ARA", "63": "ARA", "69": "ARA", "73": "ARA", "74": "ARA",
@@ -979,7 +1010,7 @@ function buildVisitActionReveals(visit: any, nextState: DartsFirefighterState): 
 function FirefighterActionRevealOverlay({ item, state, country }: { item: FirefighterActionReveal | null; state: DartsFirefighterState; country: TerritoriesCountry }) {
   if (!item) return null;
   const territory = item.territoryId ? state.territories.find((row) => String(row.id) === String(item.territoryId)) || null : null;
-  const background = item.kind === "canadair" ? levelFire2 : statusTickerSrc(territory);
+  const background = item.kind === "canadair" ? canadairSceneForTerritory(item.territoryId || item.id) : statusTickerSrc(territory);
   const affected = (item.affectedIds || []).map((id) => state.territories.find((row) => String(row.id) === String(id))).filter(Boolean).slice(0, 5) as FireTerritory[];
   const status = territory ? statusMeta(territory) : null;
   return <div className={`dff-action-reveal is-${item.kind}`} role="status" aria-live="assertive">
@@ -1584,7 +1615,7 @@ function ObjectiveModal({ primary, alternatives, config, state, country, onSelec
       const canadairRow = suggestion.kind === "canadair" ? actionRows.find((row) => row.kind === "canadair") : null;
       const points = Number(suggestion.estimatedPoints || estimateSuggestionPoints(suggestion, state));
       return <button key={`${suggestion.territory.id}-${index}`} type="button" className={`dff-objective-row ${suggestion.kind === "canadair" ? "is-canadair" : ""}`} onClick={() => onSelect(suggestion.territory.id)} style={{ borderColor: `${territoryColor}55` }}>
-        {suggestion.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+        {suggestion.kind === "canadair" ? <><img src={canadairSceneForTerritory(suggestion.territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
         <strong style={{ color: territoryColor }}>{suggestion.territory.target}</strong>
         <div className="dff-objective-row__copy"><b>{suggestion.territory.name}</b><span>{suggestion.action}</span><small><span className="dff-inline-status-pill is-compact" style={{ color: meta.color }}><OutlineIcon name={meta.icon} size={12} /><b>{meta.value}</b></span></small>{canadairRow?.impacts?.length ? <CanadairImpactStrip impacts={canadairRow.impacts} country={country} /> : null}</div>
         <div className="dff-objective-row__points"><b>+{points}</b><small>PTS</small></div>
@@ -1645,7 +1676,7 @@ function ActionPlannerModal({ territory, state, country, onClose }: any) {
   const rows = buildTerritoryActionRows(territory, state);
   return <FloatingPanel title="ACTIONS POSSIBLES" subtitle={territory ? `${territory.name} · cible ${territory.target}` : ""} accent={color} onClose={onClose}>
     <div className="dff-action-planner">{rows.map((row, index) => <article key={`${row.label}-${index}`} className={`dff-action-row ${row.best ? "is-best" : ""} ${row.kind === "canadair" ? "is-canadair" : ""}`} style={{ borderColor: `${row.color}66`, background: `linear-gradient(180deg, ${row.color}${row.best ? "1d" : "12"}, rgba(5,8,14,.74))` }}>
-      {row.kind === "canadair" ? <><img src={levelFire2} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+      {row.kind === "canadair" ? <><img src={canadairSceneForTerritory(territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
       <header>
         <div className="dff-action-row__name"><strong style={{ color: row.color }}>{row.label}</strong>{row.best ? <span>MEILLEURE ACTION</span> : null}</div>
         <div className="dff-action-row__score"><b>+{row.points}</b><small>PTS</small></div>
