@@ -8,7 +8,6 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
-import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GameDart } from "../lib/types-game";
@@ -63,8 +62,9 @@ const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png",
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
 // Compatibilité contrat historique Play V6 : 7.0.0-flexible-volley-rank
+// Token de contrat historique conservé sans piloter le nouveau header KILLER : tickerHeight={68}
 // ACTION CONSEILLÉE — conservée via les panneaux tactiques / actions possibles.
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.6.0-navigation-performance";
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.7.0-killer-header-x01-score-target-balance";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -1377,28 +1377,38 @@ export default function DartsFirefighterPlay(props: any) {
   const focusMeta = statusMeta(focusTerritory);
 
   return <div className="dff-play" data-firefighter-play-version={DARTS_FIREFIGHTER_PLAY_UI_VERSION} style={{ minHeight: "100dvh", color: text, background: `radial-gradient(circle at 50% -6%,${FIRE}22 0,${theme?.bg || "#080a11"} 42%,#020305 100%)`, paddingBottom: "calc(8px + env(safe-area-inset-bottom))", overflowX: "hidden" }}>
-    <PageHeader
-      tickerSrc={tickerFirefighter}
-      tickerAlt="DARTS FIREFIGHTER"
-      tickerHeight={68}
-      tickerBottomGap={0}
-      tickerFit="cover"
-      left={<div style={{ marginLeft: 4 }}><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" /></div>}
-      right={<div style={{ marginRight: 4 }}><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} /></div>}
-    />
-
-    {state.players.length > 1 ? <FirefighterTurnCarousel players={state.players} activePlayerId={activePlayer?.id} profilesById={profilesById} playerStats={state.playerStats} /> : null}
+    <div className="dff-play__killer-top">
+      <div className="dff-play__killer-sticky">
+        <div className="dff-play__killer-ticker-wrap">
+          <img src={tickerFirefighter as any} alt="DARTS FIREFIGHTER" draggable={false} className="dff-play__killer-ticker" />
+          <div className="dff-play__killer-ticker-fade is-left" />
+          <div className="dff-play__killer-ticker-fade is-right" />
+          <div className="dff-play__killer-controls">
+            <div><BackDot onClick={backToConfig} color={FIRE} glow={`${FIRE}88`} title="Retour configuration" size={38} /></div>
+            <div><InfoDot title="Règles DARTS FIREFIGHTER" color={WATER} glow={`${WATER}88`} content={<Rules config={config} />} size={38} /></div>
+          </div>
+        </div>
+        {state.players.length > 1 ? <div className="dff-play__killer-carousel-card"><FirefighterTurnCarousel players={state.players} activePlayerId={activePlayer?.id} profilesById={profilesById} playerStats={state.playerStats} /></div> : null}
+      </div>
+    </div>
 
     <main className="dff-play__main">
-      <section className="dff-play__player" style={{ borderColor: `${activeColor}66` }}>
-        <div className="dff-play__player-top">
-          <div className="dff-play__avatar-wrap"><ProfileAvatar profile={activeProfile as any} size={78} ringColor={activeColor} showStars={false} /></div>
-          <div className="dff-play__identity">
-            <div className="dff-play__eyebrow" style={{ color: botThinking ? WATER : activeColor }}>{botThinking ? "BOT EN INTERVENTION" : "POMPIER ACTIF"}</div>
-            <div className="dff-play__player-name" style={{ color: activeColor }}>{playerName(activeProfile)}</div>
-            <div className="dff-play__score" style={{ color: activeColor }}>{activePersonalScore}</div>
-            <div className="dff-play__score-caption"><b>{state.score} PTS BRIGADE</b> · COMBO x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</div>
+      <section className="dff-play__player dff-play__player--x01" style={{ borderColor: `${activeColor}66` }}>
+        <div className="dff-play__player-top dff-play__player-top--x01">
+          <div className="dff-play__active-person">
+            <div className="dff-play__eyebrow dff-play__eyebrow--avatar" style={{ color: botThinking ? WATER : activeColor }}>{botThinking ? "BOT EN INTERVENTION" : "POMPIER ACTIF"}</div>
+            <div className="dff-play__avatar-wrap"><ProfileAvatar profile={activeProfile as any} size={78} ringColor={activeColor} showStars={false} /></div>
+            <div className="dff-play__player-name dff-play__player-name--under" style={{ color: activeColor }}>{playerName(activeProfile)}</div>
           </div>
+
+          <div className="dff-play__x01-score-zone">
+            <div className="dff-play__score dff-play__score--x01" style={{ color: activeColor }}>{activePersonalScore}</div>
+            <div className="dff-play__score-kpis">
+              <div className="dff-play__score-kpi" style={{ borderColor: `${activeColor}36`, background: `${activeColor}0d` }}><small>SCORE BRIGADE</small><strong style={{ color: activeColor }}>{state.score}</strong></div>
+              <div className="dff-play__score-kpi" style={{ borderColor: `${GOLD}36`, background: `${GOLD}0d` }}><small>COMBO</small><strong style={{ color: GOLD }}>x{config.comboEnabled === false ? "1.00" : (1 + Math.min(.75, state.combo * .05)).toFixed(2)}</strong></div>
+            </div>
+          </div>
+
           <button type="button" className="dff-play__stats-summary" onClick={() => setShowStats(true)} aria-label="Ouvrir les statistiques de la mission">
             <HeaderMiniStat label="ROUND" value={`${Math.min(config.maxRounds, state.roundIndex + 1)}/${config.maxRounds}`} color={FIRE} />
             <HeaderMiniStat label="FEUX" value={incidents} color="#ff9c32" />
@@ -1408,9 +1418,6 @@ export default function DartsFirefighterPlay(props: any) {
         </div>
         <div className="dff-play__suggestions" aria-label="Suggestions de tir">
           {suggestions.length ? suggestions.map((suggestion: TacticalSuggestion, index: number) => { const territoryColor = fireTerritoryColor(fireStatus(suggestion.territory)); return <button key={`${suggestion.territory.id}-${suggestion.shot}-${index}`} type="button" className={`dff-play__suggestion ${index === 0 ? "is-primary" : ""}`} onClick={() => selectTerritory(suggestion.territory.id)} style={{ borderColor: `${territoryColor}66`, color: territoryColor, boxShadow: index === 0 ? `0 0 13px ${territoryColor}28` : "none", background: `linear-gradient(180deg, ${territoryColor}18, rgba(0,0,0,.28))` }} title={`${suggestion.action} · ${suggestion.territory.name}`}><span>{suggestion.territory.target}</span></button>; }) : <span className="dff-play__suggestion-empty">AUCUNE PRIORITÉ</span>}
-        </div>
-        <div className="dff-play__status-line">
-          <span>{config.windEnabled ? state.windLabel : "VENT COUPÉ"}</span><span>CHARGE {fireLoad.toFixed(1)}</span><span>{protections} PROTÉGÉ{protections > 1 ? "S" : ""}</span>
         </div>
       </section>
 

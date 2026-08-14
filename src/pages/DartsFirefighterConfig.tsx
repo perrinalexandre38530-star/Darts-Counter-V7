@@ -201,7 +201,8 @@ const PRESETS: Array<{ id: string; icon: string; title: string; subtitle: string
       propagationTiming: "after_round", maxSpreadsPerCycle: 1, reinforcementEveryRounds: 0, reinforcementCount: 1, windEnabled: true, windStrength: "light", windChangeEvery: 3, forecastEnabled: true,
       forecastCount: 3, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 150,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 2,
-      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 25, targetOrder: "sequential",
+      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 25, targetOrder: "sequential", limitedTargetDifficulty: "beginner",
+      bullTargetMode: "selected", scoreInputMethod: "keypad", randomOrder: false, multiInterventionPerDart: true,
     },
   },
   {
@@ -212,7 +213,8 @@ const PRESETS: Array<{ id: string; icon: string; title: string; subtitle: string
       propagationTiming: "after_visit", maxSpreadsPerCycle: 2, reinforcementEveryRounds: 0, reinforcementCount: 1, windEnabled: true, windStrength: "normal", windChangeEvery: 3, forecastEnabled: true,
       forecastCount: 4, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 200,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 3,
-      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 15, targetOrder: "sequential",
+      canadairRequiresGauge: false, canadairGaugeCost: 35, startingBrigadeGauge: 15, targetOrder: "sequential", limitedTargetDifficulty: "adaptive",
+      bullTargetMode: "priority", scoreInputMethod: "keypad", randomOrder: false, multiInterventionPerDart: false,
     },
   },
   {
@@ -223,7 +225,8 @@ const PRESETS: Array<{ id: string; icon: string; title: string; subtitle: string
       propagationTiming: "after_visit", maxSpreadsPerCycle: 2, reinforcementEveryRounds: 4, reinforcementCount: 1, windEnabled: true, windStrength: "normal", windChangeEvery: 2, forecastEnabled: true,
       forecastCount: 5, dartsPerTurn: 3, missEndsTurn: false, comboEnabled: true, perfectVisitBonus: 250,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 1, canadairNeighborCount: 4,
-      canadairRequiresGauge: true, canadairGaugeCost: 35, startingBrigadeGauge: 35, targetOrder: "random",
+      canadairRequiresGauge: true, canadairGaugeCost: 35, startingBrigadeGauge: 35, targetOrder: "sequential", limitedTargetDifficulty: "adaptive",
+      bullTargetMode: "priority", scoreInputMethod: "keypad", randomOrder: false, multiInterventionPerDart: false,
     },
   },
   {
@@ -234,7 +237,8 @@ const PRESETS: Array<{ id: string; icon: string; title: string; subtitle: string
       propagationTiming: "after_visit", maxSpreadsPerCycle: 4, reinforcementEveryRounds: 2, reinforcementCount: 2, windEnabled: true, windStrength: "strong", windChangeEvery: 1, forecastEnabled: true,
       forecastCount: 4, dartsPerTurn: 3, missEndsTurn: true, comboEnabled: true, perfectVisitBonus: 350,
       bullAirSupport: true, bullPower: 2, canadairCenterPower: 3, canadairNeighborPower: 2, canadairNeighborCount: 4,
-      canadairRequiresGauge: true, canadairGaugeCost: 45, startingBrigadeGauge: 0, targetOrder: "random",
+      canadairRequiresGauge: true, canadairGaugeCost: 45, startingBrigadeGauge: 0, targetOrder: "sequential", limitedTargetDifficulty: "expert",
+      bullTargetMode: "priority", scoreInputMethod: "keypad", randomOrder: true, multiInterventionPerDart: false,
     },
   },
 ];
@@ -457,14 +461,24 @@ export default function DartsFirefighterConfig(props: any) {
 
   const selectedItems = selectedIds.map((id) => byId.get(id)).filter(Boolean);
   const targetCalibration = React.useMemo(() => buildTerritoryValueCalibration(selectedItems, botLevel), [selectedIds.join("|"), botLevel, profilePool.length]);
-  const calibratedTargetValues = React.useMemo(() => Number(config?.activeTerritories || 0) > 20
-    ? buildUniqueTerritoryValues(Number(config.activeTerritories || 0), targetCalibration.minTarget, targetCalibration.maxTarget)
-    : [], [config.activeTerritories, targetCalibration.minTarget, targetCalibration.maxTarget]);
+  const limitedTargetDifficulty = String(config?.limitedTargetDifficulty || "beginner");
+  const usesExactTargets = Number(config?.activeTerritories || 0) > 20 || limitedTargetDifficulty !== "beginner";
+  const effectiveCalibration = React.useMemo(() => {
+    if (limitedTargetDifficulty !== "expert" || Number(config?.activeTerritories || 0) > 20) return targetCalibration;
+    return {
+      ...targetCalibration,
+      minTarget: Math.max(12, Math.min(40, Math.round(targetCalibration.minTarget * 1.35 + 4))),
+      maxTarget: Math.max(72, Math.min(170, Math.round(targetCalibration.maxTarget * 1.18 + 14))),
+    };
+  }, [limitedTargetDifficulty, config.activeTerritories, targetCalibration.minTarget, targetCalibration.maxTarget, targetCalibration.referenceAvg3]);
+  const calibratedTargetValues = React.useMemo(() => usesExactTargets
+    ? buildUniqueTerritoryValues(Number(config.activeTerritories || 0), effectiveCalibration.minTarget, effectiveCalibration.maxTarget)
+    : [], [usesExactTargets, config.activeTerritories, effectiveCalibration.minTarget, effectiveCalibration.maxTarget]);
   const targetRangeMin = calibratedTargetValues.length ? Math.min(...calibratedTargetValues) : 1;
   const targetRangeMax = calibratedTargetValues.length ? Math.max(...calibratedTargetValues) : Number(config?.activeTerritories || 20);
-  const sectorSummary = Number(config?.activeTerritories || 0) > 20
+  const sectorSummary = usesExactTargets
     ? `${targetRangeMin}-${targetRangeMax} · UNIQUES`
-    : (config?.targetOrder === "random" ? "MÉLANGÉS" : `1-${config?.activeTerritories || 20}`);
+    : `1-${config?.activeTerritories || 20} · SURFACE`;
   const selectedBots = selectedItems.filter(isBotLike);
   const valid = selectedIds.length >= 1 && selectedIds.length <= 8;
   const activeMissionPreset = PRESETS.find((preset) => preset.id === config.missionPreset) || null;
@@ -490,7 +504,31 @@ export default function DartsFirefighterConfig(props: any) {
   }
   function applyPreset(preset: any) {
     const nextRules = dartsFirefighterDifficultyRules(preset.patch.difficulty);
-    setConfig((prev: any) => ({ ...prev, ...preset.patch, missionPreset: preset.id, growthChance: nextRules.growChance, spreadChance: nextRules.spreadChance, smokeChance: nextRules.smokeChance, protectionDecay: nextRules.protectionDecay, destructionTurns: nextRules.destructionTurns }));
+    setConfig((prev: any) => {
+      const preserved = {
+        selectedIds: prev.selectedIds,
+        playersList: prev.playersList,
+        playerDartSets: prev.playerDartSets,
+        botIds: prev.botIds,
+        botsEnabled: prev.botsEnabled,
+        botLevel: prev.botLevel,
+        players: prev.players,
+        mapId: prev.mapId,
+      };
+      // Un scénario repart d'une base propre : aucun vieux réglage avancé d'une
+      // mission précédente ne fuit dans le nouveau préréglage.
+      return normalizeDartsFirefighterConfig({
+        ...preserved,
+        ...preset.patch,
+        missionPreset: preset.id,
+        growthChance: nextRules.growChance,
+        spreadChance: nextRules.spreadChance,
+        smokeChance: nextRules.smokeChance,
+        protectionDecay: nextRules.protectionDecay,
+        destructionTurns: nextRules.destructionTurns,
+        destructionLimit: preset.patch.destructionLimit ?? nextRules.destructionLimit,
+      });
+    });
   }
   function togglePlayer(id: string) {
     const key = String(id);
@@ -658,13 +696,16 @@ export default function DartsFirefighterConfig(props: any) {
 
   const territoryBlock = <section style={block}>
     <SectionTitle icon="🗺️" title="TERRITOIRE D’INTERVENTION" subtitle="Carte et zones." color={GOLD} />
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🗺️" label="CARTE" value={TERRITORY_MAPS[config.mapId]?.name || config.mapId} color={GOLD} /><MiniMetric icon="📍" label="ZONES" value={`${config.activeTerritories}/${mapTerritoryCount}`} color={WATER} /><MiniMetric icon="🎯" label={Number(config.activeTerritories) > 20 ? "CIBLES" : "SECTEURS"} value={sectorSummary} color={FIRE_2} /></div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}><MiniMetric icon="🗺️" label="CARTE" value={TERRITORY_MAPS[config.mapId]?.name || config.mapId} color={GOLD} /><MiniMetric icon="📍" label="ZONES" value={`${config.activeTerritories}/${mapTerritoryCount}`} color={WATER} /><MiniMetric icon="🎯" label={usesExactTargets ? "CIBLES" : "SECTEURS"} value={sectorSummary} color={FIRE_2} /></div>
     <div style={{ marginTop: 8, display: "grid", gap: 7 }}>
       <ConfigAccordion title="Carte et taille de mission" subtitle="Carte + taille" icon="🗺️" color={GOLD} badge={`${config.activeTerritories} ZONES`} defaultOpen={guidedAutoOpen}>
         <CfgOption label="Carte" hint="Pays, continent ou carte mondiale"><OptionSelect value={config.mapId} options={MAP_OPTIONS} onChange={(v) => setField("mapId", v)} /></CfgOption>
         <CfgOption label="Zones actives" hint="De la mini-mission à la carte complète"><OptionSelect value={config.activeTerritories} options={territoryOptions} onChange={(v) => setField("activeTerritories", Number(v))} /></CfgOption>
       </ConfigAccordion>
-      {Number(config.activeTerritories) > 20 ? <ConfigAccordion title="Cibles uniques automatiques" subtitle="Une cible par zone" icon="🎯" color={FIRE_2} badge={sectorSummary}>
+      {Number(config.activeTerritories) <= 20 ? <ConfigAccordion title="Difficulté des cibles" subtitle="Du secteur simple aux cibles exactes" icon="🎯" color={FIRE_2} badge={limitedTargetDifficulty === "expert" ? "EXPERT" : limitedTargetDifficulty === "adaptive" ? "ADAPTATIF" : "DÉBUTANT"}>
+        <CfgOption label="Niveau des cibles" info="Débutant conserve les secteurs 1 à N mais les attribue par surface : les plus gros territoires ont les plus grands numéros. Adaptatif génère des scores exacts uniques calibrés sur la brigade. Expert pousse encore la plage de scores vers le haut." hint="Difficulté de visée"><OptionSelect value={limitedTargetDifficulty} options={[{ value: "beginner", label: "Débutant · secteurs" }, { value: "adaptive", label: "Adaptatif · scores exacts" }, { value: "expert", label: "Expert · scores élevés" }]} onChange={(v) => setField("limitedTargetDifficulty", v)} /></CfgOption>
+      </ConfigAccordion> : null}
+      {usesExactTargets ? <ConfigAccordion title="Cibles uniques automatiques" subtitle="Surface + niveau brigade" icon="🎯" color={FIRE_2} badge={sectorSummary}>
         <div style={{ display: "grid", gap: 7, padding: "2px 1px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 9px", borderRadius: 11, background: `${FIRE_2}0d`, border: `1px solid ${FIRE_2}30` }}>
             <strong style={{ color: FIRE_2, fontSize: 8.3, letterSpacing: .4 }}>CIBLES UNIQUES · AUCUN DOUBLON</strong>
@@ -676,8 +717,11 @@ export default function DartsFirefighterConfig(props: any) {
             <MiniMetric icon="🎯" label="PLAGE CIBLES" value={`${targetRangeMin}-${targetRangeMax}`} color={FIRE_2} />
           </div>
         </div>
-      </ConfigAccordion> : <ConfigAccordion title="Numérotation des secteurs" subtitle="Secteurs 1–20" icon="🎯" color={FIRE_2} badge={sectorSummary}>
-        <CfgOption label="Numérotation" info={HELP_TARGET_ASSIGNMENT} hint={Number(config.activeTerritories) > 20 ? "Cibles uniques auto" : "Ordre des secteurs"}><OptionSelect value={config.targetOrder} options={[{ value: "sequential", label: "Ordre logique" }, { value: "random", label: "Répartition aléatoire" }]} onChange={(v) => setField("targetOrder", v)} /></CfgOption>
+      </ConfigAccordion> : <ConfigAccordion title="Numérotation des secteurs" subtitle="Surface réelle" icon="🎯" color={FIRE_2} badge={sectorSummary}>
+        <div style={{ padding: "8px 9px", borderRadius: 12, border: `1px solid ${FIRE_2}30`, background: `${FIRE_2}0d`, display: "grid", gridTemplateColumns: "26px minmax(0,1fr)", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 16, textAlign: "center" }}>📐</span>
+          <span><strong style={{ display: "block", color: FIRE_2, fontSize: 8.5 }}>ATTRIBUTION AUTOMATIQUE</strong><small style={{ display: "block", marginTop: 2, color: "#9da6b8", fontSize: 7.2, lineHeight: 1.35 }}>Les plus petits territoires reçoivent les petites valeurs ; les plus grands reçoivent systématiquement les valeurs les plus élevées.</small></span>
+        </div>
       </ConfigAccordion>}
     </div>
   </section>;
@@ -764,7 +808,7 @@ export default function DartsFirefighterConfig(props: any) {
       <ConfigAccordion title="Volée et MISS" subtitle="Volée + MISS" icon="🎯" color={WATER} badge={`${config.dartsPerTurn} FLÉCHETTE${config.dartsPerTurn > 1 ? "S" : ""}`} defaultOpen={guidedAutoOpen}>
         <CfgOption label="Volée max" info={HELP_MAX_DARTS} hint={Number(config.activeTerritories) > 20 ? "3 max · validation libre" : "1 à 3 fléchettes"}><OptionSelect value={Number(config.activeTerritories) > 20 ? 3 : config.dartsPerTurn} options={Number(config.activeTerritories) > 20 ? [{ value: 3, label: "3 · Cibles uniques" }] : [{ value: 1, label: "1 · Éclair" }, { value: 2, label: "2 · Tactique" }, { value: 3, label: "3 · Standard" }]} onChange={(v) => setField("dartsPerTurn", Number(v))} /></CfgOption>
         <CfgOption label="Règle du MISS" info={HELP_MISS_RULE} hint="Arrêt immédiat si activé"><OptionToggle value={Boolean(config.missEndsTurn)} onChange={(v) => setField("missEndsTurn", v)} /></CfgOption>
-        {Number(config.activeTerritories) <= 20 ? <CfgOption label="Multi-zones" info={HELP_MULTI_INTERVENTION} hint="1 dart = 1 territoire"><OptionToggle value={config.multiInterventionPerDart !== false} onChange={(v) => setField("multiInterventionPerDart", v)} /></CfgOption> : null}
+        {Number(config.activeTerritories) <= 20 && limitedTargetDifficulty === "beginner" ? <CfgOption label="Multi-zones" info={HELP_MULTI_INTERVENTION} hint="1 dart = 1 territoire"><OptionToggle value={config.multiInterventionPerDart !== false} onChange={(v) => setField("multiInterventionPerDart", v)} /></CfgOption> : null}
       </ConfigAccordion>
       <ConfigAccordion title="Score et méthode de saisie" subtitle="Score + saisie" icon="🏆" color={GREEN} badge={config.scoreInputMethod === "dartboard" ? "CIBLE" : "CLAVIER"}>
         <CfgOption label="Combo brigade" info={HELP_COMBO} hint="Bonus de série"><OptionToggle value={Boolean(config.comboEnabled)} onChange={(v) => setField("comboEnabled", v)} /></CfgOption>
@@ -785,7 +829,7 @@ export default function DartsFirefighterConfig(props: any) {
     <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
       {[
         { icon: "🚨", label: "MISSION", value: PRESETS.find((p) => p.id === config.missionPreset)?.title || "Personnalisée", color: FIRE_2, info: `${difficultyLabel(config.difficulty)} · ${config.objective === "survival" ? `Survivre ${config.maxRounds} rounds` : config.objective === "protect_critical" ? `Protéger ${config.criticalTerritories} zones critiques` : "Éteindre tous les foyers"}.` },
-        { icon: "🗺️", label: "CARTE", value: `${TERRITORY_MAPS[config.mapId]?.name || config.mapId} · ${config.activeTerritories}`, color: GOLD, info: Number(config.activeTerritories) > 20 ? `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Cibles uniques ${targetRangeMin}-${targetRangeMax}, calibrées au niveau ${targetCalibration.label}.` : `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Secteurs ${config.targetOrder === "random" ? "mélangés" : "ordonnés"}. Multi-zones ${config.multiInterventionPerDart !== false ? "actif" : "désactivé"}.` },
+        { icon: "🗺️", label: "CARTE", value: `${TERRITORY_MAPS[config.mapId]?.name || config.mapId} · ${config.activeTerritories}`, color: GOLD, info: usesExactTargets ? `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Cibles uniques ${targetRangeMin}-${targetRangeMax}, calibrées au niveau ${targetCalibration.label} et à la surface des territoires.` : `Carte ${config.activeTerritories}/${mapTerritoryCount} zones. Secteurs 1-${config.activeTerritories} attribués par surface. Multi-zones ${config.multiInterventionPerDart !== false ? "actif" : "désactivé"}.` },
         { icon: "🔥", label: "INCENDIE", value: `${config.initialFires} + ${config.initialSmoke}💨`, color: FIRE, info: `${config.initialFires} foyers, ${config.initialSmoke} fumées, ${config.initialProtectedTerritories} protections. Propagation ${config.propagationTiming === "after_round" ? "après chaque round" : "après chaque joueur"}.` },
         { icon: "🚒", label: "MOYENS", value: config.bullAirSupport ? `BULL ${config.bullPower} · ✈️` : `BULL ${config.bullPower}`, color: WATER, info: `Bull puissance ${config.bullPower}. Jauge initiale ${config.startingBrigadeGauge}%. Canadair ${config.bullAirSupport ? `${config.canadairNeighborCount} voisins` : "désactivé"}. Volée ${config.dartsPerTurn} max, saisie ${config.scoreInputMethod === "dartboard" ? "cible" : "clavier"}, MISS ${config.missEndsTurn ? "fatal" : "normal"}.` },
       ].map((item) => <div key={item.label} style={{ minHeight: 56, padding: 8, borderRadius: 12, border: `1px solid ${item.color}35`, background: `${item.color}0d`, display: "grid", gridTemplateColumns: "26px minmax(0,1fr) 18px", gap: 7, alignItems: "center" }}>

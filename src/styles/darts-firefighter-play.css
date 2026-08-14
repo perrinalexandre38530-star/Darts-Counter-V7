@@ -2146,3 +2146,230 @@ button.dff-adjacent-card:active { transform: scale(.985); }
     filter: none !important;
   }
 }
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.7 — header/carrousel strictement calé sur KILLER
+   + score joueur actif calé sur X01PlayV3
+   ============================================================= */
+.dff-play__killer-top {
+  width: min(760px,100%);
+  margin: 0 auto;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.dff-play__killer-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding-top: env(safe-area-inset-top);
+  margin-bottom: 8px;
+  overflow: visible;
+  background: rgba(2,3,6,.98);
+}
+.dff-play__killer-ticker-wrap {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+.dff-play__killer-ticker {
+  width: 100%;
+  height: 104px;
+  object-fit: cover;
+  display: block;
+}
+.dff-play__killer-ticker-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  pointer-events: none;
+  z-index: 2;
+}
+.dff-play__killer-ticker-fade.is-left { left: 0; background: linear-gradient(90deg,rgba(5,5,7,.92),rgba(5,5,7,0)); }
+.dff-play__killer-ticker-fade.is-right { right: 0; background: linear-gradient(270deg,rgba(5,5,7,.92),rgba(5,5,7,0)); }
+.dff-play__killer-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  pointer-events: none;
+}
+.dff-play__killer-controls > div { pointer-events: auto; display: flex; align-items: center; }
+
+.dff-play__killer-carousel-card {
+  margin-top: 6px;
+  padding: 6px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.09);
+  background: linear-gradient(180deg,rgba(15,15,18,.94),rgba(8,9,14,.90));
+  box-shadow: 0 8px 26px rgba(0,0,0,.32);
+  overflow: visible;
+}
+.dff-play__killer-carousel-card .dff-play__turns-shell {
+  width: 100%;
+  margin: 0;
+  padding: 2px 2px 0;
+  overflow: visible;
+}
+.dff-play__killer-carousel-card .dff-play__turns {
+  width: 100%;
+  margin: 0;
+  padding: 2px 2px 4px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.dff-play__killer-carousel-card .dff-play__turns::-webkit-scrollbar { display:none; }
+.dff-play__killer-carousel-card .dff-play__turn {
+  flex: 0 0 min(154px,42vw);
+  width: min(154px,42vw);
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 52px minmax(0,1fr);
+  align-items: stretch;
+  gap: 0;
+  border-radius: 999px;
+  background: rgba(0,0,0,.22);
+  opacity: .52;
+}
+.dff-play__killer-carousel-card .dff-play__turn.is-active { opacity: 1; }
+.dff-play__killer-carousel-card .dff-play__turn-avatar {
+  width: 52px;
+  height: 42px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,.025);
+}
+.dff-play__killer-carousel-card .dff-play__turn-avatar > * {
+  transform: scale(1.08);
+  transform-origin: center;
+}
+.dff-play__killer-carousel-card .dff-play__turn-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  text-align: center;
+}
+.dff-play__killer-carousel-card .dff-play__turn-score strong {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 1100;
+}
+.dff-play__killer-carousel-card .dff-play__turn-score small {
+  margin-top: 2px;
+  color: #9aa4b4;
+  font-size: 5.7px;
+  font-weight: 1100;
+  letter-spacing: .45px;
+}
+
+.dff-play__player--x01 { overflow: hidden; }
+.dff-play__player-top--x01 {
+  min-height: 118px;
+  grid-template-columns: 92px minmax(0,1fr) 112px;
+  gap: 8px;
+  padding: 8px 7px 6px;
+}
+.dff-play__active-person {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+}
+.dff-play__eyebrow--avatar {
+  width: 100%;
+  text-align: center;
+  font-size: 7.2px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .85px;
+  white-space: nowrap;
+}
+.dff-play__player-name--under {
+  width: 88px;
+  margin-top: 0;
+  text-align: center;
+  font-size: 9px;
+  line-height: 1.1;
+  font-weight: 1100;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dff-play__x01-score-zone {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 7px;
+  overflow: visible;
+}
+.dff-play__score--x01 {
+  margin: 0;
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -1.5px;
+  text-shadow: 0 4px 18px rgba(0,0,0,.35), 0 0 18px currentColor;
+}
+.dff-play__score-kpis {
+  width: min(220px,100%);
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 5px;
+}
+.dff-play__score-kpi {
+  min-height: 34px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  padding: 5px 6px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.dff-play__score-kpi small {
+  color: #9099a9;
+  font-size: 5.4px;
+  line-height: 1;
+  font-weight: 1100;
+  letter-spacing: .35px;
+}
+.dff-play__score-kpi strong {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 1100;
+}
+/* Cette ligne avait été explicitement supprimée du layout. */
+.dff-play__player--x01 .dff-play__status-line { display:none !important; }
+
+@media (max-width: 520px) {
+  .dff-play__killer-ticker { height: 104px; }
+  .dff-play__killer-sticky { margin-bottom: 6px; }
+  .dff-play__killer-carousel-card { margin-top: 6px; padding: 6px; }
+  .dff-play__killer-carousel-card .dff-play__turns { padding-top: 2px; padding-bottom: 4px; min-height: 48px; }
+  .dff-play__killer-carousel-card .dff-play__turn { flex-basis: min(150px,44vw); width: min(150px,44vw); }
+  .dff-play__player-top--x01 { grid-template-columns: 86px minmax(0,1fr) 108px; min-height: 116px; gap: 6px; }
+  .dff-play__score--x01 { font-size: 58px; }
+  .dff-play__score-kpis { gap: 4px; }
+  .dff-play__score-kpi { min-height: 32px; padding: 4px; }
+}
+
+@media (orientation: landscape) and (max-height: 700px) {
+  .dff-play__killer-ticker { height: 74px; }
+}

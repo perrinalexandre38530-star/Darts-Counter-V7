@@ -13,7 +13,7 @@
 import type { GameDart } from "../types-game";
 import type { TerritoriesMap, Territory } from "../../territories/types";
 import { getBaseSvgForCountry } from "../../territories/map";
-import { applyBalancedTerritoryValues, buildTerritoryValueCalibration } from "../../territories/territoryValueBalancing";
+import { applyBalancedTerritoryValues, buildTerritoryValueCalibration, measureTerritoryAreas } from "../../territories/territoryValueBalancing";
 import { MAX_PLAYABLE_TERRITORIES } from "../../territories/territoryValueRules";
 
 export type DartsFirefighterDifficulty = "recruit" | "firefighter" | "commander" | "inferno";
@@ -23,6 +23,7 @@ export type DartsFirefighterPropagationTiming = "after_visit" | "after_round";
 export type DartsFirefighterFirePlacement = "random" | "clustered" | "critical_first";
 export type DartsFirefighterTargetOrder = "sequential" | "random";
 export type DartsFirefighterTargetMode = "sector" | "visit_score";
+export type DartsFirefighterLimitedTargetDifficulty = "beginner" | "adaptive" | "expert";
 export type DartsFirefighterWindStrength = "light" | "normal" | "strong";
 export type DartsFirefighterInitialIntensity = "mixed" | 1 | 2 | 3;
 export type DartsFirefighterFinishReason = "all_fires_out" | "objective_complete" | "critical_lost" | "destruction_limit" | "round_limit" | null;
@@ -43,6 +44,7 @@ export type DartsFirefighterConfigPayload = {
   objective?: DartsFirefighterObjective;
   activeTerritories: number;
   targetOrder?: DartsFirefighterTargetOrder;
+  limitedTargetDifficulty?: DartsFirefighterLimitedTargetDifficulty;
   initialFires: number;
   initialFireLevel?: DartsFirefighterInitialIntensity;
   initialSmoke?: number;
@@ -281,6 +283,7 @@ export function normalizeDartsFirefighterConfig(raw: Partial<DartsFirefighterCon
     objective,
     activeTerritories: active as any,
     targetOrder: raw?.targetOrder === "random" ? "random" : "sequential",
+    limitedTargetDifficulty: raw?.limitedTargetDifficulty === "adaptive" || raw?.limitedTargetDifficulty === "expert" ? raw.limitedTargetDifficulty : "beginner",
     initialFires: Math.max(1, Math.min(8, Number(raw?.initialFires || 3))),
     initialFireLevel: raw?.initialFireLevel === "mixed" || [1, 2, 3].includes(Number(raw?.initialFireLevel)) ? raw.initialFireLevel : "mixed",
     initialSmoke: Math.max(0, Math.min(8, Number(raw?.initialSmoke || 0))),
@@ -1203,18 +1206,28 @@ export function createDartsFirefighterState(
   const activeIdSet = new Set(chosenIds);
   const seedBase = hash(`${normalizedConfig.mapId}|${normalizedConfig.difficulty}|${now}|${safePlayers.map((p) => p.id).join("|")}`);
 
-  const targetMode: DartsFirefighterTargetMode = chosen.length > 20 ? "visit_score" : "sector";
+  const limitedDifficulty = normalizedConfig.limitedTargetDifficulty || "beginner";
+  // Sur 20 zones ou moins, "Débutant" conserve les secteurs 1..N (multi-zones possible).
+  // "Adaptatif" et "Expert" utilisent eux aussi des cibles exactes uniques, calibrées
+  // sur le niveau de la brigade et la surface réelle des territoires.
+  const targetMode: DartsFirefighterTargetMode = chosen.length > 20 || limitedDifficulty !== "beginner" ? "visit_score" : "sector";
   const calibrationProfiles = Array.isArray((normalizedConfig as any).playersList) && (normalizedConfig as any).playersList.length
     ? (normalizedConfig as any).playersList
     : safePlayers;
-  const targetCalibration = buildTerritoryValueCalibration(calibrationProfiles, String((normalizedConfig as any).botLevel || "normal"));
+  const baseCalibration = buildTerritoryValueCalibration(calibrationProfiles, String((normalizedConfig as any).botLevel || "normal"));
+  const targetCalibration = limitedDifficulty === "expert" && chosen.length <= 20
+    ? {
+        ...baseCalibration,
+        minTarget: Math.max(12, Math.min(40, Math.round(baseCalibration.minTarget * 1.35 + 4))),
+        maxTarget: Math.max(72, Math.min(170, Math.round(baseCalibration.maxTarget * 1.18 + 14))),
+        label: `${baseCalibration.label} +` as any,
+      }
+    : baseCalibration;
 
   let targetNumbers: number[] = [];
   if (targetMode === "visit_score") {
-    // Réutilise exactement la logique de TERRITORIES : valeurs uniques, atteignables
-    // en une volée de 3 fléchettes, calibrées sur le niveau du groupe et réparties
-    // selon la surface réelle des territoires. Les petites zones reçoivent les
-    // objectifs les plus accessibles, les grandes les plus exigeants.
+    // Même logique que TERRITORIES : valeurs uniques atteignables en une volée,
+    // avec la plus grosse cible attribuée au plus gros territoire.
     const balanced = applyBalancedTerritoryValues(
       { ...rawMap, territories: chosen.map((territory) => ({ ...territory })) },
       String(rawMap.country || normalizedConfig.mapId || "FR") as any,
@@ -1223,16 +1236,18 @@ export function createDartsFirefighterState(
     const valueById = new Map((balanced.territories || []).map((territory) => [territory.id, Number(territory.value || 0)]));
     targetNumbers = chosen.map((territory, index) => valueById.get(territory.id) || index + 1);
   } else {
-    targetNumbers = Array.from({ length: chosen.length }, (_, index) => index + 1);
-    if (normalizedConfig.targetOrder === "random") {
-      let targetSeed = seedBase;
-      for (let i = targetNumbers.length - 1; i > 0; i -= 1) {
-        const [r, nextSeed] = nextRandom(targetSeed);
-        targetSeed = nextSeed;
-        const j = Math.floor(r * (i + 1));
-        [targetNumbers[i], targetNumbers[j]] = [targetNumbers[j], targetNumbers[i]];
-      }
-    }
+    // Même en mode débutant 1..N : on ne dépend plus de l'ordre du SVG.
+    // Les territoires sont classés par surface et les plus grands reçoivent
+    // systématiquement les numéros les plus élevés.
+    const areas = measureTerritoryAreas(String(rawMap.country || normalizedConfig.mapId || "FR") as any, { ...rawMap, territories: chosen });
+    const orderedByArea = [...chosen].sort((left, right) => {
+      const diff = Number(areas[left.id] || 0) - Number(areas[right.id] || 0);
+      if (Math.abs(diff) > 0.000001) return diff;
+      return String(left.id).localeCompare(String(right.id), undefined, { numeric: true });
+    });
+    const valueById = new Map<string, number>();
+    orderedByArea.forEach((territory, index) => valueById.set(territory.id, index + 1));
+    targetNumbers = chosen.map((territory, index) => valueById.get(territory.id) || index + 1);
   }
 
   const territories: FireTerritory[] = (rawMap.territories || []).map((territory) => {
