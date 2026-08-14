@@ -558,23 +558,44 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
 
   const baseSvgHtml = React.useMemo(() => {
     if (typeof DOMParser === "undefined") return baseSvgRaw;
+    // La géométrie + les couleurs sont coûteuses à reconstruire. Sélection et
+    // filtres sont appliqués ensuite directement sur le SVG monté afin qu'un tap
+    // ne reparsse plus tout le document SVG.
     return injectStylesAndFills({
       svgRaw: baseSvgRaw,
       country,
       map,
       fillByTerritoryId: fillIndex,
-      selectedTerritoryId,
+      selectedTerritoryId: undefined,
       activeColor,
       themeColor,
-      highlightTerritoryIds,
+      highlightTerritoryIds: [],
     });
-  }, [baseSvgRaw, country, map, fillIndex, selectedTerritoryId, activeColor, themeColor, highlightTerritoryIds]);
+  }, [baseSvgRaw, country, map, fillIndex, activeColor, themeColor]);
 
   const overlaySvgHtml = React.useMemo(() => {
     if (!overlayRaw) return null;
     if (typeof DOMParser === "undefined") return overlayRaw;
     return injectOverlayStyles(overlayRaw, themeColor, map.svgViewBox);
   }, [overlayRaw, themeColor, map.svgViewBox]);
+
+  // Mise à jour légère des états visuels : aucune reconstruction du SVG.
+  React.useLayoutEffect(() => {
+    const svg = baseHostRef.current?.querySelector("svg") as SVGSVGElement | null;
+    if (!svg) return;
+    const selected = String(selectedTerritoryId || "");
+    const highlightSet = new Set((highlightTerritoryIds || []).map(String));
+    const hasHighlight = highlightSet.size > 0;
+    const paths = Array.from(svg.querySelectorAll("path[data-territory-id]")) as SVGPathElement[];
+    for (const path of paths) {
+      const id = String(path.getAttribute("data-territory-id") || "");
+      const isSelected = Boolean(selected && id === selected);
+      const isHighlighted = highlightSet.has(id);
+      path.classList.toggle("territory-selected", isSelected);
+      path.classList.toggle("territory-highlighted", isHighlighted);
+      path.classList.toggle("territory-filter-muted", hasHighlight && !isHighlighted && !isSelected);
+    }
+  }, [baseSvgHtml, selectedTerritoryId, highlightTerritoryIds]);
 
   const resetView = React.useCallback(() => {
     setScale(1);

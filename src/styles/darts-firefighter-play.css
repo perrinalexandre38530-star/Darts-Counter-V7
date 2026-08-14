@@ -1816,7 +1816,7 @@ button.dff-adjacent-card:active { transform: scale(.985); }
 .dff-action-reveal {
   position: fixed;
   inset: 0;
-  z-index: 10060;
+  z-index: 9990;
   display: grid;
   place-items: center;
   padding: 18px;
@@ -2077,5 +2077,72 @@ button.dff-adjacent-card:active { transform: scale(.985); }
   .dff-action-reveal *, .dff-action-reveal *::before, .dff-action-reveal *::after {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* =============================================================
+   DARTS FIREFIGHTER 7.6 — PERFORMANCE / NAVIGATION MOBILE
+   ============================================================= */
+/* Les cartes d'action restent visuelles mais ne bloquent plus les taps de navigation. */
+.dff-action-reveal { pointer-events: none; }
+.dff-action-reveal__backdrop {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dff-action-reveal__card,
+.dff-action-reveal__bg,
+.dff-action-reveal__shape,
+.dff-action-reveal__plane,
+.dff-action-reveal__sweep {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Évite de rendre/layout les longues listes hors écran. */
+.dff-target-row,
+.dff-timeline article,
+.dff-objective-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 76px;
+}
+.dff-target-row {
+  contain: layout paint style;
+}
+.dff-target-row__safe-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.035);
+  display: block;
+  margin: auto;
+}
+
+/* Isole les gros blocs afin qu'un changement dans le keypad ne repeigne pas toute la page. */
+.dff-play__player,
+.dff-play__cards,
+.dff-play__utility,
+.dff-play__input {
+  contain: layout style;
+}
+
+/* Les filtres GPU sont coûteux sur Android : on garde le rendu, sans blur temps réel. */
+@media (max-width: 760px) {
+  .dff-modal,
+  .dff-wind-compass,
+  .dff-map-modal__country-badge,
+  .dff-play__utility,
+  .dff-play__input {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .dff-action-reveal__card,
+  .dff-action-reveal__backdrop,
+  .dff-action-reveal__bg,
+  .dff-action-reveal__shape,
+  .dff-action-reveal__plane,
+  .dff-action-reveal__sweep {
+    filter: none !important;
   }
 }

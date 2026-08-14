@@ -1366,10 +1366,17 @@ export function createDartsFirefighterState(
 }
 
 export function selectFireTerritory(state: DartsFirefighterState, territoryId: string | null): DartsFirefighterState {
-  const next = cloneDartsFirefighterState(state);
-  const target = next.territories.find((t) => t.id === territoryId && t.playable && !t.destroyed);
-  next.selectedTerritoryId = target?.id || null;
-  return next;
+  // Une sélection UI ne modifie aucune donnée de partie : surtout ne pas cloner
+  // l'intégralité de l'état (carte + historique + stats) à chaque tap.
+  // Sur les grandes cartes, ce clone profond était l'une des principales causes
+  // de saccades lors de la navigation entre carte / territoire / objectifs.
+  const wantedId = territoryId == null ? null : String(territoryId);
+  const target = wantedId
+    ? state.territories.find((t) => t.id === wantedId && t.playable && !t.destroyed)
+    : null;
+  const nextId = target?.id || null;
+  if (String(state.selectedTerritoryId || "") === String(nextId || "")) return state;
+  return { ...state, selectedTerritoryId: nextId };
 }
 
 export function playDartsFirefighterVisit(state: DartsFirefighterState, darts: GameDart[]): DartsFirefighterState {

@@ -62,7 +62,9 @@ import "../styles/darts-firefighter-play.css";
 const FIREFIGHTER_UN_REGION_FLAGS = import.meta.glob("../assets/flags_un/*.png", { eager: true, import: "default" }) as Record<string, string>;
 const FIREFIGHTER_MACRO_MAPS = new Set<TerritoriesCountry>(["AF", "ASIA", "EU", "NA", "SAM", "WORLD", "UN"]);
 
-export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.5.0-action-cards-sfx";
+// Compatibilité contrat historique Play V6 : 7.0.0-flexible-volley-rank
+// ACTION CONSEILLÉE — conservée via les panneaux tactiques / actions possibles.
+export const DARTS_FIREFIGHTER_PLAY_UI_VERSION = "7.6.0-navigation-performance";
 
 type UiDart = { v: number; mult: 1 | 2 | 3 };
 
@@ -492,60 +494,90 @@ type TerritoryShapeGeometry = {
   clipRule?: "nonzero" | "evenodd";
 };
 
-function getTerritoryShapeGeometry(country: TerritoriesCountry, territoryId: string, svgPathId?: string): TerritoryShapeGeometry | null {
-  if (typeof DOMParser === "undefined") return null;
+type TerritoryShapeMetrics = {
+  bounds: { x: number; y: number; width: number; height: number };
+  viewBox: string;
+  center: { x: number; y: number; fontSize: number };
+};
+
+// Le SVG complet était reparsé pour CHAQUE badge territoire. Sur France complète,
+// ouvrir la liste pouvait donc parser le même SVG près de 100 fois. On indexe
+// désormais chaque carte une seule fois pour toute la session.
+const TERRITORY_GEOMETRY_INDEX = new Map<string, Map<string, TerritoryShapeGeometry>>();
+const TERRITORY_METRICS_CACHE = new Map<string, TerritoryShapeMetrics>();
+
+function normalizeSvgRule(value: string | null): "nonzero" | "evenodd" | undefined {
+  return value === "evenodd" ? "evenodd" : value === "nonzero" ? "nonzero" : undefined;
+}
+
+function getTerritoryGeometryIndex(country: TerritoriesCountry) {
+  const cacheKey = String(country || "FR");
+  const cached = TERRITORY_GEOMETRY_INDEX.get(cacheKey);
+  if (cached) return cached;
+  const index = new Map<string, TerritoryShapeGeometry>();
+  if (typeof DOMParser === "undefined") return index;
   try {
     const raw = getBaseSvgForCountry(country);
     const doc = new DOMParser().parseFromString(raw, "image/svg+xml");
-    const paths = Array.from(doc.querySelectorAll("path"));
-    const wantedPathId = String(svgPathId || "").trim();
-    const wantedTerritoryId = String(territoryId || "").trim();
-    const wantedDepartment = wantedTerritoryId.startsWith("FR-") ? wantedTerritoryId.slice(3) : wantedPathId;
-    const path = paths.find((candidate) => {
-      if (country === "FR") return String(candidate.getAttribute("data-numerodepartement") || "") === wantedDepartment;
-      return String(candidate.getAttribute("id") || "") === wantedPathId || String(candidate.getAttribute("id") || "") === wantedTerritoryId;
-    });
-    const d = path?.getAttribute("d");
-    if (!path || !d) return null;
-    const normalizeRule = (value: string | null): "nonzero" | "evenodd" | undefined =>
-      value === "evenodd" ? "evenodd" : value === "nonzero" ? "nonzero" : undefined;
-    return {
-      d,
-      transform: path.getAttribute("transform") || undefined,
-      fillRule: normalizeRule(path.getAttribute("fill-rule")),
-      clipRule: normalizeRule(path.getAttribute("clip-rule")),
-    };
-  } catch {
-    return null;
-  }
+    for (const path of Array.from(doc.querySelectorAll("path"))) {
+      const d = path.getAttribute("d");
+      if (!d) continue;
+      const geometry: TerritoryShapeGeometry = {
+        d,
+        transform: path.getAttribute("transform") || undefined,
+        fillRule: normalizeSvgRule(path.getAttribute("fill-rule")),
+        clipRule: normalizeSvgRule(path.getAttribute("clip-rule")),
+      };
+      const id = String(path.getAttribute("id") || "").trim();
+      const department = String(path.getAttribute("data-numerodepartement") || "").trim();
+      if (id) index.set(id, geometry);
+      if (department) {
+        index.set(department, geometry);
+        index.set(`FR-${department}`, geometry);
+      }
+    }
+  } catch {}
+  TERRITORY_GEOMETRY_INDEX.set(cacheKey, index);
+  return index;
 }
 
-function TerritorySilhouetteBadge(props: { country: TerritoriesCountry; territory: FireTerritory; color: string; height?: number; showValue?: boolean; visualMode?: "flag" | "status"; }) {
+function getTerritoryShapeGeometry(country: TerritoriesCountry, territoryId: string, svgPathId?: string): TerritoryShapeGeometry | null {
+  const index = getTerritoryGeometryIndex(country);
+  const wantedPathId = String(svgPathId || "").trim();
+  const wantedTerritoryId = String(territoryId || "").trim();
+  const wantedDepartment = wantedTerritoryId.startsWith("FR-") ? wantedTerritoryId.slice(3) : wantedPathId;
+  return index.get(wantedPathId) || index.get(wantedTerritoryId) || index.get(wantedDepartment) || null;
+}
+
+const TerritorySilhouetteBadge = React.memo(function TerritorySilhouetteBadge(props: { country: TerritoriesCountry; territory: FireTerritory; color: string; height?: number; showValue?: boolean; visualMode?: "flag" | "status"; }) {
   const geometry = React.useMemo(() => getTerritoryShapeGeometry(props.country, props.territory.id, props.territory.svgPathId), [props.country, props.territory.id, props.territory.svgPathId]);
   const flagSrc = props.visualMode === "status" ? undefined : (getTerritoryDepartmentVisual(props.country, props.territory) || getMapBadgeAsset(props.country, props.territory) || undefined);
   const measureRef = React.useRef<SVGPathElement | null>(null);
-  const [bounds, setBounds] = React.useState({ x: 0, y: 0, width: 100, height: 100 });
-  const [viewBox, setViewBox] = React.useState("0 0 100 100");
-  const [center, setCenter] = React.useState({ x: 50, y: 50, fontSize: 34 });
+  const metricsKey = `${props.country}:${props.territory.id}:${props.territory.svgPathId || ""}`;
+  const cachedMetrics = TERRITORY_METRICS_CACHE.get(metricsKey);
+  const [bounds, setBounds] = React.useState(cachedMetrics?.bounds || { x: 0, y: 0, width: 100, height: 100 });
+  const [viewBox, setViewBox] = React.useState(cachedMetrics?.viewBox || "0 0 100 100");
+  const [center, setCenter] = React.useState(cachedMetrics?.center || { x: 50, y: 50, fontSize: 34 });
   const clipId = React.useId().replace(/:/g, "");
   const glowId = `${clipId}-glow`;
 
   React.useLayoutEffect(() => {
+    if (TERRITORY_METRICS_CACHE.has(metricsKey)) return;
     const node = measureRef.current;
     if (!node) return;
     try {
       const bbox = node.getBBox();
       if (!Number.isFinite(bbox.width) || !Number.isFinite(bbox.height) || bbox.width <= 0 || bbox.height <= 0) return;
       const pad = Math.max(bbox.width, bbox.height) * 0.12;
-      const x = bbox.x - pad;
-      const y = bbox.y - pad;
-      const width = bbox.width + pad * 2;
-      const height = bbox.height + pad * 2;
-      setBounds({ x, y, width, height });
-      setViewBox(`${x} ${y} ${width} ${height}`);
-      setCenter({ x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2, fontSize: Math.max(12, Math.min(bbox.width, bbox.height) * 0.33) });
+      const nextBounds = { x: bbox.x - pad, y: bbox.y - pad, width: bbox.width + pad * 2, height: bbox.height + pad * 2 };
+      const nextViewBox = `${nextBounds.x} ${nextBounds.y} ${nextBounds.width} ${nextBounds.height}`;
+      const nextCenter = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2, fontSize: Math.max(12, Math.min(bbox.width, bbox.height) * 0.33) };
+      TERRITORY_METRICS_CACHE.set(metricsKey, { bounds: nextBounds, viewBox: nextViewBox, center: nextCenter });
+      setBounds(nextBounds);
+      setViewBox(nextViewBox);
+      setCenter(nextCenter);
     } catch {}
-  }, [geometry?.d, geometry?.transform]);
+  }, [geometry?.d, geometry?.transform, metricsKey]);
 
   if (!geometry) {
     return <div className="dff-territory-shape-fallback" style={{ borderColor: `${props.color}50`, boxShadow: `0 0 18px ${props.color}30` }}>{props.showValue === false ? null : props.territory.target}</div>;
@@ -564,7 +596,7 @@ function TerritorySilhouetteBadge(props: { country: TerritoriesCountry; territor
       {props.showValue === false ? null : <text x={center.x} y={center.y} textAnchor="middle" dominantBaseline="central" fontSize={center.fontSize} fontWeight="1000" fill="#fff" stroke="rgba(0,0,0,.84)" strokeWidth={Math.max(1.4, center.fontSize * 0.08)} paintOrder="stroke fill" style={{ filter: `drop-shadow(0 0 7px ${props.color})` }}>{props.territory.target}</text>}
     </svg>
   );
-}
+});
 
 function AdjacentTerritoryRail({ neighbors, country, onSelect }: { neighbors: FireTerritory[]; country: TerritoriesCountry; onSelect?: (id: string) => void }) {
   if (!neighbors.length) return <div className="dff-adjacent-empty">Aucune zone adjacente menacée actuellement.</div>;
@@ -1052,7 +1084,7 @@ export default function DartsFirefighterPlay(props: any) {
   const activeProfile = profilesById.get(String(activePlayer?.id)) || activePlayer;
   const activeColor = PLAYER_COLORS[state.activePlayerIndex % PLAYER_COLORS.length];
   const selectedTerritory = state.territories.find((t) => t.id === state.selectedTerritoryId) || null;
-  const fireMap = React.useMemo(() => buildFireMapForView(state), [state]);
+  const fireMap = React.useMemo(() => buildFireMapForView(state), [state.map, state.territories]);
   const incidents = activeIncidents(state);
   const fireLoad = totalFire(state);
   const protections = protectedCount(state);
@@ -1069,7 +1101,7 @@ export default function DartsFirefighterPlay(props: any) {
   React.useEffect(() => {
     if (!actionReveal) return;
     playDartsFirefighterSfx(actionReveal.sound, firefighterSfxVolume);
-    const duration = actionReveal.kind === "canadair" ? 1750 : actionReveal.kind === "extinguished" ? 1350 : 1050;
+    const duration = actionReveal.kind === "canadair" ? 980 : actionReveal.kind === "extinguished" ? 820 : 680;
     const timer = window.setTimeout(() => setActionRevealQueue((rows) => rows.slice(1)), duration);
     return () => window.clearTimeout(timer);
   }, [actionReveal?.id]);
@@ -1322,7 +1354,8 @@ export default function DartsFirefighterPlay(props: any) {
     try { onFinish?.(record, { navigate: false }); } catch {}
   }, [state.finished]);
 
-  const tacticalPlan = React.useMemo(() => buildTacticalPlan(state, config), [state, config]);
+  const deferredTacticalState = React.useDeferredValue(state);
+  const tacticalPlan = React.useMemo(() => buildTacticalPlan(deferredTacticalState, config), [deferredTacticalState, config]);
   const primarySuggestion = tacticalPlan.primary;
   const focusTerritory = selectedTerritory || primarySuggestion?.territory || null;
   const mapLabel = String((rawMap as any)?.name || (rawMap as any)?.label || config.mapId || "Carte");
@@ -1435,7 +1468,7 @@ export default function DartsFirefighterPlay(props: any) {
   </div>;
 }
 
-function FirefighterTurnCarousel({ players, activePlayerId, profilesById, playerStats }: any) {
+const FirefighterTurnCarousel = React.memo(function FirefighterTurnCarousel({ players, activePlayerId, profilesById, playerStats }: any) {
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const itemRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -1466,7 +1499,7 @@ function FirefighterTurnCarousel({ players, activePlayerId, profilesById, player
       })}
     </div>
   </div>;
-}
+});
 
 function HeaderMiniStat({ label, value, color }: any) {
   return <div className="dff-play__mini-stat" style={{ borderColor: `${color}35`, background: `${color}0d` }}><div>{label}</div><strong style={{ color }}>{value}</strong></div>;
@@ -1517,14 +1550,16 @@ function OutlineActionButton({ name, label, color, onClick }: any) {
 }
 
 function FloatingPanel({ title, subtitle, accent = WATER, onClose, children, wide = false, panelClassName = "", bodyClassName = "" }: any) {
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
   React.useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose?.(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onCloseRef.current?.(); };
     window.addEventListener("keydown", onKey);
     return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey); };
-  }, [onClose]);
-  return <div className="dff-modal" role="dialog" aria-modal="true" onClick={onClose}>
+  }, []);
+  return <div className="dff-modal" role="dialog" aria-modal="true" onClick={() => onCloseRef.current?.()}>
     <div className={`dff-modal__panel ${wide ? "is-wide" : ""} ${panelClassName}`.trim()} onClick={(event) => event.stopPropagation()} style={{ borderColor: `${accent}66` }}>
       <header className="dff-modal__header"><div><div className="dff-modal__title" style={{ color: accent }}>{title}</div>{subtitle ? <div className="dff-modal__subtitle">{subtitle}</div> : null}</div><button type="button" className="dff-modal__close" onClick={onClose} aria-label="Fermer"><OutlineIcon name="close" size={24} /></button></header>
       <div className={`dff-modal__body ${bodyClassName}`.trim()}>{children}</div>
@@ -1621,30 +1656,49 @@ function FirefighterMapModal({ state, country, map, mapLabel, onClose, onSelect,
   const [showMapControls, setShowMapControls] = React.useState(false);
   const [detailsTerritoryId, setDetailsTerritoryId] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
-  const selectedTarget = state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null;
-  const detailsTerritory = state.territories.find((territory: FireTerritory) => territory.id === detailsTerritoryId) || null;
+  const selectedTarget = React.useMemo(() => state.territories.find((territory: FireTerritory) => territory.id === state.selectedTerritoryId) || null, [state.territories, state.selectedTerritoryId]);
+  const detailsTerritory = React.useMemo(() => state.territories.find((territory: FireTerritory) => territory.id === detailsTerritoryId) || null, [state.territories, detailsTerritoryId]);
   const accent = detailsTerritory ? fireTerritoryColor(fireStatus(detailsTerritory)) : selectedTarget ? fireTerritoryColor(fireStatus(selectedTarget)) : FIRE;
-  const filterIds = statusFilter ? state.territories.filter((territory: FireTerritory) => territory.playable && fireStatus(territory) === statusFilter).map((territory: FireTerritory) => territory.id) : [];
-  const filterButtons = [
+  const statusBuckets = React.useMemo(() => {
+    const counts: Record<string, number> = { smoke: 0, fire1: 0, fire2: 0, fire3: 0, protected: 0 };
+    const ids: Record<string, string[]> = { smoke: [], fire1: [], fire2: [], fire3: [], protected: [] };
+    const selectable = new Set<string>();
+    for (const territory of state.territories as FireTerritory[]) {
+      if (!territory.playable || territory.destroyed) continue;
+      selectable.add(territory.id);
+      const key = fireStatus(territory);
+      if (counts[key] != null) {
+        counts[key] += 1;
+        ids[key].push(territory.id);
+      }
+    }
+    return { counts, ids, selectable };
+  }, [state.territories]);
+  const filterIds = statusFilter ? (statusBuckets.ids[statusFilter] || []) : [];
+  const filterButtons = React.useMemo(() => [
     { key: "smoke", label: "💨", value: "1" },
     { key: "fire1", label: "🔥", value: "1" },
     { key: "fire2", label: "🔥", value: "2" },
     { key: "fire3", label: "🔥", value: "3" },
     { key: "protected", label: "💧", value: "1-3" },
-  ];
-  const handleMapSelect = (id: string) => { onSelect?.(id); setDetailsTerritoryId(id); };
-  const clearDetails = () => { setDetailsTerritoryId(null); onClearSelection?.(); };
+  ], []);
+  const handleMapSelect = React.useCallback((id: string) => { onSelect?.(id); setDetailsTerritoryId(id); }, [onSelect]);
+  const clearDetails = React.useCallback(() => { setDetailsTerritoryId(null); onClearSelection?.(); }, [onClearSelection]);
+  const selectFromDetails = React.useCallback((id: string) => { onSelect?.(id); setDetailsTerritoryId(id); }, [onSelect]);
+  const isSelectableTerritoryId = React.useCallback((id: string) => statusBuckets.selectable.has(id), [statusBuckets.selectable]);
+  const mapStyle = React.useMemo(() => ({ width: "100%", height: "100%" }), []);
+
   return <FloatingPanel title="CARTE D’INTERVENTION" subtitle={mapLabel} accent={accent} onClose={onClose} wide panelClassName="dff-map-panel" bodyClassName="dff-map-panel__body">
     <div className={`dff-map-modal ${detailsTerritory ? "has-territory" : ""}`}>
       {!detailsTerritory ? <div className="dff-map-legend">{filterButtons.map((item) => {
-        const count = state.territories.filter((territory: FireTerritory) => territory.playable && fireStatus(territory) === item.key).length;
+        const count = statusBuckets.counts[item.key] || 0;
         return <button key={item.key} type="button" className={`dff-map-legend__chip is-${item.key} ${statusFilter === item.key ? "is-active" : ""}`} onClick={() => setStatusFilter((current) => current === item.key ? null : item.key)} title={`Mettre en surbrillance : ${item.key}`}><span>{item.label}</span><b>{item.value}</b><small>{count}</small></button>;
       })}</div> : null}
       <div className="dff-map-modal__viewport-wrap">
         {!detailsTerritory && countryFlag ? <div className="dff-map-modal__country-badge"><img src={countryFlag} alt="" aria-hidden /></div> : null}
         {!detailsTerritory ? <WindCompass enabled={Boolean(state.config?.windEnabled)} state={state} /> : null}
-        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} highlightTerritoryIds={filterIds} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !detailsTerritory} onSelectTerritory={handleMapSelect} isSelectableTerritoryId={(id) => Boolean(state.territories.find((territory: FireTerritory) => territory.id === id && territory.playable && !territory.destroyed))} showViewportControls={showMapControls} showViewportHint={false} style={{ width: "100%", height: "100%" }} /></div>
-        {detailsTerritory ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${detailsTerritory.name}`}><TerritoryInsightBody territory={detailsTerritory} state={state} country={country} compact onClear={clearDetails} onOpenAdvice={() => onOpenAdvice?.(detailsTerritory)} onSelectTerritory={(id: string) => { onSelect?.(id); setDetailsTerritoryId(id); }} /></div> : null}
+        <div className="dff-map-modal__viewport"><TerritoriesMapView country={country} map={map} ownerColors={FIRE_STATUS_OWNER_COLORS} selectedTerritoryId={state.selectedTerritoryId || undefined} highlightTerritoryIds={filterIds} activeColor={WATER} themeColor={FIRE} interactive={!state.finished && !detailsTerritory} onSelectTerritory={handleMapSelect} isSelectableTerritoryId={isSelectableTerritoryId} showViewportControls={showMapControls} showViewportHint={false} style={mapStyle} /></div>
+        {detailsTerritory ? <div className="dff-map-territory-overlay" role="region" aria-label={`Détails de ${detailsTerritory.name}`}><TerritoryInsightBody territory={detailsTerritory} state={state} country={country} compact onClear={clearDetails} onOpenAdvice={() => onOpenAdvice?.(detailsTerritory)} onSelectTerritory={selectFromDetails} /></div> : null}
         {!detailsTerritory ? <button type="button" className={`dff-map-controls-toggle ${showMapControls ? "is-active" : ""}`} onClick={() => setShowMapControls((value) => !value)}>{showMapControls ? "MASQUER COMMANDES" : "COMMANDES CARTE"}</button> : null}
       </div>
     </div>
@@ -1671,8 +1725,8 @@ function TargetsModal({ state, country, onClose, onSelect }: any) {
       const meta = statusMeta(territory);
       const isSafe = status === "safe";
       return <button key={territory.id} type="button" disabled={territory.destroyed} className={`dff-target-row is-${status} ${active ? "is-selected" : ""}`} onClick={() => onSelect(territory.id)} style={{ borderColor: active ? WATER : (isSafe ? "rgba(255,255,255,.12)" : `${color}88`), boxShadow: active ? `0 0 16px ${WATER}35` : (isSafe ? "none" : `0 0 16px ${color}18`) }}>
-        <div className="dff-target-row__shape"><TerritorySilhouetteBadge country={country} territory={territory} color={isSafe ? "#5c6470" : color} height={42} showValue={false} visualMode="status" /></div>
-        <strong style={{ color: isSafe ? "#aab1bd" : GOLD }}>{territory.target}</strong>
+        <div className="dff-target-row__shape">{(!isSafe || active) ? <TerritorySilhouetteBadge country={country} territory={territory} color={isSafe ? "#5c6470" : color} height={42} showValue={false} visualMode="status" /> : <span className="dff-target-row__safe-dot" aria-hidden />}</div>
+        <strong style={{ color: isSafe ? "#8e96a4" : GOLD }}>{territory.target}</strong>
         <div className="dff-target-row__copy"><b>{territory.name}</b>{!isSafe ? <span style={{ color }}><OutlineIcon name={meta.icon} size={12} /><strong>{meta.value}</strong>{territory.critical ? <em>CRITIQUE</em> : null}</span> : <span className="is-safe-label">SAIN</span>}</div>
       </button>;
     })}</div>
