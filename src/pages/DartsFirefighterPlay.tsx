@@ -1615,7 +1615,7 @@ function ObjectiveModal({ primary, alternatives, config, state, country, onSelec
       const canadairRow = suggestion.kind === "canadair" ? actionRows.find((row) => row.kind === "canadair") : null;
       const points = Number(suggestion.estimatedPoints || estimateSuggestionPoints(suggestion, state));
       return <button key={`${suggestion.territory.id}-${index}`} type="button" className={`dff-objective-row ${suggestion.kind === "canadair" ? "is-canadair" : ""}`} onClick={() => onSelect(suggestion.territory.id)} style={{ borderColor: `${territoryColor}55` }}>
-        {suggestion.kind === "canadair" ? <><img src={canadairSceneForTerritory(suggestion.territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+        {suggestion.kind === "canadair" ? <img src={canadairSceneForTerritory(suggestion.territory.id)} className="dff-canadair-scene" alt="" aria-hidden /> : null}
         <strong style={{ color: territoryColor }}>{suggestion.territory.target}</strong>
         <div className="dff-objective-row__copy"><b>{suggestion.territory.name}</b><span>{suggestion.action}</span><small><span className="dff-inline-status-pill is-compact" style={{ color: meta.color }}><OutlineIcon name={meta.icon} size={12} /><b>{meta.value}</b></span></small>{canadairRow?.impacts?.length ? <CanadairImpactStrip impacts={canadairRow.impacts} country={country} /> : null}</div>
         <div className="dff-objective-row__points"><b>+{points}</b><small>PTS</small></div>
@@ -1676,7 +1676,7 @@ function ActionPlannerModal({ territory, state, country, onClose }: any) {
   const rows = buildTerritoryActionRows(territory, state);
   return <FloatingPanel title="ACTIONS POSSIBLES" subtitle={territory ? `${territory.name} · cible ${territory.target}` : ""} accent={color} onClose={onClose}>
     <div className="dff-action-planner">{rows.map((row, index) => <article key={`${row.label}-${index}`} className={`dff-action-row ${row.best ? "is-best" : ""} ${row.kind === "canadair" ? "is-canadair" : ""}`} style={{ borderColor: `${row.color}66`, background: `linear-gradient(180deg, ${row.color}${row.best ? "1d" : "12"}, rgba(5,8,14,.74))` }}>
-      {row.kind === "canadair" ? <><img src={canadairSceneForTerritory(territory.id)} className="dff-canadair-scene" alt="" aria-hidden /><div className="dff-canadair-watermark" aria-hidden><span>✈</span><i>💧 💧 💧</i></div></> : null}
+      {row.kind === "canadair" ? <img src={canadairSceneForTerritory(territory.id)} className="dff-canadair-scene" alt="" aria-hidden /> : null}
       <header>
         <div className="dff-action-row__name"><strong style={{ color: row.color }}>{row.label}</strong>{row.best ? <span>MEILLEURE ACTION</span> : null}</div>
         <div className="dff-action-row__score"><b>+{row.points}</b><small>PTS</small></div>
