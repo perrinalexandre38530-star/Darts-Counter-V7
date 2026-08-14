@@ -1,7 +1,7 @@
 // @ts-nocheck
 // =============================================================
-// DARTS FIREFIGHTER — écran de fin de mission
-// Résumé, contribution de la brigade, carte finale et chronologie.
+// DARTS FIREFIGHTER — écran de fin V2
+// Bilan épuré + onglets statistiques + graphiques.
 // =============================================================
 
 import React from "react";
@@ -16,63 +16,69 @@ import {
   type DartsFirefighterState,
   type FireTerritory,
 } from "../lib/gameEngines/dartsFirefighterEngine";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts";
+import "../styles/darts-firefighter-end.css";
 
 const FIRE = "#ff5a25";
 const WATER = "#25c9ff";
 const GOLD = "#ffd76a";
-const RED = "#ff4c55";
+const RED = "#ff5264";
 const GREEN = "#5ce6a8";
-const PLAYER_COLORS = ["#25c9ff", "#ffbf45", "#ff6aa9", "#8d7dff", "#62e9aa", "#ff8a5b", "#d4d8e5", "#66a7ff"];
+const PURPLE = "#b996ff";
+const SOFT = "#8f98aa";
+const PLAYER_COLORS = [WATER, "#ffbf45", "#ff6aa9", "#8d7dff", "#62e9aa", "#ff8a5b", "#d4d8e5", "#66a7ff"];
+const TOOLTIP_STYLE: any = { background: "rgba(5,8,14,.97)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#fff", fontSize: 10, boxShadow: "0 10px 28px rgba(0,0,0,.38)" };
+
+type EndTab = "summary" | "operations" | "darts" | "brigade" | "map";
 
 function playerName(profile: any) {
   return profile?.name || profile?.displayName || profile?.display_name || profile?.pseudo || "Pompier";
 }
-function pct(part: number, total: number) {
-  return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
-}
+function n(value: any) { const x = Number(value); return Number.isFinite(x) ? x : 0; }
+function pct(part: number, total: number) { return total > 0 ? Math.round((part / total) * 1000) / 10 : 0; }
 function fmtDuration(ms: number) {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
-function statusLabel(territory: FireTerritory) {
-  if (territory.destroyed) return "DÉTRUIT";
-  if (territory.fireLevel > 0) return `FEU N${territory.fireLevel}`;
-  if (territory.smoke) return "FUMÉE";
-  if (territory.protection > 0) return `PROTÉGÉ ${territory.protection}`;
-  return "SAIN";
-}
-function statusIcon(territory: FireTerritory) {
-  if (territory.destroyed) return "⬛";
-  if (territory.fireLevel === 3) return "🔥🔥🔥";
-  if (territory.fireLevel === 2) return "🔥🔥";
-  if (territory.fireLevel === 1) return "🔥";
-  if (territory.smoke) return "💨";
-  if (territory.protection > 0) return "💧";
-  return "✓";
-}
-function panelStyle(): React.CSSProperties {
-  return {
-    borderRadius: 18,
-    padding: 10,
-    background: "linear-gradient(180deg,rgba(255,255,255,.06),rgba(0,0,0,.27))",
-    border: "1px solid rgba(255,255,255,.10)",
-    boxShadow: "0 14px 34px rgba(0,0,0,.30)",
-    boxSizing: "border-box",
-  };
-}
 function gradeColor(grade: string) {
   return grade === "S" ? GOLD : grade === "A" ? WATER : grade === "B" ? GREEN : grade === "C" ? "#d5d9e2" : RED;
 }
-function actionButton(color: string): React.CSSProperties {
-  return {
-    minHeight: 44,
-    borderRadius: 13,
-    border: `1px solid ${color}88`,
-    background: `${color}16`,
-    color,
-    fontWeight: 1050,
-    cursor: "pointer",
-  };
+function statusLabel(territory: FireTerritory) {
+  if (territory.destroyed) return "Détruit";
+  if (territory.fireLevel > 0) return `Feu N${territory.fireLevel}`;
+  if (territory.smoke) return "Fumée";
+  if (territory.protection > 0) return `Protection ${territory.protection}`;
+  return "Sain";
+}
+function statusKey(territory: FireTerritory) {
+  if (territory.destroyed) return "destroyed";
+  if (territory.fireLevel >= 3) return "fire3";
+  if (territory.fireLevel === 2) return "fire2";
+  if (territory.fireLevel === 1) return "fire1";
+  if (territory.smoke) return "smoke";
+  if (territory.protection > 0) return "protected";
+  return "safe";
+}
+function statusColor(key: string) {
+  return key === "fire3" ? RED : key === "fire2" ? FIRE : key === "fire1" ? "#ffad33" : key === "smoke" ? "#c2b59f" : key === "protected" ? WATER : key === "destroyed" ? "#66707f" : GREEN;
+}
+function missionObjectiveLabel(state: DartsFirefighterState) {
+  if (state.config.objective === "survival") return `Survie · ${state.config.maxRounds} rounds`;
+  if (state.config.objective === "protect_critical") return `Protection · ${state.config.criticalTerritories} zones critiques`;
+  return "Extinction totale";
 }
 
 export type DartsFirefighterEndProps = {
@@ -85,137 +91,217 @@ export type DartsFirefighterEndProps = {
 };
 
 export default function DartsFirefighterEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: DartsFirefighterEndProps) {
-  const [tab, setTab] = React.useState<"summary" | "brigade" | "map" | "timeline">("summary");
+  const [tab, setTab] = React.useState<EndTab>("summary");
   const duration = Math.max(0, (state.finishedAt || Date.now()) - state.startedAt);
   const missionGrade = computeDartsFirefighterMissionGrade(state);
-  const playerRows = state.players
+  const grade = gradeColor(missionGrade.grade);
+
+  const playerRows = React.useMemo(() => state.players
     .map((player: any, index: number) => ({
       player,
       profile: profilesById.get(String(player.id)) || player,
       stats: state.playerStats[player.id] || {},
       color: PLAYER_COLORS[index % PLAYER_COLORS.length],
     }))
-    .sort((a: any, b: any) => Number(b.stats.score || 0) - Number(a.stats.score || 0));
-  const awardSource = playerRows.map((row: any) => ({ ...row, accuracy: pct(Number(row.stats.hits || 0), Number(row.stats.darts || 0)) }));
-  const pickBest = (getter: (row: any) => number) => [...awardSource].sort((a, b) => getter(b) - getter(a))[0] || null;
-  const awards = [
-    { icon: "🔥", label: "LANCE HAUTE PRESSION", row: pickBest((r) => Number(r.stats.fireReduced || 0)), value: (r: any) => `${r.stats.fireReduced || 0} niveaux` },
-    { icon: "🛡", label: "BOUCLIER DE LA BRIGADE", row: pickBest((r) => Number(r.stats.protectionsPlaced || 0) + Number(r.stats.propagationBlocked || 0)), value: (r: any) => `${Number(r.stats.protectionsPlaced || 0) + Number(r.stats.propagationBlocked || 0)} protections` },
-    { icon: "🎯", label: "TIR LE PLUS PRÉCIS", row: pickBest((r) => r.accuracy), value: (r: any) => `${r.accuracy}%` },
-    { icon: "⚡", label: "INTERVENTION EXPRESS", row: pickBest((r) => Number(r.stats.dartsSaved || 0)), value: (r: any) => `${r.stats.dartsSaved || 0} fléchettes économisées` },
-  ].filter((award) => award.row);
-  const totals = playerRows.reduce((acc: any, row: any) => {
-    const stats = row.stats;
-    acc.darts += Number(stats.darts || 0);
-    acc.hits += Number(stats.hits || 0);
-    acc.fire += Number(stats.fireReduced || 0);
-    acc.water += Number(stats.waterApplied || 0);
-    acc.protected += Number(stats.protectionsPlaced || 0);
-    acc.extinguished += Number(stats.firesExtinguished || 0);
-    acc.score += Number(stats.score || 0);
-    acc.dartsSaved += Number(stats.dartsSaved || 0);
-    acc.earlyValidated += Number(stats.earlyValidatedVisits || 0);
+    .map((row: any) => ({ ...row, accuracy: pct(n(row.stats.hits), n(row.stats.darts)) }))
+    .sort((a: any, b: any) => n(b.stats.score) - n(a.stats.score)), [state.players, state.playerStats, profilesById]);
+
+  const totals = React.useMemo(() => playerRows.reduce((acc: any, row: any) => {
+    const s = row.stats;
+    acc.darts += n(s.darts); acc.hits += n(s.hits); acc.fire += n(s.fireReduced); acc.water += n(s.waterApplied);
+    acc.protected += n(s.protectionsPlaced); acc.extinguished += n(s.firesExtinguished); acc.score += n(s.score);
+    acc.blocked += n(s.propagationBlocked); acc.smoke += n(s.smokeCleared); acc.singles += n(s.singles); acc.doubles += n(s.doubles);
+    acc.triples += n(s.triples); acc.bulls += n(s.bulls); acc.dbulls += n(s.dbulls); acc.misses += n(s.misses);
+    acc.one += n(s.oneDartVisits); acc.two += n(s.twoDartVisits); acc.three += n(s.threeDartVisits);
+    acc.dartsSaved += n(s.dartsSaved); acc.early += n(s.earlyValidatedVisits);
     return acc;
-  }, { darts: 0, hits: 0, fire: 0, water: 0, protected: 0, extinguished: 0, score: 0, dartsSaved: 0, earlyValidated: 0 });
-  const finalZones = state.territories.filter((territory: FireTerritory) => territory.playable);
-  const tabs = [
-    ["summary", "RÉSUMÉ", "🚒"],
-    ["brigade", "BRIGADE", "👨‍🚒"],
-    ["map", "CARTE", "🗺"],
-    ["timeline", "VOLÉES", "📈"],
-  ] as const;
+  }, { darts:0,hits:0,fire:0,water:0,protected:0,extinguished:0,score:0,blocked:0,smoke:0,singles:0,doubles:0,triples:0,bulls:0,dbulls:0,misses:0,one:0,two:0,three:0,dartsSaved:0,early:0 }), [playerRows]);
 
-  return <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.87)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 8 }}>
-    <div style={{ ...panelStyle(), width: "min(920px,100%)", maxHeight: "95dvh", overflow: "auto", padding: 12, borderColor: `${state.won ? GREEN : RED}77`, background: "linear-gradient(180deg,rgba(17,15,13,.99),rgba(4,7,10,.99))" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ color: state.won ? GREEN : RED, fontSize: 11, fontWeight: 1100, letterSpacing: 1.2 }}>{state.won ? "✅ MISSION RÉUSSIE" : "🚨 MISSION ÉCHOUÉE"}</div>
-        <div style={{ marginTop: 3, color: "#fff", fontSize: 24, fontWeight: 1100 }}>{finishReasonLabel(state.finishReason)}</div>
-        <div style={{ color: WATER, fontSize: 10, fontWeight: 950 }}>{difficultyLabel(state.config.difficulty)} · {state.config.mapId} · {state.score} POINTS</div>
-        <div style={{ marginTop: 2, color: "#aeb5c5", fontSize: 8.5, fontWeight: 900 }}>{state.config.objective === "survival" ? `SURVIE · ${state.config.maxRounds} ROUNDS` : state.config.objective === "protect_critical" ? `PROTECTION · ${state.config.criticalTerritories} ZONES CRITIQUES` : "EXTINCTION TOTALE"}</div>
-        <div style={{ margin: "8px auto 0", width: "fit-content", minWidth: 148, padding: "7px 15px", borderRadius: 14, border: `1px solid ${gradeColor(missionGrade.grade)}77`, background: `${gradeColor(missionGrade.grade)}12`, boxShadow: `0 0 20px ${gradeColor(missionGrade.grade)}22` }}>
-          <div style={{ color: gradeColor(missionGrade.grade), fontSize: 24, lineHeight: 1, fontWeight: 1200 }}>GRADE {missionGrade.grade}</div>
-          <div style={{ marginTop: 3, color: "#d8dde6", fontSize: 8, fontWeight: 1000 }}>{missionGrade.label} · {missionGrade.rating}/100</div>
-        </div>
-      </div>
+  const finalZones = React.useMemo(() => state.territories.filter((t: FireTerritory) => t.playable), [state.territories]);
+  const finalStatusData = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    finalZones.forEach((t: FireTerritory) => { const key = statusKey(t); counts[key] = n(counts[key]) + 1; });
+    const names: Record<string,string> = { safe:"Saines", protected:"Protégées", smoke:"Fumée", fire1:"Feu N1", fire2:"Feu N2", fire3:"Feu N3", destroyed:"Perdues" };
+    return Object.entries(counts).filter(([,value]) => value > 0).map(([key,value]) => ({ key, name:names[key] || key, value, color:statusColor(key) }));
+  }, [finalZones]);
 
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
-        {tabs.map(([id, label, icon]) => <button key={id} onClick={() => setTab(id)} style={{ minHeight: 43, borderRadius: 12, border: `1px solid ${tab === id ? WATER : "rgba(255,255,255,.09)"}`, background: tab === id ? `${WATER}17` : "rgba(255,255,255,.035)", color: tab === id ? WATER : "#aab1c0", fontWeight: 1000, fontSize: 8.5 }}><div style={{ fontSize: 15 }}>{icon}</div>{label}</button>)}
-      </div>
+  const visitSeries = React.useMemo(() => state.history.map((visit: any, index: number) => ({
+    index: index + 1,
+    score: n(visit.score),
+    cumulative: state.history.slice(0, index + 1).reduce((sum: number, item: any) => sum + n(item.score), 0),
+  })), [state.history]);
 
-      {tab === "summary" ? <>
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
-          <EndKpi label="Score" value={state.score} color={GOLD} />
-          <EndKpi label="Feux éteints" value={state.totalExtinguished} color={GREEN} />
-          <EndKpi label="Zones perdues" value={state.totalDestroyed} color={RED} />
-          <EndKpi label="Propagations" value={state.totalSpread} color={FIRE} />
-          <EndKpi label="Bloquées" value={state.propagationBlocked} color={WATER} />
-          <EndKpi label="Rounds" value={Math.max(1, state.roundIndex)} color={WATER} />
-          <EndKpi label="Précision" value={`${pct(totals.hits, totals.darts)}%`} color={GREEN} />
-          <EndKpi label="Durée" value={fmtDuration(duration)} color="#d5d9e2" />
-          <EndKpi label="Volées courtes" value={totals.earlyValidated} color={WATER} />
-          <EndKpi label="Flèches économisées" value={totals.dartsSaved} color={GOLD} />
-        </div>
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 14, background: state.won ? `${GREEN}0c` : `${RED}0c`, border: `1px solid ${state.won ? GREEN : RED}35`, color: "#d9dde5", fontSize: 10.5, lineHeight: 1.45 }}>
-          {state.won
-            ? state.config.objective === "survival"
-              ? `La brigade a tenu jusqu’aux renforts malgré ${activeIncidents(state)} incident${activeIncidents(state) > 1 ? "s" : ""} encore actif${activeIncidents(state) > 1 ? "s" : ""}.`
-              : state.config.objective === "protect_critical"
-                ? `Les zones critiques ont été protégées jusqu’à l’arrivée des renforts. ${state.totalDestroyed} territoire${state.totalDestroyed > 1 ? "s" : ""} perdu${state.totalDestroyed > 1 ? "s" : ""}.`
-                : `La brigade a maîtrisé l’incendie avec ${state.totalDestroyed} territoire${state.totalDestroyed > 1 ? "s" : ""} perdu${state.totalDestroyed > 1 ? "s" : ""}.`
-            : `Il reste ${activeIncidents(state)} incident${activeIncidents(state) > 1 ? "s" : ""}. ${finishReasonLabel(state.finishReason)}.`}
-        </div>
-      </> : null}
+  const operationBars = [
+    { name:"Éteints", value:n(state.totalExtinguished), color:GREEN },
+    { name:"Feu réduit", value:totals.fire, color:FIRE },
+    { name:"Blocages", value:n(state.propagationBlocked), color:WATER },
+    { name:"Propagation", value:n(state.totalSpread), color:"#ff9c35" },
+    { name:"Perdus", value:n(state.totalDestroyed), color:RED },
+  ];
+  const dartMix = [
+    { name:"Simples", value:totals.singles, color:WATER },
+    { name:"Doubles", value:totals.doubles, color:GOLD },
+    { name:"Triples", value:totals.triples, color:FIRE },
+    { name:"Bull", value:totals.bulls, color:GREEN },
+    { name:"DBull", value:totals.dbulls, color:PURPLE },
+    { name:"MISS", value:totals.misses, color:RED },
+  ].filter((row) => row.value > 0);
+  const visitLength = [
+    { name:"1 flèche", value:totals.one, color:GREEN },
+    { name:"2 flèches", value:totals.two, color:GOLD },
+    { name:"3 flèches", value:totals.three, color:FIRE },
+  ];
+  const playerScoreData = playerRows.map((row: any) => ({ name: playerName(row.profile), score:n(row.stats.score), color:row.color }));
 
-      {tab === "brigade" ? <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
-          {awards.map((award: any) => <div key={award.label} style={{ padding: 8, borderRadius: 13, background: `${WATER}09`, border: `1px solid ${WATER}2d`, minWidth: 0 }}><div style={{ color: GOLD, fontSize: 8, fontWeight: 1050 }}>{award.icon} {award.label}</div><div style={{ marginTop: 3, color: "#fff", fontSize: 10, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(award.row.profile)}</div><div style={{ color: "#9299aa", fontSize: 7.8 }}>{award.value(award.row)}</div></div>)}
-        </div>
-        {playerRows.map((row: any, index: number) => <div key={row.player.id} style={{ padding: 9, borderRadius: 14, border: `1px solid ${row.color}44`, background: `${row.color}0b`, display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
-          <ProfileAvatar profile={row.profile} size={40} showStars={false} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: row.color, fontWeight: 1050 }}>{index + 1}. {playerName(row.profile)}</div>
-            <div style={{ color: "#9299aa", fontSize: 8.5 }}>{row.stats.fireReduced || 0} niveaux · {row.stats.firesExtinguished || 0} extinctions · {row.stats.propagationBlocked || 0} blocages</div>
-            <div style={{ color: "#cfd5df", fontSize: 8.3 }}>S {row.stats.singles || 0} · D {row.stats.doubles || 0} · T {row.stats.triples || 0} · B {row.stats.bulls || 0} · DB {row.stats.dbulls || 0} · MISS {row.stats.misses || 0}</div>
-            <div style={{ color: WATER, fontSize: 7.8 }}>Volées 1D {row.stats.oneDartVisits || 0} · 2D {row.stats.twoDartVisits || 0} · 3D {row.stats.threeDartVisits || 0} · {row.stats.dartsSaved || 0} économisée(s)</div>
+  const bestPlayer = playerRows[0] || null;
+  const accuracy = pct(totals.hits, totals.darts);
+  const preservation = finalZones.length ? pct(finalZones.filter((t: FireTerritory) => !t.destroyed).length, finalZones.length) : 0;
+  const blockRate = pct(n(state.propagationBlocked), n(state.propagationBlocked) + n(state.totalSpread));
+  const tabs: { id:EndTab; label:string; icon:string }[] = [
+    { id:"summary", label:"BILAN", icon:"🚒" },
+    { id:"operations", label:"INTERVENTION", icon:"🔥" },
+    { id:"darts", label:"FLÉCHETTES", icon:"🎯" },
+    { id:"brigade", label:"BRIGADE", icon:"👨‍🚒" },
+    { id:"map", label:"TERRITOIRES", icon:"🗺" },
+  ];
+
+  return <div className="dff-end-overlay">
+    <section className="dff-end-shell" style={{ "--result": state.won ? GREEN : RED, "--grade": grade } as React.CSSProperties}>
+      <header className="dff-end-hero">
+        <button type="button" className="dff-end-close" onClick={onClose} aria-label="Fermer">×</button>
+        <div className="dff-end-result-pill">{state.won ? "✓ MISSION RÉUSSIE" : "! MISSION ÉCHOUÉE"}</div>
+        <div className="dff-end-hero-grid">
+          <div className="dff-end-grade">
+            <span>GRADE</span><strong>{missionGrade.grade}</strong><small>{missionGrade.rating}/100</small>
           </div>
-          <div style={{ color: GOLD, fontSize: 17, fontWeight: 1100 }}>{row.stats.score || 0}</div>
-        </div>)}
-      </div> : null}
-
-      {tab === "map" ? <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 6 }}>
-        {[...finalZones].sort((a: FireTerritory, b: FireTerritory) => a.target - b.target).map((territory: FireTerritory) => {
-          const color = fireTerritoryColor(fireStatus(territory));
-          return <div key={territory.id} style={{ padding: 8, borderRadius: 12, background: `${color}0d`, border: `1px solid ${color}44` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 7 }}><strong style={{ color: GOLD }}>{territory.target}</strong><span>{statusIcon(territory)}</span></div>
-            <div style={{ marginTop: 3, fontSize: 9, fontWeight: 1000, color: territory.critical ? GOLD : "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{territory.name}</div>
-            <div style={{ marginTop: 2, color, fontSize: 8.2, fontWeight: 950 }}>{statusLabel(territory)}</div>
-          </div>;
-        })}
-      </div> : null}
-
-      {tab === "timeline" ? <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-        {[...state.history].reverse().slice(0, 30).map((visit: any) => <div key={visit.id} style={{ padding: 8, borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.07)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <strong style={{ fontSize: 9.5 }}>{playerName(profilesById.get(String(visit.playerId)))} · R{visit.round} · {visit.labels.join(" / ")}{visit.voluntaryStop ? ` · ARRÊT ${visit.darts.length}/${visit.maxDarts || state.config.dartsPerTurn}` : ""}</strong>
-            <strong style={{ color: visit.score >= 0 ? GREEN : RED }}>{visit.score >= 0 ? "+" : ""}{visit.score}</strong>
+          <div className="dff-end-hero-copy">
+            <h2>{finishReasonLabel(state.finishReason)}</h2>
+            <p>{difficultyLabel(state.config.difficulty)} · {state.config.mapId} · {missionObjectiveLabel(state)}</p>
+            <div className="dff-end-score"><strong>{state.score}</strong><span>PTS BRIGADE</span></div>
           </div>
-          <div style={{ color: "#8e95a7", fontSize: 8.2 }}>{visit.events.slice(-3).map((event: any) => event.label).join(" · ") || "Aucun effet"}</div>
-        </div>)}
-      </div> : null}
+        </div>
+      </header>
 
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
-        <button onClick={onReplay} style={actionButton(FIRE)}>REJOUER</button>
-        <button onClick={onStats} style={actionButton(WATER)}>STATS</button>
-        <button onClick={onHistory} style={actionButton(GOLD)}>HISTORIQUE</button>
-        <button onClick={onClose} style={actionButton("#d1d5df")}>FERMER</button>
-      </div>
+      <nav className="dff-end-tabs" aria-label="Statistiques de fin de partie">
+        {tabs.map((item) => <button key={item.id} type="button" className={tab === item.id ? "is-active" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span><b>{item.label}</b></button>)}
+      </nav>
+
+      <main className="dff-end-content">
+        {tab === "summary" ? <SummaryPage state={state} totals={totals} duration={duration} accuracy={accuracy} preservation={preservation} blockRate={blockRate} visitSeries={visitSeries} bestPlayer={bestPlayer} profilesById={profilesById} /> : null}
+        {tab === "operations" ? <OperationsPage state={state} totals={totals} operationBars={operationBars} finalStatusData={finalStatusData} preservation={preservation} blockRate={blockRate} /> : null}
+        {tab === "darts" ? <DartsPage totals={totals} accuracy={accuracy} dartMix={dartMix} visitLength={visitLength} visitSeries={visitSeries} /> : null}
+        {tab === "brigade" ? <BrigadePage playerRows={playerRows} playerScoreData={playerScoreData} /> : null}
+        {tab === "map" ? <TerritoriesPage finalZones={finalZones} finalStatusData={finalStatusData} /> : null}
+      </main>
+
+      <footer className="dff-end-actions">
+        <button type="button" className="is-fire" onClick={onReplay}>↻ <span>REJOUER</span></button>
+        <button type="button" className="is-water" onClick={onStats}>▥ <span>STATS COMPLÈTES</span></button>
+        <button type="button" className="is-gold" onClick={onHistory}>◷ <span>HISTORIQUE</span></button>
+      </footer>
+    </section>
+  </div>;
+}
+
+function SummaryPage({ state, totals, duration, accuracy, preservation, blockRate, visitSeries, bestPlayer }: any) {
+  return <div className="dff-end-page">
+    <div className="dff-end-kpi-grid is-primary">
+      <EndKpi label="Feux éteints" value={state.totalExtinguished} icon="🔥" color={GREEN} />
+      <EndKpi label="Précision" value={`${accuracy}%`} icon="🎯" color={WATER} />
+      <EndKpi label="Zones sauvées" value={`${preservation}%`} icon="🛡" color={GOLD} />
+      <EndKpi label="Durée" value={fmtDuration(duration)} icon="⏱" color="#dbe2ed" />
+    </div>
+
+    <div className="dff-end-grid-2">
+      <ChartCard title="PROGRESSION DU SCORE" subtitle="Évolution de la brigade au fil des volées">
+        <div className="dff-end-chart is-medium"><ResponsiveContainer width="100%" height="100%"><AreaChart data={visitSeries}><defs><linearGradient id="endScoreGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={GOLD} stopOpacity={.36}/><stop offset="95%" stopColor={GOLD} stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false}/><XAxis dataKey="index" hide/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Area type="monotone" dataKey="cumulative" stroke={GOLD} fill="url(#endScoreGrad)" strokeWidth={2.5} dot={false}/></AreaChart></ResponsiveContainer></div>
+      </ChartCard>
+      <section className="dff-end-card dff-end-mission-summary">
+        <div className="dff-end-section-title"><strong>RÉSUMÉ OPÉRATIONNEL</strong><span>Les chiffres à retenir</span></div>
+        <div className="dff-end-mini-grid">
+          <MiniStat label="Rounds" value={Math.max(1, state.roundIndex)} color={WATER}/>
+          <MiniStat label="Propagation" value={state.totalSpread} color={FIRE}/>
+          <MiniStat label="Bloquées" value={state.propagationBlocked} color={GREEN}/>
+          <MiniStat label="Perdues" value={state.totalDestroyed} color={RED}/>
+          <MiniStat label="Eau" value={totals.water} color={WATER}/>
+          <MiniStat label="Blocage" value={`${blockRate}%`} color={GREEN}/>
+        </div>
+        {bestPlayer ? <div className="dff-end-best-player"><ProfileAvatar profile={bestPlayer.profile} size={42} showStars={false}/><div><small>MEILLEURE CONTRIBUTION</small><strong>{playerName(bestPlayer.profile)}</strong><span>{n(bestPlayer.stats.score)} pts · {bestPlayer.accuracy}% précision</span></div></div> : null}
+      </section>
     </div>
   </div>;
 }
 
-function EndKpi({ label, value, color }: any) {
-  return <div style={{ padding: 8, borderRadius: 12, textAlign: "center", background: `${color}0d`, border: `1px solid ${color}38` }}>
-    <div style={{ color: "#8e95a7", fontSize: 7.5, fontWeight: 950 }}>{String(label).toUpperCase()}</div>
-    <div style={{ color, fontSize: 17, fontWeight: 1100 }}>{value}</div>
+function OperationsPage({ state, totals, operationBars, finalStatusData, preservation, blockRate }: any) {
+  return <div className="dff-end-page">
+    <div className="dff-end-kpi-grid">
+      <EndKpi label="Feu réduit" value={totals.fire} icon="🔥" color={FIRE}/>
+      <EndKpi label="Fumée dissipée" value={totals.smoke} icon="💨" color="#c4c8d2"/>
+      <EndKpi label="Protections" value={totals.protected} icon="🛡" color={WATER}/>
+      <EndKpi label="Canadairs" value={countEvents(state, "canadair")} icon="✈" color={GOLD}/>
+    </div>
+    <div className="dff-end-grid-2">
+      <ChartCard title="IMPACT DE L'INTERVENTION" subtitle="Actions positives et pression de l'incendie">
+        <div className="dff-end-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={operationBars} layout="vertical" margin={{left:6,right:10}}><CartesianGrid stroke="rgba(255,255,255,.05)" horizontal={false}/><XAxis type="number" hide/><YAxis type="category" dataKey="name" width={72} tick={{fill:"#aab3c2",fontSize:9}} axisLine={false} tickLine={false}/><Tooltip contentStyle={TOOLTIP_STYLE}/><Bar dataKey="value" radius={[0,8,8,0]}>{operationBars.map((row:any)=><Cell key={row.name} fill={row.color}/>)}</Bar></BarChart></ResponsiveContainer></div>
+      </ChartCard>
+      <ChartCard title="ÉTAT FINAL DES TERRITOIRES" subtitle="Répartition à la fin de la mission">
+        <Donut data={finalStatusData} center={`${preservation}%`} centerLabel="SAUVÉS"/>
+      </ChartCard>
+    </div>
+    <section className="dff-end-card"><div className="dff-end-section-title"><strong>EFFICACITÉ TACTIQUE</strong><span>Protection de la carte et maîtrise de la propagation</span></div><Ratio label="Territoires préservés" value={preservation} color={GREEN}/><Ratio label="Propagation bloquée" value={blockRate} color={WATER}/><Ratio label="Précision intervention" value={pct(totals.hits, totals.darts)} color={GOLD}/></section>
   </div>;
 }
+
+function DartsPage({ totals, accuracy, dartMix, visitLength, visitSeries }: any) {
+  return <div className="dff-end-page">
+    <div className="dff-end-kpi-grid">
+      <EndKpi label="Fléchettes" value={totals.darts} icon="🎯" color={WATER}/>
+      <EndKpi label="Précision" value={`${accuracy}%`} icon="◎" color={GREEN}/>
+      <EndKpi label="Économisées" value={totals.dartsSaved} icon="⚡" color={GOLD}/>
+      <EndKpi label="Volées courtes" value={totals.early} icon="✓" color={PURPLE}/>
+    </div>
+    <div className="dff-end-grid-2">
+      <ChartCard title="RÉPARTITION DES IMPACTS" subtitle="Simple, Double, Triple, Bull et MISS"><Donut data={dartMix} center={totals.darts} centerLabel="DARTS"/></ChartCard>
+      <ChartCard title="LONGUEUR DES VOLÉES" subtitle="Nombre de volées terminées en 1, 2 ou 3 fléchettes">
+        <div className="dff-end-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={visitLength}><CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false}/><XAxis dataKey="name" tick={{fill:"#aab3c2",fontSize:8}} axisLine={false} tickLine={false}/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Bar dataKey="value" radius={[8,8,0,0]}>{visitLength.map((row:any)=><Cell key={row.name} fill={row.color}/>)}</Bar></BarChart></ResponsiveContainer></div>
+      </ChartCard>
+    </div>
+    <ChartCard title="SCORE PAR VOLÉE" subtitle="Régularité offensive au fil de la partie">
+      <div className="dff-end-chart is-small"><ResponsiveContainer width="100%" height="100%"><AreaChart data={visitSeries}><CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false}/><XAxis dataKey="index" hide/><YAxis hide/><Tooltip contentStyle={TOOLTIP_STYLE}/><Area type="monotone" dataKey="score" stroke={WATER} fill={`${WATER}20`} strokeWidth={2} dot={false}/></AreaChart></ResponsiveContainer></div>
+    </ChartCard>
+  </div>;
+}
+
+function BrigadePage({ playerRows, playerScoreData }: any) {
+  return <div className="dff-end-page">
+    <ChartCard title="CLASSEMENT DE LA BRIGADE" subtitle="Score individuel par pompier">
+      <div className="dff-end-chart is-medium"><ResponsiveContainer width="100%" height="100%"><BarChart data={playerScoreData} layout="vertical" margin={{left:8,right:12}}><CartesianGrid stroke="rgba(255,255,255,.05)" horizontal={false}/><XAxis type="number" hide/><YAxis type="category" dataKey="name" width={78} tick={{fill:"#cdd4df",fontSize:9,fontWeight:700}} axisLine={false} tickLine={false}/><Tooltip contentStyle={TOOLTIP_STYLE}/><Bar dataKey="score" radius={[0,8,8,0]}>{playerScoreData.map((row:any)=><Cell key={row.name} fill={row.color}/>)}</Bar></BarChart></ResponsiveContainer></div>
+    </ChartCard>
+    <div className="dff-end-player-list">{playerRows.map((row:any,index:number)=><article key={row.player.id} className="dff-end-player-row" style={{"--player":row.color} as React.CSSProperties}><div className="dff-end-player-rank">#{index+1}</div><ProfileAvatar profile={row.profile} size={46} showStars={false}/><div className="dff-end-player-copy"><strong>{playerName(row.profile)}</strong><span>{row.accuracy}% précision · {n(row.stats.firesExtinguished)} extinction(s) · {n(row.stats.propagationBlocked)} blocage(s)</span><div><b>S {n(row.stats.singles)}</b><b>D {n(row.stats.doubles)}</b><b>T {n(row.stats.triples)}</b><b>B {n(row.stats.bulls)}</b><b>DB {n(row.stats.dbulls)}</b></div></div><div className="dff-end-player-score"><strong>{n(row.stats.score)}</strong><small>PTS</small></div></article>)}</div>
+  </div>;
+}
+
+function TerritoriesPage({ finalZones, finalStatusData }: any) {
+  const priorityZones = [...finalZones].sort((a:any,b:any) => {
+    const rank=(t:any)=>t.destroyed?7:t.fireLevel>=3?6:t.fireLevel===2?5:t.fireLevel===1?4:t.smoke?3:t.protection?2:1;
+    return rank(b)-rank(a) || n(b.target)-n(a.target);
+  });
+  return <div className="dff-end-page">
+    <div className="dff-end-grid-2">
+      <ChartCard title="ÉTAT FINAL" subtitle={`${finalZones.length} territoires engagés`}><Donut data={finalStatusData} center={finalZones.length} centerLabel="ZONES"/></ChartCard>
+      <section className="dff-end-card"><div className="dff-end-section-title"><strong>LECTURE RAPIDE</strong><span>Les zones les plus sensibles apparaissent en premier</span></div><div className="dff-end-status-legend">{finalStatusData.map((row:any)=><span key={row.key} style={{"--status":row.color} as React.CSSProperties}><i/><b>{row.name}</b><em>{row.value}</em></span>)}</div></section>
+    </div>
+    <section className="dff-end-card"><div className="dff-end-section-title"><strong>TERRITOIRES</strong><span>État final de la carte</span></div><div className="dff-end-territory-grid">{priorityZones.map((territory:FireTerritory)=>{const key=statusKey(territory);const color=fireTerritoryColor(fireStatus(territory));return <article key={territory.id} className={`dff-end-territory is-${key}`} style={{"--territory":color} as React.CSSProperties}><strong>{territory.target}</strong><div><b>{territory.name}</b><span>{statusLabel(territory)}</span></div></article>})}</div></section>
+  </div>;
+}
+
+function countEvents(state:any, type:string) {
+  return (state.history || []).reduce((sum:number, visit:any) => sum + (Array.isArray(visit?.events) ? visit.events.filter((event:any) => String(event?.type || "") === type).length : 0), 0);
+}
+function EndKpi({ label, value, icon, color }: any) {
+  return <div className="dff-end-kpi" style={{"--kpi":color} as React.CSSProperties}><span>{icon}</span><strong>{value}</strong><small>{label}</small></div>;
+}
+function MiniStat({ label,value,color }:any) { return <div className="dff-end-mini" style={{"--mini":color} as React.CSSProperties}><strong>{value}</strong><span>{label}</span></div>; }
+function ChartCard({ title, subtitle, children }: any) { return <section className="dff-end-card"><div className="dff-end-section-title"><strong>{title}</strong><span>{subtitle}</span></div>{children}</section>; }
+function Ratio({ label,value,color }:any) { const safe=Math.max(0,Math.min(100,n(value))); return <div className="dff-end-ratio"><div><span>{label}</span><b style={{color}}>{safe.toFixed(1)}%</b></div><div><i style={{width:`${safe}%`,background:color,boxShadow:`0 0 10px ${color}77`}}/></div></div>; }
+function Donut({ data,center,centerLabel }:any) { return <div className="dff-end-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius="56%" outerRadius="80%" paddingAngle={2}>{data.map((row:any)=><Cell key={row.name} fill={row.color}/>)}</Pie><Tooltip contentStyle={TOOLTIP_STYLE}/></PieChart></ResponsiveContainer><div className="dff-end-donut-center"><strong>{center}</strong><small>{centerLabel}</small></div><div className="dff-end-donut-legend">{data.map((row:any)=><span key={row.name}><i style={{background:row.color}}/>{row.name} <b>{row.value}</b></span>)}</div></div>; }
