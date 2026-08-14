@@ -14,7 +14,7 @@ for (const id of ["darts", "babyfoot", "petanque"]) {
 for (const id of [
   "x01", "cricket", "killer", "darts_poker", "shanghai", "training_x01", "tour_horloge",
   "five_lives", "golf", "departements", "capital", "loterie", "attrape_moi",
-  "killer_progressive", "baseball",
+  "killer_progressive", "baseball", "darts_firefighter",
 ]) {
   assert.ok(policy.includes(`"${id}"`), `Mode Darts Store V1 manquant: ${id}`);
 }
@@ -27,4 +27,4 @@ assert.ok(games.includes("filterDartsGamesForCurrentRuntime"), "Games n'applique
 console.log("✅ ANDROID STORE V1 POLICY CHECK OK");
 console.log("   Sports: Darts · Baby-foot · Pétanque");
 console.log("   Online/Messages masqués · Compétitions/Cast conservés");
-console.log("   Darts: 15 modes validés");
+console.log("   Darts: Store V1 validé, Darts Firefighter inclus");

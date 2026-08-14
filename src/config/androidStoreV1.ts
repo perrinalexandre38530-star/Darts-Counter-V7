@@ -27,6 +27,7 @@ export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "attrape_moi",
   "killer_progressive",
   "baseball",
+  "darts_firefighter",
 ] as const;
 
 const SPORT_IDS = new Set<string>(ANDROID_STORE_V1_SPORT_IDS);
