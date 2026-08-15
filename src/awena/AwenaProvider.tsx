@@ -1,7 +1,9 @@
 import React from "react";
 import { useLang } from "../contexts/LangContext";
 import { useAudio } from "../contexts/AudioContext";
-import { buildAwenaAnswer } from "./AwenaCore";
+import { buildAwenaReply } from "./AwenaCore";
+import { findAwenaMode } from "./AwenaKnowledge";
+import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
@@ -23,8 +25,14 @@ type AwenaContextValue = {
 
 const AwenaContext = React.createContext<AwenaContextValue | null>(null);
 
-function message(role: "awena" | "user", text: string): AwenaMessage {
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, role, text, createdAt: Date.now() };
+function message(role: "awena" | "user", text: string, actions?: AwenaMessage["actions"]): AwenaMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    text,
+    createdAt: Date.now(),
+    actions: actions?.length ? actions : undefined,
+  };
 }
 
 export function AwenaProvider({ children }: { children: React.ReactNode }) {
@@ -33,7 +41,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const [settingsState, setSettingsState] = React.useState<AwenaSettings>(() => loadAwenaSettings());
   const [runtime, setRuntimeState] = React.useState<AwenaRuntimeContext>({});
   const [messages, setMessages] = React.useState<AwenaMessage[]>([
-    message("awena", "Bonjour, moi c'est Awena. Je peux t'expliquer les modes de jeu et t'aider pendant tes parties."),
+    message("awena", "Bonjour, moi c'est Awena. Je peux t'expliquer les modes de jeu, te guider dans l'application et t'aider pendant tes parties."),
   ]);
   const [voiceStatus, setVoiceStatus] = React.useState<AwenaVoiceStatus | null>(null);
   const [voices, setVoices] = React.useState<AwenaVoiceOption[]>([]);
@@ -46,6 +54,17 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     setRuntimeState((prev) => ({ ...prev, ...next }));
   }, []);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onContext = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<AwenaRuntimeContext>>)?.detail;
+      if (!detail || typeof detail !== "object") return;
+      setRuntimeState((prev) => ({ ...prev, ...detail }));
+    };
+    window.addEventListener(AWENA_CONTEXT_EVENT, onContext as EventListener);
+    return () => window.removeEventListener(AWENA_CONTEXT_EVENT, onContext as EventListener);
+  }, []);
+
   const say = React.useCallback(async (text: string) => {
     if (muted) return;
     await awenaVoice.speak(text, settingsState, String(lang || "fr"));
@@ -54,12 +73,25 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const ask = React.useCallback(async (question: string, options?: { speak?: boolean }) => {
     const clean = String(question || "").trim();
     if (!clean) return "";
-    const answer = buildAwenaAnswer(clean, runtime);
-    setMessages((prev) => [...prev, message("user", clean), message("awena", answer)].slice(-30));
-    if ((options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted) {
-      await awenaVoice.speak(answer, settingsState, String(lang || "fr"));
+
+    const explicitMode = findAwenaMode(clean, runtime.mode || runtime.route);
+    const contextForReply = explicitMode ? { ...runtime, mode: explicitMode.id } : runtime;
+    const reply = buildAwenaReply(clean, contextForReply);
+
+    if (reply.modeId) {
+      setRuntimeState((prev) => ({ ...prev, mode: reply.modeId || prev.mode }));
     }
-    return answer;
+
+    setMessages((prev) => [
+      ...prev,
+      message("user", clean),
+      message("awena", reply.text, reply.actions),
+    ].slice(-40));
+
+    if ((options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted) {
+      await awenaVoice.speak(reply.text, settingsState, String(lang || "fr"));
+    }
+    return reply.text;
   }, [lang, muted, runtime, settingsState]);
 
   const stop = React.useCallback(async () => awenaVoice.stop(), []);

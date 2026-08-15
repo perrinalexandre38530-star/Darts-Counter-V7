@@ -1,18 +1,45 @@
 import React from "react";
 import { useAwena } from "../AwenaProvider";
+import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
+import type { AwenaAction } from "../awena.types";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
-export default function AwenaOverlay({ route, sport }: { route?: string; sport?: string }) {
+type Props = {
+  route?: string;
+  sport?: string;
+  go?: (route: any, params?: any) => void;
+};
+
+export default function AwenaOverlay({ route, sport, go }: Props) {
   const { theme } = useTheme() as any;
-  const { settings, setRuntime, messages, ask, say, stop } = useAwena();
+  const { settings, runtime, setRuntime, messages, ask, say, stop } = useAwena();
   const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  React.useEffect(() => { setRuntime({ route, sport }); }, [route, sport, setRuntime]);
+  React.useEffect(() => {
+    const routeMode = findAwenaMode("", route || "");
+    setRuntime({
+      route,
+      sport,
+      mode: routeMode?.id || runtime.mode,
+      phase: route?.includes("play") ? runtime.phase : undefined,
+      playerName: route?.includes("play") ? runtime.playerName : undefined,
+      score: route?.includes("play") ? runtime.score : null,
+      remaining: route?.includes("play") ? runtime.remaining : null,
+      dartsLeft: route?.includes("play") ? runtime.dartsLeft : null,
+      outMode: route?.includes("play") ? runtime.outMode : null,
+      startScore: route?.includes("play") ? runtime.startScore : null,
+      extra: route?.includes("play") ? runtime.extra : undefined,
+    });
+    // Runtime intentionnellement exclu : cet effet doit réagir aux changements d'écran,
+    // pas à chaque mise à jour live du score.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route, sport, setRuntime]);
+
   React.useEffect(() => {
     if (!open) return;
     const node = scrollRef.current;
@@ -23,6 +50,8 @@ export default function AwenaOverlay({ route, sport }: { route?: string; sport?:
 
   const primary = theme?.primary || "#22e6ff";
   const neon = "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)";
+  const currentMode = findAwenaModeById(runtime.mode) || findAwenaMode("", route || "");
+  const live = runtime.phase === "play" && typeof runtime.remaining === "number";
 
   async function submit(text: string) {
     const clean = text.trim();
@@ -30,6 +59,17 @@ export default function AwenaOverlay({ route, sport }: { route?: string; sport?:
     setBusy(true);
     setInput("");
     try { await ask(clean); } finally { setBusy(false); }
+  }
+
+  function runAction(action: AwenaAction) {
+    if (action.kind === "ask" && action.prompt) {
+      void submit(action.prompt);
+      return;
+    }
+    if (action.kind === "navigate" && action.route && go) {
+      go(action.route, action.params);
+      setOpen(false);
+    }
   }
 
   return (
@@ -64,7 +104,13 @@ export default function AwenaOverlay({ route, sport }: { route?: string; sport?:
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V1</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V2</div>
+              {(currentMode || live) && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                  {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
+                  {live && <span style={{ fontSize: 9, fontWeight: 900, color: "#44ff9a", border: "1px solid rgba(68,255,154,.35)", borderRadius: 999, padding: "2px 6px", background: "rgba(68,255,154,.08)" }}>LIVE · {runtime.remaining}</span>}
+                </div>
+              )}
             </div>
             <button onClick={() => void stop()} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }} title="Arrêter la voix">■</button>
             <button onClick={() => setOpen(false)} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }}>×</button>
@@ -73,8 +119,8 @@ export default function AwenaOverlay({ route, sport }: { route?: string; sport?:
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>
             {[
               ["Règles", "Explique les règles de ce mode"],
-              ["Conseil", "Donne-moi un conseil pour ce mode"],
-              ["Awena", "Que peux-tu faire ?"],
+              [live && currentMode?.id === "x01" ? "Que viser ?" : "Conseil", live && currentMode?.id === "x01" ? "Que me conseilles-tu de viser ?" : "Donne-moi un conseil pour ce mode"],
+              ["Dans l'appli", "Comment fait-on pour y jouer dans l'application ?"],
             ].map(([label, prompt]) => (
               <button key={label} onClick={() => void submit(prompt)} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${primary}55`, background: `${primary}10`, color: "#fff", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>
             ))}
@@ -83,10 +129,21 @@ export default function AwenaOverlay({ route, sport }: { route?: string; sport?:
           <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", minHeight: 190, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
             {messages.length === 0 && <div style={{ color: "#98a1c7", fontSize: 12 }}>Je suis prête.</div>}
             {messages.map((m) => (
-              <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%", padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
-                {m.text}
-                {m.role === "awena" && (
-                  <button type="button" onClick={() => void say(m.text)} title="Écouter Awena" style={{ marginLeft: 8, border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14 }}>🔊</button>
+              <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
+                <div style={{ padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
+                  {m.text}
+                  {m.role === "awena" && (
+                    <button type="button" onClick={() => void say(m.text)} title="Écouter Awena" style={{ marginLeft: 8, border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14 }}>🔊</button>
+                  )}
+                </div>
+                {m.role === "awena" && Array.isArray(m.actions) && m.actions.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                    {m.actions.map((action) => (
+                      <button key={action.id} type="button" onClick={() => runAction(action)} style={{ borderRadius: 999, border: `1px solid ${primary}88`, background: `${primary}18`, color: "#fff", padding: "6px 9px", fontSize: 10, fontWeight: 900, cursor: "pointer" }}>
+                        {action.kind === "navigate" ? "➜ " : ""}{action.label}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             ))}

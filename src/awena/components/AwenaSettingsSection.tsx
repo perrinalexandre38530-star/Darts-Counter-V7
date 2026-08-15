@@ -29,7 +29,7 @@ export default function AwenaSettingsSection() {
           <div>
             <div style={{ color: "#fff", fontWeight: 950, fontSize: 20, letterSpacing: 1 }}>AWENA</div>
             <div style={{ color: primary, fontSize: 11, fontWeight: 900, letterSpacing: .5 }}>PRÉSENTATRICE · ASSISTANTE · BOT IA</div>
-            <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 5, lineHeight: 1.35 }}>Cette V1 installe son cœur, son interface globale, sa base de connaissances locale et la couche vocale Android. Le modèle vocal neural Awena remplacera ensuite le moteur système sans modifier les modes de jeu.</div>
+            <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 5, lineHeight: 1.35 }}>La V2 ajoute la mémoire de conversation, la navigation directe dans l’application et le premier contexte de partie en direct avec X01. La couche vocale reste locale et pourra recevoir ensuite le modèle neuronal officiel d’Awena sans modifier les modes de jeu.</div>
           </div>
         </div>
       </section>
@@ -50,7 +50,7 @@ export default function AwenaSettingsSection() {
       <section style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft}`, background: theme.card, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Local V1</div>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Local V2</div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 3 }}>
               {voiceStatus?.engine === "android-native" ? `Android local${voiceStatus.enginePackage ? ` · ${voiceStatus.enginePackage}` : ""}` : voiceStatus?.engine === "web-speech" ? "Prévisualisation navigateur" : "Moteur vocal indisponible"}
             </div>

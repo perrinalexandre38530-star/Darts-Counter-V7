@@ -33,6 +33,7 @@ import { History } from "../lib/history";
 import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
+import { publishAwenaContext } from "../awena/AwenaContextBridge";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
@@ -2587,6 +2588,30 @@ const activeTeam = React.useMemo(() => {
     // défaut historique = double-out
     return "double";
   }, [config]);
+
+
+  // AWENA CONTEXT V2 — expose uniquement le contexte utile du X01 en cours.
+  // Le moteur de jeu ne dépend pas de l'UI d'Awena : il publie un événement local.
+  React.useEffect(() => {
+    const dartsUsed = Array.isArray(currentVisit) ? currentVisit.length : 0;
+    publishAwenaContext({
+      mode: "x01",
+      phase: "play",
+      screenLabel: "X01 · Partie en cours",
+      playerName: String((activePlayer as any)?.name || "Joueur"),
+      score: Number(currentScore),
+      remaining: Number(currentScore),
+      dartsLeft: Math.max(0, 3 - dartsUsed),
+      outMode,
+      startScore: Number((config as any)?.startScore ?? (config as any)?.start ?? 501),
+      extra: {
+        status,
+        dartsUsed,
+        playersCount: Array.isArray(players) ? players.length : 0,
+        activePlayerId: String(activePlayerId || ""),
+      },
+    });
+  }, [activePlayer, activePlayerId, currentScore, currentVisit, outMode, config, status, players]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
   const showThrowCounter = (config as any)?.showThrowCounter === true;
