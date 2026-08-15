@@ -5539,7 +5539,12 @@ case "babyfoot_team_edit":
           </AppGate>
         </div>
 
-        <AwenaOverlay route={String(tab)} sport={String(activeSport || "")} go={go} />
+        <AwenaOverlay
+          route={String(tab)}
+          sport={String(activeSport || "")}
+          go={go}
+          inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
+        />
 
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}

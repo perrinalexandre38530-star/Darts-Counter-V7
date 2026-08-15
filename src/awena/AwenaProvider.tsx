@@ -6,6 +6,7 @@ import { findAwenaMode } from "./AwenaKnowledge";
 import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
+import { awenaLine } from "./AwenaVoiceCatalog";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
 type AwenaContextValue = {
@@ -21,6 +22,10 @@ type AwenaContextValue = {
   voiceStatus: AwenaVoiceStatus | null;
   voices: AwenaVoiceOption[];
   refreshVoices: () => Promise<void>;
+  panelOpen: boolean;
+  openPanel: () => void;
+  closePanel: () => void;
+  togglePanel: () => void;
 };
 
 const AwenaContext = React.createContext<AwenaContextValue | null>(null);
@@ -41,10 +46,11 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const [settingsState, setSettingsState] = React.useState<AwenaSettings>(() => loadAwenaSettings());
   const [runtime, setRuntimeState] = React.useState<AwenaRuntimeContext>({});
   const [messages, setMessages] = React.useState<AwenaMessage[]>([
-    message("awena", "Bonjour, moi c'est Awena. Je peux t'expliquer les modes de jeu, te guider dans l'application et t'aider pendant tes parties."),
+    message("awena", awenaLine("identity", "intro")),
   ]);
   const [voiceStatus, setVoiceStatus] = React.useState<AwenaVoiceStatus | null>(null);
   const [voices, setVoices] = React.useState<AwenaVoiceOption[]>([]);
+  const [panelOpen, setPanelOpen] = React.useState(false);
 
   const setSettings = React.useCallback((next: AwenaSettings | ((prev: AwenaSettings) => AwenaSettings)) => {
     setSettingsState((prev) => saveAwenaSettings(typeof next === "function" ? next(prev) : next));
@@ -108,6 +114,10 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => { void refreshVoices(); }, [refreshVoices]);
 
+  const openPanel = React.useCallback(() => setPanelOpen(true), []);
+  const closePanel = React.useCallback(() => setPanelOpen(false), []);
+  const togglePanel = React.useCallback(() => setPanelOpen((value) => !value), []);
+
   const value = React.useMemo<AwenaContextValue>(() => ({
     settings: settingsState,
     setSettings,
@@ -121,7 +131,11 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     voiceStatus,
     voices,
     refreshVoices,
-  }), [settingsState, setSettings, runtime, setRuntime, messages, ask, say, stop, clearMessages, voiceStatus, voices, refreshVoices]);
+    panelOpen,
+    openPanel,
+    closePanel,
+    togglePanel,
+  }), [settingsState, setSettings, runtime, setRuntime, messages, ask, say, stop, clearMessages, voiceStatus, voices, refreshVoices, panelOpen, openPanel, closePanel, togglePanel]);
 
   return <AwenaContext.Provider value={value}>{children}</AwenaContext.Provider>;
 }
@@ -130,4 +144,8 @@ export function useAwena(): AwenaContextValue {
   const ctx = React.useContext(AwenaContext);
   if (!ctx) throw new Error("useAwena must be used inside AwenaProvider");
   return ctx;
+}
+
+export function useAwenaOptional(): AwenaContextValue | null {
+  return React.useContext(AwenaContext);
 }

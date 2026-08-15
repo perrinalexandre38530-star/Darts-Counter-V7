@@ -5,6 +5,7 @@ export type AwenaRuntimeContext = {
   sport?: string;
   mode?: string;
   phase?: "menu" | "config" | "play" | "summary" | string;
+  inGame?: boolean;
   screenLabel?: string;
   playerName?: string;
   score?: number | null;

@@ -2,6 +2,8 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useAwena } from "../AwenaProvider";
 import type { AwenaInterventionMode } from "../awena.types";
+import { AWENA_VOICE_PROFILE } from "../AwenaVoiceProfile";
+import { awenaLine } from "../AwenaVoiceCatalog";
 
 const AVATAR = "/awena/awena-avatar.webp";
 
@@ -50,9 +52,10 @@ export default function AwenaSettingsSection() {
       <section style={{ borderRadius: 18, border: `1px solid ${theme.borderSoft}`, background: theme.card, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Local V2</div>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Local V3</div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 3 }}>
               {voiceStatus?.engine === "android-native" ? `Android local${voiceStatus.enginePackage ? ` · ${voiceStatus.enginePackage}` : ""}` : voiceStatus?.engine === "web-speech" ? "Prévisualisation navigateur" : "Moteur vocal indisponible"}
+              <div style={{ marginTop: 3, color: "#ffd84a", fontWeight: 900 }}>Profil final ciblé : {AWENA_VOICE_PROFILE.voice} · PocketTTS FR local</div>
             </div>
           </div>
           <button onClick={() => patch({ voiceEnabled: !settings.voiceEnabled })} style={{ borderRadius: 999, padding: "7px 11px", border: `1px solid ${settings.voiceEnabled ? primary : theme.borderSoft}`, background: settings.voiceEnabled ? `${primary}22` : "rgba(0,0,0,.2)", color: settings.voiceEnabled ? primary : theme.textSoft, fontWeight: 900, cursor: "pointer" }}>{settings.voiceEnabled ? "VOIX ON" : "VOIX OFF"}</button>
@@ -83,7 +86,7 @@ export default function AwenaSettingsSection() {
         </label>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 7, marginTop: 12 }}>
-          <button onClick={() => void say("Bonjour, moi c'est Awena. Je suis prête à t'accompagner dans MULTISPORTS SCORING.")} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester</button>
+          <button onClick={() => void say(`${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`)} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester</button>
           <button onClick={() => void stop()} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Stop</button>
           <button onClick={() => void refreshVoices()} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Actualiser</button>
         </div>

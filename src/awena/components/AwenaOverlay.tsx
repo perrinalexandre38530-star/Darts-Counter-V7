@@ -10,12 +10,12 @@ type Props = {
   route?: string;
   sport?: string;
   go?: (route: any, params?: any) => void;
+  inGame?: boolean;
 };
 
-export default function AwenaOverlay({ route, sport, go }: Props) {
+export default function AwenaOverlay({ route, sport, go, inGame = false }: Props) {
   const { theme } = useTheme() as any;
-  const { settings, runtime, setRuntime, messages, ask, say, stop } = useAwena();
-  const [open, setOpen] = React.useState(false);
+  const { settings, runtime, setRuntime, messages, ask, say, stop, panelOpen: open, openPanel, closePanel, togglePanel } = useAwena();
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
@@ -26,19 +26,20 @@ export default function AwenaOverlay({ route, sport, go }: Props) {
       route,
       sport,
       mode: routeMode?.id || runtime.mode,
-      phase: route?.includes("play") ? runtime.phase : undefined,
-      playerName: route?.includes("play") ? runtime.playerName : undefined,
-      score: route?.includes("play") ? runtime.score : null,
-      remaining: route?.includes("play") ? runtime.remaining : null,
-      dartsLeft: route?.includes("play") ? runtime.dartsLeft : null,
-      outMode: route?.includes("play") ? runtime.outMode : null,
-      startScore: route?.includes("play") ? runtime.startScore : null,
-      extra: route?.includes("play") ? runtime.extra : undefined,
+      inGame,
+      phase: inGame ? (runtime.phase || "play") : undefined,
+      playerName: inGame ? runtime.playerName : undefined,
+      score: inGame ? runtime.score : null,
+      remaining: inGame ? runtime.remaining : null,
+      dartsLeft: inGame ? runtime.dartsLeft : null,
+      outMode: inGame ? runtime.outMode : null,
+      startScore: inGame ? runtime.startScore : null,
+      extra: inGame ? runtime.extra : undefined,
     });
     // Runtime intentionnellement exclu : cet effet doit réagir aux changements d'écran,
     // pas à chaque mise à jour live du score.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route, sport, setRuntime]);
+  }, [route, sport, inGame, setRuntime]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -68,16 +69,16 @@ export default function AwenaOverlay({ route, sport, go }: Props) {
     }
     if (action.kind === "navigate" && action.route && go) {
       go(action.route, action.params);
-      setOpen(false);
+      closePanel();
     }
   }
 
   return (
     <>
-      <button
+      {!inGame && <button
         type="button"
         aria-label="Ouvrir Awena"
-        onClick={() => setOpen((v) => !v)}
+        onClick={togglePanel}
         style={{
           position: "fixed", right: 16, bottom: 96, zIndex: 1200,
           width: 58, height: 58, borderRadius: "50%", padding: 3,
@@ -88,12 +89,12 @@ export default function AwenaOverlay({ route, sport, go }: Props) {
         <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
           <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         </span>
-      </button>
+      </button>}
 
       {open && (
         <div style={{
-          position: "fixed", right: 12, bottom: 166, zIndex: 1199,
-          width: "min(390px, calc(100vw - 24px))", maxHeight: "min(620px, calc(100vh - 210px))",
+          position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: 166 }), zIndex: 1199,
+          width: "min(390px, calc(100vw - 24px))", maxHeight: inGame ? "min(620px, calc(100vh - 96px))" : "min(620px, calc(100vh - 210px))",
           display: "flex", flexDirection: "column", overflow: "hidden",
           borderRadius: 22, border: `1px solid ${primary}88`,
           background: "linear-gradient(180deg,rgba(7,10,25,.98),rgba(3,5,16,.98))",
@@ -104,7 +105,7 @@ export default function AwenaOverlay({ route, sport, go }: Props) {
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V2</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V3</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -113,7 +114,7 @@ export default function AwenaOverlay({ route, sport, go }: Props) {
               )}
             </div>
             <button onClick={() => void stop()} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }} title="Arrêter la voix">■</button>
-            <button onClick={() => setOpen(false)} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }}>×</button>
+            <button onClick={closePanel} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }}>×</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>

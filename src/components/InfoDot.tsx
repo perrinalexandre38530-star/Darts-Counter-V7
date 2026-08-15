@@ -11,6 +11,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import RulesModal from "./RulesModal";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 
 type InfoDotContent = React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
 
@@ -39,6 +40,9 @@ type Props = {
   active?: boolean;
 };
 
+const AWENA_AVATAR = "/awena/awena-avatar.webp";
+const AWENA_NEON = "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)";
+
 export default function InfoDot({
   onClick,
   glow,
@@ -50,6 +54,7 @@ export default function InfoDot({
   active = false,
 }: Props) {
   const { theme } = useTheme();
+  const awena = useAwenaOptional();
   const [open, setOpen] = React.useState(false);
   const closeContent = React.useCallback(() => setOpen(false), []);
   const renderedContent = typeof content === "function" ? content({ close: closeContent }) : content;
@@ -74,6 +79,57 @@ export default function InfoDot({
 
   // 🔥 icône volontairement plus grosse que BackDot pour être lisible
   const iconSize = Math.max(26, Math.round(size * 0.68));
+
+  // En partie, Awena remplace volontairement l’ancien InfoDot.
+  // L’InfoDot historique reste disponible partout ailleurs et redevient le fallback
+  // si Awena est coupée dans les réglages.
+  const awenaTakesOver = Boolean(
+    awena?.runtime?.inGame &&
+    awena?.settings?.enabled &&
+    awena?.settings?.interventionMode !== "off"
+  );
+
+  if (awenaTakesOver && awena) {
+    const awenaSize = Math.max(36, size);
+    return (
+      <div
+        role="button"
+        aria-label="Ouvrir Awena"
+        title="Awena · Assistante"
+        tabIndex={0}
+        onClick={(e: any) => {
+          try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
+          awena.openPanel();
+        }}
+        onKeyDown={(e: any) => {
+          if (e.key === "Enter" || e.key === " ") {
+            try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
+            awena.openPanel();
+          }
+        }}
+        style={{
+          width: awenaSize,
+          height: awenaSize,
+          borderRadius: 999,
+          padding: 3,
+          display: "grid",
+          placeItems: "center",
+          cursor: "pointer",
+          userSelect: "none",
+          WebkitTapHighlightColor: "transparent",
+          border: "none",
+          background: AWENA_NEON,
+          boxShadow: "0 0 18px rgba(22,232,255,.42),0 0 28px rgba(255,56,199,.28),0 0 0 2px rgba(0,0,0,.4)",
+          flex: "0 0 auto",
+          pointerEvents: "auto",
+        }}
+      >
+        <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+          <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
+        </span>
+      </div>
+    );
+  }
 
   return (
     <>
