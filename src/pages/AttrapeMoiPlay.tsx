@@ -17,6 +17,7 @@ import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
+import { resolveAttrapeMoiBotSkill } from "../lib/attrapeMoiBots";
 import {
   cloneCatchMeState,
   createCatchMeState,
@@ -119,22 +120,67 @@ function normalizeConfig(props: any): CatchMeConfigPayload {
 function isBot(profile: any, botIds: Set<string>) {
   return botIds.has(String(profile?.id || "")) || Boolean(profile?.isBot || profile?.bot || profile?.botLevel || profile?.kind === "bot");
 }
-function botVisit(levelRaw: string): UiDart[] {
+function numericFallbackLevel(levelRaw: string) {
   const level = String(levelRaw || "normal").toLowerCase();
-  const skill = level.includes("hard") ? .76 : level.includes("easy") ? .32 : .55;
+  if (level.includes("hard")) return 4.1;
+  if (level.includes("easy")) return 1.8;
+  return 3;
+}
+function fallbackBotSkill(levelRaw: string, role: "runner" | "chaser") {
+  const rating = numericFallbackLevel(levelRaw);
+  return {
+    rating,
+    preferredNumbers: role === "chaser" ? [20, 19, 18, 17] : [20, 19, 18, 16],
+    capacities: {
+      precision: 38 + rating * 11,
+      power: role === "chaser" ? 34 + rating * 12 : 28 + rating * 10,
+      regularity: 36 + rating * 11,
+      aggression: role === "chaser" ? 42 + rating * 11 : 30 + rating * 8,
+    },
+    bullAffinity: role === "chaser" ? 0.04 + rating * 0.008 : 0.02 + rating * 0.006,
+    dbullAffinity: role === "chaser" ? 0.01 + rating * 0.003 : 0.004 + rating * 0.002,
+    missFactor: Math.max(0.06, 0.26 - rating * 0.04),
+  };
+}
+function pickTarget(preferred: number[], precision: number) {
+  if (Math.random() < precision) return preferred[Math.floor(Math.random() * preferred.length)] || 20;
+  if (Math.random() < 0.6) return 15 + Math.floor(Math.random() * 6);
+  return 1 + Math.floor(Math.random() * 20);
+}
+function botVisit(profile: any, role: "runner" | "chaser", levelRaw: string): UiDart[] {
+  const skill = resolveAttrapeMoiBotSkill(profile, role) || fallbackBotSkill(levelRaw, role);
+  const capacities = skill?.capacities || {};
+  const precision = Math.max(0.28, Math.min(0.94, 0.22 + Number(capacities.precision || 50) / 120));
+  const power = Math.max(0.16, Math.min(0.78, 0.12 + Number(capacities.power || 50) / 135));
+  const regularity = Math.max(0.24, Math.min(0.9, 0.18 + Number(capacities.regularity || 50) / 125));
+  const aggression = Math.max(0.18, Math.min(0.9, 0.14 + Number(capacities.aggression || 50) / 120));
+  const missChance = Math.max(0.03, Math.min(0.32, Number(skill?.missFactor ?? 0.16)));
+  const preferred = Array.isArray(skill?.preferredNumbers) && skill.preferredNumbers.length ? skill.preferredNumbers : [20, 19, 18, 17];
+  const bullChance = Math.max(0, Math.min(0.2, Number(skill?.bullAffinity || 0) + (role === "chaser" ? aggression * 0.035 : regularity * 0.02)));
+  const dbullChance = Math.max(0, Math.min(0.085, Number(skill?.dbullAffinity || 0) + aggression * 0.01));
+
   return Array.from({ length: 3 }, () => {
-    if (Math.random() > skill) {
-      if (Math.random() < .14) return { v: 0, mult: 1 } as UiDart;
-      const v = 1 + Math.floor(Math.random() * 20);
-      return { v, mult: Math.random() < .08 ? 2 : 1 } as UiDart;
+    if (Math.random() < missChance) return { v: 0, mult: 1 } as UiDart;
+    if (Math.random() < bullChance) {
+      return { v: 25, mult: Math.random() < dbullChance ? 2 : 1 } as UiDart;
     }
-    const roll = Math.random();
-    if (level.includes("hard") && roll < .07) return { v: 25, mult: 2 } as UiDart;
-    if (roll < .12) return { v: 25, mult: 1 } as UiDart;
-    const preferred = [20, 20, 20, 19, 18, 17][Math.floor(Math.random() * 6)];
+
+    const target = pickTarget(preferred, precision);
+    const cleanHit = Math.random() < regularity;
+    if (!cleanHit && Math.random() < 0.16) return { v: 0, mult: 1 } as UiDart;
+
+    let v = target;
+    if (!cleanHit) {
+      const offsets = [-3, -2, -1, 1, 2, 3];
+      const offset = offsets[Math.floor(Math.random() * offsets.length)] || 0;
+      v = Math.max(1, Math.min(20, target + offset));
+    }
+
+    const tripleChance = Math.max(0.04, Math.min(0.62, power * (role === "chaser" ? 0.78 : 0.58)));
+    const doubleChance = Math.max(0.06, Math.min(0.34, 0.05 + regularity * 0.24 + aggression * 0.06));
     const multiRoll = Math.random();
-    const mult: 1 | 2 | 3 = multiRoll < (level.includes("hard") ? .48 : .24) ? 3 : multiRoll < .34 ? 2 : 1;
-    return { v: preferred, mult };
+    const mult: 1 | 2 | 3 = multiRoll < tripleChance ? 3 : multiRoll < tripleChance + doubleChance ? 2 : 1;
+    return { v, mult } as UiDart;
   });
 }
 function panelStyle(extra: React.CSSProperties = {}): React.CSSProperties {
@@ -590,8 +636,9 @@ export default function AttrapeMoiPlay(props: any) {
     if (!isBot(activeProfile, botIds)) return;
     setBotThinking(true);
     const level = activeProfile?.botLevel || config.botLevel || "normal";
+    const role = state.phase === "chaser" ? "chaser" : "runner";
     const timer = window.setTimeout(() => {
-      const darts = botVisit(String(level));
+      const darts = botVisit(activeProfile, role, String(level));
       setUndoStack((stack) => [...stack.slice(-59), cloneCatchMeState(state)]);
       setState((prev) => playCatchMeVisit(prev, darts.map(toGameDart)));
       setBotThinking(false);

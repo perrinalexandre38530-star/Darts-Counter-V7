@@ -18,6 +18,8 @@ import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadBotPlayers } from "../lib/bots";
+import { isOfficialBotId } from "../lib/officialBots";
+import { ATTRAPE_MOI_IA_BOTS, buildAttrapeMoiBotTeams } from "../lib/attrapeMoiBots";
 import type {
   CatchMeConfigPayload,
   CatchMeParticipantMode,
@@ -32,8 +34,6 @@ import {
   PillButton,
   SelectedParticipantsCompactBlock,
   TeamsSection,
-  X01_PRO_BOTS,
-  buildX01DartsBotTeams,
   x01MostUsedDartSetIdForProfile,
 } from "./X01ConfigV3";
 
@@ -133,8 +133,10 @@ export default function AttrapeMoiConfig(props: any) {
   React.useLayoutEffect(() => { try { window.scrollTo(0, 0); } catch {} }, []);
   React.useEffect(() => {
     const map = new Map<string, BotLite>();
-    (X01_PRO_BOTS || []).forEach((bot: any) => map.set(String(bot.id), { ...bot, id: String(bot.id), isBot: true }));
-    loadUserBots().forEach((bot) => map.set(bot.id, { ...bot, isBot: true }));
+    (ATTRAPE_MOI_IA_BOTS || []).forEach((bot: any) => map.set(String(bot.id), { ...bot, id: String(bot.id), isBot: true }));
+    loadUserBots()
+      .filter((bot) => !isOfficialBotId(bot?.id) && !(bot as any)?.systemBot && !(bot as any)?.officialCharacter)
+      .forEach((bot) => map.set(bot.id, { ...bot, isBot: true, source: "cpu", groupLabel: "CPU Home" }));
     setBotProfiles([...map.values()]);
   }, []);
   React.useEffect(() => { if (!selectedIds.length && humanProfiles.length) setSelectedIds(humanProfiles.slice(0, Math.min(2, humanProfiles.length)).map((p) => String(p.id))); }, [humanProfiles, selectedIds.length]);
@@ -149,7 +151,7 @@ export default function AttrapeMoiConfig(props: any) {
   const selectedParticipantItems = selectedProfiles.map((profile: any) => ({ id: String(profile.id), kind: isBotLike(profile) ? "bot" : "player", name: profile?.name || profile?.displayName || "Joueur", profile }));
   const teamProfiles = React.useMemo(() => [...new Map(allProfiles.map((p: any) => [String(p.id), p])).values()], [allProfiles]);
   const storedDartsTeams: TeamEntity[] = React.useMemo(() => { try { return loadTeamsBySport("darts").filter((team: any) => Array.isArray(team?.playerIds) && team.playerIds.length > 0); } catch { return []; } }, [storeProfiles.length]);
-  const botDartsTeams = React.useMemo(() => buildX01DartsBotTeams(botProfiles), [botProfiles]);
+  const botDartsTeams = React.useMemo(() => buildAttrapeMoiBotTeams(botProfiles), [botProfiles]);
   const selectableDartsTeams = React.useMemo(() => [...storedDartsTeams, ...botDartsTeams], [storedDartsTeams, botDartsTeams]);
 
   const selectedStoredTeams = React.useMemo(() => (selectedStoredTeamIds || []).map((rawId: any, index: number) => {
