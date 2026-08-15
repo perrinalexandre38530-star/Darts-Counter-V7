@@ -70,7 +70,11 @@ export default function AwenaSettingsSection() {
         <label style={{ display: "block", color: theme.textSoft, fontSize: 10.5, marginTop: 8 }}>Voix française installée
           <select value={settings.voiceName || ""} onChange={(e) => patch({ voiceName: e.target.value || null })} style={{ width: "100%", marginTop: 5, borderRadius: 11, padding: "9px 10px", border: `1px solid ${theme.borderSoft}`, background: "#080b18", color: "#fff" }}>
             <option value="">Automatique</option>
-            {voices.map((voice) => <option key={voice.name} value={voice.name}>{voice.name}{voice.offline ? " · hors ligne" : ""}</option>)}
+            {voices.map((voice) => {
+              const quality = Number(voice.quality || 0);
+              const qualityLabel = quality >= 500 ? " · qualité ++" : quality >= 400 ? " · haute qualité" : "";
+              return <option key={voice.name} value={voice.name}>{voice.name}{qualityLabel}{voice.offline ? " · hors ligne" : ""}</option>;
+            })}
           </select>
         </label>
 

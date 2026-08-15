@@ -37,10 +37,13 @@ function webVoiceFor(language: string, voiceName?: string | null): SpeechSynthes
 }
 
 export class AwenaVoiceEngine {
-  async speak(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
+  private async synthesize(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
     const clean = String(text || "").trim();
-    if (!clean || !settings.enabled || !settings.voiceEnabled) return false;
+    if (!clean) return false;
     const language = localeForLang(lang);
+
+    // Un seul canal vocal à la fois : si X01/WebSpeech parlait, on le coupe avant Awena.
+    try { window.speechSynthesis?.cancel(); } catch {}
 
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
       try {
@@ -60,7 +63,6 @@ export class AwenaVoiceEngine {
 
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       try {
-        window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(clean);
         utterance.lang = language;
         utterance.rate = settings.rate;
@@ -75,6 +77,17 @@ export class AwenaVoiceEngine {
       }
     }
     return false;
+  }
+
+  async speak(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
+    if (!settings.enabled || !settings.voiceEnabled) return false;
+    return this.synthesize(text, settings, lang);
+  }
+
+  // Utilisé lorsqu'un mode choisit explicitement "Awena" comme voix d'annonce.
+  // On reprend SON timbre/réglage, sans dépendre du niveau d'intervention de l'assistante.
+  async speakNarration(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
+    return this.synthesize(text, settings, lang);
   }
 
   async stop(): Promise<void> {

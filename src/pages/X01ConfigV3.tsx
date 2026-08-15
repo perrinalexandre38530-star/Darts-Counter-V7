@@ -315,6 +315,8 @@ const VOICE_OPTIONS: VoiceOption[] = [
   { id: "female", label: "Voix féminine" },
   { id: "male", label: "Voix masculine" },
   { id: "robot", label: "Voix robot" },
+  // AWENA reste une voix dédiée : les 4 profils historiques ci-dessus ne sont pas modifiés.
+  { id: "awena", label: "Awena · voix officielle" },
 ];
 
 type BotLite = {
@@ -356,7 +358,7 @@ function normalizeFavDoubleOut(input: unknown, fallback = true): boolean {
 function normalizeVoiceId(input: unknown, fallback = "default"): string {
   const raw = String(input ?? "").trim().toLowerCase();
   if (!raw) return fallback;
-  if (["default", "female", "male", "robot"].includes(raw)) return raw;
+  if (["default", "female", "male", "robot", "awena"].includes(raw)) return raw;
   if (raw.includes("fem")) return "female";
   if (raw.includes("male") || raw.includes("masc") || raw.includes("homme")) return "male";
   if (raw.includes("robot")) return "robot";

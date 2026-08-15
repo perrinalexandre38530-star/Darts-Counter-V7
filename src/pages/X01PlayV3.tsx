@@ -34,6 +34,8 @@ import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
 import { publishAwenaContext } from "../awena/AwenaContextBridge";
+import { awenaVoice } from "../awena/AwenaVoice";
+import { loadAwenaSettings } from "../awena/AwenaSettings";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
@@ -2322,6 +2324,9 @@ const isBotTurn = React.useMemo(() => {
   const speakVoiceScore = React.useCallback(
     (text: string) => {
       try {
+        // La dictée X01 reste sur le canal historique WebSpeech.
+        // On coupe Awena native avant de parler pour éviter deux voix simultanées.
+        void awenaVoice.stop();
         if (typeof window === "undefined") return;
         const synth = (window as any).speechSynthesis;
         if (!synth) return;
@@ -2951,23 +2956,29 @@ const speakVisit = React.useCallback(
   (playerName: string, visitScore: number) => {
     if (!voiceEnabled) return;
 
-    // sécurité
     const name = (playerName || "").trim();
     if (!name) return;
 
+    // AWENA = canal vocal local dédié. Les voix X01 historiques restent inchangées.
+    if (voiceId === "awena") {
+      const awenaSettings = loadAwenaSettings();
+      void awenaVoice.speakNarration(`${name}, ${visitScore}`, awenaSettings, String(lang || "fr"));
+      return;
+    }
+
+    // Avant une voix WebSpeech historique, on coupe l'éventuelle parole native d'Awena.
+    void awenaVoice.stop();
     try {
-      // ✅ Signature étendue : (name, score, { voiceId, lang })
       (announceVisit as any)(
         name,
         visitScore,
         {
           voiceId: voiceId || undefined,
-          lang: lang || "fr", // ← LANGUE APP (fr / it / en / es…)
+          lang: lang || "fr",
         }
       );
     } catch {
       try {
-        // fallback 1 : signature (name, score)
         announceVisit(name, visitScore);
       } catch {
         // ignore total
@@ -3109,7 +3120,16 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
 const speakText = React.useCallback(
   (text: string) => {
     if (!voiceEnabled) return;
+
+    if (voiceId === "awena") {
+      const awenaSettings = loadAwenaSettings();
+      void awenaVoice.speakNarration(text, awenaSettings, String(lang || "fr"));
+      return;
+    }
+
     try {
+      // Canal historique : on coupe le TTS natif Awena avant WebSpeech.
+      void awenaVoice.stop();
       if (typeof window === "undefined") return;
       const synth = (window as any).speechSynthesis;
       if (!synth) return;
@@ -5162,25 +5182,32 @@ try {
 
   // ✅ Voix IA UNIQUEMENT si "Voix IA" activée
   if (voiceEnabled) {
-    const opts = {
-      voiceId: voiceId || undefined,
-      lang: lang || "fr", // ← langue de l'app
-    };
+    if (voiceId === "awena") {
+      const awenaSettings = loadAwenaSettings();
+      const isFr = String(lang || "fr").toLowerCase().startsWith("fr");
+      const ranking = rankingNames.filter(Boolean).join(", ");
+      const phrase = isFr
+        ? `Bravo ${winnerName}, tu remportes la partie.${ranking ? ` Classement : ${ranking}.` : ""}`
+        : `Congratulations ${winnerName}, you win the match.${ranking ? ` Ranking: ${ranking}.` : ""}`;
+      void awenaVoice.speakNarration(phrase, awenaSettings, String(lang || "fr"));
+    } else {
+      void awenaVoice.stop();
+      const opts = {
+        voiceId: voiceId || undefined,
+        lang: lang || "fr",
+      };
 
-    try {
-      // ✅ Signature étendue (recommandée) :
-      // announceEndGame({ winnerName, rankingNames, extra? }, opts?)
-      (announceEndGame as any)({ winnerName, rankingNames }, opts);
-    } catch {
       try {
-        // fallback : certaines versions ont (payload, opts?) mais sans voiceId
-        announceEndGame({ winnerName, rankingNames } as any, { lang: opts.lang } as any);
+        (announceEndGame as any)({ winnerName, rankingNames }, opts);
       } catch {
         try {
-          // fallback ultime : signature simple sans opts
-          announceEndGame({ winnerName, rankingNames } as any);
+          announceEndGame({ winnerName, rankingNames } as any, { lang: opts.lang } as any);
         } catch {
-          // ignore
+          try {
+            announceEndGame({ winnerName, rankingNames } as any);
+          } catch {
+            // ignore
+          }
         }
       }
     }
