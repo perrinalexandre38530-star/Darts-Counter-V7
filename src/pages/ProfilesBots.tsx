@@ -450,7 +450,7 @@ export default function ProfilesBots({ store, go }: Props) {
   }
 
   function beginEdit() {
-    if (!selectedBot) return;
+    if (!selectedBot || (selectedBot as any)?.systemBot || (selectedBot as any)?.locked) return;
     setEditName(selectedBot.name || "");
     setEditLevel((selectedBot.level || "medium") as BotLevel);
     setEditCountryCode(normalizeBotCountryCode((selectedBot as any).countryCode ?? (selectedBot as any).country) || "FR");
@@ -460,7 +460,7 @@ export default function ProfilesBots({ store, go }: Props) {
   }
 
   function saveEdit() {
-    if (!selectedBot || !editName.trim()) return;
+    if (!selectedBot || (selectedBot as any)?.systemBot || (selectedBot as any)?.locked || !editName.trim()) return;
     const now = new Date().toISOString();
     const next = bots.map((bot) =>
       bot.id === selectedBot.id
@@ -480,6 +480,8 @@ export default function ProfilesBots({ store, go }: Props) {
   }
 
   function handleDelete(id: string) {
+    const target = bots.find((bot) => bot.id === id);
+    if ((target as any)?.systemBot || (target as any)?.locked) return;
     if (!window.confirm(t("bots.delete.confirm", "Supprimer définitivement ce BOT ?") as string)) return;
     const next = bots.filter((bot) => bot.id !== id);
     if (!persist(next)) return;
@@ -491,6 +493,7 @@ export default function ProfilesBots({ store, go }: Props) {
   }
 
   function openAvatarEditor(bot: Bot) {
+    if ((bot as any)?.systemBot || (bot as any)?.locked) return;
     setSelectedBotId(bot.id);
     setAvatarTargetBotId(bot.id);
     setAvatarPickerMode("edit");
@@ -1140,6 +1143,11 @@ export default function ProfilesBots({ store, go }: Props) {
                     </div>
                   </div>
 
+                  {(selectedBot as any)?.systemBot || (selectedBot as any)?.locked ? (
+                    <div style={{ marginTop: 12, width: "100%", borderRadius: 12, padding: "9px 10px", border: `1px solid ${primary}66`, background: `${primary}12`, color: primary, fontSize: 10.5, fontWeight: 950, textAlign: "center", letterSpacing: .55, textTransform: "uppercase" }}>
+                      Personnage officiel · protégé
+                    </div>
+                  ) : (
                   <div style={{ display: "flex", gap: 6, marginTop: 12, width: "100%" }}>
                     <button type="button" onClick={beginEdit} style={actionBase}>
                       {t("bots.actions.edit", "ÉDITER")}
@@ -1183,6 +1191,7 @@ export default function ProfilesBots({ store, go }: Props) {
                       ) : null}
                     </div>
                   </div>
+                  )}
 
                   {isEditing ? (
                     <div

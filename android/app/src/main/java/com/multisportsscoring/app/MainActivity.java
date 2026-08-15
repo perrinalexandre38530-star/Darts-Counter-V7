@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlayBillingPlugin.class);
         registerPlugin(InlineAdMobPlugin.class);
         registerPlugin(NativeJsonExportPlugin.class);
+        registerPlugin(AwenaVoicePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

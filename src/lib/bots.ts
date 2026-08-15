@@ -6,6 +6,7 @@ import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorage
 import { resolveRuntimeMediaUrl } from "./serverConfig";
 import { botAvatarMediaKey, captureUserMediaFallback } from "./userMediaFallback";
 import { normalizeBotCountryCode, resolveProBotCountryCode } from "./botCountries";
+import { getOfficialBots, isOfficialBotId } from "./officialBots";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -510,7 +511,8 @@ function readAvatarsMap(): Record<string, string | null> {
 }
 
 export function loadBots(): BotRecord[] {
-  if (typeof window === "undefined") return [];
+  const official = normalizeBotsList(getOfficialBots());
+  if (typeof window === "undefined") return official;
 
   const metaBots = readBotsMeta();
   const avatarsMap = readAvatarsMap();
@@ -531,11 +533,13 @@ export function loadBots(): BotRecord[] {
     };
   });
 
-  const result = merged.length > 0 ? normalizeBotsList(merged) : readLegacyInlineBots();
+  const customResult = merged.length > 0 ? normalizeBotsList(merged) : readLegacyInlineBots();
+  const result = normalizeBotsList([...official, ...customResult.filter((bot) => !isOfficialBotId(bot.id))]);
   // Backfill automatique des BOT déjà existants avant ce patch. Une seule
   // tentative par BOT et par session suffit ; les sauvegardes suivantes passent
   // par saveBots() et réécrivent la copie R2 si l'avatar change.
   for (const bot of result) {
+    if ((bot as any)?.systemBot || isOfficialBotId(bot?.id)) continue;
     const src = String(bot?.avatarDataUrl || bot?.avatar || bot?.avatarUrl || "").trim();
     if (!bot?.id || !src || r2BackfilledBotIds.has(bot.id)) continue;
     r2BackfilledBotIds.add(bot.id);
@@ -550,7 +554,7 @@ export function loadBots(): BotRecord[] {
 function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStore?: boolean; dispatch?: boolean }): boolean {
   if (typeof window === "undefined") return false;
 
-  const normalized = normalizeBotsList(Array.isArray(list) ? list : []);
+  const normalized = normalizeBotsList(Array.isArray(list) ? list : []).filter((bot) => !isOfficialBotId(bot.id) && !(bot as any)?.systemBot);
   const metaPayload: BotsMetaPayload = {
     v: BOTS_STORAGE_VERSION,
     items: normalized.map(packBotMeta),
@@ -608,6 +612,7 @@ export function saveBots(list: any[]): boolean {
   if (ok) {
     for (const raw of Array.isArray(list) ? list : []) {
       const bot = normalizeBotRecord(raw);
+      if (isOfficialBotId(bot.id) || (bot as any)?.systemBot) continue;
       const src = String(bot?.avatarDataUrl || (raw as any)?.avatarDataUrl || (raw as any)?.avatar || (raw as any)?.avatarUrl || "").trim();
       if (!bot?.id || !src) continue;
       void captureUserMediaFallback(botAvatarMediaKey(bot.id), src, {

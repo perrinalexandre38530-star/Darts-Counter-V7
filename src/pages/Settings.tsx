@@ -44,6 +44,7 @@ import { injectDevX01ReferenceMatch } from "../lib/devInjectX01TestMatch";
 import { useSport } from "../contexts/SportContext";
 // MONETIZATION_V1
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
+import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -1192,7 +1193,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer";
+type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer" | "awena";
 
 const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
 const ACCOUNT_DELETION_URL = "https://darts-counter-v7.pages.dev/account-deletion.html";
@@ -4259,6 +4260,8 @@ export function Settings({ go }: Props) {
       ? "Publicité & Boutique"
       : tab === "privacy"
       ? "Confidentialité"
+      : tab === "awena"
+      ? "Awena"
       : tab === "theme"
       ? t("settings.menu.theme", "Thème")
       : tab === "lang"
@@ -4280,6 +4283,8 @@ export function Settings({ go }: Props) {
       ? "Bannières, vidéo de fin de partie, Premium et packs additionnels."
       : tab === "privacy"
       ? "Politique de confidentialité, droits et suppression du compte."
+      : tab === "awena"
+      ? "Présence, voix locale et comportement de l’assistante officielle."
       : tab === "theme"
       ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
       : tab === "lang"
@@ -4394,6 +4399,13 @@ export function Settings({ go }: Props) {
               onClick={() => setTab("privacy")}
             />
             <SettingsMenuCard
+              title="Awena"
+              subtitle="Présentatrice officielle, assistante interactive, voix locale et comportement en jeu."
+              theme={theme}
+              rightHint="IA LOCALE"
+              onClick={() => setTab("awena")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.theme", "Thème")}
               subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
               theme={theme}
@@ -4440,6 +4452,7 @@ export function Settings({ go }: Props) {
         {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} onFullReset={handleFullReset} />}
         {tab === "monetization" && <MonetizationSettingsPanel />}
         {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => setTab("account")} />}
+        {tab === "awena" && <AwenaSettingsSection />}
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}

@@ -225,6 +225,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { LangProvider } from "./contexts/LangContext";
 import { StoreProvider } from "./contexts/StoreContext";
 import { AudioProvider } from "./contexts/AudioContext";
+import { AwenaProvider } from "./awena/AwenaProvider";
+import AwenaOverlay from "./awena/components/AwenaOverlay";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 import { DevModeProvider } from "./contexts/DevModeContext";
 
@@ -5537,6 +5539,8 @@ case "babyfoot_team_edit":
           </AppGate>
         </div>
 
+        <AwenaOverlay route={String(tab)} sport={String(activeSport || "")} />
+
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
 
@@ -6036,9 +6040,11 @@ export default function AppRoot() {
             <AudioProvider>
               <AuthOnlineProvider>
                 <SportProvider>
-                  {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-                  <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
-                  <App />
+                  <AwenaProvider>
+                    {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+                    <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
+                    <App />
+                  </AwenaProvider>
                 </SportProvider>
               </AuthOnlineProvider>
             </AudioProvider>
