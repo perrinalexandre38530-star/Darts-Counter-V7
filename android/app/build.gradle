@@ -53,6 +53,8 @@ repositories {
 }
 
 dependencies {
+    // Awena Voice: PocketTTS French neural inference, fully on-device after one-time model install.
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.27.0"
     implementation "com.android.billingclient:billing:9.1.0"
     // Required by InlineAdMobPlugin.java: exposes Google Mobile Ads classes to the app module.
     implementation "com.google.android.gms:play-services-ads:${rootProject.ext.playServicesAdsVersion}"

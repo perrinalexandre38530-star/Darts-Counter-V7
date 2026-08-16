@@ -34,6 +34,9 @@ export type AwenaAction = {
   route?: string;
   params?: Record<string, unknown>;
   prompt?: string;
+  modeId?: string;
+  imageSrc?: string;
+  imageAlt?: string;
 };
 
 export type AwenaMessage = {
@@ -53,11 +56,21 @@ export type AwenaReply = {
 export type AwenaVoiceStatus = {
   available: boolean;
   ready: boolean;
-  engine: "android-native" | "web-speech" | "none";
+  engine: "awena-neural" | "android-native" | "web-speech" | "none";
   enginePackage?: string | null;
   voiceName?: string | null;
   language?: string | null;
   offline?: boolean | null;
+  neuralInstalled?: boolean;
+  neuralReady?: boolean;
+  neuralInitializing?: boolean;
+  installing?: boolean;
+  installProgress?: number;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  currentFile?: string | null;
+  lastError?: string | null;
+  packId?: string | null;
 };
 
 export type AwenaVoiceOption = {

@@ -7,6 +7,8 @@ type NativeVoicePlugin = {
   getStatus(): Promise<AwenaVoiceStatus>;
   getVoices(options?: { language?: string }): Promise<{ voices: AwenaVoiceOption[] }>;
   setVoice(options: { voiceName: string | null }): Promise<{ ok: boolean; voiceName?: string | null }>;
+  installNeuralVoice(): Promise<AwenaVoiceStatus & { ok?: boolean }>;
+  removeNeuralVoice(): Promise<AwenaVoiceStatus & { ok?: boolean }>;
 };
 
 const NativeAwenaVoice = registerPlugin<NativeVoicePlugin>("AwenaVoice");
@@ -55,9 +57,12 @@ export class AwenaVoiceEngine {
           pitch: settings.pitch,
           volume: settings.volume,
         });
-        if (result?.ok) return true;
+        return !!result?.ok;
       } catch (error) {
-        console.warn("[AwenaVoice] Android TTS unavailable, fallback web", error);
+        // Important: on Android we do NOT fall back to WebSpeech. Once Estelle is installed,
+        // a neural failure must be visible instead of silently speaking with the old system voice.
+        console.warn("[AwenaVoice] Android voice engine error", error);
+        return false;
       }
     }
 
@@ -132,6 +137,20 @@ export class AwenaVoiceEngine {
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
       try { await NativeAwenaVoice.setVoice({ voiceName }); } catch {}
     }
+  }
+
+  async installNeuralVoice(): Promise<AwenaVoiceStatus> {
+    if (!(Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android")) {
+      throw new Error("Le pack Awena · Estelle est réservé à l'application Android.");
+    }
+    return NativeAwenaVoice.installNeuralVoice();
+  }
+
+  async removeNeuralVoice(): Promise<AwenaVoiceStatus> {
+    if (!(Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android")) {
+      throw new Error("Le pack Awena · Estelle est réservé à l'application Android.");
+    }
+    return NativeAwenaVoice.removeNeuralVoice();
   }
 }
 

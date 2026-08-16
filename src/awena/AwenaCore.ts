@@ -62,13 +62,13 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   }
 
   if (/ou suis je|quel mode|mode actuel|partie actuelle/.test(q)) {
-    if (mode) return { text: `Tu es actuellement dans l'univers ${mode.label}${context.phase ? `, étape ${context.phase}` : ""}.`, modeId: mode.id, actions: actionsForAwenaMode(mode) };
+    if (mode) return { text: `Tu es actuellement dans l'univers ${mode.label}${context.phase ? `, étape ${context.phase}` : ""}.`, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
     return { text: "Je vois l'écran actuel de l'application, mais aucun mode de jeu précis n'est encore actif.", modeId: context.mode || null };
   }
 
   const asksAppNavigation = /dans l application|dans l appli|dans appli|ou cliquer|ou aller|comment lancer|comment demarrer|comment faire pour y jouer|comment y jouer|ouvrir le mode|lancer le mode/.test(q);
   if (asksAppNavigation) {
-    if (mode) return { text: mode.howToPlayInApp, modeId: mode.id, actions: actionsForAwenaMode(mode) };
+    if (mode) return { text: mode.howToPlayInApp, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
     return {
       text: "Dis-moi quel mode tu veux lancer. Je peux te guider dans l'application et ouvrir directement sa configuration pour les modes que je connais déjà.",
       modeId: context.mode || null,
@@ -79,12 +79,12 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     return {
       text: `D'accord. Je peux t'emmener directement vers la configuration ${mode.label}.`,
       modeId: mode.id,
-      actions: actionsForAwenaMode(mode),
+      actions: actionsForAwenaMode(mode, context.route),
     };
   }
 
   if (/regle|regles|comment jouer|explique|objectif|but du jeu/.test(q)) {
-    if (mode) return { text: mode.summary, modeId: mode.id, actions: actionsForAwenaMode(mode) };
+    if (mode) return { text: mode.summary, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
     return {
       text: "Dis-moi quel mode tu veux comprendre. Je peux déjà t'expliquer X01, Killer, Darts Firefighter, Darts Poker et Attrape-moi si tu peux.",
       modeId: context.mode || null,
@@ -106,7 +106,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   }
 
   if (/conseil|astuce|aide|strategie|strategique|que faire/.test(q)) {
-    if (activeMode) return { text: activeMode.tip, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode) };
+    if (activeMode) return { text: activeMode.tip, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
     return {
       text: "Je peux te conseiller plus précisément lorsque je connais le mode et l'état de la partie. Ouvre un mode ou indique-moi son nom.",
       modeId: context.mode || null,
@@ -115,7 +115,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 
   if (/voix|parle|audio|son/.test(q)) {
     return {
-      text: "Ma voix est gérée localement par Awena Voice. La V2 conserve le moteur vocal installé sur l'appareil, mais toute l'architecture reste prévue pour accueillir ensuite notre propre modèle vocal Awena hors ligne.",
+      text: "Ma voix officielle est Estelle via PocketTTS français. Après l'installation unique de mon pack vocal, mes réponses sont générées localement sur l'appareil, sans service vocal externe.",
       modeId: activeMode?.id || context.mode || null,
     };
   }
@@ -127,7 +127,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     return {
       text: `Je garde ${activeMode.label} en mémoire pour cette conversation.${live} Tu peux me demander les règles, comment lancer le mode dans l'application ou un conseil.`,
       modeId: activeMode.id,
-      actions: actionsForAwenaMode(activeMode),
+      actions: actionsForAwenaMode(activeMode, context.route),
     };
   }
 

@@ -139,11 +139,41 @@ export default function AwenaOverlay({ route, sport, go, inGame = false }: Props
                 </div>
                 {m.role === "awena" && Array.isArray(m.actions) && m.actions.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                    {m.actions.map((action) => (
-                      <button key={action.id} type="button" onClick={() => runAction(action)} style={{ borderRadius: 999, border: `1px solid ${primary}88`, background: `${primary}18`, color: "#fff", padding: "6px 9px", fontSize: 10, fontWeight: 900, cursor: "pointer" }}>
-                        {action.kind === "navigate" ? "➜ " : ""}{action.label}
-                      </button>
-                    ))}
+                    {m.actions.map((action) => {
+                      if (action.kind === "navigate" && action.imageSrc) {
+                        return (
+                          <button
+                            key={action.id}
+                            type="button"
+                            onClick={() => runAction(action)}
+                            aria-label={action.imageAlt || action.label}
+                            title={action.label}
+                            style={{
+                              width: "min(280px, 100%)",
+                              aspectRatio: "800 / 230",
+                              padding: 0,
+                              overflow: "hidden",
+                              borderRadius: 12,
+                              border: `1px solid ${primary}aa`,
+                              background: "#050713",
+                              boxShadow: `0 0 16px ${primary}22`,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <img
+                              src={action.imageSrc}
+                              alt={action.imageAlt || action.label}
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          </button>
+                        );
+                      }
+                      return (
+                        <button key={action.id} type="button" onClick={() => runAction(action)} style={{ borderRadius: 999, border: `1px solid ${primary}88`, background: `${primary}18`, color: "#fff", padding: "6px 9px", fontSize: 10, fontWeight: 900, cursor: "pointer" }}>
+                          {action.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
