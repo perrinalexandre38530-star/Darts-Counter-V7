@@ -19,10 +19,10 @@ const gradle = read("android/app/build.gradle");
 const gradleTemplate = read("android/app/src/build.gradle");
 const capacitor = json("capacitor.config.json");
 
-const gradleCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1] || 0);
-const gradleName = gradle.match(/versionName\s+["']([^"']+)["']/)?.[1] || "";
-const templateCode = Number(gradleTemplate.match(/versionCode\s+(\d+)/)?.[1] || 0);
-const templateName = gradleTemplate.match(/versionName\s+["']([^"']+)["']/)?.[1] || "";
+const gradleCode = Number(gradle.match(/versionCode\s*(?:=\s*)?(\d+)/)?.[1] || 0);
+const gradleName = gradle.match(/versionName\s*(?:=\s*)?["']([^"']+)["']/)?.[1] || "";
+const templateCode = Number(gradleTemplate.match(/versionCode\s*(?:=\s*)?(\d+)/)?.[1] || 0);
+const templateName = gradleTemplate.match(/versionName\s*(?:=\s*)?["']([^"']+)["']/)?.[1] || "";
 
 check("Version canonique valide", Number.isInteger(release.versionCode) && release.versionCode > 0 && !!release.versionName);
 check("package.json aligné", pkg.version === release.versionName, `${pkg.version} != ${release.versionName}`);
