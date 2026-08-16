@@ -222,41 +222,66 @@ export default function ScoreInputHub({
   const fitInnerRef = React.useRef<HTMLDivElement | null>(null);
   const [fitScale, setFitScale] = React.useState(1);
 
+  // PERF: le calcul de fit lit le layout (getBoundingClientRect/scrollHeight).
+  // Il ne doit surtout pas se relancer à chaque fléchette ou changement S/D/T :
+  // sur Android WebView cela provoquait un forced reflow sur le chemin critique
+  // de chaque pression du keypad. Le ResizeObserver suffit pour les vrais changements
+  // de géométrie ; les mesures sont en plus coalescées sur une seule frame.
   React.useLayoutEffect(() => {
     if (!fitToParent) {
-      if (fitScale !== 1) setFitScale(1);
+      setFitScale((prev) => (prev === 1 ? prev : 1));
       return;
     }
-    const compute = () => {
+
+    let raf = 0;
+    let disposed = false;
+
+    const computeNow = () => {
+      raf = 0;
+      if (disposed) return;
       const outer = fitOuterRef.current;
       const inner = fitInnerRef.current;
       if (!outer || !inner) return;
+
       const ob = outer.getBoundingClientRect();
+      const ib = inner.getBoundingClientRect();
       const oh = ob.height;
       const ow = ob.width;
-      const ih = Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
-      const iw = Math.max(inner.scrollWidth, inner.getBoundingClientRect().width);
+      const ih = Math.max(inner.scrollHeight, ib.height);
+      const iw = Math.max(inner.scrollWidth, ib.width);
       if (!oh || !ow || !ih || !iw) return;
-      const next = Math.max(0.52, Math.min(1, Math.round(Math.min(oh / ih, ow / iw) * 1000) / 1000));
-      if (Math.abs(next - fitScale) > 0.01) setFitScale(next);
+
+      const next = Math.max(
+        0.52,
+        Math.min(1, Math.round(Math.min(oh / ih, ow / iw) * 1000) / 1000)
+      );
+      setFitScale((prev) => (Math.abs(next - prev) > 0.01 ? next : prev));
     };
-    const raf = requestAnimationFrame(compute);
+
+    const scheduleCompute = () => {
+      if (disposed || raf) return;
+      raf = requestAnimationFrame(computeNow);
+    };
+
+    scheduleCompute();
+
     let ro: ResizeObserver | null = null;
     try {
-      ro = new ResizeObserver(compute);
+      ro = new ResizeObserver(scheduleCompute);
       if (fitOuterRef.current) ro.observe(fitOuterRef.current);
       if (fitInnerRef.current) ro.observe(fitInnerRef.current);
     } catch {}
-    window.addEventListener("resize", compute);
-    window.addEventListener("orientationchange", compute);
+
+    window.addEventListener("resize", scheduleCompute, { passive: true });
+    window.addEventListener("orientationchange", scheduleCompute, { passive: true });
     return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("orientationchange", compute);
+      disposed = true;
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", scheduleCompute);
+      window.removeEventListener("orientationchange", scheduleCompute);
       ro?.disconnect?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitToParent, method, safeCurrentThrow.length, multiplier]);
+  }, [fitToParent, method]);
 
   const contentBoxStyle: React.CSSProperties = {
     ...(lockContentHeight ? { minHeight: 0 } : null),

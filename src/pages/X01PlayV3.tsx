@@ -7450,7 +7450,7 @@ function X01InlineCountryFlag({ player, profile, size = 18 }: { player: any; pro
   );
 }
 
-function TeamsPlayersList(props: {
+function TeamsPlayersListInner(props: {
   cameraOpen: boolean;
   setCameraOpen: (v: boolean) => void;
   teams: any[];
@@ -7687,7 +7687,12 @@ function TeamsPlayersList(props: {
 }
 
 
-function PlayersListOnly(props: {
+// PERF : la saisie de la volée vit dans le parent X01. Les listes joueurs ne
+// changent pas pendant les 1/2/3 pressions d'une volée et n'ont donc aucune
+// raison d'être reconstruites à chaque dart.
+const TeamsPlayersList = React.memo(TeamsPlayersListInner);
+
+function PlayersListOnlyInner(props: {
   cameraOpen: boolean;
   setCameraOpen: (v: boolean) => void;
   players: any[];
@@ -7897,6 +7902,9 @@ function PlayersListOnly(props: {
 </div>
   );
 }
+
+
+const PlayersListOnly = React.memo(PlayersListOnlyInner);
 
 
 // =====================================================

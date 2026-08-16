@@ -1,0 +1,198 @@
+import React from "react";
+import {
+  getDartSetMainImageSrc,
+  getDartSetPresetImageSrc,
+  getDartSetThumbImageSrc,
+  resolveDartSetBestImageSrc,
+} from "../lib/dartSetsStore";
+
+type Props = {
+  set?: any | null;
+  src?: string | null;
+  preferThumb?: boolean;
+  alt?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  fallback?: React.ReactNode;
+  loading?: "eager" | "lazy";
+};
+
+type CacheValue = string | null | Promise<string | null>;
+const resolvedImageCache = new Map<string, CacheValue>();
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function setIdentity(set: any, preferThumb: boolean): string {
+  if (!set || typeof set !== "object") return `none:${preferThumb ? "t" : "m"}`;
+  const id = text(set.id || set.dartSetId || set.setId || set.name || "unknown");
+  const mediaRev = String(
+    set.mediaUpdatedAt ||
+      set.updatedAt ||
+      set.mainImageAssetId ||
+      set.thumbImageAssetId ||
+      set.photoAssetId ||
+      set.mainImageUrl?.length ||
+      set.thumbImageUrl?.length ||
+      set.photoDataUrl?.length ||
+      0
+  );
+  return `${id}:${mediaRev}:${preferThumb ? "thumb" : "main"}`;
+}
+
+function syncCandidates(set: any, explicitSrc?: string | null, preferThumb = false): string[] {
+  const normal = preferThumb
+    ? [getDartSetThumbImageSrc(set), getDartSetMainImageSrc(set)]
+    : [getDartSetMainImageSrc(set), getDartSetThumbImageSrc(set)];
+  const preset = preferThumb
+    ? [getDartSetPresetImageSrc(set, true), getDartSetPresetImageSrc(set, false)]
+    : [getDartSetPresetImageSrc(set, false), getDartSetPresetImageSrc(set, true)];
+  const candidates = [text(explicitSrc), ...normal.map(text), ...preset.map(text)].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+function resolveCached(set: any, preferThumb: boolean): Promise<string | null> {
+  const key = setIdentity(set, preferThumb);
+  const cached = resolvedImageCache.get(key);
+  if (typeof cached === "string" || cached === null) return Promise.resolve(cached ?? null);
+  if (cached && typeof (cached as Promise<string | null>).then === "function") {
+    return cached as Promise<string | null>;
+  }
+
+  const pending = resolveDartSetBestImageSrc(set, preferThumb)
+    .then((src) => {
+      const normalized = text(src) || null;
+      resolvedImageCache.set(key, normalized);
+      return normalized;
+    })
+    .catch(() => {
+      resolvedImageCache.set(key, null);
+      return null;
+    });
+  resolvedImageCache.set(key, pending);
+  return pending;
+}
+
+/**
+ * Image DartSet robuste :
+ * - tente d'abord le coffre média local/IndexedDB (utile après restauration Android),
+ * - retombe sur les URLs historiques puis sur l'image du preset embarquée,
+ * - masque l'élément IMG tant qu'il n'est pas réellement chargé : aucune icône
+ *   navigateur "image cassée" n'est visible dans le sélecteur.
+ */
+const DartSetImage: React.FC<Props> = ({
+  set,
+  src = null,
+  preferThumb = true,
+  alt = "",
+  className,
+  style,
+  fallback = <span aria-hidden="true">🎯</span>,
+  loading = "lazy",
+}) => {
+  const candidates = React.useMemo(
+    () => syncCandidates(set, src, preferThumb),
+    [set, src, preferThumb]
+  );
+  const identity = React.useMemo(
+    () => `${setIdentity(set, preferThumb)}:${text(src)}`,
+    [set, preferThumb, src]
+  );
+
+  const immediate = React.useMemo(() => {
+    const first = candidates[0] || "";
+    return /^(data:image\/|blob:)/i.test(first) ? first : null;
+  }, [candidates]);
+
+  const [resolvedSrc, setResolvedSrc] = React.useState<string | null>(immediate);
+  const [loaded, setLoaded] = React.useState(false);
+  const [failedAll, setFailedAll] = React.useState(false);
+  const triedRef = React.useRef<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    let cancelled = false;
+    triedRef.current = new Set();
+    setFailedAll(false);
+    setLoaded(false);
+    setResolvedSrc(immediate);
+
+    if (!set) {
+      setResolvedSrc(candidates[0] || null);
+      return () => { cancelled = true; };
+    }
+
+    void resolveCached(set, preferThumb).then((localOrBest) => {
+      if (cancelled) return;
+      const next = text(localOrBest) || candidates[0] || null;
+      setResolvedSrc(next);
+    });
+
+    return () => { cancelled = true; };
+  }, [identity, set, preferThumb, immediate, candidates]);
+
+  React.useEffect(() => {
+    setLoaded(false);
+  }, [resolvedSrc]);
+
+  const onError = React.useCallback(() => {
+    const failed = text(resolvedSrc);
+    if (failed) triedRef.current.add(failed);
+
+    const ordered = Array.from(new Set([text(resolvedSrc), ...candidates].filter(Boolean)));
+    const next = ordered.find((candidate) => !triedRef.current.has(candidate)) || null;
+    if (next) {
+      setLoaded(false);
+      setResolvedSrc(next);
+      return;
+    }
+
+    setLoaded(false);
+    setFailedAll(true);
+    setResolvedSrc(null);
+  }, [resolvedSrc, candidates]);
+
+  const showFallback = !resolvedSrc || !loaded || failedAll;
+
+  return (
+    <span
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+      }}
+    >
+      {showFallback ? (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          {fallback}
+        </span>
+      ) : null}
+      {resolvedSrc && !failedAll ? (
+        <img
+          src={resolvedSrc}
+          alt={alt}
+          className={className}
+          style={{ ...style, opacity: loaded ? 1 : 0, display: "block" }}
+          loading={loading}
+          decoding="async"
+          draggable={false}
+          onLoad={() => setLoaded(true)}
+          onError={onError}
+        />
+      ) : null}
+    </span>
+  );
+};
+
+export default React.memo(DartSetImage);

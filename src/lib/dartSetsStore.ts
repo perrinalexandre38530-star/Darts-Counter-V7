@@ -1,7 +1,7 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson, unpackJsonFromStorage } from "./imageStorageCodec";
 import { dartPresets } from "./dartPresets";
 import { resolveRuntimeMediaUrl } from "./serverConfig";
-import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey, readFirstLocalUserMediaFallback } from "./userMediaFallback";
+import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey, readFirstLocalUserMediaFallback, resolveUserMediaFallback } from "./userMediaFallback";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -2122,6 +2122,20 @@ export function getDartSetAliases(id: DartSetId | null | undefined): string[] {
   return uniqStrings([set.id, set.linkedSourceDartSetId, ...(set.duplicateIds || []), ...(set.aliasIds || [])]);
 }
 
+/**
+ * Image du preset d'origine, volontairement indépendante des URLs enregistrées
+ * sur le dartset. Utile lorsqu'une ancienne sauvegarde contient encore une URL
+ * distante/éphémère cassée alors que le preset livré avec l'app est valide.
+ */
+export function getDartSetPresetImageSrc(set: any, preferThumb = false): string | null {
+  const preset = resolvePresetForSet(set);
+  if (!preset) return null;
+  const src = preferThumb
+    ? s(preset?.imgUrlThumb || preset?.imgUrlMain || "")
+    : s(preset?.imgUrlMain || preset?.imgUrlThumb || "");
+  return src || null;
+}
+
 export function getDartSetMainImageSrc(set: any): string | null {
   const src = readMainImage(set);
   if (src) return src;
@@ -2166,9 +2180,34 @@ export async function resolveDartSetBestImageSrc(set: any, preferThumb = false):
   const local = await readFirstLocalUserMediaFallback(localKeys);
   if (local) return local;
 
-  return preferThumb
-    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set))
-    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set));
+  const primary = preferThumb
+    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || "")
+    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || "");
+
+  // Les photos de dartsets sont déjà sauvegardées dans le coffre média/R2 par
+  // DartSetsPanel. Le sélecteur X01 ne consultait pourtant que l'IndexedDB local :
+  // après une réinstallation Android ou un nettoyage du cache, il retombait donc
+  // directement sur une ancienne URL cassée. On tente maintenant le média dédié
+  // R2 (id courant + alias historiques) avant cette URL. Travail async uniquement.
+  const remoteKeys = uniqStrings([
+    preferThumb ? set?.r2ThumbMediaKey : set?.r2MainMediaKey,
+    preferThumb ? set?.r2MainMediaKey : set?.r2ThumbMediaKey,
+    ...ids.slice(0, 3).flatMap((id) => preferThumb
+      ? [dartSetThumbMediaKey(id), dartSetMainMediaKey(id)]
+      : [dartSetMainMediaKey(id), dartSetThumbMediaKey(id)]),
+  ]).slice(0, 6);
+
+  for (const key of remoteKeys) {
+    const kind = key.includes(":thumb:") || key.includes("thumb") ? "dartset_thumb" : "dartset_main";
+    const recovered = await resolveUserMediaFallback(key, primary, {
+      kind,
+      allowR2: true,
+      mirrorRecoveredToR2: true,
+    }).catch(() => "");
+    if (recovered) return recovered;
+  }
+
+  return primary || getDartSetPresetImageSrc(set, preferThumb);
 }
 
 function normalizeDartSetMutationPatch(patch: any): any {

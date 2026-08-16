@@ -106,6 +106,8 @@ const wrapCard: React.CSSProperties = {
 
 const btnBase: React.CSSProperties = {
   height: "clamp(44px, 8.5vw, 52px)",
+  touchAction: "manipulation",
+  WebkitTapHighlightColor: "transparent",
   borderRadius: 16,
   border: "1px solid rgba(255,255,255,.08)",
   background: "rgba(255,255,255,.04)",
@@ -180,6 +182,48 @@ function ActionIcon({ children }: { children: React.ReactNode }) {
   return <span style={{ display: "grid", placeItems: "center", color: "currentColor" }}>{children}</span>;
 }
 
+const NUMBER_ROWS = [
+  [0, 1, 2, 3, 4, 5, 6],
+  [7, 8, 9, 10, 11, 12, 13],
+  [14, 15, 16, 17, 18, 19, 20],
+] as const;
+
+// PERF : les 21 touches numériques sont entièrement statiques. Elles ne doivent
+// pas être réconciliées à chaque dart, changement de multiplicateur ou mise à jour
+// du score. Le parent lui fournit volontairement un callback stable.
+const KeypadNumberGrid = React.memo(function KeypadNumberGrid({
+  onNumber,
+}: {
+  onNumber: (n: number) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {NUMBER_ROWS.map((row, idx) => (
+        <div
+          key={idx}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+            gap: 8,
+          }}
+        >
+          {row.map((n) => (
+            <button
+              key={n}
+              type="button"
+              style={cell}
+              onClick={() => onNumber(n)}
+              title={n === 0 ? "MISS" : String(n)}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+});
+
 export function UndoMiniIcon({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
@@ -234,11 +278,11 @@ export default function Keypad({
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
   const total = throwTotal(currentThrow);
 
-  const rows = [
-    [0, 1, 2, 3, 4, 5, 6],
-    [7, 8, 9, 10, 11, 12, 13],
-    [14, 15, 16, 17, 18, 19, 20],
-  ];
+  const onNumberRef = React.useRef(onNumber);
+  onNumberRef.current = onNumber;
+  const handleNumber = React.useCallback((n: number) => {
+    onNumberRef.current(n);
+  }, []);
 
   return (
     <div
@@ -421,31 +465,8 @@ export default function Keypad({
 
       {noticeSlot ? <div style={{ marginBottom: 8 }}>{noticeSlot}</div> : null}
 
-      {/* Grille chiffres (pas de conteneur scrollable => ne peut pas “disparaître”) */}
-      <div style={{ display: "grid", gap: 8 }}>
-        {rows.map((row, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-              gap: 8,
-            }}
-          >
-            {row.map((n) => (
-              <button
-                key={n}
-                type="button"
-                style={cell}
-                onClick={() => onNumber(n)}
-                title={n === 0 ? "MISS" : String(n)}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
+      {/* Grille chiffres statique : mémoïsée pour rester instantanée sur mobile. */}
+      <KeypadNumberGrid onNumber={handleNumber} />
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
       <div

@@ -66,78 +66,83 @@ function clamp01(x: number) {
 
 let __dcAudioUnlocked = false;
 let __dcUnlockInstalled = false;
+let __dcUnlockAttempt: Promise<void> | null = null;
+let __dcLastUnlockAttemptAt = 0;
+let __dcSilentProbe: HTMLAudioElement | null = null;
+
+function removeUnlockListeners(tryUnlock: () => void) {
+  try {
+    window.removeEventListener("pointerdown", tryUnlock);
+    window.removeEventListener("touchstart", tryUnlock);
+    window.removeEventListener("mousedown", tryUnlock);
+    window.removeEventListener("keydown", tryUnlock);
+  } catch {}
+}
 
 export function x01EnsureAudioUnlocked() {
-  if (typeof window === "undefined") return;
-  if (__dcAudioUnlocked) return;
+  if (typeof window === "undefined" || __dcAudioUnlocked) return;
 
   const tryUnlock = () => {
-    if (__dcAudioUnlocked) return;
+    if (__dcAudioUnlocked || __dcUnlockAttempt) return;
 
-    // 1) AudioContext (si dispo) : resume = souvent suffisant sur Android/Chrome
+    // PERF Android : plusieurs chemins de saisie appellent ensure() pour le même
+    // geste. Avant ce patch chaque appel construisait un nouvel Audio() + play(),
+    // ce qui pouvait bloquer le thread UI. Une tentative max toutes les 500 ms.
+    const now = Date.now();
+    if (now - __dcLastUnlockAttemptAt < 500) return;
+    __dcLastUnlockAttemptAt = now;
+
     try {
-      const AC =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (AC) {
         const ctx = (window as any).__dcAudioCtx || new AC();
         (window as any).__dcAudioCtx = ctx;
-
-        if (ctx.state === "suspended") {
-          // resume est async, mais on tente
-          ctx.resume?.().catch?.(() => {});
-        }
-
-        // si déjà running, on peut considérer unlock OK
+        if (ctx.state === "suspended") void ctx.resume?.().catch?.(() => {});
         if (ctx.state === "running") {
           __dcAudioUnlocked = true;
+          removeUnlockListeners(tryUnlock);
+          return;
         }
       }
     } catch {}
 
-    // 2) Test Audio element : SEUL "then()" valide l’unlock
     try {
-      const a = new Audio();
+      const a = __dcSilentProbe || new Audio();
+      __dcSilentProbe = a;
       a.muted = true;
-      a.preload = "auto";
+      a.preload = "none";
 
       const p = a.play();
-      if (p && typeof (p as any).then === "function") {
-        (p as Promise<void>)
-          .then(() => {
-            try {
-              a.pause();
-              a.currentTime = 0;
-            } catch {}
-            __dcAudioUnlocked = true;
+      if (!p || typeof (p as any).then !== "function") return;
 
-            // ✅ on retire les listeners SEULEMENT ici (succès réel)
-            window.removeEventListener("pointerdown", tryUnlock);
-            window.removeEventListener("touchstart", tryUnlock);
-            window.removeEventListener("mousedown", tryUnlock);
-            window.removeEventListener("keydown", tryUnlock);
-          })
-          .catch(() => {
-            // ❌ autoplay bloqué : on NE PASSE PAS unlocked
-            // on garde les listeners -> prochain geste retentera
-          });
-      } else {
-        // navigateur chelou : on ne valide pas l'unlock ici
-      }
+      __dcUnlockAttempt = Promise.resolve(p)
+        .then(() => {
+          try {
+            a.pause();
+            a.currentTime = 0;
+          } catch {}
+          __dcAudioUnlocked = true;
+          removeUnlockListeners(tryUnlock);
+        })
+        .catch(() => {
+          // Autoplay encore bloqué : le prochain vrai geste retentera.
+        })
+        .finally(() => {
+          __dcUnlockAttempt = null;
+        });
     } catch {
-      // ignore
+      __dcUnlockAttempt = null;
     }
   };
 
-  // installe UNE SEULE FOIS
   if (!__dcUnlockInstalled) {
     __dcUnlockInstalled = true;
-    window.addEventListener("pointerdown", tryUnlock, { passive: true } as any);
-    window.addEventListener("touchstart", tryUnlock, { passive: true } as any);
-    window.addEventListener("mousedown", tryUnlock, { passive: true } as any);
-    window.addEventListener("keydown", tryUnlock, { passive: true } as any);
+    window.addEventListener("pointerdown", tryUnlock, { passive: true });
+    window.addEventListener("touchstart", tryUnlock, { passive: true });
+    window.addEventListener("mousedown", tryUnlock, { passive: true });
+    window.addEventListener("keydown", tryUnlock, { passive: true });
   }
 
-  // ✅ tentative immédiate : si on est déjà dans un geste user, ça unlock tout de suite
   tryUnlock();
 }
 
@@ -245,9 +250,15 @@ export async function x01PlaySfxV3(
   last[key] = now;
 
   try {
-    const base = getAudio(key);
-    const node = base.cloneNode(true) as HTMLAudioElement;
+    // PERF : réutilise l'élément préchargé au lieu de cloneNode() à chaque dart.
+    // Les touches rapprochées redémarrent simplement ce SFX ; les clés différentes
+    // disposent chacune de leur propre élément et peuvent toujours se superposer.
+    const node = getAudio(key);
     node.volume = clamp01(opts?.volume ?? VOLUME);
+    try {
+      node.pause();
+      node.currentTime = 0;
+    } catch {}
     await node.play();
   } catch {
     // autoplay bloqué -> ignore
