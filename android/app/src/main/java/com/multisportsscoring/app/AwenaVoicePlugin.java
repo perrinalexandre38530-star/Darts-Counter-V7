@@ -46,8 +46,17 @@ public class AwenaVoicePlugin extends Plugin {
         selectedVoiceName = getContext().getSharedPreferences("awena_voice", Context.MODE_PRIVATE)
             .getString("voiceName", null);
 
-        // The system TTS is only a fallback while the neural pack is absent.
-        if (!AwenaNeuralModelManager.isInstalled(getContext())) {
+        // Keep the heavy neural sessions warm in the background so the first sentence does not
+        // pay model-loading latency. System TTS is only a fallback while the pack is absent.
+        if (AwenaNeuralModelManager.isInstalled(getContext())) {
+            neuralExecutor.execute(() -> {
+                try {
+                    ensureNeuralEngine();
+                } catch (Exception error) {
+                    neuralLastError = error.getMessage();
+                }
+            });
+        } else {
             initEngine(null);
         }
     }

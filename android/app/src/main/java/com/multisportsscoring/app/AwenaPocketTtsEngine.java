@@ -18,6 +18,8 @@ import ai.onnxruntime.OrtSession;
 import ai.onnxruntime.TensorInfo;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -30,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
+import java.security.MessageDigest;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Local PocketTTS/ONNX runtime dedicated to Awena's French "Estelle" voice.
@@ -47,9 +51,27 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
     private static final float TEMPERATURE = 0.70f;
     private static final float EOS_THRESHOLD = -4.0f;
     private static final int MAX_TOKEN_CHUNK = 48;
+    private static final int DEFAULT_PREBUFFER_MS = 440;
+    private static final int MAX_MEMORY_CACHE_ENTRIES = 24;
+    private static final long MAX_DISK_CACHE_BYTES = 24L * 1024L * 1024L;
+    private static final int MAX_CACHE_AUDIO_SECONDS = 15;
 
     private final Context context;
     private final Random random = new Random();
+
+    // Adaptive playback learns the real generation speed of the current device.
+    private volatile double generationRtf = 0.82; // generation time / audio duration
+    private volatile boolean generationRtfCalibrated = false;
+    private volatile int adaptiveSafetyMs = 40;
+
+    // Short recurrent phrases (scores, "à toi", confirmations...) become instant after first use.
+    private final LinkedHashMap<String, short[]> memoryPcmCache =
+        new LinkedHashMap<String, short[]>(MAX_MEMORY_CACHE_ENTRIES + 1, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, short[]> eldest) {
+                return size() > MAX_MEMORY_CACHE_ENTRIES;
+            }
+        };
 
     private OrtEnvironment env;
     private OrtSession mimiEncoder;
@@ -64,6 +86,7 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
     private volatile boolean ready = false;
     private volatile boolean stopRequested = false;
     private volatile AudioTrack audioTrack;
+    private volatile AdaptivePlaybackSink playbackSink;
 
     public AwenaPocketTtsEngine(Context context) {
         this.context = context.getApplicationContext();
@@ -106,8 +129,9 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         TensorData preparedVoice = prependBos(voiceEmbedding);
         baseVoiceState = conditionVoice(preparedVoice);
 
+        pruneDiskCache();
         ready = true;
-        Log.i(TAG, "Awena Estelle neural engine ready.");
+        Log.i(TAG, "Awena Estelle neural engine ready. Adaptive streaming prewarmed.");
     }
 
     private TensorData encodeVoice(float[] audio) throws Exception {
@@ -152,6 +176,9 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
 
     public synchronized void requestStop() {
         stopRequested = true;
+        AdaptivePlaybackSink sink = playbackSink;
+        if (sink != null) sink.cancel();
+
         AudioTrack track = audioTrack;
         if (track != null) {
             try { track.pause(); } catch (Exception ignored) {}
@@ -160,52 +187,105 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         }
     }
 
+    /**
+     * Adaptive low-latency neural playback.
+     *
+     * We generate slightly ahead of playback, then keep ONNX and AudioTrack running on separate
+     * threads. This avoids the V4 underruns without waiting for the whole sentence as V5 did.
+     * The prebuffer adapts to the device's measured real-time factor (RTF).
+     */
     public void speak(String text, float volume) throws Exception {
         initialize();
         stopRequested = false;
-        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
 
-        List<String> chunks = splitText(text);
+        try { Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT); } catch (Exception ignored) {}
+
+        String cleanText = text == null ? "" : text.trim();
+        if (cleanText.isEmpty()) return;
+
+        // Fast path: recurrent short phrases are replayed immediately from local PCM cache.
+        String cacheKey = shouldCache(cleanText) ? cacheKey(cleanText) : null;
+        if (cacheKey != null) {
+            short[] cached = loadCachedPcm(cacheKey);
+            if (cached != null && cached.length > 0) {
+                Log.d(TAG, "PCM cache hit for Awena phrase (" + cached.length + " samples).");
+                try { Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO); } catch (Exception ignored) {}
+                try {
+                    playContinuousPcm16(cached, volume);
+                } finally {
+                    try { Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT); } catch (Exception ignored) {}
+                }
+                return;
+            }
+        }
+
+        List<String> chunks = splitText(cleanText);
         if (chunks.isEmpty()) return;
 
-        int minBuffer = AudioTrack.getMinBufferSize(
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_FLOAT
-        );
-        int bufferSize = Math.max(minBuffer, SAMPLE_RATE / 2 * 4);
-        AudioTrack track = new AudioTrack.Builder()
-            .setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build())
-            .setAudioFormat(new AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                .setSampleRate(SAMPLE_RATE)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build())
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build();
-        track.setVolume(Math.max(0f, Math.min(1f, volume)));
-        audioTrack = track;
-        track.play();
+        int prebufferMs = targetPrebufferMs();
+        AdaptivePlaybackSink sink = new AdaptivePlaybackSink(volume, prebufferMs);
+        playbackSink = sink;
+        PcmAccumulator cacheAccumulator = cacheKey == null ? null : new PcmAccumulator();
 
+        long generationStartMs = android.os.SystemClock.elapsedRealtime();
+        int generatedSpeechSamples = 0;
+
+        sink.start();
         try {
-            for (String chunk : chunks) {
-                if (stopRequested) break;
-                synthesizeChunk(chunk, track);
+            for (int i = 0; i < chunks.size() && !stopRequested; i++) {
+                if (i > 0) {
+                    short[] pause = new short[Math.round(SAMPLE_RATE * 0.035f)];
+                    sink.submit(pause);
+                    if (cacheAccumulator != null) cacheAccumulator.add(pause);
+                }
+
+                long chunkStartMs = android.os.SystemClock.elapsedRealtime();
+                int chunkSamples = synthesizeChunkStreaming(
+                    chunks.get(i),
+                    sink,
+                    cacheAccumulator
+                );
+                generatedSpeechSamples += chunkSamples;
+
+                long chunkElapsedMs = android.os.SystemClock.elapsedRealtime() - chunkStartMs;
+                updateGenerationRtf(chunkElapsedMs, chunkSamples);
             }
+
+            if (stopRequested) {
+                sink.cancel();
+                return;
+            }
+
+            long totalGenMs = android.os.SystemClock.elapsedRealtime() - generationStartMs;
+            updateGenerationRtf(totalGenMs, generatedSpeechSamples);
+
+            sink.finish();
+            adaptSafetyFromPlayback(sink.hadUnderrun());
+
+            if (!stopRequested && cacheKey != null && cacheAccumulator != null) {
+                short[] pcm = cacheAccumulator.toArray();
+                if (pcm.length > 0 && pcm.length <= SAMPLE_RATE * MAX_CACHE_AUDIO_SECONDS) {
+                    saveCachedPcm(cacheKey, pcm);
+                }
+            }
+        } catch (Exception error) {
+            sink.cancel();
+            throw error;
         } finally {
-            audioTrack = null;
-            try { track.stop(); } catch (Exception ignored) {}
-            try { track.release(); } catch (Exception ignored) {}
+            playbackSink = null;
         }
     }
 
-    private void synthesizeChunk(String text, AudioTrack track) throws Exception {
+    /**
+     * Generates one prompt and streams decoded PCM blocks into the adaptive playback queue.
+     */
+    private int synthesizeChunkStreaming(
+        String text,
+        AdaptivePlaybackSink sink,
+        PcmAccumulator cacheAccumulator
+    ) throws Exception {
         long[] tokenIds = tokenizer.encode(text);
-        if (tokenIds.length == 0) return;
+        if (tokenIds.length == 0) return 0;
 
         Map<String, TensorData> state = deepCopyState(baseVoiceState);
 
@@ -219,7 +299,6 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             closeInputs(tcInputs);
         }
 
-        // Feed the whole text prompt to the Flow LM state before autoregressive generation.
         Map<String, OnnxTensor> promptInputs = tensorsForState(state);
         promptInputs.put("sequence", OnnxTensor.createTensor(env, FloatBuffer.wrap(new float[0]),
             new long[]{1, 0, LATENT_DIM}));
@@ -232,7 +311,7 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
 
         Map<String, TensorData> decoderState = initState(mimiDecoder, false, "latent");
         List<float[]> latentBuffer = new ArrayList<>();
-        boolean firstDecode = true;
+
         float[] curr = new float[LATENT_DIM];
         Arrays.fill(curr, Float.NaN);
         int eosStep = -1;
@@ -240,6 +319,10 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         int framesAfterEos = wordCount <= 4 ? 5 : 3;
         int frameLimit = Math.min(700, Math.max(40,
             (int) Math.ceil((tokenIds.length / 3.0 + 2.0) * FRAME_RATE)));
+
+        boolean firstAudioPacket = true;
+        int emittedSamples = 0;
+        int decodeThreshold = initialDecodeFrames();
 
         for (int step = 0; step < frameLimit && !stopRequested; step++) {
             TensorData conditioning;
@@ -265,7 +348,6 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             double std = Math.sqrt(TEMPERATURE);
             for (int i = 0; i < x.length; i++) x[i] = (float) (random.nextGaussian() * std);
 
-            // PocketTTS recommended LSD steps=1: s=0, t=1, dt=1.
             Map<String, OnnxTensor> flowInputs = new LinkedHashMap<>();
             flowInputs.put("c", conditioning.toTensor(env));
             flowInputs.put("s", OnnxTensor.createTensor(env, FloatBuffer.wrap(new float[]{0f}), new long[]{1, 1}));
@@ -281,18 +363,104 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             curr = x;
             latentBuffer.add(Arrays.copyOf(x, x.length));
 
-            int threshold = firstDecode ? 2 : 8;
-            if (latentBuffer.size() >= threshold) {
+            if (latentBuffer.size() >= decodeThreshold) {
                 float[] audio = decodeLatents(latentBuffer, decoderState);
                 latentBuffer.clear();
-                firstDecode = false;
-                writeAudio(track, audio);
+
+                short[] pcm = toStreamingPcm16(audio, firstAudioPacket);
+                firstAudioPacket = false;
+                if (pcm.length > 0) {
+                    sink.submit(pcm);
+                    if (cacheAccumulator != null) cacheAccumulator.add(pcm);
+                    emittedSamples += pcm.length;
+                }
+
+                decodeThreshold = steadyDecodeFrames();
             }
         }
 
-        if (!stopRequested && !latentBuffer.isEmpty()) {
+        if (stopRequested) return emittedSamples;
+
+        if (!latentBuffer.isEmpty()) {
             float[] audio = decodeLatents(latentBuffer, decoderState);
-            writeAudio(track, audio);
+            short[] pcm = toStreamingPcm16(audio, firstAudioPacket);
+            if (pcm.length > 0) {
+                sink.submit(pcm);
+                if (cacheAccumulator != null) cacheAccumulator.add(pcm);
+                emittedSamples += pcm.length;
+            }
+        }
+
+        return emittedSamples;
+    }
+
+    /**
+     * First packet is deliberately small to get Awena talking quickly; later packets are larger
+     * to reduce decoder overhead.
+     */
+    private int initialDecodeFrames() {
+        // One first decoder batch should be large enough to satisfy the current prebuffer target.
+        // This avoids waiting for a second neural batch before Awena can start talking.
+        int frames = (int) Math.ceil(targetPrebufferMs() / 80.0); // PocketTTS: ~80 ms/frame
+        return Math.max(4, Math.min(14, frames));
+    }
+
+    private int steadyDecodeFrames() {
+        if (!generationRtfCalibrated) return 7;        // ~560 ms
+        if (generationRtf <= 0.65) return 5;
+        if (generationRtf <= 0.90) return 6;
+        if (generationRtf <= 1.05) return 8;
+        return 10;
+    }
+
+    private int targetPrebufferMs() {
+        int base;
+        if (!generationRtfCalibrated) {
+            base = DEFAULT_PREBUFFER_MS;
+        } else if (generationRtf <= 0.55) {
+            base = 280;
+        } else if (generationRtf <= 0.75) {
+            base = 360;
+        } else if (generationRtf <= 0.90) {
+            base = 440;
+        } else if (generationRtf <= 1.00) {
+            base = 600;
+        } else if (generationRtf <= 1.10) {
+            base = 760;
+        } else {
+            // If a device is genuinely slower than realtime, some safety buffer is unavoidable.
+            base = 980;
+        }
+        return Math.max(280, Math.min(1180, base + adaptiveSafetyMs));
+    }
+
+    private synchronized void updateGenerationRtf(long elapsedMs, int generatedSamples) {
+        if (elapsedMs <= 0 || generatedSamples < SAMPLE_RATE / 5) return;
+        double audioMs = generatedSamples * 1000.0 / SAMPLE_RATE;
+        double observed = elapsedMs / audioMs;
+        if (!Double.isFinite(observed) || observed <= 0.05 || observed > 5.0) return;
+
+        if (!generationRtfCalibrated) {
+            generationRtf = observed;
+            generationRtfCalibrated = true;
+        } else {
+            // Smooth enough to avoid one unusually hard sentence changing behaviour abruptly.
+            generationRtf = generationRtf * 0.72 + observed * 0.28;
+        }
+        Log.d(TAG, String.format(
+            java.util.Locale.US,
+            "Adaptive RTF=%.2f, next prebuffer=%dms",
+            generationRtf,
+            targetPrebufferMs()
+        ));
+    }
+
+    private synchronized void adaptSafetyFromPlayback(boolean hadUnderrun) {
+        if (hadUnderrun) {
+            adaptiveSafetyMs = Math.min(420, adaptiveSafetyMs + 140);
+            Log.w(TAG, "Audio underrun detected; increasing Awena prebuffer safety to " + adaptiveSafetyMs + "ms.");
+        } else if (adaptiveSafetyMs > 40) {
+            adaptiveSafetyMs = Math.max(40, adaptiveSafetyMs - 25);
         }
     }
 
@@ -315,32 +483,197 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         }
     }
 
-    private static void writeAudio(AudioTrack track, float[] audio) {
-        if (audio == null || audio.length == 0) return;
+    /**
+     * Stable PCM16 conversion for streamed blocks. Uses a fixed gain to avoid packet-to-packet
+     * pumping; only the first packet gets a tiny fade-in.
+     */
+    private static short[] toStreamingPcm16(float[] audio, boolean fadeIn) {
+        if (audio == null || audio.length == 0) return new short[0];
+        short[] out = new short[audio.length];
+        int fadeSamples = fadeIn ? Math.min(audio.length, SAMPLE_RATE / 200) : 0; // ~5 ms
+
+        for (int i = 0; i < audio.length; i++) {
+            float sample = audio[i];
+            if (!Float.isFinite(sample)) sample = 0f;
+            sample *= 0.94f;
+            sample = Math.max(-1f, Math.min(1f, sample));
+            if (fadeSamples > 0 && i < fadeSamples) {
+                sample *= i / (float) fadeSamples;
+            }
+            out[i] = (short) Math.round(sample * 32767f);
+        }
+        return out;
+    }
+
+    private static float[] concatAudio(List<float[]> parts, int totalSamples) {
+        if (parts == null || parts.isEmpty() || totalSamples <= 0) return new float[0];
+        float[] out = new float[totalSamples];
         int offset = 0;
-        while (offset < audio.length) {
-            int written = track.write(audio, offset, audio.length - offset, AudioTrack.WRITE_BLOCKING);
-            if (written <= 0) break;
-            offset += written;
+        for (float[] part : parts) {
+            if (part == null || part.length == 0) continue;
+            int length = Math.min(part.length, out.length - offset);
+            if (length <= 0) break;
+            System.arraycopy(part, 0, out, offset, length);
+            offset += length;
+        }
+        return offset == out.length ? out : Arrays.copyOf(out, offset);
+    }
+
+    /**
+     * Removes edge clicks when PocketTTS starts/ends a prompt.
+     */
+    private static void deClick(float[] audio) {
+        if (audio == null || audio.length < 4) return;
+        int fade = Math.min(audio.length / 4, Math.max(24, SAMPLE_RATE / 200)); // ~5 ms
+        for (int i = 0; i < fade; i++) {
+            float gain = i / (float) fade;
+            audio[i] *= gain;
+            audio[audio.length - 1 - i] *= gain;
         }
     }
 
+    /**
+     * Converts the neural float output to broadly compatible PCM16 and applies one utterance-wide
+     * limiter. PCM16 is substantially more reliable across Android audio HALs than streamed floats.
+     */
+    private static short[] toPcm16(float[] audio) {
+        if (audio == null || audio.length == 0) return new short[0];
+
+        float peak = 0f;
+        for (float sample : audio) {
+            if (!Float.isFinite(sample)) continue;
+            peak = Math.max(peak, Math.abs(sample));
+        }
+        float scale = peak > 0.96f ? (0.92f / peak) : 0.96f;
+
+        short[] out = new short[audio.length];
+        for (int i = 0; i < audio.length; i++) {
+            float sample = audio[i];
+            if (!Float.isFinite(sample)) sample = 0f;
+            sample = Math.max(-1f, Math.min(1f, sample * scale));
+            out[i] = (short) Math.round(sample * 32767f);
+        }
+        return out;
+    }
+
+    /**
+     * Plays a fully rendered utterance. Since all PCM is already in RAM, AudioTrack can never be
+     * starved by ONNX inference. We also wait for the playback head before releasing the track, so
+     * the final syllable cannot be truncated.
+     */
+    private void playContinuousPcm16(short[] pcm, float volume) throws Exception {
+        int minBuffer = AudioTrack.getMinBufferSize(
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        );
+        if (minBuffer <= 0) minBuffer = SAMPLE_RATE * 2;
+
+        // About one second of audio, or 4x the platform minimum.
+        int bufferSizeBytes = Math.max(minBuffer * 4, SAMPLE_RATE * 2);
+        AudioTrack track = new AudioTrack.Builder()
+            .setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build())
+            .setAudioFormat(new AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(SAMPLE_RATE)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .build())
+            .setBufferSizeInBytes(bufferSizeBytes)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build();
+
+        if (track.getState() != AudioTrack.STATE_INITIALIZED) {
+            try { track.release(); } catch (Exception ignored) {}
+            throw new IllegalStateException("AudioTrack Awena non initialisé.");
+        }
+
+        track.setVolume(Math.max(0f, Math.min(1f, volume)));
+        audioTrack = track;
+
+        int acceptedFrames = 0;
+        try {
+            track.play();
+
+            // Feed reasonably sized blocks from a buffer that is already fully rendered.
+            final int block = 4096;
+            int offset = 0;
+            while (offset < pcm.length && !stopRequested) {
+                int count = Math.min(block, pcm.length - offset);
+                int written = track.write(pcm, offset, count, AudioTrack.WRITE_BLOCKING);
+                if (written < 0) {
+                    throw new IllegalStateException("Erreur AudioTrack Awena : " + written);
+                }
+                if (written == 0) continue;
+                offset += written;
+                acceptedFrames += written;
+            }
+
+            if (!stopRequested) {
+                waitUntilPlayed(track, acceptedFrames);
+            }
+        } finally {
+            audioTrack = null;
+            try { track.pause(); } catch (Exception ignored) {}
+            try { track.flush(); } catch (Exception ignored) {}
+            try { track.stop(); } catch (Exception ignored) {}
+            try { track.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    private void waitUntilPlayed(AudioTrack track, int expectedFrames) {
+        if (expectedFrames <= 0) return;
+        long maxWaitMs = Math.max(1500L,
+            Math.round(expectedFrames * 1000.0 / SAMPLE_RATE) + 2000L);
+        long deadline = android.os.SystemClock.elapsedRealtime() + maxWaitMs;
+
+        while (!stopRequested && android.os.SystemClock.elapsedRealtime() < deadline) {
+            long played = track.getPlaybackHeadPosition() & 0xffffffffL;
+            if (played >= expectedFrames - 16L) break;
+            android.os.SystemClock.sleep(8L);
+        }
+    }
+
+    /**
+     * Combines neighbouring sentences whenever possible, then splits only prompts that exceed the
+     * safe PocketTTS token window. This reduces unnecessary voice-state resets.
+     */
     private List<String> splitText(String raw) {
         String text = raw == null ? "" : raw.trim().replace(';', ',');
         if (text.isEmpty()) return new ArrayList<>();
+
         String[] sentences = text.split("(?<=[.!?])\\s+");
         List<String> out = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
 
         for (String sentence : sentences) {
-            String remaining = sentence.trim();
-            if (remaining.isEmpty()) continue;
-            long[] ids = tokenizer.encode(remaining);
-            if (ids.length <= MAX_TOKEN_CHUNK) {
-                out.add(remaining);
+            String cleanSentence = sentence.trim();
+            if (cleanSentence.isEmpty()) continue;
+
+            String combined = current.length() == 0
+                ? cleanSentence
+                : current.toString() + " " + cleanSentence;
+
+            if (tokenizer.encode(combined).length <= MAX_TOKEN_CHUNK) {
+                current.setLength(0);
+                current.append(combined);
                 continue;
             }
 
-            String[] words = remaining.split("\\s+");
+            if (current.length() > 0) {
+                out.add(current.toString());
+                current.setLength(0);
+            }
+
+            if (tokenizer.encode(cleanSentence).length <= MAX_TOKEN_CHUNK) {
+                current.append(cleanSentence);
+                continue;
+            }
+
+            // Long sentence: split by words without cutting a word.
+            String[] words = cleanSentence.split("\\s+");
             StringBuilder builder = new StringBuilder();
             for (String word : words) {
                 String candidate = builder.length() == 0 ? word : builder + " " + word;
@@ -353,8 +686,10 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
                     builder.append(word);
                 }
             }
-            if (builder.length() > 0) out.add(builder.toString());
+            if (builder.length() > 0) current.append(builder);
         }
+
+        if (current.length() > 0) out.add(current.toString());
         return out;
     }
 
@@ -445,6 +780,302 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
     private static void closeSession(OrtSession session) {
         if (session != null) {
             try { session.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    private boolean shouldCache(String text) {
+        return text != null && !text.isEmpty() && text.length() <= 220;
+    }
+
+    private File diskCacheDir() {
+        return new File(context.getCacheDir(), "awena_estelle_pcm_v51");
+    }
+
+    private static String cacheKey(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(text.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder(hash.length * 2);
+            for (byte b : hash) out.append(String.format(java.util.Locale.US, "%02x", b & 0xff));
+            return out.toString();
+        } catch (Exception error) {
+            return Integer.toHexString(text.hashCode());
+        }
+    }
+
+    private synchronized short[] loadCachedPcm(String key) {
+        short[] memory = memoryPcmCache.get(key);
+        if (memory != null) return Arrays.copyOf(memory, memory.length);
+
+        File file = new File(diskCacheDir(), key + ".pcm");
+        if (!file.isFile() || file.length() <= 0 || (file.length() & 1L) != 0L) return null;
+        if (file.length() > SAMPLE_RATE * MAX_CACHE_AUDIO_SECONDS * 2L) return null;
+
+        try (FileInputStream input = new FileInputStream(file)) {
+            byte[] bytes = new byte[(int) file.length()];
+            int offset = 0;
+            while (offset < bytes.length) {
+                int read = input.read(bytes, offset, bytes.length - offset);
+                if (read < 0) break;
+                offset += read;
+            }
+            if (offset != bytes.length) return null;
+
+            ShortBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
+            short[] pcm = new short[buffer.remaining()];
+            buffer.get(pcm);
+            memoryPcmCache.put(key, pcm);
+            file.setLastModified(System.currentTimeMillis());
+            return Arrays.copyOf(pcm, pcm.length);
+        } catch (Exception error) {
+            try { file.delete(); } catch (Exception ignored) {}
+            return null;
+        }
+    }
+
+    private synchronized void saveCachedPcm(String key, short[] pcm) {
+        if (key == null || pcm == null || pcm.length == 0) return;
+        memoryPcmCache.put(key, Arrays.copyOf(pcm, pcm.length));
+
+        File dir = diskCacheDir();
+        if (!dir.exists() && !dir.mkdirs()) return;
+        File file = new File(dir, key + ".pcm");
+
+        try (FileOutputStream output = new FileOutputStream(file)) {
+            ByteBuffer bytes = ByteBuffer.allocate(pcm.length * 2).order(ByteOrder.LITTLE_ENDIAN);
+            bytes.asShortBuffer().put(pcm);
+            output.write(bytes.array());
+            output.flush();
+            file.setLastModified(System.currentTimeMillis());
+        } catch (Exception error) {
+            try { file.delete(); } catch (Exception ignored) {}
+        }
+
+        pruneDiskCache();
+    }
+
+    private synchronized void pruneDiskCache() {
+        File dir = diskCacheDir();
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".pcm"));
+        if (files == null || files.length == 0) return;
+
+        long total = 0L;
+        for (File file : files) total += Math.max(0L, file.length());
+        if (total <= MAX_DISK_CACHE_BYTES) return;
+
+        Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+        for (File file : files) {
+            if (total <= MAX_DISK_CACHE_BYTES) break;
+            long length = Math.max(0L, file.length());
+            if (file.delete()) total -= length;
+        }
+    }
+
+    private static final class PcmAccumulator {
+        private final List<short[]> parts = new ArrayList<>();
+        private int total = 0;
+
+        void add(short[] pcm) {
+            if (pcm == null || pcm.length == 0) return;
+            parts.add(Arrays.copyOf(pcm, pcm.length));
+            total += pcm.length;
+        }
+
+        short[] toArray() {
+            if (total <= 0) return new short[0];
+            short[] out = new short[total];
+            int offset = 0;
+            for (short[] part : parts) {
+                System.arraycopy(part, 0, out, offset, part.length);
+                offset += part.length;
+            }
+            return out;
+        }
+    }
+
+    /**
+     * Producer/consumer bridge: ONNX produces PCM packets while a dedicated AUDIO-priority thread
+     * plays them. Playback starts only after a small adaptive prebuffer has accumulated.
+     */
+    private final class AdaptivePlaybackSink {
+        private static final int POLL_MS = 50;
+        private final short[] endMarker = new short[0];
+        private final LinkedBlockingQueue<short[]> queue = new LinkedBlockingQueue<>();
+        private final float volume;
+        private final int targetPrebufferSamples;
+        private volatile boolean cancelled = false;
+        private volatile boolean finished = false;
+        private volatile Throwable playbackFailure = null;
+        private volatile boolean underrun = false;
+        private Thread thread;
+
+        AdaptivePlaybackSink(float volume, int prebufferMs) {
+            this.volume = Math.max(0f, Math.min(1f, volume));
+            this.targetPrebufferSamples = Math.max(
+                SAMPLE_RATE / 5,
+                Math.round(SAMPLE_RATE * prebufferMs / 1000f)
+            );
+        }
+
+        void start() {
+            thread = new Thread(this::runPlayback, "AwenaAudio");
+            thread.start();
+        }
+
+        void submit(short[] pcm) throws InterruptedException {
+            if (cancelled || stopRequested || pcm == null || pcm.length == 0) return;
+            queue.put(pcm);
+        }
+
+        void finish() throws Exception {
+            finished = true;
+            queue.offer(endMarker);
+            Thread t = thread;
+            if (t != null) t.join();
+            if (playbackFailure != null) {
+                if (playbackFailure instanceof Exception) throw (Exception) playbackFailure;
+                throw new IllegalStateException("Lecture Awena interrompue.", playbackFailure);
+            }
+        }
+
+        void cancel() {
+            cancelled = true;
+            finished = true;
+            queue.clear();
+            queue.offer(endMarker);
+            AudioTrack track = audioTrack;
+            if (track != null) {
+                try { track.pause(); } catch (Exception ignored) {}
+                try { track.flush(); } catch (Exception ignored) {}
+                try { track.stop(); } catch (Exception ignored) {}
+            }
+            Thread t = thread;
+            if (t != null) t.interrupt();
+        }
+
+        boolean hadUnderrun() {
+            return underrun;
+        }
+
+        private void runPlayback() {
+            try {
+                try { Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO); } catch (Exception ignored) {}
+
+                List<short[]> preRoll = new ArrayList<>();
+                int preRollSamples = 0;
+                boolean sawEnd = false;
+
+                while (!cancelled && !stopRequested && preRollSamples < targetPrebufferSamples) {
+                    short[] packet = queue.poll(POLL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (packet == null) {
+                        if (finished && queue.isEmpty()) break;
+                        continue;
+                    }
+                    if (packet == endMarker) {
+                        sawEnd = true;
+                        break;
+                    }
+                    preRoll.add(packet);
+                    preRollSamples += packet.length;
+                }
+
+                if (cancelled || stopRequested || preRollSamples <= 0) return;
+
+                int minBuffer = AudioTrack.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                );
+                if (minBuffer <= 0) minBuffer = SAMPLE_RATE * 2;
+
+                int prebufferBytes = Math.max(8192, targetPrebufferSamples * 2);
+                int bufferSizeBytes = Math.max(minBuffer * 3, prebufferBytes);
+
+                AudioTrack track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build())
+                    .setAudioFormat(new AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build())
+                    .setBufferSizeInBytes(bufferSizeBytes)
+                    .setTransferMode(AudioTrack.MODE_STREAM)
+                    .build();
+
+                if (track.getState() != AudioTrack.STATE_INITIALIZED) {
+                    try { track.release(); } catch (Exception ignored) {}
+                    throw new IllegalStateException("AudioTrack Awena non initialisé.");
+                }
+
+                track.setVolume(volume);
+                audioTrack = track;
+                int acceptedFrames = 0;
+                int underrunsAtStart = safeUnderrunCount(track);
+
+                try {
+                    track.play();
+                    for (short[] packet : preRoll) {
+                        acceptedFrames += writePacket(track, packet);
+                    }
+
+                    while (!cancelled && !stopRequested && !sawEnd) {
+                        short[] packet = queue.poll(POLL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+                        if (packet == null) {
+                            // Do not stop just because generation is temporarily busy; AudioTrack
+                            // still owns the prebuffer. Only producer end or cancellation terminates.
+                            if (finished && queue.isEmpty()) break;
+                            continue;
+                        }
+                        if (packet == endMarker) {
+                            sawEnd = true;
+                            break;
+                        }
+                        acceptedFrames += writePacket(track, packet);
+                    }
+
+                    if (!cancelled && !stopRequested) {
+                        waitUntilPlayed(track, acceptedFrames);
+                        underrun = safeUnderrunCount(track) > underrunsAtStart;
+                    }
+                } finally {
+                    audioTrack = null;
+                    try { track.pause(); } catch (Exception ignored) {}
+                    try { track.flush(); } catch (Exception ignored) {}
+                    try { track.stop(); } catch (Exception ignored) {}
+                    try { track.release(); } catch (Exception ignored) {}
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable error) {
+                playbackFailure = error;
+            } finally {
+                try { Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT); } catch (Exception ignored) {}
+            }
+        }
+
+        private int writePacket(AudioTrack track, short[] packet) {
+            int offset = 0;
+            int accepted = 0;
+            while (offset < packet.length && !cancelled && !stopRequested) {
+                int count = Math.min(4096, packet.length - offset);
+                int written = track.write(packet, offset, count, AudioTrack.WRITE_BLOCKING);
+                if (written < 0) throw new IllegalStateException("Erreur AudioTrack Awena : " + written);
+                if (written == 0) continue;
+                offset += written;
+                accepted += written;
+            }
+            return accepted;
+        }
+
+        private int safeUnderrunCount(AudioTrack track) {
+            try {
+                return track.getUnderrunCount();
+            } catch (Throwable ignored) {
+                return 0;
+            }
         }
     }
 
