@@ -34,35 +34,29 @@ function updateGradle(relativePath, release) {
   const file = path.join(root, relativePath);
   let text = fs.readFileSync(file, "utf8");
 
-  // Accept both Groovy syntaxes: `versionCode 7` and `versionCode = 7`.
-  // Some Android/Gradle tooling can rewrite the file using the `=` form.
+  const isAndroidAppModule =
+    /apply\s+plugin:\s*["']com\.android\.application["']/.test(text) &&
+    /\bandroid\s*\{/.test(text) &&
+    /\bdefaultConfig\s*\{/.test(text) &&
+    /\bapplicationId\s+["'][^"']+["']/.test(text);
+
+  if (!isAndroidAppModule) {
+    throw new Error(`${relativePath}: ce fichier n'est pas un build.gradle de module Android valide. Refus de le modifier automatiquement.`);
+  }
+
+  // Accept both Groovy syntaxes: `versionCode 7` / `versionCode = 7`.
   const versionCodeRe = /versionCode\s*(?:=\s*)?\d+/;
   const versionNameRe = /versionName\s*(?:=\s*)?["'][^"']+["']/;
 
-  if (versionCodeRe.test(text)) {
-    text = text.replace(versionCodeRe, `versionCode ${release.versionCode}`);
-  } else {
-    // Repair a build.gradle where the version line disappeared instead of aborting the whole Android sync.
-    text = text.replace(
-      /(defaultConfig\s*\{\s*\n)/,
-      `$1        versionCode ${release.versionCode}\n`,
-    );
-    if (!versionCodeRe.test(text)) {
-      throw new Error(`${relativePath}: defaultConfig/versionCode introuvable.`);
-    }
+  if (!versionCodeRe.test(text)) {
+    throw new Error(`${relativePath}: defaultConfig/versionCode introuvable.`);
+  }
+  if (!versionNameRe.test(text)) {
+    throw new Error(`${relativePath}: defaultConfig/versionName introuvable.`);
   }
 
-  if (versionNameRe.test(text)) {
-    text = text.replace(versionNameRe, `versionName "${release.versionName}"`);
-  } else {
-    text = text.replace(
-      /(defaultConfig\s*\{\s*\n)/,
-      `$1        versionName "${release.versionName}"\n`,
-    );
-    if (!versionNameRe.test(text)) {
-      throw new Error(`${relativePath}: defaultConfig/versionName introuvable.`);
-    }
-  }
+  text = text.replace(versionCodeRe, `versionCode ${release.versionCode}`);
+  text = text.replace(versionNameRe, `versionName "${release.versionName}"`);
 
   fs.writeFileSync(file, text, "utf8");
 }

@@ -19,11 +19,25 @@ const gradle = read("android/app/build.gradle");
 const gradleTemplate = read("android/app/src/build.gradle");
 const capacitor = json("capacitor.config.json");
 
+const appModuleValid =
+  /apply\s+plugin:\s*["']com\.android\.application["']/.test(gradle) &&
+  /\bandroid\s*\{/.test(gradle) &&
+  /\bdefaultConfig\s*\{/.test(gradle) &&
+  /\bapplicationId\s+["']com\.multisportsscoring\.app["']/.test(gradle);
+const templateModuleValid =
+  /apply\s+plugin:\s*["']com\.android\.application["']/.test(gradleTemplate) &&
+  /\bandroid\s*\{/.test(gradleTemplate) &&
+  /\bdefaultConfig\s*\{/.test(gradleTemplate);
+
 const gradleCode = Number(gradle.match(/versionCode\s*(?:=\s*)?(\d+)/)?.[1] || 0);
 const gradleName = gradle.match(/versionName\s*(?:=\s*)?["']([^"']+)["']/)?.[1] || "";
 const templateCode = Number(gradleTemplate.match(/versionCode\s*(?:=\s*)?(\d+)/)?.[1] || 0);
 const templateName = gradleTemplate.match(/versionName\s*(?:=\s*)?["']([^"']+)["']/)?.[1] || "";
 
+check("android/app/build.gradle est bien le module app actif", appModuleValid);
+check("android/app/src/build.gradle reste un template module valide", templateModuleValid);
+check("Le build actif conserve la signature Google Play", gradle.includes("playSigningConfigured") && gradle.includes("signingConfig signingConfigs.release"));
+check("Le template reste distinct du build actif", gradle !== gradleTemplate);
 check("Version canonique valide", Number.isInteger(release.versionCode) && release.versionCode > 0 && !!release.versionName);
 check("package.json aligné", pkg.version === release.versionName, `${pkg.version} != ${release.versionName}`);
 check("package-lock.json aligné", lock.version === release.versionName, `${lock.version} != ${release.versionName}`);
