@@ -30,6 +30,7 @@ import { extAdaptCheckoutSuggestion, type X01OutModeV3 } from "../lib/x01v3/x01C
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { clearX01CriticalCheckpoint, saveX01CriticalCheckpoint, warmX01CriticalCheckpointStorage, writeX01PagehideFallback } from "../lib/x01CriticalCheckpoint";
 import { StatsBridge } from "../lib/statsBridge";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 import { sanitizeScoreInputMethod } from "../lib/scoreInput/types";
@@ -129,6 +130,9 @@ import {
 const NAV_HEIGHT = 64;
 const CONTENT_MAX = 520;
 const AUTOSAVE_KEY = "x01v3:autosave";
+const logX01Bot = (...args: any[]) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
 
 // ✅ Garde-fou UI voix : fonction pure hors composant pour éviter tout crash
 // si un ancien rendu/minification perd la constante locale pendant les pastilles.
@@ -1400,10 +1404,12 @@ const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary 
   const replayDartsRef = React.useRef<X01DartInputV3[]>([]);
   const isReplayingRef = React.useRef(false);
   const hasReplayedRef = React.useRef(false);
-  const autosaveTimerRef = React.useRef<number | null>(null);
-  const autosaveIdleRef = React.useRef<any>(null);
-  const autosaveLastSigRef = React.useRef("");
-  const autosaveLastPersistAtRef = React.useRef(0);
+  const autosaveCreatedAtRef = React.useRef(Date.now());
+  const historyCheckpointLastAtRef = React.useRef(0);
+
+  React.useEffect(() => {
+    warmX01CriticalCheckpointStorage();
+  }, []);
 
   // ✅ IMPORTANT : déclarer players avant tout hook/useMemo qui l'utilise
   const players = Array.isArray((config as any)?.players) ? ((config as any).players as any[]) : [];
@@ -1550,6 +1556,7 @@ const {
   scores,
   status,
   throwDart,
+  throwVisit,
   undoLastDart, // 🔥 UNDO illimité du moteur V3
   rebuildFromDarts, // 🔁 UNDO fiable depuis l'historique UI complet
   getCurrentEngineState, // ✅ état moteur frais pour éviter les hits fantômes après changement de joueur
@@ -2655,110 +2662,120 @@ const activeTeam = React.useMemo(() => {
       historyIdRef.current = matchId;
 
       const darts = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
-      const lastDart = darts.length ? darts[darts.length - 1] : null;
-      const signature = JSON.stringify({
+      const lightPlayers = (config.players || []).map((p: any) => {
+        const clean: any = { ...(p || {}) };
+        for (const key of ["avatarDataUrl", "photoDataUrl", "dartSetImageDataUrl", "dartsetImageDataUrl"]) {
+          if (typeof clean[key] === "string" && clean[key].startsWith("data:")) delete clean[key];
+        }
+        for (const key of ["avatarUrl", "photoUrl", "imageUrl"]) {
+          if (typeof clean[key] === "string" && clean[key].startsWith("data:")) delete clean[key];
+        }
+        return clean;
+      });
+      const lightConfig = { ...config, players: lightPlayers } as any;
+      const now = Date.now();
+
+      // 1) CRASH-SAFE RAW CHECKPOINT — immediate IndexedDB write, no telemetry,
+      // compression, StatsHub refresh, cloud auth or global event.
+      void saveX01CriticalCheckpoint({
         matchId,
-        startScore: config.startScore,
-        players: (config.players || []).map((p: any) => String(p?.id ?? "")),
-        dartsCount: darts.length,
-        lastDart,
-        currentPlayerIndex: Number((state as any)?.currentPlayerIndex ?? -1),
-        currentScore: Number((state as any)?.players?.[(state as any)?.currentPlayerIndex ?? -1]?.score ?? -1),
+        config: lightConfig,
+        darts,
+        createdAt: autosaveCreatedAtRef.current,
+      }).catch((err) => {
+        console.warn("[X01PlayV3] critical checkpoint failed", err);
       });
 
-      if (signature === autosaveLastSigRef.current && Date.now() - autosaveLastPersistAtRef.current < 1500) {
-        return;
-      }
-
-      if (autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-      const cancelIdle = (window as any)?.cancelIdleCallback;
-      if (autosaveIdleRef.current && typeof cancelIdle === "function") {
-        try { cancelIdle(autosaveIdleRef.current); } catch {}
-        autosaveIdleRef.current = null;
-      }
-
-      const run = () => {
-        try {
-          const now = Date.now();
-          autosaveLastSigRef.current = signature;
-          autosaveLastPersistAtRef.current = now;
-
-          const snap: X01V3AutosaveSnapshot = {
-            id: matchId,
-            createdAt: now,
-            config,
-            darts,
-          };
-          window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
-
-          const lightPlayers = (config.players || []).map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? p.photoUrl ?? null,
-          }));
-
-          const payload = {
-            mode: "x01_multi",
-            variant: "x01_v3",
-            game: "x01",
+      // 2) Lightweight History header only for discoverability. The complete
+      // raw log above is the per-visit durability layer, so the main history DB
+      // does not need a transaction on every single visit.
+      const shouldRefreshHistoryHeader =
+        historyCheckpointLastAtRef.current === 0 ||
+        now - historyCheckpointLastAtRef.current >= 5000;
+      if (shouldRefreshHistoryHeader) {
+        historyCheckpointLastAtRef.current = now;
+        const record: any = {
+          id: matchId,
+          matchId,
+          kind: "x01",
+          status: "in_progress",
+          createdAt: autosaveCreatedAtRef.current,
+          updatedAt: now,
+          players: lightPlayers,
+          winnerId: null,
+          game: {
+            mode: "x01",
             startScore: config.startScore,
+            inMode: (config as any)?.inMode,
+            outMode: (config as any)?.outMode,
+          },
+          summary: {
             matchId,
-            config: { ...config, players: lightPlayers },
-            darts,
-          };
-
-          const record: any = {
-            id: matchId,
-            kind: "x01",
             status: "in_progress",
-            createdAt: now,
-            updatedAt: now,
-            players: lightPlayers,
-            winnerId: null,
-            summary: {
-              matchId,
-              status: "in_progress",
-            },
-            payload,
-          };
+            darts: darts.length,
+          },
+          payload: {
+            config: lightConfig,
+            darts,
+          },
+        };
+        void History.upsert(record).catch((err) => {
+          console.warn("[X01PlayV3] live history checkpoint failed", err);
+        });
+      }
 
-          History.upsert(record).catch((err) => {
-            console.warn("[X01PlayV3] History.upsert(in_progress) failed", err);
-          });
-        } catch (err) {
-          console.warn("[X01PlayV3] persistAutosave.flush failed", err);
-        }
-      };
-
-      autosaveTimerRef.current = window.setTimeout(() => {
-        autosaveTimerRef.current = null;
-        const ric = (window as any)?.requestIdleCallback;
-        if (typeof ric === "function") {
-          autosaveIdleRef.current = ric(() => {
-            autosaveIdleRef.current = null;
-            run();
-          }, { timeout: 1200 });
-        } else {
-          run();
-        }
-      }, 900);
     } catch (e) {
       console.warn("[X01PlayV3] persistAutosave failed", e);
     }
   }, [config, state]);
 
+  // Emergency synchronous copy only when Android/browser backgrounds the page.
+  // Normal keypad presses never touch localStorage.
   React.useEffect(() => {
-    return () => {
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-      const cancelIdle = (window as any)?.cancelIdleCallback;
-      if (autosaveIdleRef.current && typeof cancelIdle === "function") {
-        try { cancelIdle(autosaveIdleRef.current); } catch {}
-      }
+    if (typeof window === "undefined") return;
+
+    const flushPagehideFallback = () => {
+      try {
+        const matchId = String(historyIdRef.current || (state as any)?.matchId || "").trim();
+        if (!matchId || status === "match_end") return;
+        const darts = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
+        writeX01PagehideFallback({
+          matchId,
+          config,
+          darts,
+          createdAt: autosaveCreatedAtRef.current,
+        });
+        // Keep the legacy debug/manual recovery snapshot compatible, but only
+        // on pagehide/hidden so it cannot freeze gameplay.
+        try {
+          const snap: X01V3AutosaveSnapshot = {
+            id: matchId,
+            createdAt: autosaveCreatedAtRef.current,
+            config,
+            darts,
+          };
+          window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
+        } catch {}
+        void saveX01CriticalCheckpoint({
+          matchId,
+          config,
+          darts,
+          createdAt: autosaveCreatedAtRef.current,
+        }).catch(() => {});
+      } catch {}
     };
-  }, []);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushPagehideFallback();
+    };
+
+    window.addEventListener("pagehide", flushPagehideFallback);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushPagehideFallback);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [config, state, status]);
 
   // =====================================================
   // Reprise depuis HISTORIQUE (props.resume)
@@ -3903,15 +3920,17 @@ const validateThrow = async (forcedDarts?: UIDart[] | null, forcedPlayerId?: str
   undoEditingPlayerIdRef.current = null;
   persistAutosave();
 
-  inputs.forEach((input, index) => {
-    setTimeout(() => {
-      throwDart(input);
-
-      if (index === inputs.length - 1) {
+  if (inputs.length) {
+    // Let the keypad/throw chips paint first, then apply the exact same darts
+    // through the engine in one React commit instead of three 10ms-separated
+    // renders. Rules/scoring are unchanged; only publication is batched.
+    window.setTimeout(() => {
+      try {
+        throwVisit(inputs);
+      } finally {
         isValidatingRef.current = false;
 
         // ✅ CRITIQUE (BUST / TEAMS): resync UI depuis le moteur après la fin de visite
-        // (évite de conserver des fléchettes affichées sur la visite suivante)
         window.setTimeout(() => {
           forceSyncFromEngine();
           publishOnlineReplayState("manual-visit").catch(() => {});
@@ -3926,10 +3945,10 @@ const validateThrow = async (forcedDarts?: UIDart[] | null, forcedPlayerId?: str
           }
         }, 0);
       }
-    }, index * 10);
-  });
-
-  if (!inputs.length) isValidatingRef.current = false;
+    }, 0);
+  } else {
+    isValidatingRef.current = false;
+  }
 };
 
 const buildVisitLabelForConfirm = (darts: UIDart[]) => {
@@ -5040,6 +5059,10 @@ React.useEffect(() => {
         window.localStorage.removeItem(AUTOSAVE_KEY + ":resume");
       }
     } catch {}
+    try {
+      const matchId = String(historyIdRef.current || (state as any)?.matchId || "").trim();
+      if (matchId) void clearX01CriticalCheckpoint(matchId);
+    } catch {}
 
     if (onExit) {
       onExit();
@@ -5249,7 +5272,7 @@ try {
   // =====================================================
 
   React.useEffect(() => {
-    console.log("[X01PlayV3][BOT] effect run", {
+    logX01Bot("[X01PlayV3][BOT] effect run", {
       activePlayerId,
       activePlayerName: activePlayer?.name,
       isBotTurn,
@@ -5259,20 +5282,20 @@ try {
 
     // 0) Pendant la reprise depuis autosave, on NE JOUE PAS les bots
     if (isReplayingRef.current) {
-      console.log("[X01PlayV3][BOT] stop: replaying autosave");
+      logX01Bot("[X01PlayV3][BOT] stop: replaying autosave");
       return;
     }
 
     // 🛡️ Pendant un UNDO global déclenché par ANNULER,
     // on ne lance PAS une nouvelle volée de BOT.
     if (botUndoGuardRef.current) {
-      console.log("[X01PlayV3][BOT] stop: undo in progress");
+      logX01Bot("[X01PlayV3][BOT] stop: undo in progress");
       return;
     }
 
     // 1) Si ce n'est pas un tour de BOT → on ne fait rien
     if (!isBotTurn || !activePlayer) {
-      console.log("[X01PlayV3][BOT] stop: not bot turn", {
+      logX01Bot("[X01PlayV3][BOT] stop: not bot turn", {
         isBotTurn,
         hasActivePlayer: !!activePlayer,
       });
@@ -5285,7 +5308,7 @@ try {
       status === "set_end" ||
       status === "match_end"
     ) {
-      console.log("[X01PlayV3][BOT] stop: end status", { status });
+      logX01Bot("[X01PlayV3][BOT] stop: end status", { status });
       return;
     }
 
@@ -5293,7 +5316,7 @@ try {
     const scoreNow = scores[pid] ?? config.startScore;
     const level = ((activePlayer as any).botLevel as BotLevel) ?? "easy";
 
-    console.log("[X01PlayV3][BOT] scheduling bot visit", {
+    logX01Bot("[X01PlayV3][BOT] scheduling bot visit", {
       pid,
       name: activePlayer.name,
       scoreNow,
@@ -5301,7 +5324,7 @@ try {
     });
 
     const timeout = window.setTimeout(() => {
-      console.log("[X01PlayV3][BOT] timeout fired", {
+      logX01Bot("[X01PlayV3][BOT] timeout fired", {
         activePlayerId,
         status,
       });
@@ -5314,7 +5337,7 @@ try {
         !!currentActive && Boolean((currentActive as any).isBot);
 
       if (!stillBot) {
-        console.log(
+        logX01Bot(
           "[X01PlayV3][BOT] abort: no longer bot active",
           { currentActiveName: currentActive?.name }
         );
@@ -5326,7 +5349,7 @@ try {
         status === "set_end" ||
         status === "match_end"
       ) {
-        console.log(
+        logX01Bot(
           "[X01PlayV3][BOT] abort: status changed to end",
           { status }
         );
@@ -5334,7 +5357,7 @@ try {
       }
 
       const visit = computeBotVisit(level, scoreNow, outMode);
-      console.log("[X01PlayV3][BOT] visit computed", visit);
+      logX01Bot("[X01PlayV3][BOT] visit computed", visit);
 
       // UI : mémorise la volée du BOT
       setLastVisitsByPlayer((m) => ({
@@ -5354,10 +5377,8 @@ try {
         };
       });
 
-      // Joue TOUTE la volée (3 darts)
-      inputs.forEach((input) => {
-        throwDart(input);
-      });
+      // Joue TOUTE la volée (3 darts) avec un seul commit React.
+      throwVisit(inputs);
 
       // Autosave : on enregistre aussi les volées des bots
       const trackedInputs = inputs.map((input) => enrichReplayDart(input, pid, { ...currentReplayLegMeta(), source: "bot", ts: Date.now() }));
@@ -5378,7 +5399,7 @@ try {
     config.startScore,
     doubleOut,
     players,
-    throwDart,
+    throwVisit,
     persistAutosave,
     currentReplayLegMeta,
   ]);
@@ -10156,9 +10177,13 @@ function saveX01V3MatchToHistory({
 
     // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
     // V3 FIX : non bloquant pour l'UI, mais log explicite si l'écriture échoue.
-    void History.upsert(record).catch((err) => {
-      console.warn("[X01PlayV3] History.upsert(finished) failed", err);
-    });
+    void History.upsert(record)
+      .then(() => clearX01CriticalCheckpoint(String(record.id || record.matchId || "")))
+      .catch((err) => {
+        // Keep the critical raw-dart checkpoint if final persistence fails: it is
+        // the recovery source for a retry after an abrupt close/crash.
+        console.warn("[X01PlayV3] History.upsert(finished) failed", err);
+      });
   } catch (err) {
     console.warn(
       "[X01PlayV3] History save failed",

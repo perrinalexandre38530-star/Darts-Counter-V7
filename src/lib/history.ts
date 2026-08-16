@@ -119,8 +119,13 @@ function _resumeIndexWrite(ids: string[]) {
   } catch {}
 }
 function _resumeIndexAdd(id: string) {
+  const sid = String(id || "").trim();
+  if (!sid) return;
   const ids = _resumeIndexRead();
-  _resumeIndexWrite([id, ...ids.filter((x) => x !== id)]);
+  // Gameplay hot path: once the match is already indexed, do not rewrite
+  // localStorage on every validated visit.
+  if (ids[0] === sid || ids.includes(sid)) return;
+  _resumeIndexWrite([sid, ...ids.filter((x) => x !== sid)]);
 }
 function _resumeIndexRemove(id: string) {
   const ids = _resumeIndexRead();
@@ -2158,15 +2163,20 @@ export async function get(id: string): Promise<SavedMatch | null> {
     // Cela répare la reprise X01 et évite "configuration absente".
     try {
       const resume = (header as any)?.resume;
+      const isLiveHeader = inferHistoryStatus(header) === "in_progress";
       const needsResumeMerge =
         resume &&
         typeof resume === "object" &&
-        (!payload ||
+        (isLiveHeader ||
+          !payload ||
           typeof payload !== "object" ||
           ((payload as any)?.config == null && (resume as any)?.config != null) ||
           (!Array.isArray((payload as any)?.darts) && Array.isArray((resume as any)?.darts)));
 
       if (needsResumeMerge) {
+        // For a live match, the header checkpoint is intentionally newer than the
+        // heavy detail payload. Prefer it so a deferred detail write can never make
+        // resume lose the latest visit.
         payload = {
           ...(payload && typeof payload === "object" ? payload : {}),
           ...(resume?.config ? { config: resume.config } : {}),
@@ -2354,7 +2364,124 @@ function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
 /* =========================
    Écritures
 ========================= */
+
+// ============================================================
+// LIVE CHECKPOINT — gameplay hot path
+// ------------------------------------------------------------
+// A match in progress must be recoverable after a crash, but it must NOT run
+// telemetry enrichment, compact encoding, payload compression, StatsHub refresh,
+// cloud snapshot auth or global history events on every visit.
+// We therefore persist only a light header + resume payload in IndexedDB.
+// Finished matches still go through the full upsert pipeline below.
+// ============================================================
+export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void> {
+  // Deliberately skip legacy migration here: migration may compress hundreds of
+  // rows and is not allowed on the gameplay hot path. Normal History reads/final
+  // saves still run the migration pipeline.
+  let incoming: any = rec;
+  try { incoming = sanitizeRecord(rec); } catch {}
+
+  const now = Date.now();
+  const canonicalId =
+    getCanonicalMatchId(incoming) ??
+    incoming?.matchId ??
+    incoming?.id ??
+    (crypto.randomUUID?.() ?? String(now));
+  const id = String(canonicalId);
+
+  const existingHeader = await withStoreName(STORE_HEADERS, "readonly", (st) =>
+    new Promise<any>((resolve) => {
+      const req = st.get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    })
+  ).catch(() => null);
+
+  // Never allow a late live checkpoint to downgrade a finished match.
+  if (existingHeader && inferHistoryStatus(existingHeader) === "finished") {
+    try { _resumeIndexRemove(id); } catch {}
+    return;
+  }
+
+  const payload: any = stripAvatarDataFromPayload(incoming?.payload) || {};
+  const previousResume: any = existingHeader?.resume && typeof existingHeader.resume === "object"
+    ? existingHeader.resume
+    : {};
+
+  const resume: any = {
+    ...previousResume,
+  };
+  if (payload?.config != null) resume.config = payload.config;
+  else if (incoming?.resume?.config != null) resume.config = incoming.resume.config;
+  if (payload?.state != null) resume.state = payload.state;
+  else if (incoming?.resume?.state != null) resume.state = incoming.resume.state;
+
+  const darts = Array.isArray(payload?.darts)
+    ? payload.darts
+    : Array.isArray(payload?.replayDarts)
+    ? payload.replayDarts
+    : Array.isArray(incoming?.resume?.darts)
+    ? incoming.resume.darts
+    : null;
+  if (darts) {
+    // The dedicated X01 critical checkpoint keeps the complete raw log.
+    // The history header only needs a bounded recent replay for generic recovery.
+    resume.darts = darts.slice(-240);
+    resume.totalDarts = darts.length;
+  }
+
+  const safe: any = normalizeHistoryRow({
+    ...(existingHeader || {}),
+    ...(incoming || {}),
+    id,
+    matchId: id,
+    kind: incoming?.kind || existingHeader?.kind || "x01",
+    status: "in_progress",
+    winnerId: null,
+    players: stripAvatarDataFromPlayers(
+      Array.isArray(incoming?.players) ? incoming.players : (existingHeader?.players || [])
+    ) || [],
+    createdAt: existingHeader?.createdAt ?? incoming?.createdAt ?? now,
+    updatedAt: incoming?.updatedAt ?? now,
+    summary: {
+      ...((existingHeader?.summary && typeof existingHeader.summary === "object") ? existingHeader.summary : {}),
+      ...((incoming?.summary && typeof incoming.summary === "object") ? incoming.summary : {}),
+      status: "in_progress",
+      finished: false,
+    },
+    resume: Object.keys(resume).length ? resume : null,
+  });
+  delete safe.payload;
+  delete safe.payloadCompressed;
+  delete safe.compact;
+  delete safe.compactBytes;
+
+  await withStoreName(STORE_HEADERS, "readwrite", (st) =>
+    new Promise<void>((resolve, reject) => {
+      const req = st.put(toHeaderRecord(safe));
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error || new Error("history live checkpoint write failed"));
+    })
+  );
+
+  try { _resumeIndexAdd(id); } catch {}
+}
+
 export async function upsert(rec: SavedMatch): Promise<void> {
+  // Gameplay fast path: in-progress saves stay crash-safe but bypass every
+  // expensive derived/stat/cloud operation. Final saves still use the complete
+  // pipeline below, so no gameplay/statistics feature is removed.
+  try {
+    const liveKind = String((rec as any)?.kind || (rec as any)?.payload?.game || (rec as any)?.payload?.variant || "").toLowerCase();
+    const isX01Live = inferHistoryStatus(rec) === "in_progress" && (liveKind === "x01" || liveKind.includes("x01_v3") || liveKind.includes("x01"));
+    if (isX01Live && !(rec as any)?.__forceFullInProgress) {
+      await upsertInProgressCheckpoint(rec);
+      return;
+    }
+  } catch (e) {
+    console.warn("[history.upsert] live checkpoint fallback to full pipeline:", e);
+  }
+
   await migrateFromLocalStorageOnce();
 
   try {
@@ -4102,7 +4229,14 @@ export const History = {
   getAll,
   reviveForExplicitImport,
   async upsert(rec: SavedMatch) {
+    const liveKind = String((rec as any)?.kind || (rec as any)?.payload?.game || (rec as any)?.payload?.variant || "").toLowerCase();
+    const isLive = inferHistoryStatus(rec) === "in_progress" && (liveKind === "x01" || liveKind.includes("x01_v3") || liveKind.includes("x01")) && !(rec as any)?.__forceFullInProgress;
     await upsert(rec);
+    // Live gameplay checkpoints deliberately do not touch the localStorage UI
+    // cache and do not re-read/decompress the record. History.list()/get() will
+    // read the fresh IndexedDB header when the user actually opens History.
+    if (isLive) return;
+
     // V4 FIX : si l'upsert a été ignoré car il tentait de downgrader
     // un match finished en in_progress, on recharge la ligne réelle avant de toucher le cache UI.
     try {
@@ -4113,6 +4247,7 @@ export const History = {
       _applyUpsertToCache(rec);
     }
   },
+  upsertInProgressCheckpoint,
   // ✅ import cloud (anti-boucle + conflits)
   async upsertFromCloud(rec: SavedMatch, meta?: { cloudEventId?: string; cloudCreatedAt?: string }) {
     const res = await upsertFromCloud(rec, meta);

@@ -1729,6 +1729,51 @@ export function useX01EngineV3({
   );
 
   // -----------------------------------------------------------
+  // throwVisit : même moteur/règles, mais une seule publication React
+  // pour une volée déjà validée. Les darts sont appliquées séquentiellement
+  // dans les refs exactement comme throwDart(), puis l'UI est commitée une fois.
+  // -----------------------------------------------------------
+  const throwVisit = React.useCallback(
+    (inputs: X01DartInputV3[]) => {
+      const darts = Array.isArray(inputs) ? inputs.filter(Boolean) : [];
+      if (!darts.length) {
+        return { state: stateRef.current, liveStatsByPlayer: liveStatsByPlayerRef.current };
+      }
+
+      let nextState = stateRef.current;
+      let nextLive = liveStatsByPlayerRef.current;
+
+      for (const input of darts) {
+        const historyPlayerId = String(
+          (input as any)?.playerId ||
+            (input as any)?.pid ||
+            (input as any)?.profileId ||
+            nextState?.activePlayer ||
+            ""
+        ).trim();
+        dartsHistoryRef.current.push({
+          v: input.segment,
+          m: input.multiplier,
+          p: historyPlayerId || null,
+        });
+
+        const applied = applyDartWithFlow(config, nextState, nextLive, input);
+        nextState = applied.state;
+        nextLive = applied.liveStats;
+      }
+
+      stateRef.current = nextState;
+      liveStatsByPlayerRef.current = nextLive;
+      setLiveStatsByPlayer(nextLive);
+      setLiveLegStatsByPlayer(computeLegStats(nextLive as any));
+      setState(nextState);
+
+      return { state: nextState, liveStatsByPlayer: nextLive };
+    },
+    [config]
+  );
+
+  // -----------------------------------------------------------
   // UNDO illimité : efface le dernier dart, remonte volées/joueurs
   // -----------------------------------------------------------
 
@@ -1787,25 +1832,24 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   React.useEffect(() => {
+    // In-progress persistence is owned by X01PlayV3's crash-safe raw-dart
+    // checkpoint. Do NOT duplicate History.upsert on every individual dart here:
+    // that was a major source of overlapping IndexedDB/stat/cloud work.
+    // We keep this hook-level safety net only for the terminal state.
+    if (state.status !== "match_end") return;
     try {
-      // on ne logge que les matchs X01 locaux
       const playersLite: PlayerLite[] = config.players.map((p: any) => ({
         id: p.id,
         name: p.name,
         avatarDataUrl: p.avatarDataUrl ?? null,
-        // ✅ important pour StatsHub (liaison avec profils)
         profileId: (p as any).profileId ?? null,
       }) as any);
 
-
-      const summary: any = (state as any).summary || {};
-      const finished = state.status === "match_end";
-      summary.finished = finished;
-
+      const summary: any = { ...((state as any).summary || {}), finished: true };
       const rec: SavedMatch = {
         id: historyId || state.matchId,
         kind: "x01",
-        status: finished ? "finished" : "in_progress",
+        status: "finished",
         players: playersLite,
         winnerId: (state as any).lastWinnerId ?? null,
         game: {
@@ -1813,22 +1857,20 @@ export function useX01EngineV3({
           ...x01ContextGameMeta(config),
         },
         summary,
-        // payload complet pour reprise : config + state + stats live
         payload: {
           config,
           state,
           liveStatsByPlayer,
+          darts: dartsHistoryRef.current.slice(),
         },
       };
 
-      // on ne bloque pas le rendu, pas d'await
-      History.upsert(rec);
+      void History.upsert(rec);
     } catch (e) {
-      console.warn("[useX01EngineV3] autosave history error:", e);
+      console.warn("[useX01EngineV3] final history safety save error:", e);
     }
-    // config est constant sur la durée du hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, liveStatsByPlayer]);
+  }, [state.status]);
 
   // -----------------------------------------------------------
   // Exposition
@@ -1844,6 +1886,7 @@ export function useX01EngineV3({
     scores: state.scores,
     status: state.status,
     throwDart,
+    throwVisit,
     undoLastDart,     // 👉 à brancher sur la touche ANNULER du keypad
     rebuildFromDarts, // 👉 si tu veux reconstruire depuis un historique externe
     getCurrentEngineState, // ✅ sync UI depuis la ref moteur fraîche (pas le state React stale)

@@ -175,6 +175,7 @@ import SpectatorPage from "./pages/SpectatorPage";
 
 // Historique
 import { History } from "./lib/history";
+import { getX01CriticalCheckpoint } from "./lib/x01CriticalCheckpoint";
 import { recordProfileUsageFromMatch } from "./lib/profileUsage";
 
 // ✅ DartSets localStorage store (synced into App store)
@@ -2795,7 +2796,11 @@ useEffect(() => {
   // réellement inactif, avec un délai plus long sur téléphone.
   // ============================================================
   React.useEffect(() => {
-    if (loading) return;
+    const routeName = String(tab || "").toLowerCase();
+    const gameplayActive = routeName === "x01_play_v3" || routeName.endsWith("_play") || routeName.endsWith(".play") || routeName.includes("_play_");
+    // Never start StatsHub/DartSet/X01 aggregation while a gameplay screen owns
+    // the main thread. Leaving the play route re-arms this effect automatically.
+    if (loading || gameplayActive) return;
     let timer: number | null = null;
     let startupTimer: number | null = null;
     let idleId: any = null;
@@ -2892,10 +2897,12 @@ useEffect(() => {
       try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
       window.removeEventListener("dc-history-updated", onHistoryUpdated);
     };
-  }, [loading, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
+  }, [loading, tab, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
 
   React.useEffect(() => {
-    if (loading || showSplash) return;
+    const routeName = String(tab || "").toLowerCase();
+    const gameplayActive = routeName === "x01_play_v3" || routeName.endsWith("_play") || routeName.endsWith(".play") || routeName.includes("_play_");
+    if (loading || showSplash || gameplayActive) return;
     let timer: number | null = null;
     let idleId: any = null;
     const preloadPage = (loader: () => Promise<unknown>) => {
@@ -2926,7 +2933,7 @@ useEffect(() => {
       if (timer != null) window.clearTimeout(timer);
       try { if (idleId != null) (window as any).cancelIdleCallback?.(idleId); } catch {}
     };
-  }, [loading, showSplash]);
+  }, [loading, showSplash, tab]);
 
   // ============================================================
   // MONETIZATION / HISTORY FINALIZATION
@@ -5774,7 +5781,10 @@ function X01PlayV3Route({
         setLoading(true);
         setError(null);
 
-        const loadedRec: any = await History.get(resumeId).catch(() => null);
+        const [loadedRec, criticalCheckpoint] = await Promise.all([
+          History.get(resumeId).catch(() => null),
+          getX01CriticalCheckpoint(resumeId).catch(() => null),
+        ]);
         const routeRec: any = routeParams?.rec && typeof routeParams.rec === "object" ? routeParams.rec : null;
         const rec: any = loadedRec || routeRec;
         if (cancelled) return;
@@ -5835,6 +5845,23 @@ function X01PlayV3Route({
           payload?.inputs ??
           payload?.throws ??
           null;
+
+        // Crash recovery V66: the dedicated checkpoint contains the complete raw
+        // dart log and is written independently of the heavy History pipeline.
+        // Prefer it when it is at least as recent as the history header, including
+        // the important UNDO case where the newest valid log can be shorter.
+        try {
+          const criticalUpdatedAt = Number((criticalCheckpoint as any)?.updatedAt || 0);
+          const historyUpdatedAt = Number(rec?.updatedAt || rec?.createdAt || 0);
+          if (
+            criticalCheckpoint &&
+            Array.isArray((criticalCheckpoint as any)?.darts) &&
+            criticalUpdatedAt >= historyUpdatedAt
+          ) {
+            darts = (criticalCheckpoint as any).darts.slice();
+            if ((criticalCheckpoint as any)?.config) cfg = (criticalCheckpoint as any).config;
+          }
+        } catch {}
 
         if (!Array.isArray(darts) && cfg) {
           darts = [];

@@ -88,7 +88,11 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             config.setMaxNumSentences(1);
             config.setSilenceScale(0.16f);
 
-            tts = new OfflineTts(config);
+            // sherpa-onnx Kotlin API exposes the Java constructor as
+            // OfflineTts(AssetManager, OfflineTtsConfig). Because Awena's model files are
+            // installed in app-private filesystem storage (not packaged Android assets),
+            // pass null so sherpa uses newFromFile(config) with the absolute paths above.
+            tts = new OfflineTts(null, config);
             ready = true;
             stopRequested = false;
             trimDiskCache();
