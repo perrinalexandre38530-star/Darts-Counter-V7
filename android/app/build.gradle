@@ -54,7 +54,7 @@ repositories {
 
 dependencies {
     // Awena Voice V6: moteur TTS local sherpa-onnx / VITS-Piper.
-    implementation "com.github.k2-fsa:sherpa-onnx:v1.13.4"
+    implementation "com.github.k2-fsa:sherpa-onnx:v1.13.5"
     // Extraction locale du pack vocal .tar.bz2 d'Awena.
     implementation "org.apache.commons:commons-compress:1.27.1"
     implementation "com.android.billingclient:billing:9.1.0"

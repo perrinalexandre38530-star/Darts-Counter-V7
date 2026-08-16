@@ -8,7 +8,6 @@ import android.media.AudioTrack;
 import android.util.Log;
 
 import com.k2fsa.sherpa.onnx.GeneratedAudio;
-import com.k2fsa.sherpa.onnx.GenerationConfig;
 import com.k2fsa.sherpa.onnx.OfflineTts;
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig;
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig;
@@ -27,7 +26,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Stable local neural TTS engine for Awena.
+ * Stable local neural TTS engine for Awena (V6.3 crash-safe JNI path).
  *
  * Historical class name kept so existing Capacitor bridge code does not need a destructive
  * migration. V6 no longer runs PocketTTS: it uses sherpa-onnx's mature VITS/Piper French path.
@@ -38,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class AwenaPocketTtsEngine implements AutoCloseable {
     private static final String TAG = "AwenaStableTTS";
-    private static final int CACHE_VERSION = 2;
+    private static final int CACHE_VERSION = 3;
     private static final int MAX_MEMORY_CACHE_ITEMS = 28;
     private static final int MAX_DISK_CACHE_FILES = 96;
     private static final int MAX_CACHE_TEXT = 180;
@@ -79,7 +78,7 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             OfflineTtsModelConfig modelConfig = new OfflineTtsModelConfig();
             modelConfig.setVits(vits);
             // Two threads generally lowers latency without monopolising the UI/gameplay threads.
-            modelConfig.setNumThreads(2);
+            modelConfig.setNumThreads(1);
             modelConfig.setDebug(false);
             modelConfig.setProvider("cpu");
 
@@ -125,14 +124,11 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
                 OfflineTts engine = tts;
                 if (engine == null) throw new IllegalStateException("Moteur Awena non initialisé.");
 
-                GenerationConfig cfg = new GenerationConfig();
-                cfg.setSid(0);
-                cfg.setSpeed(speed);
-                cfg.setSilenceScale(0.16f);
-
-                // Stable non-streamed synthesis. We intentionally do not use the callback to feed
-                // AudioTrack; it is only an inference result here, so Android never underruns.
-                generated = engine.generateWithConfigAndCallback(clean, cfg, samples -> stopRequested ? 0 : 1);
+                // V6.3: use sherpa's simplest synchronous JNI generation path.
+                // The previous V6 path unnecessarily crossed the Java/native callback bridge even
+                // though we were not streaming audio. On Android a native TTS failure can terminate
+                // the whole process, so keep the synthesis path minimal and deterministic.
+                generated = engine.generate(clean, 0, speed);
             }
             if (stopRequested || generated == null) return;
 
