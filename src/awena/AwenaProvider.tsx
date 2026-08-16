@@ -28,7 +28,17 @@ type AwenaContextValue = {
   togglePanel: () => void;
 };
 
-const AwenaContext = React.createContext<AwenaContextValue | null>(null);
+// Keep a single Awena context identity across Vite/React Fast Refresh reloads.
+// Without this, a hot-reloaded consumer can temporarily read a different
+// Context instance than the mounted provider and crash with
+// "useAwena must be used inside AwenaProvider".
+const AWENA_CONTEXT_GLOBAL_KEY = "__msc_awena_context_v1__";
+const awenaGlobal = globalThis as typeof globalThis & {
+  [AWENA_CONTEXT_GLOBAL_KEY]?: React.Context<AwenaContextValue | null>;
+};
+const AwenaContext =
+  awenaGlobal[AWENA_CONTEXT_GLOBAL_KEY] || React.createContext<AwenaContextValue | null>(null);
+awenaGlobal[AWENA_CONTEXT_GLOBAL_KEY] = AwenaContext;
 
 function message(role: "awena" | "user", text: string, actions?: AwenaMessage["actions"]): AwenaMessage {
   return {

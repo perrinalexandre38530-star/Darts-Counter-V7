@@ -115,7 +115,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 
   if (/voix|parle|audio|son/.test(q)) {
     return {
-      text: "Ma voix officielle est Estelle via PocketTTS français. Après l'installation unique de mon pack vocal, mes réponses sont générées localement sur l'appareil, sans service vocal externe.",
+      text: "Ma voix est générée localement par mon moteur vocal français stable. Après l'installation unique de mon pack vocal, mes réponses sont produites directement sur l'appareil, sans service vocal externe.",
       modeId: activeMode?.id || context.mode || null,
     };
   }

@@ -59,7 +59,7 @@ export class AwenaVoiceEngine {
         });
         return !!result?.ok;
       } catch (error) {
-        // Important: on Android we do NOT fall back to WebSpeech. Once Estelle is installed,
+        // Important: on Android we do NOT fall back to WebSpeech. Once the neural pack is installed,
         // a neural failure must be visible instead of silently speaking with the old system voice.
         console.warn("[AwenaVoice] Android voice engine error", error);
         return false;
@@ -141,14 +141,14 @@ export class AwenaVoiceEngine {
 
   async installNeuralVoice(): Promise<AwenaVoiceStatus> {
     if (!(Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android")) {
-      throw new Error("Le pack Awena · Estelle est réservé à l'application Android.");
+      throw new Error("Le pack vocal neural d'Awena est réservé à l'application Android.");
     }
     return NativeAwenaVoice.installNeuralVoice();
   }
 
   async removeNeuralVoice(): Promise<AwenaVoiceStatus> {
     if (!(Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android")) {
-      throw new Error("Le pack Awena · Estelle est réservé à l'application Android.");
+      throw new Error("Le pack vocal neural d'Awena est réservé à l'application Android.");
     }
     return NativeAwenaVoice.removeNeuralVoice();
   }

@@ -3,41 +3,42 @@ package com.multisportsscoring.app;
 import android.content.Context;
 import android.util.Log;
 
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One-time installer for Awena's local neural voice pack.
+ * One-time installer for Awena's production local French voice pack.
  *
- * The neural model is intentionally NOT bundled inside the base AAB: the French PocketTTS
- * bundle is ~158 MiB. Once downloaded, every synthesis runs entirely on-device.
+ * V6 deliberately abandons the hand-ported PocketTTS French inference path. The French PocketTTS
+ * ONNX exports currently use generation/EOS protocols that are not stable enough for production
+ * Android playback in our custom runtime. Awena now uses the mature sherpa-onnx VITS/Piper path.
+ *
+ * The model is downloaded once, extracted under app-private storage, then every synthesis runs
+ * fully on-device. The old PocketTTS pack is removed only after the new pack has been validated.
  */
 public final class AwenaNeuralModelManager {
     private static final String TAG = "AwenaNeuralModel";
-    private static final String BASE =
-        "https://huggingface.co/lookbe/pocket-tts-onnx/resolve/main/french/";
-    private static final String ESTELLE =
-        "https://huggingface.co/kyutai/tts-voices/resolve/main/unmute-prod-website/developpeuse-3.wav?download=true";
 
-    public static final String PACK_ID = "awena-estelle-pocket-fr-v1";
-    public static final long TOTAL_EXPECTED_BYTES = 165_802_405L;
+    private static final String ARCHIVE_URL =
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" +
+        "vits-piper-fr_FR-siwis-medium.tar.bz2";
+    private static final String ARCHIVE_ROOT = "vits-piper-fr_FR-siwis-medium/";
 
-    private static final List<ModelFile> FILES = Arrays.asList(
-        new ModelFile("bos_before_voice.npy", BASE + "bos_before_voice.npy", 4_224L),
-        new ModelFile("flow_lm_flow_int8.onnx", BASE + "flow_lm_flow_int8.onnx", 9_961_955L),
-        new ModelFile("flow_lm_main_int8.onnx", BASE + "flow_lm_main_int8.onnx", 76_197_556L),
-        new ModelFile("mimi_decoder_int8.onnx", BASE + "mimi_decoder_int8.onnx", 22_625_761L),
-        new ModelFile("mimi_encoder.onnx", BASE + "mimi_encoder.onnx", 39_284_392L),
-        new ModelFile("text_conditioner.onnx", BASE + "text_conditioner.onnx", 16_388_344L),
-        new ModelFile("tokenizer.model", BASE + "tokenizer.model", 60_173L),
-        new ModelFile("estelle.wav", ESTELLE, 1_280_000L)
-    );
+    public static final String PACK_ID = "awena-siwis-piper-fr-v1";
+    // The uncompressed Hugging Face repository is ~81 MB. The actual archive Content-Length is
+    // used during download when available; this value only gives the UI a sane initial estimate.
+    public static final long TOTAL_EXPECTED_BYTES = 82L * 1024L * 1024L;
 
     private static final AtomicBoolean installing = new AtomicBoolean(false);
     private static volatile long downloadedBytes = 0L;
@@ -48,22 +49,33 @@ public final class AwenaNeuralModelManager {
     private AwenaNeuralModelManager() {}
 
     public static File packDir(Context context) {
+        return new File(context.getFilesDir(), "awena_voice/piper_siwis_fr");
+    }
+
+    public static File modelFile(Context context) {
+        return new File(packDir(context), "fr_FR-siwis-medium.onnx");
+    }
+
+    public static File tokensFile(Context context) {
+        return new File(packDir(context), "tokens.txt");
+    }
+
+    public static File dataDir(Context context) {
+        return new File(packDir(context), "espeak-ng-data");
+    }
+
+    private static File legacyPocketDir(Context context) {
         return new File(context.getFilesDir(), "awena_voice/pocket_french");
     }
 
-    public static File file(Context context, String name) {
-        return new File(packDir(context), name);
-    }
-
     public static boolean isInstalled(Context context) {
-        for (ModelFile def : FILES) {
-            File f = file(context, def.name);
-            // HF/Xet may differ slightly in byte count over time. A 90% floor catches
-            // HTML/error placeholders without rejecting a legitimate repack.
-            long minimum = Math.max(1024L, (long) (def.expectedBytes * 0.90));
-            if (!f.exists() || f.length() < minimum) return false;
-        }
-        return true;
+        File model = modelFile(context);
+        File tokens = tokensFile(context);
+        File espeak = dataDir(context);
+        return model.exists() && model.length() > 55L * 1024L * 1024L
+            && tokens.exists() && tokens.length() > 500L
+            && espeak.exists() && espeak.isDirectory()
+            && espeak.list() != null && espeak.list().length > 10;
     }
 
     public static boolean isInstalling() {
@@ -81,7 +93,7 @@ public final class AwenaNeuralModelManager {
     public static float getProgress(Context context) {
         if (isInstalled(context)) return 1f;
         if (totalBytes <= 0) return 0f;
-        return Math.max(0f, Math.min(1f, downloadedBytes / (float) totalBytes));
+        return Math.max(0f, Math.min(0.98f, downloadedBytes / (float) totalBytes));
     }
 
     public static String getCurrentFile() {
@@ -102,65 +114,78 @@ public final class AwenaNeuralModelManager {
             throw new IllegalStateException("Installation de la voix Awena déjà en cours.");
         }
 
-        File dir = packDir(context);
-        if (!dir.exists() && !dir.mkdirs()) {
+        File parent = new File(context.getFilesDir(), "awena_voice");
+        if (!parent.exists() && !parent.mkdirs()) {
             installing.set(false);
-            throw new IllegalStateException("Impossible de créer le dossier du modèle Awena.");
+            throw new IllegalStateException("Impossible de créer le dossier vocal Awena.");
+        }
+
+        File archive = new File(context.getCacheDir(), "awena-siwis-piper.tar.bz2.part");
+        File staging = new File(parent, "piper_siwis_fr.installing");
+        deleteRecursively(staging);
+        if (!staging.mkdirs()) {
+            installing.set(false);
+            throw new IllegalStateException("Impossible de préparer le pack vocal Awena.");
         }
 
         lastError = null;
+        downloadedBytes = 0L;
+        totalBytes = TOTAL_EXPECTED_BYTES;
+
         try {
-            long existing = 0L;
-            for (ModelFile def : FILES) {
-                File target = file(context, def.name);
-                if (isValid(target, def)) existing += target.length();
+            currentFile = "Téléchargement voix française stable";
+            downloadArchive(archive);
+
+            currentFile = "Installation du moteur vocal";
+            extractArchive(archive, staging);
+
+            if (!isValidPack(staging)) {
+                throw new IllegalStateException("Le pack vocal Awena extrait est incomplet.");
             }
-            downloadedBytes = existing;
-            totalBytes = TOTAL_EXPECTED_BYTES;
 
-            for (ModelFile def : FILES) {
-                File target = file(context, def.name);
-                if (isValid(target, def)) continue;
-
-                currentFile = def.name;
-                download(def, target, existing);
-                existing += target.length();
-                downloadedBytes = existing;
+            File finalDir = packDir(context);
+            deleteRecursively(finalDir);
+            if (!staging.renameTo(finalDir)) {
+                copyDirectory(staging, finalDir);
+                deleteRecursively(staging);
             }
 
             if (!isInstalled(context)) {
-                throw new IllegalStateException("Le pack vocal téléchargé est incomplet.");
+                throw new IllegalStateException("Le pack vocal Awena n'a pas pu être finalisé.");
             }
+
+            // Migration: the obsolete custom PocketTTS pack is large and must not consume storage
+            // once the new stable VITS/Piper pack has been validated.
+            deleteRecursively(legacyPocketDir(context));
+
             downloadedBytes = totalBytes;
             currentFile = null;
         } catch (Exception error) {
             lastError = error.getMessage();
-            Log.e(TAG, "Awena voice pack installation failed", error);
+            Log.e(TAG, "Awena stable voice installation failed", error);
+            deleteRecursively(staging);
             throw error;
         } finally {
+            if (archive.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                archive.delete();
+            }
             currentFile = null;
             installing.set(false);
         }
     }
 
-    private static boolean isValid(File file, ModelFile def) {
-        if (!file.exists()) return false;
-        long minimum = Math.max(1024L, (long) (def.expectedBytes * 0.90));
-        return file.length() >= minimum;
-    }
-
-    private static void download(ModelFile def, File target, long completedBefore) throws Exception {
-        File partial = new File(target.getAbsolutePath() + ".part");
-        if (partial.exists()) partial.delete();
-
+    private static void downloadArchive(File target) throws Exception {
+        if (target.exists()) target.delete();
         HttpURLConnection connection = null;
+        String currentUrl = ARCHIVE_URL;
+
         try {
-            String currentUrl = def.url;
-            for (int redirect = 0; redirect < 8; redirect++) {
+            for (int redirect = 0; redirect < 10; redirect++) {
                 connection = (HttpURLConnection) new URL(currentUrl).openConnection();
                 connection.setConnectTimeout(30_000);
-                connection.setReadTimeout(120_000);
-                connection.setRequestProperty("User-Agent", "MULTISPORTS-SCORING-Awena/1.0");
+                connection.setReadTimeout(180_000);
+                connection.setRequestProperty("User-Agent", "MULTISPORTS-SCORING-Awena/2.0");
                 connection.setInstanceFollowRedirects(false);
                 int code = connection.getResponseCode();
 
@@ -169,48 +194,124 @@ public final class AwenaNeuralModelManager {
                     connection.disconnect();
                     connection = null;
                     if (location == null || location.trim().isEmpty()) {
-                        throw new IllegalStateException("Redirection invalide pour " + def.name);
+                        throw new IllegalStateException("Redirection invalide du pack vocal Awena.");
                     }
                     currentUrl = location;
                     continue;
                 }
-
                 if (code != HttpURLConnection.HTTP_OK) {
-                    throw new IllegalStateException("HTTP " + code + " pendant " + def.name);
+                    throw new IllegalStateException("HTTP " + code + " pendant le téléchargement vocal Awena.");
                 }
 
                 long contentLength = connection.getContentLengthLong();
-                try (InputStream input = connection.getInputStream();
-                     FileOutputStream output = new FileOutputStream(partial)) {
+                if (contentLength > 5L * 1024L * 1024L) totalBytes = contentLength;
+
+                try (InputStream in = new BufferedInputStream(connection.getInputStream(), 128 * 1024);
+                     FileOutputStream fos = new FileOutputStream(target);
+                     BufferedOutputStream out = new BufferedOutputStream(fos, 128 * 1024)) {
                     byte[] buffer = new byte[128 * 1024];
-                    long local = 0L;
                     int read;
-                    while ((read = input.read(buffer)) != -1) {
-                        output.write(buffer, 0, read);
-                        local += read;
-                        downloadedBytes = completedBefore + local;
+                    long local = 0L;
+                    while ((read = in.read(buffer)) != -1) {
                         if (Thread.currentThread().isInterrupted()) {
                             throw new InterruptedException("Téléchargement Awena interrompu.");
                         }
+                        out.write(buffer, 0, read);
+                        local += read;
+                        downloadedBytes = local;
                     }
-                    output.getFD().sync();
-                }
-                if (!partial.renameTo(target)) {
-                    throw new IllegalStateException("Impossible de finaliser " + def.name);
+                    out.flush();
+                    fos.getFD().sync();
                 }
                 return;
             }
-            throw new IllegalStateException("Trop de redirections pour " + def.name);
+            throw new IllegalStateException("Trop de redirections pour le pack Awena.");
         } finally {
             if (connection != null) connection.disconnect();
-            if (!target.exists() && partial.exists()) partial.delete();
+        }
+    }
+
+    private static void extractArchive(File archive, File staging) throws Exception {
+        String canonicalRoot = staging.getCanonicalPath() + File.separator;
+
+        try (InputStream fileIn = new BufferedInputStream(new FileInputStream(archive), 128 * 1024);
+             BZip2CompressorInputStream bzIn = new BZip2CompressorInputStream(fileIn, true);
+             TarArchiveInputStream tarIn = new TarArchiveInputStream(bzIn)) {
+
+            TarArchiveEntry entry;
+            while ((entry = tarIn.getNextTarEntry()) != null) {
+                String rawName = entry.getName().replace('\\', '/');
+                String relative = rawName.startsWith(ARCHIVE_ROOT)
+                    ? rawName.substring(ARCHIVE_ROOT.length())
+                    : rawName;
+                if (relative.isEmpty()) continue;
+
+                File output = new File(staging, relative);
+                String canonical = output.getCanonicalPath();
+                if (!canonical.startsWith(canonicalRoot)) {
+                    throw new SecurityException("Chemin invalide dans le pack vocal Awena.");
+                }
+
+                if (entry.isDirectory()) {
+                    if (!output.exists() && !output.mkdirs()) {
+                        throw new IllegalStateException("Impossible de créer " + relative);
+                    }
+                    continue;
+                }
+
+                File parent = output.getParentFile();
+                if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                    throw new IllegalStateException("Impossible de créer le dossier de " + relative);
+                }
+
+                try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(output), 64 * 1024)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int read;
+                    while ((read = tarIn.read(buffer)) != -1) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedException("Installation Awena interrompue.");
+                        }
+                        out.write(buffer, 0, read);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isValidPack(File dir) {
+        File model = new File(dir, "fr_FR-siwis-medium.onnx");
+        File tokens = new File(dir, "tokens.txt");
+        File espeak = new File(dir, "espeak-ng-data");
+        return model.exists() && model.length() > 55L * 1024L * 1024L
+            && tokens.exists() && tokens.length() > 500L
+            && espeak.exists() && espeak.isDirectory()
+            && espeak.list() != null && espeak.list().length > 10;
+    }
+
+    private static void copyDirectory(File src, File dst) throws Exception {
+        if (src.isDirectory()) {
+            if (!dst.exists() && !dst.mkdirs()) {
+                throw new IllegalStateException("Impossible de finaliser le dossier vocal Awena.");
+            }
+            File[] children = src.listFiles();
+            if (children != null) {
+                for (File child : children) copyDirectory(child, new File(dst, child.getName()));
+            }
+            return;
+        }
+        try (InputStream in = new BufferedInputStream(new FileInputStream(src));
+             BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(dst))) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
         }
     }
 
     public static synchronized void delete(Context context) {
-        File dir = packDir(context);
-        deleteRecursively(dir);
+        deleteRecursively(packDir(context));
+        deleteRecursively(legacyPocketDir(context));
         downloadedBytes = 0L;
+        totalBytes = TOTAL_EXPECTED_BYTES;
         currentFile = null;
         lastError = null;
     }
@@ -225,17 +326,5 @@ public final class AwenaNeuralModelManager {
         }
         //noinspection ResultOfMethodCallIgnored
         file.delete();
-    }
-
-    private static final class ModelFile {
-        final String name;
-        final String url;
-        final long expectedBytes;
-
-        ModelFile(String name, String url, long expectedBytes) {
-            this.name = name;
-            this.url = url;
-            this.expectedBytes = expectedBytes;
-        }
     }
 }

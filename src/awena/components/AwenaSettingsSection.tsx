@@ -36,14 +36,14 @@ export default function AwenaSettingsSection() {
   const installing = voiceBusy || !!voiceStatus?.installing || !!voiceStatus?.neuralInitializing;
   const progress = Math.max(0, Math.min(1, Number(voiceStatus?.installProgress || 0)));
 
-  async function installEstelle() {
+  async function installAwenaStableVoice() {
     if (installing) return;
     setVoiceBusy(true);
     setVoiceError(null);
     const timer = window.setInterval(() => { void refreshVoices(); }, 650);
     try {
       await awenaVoice.installNeuralVoice();
-      patch({ voiceName: "Awena · Estelle", voiceEnabled: true });
+      patch({ voiceName: "Awena · voix française stable", voiceEnabled: true });
     } catch (error) {
       setVoiceError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -53,7 +53,7 @@ export default function AwenaSettingsSection() {
     }
   }
 
-  async function removeEstelle() {
+  async function removeAwenaStableVoice() {
     if (installing) return;
     setVoiceBusy(true);
     setVoiceError(null);
@@ -78,7 +78,7 @@ export default function AwenaSettingsSection() {
             <div style={{ color: "#fff", fontWeight: 950, fontSize: 20, letterSpacing: 1 }}>AWENA</div>
             <div style={{ color: primary, fontSize: 11, fontWeight: 900, letterSpacing: .5 }}>PRÉSENTATRICE · ASSISTANTE · BOT IA</div>
             <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 5, lineHeight: 1.35 }}>
-              Awena dispose maintenant de son moteur vocal neuronal local et de son identité vocale Estelle. Une fois le pack installé, la synthèse se fait directement sur l'appareil.
+              Awena dispose maintenant de son moteur vocal neuronal local et de sa voix française stable. Une fois le pack installé, la synthèse se fait directement sur l'appareil.
             </div>
           </div>
         </div>
@@ -100,15 +100,15 @@ export default function AwenaSettingsSection() {
       <section style={{ borderRadius: 18, border: `1px solid ${neuralReady ? "#36f59a88" : theme.borderSoft}`, background: theme.card, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Neural V4</div>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Stable V6</div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}>
               {neuralReady
-                ? "PocketTTS FR · Estelle · local / hors ligne"
+                ? "VITS/Piper FR · sherpa-onnx · local / hors ligne"
                 : neuralInstalled
-                  ? "Pack Estelle installé · initialisation du moteur neuronal…"
+                  ? "Pack vocal installé · initialisation du moteur neuronal…"
                   : installing
-                    ? "Installation du pack vocal Estelle…"
-                    : "Pack neuronal Estelle non installé"}
+                    ? "Installation du pack vocal Awena…"
+                    : "Pack vocal neural Awena non installé"}
             </div>
             <div style={{ marginTop: 4, color: neuralReady ? "#36f59a" : "#ffd84a", fontWeight: 900, fontSize: 10.5 }}>
               {AWENA_VOICE_PROFILE.displayName}
@@ -122,10 +122,10 @@ export default function AwenaSettingsSection() {
         {!neuralReady && (
           <div style={{ marginTop: 12, borderRadius: 13, border: `1px solid ${primary}44`, background: "rgba(0,0,0,.2)", padding: 11 }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>
-              Installation unique du moteur + voix Estelle
+              Installation unique du moteur vocal français stable
             </div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}>
-              Environ 158 Mo sont téléchargés une seule fois puis conservés par l'application. Après cela, Awena génère sa voix localement sans service vocal externe.
+              Environ 80 Mo sont installés une seule fois puis conservés par l'application. Après cela, Awena génère sa voix localement sans service vocal externe.
             </div>
 
             {installing && (
@@ -141,8 +141,8 @@ export default function AwenaSettingsSection() {
             )}
 
             {!installing && !neuralReady && (
-              <button onClick={() => void installEstelle()} style={{ width: "100%", marginTop: 10, borderRadius: 12, border: `1px solid ${primary}`, background: `linear-gradient(135deg,${primary}22,rgba(255,56,199,.16))`, color: "#fff", padding: 10, fontWeight: 950, cursor: "pointer" }}>
-                Installer Awena · Estelle
+              <button onClick={() => void installAwenaStableVoice()} style={{ width: "100%", marginTop: 10, borderRadius: 12, border: `1px solid ${primary}`, background: `linear-gradient(135deg,${primary}22,rgba(255,56,199,.16))`, color: "#fff", padding: 10, fontWeight: 950, cursor: "pointer" }}>
+                Installer la voix stable d’Awena
               </button>
             )}
           </div>
@@ -165,12 +165,12 @@ export default function AwenaSettingsSection() {
 
         <div style={{ display: "grid", gridTemplateColumns: neuralReady ? "1fr 1fr 1fr" : "1fr", gap: 7, marginTop: 12 }}>
           {neuralReady && <>
-            <button onClick={() => void say(`${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`)} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester Estelle</button>
+            <button onClick={() => void say(`${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`)} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester Awena</button>
             <button onClick={() => void stop()} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Stop</button>
-            <button onClick={() => void removeEstelle()} style={{ borderRadius: 11, border: "1px solid rgba(255,90,110,.45)", background: "rgba(255,60,90,.06)", color: "#ffb2bb", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Supprimer pack</button>
+            <button onClick={() => void removeAwenaStableVoice()} style={{ borderRadius: 11, border: "1px solid rgba(255,90,110,.45)", background: "rgba(255,60,90,.06)", color: "#ffb2bb", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Supprimer pack</button>
           </>}
           {!neuralReady && neuralInstalled && !installing && (
-            <button onClick={() => void installEstelle()} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Initialiser Estelle</button>
+            <button onClick={() => void installAwenaStableVoice()} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Initialiser Awena</button>
           )}
         </div>
       </section>

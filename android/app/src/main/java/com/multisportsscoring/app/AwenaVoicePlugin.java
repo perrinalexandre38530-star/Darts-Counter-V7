@@ -25,7 +25,7 @@ import java.util.concurrent.Executors;
  * Awena voice bridge.
  *
  * - Before the neural pack is installed: Android TextToSpeech remains available as a fallback.
- * - Once the Estelle/PocketTTS pack is installed: synthesis is forced through the local neural
+ * - Once the stable French neural pack is installed: synthesis is forced through the local neural
  *   engine. Neural errors are reported and NEVER silently downgraded to the Android system voice.
  */
 @CapacitorPlugin(name = "AwenaVoice")
@@ -117,7 +117,7 @@ public class AwenaVoicePlugin extends Plugin {
 
     private synchronized AwenaPocketTtsEngine ensureNeuralEngine() throws Exception {
         if (!AwenaNeuralModelManager.isInstalled(getContext())) {
-            throw new IllegalStateException("Le pack vocal Awena · Estelle n'est pas installé.");
+            throw new IllegalStateException("Le pack vocal stable d'Awena n'est pas installé.");
         }
 
         if (neuralEngine != null && neuralEngine.isReady()) return neuralEngine;
@@ -165,8 +165,9 @@ public class AwenaVoicePlugin extends Plugin {
         }
 
         final double volume = call.getDouble("volume", 0.9);
+        final double requestedRate = call.getDouble("rate", 1.0);
 
-        // Final Awena path: once installed, Estelle is mandatory. Never fall back silently.
+        // Final Awena path: once installed, the stable local neural voice is mandatory. Never fall back silently.
         if (AwenaNeuralModelManager.isInstalled(getContext())) {
             try {
                 if (tts != null) tts.stop();
@@ -178,16 +179,16 @@ public class AwenaVoicePlugin extends Plugin {
                 try {
                     AwenaPocketTtsEngine engine = ensureNeuralEngine();
                     engine.requestStop();
-                    engine.speak(text, (float) Math.max(0.0, Math.min(1.0, volume)));
+                    engine.speak(text, (float) Math.max(0.0, Math.min(1.0, volume)), (float) requestedRate);
 
                     JSObject out = new JSObject();
                     out.put("ok", true);
-                    out.put("voiceName", "Awena · Estelle");
+                    out.put("voiceName", "Awena · voix française stable");
                     out.put("engine", "awena-neural");
                     resolveOnUi(call, out);
                 } catch (Exception error) {
                     neuralLastError = error.getMessage();
-                    rejectOnUi(call, "Erreur moteur neuronal Awena · Estelle : " + error.getMessage(), error);
+                    rejectOnUi(call, "Erreur moteur neuronal Awena : " + error.getMessage(), error);
                 }
             });
             return;
@@ -201,7 +202,7 @@ public class AwenaVoicePlugin extends Plugin {
 
         initEngine(() -> {
             if (!ready || tts == null) {
-                call.reject("Moteur vocal Android indisponible. Installe le pack Awena · Estelle.");
+                call.reject("Moteur vocal Android indisponible. Installe le pack vocal stable d'Awena.");
                 return;
             }
             try {
@@ -273,7 +274,7 @@ public class AwenaVoicePlugin extends Plugin {
             try {
                 AwenaNeuralModelManager.install(getContext());
                 // Force a full initialization now: install is only considered successful for the UI
-                // if the ONNX sessions, tokenizer and Estelle conditioning can actually load.
+                // if the sherpa/VITS model can actually load.
                 AwenaPocketTtsEngine engine = ensureNeuralEngine();
 
                 try {
@@ -290,7 +291,7 @@ public class AwenaVoicePlugin extends Plugin {
                 resolveOnUi(call, out);
             } catch (Exception error) {
                 neuralLastError = error.getMessage();
-                rejectOnUi(call, "Installation/initialisation Estelle impossible : " + error.getMessage(), error);
+                rejectOnUi(call, "Installation/initialisation de la voix Awena impossible : " + error.getMessage(), error);
             }
         });
     }
@@ -324,8 +325,8 @@ public class AwenaVoicePlugin extends Plugin {
         out.put("available", installed || tts != null);
         out.put("ready", installed ? neuralReady : ready);
         out.put("engine", installed ? "awena-neural" : (ready ? "android-native" : "none"));
-        out.put("enginePackage", installed ? "PocketTTS · ONNX Runtime" : (tts == null ? null : tts.getDefaultEngine()));
-        out.put("voiceName", installed ? "Awena · Estelle" : selectedVoiceName);
+        out.put("enginePackage", installed ? "sherpa-onnx · VITS/Piper" : (tts == null ? null : tts.getDefaultEngine()));
+        out.put("voiceName", installed ? "Awena · voix française stable" : selectedVoiceName);
         out.put("language", "fr-FR");
         out.put("offline", installed ? true : null);
 
@@ -345,7 +346,7 @@ public class AwenaVoicePlugin extends Plugin {
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        // Do not initialize Android TTS just to report status when Estelle is installed.
+        // Do not initialize Android TTS just to report status when the neural pack is installed.
         if (AwenaNeuralModelManager.isInstalled(getContext())) {
             call.resolve(buildStatus());
             return;
@@ -359,13 +360,13 @@ public class AwenaVoicePlugin extends Plugin {
         JSArray result = new JSArray();
 
         if (AwenaNeuralModelManager.isInstalled(getContext())) {
-            JSObject estelle = new JSObject();
-            estelle.put("name", "Awena · Estelle");
-            estelle.put("language", "fr-FR");
-            estelle.put("offline", true);
-            estelle.put("quality", 1000);
-            estelle.put("latency", 0);
-            result.put(estelle);
+            JSObject awena = new JSObject();
+            awena.put("name", "Awena · voix française stable");
+            awena.put("language", "fr-FR");
+            awena.put("offline", true);
+            awena.put("quality", 1000);
+            awena.put("latency", 0);
+            result.put(awena);
 
             JSObject out = new JSObject();
             out.put("voices", result);
@@ -405,7 +406,7 @@ public class AwenaVoicePlugin extends Plugin {
         if (AwenaNeuralModelManager.isInstalled(getContext())) {
             JSObject out = new JSObject();
             out.put("ok", true);
-            out.put("voiceName", "Awena · Estelle");
+            out.put("voiceName", "Awena · voix française stable");
             call.resolve(out);
             return;
         }

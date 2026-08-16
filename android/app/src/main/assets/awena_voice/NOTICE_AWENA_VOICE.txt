@@ -1,29 +1,18 @@
-AWENA VOICE — THIRD-PARTY NOTICES
+AWENA VOICE — LOCAL FRENCH TTS
 
-Pocket TTS
------------
-Project: Kyutai Pocket TTS
-Purpose in MULTISPORTS SCORING: local neural text-to-speech inference for Awena.
-Upstream code license: Apache License 2.0.
-Model weights used by the downloadable French ONNX pack are distributed under CC BY 4.0.
-The Android integration in MULTISPORTS SCORING uses ONNX Runtime directly and follows the public
-Pocket TTS inference protocol.
+Runtime:
+sherpa-onnx by k2-fsa
+https://github.com/k2-fsa/sherpa-onnx
 
-French ONNX export bundle
--------------------------
-ONNX export/community distribution used by the Awena voice pack:
-lookbe/pocket-tts-onnx — French Pocket TTS ONNX export.
-The model pack is downloaded only when the user chooses to install Awena · Estelle.
+Model:
+vits-piper-fr_FR-siwis-medium
+Language: French (France)
+Speaker: Siwis
+Original voice/model family: Piper / rhasspy
+Model card: French fr_FR, one speaker, 22,050 Hz. Dataset license: CC-BY 4.0.
+Dataset reference: https://datashare.is.ed.ac.uk/handle/10283/2353
 
-Estelle voice reference
------------------------
-Voice reference: developpeuse-3.wav from kyutai/tts-voices / Unmute recordings.
-Kyutai's tts-voices repository documents its own Unmute recordings as CC0 unless otherwise
-specifically identified.
-
-ONNX Runtime
-------------
-Microsoft ONNX Runtime Android is used as the on-device neural inference runtime.
-See the dependency declaration in android/app/build.gradle.
-
-This notice does not alter the license of MULTISPORTS SCORING.
+MULTISPORTS SCORING downloads the model pack only when the user chooses to install Awena's local
+voice. After installation, speech synthesis is performed on-device. The previous experimental
+PocketTTS/Estelle runtime is no longer used by Awena V6 because it produced unstable/truncated
+speech on Android in the French export path.

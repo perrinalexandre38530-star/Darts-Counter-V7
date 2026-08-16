@@ -1,5 +1,5 @@
 import React from "react";
-import { useAwena } from "../AwenaProvider";
+import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { AwenaAction } from "../awena.types";
@@ -13,9 +13,21 @@ type Props = {
   inGame?: boolean;
 };
 
-export default function AwenaOverlay({ route, sport, go, inGame = false }: Props) {
+type AwenaContextValue = NonNullable<ReturnType<typeof useAwenaOptional>>;
+
+export default function AwenaOverlay(props: Props) {
+  const awena = useAwenaOptional();
+
+  // Defensive guard for dev/HMR/startup transitions. AppRoot normally always
+  // provides Awena, but a transient Fast Refresh must never crash the app.
+  if (!awena) return null;
+
+  return <AwenaOverlayInner {...props} awena={awena} />;
+}
+
+function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & { awena: AwenaContextValue }) {
   const { theme } = useTheme() as any;
-  const { settings, runtime, setRuntime, messages, ask, say, stop, panelOpen: open, openPanel, closePanel, togglePanel } = useAwena();
+  const { settings, runtime, setRuntime, messages, ask, say, stop, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
