@@ -34,7 +34,12 @@ check("Android versionCode aligné", gradleVersionCode === release.versionCode, 
 check("Template Android aligné", templateVersionName === release.versionName && templateVersionCode === release.versionCode);
 check("android/app/build.gradle = module application", /apply\s+plugin:\s*["']com\.android\.application["']/.test(gradle) && /\bdefaultConfig\s*\{/.test(gradle));
 check("Signature release Gradle conservée", gradle.includes("playSigningConfigured") && gradle.includes("signingConfig signingConfigs.release"));
-check("Awena sherpa-onnx présent", gradle.includes("com.github.k2-fsa:sherpa-onnx:v1.13.4"));
+const sherpaVersion = gradle.match(/com\.github\.k2-fsa:sherpa-onnx:v([0-9.]+)/)?.[1] || "";
+check("Awena sherpa-onnx 1.13.5 présent", sherpaVersion === "1.13.5", sherpaVersion ? `v${sherpaVersion}` : "absent");
+check(
+  "Awena sherpa-onnx JVM dupliqué exclu",
+  gradle.includes('exclude group: "com.github.k2-fsa.sherpa-onnx", module: "sherpa-onnx-jvm"')
+);
 check("Commons Compress présent", gradle.includes("org.apache.commons:commons-compress:1.27.1"));
 check("compileSdkVersion 36", /compileSdkVersion\s*=\s*36/.test(vars));
 check("targetSdkVersion 36", /targetSdkVersion\s*=\s*36/.test(vars));
