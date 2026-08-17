@@ -3,6 +3,7 @@ import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
 import type { AwenaAction, AwenaSpeechCue } from "../awena.types";
+import { hideAllInlineGoogleAds } from "../../monetization/inlineAdMob";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
@@ -217,6 +218,25 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, speechCue, open]);
+
+  // Les bannières AdMob inline Android sont des vues natives superposées à la
+  // WebView : un simple z-index CSS ne peut donc pas les placer derrière Awena.
+  // On les suspend pendant l'ouverture du chat, puis les slots les rechargent
+  // automatiquement à la fermeture.
+  React.useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+
+    const publish = (visible: boolean) => {
+      document.documentElement.dataset.awenaPanelOpen = visible ? "1" : "0";
+      window.dispatchEvent(new CustomEvent("dc:awena-panel-visibility", { detail: { open: visible } }));
+      if (visible) void hideAllInlineGoogleAds();
+    };
+
+    publish(open);
+    return () => {
+      if (open) publish(false);
+    };
+  }, [open]);
 
   if (!settings.enabled || settings.interventionMode === "off") return null;
 

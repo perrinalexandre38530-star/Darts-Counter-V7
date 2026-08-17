@@ -181,11 +181,26 @@ export function PaidInlineSurface({
   const native = isCapacitorNativeRuntime();
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [adFreeActive, setAdFreeActive] = React.useState(() => getVerifiedAdFreeState().active);
+  const [awenaPanelOpen, setAwenaPanelOpen] = React.useState(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.awenaPanelOpen === "1"
+  );
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
   React.useEffect(() => subscribeVerifiedEntitlements(() => setAdFreeActive(getVerifiedAdFreeState().active)), []);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = (event: Event) => {
+      const custom = event as CustomEvent<{ open?: boolean }>;
+      const next = typeof custom.detail?.open === "boolean"
+        ? custom.detail.open
+        : document.documentElement.dataset.awenaPanelOpen === "1";
+      setAwenaPanelOpen(next);
+    };
+    window.addEventListener("dc:awena-panel-visibility", sync as EventListener);
+    return () => window.removeEventListener("dc:awena-panel-visibility", sync as EventListener);
+  }, []);
 
-  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive;
+  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive && !awenaPanelOpen;
 
   React.useEffect(() => {
     if (!native || !paidEligible) {
