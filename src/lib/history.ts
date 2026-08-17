@@ -1497,8 +1497,38 @@ function getCanonicalMatchId(rec: any): string | null {
 /* =========================
    IndexedDB helpers
 ========================= */
+let __historyDbCache: { name: string; db: IDBDatabase | null; pending: Promise<IDBDatabase> | null } = {
+  name: "",
+  db: null,
+  pending: null,
+};
+
+function clearHistoryDbCache(name?: string) {
+  try {
+    if (name && __historyDbCache.name && __historyDbCache.name !== name) return;
+    __historyDbCache.db?.close?.();
+  } catch {}
+  __historyDbCache = { name: "", db: null, pending: null };
+}
+
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  const dbName = historyDbName();
+
+  // GLOBAL PERF: History used to call indexedDB.open() for EVERY read/write and
+  // kept every successful connection alive. During a long game this could leave
+  // dozens/hundreds of connections around and progressively make Android WebView
+  // stall. Reuse one connection per account scope instead.
+  if (__historyDbCache.name === dbName && __historyDbCache.db) {
+    return Promise.resolve(__historyDbCache.db);
+  }
+  if (__historyDbCache.name === dbName && __historyDbCache.pending) {
+    return __historyDbCache.pending;
+  }
+  if (__historyDbCache.name && __historyDbCache.name !== dbName) {
+    clearHistoryDbCache();
+  }
+
+  const pending = new Promise<IDBDatabase>((resolve, reject) => {
     let settled = false;
 
     const fail = (err: any) => {
@@ -1507,6 +1537,10 @@ function openDB(): Promise<IDBDatabase> {
       try {
         req?.result?.close?.();
       } catch {}
+      if (__historyDbCache.name === dbName) {
+        __historyDbCache.pending = null;
+        __historyDbCache.db = null;
+      }
       reject(err);
     };
 
@@ -1514,7 +1548,7 @@ function openDB(): Promise<IDBDatabase> {
       fail(new Error("[history] openDB timeout (IndexedDB blocked?)"));
     }, 1500);
 
-    const req = indexedDB.open(historyDbName(), DB_VER);
+    const req = indexedDB.open(dbName, DB_VER);
 
     req.onupgradeneeded = () => {
       try {
@@ -1584,12 +1618,21 @@ function openDB(): Promise<IDBDatabase> {
       const db = req.result;
       try {
         db.onversionchange = () => {
-          try {
-            db.close();
-          } catch {}
+          try { db.close(); } catch {}
+          if (__historyDbCache.name === dbName) {
+            __historyDbCache = { name: "", db: null, pending: null };
+          }
+        };
+        // Chromium exposes `close`; some WebViews also emit it. Keep cache honest
+        // when the platform closes the connection underneath us.
+        (db as any).onclose = () => {
+          if (__historyDbCache.name === dbName && __historyDbCache.db === db) {
+            __historyDbCache = { name: "", db: null, pending: null };
+          }
         };
       } catch {}
 
+      __historyDbCache = { name: dbName, db, pending: null };
       resolve(db);
     };
 
@@ -1598,6 +1641,9 @@ function openDB(): Promise<IDBDatabase> {
       fail(req.error || new Error("[history] openDB error"));
     };
   });
+
+  __historyDbCache = { name: dbName, db: null, pending };
+  return pending;
 }
 
 async function withStoreName<T>(
@@ -2179,6 +2225,7 @@ export async function get(id: string): Promise<SavedMatch | null> {
         // resume lose the latest visit.
         payload = {
           ...(payload && typeof payload === "object" ? payload : {}),
+          ...(isLiveHeader && resume?.livePayload && typeof resume.livePayload === "object" ? resume.livePayload : {}),
           ...(resume?.config ? { config: resume.config } : {}),
           ...(resume?.state ? { state: resume.state } : {}),
           ...(Array.isArray(resume?.darts) ? { darts: resume.darts } : {}),
@@ -2365,6 +2412,40 @@ function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
    Écritures
 ========================= */
 
+function _isDerivedLivePayloadKey(key: string): boolean {
+  const k = String(key || "").toLowerCase();
+  return (
+    k === "telemetry" ||
+    k === "darttelemetry" ||
+    k === "hitsummary" ||
+    k === "stats" ||
+    k === "livestatsbyplayer" ||
+    k === "aggregates" ||
+    k === "derivedstats" ||
+    k === "charts"
+  );
+}
+
+function _buildLivePayloadCheckpoint(payload: any): any {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const clean = stripAvatarDataFromPayload(payload);
+  const out: any = {};
+
+  // Keep the raw state required to resume every mode, but deliberately omit
+  // derived telemetry/stat blocks. IndexedDB structured-clones this object; no
+  // JSON stringify/LZ compression runs on the gameplay path.
+  for (const [key, value] of Object.entries(clean || {})) {
+    if (_isDerivedLivePayloadKey(key)) continue;
+    out[key] = value;
+  }
+
+  return out;
+}
+
+function _isInProgressRecord(rec: any): boolean {
+  try { return inferHistoryStatus(rec) === "in_progress"; } catch { return false; }
+}
+
 // ============================================================
 // LIVE CHECKPOINT — gameplay hot path
 // ------------------------------------------------------------
@@ -2378,8 +2459,16 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
   // Deliberately skip legacy migration here: migration may compress hundreds of
   // rows and is not allowed on the gameplay hot path. Normal History reads/final
   // saves still run the migration pipeline.
-  let incoming: any = rec;
-  try { incoming = sanitizeRecord(rec); } catch {}
+  //
+  // IMPORTANT: do NOT call sanitizeRecord() here. Its recursive sanitizer walks
+  // the complete match payload and becomes progressively more expensive as visits
+  // accumulate. A shallow avatar cleanup is enough for the live checkpoint.
+  const incoming: any = {
+    ...(rec as any),
+    players: stripAvatarDataFromPlayers(Array.isArray((rec as any)?.players) ? (rec as any).players : []) || [],
+    payload: stripAvatarDataFromPayload((rec as any)?.payload),
+    resume: (rec as any)?.resume && typeof (rec as any).resume === "object" ? { ...(rec as any).resume } : (rec as any)?.resume,
+  };
 
   const now = Date.now();
   const canonicalId =
@@ -2389,82 +2478,101 @@ export async function upsertInProgressCheckpoint(rec: SavedMatch): Promise<void>
     (crypto.randomUUID?.() ?? String(now));
   const id = String(canonicalId);
 
-  const existingHeader = await withStoreName(STORE_HEADERS, "readonly", (st) =>
-    new Promise<any>((resolve) => {
-      const req = st.get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    })
-  ).catch(() => null);
+  const payload: any = incoming?.payload || {};
+  const incomingLivePayload = _buildLivePayloadCheckpoint(payload);
 
-  // Never allow a late live checkpoint to downgrade a finished match.
-  if (existingHeader && inferHistoryStatus(existingHeader) === "finished") {
-    try { _resumeIndexRemove(id); } catch {}
-    return;
-  }
-
-  const payload: any = stripAvatarDataFromPayload(incoming?.payload) || {};
-  const previousResume: any = existingHeader?.resume && typeof existingHeader.resume === "object"
-    ? existingHeader.resume
-    : {};
-
-  const resume: any = {
-    ...previousResume,
-  };
-  if (payload?.config != null) resume.config = payload.config;
-  else if (incoming?.resume?.config != null) resume.config = incoming.resume.config;
-  if (payload?.state != null) resume.state = payload.state;
-  else if (incoming?.resume?.state != null) resume.state = incoming.resume.state;
-
-  const darts = Array.isArray(payload?.darts)
-    ? payload.darts
-    : Array.isArray(payload?.replayDarts)
-    ? payload.replayDarts
-    : Array.isArray(incoming?.resume?.darts)
-    ? incoming.resume.darts
-    : null;
-  if (darts) {
-    // The dedicated X01 critical checkpoint keeps the complete raw log.
-    // The history header only needs a bounded recent replay for generic recovery.
-    resume.darts = darts.slice(-240);
-    resume.totalDarts = darts.length;
-  }
-
-  const safe: any = normalizeHistoryRow({
-    ...(existingHeader || {}),
-    ...(incoming || {}),
-    id,
-    matchId: id,
-    kind: incoming?.kind || existingHeader?.kind || "x01",
-    status: "in_progress",
-    winnerId: null,
-    players: stripAvatarDataFromPlayers(
-      Array.isArray(incoming?.players) ? incoming.players : (existingHeader?.players || [])
-    ) || [],
-    createdAt: existingHeader?.createdAt ?? incoming?.createdAt ?? now,
-    updatedAt: incoming?.updatedAt ?? now,
-    summary: {
-      ...((existingHeader?.summary && typeof existingHeader.summary === "object") ? existingHeader.summary : {}),
-      ...((incoming?.summary && typeof incoming.summary === "object") ? incoming.summary : {}),
-      status: "in_progress",
-      finished: false,
-    },
-    resume: Object.keys(resume).length ? resume : null,
-  });
-  delete safe.payload;
-  delete safe.payloadCompressed;
-  delete safe.compact;
-  delete safe.compactBytes;
-
+  // One read/write transaction instead of a read transaction followed by a second
+  // write transaction. This matters on Android where transaction setup can be
+  // surprisingly expensive under load.
+  let wrote = false;
+  let downgradedFinished = false;
   await withStoreName(STORE_HEADERS, "readwrite", (st) =>
     new Promise<void>((resolve, reject) => {
-      const req = st.put(toHeaderRecord(safe));
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error || new Error("history live checkpoint write failed"));
+      const getReq = st.get(id);
+      getReq.onerror = () => reject(getReq.error || new Error("history live checkpoint read failed"));
+      getReq.onsuccess = () => {
+        const existingHeader: any = getReq.result || null;
+
+        // Never allow a late live checkpoint to downgrade a finished match.
+        if (existingHeader && inferHistoryStatus(existingHeader) === "finished") {
+          downgradedFinished = true;
+          resolve();
+          return;
+        }
+
+        const previousResume: any = existingHeader?.resume && typeof existingHeader.resume === "object"
+          ? existingHeader.resume
+          : {};
+        const resume: any = {
+          ...previousResume,
+          ...((incoming?.resume && typeof incoming.resume === "object") ? incoming.resume : {}),
+        };
+
+        if (payload?.config != null) resume.config = payload.config;
+        if (payload?.state != null) resume.state = payload.state;
+        if (payload?.stateSnapshot != null && resume.state == null) resume.state = payload.stateSnapshot;
+
+        // Generic multi-mode recovery: retain the raw, non-derived payload so a
+        // mode can resume from its own fields (scores, board, states, roundIdx,
+        // visits, etc.). Heavy telemetry/stats are recomputed after the game.
+        if (incomingLivePayload && Object.keys(incomingLivePayload).length) {
+          resume.livePayload = incomingLivePayload;
+        }
+
+        const darts = Array.isArray(payload?.darts)
+          ? payload.darts
+          : Array.isArray(payload?.replayDarts)
+          ? payload.replayDarts
+          : Array.isArray(incoming?.resume?.darts)
+          ? incoming.resume.darts
+          : null;
+        if (darts) {
+          // X01 also owns a dedicated append-safe critical checkpoint. The History
+          // header keeps a bounded copy for generic UI/recovery compatibility.
+          resume.darts = darts.slice(-240);
+          resume.totalDarts = darts.length;
+        }
+
+        const safe: any = normalizeHistoryRow({
+          ...(existingHeader || {}),
+          ...(incoming || {}),
+          id,
+          matchId: id,
+          kind: incoming?.kind || existingHeader?.kind || "game",
+          status: "in_progress",
+          winnerId: null,
+          players: stripAvatarDataFromPlayers(
+            Array.isArray(incoming?.players) ? incoming.players : (existingHeader?.players || [])
+          ) || [],
+          createdAt: existingHeader?.createdAt ?? incoming?.createdAt ?? now,
+          updatedAt: incoming?.updatedAt ?? now,
+          summary: {
+            ...((existingHeader?.summary && typeof existingHeader.summary === "object") ? existingHeader.summary : {}),
+            ...((incoming?.summary && typeof incoming.summary === "object") ? incoming.summary : {}),
+            status: "in_progress",
+            finished: false,
+          },
+          resume: Object.keys(resume).length ? resume : null,
+        });
+        delete safe.payload;
+        delete safe.payloadCompressed;
+        delete safe.compact;
+        delete safe.compactBytes;
+
+        const putReq = st.put(toHeaderRecord(safe));
+        putReq.onsuccess = () => { wrote = true; resolve(); };
+        putReq.onerror = () => reject(putReq.error || new Error("history live checkpoint write failed"));
+      };
     })
   );
 
-  try { _resumeIndexAdd(id); } catch {}
+  if (downgradedFinished) {
+    try { _resumeIndexRemove(id); } catch {}
+    return;
+  }
+  if (wrote) {
+    try { _resumeIndexAdd(id); } catch {}
+  }
 }
 
 export async function upsert(rec: SavedMatch): Promise<void> {
@@ -2472,9 +2580,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
   // expensive derived/stat/cloud operation. Final saves still use the complete
   // pipeline below, so no gameplay/statistics feature is removed.
   try {
-    const liveKind = String((rec as any)?.kind || (rec as any)?.payload?.game || (rec as any)?.payload?.variant || "").toLowerCase();
-    const isX01Live = inferHistoryStatus(rec) === "in_progress" && (liveKind === "x01" || liveKind.includes("x01_v3") || liveKind.includes("x01"));
-    if (isX01Live && !(rec as any)?.__forceFullInProgress) {
+    const isLive = _isInProgressRecord(rec);
+    if (isLive && !(rec as any)?.__forceFullInProgress) {
       await upsertInProgressCheckpoint(rec);
       return;
     }
@@ -4229,8 +4336,7 @@ export const History = {
   getAll,
   reviveForExplicitImport,
   async upsert(rec: SavedMatch) {
-    const liveKind = String((rec as any)?.kind || (rec as any)?.payload?.game || (rec as any)?.payload?.variant || "").toLowerCase();
-    const isLive = inferHistoryStatus(rec) === "in_progress" && (liveKind === "x01" || liveKind.includes("x01_v3") || liveKind.includes("x01")) && !(rec as any)?.__forceFullInProgress;
+    const isLive = _isInProgressRecord(rec) && !(rec as any)?.__forceFullInProgress;
     await upsert(rec);
     // Live gameplay checkpoints deliberately do not touch the localStorage UI
     // cache and do not re-read/decompress the record. History.list()/get() will

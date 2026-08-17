@@ -473,6 +473,16 @@ export function buildDartsTelemetry(rec: any, payload?: any): DartsTelemetry | n
   const p = payload ?? rec?.payload ?? {};
   if (!isDartsRecord(rec, p)) return null;
 
+  // GLOBAL GAMEPLAY PERF: canonical telemetry is DERIVED data. Re-scanning every
+  // historical visit after each validated volley is O(n) work on the main thread
+  // and was repeated by many game pages before History even persisted anything.
+  // In-progress records keep the exact raw visits/darts; the finished record still
+  // computes full telemetry, so no statistic is lost.
+  const status = cleanText(rec?.status ?? p?.status ?? rec?.summary?.status).toLowerCase();
+  if (status === "in_progress" || status === "inprogress" || status === "playing" || status === "live") {
+    return null;
+  }
+
   const arrays = [
     ...collectArrays(rec, "record"),
     ...collectArrays(p, "payload"),

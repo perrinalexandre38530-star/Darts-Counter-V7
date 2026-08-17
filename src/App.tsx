@@ -455,6 +455,28 @@ const ONLINE_GAMEPLAY_TABS = new Set<string>([
   "babyfoot_play",
 ]);
 
+function isGameplayRouteName(tabLike: unknown): boolean {
+  const routeName = String(tabLike || "").toLowerCase();
+  if (!routeName) return false;
+  // Most modes follow *_play, but legacy/core gameplay routes do not. Keeping
+  // this centralized prevents background stats/preload work from accidentally
+  // competing with scoring on those screens.
+  if (
+    routeName === "x01" ||
+    routeName === "cricket" ||
+    routeName === "training_clock" ||
+    routeName === "x01_device_camera" ||
+    routeName === "tournament_match_play"
+  ) return true;
+  return (
+    routeName === "x01_play_v3" ||
+    routeName.endsWith("_play") ||
+    routeName.endsWith(".play") ||
+    routeName.includes("_play_")
+  );
+}
+
+
 function readOnlineRouteContext(params: any) {
   const lobbyCode = String(params?.lobbyCode || params?.code || params?.lobby?.code || "").trim().toUpperCase();
   const onlineMode = String(params?.onlineMode || params?.mode || params?.lobby?.mode || params?.config?.onlineMode || "").trim();
@@ -2796,8 +2818,7 @@ useEffect(() => {
   // réellement inactif, avec un délai plus long sur téléphone.
   // ============================================================
   React.useEffect(() => {
-    const routeName = String(tab || "").toLowerCase();
-    const gameplayActive = routeName === "x01_play_v3" || routeName.endsWith("_play") || routeName.endsWith(".play") || routeName.includes("_play_");
+    const gameplayActive = isGameplayRouteName(tab);
     // Never start StatsHub/DartSet/X01 aggregation while a gameplay screen owns
     // the main thread. Leaving the play route re-arms this effect automatically.
     if (loading || gameplayActive) return;
@@ -2823,6 +2844,8 @@ useEffect(() => {
       if (cancelled) return;
       const run = () => {
         if (cancelled) return;
+        if (isGameplayRouteName(currentTabRef.current)) return;
+        try { if (document.visibilityState === "hidden") return; } catch {}
         const activeId = String((store as any)?.activeProfileId || (store as any)?.profiles?.[0]?.id || "").trim();
         if (!activeId) return;
         const activeProfile = Array.isArray((store as any)?.profiles)
@@ -2870,8 +2893,15 @@ useEffect(() => {
         })();
       };
       const ric: any = (window as any).requestIdleCallback;
-      if (typeof ric === "function") idleId = ric(run, { timeout: isConstrained() ? 1600 : 650 });
-      else timer = window.setTimeout(run, isConstrained() ? 900 : 280);
+      if (typeof ric === "function") {
+        // On constrained phones, never force a stats warm-up by timeout: an idle
+        // task is useful only if the browser is actually idle. Forcing it while
+        // the user is navigating is exactly the kind of background work that
+        // creates visible jank. Desktop keeps a generous timeout.
+        idleId = isConstrained() ? ric(run) : ric(run, { timeout: 2500 });
+      } else {
+        timer = window.setTimeout(run, isConstrained() ? 4200 : 1400);
+      }
     };
 
     const scheduleWarm = (force: boolean, delay: number) => {
@@ -2885,10 +2915,10 @@ useEffect(() => {
     // sans timeout requestIdleCallback. prewarm() quitte immédiatement si le cache existe.
     startupTimer = window.setTimeout(
       () => startWarm(false),
-      isConstrained() ? 180 : 90
+      isConstrained() ? 3600 : 1100
     );
 
-    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 1500 : 650);
+    const onHistoryUpdated = () => scheduleWarm(true, isConstrained() ? 4200 : 1600);
     window.addEventListener("dc-history-updated", onHistoryUpdated);
     return () => {
       cancelled = true;
@@ -2900,8 +2930,7 @@ useEffect(() => {
   }, [loading, tab, (store as any)?.activeProfileId, (store as any)?.profiles?.length]);
 
   React.useEffect(() => {
-    const routeName = String(tab || "").toLowerCase();
-    const gameplayActive = routeName === "x01_play_v3" || routeName.endsWith("_play") || routeName.endsWith(".play") || routeName.includes("_play_");
+    const gameplayActive = isGameplayRouteName(tab);
     if (loading || showSplash || gameplayActive) return;
     let timer: number | null = null;
     let idleId: any = null;
