@@ -4,6 +4,8 @@ import { actionForNavigation, actionForSport, actionForSportMode, findAwenaNavig
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
 import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKnowledge";
 import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
+import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
+import { answerAwenaScreenQuestion } from "./AwenaScreenKnowledge";
 
 function normalize(text: string) {
   return String(text || "")
@@ -67,7 +69,8 @@ function routeLooksLikeMode(route: string | undefined, modeId: string) {
 
 export function buildAwenaReply(question: string, context: AwenaRuntimeContext): AwenaReply {
   const q = normalize(question);
-  const remembered = context.mode || context.route;
+  const rememberedModeId = String(context.extra?.awenaRememberedMode || "");
+  const remembered = context.mode || rememberedModeId || context.route;
   const mode = findAwenaMode(question, remembered);
   const sportMode = findAwenaSportMode(question, context.sport);
   const sport = findAwenaSport(question, context.sport);
@@ -77,10 +80,25 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 
   if (/qui es tu|qui est awena|ton role|que peux tu faire|a quoi sers tu/.test(q)) {
     return {
-      text: `Je suis Awena, la présentatrice et assistante de MULTISPORTS SCORING. Ma base locale connaît maintenant ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, la navigation générale, les configurations de participants et le contexte live du X01. Je peux expliquer, guider, ouvrir des écrans et donner des conseils sans inventer une règle absente de l'application.`,
+      text: `## QUI JE SUIS
+Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
+
+## CE QUE JE CONNAIS
+Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et plusieurs écrans de configuration.
+
+## CE QUE JE PEUX FAIRE
+Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
+
+> Si une règle, une option ou une donnée n'existe pas dans l'application, je dois le dire plutôt que l'inventer.`,
       modeId: mode?.id || context.mode || null,
     };
   }
+
+  // Compréhension de l'écran courant : « que puis-je faire ici ? »,
+  // « à quoi sert cette page ? », « et maintenant ? ». Cette couche doit
+  // rester prioritaire car elle dépend du contexte réel de navigation.
+  const screenReply = answerAwenaScreenQuestion(question, context);
+  if (screenReply) return screenReply;
 
   // Questions générales et vocabulaire de l'application.
   // Cette couche passe AVANT la configuration du mode actif pour éviter par
@@ -89,6 +107,12 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   const rememberedKnowledgeTopic = String(context.extra?.awenaKnowledgeTopic || "");
   const generalReply = answerAwenaGeneralQuestion(question, rememberedKnowledgeTopic);
   if (generalReply) return generalReply;
+
+  // Encyclopédie locale à correspondance pondérée. Elle couvre les paraphrases
+  // et formulations moins prévisibles sans envoyer la question vers un service
+  // externe. Le sujet retenu est mémorisé pour les relances courtes.
+  const encyclopediaReply = answerAwenaEncyclopedia(question, rememberedKnowledgeTopic);
+  if (encyclopediaReply) return encyclopediaReply;
 
   if (/quels jeux|quels modes|liste des jeux|liste des modes|modes disponibles|jeux disponibles/.test(q)) {
     if (sport && sport.id !== "darts") {
@@ -138,7 +162,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     if (sport) return { text: `D'accord. J'ouvre le menu ${sport.label}.`, actions: actionForSport(sport) };
   }
 
-  const rememberedMode = findAwenaModeById(context.mode);
+  const rememberedMode = findAwenaModeById(context.mode || rememberedModeId);
   const activeMode = mode || rememberedMode;
 
   // Configuration doit être prioritaire sur les mots génériques comme
@@ -217,8 +241,21 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   }
 
   return {
-    text: "Je n'ai pas trouvé cette information dans ma base locale. Reformule avec le nom exact d'un écran, d'un sport ou d'un mode ; je préfère te dire que je ne sais pas plutôt que d'inventer une règle.",
+    text: `## JE N'AI PAS ENCORE CETTE INFORMATION
+Je n'ai pas trouvé une réponse suffisamment fiable dans ma base locale.
+
+## TU PEUX ESSAYER
+- préciser le **nom du mode** ou de l'écran ;
+- me demander **« que puis-je faire sur cet écran ? »** ;
+- employer le nom exact d'une option ou d'une statistique ;
+- me demander une définition : **« c'est quoi… ? »**.
+
+> Je préfère signaler une limite plutôt que d'inventer une règle ou une donnée.`,
     modeId: context.mode || null,
+    actions: [
+      { id: "awena-help-capabilities", label: "Ce que tu sais faire", kind: "ask", prompt: "Que peux-tu faire exactement dans l'application ?" },
+      { id: "awena-help-screen", label: "Aide sur cet écran", kind: "ask", prompt: "Que puis-je faire sur cet écran ?" },
+    ],
   };
 }
 

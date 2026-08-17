@@ -205,7 +205,10 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     setRuntime({
       route,
       sport,
-      mode: routeMode?.id || runtime.mode,
+      // Le mode actif vient de la route / partie réelle. Hors d'un écran de
+      // mode on le libère, tandis que le sujet de conversation reste conservé
+      // dans awenaRememberedMode.
+      mode: routeMode?.id || (inGame ? runtime.mode : undefined),
       inGame,
       phase: inGame ? (runtime.phase || "play") : undefined,
       playerName: inGame ? runtime.playerName : undefined,
@@ -214,7 +217,12 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
       dartsLeft: inGame ? runtime.dartsLeft : null,
       outMode: inGame ? runtime.outMode : null,
       startScore: inGame ? runtime.startScore : null,
-      extra: inGame ? runtime.extra : undefined,
+      extra: inGame
+        ? runtime.extra
+        : {
+            awenaKnowledgeTopic: runtime.extra?.awenaKnowledgeTopic,
+            awenaRememberedMode: runtime.extra?.awenaRememberedMode,
+          },
     });
     // Runtime intentionnellement exclu : cet effet doit réagir aux changements d'écran,
     // pas à chaque mise à jour live du score.
@@ -304,7 +312,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.6</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.7</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -323,11 +331,17 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
                   ["Configuration", `Détaille uniquement la configuration de ${currentMode.label} : chaque option, valeur possible, variante, format et réglage disponible.`],
                   ["Records", `Donne-moi les records de ${currentMode.label} et les principaux classements disponibles.`],
                 ]
-              : [
-                  ["Règles", "Explique les règles de ce mode"],
-                  [live && currentMode?.id === "x01" ? "Que viser ?" : "Conseil", live && currentMode?.id === "x01" ? "Que me conseilles-tu de viser ?" : "Donne-moi un conseil pour ce mode"],
-                  ["Records", currentMode ? `Donne-moi les records de ${currentMode.label}.` : "Quels records peux-tu consulter ?"],
-                ]
+              : currentMode && live
+                ? [
+                    ["Règles", `Explique-moi les règles de ${currentMode.label}.`],
+                    [currentMode.id === "x01" ? "Que viser ?" : "Conseil", currentMode.id === "x01" ? "Que me conseilles-tu de viser ?" : `Donne-moi un conseil pour ${currentMode.label}.`],
+                    ["Records", `Donne-moi les records de ${currentMode.label}.`],
+                  ]
+                : [
+                    ["Cet écran", "Que puis-je faire sur cet écran ?"],
+                    ["Navigation", "Aide-moi à trouver une fonction dans l'application."],
+                    ["Que sais-tu ?", "Que peux-tu m'expliquer dans l'application ?"],
+                  ]
             ).map(([label, prompt]) => (
               <button key={label} onClick={() => void submit(prompt)} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${primary}55`, background: `${primary}10`, color: "#fff", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>
             ))}

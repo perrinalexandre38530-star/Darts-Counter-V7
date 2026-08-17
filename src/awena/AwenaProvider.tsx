@@ -169,10 +169,14 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     if (reply.modeId || reply.knowledgeTopic) {
       setRuntimeState((prev) => ({
         ...prev,
-        mode: reply.modeId || prev.mode,
-        extra: reply.knowledgeTopic
-          ? { ...(prev.extra || {}), awenaKnowledgeTopic: reply.knowledgeTopic }
-          : prev.extra,
+        // Le mode actif appartient à l'écran réel. Une simple conversation sur
+        // Killer depuis l'Accueil ne doit pas faire croire qu'on est dans Killer.
+        // Le sujet conversationnel est mémorisé séparément dans extra.
+        extra: {
+          ...(prev.extra || {}),
+          ...(reply.modeId ? { awenaRememberedMode: reply.modeId } : {}),
+          ...(reply.knowledgeTopic ? { awenaKnowledgeTopic: reply.knowledgeTopic } : {}),
+        },
       }));
     }
 
