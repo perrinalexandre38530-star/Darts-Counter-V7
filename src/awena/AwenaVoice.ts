@@ -1,8 +1,15 @@
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import type { AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
+export type AwenaSpeechTimingEvent = {
+  utteranceId: string;
+  phase: "start" | "end";
+  durationMs?: number;
+};
+
 type NativeVoicePlugin = {
-  speak(options: { text: string; language?: string; voiceName?: string | null; rate?: number; pitch?: number; volume?: number }): Promise<{ ok: boolean; voiceName?: string | null }>;
+  speak(options: { text: string; utteranceId?: string; language?: string; voiceName?: string | null; rate?: number; pitch?: number; volume?: number }): Promise<{ ok: boolean; voiceName?: string | null }>;
+  addListener(eventName: "speechStart" | "speechEnd", listener: (event: { utteranceId?: string; durationMs?: number }) => void): Promise<PluginListenerHandle>;
   stop(): Promise<{ ok: boolean }>;
   getStatus(): Promise<AwenaVoiceStatus>;
   getVoices(options?: { language?: string }): Promise<{ voices: AwenaVoiceOption[] }>;
@@ -39,7 +46,49 @@ function webVoiceFor(language: string, voiceName?: string | null): SpeechSynthes
 }
 
 export class AwenaVoiceEngine {
-  private async synthesize(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
+  private timingListeners = new Set<(event: AwenaSpeechTimingEvent) => void>();
+  private nativeTimingBridgeReady = false;
+  private nativeTimingHandles: PluginListenerHandle[] = [];
+
+  private emitTiming(event: AwenaSpeechTimingEvent) {
+    for (const listener of this.timingListeners) {
+      try { listener(event); } catch {}
+    }
+  }
+
+  private ensureNativeTimingBridge() {
+    if (this.nativeTimingBridgeReady) return;
+    if (!(Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android")) return;
+    this.nativeTimingBridgeReady = true;
+
+    void NativeAwenaVoice.addListener("speechStart", (event) => {
+      const utteranceId = String(event?.utteranceId || "");
+      if (!utteranceId) return;
+      this.emitTiming({
+        utteranceId,
+        phase: "start",
+        durationMs: Number.isFinite(Number(event?.durationMs)) ? Number(event?.durationMs) : undefined,
+      });
+    }).then((handle) => this.nativeTimingHandles.push(handle)).catch(() => {
+      this.nativeTimingBridgeReady = false;
+    });
+
+    void NativeAwenaVoice.addListener("speechEnd", (event) => {
+      const utteranceId = String(event?.utteranceId || "");
+      if (!utteranceId) return;
+      this.emitTiming({ utteranceId, phase: "end" });
+    }).then((handle) => this.nativeTimingHandles.push(handle)).catch(() => {
+      this.nativeTimingBridgeReady = false;
+    });
+  }
+
+  onSpeechTiming(listener: (event: AwenaSpeechTimingEvent) => void) {
+    this.timingListeners.add(listener);
+    this.ensureNativeTimingBridge();
+    return () => { this.timingListeners.delete(listener); };
+  }
+
+  private async synthesize(text: string, settings: AwenaSettings, lang = "fr", utteranceId?: string): Promise<boolean> {
     const clean = String(text || "").trim();
     if (!clean) return false;
     const language = localeForLang(lang);
@@ -49,8 +98,10 @@ export class AwenaVoiceEngine {
 
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
       try {
+        this.ensureNativeTimingBridge();
         const result = await NativeAwenaVoice.speak({
           text: clean,
+          utteranceId,
           language,
           voiceName: settings.voiceName,
           rate: settings.rate,
@@ -75,6 +126,12 @@ export class AwenaVoiceEngine {
         utterance.volume = settings.volume;
         const voice = webVoiceFor(language, settings.voiceName);
         if (voice) utterance.voice = voice;
+        const id = utteranceId || `awena-web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const words = Math.max(1, clean.split(/\s+/).filter(Boolean).length);
+        const estimatedMs = Math.max(650, Math.round((words / (165 * Math.max(0.65, settings.rate))) * 60_000));
+        utterance.onstart = () => this.emitTiming({ utteranceId: id, phase: "start", durationMs: estimatedMs });
+        utterance.onend = () => this.emitTiming({ utteranceId: id, phase: "end" });
+        utterance.onerror = () => this.emitTiming({ utteranceId: id, phase: "end" });
         window.speechSynthesis.speak(utterance);
         return true;
       } catch (error) {
@@ -84,9 +141,9 @@ export class AwenaVoiceEngine {
     return false;
   }
 
-  async speak(text: string, settings: AwenaSettings, lang = "fr"): Promise<boolean> {
+  async speak(text: string, settings: AwenaSettings, lang = "fr", utteranceId?: string): Promise<boolean> {
     if (!settings.enabled || !settings.voiceEnabled) return false;
-    return this.synthesize(text, settings, lang);
+    return this.synthesize(text, settings, lang, utteranceId);
   }
 
   // Utilisé lorsqu'un mode choisit explicitement "Awena" comme voix d'annonce.

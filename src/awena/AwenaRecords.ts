@@ -1,4 +1,5 @@
-import { loadNormalizedHistory, type NormalizedMatch, type NormalizedPlayer } from "../lib/statsNormalized";
+import { loadNormalizedHistory, normalizeMany, type NormalizedMatch, type NormalizedPlayer } from "../lib/statsNormalized";
+import { History } from "../lib/history";
 import { findAwenaMode, findAwenaModeById, type AwenaModeKnowledge } from "./AwenaKnowledge";
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
 
@@ -270,15 +271,43 @@ function dashboard(rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: str
   return sections.join("\n\n");
 }
 
+async function loadHistorySafely(preferDetailed: boolean): Promise<NormalizedMatch[]> {
+  let cached: NormalizedMatch[] = [];
+  try {
+    const lite = History.readAll();
+    if (Array.isArray(lite) && lite.length) cached = normalizeMany(lite as any[]);
+  } catch (error) {
+    console.warn("[AwenaRecords] cache Historique indisponible", error);
+  }
+
+  // For wins/games/win-rate, the lightweight History cache is enough and avoids
+  // unnecessary hydration of hundreds of payloads. Detailed X01 metrics may need
+  // the fully hydrated source, but any failure falls back to the safe cache.
+  if (cached.length && !preferDetailed) return cached;
+
+  try {
+    const hydrated = await loadNormalizedHistory();
+    if (Array.isArray(hydrated) && hydrated.length) return hydrated;
+  } catch (error) {
+    console.warn("[AwenaRecords] historique normalisé indisponible, fallback cache", error);
+  }
+  return cached;
+}
+
 export async function buildAwenaRecordsReply(question: string, context: AwenaRuntimeContext): Promise<AwenaReply | null> {
   if (!isAwenaRecordsQuestion(question)) return null;
-  const mode = findAwenaMode(question, context.mode || context.route) || findAwenaModeById(context.mode);
+  try {
+    const mode = findAwenaMode(question, context.mode || context.route) || findAwenaModeById(context.mode);
   if (!mode) {
     return { text: "Pour établir un classement ou un record, indique-moi le mode concerné, par exemple « top 3 X01 au pourcentage de victoire »." };
   }
 
   const period = periodFromQuestion(question);
-  const all = await loadNormalizedHistory();
+  const q = norm(question);
+  const preferDetailed =
+    mode.id === "x01" &&
+    /moyenne|avg3|checkout|sortie/.test(q);
+  const all = await loadHistorySafely(preferDetailed);
   const matches = all.filter((m) => (!period.since || m.date >= period.since) && matchMode(m, mode));
   if (!matches.length) {
     return { text: `Je ne trouve aucune partie ${mode.label} exploitable ${period.label}. Je ne vais pas inventer un classement.`, modeId: mode.id };
@@ -289,7 +318,6 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
     return { text: `Les parties ${mode.label} existent, mais je n'arrive pas à identifier suffisamment les joueurs pour produire un classement fiable.`, modeId: mode.id };
   }
 
-  const q = norm(question);
   const specificMetric = /pourcentage|taux|%|victoire|parties jouees|parties jouées|avg3|moyenne|checkout|sortie|top|classement|meilleur|meilleure|pire|plus mauvais|plus mauvaise/.test(q);
   if (!specificMetric || (/records?/.test(q) && !/top|meilleur|moyenne|victoire|checkout|partie|pire|mauvais/.test(q.replace(/records?/g, "")))) {
     return { text: dashboard(rows, mode, period.label), modeId: mode.id };
@@ -307,8 +335,18 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
   }
 
   const direction = worst ? "Classement du plus faible au plus fort" : count === 1 ? "Meilleur résultat" : `Top ${count}`;
-  return {
-    text: `## ${direction.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n${bulletList(ranked, metric)}`,
-    modeId: mode.id,
-  };
+    return {
+      text: `## ${direction.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n${bulletList(ranked, metric)}`,
+      modeId: mode.id,
+    };
+  } catch (error) {
+    console.warn("[AwenaRecords] erreur neutralisée", error);
+    const mode = findAwenaMode(question, context.mode || context.route) || findAwenaModeById(context.mode);
+    return {
+      text: mode
+        ? `## RECORDS — ${mode.label.toUpperCase()}\nJe n'arrive pas à lire l'historique pour le moment. L'application reste utilisable et je n'invente aucun classement. Réessaie après avoir ouvert l'écran Stats ou après une nouvelle partie.`
+        : "Je n'arrive pas à lire l'historique pour le moment. Indique-moi aussi le mode concerné et je réessaierai sans faire planter l'application.",
+      modeId: mode?.id || context.mode || null,
+    };
+  }
 }

@@ -10,7 +10,7 @@ import React from "react";
 
 // ⚠️ Depuis src/components -> ../assets
 import AppLogo from "../assets/LOGO.png";
-import { getStartupIntroMusicEnabled, stopStartupIntroMusic } from "../lib/startupAudioPrefs";
+import { getStartupIntroEnabled, stopStartupIntroAudio } from "../lib/startupAudioPrefs";
 
 type Props = {
   onFinish: () => void;
@@ -33,12 +33,12 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
   React.useEffect(() => {
     aliveRef.current = true;
 
-    // 🔊 Jingle de démarrage uniquement si l'utilisateur l'a laissé activé.
-    // Cette préférence ne touche pas aux SFX, voix IA ou musiques des jeux.
-    const introMusicEnabled = getStartupIntroMusicEnabled();
+    // 🔊 Le splash n’est monté que si l’INTRO est activée.
+    // On garde tout de même ce garde-fou audio pour les montages directs/tests.
+    const introEnabled = getStartupIntroEnabled();
     const a = document.getElementById("dc-splash-audio") as HTMLAudioElement | null;
-    if (!introMusicEnabled) {
-      stopStartupIntroMusic();
+    if (!introEnabled) {
+      stopStartupIntroAudio();
     } else if (a) {
       try {
         // si déjà en cours, on laisse; sinon on lance

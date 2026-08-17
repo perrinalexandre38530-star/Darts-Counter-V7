@@ -8,7 +8,7 @@ import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
 import { awenaLine } from "./AwenaVoiceCatalog";
 import { buildAwenaRecordsReply } from "./AwenaRecords";
-import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
+import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaSpeechCue, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
 type AwenaContextValue = {
   settings: AwenaSettings;
@@ -17,12 +17,13 @@ type AwenaContextValue = {
   setRuntime: (next: Partial<AwenaRuntimeContext>) => void;
   messages: AwenaMessage[];
   ask: (question: string, options?: { speak?: boolean }) => Promise<string>;
-  say: (text: string) => Promise<void>;
+  say: (text: string, messageId?: string) => Promise<void>;
   stop: () => Promise<void>;
   clearMessages: () => void;
   voiceStatus: AwenaVoiceStatus | null;
   voices: AwenaVoiceOption[];
   refreshVoices: () => Promise<void>;
+  speechCue: AwenaSpeechCue | null;
   panelOpen: boolean;
   openPanel: () => void;
   closePanel: () => void;
@@ -75,6 +76,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const [voiceStatus, setVoiceStatus] = React.useState<AwenaVoiceStatus | null>(null);
   const [voices, setVoices] = React.useState<AwenaVoiceOption[]>([]);
   const [panelOpen, setPanelOpen] = React.useState(false);
+  const [speechCue, setSpeechCue] = React.useState<AwenaSpeechCue | null>(null);
 
   const setSettings = React.useCallback((next: AwenaSettings | ((prev: AwenaSettings) => AwenaSettings)) => {
     setSettingsState((prev) => saveAwenaSettings(typeof next === "function" ? next(prev) : next));
@@ -95,9 +97,29 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(AWENA_CONTEXT_EVENT, onContext as EventListener);
   }, []);
 
-  const say = React.useCallback(async (text: string) => {
+  React.useEffect(() => {
+    return awenaVoice.onSpeechTiming((event) => {
+      if (event.phase === "start") {
+        setSpeechCue({
+          messageId: event.utteranceId,
+          phase: "speaking",
+          startedAt: Date.now(),
+          durationMs: Math.max(250, Number(event.durationMs || 0)),
+        });
+      } else {
+        setSpeechCue((prev) => prev?.messageId === event.utteranceId
+          ? { ...prev, phase: "done" }
+          : prev);
+      }
+    });
+  }, []);
+
+  const say = React.useCallback(async (text: string, messageId?: string) => {
     if (muted) return;
-    await awenaVoice.speak(textForSpeech(text), settingsState, String(lang || "fr"));
+    const utteranceId = messageId || `awena-manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setSpeechCue({ messageId: utteranceId, phase: "pending" });
+    const ok = await awenaVoice.speak(textForSpeech(text), settingsState, String(lang || "fr"), utteranceId);
+    if (!ok) setSpeechCue((prev) => prev?.messageId === utteranceId ? { ...prev, phase: "done" } : prev);
   }, [lang, muted, settingsState]);
 
   const ask = React.useCallback(async (question: string, options?: { speak?: boolean }) => {
@@ -106,26 +128,56 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
 
     const explicitMode = findAwenaMode(clean, runtime.mode || runtime.route);
     const contextForReply = explicitMode ? { ...runtime, mode: explicitMode.id } : runtime;
-    const reply = (await buildAwenaRecordsReply(clean, contextForReply)) ?? buildAwenaReply(clean, contextForReply);
+
+    let recordsReply = null;
+    try {
+      recordsReply = await buildAwenaRecordsReply(clean, contextForReply);
+    } catch (error) {
+      console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
+    }
+    const reply = recordsReply ?? buildAwenaReply(clean, contextForReply);
 
     if (reply.modeId) {
       setRuntimeState((prev) => ({ ...prev, mode: reply.modeId || prev.mode }));
     }
 
+    const userMessage = message("user", clean);
+    const awenaMessage = message("awena", reply.text, reply.actions);
+    const shouldSpeak = (options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted;
+
+    if (shouldSpeak) {
+      // Keep the answer hidden until the exact moment Android starts playback.
+      setSpeechCue({ messageId: awenaMessage.id, phase: "pending" });
+    }
+
     setMessages((prev) => [
       ...prev,
-      message("user", clean),
-      message("awena", reply.text, reply.actions),
+      userMessage,
+      awenaMessage,
     ].slice(-40));
 
-    if ((options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted) {
-      await awenaVoice.speak(textForSpeech(reply.text), settingsState, String(lang || "fr"));
+    if (shouldSpeak) {
+      const ok = await awenaVoice.speak(
+        textForSpeech(reply.text),
+        settingsState,
+        String(lang || "fr"),
+        awenaMessage.id,
+      );
+      if (!ok) {
+        setSpeechCue((prev) => prev?.messageId === awenaMessage.id ? { ...prev, phase: "done" } : prev);
+      }
     }
     return reply.text;
   }, [lang, muted, runtime, settingsState]);
 
-  const stop = React.useCallback(async () => awenaVoice.stop(), []);
-  const clearMessages = React.useCallback(() => setMessages([]), []);
+  const stop = React.useCallback(async () => {
+    await awenaVoice.stop();
+    setSpeechCue((prev) => prev ? { ...prev, phase: "done" } : prev);
+  }, []);
+  const clearMessages = React.useCallback(() => {
+    setMessages([]);
+    setSpeechCue(null);
+  }, []);
 
   const refreshVoices = React.useCallback(async () => {
     const [status, availableVoices] = await Promise.all([
@@ -155,11 +207,12 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     voiceStatus,
     voices,
     refreshVoices,
+    speechCue,
     panelOpen,
     openPanel,
     closePanel,
     togglePanel,
-  }), [settingsState, setSettings, runtime, setRuntime, messages, ask, say, stop, clearMessages, voiceStatus, voices, refreshVoices, panelOpen, openPanel, closePanel, togglePanel]);
+  }), [settingsState, setSettings, runtime, setRuntime, messages, ask, say, stop, clearMessages, voiceStatus, voices, refreshVoices, speechCue, panelOpen, openPanel, closePanel, togglePanel]);
 
   return <AwenaContext.Provider value={value}>{children}</AwenaContext.Provider>;
 }

@@ -2,7 +2,7 @@ import React from "react";
 import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
-import type { AwenaAction } from "../awena.types";
+import type { AwenaAction, AwenaSpeechCue } from "../awena.types";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
@@ -111,6 +111,69 @@ function RichAwenaText({ text, primary }: { text: string; primary: string }) {
   return <div style={{ display: "grid", gap: 7 }}>{blocks}</div>;
 }
 
+function progressiveSlice(text: string, ratio: number) {
+  const source = String(text || "");
+  if (ratio >= 1) return source;
+  if (ratio <= 0) return "";
+  const tokens = source.match(/\S+\s*/g) || [];
+  if (!tokens.length) return source;
+  const count = Math.max(1, Math.min(tokens.length, Math.ceil(tokens.length * ratio)));
+  return tokens.slice(0, count).join("").trimEnd();
+}
+
+function ProgressiveAwenaText({
+  messageId,
+  text,
+  primary,
+  speechCue,
+}: {
+  messageId: string;
+  text: string;
+  primary: string;
+  speechCue: AwenaSpeechCue | null;
+}) {
+  const isTarget = speechCue?.messageId === messageId;
+  const [ratio, setRatio] = React.useState(isTarget && speechCue?.phase !== "done" ? 0 : 1);
+
+  React.useEffect(() => {
+    if (!isTarget || !speechCue) {
+      setRatio(1);
+      return;
+    }
+    if (speechCue.phase === "pending") {
+      setRatio(0);
+      return;
+    }
+    if (speechCue.phase === "done") {
+      setRatio(1);
+      return;
+    }
+
+    const startedAt = Number(speechCue.startedAt || Date.now());
+    const durationMs = Math.max(350, Number(speechCue.durationMs || 1200));
+    let frame = 0;
+
+    const tick = () => {
+      const elapsed = Math.max(0, Date.now() - startedAt);
+      const next = Math.min(1, elapsed / durationMs);
+      setRatio(next);
+      if (next < 1) frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [isTarget, speechCue?.phase, speechCue?.startedAt, speechCue?.durationMs]);
+
+  if (isTarget && speechCue?.phase === "pending") {
+    return (
+      <div aria-label="Awena prépare sa réponse" style={{ color: primary, fontWeight: 900, letterSpacing: 2 }}>
+        •••
+      </div>
+    );
+  }
+
+  return <RichAwenaText text={progressiveSlice(text, ratio)} primary={primary} />;
+}
+
 export default function AwenaOverlay(props: Props) {
   const awena = useAwenaOptional();
 
@@ -123,7 +186,7 @@ export default function AwenaOverlay(props: Props) {
 
 function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & { awena: AwenaContextValue }) {
   const { theme } = useTheme() as any;
-  const { settings, runtime, setRuntime, messages, ask, say, stop, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
+  const { settings, runtime, setRuntime, messages, ask, say, stop, speechCue, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
@@ -153,7 +216,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     if (!open) return;
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, open]);
+  }, [messages, speechCue, open]);
 
   if (!settings.enabled || settings.interventionMode === "off") return null;
 
@@ -213,7 +276,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V6</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.3</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -247,10 +310,10 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             {messages.map((m) => (
               <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
                 <div style={{ padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
-                  {m.role === "awena" ? <RichAwenaText text={m.text} primary={primary} /> : m.text}
+                  {m.role === "awena" ? <ProgressiveAwenaText messageId={m.id} text={m.text} primary={primary} speechCue={speechCue} /> : m.text}
                   {m.role === "awena" && (
                     <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 5 }}>
-                      <button type="button" onClick={() => void say(m.text)} title="Écouter Awena" style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>🔊</button>
+                      <button type="button" onClick={() => void say(m.text, m.id)} title="Écouter Awena" style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>🔊</button>
                     </div>
                   )}
                 </div>

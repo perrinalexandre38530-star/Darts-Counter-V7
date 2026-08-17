@@ -38,8 +38,13 @@ import java.util.regex.Pattern;
  * underruns, half-words, crackling and EOS truncation seen with the experimental PocketTTS path.
  */
 public final class AwenaPocketTtsEngine implements AutoCloseable {
+    public interface PlaybackListener {
+        void onStart(long durationMs);
+        void onEnd(boolean stopped);
+    }
+
     private static final String TAG = "AwenaStableTTS";
-    private static final int CACHE_VERSION = 6;
+    private static final int CACHE_VERSION = 7;
     private static final int MAX_MEMORY_CACHE_ITEMS = 28;
     private static final int MAX_DISK_CACHE_FILES = 96;
     private static final int MAX_CACHE_TEXT = 180;
@@ -110,10 +115,14 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
     }
 
     public void speak(String text, float volume) throws Exception {
-        speak(text, volume, 1.0f);
+        speak(text, volume, 1.0f, null);
     }
 
     public void speak(String text, float volume, float requestedRate) throws Exception {
+        speak(text, volume, requestedRate, null);
+    }
+
+    public void speak(String text, float volume, float requestedRate, PlaybackListener playbackListener) throws Exception {
         String clean = normalizeText(text);
         if (clean.isEmpty()) return;
         if (!isReady()) initialize();
@@ -181,7 +190,7 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             lastRms = stats.rms;
         }
 
-        if (!stopRequested) playBufferedMedia(audio, gain);
+        if (!stopRequested) playBufferedMedia(audio, gain, playbackListener);
     }
 
     public void requestStop() {
@@ -198,7 +207,7 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         }
     }
 
-    private void playBufferedMedia(CachedAudio audio, float volume) throws Exception {
+    private void playBufferedMedia(CachedAudio audio, float volume, PlaybackListener playbackListener) throws Exception {
         if (audio == null || audio.pcm.length == 0) return;
 
         // Match sherpa-onnx's official Android TTS audio route: MEDIA + MODE_STREAM.
@@ -249,6 +258,10 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
 
         try {
             track.setVolume(clamp(volume, 0f, 1f));
+            long durationMs = Math.max(1L, Math.round(audio.pcm.length * 1000.0 / audio.sampleRate));
+            if (playbackListener != null) {
+                try { playbackListener.onStart(durationMs); } catch (Exception ignored) {}
+            }
             track.play();
 
             int offset = 0;
@@ -303,6 +316,9 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             try { track.flush(); } catch (Exception ignored) {}
             try { track.stop(); } catch (Exception ignored) {}
             try { track.release(); } catch (Exception ignored) {}
+            if (playbackListener != null) {
+                try { playbackListener.onEnd(stopRequested); } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -435,6 +451,12 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
         // Awena uses a French VITS voice. Known English labels are rewritten into
         // French-readable phonetics while the visible UI keeps the official spelling.
         clean = clean
+            // French TTS needs explicit phonetics for "bot(s) IA".
+            .replaceAll("(?i)\\bBOTS\\s+IA\\b", "botse i a")
+            .replaceAll("(?i)\\bBOT\\s+IA\\b", "botte i a")
+            .replaceAll("(?i)\\bBOTS\\b", "botse")
+            .replaceAll("(?i)\\bBOT\\b", "botte")
+            .replaceAll("(?i)\\bIA\\b", "i a")
             .replaceAll("(?i)\\bAWENA\\b", "Aouéna")
             .replaceAll("(?i)\\bX01\\b", "iks zéro un")
             .replaceAll("(?i)\\bDARTS\\s+FIREFIGHTER\\b", "Darts Faïeurfaïteur")

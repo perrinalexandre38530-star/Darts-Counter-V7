@@ -79,6 +79,14 @@ export type AwenaVoiceStatus = {
   neuralRms?: number;
 };
 
+
+export type AwenaSpeechCue = {
+  messageId: string;
+  phase: "pending" | "speaking" | "done";
+  startedAt?: number;
+  durationMs?: number;
+};
+
 export type AwenaVoiceOption = {
   name: string;
   language: string;

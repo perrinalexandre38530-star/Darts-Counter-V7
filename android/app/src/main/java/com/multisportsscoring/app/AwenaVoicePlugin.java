@@ -3,6 +3,7 @@ package com.multisportsscoring.app;
 import android.content.Context;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
 import com.getcapacitor.JSArray;
@@ -156,6 +157,16 @@ public class AwenaVoicePlugin extends Plugin {
         }
     }
 
+    private void emitSpeechEvent(String eventName, String utteranceId, long durationMs) {
+        JSObject payload = new JSObject();
+        payload.put("utteranceId", utteranceId);
+        if (durationMs > 0) payload.put("durationMs", durationMs);
+        Runnable emit = () -> notifyListeners(eventName, payload);
+        if (getActivity() != null) getActivity().runOnUiThread(emit);
+        else emit.run();
+    }
+
+
     @PluginMethod
     public void speak(PluginCall call) {
         final String text = call.getString("text", "").trim();
@@ -166,6 +177,7 @@ public class AwenaVoicePlugin extends Plugin {
 
         final double volume = call.getDouble("volume", 0.9);
         final double requestedRate = call.getDouble("rate", 1.0);
+        final String utteranceId = call.getString("utteranceId", "awena-" + UUID.randomUUID());
 
         // Final Awena path: once installed, the stable local neural voice is mandatory. Never fall back silently.
         if (AwenaNeuralModelManager.isInstalled(getContext())) {
@@ -179,7 +191,22 @@ public class AwenaVoicePlugin extends Plugin {
                 try {
                     AwenaPocketTtsEngine engine = ensureNeuralEngine();
                     engine.requestStop();
-                    engine.speak(text, (float) Math.max(0.0, Math.min(1.0, volume)), (float) requestedRate);
+                    engine.speak(
+                        text,
+                        (float) Math.max(0.0, Math.min(1.0, volume)),
+                        (float) requestedRate,
+                        new AwenaPocketTtsEngine.PlaybackListener() {
+                            @Override
+                            public void onStart(long durationMs) {
+                                emitSpeechEvent("speechStart", utteranceId, durationMs);
+                            }
+
+                            @Override
+                            public void onEnd(boolean stopped) {
+                                emitSpeechEvent("speechEnd", utteranceId, 0L);
+                            }
+                        }
+                    );
 
                     JSObject out = new JSObject();
                     out.put("ok", true);
@@ -225,8 +252,23 @@ public class AwenaVoicePlugin extends Plugin {
 
                 Bundle params = new Bundle();
                 params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, (float)Math.max(0.0, Math.min(1.0, volume)));
-                String utteranceId = "awena-fallback-" + UUID.randomUUID();
-                int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId);
+                final String fallbackUtteranceId = utteranceId;
+                final long fallbackDurationMs = Math.max(
+                    650L,
+                    Math.round((Math.max(1, text.trim().split("\\s+").length) / (165.0 * Math.max(0.65, rate))) * 60_000.0)
+                );
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String id) {
+                        if (fallbackUtteranceId.equals(id)) emitSpeechEvent("speechStart", fallbackUtteranceId, fallbackDurationMs);
+                    }
+                    @Override public void onDone(String id) {
+                        if (fallbackUtteranceId.equals(id)) emitSpeechEvent("speechEnd", fallbackUtteranceId, 0L);
+                    }
+                    @Override public void onError(String id) {
+                        if (fallbackUtteranceId.equals(id)) emitSpeechEvent("speechEnd", fallbackUtteranceId, 0L);
+                    }
+                });
+                int result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, fallbackUtteranceId);
                 if (result == TextToSpeech.ERROR) {
                     call.reject("La synthèse vocale Awena provisoire a échoué.");
                     return;

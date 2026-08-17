@@ -91,6 +91,7 @@ import AuthCallback from "./pages/AuthCallback"; // si présent dans ton projet
 import AuthReset from "./pages/AuthReset";
 
 import SplashScreen from "./components/SplashScreen";
+import { getStartupIntroEnabled } from "./lib/startupAudioPrefs";
 
 // ✅ NEW: AUDIO SPLASH global (persistant)
 import SplashJingle from "./assets/audio/splash_jingle.mp3";
@@ -2042,7 +2043,8 @@ useEffect(() => {
     h.startsWith("#/auth/login") ||
     h.startsWith("#/auth/signup") ||
     isStandalonePublicHash(h);
-    return !isAuthFlow;
+    // INTRO OFF = aucun écran animé, aucun délai : GameSelect est rendu directement.
+    return !isAuthFlow && getStartupIntroEnabled();
   });
 
   // 🛟 SAFETY NET : ne JAMAIS bloquer l'app sur le splash
