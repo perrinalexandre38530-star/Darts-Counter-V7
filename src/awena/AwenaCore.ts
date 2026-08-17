@@ -3,6 +3,7 @@ import { actionsForAwenaMode, allAwenaModes, awenaModesByCategory, findAwenaMode
 import { actionForNavigation, actionForSport, actionForSportMode, findAwenaNavigationTopic, findAwenaSport, findAwenaSportMode } from "./AwenaAppKnowledge";
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
 import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKnowledge";
+import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
 
 function normalize(text: string) {
   return String(text || "")
@@ -80,6 +81,14 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
       modeId: mode?.id || context.mode || null,
     };
   }
+
+  // Questions générales et vocabulaire de l'application.
+  // Cette couche passe AVANT la configuration du mode actif pour éviter par
+  // exemple que « Qu'est-ce qu'un bot ? » soit interprété comme
+  // « Est-ce que X01 accepte les bots ? ».
+  const rememberedKnowledgeTopic = String(context.extra?.awenaKnowledgeTopic || "");
+  const generalReply = answerAwenaGeneralQuestion(question, rememberedKnowledgeTopic);
+  if (generalReply) return generalReply;
 
   if (/quels jeux|quels modes|liste des jeux|liste des modes|modes disponibles|jeux disponibles/.test(q)) {
     if (sport && sport.id !== "darts") {

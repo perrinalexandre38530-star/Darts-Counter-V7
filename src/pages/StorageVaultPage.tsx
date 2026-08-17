@@ -4,6 +4,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { gzipSync, strToU8 } from "fflate";
 import { useTheme } from "../contexts/ThemeContext";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import { useLang } from "../contexts/LangContext";
 import tickerStorageBackupFr from "../assets/tickers/ticker_storage_backup_fr.webp";
 import tickerStorageBackupEn from "../assets/tickers/ticker_storage_backup_en.webp";
@@ -1739,6 +1740,23 @@ function VaultGlyph({ name, size = 24 }: { name: VaultGlyphName; size?: number }
   }
 }
 
+const STORAGE_AWENA_AVATAR = "/awena/awena-avatar.webp";
+
+function StorageAwenaDot({ title, size = 36 }: { title: string; size?: number }) {
+  const awena = useAwenaOptional();
+  const open = async () => {
+    if (!awena) return;
+    awena.setRuntime({ route: "storage_vault", mode: "settings-help", phase: "menu", inGame: false, screenLabel: title, extra: { settingsSection: "Sauvegarde" } });
+    awena.openPanel();
+    await awena.ask("Explique-moi en détail la page Sauvegarde de MULTISPORTS SCORING : Restaurer, Parties, Sauver, Expert, NAS privé, Cloud R2, sauvegarde locale, fichier/SD/cloud personnel, archives, corbeille, sécurité et précautions. Reste ensuite dans ce contexte pour répondre à mes questions.");
+  };
+  return (
+    <button type="button" onClick={() => void open()} aria-label={`Awena · ${title}`} title={`Awena · ${title}`} style={{ width: size, height: size, borderRadius: 999, border: "none", padding: 3, background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)", boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)", cursor: awena ? "pointer" : "default", opacity: awena ? 1 : .55, display: "grid", placeItems: "center" }}>
+      <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}><img src={STORAGE_AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></span>
+    </button>
+  );
+}
+
 function StorageTickerHeader({ ticker, alt, onBack, onRefresh, busy, help }: { ticker: string; alt: string; onBack: () => void; onRefresh: () => void; busy: boolean; help: React.ReactNode }) {
   return (
     <div style={{ position: "relative", width: "100%", minWidth: 0, marginBottom: 10 }}>
@@ -1758,7 +1776,7 @@ function StorageTickerHeader({ ticker, alt, onBack, onRefresh, busy, help }: { t
         <BackDot size={42} color={neon} glow={`${neon}77`} onClick={onBack}/>
       </div>
       <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", zIndex: 5, display: "flex", alignItems: "center", gap: 5 }}>
-        <InfoDot title={alt} size={36} color={gold} glow={`${gold}66`} content={help}/>
+        <StorageAwenaDot title={alt} size={36}/>
         <button type="button" disabled={busy} onClick={onRefresh} aria-label="Actualiser" style={{ width: 36, height: 36, borderRadius: 999, border: `1px solid ${neon}`, background: "rgba(0,0,0,.72)", color: neon, display: "grid", placeItems: "center", boxShadow: `0 0 14px ${accentSoftGlow}`, cursor: busy ? "wait" : "pointer", opacity: busy ? .55 : 1 }}><VaultGlyph name="refresh" size={20}/></button>
       </div>
     </div>

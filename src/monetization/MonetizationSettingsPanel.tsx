@@ -14,7 +14,7 @@ import {
 import type { MonetizationPrefs } from "./types";
 import { getNativeAdMobStatus, showNativePrivacyOptions, type NativeAdMobStatus } from "./nativeAdMob";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
-import { getNativeBillingStatus, type NativeBillingStatus } from "./nativeBilling";
+import { areNativePurchasesEnabled, getNativeBillingStatus, purchaseNativeProduct, queryNativeBillingProduct, restoreNativePurchases, type NativeBillingProduct, type NativeBillingStatus } from "./nativeBilling";
 import { getAdMobRuntimeConfig } from "./adMobConfig";
 
 type Mode = "advertising" | "shop" | "all";
@@ -38,6 +38,11 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
   const [nativeStatus, setNativeStatus] = React.useState<NativeAdMobStatus | null>(null);
   const [billingStatus, setBillingStatus] = React.useState<NativeBillingStatus | null>(null);
   const [nativeBusy, setNativeBusy] = React.useState(false);
+  const [billingBusy, setBillingBusy] = React.useState(false);
+  const [billingMessage, setBillingMessage] = React.useState("");
+  const [billingProducts, setBillingProducts] = React.useState<Record<string, NativeBillingProduct | null>>({});
+  const [adTab, setAdTab] = React.useState<"ads" | "endgame" | "admob">("ads");
+  const [shopTab, setShopTab] = React.useState<"premium" | "packs" | "billing">("premium");
   const [entitlementRevision, setEntitlementRevision] = React.useState(0);
   const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
   const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
@@ -50,6 +55,8 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
     if (!isCapacitorNativeRuntime()) return;
     void getNativeAdMobStatus().then(setNativeStatus);
     void getNativeBillingStatus().then(setBillingStatus);
+    const productIds = [GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly, GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly, GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime];
+    void Promise.all(productIds.map(async (id) => [id, await queryNativeBillingProduct(id)] as const)).then((pairs) => setBillingProducts(Object.fromEntries(pairs)));
   }, []);
 
   const patch = (next: Partial<MonetizationPrefs>) => setPrefs(saveMonetizationPrefs(next));
@@ -70,6 +77,38 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
       await showNativePrivacyOptions();
       setNativeStatus(await getNativeAdMobStatus());
     } finally { setNativeBusy(false); }
+  };
+
+  const purchase = async (productId: string) => {
+    if (!isCapacitorNativeRuntime()) {
+      setBillingMessage("Les achats s’ouvrent depuis la version Android installée via Google Play.");
+      return;
+    }
+    setBillingBusy(true);
+    setBillingMessage("");
+    try {
+      const receipt = await purchaseNativeProduct(productId);
+      if (receipt.status === "purchased") setBillingMessage("Achat reçu. La validation serveur doit maintenant confirmer le droit avant activation.");
+      else if (receipt.status === "pending") setBillingMessage("Paiement en attente de confirmation Google Play.");
+      else if (receipt.status === "cancelled") setBillingMessage("Achat annulé.");
+      else setBillingMessage(receipt.error || "Achat indisponible pour le moment.");
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
+  const restorePurchases = async () => {
+    if (!isCapacitorNativeRuntime()) {
+      setBillingMessage("La restauration des achats est disponible dans l’application Android.");
+      return;
+    }
+    setBillingBusy(true);
+    try {
+      const receipts = await restoreNativePurchases();
+      setBillingMessage(`${receipts.length} achat(s) retrouvé(s). Les jetons doivent être vérifiés côté serveur avant activation.`);
+    } finally {
+      setBillingBusy(false);
+    }
   };
 
   const card: React.CSSProperties = {
@@ -103,6 +142,20 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
     </button>
   );
 
+  const IconTabs = ({ tabs, active, onChange }: { tabs: Array<{ id: string; label: string; icon: React.ReactNode }>; active: string; onChange: (id: any) => void }) => (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${tabs.length},minmax(0,1fr))`, gap: 7, marginBottom: 11 }}>
+      {tabs.map((tab) => {
+        const selected = tab.id === active;
+        return (
+          <button key={tab.id} type="button" onClick={() => onChange(tab.id)} style={{ minHeight: 64, borderRadius: 15, border: `1px solid ${selected ? theme.primary : theme.borderSoft}`, background: selected ? `${theme.primary}18` : "rgba(255,255,255,.025)", color: selected ? theme.primary : theme.textSoft, display: "grid", placeItems: "center", gap: 3, padding: 6, cursor: "pointer", boxShadow: selected ? `0 0 16px ${theme.primary}2f` : "none" }}>
+            <span style={{ lineHeight: 0 }}>{tab.icon}</span>
+            <span style={{ fontSize: 8.8, fontWeight: 1000, textTransform: "uppercase", letterSpacing: .45, textAlign: "center" }}>{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const showAds = mode === "advertising" || mode === "all";
   const showShop = mode === "shop" || mode === "all";
 
@@ -110,69 +163,133 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
     <div style={{ display: "grid", gap: 12, paddingBottom: 72 }}>
       {showAds ? (
         <>
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="ads" />} title="PUBLICITÉ" subtitle="Contrôle les emplacements autorisés sans surcharger les écrans de jeu." />
-            <div style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: "0 11px" }}>
-              <Toggle label="Espaces publicitaires" help="Accueil, Jeux, Stats, Historique et Réglages uniquement." value={prefs.adsEnabled} onChange={(v) => patch({ adsEnabled: v })} />
-              <Toggle label="Bannières" help="Jamais sur le keypad ou pendant une volée." value={prefs.bannersEnabled} onChange={(v) => patch({ bannersEnabled: v })} />
-              <Toggle label="Promotions MULTISPORTS" help="Affiche les packs maison si aucune bannière AdMob n’est disponible." value={prefs.houseAdsEnabled} onChange={(v) => patch({ houseAdsEnabled: v })} />
-            </div>
-          </section>
+          <IconTabs
+            active={adTab}
+            onChange={setAdTab}
+            tabs={[
+              { id: "ads", label: "Publicité", icon: <MonoIcon name="ads" size={23} /> },
+              { id: "endgame", label: "Fin de partie", icon: <MonoIcon name="play" size={23} /> },
+              { id: "admob", label: "Android AdMob", icon: <MonoIcon name="privacy" size={23} /> },
+            ]}
+          />
 
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="play" />} title="FIN DE PARTIE" subtitle="Interstitiel réservé aux comptes FREE, uniquement après les résultats." />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / PARTIE</div>
-              <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
-            </div>
-            {getAdMobRuntimeConfig().mode !== "production" ? <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
-            <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
-            <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...button(false), marginTop: 7 }}>Rafraîchir</button>
-          </section>
+          {adTab === "ads" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="ads" />} title="PUBLICITÉ" subtitle="Contrôle les emplacements autorisés sans surcharger les écrans de jeu." />
+              <div style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: "0 11px" }}>
+                <Toggle label="Espaces publicitaires" help="Accueil, Jeux, Stats, Historique et Réglages uniquement." value={prefs.adsEnabled} onChange={(v) => patch({ adsEnabled: v })} />
+                <Toggle label="Bannières" help="Jamais sur le keypad ou pendant une volée." value={prefs.bannersEnabled} onChange={(v) => patch({ bannersEnabled: v })} />
+                <Toggle label="Promotions MULTISPORTS" help="Affiche les packs maison si aucune bannière AdMob n’est disponible." value={prefs.houseAdsEnabled} onChange={(v) => patch({ houseAdsEnabled: v })} />
+              </div>
+            </section>
+          ) : null}
 
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="privacy" />} title="ANDROID / ADMOB" subtitle="État du consentement et du SDK natif. Les détails techniques restent repliés." />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ color: nativeStatus?.initialized ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 950 }}>{isCapacitorNativeRuntime() ? (nativeStatus?.initialized ? "ADMOB INITIALISÉ" : "À VÉRIFIER") : "PWA · ADMOB NATIF INACTIF"}</div>
-              {isCapacitorNativeRuntime() ? <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={button(true)}>{nativeBusy ? "…" : "VÉRIFIER"}</button> : null}
-            </div>
-            {isCapacitorNativeRuntime() && nativeStatus?.privacyOptionsRequired ? <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={{ ...button(false), width: "100%", marginTop: 8 }}>Options de confidentialité</button> : null}
-            <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
-              <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Détails techniques</summary>
-              <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || getAdMobRuntimeConfig().mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}</div>
-            </details>
-          </section>
+          {adTab === "endgame" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="play" />} title="FIN DE PARTIE" subtitle="Interstitiel réservé aux comptes FREE, uniquement après les résultats." />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / PARTIE</div>
+                <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
+              </div>
+              {getAdMobRuntimeConfig().mode !== "production" ? <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
+              <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
+              <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...button(false), marginTop: 7 }}>Rafraîchir</button>
+            </section>
+          ) : null}
+
+          {adTab === "admob" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="privacy" />} title="ANDROID / ADMOB" subtitle="État du consentement et du SDK natif. Les détails techniques restent repliés." />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ color: nativeStatus?.initialized ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 950 }}>{isCapacitorNativeRuntime() ? (nativeStatus?.initialized ? "ADMOB INITIALISÉ" : "À VÉRIFIER") : "PWA · ADMOB NATIF INACTIF"}</div>
+                {isCapacitorNativeRuntime() ? <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={button(true)}>{nativeBusy ? "…" : "VÉRIFIER"}</button> : null}
+              </div>
+              {isCapacitorNativeRuntime() && nativeStatus?.privacyOptionsRequired ? <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={{ ...button(false), width: "100%", marginTop: 8 }}>Options de confidentialité</button> : null}
+              <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
+                <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Détails techniques</summary>
+                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || getAdMobRuntimeConfig().mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}</div>
+              </details>
+            </section>
+          ) : null}
         </>
       ) : null}
 
       {showShop ? (
         <>
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="premium" />} title="PREMIUM" subtitle="Statut du compte et produits cœur de l’application." />
-            <div style={{ borderRadius: 14, border: `1px solid ${adFree.active ? theme.primary : theme.borderSoft}`, background: adFree.active ? `${theme.primary}10` : "rgba(255,255,255,.025)", padding: 11 }}>
-              <div style={{ color: adFree.active ? theme.primary : theme.text, fontWeight: 1000, fontSize: 13 }}>{premium.active ? "PREMIUM · SANS PUB" : adFree.active ? "SANS PUB · À VIE" : "COMPTE FREE"}</div>
-              <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Les droits réels sont vérifiés côté serveur / Google Play.</div>
-            </div>
-            {allowSessionEntitlementTest ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 9 }}><button type="button" onClick={() => applyVerifiedEntitlements(null)} style={button(!adFree.active)}>TEST FREE</button><button type="button" onClick={() => applyVerifiedEntitlements({ premium: true, source: "verified-server", products: ["test-premium-session"] })} style={button(adFree.active)}>TEST PREMIUM</button></div> : null}
-          </section>
+          <IconTabs
+            active={shopTab}
+            onChange={setShopTab}
+            tabs={[
+              { id: "premium", label: "Premium", icon: <MonoIcon name="premium" size={23} /> },
+              { id: "packs", label: "Packs", icon: <MonoIcon name="shop" size={23} /> },
+              { id: "billing", label: "Google Play", icon: <MonoIcon name="billing" size={23} /> },
+            ]}
+          />
 
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="shop" />} title="PACKS ADDITIONNELS" subtitle="Avatars, logos, sets, thèmes et contenus additionnels." />
-            <div style={{ display: "grid", gap: 8 }}>
-              {STORE_PACKS.map((pack) => (
-                <div key={pack.id} style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: 11 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ fontSize: 12, fontWeight: 950 }}>{pack.title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>{pack.subtitle}</div></div><span style={{ color: theme.primary, fontSize: 8.5, fontWeight: 1000, flexShrink: 0 }}>{pack.badge}</span></div>
+          {shopTab === "premium" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="premium" />} title="PREMIUM" subtitle="Choisis une offre ou conserve le compte FREE." />
+              <div style={{ borderRadius: 14, border: `1px solid ${adFree.active ? theme.primary : theme.borderSoft}`, background: adFree.active ? `${theme.primary}10` : "rgba(255,255,255,.025)", padding: 11 }}>
+                <div style={{ color: adFree.active ? theme.primary : theme.text, fontWeight: 1000, fontSize: 13 }}>{premium.active ? "PREMIUM · SANS PUB" : adFree.active ? "SANS PUB · À VIE" : "COMPTE FREE"}</div>
+                <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Les droits réels sont vérifiés côté serveur / Google Play.</div>
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                {[
+                  { id: GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly, title: "PREMIUM MENSUEL", desc: "Premium complet, renouvelé chaque mois." },
+                  { id: GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly, title: "PREMIUM ANNUEL", desc: "Premium complet avec formule annuelle." },
+                  { id: GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime, title: "SANS PUB À VIE", desc: "Supprime les publicités sans abonnement Premium." },
+                ].map((offer) => (
+                  <div key={offer.id} style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: 11, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
+                    <div><div style={{ color: theme.primary, fontSize: 11.5, fontWeight: 1000 }}>{offer.title}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>{offer.desc}</div><div style={{ marginTop: 4, color: theme.text, fontSize: 10.5, fontWeight: 900 }}>{billingProducts[offer.id]?.formattedPrice || (isCapacitorNativeRuntime() ? "Prix Google Play" : "Voir sur Android")}</div></div>
+                    <button type="button" disabled={billingBusy} onClick={() => void purchase(offer.id)} style={button(true)}>{billingBusy ? "…" : "CHOISIR"}</button>
+                  </div>
+                ))}
+              </div>
+              {!areNativePurchasesEnabled() && isCapacitorNativeRuntime() ? <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Les boutons sont prêts, mais les achats restent verrouillés jusqu’à l’activation de la vérification serveur Google Play.</div> : null}
+              {billingMessage ? <div style={{ marginTop: 9, borderRadius: 12, border: `1px solid ${theme.primary}33`, background: `${theme.primary}0d`, color: theme.textSoft, padding: 9, fontSize: 9.5, lineHeight: 1.4 }}>{billingMessage}</div> : null}
+              {allowSessionEntitlementTest ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 9 }}><button type="button" onClick={() => applyVerifiedEntitlements(null)} style={button(!adFree.active)}>TEST FREE</button><button type="button" onClick={() => applyVerifiedEntitlements({ premium: true, source: "verified-server", products: ["test-premium-session"] })} style={button(adFree.active)}>TEST PREMIUM</button></div> : null}
+            </section>
+          ) : null}
+
+          {shopTab === "packs" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="shop" />} title="PACKS ADDITIONNELS" subtitle="Avatars, logos, sets, thèmes, bots IA et bundles de personnalisation." />
+              <div style={{ display: "grid", gap: 8 }}>
+                {STORE_PACKS.map((pack) => (
+                  <div key={pack.id} style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: 11 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ fontSize: 12, fontWeight: 950 }}>{pack.title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>{pack.subtitle}</div></div><span style={{ color: theme.primary, fontSize: 8.5, fontWeight: 1000, flexShrink: 0 }}>{pack.badge}</span></div>
+                    <div style={{ marginTop: 7, display: "flex", flexWrap: "wrap", gap: 5 }}>{pack.contents.map((item) => <span key={item} style={{ borderRadius: 999, border: `1px solid ${theme.primary}33`, background: `${theme.primary}0c`, color: theme.textSoft, padding: "4px 7px", fontSize: 8.5, fontWeight: 850 }}>{item}</span>)}</div>
+                    <button type="button" disabled={billingBusy} onClick={() => void purchase(pack.googlePlayProductId)} style={{ ...button(true), width: "100%", marginTop: 8 }}>{billingBusy ? "…" : isCapacitorNativeRuntime() ? "VOIR / ACHETER SUR GOOGLE PLAY" : "DISPONIBLE SUR ANDROID"}</button>
+                  </div>
+                ))}
+              </div>
+              {billingMessage ? <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>{billingMessage}</div> : null}
+            </section>
+          ) : null}
+
+          {shopTab === "billing" ? (
+            <section style={card}>
+              <SectionHead icon={<MonoIcon name="billing" />} title="GOOGLE PLAY" subtitle="Connexion Billing, produits Android, achats et restauration." />
+              <div style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: 11 }}>
+                <div style={{ color: billingStatus?.connected ? theme.primary : theme.textSoft, fontSize: 11, fontWeight: 950 }}>{isCapacitorNativeRuntime() ? (billingStatus?.connected ? "BILLING CONNECTÉ" : "BILLING À VÉRIFIER") : "PWA · BILLING DISPONIBLE SUR ANDROID"}</div>
+                <div style={{ marginTop: 6, display: "grid", gap: 4, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>
+                  <div>Premium mensuel · {GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly}</div>
+                  <div>Premium annuel · {GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly}</div>
+                  <div>Sans pub à vie · {GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime}</div>
+                  <div>Achats activés : {areNativePurchasesEnabled() ? "oui" : "non — vérification serveur requise"}</div>
                 </div>
-              ))}
-            </div>
-          </section>
-
-          <section style={card}>
-            <SectionHead icon={<MonoIcon name="billing" />} title="GOOGLE PLAY" subtitle="Paiements Android et état du bridge Billing." />
-            <div style={{ display: "grid", gap: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}><div>Premium mensuel · {GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly}</div><div>Premium annuel · {GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly}</div><div>Sans pub à vie · {GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime}</div></div>
-            <div style={{ marginTop: 9, color: billingStatus?.connected ? theme.primary : theme.textSoft, fontSize: 10.5, fontWeight: 950 }}>{isCapacitorNativeRuntime() ? (billingStatus?.connected ? "BILLING CONNECTÉ" : "BILLING À VÉRIFIER") : "PWA · BILLING DISPONIBLE SUR ANDROID"}</div>
-            {isCapacitorNativeRuntime() ? <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={{ ...button(true), width: "100%", marginTop: 8 }}>{nativeBusy ? "…" : "VÉRIFIER GOOGLE PLAY"}</button> : null}
-          </section>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 9 }}>
+                <button type="button" disabled={nativeBusy || billingBusy || !isCapacitorNativeRuntime()} onClick={() => void refreshNativeStatus()} style={button(true)}>{nativeBusy ? "…" : "VÉRIFIER"}</button>
+                <button type="button" disabled={billingBusy || !isCapacitorNativeRuntime()} onClick={() => void restorePurchases()} style={button(false)}>{billingBusy ? "…" : "RESTAURER ACHATS"}</button>
+              </div>
+              {billingMessage ? <div style={{ marginTop: 9, borderRadius: 12, border: `1px solid ${theme.primary}33`, background: `${theme.primary}0d`, color: theme.textSoft, padding: 9, fontSize: 9.5, lineHeight: 1.4 }}>{billingMessage}</div> : null}
+              <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
+                <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Pourquoi cet onglet ?</summary>
+                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Il sert à vérifier que l’application Android dialogue bien avec Google Play Billing, restaurer les achats d’un utilisateur et diagnostiquer les produits configurés. Aucun droit Premium n’est accordé uniquement depuis le téléphone : le reçu doit être validé côté serveur.</div>
+              </details>
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

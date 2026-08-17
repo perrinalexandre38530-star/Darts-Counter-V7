@@ -16,9 +16,11 @@ type Props = {
   onFinish: () => void;
   durationMs?: number; // durée totale du splash
   fadeOutMs?: number;  // fade-out visuel avant la fin
+  /** Aperçu embarqué dans Réglages : même cinématique visuelle, en boucle, sans quitter la page. */
+  previewLoop?: boolean;
 };
 
-export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 700 }: Props) {
+export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 700, previewLoop = false }: Props) {
   const aliveRef = React.useRef(true);
   const onFinishRef = React.useRef(onFinish);
 
@@ -33,21 +35,22 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
   React.useEffect(() => {
     aliveRef.current = true;
 
-    // 🔊 Le splash n’est monté que si l’INTRO est activée.
-    // On garde tout de même ce garde-fou audio pour les montages directs/tests.
-    const introEnabled = getStartupIntroEnabled();
-    const a = document.getElementById("dc-splash-audio") as HTMLAudioElement | null;
-    if (!introEnabled) {
-      stopStartupIntroAudio();
-    } else if (a) {
-      try {
-        // si déjà en cours, on laisse; sinon on lance
-        if (a.paused) {
-          a.currentTime = 0;
-          const p = a.play();
-          if (p && typeof (p as any).catch === "function") (p as any).catch(() => {});
-        }
-      } catch {}
+    // 🔊 En aperçu Réglages on rejoue uniquement la cinématique visuelle en boucle :
+    // on ne déclenche pas le jingle en permanence dans la page de configuration.
+    if (!previewLoop) {
+      const introEnabled = getStartupIntroEnabled();
+      const a = document.getElementById("dc-splash-audio") as HTMLAudioElement | null;
+      if (!introEnabled) {
+        stopStartupIntroAudio();
+      } else if (a) {
+        try {
+          if (a.paused) {
+            a.currentTime = 0;
+            const p = a.play();
+            if (p && typeof (p as any).catch === "function") (p as any).catch(() => {});
+          }
+        } catch {}
+      }
     }
 
     // 🎞️ Glitch visuel régulier + refresh particules
@@ -69,6 +72,12 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
     };
     loopGlitch();
 
+    if (previewLoop) {
+      return () => {
+        aliveRef.current = false;
+      };
+    }
+
     const total = Math.max(1200, Number(durationMs) || 0);
     const fade = Math.max(0, Math.min(1800, Number(fadeOutMs) || 0));
     const startFadeAt = Math.max(0, total - fade);
@@ -89,7 +98,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
       window.clearTimeout(tDone);
       // ✅ ON NE TOUCHE PAS à l'audio ici (il doit continuer sur Home/Connexion)
     };
-  }, [durationMs, fadeOutMs]);
+  }, [durationMs, fadeOutMs, previewLoop]);
 
   // ✨ Particules “pixels”
   const pixels = React.useMemo(() => {
@@ -108,7 +117,8 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
   return (
     <div
       style={{
-        minHeight: "100dvh",
+        minHeight: previewLoop ? "100%" : "100dvh",
+        height: previewLoop ? "100%" : undefined,
         display: "grid",
         placeItems: "center",
         background:
@@ -177,8 +187,8 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
       <div
         style={{
           position: "relative",
-          width: 260,
-          height: 260,
+          width: previewLoop ? 148 : 260,
+          height: previewLoop ? 148 : 260,
           transform: glitchOn ? "translateX(-2px) skewX(-2deg)" : "translateX(0) skewX(0)",
           transition: "transform 120ms ease-out",
         }}
@@ -241,7 +251,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
         />
       </div>
 
-      <div
+      {!previewLoop ? <div
         style={{
           position: "absolute",
           bottom: 28,
@@ -256,7 +266,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
         }}
       >
         Chargement…
-      </div>
+      </div> : null}
 
       <style>
         {`

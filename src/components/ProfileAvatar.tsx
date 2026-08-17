@@ -27,9 +27,10 @@ import { loadStore, getCachedLocalProfilesForSafety } from "../lib/storage";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../lib/bots";
 import { getAvatarCacheFast } from "../lib/avatarCache";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
-import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback, dartSetThumbMediaKey } from "../lib/userMediaFallback";
-import ResilientUserImage from "./ResilientUserImage";
+import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback } from "../lib/userMediaFallback";
+import DartSetImage from "./DartSetImage";
 import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
 
 type ProfileLike = {
@@ -135,64 +136,147 @@ function normalizeSrc(raw: any): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// PERF GLOBAL AVATARS
+// - évite de relire/parcourir les stores pour chaque médaillon d'une même page ;
+// - décale les copies de sécurité (canvas/IDB/R2) hors du chemin critique du paint.
+// ---------------------------------------------------------------------------
+const resolvedProfileMemory = new Map<string, { at: number; value: ProfileLike | null }>();
+const resolvedProfilePending = new Map<string, Promise<ProfileLike | null>>();
+const avatarMirrorScheduled = new Set<string>();
+const PROFILE_RESOLVE_CACHE_MS = 15_000;
+
+function clearProfileAvatarResolverCache() {
+  resolvedProfileMemory.clear();
+  resolvedProfilePending.clear();
+}
+
+try {
+  if (typeof window !== "undefined") {
+    window.addEventListener("dc-store-updated", clearProfileAvatarResolverCache as EventListener);
+    window.addEventListener("dc:bots-changed", clearProfileAvatarResolverCache as EventListener);
+  }
+} catch {}
+
+function scheduleAvatarSafetyMirror(
+  profileId: string,
+  source: string,
+  meta: { avatarUpdatedAt?: number | null; avatarAssetId?: string | null } = {},
+) {
+  const pid = String(profileId || "").trim();
+  const src = String(source || "").trim();
+  if (!pid || !src) return;
+
+  const revision = Number(meta.avatarUpdatedAt || 0) || 0;
+  const key = `${pid}:${revision}:${src.length}:${src.slice(0, 24)}:${src.slice(-24)}`;
+  if (avatarMirrorScheduled.has(key)) return;
+  avatarMirrorScheduled.add(key);
+
+  scheduleRuntimeIdle(() => {
+    try {
+      queueAvatarFallbackMirror(pid, src, meta);
+      void captureUserMediaFallback(profileAvatarMediaKey(pid), src, {
+        kind: "profile_avatar",
+        updatedAt: revision || undefined,
+        sourceUrl: src,
+      }).catch(() => undefined);
+    } finally {
+      // Le Set reste borné naturellement par les avatars/révisions vus dans la session.
+      // On le purge si une longue session accumule trop de remplacements.
+      if (avatarMirrorScheduled.size > 300) avatarMirrorScheduled.clear();
+    }
+  }, { timeoutMs: 8_000, fallbackDelayMs: 1_500 });
+}
+
 /* ============================================================
    ✅ GLOBAL PROFILE RESOLVER
 ============================================================ */
 async function getProfileByIdFromStore(
   profileId: string
 ): Promise<ProfileLike | null> {
-  try {
-    // ✅ Les configs passent souvent les bots comme objets "lite".
-    // Comme les bots ne sont pas dans store.profiles, on les résout ici depuis le store BOT central.
-    const bot = loadStoredBots().find((x: any) => String(x?.id || "") === String(profileId));
-    if (bot) {
-      const src = resolveBotAvatarSrc(bot);
-      return {
-        id: String(bot.id),
-        name: bot?.name,
-        avatarUrl: src && !String(src).startsWith("data:image/") ? src : null,
-        avatarDataUrl: src && String(src).startsWith("data:image/") ? src : null,
-        avatarPath: null,
-        avatar: src,
-        photoDataUrl: null,
-        photoUrl: null,
-        avatarUpdatedAt: (bot as any)?.avatarUpdatedAt ?? (bot as any)?.updatedAt ?? null,
-        stats: null,
-      };
-    }
+  const id = String(profileId || "").trim();
+  if (!id) return null;
 
-    // Premier choix : mini-cache profils synchronisé par storage.ts. Il évite de
-    // décompresser tout le store (historique + médias) pour afficher un avatar.
-    let pr: any = null;
+  const cachedMem = resolvedProfileMemory.get(id);
+  if (cachedMem && Date.now() - cachedMem.at < PROFILE_RESOLVE_CACHE_MS) return cachedMem.value;
+
+  const pending = resolvedProfilePending.get(id);
+  if (pending) return pending;
+
+  const task = (async (): Promise<ProfileLike | null> => {
     try {
-      const cached = getCachedLocalProfilesForSafety();
-      pr = (cached?.profiles || []).find((x: any) => String(x?.id || "") === String(profileId)) || null;
-    } catch {}
+      // 1) PRIORITÉ aux profils locaux déjà en mémoire. Avant, chaque avatar humain
+      // commençait par relire le store des bots, donc 9 cartes = 9 parsings inutiles.
+      let pr: any = null;
+      try {
+        const cached = getCachedLocalProfilesForSafety();
+        pr = (cached?.profiles || []).find((x: any) => String(x?.id || "") === id) || null;
+      } catch {}
 
-    // Secours legacy uniquement si le mini-cache n'existe pas encore.
-    if (!pr) {
+      if (pr) {
+        return {
+          id: String(pr.id),
+          name: pr?.name,
+          avatarUrl: pr?.avatarUrl ?? null,
+          avatarDataUrl: pr?.avatarDataUrl ?? null,
+          avatarPath: pr?.avatarPath ?? null,
+          avatar: pr?.avatar ?? null,
+          photoDataUrl: pr?.photoDataUrl ?? null,
+          photoUrl: pr?.photoUrl ?? null,
+          avatarUpdatedAt: pr?.avatarUpdatedAt ?? null,
+          stats: pr?.stats ?? null,
+        };
+      }
+
+      // 2) Bots uniquement si l'id n'est pas un profil local.
+      const bot = loadStoredBots().find((x: any) => String(x?.id || "") === id);
+      if (bot) {
+        const src = resolveBotAvatarSrc(bot);
+        return {
+          id: String(bot.id),
+          name: bot?.name,
+          avatarUrl: src && !String(src).startsWith("data:image/") ? src : null,
+          avatarDataUrl: src && String(src).startsWith("data:image/") ? src : null,
+          avatarPath: null,
+          avatar: src,
+          photoDataUrl: null,
+          photoUrl: null,
+          avatarUpdatedAt: (bot as any)?.avatarUpdatedAt ?? (bot as any)?.updatedAt ?? null,
+          stats: null,
+        };
+      }
+
+      // 3) Secours legacy : un seul loadStore par profil et résultat mis en cache.
       const store = await loadStore<any>();
       if (!store) return null;
       const arr: any[] = Array.isArray(store.profiles) ? store.profiles : [];
-      pr = arr.find((x) => String(x?.id || "") === String(profileId)) || null;
-    }
-    if (!pr) return null;
+      pr = arr.find((x) => String(x?.id || "") === id) || null;
+      if (!pr) return null;
 
-    return {
-      id: String(pr.id),
-      name: pr?.name,
-      avatarUrl: pr?.avatarUrl ?? null,
-      avatarDataUrl: pr?.avatarDataUrl ?? null,
-      avatarPath: pr?.avatarPath ?? null,
-      avatar: pr?.avatar ?? null,
-      photoDataUrl: pr?.photoDataUrl ?? null,
-      photoUrl: pr?.photoUrl ?? null,
-      avatarUpdatedAt: pr?.avatarUpdatedAt ?? null,
-      stats: pr?.stats ?? null,
-    };
-  } catch {
-    return null;
-  }
+      return {
+        id: String(pr.id),
+        name: pr?.name,
+        avatarUrl: pr?.avatarUrl ?? null,
+        avatarDataUrl: pr?.avatarDataUrl ?? null,
+        avatarPath: pr?.avatarPath ?? null,
+        avatar: pr?.avatar ?? null,
+        photoDataUrl: pr?.photoDataUrl ?? null,
+        photoUrl: pr?.photoUrl ?? null,
+        avatarUpdatedAt: pr?.avatarUpdatedAt ?? null,
+        stats: pr?.stats ?? null,
+      };
+    } catch {
+      return null;
+    }
+  })()
+    .then((value) => {
+      resolvedProfileMemory.set(id, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => resolvedProfilePending.delete(id));
+
+  resolvedProfilePending.set(id, task);
+  return task;
 }
 
 function isLiteProfile(p: ProfileLike | null): boolean {
@@ -305,19 +389,43 @@ export default function ProfileAvatar(props: Props) {
     normalizeImport((p as any)?.photoUrl) ||
     "";
 
+  // Les listes de profils affichent des médaillons de quelques dizaines de px :
+  // décoder à chaque carte une photo base64 pleine résolution provoquait de gros pics
+  // mémoire/CPU. Si la miniature locale correspond à la révision actuelle, elle gagne.
+  const effectiveProfileId = String(props.profileId || p?.id || "").trim();
+  const fastAvatarCache = React.useMemo(
+    () => (effectiveProfileId ? (getAvatarCacheFast(effectiveProfileId) as any) : null),
+    [effectiveProfileId, (p as any)?.avatarUpdatedAt],
+  );
+  const cachedThumb = React.useMemo(
+    () =>
+      normalizeImport(fastAvatarCache?.avatarThumbDataUrl) ||
+      normalizeImport(fastAvatarCache?.avatarDataUrl) ||
+      "",
+    [fastAvatarCache],
+  );
+  const profileRevision = Number((p as any)?.avatarUpdatedAt || 0) || 0;
+  const cachedRevision = Number(fastAvatarCache?.avatarUpdatedAt || fastAvatarCache?.updatedAt || 0) || 0;
+  const cachedThumbFresh = !!cachedThumb && (!profileRevision || !cachedRevision || cachedRevision >= profileRevision);
+  const propLooksRemote = /^(https?:\/\/|\/media\/|\/assets\/|\/images\/|\.\.?\/)/i.test(propDataUrl);
+
   const rawImg = React.useMemo(() => {
+    // Une URL explicite distante/packagée doit rester prioritaire (bots, assets, amis liés).
+    if (propDataUrl && propLooksRemote) return propDataUrl;
+    // Sur les petits médaillons, utiliser la miniature fraîche évite de décoder plusieurs
+    // mégaoctets de base64 en parallèle quand on ouvre "Profils locaux" / "Mon profil".
+    if (size <= 180 && cachedThumbFresh) return cachedThumb;
     if (propDataUrl) return propDataUrl;
-    if (avatarDataUrl) return avatarDataUrl; // ✅ la photo locale fraîche gagne
+    if (avatarDataUrl) return avatarDataUrl;
     if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
     if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
     if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     return null;
-  }, [propDataUrl, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
+  }, [propDataUrl, propLooksRemote, size, cachedThumbFresh, cachedThumb, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   // -------------------------------------------------------------------------
   // FAILOVER AVATAR : NAS -> cache local -> Cloudflare R2
   // -------------------------------------------------------------------------
-  const effectiveProfileId = String(props.profileId || p?.id || "").trim();
   const explicitFallback = normalizeImport(props.fallbackDataUrl) || "";
   const readCachedFallback = React.useCallback(() => {
     if (!effectiveProfileId) return explicitFallback;
@@ -358,19 +466,18 @@ export default function ProfileAvatar(props: Props) {
 
   const fallbackImg = React.useMemo(() => normalizeSrc(fallbackRaw), [fallbackRaw]);
 
-  // Précharge TOUJOURS le filet de sécurité en parallèle de la source primaire.
-  // Ainsi, une panne NAS ne provoque plus une attente supplémentaire avant de
-  // basculer vers Local -> fichier/SD/USB -> R2.
+  // Ne lance PAS la restauration lourde (IDB -> fichier externe -> R2) pour chaque
+  // avatar qui s'affiche correctement. Elle n'est nécessaire que si la source primaire
+  // manque ou vient réellement d'échouer. C'est un gain majeur sur les pages photo.
   React.useEffect(() => {
     let cancelled = false;
     if (!effectiveProfileId) return () => { cancelled = true; };
     if (fallbackImg && !fallbackBroken) return () => { cancelled = true; };
+    if (primaryImg && !primaryBroken) return () => { cancelled = true; };
 
     const mediaKey = profileAvatarMediaKey(effectiveProfileId);
     void (async () => {
-      // 1) coffre média IndexedDB / cache HTTP navigateur / R2 générique
       let src = await resolveUserMediaFallback(mediaKey, primaryImg || rawImg || "", { kind: "profile_avatar" }).catch(() => "");
-      // 2) compat avec l'ancien coffre avatar dédié + anciens snapshots
       if (!src) src = await resolveAvatarFallback(effectiveProfileId).catch(() => "");
       if (!cancelled && src) {
         setFallbackBroken(false);
@@ -379,7 +486,7 @@ export default function ProfileAvatar(props: Props) {
     })();
 
     return () => { cancelled = true; };
-  }, [effectiveProfileId, fallbackImg, fallbackBroken, primaryImg, rawImg]);
+  }, [effectiveProfileId, fallbackImg, fallbackBroken, primaryImg, primaryBroken, rawImg]);
 
   const useFallback = (!primaryImg || primaryBroken) && !!fallbackImg && !fallbackBroken;
   const img = useFallback ? fallbackImg : (primaryImg && !primaryBroken ? primaryImg : null);
@@ -471,19 +578,16 @@ export default function ProfileAvatar(props: Props) {
             key={img as string}
             src={img as string}
             alt={name ?? "avatar"}
+            loading={size <= 96 ? "lazy" : "eager"}
+            decoding="async"
             onLoad={() => {
-              // Si le NAS/URL primaire fonctionne aujourd'hui, on fabrique en
-              // arrière-plan la copie de secours qui servira lors de la prochaine panne.
+              // La copie de sécurité existe toujours, mais canvas/IDB/R2 attendent un
+              // vrai temps mort : le paint de la page reste prioritaire.
               if (!useFallback && effectiveProfileId && primaryImg) {
-                queueAvatarFallbackMirror(effectiveProfileId, primaryImg, {
+                scheduleAvatarSafetyMirror(effectiveProfileId, primaryImg, {
                   avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
                   avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,
                 });
-                void captureUserMediaFallback(profileAvatarMediaKey(effectiveProfileId), primaryImg, {
-                  kind: "profile_avatar",
-                  updatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
-                  sourceUrl: primaryImg,
-                }).catch(() => undefined);
               }
             }}
             onError={() => {
@@ -534,27 +638,7 @@ export default function ProfileAvatar(props: Props) {
 
       {showStars && <ProfileStarRing avg3d={avg3D ?? 0} anchorSize={size} />}
 
-      {showDartOverlay && dartSet?.thumbImageUrl && (
-        <ResilientUserImage
-          mediaKey={dartSetThumbMediaKey((dartSet as any)?.id || `${effectiveProfileId}:favorite`)}
-          kind="dartset_thumb"
-          primarySrc={dartSet.thumbImageUrl}
-          alt="dart set"
-          style={{
-            position: "absolute",
-            width: dartOverlaySize,
-            height: dartOverlaySize,
-            bottom: -dartOverlayOutsideOffset,
-            right: -dartOverlayOutsideOffset,
-            opacity: 0.96,
-            pointerEvents: "none",
-            transform: "rotate(18deg)",
-            filter: "drop-shadow(0 0 10px rgba(0,0,0,.95))",
-          }}
-        />
-      )}
-
-      {showDartOverlay && !dartSet?.thumbImageUrl && dartSet && (
+      {showDartOverlay && dartSet && (
         <div
           style={{
             position: "absolute",
@@ -563,19 +647,30 @@ export default function ProfileAvatar(props: Props) {
             bottom: -dartOverlayOutsideOffset,
             right: -dartOverlayOutsideOffset,
             borderRadius: "50%",
+            overflow: "hidden",
             background: (dartSet as any)?.bgColor || "#050509",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: dartOverlaySize * 0.55,
-            transform: "rotate(20deg)",
+            display: "grid",
+            placeItems: "center",
+            fontSize: dartOverlaySize * 0.5,
+            transform: "rotate(18deg)",
             color: "rgba(255,255,255,.96)",
             pointerEvents: "none",
             boxShadow: "0 0 14px rgba(0,0,0,.95)",
             border: "1px solid rgba(245,195,91,.9)",
           }}
         >
-          🎯
+          <DartSetImage
+            set={dartSet}
+            preferThumb
+            alt="dart set"
+            loading="lazy"
+            fallback={<span aria-hidden="true">🎯</span>}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: (dartSet as any)?.kind === "photo" ? "cover" : "contain",
+            }}
+          />
         </div>
       )}
     </div>

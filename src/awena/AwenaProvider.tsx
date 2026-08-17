@@ -166,8 +166,14 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     }
     const reply = recordsReply ?? buildAwenaReply(clean, contextForReply);
 
-    if (reply.modeId) {
-      setRuntimeState((prev) => ({ ...prev, mode: reply.modeId || prev.mode }));
+    if (reply.modeId || reply.knowledgeTopic) {
+      setRuntimeState((prev) => ({
+        ...prev,
+        mode: reply.modeId || prev.mode,
+        extra: reply.knowledgeTopic
+          ? { ...(prev.extra || {}), awenaKnowledgeTopic: reply.knowledgeTopic }
+          : prev.extra,
+      }));
     }
 
     const awenaMessage = message("awena", reply.text, reply.actions);

@@ -12,6 +12,8 @@ import { History } from "./history";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { hydrateLinkedHistoryRow, linkedHistoryRowQuality } from "./linkedProfileHistory";
+import { createCooperativeYielder } from "./mainThreadYield";
+import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
 import type { Profile } from "./types";
 
 export type LinkedProfileSnapshot = {
@@ -767,9 +769,12 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
   try {
     const rows = Array.isArray(projection?.history) ? projection.history.filter(isIncomingLinkedHistoryRow) : [];
     let written = 0;
+    const yieldIfNeeded = createCooperativeYielder(8);
+    await yieldIfNeeded(true);
     const dartSetsWritten = await materializeLinkedDartSetsForProjection(projection);
     if (!rows.length) return dartSetsWritten;
     for (const row of rows) {
+      await yieldIfNeeded();
       const id = s(row?.id || row?.matchId || row?.resumeId);
       if (!id) continue;
       const signature = JSON.stringify({
@@ -792,6 +797,7 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
         __linkedRemote: true,
       } as any).catch(() => undefined);
       written += 1;
+      await yieldIfNeeded();
     }
     if (written > 0 && typeof window !== "undefined") {
       try { window.dispatchEvent(new Event("dc-history-updated")); } catch {}
@@ -802,6 +808,29 @@ export async function materializeLinkedProfileProjection(projection: LinkedProfi
   } catch {
     return 0;
   }
+}
+
+function scheduleLinkedProjectionSideEffects(projected: LinkedProfileProjection, attempt = 0): void {
+  scheduleRuntimeIdle(() => {
+    // Si le joueur a lancé une partie entre-temps, on conserve le travail mais on le
+    // repousse : cache distant/hydratation ne doivent jamais concurrencer le gameplay.
+    if (isGameplayRuntime() && attempt < 6) {
+      scheduleLinkedProjectionSideEffects(projected, attempt + 1);
+      return;
+    }
+
+    try {
+      localStorage.setItem("dc_linked_profile_projection_v1", JSON.stringify({ at: Date.now(), projection: projected }));
+    } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent("dc-linked-profile-projection-updated", { detail: projected }));
+    } catch {}
+
+    // La matérialisation complète (hash JSON + History.upsert) reste disponible mais
+    // quitte le chemin critique de la navigation. La fonction elle-même yield entre
+    // les lignes pour éviter les longues tâches continues.
+    void materializeLinkedProfileProjection(projected);
+  }, { timeoutMs: 8_000, fallbackDelayMs: 900 });
 }
 
 export async function loadLinkedProfileProjection(localProfiles: any[] = []): Promise<LinkedProfileProjection> {
@@ -839,14 +868,9 @@ export async function loadLinkedProfileProjection(localProfiles: any[] = []): Pr
     cacheKey = nextKey;
     cacheAt = now;
     cacheValue = projected;
-    try {
-      localStorage.setItem("dc_linked_profile_projection_v1", JSON.stringify({ at: Date.now(), projection: projected }));
-      window.dispatchEvent(new CustomEvent("dc-linked-profile-projection-updated", { detail: projected }));
-    } catch {}
-    // Matérialise les parties distantes entrantes dans History/IndexedDB avec les ids du compte local.
-    // C'est la partie manquante de la fusion : les pages détaillées (X01 multi, historique, comparateurs)
-    // lisent History, pas seulement la projection mémoire/Home.
-    void materializeLinkedProfileProjection(projected);
+    // Le résultat est renvoyé immédiatement. Sérialisation localStorage + événements +
+    // matérialisation History sont des effets de fond et ne bloquent plus le paint.
+    scheduleLinkedProjectionSideEffects(projected);
     return projected;
   } catch (error) {
     return { profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] };

@@ -40,6 +40,7 @@ import { THEMES, type ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
+import DartSetImage from "../components/DartSetImage";
 import TopTicker from "../components/TopTicker";
 import tickerDartsets from "../assets/tickers/ticker_dartsets.png";
 import tickerProfilesLocaux from "../assets/tickers/ticker_profiles_locaux.webp";
@@ -55,7 +56,6 @@ import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagM
 import { loadLinkedProfileProjection, mergeLinkedProfiles, invalidateLinkedProfileProjectionCache } from "../lib/linkedProfileSync";
 import {
   getFavoriteDartSetForProfile,
-  resolveDartSetBestImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 import {
@@ -89,6 +89,8 @@ import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncA
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
 import { useBackgroundRestoreState } from "../lib/backgroundRestore";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { createCooperativeYielder } from "../lib/mainThreadYield";
 
 /**
  * Totalise les utilisations enregistrées dans tous les modes de jeu.
@@ -628,6 +630,99 @@ async function getBabyFootProfileMiniStats(playerId: string): Promise<ProfileMin
   }
 }
 
+// ---------------------------------------------------------------------------
+// PERF PROFILS : une seule hydratation X01 complète partagée par toutes les cartes.
+// Avant : 9 profils pouvaient chacun déclencher jusqu'à 600 History.get() en parallèle.
+// ---------------------------------------------------------------------------
+let profilesX01RowsCache: any[] | null = null;
+let profilesX01RowsCacheAt = 0;
+let profilesX01RowsPending: Promise<any[]> | null = null;
+const PROFILES_X01_ROWS_CACHE_MS = 8_000;
+
+function invalidateProfilesHeavyStatsCache(): void {
+  profilesX01RowsCache = null;
+  profilesX01RowsCacheAt = 0;
+}
+
+try {
+  if (typeof window !== "undefined") {
+    window.addEventListener("dc-history-updated", invalidateProfilesHeavyStatsCache as EventListener);
+    window.addEventListener("dc-stats-index-updated", invalidateProfilesHeavyStatsCache as EventListener);
+  }
+} catch {}
+
+type ProfileDeepStatsJob = {
+  key: string;
+  run: () => Promise<ProfileMiniStats>;
+  resolve: (value: ProfileMiniStats) => void;
+  reject: (reason?: any) => void;
+};
+const profileDeepStatsQueue: ProfileDeepStatsJob[] = [];
+const profileDeepStatsPending = new Map<string, Promise<ProfileMiniStats>>();
+let profileDeepStatsRunning = false;
+
+function pumpProfileDeepStatsQueue(): void {
+  if (profileDeepStatsRunning) return;
+  const job = profileDeepStatsQueue.shift();
+  if (!job) return;
+  profileDeepStatsRunning = true;
+  scheduleRuntimeIdle(() => {
+    void job.run()
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        profileDeepStatsPending.delete(job.key);
+        profileDeepStatsRunning = false;
+        pumpProfileDeepStatsQueue();
+      });
+  }, { timeoutMs: 5_000, fallbackDelayMs: 500 });
+}
+
+function queueProfileDeepStats(key: string, run: () => Promise<ProfileMiniStats>): Promise<ProfileMiniStats> {
+  const existing = profileDeepStatsPending.get(key);
+  if (existing) return existing;
+  const promise = new Promise<ProfileMiniStats>((resolve, reject) => {
+    profileDeepStatsQueue.push({ key, run, resolve, reject });
+    pumpProfileDeepStatsQueue();
+  });
+  profileDeepStatsPending.set(key, promise);
+  return promise;
+}
+
+async function loadProfilesX01FullRows(): Promise<any[]> {
+  const now = Date.now();
+  if (profilesX01RowsCache && now - profilesX01RowsCacheAt < PROFILES_X01_ROWS_CACHE_MS) return profilesX01RowsCache;
+  if (profilesX01RowsPending) return profilesX01RowsPending;
+
+  profilesX01RowsPending = (async () => {
+    const lightRows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
+    const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
+      .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
+      .filter(Boolean))) as string[];
+    const limited = ids.slice(0, 600);
+    const rows: any[] = [];
+    const yieldIfNeeded = createCooperativeYielder(8);
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(4, Math.max(1, limited.length)) }, async () => {
+      while (cursor < limited.length) {
+        const index = cursor++;
+        const id = limited[index];
+        const full = await (History as any).get(id).catch(() => null);
+        if (full) rows[index] = full;
+        await yieldIfNeeded();
+      }
+    });
+    await Promise.all(workers);
+    const compact = rows.filter(Boolean);
+    profilesX01RowsCache = compact;
+    profilesX01RowsCacheAt = Date.now();
+    return compact;
+  })().finally(() => {
+    profilesX01RowsPending = null;
+  });
+
+  return profilesX01RowsPending;
+}
+
 async function getStatsHubAlignedProfileMiniStats(
   playerId: string,
   playerName?: string | null,
@@ -665,15 +760,9 @@ async function getStatsHubAlignedProfileMiniStats(
     // Même surcouche X01 multi que StatsHub : elle récupère les vraies sessions, moyennes,
     // best visit et best CO depuis les payloads complets quand l'index normalisé est trop léger.
     try {
-      const lightRows = ((await (History as any).listFinished?.()) ?? (await (History as any).list?.()) ?? []) as any[];
-      // Ne pas filtrer sur les lignes légères : selon les versions, `kind/game/mode`
-      // peut être absent du résumé, alors que le payload complet est bien une partie X01.
-      // On hydrate d'abord, puis computeX01MultiAgg filtre lui-même les vrais matchs X01.
-      const ids = Array.from(new Set((Array.isArray(lightRows) ? lightRows : [])
-        .map((r: any) => String(r?.matchId ?? r?.id ?? "").trim())
-        .filter(Boolean)));
-      const fullRows = await Promise.all(ids.slice(0, 600).map((id) => (History as any).get(id).catch(() => null)));
-      const rows = fullRows.filter(Boolean) as any[];
+      // Toutes les cartes profil partagent la même hydratation. Le loader borne la
+      // concurrence à 4 et rend régulièrement la main au navigateur.
+      const rows = await loadProfilesX01FullRows();
       if (rows.length) {
         let agg: any = computeX01MultiAgg(rows as any, playerId, pname);
         if ((agg?.sessions ?? 0) === 0 && pname) {
@@ -755,26 +844,33 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
     }
 
     let cancelled = false;
+    let cancelDeepStats: (() => void) | null = null;
 
-    const refresh = async () => {
+    const refresh = () => {
       const cacheKey = profileMiniStatsCacheKey(key, sportKey);
       const syncStats = readProfileMiniStatsSync(key, sportKey);
       if (!cancelled) setStats(syncStats);
 
-      try {
-        const asyncStats = await getStatsHubAlignedProfileMiniStats(key, playerName, sportKey);
-        profileMiniStatsCache.set(cacheKey, asyncStats);
-        if (!cancelled) setStats(asyncStats);
-      } catch (err) {
-        console.warn("[Profiles] stats profil centralisées indisponibles", err);
-      }
+      cancelDeepStats?.();
+      // La page et les photos peignent d'abord. Les statistiques exactes/hydratées
+      // arrivent ensuite pendant un temps mort, sans bloquer le clic de navigation.
+      cancelDeepStats = scheduleRuntimeIdle(() => {
+        void queueProfileDeepStats(`${cacheKey}:${String(playerName || "")}`, () =>
+          getStatsHubAlignedProfileMiniStats(key, playerName, sportKey)
+        )
+          .then((asyncStats) => {
+            profileMiniStatsCache.set(cacheKey, asyncStats);
+            if (!cancelled) setStats(asyncStats);
+          })
+          .catch((err) => console.warn("[Profiles] stats profil centralisées indisponibles", err));
+      }, { timeoutMs: 5_000, fallbackDelayMs: 650 });
     };
 
-    void refresh();
+    refresh();
 
     const onStatsUpdated = () => {
       deleteProfileMiniStatsCache(key);
-      void refresh();
+      refresh();
     };
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
@@ -782,6 +878,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
 
     return () => {
       cancelled = true;
+      cancelDeepStats?.();
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
       window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);
       window.removeEventListener("storage", onStatsUpdated as EventListener);
@@ -1188,17 +1285,19 @@ export default function Profiles({
 
   React.useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        const projection = await loadLinkedProfileProjection(stableProfilesBase as any[]);
-        if (!mounted) return;
-        setLinkedProfileProjection(projection);
-      } catch {
-        if (!mounted) return;
-        setLinkedProfileProjection({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] });
-      }
-    })();
-    return () => { mounted = false; };
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        try {
+          const projection = await loadLinkedProfileProjection(stableProfilesBase as any[]);
+          if (!mounted) return;
+          setLinkedProfileProjection(projection);
+        } catch {
+          if (!mounted) return;
+          setLinkedProfileProjection({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] });
+        }
+      })();
+    }, { timeoutMs: 4_000, fallbackDelayMs: 220 });
+    return () => { mounted = false; cancelIdle(); };
   }, [stableProfilesBase.length]);
 
   const stableProfiles = React.useMemo(
@@ -2061,21 +2160,27 @@ export default function Profiles({
   }, [avatarGalleryAccountId, activeProfileId, stableProfiles]);
 
   React.useEffect(() => {
-    refreshAvatarGallery();
-  }, [refreshAvatarGallery]);
+    if (view !== "avatarGallery" || !avatarGalleryHeavyReady || restoreBusy) return;
+    return scheduleRuntimeIdle(refreshAvatarGallery, { timeoutMs: 3_000, fallbackDelayMs: 120 });
+  }, [view, avatarGalleryHeavyReady, restoreBusy, refreshAvatarGallery]);
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handler = () => refreshAvatarGallery();
+    if (typeof window === "undefined" || view !== "avatarGallery" || !avatarGalleryHeavyReady || restoreBusy) return;
+    let cancelRefresh: (() => void) | null = null;
+    const handler = () => {
+      cancelRefresh?.();
+      cancelRefresh = scheduleRuntimeIdle(refreshAvatarGallery, { timeoutMs: 3_000, fallbackDelayMs: 160 });
+    };
     window.addEventListener(AVATAR_GALLERY_EVENT, handler as EventListener);
     window.addEventListener("dc:bots-changed", handler as EventListener);
     window.addEventListener("storage", handler as EventListener);
     return () => {
+      cancelRefresh?.();
       window.removeEventListener(AVATAR_GALLERY_EVENT, handler as EventListener);
       window.removeEventListener("dc:bots-changed", handler as EventListener);
       window.removeEventListener("storage", handler as EventListener);
     };
-  }, [refreshAvatarGallery]);
+  }, [view, avatarGalleryHeavyReady, restoreBusy, refreshAvatarGallery]);
 
   const applyGalleryAvatarToProfile = React.useCallback(async (targetProfileId: string, item: AvatarGalleryItem) => {
     const src = String(item?.src || "").trim();
@@ -6305,46 +6410,25 @@ function FavoriteDartSetBadge({
   size?: number;
   style?: React.CSSProperties;
 }) {
-  const [favorite, setFavorite] = React.useState<DartSet | null>(null);
-  const [src, setSrc] = React.useState("");
-  const [imageFailed, setImageFailed] = React.useState(false);
+  const readFavorite = React.useCallback((): DartSet | null => {
+    try {
+      return profileId ? (getFavoriteDartSetForProfile(String(profileId)) || null) : null;
+    } catch {
+      return null;
+    }
+  }, [profileId]);
+  const [favorite, setFavorite] = React.useState<DartSet | null>(() => readFavorite());
 
   React.useEffect(() => {
-    let alive = true;
-
-    const refresh = async () => {
-      let next: DartSet | null = null;
-      try {
-        next = profileId ? (getFavoriteDartSetForProfile(String(profileId)) || null) : null;
-      } catch {
-        next = null;
-      }
-      if (!alive) return;
-      setFavorite(next);
-      setImageFailed(false);
-      setSrc("");
-      if (!next) return;
-
-      try {
-        // Le coffre média IndexedDB est prioritaire : les anciennes URLs /media
-        // peuvent être inaccessibles dans la WebView Android alors que l'image
-        // restaurée est bien présente localement.
-        const resolved = await resolveDartSetBestImageSrc(next, true);
-        if (alive) setSrc(String(resolved || ""));
-      } catch {
-        if (alive) setSrc("");
-      }
-    };
-
-    void refresh();
-    if (typeof window === "undefined") return () => { alive = false; };
+    setFavorite(readFavorite());
+    if (typeof window === "undefined") return;
+    const refresh = () => setFavorite(readFavorite());
     const events = ["dc-dartsets-updated", "dc-user-media-restored", "dc-background-restore-finished", "storage"];
     for (const eventName of events) window.addEventListener(eventName, refresh as EventListener);
     return () => {
-      alive = false;
       for (const eventName of events) window.removeEventListener(eventName, refresh as EventListener);
     };
-  }, [profileId]);
+  }, [readFavorite]);
 
   if (!favorite) return null;
 
@@ -6372,20 +6456,18 @@ function FavoriteDartSetBadge({
         ...style,
       }}
     >
-      {src && !imageFailed ? (
-        <img
-          src={src}
-          alt=""
-          decoding="async"
-          loading="lazy"
-          onError={() => setImageFailed(true)}
-          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
-      ) : (
-        // Jamais d'icône d'image cassée : le médaillon reste exploitable pendant
-        // la résolution asynchrone ou lorsqu'un ancien média est absent.
-        <span aria-hidden>🎯</span>
-      )}
+      <DartSetImage
+        set={favorite}
+        preferThumb
+        alt=""
+        loading="lazy"
+        fallback={<span aria-hidden>🎯</span>}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: (favorite as any)?.kind === "photo" ? "cover" : "contain",
+        }}
+      />
     </span>
   );
 }
@@ -6468,6 +6550,8 @@ function LocalProfileGridCard({
         alignItems: "center",
         gap: 6,
         overflow: "visible",
+        contentVisibility: "auto",
+        containIntrinsicSize: "140px 130px",
       }}
     >
       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible" }}>

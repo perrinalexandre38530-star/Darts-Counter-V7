@@ -569,7 +569,7 @@ export function normalizeMany(recs: Array<SavedMatch | any>): NormalizedMatch[] 
    Loader officiel (pour PHASE 2+)
 ========================= */
 
-export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
+async function loadNormalizedHistoryFresh(): Promise<NormalizedMatch[]> {
   try {
     let rows: any[] = (await History.list()) as any[];
 
@@ -673,3 +673,51 @@ rows = Array.from(byId.values());
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// PERF GLOBAL STATS
+// Plusieurs cartes de profil montent simultanément. Avant ce cache, chacune relançait
+// History.list() + jusqu'à 260 History.get(), ce qui saturait IndexedDB et le thread JS.
+// Une seule hydratation est désormais partagée, puis invalidée dès que l'historique change.
+// ---------------------------------------------------------------------------
+let normalizedHistoryCache: NormalizedMatch[] | null = null;
+let normalizedHistoryCacheAt = 0;
+let normalizedHistoryPending: Promise<NormalizedMatch[]> | null = null;
+const NORMALIZED_HISTORY_CACHE_MS = 8_000;
+
+function invalidateNormalizedHistoryCache(): void {
+  normalizedHistoryCache = null;
+  normalizedHistoryCacheAt = 0;
+}
+
+try {
+  if (typeof window !== "undefined") {
+    window.addEventListener("dc-history-updated", invalidateNormalizedHistoryCache as EventListener);
+    window.addEventListener("dc-stats-index-updated", invalidateNormalizedHistoryCache as EventListener);
+    window.addEventListener("storage", (event: StorageEvent) => {
+      const key = String(event?.key || "").toLowerCase();
+      if (!key || key.includes("history") || key.includes("stats")) invalidateNormalizedHistoryCache();
+    });
+  }
+} catch {}
+
+export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
+  const now = Date.now();
+  if (normalizedHistoryCache && now - normalizedHistoryCacheAt < NORMALIZED_HISTORY_CACHE_MS) {
+    return normalizedHistoryCache;
+  }
+  if (normalizedHistoryPending) return normalizedHistoryPending;
+
+  normalizedHistoryPending = loadNormalizedHistoryFresh()
+    .then((rows) => {
+      normalizedHistoryCache = rows;
+      normalizedHistoryCacheAt = Date.now();
+      return rows;
+    })
+    .finally(() => {
+      normalizedHistoryPending = null;
+    });
+
+  return normalizedHistoryPending;
+}
+

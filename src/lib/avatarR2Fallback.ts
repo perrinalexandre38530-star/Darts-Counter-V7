@@ -3,6 +3,7 @@ import { getAvatarCache, setAvatarCache } from "./avatarCache";
 import { sanitizeAvatarDataUrl } from "./avatarSafe";
 import { unpackJsonFromStorage } from "./imageStorageCodec";
 import { downloadCloudObject, listCloudVaultBackups } from "./cloudStorageApi";
+import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
 import {
   canAttemptDirectR2FromStoredSession,
   downloadDirectR2AvatarFallback,
@@ -40,6 +41,8 @@ let externalFileHydrationPromise: Promise<void> | null = null;
 const mirrorQueued = new Set<string>();
 const mirrorQueue: Array<() => Promise<void>> = [];
 let mirrorWorkers = 0;
+let mirrorPumpCancel: (() => void) | null = null;
+let mirrorRetryTimer: number | null = null;
 const directR2AvatarPending = new Map<string, Promise<string>>();
 const directR2AvatarMissAt = new Map<string, number>();
 
@@ -579,16 +582,37 @@ async function hydrateAvatarCacheFromExternalFile(): Promise<void> {
   return externalFileHydrationPromise;
 }
 
+function scheduleMirrorQueue(): void {
+  if (!mirrorQueue.length || mirrorWorkers > 0 || mirrorPumpCancel) return;
+
+  mirrorPumpCancel = scheduleRuntimeIdle(() => {
+    mirrorPumpCancel = null;
+    // Une copie avatar peut faire fetch + canvas + IndexedDB + R2. Elle ne doit jamais
+    // concurrencer une saisie de score. La file reste intacte et reprend après le jeu.
+    if (isGameplayRuntime()) {
+      if (typeof window !== "undefined" && mirrorRetryTimer == null) {
+        mirrorRetryTimer = window.setTimeout(() => {
+          mirrorRetryTimer = null;
+          scheduleMirrorQueue();
+        }, 1_500);
+      }
+      return;
+    }
+    runMirrorQueue();
+  }, { timeoutMs: 10_000, fallbackDelayMs: 1_500 });
+}
+
 function runMirrorQueue(): void {
-  while (mirrorWorkers < 2 && mirrorQueue.length > 0) {
-    const job = mirrorQueue.shift();
-    if (!job) return;
-    mirrorWorkers += 1;
-    void job().catch(() => undefined).finally(() => {
-      mirrorWorkers = Math.max(0, mirrorWorkers - 1);
-      runMirrorQueue();
-    });
-  }
+  // Un seul worker : deux décodages/canvas/R2 en parallèle faisaient monter brutalement
+  // le CPU et la mémoire lors de l'ouverture des pages remplies de photos.
+  if (mirrorWorkers >= 1 || mirrorQueue.length === 0) return;
+  const job = mirrorQueue.shift();
+  if (!job) return;
+  mirrorWorkers += 1;
+  void job().catch(() => undefined).finally(() => {
+    mirrorWorkers = Math.max(0, mirrorWorkers - 1);
+    scheduleMirrorQueue();
+  });
 }
 
 /**
@@ -612,7 +636,7 @@ export function queueAvatarFallbackMirror(
       mirrorQueued.delete(profileId);
     }
   });
-  runMirrorQueue();
+  scheduleMirrorQueue();
 }
 
 async function hydrateAvatarCacheFromLatestR2(): Promise<void> {

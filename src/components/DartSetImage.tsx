@@ -33,12 +33,15 @@ function setIdentity(set: any, preferThumb: boolean): string {
       set.mainImageAssetId ||
       set.thumbImageAssetId ||
       set.photoAssetId ||
-      set.mainImageUrl?.length ||
-      set.thumbImageUrl?.length ||
-      set.photoDataUrl?.length ||
       0
   );
-  return `${id}:${mediaRev}:${preferThumb ? "thumb" : "main"}`;
+  const media = [set.mainImageUrl, set.thumbImageUrl, set.photoDataUrl, set.mainImageDataUrl, set.photoThumbDataUrl]
+    .map((value) => {
+      const src = text(value);
+      return src ? `${src.length}:${src.slice(0, 18)}:${src.slice(-18)}` : "0";
+    })
+    .join("|");
+  return `${id}:${mediaRev}:${media}:${preferThumb ? "thumb" : "main"}`;
 }
 
 function syncCandidates(set: any, explicitSrc?: string | null, preferThumb = false): string[] {
@@ -91,13 +94,15 @@ const DartSetImage: React.FC<Props> = ({
   fallback = <span aria-hidden="true">🎯</span>,
   loading = "lazy",
 }) => {
-  const candidates = React.useMemo(
-    () => syncCandidates(set, src, preferThumb),
-    [set, src, preferThumb]
-  );
   const identity = React.useMemo(
     () => `${setIdentity(set, preferThumb)}:${text(src)}`,
     [set, preferThumb, src]
+  );
+  const candidates = React.useMemo(
+    () => syncCandidates(set, src, preferThumb),
+    // Les parents recréent souvent le même objet DartSet. L'identité média évite
+    // de remettre l'image à zéro et de relancer IndexedDB/R2 à chaque render.
+    [identity, src, preferThumb]
   );
 
   const immediate = React.useMemo(() => {
@@ -122,6 +127,10 @@ const DartSetImage: React.FC<Props> = ({
       return () => { cancelled = true; };
     }
 
+    // data:image/blob = photo importée déjà prête : aucun aller-retour IDB/R2 n'est
+    // nécessaire avant le premier paint.
+    if (immediate) return () => { cancelled = true; };
+
     void resolveCached(set, preferThumb).then((localOrBest) => {
       if (cancelled) return;
       const next = text(localOrBest) || candidates[0] || null;
@@ -129,7 +138,7 @@ const DartSetImage: React.FC<Props> = ({
     });
 
     return () => { cancelled = true; };
-  }, [identity, set, preferThumb, immediate, candidates]);
+  }, [identity, preferThumb, immediate, candidates]);
 
   React.useEffect(() => {
     setLoaded(false);

@@ -51,6 +51,9 @@ export type AwenaReply = {
   text: string;
   modeId?: string | null;
   actions?: AwenaAction[];
+  /** Sujet général retenu pour permettre des relances courtes comme
+   * « et comment je le crée ? » après une question sur les BOTS. */
+  knowledgeTopic?: string | null;
 };
 
 export type AwenaVoiceStatus = {

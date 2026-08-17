@@ -51,6 +51,7 @@ import { useSport } from "../contexts/SportContext";
 // MONETIZATION_V1
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
+import SplashScreen from "../components/SplashScreen";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import {
   getStartupIntroEnabled,
@@ -647,6 +648,88 @@ function SettingsLoopCarousel({
   );
 }
 
+
+
+type SettingsPagedGridProps<T> = {
+  items: T[];
+  renderItem: (item: T, absoluteIndex: number) => React.ReactNode;
+  theme: any;
+  pageSize?: number;
+  ariaLabel: string;
+};
+
+function SettingsPagedGrid<T>({ items, renderItem, theme, pageSize = 4, ariaLabel }: SettingsPagedGridProps<T>) {
+  const [page, setPage] = React.useState(0);
+  const pages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = ((page % pages) + pages) % pages;
+  const pageItems = items.slice(safePage * pageSize, safePage * pageSize + pageSize);
+
+  React.useEffect(() => {
+    if (page >= pages) setPage(0);
+  }, [page, pages]);
+
+  const goPrev = () => setPage((current) => ((current - 1) % pages + pages) % pages);
+  const goNext = () => setPage((current) => (current + 1) % pages);
+
+  const navStyle: React.CSSProperties = {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    border: `1px solid ${theme.primary}66`,
+    background: "rgba(0,0,0,.42)",
+    color: theme.primary,
+    fontSize: 21,
+    fontWeight: 950,
+    display: "grid",
+    placeItems: "center",
+    cursor: pages > 1 ? "pointer" : "default",
+    opacity: pages > 1 ? 1 : .45,
+  };
+
+  return (
+    <div aria-label={ariaLabel}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+        {pageItems.map((item, localIndex) => (
+          <React.Fragment key={`${safePage}-${localIndex}`}>
+            {renderItem(item, safePage * pageSize + localIndex)}
+          </React.Fragment>
+        ))}
+        {Array.from({ length: Math.max(0, pageSize - pageItems.length) }).map((_, index) => (
+          <div key={`empty-${index}`} aria-hidden style={{ minHeight: 132, opacity: 0 }} />
+        ))}
+      </div>
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "38px minmax(0,1fr) 38px", alignItems: "center", gap: 10 }}>
+        <button type="button" aria-label={`${ariaLabel} page précédente`} onClick={goPrev} disabled={pages <= 1} style={navStyle}>‹</button>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 7 }}>
+          {Array.from({ length: pages }).map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              aria-label={`Page ${index + 1}`}
+              onClick={() => setPage(index)}
+              style={{
+                width: index === safePage ? 22 : 7,
+                height: 7,
+                borderRadius: 999,
+                border: "none",
+                background: index === safePage ? theme.primary : "rgba(255,255,255,.18)",
+                boxShadow: index === safePage ? `0 0 10px ${theme.primary}77` : "none",
+                padding: 0,
+                cursor: "pointer",
+                transition: "width 160ms ease, background 160ms ease",
+              }}
+            />
+          ))}
+        </div>
+        <button type="button" aria-label={`${ariaLabel} page suivante`} onClick={goNext} disabled={pages <= 1} style={navStyle}>›</button>
+      </div>
+      <div style={{ marginTop: 5, textAlign: "center", color: theme.textSoft, fontSize: 9.5, fontWeight: 850 }}>
+        PAGE {safePage + 1}/{pages} · boucle continue
+      </div>
+    </div>
+  );
+}
+
 const COUNTRY_DEFAULT_LANGUAGE: Partial<Record<string, Lang>> = {
   FR: "fr", GB: "en", US: "en", ES: "es", DE: "de", AT: "de", IT: "it", PT: "pt", BR: "pt",
   NL: "nl", RU: "ru", CN: "zh", TW: "zh", JP: "ja", SA: "ar", IN: "hi", TR: "tr", DK: "da",
@@ -678,7 +761,8 @@ function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { 
   return (
     <div
       style={{
-        minHeight: 205,
+        minHeight: 0,
+        aspectRatio: "16 / 9",
         borderRadius: 18,
         border: `1px solid ${preview?.borderSoft || theme.borderSoft}`,
         background: preview
@@ -694,8 +778,8 @@ function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { 
     >
       {!preview ? (
         <div style={{ textAlign: "center" }}>
-          <img src="/app-512.png" alt="MULTISPORTS SCORING" style={{ width: 128, height: 128, objectFit: "contain", filter: "drop-shadow(0 12px 26px rgba(0,0,0,.52))" }} />
-          <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 10.5, fontWeight: 850 }}>Sélectionne un pack puis un thème pour afficher l’aperçu</div>
+          <img src="/img/settings-theme-logo-preview.webp" alt="MULTISPORTS SCORING" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} />
+          <div style={{ position: "absolute", left: 14, right: 14, bottom: 10, textAlign: "center", color: "rgba(255,255,255,.78)", fontSize: 10.5, fontWeight: 850, textShadow: "0 2px 10px rgba(0,0,0,.9)" }}>Sélectionne un pack puis un thème pour afficher l’aperçu</div>
         </div>
       ) : (
         <div style={{ width: "100%", maxWidth: 350 }}>
@@ -4002,25 +4086,29 @@ export function Settings({ go, params }: Props) {
         type="button"
         onClick={() => openPack(pack.id)}
         style={{
-          minHeight: 112,
+          minHeight: 86,
           borderRadius: 17,
           border: `1px solid ${theme.borderSoft}`,
           background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
           color: theme.text,
           textAlign: "left",
-          padding: 13,
+          padding: "12px 14px",
           cursor: "pointer",
           boxShadow: `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
           position: "relative",
           overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", gap: 5, marginBottom: 13 }}>
-          {pack.colors.map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
+        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,19px)", gap: 5 }}>
+            {pack.colors.slice(0,4).map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
+            <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
+          </div>
+          <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 900, whiteSpace: "nowrap" }}>{pack.ids.length} thèmes ›</div>
         </div>
-        <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
-        <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
-        <div style={{ marginTop: 8, color: theme.textSoft, fontSize: 9.5 }}>{pack.ids.length} thèmes</div>
       </button>
     );
 
@@ -4053,7 +4141,7 @@ export function Settings({ go, params }: Props) {
           {!selectedPack ? (
             <>
               <div style={{ marginBottom: 8, color: theme.textSoft, fontSize: 10, textTransform: "uppercase", fontWeight: 950, letterSpacing: .75 }}>PACKS DE THÈMES</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 9 }}>
                 {THEME_PACKS.map(packCard)}
               </div>
             </>
@@ -4380,27 +4468,20 @@ export function Settings({ go, params }: Props) {
       <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16 }}>
         <div
           style={{
-            minHeight: 270,
+            height: 270,
             borderRadius: 18,
             border: `1px solid ${introEnabled ? `${theme.primary}77` : theme.borderSoft}`,
-            background: "radial-gradient(500px 260px at 50% 42%, rgba(255,70,200,.11), transparent 65%), linear-gradient(180deg,#07070b,#0b0b12 48%,#07070b)",
-            position: "relative",
             overflow: "hidden",
-            display: "grid",
-            placeItems: "center",
+            position: "relative",
+            background: "#07070b",
             boxShadow: introEnabled ? `0 0 22px ${theme.primary}22, inset 0 0 32px rgba(0,0,0,.36)` : "inset 0 0 32px rgba(0,0,0,.46)",
-            opacity: introEnabled ? 1 : .72,
           }}
         >
-          <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(180deg,rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 3px,transparent 6px)", opacity: .35, pointerEvents: "none" }} />
-          <div style={{ textAlign: "center", position: "relative" }}>
-            <div style={{ width: 150, height: 150, margin: "0 auto", borderRadius: 999, display: "grid", placeItems: "center", background: "radial-gradient(circle,rgba(255,190,0,.16),rgba(255,70,200,.08) 45%,transparent 70%)", animation: introEnabled ? "dcSettingsIntroBreath 2.8s ease-in-out infinite" : "none" }}>
-              <img src="/app-512.png" alt="Aperçu intro MULTISPORTS SCORING" style={{ width: 126, height: 126, objectFit: "contain", filter: "drop-shadow(0 14px 28px rgba(0,0,0,.6))" }} />
-            </div>
-            <div style={{ marginTop: 9, color: "#fff", fontSize: 13, fontWeight: 1000, letterSpacing: .7 }}>MULTISPORTS SCORING</div>
-            <div style={{ marginTop: 3, color: "rgba(255,255,255,.62)", fontSize: 10.5 }}>Animation + jingle de démarrage</div>
+          <SplashScreen onFinish={() => {}} previewLoop />
+          <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10, borderRadius: 999, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: "rgba(0,0,0,.72)", color: introEnabled ? theme.primary : theme.textSoft, padding: "5px 9px", fontSize: 9.5, fontWeight: 1000 }}>
+            {introEnabled ? "ACTIVÉE" : "DÉSACTIVÉE"}
           </div>
-          <div style={{ position: "absolute", top: 10, right: 10, borderRadius: 999, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: "rgba(0,0,0,.52)", color: introEnabled ? theme.primary : theme.textSoft, padding: "5px 9px", fontSize: 9.5, fontWeight: 1000 }}>{introEnabled ? "ACTIVÉE" : "DÉSACTIVÉE"}</div>
+          <div style={{ position: "absolute", left: 10, bottom: 8, zIndex: 10, color: "rgba(255,255,255,.72)", fontSize: 9.5, fontWeight: 850, padding: "4px 7px", borderRadius: 999, background: "rgba(0,0,0,.58)" }}>APERÇU EN BOUCLE</div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
@@ -4413,7 +4494,6 @@ export function Settings({ go, params }: Props) {
             ? t("settings.audio.startupMusic.on", "Activée : animation et musique sont jouées au lancement.")
             : t("settings.audio.startupMusic.off", "Désactivée : accès direct à la sélection des jeux.")}
         </div>
-        <style>{`@keyframes dcSettingsIntroBreath{0%,100%{transform:scale(.97);filter:brightness(.94)}50%{transform:scale(1.035);filter:brightness(1.12)}}`}</style>
       </section>
     );
   }
@@ -4989,16 +5069,14 @@ export function Settings({ go, params }: Props) {
       <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16, overflow: "hidden" }}>
         <div style={{ marginBottom: 9, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ color: theme.textSoft, fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: .75 }}>SPORTS</div>
-          <div style={{ color: theme.textSoft, fontSize: 9.5 }}>4 choix visibles · boucle infinie</div>
+          <div style={{ color: theme.textSoft, fontSize: 9.5 }}>4 sports par page · boucle infinie</div>
         </div>
 
-        <SettingsLoopCarousel
+        <SettingsPagedGrid
           items={sortedGames}
           theme={theme}
-          itemWidth={82}
-          gap={7}
-          initialIndex={0}
-          ariaLabel="Carrousel des sports"
+          pageSize={4}
+          ariaLabel="Sélection des sports"
           renderItem={(g: { id: GameId; label: string; logo: string }) => {
             const enabled = !!ENABLED[g.id];
             return (
@@ -5007,27 +5085,28 @@ export function Settings({ go, params }: Props) {
                 onClick={() => enabled && onPick(g.id)}
                 disabled={!enabled}
                 style={{
-                  width: "100%",
-                  height: 120,
-                  borderRadius: 15,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(255,255,255,.028)",
-                  padding: 6,
+                  minWidth: 0,
+                  minHeight: 138,
+                  borderRadius: 17,
+                  border: `1px solid ${enabled ? `${theme.primary}44` : theme.borderSoft}`,
+                  background: enabled ? "rgba(255,255,255,.035)" : "rgba(255,255,255,.022)",
+                  padding: 9,
                   cursor: enabled ? "pointer" : "not-allowed",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 6,
-                  opacity: enabled ? 1 : .38,
+                  gap: 7,
+                  opacity: enabled ? 1 : .40,
                   filter: enabled ? "none" : "grayscale(1)",
                   position: "relative",
                   color: theme.text,
+                  boxShadow: enabled ? `0 0 16px ${theme.primary}12` : "none",
                 }}
               >
-                {!enabled ? <span style={{ position: "absolute", top: 5, right: 5, borderRadius: 999, background: "rgba(0,0,0,.6)", border: `1px solid ${theme.borderSoft}`, color: theme.textSoft, fontSize: 7, fontWeight: 1000, padding: "2px 4px" }}>SOON</span> : null}
-                <img src={g.logo} alt={g.label} style={{ width: 60, height: 60, objectFit: "contain", filter: enabled ? "drop-shadow(0 0 7px rgba(0,0,0,.42))" : "none" }} />
-                <span style={{ width: "100%", fontSize: 9.2, color: enabled ? theme.textSoft : theme.textSoft, fontWeight: 900, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.label}</span>
+                {!enabled ? <span style={{ position: "absolute", top: 6, right: 6, borderRadius: 999, background: "rgba(0,0,0,.68)", border: `1px solid ${theme.borderSoft}`, color: theme.textSoft, fontSize: 8, fontWeight: 1000, padding: "3px 6px" }}>SOON</span> : null}
+                <img src={g.logo} alt={g.label} style={{ width: 82, height: 82, objectFit: "contain", filter: enabled ? `drop-shadow(0 0 9px ${theme.primary}22)` : "none" }} />
+                <span style={{ width: "100%", fontSize: 10.5, color: theme.textSoft, fontWeight: 950, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.label}</span>
               </button>
             );
           }}
@@ -5177,6 +5256,20 @@ export function Settings({ go, params }: Props) {
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
+              title="Awena"
+              titleNode={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0.3 }}>
+                  <img src={AWENA_AVATAR} alt="Awena" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${theme.primary}`, boxShadow: `0 0 8px ${theme.primary}55` }} />
+                  <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
+                </span>
+              }
+              subtitle={L("Présentatrice officielle, assistante interactive, voix locale et comportement en jeu.", "Official presenter, interactive assistant, local voice and in-game behavior.", "Presentadora oficial, asistente interactiva, voz local y comportamiento durante el juego.")}
+              theme={theme}
+              rightHint={L("IA LOCALE", "LOCAL AI", "IA LOCAL")}
+              onClick={() => setTab("awena")}
+            />
+
+            <SettingsMenuCard
               title={t("settings.menu.sport", L("Choix de sport", "Sport selection", "Selección de deporte"))}
               subtitle={t("settings.menu.sport.sub", L("Changer de jeu, réinitialiser le choix (hub au démarrage).", "Change sport and reset the startup selection hub.", "Cambia de deporte y restablece la selección del inicio."))}
               theme={theme}
@@ -5205,19 +5298,6 @@ export function Settings({ go, params }: Props) {
               subtitle={t("settings.menu.theme.sub", L("Packs de thèmes, aperçu en direct et sélection rapide.", "Theme packs, live preview and quick selection.", "Packs de temas, vista previa en directo y selección rápida."))}
               theme={theme}
               onClick={() => setTab("theme")}
-            />
-            <SettingsMenuCard
-              title="Awena"
-              titleNode={
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0.3 }}>
-                  <img src={AWENA_AVATAR} alt="Awena" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${theme.primary}`, boxShadow: `0 0 8px ${theme.primary}55` }} />
-                  <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
-                </span>
-              }
-              subtitle={L("Présentatrice officielle, assistante interactive, voix locale et comportement en jeu.", "Official presenter, interactive assistant, local voice and in-game behavior.", "Presentadora oficial, asistente interactiva, voz local y comportamiento durante el juego.")}
-              theme={theme}
-              rightHint={L("IA LOCALE", "LOCAL AI", "IA LOCAL")}
-              onClick={() => setTab("awena")}
             />
             <SettingsMenuCard
               title={t("settings.menu.audio", "INTRO")}

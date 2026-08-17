@@ -478,6 +478,12 @@ function readNestedImage(raw: any, ...paths: string[]): string {
 }
 
 function readMainImage(raw: any): string {
+  // Pour une photo importée, la copie inline encore disponible est plus fiable qu'une
+  // ancienne URL /media devenue invalide après migration/réinstallation.
+  if (raw?.kind === "photo") {
+    const inline = pickImageLike(raw, "photoDataUrl", "mainImageDataUrl", "imageDataUrl", "dartSetImageDataUrl", "dataUrl", "dataURL");
+    if (/^data:image\//i.test(inline)) return inline;
+  }
   const direct = pickImageLike(
     raw,
     "mainImageUrl",
@@ -513,6 +519,10 @@ function readMainImage(raw: any): string {
 }
 
 function readThumbImage(raw: any): string | undefined {
+  if (raw?.kind === "photo") {
+    const inline = pickImageLike(raw, "photoThumbDataUrl", "thumbDataUrl", "thumbImageDataUrl", "photoDataUrl", "mainImageDataUrl", "dataUrl");
+    if (/^data:image\//i.test(inline)) return inline;
+  }
   const direct = pickImageLike(
     raw,
     "thumbImageUrl",
@@ -2142,7 +2152,7 @@ export function getDartSetMainImageSrc(set: any): string | null {
   const recovered = recoverImageForSet(set);
   const recoveredSrc = recovered ? readMainImage(recovered) || readThumbImage(recovered) : "";
   if (!recoveredSrc) {
-    try { console.info("[DartSetsDiag] image:missing", { id: set?.id, name: set?.name, presetId: set?.presetId, keys: Object.keys(set || {}).filter((k) => /image|photo|thumb|asset|url/i.test(k)) }); } catch {}
+    diag("image:missing", { id: set?.id, name: set?.name, presetId: set?.presetId, keys: Object.keys(set || {}).filter((k) => /image|photo|thumb|asset|url/i.test(k)) });
   }
   return recoveredSrc || null;
 }
@@ -2162,6 +2172,19 @@ export function getDartSetThumbImageSrc(set: any): string | null {
  */
 export async function resolveDartSetBestImageSrc(set: any, preferThumb = false): Promise<string | null> {
   if (!set || typeof set !== "object") return null;
+
+  const primary = preferThumb
+    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || "")
+    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || "");
+
+  // Une photo importée est déjà autonome (data/blob) et les assets packagés sont locaux.
+  // Avant, même ces images déclenchaient des lectures IndexedDB puis jusqu'à 6 recherches
+  // de fallback/R2 avant d'être rendues, ce qui ralentissait les pages et pouvait laisser
+  // un médaillon vide plusieurs secondes.
+  if (primary && /^(data:image\/|blob:|\/assets\/|\/images\/|\.\.?\/)/i.test(primary)) {
+    return primary;
+  }
+
   const ids = uniqStrings([
     set?.id,
     set?.dartSetId,
@@ -2179,10 +2202,6 @@ export async function resolveDartSetBestImageSrc(set: any, preferThumb = false):
     : [...ids.map(dartSetMainMediaKey), ...ids.map(dartSetThumbMediaKey)];
   const local = await readFirstLocalUserMediaFallback(localKeys);
   if (local) return local;
-
-  const primary = preferThumb
-    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || "")
-    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || "");
 
   // Les photos de dartsets sont déjà sauvegardées dans le coffre média/R2 par
   // DartSetsPanel. Le sélecteur X01 ne consultait pourtant que l'IndexedDB local :

@@ -22,6 +22,7 @@ import DartSetScannerSheet from "./DartSetScannerSheet";
 import AvatarLite from "./profile/AvatarLite";
 import ResilientUserImage from "./ResilientUserImage";
 import { captureUserMediaFallback, dartSetMainMediaKey, dartSetThumbMediaKey } from "../lib/userMediaFallback";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 
 import {
   type DartSet,
@@ -124,6 +125,28 @@ async function fileToCompressedDataUrl(
   return out && out.length < dataUrl.length ? out : dataUrl;
 }
 
+async function persistDartSetPhotoLocally(dartSetId: string, dataUrl: string): Promise<void> {
+  const id = String(dartSetId || "").trim();
+  const src = String(dataUrl || "").trim();
+  if (!id || !src) return;
+
+  // Garantie anti-perte : le coffre IndexedDB local est écrit AVANT de considérer
+  // l'import terminé. Aucune requête R2/réseau n'est sur ce chemin critique.
+  await Promise.all([
+    captureUserMediaFallback(dartSetMainMediaKey(id), src, { kind: "dartset_main", mirrorR2: false }),
+    captureUserMediaFallback(dartSetThumbMediaKey(id), src, { kind: "dartset_thumb", mirrorR2: false }),
+  ]);
+
+  // La réplication R2 reste présente mais attend un temps mort. Sur une source déjà
+  // stockée, captureUserMediaFallback réutilise le cache sans refaire canvas/encodage.
+  scheduleRuntimeIdle(() => {
+    void Promise.all([
+      captureUserMediaFallback(dartSetMainMediaKey(id), src, { kind: "dartset_main", mirrorR2: true }),
+      captureUserMediaFallback(dartSetThumbMediaKey(id), src, { kind: "dartset_thumb", mirrorR2: true }),
+    ]).catch(() => undefined);
+  }, { timeoutMs: 10_000, fallbackDelayMs: 1_500 });
+}
+
 // ----------------------------------------------------------
 // Composant d’affichage de fléchette / visuel
 // ✅ FIX FIT: support rectangulaire (width/height) + cover réel
@@ -181,6 +204,8 @@ const DartImage: React.FC<{
           kind={mediaKind}
           primarySrc={url}
           alt=""
+          loading="lazy"
+          decoding="async"
           fallbackNode={<div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontSize: typeof width === "number" ? Math.max(18, Math.round(width * 0.33)) : 22 }}>🎯</div>}
           style={{
             width: "100%",
@@ -195,6 +220,8 @@ const DartImage: React.FC<{
         <img
           src={url}
           alt=""
+          loading="lazy"
+          decoding="async"
           onError={() => setBroken(true)}
           style={{
             width: "100%",
@@ -268,9 +295,9 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
         mime: "image/jpeg",
       });
 
-      // Coffre média local + R2 AVANT toute normalisation vers une URL NAS.
-      void captureUserMediaFallback(dartSetMainMediaKey(dartSet.id), compressed, { kind: "dartset_main" }).catch(() => undefined);
-      void captureUserMediaFallback(dartSetThumbMediaKey(dartSet.id), compressed, { kind: "dartset_thumb" }).catch(() => undefined);
+      // Coffre média local durable AVANT toute normalisation vers une URL NAS.
+      // Le R2 est décalé au temps mort pour ne pas bloquer l'interface.
+      await persistDartSetPhotoLocally(String(dartSet.id), compressed);
 
       const res = await Promise.resolve(
         updateDartSet(dartSet.id, {
@@ -792,8 +819,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       if (created && kind === "photo" && form.photoDataUrl) {
         const createdId = String((created as any)?.id || "").trim();
         if (createdId) {
-          void captureUserMediaFallback(dartSetMainMediaKey(createdId), form.photoDataUrl, { kind: "dartset_main" }).catch(() => undefined);
-          void captureUserMediaFallback(dartSetThumbMediaKey(createdId), form.photoDataUrl, { kind: "dartset_thumb" }).catch(() => undefined);
+          await persistDartSetPhotoLocally(createdId, form.photoDataUrl);
         }
       }
 

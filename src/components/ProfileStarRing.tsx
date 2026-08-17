@@ -9,6 +9,31 @@
 
 import React from "react";
 
+let profileStarRingCssInstalled = false;
+function useProfileStarRingCss(): void {
+  React.useEffect(() => {
+    if (profileStarRingCssInstalled || typeof document === "undefined") return;
+    const existing = document.getElementById("dc-profile-star-ring-css");
+    if (existing) { profileStarRingCssInstalled = true; return; }
+    const style = document.createElement("style");
+    style.id = "dc-profile-star-ring-css";
+    style.textContent = `
+      @keyframes psr-pulse-kf {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.08); opacity: .92; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .psr-pulse {
+        animation: psr-pulse-kf 2.6s ease-in-out infinite;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+    `;
+    document.head.appendChild(style);
+    profileStarRingCssInstalled = true;
+  }, []);
+}
+
 
 function profileStarRingParseBotLevelValue(input: any, fallback = 1): number {
   if (typeof input === "number" && Number.isFinite(input)) {
@@ -95,12 +120,10 @@ function Star({
   const path =
     "M50 5 L61 36 L94 38 L68 57 L77 88 L50 71 L23 88 L32 57 L6 38 L39 36 Z";
 
-  // Chaque étoile doit avoir ses propres IDs SVG.
-  // Les IDs fixes (#psrGlow / #halfClip) entraient en collision quand plusieurs
-  // ProfileStarRing étaient affichés sur la même page, ce qui pouvait rendre les
-  // demi-étoiles/filters instables selon l'ordre de rendu du DOM.
+  // Une demi-étoile a besoin d'un clipPath unique. Les étoiles pleines n'embarquent
+  // plus chacune un filtre SVG GaussianBlur : des dizaines de filtres simultanés
+  // faisaient travailler inutilement le GPU sur les listes de profils.
   const safeId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const glowId = `psrGlow-${safeId}`;
   const halfClipId = `halfClip-${safeId}`;
 
   return (
@@ -109,22 +132,15 @@ function Star({
       height={size}
       viewBox="0 0 100 100"
       className={cls}
-      style={{ filter: `url(#${glowId})` }}
+      style={{ filter: `drop-shadow(0 0 1.8px ${color})` }}
     >
-      <defs>
-        <filter id={glowId}>
-          <feGaussianBlur in="SourceGraphic" stdDeviation="1.4" result="b" />
-          <feMerge>
-            <feMergeNode in="b" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <clipPath id={halfClipId}>
-          <rect x="0" y="0" width="50" height="100" />
-        </clipPath>
-      </defs>
       {half ? (
         <>
+          <defs>
+            <clipPath id={halfClipId}>
+              <rect x="0" y="0" width="50" height="100" />
+            </clipPath>
+          </defs>
           <path d={path} fill="rgba(255,255,255,0.15)" />
           <g clipPath={`url(#${halfClipId})`}>
             <path d={path} fill={color} />
@@ -152,6 +168,7 @@ export default function ProfileStarRing({
   animateGlow = false,
   glow,
 }: Props) {
+  useProfileStarRingCss();
   const resolvedAnchorSize = Number(anchorSize ?? size ?? 64) || 64;
   const profileBotLevel = profile?.botLevel ?? profile?.level ?? botLevel;
   const rawScore = Number.isFinite(Number(avg3d)) && Number(avg3d) > 0
@@ -240,17 +257,6 @@ export default function ProfileStarRing({
         })}
       </div>
 
-      <style>{`
-        @keyframes psr-pulse-kf {
-          0%   { transform: scale(1); opacity: 1; }
-          50%  { transform: scale(1.08); opacity: .92; }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        .psr-pulse {
-          animation: psr-pulse-kf 2.6s ease-in-out infinite;
-          transform-origin: 50% 50%;
-        }
-      `}</style>
     </div>
   );
 }
