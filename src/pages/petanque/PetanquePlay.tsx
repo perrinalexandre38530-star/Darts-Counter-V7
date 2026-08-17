@@ -1250,7 +1250,7 @@ function formatMs(ms: number) {
 	const [, forceTimerTick] = React.useState(0);
 	React.useEffect(() => {
 	  if (!matchStartedAt) return;
-	  const t = window.setInterval(() => forceTimerTick((x) => x + 1), 250);
+	  const t = window.setInterval(() => forceTimerTick((x) => x + 1), 1000);
 
 return () => window.clearInterval(t);
 	}, [matchStartedAt]);

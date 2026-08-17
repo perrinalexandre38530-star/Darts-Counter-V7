@@ -576,7 +576,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const onlineStatePushTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 250);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 

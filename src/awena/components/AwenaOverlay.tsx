@@ -117,7 +117,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V4</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V5</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -130,11 +130,18 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>
-            {[
-              ["Règles", "Explique les règles de ce mode"],
-              [live && currentMode?.id === "x01" ? "Que viser ?" : "Conseil", live && currentMode?.id === "x01" ? "Que me conseilles-tu de viser ?" : "Donne-moi un conseil pour ce mode"],
-              ["Dans l'appli", "Comment fait-on pour y jouer dans l'application ?"],
-            ].map(([label, prompt]) => (
+            {(currentMode && !live
+              ? [
+                  ["Règles", `Explique-moi clairement les règles de ${currentMode.label}.`],
+                  ["Configuration", `Explique-moi précisément la configuration de ${currentMode.label}, les options, variantes et conditions de victoire.`],
+                  ["Records", `Donne-moi les records de ${currentMode.label} et les principaux classements disponibles.`],
+                ]
+              : [
+                  ["Règles", "Explique les règles de ce mode"],
+                  [live && currentMode?.id === "x01" ? "Que viser ?" : "Conseil", live && currentMode?.id === "x01" ? "Que me conseilles-tu de viser ?" : "Donne-moi un conseil pour ce mode"],
+                  ["Records", currentMode ? `Donne-moi les records de ${currentMode.label}.` : "Quels records peux-tu consulter ?"],
+                ]
+            ).map(([label, prompt]) => (
               <button key={label} onClick={() => void submit(prompt)} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${primary}55`, background: `${primary}10`, color: "#fff", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>
             ))}
           </div>

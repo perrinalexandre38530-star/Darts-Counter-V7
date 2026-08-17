@@ -515,6 +515,15 @@ export const fr: Dict = {
   "settings.title": "Réglages",
   "settings.subtitle":
     "Personnalise le thème et la langue de l'application",
+  "settings.menu.audio": "Audio",
+  "settings.menu.audio.sub": "Active ou coupe la musique d’intro au démarrage de l’application.",
+  "settings.audio.title": "Audio",
+  "settings.audio.pageSubtitle": "Musique de démarrage et préférences audio générales.",
+  "settings.audio.subtitle": "Contrôle les sons généraux de l’application sans modifier les bruitages propres aux modes de jeu.",
+  "settings.audio.startupMusic": "Musique d’intro au démarrage",
+  "settings.audio.startupMusic.on": "Activée : le jingle est joué au lancement de l’application.",
+  "settings.audio.startupMusic.off": "Désactivée : l’application démarre en silence.",
+  "settings.audio.startupMusic.note": "Ce réglage concerne uniquement l’intro musicale de MULTISPORTS SCORING. Les sons de jeu, annonces et voix IA restent inchangés.",
 
   "settings.theme": "Thème",
   "settings.theme.group.neons": "Néons classiques",

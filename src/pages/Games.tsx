@@ -34,6 +34,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
+import AwenaModeDot from "../awena/components/AwenaModeDot";
 import BackDot from "../components/BackDot";
 import {
   DARTS_GAMES,
@@ -95,13 +96,6 @@ type GamesView = "hub" | "favorites" | "all";
 type Props = {
   setTab: (tab: any, params?: any) => void;
   params?: { gamesView?: string } | null;
-};
-
-type InfoGame = {
-  label: string;
-  infoTitle?: string;
-  infoBody?: string;
-  ready: boolean;
 };
 
 type PlayCountMap = Record<string, number>;
@@ -406,7 +400,6 @@ export default function Games({ setTab, params }: Props) {
   }, [lang]);
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
-  const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
 
   // Menu JEUX à 3 niveaux : HUB -> FAVORIS / TOUS LES JEUX / TRAINING.
   // Le bottom-nav appelle "games" sans params : on retombe donc toujours
@@ -1624,18 +1617,7 @@ export default function Games({ setTab, params }: Props) {
                             zIndex: 2,
                           }}
                         >
-                          <InfoDot
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setInfoGame({
-                                label: g.label,
-                                ready: g.ready,
-                                infoTitle: g.infoTitle,
-                                infoBody: g.infoBody,
-                              });
-                            }}
-                            glow={theme.primary + "88"}
-                          />
+                          <AwenaModeDot modeId={g.id} size={40} disabled={!g.ready} />
                         </div>
                       </button>
                     );
@@ -1647,84 +1629,6 @@ export default function Games({ setTab, params }: Props) {
         </>
       )}
 
-      {/* Overlay d'information */}
-      {infoGame && (
-        <div
-          onClick={() => setInfoGame(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.72)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 420,
-              margin: 16,
-              padding: 18,
-              borderRadius: 18,
-              background: theme.card,
-              border: `1px solid ${theme.primary}55`,
-              boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
-              color: theme.text,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 800,
-                marginBottom: 8,
-                color: theme.primary,
-                textTransform: "uppercase",
-                textShadow: `0 0 10px ${theme.primary}55`,
-              }}
-            >
-              {infoGame.infoTitle ?? infoGame.label}
-            </div>
-
-            <div
-              style={{
-                fontSize: 13,
-                lineHeight: 1.4,
-                color: theme.textSoft,
-                marginBottom: 12,
-              }}
-            >
-              {infoGame.infoBody ?? ""}
-            </div>
-
-            {!infoGame.ready && (
-              <div style={{ fontSize: 12, fontWeight: 600, color: theme.primary, marginBottom: 10 }}>
-                {t("games.status.comingSoon", "Bientôt disponible")}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setInfoGame(null)}
-              style={{
-                display: "block",
-                marginLeft: "auto",
-                padding: "6px 14px",
-                borderRadius: 999,
-                border: "none",
-                background: theme.primary,
-                color: "#000",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              {t("games.info.close", "Fermer")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

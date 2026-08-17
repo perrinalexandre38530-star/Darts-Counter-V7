@@ -93,6 +93,25 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     return { text: `Je vois l'écran actuel${context.route ? ` : ${context.route}` : ""}, mais aucun mode de jeu précis n'est actif.`, modeId: context.mode || null };
   }
 
+  // "Comment jouer au X01 ?" est volontairement interprété comme une demande
+  // pratique : chemin dans l'application + accès direct au mode. Une demande
+  // explicite de "règles" reste traitée plus bas comme une explication de règles.
+  const asksHowToStartMode =
+    /comment (?:faire pour )?(?:jouer|demarrer|demarrer une partie|lancer une partie)(?: au| a| en| sur)?/.test(q) &&
+    !/regle|regles|principe|objectif|but du jeu/.test(q);
+  if (asksHowToStartMode) {
+    if (sportMode) {
+      return { text: `${sportMode.howToPlayInApp} Si tu veux, je peux ensuite t'expliquer les règles ou la configuration.`, actions: routeLooksLikeMode(context.route, sportMode.id) ? [] : actionForSportMode(sportMode) };
+    }
+    if (mode) {
+      return {
+        text: `${mode.howToPlayInApp} Accès direct ci-dessous. Règle rapide : ${mode.summary}`,
+        modeId: mode.id,
+        actions: actionsForAwenaMode(mode, context.route),
+      };
+    }
+  }
+
   const asksAppNavigation = /dans l application|dans l appli|dans appli|ou cliquer|ou aller|comment lancer|comment demarrer|comment ouvrir|comment faire pour y jouer|comment y jouer|ouvrir le mode|lancer le mode|trouver/.test(q);
   if (asksAppNavigation) {
     if (sportMode) return { text: sportMode.howToPlayInApp, actions: routeLooksLikeMode(context.route, sportMode.id) ? [] : actionForSportMode(sportMode) };
@@ -109,7 +128,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     if (sport) return { text: `D'accord. J'ouvre le menu ${sport.label}.`, actions: actionForSport(sport) };
   }
 
-  const asksRules = /regle|regles|comment jouer|explique|objectif|but du jeu|principe/.test(q);
+  const asksRules = /regle|regles|explique(?: moi)?(?: clairement)?|objectif|but du jeu|principe/.test(q);
   if (asksRules) {
     if (sportMode) return { text: sportMode.summary, actions: actionForSportMode(sportMode) };
     if (mode) return { text: mode.summary, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
@@ -119,6 +138,14 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 
   const rememberedMode = findAwenaModeById(context.mode);
   const activeMode = mode || rememberedMode;
+
+  if (/condition de victoire|comment gagner|qui gagne|quand gagne|victoire/.test(q) && activeMode) {
+    return { text: `Pour ${activeMode.label}, la condition de victoire est la suivante : ${activeMode.victoryCondition}.`, modeId: activeMode.id };
+  }
+
+  if (/variante|variantes|quels modes|quelles variantes|choix possibles/.test(q) && activeMode && activeMode.variants.length) {
+    return { text: `${activeMode.label} propose ou documente notamment : ${activeMode.variants.join(" ; ")}. Les choix réellement affichés sur l'écran de configuration restent la source prioritaire.`, modeId: activeMode.id };
+  }
 
   if (/configuration|configurer|parametre|parametres|options|reglages du mode|combien de joueurs|nombre de joueurs|equipes|equipe|bots|bot ia/.test(q) && activeMode) {
     if (/combien de joueurs|nombre de joueurs|max joueurs|maximum/.test(q)) {
@@ -133,8 +160,8 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     return { text: `${activeMode.configuration} ${activeMode.howToPlayInApp}`, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
   }
 
-  if (/stats|statistiques|record|records|historique/.test(q) && activeMode) {
-    return { text: `${activeMode.label} possède la clé statistique ${activeMode.statsKey || "du mode"}. Pour consulter les données enregistrées, ouvre Stats depuis la barre principale puis le bloc correspondant au sport ou au mode.`, modeId: activeMode.id, actions: actionForNavigation(findAwenaNavigationTopic("stats")!) };
+  if (/historique/.test(q) && activeMode) {
+    return { text: `Pour ${activeMode.label}, tu peux consulter l'historique et les statistiques enregistrées depuis Stats. Tu peux aussi me demander directement un top, le meilleur joueur, le pourcentage de victoire ou une période précise.`, modeId: activeMode.id, actions: actionForNavigation(findAwenaNavigationTopic("stats")!) };
   }
 
   const asksCheckout = /checkout|sortie|finir|fermer|que viser|quoi viser|me conseille|conseil|strategie|que faire/.test(q);
@@ -166,7 +193,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     const live = context.phase === "play" && typeof context.remaining === "number"
       ? ` Je vois aussi la partie en direct${context.playerName ? ` : ${context.playerName}` : ""}, score restant ${context.remaining}.`
       : "";
-    return { text: `Je garde ${activeMode.label} en mémoire pour cette conversation.${live} Tu peux me demander ses règles, sa configuration, le nombre de joueurs, les équipes, les bots, comment le lancer, ses statistiques ou un conseil.`, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
+    return { text: `Je garde ${activeMode.label} en mémoire pour cette conversation.${live} Tu peux me demander ses règles, sa configuration, ses variantes, sa condition de victoire, comment le lancer, ses records, un top 3, le meilleur ou le plus mauvais joueur, ou un conseil.`, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
   }
 
   return {

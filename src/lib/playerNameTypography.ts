@@ -1,6 +1,9 @@
 // Global player-name typography.
-// The goal is to apply the same display font everywhere without having to
-// duplicate font-family declarations across every game/config/stats screen.
+// Applies the same display font everywhere while keeping DOM observation cheap.
+// PERF V68: no full IndexedDB/localStorage/document scan every 10 seconds and no
+// characterData observer on every live score update.
+
+import { isGameplayRuntime, scheduleRuntimeIdle } from "./runtimePerformance";
 
 const PLAYER_NAME_CLASS = "dc-player-name-jumbo";
 const PLAYER_NAME_FONT = '"Bangers", "Luckiest Guy", "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif';
@@ -8,6 +11,8 @@ const PLAYER_NAME_FONT = '"Bangers", "Luckiest Guy", "Baloo 2", "Trebuchet MS", 
 const knownNames = new Set<string>();
 let observer: MutationObserver | null = null;
 let refreshTimer = 0;
+let refreshCancel: (() => void) | null = null;
+let refreshQueued = false;
 let started = false;
 
 function cleanName(value: unknown): string {
@@ -33,8 +38,6 @@ function collectNamesFromObject(value: any, depth = 0) {
   }
 
   for (const [key, child] of Object.entries(value)) {
-    // Only recurse into structures likely to contain people. This avoids
-    // accidentally treating game titles, rules, labels, etc. as player names.
     const k = key.toLowerCase();
     if (
       depth === 0 ||
@@ -61,32 +64,62 @@ function collectNamesFromLocalStorage() {
       const lower = key.toLowerCase();
       if (!/(profile|player|friend|bot|participant|lobby|room|user)/.test(lower)) continue;
       const raw = localStorage.getItem(key);
-      if (!raw || raw.length > 3_000_000) continue;
+      if (!raw || raw.length > 1_500_000) continue;
       try { collectNamesFromObject(JSON.parse(raw)); } catch {}
     }
   } catch {}
 }
 
-async function refreshKnownNames() {
+function collectRuntimeNames() {
   try {
-    const [{ loadStore }, { loadBots }] = await Promise.all([
-      import("./storage"),
-      import("./bots"),
-    ]);
-    const store = await loadStore<any>();
+    const store = (window as any)?.__appStore?.store;
+    if (!store) return false;
     collectNamesFromObject({
       profiles: store?.profiles,
       friends: store?.friends,
       players: store?.players,
       localPlayers: store?.localPlayers,
       participants: store?.participants,
+      bots: store?.bots,
       account: store?.account,
       user: store?.user,
     });
-    for (const bot of loadBots?.() || []) collectNamesFromObject(bot);
-  } catch {}
-  collectNamesFromLocalStorage();
-  scanDocument();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshKnownNames(options: { fullDocument?: boolean; allowStorageFallback?: boolean } = {}) {
+  const hasRuntimeStore = collectRuntimeNames();
+
+  // IndexedDB is fallback-only now. During normal app runtime the live App store
+  // already has the same profile data and avoids a full persistence read.
+  if (!hasRuntimeStore && options.allowStorageFallback !== false) {
+    try {
+      const [{ loadStore }, { loadBots }] = await Promise.all([
+        import("./storage"),
+        import("./bots"),
+      ]);
+      const store = await loadStore<any>();
+      collectNamesFromObject({
+        profiles: store?.profiles,
+        friends: store?.friends,
+        players: store?.players,
+        localPlayers: store?.localPlayers,
+        participants: store?.participants,
+        account: store?.account,
+        user: store?.user,
+      });
+      for (const bot of loadBots?.() || []) collectNamesFromObject(bot);
+    } catch {}
+  }
+
+  if (options.allowStorageFallback !== false && !hasRuntimeStore) {
+    collectNamesFromLocalStorage();
+  }
+
+  if (options.fullDocument && !isGameplayRuntime()) scanDocument();
 }
 
 function isEligibleElement(el: HTMLElement) {
@@ -112,22 +145,19 @@ function shouldUsePlayerFont(el: HTMLElement): boolean {
   const cls = typeof el.className === "string" ? el.className.toLowerCase() : "";
   const dataName = cleanName(el.getAttribute("data-player-name") || el.getAttribute("data-profile-name"));
   if (dataName) return true;
-
-  // Explicit semantic class names used across old/new screens.
   if (/(player[-_ ]?name|profile[-_ ]?name|nickname|pseudo)/.test(cls)) return true;
 
   const text = exactVisibleText(el);
   if (!text || !knownNames.has(text)) return false;
-
-  // Prefer leaf / near-leaf nodes so only the player's name changes font,
-  // not an entire score card containing unrelated labels and values.
   return el.childElementCount <= 2;
 }
 
 function tagElement(el: HTMLElement) {
   if (shouldUsePlayerFont(el)) {
-    el.classList.add(PLAYER_NAME_CLASS);
-    el.style.setProperty("--dc-player-name-font", PLAYER_NAME_FONT);
+    if (!el.classList.contains(PLAYER_NAME_CLASS)) el.classList.add(PLAYER_NAME_CLASS);
+    if (!el.style.getPropertyValue("--dc-player-name-font")) {
+      el.style.setProperty("--dc-player-name-font", PLAYER_NAME_FONT);
+    }
   } else if (el.classList.contains(PLAYER_NAME_CLASS)) {
     el.classList.remove(PLAYER_NAME_CLASS);
   }
@@ -148,17 +178,29 @@ function scanDocument() {
 function installObserver() {
   if (observer || typeof MutationObserver === "undefined" || !document.body) return;
   observer = new MutationObserver((mutations) => {
+    // Only newly inserted subtrees are scanned. Observing every characterData
+    // mutation meant every live score/text update entered this global observer.
     for (const mutation of mutations) {
-      if (mutation.type === "characterData") {
-        const parent = mutation.target.parentElement;
-        if (parent) tagElement(parent);
-        continue;
-      }
       for (const node of Array.from(mutation.addedNodes)) scanTree(node);
-      if (mutation.target instanceof HTMLElement) tagElement(mutation.target);
     }
   });
-  observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  observer.observe(document.body, { subtree: true, childList: true });
+}
+
+function queueRefresh(fullDocument = false) {
+  if (refreshQueued) return;
+  refreshQueued = true;
+  refreshCancel?.();
+  refreshCancel = scheduleRuntimeIdle(() => {
+    refreshQueued = false;
+    refreshCancel = null;
+    void refreshKnownNames({ fullDocument, allowStorageFallback: false });
+  }, { timeoutMs: 5000, fallbackDelayMs: 180 });
+}
+
+function storageKeyLooksRelevant(key: string | null) {
+  const k = String(key || "").toLowerCase();
+  return !k || /(profile|player|friend|bot|participant|lobby|room|user)/.test(k);
 }
 
 export function installPlayerNameTypography() {
@@ -167,18 +209,37 @@ export function installPlayerNameTypography() {
 
   const start = () => {
     installObserver();
-    void refreshKnownNames();
-    scanDocument();
+    void refreshKnownNames({ fullDocument: true, allowStorageFallback: true });
 
-    window.addEventListener("storage", () => void refreshKnownNames());
-    window.addEventListener("dc:profiles-changed", () => void refreshKnownNames() as any);
-    window.addEventListener("dc:player-name-refresh", () => void refreshKnownNames() as any);
+    const onStorage = (event: StorageEvent) => {
+      if (storageKeyLooksRelevant(event.key)) queueRefresh(!isGameplayRuntime());
+    };
+    const onProfiles = () => queueRefresh(!isGameplayRuntime());
+    const onStore = () => queueRefresh(!isGameplayRuntime());
+    const onForced = () => queueRefresh(true);
 
-    refreshTimer = window.setInterval(() => void refreshKnownNames(), 10000);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("dc:profiles-changed", onProfiles as EventListener);
+    window.addEventListener("dc-store-updated", onStore as EventListener);
+    window.addEventListener("dc:player-name-refresh", onForced as EventListener);
+
+    // Safety refresh only; previously this performed an IndexedDB + localStorage
+    // + full DOM scan every 10 seconds. It now uses the in-memory store and never
+    // runs a whole-document scan during gameplay.
+    refreshTimer = window.setInterval(() => {
+      if (!isGameplayRuntime()) queueRefresh(true);
+    }, 60_000);
+
     window.addEventListener("beforeunload", () => {
       if (refreshTimer) window.clearInterval(refreshTimer);
+      refreshCancel?.();
+      refreshCancel = null;
       observer?.disconnect();
       observer = null;
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("dc:profiles-changed", onProfiles as EventListener);
+      window.removeEventListener("dc-store-updated", onStore as EventListener);
+      window.removeEventListener("dc:player-name-refresh", onForced as EventListener);
     }, { once: true });
   };
 

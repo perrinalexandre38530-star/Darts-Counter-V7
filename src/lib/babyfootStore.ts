@@ -464,6 +464,15 @@ export function saveBabyFootState(s: BabyFootState) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(s));
   } catch {}
+
+  // Same-tab storage events do not fire. Publish the already-available state so
+  // BabyFoot screens can refresh immediately without polling/parsing localStorage
+  // several times per second.
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc-babyfoot-state-updated", { detail: s }));
+    }
+  } catch {}
 }
 
 export function saveBabyFootStatePatch(partial: Partial<BabyFootState>) {

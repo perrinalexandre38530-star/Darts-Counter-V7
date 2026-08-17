@@ -8,6 +8,7 @@ import {
 import { ensureMessagePushSubscription, showMessageCenterNotification } from "../lib/messageCenterNotify";
 import { readNasAccessToken } from "../lib/apiClient";
 import { useAuthOnline } from "../hooks/useAuthOnline";
+import { isGameplayRuntime } from "../lib/runtimePerformance";
 
 const BLUE = "#79c8ff";
 const GREEN = "#7dffb2";
@@ -140,6 +141,7 @@ export default function GlobalMessengerCallBridge() {
   const [incoming, setIncoming] = React.useState<AnyCall | null>(null);
   const [busy, setBusy] = React.useState(false);
   const seenRef = React.useRef<Set<string>>(new Set());
+  const streamHealthyRef = React.useRef(false);
 
   React.useEffect(() => {
     seenRef.current = loadSeenCalls();
@@ -187,7 +189,10 @@ export default function GlobalMessengerCallBridge() {
         const streamUrl = buildPrivateMessagesStreamUrl();
         if (!streamUrl) return;
         es = new EventSource(streamUrl);
-        es.onopen = () => { reconnectDelayMs = 2500; };
+        es.onopen = () => {
+          reconnectDelayMs = 2500;
+          streamHealthyRef.current = true;
+        };
         const handle = (event: MessageEvent) => {
           try {
             const payload = JSON.parse(String(event.data || "{}"));
@@ -208,6 +213,7 @@ export default function GlobalMessengerCallBridge() {
           } catch {}
         }) as EventListener);
         es.onerror = () => {
+          streamHealthyRef.current = false;
           try { es?.close(); } catch {}
           scheduleReconnect();
         };
@@ -218,6 +224,7 @@ export default function GlobalMessengerCallBridge() {
     connect();
     return () => {
       stopped = true;
+      streamHealthyRef.current = false;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       try { es?.close(); } catch {}
     };
@@ -235,6 +242,17 @@ export default function GlobalMessengerCallBridge() {
     };
     const poll = async () => {
       if (stopped) return;
+
+      // PERF V68: EventSource is the real-time channel. The previous bridge kept
+      // a second HTTP polling loop alive even while SSE was healthy, generating
+      // unnecessary auth/backend work across every screen. Keep polling purely
+      // as a fallback; incoming calls remain instant through SSE.
+      if (streamHealthyRef.current) {
+        pollDelayMs = isGameplayRuntime() ? 60_000 : 30_000;
+        schedule(pollDelayMs);
+        return;
+      }
+
       try {
         const calls = await listIncomingMessengerCalls();
         pollDelayMs = 10_000;

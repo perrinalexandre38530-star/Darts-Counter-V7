@@ -7,6 +7,7 @@ import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
 import { awenaLine } from "./AwenaVoiceCatalog";
+import { buildAwenaRecordsReply } from "./AwenaRecords";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
 type AwenaContextValue = {
@@ -92,7 +93,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
 
     const explicitMode = findAwenaMode(clean, runtime.mode || runtime.route);
     const contextForReply = explicitMode ? { ...runtime, mode: explicitMode.id } : runtime;
-    const reply = buildAwenaReply(clean, contextForReply);
+    const reply = (await buildAwenaRecordsReply(clean, contextForReply)) ?? buildAwenaReply(clean, contextForReply);
 
     if (reply.modeId) {
       setRuntimeState((prev) => ({ ...prev, mode: reply.modeId || prev.mode }));

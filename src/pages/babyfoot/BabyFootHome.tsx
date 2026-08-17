@@ -518,11 +518,26 @@ export default function BabyFootHome({ store, go }: Props) {
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
   const seed = String(activeProfile?.id ?? "anon");
 
-  // refresh state (pour news live)
+  // Refresh state (news live). The store publishes same-tab changes directly;
+  // keep only a slow fallback for legacy/external writes instead of parsing
+  // localStorage every 600 ms for the lifetime of the Home screen.
   const [st, setSt] = useState(() => loadBabyFootState());
   useEffect(() => {
-    const id = window.setInterval(() => setSt(loadBabyFootState()), 600);
-    return () => window.clearInterval(id);
+    const onStateUpdated = (event: Event) => {
+      const next = (event as CustomEvent).detail;
+      setSt(next && typeof next === "object" ? next : loadBabyFootState());
+    };
+    const onStorage = () => setSt(loadBabyFootState());
+
+    window.addEventListener("dc-babyfoot-state-updated", onStateUpdated as EventListener);
+    window.addEventListener("storage", onStorage);
+    const fallbackId = window.setInterval(onStorage, 10_000);
+
+    return () => {
+      window.removeEventListener("dc-babyfoot-state-updated", onStateUpdated as EventListener);
+      window.removeEventListener("storage", onStorage);
+      window.clearInterval(fallbackId);
+    };
   }, []);
 
   const profiles = useMemo(() => Array.isArray((store as any)?.profiles) ? ((store as any).profiles as Profile[]) : [], [store]);

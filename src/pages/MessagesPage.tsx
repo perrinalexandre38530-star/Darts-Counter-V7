@@ -1044,7 +1044,7 @@ export default function MessagesPage({ store, update, go }: Props) {
     setRecordingSeconds(Math.max(1, Math.round((Date.now() - Number(recorderStartedAtRef.current || Date.now())) / 1000)));
     const timer = window.setInterval(() => {
       setRecordingSeconds(Math.max(1, Math.round((Date.now() - Number(recorderStartedAtRef.current || Date.now())) / 1000)));
-    }, 300);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [isRecording]);
 

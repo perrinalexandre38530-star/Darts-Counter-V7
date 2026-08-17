@@ -5,6 +5,8 @@
 // - compact diagnostics for media/localStorage hot spots
 // ============================================
 
+import { isRuntimeHidden } from "../lib/runtimePerformance";
+
 let interval: any = null;
 let lastWarningAt = 0;
 const WARNING_COOLDOWN_MS = 15_000;
@@ -57,6 +59,7 @@ export function startMemoryWatchdog() {
 
   interval = setInterval(() => {
     try {
+      if (isRuntimeHidden()) return;
       const perf: any = performance as any;
       const mem = perf?.memory;
       if (!mem) return;
@@ -92,5 +95,5 @@ export function startMemoryWatchdog() {
         } catch {}
       }
     } catch {}
-  }, 2000);
+  }, 5000);
 }

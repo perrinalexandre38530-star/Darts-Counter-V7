@@ -1838,6 +1838,10 @@ useEffect(() => {
   const currentTabRef = React.useRef<Tab | string>(tab as any);
   React.useEffect(() => {
     currentTabRef.current = tab as any;
+    try {
+      (window as any).__mscActiveTab = String(tab || "");
+      document.documentElement.dataset.mscGameplay = isGameplayRouteName(tab) ? "1" : "0";
+    } catch {}
   }, [tab]);
 
   React.useEffect(() => {
@@ -2234,12 +2238,20 @@ useEffect(() => {
 
   function commitGo(next: Tab, params?: any) {
     const nextParams = mergeOnlineRouteContext(routeParams, next, params);
+
+    // PERF V68: publish the actual navigation state first. Diagnostics are
+    // bookkeeping and must never sit in front of the visible route change.
+    try {
+      (window as any).__mscActiveTab = String(next || "");
+      document.documentElement.dataset.mscGameplay = isGameplayRouteName(next) ? "1" : "0";
+    } catch {}
     setRouteParams(nextParams ?? null);
+    setTab(next);
+
     profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: nextParams ?? null });
     const nextRoute = String(window.location.hash || `#/go:${next}`);
     trackRoute(nextRoute);
     crashGuardTrackRoute(nextRoute);
-    setTab(next);
 
     if (
       next === "auth_callback" ||

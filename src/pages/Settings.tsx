@@ -45,6 +45,11 @@ import { useSport } from "../contexts/SportContext";
 // MONETIZATION_V1
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
+import {
+  getStartupIntroMusicEnabled,
+  setStartupIntroMusicEnabled,
+  stopStartupIntroMusic,
+} from "../lib/startupAudioPrefs";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -1193,7 +1198,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "general" | "sport" | "castViewer" | "developer" | "awena";
+type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
 
 const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
 const ACCOUNT_DELETION_URL = "https://darts-counter-v7.pages.dev/account-deletion.html";
@@ -3469,6 +3474,122 @@ export function Settings({ go }: Props) {
     );
   }
 
+  function StartupAudioSection() {
+    const [introMusicEnabled, setIntroMusicEnabledState] = React.useState<boolean>(() =>
+      getStartupIntroMusicEnabled()
+    );
+
+    const toggleIntroMusic = () => {
+      const next = !introMusicEnabled;
+      setIntroMusicEnabledState(next);
+      setStartupIntroMusicEnabled(next);
+
+      // Si la musique tourne encore au moment où l'utilisateur la coupe,
+      // elle s'arrête immédiatement. La réactivation prendra effet au prochain démarrage.
+      if (!next) stopStartupIntroMusic();
+    };
+
+    return (
+      <section
+        style={{
+          background: CARD_BG,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
+          {t("settings.audio.title", "Audio")}
+        </h2>
+
+        <p style={{ fontSize: 12, color: theme.textSoft, margin: "0 0 14px", lineHeight: 1.45 }}>
+          {t(
+            "settings.audio.subtitle",
+            "Contrôle les sons généraux de l’application sans modifier les bruitages propres aux modes de jeu."
+          )}
+        </p>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={introMusicEnabled}
+          onClick={toggleIntroMusic}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 14,
+            padding: "14px 14px",
+            borderRadius: 16,
+            border: `1px solid ${introMusicEnabled ? `${theme.primary}88` : theme.borderSoft}`,
+            background: introMusicEnabled ? `${theme.primary}12` : "rgba(255,255,255,0.025)",
+            color: theme.text,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.25 }}>
+              {t("settings.audio.startupMusic", "Musique d’intro au démarrage")}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
+              {introMusicEnabled
+                ? t("settings.audio.startupMusic.on", "Activée : le jingle est joué au lancement de l’application.")
+                : t("settings.audio.startupMusic.off", "Désactivée : l’application démarre en silence.")}
+            </div>
+          </div>
+
+          <div
+            aria-hidden="true"
+            style={{
+              width: 54,
+              height: 30,
+              borderRadius: 999,
+              padding: 3,
+              flex: "0 0 auto",
+              background: introMusicEnabled ? theme.primary : "rgba(255,255,255,0.14)",
+              border: `1px solid ${introMusicEnabled ? theme.primary : theme.borderSoft}`,
+              boxShadow: introMusicEnabled ? `0 0 14px ${theme.primary}55` : "none",
+              transition: "background 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
+            }}
+          >
+            <div
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: introMusicEnabled ? "#071018" : "rgba(255,255,255,0.88)",
+                transform: introMusicEnabled ? "translateX(24px)" : "translateX(0)",
+                transition: "transform 160ms ease",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+              }}
+            />
+          </div>
+        </button>
+
+        <div
+          style={{
+            marginTop: 10,
+            padding: "9px 11px",
+            borderRadius: 12,
+            border: `1px solid ${theme.borderSoft}`,
+            background: "rgba(255,255,255,0.02)",
+            color: theme.textSoft,
+            fontSize: 10.5,
+            lineHeight: 1.4,
+          }}
+        >
+          {t(
+            "settings.audio.startupMusic.note",
+            "Ce réglage concerne uniquement l’intro musicale de MULTISPORTS SCORING. Les sons de jeu, annonces et voix IA restent inchangés."
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function GeneralSection() {
     return (
       <section
@@ -4266,6 +4387,8 @@ export function Settings({ go }: Props) {
       ? t("settings.menu.theme", "Thème")
       : tab === "lang"
       ? t("settings.menu.lang", "Langues")
+      : tab === "audio"
+      ? t("settings.menu.audio", "Audio")
       : tab === "general"
       ? "SAUVEGARDE"
       : tab === "castViewer"
@@ -4289,6 +4412,8 @@ export function Settings({ go }: Props) {
       ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
       : tab === "lang"
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
+      : tab === "audio"
+      ? t("settings.audio.pageSubtitle", "Musique de démarrage et préférences audio générales.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
       : tab === "castViewer"
@@ -4418,6 +4543,13 @@ export function Settings({ go }: Props) {
               onClick={() => setTab("lang")}
             />
             <SettingsMenuCard
+              title={t("settings.menu.audio", "Audio")}
+              subtitle={t("settings.menu.audio.sub", "Active ou coupe la musique d’intro au démarrage de l’application.")}
+              theme={theme}
+              rightHint={getStartupIntroMusicEnabled() ? "ON" : "OFF"}
+              onClick={() => setTab("audio")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.sport", "Choix de sport")}
               subtitle={t("settings.menu.sport.sub", "Changer de jeu, réinitialiser le choix (hub au démarrage).")}
               theme={theme}
@@ -4456,6 +4588,7 @@ export function Settings({ go }: Props) {
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}
+        {tab === "audio" && <StartupAudioSection />}
         {tab === "sport" && <SportSection />}
         {tab === "castViewer" && <CastViewerSettingsSection go={go} />}
         {tab === "developer" && <DeveloperSection />}

@@ -614,7 +614,7 @@ const TrainingClock: React.FC<Props> = (props) => {
     }
     const id = window.setInterval(() => {
       setNowTick(Date.now());
-    }, 500);
+    }, 1000);
     return () => {
       window.clearInterval(id);
     };

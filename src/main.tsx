@@ -16,6 +16,7 @@ import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 import { installPlayerNameTypography } from "./lib/playerNameTypography";
 import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
+import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
@@ -47,68 +48,71 @@ function formatMb(bytes: number | null | undefined) {
 function startMemoryDiagnosticsSampler() {
   if (typeof window === "undefined") return;
 
-  const update = () => {
+  let lastPersistAt = 0;
+  let cancelIdle: (() => void) | null = null;
+
+  const update = (force = false) => {
     try {
+      if (isRuntimeHidden()) return;
+
       const perf: any = performance as any;
       const mem = perf?.memory;
       const used = mem?.usedJSHeapSize ?? null;
       const limit = mem?.jsHeapSizeLimit ?? null;
+      const usedNum = used ? used / 1024 / 1024 : NaN;
+      const limitNum = limit ? limit / 1024 / 1024 : NaN;
+      const critical = Number.isFinite(limitNum) && Number.isFinite(usedNum) && limitNum > 0 && usedNum > limitNum * 0.85;
 
-      let storeMb = "?";
-      try {
-        const raw = localStorage.getItem("dc_last_store_size_v1");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.mb != null) storeMb = String(parsed.mb);
-        }
-      } catch {}
+      // PERF V68: the app previously performed synchronous localStorage reads,
+      // JSON parse/stringify and writes every 2 seconds, even while a dart was
+      // being entered. Keep emergency memory warnings, but never compete with
+      // gameplay for routine diagnostics.
+      if (!force && isGameplayRuntime() && !critical) return;
+      const now = Date.now();
+      if (!force && !critical && now - lastPersistAt < 30_000) return;
+      lastPersistAt = now;
 
-      const route = (() => {
+      cancelIdle?.();
+      cancelIdle = scheduleRuntimeIdle(() => {
         try {
-          return window.location.hash || window.location.pathname || "/";
-        } catch {
-          return "/";
-        }
-      })();
+          let storeMb = "?";
+          try {
+            const raw = localStorage.getItem("dc_last_store_size_v1");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.mb != null) storeMb = String(parsed.mb);
+            }
+          } catch {}
 
-      const usedMb = formatMb(used);
-      const limitMb = formatMb(limit);
+          const route = (() => {
+            try { return window.location.hash || window.location.pathname || "/"; }
+            catch { return "/"; }
+          })();
+          const usedMb = formatMb(used);
+          const limitMb = formatMb(limit);
 
-      try {
-        localStorage.setItem(
-          "dc_memory_diag_v1",
-          JSON.stringify({
-            at: Date.now(),
-            usedBytes: used,
-            limitBytes: limit,
-            usedMB: usedMb,
-            limitMB: limitMb,
-            storeMB: storeMb,
-            route,
-          })
-        );
-      } catch {}
+          try {
+            localStorage.setItem("dc_memory_diag_v1", JSON.stringify({
+              at: Date.now(), usedBytes: used, limitBytes: limit,
+              usedMB: usedMb, limitMB: limitMb, storeMB: storeMb, route,
+            }));
+          } catch {}
 
-      const limitNum = Number(limitMb);
-      const usedNum = Number(usedMb);
-      if (Number.isFinite(limitNum) && Number.isFinite(usedNum) && limitNum > 0 && usedNum > limitNum * 0.85) {
-        try {
-          localStorage.setItem(
-            "dc_last_memory_warning_v1",
-            JSON.stringify({
-              at: Date.now(),
-              usedMB: usedNum,
-              limitMB: limitNum,
-              route,
-            })
-          );
+          if (critical) {
+            try {
+              localStorage.setItem("dc_last_memory_warning_v1", JSON.stringify({
+                at: Date.now(), usedMB: Math.round(usedNum * 10) / 10,
+                limitMB: Math.round(limitNum * 10) / 10, route,
+              }));
+            } catch {}
+          }
         } catch {}
-      }
+      }, { timeoutMs: critical ? 500 : 5000, fallbackDelayMs: critical ? 0 : 250 });
     } catch {}
   };
 
-  update();
-  window.setInterval(update, 2000);
+  update(true);
+  window.setInterval(() => update(false), 10_000);
 }
 
 startMemoryDiagnosticsSampler();

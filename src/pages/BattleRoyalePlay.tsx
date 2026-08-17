@@ -516,16 +516,21 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
   
   // ✅ UI: masquer les onglets au-dessus du keypad (KEYPAD / CIBLE / PRESETS / VOICE / AUTO)
+  // Perf: l'ancien code rescannait tout le DOM toutes les 400 ms pendant la partie.
+  // On cherche une fois, puis on observe uniquement les ajouts DOM jusqu'à trouver la barre.
   React.useEffect(() => {
     if (typeof document === "undefined") return;
 
     const LABELS = ["KEYPAD", "CIBLE", "PRESETS", "VOICE", "AUTO"];
+    let observer: MutationObserver | null = null;
+    let rafId = 0;
+    let stopTimer = 0;
 
-    const hideTabs = () => {
+    const hideTabs = (): boolean => {
       try {
         const nodes = Array.from(document.querySelectorAll("button,div,span"));
         const hit = nodes.find((n) => LABELS.includes((n.textContent || "").trim().toUpperCase()));
-        if (!hit) return;
+        if (!hit) return false;
 
         // On remonte pour cibler la "barre" qui contient les onglets.
         let el: HTMLElement | null = hit as any;
@@ -533,19 +538,39 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           const s = window.getComputedStyle(el);
           const isRow = s.display.includes("flex") && (el.scrollWidth > 200 || el.clientWidth > 200);
           if (isRow) {
-            (el as HTMLElement).style.display = "none";
-            return;
+            el.style.display = "none";
+            return true;
           }
           el = el.parentElement;
         }
       } catch {
         // ignore
       }
+      return false;
     };
 
-    hideTabs();
-    const id = window.setInterval(hideTabs, 400);
-    return () => window.clearInterval(id);
+    const stopWatching = () => {
+      observer?.disconnect();
+      observer = null;
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = 0;
+      if (stopTimer) window.clearTimeout(stopTimer);
+      stopTimer = 0;
+    };
+
+    if (hideTabs()) return;
+
+    observer = new MutationObserver(() => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        if (hideTabs()) stopWatching();
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    stopTimer = window.setTimeout(stopWatching, 4000);
+
+    return stopWatching;
   }, []);
 
 // -------- Keypad handlers --------

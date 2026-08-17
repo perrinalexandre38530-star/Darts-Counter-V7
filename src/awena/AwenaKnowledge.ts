@@ -1,16 +1,7 @@
 import type { AwenaAction } from "./awena.types";
 import { dartsGameRegistry, type DartsGameDef } from "../games/dartsGameRegistry";
-import tickerKiller from "../assets/tickers/ticker_killer_2.png";
-import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
-import tickerPoker from "../assets/tickers/ticker_darts_poker.png";
-import tickerAttrapeMoi from "../assets/tickers/ticker_attrape_moi.png";
-import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale_2.png";
-import tickerCargo from "../assets/tickers/ticker_cargo.png";
-import tickerFiveLives from "../assets/tickers/ticker_five_lives_2.png";
-import tickerLoterie from "../assets/tickers/ticker_loterie.png";
-import tickerOcean from "../assets/tickers/ticker_ocean_control.png";
-import tickerPresident from "../assets/tickers/ticker_president.png";
-import tickerBatard from "../assets/tickers/ticker_batard_players.png";
+import { getTicker } from "../lib/tickers";
+import { formatAwenaConfiguration, getAwenaModeConfigDetail } from "./AwenaConfigKnowledge";
 
 export type AwenaModeKnowledge = {
   id: string;
@@ -29,22 +20,27 @@ export type AwenaModeKnowledge = {
   statsKey?: string;
   entry: "games" | "training";
   configuration: string;
+  victoryCondition: string;
+  variants: string[];
 };
 
-const TICKERS: Record<string, string | undefined> = {
-  killer: tickerKiller,
-  killer_progressive: tickerKiller,
-  darts_firefighter: tickerFirefighter,
-  darts_poker: tickerPoker,
-  attrape_moi: tickerAttrapeMoi,
-  battle_royale: tickerBattleRoyale,
-  cargo: tickerCargo,
-  five_lives: tickerFiveLives,
-  loterie: tickerLoterie,
-  ocean_control: tickerOcean,
-  president: tickerPresident,
-  bastard: tickerBatard,
+const TICKER_KEYS: Record<string, string> = {
+  killer_progressive: "killer",
+  mario_kart: "darts_racer",
+  departements: "territories",
+  bastard: "batard_players",
+  tour_horloge: "clock",
 };
+
+function tickerFor(game: DartsGameDef): string | undefined {
+  const key = TICKER_KEYS[game.id] || game.id;
+  return (
+    getTicker(key) ||
+    getTicker(`ticker_${key}`) ||
+    getTicker(game.label) ||
+    undefined
+  );
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   classic: "Classiques",
@@ -132,12 +128,12 @@ function defaultHowToPlay(game: DartsGameDef) {
   return `Ouvre Jeux > Fléchettes > ${game.label}. Configure les participants et les options affichées pour ce mode, puis appuie sur Démarrer la partie.`;
 }
 
-function configurationFor(game: DartsGameDef) {
+function baseConfigurationFor(game: DartsGameDef) {
   const participants = game.maxPlayers === 1 ? "solo" : `jusqu'à ${game.maxPlayers} joueurs`;
   const teams = game.supportsTeams ? "équipes prises en charge" : "pas d'équipes";
   const bots = game.supportsBots ? "bots IA pris en charge" : "pas de bots IA";
   const category = CATEGORY_LABELS[game.category] || game.category;
-  return `${game.label} est classé dans ${category}. Configuration déclarée : ${participants}, ${teams}, ${bots}. Les options spécifiques visibles sur son écran de configuration restent prioritaires.`;
+  return `${game.label} est classé dans ${category}. Participants : ${participants}, ${teams}, ${bots}.`;
 }
 
 function toKnowledge(game: DartsGameDef): AwenaModeKnowledge {
@@ -150,7 +146,7 @@ function toKnowledge(game: DartsGameDef): AwenaModeKnowledge {
     tip: override.tip || defaultTip(game),
     howToPlayInApp: override.howToPlayInApp || defaultHowToPlay(game),
     configRoute: game.tab === "mode_not_ready" ? undefined : game.tab,
-    tickerSrc: TICKERS[game.id],
+    tickerSrc: tickerFor(game),
     sport: "darts",
     category: CATEGORY_LABELS[game.category] || game.category,
     maxPlayers: game.maxPlayers,
@@ -158,7 +154,9 @@ function toKnowledge(game: DartsGameDef): AwenaModeKnowledge {
     supportsBots: game.supportsBots,
     statsKey: game.statsKey,
     entry: game.entry,
-    configuration: configurationFor(game),
+    configuration: formatAwenaConfiguration(game.label, baseConfigurationFor(game), getAwenaModeConfigDetail(game.id)),
+    victoryCondition: getAwenaModeConfigDetail(game.id)?.victory || game.infoBody,
+    variants: getAwenaModeConfigDetail(game.id)?.variants || [],
   };
 }
 

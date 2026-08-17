@@ -9,6 +9,7 @@
 // ============================================
 
 import { loadStore, saveStore } from "./storage";
+import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
 
 type AnyObj = Record<string, any>;
 
@@ -378,11 +379,27 @@ export function startCrashGuard(options?: CrashGuardOptions) {
 
   if (intervalId !== null) return;
 
-  intervalId = window.setInterval(() => {
-    runCrashGuardCheck().catch(() => {
-      addWarning("Erreur pendant le contrôle CrashGuard");
-    });
-  }, 15_000);
+  const maybeRun = () => {
+    if (isRuntimeHidden()) return;
+
+    // PERF V68: runCrashGuardCheck() loads and scans the full persisted Store.
+    // Doing that every 15s during scoring creates periodic main-thread/IDB
+    // contention. During gameplay only a truly critical heap condition may
+    // bypass the pause; normal checks resume as soon as the player leaves Play.
+    const perf = getPerfMemory();
+    const critical = !!perf && Number(perf.usedMB || 0) >= Number(opts.memoryHardLimitMB || 900);
+    if (isGameplayRuntime() && !critical) return;
+
+    scheduleRuntimeIdle(() => {
+      runCrashGuardCheck().catch(() => {
+        addWarning("Erreur pendant le contrôle CrashGuard");
+      });
+    }, { timeoutMs: critical ? 700 : 7000, fallbackDelayMs: critical ? 0 : 300 });
+  };
+
+  // One minute is sufficient for maintenance; memory warnings remain covered by
+  // the lightweight watchdog and a critical heap still forces this check.
+  intervalId = window.setInterval(maybeRun, 60_000);
 
   addAction("CrashGuard démarré");
 }

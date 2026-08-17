@@ -768,7 +768,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
 
   React.useEffect(() => {
     if (!matchStarted) return;
-    const id = window.setInterval(() => setNowTick(Date.now()), 250);
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [matchStarted]);
 

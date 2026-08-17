@@ -12,6 +12,8 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import RulesModal from "./RulesModal";
 import { useAwenaOptional } from "../awena/AwenaProvider";
+import { routeToAwenaMode } from "../awena/AwenaKnowledge";
+import AwenaModeDot from "../awena/components/AwenaModeDot";
 
 type InfoDotContent = React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
 
@@ -61,6 +63,7 @@ export default function InfoDot({
 
   const iconColor = color ?? theme.primary;
   const halo = glow ?? `${iconColor}88`;
+  const awenaScreenMode = routeToAwenaMode(awena?.runtime?.route);
 
   const handle = React.useCallback(
     (e: any) => {
@@ -79,6 +82,19 @@ export default function InfoDot({
 
   // 🔥 icône volontairement plus grosse que BackDot pour être lisible
   const iconSize = Math.max(26, Math.round(size * 0.68));
+
+  // Sur les écrans de configuration/menu d'un mode, Awena remplace désormais
+  // l'InfoDot et propose Règles / Configuration / Records.
+  const awenaMenuTakesOver = Boolean(
+    awenaScreenMode &&
+    !awena?.runtime?.inGame &&
+    awena?.settings?.enabled &&
+    awena?.settings?.interventionMode !== "off"
+  );
+
+  if (awenaMenuTakesOver && awenaScreenMode) {
+    return <AwenaModeDot modeId={awenaScreenMode.id} size={Math.max(36, size)} />;
+  }
 
   // En partie, Awena remplace volontairement l’ancien InfoDot.
   // L’InfoDot historique reste disponible partout ailleurs et redevient le fallback

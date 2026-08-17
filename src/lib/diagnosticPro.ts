@@ -12,6 +12,7 @@
 import { loadStore } from "./storage";
 import { captureCrash, getCrashLog, getLastCrashReport } from "./crashReporter";
 import { getCrashGuardState, getCrashGuardRouteHistory } from "./crashGuard";
+import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./runtimePerformance";
 
 export interface DiagnosticReport {
   generatedAt: string;
@@ -86,6 +87,33 @@ function safeSet(key: string, value: any) {
   } catch {}
 }
 
+// PERF V68: diagnostics must never turn every fetch/timer/route into a
+// synchronous localStorage JSON stringify/write on the interaction path.
+const pendingDiagWrites = new Map<string, any>();
+let cancelDiagWriteIdle: (() => void) | null = null;
+function queueSafeSet(key: string, value: any) {
+  if (!hasWindow()) return;
+  pendingDiagWrites.set(key, value);
+  if (cancelDiagWriteIdle) return;
+  cancelDiagWriteIdle = scheduleRuntimeIdle(() => {
+    cancelDiagWriteIdle = null;
+    const rows = Array.from(pendingDiagWrites.entries());
+    pendingDiagWrites.clear();
+    for (const [k, v] of rows) safeSet(k, v);
+  }, { timeoutMs: 5000, fallbackDelayMs: 250 });
+}
+
+function deepProbeEnabled() {
+  if (!hasWindow()) return false;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("diag") === "1") return true;
+    return sessionStorage.getItem("dc_diag_deep_probe_v1") === "1" || localStorage.getItem("dc_diag_deep_probe_v1") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function pushBounded<T>(arr: T[], item: T, max: number) {
   const next = [...(Array.isArray(arr) ? arr : []), item];
   if (next.length > max) next.splice(0, next.length - max);
@@ -95,6 +123,7 @@ function pushBounded<T>(arr: T[], item: T, max: number) {
 const bootAt = Date.now();
 let started = false;
 let intervalsInstalled = false;
+let longTaskProbeInstalled = false;
 let renderCount = safeGet<number>(RENDER_KEY, 0);
 let routeHistory = safeGet<string[]>(ROUTE_KEY, []);
 let renderEvents = safeGet<any[]>(RENDER_EVENTS_KEY, []);
@@ -158,7 +187,7 @@ function rememberEvent(type: string, data?: any) {
     data: data ?? null,
   };
   eventLog = pushBounded(eventLog, evt, MAX_EVENTS);
-  safeSet(EVENTS_KEY, eventLog);
+  queueSafeSet(EVENTS_KEY, eventLog);
 }
 
 function getMemory() {
@@ -246,7 +275,7 @@ function scanImages() {
       large: large.slice(0, 20),
     };
     imageSnapshots = pushBounded(imageSnapshots, snapshot, 30);
-    safeSet(IMAGES_KEY, imageSnapshots);
+    queueSafeSet(IMAGES_KEY, imageSnapshots);
     return snapshot;
   } catch {
     return null;
@@ -268,7 +297,7 @@ function scanResources() {
     }));
     const sorted = mapped.sort((a, b) => (b.transferKB || b.decodedKB || 0) - (a.transferKB || a.decodedKB || 0)).slice(0, 25);
     resourceLog = pushBounded(resourceLog, { at: nowIso(), route: currentRoute(), top: sorted }, 20);
-    safeSet(RESOURCES_KEY, resourceLog);
+    queueSafeSet(RESOURCES_KEY, resourceLog);
     return sorted;
   } catch {
     return [];
@@ -288,10 +317,12 @@ function saveSnapshot(extra?: any) {
     lastPromiseError,
     extra: extra ?? null,
   };
-  safeSet(SNAPSHOT_KEY, snapshot);
+  queueSafeSet(SNAPSHOT_KEY, snapshot);
 }
 
-function sampleMemory(reason = "interval") {
+function sampleMemory(reason = "interval", deep = deepProbeEnabled()) {
+  if (isRuntimeHidden()) return;
+  if (reason === "interval" && isGameplayRuntime()) return;
   const mem = getMemory();
   if (!mem) return;
   const sample = {
@@ -302,19 +333,19 @@ function sampleMemory(reason = "interval") {
     reason,
   };
   memorySamples = pushBounded(memorySamples, sample, MAX_SAMPLES);
-  safeSet(MEMORY_KEY, memorySamples);
-  try {
-    safeSet("dc_memory_diag_v1", { at: sample.at, usedMB: mem.usedMB, limitMB: mem.limitMB, route: sample.route });
-  } catch {}
-  const t = buildTimerSnapshot();
-  const l = buildListenerSnapshot();
-  timerSnapshots = pushBounded(timerSnapshots, t, 40);
-  listenerSnapshots = pushBounded(listenerSnapshots, l, 40);
-  safeSet(TIMERS_KEY, timerSnapshots);
-  safeSet(LISTENERS_KEY, listenerSnapshots);
-  scanImages();
-  scanResources();
-  saveSnapshot({ reason: "memory-sample" });
+  queueSafeSet(MEMORY_KEY, memorySamples);
+  queueSafeSet("dc_memory_diag_v1", { at: sample.at, usedMB: mem.usedMB, limitMB: mem.limitMB, route: sample.route });
+  if (deep) {
+    const t = buildTimerSnapshot();
+    const l = buildListenerSnapshot();
+    timerSnapshots = pushBounded(timerSnapshots, t, 40);
+    listenerSnapshots = pushBounded(listenerSnapshots, l, 40);
+    queueSafeSet(TIMERS_KEY, timerSnapshots);
+    queueSafeSet(LISTENERS_KEY, listenerSnapshots);
+    scanImages();
+    scanResources();
+  }
+  saveSnapshot({ reason: "memory-sample", deep });
 }
 
 function estimateStoreSize(store: any) {
@@ -371,12 +402,12 @@ function estimateHistorySize(store: any) {
 
 function recordFetchEvent(evt: any) {
   fetchLog = pushBounded(fetchLog, { at: nowIso(), route: currentRoute(), ...evt }, MAX_NET);
-  safeSet(FETCH_KEY, fetchLog);
+  queueSafeSet(FETCH_KEY, fetchLog);
 }
 
 function recordXhrEvent(evt: any) {
   xhrLog = pushBounded(xhrLog, { at: nowIso(), route: currentRoute(), ...evt }, MAX_NET);
-  safeSet(XHR_KEY, xhrLog);
+  queueSafeSet(XHR_KEY, xhrLog);
 }
 
 function installFetchProbe() {
@@ -509,6 +540,29 @@ function installTimerProbe() {
   }) as any;
 }
 
+function installLongTaskProbe() {
+  if (!hasWindow() || longTaskProbeInstalled) return;
+  longTaskProbeInstalled = true;
+  try {
+    const PerfObs = (window as any).PerformanceObserver;
+    if (typeof PerfObs !== "function") return;
+    const obs = new PerfObs((list: any) => {
+      for (const entry of list.getEntries()) {
+        const lt = {
+          at: nowIso(),
+          duration: Math.round(Number(entry.duration || 0)),
+          name: String(entry.name || "longtask"),
+          route: currentRoute(),
+        };
+        longTasks = pushBounded(longTasks, lt, MAX_LONGTASKS);
+        queueSafeSet(LONGTASK_KEY, longTasks);
+        rememberEvent("long-task", lt);
+      }
+    });
+    obs.observe({ entryTypes: ["longtask"] });
+  } catch {}
+}
+
 async function getCacheInfo() {
   try {
     if (typeof caches === "undefined" || typeof caches.keys !== "function") return null;
@@ -572,13 +626,19 @@ function installOnce() {
   rememberEvent("boot", { href: String(window.location.href || "") });
   if (!routeHistory.length) {
     routeHistory = pushBounded(routeHistory, currentRoute(), MAX_ROUTES);
-    safeSet(ROUTE_KEY, routeHistory);
+    queueSafeSet(ROUTE_KEY, routeHistory);
   }
-  installTimerProbe();
-  installEventListenerProbe();
-  installFetchProbe();
-  installXhrProbe();
-  sampleMemory("boot");
+  // Deep monkey-patching of fetch/XHR/EventTarget/timers is opt-in. It is very
+  // useful for a diagnostic session, but carrying it permanently in production
+  // adds work to every interaction/network/timer across the whole app.
+  if (deepProbeEnabled()) {
+    installTimerProbe();
+    installEventListenerProbe();
+    installFetchProbe();
+    installXhrProbe();
+    installLongTaskProbe();
+  }
+  sampleMemory("boot", deepProbeEnabled());
 
   window.addEventListener("visibilitychange", () => {
     rememberEvent("visibility", { state: document.visibilityState });
@@ -622,38 +682,23 @@ function installOnce() {
     saveSnapshot({ reason: "promise-error" });
   });
 
-  try {
-    const PerfObs = (window as any).PerformanceObserver;
-    if (typeof PerfObs === "function") {
-      const obs = new PerfObs((list: any) => {
-        for (const entry of list.getEntries()) {
-          const lt = {
-            at: nowIso(),
-            duration: Math.round(Number(entry.duration || 0)),
-            name: String(entry.name || "longtask"),
-            route: currentRoute(),
-          };
-          longTasks = pushBounded(longTasks, lt, MAX_LONGTASKS);
-          safeSet(LONGTASK_KEY, longTasks);
-          rememberEvent("long-task", lt);
-        }
-      });
-      obs.observe({ entryTypes: ["longtask"] });
-    }
-  } catch {}
+  // Long-task observation is also a deep diagnostic probe. It can emit on every
+  // main-thread stall, so production gameplay does not keep it active.
 
   if (!intervalsInstalled) {
     intervalsInstalled = true;
-    window.setInterval(() => sampleMemory("interval"), SAMPLE_EVERY_MS);
+    // Routine monitoring is intentionally sparse and suspended during gameplay.
+    window.setInterval(() => sampleMemory("interval", false), 60_000);
     window.setInterval(() => {
+      if (!deepProbeEnabled() || isGameplayRuntime() || isRuntimeHidden()) return;
       try {
         const t = buildTimerSnapshot();
         if (t.activeIntervals > 0 || t.activeTimeouts > 0) {
           timerSnapshots = pushBounded(timerSnapshots, t, 40);
-          safeSet(TIMERS_KEY, timerSnapshots);
+          queueSafeSet(TIMERS_KEY, timerSnapshots);
         }
       } catch {}
-    }, 20000);
+    }, 60_000);
   }
 }
 
@@ -663,7 +708,7 @@ export function trackRoute(route: string) {
   installOnce();
   const value = String(route || currentRoute() || "/");
   routeHistory = pushBounded(routeHistory, value, MAX_ROUTES);
-  safeSet(ROUTE_KEY, routeHistory);
+  queueSafeSet(ROUTE_KEY, routeHistory);
   rememberEvent("route", { route: value });
   saveSnapshot({ reason: "route", route: value });
 }
@@ -671,18 +716,36 @@ export function trackRoute(route: string) {
 export function trackRender(component = "App") {
   installOnce();
   renderCount += 1;
-  safeSet(RENDER_KEY, renderCount);
+
+  // Keep the aggregate count for a later report, but detailed render-event
+  // persistence is diagnostic-only. App renders are part of the hot path.
+  if (!deepProbeEnabled()) return;
+
+  queueSafeSet(RENDER_KEY, renderCount);
   const ev = { at: nowIso(), component, renderCount, route: currentRoute() };
   renderEvents = pushBounded(renderEvents, ev, MAX_RENDER_EVENTS);
-  safeSet(RENDER_EVENTS_KEY, renderEvents);
+  queueSafeSet(RENDER_EVENTS_KEY, renderEvents);
   if (renderCount <= 12 || renderCount % 20 === 0) {
     rememberEvent("render", { component, renderCount });
     saveSnapshot({ reason: "render", component, renderCount });
   }
 }
 
+export function enableDeepDiagnosticsForSession() {
+  installOnce();
+  try { sessionStorage.setItem("dc_diag_deep_probe_v1", "1"); } catch {}
+  installTimerProbe();
+  installEventListenerProbe();
+  installFetchProbe();
+  installXhrProbe();
+  installLongTaskProbe();
+}
+
 export async function generateDiagnostic(): Promise<DiagnosticReport> {
   installOnce();
+  // User explicitly requested a diagnostic: from this point deep probes are
+  // allowed for the rest of the session, never before.
+  enableDeepDiagnosticsForSession();
   const store = await loadStore();
   const mem = getMemory();
   const session = getSession();

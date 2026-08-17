@@ -136,7 +136,7 @@ export default function PetanqueMeneWizard(props: Props) {
   const [, tick] = React.useState(0);
   React.useEffect(() => {
     if (!open) return;
-    const t = window.setInterval(() => tick((x) => x + 1), 250);
+    const t = window.setInterval(() => tick((x) => x + 1), 1000);
     return () => window.clearInterval(t);
   }, [open]);
 
