@@ -27,6 +27,7 @@
 
 import React from "react";
 import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import RulesModal from "../components/RulesModal";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
@@ -636,6 +637,9 @@ async function clearGameDataAndStatsOnly() {
 
 // ---------------- UI card menu (settings shell) ----------------
 
+const AWENA_AVATAR = "/awena/awena-avatar.webp";
+const AWENA_TITLE_FONT = '"Brush Script MT", "Segoe Script", "Lucida Handwriting", cursive';
+
 function SettingsInfoDot({
   title,
   content,
@@ -653,8 +657,8 @@ function SettingsInfoDot({
     <>
       <button
         type="button"
-        aria-label={`Informations — ${title}`}
-        title={title}
+        aria-label={`Awena — ${title}`}
+        title={`Awena — ${title}`}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -664,24 +668,28 @@ function SettingsInfoDot({
           width: size,
           height: size,
           borderRadius: 999,
-          border: `1px solid ${theme.primary}88`,
-          background: `radial-gradient(circle at 30% 30%, ${theme.primary}28, rgba(0,0,0,0.86))`,
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
-          fontSize: Math.max(16, Math.round(size * 0.54)),
-          fontFamily: "Georgia, serif",
-          fontWeight: 700,
-          lineHeight: 1,
-          boxShadow: `0 0 0 1px ${theme.primary}22, 0 0 10px ${theme.primary}44`,
+          border: "none",
+          background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)",
+          boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)",
           cursor: "pointer",
           flexShrink: 0,
-          padding: 0,
+          padding: 3,
+          display: "grid",
+          placeItems: "center",
         }}
       >
-        i
+        <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+          <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </span>
       </button>
-      <RulesModal open={open} onClose={() => setOpen(false)} title={title}>
+      <RulesModal open={open} onClose={() => setOpen(false)} title={`Awena · ${title}`}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <img src={AWENA_AVATAR} alt="Awena" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${theme.primary}`, boxShadow: `0 0 16px ${theme.primary}55` }} />
+          <div>
+            <div style={{ fontWeight: 950, color: theme.primary, fontSize: 14 }}>Awena</div>
+            <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.35 }}>Voici le détail de cette section de réglages.</div>
+          </div>
+        </div>
         {content}
       </RulesModal>
     </>
@@ -694,12 +702,14 @@ function SettingsMenuCard({
   theme,
   onClick,
   rightHint,
+  titleNode,
 }: {
   title: string;
   subtitle: string;
   theme: any;
   onClick?: () => void;
   rightHint?: string;
+  titleNode?: React.ReactNode;
 }) {
   const infoContent = (
     <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
@@ -752,7 +762,7 @@ function SettingsMenuCard({
             overflow: "hidden",
           }}
         >
-          {title}
+          {titleNode ?? title}
         </div>
       </button>
 
@@ -765,7 +775,7 @@ function SettingsMenuCard({
           zIndex: 2,
         }}
       >
-        <SettingsInfoDot title={title} content={infoContent} theme={theme} size={30} />
+        <InfoDot title={title} content={infoContent} size={32} color={theme.primary} glow={`${theme.primary}66`} />
       </div>
     </div>
   );
@@ -777,12 +787,16 @@ function SettingsPageHeader({
   theme,
   onBack,
   backTitle = "Retour",
+  showHelp = true,
+  onTitleClick,
 }: {
   title: string;
   subtitle: string;
   theme: any;
   onBack: () => void;
   backTitle?: string;
+  showHelp?: boolean;
+  onTitleClick?: () => void;
 }) {
   return (
     <div style={{ width: "100%", paddingInline: 8, boxSizing: "border-box", marginBottom: 10 }}>
@@ -797,7 +811,9 @@ function SettingsPageHeader({
       >
         <BackDot onClick={onBack} title={backTitle} size={38} color={theme.primary} glow={`${theme.primary}55`} />
 
-        <div
+        <button
+          type="button"
+          onClick={onTitleClick}
           style={{
             minWidth: 0,
             textAlign: "center",
@@ -808,22 +824,30 @@ function SettingsPageHeader({
             fontSize: "clamp(23px, 6.4vw, 34px)",
             lineHeight: 1.05,
             textShadow: `0 0 10px ${theme.primary}33`,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            cursor: onTitleClick ? "pointer" : "default",
           }}
         >
           {title}
-        </div>
+        </button>
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <SettingsInfoDot
-            title={title}
-            theme={theme}
-            size={38}
-            content={
-              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
-                {subtitle}
-              </div>
-            }
-          />
+          {showHelp ? (
+            <SettingsInfoDot
+              title={title}
+              theme={theme}
+              size={38}
+              content={
+                <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
+                  {subtitle}
+                </div>
+              }
+            />
+          ) : (
+            <div style={{ width: 38, height: 38 }} />
+          )}
         </div>
       </div>
 
@@ -3295,6 +3319,14 @@ export function Settings({ go }: Props) {
     return /[?&]account=storage(?:&|$)/.test(hash) ? "account_storage" : "account_menu";
   });
   const [devSub, setDevSub] = React.useState<DeveloperSub>("menu");
+  const [developerVisible, setDeveloperVisible] = React.useState<boolean>(() => {
+    try {
+      return typeof window !== "undefined" && window.localStorage.getItem("dc_settings_developer_visible") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const settingsTitleTapRef = React.useRef(0);
   const [nasBusy, setNasBusy] = React.useState<null | "backup" | "restore">(null);
   const [nasStatus, setNasStatus] = React.useState<string>("");
   const [nasLastInfo, setNasLastInfo] = React.useState<any>(null);
@@ -4419,6 +4451,22 @@ export function Settings({ go }: Props) {
         : "Zone réservée aux tests, diagnostics et actions techniques avancées."
       : "Backup NAS, synchronisation et restauration du compte.";
 
+  const handleSettingsTitleSecretTap = () => {
+    if (tab !== "menu") return;
+    settingsTitleTapRef.current += 1;
+    if (settingsTitleTapRef.current >= 7) {
+      const next = !developerVisible;
+      settingsTitleTapRef.current = 0;
+      setDeveloperVisible(next);
+      try {
+        window.localStorage.setItem("dc_settings_developer_visible", next ? "1" : "0");
+      } catch {}
+      try {
+        window.alert(next ? "Mode développeur affiché." : "Mode développeur masqué.");
+      } catch {}
+    }
+  };
+
   const handleHeaderBack = () => {
     if (tab === "menu") {
       go?.("home");
@@ -4453,6 +4501,7 @@ export function Settings({ go }: Props) {
           theme={theme}
           onBack={handleHeaderBack}
           backTitle={t("settings.back", "Retour")}
+          onTitleClick={tab === "menu" ? handleSettingsTitleSecretTap : undefined}
         />
       </div>
 
@@ -4462,10 +4511,60 @@ export function Settings({ go }: Props) {
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
+              title={t("settings.menu.sport", "Choix de sport")}
+              subtitle={t("settings.menu.sport.sub", "Changer de jeu, réinitialiser le choix (hub au démarrage).")}
+              theme={theme}
+              onClick={() => setTab("sport")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.account", "Compte")}
               subtitle="Compte/profil regroupés, notifications locales et zone dangereuse simplifiée."
               theme={theme}
               onClick={() => setTab("account")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.lang", "Langues")}
+              subtitle={t("settings.menu.lang.sub", "Choisis la langue de l’interface (drapeaux inclus).")}
+              theme={theme}
+              onClick={() => setTab("lang")}
+            />
+            <SettingsMenuCard
+              title="SAUVEGARDE"
+              subtitle="Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page."
+              theme={theme}
+              onClick={() => go?.("storage_vault")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.theme", "Thème")}
+              subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
+              theme={theme}
+              onClick={() => setTab("theme")}
+            />
+            <SettingsMenuCard
+              title="Awena"
+              titleNode={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0.3 }}>
+                  <img src={AWENA_AVATAR} alt="Awena" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${theme.primary}`, boxShadow: `0 0 8px ${theme.primary}55` }} />
+                  <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
+                </span>
+              }
+              subtitle="Présentatrice officielle, assistante interactive, voix locale et comportement en jeu."
+              theme={theme}
+              rightHint="IA LOCALE"
+              onClick={() => setTab("awena")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.audio", "INTRO")}
+              subtitle={t("settings.menu.audio.sub", "Active ou coupe entièrement l’intro animée et musicale au démarrage.")}
+              theme={theme}
+              rightHint={getStartupIntroEnabled() ? "ON" : "OFF"}
+              onClick={() => setTab("audio")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.castViewer", "Cast / Viewer")}
+              subtitle="Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics."
+              theme={theme}
+              onClick={() => go?.("cast_host", { screenTab: "settings" })}
             />
             <SettingsMenuCard
               title="Publicité & Boutique"
@@ -4481,65 +4580,20 @@ export function Settings({ go }: Props) {
               rightHint="RGPD / PLAY"
               onClick={() => setTab("privacy")}
             />
-            <SettingsMenuCard
-              title="Awena"
-              subtitle="Présentatrice officielle, assistante interactive, voix locale et comportement en jeu."
-              theme={theme}
-              rightHint="IA LOCALE"
-              onClick={() => setTab("awena")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.theme", "Thème")}
-              subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
-              theme={theme}
-              onClick={() => setTab("theme")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.lang", "Langues")}
-              subtitle={t("settings.menu.lang.sub", "Choisis la langue de l’interface (drapeaux inclus).")}
-              theme={theme}
-              onClick={() => setTab("lang")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.audio", "INTRO")}
-              subtitle={t("settings.menu.audio.sub", "Active ou coupe entièrement l’intro animée et musicale au démarrage.")}
-              theme={theme}
-              rightHint={getStartupIntroEnabled() ? "ON" : "OFF"}
-              onClick={() => setTab("audio")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.sport", "Choix de sport")}
-              subtitle={t("settings.menu.sport.sub", "Changer de jeu, réinitialiser le choix (hub au démarrage).")}
-              theme={theme}
-              onClick={() => setTab("sport")}
-            />
-
-            <SettingsMenuCard
-              title={t("settings.menu.castViewer", "Cast / Viewer")}
-              subtitle="Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics."
-              theme={theme}
-              onClick={() => go?.("cast_host", { screenTab: "settings" })}
-            />
-
-            <SettingsMenuCard
-              title="SAUVEGARDE"
-              subtitle="Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page."
-              theme={theme}
-              onClick={() => go?.("storage_vault")}
-            />
-
-            <SettingsMenuCard
-              title={t("settings.menu.developer", "Développeur")}
-              subtitle="Diagnostic, tests, simulations, push NAS, logs et sécurité technique."
-              theme={theme}
-              onClick={() => setTab("developer")}
-            />
+            {developerVisible ? (
+              <SettingsMenuCard
+                title={t("settings.menu.developer", "Développeur")}
+                subtitle="Diagnostic, tests, simulations, push NAS, logs et sécurité technique."
+                theme={theme}
+                onClick={() => setTab("developer")}
+              />
+            ) : null}
 
             <div style={{ height: 10 }} />
           </div>
         )}
 
-        {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
+                {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
 
         {tab === "monetization" && <MonetizationSettingsPanel />}
 

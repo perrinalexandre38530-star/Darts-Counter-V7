@@ -2098,7 +2098,8 @@ function buildArcadeItems(
   _store: Store,
   profile: Profile | null,
   stats: ActiveProfileStats | null | undefined,
-  t: (k: string, d?: string) => string
+  t: (k: string, d?: string) => string,
+  lang: string
 ): ArcadeTickerItem[] {
   const items: ArcadeTickerItem[] = [];
   const s: ActiveProfileStats = stats ?? emptyActiveProfileStats();
@@ -2672,8 +2673,8 @@ export default function Home({ store, go, activeSport }: Props) {
   // ------------------------------------------------------------
 
   const tickerItemsRaw = useMemo(
-    () => isFootSport ? buildFootTickerItems(footStats, theme.primary ?? "#27E7FF") : buildArcadeItems(store, activeProfile, stats, t),
-    [isFootSport, footStats, store, activeProfile, stats, t, theme.primary]
+    () => isFootSport ? buildFootTickerItems(footStats, theme.primary ?? "#27E7FF") : buildArcadeItems(store, activeProfile, stats, t, lang),
+    [isFootSport, footStats, store, activeProfile, stats, t, lang, theme.primary]
   );
 
   // ✅ IMPORTANT: stats/informations + pages PUB intégrées dans LA MÊME rotation.
