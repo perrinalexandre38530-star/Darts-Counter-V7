@@ -15,6 +15,102 @@ type Props = {
 
 type AwenaContextValue = NonNullable<ReturnType<typeof useAwenaOptional>>;
 
+function inlineRich(text: string, accent: string) {
+  const parts = String(text || "").split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index} style={{ color: accent, fontWeight: 950 }}>{part.slice(2, -2)}</strong>;
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
+function sectionColor(title: string, primary: string) {
+  const t = title.toUpperCase();
+  if (/OBJECTIF|VICTOIRE|FORMAT/.test(t)) return "#ffd76a";
+  if (/CONFIG|OPTIONS|PARTICIPANTS|SAISIE|DANS L/.test(t)) return "#65d8ff";
+  if (/FUYARD|ÉVASION|EVASION/.test(t)) return "#ff6fa8";
+  if (/CHASSEUR|CAPTURE/.test(t)) return "#42d6ff";
+  if (/CONSEIL|ASTUCE/.test(t)) return "#5dff9b";
+  return primary;
+}
+
+function RichAwenaText({ text, primary }: { text: string; primary: string }) {
+  const lines = String(text || "").split(/\n/);
+  const blocks: React.ReactNode[] = [];
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    const content = paragraph.join(" ").trim();
+    paragraph = [];
+    if (!content) return;
+    blocks.push(
+      <div key={`p-${blocks.length}`} style={{ color: "#eef2ff", lineHeight: 1.5 }}>
+        {inlineRich(content, primary)}
+      </div>
+    );
+  };
+
+  lines.forEach((raw) => {
+    const line = raw.trim();
+    if (!line) {
+      flushParagraph();
+      return;
+    }
+    if (line.startsWith("## ")) {
+      flushParagraph();
+      const title = line.slice(3).trim();
+      const color = sectionColor(title, primary);
+      blocks.push(
+        <div key={`h-${blocks.length}`} style={{
+          marginTop: blocks.length ? 5 : 0,
+          color,
+          fontSize: 11,
+          fontWeight: 1000,
+          letterSpacing: .8,
+          textTransform: "uppercase",
+          paddingBottom: 4,
+          borderBottom: `1px solid ${color}35`,
+        }}>
+          {title}
+        </div>
+      );
+      return;
+    }
+    if (line.startsWith("- ")) {
+      flushParagraph();
+      blocks.push(
+        <div key={`b-${blocks.length}`} style={{ display: "flex", gap: 7, alignItems: "flex-start", color: "#edf1ff", lineHeight: 1.45 }}>
+          <span aria-hidden style={{ color: primary, fontWeight: 1000, marginTop: 1 }}>•</span>
+          <span style={{ flex: 1 }}>{inlineRich(line.slice(2).trim(), primary)}</span>
+        </div>
+      );
+      return;
+    }
+    if (line.startsWith("> ")) {
+      flushParagraph();
+      blocks.push(
+        <div key={`n-${blocks.length}`} style={{
+          padding: "7px 9px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,215,106,.26)",
+          background: "rgba(255,215,106,.06)",
+          color: "#f4dfaa",
+          lineHeight: 1.42,
+        }}>
+          {inlineRich(line.slice(2).trim(), "#ffd76a")}
+        </div>
+      );
+      return;
+    }
+    paragraph.push(line);
+  });
+  flushParagraph();
+
+  return <div style={{ display: "grid", gap: 7 }}>{blocks}</div>;
+}
+
 export default function AwenaOverlay(props: Props) {
   const awena = useAwenaOptional();
 
@@ -117,7 +213,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V5</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V6</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -133,7 +229,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             {(currentMode && !live
               ? [
                   ["Règles", `Explique-moi clairement les règles de ${currentMode.label}.`],
-                  ["Configuration", `Explique-moi précisément la configuration de ${currentMode.label}, les options, variantes et conditions de victoire.`],
+                  ["Configuration", `Détaille uniquement la configuration de ${currentMode.label} : chaque option, valeur possible, variante, format et réglage disponible.`],
                   ["Records", `Donne-moi les records de ${currentMode.label} et les principaux classements disponibles.`],
                 ]
               : [
@@ -151,9 +247,11 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             {messages.map((m) => (
               <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
                 <div style={{ padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
-                  {m.text}
+                  {m.role === "awena" ? <RichAwenaText text={m.text} primary={primary} /> : m.text}
                   {m.role === "awena" && (
-                    <button type="button" onClick={() => void say(m.text)} title="Écouter Awena" style={{ marginLeft: 8, border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14 }}>🔊</button>
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 5 }}>
+                      <button type="button" onClick={() => void say(m.text)} title="Écouter Awena" style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>🔊</button>
+                    </div>
                   )}
                 </div>
                 {m.role === "awena" && Array.isArray(m.actions) && m.actions.length > 0 && (

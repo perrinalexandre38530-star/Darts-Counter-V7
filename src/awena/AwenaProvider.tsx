@@ -41,6 +41,19 @@ const AwenaContext =
   awenaGlobal[AWENA_CONTEXT_GLOBAL_KEY] || React.createContext<AwenaContextValue | null>(null);
 awenaGlobal[AWENA_CONTEXT_GLOBAL_KEY] = AwenaContext;
 
+function textForSpeech(text: string) {
+  return String(text || "")
+    .replace(/^##\s+/gm, "")
+    .replace(/^[-•]\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/[_`#]/g, " ")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function message(role: "awena" | "user", text: string, actions?: AwenaMessage["actions"]): AwenaMessage {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -84,7 +97,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
 
   const say = React.useCallback(async (text: string) => {
     if (muted) return;
-    await awenaVoice.speak(text, settingsState, String(lang || "fr"));
+    await awenaVoice.speak(textForSpeech(text), settingsState, String(lang || "fr"));
   }, [lang, muted, settingsState]);
 
   const ask = React.useCallback(async (question: string, options?: { speak?: boolean }) => {
@@ -106,7 +119,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     ].slice(-40));
 
     if ((options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted) {
-      await awenaVoice.speak(reply.text, settingsState, String(lang || "fr"));
+      await awenaVoice.speak(textForSpeech(reply.text), settingsState, String(lang || "fr"));
     }
     return reply.text;
   }, [lang, muted, runtime, settingsState]);

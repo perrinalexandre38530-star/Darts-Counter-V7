@@ -2,6 +2,7 @@ import { getAdaptiveCheckoutSuggestionV3, type X01OutModeV3 } from "../lib/x01v3
 import { actionsForAwenaMode, allAwenaModes, awenaModesByCategory, findAwenaMode, findAwenaModeById } from "./AwenaKnowledge";
 import { actionForNavigation, actionForSport, actionForSportMode, findAwenaNavigationTopic, findAwenaSport, findAwenaSportMode } from "./AwenaAppKnowledge";
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
+import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKnowledge";
 
 function normalize(text: string) {
   return String(text || "")
@@ -105,7 +106,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     }
     if (mode) {
       return {
-        text: `${mode.howToPlayInApp} Accès direct ci-dessous. Règle rapide : ${mode.summary}`,
+        text: `## POUR JOUER À ${mode.label.toUpperCase()}\n${mode.howToPlayInApp}\n\n## RÈGLE RAPIDE\n${mode.summary}\n\n> Utilise le ticker ci-dessous pour ouvrir directement la configuration du mode.`,
         modeId: mode.id,
         actions: actionsForAwenaMode(mode, context.route),
       };
@@ -115,7 +116,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   const asksAppNavigation = /dans l application|dans l appli|dans appli|ou cliquer|ou aller|comment lancer|comment demarrer|comment ouvrir|comment faire pour y jouer|comment y jouer|ouvrir le mode|lancer le mode|trouver/.test(q);
   if (asksAppNavigation) {
     if (sportMode) return { text: sportMode.howToPlayInApp, actions: routeLooksLikeMode(context.route, sportMode.id) ? [] : actionForSportMode(sportMode) };
-    if (mode) return { text: mode.howToPlayInApp, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
+    if (mode) return { text: `## CHEMIN DANS L’APPLICATION\n${mode.howToPlayInApp}`, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
     if (sport) return { text: `${sport.description} Pour y accéder, ouvre Jeux puis ${sport.label}.`, actions: actionForSport(sport) };
     if (navTopic) return { text: `${navTopic.description} Tu peux l'ouvrir depuis la barre de navigation.`, actions: actionForNavigation(navTopic) };
     return { text: "Dis-moi le nom de l'écran, du sport ou du mode que tu cherches. Je connais notamment Accueil, Messages, Profils, Jeux, Compétitions, Online, Stats, Réglages et Écrans, ainsi que les menus des sports disponibles." };
@@ -128,36 +129,46 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
     if (sport) return { text: `D'accord. J'ouvre le menu ${sport.label}.`, actions: actionForSport(sport) };
   }
 
-  const asksRules = /regle|regles|explique(?: moi)?(?: clairement)?|objectif|but du jeu|principe/.test(q);
+  const rememberedMode = findAwenaModeById(context.mode);
+  const activeMode = mode || rememberedMode;
+
+  // Configuration doit être prioritaire sur les mots génériques comme
+  // "explique" ou "condition de victoire". Le bouton Configuration d'Awena
+  // utilise volontairement une phrase détaillée qui contient ces termes.
+  const asksConfig = /configuration|configurer|parametre|parametres|options|reglages du mode|réglages du mode|combien de joueurs|nombre de joueurs|equipes|equipe|bots|bot ia/.test(q);
+  if (asksConfig && activeMode) {
+    if (/combien de joueurs|nombre de joueurs|max joueurs|maximum/.test(q)) {
+      return { text: `## PARTICIPANTS\n${activeMode.label} accepte ${activeMode.maxPlayers === 1 ? "un joueur en solo" : `jusqu'à ${activeMode.maxPlayers} joueurs`}.`, modeId: activeMode.id };
+    }
+    if (/equipes|equipe/.test(q) && !/configuration|options|parametre|reglage/.test(q)) {
+      return { text: `## ÉQUIPES\n${activeMode.supportsTeams ? `${activeMode.label} prend en charge les équipes.` : `${activeMode.label} est déclaré sans gestion d'équipes dans le registre actuel.`}`, modeId: activeMode.id };
+    }
+    if (/bots|bot ia|ia/.test(q) && !/configuration|options|parametre|reglage/.test(q)) {
+      return { text: `## BOTS IA\n${activeMode.supportsBots ? `${activeMode.label} prend en charge les bots IA.` : `${activeMode.label} est déclaré sans bots IA dans le registre actuel.`}`, modeId: activeMode.id };
+    }
+    return {
+      text: detailedConfigurationText(activeMode),
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+    };
+  }
+
+  const asksRules =
+    /regle|regles|règle|règles|objectif|but du jeu|principe/.test(q) ||
+    (/explique(?: moi)?(?: clairement)?/.test(q) && !asksConfig);
   if (asksRules) {
     if (sportMode) return { text: sportMode.summary, actions: actionForSportMode(sportMode) };
-    if (mode) return { text: mode.summary, modeId: mode.id, actions: actionsForAwenaMode(mode, context.route) };
+    if (activeMode) return { text: detailedRulesText(activeMode), modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
     if (sport) return { text: `${sport.description} Demande-moi le nom d'un mode précis pour sa règle détaillée. Modes connus : ${sport.modes.map((item) => item.label).join(", ")}.`, actions: actionForSport(sport) };
     return { text: `Dis-moi le mode que tu veux comprendre. Côté Fléchettes, ma base couvre maintenant les ${allAwenaModes().length} modes déclarés disponibles ; je connais aussi les principaux modes Pétanque, Baby-foot, Ping-pong, Mölkky, Dés et Football.` };
   }
 
-  const rememberedMode = findAwenaModeById(context.mode);
-  const activeMode = mode || rememberedMode;
-
   if (/condition de victoire|comment gagner|qui gagne|quand gagne|victoire/.test(q) && activeMode) {
-    return { text: `Pour ${activeMode.label}, la condition de victoire est la suivante : ${activeMode.victoryCondition}.`, modeId: activeMode.id };
+    return { text: `## CONDITION DE VICTOIRE\n${activeMode.victoryCondition}`, modeId: activeMode.id };
   }
 
   if (/variante|variantes|quels modes|quelles variantes|choix possibles/.test(q) && activeMode && activeMode.variants.length) {
-    return { text: `${activeMode.label} propose ou documente notamment : ${activeMode.variants.join(" ; ")}. Les choix réellement affichés sur l'écran de configuration restent la source prioritaire.`, modeId: activeMode.id };
-  }
-
-  if (/configuration|configurer|parametre|parametres|options|reglages du mode|combien de joueurs|nombre de joueurs|equipes|equipe|bots|bot ia/.test(q) && activeMode) {
-    if (/combien de joueurs|nombre de joueurs|max joueurs|maximum/.test(q)) {
-      return { text: `${activeMode.label} accepte ${activeMode.maxPlayers === 1 ? "un joueur en solo" : `jusqu'à ${activeMode.maxPlayers} joueurs`}.`, modeId: activeMode.id };
-    }
-    if (/equipes|equipe/.test(q)) {
-      return { text: activeMode.supportsTeams ? `${activeMode.label} prend en charge les équipes.` : `${activeMode.label} est déclaré sans gestion d'équipes dans le registre actuel.`, modeId: activeMode.id };
-    }
-    if (/bots|bot ia|ia/.test(q)) {
-      return { text: activeMode.supportsBots ? `${activeMode.label} prend en charge les bots IA.` : `${activeMode.label} est déclaré sans bots IA dans le registre actuel.`, modeId: activeMode.id };
-    }
-    return { text: `${activeMode.configuration} ${activeMode.howToPlayInApp}`, modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
+    return { text: `## VARIANTES / CHOIX\n${activeMode.variants.map((item) => `- ${item}`).join("\n")}`, modeId: activeMode.id };
   }
 
   if (/historique/.test(q) && activeMode) {

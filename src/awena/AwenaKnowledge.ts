@@ -25,18 +25,56 @@ export type AwenaModeKnowledge = {
 };
 
 const TICKER_KEYS: Record<string, string> = {
+  // Noms canoniques des tickers déjà utilisés par les écrans du projet.
+  // Ne pas inventer de nouveaux fichiers : Awena réutilise les assets existants.
+  x01: "x01",
+  cricket: "cricket",
+  darts_poker: "darts_poker",
+  cargo: "cargo",
+  killer: "killer",
   killer_progressive: "killer",
-  mario_kart: "darts_racer",
-  departements: "territories",
+  shanghai: "shanghai",
+  battle_royale: "battle_royale",
+  warfare: "warfare",
+  five_lives: "five_lives",
+  golf: "golf",
+  scram: "scram",
+  super_bull: "super_bull",
+  halve_it: "halve_it",
+  bobs_27: "bobs_27",
+  knockout: "knockout",
+  shooter: "shooter",
+  baseball: "baseball",
+  attrape_moi: "attrape_moi",
+  president: "president",
+  football: "football",
+  rugby: "rugby",
+  capital: "capital",
+  departements: "departements",
+  darts_firefighter: "darts_firefighter",
+  loterie: "loterie",
+  prisoner: "prisoner",
+  tic_tac_toe: "tic_tac_toe",
   bastard: "batard_players",
-  tour_horloge: "clock",
+  fun_gages: "fun_gages",
+  bowling: "bowling",
+  mario_kart: "darts_racer",
+  ocean_control: "ocean_control",
+  tour_horloge: "tour_horloge",
+  training_doubleio: "training_doubleio",
+  training_time_attack: "training_time_attack",
+  training_ghost: "training_ghost",
+  training_precision_gauntlet: "training_precision_gauntlet",
+  training_repeat_master: "training_repeat_master",
 };
 
 function tickerFor(game: DartsGameDef): string | undefined {
   const key = TICKER_KEYS[game.id] || game.id;
   return (
-    getTicker(key) ||
+    // Préférer d'abord le nom canonique "ticker_<clé>" réellement utilisé
+    // par les imports des écrans, puis seulement les recherches partielles.
     getTicker(`ticker_${key}`) ||
+    getTicker(key) ||
     getTicker(game.label) ||
     undefined
   );

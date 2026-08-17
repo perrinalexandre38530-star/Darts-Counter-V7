@@ -57,14 +57,19 @@ export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Pr
 
   async function openTopic(topic: "rules" | "config" | "records") {
     if (disabled) return;
+    // Un accès depuis le médaillon d'un autre mode doit ouvrir un contexte propre :
+    // conserver une ancienne réponse X01 dans une fiche Attrape-moi est déroutant.
+    if (awena.runtime.mode && awena.runtime.mode !== mode!.id) {
+      awena.clearMessages();
+    }
     awena.setRuntime({ mode: mode!.id, sport: "darts", phase: "menu", inGame: false });
     awena.openPanel();
     setMenuOpen(false);
     const prompt =
       topic === "rules"
-        ? `Explique-moi clairement les règles de ${mode!.label}.`
+        ? `Explique-moi clairement et en détail les règles de ${mode!.label}.`
         : topic === "config"
-          ? `Explique-moi précisément la configuration de ${mode!.label}, les options, variantes et conditions de victoire.`
+          ? `Détaille uniquement la configuration de ${mode!.label} : chaque option, valeur possible, variante, format et réglage disponible.`
           : `Donne-moi les records de ${mode!.label} et les principaux classements disponibles.`;
     await awena.ask(prompt);
   }

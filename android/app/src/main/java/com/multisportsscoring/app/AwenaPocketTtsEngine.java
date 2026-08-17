@@ -24,6 +24,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Stable local neural TTS engine for Awena (V6.4 stable Android media playback path).
@@ -37,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class AwenaPocketTtsEngine implements AutoCloseable {
     private static final String TAG = "AwenaStableTTS";
-    private static final int CACHE_VERSION = 5;
+    private static final int CACHE_VERSION = 6;
     private static final int MAX_MEMORY_CACHE_ITEMS = 28;
     private static final int MAX_DISK_CACHE_FILES = 96;
     private static final int MAX_CACHE_TEXT = 180;
@@ -415,20 +417,26 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
 
     private static String normalizeText(String text) {
         String clean = text == null ? "" : text
+            // Rich dialogue markers are display-only; never pronounce Markdown-like syntax.
+            .replaceAll("(?m)^\\s*##\\s*", "")
+            .replaceAll("(?m)^\\s*[-•]\\s*", "")
+            .replaceAll("(?m)^\\s*>\\s*", "")
+            .replace("**", "")
             .replace('→', ',')
             .replace('•', ',')
+            .replace('−', '-')
+            .replaceAll("([0-9]{1,4})\\s*[–—-]\\s*([0-9]{1,4})", "$1 à $2")
+            .replace("+", " plus ")
+            .replaceAll("(?i)\\bS\\s*/\\s*D\\s*/\\s*T\\b", "simple, double, triple")
+            .replaceAll("\\s*/\\s*", ", ")
             .replaceAll("\\s+", " ")
             .trim();
 
-        // Awena V6.5: Siwis is a French voice. It does not truly code-switch
-        // between French and English phoneme sets, so preserve the same voice
-        // and rewrite the app's known English names into French-readable
-        // phonetic forms before synthesis. Displayed text is never modified.
+        // Awena uses a French VITS voice. Known English labels are rewritten into
+        // French-readable phonetics while the visible UI keeps the official spelling.
         clean = clean
-            // Official character pronunciation: AWENA = "A-wé-na".
-            // "Aouéna" is only sent to the French TTS to force /a-we-na/.
-            // The UI continues to display the canonical name AWENA.
             .replaceAll("(?i)\\bAWENA\\b", "Aouéna")
+            .replaceAll("(?i)\\bX01\\b", "iks zéro un")
             .replaceAll("(?i)\\bDARTS\\s+FIREFIGHTER\\b", "Darts Faïeurfaïteur")
             .replaceAll("(?i)\\bFIREFIGHTER\\b", "Faïeurfaïteur")
             .replaceAll("(?i)\\bDARTS\\s+POKER\\b", "Darts Poqueur")
@@ -453,16 +461,91 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             .replaceAll("(?i)\\bMASTER\\s+OUT\\b", "masteur aoute")
             .replaceAll("(?i)\\bMASTER\\s+IN\\b", "masteur ine")
             .replaceAll("(?i)\\bCHECKOUT\\b", "tchèque aoute")
-            .replaceAll("(?i)\\bBOB['’]?S\\s+27\\b", "Bobs vingt-sept");
+            .replaceAll("(?i)\\bBOB['’]?S\\s+27\\b", "Bobs vingt-sept")
+            // Match formats: do not spell "B O sept barre oblique".
+            .replaceAll("(?i)\\bBO\\s*([0-9]{1,2})\\b", "bèste ove $1")
+            .replaceAll("(?i)\\bFT\\s*([0-9]{1,2})\\b", "feurste tou $1")
+            .replaceAll("(?i)\\bBEST\\s+OF\\b", "bèste ove")
+            .replaceAll("(?i)\\bFIRST\\s+TO\\b", "feurste tou")
+            .replaceAll("(?i)\\b1ER\\b", "premier")
+            .replaceAll("(?i)\\b2E\\b", "deuxième")
+            .replaceAll("(?i)\\b3E\\b", "troisième")
+            .replaceAll("(?i)\\bPTS?\\b", "points")
+            .replace("%", " pour cent ");
 
-        // Darts notation is also expanded into stable spoken French forms.
-        clean = clean.replaceAll("(?i)\\bT([0-9]{1,2})\\b", "triple $1")
+        // Darts notation first, then convert all remaining integer tokens to complete
+        // French words so 16 is pronounced "seize", never "un six".
+        clean = clean
+            .replaceAll("(?i)\\bT([0-9]{1,2})\\b", "triple $1")
             .replaceAll("(?i)\\bD([0-9]{1,2})\\b", "double $1")
-            .replaceAll("(?i)\\bS([0-9]{1,2})\\b", "$1")
+            .replaceAll("(?i)\\bS([0-9]{1,2})\\b", "simple $1")
             .replaceAll("(?i)\\bDBULL\\b", "deubeul boul")
             .replaceAll("(?i)\\bDOUBLE\\s+BULL\\b", "deubeul boul")
-            .replaceAll("(?i)\\bBULL\\b", "boul");
-        return clean;
+            .replaceAll("(?i)\\bBULL\\b", "boul")
+            .replaceAll("(?i)\\bMISS\\b", "misse")
+            ;
+
+        clean = expandStandaloneNumbers(clean);
+        return clean.replaceAll("\\s+", " ").trim();
+    }
+
+    private static String expandStandaloneNumbers(String input) {
+        Matcher matcher = Pattern.compile("\\b[0-9]{1,4}\\b").matcher(input);
+        StringBuffer out = new StringBuffer();
+        while (matcher.find()) {
+            int value;
+            try {
+                value = Integer.parseInt(matcher.group());
+            } catch (NumberFormatException error) {
+                continue;
+            }
+            matcher.appendReplacement(out, Matcher.quoteReplacement(numberToFrench(value)));
+        }
+        matcher.appendTail(out);
+        return out.toString();
+    }
+
+    private static String numberToFrench(int value) {
+        if (value < 0 || value > 9999) return String.valueOf(value);
+        if (value < 100) return numberUnder100(value);
+        if (value < 1000) {
+            int hundreds = value / 100;
+            int rest = value % 100;
+            String head = hundreds == 1 ? "cent" : numberUnder100(hundreds) + " cent";
+            if (rest == 0 && hundreds > 1) head += "s";
+            return rest == 0 ? head : head + " " + numberUnder100(rest);
+        }
+        int thousands = value / 1000;
+        int rest = value % 1000;
+        String head = thousands == 1 ? "mille" : numberUnder100(thousands) + " mille";
+        if (rest == 0) return head;
+        return head + " " + numberToFrench(rest);
+    }
+
+    private static String numberUnder100(int value) {
+        final String[] SMALL = {
+            "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
+            "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize",
+            "dix-sept", "dix-huit", "dix-neuf"
+        };
+        if (value < 20) return SMALL[value];
+        if (value < 70) {
+            final String[] TENS = { "", "", "vingt", "trente", "quarante", "cinquante", "soixante" };
+            int tens = value / 10;
+            int unit = value % 10;
+            if (unit == 0) return TENS[tens];
+            if (unit == 1) return TENS[tens] + " et un";
+            return TENS[tens] + "-" + SMALL[unit];
+        }
+        if (value < 80) {
+            int rest = value - 60;
+            if (rest == 11) return "soixante et onze";
+            return "soixante-" + SMALL[rest];
+        }
+        int rest = value - 80;
+        if (rest == 0) return "quatre-vingts";
+        if (rest < 20) return "quatre-vingt-" + SMALL[rest];
+        return "quatre-vingt-" + numberUnder100(rest);
     }
 
     private static AudioStats analyzeSamples(float[] samples) {

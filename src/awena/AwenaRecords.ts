@@ -249,20 +249,25 @@ function lineList(ranked: ReturnType<typeof rankRows>, metric: Metric) {
   return ranked.map((item, index) => `${index + 1}. ${item.row.name} — ${formatValue(metric, item.value, item.row)}`).join(" ; ");
 }
 
+function bulletList(ranked: ReturnType<typeof rankRows>, metric: Metric) {
+  return ranked.map((item, index) => `- **${index + 1}. ${item.row.name}** — ${formatValue(metric, item.value, item.row)}`).join("\n");
+}
+
 function dashboard(rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
-  const sections: string[] = [];
+  const sections: string[] = [`## RECORDS — ${mode.label.toUpperCase()}\n${periodLabel}.`];
   const rate = rankRows(rows, "winRate", false, 3);
-  if (rate.length) sections.push(`% de victoire : ${lineList(rate, "winRate")}`);
+  if (rate.length) sections.push(`## % DE VICTOIRE\n${bulletList(rate, "winRate")}`);
   const wins = rankRows(rows, "wins", false, 3);
-  if (wins.length) sections.push(`Victoires : ${lineList(wins, "wins")}`);
+  if (wins.length) sections.push(`## VICTOIRES\n${bulletList(wins, "wins")}`);
   if (mode.id === "x01") {
     const avg = rankRows(rows, "avg3", false, 3);
-    if (avg.length) sections.push(`Moyenne 3 fléchettes : ${lineList(avg, "avg3")}`);
+    if (avg.length) sections.push(`## MOYENNE 3 FLÉCHETTES\n${bulletList(avg, "avg3")}`);
     const co = rankRows(rows, "bestCheckout", false, 3);
-    if (co.length) sections.push(`Checkout : ${lineList(co, "bestCheckout")}`);
+    if (co.length) sections.push(`## MEILLEUR CHECKOUT\n${bulletList(co, "bestCheckout")}`);
   }
-  if (!sections.length) return `Je n'ai pas encore assez de statistiques exploitables pour établir les records de ${mode.label} ${periodLabel}.`;
-  return `Records ${mode.label} ${periodLabel}. ${sections.join(". ")}. Tu peux me demander un top 3, le meilleur ou le plus mauvais, un % de victoire, le nombre de victoires, ou une période comme « depuis 1 mois ».`;
+  if (sections.length === 1) return `Je n'ai pas encore assez de statistiques exploitables pour établir les records de ${mode.label} ${periodLabel}.`;
+  sections.push(`> Tu peux me demander un top 3, le meilleur ou le plus mauvais joueur, un pourcentage de victoire, le nombre de victoires, une moyenne ou une période comme « depuis 1 mois ».`);
+  return sections.join("\n\n");
 }
 
 export async function buildAwenaRecordsReply(question: string, context: AwenaRuntimeContext): Promise<AwenaReply | null> {
@@ -303,7 +308,7 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
 
   const direction = worst ? "Classement du plus faible au plus fort" : count === 1 ? "Meilleur résultat" : `Top ${count}`;
   return {
-    text: `${direction} ${mode.label} — ${metricLabel(metric)} ${period.label} : ${lineList(ranked, metric)}.`,
+    text: `## ${direction.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n${bulletList(ranked, metric)}`,
     modeId: mode.id,
   };
 }
