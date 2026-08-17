@@ -2259,10 +2259,22 @@ useEffect(() => {
     setRouteParams(nextParams ?? null);
     setTab(next);
 
-    profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: nextParams ?? null });
-    const nextRoute = String(window.location.hash || `#/go:${next}`);
-    trackRoute(nextRoute);
-    crashGuardTrackRoute(nextRoute);
+    // Le suivi diagnostic ne doit jamais être dans le même task que le clic de
+    // navigation : React peut alors peindre le nouvel écran avant le bookkeeping.
+    const navFromTab = tab;
+    const scheduleNavBookkeeping = () => {
+      try {
+        profilesDiagLog("nav-go", { fromTab: navFromTab, toTab: next, params: nextParams ?? null });
+        const nextRoute = String(window.location.hash || `#/go:${next}`);
+        trackRoute(nextRoute);
+        crashGuardTrackRoute(nextRoute);
+      } catch {}
+    };
+    if (typeof window !== "undefined") {
+      window.setTimeout(scheduleNavBookkeeping, 0);
+    } else {
+      scheduleNavBookkeeping();
+    }
 
     if (
       next === "auth_callback" ||

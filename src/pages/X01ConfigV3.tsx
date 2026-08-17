@@ -21,6 +21,7 @@ import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
+import DartSetImage from "../components/DartSetImage";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BotPagedSelector from "../components/BotPagedSelector";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
@@ -1361,16 +1362,53 @@ function x01DedupeDartSets(list: DartSet[]): DartSet[] {
 
 
 let x01DartSetPickerCache: { version: string; byProfile: Record<string, DartSet[]> } | null = null;
+let x01DartSetPickerRevision = 1;
+
+function x01InvalidateDartSetPickerCache() {
+  x01DartSetPickerRevision += 1;
+  x01DartSetPickerCache = null;
+}
+
+// PERF V70 : l'ancienne version lisait la valeur complète dc_dart_sets_v1 dans
+// localStorage à CHAQUE badge joueur. Cette clé peut contenir plusieurs photos
+// base64 compressées et la lecture synchrone bloquait le thread UI. Le cache est
+// maintenant invalidé par événements, sans relire des mégaoctets sur le clic.
+try {
+  if (typeof window !== "undefined" && !(window as any).__mscX01DartSetCacheEventsV70) {
+    (window as any).__mscX01DartSetCacheEventsV70 = true;
+    window.addEventListener("dc-dartsets-updated", x01InvalidateDartSetPickerCache as EventListener);
+    window.addEventListener("storage", ((event: StorageEvent) => {
+      const key = String(event?.key || "");
+      if (key === "dc_dart_sets_v1" || key === "dc_dart_sets_v1_meta") {
+        x01InvalidateDartSetPickerCache();
+      }
+    }) as EventListener);
+  }
+} catch {}
+
 function x01DartSetStorageVersion(): string {
-  try {
-    if (typeof window === "undefined") return "server";
-    const raw = window.localStorage.getItem("dc_dart_sets_v1") || "";
-    const meta = window.localStorage.getItem("dc_dart_sets_v1_meta") || "";
-    // Inclure début + fin : changer public/privé peut garder la même longueur
-    // et ne pas toucher les 96 premiers caractères, donc l'ancien cache X01
-    // pouvait conserver une liste fausse.
-    return `${raw.length}:${meta.length}:${raw.slice(0, 160)}:${raw.slice(-160)}:${meta.slice(0, 96)}:${meta.slice(-96)}`;
-  } catch { return `${Date.now()}`; }
+  return String(x01DartSetPickerRevision);
+}
+
+function x01DartSetVisualSignature(list: DartSet[]): string {
+  return (Array.isArray(list) ? list : []).map((set: any) => {
+    const compact = (value: any) => {
+      const raw = typeof value === "string" ? value : "";
+      if (!raw) return "0";
+      return `${raw.length}:${raw.slice(0, 20)}:${raw.slice(-20)}`;
+    };
+    return [
+      String(set?.id || ""),
+      String(set?.mediaUpdatedAt || set?.updatedAt || 0),
+      String(set?.kind || ""),
+      compact(set?.mainImageUrl),
+      compact(set?.thumbImageUrl),
+      compact(set?.photoDataUrl),
+      compact(set?.mainImageDataUrl),
+      compact(set?.photoThumbDataUrl),
+      String(set?.mainImageAssetId || set?.photoAssetId || set?.thumbImageAssetId || ""),
+    ].join("~");
+  }).join("|");
 }
 function x01GetCachedPickerDartSets(profileId: string, allProfiles: any[] = []): DartSet[] {
   const pid = String(profileId || "").trim();
@@ -1442,9 +1480,12 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     } catch {}
     const nextSets = sortDartSetsForProfilePicker(all);
     setSets((prev) => {
-      const a = (prev || []).map((x: any) => String(x?.id || "")).join("|");
-      const b = nextSets.map((x: any) => String((x as any)?.id || "")).join("|");
-      return a === b ? prev : nextSets;
+      // Ne compare plus uniquement les IDs : une photo de dartset peut être créée,
+      // restaurée ou remplacée sans changer d'ID. L'ancien code conservait alors
+      // l'objet X01 obsolète et son ancienne URL cassée jusqu'au redémarrage.
+      const before = x01DartSetVisualSignature(prev || []);
+      const after = x01DartSetVisualSignature(nextSets);
+      return before === after ? prev : nextSets;
     });
   }, [profileId, allProfiles]);
 
@@ -1454,7 +1495,7 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const onUpdated = () => { x01DartSetPickerCache = null; reloadSets(); };
+    const onUpdated = () => { x01InvalidateDartSetPickerCache(); reloadSets(); };
     window.addEventListener("dc-dartsets-updated", onUpdated);
     return () => window.removeEventListener("dc-dartsets-updated", onUpdated);
   }, [reloadSets]);
@@ -1546,11 +1587,18 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
               background: "rgba(0,0,0,.6)",
             }}
           >
-            {getDartSetThumbSrc(selectedSet) ? (
-              <img src={getDartSetThumbSrc(selectedSet) as string} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            ) : (
-              <span style={{ fontSize: 13, lineHeight: 1 }}>🎯</span>
-            )}
+            <DartSetImage
+              set={selectedSet}
+              preferThumb
+              alt=""
+              loading="eager"
+              fallback={<span style={{ fontSize: 13, lineHeight: 1 }}>🎯</span>}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: (selectedSet as any)?.kind === "photo" ? "cover" : "contain",
+              }}
+            />
           </span>
         ) : compact ? (
           <span style={{ fontSize: 14, lineHeight: 1, color: primary, fontWeight: 1000 }}>🎯</span>
@@ -1651,7 +1699,6 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
               </button>
 
               {orderedSets.map((set: any) => {
-                const thumb = getDartSetThumbSrc(set);
                 const selected = String(set?.id) === String(dartSetId || "");
                 const ownerProfile = x01GetDartSetOwnerProfile(set, allProfiles);
                 return (
@@ -1688,11 +1735,18 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                         position: "relative",
                       }}
                     >
-                      {thumb ? (
-                        <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : (
-                        <span style={{ fontSize: 26 }}>🎯</span>
-                      )}
+                      <DartSetImage
+                        set={set}
+                        preferThumb
+                        alt=""
+                        loading="lazy"
+                        fallback={<span style={{ fontSize: 26 }}>🎯</span>}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: set?.kind === "photo" ? "cover" : "contain",
+                        }}
+                      />
                       {x01IsFavoriteDartSet(set) ? (
                         <span
                           aria-hidden="true"

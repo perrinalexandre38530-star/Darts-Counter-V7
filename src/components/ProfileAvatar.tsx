@@ -583,7 +583,8 @@ export default function ProfileAvatar(props: Props) {
             onLoad={() => {
               // La copie de sécurité existe toujours, mais canvas/IDB/R2 attendent un
               // vrai temps mort : le paint de la page reste prioritaire.
-              if (!useFallback && effectiveProfileId && primaryImg) {
+              const displayingFreshCachedThumb = cachedThumbFresh && !!cachedThumb && rawImg === cachedThumb;
+              if (!useFallback && effectiveProfileId && primaryImg && !displayingFreshCachedThumb) {
                 scheduleAvatarSafetyMirror(effectiveProfileId, primaryImg, {
                   avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
                   avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,

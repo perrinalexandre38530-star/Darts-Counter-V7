@@ -1,12 +1,22 @@
 import React from "react";
 
+function compactMediaSig(value: any) {
+  const raw = typeof value === "string" ? value : "";
+  if (!raw) return "";
+  // Une photo locale peut représenter plusieurs Mo. La concaténer entièrement à
+  // chaque render de Profils gelait inutilement la WebView. Longueur + extrémités
+  // suffisent ici, avatarUpdatedAt/assetId assurant déjà la vraie révision média.
+  if (raw.length > 256) return `${raw.length}:${raw.slice(0, 28)}:${raw.slice(-28)}`;
+  return raw;
+}
+
 function profileSig(p: any) {
   return [
     p?.id || "",
     p?.name || "",
     p?.avatarUpdatedAt || 0,
-    p?.avatarUrl || "",
-    p?.avatarSha256 || p?.avatarAssetId || (p?.avatarDataUrl ? "data" : ""),
+    compactMediaSig(p?.avatarUrl),
+    p?.avatarSha256 || p?.avatarAssetId || (p?.avatarDataUrl ? `data:${String(p.avatarDataUrl).length}` : ""),
     p?.country || "",
     p?.privateInfo?.country || "",
     // Les préférences applicatives doivent faire partie de la signature.

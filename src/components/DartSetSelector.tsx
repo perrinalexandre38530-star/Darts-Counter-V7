@@ -10,11 +10,10 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import DartSetImage from "./DartSetImage";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
-  getDartSetThumbImageSrc,
-  getDartSetMainImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 
@@ -22,28 +21,6 @@ type Props = {
   profileId: string;
   value: string | null | undefined; // dartSetId sélectionné
   onChange: (dartSetId: string | null) => void;
-};
-
-// Mini composant fléchette (même logique que dans DartSetsPanel)
-const DartImage: React.FC<{
-  url: string;
-  size?: number;
-  angleDeg?: number;
-}> = ({ url, size = 26, angleDeg = 55 }) => {
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        backgroundImage: `url(${url})`,
-        backgroundSize: "contain",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        transform: `rotate(${angleDeg}deg)`,
-        transformOrigin: "center center",
-      }}
-    />
-  );
 };
 
 function sortDartSetsForDisplay(list: DartSet[]): DartSet[] {
@@ -260,8 +237,6 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
         {sets.map((set) => {
           const isSelected = value === set.id;
 
-          // Compat avec la nouvelle archi : vignette (preset ou photo)
-          const thumb = getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || undefined;
           const kind: string | undefined = (set as any).kind; // "preset" | "photo" | ...
 
           let kindLabel: string | null = null;
@@ -324,18 +299,29 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
                   justifyContent: "center",
                 }}
               >
-                {thumb ? (
-                  <DartImage url={thumb} size={26} angleDeg={55} />
-                ) : (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: "rgba(0,0,0,.55)",
-                    }}
-                  >
-                    🎯
-                  </span>
-                )}
+                <DartSetImage
+                  set={set}
+                  preferThumb
+                  alt=""
+                  loading="lazy"
+                  fallback={
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(0,0,0,.55)",
+                      }}
+                    >
+                      🎯
+                    </span>
+                  }
+                  style={{
+                    width: 26,
+                    height: 26,
+                    objectFit: kind === "photo" ? "cover" : "contain",
+                    transform: kind === "photo" ? undefined : "rotate(55deg)",
+                    transformOrigin: "center center",
+                  }}
+                />
               </div>
 
               {/* Texte */}

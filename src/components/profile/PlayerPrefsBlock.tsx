@@ -33,7 +33,7 @@ type Props = {
 
 const LANG_OPTIONS = ["fr", "en", "es", "de", "it", "pt", "nl"] as const;
 const X01_OPTIONS = [301, 501, 701, 901] as const;
-const TTS_OPTIONS = ["default", "female", "male", "robot"] as const;
+const TTS_OPTIONS = ["default", "female", "male", "robot", "awena"] as const;
 
 function normalizeLang(input: unknown, fallback: Lang): Lang {
   const raw = String(input ?? "").trim().toLowerCase();
@@ -74,6 +74,7 @@ function normalizeTtsVoice(input: unknown): string {
   if (raw.includes("fem")) return "female";
   if (raw.includes("masc") || raw.includes("male") || raw.includes("homme")) return "male";
   if (raw.includes("robot")) return "robot";
+  if (raw.includes("awena")) return "awena";
   return "default";
 }
 
@@ -258,6 +259,9 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           </option>
           <option value="robot">
             {t("profiles.prefs.tts.robot", "Voix robot")}
+          </option>
+          <option value="awena">
+            {t("profiles.prefs.tts.awena", "AWENA · voix officielle")}
           </option>
         </select>
       </label>

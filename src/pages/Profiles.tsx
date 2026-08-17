@@ -1280,10 +1280,31 @@ export default function Profiles({
     selfStatus = "online",
   } = store;
 
+  // La vue est résolue avant les loaders lourds : cela permet d'éviter de
+  // démarrer projections NAS/historiques quand l'utilisateur ouvre simplement
+  // le menu ou la liste locale.
+  const [view, setView] = React.useState<View>(
+    params?.view === "me"
+      ? "me"
+      : params?.view === "locals"
+      ? "locals"
+      : params?.view === "friends"
+      ? "friends"
+      : params?.view === "dartsets"
+      ? "dartsets"
+      : params?.view === "avatarGallery"
+      ? "avatarGallery"
+      : "menu"
+  );
+
   const stableProfilesBase = useStableProfiles(profiles as any);
   const [linkedProfileProjection, setLinkedProfileProjection] = React.useState<any>(() => ({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] }));
 
   React.useEffect(() => {
+    // La projection liée peut faire réseau + projection + matérialisation History.
+    // Elle n'a aucune raison de concurrencer l'ouverture de MON PROFIL / PROFILS LOCAUX.
+    if (view !== "friends") return;
+
     let mounted = true;
     const cancelIdle = scheduleRuntimeIdle(() => {
       void (async () => {
@@ -1293,12 +1314,12 @@ export default function Profiles({
           setLinkedProfileProjection(projection);
         } catch {
           if (!mounted) return;
-          setLinkedProfileProjection({ profiles: [], history: [], byLocalProfileId: {}, snapshots: [] });
+          setLinkedProfileProjection({ profiles: [], history: [], normalizedHint: [], byLocalProfileId: {}, snapshots: [] });
         }
       })();
-    }, { timeoutMs: 4_000, fallbackDelayMs: 220 });
+    }, { timeoutMs: 6_000, fallbackDelayMs: 900 });
     return () => { mounted = false; cancelIdle(); };
-  }, [stableProfilesBase.length]);
+  }, [view, stableProfilesBase.length]);
 
   const stableProfiles = React.useMemo(
     () => mergeLinkedProfiles(stableProfilesBase as any[], linkedProfileProjection?.profiles || []) as any[],
@@ -1500,19 +1521,6 @@ export default function Profiles({
     }
   }, [auth?.status, selfStatus, update]);
 
-  const [view, setView] = React.useState<View>(
-    params?.view === "me"
-      ? "me"
-      : params?.view === "locals"
-      ? "locals"
-      : params?.view === "friends"
-      ? "friends"
-      : params?.view === "dartsets"
-      ? "dartsets"
-      : params?.view === "avatarGallery"
-      ? "avatarGallery"
-      : "menu"
-  );
   const profilesPageRef = React.useRef<HTMLDivElement | null>(null);
   const profilesDiagPrevRef = React.useRef<any>(null);
 
@@ -1589,6 +1597,7 @@ export default function Profiles({
         let linkedProjection: any = null;
         try {
           linkedProjection = await loadLinkedProfileProjection(localProfiles as any[]);
+          if (linkedProjection) setLinkedProfileProjection(linkedProjection);
         } catch {
           linkedProjection = null;
         }
@@ -2070,9 +2079,16 @@ export default function Profiles({
 
 
   const openView = React.useCallback((next: View) => {
-    profilesDiagMark(`profiles-open:${next}`);
-    profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
+    // Le changement visuel passe avant toute instrumentation. Même si le mode
+    // diagnostic est activé, il ne doit jamais retarder l'ouverture d'un menu.
+    const fromView = view;
     setView(next);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        profilesDiagMark(`profiles-open:${next}`);
+        profilesDiagLog("profiles-open-request", { fromView, toView: next });
+      }, 0);
+    }
   }, [view]);
 
   // La vue PROFILS LOCAUX doit toujours s'ouvrir en haut, même lorsque le
@@ -2117,8 +2133,8 @@ export default function Profiles({
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
   }, [view]);
-  const meHeavyReady = useDeferredSectionReady(view === "me", 80);
-  const localsHeavyReady = useDeferredSectionReady(view === "locals", 120);
+  const meHeavyReady = useDeferredSectionReady(view === "me", 320);
+  const localsHeavyReady = useDeferredSectionReady(view === "locals", 420);
   const dartsetsHeavyReady = useDeferredSectionReady(view === "dartsets", 80);
   const avatarGalleryHeavyReady = useDeferredSectionReady(view === "avatarGallery", 60);
   const dartSetOwners = React.useMemo(() => {
@@ -3151,7 +3167,7 @@ React.useEffect(() => {
   // de cache (~5/6), donc une seule demi-étoile.
   const activeMiniStats = useBasicStats(
     active?.id ? String(active.id) : null,
-    !!active?.id,
+    view === "me" && meHeavyReady && !!active?.id,
     active?.name,
     sportResolved
   );
@@ -3659,7 +3675,10 @@ React.useEffect(() => {
 
             <PageAdBanner
               placement="profiles"
-              slotKey={`page-profiles-${view}-under-header`}
+              // Même surface native pour tous les sous-menus Profils : changer
+              // la clé à chaque clic démontait/recréait l'AdView Android et pouvait
+              // provoquer un pic de layout/réseau pendant la navigation.
+              slotKey="page-profiles-under-header"
             />
 
             {view === "me" && (
@@ -5292,16 +5311,19 @@ function PrivateField({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   const { theme } = useTheme();
+  const isPassword = type === "password";
+  const [showPassword, setShowPassword] = React.useState(false);
+  const inputType = isPassword && showPassword ? "text" : type;
 
-  const { sport } = useSport();
-  const sportResolved = sport;
   return (
     <label
       style={{
@@ -5312,13 +5334,59 @@ function PrivateField({
       }}
     >
       <span style={{ color: theme.textSoft }}>{label}</span>
-      <input
-        type={type}
-        className="input"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ fontSize: 13 }}
-      />
+      <span style={{ position: "relative", display: "block" }}>
+        <input
+          type={inputType}
+          className="input"
+          value={value}
+          placeholder={placeholder ?? (isPassword ? "••••••••" : undefined)}
+          autoComplete={isPassword ? "new-password" : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            fontSize: 13,
+            width: "100%",
+            paddingRight: isPassword ? 44 : undefined,
+            boxSizing: "border-box",
+          }}
+        />
+        {isPassword ? (
+          <button
+            type="button"
+            onClick={() => setShowPassword((visible) => !visible)}
+            aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+            title={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+            style={{
+              position: "absolute",
+              right: 7,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 32,
+              height: 32,
+              border: 0,
+              borderRadius: 10,
+              background: "transparent",
+              color: theme.textSoft,
+              display: "grid",
+              placeItems: "center",
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            {showPassword ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                <path d="M9.9 4.4A10.8 10.8 0 0 1 12 4.2c5.2 0 8.7 4.7 9.5 6.1a3.4 3.4 0 0 1 0 3.4 15.8 15.8 0 0 1-2.4 3.1M6.3 6.3A16.7 16.7 0 0 0 2.5 10.3a3.4 3.4 0 0 0 0 3.4c.8 1.4 4.3 6.1 9.5 6.1 1.5 0 2.8-.4 4-.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M2.5 10.3a3.4 3.4 0 0 0 0 3.4c.8 1.4 4.3 6.1 9.5 6.1s8.7-4.7 9.5-6.1a3.4 3.4 0 0 0 0-3.4C20.7 8.9 17.2 4.2 12 4.2S3.3 8.9 2.5 10.3Z" stroke="currentColor" strokeWidth="1.8"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
+              </svg>
+            )}
+          </button>
+        ) : null}
+      </span>
     </label>
   );
 }
@@ -6529,8 +6597,21 @@ function LocalProfileGridCard({
   disabledStats: boolean;
   onClick: () => void;
 }) {
-  const stats = useBasicStats(profile?.id, !disabledStats && !!profile?.id, profile?.name, sportKey);
-  const avg3 = Number.isFinite(Number(stats?.avg3)) ? Number(stats.avg3) : 0;
+  // La grille doit être instantanée : aucun scan History/StatsHub par carte.
+  // Les stats détaillées restent calculées dans la fiche du profil ; ici on lit
+  // uniquement une valeur déjà en mémoire / déjà embarquée dans le profil.
+  const avg3 = React.useMemo(() => {
+    const pid = String(profile?.id || "");
+    const cached = pid ? profileMiniStatsCache.get(profileMiniStatsCacheKey(pid, sportKey)) : null;
+    const embedded = Number(
+      profile?.stats?.avg3D ??
+      profile?.stats?.avg3 ??
+      profile?.stats?.average3D ??
+      0
+    );
+    const value = Number(cached?.avg3 ?? embedded);
+    return Number.isFinite(value) ? value : 0;
+  }, [profile?.id, profile?.stats?.avg3D, profile?.stats?.avg3, profile?.stats?.average3D, sportKey]);
 
   return (
     <button
@@ -6556,7 +6637,7 @@ function LocalProfileGridCard({
     >
       <div style={{ position: "relative", width: 98, height: 98, display: "grid", placeItems: "center", overflow: "visible" }}>
         {showStars ? (
-          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} animateGlow={!disabledStats} />
+          <ProfileStarRing avg3d={avg3} anchorSize={88} starSize={12} gapPx={-2} animateGlow={false} />
         ) : null}
         <div
           style={{
@@ -6573,7 +6654,7 @@ function LocalProfileGridCard({
         >
           <ProfileAvatar profile={profile} size={76} noFrame showStars={false} />
         </div>
-        {showStars ? (
+        {showStars && !disabledStats ? (
           <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
         ) : null}
         <LocalCountryFlagBadge profile={profile} accent={accent} size={29} style={{ right: 2, bottom: 4 }} />
@@ -7156,8 +7237,8 @@ function LocalProfilesRefonte({
 
   // stats du profil courant
   const bs = useBasicStats(
-    !deferHeavy && !localNavBusy && current?.id ? current?.id : null,
-    !deferHeavy && !localNavBusy && !!current?.id,
+    listDetailOpen && !deferHeavy && !localNavBusy && current?.id ? current?.id : null,
+    listDetailOpen && !deferHeavy && !localNavBusy && !!current?.id,
     current?.name,
     sportResolved
   );

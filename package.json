@@ -54,7 +54,7 @@
     "android:play:signing-check": "node ./tools/check-android-play-signing.mjs",
     "android:bundle:release": "npm run android:sync && npm run android:play:signing-check && node ./tools/run-android-gradle.mjs bundleRelease",
     "android:play:verify-aab": "node ./tools/verify-android-aab.mjs",
-    "android:play:aab": "npm run version:check && npm run typecheck && npm run test:android-store-v1 && npm run test:admob-native && npm run test:play-billing && npm run android:bundle:release && npm run android:play:verify-aab",
+    "android:play:aab": "npm run version:check && npm run typecheck && npm run test:android-store-v1 && npm run test:admob-native && npm run test:play-billing && npm run test:android-jdk && npm run android:bundle:release && npm run android:play:verify-aab",
     "android:version": "node ./tools/set-android-version.mjs",
     "test:account-restore": "node ./tools/test-android-account-restore.mjs",
     "test:play-privacy": "node ./tools/test-play-privacy.mjs",
@@ -63,7 +63,9 @@
     "version:check": "node ./tools/check-release-version.mjs",
     "test:cargo": "node tools/test-cargo-integration.mjs && node --experimental-strip-types tools/test-cargo-regression.ts",
     "test:ocean-control": "node tools/test-ocean-control-integration.mjs && node ./tools/run-ts-regressions.mjs --only tools/test-ocean-control-regression.ts",
-    "test:football": "node tools/test-football-integration.mjs && node --experimental-strip-types tools/test-football-regression.ts && node --experimental-strip-types tools/test-football-codec.ts"
+    "test:football": "node tools/test-football-integration.mjs && node --experimental-strip-types tools/test-football-regression.ts && node --experimental-strip-types tools/test-football-codec.ts",
+    "android:jdk:check": "node ./tools/android-java-runtime.mjs",
+    "test:android-jdk": "node ./tools/test-android-java-runtime.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
