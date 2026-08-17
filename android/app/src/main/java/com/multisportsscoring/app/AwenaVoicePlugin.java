@@ -341,6 +341,14 @@ public class AwenaVoicePlugin extends Plugin {
         String modelError = AwenaNeuralModelManager.getLastError();
         out.put("lastError", neuralLastError != null ? neuralLastError : modelError);
         out.put("packId", AwenaNeuralModelManager.PACK_ID);
+        if (engine != null) {
+            out.put("neuralPlaybackMode", engine.getLastPlaybackMode());
+            out.put("neuralSampleRate", engine.getLastSampleRate());
+            out.put("neuralSampleCount", engine.getLastSampleCount());
+            out.put("neuralWrittenSamples", engine.getLastWrittenSamples());
+            out.put("neuralPeak", engine.getLastPeak());
+            out.put("neuralRms", engine.getLastRms());
+        }
         return out;
     }
 

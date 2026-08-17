@@ -71,6 +71,12 @@ export type AwenaVoiceStatus = {
   currentFile?: string | null;
   lastError?: string | null;
   packId?: string | null;
+  neuralPlaybackMode?: string | null;
+  neuralSampleRate?: number;
+  neuralSampleCount?: number;
+  neuralWrittenSamples?: number;
+  neuralPeak?: number;
+  neuralRms?: number;
 };
 
 export type AwenaVoiceOption = {

@@ -15,7 +15,7 @@ function mb(bytes?: number) {
 
 export default function AwenaSettingsSection() {
   const { theme } = useTheme() as any;
-  const { settings, setSettings, voiceStatus, refreshVoices, say, stop } = useAwena();
+  const { settings, setSettings, voiceStatus, refreshVoices, stop } = useAwena();
   const [voiceBusy, setVoiceBusy] = React.useState(false);
   const [voiceError, setVoiceError] = React.useState<string | null>(null);
   const primary = theme?.primary || "#22e6ff";
@@ -69,6 +69,28 @@ export default function AwenaSettingsSection() {
     }
   }
 
+  async function testAwenaStableVoice() {
+    if (voiceBusy) return;
+    setVoiceBusy(true);
+    setVoiceError(null);
+    try {
+      const testText = `${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`;
+      // This is a diagnostic button: bypass the application's global mute state and explicitly
+      // exercise Awena's native output path.
+      const ok = await awenaVoice.speak(
+        testText,
+        { ...settings, enabled: true, voiceEnabled: true },
+        "fr",
+      );
+      if (!ok) setVoiceError("Le moteur Awena n'a pas confirmé la lecture audio.");
+    } catch (error) {
+      setVoiceError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setVoiceBusy(false);
+      await refreshVoices();
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <section style={{ borderRadius: 18, border: `1px solid ${primary}66`, background: "linear-gradient(180deg,rgba(10,15,32,.95),rgba(4,7,18,.98))", padding: 14, boxShadow: `0 0 24px ${primary}18` }}>
@@ -100,7 +122,7 @@ export default function AwenaSettingsSection() {
       <section style={{ borderRadius: 18, border: `1px solid ${neuralReady ? "#36f59a88" : theme.borderSoft}`, background: theme.card, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Stable V6</div>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Stable V6.4</div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}>
               {neuralReady
                 ? "VITS/Piper FR · sherpa-onnx · local / hors ligne"
@@ -113,6 +135,13 @@ export default function AwenaSettingsSection() {
             <div style={{ marginTop: 4, color: neuralReady ? "#36f59a" : "#ffd84a", fontWeight: 900, fontSize: 10.5 }}>
               {AWENA_VOICE_PROFILE.displayName}
             </div>
+            {neuralReady && voiceStatus?.neuralSampleCount ? (
+              <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>
+                Sortie {voiceStatus.neuralPlaybackMode || "MEDIA"} · {voiceStatus.neuralSampleRate || 0} Hz ·
+                signal {Number(voiceStatus.neuralRms || 0).toFixed(3)} RMS ·
+                {voiceStatus.neuralWrittenSamples || 0}/{voiceStatus.neuralSampleCount || 0} échantillons
+              </div>
+            ) : null}
           </div>
           <button onClick={() => patch({ voiceEnabled: !settings.voiceEnabled })} style={{ borderRadius: 999, padding: "7px 11px", border: `1px solid ${settings.voiceEnabled ? primary : theme.borderSoft}`, background: settings.voiceEnabled ? `${primary}22` : "rgba(0,0,0,.2)", color: settings.voiceEnabled ? primary : theme.textSoft, fontWeight: 900, cursor: "pointer" }}>
             {settings.voiceEnabled ? "VOIX ON" : "VOIX OFF"}
@@ -165,7 +194,7 @@ export default function AwenaSettingsSection() {
 
         <div style={{ display: "grid", gridTemplateColumns: neuralReady ? "1fr 1fr 1fr" : "1fr", gap: 7, marginTop: 12 }}>
           {neuralReady && <>
-            <button onClick={() => void say(`${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`)} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester Awena</button>
+            <button onClick={() => void testAwenaStableVoice()} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester Awena</button>
             <button onClick={() => void stop()} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Stop</button>
             <button onClick={() => void removeAwenaStableVoice()} style={{ borderRadius: 11, border: "1px solid rgba(255,90,110,.45)", background: "rgba(255,60,90,.06)", color: "#ffb2bb", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Supprimer pack</button>
           </>}
