@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class AwenaPocketTtsEngine implements AutoCloseable {
     private static final String TAG = "AwenaStableTTS";
-    private static final int CACHE_VERSION = 4;
+    private static final int CACHE_VERSION = 5;
     private static final int MAX_MEMORY_CACHE_ITEMS = 28;
     private static final int MAX_DISK_CACHE_FILES = 96;
     private static final int MAX_CACHE_TEXT = 180;
@@ -419,12 +419,49 @@ public final class AwenaPocketTtsEngine implements AutoCloseable {
             .replace('•', ',')
             .replaceAll("\\s+", " ")
             .trim();
-        // TTS is more predictable with spoken French forms for common darts notation.
+
+        // Awena V6.5: Siwis is a French voice. It does not truly code-switch
+        // between French and English phoneme sets, so preserve the same voice
+        // and rewrite the app's known English names into French-readable
+        // phonetic forms before synthesis. Displayed text is never modified.
+        clean = clean
+            // Official character pronunciation: AWENA = "A-wé-na".
+            // "Aouéna" is only sent to the French TTS to force /a-we-na/.
+            // The UI continues to display the canonical name AWENA.
+            .replaceAll("(?i)\\bAWENA\\b", "Aouéna")
+            .replaceAll("(?i)\\bDARTS\\s+FIREFIGHTER\\b", "Darts Faïeurfaïteur")
+            .replaceAll("(?i)\\bFIREFIGHTER\\b", "Faïeurfaïteur")
+            .replaceAll("(?i)\\bDARTS\\s+POKER\\b", "Darts Poqueur")
+            .replaceAll("(?i)\\bPOKER\\s+DICE\\b", "Poqueur Daïsse")
+            .replaceAll("(?i)\\bDICE\\s+DUEL\\b", "Daïsse Diouel")
+            .replaceAll("(?i)\\bDICE\\s+RACE\\b", "Daïsse Réïsse")
+            .replaceAll("(?i)\\bKILLER\\s+PROGRESSIF\\b", "Kileur progressif")
+            .replaceAll("(?i)\\bKILLER\\b", "Kileur")
+            .replaceAll("(?i)\\bBATTLE\\s+ROYALE\\b", "Batteul Royeul")
+            .replaceAll("(?i)\\bWARFARE\\b", "Ouorfère")
+            .replaceAll("(?i)\\bDARTS\\s+RACER\\b", "Darts Réïsseur")
+            .replaceAll("(?i)\\bSHOOTER\\b", "Chouteur")
+            .replaceAll("(?i)\\bPRISONER\\b", "Prizoneur")
+            .replaceAll("(?i)\\bOCEAN\\s+CONTROL\\b", "Ocheune Contrôle")
+            .replaceAll("(?i)\\bGHOST\\s+MODE\\b", "Gost Mode")
+            .replaceAll("(?i)\\bTIME\\s+ATTACK\\b", "Taïme Attaque")
+            .replaceAll("(?i)\\bPRECISION\\s+GAUNTLET\\b", "Précision Gôntlette")
+            .replaceAll("(?i)\\bREPEAT\\s+MASTER\\b", "Ripite Masteur")
+            .replaceAll("(?i)\\bTRAINING\\b", "Tréning")
+            .replaceAll("(?i)\\bDOUBLE\\s+OUT\\b", "deubeul aoute")
+            .replaceAll("(?i)\\bDOUBLE\\s+IN\\b", "deubeul ine")
+            .replaceAll("(?i)\\bMASTER\\s+OUT\\b", "masteur aoute")
+            .replaceAll("(?i)\\bMASTER\\s+IN\\b", "masteur ine")
+            .replaceAll("(?i)\\bCHECKOUT\\b", "tchèque aoute")
+            .replaceAll("(?i)\\bBOB['’]?S\\s+27\\b", "Bobs vingt-sept");
+
+        // Darts notation is also expanded into stable spoken French forms.
         clean = clean.replaceAll("(?i)\\bT([0-9]{1,2})\\b", "triple $1")
             .replaceAll("(?i)\\bD([0-9]{1,2})\\b", "double $1")
             .replaceAll("(?i)\\bS([0-9]{1,2})\\b", "$1")
-            .replaceAll("(?i)\\bDBULL\\b", "double bull")
-            .replaceAll("(?i)\\bBULL\\b", "bull");
+            .replaceAll("(?i)\\bDBULL\\b", "deubeul boul")
+            .replaceAll("(?i)\\bDOUBLE\\s+BULL\\b", "deubeul boul")
+            .replaceAll("(?i)\\bBULL\\b", "boul");
         return clean;
     }
 

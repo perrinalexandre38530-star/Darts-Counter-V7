@@ -1,8 +1,16 @@
 import type { AwenaAction } from "./awena.types";
+import { dartsGameRegistry, type DartsGameDef } from "../games/dartsGameRegistry";
 import tickerKiller from "../assets/tickers/ticker_killer_2.png";
 import tickerFirefighter from "../assets/tickers/ticker_darts_firefighter.png";
 import tickerPoker from "../assets/tickers/ticker_darts_poker.png";
 import tickerAttrapeMoi from "../assets/tickers/ticker_attrape_moi.png";
+import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale_2.png";
+import tickerCargo from "../assets/tickers/ticker_cargo.png";
+import tickerFiveLives from "../assets/tickers/ticker_five_lives_2.png";
+import tickerLoterie from "../assets/tickers/ticker_loterie.png";
+import tickerOcean from "../assets/tickers/ticker_ocean_control.png";
+import tickerPresident from "../assets/tickers/ticker_president.png";
+import tickerBatard from "../assets/tickers/ticker_batard_players.png";
 
 export type AwenaModeKnowledge = {
   id: string;
@@ -13,78 +21,78 @@ export type AwenaModeKnowledge = {
   howToPlayInApp: string;
   configRoute?: string;
   tickerSrc?: string;
+  sport: "darts";
+  category: string;
+  maxPlayers: number;
+  supportsTeams: boolean;
+  supportsBots: boolean;
+  statsKey?: string;
+  entry: "games" | "training";
+  configuration: string;
 };
 
-function actionFor(mode: AwenaModeKnowledge, currentRoute?: string): AwenaAction[] {
-  if (!mode.configRoute) return [];
+const TICKERS: Record<string, string | undefined> = {
+  killer: tickerKiller,
+  killer_progressive: tickerKiller,
+  darts_firefighter: tickerFirefighter,
+  darts_poker: tickerPoker,
+  attrape_moi: tickerAttrapeMoi,
+  battle_royale: tickerBattleRoyale,
+  cargo: tickerCargo,
+  five_lives: tickerFiveLives,
+  loterie: tickerLoterie,
+  ocean_control: tickerOcean,
+  president: tickerPresident,
+  bastard: tickerBatard,
+};
 
-  // Ne repropose jamais d'ouvrir le mode si l'utilisateur est déjà
-  // sur sa configuration, son écran de jeu ou une autre page du même mode.
-  const currentScreenMode = routeToAwenaMode(currentRoute);
-  if (currentScreenMode?.id === mode.id) return [];
+const CATEGORY_LABELS: Record<string, string> = {
+  classic: "Classiques",
+  variant: "Variantes",
+  challenge: "Défis",
+  fun: "Fun",
+  training: "Training",
+};
 
-  return [{
-    id: `open-${mode.id}`,
-    label: `Ouvrir ${mode.label}`,
-    kind: "navigate",
-    route: mode.configRoute,
-    modeId: mode.id,
-    imageSrc: mode.tickerSrc,
-    imageAlt: `Ouvrir ${mode.label}`,
-  }];
-}
+const ALIAS_OVERRIDES: Record<string, string[]> = {
+  x01: ["x01", "x zero un", "301", "501", "701", "901"],
+  darts_firefighter: ["darts firefighter", "firefighter", "pompier", "pompiers", "incendie", "canadair"],
+  darts_poker: ["darts poker", "poker flechettes"],
+  attrape_moi: ["attrape moi", "attrape-moi", "attrape moi si tu peux", "chasseur", "fuyard", "catch me"],
+  mario_kart: ["darts racer", "racer", "mario kart"],
+  departements: ["territories", "territoires", "departements", "départements"],
+  bastard: ["batard", "bâtard"],
+  bobs_27: ["bobs 27", "bob s 27", "bob's 27"],
+  tour_horloge: ["tour de l horloge", "horloge"],
+  training_doubleio: ["double in double out", "double in", "double out", "di do"],
+  training_time_attack: ["time attack", "attaque chrono"],
+  training_ghost: ["ghost mode", "ghost", "fantome", "fantôme"],
+  training_precision_gauntlet: ["precision gauntlet", "gauntlet"],
+  training_repeat_master: ["repeat master"],
+  training_super_bull: ["super bull training", "training super bull"],
+  ocean_control: ["ocean control", "ocean's control", "bataille navale"],
+};
 
-const MODES: AwenaModeKnowledge[] = [
-  {
-    id: "x01",
-    label: "X01",
-    aliases: ["x01", "301", "501", "701", "901"],
-    summary: "En X01, chaque joueur part du score choisi et soustrait le total de ses fléchettes. Le premier qui atteint exactement zéro gagne. Si le Double Out est activé, la dernière fléchette doit être un double.",
-    tip: "En Double Out, prépare un double confortable avant la fin. Les doubles 16 et 20 offrent beaucoup de routes de secours, mais le meilleur choix dépend toujours du score restant et du nombre de fléchettes disponibles.",
-    howToPlayInApp: "Pour lancer un X01 dans l'application : ouvre Local, choisis Fléchettes puis X01. Sélectionne 301, 501, 701 ou 901, ajoute les joueurs ou équipes, règle le mode d'entrée et de sortie, puis les legs/sets si nécessaire. Appuie ensuite sur Démarrer la partie.",
-    configRoute: "x01_config_v3",
+const TEXT_OVERRIDES: Record<string, Partial<Pick<AwenaModeKnowledge, "summary" | "tip" | "howToPlayInApp">>> = {
+  x01: {
+    summary: "En X01, chaque joueur part du score choisi et soustrait le total de ses fléchettes. Le premier qui atteint exactement zéro gagne. Selon la configuration, l'entrée et la sortie peuvent être Simple, Double ou Master ; un bust annule la volée lorsque la finition n'est pas valide.",
+    tip: "Prépare une sortie confortable et adapte la route au nombre de fléchettes restantes. En Double Out, les doubles 16 et 20 offrent souvent de bonnes routes de secours.",
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > X01. Choisis 301, 501, 701 ou 901, les joueurs ou équipes, les bots éventuels, le mode d'entrée, le mode de sortie et les legs/sets, puis démarre la partie.",
   },
-  {
-    id: "killer",
-    label: "Killer",
-    aliases: ["killer"],
-    summary: "Dans Killer, chaque joueur doit d'abord valider son numéro puis utiliser ses touches pour attaquer les vies des autres joueurs. Le dernier joueur encore en vie remporte la partie.",
-    tip: "Ne cherche pas uniquement à attaquer. Sécurise d'abord ton statut de Killer, puis cible le joueur le plus dangereux selon ses vies restantes.",
-    howToPlayInApp: "Pour jouer à Killer : ouvre Local > Fléchettes, choisis Killer, sélectionne la variante souhaitée, les joueurs ou bots et les paramètres de vies, puis démarre.",
-    configRoute: "killer_config",
-    tickerSrc: tickerKiller,
+  killer: {
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > Killer. Choisis les joueurs ou bots, la variante et les paramètres de vies/validation proposés sur l'écran de configuration, puis démarre.",
   },
-  {
-    id: "darts_firefighter",
-    label: "Darts Firefighter",
-    aliases: ["darts firefighter", "firefighter", "pompier", "incendie", "canadair"],
-    summary: "Dans Darts Firefighter, les fléchettes déclenchent des actions de lutte contre l'incendie sur les territoires. Il faut protéger les zones menacées, gérer la propagation et utiliser les actions spéciales comme le Canadair au bon moment.",
-    tip: "Priorise les territoires critiques et surveille la propagation. Une action spectaculaire vaut moins qu'une intervention qui évite plusieurs pertes au tour suivant.",
-    howToPlayInApp: "Pour jouer à Darts Firefighter : ouvre Local > Fléchettes, sélectionne Darts Firefighter, prépare la mission et les joueurs, puis démarre l'intervention. Pendant la partie, les secteurs touchés déclenchent les actions de lutte contre le feu.",
-    configRoute: "darts_firefighter_config",
-    tickerSrc: tickerFirefighter,
+  darts_firefighter: {
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > Darts Firefighter. Configure la mission et les joueurs, puis démarre l'intervention. En jeu, les touches déclenchent des actions de lutte contre le feu sur les territoires et les actions spéciales doivent être utilisées au bon moment.",
+    tip: "Priorise les territoires critiques et ceux qui risquent de propager le feu. Le Canadair est surtout rentable lorsque plusieurs zones menacées peuvent être sécurisées par une même intervention.",
   },
-  {
-    id: "darts_poker",
-    label: "Darts Poker",
-    aliases: ["darts poker", "poker"],
-    summary: "Dans Darts Poker, les secteurs de la cible correspondent à des cartes. Chaque fléchette peut faire gagner une carte et l'objectif est de construire la meilleure main possible dans la limite de fléchettes prévue.",
-    tip: "Observe les cartes encore disponibles avant chaque lancer : une cible moins évidente peut améliorer beaucoup plus fortement ta main.",
-    howToPlayInApp: "Pour jouer à Darts Poker : ouvre Local > Fléchettes, choisis Darts Poker, sélectionne les joueurs ou bots puis démarre. Le tableau associe ensuite les secteurs 1 à 20 aux cartes disponibles.",
-    configRoute: "darts_poker_config",
-    tickerSrc: tickerPoker,
+  darts_poker: {
+    howToPlayInApp: "Ouvre Jeux > Fléchettes > Darts Poker. Sélectionne les joueurs ou bots puis démarre. Le marché associe ensuite les secteurs 1 à 20 aux cartes visibles ; chaque main se construit dans la limite prévue par le mode.",
   },
-  {
-    id: "attrape_moi",
-    label: "Attrape-moi si tu peux",
-    aliases: ["attrape moi", "attrape-moi", "attrape", "chasseur", "fuyard", "catch me"],
-    summary: "Attrape-moi si tu peux oppose un chasseur et un fuyard. Les deux rôles ont des objectifs différents et la pression change rapidement selon l'écart entre eux.",
-    tip: "Adapte ta prise de risque à ton rôle : le fuyard doit maintenir son avance, tandis que le chasseur gagne à choisir les zones qui réduisent l'écart de façon régulière.",
-    howToPlayInApp: "Pour jouer à Attrape-moi si tu peux : ouvre Local > Fléchettes, sélectionne le mode, choisis les joueurs et la formule de match, puis démarre. Les rôles de chasseur et de fuyard structurent ensuite la partie.",
-    configRoute: "attrape_moi_config",
-    tickerSrc: tickerAttrapeMoi,
+  attrape_moi: {
+    tip: "Le Fuyard doit protéger son avance ; le Chasseur doit réduire l'écart sans gaspiller de tours. La prise de risque dépend donc du rôle et du nombre de rounds restants.",
   },
-];
+};
 
 function normalize(text: string) {
   return String(text || "")
@@ -97,15 +105,96 @@ function normalize(text: string) {
     .trim();
 }
 
+function aliasesFor(game: DartsGameDef) {
+  const raw = [
+    game.id,
+    game.label,
+    game.infoTitle,
+    game.variantId,
+    game.presetVariantId,
+    game.tab,
+    ...(ALIAS_OVERRIDES[game.id] || []),
+  ].filter(Boolean) as string[];
+  return Array.from(new Set(raw.map((value) => normalize(value)).filter(Boolean)));
+}
+
+function defaultTip(game: DartsGameDef) {
+  if (game.entry === "training") return "Travaille d'abord la régularité et compare tes séries dans les statistiques plutôt que de chercher un seul gros coup.";
+  if (game.category === "challenge") return "Lis l'objectif du round avant chaque volée et privilégie la touche qui fait progresser directement la condition du défi.";
+  if (game.category === "fun") return "Observe l'état du plateau et les effets spéciaux du mode avant de viser : dans les modes Fun, le meilleur choix n'est pas toujours le plus gros score brut.";
+  return "Adapte ta stratégie à l'objectif du mode et à l'état de la partie plutôt que de viser systématiquement le score maximal.";
+}
+
+function defaultHowToPlay(game: DartsGameDef) {
+  if (game.entry === "training") {
+    return `Ouvre Jeux > Fléchettes > Training puis sélectionne ${game.label}. Configure l'exercice lorsqu'une option est proposée, puis lance la session.`;
+  }
+  return `Ouvre Jeux > Fléchettes > ${game.label}. Configure les participants et les options affichées pour ce mode, puis appuie sur Démarrer la partie.`;
+}
+
+function configurationFor(game: DartsGameDef) {
+  const participants = game.maxPlayers === 1 ? "solo" : `jusqu'à ${game.maxPlayers} joueurs`;
+  const teams = game.supportsTeams ? "équipes prises en charge" : "pas d'équipes";
+  const bots = game.supportsBots ? "bots IA pris en charge" : "pas de bots IA";
+  const category = CATEGORY_LABELS[game.category] || game.category;
+  return `${game.label} est classé dans ${category}. Configuration déclarée : ${participants}, ${teams}, ${bots}. Les options spécifiques visibles sur son écran de configuration restent prioritaires.`;
+}
+
+function toKnowledge(game: DartsGameDef): AwenaModeKnowledge {
+  const override = TEXT_OVERRIDES[game.id] || {};
+  return {
+    id: game.id,
+    label: game.label,
+    aliases: aliasesFor(game),
+    summary: override.summary || game.infoBody,
+    tip: override.tip || defaultTip(game),
+    howToPlayInApp: override.howToPlayInApp || defaultHowToPlay(game),
+    configRoute: game.tab === "mode_not_ready" ? undefined : game.tab,
+    tickerSrc: TICKERS[game.id],
+    sport: "darts",
+    category: CATEGORY_LABELS[game.category] || game.category,
+    maxPlayers: game.maxPlayers,
+    supportsTeams: game.supportsTeams,
+    supportsBots: game.supportsBots,
+    statsKey: game.statsKey,
+    entry: game.entry,
+    configuration: configurationFor(game),
+  };
+}
+
+// Source de vérité : uniquement les modes déclarés READY dans le registre officiel.
+const MODES: AwenaModeKnowledge[] = dartsGameRegistry.filter((game) => game.ready).map(toKnowledge);
+
 function matches(mode: AwenaModeKnowledge, raw: string) {
   const value = normalize(raw);
   if (!value) return false;
-  return mode.aliases.some((alias) => value.includes(normalize(alias)));
+  return mode.aliases.some((alias) => value.includes(alias));
+}
+
+function actionFor(mode: AwenaModeKnowledge, currentRoute?: string): AwenaAction[] {
+  if (!mode.configRoute) return [];
+  const currentScreenMode = routeToAwenaMode(currentRoute);
+  if (currentScreenMode?.id === mode.id) return [];
+  return [{
+    id: `open-${mode.id}`,
+    label: `Ouvrir ${mode.label}`,
+    kind: "navigate",
+    route: mode.configRoute,
+    modeId: mode.id,
+    imageSrc: mode.tickerSrc,
+    imageAlt: `Ouvrir ${mode.label}`,
+  }];
 }
 
 export function routeToAwenaMode(route?: string): AwenaModeKnowledge | null {
   const value = normalize(route || "");
-  if (!value) return null;
+  if (!value || value === "training" || value === "games") return null;
+
+  // D'abord les correspondances de route exactes. En cas de route partagée,
+  // les modes de base apparaissent avant leurs variantes dans le registre.
+  const exactRoute = MODES.find((mode) => normalize(mode.configRoute || "") === value);
+  if (exactRoute) return exactRoute;
+
   return MODES.find((mode) => matches(mode, value)) || null;
 }
 
@@ -131,4 +220,11 @@ export function actionsForAwenaMode(mode: AwenaModeKnowledge | null, currentRout
 
 export function allAwenaModes() {
   return MODES.slice();
+}
+
+export function awenaModesByCategory() {
+  return MODES.reduce<Record<string, AwenaModeKnowledge[]>>((acc, mode) => {
+    (acc[mode.category] ||= []).push(mode);
+    return acc;
+  }, {});
 }
