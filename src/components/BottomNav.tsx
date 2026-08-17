@@ -1,6 +1,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
+import { useLang } from "../contexts/LangContext";
 import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
@@ -214,7 +215,14 @@ export default function BottomNav({
   onChange: (k: TabKey) => void;
 }) {
   const { theme } = useTheme();
+  const { t, lang } = useLang();
   const sportCtx = useSport() as any;
+
+  const tr = React.useCallback((fr: string, en: string, es: string) => {
+    if (lang === "en") return en;
+    if (lang === "es") return es;
+    return fr;
+  }, [lang]);
 
   // SportContext attendu : { sport, setSport }
   const sportFromCtx: SportId | null = (sportCtx?.sport as SportId) ?? null;
@@ -285,23 +293,23 @@ export default function BottomNav({
   }, [hideOnline]);
 
   const tabs: NavItem[] = [
-    { k: "home", label: "Accueil", icon: <Icon name="home" /> },
+    { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
 
     ...(hideOnline ? [] : [
-      { k: "messages", label: "Messages", icon: <Icon name="messages" /> },
+      { k: "messages", label: tr("Messages", "Messages", "Mensajes"), icon: <Icon name="messages" /> },
     ]),
 
-    { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
-    { k: "games", label: "Jeux", icon: <Icon name="games" /> },
-    { k: "tournaments", label: "Compétitions", icon: <Icon name="tournaments" /> },
+    { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
+    { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <Icon name="games" /> },
+    { k: "tournaments", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="tournaments" /> },
 
     ...(hideOnline ? [] : [
       { k: "online", label: "Online", icon: <Icon name="friends" /> },
     ]),
 
-    { k: "stats", label: "Stats", icon: <Icon name="stats" /> },
-    { k: "settings", label: "Réglages", icon: <Icon name="settings" /> },
-    { k: "cast_host", label: "Écrans", icon: <Icon name="cast_host" /> },
+    { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
+    { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
+    { k: "cast_host", label: tr("Écrans", "Screens", "Pantallas"), icon: <Icon name="cast_host" /> },
   ];
 
   const tap = (k: NavItem["k"]) => {

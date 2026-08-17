@@ -40,8 +40,9 @@ type InfoMode =
 
 export default function StatsShell({ store, go, sportOverride }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { sport } = useSport();
+  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
   const isMolkkySport = effectiveSport === "molkky";
 
@@ -204,7 +205,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingInline: 8 }}>
           <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
             {isMolkkySport
-                ? "Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique."
+                ? L("Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique.", "Mölkky statistics center: active player, local profiles, rankings and history.", "Centro de estadísticas Mölkky: jugador activo, perfiles locales, clasificaciones e historial.")
                 : t(
                     "statsShell.subtitle",
                     "Analyse tes performances, ton training, ton historique et synchronise tes stats."
@@ -280,8 +281,12 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         />
 
         <StatsShellCard
-          title="CLASSEMENTS"
-          subtitle="Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.)."
+          title={L("CLASSEMENTS", "RANKINGS", "CLASIFICACIONES")}
+          subtitle={L(
+            "Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.).",
+            "Global rankings by game mode (X01 multi, Cricket, Killer, etc.).",
+            "Clasificaciones globales por modo de juego (X01 multi, Cricket, Killer, etc.)."
+          )}
           theme={theme}
           onClick={() => {
             if (isMolkkySport) {
@@ -322,7 +327,11 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         <StatsShellCard
           title={t("statsShell.history.title", "HISTORIQUE")}
           subtitle={isMolkkySport
-            ? "Historique des parties Mölkky locales et reprises en cours."
+            ? L(
+                "Historique des parties Mölkky locales et reprises en cours.",
+                "History of local Mölkky games and games currently in progress.",
+                "Historial de partidas locales de Mölkky y partidas en curso."
+              )
             : t(
                 "statsShell.history.subtitle",
                 "Toutes tes parties et reprise des parties en cours."

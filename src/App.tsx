@@ -4158,7 +4158,7 @@ case "babyfoot_team_edit":
         break;
 
       case "settings":
-        page = <Settings go={go} />;
+        page = <Settings go={go} params={routeParams} />;
         break;
 
       // ✅ STATS (sport-aware) — même onglet BottomNav "stats"

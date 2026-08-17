@@ -5,6 +5,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import tickerCompetitions from "../assets/tickers/ticker_competitions.png";
 import { FOOT_TICKERS } from "./foot/footTickers";
+import { useLang, type Lang } from "../contexts/LangContext";
 import leagueWatermark from "../assets/ui/competition_league_watermark.png";
 import tournamentWatermark from "../assets/ui/competition_tournament_watermark.png";
 import resumeWatermark from "../assets/ui/competition_resume_watermark.png";
@@ -32,14 +33,20 @@ function normalizeCompetitionSport(value: any): string {
   return raw;
 }
 
-function sportLabel(sport: string): string {
+function tr3(lang: Lang, fr: string, en: string, es: string): string {
+  if (lang === "en") return en;
+  if (lang === "es") return es;
+  return fr;
+}
+
+function sportLabel(sport: string, lang: Lang): string {
   const s = normalizeCompetitionSport(sport);
-  if (s === "darts") return "FLÉCHETTES";
-  if (s === "babyfoot") return "BABY-FOOT";
-  if (s === "petanque") return "PÉTANQUE";
+  if (s === "darts") return tr3(lang, "FLÉCHETTES", "DARTS", "DARDOS");
+  if (s === "babyfoot") return tr3(lang, "BABY-FOOT", "FOOSBALL", "FUTBOLÍN");
+  if (s === "petanque") return tr3(lang, "PÉTANQUE", "PÉTANQUE", "PETANCA");
   if (s === "pingpong") return "PING-PONG";
   if (s === "molkky") return "MÖLKKY";
-  if (s === "dicegame") return "DÉS";
+  if (s === "dicegame") return tr3(lang, "DÉS", "DICE", "DADOS");
   return s.toUpperCase();
 }
 
@@ -55,7 +62,7 @@ function smartBack(go: Props["go"], fallbackTab: any = "home", fallbackParams?: 
   go(fallbackTab, fallbackParams);
 }
 
-function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions }: { onBack: () => void; tickerSrc?: string }) {
+function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions, backTitle, alt }: { onBack: () => void; tickerSrc?: string; backTitle: string; alt: string }) {
   return (
     <div
       style={{
@@ -66,7 +73,7 @@ function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions }: { onBack:
     >
       <img
         src={tickerSrc}
-        alt="Compétitions"
+        alt={alt}
         draggable={false}
         style={{
           display: "block",
@@ -82,21 +89,32 @@ function CompetitionHeader({ onBack, tickerSrc = tickerCompetitions }: { onBack:
       />
 
       <div style={{ position: "absolute", left: 10, top: 10, zIndex: 5 }}>
-        <BackDot onClick={onBack} size={40} title="Retour" />
+        <BackDot onClick={onBack} size={40} title={backTitle} />
       </div>
     </div>
   );
 }
 
-function InfoContent({ kind, sportLabel }: { kind: "league" | "tournament"; sportLabel: string }) {
+function InfoContent({ kind, sportLabel, lang }: { kind: "league" | "tournament"; sportLabel: string; lang: Lang }) {
   if (kind === "league") {
     return (
       <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
         <p style={{ margin: 0 }}>
-          Une ligue / championnat sert à organiser une compétition longue en <b>{sportLabel}</b> : classement, journées, matchs aller simple ou aller/retour.
+          {tr3(
+            lang,
+            "Une ligue / championnat sert à organiser une compétition longue : classement, journées, matchs aller simple ou aller/retour.",
+            "A league / championship is designed for a longer competition: standings, rounds, single round-robin or home-and-away matches.",
+            "Una liga / campeonato sirve para organizar una competición larga: clasificación, jornadas, ida o ida y vuelta."
+          )}{" "}
+          <b>{sportLabel}</b>
         </p>
         <p style={{ margin: 0 }}>
-          Le parcours guidé te fera choisir le type local/online, le format solo/équipe, les participants, puis les règles adaptées au sport actif.
+          {tr3(
+            lang,
+            "Le parcours guidé te fera choisir le type local/online, le format solo/équipe, les participants, puis les règles adaptées au sport actif.",
+            "The guided setup lets you choose local/online play, solo/team format, participants, then the rules for the active sport.",
+            "La configuración guiada te permite elegir local/online, formato individual/equipo, participantes y después las reglas del deporte activo."
+          )}
         </p>
       </div>
     );
@@ -104,10 +122,21 @@ function InfoContent({ kind, sportLabel }: { kind: "league" | "tournament"; spor
   return (
     <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
       <p style={{ margin: 0 }}>
-        Un tournoi sert à créer une compétition courte en <b>{sportLabel}</b> : élimination directe, poules, poules + phase finale ou formats compatibles.
+        {tr3(
+          lang,
+          "Un tournoi sert à créer une compétition courte : élimination directe, poules, poules + phase finale ou formats compatibles.",
+          "A tournament creates a shorter competition: knockout, groups, groups + finals, or other compatible formats.",
+          "Un torneo crea una competición corta: eliminación directa, grupos, grupos + fase final u otros formatos compatibles."
+        )}{" "}
+        <b>{sportLabel}</b>
       </p>
       <p style={{ margin: 0 }}>
-        Le parcours guidé reprend les réglages existants, mais les découpe étape par étape pour éviter une configuration trop chargée.
+        {tr3(
+          lang,
+          "Le parcours guidé reprend les réglages existants, mais les découpe étape par étape pour éviter une configuration trop chargée.",
+          "The guided setup uses the existing options but splits them into steps to keep configuration clear.",
+          "La configuración guiada usa las opciones existentes, pero las divide paso a paso para que sea más clara."
+        )}
       </p>
     </div>
   );
@@ -259,8 +288,10 @@ function CompetitionCard({
 }
 
 export default function TournamentsHome({ store, go, params }: Props) {
+  const { lang } = useLang();
+  const L = React.useCallback((fr: string, en: string, es: string) => tr3(lang, fr, en, es), [lang]);
   const activeSport = pickActiveSport(store, params);
-  const label = sportLabel(activeSport);
+  const label = sportLabel(activeSport, lang);
   const isFoot = activeSport === "foot" || activeSport === "football";
   const competitionTicker = isFoot ? FOOT_TICKERS.competition[0] : tickerCompetitions;
   const resumeWatermark2 = isFoot ? FOOT_TICKERS.competition[2] : resumeWatermark;
@@ -308,20 +339,20 @@ export default function TournamentsHome({ store, go, params }: Props) {
 
   return (
     <div style={{ padding: 18, paddingBottom: 108, color: "white" }}>
-      <CompetitionHeader onBack={back} tickerSrc={competitionTicker} />
+      <CompetitionHeader onBack={back} tickerSrc={competitionTicker} backTitle={L("Retour", "Back", "Volver")} alt={L("Compétitions", "Competitions", "Competiciones")} />
       <PageAdBanner placement="competitions" slotKey={`page-competitions-${entryMode}-under-header`} />
 
       {entryMode === "menu" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
           <CompetitionCard
-            tag="CRÉER"
-            title="Création d’une Compétition"
+            tag={L("CRÉER", "CREATE", "CREAR")}
+            title={L("Création d’une Compétition", "Create a Competition", "Crear una competición")}
             tone="gold"
             watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Crée une nouvelle ligue / championnat ou un nouveau tournoi pour le sport actif : <b>{label}</b>.
+                  {L("Crée une nouvelle ligue / championnat ou un nouveau tournoi pour le sport actif :", "Create a new league / championship or tournament for the active sport:", "Crea una nueva liga / campeonato o un nuevo torneo para el deporte activo:")} <b>{label}</b>.
                 </p>
               </div>
             }
@@ -329,14 +360,14 @@ export default function TournamentsHome({ store, go, params }: Props) {
           />
 
           <CompetitionCard
-            tag="REPRENDRE"
-            title="Reprendre une Compétition en cours"
+            tag={L("REPRENDRE", "RESUME", "REANUDAR")}
+            title={L("Reprendre une Compétition en cours", "Resume an Ongoing Competition", "Reanudar una competición en curso")}
             tone="blue"
             watermark={resumeWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Retrouve uniquement les ligues et tournois non terminés : brouillons, en cours, ou compétitions à continuer.
+                  {L("Retrouve uniquement les ligues et tournois non terminés : brouillons, en cours, ou compétitions à continuer.", "Show only unfinished leagues and tournaments: drafts, ongoing events, or competitions to continue.", "Muestra solo ligas y torneos sin terminar: borradores, en curso o competiciones pendientes.")}
                 </p>
               </div>
             }
@@ -344,14 +375,14 @@ export default function TournamentsHome({ store, go, params }: Props) {
           />
 
           <CompetitionCard
-            tag="CONSULTER"
-            title="Consulter Historique des compétitions terminées"
+            tag={L("CONSULTER", "VIEW", "CONSULTAR")}
+            title={L("Consulter Historique des compétitions terminées", "View Completed Competitions", "Consultar competiciones terminadas")}
             tone="green"
             watermark={consultWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Consulte uniquement les ligues et tournois terminés pour revoir l’historique, les classements et les résultats.
+                  {L("Consulte uniquement les ligues et tournois terminés pour revoir l’historique, les classements et les résultats.", "View completed leagues and tournaments to review history, standings and results.", "Consulta ligas y torneos terminados para revisar el historial, las clasificaciones y los resultados.")}
                 </p>
               </div>
             }
@@ -362,22 +393,22 @@ export default function TournamentsHome({ store, go, params }: Props) {
 
       {entryMode === "create" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>Créer</SectionLabel>
+          <SectionLabel>{L("Créer", "Create", "Crear")}</SectionLabel>
 
           <CompetitionCard
-            tag="LIGUE / CHAMPIONNAT"
-            title={`Créer une ligue ${label}`}
+            tag={L("LIGUE / CHAMPIONNAT", "LEAGUE / CHAMPIONSHIP", "LIGA / CAMPEONATO")}
+            title={`${L("Créer une ligue", "Create a league", "Crear una liga")} ${label}`}
             tone="gold"
             watermark={leagueWatermark2}
-            info={<InfoContent kind="league" sportLabel={label} />}
+            info={<InfoContent kind="league" sportLabel={label} lang={lang} />}
             onClick={() => go("tournament_create", createParams("league"))}
           />
           <CompetitionCard
-            tag="TOURNOI"
-            title={`Créer un tournoi ${label}`}
+            tag={L("TOURNOI", "TOURNAMENT", "TORNEO")}
+            title={`${L("Créer un tournoi", "Create a tournament", "Crear un torneo")} ${label}`}
             tone="pink"
             watermark={tournamentWatermark2}
-            info={<InfoContent kind="tournament" sportLabel={label} />}
+            info={<InfoContent kind="tournament" sportLabel={label} lang={lang} />}
             onClick={() => go("tournament_create", createParams("tournament"))}
           />
         </div>
@@ -385,31 +416,31 @@ export default function TournamentsHome({ store, go, params }: Props) {
 
       {entryMode === "resume" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>Reprendre</SectionLabel>
+          <SectionLabel>{L("Reprendre", "Resume", "Reanudar")}</SectionLabel>
 
           <CompetitionCard
-            tag="LIGUES EN COURS"
-            title={`Reprendre une ligue ${label}`}
+            tag={L("LIGUES EN COURS", "ONGOING LEAGUES", "LIGAS EN CURSO")}
+            title={`${L("Reprendre une ligue", "Resume a league", "Reanudar una liga")} ${label}`}
             tone="gold"
             watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Affiche les ligues / championnats non terminés pour <b>{label}</b>.
+                  {L("Affiche les ligues / championnats non terminés pour", "Show unfinished leagues / championships for", "Muestra ligas / campeonatos sin terminar para")} <b>{label}</b>.
                 </p>
               </div>
             }
             onClick={() => go("tournament_list", listParams("league", "active"))}
           />
           <CompetitionCard
-            tag="TOURNOIS EN COURS"
-            title={`Reprendre un tournoi ${label}`}
+            tag={L("TOURNOIS EN COURS", "ONGOING TOURNAMENTS", "TORNEOS EN CURSO")}
+            title={`${L("Reprendre un tournoi", "Resume a tournament", "Reanudar un torneo")} ${label}`}
             tone="pink"
             watermark={tournamentWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Affiche les tournois non terminés pour <b>{label}</b>.
+                  {L("Affiche les tournois non terminés pour", "Show unfinished tournaments for", "Muestra torneos sin terminar para")} <b>{label}</b>.
                 </p>
               </div>
             }
@@ -420,31 +451,31 @@ export default function TournamentsHome({ store, go, params }: Props) {
 
       {entryMode === "consult" ? (
         <div style={{ display: "grid", gap: 12, marginTop: 4 }}>
-          <SectionLabel>Consulter</SectionLabel>
+          <SectionLabel>{L("Consulter", "View", "Consultar")}</SectionLabel>
 
           <CompetitionCard
-            tag="HISTORIQUE LIGUES"
-            title={`Ligues terminées ${label}`}
+            tag={L("HISTORIQUE LIGUES", "LEAGUE HISTORY", "HISTORIAL DE LIGAS")}
+            title={`${L("Ligues terminées", "Completed leagues", "Ligas terminadas")} ${label}`}
             tone="gold"
             watermark={leagueWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Consulte les ligues / championnats terminés pour <b>{label}</b>.
+                  {L("Consulte les ligues / championnats terminés pour", "View completed leagues / championships for", "Consulta ligas / campeonatos terminados para")} <b>{label}</b>.
                 </p>
               </div>
             }
             onClick={() => go("tournament_list", listParams("league", "done"))}
           />
           <CompetitionCard
-            tag="HISTORIQUE TOURNOIS"
-            title={`Tournois terminés ${label}`}
+            tag={L("HISTORIQUE TOURNOIS", "TOURNAMENT HISTORY", "HISTORIAL DE TORNEOS")}
+            title={`${L("Tournois terminés", "Completed tournaments", "Torneos terminados")} ${label}`}
             tone="pink"
             watermark={tournamentWatermark2}
             info={
               <div style={{ display: "grid", gap: 10, lineHeight: 1.35 }}>
                 <p style={{ margin: 0 }}>
-                  Consulte les tournois terminés pour <b>{label}</b>.
+                  {L("Consulte les tournois terminés pour", "View completed tournaments for", "Consulta torneos terminados para")} <b>{label}</b>.
                 </p>
               </div>
             }

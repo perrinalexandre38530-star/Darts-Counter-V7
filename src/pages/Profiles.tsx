@@ -36,7 +36,7 @@ import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import type { ThemeId } from "../theme/themePresets";
+import { THEMES, type ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
@@ -2982,6 +2982,15 @@ React.useEffect(() => {
       ];
       for (const key of prefKeys) {
         const nextVal = (privateInfoOnline as any)?.[key] ?? (prefsOnline as any)?.[key];
+
+        // Langue/thème : la préférence locale explicite de cet appareil reste prioritaire.
+        // On importe la valeur distante uniquement si le profil local n'en possède pas encore.
+        // Cela empêche un profil cloud ancien (FR) d'annuler immédiatement un choix EN/ES
+        // effectué dans Réglages.
+        if ((key === "appLang" || key === "appTheme") && (pi as any)?.[key] !== undefined && (pi as any)?.[key] !== null && String((pi as any)?.[key]).trim() !== "") {
+          continue;
+        }
+
         if (nextVal !== undefined && (pi as any)?.[key] !== nextVal) {
           (patch as any)[key] = nextVal;
         }
@@ -3153,6 +3162,22 @@ React.useEffect(() => {
     setProfilesSafe(() => nextProfiles as any);
     scheduleProfilesPersist("profile_save_local", nextStoreLocal as any, { cloud: false, delayMs: 5000 });
 
+    // La préférence "Langue préférée" du profil doit piloter la même source
+    // que Réglages > Langues. Avant ce patch, elle était seulement stockée
+    // dans le profil : l'UI restait donc en français alors que le sélecteur
+    // affichait EN/ES.
+    const requestedLang = String((localPatch as any).appLang || "").trim().toLowerCase() as Lang;
+    if (requestedLang && requestedLang !== lang) {
+      setLang(requestedLang);
+    }
+
+    // Même cohérence pour le thème préféré : on applique la préférence globale
+    // au moment où l'utilisateur valide le formulaire.
+    const requestedTheme = String((localPatch as any).appTheme || "").trim() as ThemeId;
+    if (requestedTheme && requestedTheme !== themeId && THEMES.some((th) => th.id === requestedTheme)) {
+      setThemeId(requestedTheme);
+    }
+
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
@@ -3216,7 +3241,11 @@ React.useEffect(() => {
 
         setToast({
           type: "success",
-          message: patch.password ? "Données et mot de passe sauvegardés" : "Données sauvegardées",
+          message: requestedLang === "en"
+            ? (patch.password ? "Data and password saved" : "Data saved")
+            : requestedLang === "es"
+            ? (patch.password ? "Datos y contraseña guardados" : "Datos guardados")
+            : (patch.password ? "Données et mot de passe sauvegardés" : "Données sauvegardées"),
         });
 
         try {
@@ -3246,10 +3275,29 @@ React.useEffect(() => {
         scheduleProfilesPersist("profile_save", { ...(store as any), profiles: nextProfilesNoPassword }, { cloud: false, delayMs: 6000 });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
-        setToast({
-          type: "error",
-          message: err instanceof Error ? err.message : "Erreur de sauvegarde",
-        });
+        const message = err instanceof Error ? err.message : "Erreur de sauvegarde";
+        const authBridgeMismatch = /non authentifi|reconnecte|not authenticated|auth session/i.test(message);
+
+        // Le formulaire est déjà sauvegardé localement avant la synchro distante.
+        // Une session NAS / bridge peut être affichée "connectée" par useAuthOnline
+        // alors que le SDK Supabase n'a pas encore sa session navigateur. Dans ce
+        // cas on ne bloque plus les préférences (langue/thème) avec un faux échec.
+        if (authBridgeMismatch) {
+          try { await (auth as any)?.refresh?.(); } catch {}
+          setToast({
+            type: "success",
+            message: requestedLang === "en"
+              ? "Preferences saved on this device. Account sync will retry after session refresh."
+              : requestedLang === "es"
+              ? "Preferencias guardadas en este dispositivo. La sincronización de la cuenta se reintentará tras actualizar la sesión."
+              : "Préférences enregistrées sur cet appareil. La synchro compte sera retentée après actualisation de la session.",
+          });
+        } else {
+          setToast({
+            type: "error",
+            message,
+          });
+        }
       }
     }
   }
@@ -3371,7 +3419,13 @@ React.useEffect(() => {
                     <BackDot
                       size={42}
                       title={lang === "fr" ? "Retour à la page précédente" : lang === "es" ? "Volver a la página anterior" : "Back to the previous page"}
-                      onClick={() => openView("menu")}
+                      onClick={() => {
+                        if (returnTo?.tab && go) {
+                          go(returnTo.tab, returnTo.params);
+                          return;
+                        }
+                        openView("menu");
+                      }}
                     />
                   }
                   endSlot={

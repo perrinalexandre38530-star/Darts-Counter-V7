@@ -29,6 +29,10 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import RulesModal from "../components/RulesModal";
+import ProfileAvatar from "../components/ProfileAvatar";
+import TerritoriesMapView from "../territories/TerritoriesMapView";
+import { buildTerritoriesMap, getBaseSvgForCountry } from "../territories/map";
+import { useStore } from "../contexts/StoreContext";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -147,7 +151,7 @@ import logoVolley from "../assets/games/logo-volley.png";
 import logoTennis from "../assets/games/logo-tennis.png";
 import logoChess from "../assets/games/logo-chess.png";
 
-type Props = { go?: (tab: any, params?: any) => void };
+type Props = { go?: (tab: any, params?: any) => void; params?: any };
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 
@@ -237,6 +241,67 @@ const LANG_FLAGS: Record<Lang, string> = {
   hr: "🇭🇷",
   cs: "🇨🇿",
 };
+
+
+type LanguageWorldMeta = {
+  primaryCountry: string;
+  countries: string[];
+};
+
+// Pays où la langue est officielle ou très largement utilisée. La carte LANGUES
+// réutilise directement le SVG MONDE du mode TERRITORIES.
+const LANGUAGE_WORLD_META: Record<Lang, LanguageWorldMeta> = {
+  fr: { primaryCountry: "FR", countries: ["FR","BE","CH","LU","MC","CA","HT","SN","CI","ML","BF","NE","TG","BJ","GN","CM","CF","TD","CG","CD","GA","BI","RW","DJ","KM","MG","MU","SC","VU","GQ"] },
+  en: { primaryCountry: "GB", countries: ["GB","US","CA","AU","NZ","IE","ZA","IN","PK","SG","PH","MY","NG","GH","KE","UG","TZ","ZM","ZW","BW","NA","MW","SL","LR","GM","JM","TT","BB","BS","BZ","GY","FJ","PG","SB","VU","WS","TO","KI","TV","MT","CY"] },
+  es: { primaryCountry: "ES", countries: ["ES","MX","GT","HN","SV","NI","CR","PA","CU","DO","PR","CO","VE","EC","PE","BO","PY","CL","AR","UY","GQ"] },
+  de: { primaryCountry: "DE", countries: ["DE","AT","CH","LI","LU","BE"] },
+  it: { primaryCountry: "IT", countries: ["IT","CH","SM","VA"] },
+  pt: { primaryCountry: "PT", countries: ["PT","BR","AO","MZ","CV","GW","ST","TL","GQ"] },
+  nl: { primaryCountry: "NL", countries: ["NL","BE","SR","AW","CW","SX"] },
+  ru: { primaryCountry: "RU", countries: ["RU","BY","KZ","KG"] },
+  zh: { primaryCountry: "CN", countries: ["CN","TW","SG"] },
+  ja: { primaryCountry: "JP", countries: ["JP"] },
+  ar: { primaryCountry: "SA", countries: ["SA","AE","BH","QA","KW","OM","YE","IQ","JO","LB","SY","PS","EG","LY","TN","DZ","MA","MR","SD","SO","DJ","KM"] },
+  hi: { primaryCountry: "IN", countries: ["IN"] },
+  tr: { primaryCountry: "TR", countries: ["TR","CY"] },
+  da: { primaryCountry: "DK", countries: ["DK","GL","FO"] },
+  no: { primaryCountry: "NO", countries: ["NO"] },
+  sv: { primaryCountry: "SE", countries: ["SE","FI"] },
+  is: { primaryCountry: "IS", countries: ["IS"] },
+  pl: { primaryCountry: "PL", countries: ["PL"] },
+  ro: { primaryCountry: "RO", countries: ["RO","MD"] },
+  sr: { primaryCountry: "RS", countries: ["RS","BA","ME","XK"] },
+  hr: { primaryCountry: "HR", countries: ["HR","BA"] },
+  cs: { primaryCountry: "CZ", countries: ["CZ"] },
+};
+
+const SETTINGS_FLAG_GLOB = import.meta.glob("../assets/flags/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function findSettingsFlagSrc(countryCode: string): string | null {
+  const code = String(countryCode || "").trim().toUpperCase();
+  if (!code) return null;
+  const suffix = `/${code}.PNG`;
+  for (const [path, src] of Object.entries(SETTINGS_FLAG_GLOB)) {
+    if (path.toUpperCase().endsWith(suffix)) return src;
+  }
+  return null;
+}
+
+function extractWorldCountryPath(countryCode: string): string | null {
+  try {
+    const code = String(countryCode || "").trim().toUpperCase();
+    if (!code) return null;
+    const raw = getBaseSvgForCountry("WORLD");
+    const tag = raw.match(new RegExp(`<path\\b[^>]*\\bid=["']${code}["'][^>]*>`, "i"))?.[0];
+    if (!tag) return null;
+    return tag.match(/\bd=["']([^"']+)["']/i)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------- Animation halo une seule fois ----------------
 
@@ -387,6 +452,68 @@ function LanguageChoiceButton({ id, label, active, onClick, primary }: LanguageC
   );
 }
 
+
+function CountryFlagShape({
+  countryCode,
+  accent,
+  width = 86,
+  height = 56,
+}: {
+  countryCode: string;
+  accent: string;
+  width?: number;
+  height?: number;
+}) {
+  const code = String(countryCode || "").toUpperCase();
+  const pathD = React.useMemo(() => extractWorldCountryPath(code), [code]);
+  const flagSrc = React.useMemo(() => findSettingsFlagSrc(code), [code]);
+  const pathRef = React.useRef<SVGPathElement | null>(null);
+  const [viewBox, setViewBox] = React.useState("0 0 100 70");
+  const [imageBox, setImageBox] = React.useState({ x: 0, y: 0, width: 100, height: 70 });
+  const clipId = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+  React.useLayoutEffect(() => {
+    const path = pathRef.current;
+    if (!path || !pathD) return;
+    try {
+      const box = path.getBBox();
+      if (!Number.isFinite(box.x) || !Number.isFinite(box.y) || box.width <= 0 || box.height <= 0) return;
+      const pad = Math.max(box.width, box.height) * 0.08;
+      setViewBox(`${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`);
+      setImageBox({ x: box.x - pad, y: box.y - pad, width: box.width + pad * 2, height: box.height + pad * 2 });
+    } catch {}
+  }, [pathD]);
+
+  if (!pathD || !flagSrc) {
+    return (
+      <div style={{ width, height, display: "grid", placeItems: "center", fontSize: Math.round(height * 0.55) }}>
+        {LANG_FLAGS[(Object.keys(LANGUAGE_WORLD_META) as Lang[]).find((id) => LANGUAGE_WORLD_META[id].primaryCountry === code) || "en"] || "🌐"}
+      </div>
+    );
+  }
+
+  return (
+    <svg width={width} height={height} viewBox={viewBox} aria-hidden="true" style={{ display: "block", overflow: "visible" }}>
+      <defs>
+        <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
+          <path d={pathD} />
+        </clipPath>
+      </defs>
+      <path ref={pathRef} d={pathD} fill="transparent" stroke="none" opacity={0} />
+      <image
+        href={flagSrc}
+        x={imageBox.x}
+        y={imageBox.y}
+        width={imageBox.width}
+        height={imageBox.height}
+        preserveAspectRatio="xMidYMid slice"
+        clipPath={`url(#${clipId})`}
+      />
+      <path d={pathD} fill="transparent" stroke={accent} strokeWidth={0.9} vectorEffect="non-scaling-stroke" style={{ filter: `drop-shadow(0 0 4px ${accent})` }} />
+    </svg>
+  );
+}
+
 // ---------------- Constantes de page & prefs ----------------
 
 const LEGACY_PAGE_BG = "#050712";
@@ -431,6 +558,29 @@ function fmtDateTime(v: any): string {
     return new Date(n).toLocaleString();
   } catch {
     return "—";
+  }
+}
+
+
+function startOfLocalDayMs(value = Date.now()): number {
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function formatPreviousLogin(value: number | null, lang: Lang = "fr"): string {
+  if (!value || !Number.isFinite(value)) return lang === "en" ? "No previous login recorded" : lang === "es" ? "No hay una conexión anterior registrada" : "Aucune connexion antérieure enregistrée";
+  try {
+    const locale = lang === "en" ? "en-GB" : lang === "es" ? "es-ES" : "fr-FR";
+    return new Date(value).toLocaleString(locale, {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return lang === "en" ? "No previous login recorded" : lang === "es" ? "No hay una conexión anterior registrada" : "Aucune connexion antérieure enregistrée";
   }
 }
 
@@ -1461,7 +1611,9 @@ function AccountPages({
   setPage: React.Dispatch<React.SetStateAction<AccountPage>>;
 }) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
+  const { store } = useStore();
   const { session, status, loading, profile, updateProfile, deleteAccount, logout } = useAuthOnline() as any;
 
   const user = session?.user ?? null;
@@ -1469,6 +1621,22 @@ function AccountPages({
 
   const emailLabel = (user as any)?.email || "—";
   const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
+  const activeLocalProfile = React.useMemo(() => {
+    const s: any = store ?? (typeof window !== "undefined" ? (window as any)?.__appStore?.store : null) ?? null;
+    const list = Array.isArray(s?.profiles) ? s.profiles : [];
+    const activeId = String(s?.activeProfileId || "");
+    return list.find((row: any) => String(row?.id || "") === activeId) || list[0] || null;
+  }, [store]);
+  const presenceState: "online" | "away" | "offline" = !isSignedIn
+    ? "offline"
+    : String((store as any)?.selfStatus || "online") === "away"
+      ? "away"
+      : String((store as any)?.selfStatus || "online") === "offline"
+        ? "offline"
+        : "online";
+  const presenceColor = presenceState === "online" ? "#28e07b" : presenceState === "away" ? "#ffc857" : "#ff5c67";
+  const presenceLabel = presenceState === "online" ? L("Connecté", "Connected", "Conectado") : presenceState === "away" ? L("Absent", "Away", "Ausente") : L("Déconnecté", "Disconnected", "Desconectado");
+  const [previousLoginAt, setPreviousLoginAt] = React.useState<number | null>(null);
 
   const [displayName, setDisplayName] = React.useState(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
   const [country, setCountry] = React.useState(profile?.country || "");
@@ -2045,6 +2213,42 @@ function AccountPages({
     setCountry(profile?.country || "");
   }, [profile?.displayName, profile?.nickname, profile?.country, (user as any)?.email]);
 
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !isSignedIn || !(user as any)?.id) {
+      setPreviousLoginAt(null);
+      return;
+    }
+
+    const uid = String((user as any).id);
+    const key = `dc_account_login_history_v1:${uid}`;
+    const todayStart = startOfLocalDayMs();
+    let history: number[] = [];
+
+    try {
+      const raw = window.localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        history = parsed.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+      }
+    } catch {}
+
+    const authLast = Date.parse(String((user as any)?.last_sign_in_at || ""));
+    if (Number.isFinite(authLast) && authLast > 0) history.push(authLast);
+
+    const previous = history.filter((value) => value < todayStart).sort((a, b) => b - a)[0] || null;
+    setPreviousLoginAt(previous);
+
+    const now = Date.now();
+    const alreadyRecordedToday = history.some((value) => value >= todayStart);
+    if (!alreadyRecordedToday) history.push(now);
+
+    const unique = Array.from(new Set(history.map((value) => Math.round(value)))).sort((a, b) => b - a).slice(0, 32);
+    try {
+      window.localStorage.setItem(key, JSON.stringify(unique));
+    } catch {}
+  }, [isSignedIn, (user as any)?.id, (user as any)?.last_sign_in_at]);
+
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -2124,10 +2328,7 @@ function AccountPages({
     marginBottom: 16,
   };
 
-  const accountStatusHint =
-    status === "signed_in"
-      ? t("settings.account.connectedShort", "Connecté")
-      : t("settings.account.offlineShort", "Hors ligne");
+  const accountStatusHint = presenceLabel;
 
   function openAccountLogin() {
     if (typeof go === "function") {
@@ -2139,7 +2340,14 @@ function AccountPages({
 
   function openMyProfile() {
     if (typeof go === "function") {
-      go("profiles" as any, { view: "me", autoCreate: true });
+      go("profiles" as any, {
+        view: "me",
+        autoCreate: true,
+        returnTo: {
+          tab: "settings",
+          params: { settingsTab: "account", accountPage: "account_menu" },
+        },
+      });
       return;
     }
     if (typeof window !== "undefined") window.location.hash = "#/profiles?view=me";
@@ -2161,24 +2369,46 @@ function AccountPages({
           <section style={{ ...sectionBox, background: "transparent", border: "none", padding: 0, boxShadow: "none" }}>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ ...softCard, display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
-                      Statut
+              <div style={{ ...softCard, display: "flex", flexDirection: "column", gap: 12, padding: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0,1fr) auto", gap: 13, alignItems: "center" }}>
+                  <div style={{ position: "relative", width: 72, height: 72 }}>
+                    <ProfileAvatar
+                      profile={activeLocalProfile || { id: String((store as any)?.activeProfileId || (user as any)?.id || "account"), name: displayName || emailLabel }}
+                      size={72}
+                      showStars={false}
+                      showDartOverlay={false}
+                      ringColor={presenceColor}
+                    />
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        right: 2,
+                        bottom: 3,
+                        width: 14,
+                        height: 14,
+                        borderRadius: "50%",
+                        background: presenceColor,
+                        border: "3px solid #080b15",
+                        boxShadow: `0 0 10px ${presenceColor}`,
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10.5, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                      {L("Statut du compte", "Account status", "Estado de la cuenta")}
                     </div>
-                    <div style={{ marginTop: 4, fontSize: 19, color: "#fff", fontWeight: 950 }}>
+                    <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 7, color: presenceColor, fontSize: 18, fontWeight: 950 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: "50%", background: presenceColor, boxShadow: `0 0 9px ${presenceColor}` }} />
                       {accountStatusHint}
                     </div>
-                    <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 11.5, lineHeight: 1.4, wordBreak: "break-word" }}>
-                      {status === "signed_in" ? (
-                        <>
-                          <div>{emailLabel}</div>
-                          <div style={{ marginTop: 2, opacity: 0.8 }}>{userIdLabel}</div>
-                        </>
-                      ) : (
-                        "Compte non connecté ou session locale."
-                      )}
+                    <div style={{ marginTop: 4, fontSize: 10.5, color: theme.textSoft, lineHeight: 1.35 }}>
+                      {presenceState === "online"
+                        ? L("Compte authentifié et présence active.", "Account authenticated and presence active.", "Cuenta autenticada y presencia activa.")
+                        : presenceState === "away"
+                          ? L("Compte authentifié, statut de présence absent.", "Account authenticated, presence set to away.", "Cuenta autenticada, presencia marcada como ausente.")
+                          : L("Compte actuellement déconnecté.", "Account currently disconnected.", "Cuenta actualmente desconectada.")}
                     </div>
                   </div>
 
@@ -2186,46 +2416,106 @@ function AccountPages({
                     <button
                       type="button"
                       onClick={handleLogoutV8}
+                      aria-label={L("Se déconnecter", "Sign out", "Cerrar sesión")}
+                      title={L("Se déconnecter", "Sign out", "Cerrar sesión")}
                       style={{
-                        borderRadius: 999,
-                        border: `1px solid ${theme.borderSoft}`,
-                        padding: "11px 14px",
-                        background: "rgba(255,255,255,0.06)",
-                        color: "#fff",
-                        fontWeight: 900,
+                        width: 42,
+                        height: 42,
+                        border: "none",
+                        background: "transparent",
+                        color: "#ff5c67",
                         cursor: "pointer",
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
+                        display: "grid",
+                        placeItems: "center",
+                        padding: 0,
+                        filter: "drop-shadow(0 0 7px rgba(255,92,103,.55))",
                       }}
                     >
-                      Se déconnecter
+                      <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M10 5H5v14h5" />
+                        <path d="M14 8l4 4-4 4" />
+                        <path d="M18 12H9" />
+                      </svg>
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={openAccountLogin}
+                      aria-label={L("Se connecter", "Sign in", "Iniciar sesión")}
+                      title={L("Se connecter", "Sign in", "Iniciar sesión")}
                       style={{
-                        borderRadius: 999,
-                        border: `1px solid ${theme.primary}77`,
-                        padding: "11px 14px",
-                        background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                        color: "#000",
-                        fontWeight: 950,
+                        width: 42,
+                        height: 42,
+                        border: "none",
+                        background: "transparent",
+                        color: theme.primary,
                         cursor: "pointer",
-                        boxShadow: `0 0 16px ${theme.primary}33`,
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
+                        display: "grid",
+                        placeItems: "center",
+                        padding: 0,
+                        filter: `drop-shadow(0 0 7px ${theme.primary}66)`,
                       }}
                     >
-                      Se connecter
+                      <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M14 5h5v14h-5" />
+                        <path d="M10 8l-4 4 4 4" />
+                        <path d="M6 12h9" />
+                      </svg>
                     </button>
                   )}
+                </div>
+
+                <div style={{ display: "grid", gap: 7 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 9, alignItems: "center", minHeight: 42, padding: "8px 10px", borderRadius: 13, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)" }}>
+                    <div style={{ color: theme.primary, display: "grid", placeItems: "center" }}>
+                      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="2" />
+                        <path d="m4 7 8 6 8-6" />
+                      </svg>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9.5, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .65 }}>E-mail</div>
+                      <div style={{ marginTop: 2, fontSize: 11.5, color: theme.text, overflowWrap: "anywhere" }}>{emailLabel}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 9, alignItems: "center", minHeight: 42, padding: "8px 10px", borderRadius: 13, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)" }}>
+                    <div style={{ color: theme.primary, display: "grid", placeItems: "center" }}>
+                      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="8" cy="8" r="3" />
+                        <path d="M3.5 19a4.5 4.5 0 0 1 9 0" />
+                        <path d="M15 8h6" />
+                        <path d="M18 5v6" />
+                      </svg>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9.5, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .65 }}>
+                        {L("Identifiant compte", "Account ID", "ID de cuenta")}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 11.5, color: theme.text, overflowWrap: "anywhere" }}>{userIdLabel}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr)", gap: 9, alignItems: "center", minHeight: 42, padding: "8px 10px", borderRadius: 13, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)" }}>
+                    <div style={{ color: theme.primary, display: "grid", placeItems: "center" }}>
+                      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="8" />
+                        <path d="M12 8v5l3 2" />
+                      </svg>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 9.5, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .65 }}>
+                        {L("Dernière connexion avant aujourd’hui", "Last login before today", "Última conexión antes de hoy")}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 11.5, color: theme.text, overflowWrap: "anywhere" }}>{formatPreviousLogin(previousLoginAt, lang)}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <SettingsMenuCard
-                title="Profil joueur"
-                subtitle="Le surnom, l’avatar et les informations joueur se modifient depuis Mon profil."
+                title={L("Profil joueur", "Player profile", "Perfil del jugador")}
+                subtitle={L("Le surnom, l’avatar et les informations joueur se modifient depuis Mon profil.", "Nickname, avatar and player information are edited from My Profile.", "El apodo, el avatar y la información del jugador se editan desde Mi perfil.")}
                 theme={theme}
                 onClick={openMyProfile}
               />
@@ -2233,8 +2523,8 @@ function AccountPages({
           </section>
 
           <SettingsMenuCard
-            title="Stockage & abonnements"
-            subtitle={`Destination actuelle : ${storagePrefs.selectedDestination === "cloud_r2" ? "Cloud R2" : storagePrefs.selectedDestination === "founder_nas" ? "NAS fondateur" : "local / appareil"}. Offre cloud : ${getPublicStoragePlans().find((p) => p.id === storagePrefs.selectedCloudPlan)?.shortLabel || "R2 verrouillé"}.`}
+            title={L("Stockage & abonnements", "Storage & subscriptions", "Almacenamiento y suscripciones")}
+            subtitle={`${L("Destination actuelle", "Current destination", "Destino actual")} : ${storagePrefs.selectedDestination === "cloud_r2" ? "Cloud R2" : storagePrefs.selectedDestination === "founder_nas" ? L("NAS fondateur", "Founder NAS", "NAS del fundador") : L("local / appareil", "local / device", "local / dispositivo")}. ${L("Offre cloud", "Cloud plan", "Plan cloud")} : ${getPublicStoragePlans().find((p) => p.id === storagePrefs.selectedCloudPlan)?.shortLabel || L("R2 verrouillé", "R2 locked", "R2 bloqueado")}.`}
             theme={theme}
             onClick={() => setPage("account_storage")}
             rightHint={storagePrefs.selectedDestination === "cloud_r2" ? "☁" : "↧"}
@@ -2242,13 +2532,13 @@ function AccountPages({
 
           <SettingsMenuCard
             title={t("settings.account.menu.notifications", "Notifications")}
-            subtitle="Options locales uniquement. À garder simple tant que les notifications réelles ne sont pas branchées."
+            subtitle={L("Options locales uniquement. À garder simple tant que les notifications réelles ne sont pas branchées.", "Local options only. Keep this simple until real notifications are connected.", "Solo opciones locales. Mantenerlo simple hasta que las notificaciones reales estén conectadas.")}
             theme={theme}
             onClick={() => setPage("account_notifications")}
           />
           <SettingsMenuCard
             title={t("settings.account.menu.danger", "Reset")}
-            subtitle="Suppression du compte ou reset des données/statistiques locales."
+            subtitle={L("Suppression du compte ou reset des données/statistiques locales.", "Delete the account or reset local data/statistics.", "Eliminar la cuenta o restablecer datos/estadísticas locales.")}
             theme={theme}
             onClick={() => setPage("account_danger")}
             rightHint="!"
@@ -3300,9 +3590,45 @@ function CastViewerSettingsSection({ go }: { go?: (tab: any, params?: any) => vo
   );
 }
 
-export function Settings({ go }: Props) {
+export function Settings({ go, params }: Props) {
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
+  const storeBridge = useStore();
+  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
+
+  // Réglages et Préférences du profil partagent la même langue active.
+  // Le changement reste localement effectif même si la session cloud est momentanément indisponible.
+  const applyLanguage = React.useCallback((nextLang: Lang) => {
+    setLang(nextLang);
+
+    try {
+      const current: any = storeBridge.getStore?.() ?? storeBridge.store ?? null;
+      const activeId = String(current?.activeProfileId || "").trim();
+      if (activeId && Array.isArray(current?.profiles) && typeof storeBridge.update === "function") {
+        storeBridge.update((state: any) => ({
+          ...(state || {}),
+          profiles: (Array.isArray(state?.profiles) ? state.profiles : []).map((profile: any) =>
+            String(profile?.id || "") === activeId
+              ? {
+                  ...(profile || {}),
+                  privateInfo: { ...((profile as any)?.privateInfo || {}), appLang: nextLang },
+                  preferences: { ...((profile as any)?.preferences || {}), appLang: nextLang },
+                }
+              : profile
+          ),
+        }));
+      }
+    } catch (error) {
+      console.warn("[Settings] sync appLang -> active profile failed", error);
+    }
+
+    void onlineApi.updateProfile({
+      preferences: { appLang: nextLang },
+      privateInfo: { appLang: nextLang },
+    }).catch((error) => {
+      console.warn("[Settings] remote appLang sync deferred", error);
+    });
+  }, [setLang, storeBridge]);
 
   const isBlueNightTheme = themeId === "blueNight";
   const PAGE_BG = isBlueNightTheme
@@ -3312,8 +3638,15 @@ export function Settings({ go }: Props) {
     ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
     : LEGACY_CARD_BG;
 
-  const [tab, setTab] = React.useState<SettingsTab>("menu");
+  const validSettingsTabs: SettingsTab[] = ["menu", "account", "monetization", "privacy", "theme", "lang", "audio", "general", "sport", "castViewer", "developer", "awena"];
+  const validAccountPages: AccountPage[] = ["account_menu", "account_storage", "account_notifications", "account_danger"];
+  const initialSettingsTab = validSettingsTabs.includes(String(params?.settingsTab || "") as SettingsTab)
+    ? (String(params?.settingsTab) as SettingsTab)
+    : "menu";
+  const [tab, setTab] = React.useState<SettingsTab>(initialSettingsTab);
   const [accountPage, setAccountPage] = React.useState<AccountPage>(() => {
+    const requested = String(params?.accountPage || "") as AccountPage;
+    if (validAccountPages.includes(requested)) return requested;
     if (typeof window === "undefined") return "account_menu";
     const hash = String(window.location.hash || "");
     return /[?&]account=storage(?:&|$)/.test(hash) ? "account_storage" : "account_menu";
@@ -3334,6 +3667,14 @@ export function Settings({ go }: Props) {
   React.useEffect(() => {
     injectSettingsAnimationsOnce();
   }, []);
+
+
+  React.useEffect(() => {
+    const requestedTab = String(params?.settingsTab || "") as SettingsTab;
+    if (validSettingsTabs.includes(requestedTab)) setTab(requestedTab);
+    const requestedAccountPage = String(params?.accountPage || "") as AccountPage;
+    if (validAccountPages.includes(requestedAccountPage)) setAccountPage(requestedAccountPage);
+  }, [params?.settingsTab, params?.accountPage]);
 
   async function handleFullReset() {
     const ok = window.confirm(
@@ -3512,28 +3853,235 @@ export function Settings({ go }: Props) {
   }
 
   function LangSection() {
+    const [pickerOpen, setPickerOpen] = React.useState(false);
+    const carouselRef = React.useRef<HTMLDivElement | null>(null);
+    const worldMapBase = React.useMemo(() => buildTerritoriesMap("WORLD"), []);
+    const languageMeta = LANGUAGE_WORLD_META[lang] || LANGUAGE_WORLD_META.fr;
+    const highlightedIds = React.useMemo(
+      () => languageMeta.countries.map((code) => `WORLD-${String(code).toUpperCase()}`),
+      [languageMeta],
+    );
+    const highlightedSet = React.useMemo(() => new Set(highlightedIds), [highlightedIds]);
+    const languageMap = React.useMemo(() => ({
+      ...worldMapBase,
+      territories: worldMapBase.territories.map((territory) => ({
+        ...territory,
+        ownerId: highlightedSet.has(String(territory.id)) ? "settings-language" : undefined,
+      })),
+    }), [worldMapBase, highlightedSet]);
+    const sortedLanguages = React.useMemo(() => {
+      return [...LANG_CHOICES].sort((left, right) => {
+        const a = t(`lang.${left.id}`, left.defaultLabel);
+        const b = t(`lang.${right.id}`, right.defaultLabel);
+        return String(a).localeCompare(String(b), lang === "en" ? "en" : lang === "es" ? "es" : "fr", { sensitivity: "base" });
+      });
+    }, [t, lang]);
+    const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());
+
+    const scrollCarousel = (direction: -1 | 1) => {
+      carouselRef.current?.scrollBy({ left: direction * 190, behavior: "smooth" });
+    };
+
     return (
       <section
         style={{
           background: CARD_BG,
           borderRadius: 18,
           border: `1px solid ${theme.borderSoft}`,
-          padding: 16,
+          padding: 12,
           marginBottom: 16,
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
-          {LANG_CHOICES.map((opt) => (
-            <LanguageChoiceButton
-              key={opt.id}
-              id={opt.id}
-              label={t(`lang.${opt.id}`, opt.defaultLabel)}
-              active={opt.id === lang}
-              onClick={() => setLang(opt.id)}
-              primary={theme.primary}
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${theme.borderSoft}`,
+            background: "radial-gradient(circle at 50% 20%, rgba(255,255,255,.05), rgba(0,0,0,.18) 65%)",
+            padding: 8,
+            boxShadow: `inset 0 0 24px rgba(0,0,0,.36), 0 0 18px ${theme.primary}16`,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "3px 5px 7px" }}>
+            <div>
+              <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .8 }}>{L("Carte linguistique mondiale", "World language map", "Mapa lingüístico mundial")}</div>
+              <div style={{ marginTop: 2, color: theme.primary, fontSize: 13, fontWeight: 950 }}>{activeLabel}</div>
+            </div>
+            <div style={{ fontSize: 10.5, color: theme.textSoft, textAlign: "right" }}>
+              {highlightedIds.length} {L(highlightedIds.length > 1 ? "territoires en surbrillance" : "territoire en surbrillance", highlightedIds.length > 1 ? "highlighted territories" : "highlighted territory", highlightedIds.length > 1 ? "territorios resaltados" : "territorio resaltado")}
+            </div>
+          </div>
+
+          <div style={{ height: 218, width: "100%", borderRadius: 13, overflow: "hidden", background: "rgba(0,0,0,.24)" }}>
+            <TerritoriesMapView
+              country="WORLD"
+              map={languageMap}
+              ownerColors={{ "settings-language": theme.primary }}
+              activeColor={theme.primary}
+              themeColor={theme.primary}
+              interactive={false}
+              showViewportControls={false}
+              showViewportHint={false}
+              highlightTerritoryIds={highlightedIds}
+              style={{ width: "100%", height: "100%" }}
             />
-          ))}
+          </div>
         </div>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            style={{
+              minWidth: 150,
+              borderRadius: 999,
+              border: `1px solid ${theme.primary}88`,
+              background: `${theme.primary}12`,
+              color: theme.primary,
+              padding: "8px 13px",
+              fontSize: 11,
+              fontWeight: 950,
+              cursor: "pointer",
+              boxShadow: `0 0 12px ${theme.primary}22`,
+            }}
+          >
+            {L("Choisir langue", "Choose language", "Elegir idioma")} ▾
+          </button>
+        </div>
+
+        <div style={{ marginTop: 13 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+            <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .75 }}>{L("Sélection rapide", "Quick selection", "Selección rápida")}</div>
+            <div style={{ fontSize: 9.5, color: theme.textSoft }}>{L("ordre alphabétique", "alphabetical order", "orden alfabético")}</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", gap: 6, alignItems: "center" }}>
+            <button
+              type="button"
+              aria-label={L("Langues précédentes", "Previous languages", "Idiomas anteriores")}
+              onClick={() => scrollCarousel(-1)}
+              style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: "rgba(0,0,0,.42)", color: theme.primary, fontSize: 22, cursor: "pointer", display: "grid", placeItems: "center" }}
+            >
+              ‹
+            </button>
+
+            <div
+              ref={carouselRef}
+              className="dc-scroll-thin"
+              style={{
+                display: "flex",
+                gap: 9,
+                overflowX: "auto",
+                scrollSnapType: "x mandatory",
+                padding: "4px 2px 8px",
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
+              {sortedLanguages.map((opt) => {
+                const label = t(`lang.${opt.id}`, opt.defaultLabel);
+                const active = opt.id === lang;
+                const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => applyLanguage(opt.id)}
+                    style={{
+                      minWidth: 126,
+                      height: 112,
+                      scrollSnapAlign: "center",
+                      borderRadius: 15,
+                      border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+                      background: active ? `${theme.primary}12` : "rgba(255,255,255,.025)",
+                      color: active ? theme.primary : theme.text,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      boxShadow: active ? `0 0 15px ${theme.primary}38` : "none",
+                      flexShrink: 0,
+                      padding: 7,
+                    }}
+                  >
+                    <CountryFlagShape countryCode={primaryCountry} accent={active ? theme.primary : "rgba(255,255,255,.55)"} width={84} height={58} />
+                    <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 900 }}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              aria-label={L("Langues suivantes", "Next languages", "Idiomas siguientes")}
+              onClick={() => scrollCarousel(1)}
+              style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: "rgba(0,0,0,.42)", color: theme.primary, fontSize: 22, cursor: "pointer", display: "grid", placeItems: "center" }}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
+        {pickerOpen ? (
+          <div
+            role="presentation"
+            onClick={() => setPickerOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 5200,
+              background: "rgba(0,0,0,.72)",
+              backdropFilter: "blur(7px)",
+              display: "grid",
+              placeItems: "center",
+              padding: 16,
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={L("Choisir la langue", "Choose language", "Elegir idioma")}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                width: "min(430px, 94vw)",
+                maxHeight: "76vh",
+                borderRadius: 20,
+                border: `1px solid ${theme.primary}77`,
+                background: "linear-gradient(180deg,rgba(8,12,28,.99),rgba(3,5,15,.99))",
+                boxShadow: `0 0 26px ${theme.primary}28, 0 20px 54px rgba(0,0,0,.75)`,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 14px", borderBottom: `1px solid ${theme.borderSoft}` }}>
+                <div>
+                  <div style={{ color: theme.primary, fontSize: 15, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>{L("Choisir langue", "Choose language", "Elegir idioma")}</div>
+                  <div style={{ marginTop: 2, fontSize: 10.5, color: theme.textSoft }}>{L("Toutes les langues disponibles", "All available languages", "Todos los idiomas disponibles")}</div>
+                </div>
+                <button type="button" onClick={() => setPickerOpen(false)} aria-label={L("Fermer", "Close", "Cerrar")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: theme.text, fontSize: 20, cursor: "pointer" }}>×</button>
+              </div>
+              <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                  {sortedLanguages.map((opt) => (
+                    <LanguageChoiceButton
+                      key={opt.id}
+                      id={opt.id}
+                      label={t(`lang.${opt.id}`, opt.defaultLabel)}
+                      active={opt.id === lang}
+                      onClick={() => {
+                        applyLanguage(opt.id);
+                        setPickerOpen(false);
+                      }}
+                      primary={theme.primary}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -4380,16 +4928,16 @@ export function Settings({ go }: Props) {
       ? t("settings.title", "Réglages")
       : tab === "account"
       ? accountPage === "account_storage"
-        ? "Stockage & abonnements"
+        ? L("Stockage & abonnements", "Storage & subscriptions", "Almacenamiento y suscripciones")
         : accountPage === "account_notifications"
         ? t("settings.account.notifications.title", "Notifications & communications")
         : accountPage === "account_danger"
         ? t("settings.account.danger", "Zone dangereuse")
         : t("settings.menu.account", "Compte")
       : tab === "monetization"
-      ? "Publicité & Boutique"
+      ? L("Publicité & Boutique", "Ads & Store", "Publicidad y tienda")
       : tab === "privacy"
-      ? "Confidentialité & données"
+      ? L("Confidentialité & données", "Privacy & data", "Privacidad y datos")
       : tab === "awena"
       ? "Awena"
       : tab === "theme"
@@ -4399,22 +4947,22 @@ export function Settings({ go }: Props) {
       : tab === "audio"
       ? t("settings.menu.audio", "INTRO")
       : tab === "general"
-      ? "SAUVEGARDE"
+      ? L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")
       : tab === "castViewer"
       ? "Cast / Viewer"
       : tab === "developer"
       ? devSub === "diagnostics"
-        ? "Diagnostic"
+        ? L("Diagnostic", "Diagnostics", "Diagnóstico")
         : devSub === "tests"
-        ? "Tests & simulations"
+        ? L("Tests & simulations", "Tests & simulations", "Pruebas y simulaciones")
         : devSub === "onlineCleanup"
-        ? "Nettoyage Online"
+        ? L("Nettoyage Online", "Online cleanup", "Limpieza Online")
         : devSub === "nas"
         ? "Push / Pull NAS"
         : devSub === "logs"
-        ? "Logs techniques"
+        ? L("Logs techniques", "Technical logs", "Registros técnicos")
         : devSub === "security"
-        ? "Sécurité technique"
+        ? L("Sécurité technique", "Technical security", "Seguridad técnica")
         : t("settings.menu.developer", "Développeur")
       : t("settings.menu.sport", "Choix de sport");
 
@@ -4423,18 +4971,18 @@ export function Settings({ go }: Props) {
       ? t("settings.subtitle", "Personnalise le thème et la langue de l’application.")
       : tab === "account"
       ? accountPage === "account_storage"
-        ? "Destination du compte, stockage local/cloud, quota, abonnements et sauvegardes."
+        ? L("Destination du compte, stockage local/cloud, quota, abonnements et sauvegardes.", "Account destination, local/cloud storage, quota, subscriptions and backups.", "Destino de la cuenta, almacenamiento local/cloud, cuota, suscripciones y copias de seguridad.")
         : accountPage === "account_notifications"
-        ? "Options locales de notifications, sons et communications de l’application."
+        ? L("Options locales de notifications, sons et communications de l’application.", "Local notification, sound and app communication options.", "Opciones locales de notificaciones, sonidos y comunicaciones de la aplicación.")
         : accountPage === "account_danger"
-        ? "Suppression du compte et réinitialisation des données locales."
-        : "Compte connecté, profil joueur, stockage, notifications et sécurité."
+        ? L("Suppression du compte et réinitialisation des données locales.", "Account deletion and local data reset.", "Eliminación de la cuenta y restablecimiento de datos locales.")
+        : L("Compte connecté, profil joueur, stockage, notifications et sécurité.", "Connected account, player profile, storage, notifications and security.", "Cuenta conectada, perfil del jugador, almacenamiento, notificaciones y seguridad.")
       : tab === "monetization"
-      ? "Bannières, vidéo de fin de partie, Premium et packs additionnels."
+      ? L("Bannières, vidéo de fin de partie, Premium et packs additionnels.", "Banners, end-of-game video, Premium and add-on packs.", "Banners, vídeo de fin de partida, Premium y packs adicionales.")
       : tab === "privacy"
-      ? "Politique de confidentialité, droits, contact et suppression du compte."
+      ? L("Politique de confidentialité, droits, contact et suppression du compte.", "Privacy policy, rights, contact and account deletion.", "Política de privacidad, derechos, contacto y eliminación de la cuenta.")
       : tab === "awena"
-      ? "Présence, voix locale et comportement de l’assistante officielle."
+      ? L("Présence, voix locale et comportement de l’assistante officielle.", "Presence, local voice and behavior of the official assistant.", "Presencia, voz local y comportamiento de la asistente oficial.")
       : tab === "theme"
       ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
       : tab === "lang"
@@ -4444,12 +4992,12 @@ export function Settings({ go }: Props) {
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
       : tab === "castViewer"
-      ? "Paramètres des deux sorties écran : Google Cast TV et Viewer tablette."
+      ? L("Paramètres des deux sorties écran : Google Cast TV et Viewer tablette.", "Settings for both screen outputs: Google Cast TV and tablet Viewer.", "Ajustes de las dos salidas de pantalla: Google Cast TV y Viewer para tableta.")
       : tab === "developer"
       ? devSub === "menu"
         ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
-        : "Zone réservée aux tests, diagnostics et actions techniques avancées."
-      : "Backup NAS, synchronisation et restauration du compte.";
+        : L("Zone réservée aux tests, diagnostics et actions techniques avancées.", "Area reserved for tests, diagnostics and advanced technical actions.", "Zona reservada para pruebas, diagnósticos y acciones técnicas avanzadas.")
+      : L("Backup NAS, synchronisation et restauration du compte.", "NAS backup, synchronization and account restore.", "Copia NAS, sincronización y restauración de la cuenta.");
 
   const handleSettingsTitleSecretTap = () => {
     if (tab !== "menu") return;
@@ -4507,39 +5055,8 @@ export function Settings({ go }: Props) {
 
       <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
         <PageAdBanner placement="settings" slotKey={`page-settings-${tab}-under-header`} />
-
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <SettingsMenuCard
-              title={t("settings.menu.sport", "Choix de sport")}
-              subtitle={t("settings.menu.sport.sub", "Changer de jeu, réinitialiser le choix (hub au démarrage).")}
-              theme={theme}
-              onClick={() => setTab("sport")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.account", "Compte")}
-              subtitle="Compte/profil regroupés, notifications locales et zone dangereuse simplifiée."
-              theme={theme}
-              onClick={() => setTab("account")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.lang", "Langues")}
-              subtitle={t("settings.menu.lang.sub", "Choisis la langue de l’interface (drapeaux inclus).")}
-              theme={theme}
-              onClick={() => setTab("lang")}
-            />
-            <SettingsMenuCard
-              title="SAUVEGARDE"
-              subtitle="Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page."
-              theme={theme}
-              onClick={() => go?.("storage_vault")}
-            />
-            <SettingsMenuCard
-              title={t("settings.menu.theme", "Thème")}
-              subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
-              theme={theme}
-              onClick={() => setTab("theme")}
-            />
             <SettingsMenuCard
               title="Awena"
               titleNode={
@@ -4548,42 +5065,100 @@ export function Settings({ go }: Props) {
                   <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
                 </span>
               }
-              subtitle="Présentatrice officielle, assistante interactive, voix locale et comportement en jeu."
+              subtitle={L(
+                "Présentatrice officielle, assistante interactive, voix locale et comportement en jeu.",
+                "Official presenter, interactive assistant, local voice and in-game behavior.",
+                "Presentadora oficial, asistente interactiva, voz local y comportamiento durante el juego."
+              )}
               theme={theme}
-              rightHint="IA LOCALE"
+              rightHint={L("IA LOCALE", "LOCAL AI", "IA LOCAL")}
               onClick={() => setTab("awena")}
             />
             <SettingsMenuCard
+              title={t("settings.menu.sport", L("Choix de sport", "Sport selection", "Selección de deporte"))}
+              subtitle={t("settings.menu.sport.sub", L("Changer de jeu, réinitialiser le choix (hub au démarrage).", "Change sport and reset the startup selection hub.", "Cambia de deporte y restablece la selección del inicio."))}
+              theme={theme}
+              onClick={() => setTab("sport")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.account", L("Compte", "Account", "Cuenta"))}
+              subtitle={L(
+                "Compte/profil regroupés, notifications locales et zone dangereuse simplifiée.",
+                "Account/profile, local notifications and simplified danger zone.",
+                "Cuenta/perfil, notificaciones locales y zona de riesgo simplificada."
+              )}
+              theme={theme}
+              onClick={() => setTab("account")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.lang", L("Langues", "Languages", "Idiomas"))}
+              subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface (drapeaux inclus).", "Choose the interface language (flags included).", "Elige el idioma de la interfaz (banderas incluidas)."))}
+              theme={theme}
+              onClick={() => setTab("lang")}
+            />
+            <SettingsMenuCard
+              title={L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")}
+              subtitle={L(
+                "Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page.",
+                "NAS backup, synchronization, restore and valid-block scan on one page.",
+                "Copia NAS, sincronización, restauración y escaneo de bloques válidos en una sola página."
+              )}
+              theme={theme}
+              onClick={() => go?.("storage_vault")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.theme", L("Thème", "Theme", "Tema"))}
+              subtitle={t("settings.menu.theme.sub", L("Néons classiques, couleurs douces et dark premium.", "Classic neons, soft colors and premium dark themes.", "Neones clásicos, colores suaves y temas oscuros premium."))}
+              theme={theme}
+              onClick={() => setTab("theme")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.audio", "INTRO")}
-              subtitle={t("settings.menu.audio.sub", "Active ou coupe entièrement l’intro animée et musicale au démarrage.")}
+              subtitle={t("settings.menu.audio.sub", L("Active ou coupe entièrement l’intro animée et musicale au démarrage.", "Enable or completely disable the animated and musical intro at startup.", "Activa o desactiva por completo la intro animada y musical al iniciar."))}
               theme={theme}
               rightHint={getStartupIntroEnabled() ? "ON" : "OFF"}
               onClick={() => setTab("audio")}
             />
             <SettingsMenuCard
               title={t("settings.menu.castViewer", "Cast / Viewer")}
-              subtitle="Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics."
+              subtitle={L(
+                "Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics.",
+                "Open the Screens page directly on Settings: Cast TV, tablet Viewer and diagnostics.",
+                "Abre la página Pantallas directamente en Ajustes: Cast TV, Viewer para tableta y diagnósticos."
+              )}
               theme={theme}
               onClick={() => go?.("cast_host", { screenTab: "settings" })}
             />
             <SettingsMenuCard
-              title="Publicité & Boutique"
-              subtitle="Bannières, vidéo fin de partie, Premium sans pub et packs avatars/logos/sets/thèmes/bots IA."
+              title={L("Publicité & Boutique", "Ads & Store", "Publicidad y tienda")}
+              subtitle={L(
+                "Bannières, vidéo fin de partie, Premium sans pub et packs avatars/logos/sets/thèmes/bots IA.",
+                "Banners, end-of-game video, ad-free Premium and avatar/logo/set/theme/AI bot packs.",
+                "Banners, vídeo de fin de partida, Premium sin anuncios y packs de avatares/logos/sets/temas/bots IA."
+              )}
               theme={theme}
               rightHint="FREE / PREMIUM"
               onClick={() => setTab("monetization")}
             />
             <SettingsMenuCard
-              title="Confidentialité & données"
-              subtitle="Politique de confidentialité, contact et suppression du compte."
+              title={L("Confidentialité & données", "Privacy & data", "Privacidad y datos")}
+              subtitle={L(
+                "Politique de confidentialité, contact et suppression du compte.",
+                "Privacy policy, contact and account deletion.",
+                "Política de privacidad, contacto y eliminación de la cuenta."
+              )}
               theme={theme}
               rightHint="RGPD / PLAY"
               onClick={() => setTab("privacy")}
             />
             {developerVisible ? (
               <SettingsMenuCard
-                title={t("settings.menu.developer", "Développeur")}
-                subtitle="Diagnostic, tests, simulations, push NAS, logs et sécurité technique."
+                title={t("settings.menu.developer", L("Développeur", "Developer", "Desarrollador"))}
+                subtitle={L(
+                  "Diagnostic, tests, simulations, push NAS, logs et sécurité technique.",
+                  "Diagnostics, tests, simulations, NAS push, logs and technical security.",
+                  "Diagnóstico, pruebas, simulaciones, push NAS, registros y seguridad técnica."
+                )}
                 theme={theme}
                 onClick={() => setTab("developer")}
               />
@@ -4593,7 +5168,7 @@ export function Settings({ go }: Props) {
           </div>
         )}
 
-                {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
+        {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
 
         {tab === "monetization" && <MonetizationSettingsPanel />}
 
