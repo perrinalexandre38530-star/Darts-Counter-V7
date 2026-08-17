@@ -3002,21 +3002,41 @@ React.useEffect(() => {
       }
     }, [active?.id, auth.status, auth.profile, auth.user]);  
 
-  // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
+  // La langue/le thème déjà actifs dans l'application sont la source de vérité
+  // pendant la session. Ouvrir simplement l'onglet PROFILS ne doit jamais faire
+  // revenir l'application vers une vieille préférence stockée dans le profil.
+  // Au contraire, on reflète ici le choix courant dans MON PROFIL.
   React.useEffect(() => {
-    if (!active) return;
-    const pi = ((active as any).privateInfo || {}) as PrivateInfo;
-    if (pi.appLang && pi.appLang !== lang) {
-      try {
-        setLang(pi.appLang);
-      } catch {}
-    }
-    if (pi.appTheme && pi.appTheme !== themeId) {
-      try {
-        setThemeId(pi.appTheme);
-      } catch {}
-    }
-  }, [active, lang, themeId, setLang, setThemeId]);
+    const activeId = String((active as any)?.id || "").trim();
+    if (!activeId) return;
+
+    const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
+    const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
+    const needsLangSync = pi.appLang !== lang || (prefs as any).appLang !== lang;
+    const needsThemeSync = pi.appTheme !== themeId || (prefs as any).appTheme !== themeId;
+    if (!needsLangSync && !needsThemeSync) return;
+
+    update((state: any) => ({
+      ...(state || {}),
+      profiles: (Array.isArray(state?.profiles) ? state.profiles : []).map((profile: any) =>
+        String(profile?.id || "") === activeId
+          ? {
+              ...(profile || {}),
+              privateInfo: {
+                ...((profile as any)?.privateInfo || {}),
+                ...(needsLangSync ? { appLang: lang } : {}),
+                ...(needsThemeSync ? { appTheme: themeId } : {}),
+              },
+              preferences: {
+                ...((profile as any)?.preferences || {}),
+                ...(needsLangSync ? { appLang: lang } : {}),
+                ...(needsThemeSync ? { appTheme: themeId } : {}),
+              },
+            }
+          : profile
+      ),
+    }));
+  }, [active?.id, (active as any)?.privateInfo?.appLang, (active as any)?.privateInfo?.appTheme, (active as any)?.preferences?.appLang, (active as any)?.preferences?.appTheme, lang, themeId, update]);
 
   // Source unique pour la carte du profil actif : le StarRing et les mini-stats
   // doivent lire la même agrégation que la page Profils / StatsHub.

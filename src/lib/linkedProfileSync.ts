@@ -861,7 +861,20 @@ export function mergeLinkedProfiles(localProfiles: any[], linkedProfiles: any[])
   }
   for (const p of arr(linkedProfiles)) {
     const id = s(p?.id || p?.profileId || p?.playerId);
-    if (id) byId.set(id, { ...(byId.get(id) || {}), ...p });
+    if (!id) continue;
+
+    const local = byId.get(id) || {};
+
+    // La projection liée apporte stats/avatar/identité distante, mais elle ne doit
+    // JAMAIS réinjecter de vieilles préférences applicatives dans le profil local.
+    // Exemple réel : le profil projeté gardait appLang=fr et, à l'ouverture de
+    // PROFILS, pouvait annuler un choix EN/ES effectué quelques secondes avant.
+    byId.set(id, {
+      ...local,
+      ...p,
+      privateInfo: { ...(p?.privateInfo || {}), ...(local?.privateInfo || {}) },
+      preferences: { ...(p?.preferences || {}), ...(local?.preferences || {}) },
+    });
   }
   return Array.from(byId.values());
 }

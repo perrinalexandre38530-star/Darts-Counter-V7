@@ -2241,6 +2241,15 @@ useEffect(() => {
   function commitGo(next: Tab, params?: any) {
     const nextParams = mergeOnlineRouteContext(routeParams, next, params);
 
+    // Écrans peut être ouvert depuis Réglages, Jeux, Stats, etc. On mémorise la
+    // vraie page précédente pour que son BackDot revienne exactement au point de départ.
+    if (next === "cast_host" && tab !== "cast_host") {
+      try {
+        window.sessionStorage.setItem("dc_screens_return_tab_v1", String(tab || "settings"));
+        window.sessionStorage.setItem("dc_screens_return_params_v1", JSON.stringify(routeParams ?? null));
+      } catch {}
+    }
+
     // PERF V68: publish the actual navigation state first. Diagnostics are
     // bookkeeping and must never sit in front of the visible route change.
     try {

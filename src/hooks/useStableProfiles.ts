@@ -9,6 +9,15 @@ function profileSig(p: any) {
     p?.avatarSha256 || p?.avatarAssetId || (p?.avatarDataUrl ? "data" : ""),
     p?.country || "",
     p?.privateInfo?.country || "",
+    // Les préférences applicatives doivent faire partie de la signature.
+    // Sinon useStableProfiles réutilise l'ancien objet (ex: appLang=fr)
+    // même quand Settings vient de passer l'app en EN/ES.
+    p?.privateInfo?.appLang || p?.preferences?.appLang || "",
+    p?.privateInfo?.appTheme || p?.preferences?.appTheme || "",
+    p?.privateInfo?.favX01 ?? p?.preferences?.favX01 ?? "",
+    p?.privateInfo?.favDoubleOut ?? p?.preferences?.favDoubleOut ?? "",
+    p?.privateInfo?.ttsVoice || p?.preferences?.ttsVoice || "",
+    p?.privateInfo?.sfxVolume ?? p?.preferences?.sfxVolume ?? "",
   ].join(":");
 }
 
@@ -30,7 +39,13 @@ export function useStableProfiles<T extends Record<string, any>>(profiles: T[]):
         old?.avatarUrl === profile?.avatarUrl &&
         old?.avatarDataUrl === profile?.avatarDataUrl &&
         old?.country === profile?.country &&
-        old?.privateInfo?.country === profile?.privateInfo?.country;
+        old?.privateInfo?.country === profile?.privateInfo?.country &&
+        (old?.privateInfo?.appLang ?? old?.preferences?.appLang) === (profile?.privateInfo?.appLang ?? profile?.preferences?.appLang) &&
+        (old?.privateInfo?.appTheme ?? old?.preferences?.appTheme) === (profile?.privateInfo?.appTheme ?? profile?.preferences?.appTheme) &&
+        (old?.privateInfo?.favX01 ?? old?.preferences?.favX01) === (profile?.privateInfo?.favX01 ?? profile?.preferences?.favX01) &&
+        (old?.privateInfo?.favDoubleOut ?? old?.preferences?.favDoubleOut) === (profile?.privateInfo?.favDoubleOut ?? profile?.preferences?.favDoubleOut) &&
+        (old?.privateInfo?.ttsVoice ?? old?.preferences?.ttsVoice) === (profile?.privateInfo?.ttsVoice ?? profile?.preferences?.ttsVoice) &&
+        (old?.privateInfo?.sfxVolume ?? old?.preferences?.sfxVolume) === (profile?.privateInfo?.sfxVolume ?? profile?.preferences?.sfxVolume);
       return same ? old : profile;
     }) as T[];
     previousRef.current = next;

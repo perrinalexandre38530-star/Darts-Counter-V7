@@ -111,6 +111,74 @@ function safeUpper(s: string) {
   return (s || "").toUpperCase();
 }
 
+// Titres affichés dans la liste de jeux. Le registry reste en français pour ne
+// toucher ni aux ids ni au routing, mais l'UI suit la langue active. Pour toute
+// langue non FR sans traduction dédiée, on utilise l'anglais par défaut.
+const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
+  five_lives: { en: "Five Lives", es: "Cinco vidas" },
+  killer_progressive: { en: "Progressive Killer", es: "Killer progresivo" },
+  attrape_moi: { en: "Catch Me If You Can!", es: "¡Atrápame si puedes!" },
+  president: { en: "President", es: "Presidente" },
+  football: { en: "Football (Soccer)", es: "Fútbol" },
+  loterie: { en: "Lottery", es: "Lotería" },
+  bastard: { en: "Bastard", es: "Bastardo" },
+  fun_gages: { en: "Dares / Fun Mode", es: "Retos / Modo Fun" },
+  tour_horloge: { en: "Around the Clock", es: "Vuelta al reloj" },
+  enculette: { en: "Enculette / Cow", es: "Enculette / Vaca" },
+};
+
+function localizedGameLabel(game: DartsGameDef | null | undefined, langCode: any): string {
+  if (!game) return "";
+  const lang = String(langCode || "fr").toLowerCase();
+  if (lang === "fr") return String(game.label || game.id || "");
+  const entry = GAME_LABELS_I18N[String(game.id || "")];
+  if (lang === "es" && entry?.es) return entry.es;
+  return entry?.en || String(game.label || game.id || "");
+}
+
+const CATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
+  classic: { en: "Classics", es: "Clásicos" },
+  variant: { en: "Variants", es: "Variantes" },
+  challenge: { en: "Challenges", es: "Desafíos" },
+  fun: { en: "Fun", es: "Diversión" },
+  training: { en: "Training", es: "Entrenamiento" },
+};
+
+function localizedCategoryLabel(id: string, fallback: string, langCode: any): string {
+  const lang = String(langCode || "fr").toLowerCase();
+  if (lang === "fr") return fallback;
+  const entry = CATEGORY_LABELS_I18N[id];
+  if (lang === "es" && entry?.es) return entry.es;
+  return entry?.en || fallback;
+}
+
+const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
+  "variant:other": { en: "Other variants", es: "Otras variantes" },
+  "challenge:scoring": { en: "Scoring", es: "Puntuación" },
+  "challenge:precision": { en: "Precision", es: "Precisión" },
+  "challenge:elimination": { en: "Elimination", es: "Eliminación" },
+  "challenge:other": { en: "Other challenges", es: "Otros desafíos" },
+  "fun:arcade": { en: "Arcade", es: "Arcade" },
+  "fun:party": { en: "Party", es: "Fiesta" },
+  "fun:battle": { en: "Duel", es: "Duelo" },
+  "fun:strategie": { en: "Strategy", es: "Estrategia" },
+  "fun:survie": { en: "Survival", es: "Supervivencia" },
+  "fun:coop": { en: "Co-op", es: "Cooperativo" },
+  "fun:experimental": { en: "Experimental", es: "Experimental" },
+  "fun:other": { en: "Other", es: "Otros" },
+  "training:precision": { en: "Precision", es: "Precisión" },
+  "training:performance": { en: "Performance", es: "Rendimiento" },
+  "training:other": { en: "Other drills", es: "Otros ejercicios" },
+};
+
+function localizedSubcategoryLabel(category: string, id: string, fallback: string, langCode: any): string {
+  const lang = String(langCode || "fr").toLowerCase();
+  if (lang === "fr") return fallback;
+  const entry = SUBCATEGORY_LABELS_I18N[`${category}:${id}`];
+  if (lang === "es" && entry?.es) return entry.es;
+  return entry?.en || fallback;
+}
+
 // Les historiques des modes les plus récents ne portent pas tous exactement
 // le même identifiant que le registry (ex: game_170 -> v170,
 // territories -> departements, clock -> tour_horloge, Cricket + variantId).
@@ -391,18 +459,35 @@ export default function Games({ setTab, params }: Props) {
   const { t, lang } = useLang();
   const dev = useDevMode() as any;
 
-  // ATTRAPE-MOI : ticker FR uniquement en français ; l’anglais sert de fallback
-  // universel pour toutes les autres langues de l’application.
+  // Tickers localisés : si un asset ticker_<id>_<lang>.png existe, il est
+  // prioritaire. Pour toute langue non FR sans asset dédié, on tente _en avant
+  // le ticker générique. Cela rend automatique l'ajout futur de nouveaux _en/_es.
   const gameTickerForLang = React.useCallback((gameId: string): string | null => {
     const id = String(gameId || "");
-    if (id === "departements") return findTickerById(territoriesTickerKeyForLang(lang));
-    if (id === "attrape_moi" && lang !== "fr") {
-      return findTickerById("attrape_moi_en") || findTickerById("attrape_moi");
+
+    if (id === "departements") {
+      return (
+        findTickerById(territoriesTickerKeyForLang(lang)) ||
+        (lang !== "fr" ? findTickerById("territories_en") : null) ||
+        findTickerById("territories_fr")
+      );
     }
-    // L'identifiant technique historique reste "mario_kart" pour ne casser
-    // ni le routing ni les stats, mais la carte est désormais DARTS RACER.
-    if (id === "mario_kart") return findTickerById("darts_racer");
-    return findTickerById(id);
+
+    const baseId = id === "mario_kart"
+      ? "darts_racer"
+      : id === "killer_progressive"
+        ? "killer"
+        : id;
+
+    if (lang !== "fr") {
+      const preferred = lang === "es" ? "es" : "en";
+      const localized =
+        findTickerById(`${baseId}_${preferred}`) ||
+        (preferred !== "en" ? findTickerById(`${baseId}_en`) : null);
+      if (localized) return localized;
+    }
+
+    return findTickerById(baseId);
   }, [lang]);
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
@@ -703,7 +788,7 @@ export default function Games({ setTab, params }: Props) {
     const ready = !!g?.ready;
     const visuallyDisabled = g ? devVisuallyDisabled(ready) : true;
     const clickable = g ? devClickable(ready, !!dev?.enabled) : false;
-    const label = g ? safeUpper(g.label) : safeUpper(t("games.fav.none", "AUCUN"));
+    const label = g ? safeUpper(localizedGameLabel(g, lang)) : safeUpper(t("games.fav.none", "AUCUN"));
 
     let goTab = g ? g.tab : opts.fallbackTab;
     let params: any = undefined;
@@ -916,14 +1001,14 @@ export default function Games({ setTab, params }: Props) {
       .slice(0, 10)
       .map((g: any) => ({
         id: String(g.id),
-        label: String(g.label),
+        label: localizedGameLabel(g, lang),
         configPath: configPathForGame(g),
         // Utiliser le même résolveur de ticker que le carrousel rapide du bas.
         // C'est indispensable pour les identifiants techniques historiques
         // (ex. mario_kart -> ticker_darts_racer.png) et les tickers localisés.
         tickerSrc: gameTickerForLang(String(g.id)) || undefined,
       }));
-  }, [RECENT_GAME_IDS, gameTickerForLang]);
+  }, [RECENT_GAME_IDS, gameTickerForLang, lang]);
 
   // ✅ Ticker du bas: tous les modes (random), IMAGE SEULE (sans NEW/PLAY)
   const allTickerPool = React.useMemo(() => {
@@ -934,13 +1019,13 @@ export default function Games({ setTab, params }: Props) {
         const tickerSrc = gameTickerForLang(id);
         return {
           id,
-          label: String(g.label || id),
+          label: localizedGameLabel(g, lang) || id,
           tickerSrc,
           configPath: configPathForGame(g),
         };
       })
       .filter((x: any) => !!x.tickerSrc);
-  }, [gameTickerForLang]);
+  }, [gameTickerForLang, lang]);
 
   const [allTickerIdx, setAllTickerIdx] = React.useState(0);
 
@@ -1516,7 +1601,7 @@ export default function Games({ setTab, params }: Props) {
                     boxShadow: on ? `0 0 18px ${tint.glow}` : "none",
                   }}
                 >
-                  {c.label}
+                  {localizedCategoryLabel(String(c.id), String(c.label), lang)}
                 </button>
               );
             })}
@@ -1539,7 +1624,7 @@ export default function Games({ setTab, params }: Props) {
 
               const labelFor = (k: string) => {
                 const def = (GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
-                if (def?.label) return def.label;
+                if (def?.label) return localizedSubcategoryLabel(String(activeCat), k, String(def.label), lang);
                 if (k === "other") return t("games.subcat.other", "Autres");
                 return k;
               };
@@ -1616,7 +1701,7 @@ export default function Games({ setTab, params }: Props) {
                                 : `0 0 12px ${theme.primary}55`,
                             }}
                           >
-                            {g.label}
+                            {localizedGameLabel(g, lang)}
                           </div>
 
                           <div
@@ -1649,9 +1734,9 @@ export default function Games({ setTab, params }: Props) {
                             onClick={(ev) => {
                               ev.stopPropagation();
                               setInfoGame({
-                                label: g.label,
+                                label: localizedGameLabel(g, lang),
                                 ready: g.ready,
-                                infoTitle: g.infoTitle,
+                                infoTitle: lang === "fr" ? g.infoTitle : localizedGameLabel(g, lang),
                                 infoBody: g.infoBody,
                               });
                             }}

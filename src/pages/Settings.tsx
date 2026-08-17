@@ -28,7 +28,6 @@
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import RulesModal from "../components/RulesModal";
 import ProfileAvatar from "../components/ProfileAvatar";
 import TerritoriesMapView from "../territories/TerritoriesMapView";
 import { buildTerritoriesMap, getBaseSvgForCountry } from "../territories/map";
@@ -52,6 +51,7 @@ import { useSport } from "../contexts/SportContext";
 // MONETIZATION_V1
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
+import { useAwenaOptional } from "../awena/AwenaProvider";
 import {
   getStartupIntroEnabled,
   setStartupIntroEnabled,
@@ -514,6 +514,231 @@ function CountryFlagShape({
   );
 }
 
+
+
+type SettingsLoopCarouselProps = {
+  items: any[];
+  renderItem: (item: any, index: number) => React.ReactNode;
+  theme: any;
+  itemWidth?: number;
+  gap?: number;
+  initialIndex?: number;
+  ariaLabel: string;
+  onActiveIndexChange?: (index: number) => void;
+};
+
+function SettingsLoopCarousel({
+  items,
+  renderItem,
+  theme,
+  itemWidth = 126,
+  gap = 9,
+  initialIndex = 0,
+  ariaLabel,
+  onActiveIndexChange,
+}: SettingsLoopCarouselProps) {
+  const scrollerRef = React.useRef<HTMLDivElement | null>(null);
+  const lastActiveRef = React.useRef(-1);
+  const normalizingRef = React.useRef(false);
+  const step = itemWidth + gap;
+
+  const normalizedInitialIndex = items.length
+    ? ((initialIndex % items.length) + items.length) % items.length
+    : 0;
+
+  const recenter = React.useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = scrollerRef.current;
+    if (!el || !items.length) return;
+    const span = items.length * step;
+    const target = span + normalizedInitialIndex * step - Math.max(0, (el.clientWidth - itemWidth) / 2);
+    el.scrollTo({ left: Math.max(0, target), behavior });
+  }, [items.length, step, normalizedInitialIndex, itemWidth]);
+
+  React.useLayoutEffect(() => {
+    const raf = requestAnimationFrame(() => recenter("auto"));
+    return () => cancelAnimationFrame(raf);
+  }, [recenter]);
+
+  const reportActive = React.useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el || !items.length || !onActiveIndexChange) return;
+    const span = items.length * step;
+    if (!span) return;
+    const center = el.scrollLeft + el.clientWidth / 2;
+    let local = center - span;
+    while (local < 0) local += span;
+    while (local >= span) local -= span;
+    const idx = Math.max(0, Math.min(items.length - 1, Math.round((local - itemWidth / 2) / step)));
+    if (idx !== lastActiveRef.current) {
+      lastActiveRef.current = idx;
+      onActiveIndexChange(idx);
+    }
+  }, [items.length, step, itemWidth, onActiveIndexChange]);
+
+  const handleScroll = React.useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el || !items.length || normalizingRef.current) return;
+    const span = items.length * step;
+    if (!span) return;
+
+    if (el.scrollLeft < span * 0.45) {
+      normalizingRef.current = true;
+      el.scrollLeft += span;
+      requestAnimationFrame(() => { normalizingRef.current = false; reportActive(); });
+      return;
+    }
+    if (el.scrollLeft > span * 1.55) {
+      normalizingRef.current = true;
+      el.scrollLeft -= span;
+      requestAnimationFrame(() => { normalizingRef.current = false; reportActive(); });
+      return;
+    }
+    reportActive();
+  }, [items.length, step, reportActive]);
+
+  const scrollByOne = (direction: -1 | 1) => {
+    const el = scrollerRef.current;
+    if (!el || !items.length) return;
+    el.scrollBy({ left: direction * step, behavior: "smooth" });
+  };
+
+  if (!items.length) return null;
+  const tripled = [0, 1, 2].flatMap((copy) => items.map((item, index) => ({ item, index, copy })));
+
+  const arrowStyle: React.CSSProperties = {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    border: `1px solid ${theme.primary}55`,
+    background: "rgba(0,0,0,.42)",
+    color: theme.primary,
+    fontSize: 22,
+    cursor: "pointer",
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", gap: 6, alignItems: "center" }} aria-label={ariaLabel}>
+      <button type="button" aria-label={`${ariaLabel} précédent`} onClick={() => scrollByOne(-1)} style={arrowStyle}>‹</button>
+      <div
+        ref={scrollerRef}
+        className="dc-scroll-thin"
+        onScroll={handleScroll}
+        style={{
+          display: "flex",
+          gap,
+          overflowX: "auto",
+          scrollSnapType: "x mandatory",
+          padding: "4px 2px 8px",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehaviorX: "contain",
+        }}
+      >
+        {tripled.map(({ item, index, copy }) => (
+          <div key={`${copy}-${index}`} style={{ width: itemWidth, minWidth: itemWidth, flex: `0 0 ${itemWidth}px`, scrollSnapAlign: "center" }}>
+            {renderItem(item, index)}
+          </div>
+        ))}
+      </div>
+      <button type="button" aria-label={`${ariaLabel} suivant`} onClick={() => scrollByOne(1)} style={arrowStyle}>›</button>
+    </div>
+  );
+}
+
+const COUNTRY_DEFAULT_LANGUAGE: Partial<Record<string, Lang>> = {
+  FR: "fr", GB: "en", US: "en", ES: "es", DE: "de", AT: "de", IT: "it", PT: "pt", BR: "pt",
+  NL: "nl", RU: "ru", CN: "zh", TW: "zh", JP: "ja", SA: "ar", IN: "hi", TR: "tr", DK: "da",
+  NO: "no", SE: "sv", IS: "is", PL: "pl", RO: "ro", RS: "sr", HR: "hr", CZ: "cs",
+  BE: "fr", CH: "fr", CA: "en", IE: "en", AU: "en", NZ: "en", MX: "es", AR: "es",
+};
+
+function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
+  const code = String(territoryId || "").replace(/^WORLD-/i, "").toUpperCase();
+  if (!code) return "en";
+  const candidates = (Object.keys(LANGUAGE_WORLD_META) as Lang[]).filter((id) => LANGUAGE_WORLD_META[id].countries.includes(code));
+  if (!candidates.length) return "en";
+  if (candidates.includes(current)) return current;
+  const preferred = COUNTRY_DEFAULT_LANGUAGE[code];
+  if (preferred && candidates.includes(preferred)) return preferred;
+  const primary = candidates.find((id) => LANGUAGE_WORLD_META[id].primaryCountry === code);
+  return primary || candidates[0] || "en";
+}
+
+type ThemePackId = "neons" | "soft" | "dark";
+const THEME_PACKS: Array<{ id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[] }> = [
+  { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
+  { id: "soft", ids: SOFTS, label: "COULEURS DOUCES", subtitle: "Tons modernes, naturels et apaisés", colors: ["#22E6FF", "#3B82F6", "#A3B18A", "#A7D8FF"] },
+  { id: "dark", ids: DARKS, label: "DARK PREMIUM", subtitle: "Métal, carbone et noirs premium", colors: ["#5A5A5A", "#263238", "#8CA6B8", "#1D1D24"] },
+];
+
+function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { themeIdPreview: ThemeId | null; activeThemeId: ThemeId; theme: any; onApply: (id: ThemeId) => void }) {
+  const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
+  return (
+    <div
+      style={{
+        minHeight: 205,
+        borderRadius: 18,
+        border: `1px solid ${preview?.borderSoft || theme.borderSoft}`,
+        background: preview
+          ? `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
+          : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)",
+        overflow: "hidden",
+        position: "relative",
+        boxShadow: preview ? `0 0 24px ${preview.primary}22, inset 0 0 28px rgba(0,0,0,.28)` : "inset 0 0 30px rgba(0,0,0,.38)",
+        display: "grid",
+        placeItems: "center",
+        padding: 14,
+      }}
+    >
+      {!preview ? (
+        <div style={{ textAlign: "center" }}>
+          <img src="/app-512.png" alt="MULTISPORTS SCORING" style={{ width: 128, height: 128, objectFit: "contain", filter: "drop-shadow(0 12px 26px rgba(0,0,0,.52))" }} />
+          <div style={{ marginTop: 3, color: theme.textSoft, fontSize: 10.5, fontWeight: 850 }}>Sélectionne un pack puis un thème pour afficher l’aperçu</div>
+        </div>
+      ) : (
+        <div style={{ width: "100%", maxWidth: 350 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+            <div>
+              <div style={{ color: preview.primary, fontWeight: 1000, fontSize: 19, textTransform: "uppercase", letterSpacing: .7, textShadow: `0 0 12px ${preview.primary}55` }}>{THEME_META[preview.id]?.defaultLabel || preview.name}</div>
+              <div style={{ marginTop: 3, color: preview.textSoft, fontSize: 10.5 }}>{THEME_META[preview.id]?.defaultDesc || preview.name}</div>
+            </div>
+            <div style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${preview.primary}88`, background: preview.card, boxShadow: `0 0 18px ${preview.primary}33` }} />
+          </div>
+          <div style={{ borderRadius: 16, border: `1px solid ${preview.borderSoft}`, background: preview.card, padding: 12, boxShadow: `0 12px 22px rgba(0,0,0,.35), 0 0 16px ${preview.primary}16` }}>
+            <div style={{ color: preview.text, fontSize: 12.5, fontWeight: 950 }}>Exemple de carte</div>
+            <div style={{ color: preview.textSoft, fontSize: 10.5, marginTop: 3 }}>Texte secondaire et accent de l’interface.</div>
+            <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
+              <div style={{ flex: 1, height: 32, borderRadius: 11, border: `1px solid ${preview.primary}66`, background: `${preview.primary}18`, color: preview.primary, display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 950 }}>BOUTON</div>
+              <div style={{ width: 32, height: 32, borderRadius: 999, border: `1px solid ${preview.primary}77`, background: "rgba(0,0,0,.35)", color: preview.primary, display: "grid", placeItems: "center", fontWeight: 1000 }}>i</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onApply(preview.id)}
+            style={{
+              marginTop: 10,
+              width: "100%",
+              minHeight: 38,
+              borderRadius: 12,
+              border: `1px solid ${preview.primary}88`,
+              background: preview.id === activeThemeId ? `${preview.primary}20` : preview.primary,
+              color: preview.id === activeThemeId ? preview.primary : "#050712",
+              fontSize: 11,
+              fontWeight: 1000,
+              cursor: "pointer",
+              boxShadow: `0 0 15px ${preview.primary}2c`,
+            }}
+          >
+            {preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------- Constantes de page & prefs ----------------
 
 const LEGACY_PAGE_BG = "#050712";
@@ -795,54 +1020,57 @@ function SettingsInfoDot({
   content,
   theme,
   size = 32,
+  helpText,
 }: {
   title: string;
-  content: React.ReactNode;
+  content?: React.ReactNode;
   theme: any;
   size?: number;
+  helpText?: string;
 }) {
-  const [open, setOpen] = React.useState(false);
+  const awena = useAwenaOptional();
+
+  const openAwena = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!awena) return;
+    awena.setRuntime({
+      route: "settings",
+      mode: "settings-help",
+      phase: "menu",
+      inGame: false,
+      screenLabel: title,
+      extra: { settingsSection: title, settingsHelp: helpText || "" },
+    });
+    awena.openPanel();
+    await awena.ask(`Présente-moi en détail la page de réglages « ${title} ». ${helpText || ""} Explique chaque fonction disponible, à quoi elle sert, comment l'utiliser, les conséquences des choix, les précautions éventuelles et les conseils pratiques. Ensuite reste dans ce contexte pour répondre à mes questions.`);
+  };
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label={`Awena — ${title}`}
-        title={`Awena — ${title}`}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setOpen(true);
-        }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: 999,
-          border: "none",
-          background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)",
-          boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)",
-          cursor: "pointer",
-          flexShrink: 0,
-          padding: 3,
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
-          <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        </span>
-      </button>
-      <RulesModal open={open} onClose={() => setOpen(false)} title={`Awena · ${title}`}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <img src={AWENA_AVATAR} alt="Awena" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${theme.primary}`, boxShadow: `0 0 16px ${theme.primary}55` }} />
-          <div>
-            <div style={{ fontWeight: 950, color: theme.primary, fontSize: 14 }}>Awena</div>
-            <div style={{ color: theme.textSoft, fontSize: 11, lineHeight: 1.35 }}>Voici le détail de cette section de réglages.</div>
-          </div>
-        </div>
-        {content}
-      </RulesModal>
-    </>
+    <button
+      type="button"
+      aria-label={`Awena — ${title}`}
+      title={`Awena — ${title}`}
+      onClick={(event) => void openAwena(event)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        border: "none",
+        background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)",
+        boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)",
+        cursor: awena ? "pointer" : "default",
+        flexShrink: 0,
+        padding: 3,
+        display: "grid",
+        placeItems: "center",
+        opacity: awena ? 1 : .55,
+      }}
+    >
+      <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+        <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      </span>
+    </button>
   );
 }
 
@@ -989,11 +1217,7 @@ function SettingsPageHeader({
               title={title}
               theme={theme}
               size={38}
-              content={
-                <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
-                  {subtitle}
-                </div>
-              }
+              helpText={subtitle}
             />
           ) : (
             <div style={{ width: 38, height: 38 }} />
@@ -1459,7 +1683,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
+type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
 type DeveloperSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
 
 const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
@@ -1474,65 +1698,43 @@ function openLegalUrl(url: string) {
 
 function PrivacyDataSection({ onOpenAccount }: { onOpenAccount?: () => void }) {
   const { theme } = useTheme();
+  const { lang } = useLang();
+  const L = (fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr;
 
   const card: React.CSSProperties = {
-    borderRadius: 16,
+    borderRadius: 18,
     border: `1px solid ${theme.borderSoft}`,
     background: theme.card,
     padding: 14,
-    boxShadow: `0 14px 28px rgba(0,0,0,0.42), 0 0 18px ${theme.primary}18`,
+    boxShadow: `0 14px 28px rgba(0,0,0,0.34), 0 0 18px ${theme.primary}14`,
   };
-
-  const button: React.CSSProperties = {
-    width: "100%",
-    minHeight: 46,
-    borderRadius: 13,
-    border: `1px solid ${theme.primary}88`,
-    background: `${theme.primary}18`,
-    color: theme.primary,
-    fontWeight: 950,
-    cursor: "pointer",
-    padding: "11px 13px",
-  };
+  const iconBox: React.CSSProperties = { width: 40, height: 40, borderRadius: 13, border: `1px solid ${theme.primary}55`, background: `${theme.primary}10`, color: theme.primary, display: "grid", placeItems: "center", flexShrink: 0 };
+  const action: React.CSSProperties = { width: "100%", minHeight: 42, borderRadius: 13, border: `1px solid ${theme.primary}77`, background: `${theme.primary}12`, color: theme.primary, fontWeight: 950, fontSize: 10.5, cursor: "pointer", padding: "9px 11px" };
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  const Head = ({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) => (
+    <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0,1fr)", gap: 10, alignItems: "center" }}><div style={iconBox}>{icon}</div><div><div style={{ color: theme.primary, fontWeight: 1000, fontSize: 14 }}>{title}</div><div style={{ marginTop: 3, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.38 }}>{subtitle}</div></div></div>
+  );
 
   return (
-    <section style={{ display: "grid", gap: 12 }}>
+    <section style={{ display: "grid", gap: 12, paddingBottom: 72 }}>
       <div style={card}>
-        <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 16 }}>Confidentialité et données</div>
-        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
-          Consulte les règles de confidentialité de MULTISPORTS SCORING, les prestataires utilisés, les durées de conservation et les moyens d’exercer tes droits.
-        </p>
-        <button type="button" style={{ ...button, marginTop: 12 }} onClick={() => openLegalUrl(PRIVACY_POLICY_URL)}>
-          Ouvrir la politique de confidentialité
-        </button>
+        <Head icon={<svg width="23" height="23" viewBox="0 0 24 24"><path {...p} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...p} d="M9.5 12 11 13.5l3.5-4"/></svg>} title={L("POLITIQUE DE CONFIDENTIALITÉ", "PRIVACY POLICY", "POLÍTICA DE PRIVACIDAD")} subtitle={L("Prestataires, conservation, sécurité et traitement des données.", "Providers, retention, security and data processing.", "Proveedores, conservación, seguridad y tratamiento de datos.")} />
+        <button type="button" style={{ ...action, marginTop: 12 }} onClick={() => openLegalUrl(PRIVACY_POLICY_URL)}>{L("Ouvrir la politique", "Open policy", "Abrir política")}</button>
       </div>
 
       <div style={card}>
-        <div style={{ color: "#ffcc66", fontWeight: 1000, fontSize: 16 }}>Suppression du compte</div>
-        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
-          La suppression définitive est disponible dans Compte → Zone dangereuse. Une page web publique permet également d’envoyer une demande lorsque l’application n’est plus accessible.
-        </p>
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          <button type="button" style={button} onClick={onOpenAccount}>
-            Ouvrir les réglages du compte
-          </button>
-          <button type="button" style={button} onClick={() => openLegalUrl(ACCOUNT_DELETION_URL)}>
-            Ouvrir la demande web de suppression
-          </button>
-        </div>
+        <Head icon={<svg width="23" height="23" viewBox="0 0 24 24"><circle {...p} cx="12" cy="8" r="3"/><path {...p} d="M5 20a7 7 0 0 1 14 0M18 4v5m-2.5-2.5h5"/></svg>} title={L("MES DROITS & MES DONNÉES", "MY RIGHTS & DATA", "MIS DERECHOS Y DATOS")} subtitle={L("Accès, rectification, portabilité et gestion du compte depuis un seul endroit.", "Access, correction, portability and account management in one place.", "Acceso, rectificación, portabilidad y gestión de la cuenta en un solo lugar.")} />
+        <button type="button" style={{ ...action, marginTop: 12 }} onClick={onOpenAccount}>{L("Ouvrir les réglages du compte", "Open account settings", "Abrir ajustes de cuenta")}</button>
       </div>
 
       <div style={card}>
-        <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 16 }}>Contact confidentialité</div>
-        <p style={{ margin: "8px 0 0", color: theme.textSoft, fontSize: 12, lineHeight: 1.5 }}>
-          Pour une demande d’accès, de rectification, de portabilité ou de suppression :
-        </p>
-        <a
-          href={`mailto:${PRIVACY_CONTACT_EMAIL}`}
-          style={{ display: "block", marginTop: 10, color: theme.primary, fontWeight: 950, overflowWrap: "anywhere" }}
-        >
-          {PRIVACY_CONTACT_EMAIL}
-        </a>
+        <Head icon={<svg width="23" height="23" viewBox="0 0 24 24"><path {...p} d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>} title={L("SUPPRESSION DU COMPTE", "ACCOUNT DELETION", "ELIMINACIÓN DE CUENTA")} subtitle={L("La suppression définitive reste protégée dans Compte → Reset. Une demande web est aussi disponible.", "Permanent deletion remains protected in Account → Reset. A web request is also available.", "La eliminación definitiva está protegida en Cuenta → Reset. También hay una solicitud web.")} />
+        <button type="button" style={{ ...action, marginTop: 12, borderColor: "rgba(255,90,105,.55)", color: "#ff8b96", background: "rgba(255,70,90,.08)" }} onClick={() => openLegalUrl(ACCOUNT_DELETION_URL)}>{L("Demande web de suppression", "Web deletion request", "Solicitud web de eliminación")}</button>
+      </div>
+
+      <div style={card}>
+        <Head icon={<svg width="23" height="23" viewBox="0 0 24 24"><rect {...p} x="3" y="5" width="18" height="14" rx="3"/><path {...p} d="m4 7 8 6 8-6"/></svg>} title={L("CONTACT CONFIDENTIALITÉ", "PRIVACY CONTACT", "CONTACTO DE PRIVACIDAD")} subtitle={L("Pour toute demande concernant tes données personnelles.", "For any request regarding your personal data.", "Para cualquier solicitud sobre tus datos personales.")} />
+        <a href={`mailto:${PRIVACY_CONTACT_EMAIL}`} style={{ display: "block", marginTop: 12, borderRadius: 13, border: `1px solid ${theme.primary}55`, background: "rgba(255,255,255,.025)", color: theme.primary, padding: 11, fontWeight: 950, fontSize: 10.5, textAlign: "center", overflowWrap: "anywhere" }}>{PRIVACY_CONTACT_EMAIL}</a>
       </div>
     </section>
   );
@@ -3630,6 +3832,41 @@ export function Settings({ go, params }: Props) {
     });
   }, [setLang, storeBridge]);
 
+  // Même règle que pour la langue : le thème choisi dans Réglages devient
+  // immédiatement la préférence du profil actif. L'ouverture de MON PROFIL
+  // ne doit jamais pouvoir réinjecter un ancien thème.
+  const applyThemePreference = React.useCallback((nextTheme: ThemeId) => {
+    setThemeId(nextTheme);
+
+    try {
+      const current: any = storeBridge.getStore?.() ?? storeBridge.store ?? null;
+      const activeId = String(current?.activeProfileId || "").trim();
+      if (activeId && Array.isArray(current?.profiles) && typeof storeBridge.update === "function") {
+        storeBridge.update((state: any) => ({
+          ...(state || {}),
+          profiles: (Array.isArray(state?.profiles) ? state.profiles : []).map((profile: any) =>
+            String(profile?.id || "") === activeId
+              ? {
+                  ...(profile || {}),
+                  privateInfo: { ...((profile as any)?.privateInfo || {}), appTheme: nextTheme },
+                  preferences: { ...((profile as any)?.preferences || {}), appTheme: nextTheme },
+                }
+              : profile
+          ),
+        }));
+      }
+    } catch (error) {
+      console.warn("[Settings] sync appTheme -> active profile failed", error);
+    }
+
+    void onlineApi.updateProfile({
+      preferences: { appTheme: nextTheme },
+      privateInfo: { appTheme: nextTheme },
+    }).catch((error) => {
+      console.warn("[Settings] remote appTheme sync deferred", error);
+    });
+  }, [setThemeId, storeBridge]);
+
   const isBlueNightTheme = themeId === "blueNight";
   const PAGE_BG = isBlueNightTheme
     ? "radial-gradient(900px 520px at 50% -14%, rgba(34,230,255,0.14), transparent 62%), radial-gradient(680px 360px at 0% 28%, rgba(122,247,255,0.08), transparent 62%), #06111F"
@@ -3638,7 +3875,7 @@ export function Settings({ go, params }: Props) {
     ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
     : LEGACY_CARD_BG;
 
-  const validSettingsTabs: SettingsTab[] = ["menu", "account", "monetization", "privacy", "theme", "lang", "audio", "general", "sport", "castViewer", "developer", "awena"];
+  const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "general", "sport", "castViewer", "developer", "awena"];
   const validAccountPages: AccountPage[] = ["account_menu", "account_storage", "account_notifications", "account_danger"];
   const initialSettingsTab = validSettingsTabs.includes(String(params?.settingsTab || "") as SettingsTab)
     ? (String(params?.settingsTab) as SettingsTab)
@@ -3740,121 +3977,171 @@ export function Settings({ go, params }: Props) {
   }
 
   function ThemeSection() {
-    return (
-      <section
+    const [selectedPackId, setSelectedPackId] = React.useState<ThemePackId | null>(null);
+    const [previewThemeId, setPreviewThemeId] = React.useState<ThemeId | null>(null);
+    const [pickerOpen, setPickerOpen] = React.useState(false);
+    const [pickerPackId, setPickerPackId] = React.useState<ThemePackId | null>(null);
+
+    const selectedPack = selectedPackId ? THEME_PACKS.find((pack) => pack.id === selectedPackId) || null : null;
+    const pickerPack = pickerPackId ? THEME_PACKS.find((pack) => pack.id === pickerPackId) || null : null;
+
+    const openPack = (packId: ThemePackId) => {
+      const pack = THEME_PACKS.find((entry) => entry.id === packId) || null;
+      setSelectedPackId(packId);
+      setPreviewThemeId(pack?.ids[0] || null);
+    };
+
+    const applyTheme = (id: ThemeId) => {
+      setPreviewThemeId(id);
+      applyThemePreference(id);
+    };
+
+    const packCard = (pack: (typeof THEME_PACKS)[number]) => (
+      <button
+        key={pack.id}
+        type="button"
+        onClick={() => openPack(pack.id)}
         style={{
-          background: CARD_BG,
-          borderRadius: 18,
+          minHeight: 112,
+          borderRadius: 17,
           border: `1px solid ${theme.borderSoft}`,
-          padding: 16,
-          marginBottom: 16,
+          background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
+          color: theme.text,
+          textAlign: "left",
+          padding: 13,
+          cursor: "pointer",
+          boxShadow: `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
+          position: "relative",
+          overflow: "hidden",
         }}
       >
-        <div
-          style={{
-            marginTop: 12,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
-          ⚡ {t("settings.theme.group.neons", "Néons classiques")}
+        <div style={{ display: "flex", gap: 5, marginBottom: 13 }}>
+          {pack.colors.map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
         </div>
-        <div
-          className="dc-scroll-thin"
-          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
-        >
-          <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
-            {NEONS.map((id) => {
-              const meta = THEME_META[id];
-              return (
-                <ThemeChoiceButton
-                  key={id}
-                  id={id}
-                  label={t(`settings.theme.${id}.label`, meta.defaultLabel)}
-                  desc={t(`settings.theme.${id}.desc`, meta.defaultDesc)}
-                  active={id === themeId}
-                  onClick={() => setThemeId(id)}
-                />
-              );
-            })}
-          </div>
+        <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
+        <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
+        <div style={{ marginTop: 8, color: theme.textSoft, fontSize: 9.5 }}>{pack.ids.length} thèmes</div>
+      </button>
+    );
+
+    return (
+      <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16, overflow: "hidden" }}>
+        <ThemePreviewBlock themeIdPreview={previewThemeId} activeThemeId={themeId} theme={theme} onApply={applyTheme} />
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={() => { setPickerPackId(selectedPackId); setPickerOpen(true); }}
+            style={{
+              minWidth: 190,
+              borderRadius: 999,
+              border: `1px solid ${theme.primary}88`,
+              background: `${theme.primary}12`,
+              color: theme.primary,
+              padding: "8px 13px",
+              fontSize: 11,
+              fontWeight: 950,
+              cursor: "pointer",
+              boxShadow: `0 0 12px ${theme.primary}22`,
+            }}
+          >
+            Choisir pack / thème ▾
+          </button>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
-          🎨 {t("settings.theme.group.soft", "Couleurs douces")}
-        </div>
-        <div
-          className="dc-scroll-thin"
-          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
-        >
-          <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
-            {SOFTS.map((id) => {
-              const meta = THEME_META[id];
-              return (
-                <ThemeChoiceButton
-                  key={id}
-                  id={id}
-                  label={t(`settings.theme.${id}.label`, meta.defaultLabel)}
-                  desc={t(`settings.theme.${id}.desc`, meta.defaultDesc)}
-                  active={id === themeId}
-                  onClick={() => setThemeId(id)}
-                />
-              );
-            })}
-          </div>
+        <div style={{ marginTop: 14 }}>
+          {!selectedPack ? (
+            <>
+              <div style={{ marginBottom: 8, color: theme.textSoft, fontSize: 10, textTransform: "uppercase", fontWeight: 950, letterSpacing: .75 }}>PACKS DE THÈMES</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+                {THEME_PACKS.map(packCard)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                <button type="button" onClick={() => { setSelectedPackId(null); setPreviewThemeId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
+                <div style={{ color: theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}</div>
+              </div>
+              <SettingsLoopCarousel
+                items={selectedPack.ids}
+                theme={theme}
+                itemWidth={132}
+                gap={9}
+                initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
+                ariaLabel="Carrousel de thèmes"
+                onActiveIndexChange={(index) => {
+                  const id = selectedPack.ids[index];
+                  if (id) setPreviewThemeId(id);
+                }}
+                renderItem={(id: ThemeId) => {
+                  const preset = getPreset(id);
+                  const meta = THEME_META[id];
+                  const isActive = id === themeId;
+                  const isPreview = id === previewThemeId;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => applyTheme(id)}
+                      style={{
+                        width: "100%",
+                        height: 118,
+                        borderRadius: 16,
+                        border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
+                        background: `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`,
+                        color: preset.text,
+                        padding: 10,
+                        cursor: "pointer",
+                        boxShadow: isPreview || isActive ? `0 0 16px ${preset.primary}35` : "none",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 7,
+                      }}
+                    >
+                      <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55` }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15 }}>{meta.defaultLabel}</span>
+                      <span style={{ fontSize: 8.5, color: preset.textSoft }}>{isActive ? "ACTIF" : "APERÇU"}</span>
+                    </button>
+                  );
+                }}
+              />
+            </>
+          )}
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
-          🌑 {t("settings.theme.group.dark", "Thèmes Dark Premium")}
-        </div>
-        <div
-          className="dc-scroll-thin"
-          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
-        >
-          <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
-            {DARKS.map((id) => {
-              const meta = THEME_META[id];
-              return (
-                <ThemeChoiceButton
-                  key={id}
-                  id={id}
-                  label={t(`settings.theme.${id}.label`, meta.defaultLabel)}
-                  desc={t(`settings.theme.${id}.desc`, meta.defaultDesc)}
-                  active={id === themeId}
-                  onClick={() => setThemeId(id)}
-                />
-              );
-            })}
+        {pickerOpen ? (
+          <div role="presentation" onClick={() => setPickerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 5200, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 16 }}>
+            <div role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()} style={{ width: "min(430px,94vw)", maxHeight: "78vh", borderRadius: 20, border: `1px solid ${theme.primary}77`, background: "linear-gradient(180deg,rgba(8,12,28,.99),rgba(3,5,15,.99))", boxShadow: `0 0 26px ${theme.primary}28, 0 20px 54px rgba(0,0,0,.75)`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 14px", borderBottom: `1px solid ${theme.borderSoft}` }}>
+                <div><div style={{ color: theme.primary, fontSize: 15, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>CHOISIR UN THÈME</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 10.5 }}>Choisis d’abord un pack, puis un thème.</div></div>
+                <button type="button" onClick={() => setPickerOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: theme.text, fontSize: 20, cursor: "pointer" }}>×</button>
+              </div>
+              <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+                  {THEME_PACKS.map((pack) => (
+                    <button key={pack.id} type="button" onClick={() => setPickerPackId(pack.id)} style={{ minHeight: 62, borderRadius: 13, border: `1px solid ${pickerPackId === pack.id ? pack.colors[0] : theme.borderSoft}`, background: `linear-gradient(135deg,${pack.colors[0]}20,rgba(255,255,255,.025))`, color: pickerPackId === pack.id ? pack.colors[0] : theme.text, fontSize: 9.5, fontWeight: 950, cursor: "pointer", padding: 8 }}>{pack.label}</button>
+                  ))}
+                </div>
+                {pickerPack ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
+                    {pickerPack.ids.map((id) => {
+                      const preset = getPreset(id); const meta = THEME_META[id];
+                      return <button key={id} type="button" onClick={() => { setSelectedPackId(pickerPack.id); applyTheme(id); setPickerOpen(false); }} style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${id === themeId ? preset.primary : theme.borderSoft}`, background: `${preset.primary}12`, color: id === themeId ? preset.primary : theme.text, padding: 9, fontSize: 10.5, fontWeight: 900, cursor: "pointer", textAlign: "left" }}><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: preset.primary, marginRight: 7, boxShadow: `0 0 8px ${preset.primary}66` }} />{meta.defaultLabel}</button>;
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : null}
       </section>
     );
   }
 
   function LangSection() {
     const [pickerOpen, setPickerOpen] = React.useState(false);
-    const carouselRef = React.useRef<HTMLDivElement | null>(null);
     const worldMapBase = React.useMemo(() => buildTerritoriesMap("WORLD"), []);
     const languageMeta = LANGUAGE_WORLD_META[lang] || LANGUAGE_WORLD_META.fr;
     const highlightedIds = React.useMemo(
@@ -3877,9 +4164,11 @@ export function Settings({ go, params }: Props) {
       });
     }, [t, lang]);
     const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());
+    const activeIndex = Math.max(0, sortedLanguages.findIndex((item) => item.id === lang));
 
-    const scrollCarousel = (direction: -1 | 1) => {
-      carouselRef.current?.scrollBy({ left: direction * 190, behavior: "smooth" });
+    const selectFromTerritory = (territoryId: string) => {
+      const nextLang = languageForWorldTerritory(territoryId, lang);
+      applyLanguage(nextLang);
     };
 
     return (
@@ -3902,13 +4191,29 @@ export function Settings({ go, params }: Props) {
             boxShadow: `inset 0 0 24px rgba(0,0,0,.36), 0 0 18px ${theme.primary}16`,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "3px 5px 7px" }}>
-            <div>
-              <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .8 }}>{L("Carte linguistique mondiale", "World language map", "Mapa lingüístico mundial")}</div>
-              <div style={{ marginTop: 2, color: theme.primary, fontSize: 13, fontWeight: 950 }}>{activeLabel}</div>
+          <div style={{ padding: "3px 5px 7px" }}>
+            <div
+              style={{
+                fontSize: "clamp(8px,2.35vw,10px)",
+                color: theme.textSoft,
+                textTransform: "uppercase",
+                fontWeight: 900,
+                letterSpacing: ".65px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {L("CARTE LINGUISTIQUE MONDIALE", "WORLD LANGUAGE MAP", "MAPA LINGÜÍSTICO MUNDIAL")}
             </div>
-            <div style={{ fontSize: 10.5, color: theme.textSoft, textAlign: "right" }}>
-              {highlightedIds.length} {L(highlightedIds.length > 1 ? "territoires en surbrillance" : "territoire en surbrillance", highlightedIds.length > 1 ? "highlighted territories" : "highlighted territory", highlightedIds.length > 1 ? "territorios resaltados" : "territorio resaltado")}
+            <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{LANG_FLAGS[lang] || "🌐"}</span>
+                <div style={{ color: theme.primary, fontSize: "clamp(12px,3.5vw,15px)", fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeLabel}</div>
+              </div>
+              <div style={{ fontSize: 9.5, color: theme.textSoft, textAlign: "right", flexShrink: 0 }}>
+                {highlightedIds.length} {L("zones", "areas", "zonas")}
+              </div>
             </div>
           </div>
 
@@ -3919,12 +4224,16 @@ export function Settings({ go, params }: Props) {
               ownerColors={{ "settings-language": theme.primary }}
               activeColor={theme.primary}
               themeColor={theme.primary}
-              interactive={false}
+              interactive
+              onSelectTerritory={selectFromTerritory}
               showViewportControls={false}
               showViewportHint={false}
               highlightTerritoryIds={highlightedIds}
               style={{ width: "100%", height: "100%" }}
             />
+          </div>
+          <div style={{ padding: "7px 6px 2px", color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35, textAlign: "center" }}>
+            {L("Touchez un pays : sa langue disponible est sélectionnée, sinon l’anglais est utilisé.", "Tap a country: an available language is selected, otherwise English is used.", "Toca un país: se selecciona un idioma disponible; si no, se usa inglés.")}
           </div>
         </div>
 
@@ -3952,75 +4261,47 @@ export function Settings({ go, params }: Props) {
         <div style={{ marginTop: 13 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
             <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .75 }}>{L("Sélection rapide", "Quick selection", "Selección rápida")}</div>
-            <div style={{ fontSize: 9.5, color: theme.textSoft }}>{L("ordre alphabétique", "alphabetical order", "orden alfabético")}</div>
+            <div style={{ fontSize: 9.5, color: theme.textSoft }}>{L("boucle · ordre alphabétique", "loop · alphabetical order", "bucle · orden alfabético")}</div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", gap: 6, alignItems: "center" }}>
-            <button
-              type="button"
-              aria-label={L("Langues précédentes", "Previous languages", "Idiomas anteriores")}
-              onClick={() => scrollCarousel(-1)}
-              style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: "rgba(0,0,0,.42)", color: theme.primary, fontSize: 22, cursor: "pointer", display: "grid", placeItems: "center" }}
-            >
-              ‹
-            </button>
-
-            <div
-              ref={carouselRef}
-              className="dc-scroll-thin"
-              style={{
-                display: "flex",
-                gap: 9,
-                overflowX: "auto",
-                scrollSnapType: "x mandatory",
-                padding: "4px 2px 8px",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {sortedLanguages.map((opt) => {
-                const label = t(`lang.${opt.id}`, opt.defaultLabel);
-                const active = opt.id === lang;
-                const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => applyLanguage(opt.id)}
-                    style={{
-                      minWidth: 126,
-                      height: 112,
-                      scrollSnapAlign: "center",
-                      borderRadius: 15,
-                      border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
-                      background: active ? `${theme.primary}12` : "rgba(255,255,255,.025)",
-                      color: active ? theme.primary : theme.text,
-                      cursor: "pointer",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      boxShadow: active ? `0 0 15px ${theme.primary}38` : "none",
-                      flexShrink: 0,
-                      padding: 7,
-                    }}
-                  >
-                    <CountryFlagShape countryCode={primaryCountry} accent={active ? theme.primary : "rgba(255,255,255,.55)"} width={84} height={58} />
-                    <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 900 }}>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              aria-label={L("Langues suivantes", "Next languages", "Idiomas siguientes")}
-              onClick={() => scrollCarousel(1)}
-              style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.primary}55`, background: "rgba(0,0,0,.42)", color: theme.primary, fontSize: 22, cursor: "pointer", display: "grid", placeItems: "center" }}
-            >
-              ›
-            </button>
-          </div>
+          <SettingsLoopCarousel
+            items={sortedLanguages}
+            theme={theme}
+            itemWidth={126}
+            gap={9}
+            initialIndex={activeIndex}
+            ariaLabel={L("Carrousel des langues", "Language carousel", "Carrusel de idiomas")}
+            renderItem={(opt: (typeof LANG_CHOICES)[number]) => {
+              const label = t(`lang.${opt.id}`, opt.defaultLabel);
+              const active = opt.id === lang;
+              const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
+              return (
+                <button
+                  type="button"
+                  onClick={() => applyLanguage(opt.id)}
+                  style={{
+                    width: "100%",
+                    height: 112,
+                    borderRadius: 15,
+                    border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+                    background: active ? `${theme.primary}12` : "rgba(255,255,255,.025)",
+                    color: active ? theme.primary : theme.text,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    boxShadow: active ? `0 0 15px ${theme.primary}38` : "none",
+                    padding: 7,
+                  }}
+                >
+                  <CountryFlagShape countryCode={primaryCountry} accent={active ? theme.primary : "rgba(255,255,255,.55)"} width={84} height={58} />
+                  <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 900 }}>{label}</span>
+                </button>
+              );
+            }}
+          />
         </div>
 
         {pickerOpen ? (
@@ -4087,106 +4368,52 @@ export function Settings({ go, params }: Props) {
   }
 
   function StartupIntroSection() {
-    const [introEnabled, setIntroEnabledState] = React.useState<boolean>(() =>
-      getStartupIntroEnabled()
-    );
+    const [introEnabled, setIntroEnabledState] = React.useState<boolean>(() => getStartupIntroEnabled());
 
-    const toggleIntro = () => {
-      const next = !introEnabled;
+    const setIntro = (next: boolean) => {
       setIntroEnabledState(next);
       setStartupIntroEnabled(next);
-
-      // Si la musique tourne encore au moment où l'utilisateur la coupe,
-      // elle s'arrête immédiatement. La réactivation prendra effet au prochain démarrage.
       if (!next) stopStartupIntroAudio();
     };
 
     return (
-      <section
-        style={{
-          background: CARD_BG,
-          borderRadius: 18,
-          border: `1px solid ${theme.borderSoft}`,
-          padding: 16,
-          marginBottom: 16,
-        }}
-      >
-        <button
-          type="button"
-          role="switch"
-          aria-checked={introEnabled}
-          onClick={toggleIntro}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 14,
-            padding: "14px 14px",
-            borderRadius: 16,
-            border: `1px solid ${introEnabled ? `${theme.primary}88` : theme.borderSoft}`,
-            background: introEnabled ? `${theme.primary}12` : "rgba(255,255,255,0.025)",
-            color: theme.text,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.25 }}>
-              {t("settings.audio.startupMusic", "Intro au démarrage")}
-            </div>
-            <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.4 }}>
-              {introEnabled
-                ? t("settings.audio.startupMusic.on", "Activée : animation et musique sont jouées au lancement.")
-                : t("settings.audio.startupMusic.off", "Désactivée : accès direct à la sélection des jeux.")}
-            </div>
-          </div>
-
-          <div
-            aria-hidden="true"
-            style={{
-              width: 54,
-              height: 30,
-              borderRadius: 999,
-              padding: 3,
-              flex: "0 0 auto",
-              background: introEnabled ? theme.primary : "rgba(255,255,255,0.14)",
-              border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`,
-              boxShadow: introEnabled ? `0 0 14px ${theme.primary}55` : "none",
-              transition: "background 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
-            }}
-          >
-            <div
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                background: introEnabled ? "#071018" : "rgba(255,255,255,0.88)",
-                transform: introEnabled ? "translateX(24px)" : "translateX(0)",
-                transition: "transform 160ms ease",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-              }}
-            />
-          </div>
-        </button>
-
+      <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16 }}>
         <div
           style={{
-            marginTop: 10,
-            padding: "9px 11px",
-            borderRadius: 12,
-            border: `1px solid ${theme.borderSoft}`,
-            background: "rgba(255,255,255,0.02)",
-            color: theme.textSoft,
-            fontSize: 10.5,
-            lineHeight: 1.4,
+            minHeight: 270,
+            borderRadius: 18,
+            border: `1px solid ${introEnabled ? `${theme.primary}77` : theme.borderSoft}`,
+            background: "radial-gradient(500px 260px at 50% 42%, rgba(255,70,200,.11), transparent 65%), linear-gradient(180deg,#07070b,#0b0b12 48%,#07070b)",
+            position: "relative",
+            overflow: "hidden",
+            display: "grid",
+            placeItems: "center",
+            boxShadow: introEnabled ? `0 0 22px ${theme.primary}22, inset 0 0 32px rgba(0,0,0,.36)` : "inset 0 0 32px rgba(0,0,0,.46)",
+            opacity: introEnabled ? 1 : .72,
           }}
         >
-          {t(
-            "settings.audio.startupMusic.note",
-            "OFF supprime entièrement l’écran animé et sa musique au démarrage. L’application arrive directement sur GameSelect. Les sons de jeu, annonces et voix IA restent inchangés."
-          )}
+          <div style={{ position: "absolute", inset: 0, background: "repeating-linear-gradient(180deg,rgba(255,255,255,.025) 0,rgba(255,255,255,.025) 1px,transparent 3px,transparent 6px)", opacity: .35, pointerEvents: "none" }} />
+          <div style={{ textAlign: "center", position: "relative" }}>
+            <div style={{ width: 150, height: 150, margin: "0 auto", borderRadius: 999, display: "grid", placeItems: "center", background: "radial-gradient(circle,rgba(255,190,0,.16),rgba(255,70,200,.08) 45%,transparent 70%)", animation: introEnabled ? "dcSettingsIntroBreath 2.8s ease-in-out infinite" : "none" }}>
+              <img src="/app-512.png" alt="Aperçu intro MULTISPORTS SCORING" style={{ width: 126, height: 126, objectFit: "contain", filter: "drop-shadow(0 14px 28px rgba(0,0,0,.6))" }} />
+            </div>
+            <div style={{ marginTop: 9, color: "#fff", fontSize: 13, fontWeight: 1000, letterSpacing: .7 }}>MULTISPORTS SCORING</div>
+            <div style={{ marginTop: 3, color: "rgba(255,255,255,.62)", fontSize: 10.5 }}>Animation + jingle de démarrage</div>
+          </div>
+          <div style={{ position: "absolute", top: 10, right: 10, borderRadius: 999, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: "rgba(0,0,0,.52)", color: introEnabled ? theme.primary : theme.textSoft, padding: "5px 9px", fontSize: 9.5, fontWeight: 1000 }}>{introEnabled ? "ACTIVÉE" : "DÉSACTIVÉE"}</div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          <button type="button" onClick={() => setIntro(true)} style={{ minHeight: 48, borderRadius: 15, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: introEnabled ? `${theme.primary}20` : "rgba(255,255,255,.03)", color: introEnabled ? theme.primary : theme.textSoft, fontSize: 13, fontWeight: 1000, cursor: "pointer", boxShadow: introEnabled ? `0 0 15px ${theme.primary}33` : "none" }}>ON</button>
+          <button type="button" onClick={() => setIntro(false)} style={{ minHeight: 48, borderRadius: 15, border: `1px solid ${!introEnabled ? "rgba(255,90,105,.75)" : theme.borderSoft}`, background: !introEnabled ? "rgba(255,70,90,.11)" : "rgba(255,255,255,.03)", color: !introEnabled ? "#ff7e8c" : theme.textSoft, fontSize: 13, fontWeight: 1000, cursor: "pointer", boxShadow: !introEnabled ? "0 0 15px rgba(255,70,90,.24)" : "none" }}>OFF</button>
+        </div>
+
+        <div style={{ marginTop: 10, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.45, textAlign: "center" }}>
+          {introEnabled
+            ? t("settings.audio.startupMusic.on", "Activée : animation et musique sont jouées au lancement.")
+            : t("settings.audio.startupMusic.off", "Désactivée : accès direct à la sélection des jeux.")}
+        </div>
+        <style>{`@keyframes dcSettingsIntroBreath{0%,100%{transform:scale(.97);filter:brightness(.94)}50%{transform:scale(1.035);filter:brightness(1.12)}}`}</style>
       </section>
     );
   }
@@ -4719,78 +4946,27 @@ export function Settings({ go, params }: Props) {
 
   function SportSection() {
     type GameId =
-      | "darts"
-      | "petanque"
-      | "pingpong"
-      | "babyfoot"
-      | "archery"
-      | "molkky"
-      | "padel"
-      | "pickleball"
-      | "frisbee"
-      | "billard"
-      | "badminton"
-      | "basket"
-      | "cornhole"
-      | "dicegame"
-      | "foot"
-      | "rugby"
-      | "volley"
-      | "tennis"
-      | "chess";
+      | "darts" | "petanque" | "pingpong" | "babyfoot" | "archery" | "molkky" | "padel" | "pickleball"
+      | "frisbee" | "billard" | "badminton" | "basket" | "cornhole" | "dicegame" | "foot" | "rugby" | "volley" | "tennis" | "chess";
 
     const GAMES: { id: GameId; label: string; logo: string }[] = [
-      // ✅ DISPONIBLES
-      { id: "darts", label: "Fléchettes", logo: logoDarts },
-      { id: "petanque", label: "Pétanque", logo: logoPetanque },
-      { id: "pingpong", label: "Ping-Pong", logo: logoPingPong },
-      { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
-      { id: "molkky", label: "Mölkky", logo: logoMolkky },
-
-      // ⏳ SOON
-      { id: "archery", label: "Tir à l'arc", logo: logoArchery },
-      { id: "badminton", label: "Badminton", logo: logoBadminton },
-      { id: "basket", label: "Basket", logo: logoBasket },
-      { id: "billard", label: "Billard", logo: logoBillard },
-      { id: "chess", label: "Échecs", logo: logoChess },
-      { id: "cornhole", label: "Cornhole", logo: logoCornhole },
-      { id: "dicegame", label: "Dice Game", logo: logoDiceGame },
-      { id: "foot", label: "Foot", logo: logoFoot },
-      { id: "frisbee", label: "Frisbee", logo: logoFrisbee },
-      // (molkky est désormais activé)
-      { id: "padel", label: "Padel", logo: logoPadel },
-      { id: "pickleball", label: "Pickleball", logo: logoPickleball },
-      { id: "rugby", label: "Rugby", logo: logoRugby },
-      { id: "tennis", label: "Tennis", logo: logoTennis },
-      { id: "volley", label: "Volley", logo: logoVolley },
+      { id: "darts", label: "Fléchettes", logo: logoDarts }, { id: "petanque", label: "Pétanque", logo: logoPetanque },
+      { id: "pingpong", label: "Ping-Pong", logo: logoPingPong }, { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
+      { id: "molkky", label: "Mölkky", logo: logoMolkky }, { id: "archery", label: "Tir à l'arc", logo: logoArchery },
+      { id: "badminton", label: "Badminton", logo: logoBadminton }, { id: "basket", label: "Basket", logo: logoBasket },
+      { id: "billard", label: "Billard", logo: logoBillard }, { id: "chess", label: "Échecs", logo: logoChess },
+      { id: "cornhole", label: "Cornhole", logo: logoCornhole }, { id: "dicegame", label: "Dice Game", logo: logoDiceGame },
+      { id: "foot", label: "Foot", logo: logoFoot }, { id: "frisbee", label: "Frisbee", logo: logoFrisbee },
+      { id: "padel", label: "Padel", logo: logoPadel }, { id: "pickleball", label: "Pickleball", logo: logoPickleball },
+      { id: "rugby", label: "Rugby", logo: logoRugby }, { id: "tennis", label: "Tennis", logo: logoTennis }, { id: "volley", label: "Volley", logo: logoVolley },
     ];
 
-    // ✅ Jeux réellement disponibles
     const ENABLED: Record<GameId, boolean> = {
-      darts: true,
-      petanque: true,
-      pingpong: true,
-      babyfoot: true,
-
-      // ⏳ SOON
-      archery: false,
-      molkky: true,
-      padel: false,
-      pickleball: false,
-      frisbee: false,
-      billard: false,
-      badminton: false,
-      basket: false,
-      cornhole: false,
-      dicegame: true,
-      foot: false,
-      rugby: false,
-      volley: false,
-      tennis: false,
-      chess: false,
+      darts: true, petanque: true, pingpong: true, babyfoot: true, molkky: true, dicegame: true,
+      archery: false, padel: false, pickleball: false, frisbee: false, billard: false, badminton: false,
+      basket: false, cornhole: false, foot: false, rugby: false, volley: false, tennis: false, chess: false,
     };
 
-    // ✅ Tri demandé: disponibles d'abord, puis SOON (grisés), ordre alphabétique FR
     const sortedGames = React.useMemo(() => {
       const copy = [...GAMES];
       copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
@@ -4799,126 +4975,65 @@ export function Settings({ go, params }: Props) {
     }, []);
 
     const onPick = (id: GameId) => {
-      try {
-        localStorage.setItem(START_GAME_KEY, id);
-      } catch {}
-
-      try {
-        window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: id } }));
-      } catch {}
-
-      if (!go) return;
-      go("home");
+      try { localStorage.setItem(START_GAME_KEY, id); } catch {}
+      try { window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: id } })); } catch {}
+      go?.("home");
     };
 
     const onReset = () => {
-      try {
-        localStorage.removeItem(START_GAME_KEY);
-      } catch {}
+      try { localStorage.removeItem(START_GAME_KEY); } catch {}
       alert("Choix réinitialisé. Au prochain lancement, le hub de sélection réapparaîtra.");
     };
 
     return (
-      <section
-        style={{
-          background: CARD_BG,
-          borderRadius: 18,
-          border: `1px solid ${theme.borderSoft}`,
-          padding: 16,
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {sortedGames.map((g) => {
-            const enabled = !!ENABLED[g.id];
+      <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16, overflow: "hidden" }}>
+        <div style={{ marginBottom: 9, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ color: theme.textSoft, fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: .75 }}>SPORTS</div>
+          <div style={{ color: theme.textSoft, fontSize: 9.5 }}>4 choix visibles · boucle infinie</div>
+        </div>
 
+        <SettingsLoopCarousel
+          items={sortedGames}
+          theme={theme}
+          itemWidth={82}
+          gap={7}
+          initialIndex={0}
+          ariaLabel="Carrousel des sports"
+          renderItem={(g: { id: GameId; label: string; logo: string }) => {
+            const enabled = !!ENABLED[g.id];
             return (
               <button
-                key={g.id}
                 type="button"
-                onClick={() => {
-                  if (!enabled) return;
-                  onPick(g.id);
-                }}
+                onClick={() => enabled && onPick(g.id)}
                 disabled={!enabled}
                 style={{
-                  borderRadius: 16,
+                  width: "100%",
+                  height: 120,
+                  borderRadius: 15,
                   border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(255,255,255,0.03)",
-                  padding: 12,
+                  background: "rgba(255,255,255,.028)",
+                  padding: 6,
                   cursor: enabled ? "pointer" : "not-allowed",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: 10,
-                  boxShadow: enabled ? `0 0 18px ${theme.primary}12` : "none",
-                  opacity: enabled ? 1 : 0.35,
+                  justifyContent: "center",
+                  gap: 6,
+                  opacity: enabled ? 1 : .38,
                   filter: enabled ? "none" : "grayscale(1)",
                   position: "relative",
+                  color: theme.text,
                 }}
               >
-                {!enabled && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 10,
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.18)",
-                      background: "rgba(0,0,0,0.55)",
-                      color: "rgba(255,255,255,0.85)",
-                      fontSize: 10,
-                      fontWeight: 900,
-                      letterSpacing: 0.6,
-                    }}
-                  >
-                    SOON
-                  </div>
-                )}
-
-                <img
-                  src={g.logo}
-                  alt={g.label}
-                  style={{
-                    width: "100%",
-                    maxWidth: 140,
-                    height: 90,
-                    objectFit: "contain",
-                    filter: enabled ? "drop-shadow(0 0 10px rgba(0,0,0,0.45))" : "none",
-                  }}
-                />
-
-                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
-                  {g.label}
-                </div>
-
-                {!enabled && (
-                  <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
-                    {t("settings.sport.comingSoon", "Bientôt disponible")}
-                  </div>
-                )}
+                {!enabled ? <span style={{ position: "absolute", top: 5, right: 5, borderRadius: 999, background: "rgba(0,0,0,.6)", border: `1px solid ${theme.borderSoft}`, color: theme.textSoft, fontSize: 7, fontWeight: 1000, padding: "2px 4px" }}>SOON</span> : null}
+                <img src={g.logo} alt={g.label} style={{ width: 60, height: 60, objectFit: "contain", filter: enabled ? "drop-shadow(0 0 7px rgba(0,0,0,.42))" : "none" }} />
+                <span style={{ width: "100%", fontSize: 9.2, color: enabled ? theme.textSoft : theme.textSoft, fontWeight: 900, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.label}</span>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
 
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-          <button
-            onClick={onReset}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 12,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "transparent",
-              color: theme.textSoft,
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            {t("settings.sport.resetChoice", "Réinitialiser le choix")}
-          </button>
-        </div>
+        <button onClick={onReset} style={{ width: "100%", minHeight: 40, marginTop: 11, borderRadius: 13, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", color: theme.textSoft, fontWeight: 900, fontSize: 10.5, cursor: "pointer" }}>{t("settings.sport.resetChoice", "Réinitialiser le choix")}</button>
       </section>
     );
   }
@@ -4934,8 +5049,10 @@ export function Settings({ go, params }: Props) {
         : accountPage === "account_danger"
         ? t("settings.account.danger", "Zone dangereuse")
         : t("settings.menu.account", "Compte")
-      : tab === "monetization"
-      ? L("Publicité & Boutique", "Ads & Store", "Publicidad y tienda")
+      : tab === "advertising"
+      ? L("Publicité", "Advertising", "Publicidad")
+      : tab === "shop"
+      ? L("Boutique", "Store", "Tienda")
       : tab === "privacy"
       ? L("Confidentialité & données", "Privacy & data", "Privacidad y datos")
       : tab === "awena"
@@ -4977,8 +5094,10 @@ export function Settings({ go, params }: Props) {
         : accountPage === "account_danger"
         ? L("Suppression du compte et réinitialisation des données locales.", "Account deletion and local data reset.", "Eliminación de la cuenta y restablecimiento de datos locales.")
         : L("Compte connecté, profil joueur, stockage, notifications et sécurité.", "Connected account, player profile, storage, notifications and security.", "Cuenta conectada, perfil del jugador, almacenamiento, notificaciones y seguridad.")
-      : tab === "monetization"
-      ? L("Bannières, vidéo de fin de partie, Premium et packs additionnels.", "Banners, end-of-game video, Premium and add-on packs.", "Banners, vídeo de fin de partida, Premium y packs adicionales.")
+      : tab === "advertising"
+      ? L("Bannières, interstitiels de fin de partie et consentement publicitaire.", "Banners, end-of-game interstitials and advertising consent.", "Banners, intersticiales de fin de partida y consentimiento publicitario.")
+      : tab === "shop"
+      ? L("Premium, achats Google Play et packs additionnels.", "Premium, Google Play purchases and add-on packs.", "Premium, compras de Google Play y packs adicionales.")
       : tab === "privacy"
       ? L("Politique de confidentialité, droits, contact et suppression du compte.", "Privacy policy, rights, contact and account deletion.", "Política de privacidad, derechos, contacto y eliminación de la cuenta.")
       : tab === "awena"
@@ -5058,23 +5177,6 @@ export function Settings({ go, params }: Props) {
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
-              title="Awena"
-              titleNode={
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0.3 }}>
-                  <img src={AWENA_AVATAR} alt="Awena" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${theme.primary}`, boxShadow: `0 0 8px ${theme.primary}55` }} />
-                  <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
-                </span>
-              }
-              subtitle={L(
-                "Présentatrice officielle, assistante interactive, voix locale et comportement en jeu.",
-                "Official presenter, interactive assistant, local voice and in-game behavior.",
-                "Presentadora oficial, asistente interactiva, voz local y comportamiento durante el juego."
-              )}
-              theme={theme}
-              rightHint={L("IA LOCALE", "LOCAL AI", "IA LOCAL")}
-              onClick={() => setTab("awena")}
-            />
-            <SettingsMenuCard
               title={t("settings.menu.sport", L("Choix de sport", "Sport selection", "Selección de deporte"))}
               subtitle={t("settings.menu.sport.sub", L("Changer de jeu, réinitialiser le choix (hub au démarrage).", "Change sport and reset the startup selection hub.", "Cambia de deporte y restablece la selección del inicio."))}
               theme={theme}
@@ -5082,71 +5184,70 @@ export function Settings({ go, params }: Props) {
             />
             <SettingsMenuCard
               title={t("settings.menu.account", L("Compte", "Account", "Cuenta"))}
-              subtitle={L(
-                "Compte/profil regroupés, notifications locales et zone dangereuse simplifiée.",
-                "Account/profile, local notifications and simplified danger zone.",
-                "Cuenta/perfil, notificaciones locales y zona de riesgo simplificada."
-              )}
+              subtitle={L("Compte/profil regroupés, notifications locales et zone dangereuse simplifiée.", "Account/profile, local notifications and simplified danger zone.", "Cuenta/perfil, notificaciones locales y zona de riesgo simplificada.")}
               theme={theme}
               onClick={() => setTab("account")}
             />
             <SettingsMenuCard
               title={t("settings.menu.lang", L("Langues", "Languages", "Idiomas"))}
-              subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface (drapeaux inclus).", "Choose the interface language (flags included).", "Elige el idioma de la interfaz (banderas incluidas)."))}
+              subtitle={t("settings.menu.lang.sub", L("Choisis la langue de l’interface et explore la carte linguistique.", "Choose the interface language and explore the language map.", "Elige el idioma de la interfaz y explora el mapa lingüístico."))}
               theme={theme}
               onClick={() => setTab("lang")}
             />
             <SettingsMenuCard
               title={L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")}
-              subtitle={L(
-                "Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page.",
-                "NAS backup, synchronization, restore and valid-block scan on one page.",
-                "Copia NAS, sincronización, restauración y escaneo de bloques válidos en una sola página."
-              )}
+              subtitle={L("Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page.", "NAS backup, synchronization, restore and valid-block scan on one page.", "Copia NAS, sincronización, restauración y escaneo de bloques válidos en una sola página.")}
               theme={theme}
               onClick={() => go?.("storage_vault")}
             />
             <SettingsMenuCard
               title={t("settings.menu.theme", L("Thème", "Theme", "Tema"))}
-              subtitle={t("settings.menu.theme.sub", L("Néons classiques, couleurs douces et dark premium.", "Classic neons, soft colors and premium dark themes.", "Neones clásicos, colores suaves y temas oscuros premium."))}
+              subtitle={t("settings.menu.theme.sub", L("Packs de thèmes, aperçu en direct et sélection rapide.", "Theme packs, live preview and quick selection.", "Packs de temas, vista previa en directo y selección rápida."))}
               theme={theme}
               onClick={() => setTab("theme")}
             />
             <SettingsMenuCard
+              title="Awena"
+              titleNode={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, textTransform: "none", letterSpacing: 0.3 }}>
+                  <img src={AWENA_AVATAR} alt="Awena" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: `1px solid ${theme.primary}`, boxShadow: `0 0 8px ${theme.primary}55` }} />
+                  <span style={{ fontFamily: AWENA_TITLE_FONT, fontSize: 24, fontWeight: 700 }}>Awena</span>
+                </span>
+              }
+              subtitle={L("Présentatrice officielle, assistante interactive, voix locale et comportement en jeu.", "Official presenter, interactive assistant, local voice and in-game behavior.", "Presentadora oficial, asistente interactiva, voz local y comportamiento durante el juego.")}
+              theme={theme}
+              rightHint={L("IA LOCALE", "LOCAL AI", "IA LOCAL")}
+              onClick={() => setTab("awena")}
+            />
+            <SettingsMenuCard
               title={t("settings.menu.audio", "INTRO")}
-              subtitle={t("settings.menu.audio.sub", L("Active ou coupe entièrement l’intro animée et musicale au démarrage.", "Enable or completely disable the animated and musical intro at startup.", "Activa o desactiva por completo la intro animada y musical al iniciar."))}
+              subtitle={t("settings.menu.audio.sub", L("Aperçu de l’intro et activation ON / OFF.", "Intro preview and ON / OFF control.", "Vista previa de la intro y control ON / OFF."))}
               theme={theme}
               rightHint={getStartupIntroEnabled() ? "ON" : "OFF"}
               onClick={() => setTab("audio")}
             />
             <SettingsMenuCard
               title={t("settings.menu.castViewer", "Cast / Viewer")}
-              subtitle={L(
-                "Ouvre la page Écrans directement sur l’onglet Réglages : Cast TV, Viewer tablette et diagnostics.",
-                "Open the Screens page directly on Settings: Cast TV, tablet Viewer and diagnostics.",
-                "Abre la página Pantallas directamente en Ajustes: Cast TV, Viewer para tableta y diagnósticos."
-              )}
+              subtitle={L("Cast TV, Viewer tablette et réglages d’écran dans une interface simplifiée.", "Cast TV, tablet Viewer and screen settings in a simplified interface.", "Cast TV, Viewer para tableta y ajustes de pantalla en una interfaz simplificada.")}
               theme={theme}
               onClick={() => go?.("cast_host", { screenTab: "settings" })}
             />
             <SettingsMenuCard
-              title={L("Publicité & Boutique", "Ads & Store", "Publicidad y tienda")}
-              subtitle={L(
-                "Bannières, vidéo fin de partie, Premium sans pub et packs avatars/logos/sets/thèmes/bots IA.",
-                "Banners, end-of-game video, ad-free Premium and avatar/logo/set/theme/AI bot packs.",
-                "Banners, vídeo de fin de partida, Premium sin anuncios y packs de avatares/logos/sets/temas/bots IA."
-              )}
+              title={L("PUBLICITÉ", "ADVERTISING", "PUBLICIDAD")}
+              subtitle={L("Bannières, fin de partie et consentement AdMob.", "Banners, end-of-game ads and AdMob consent.", "Banners, anuncios de fin de partida y consentimiento AdMob.")}
               theme={theme}
               rightHint="FREE / PREMIUM"
-              onClick={() => setTab("monetization")}
+              onClick={() => setTab("advertising")}
             />
             <SettingsMenuCard
-              title={L("Confidentialité & données", "Privacy & data", "Privacidad y datos")}
-              subtitle={L(
-                "Politique de confidentialité, contact et suppression du compte.",
-                "Privacy policy, contact and account deletion.",
-                "Política de privacidad, contacto y eliminación de la cuenta."
-              )}
+              title={L("BOUTIQUE", "STORE", "TIENDA")}
+              subtitle={L("Premium, packs additionnels et achats Google Play.", "Premium, add-on packs and Google Play purchases.", "Premium, packs adicionales y compras de Google Play.")}
+              theme={theme}
+              onClick={() => setTab("shop")}
+            />
+            <SettingsMenuCard
+              title={L("CONFIDENTIALITÉ & DONNÉES", "PRIVACY & DATA", "PRIVACIDAD Y DATOS")}
+              subtitle={L("Politique de confidentialité, droits, contact et suppression du compte.", "Privacy policy, rights, contact and account deletion.", "Política de privacidad, derechos, contacto y eliminación de la cuenta.")}
               theme={theme}
               rightHint="RGPD / PLAY"
               onClick={() => setTab("privacy")}
@@ -5154,23 +5255,20 @@ export function Settings({ go, params }: Props) {
             {developerVisible ? (
               <SettingsMenuCard
                 title={t("settings.menu.developer", L("Développeur", "Developer", "Desarrollador"))}
-                subtitle={L(
-                  "Diagnostic, tests, simulations, push NAS, logs et sécurité technique.",
-                  "Diagnostics, tests, simulations, NAS push, logs and technical security.",
-                  "Diagnóstico, pruebas, simulaciones, push NAS, registros y seguridad técnica."
-                )}
+                subtitle={L("Diagnostic, tests, simulations, push NAS, logs et sécurité technique.", "Diagnostics, tests, simulations, NAS push, logs and technical security.", "Diagnóstico, pruebas, simulaciones, push NAS, registros y seguridad técnica.")}
                 theme={theme}
                 onClick={() => setTab("developer")}
               />
             ) : null}
-
             <div style={{ height: 10 }} />
           </div>
         )}
 
         {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
 
-        {tab === "monetization" && <MonetizationSettingsPanel />}
+        {tab === "advertising" && <MonetizationSettingsPanel mode="advertising" />}
+
+        {tab === "shop" && <MonetizationSettingsPanel mode="shop" />}
 
         {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => { setAccountPage("account_menu"); setTab("account"); }} />}
 
