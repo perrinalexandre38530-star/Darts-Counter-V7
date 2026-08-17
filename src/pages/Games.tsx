@@ -1007,10 +1007,11 @@ export default function Games({ setTab, params }: Props) {
     );
   }
 
-  const menuLanguage = lang === "fr" ? "fr" : "en";
+  const menuLanguage = lang === "fr" ? "fr" : "en"; // ES reuses EN ticker assets until dedicated ES images exist
+  const menuTextLanguage = lang === "fr" ? "fr" : lang === "es" ? "es" : "en";
 
   const HUB_COPY = React.useMemo(() => {
-    if (menuLanguage === "fr") {
+    if (menuTextLanguage === "fr") {
       return {
         favorites: {
           title: "FAVORIS",
@@ -1026,6 +1027,26 @@ export default function Games({ setTab, params }: Props) {
           title: "TRAINING",
           infoTitle: "TRAINING",
           infoBody: "Accède uniquement aux modes et outils d’entraînement pour travailler ta progression.",
+        },
+      };
+    }
+
+    if (menuTextLanguage === "es") {
+      return {
+        favorites: {
+          title: "FAVORITOS",
+          infoTitle: "FAVORITOS",
+          infoBody: "Accede directamente a tus modos más jugados, agrupados por categoría.",
+        },
+        all: {
+          title: "TODOS LOS JUEGOS",
+          infoTitle: "TODOS LOS JUEGOS",
+          infoBody: "Explora todas las categorías, variantes, desafíos y modos divertidos disponibles.",
+        },
+        training: {
+          title: "ENTRENAMIENTO",
+          infoTitle: "ENTRENAMIENTO",
+          infoBody: "Abre los modos y herramientas de entrenamiento para mejorar tu juego.",
         },
       };
     }
@@ -1047,7 +1068,7 @@ export default function Games({ setTab, params }: Props) {
         infoBody: "Open training modes and practice tools dedicated to improving your game.",
       },
     };
-  }, [menuLanguage]);
+  }, [menuTextLanguage]);
 
   function menuTicker(id: "games" | "favorites" | "all_games" | "training") {
     return findTickerById(`menu_${id}_${menuLanguage}`);

@@ -235,7 +235,7 @@ function defaultBallsForMode(mode: PetanqueModeId, teamSize: number): number[] {
 export default function PetanqueConfig({ store, go, params }: Props) {
   const themeCtx = useTheme() as any;
   const theme = themeCtx?.theme ?? themeCtx; // support ancien/new
-  const { t } = useLang() as any;
+  const { t, lang } = useLang() as any;
 
   const rawMode = (params?.mode as string) || "singles";
   const mode: PetanqueModeId =
@@ -720,7 +720,7 @@ function handleStart() {
         ? effectiveMode === "singles"
           ? t("petanque.config.needTwo", "Sélectionne exactement 2 joueurs (J1/J2).")
           : t("petanque.config.needThree", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
-        : t("petanque.config.needPlayers", `Sélectionne ${need} joueurs.`)
+        : t("petanque.config.needPlayers", lang === "fr" ? `Sélectionne ${need} joueurs.` : lang === "es" ? `Selecciona ${need} jugadores.` : `Select ${need} players.`)
     );
     return;
   }
@@ -1476,7 +1476,7 @@ function handleStart() {
                   ? effectiveMode === "singles"
                     ? t("petanque.config.hintSingles", "Sélectionne exactement 2 joueurs (J1/J2).")
                     : t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
-                  : t("petanque.config.hint", `Sélectionne exactement ${need} joueurs.`)}
+                  : t("petanque.config.hint", lang === "fr" ? `Sélectionne exactement ${need} joueurs.` : lang === "es" ? `Selecciona exactamente ${need} jugadores.` : `Select exactly ${need} players.`)}
               </p>
             </>
           )}

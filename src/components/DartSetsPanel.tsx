@@ -251,6 +251,8 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
   const helper =
     lang === "fr"
       ? "Photo compressée automatiquement (mobile-friendly). Stockage local."
+      : lang === "es"
+      ? "La foto se comprime automáticamente (optimizada para móvil) y se guarda localmente."
       : "Photo is auto-compressed (mobile-friendly). Stored locally.";
 
   const currentUrl = getDartSetThumbImageSrc(dartSet) || getDartSetMainImageSrc(dartSet) || "";
@@ -289,6 +291,8 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
         alert(
           lang === "fr"
             ? "Impossible d’enregistrer la photo (stockage plein ?)."
+            : lang === "es"
+            ? "No se puede guardar la foto (¿almacenamiento lleno?)."
             : "Unable to save photo (storage full?)."
         );
         return;
@@ -315,6 +319,8 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
       alert(
         lang === "fr"
           ? "Erreur : impossible d’enregistrer la photo (quota mobile ?)."
+          : lang === "es"
+          ? "Error: no se puede guardar la foto (¿cuota del móvil?)."
           : "Error: unable to save photo (mobile quota?)."
       );
     }
@@ -667,14 +673,14 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   }, [activeSet, ownersById]);
 
   const ownerLabel = React.useCallback((owner: any) => {
-    if (!owner) return lang === "fr" ? "Profil" : "Profile";
+    if (!owner) return lang === "fr" ? "Profil" : lang === "es" ? "Perfil" : "Profile";
     return String(
       owner?.name ||
       owner?.displayName ||
       owner?.nickname ||
       owner?.surname ||
       owner?.id ||
-      (lang === "fr" ? "Profil" : "Profile")
+      (lang === "fr" ? "Profil" : lang === "es" ? "Perfil" : "Profile")
     );
   }, [lang]);
 
@@ -726,7 +732,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       }));
     } catch (err) {
       console.warn("[DartSetsPanel] create photo read error", err);
-      alert(lang === "fr" ? "Impossible de charger la photo." : "Unable to load photo.");
+      alert(lang === "fr" ? "Impossible de charger la photo." : lang === "es" ? "No se puede cargar la foto." : "Unable to load photo.");
     }
   };
 
@@ -792,7 +798,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       }
 
       if (!created) {
-        alert(lang === "fr" ? "Création impossible (stockage plein ?)" : "Creation failed (storage full?)");
+        alert(lang === "fr" ? "Création impossible (stockage plein ?)" : lang === "es" ? "No se puede crear (¿almacenamiento lleno?)" : "Creation failed (storage full?)");
         return;
       }
 
@@ -807,6 +813,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       alert(
         lang === "fr"
           ? "Erreur : création impossible (quota mobile ?). Essaie une photo plus petite."
+          : lang === "es"
+          ? "Error: no se puede crear (¿cuota del móvil?). Prueba con una foto más pequeña."
           : "Error: creation failed (mobile quota?). Try a smaller photo."
       );
     }
@@ -885,7 +893,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       );
 
       if (!res) {
-        alert(lang === "fr" ? "Mise à jour impossible (stockage plein ?)" : "Update failed (storage full?)");
+        alert(lang === "fr" ? "Mise à jour impossible (stockage plein ?)" : lang === "es" ? "No se puede actualizar (¿almacenamiento lleno?)" : "Update failed (storage full?)");
         return;
       }
 
@@ -898,7 +906,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] update error", err);
-      alert(lang === "fr" ? "Erreur : mise à jour impossible (quota mobile ?)." : "Error: update failed (mobile quota?).");
+      alert(lang === "fr" ? "Erreur : mise à jour impossible (quota mobile ?)." : lang === "es" ? "Error: no se puede actualizar (¿cuota del móvil?)." : "Error: update failed (mobile quota?).");
     }
   };
 
@@ -909,7 +917,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     const ok = deleteDartSet(set.id);
     dartSetDiag("delete:after", { id: set.id, ok });
     if (!ok) {
-      alert(lang === "fr" ? "Suppression impossible (stockage plein ?)" : "Delete failed (storage full?)");
+      alert(lang === "fr" ? "Suppression impossible (stockage plein ?)" : lang === "es" ? "No se puede eliminar (¿almacenamiento lleno?)" : "Delete failed (storage full?)");
       reloadSets();
       return;
     }
@@ -939,7 +947,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
     if (!ok) {
       keepActiveDartSetIdRef.current = null;
-      alert(lang === "fr" ? "Impossible de modifier le favori." : "Unable to update favorite.");
+      alert(lang === "fr" ? "Impossible de modifier le favori." : lang === "es" ? "No se puede modificar el favorito." : "Unable to update favorite.");
       reloadSets();
       return;
     }
@@ -980,7 +988,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
   const labelCreate = lang === "fr" ? "Créer" : lang === "es" ? "Crear" : lang === "de" ? "Neu" : "Create";
 
-  const labelScanner = lang === "fr" ? "Scanner" : "Scan";
+  const labelScanner = lang === "fr" ? "Scanner" : lang === "es" ? "Escanear" : "Scan";
   const labelEdit = lang === "fr" ? "Éditer" : lang === "es" ? "Editar" : lang === "de" ? "Bearbeiten" : "Edit";
   const labelDelete = lang === "fr" ? "Suppr." : lang === "es" ? "Eliminar" : lang === "de" ? "Löschen" : "Delete";
   const labelFav = lang === "fr" ? "Favori" : lang === "es" ? "Favorito" : lang === "de" ? "Favorit" : "Favorite";
@@ -1451,7 +1459,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             <div style={{ gridColumn: "1 / span 2", marginTop: 2, display: "flex", justifyContent: "center" }}>
               <div style={{ width: "100%", maxWidth: 420 }}>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4, textAlign: "center" }}>
-                  {lang === "fr" ? "Set privé associé à" : "Private set assigned to"}
+                  {lang === "fr" ? "Set privé associé à" : lang === "es" ? "Set privado asociado a" : "Private set assigned to"}
                 </div>
                 <select
                   value={form.privateProfileId}
@@ -1728,7 +1736,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
           {editForm.scope === "private" && availableProfiles.length > 0 && (
             <div style={{ gridColumn: "1 / span 2", marginTop: 4 }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4 }}>
-                {lang === "fr" ? "Set privé associé à" : "Private set assigned to"}
+                {lang === "fr" ? "Set privé associé à" : lang === "es" ? "Set privado asociado a" : "Private set assigned to"}
               </div>
               <select
                 value={editForm.privateProfileId}
@@ -1981,15 +1989,15 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 >
                   {[
                     {
-                      label: lang === "fr" ? "Marque" : "Brand",
+                      label: lang === "fr" ? "Marque" : lang === "es" ? "Marca" : "Brand",
                       value: activeSet.brand || "—",
                     },
                     {
-                      label: lang === "fr" ? "Poids" : "Weight",
+                      label: lang === "fr" ? "Poids" : lang === "es" ? "Peso" : "Weight",
                       value: typeof activeSet.weightGrams === "number" ? `${activeSet.weightGrams} g` : "—",
                     },
                     {
-                      label: lang === "fr" ? "Accès" : "Scope",
+                      label: lang === "fr" ? "Accès" : lang === "es" ? "Acceso" : "Scope",
                       value:
                         activeSet.scope === "public"
                           ? lang === "fr"

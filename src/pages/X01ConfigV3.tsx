@@ -1468,9 +1468,9 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   }, [profileId, autoOpenToken, reloadSets]);
 
   const hasProfile = !!profileId;
-  const noneLabel = lang === "fr" ? "Aucun set" : "No set";
-  const chooseLabel = lang === "fr" ? "Choix SET" : "SET choice";
-  const titleLabel = lang === "fr" ? "Choisir un set" : "Choose dart set";
+  const noneLabel = lang === "fr" ? "Aucun set" : lang === "es" ? "Ningún set" : "No set";
+  const chooseLabel = lang === "fr" ? "Choix SET" : lang === "es" ? "Elegir SET" : "SET choice";
+  const titleLabel = lang === "fr" ? "Choisir un set" : lang === "es" ? "Elegir un set de dardos" : "Choose dart set";
 
   // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
   const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);

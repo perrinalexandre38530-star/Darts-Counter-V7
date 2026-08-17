@@ -3361,16 +3361,16 @@ React.useEffect(() => {
                       ? (lang === "fr" ? tickerMonProfil : tickerMyProfile)
                       : (lang === "fr" ? tickerGalerie : tickerGallery)}
                   alt={view === "friends"
-                    ? (lang === "fr" ? "Amis" : "Friends")
+                    ? (lang === "fr" ? "Amis" : lang === "es" ? "Amigos" : "Friends")
                     : view === "me"
-                      ? (lang === "fr" ? "Mon profil" : "My profile")
-                      : (lang === "fr" ? "Galerie" : "Gallery")}
+                      ? (lang === "fr" ? "Mon profil" : lang === "es" ? "Mi perfil" : "My profile")
+                      : (lang === "fr" ? "Galerie" : lang === "es" ? "Galería" : "Gallery")}
                   maxWidth="100%"
                   marginBottom={0}
                   startSlot={
                     <BackDot
                       size={42}
-                      title={lang === "fr" ? "Retour à la page précédente" : "Back to the previous page"}
+                      title={lang === "fr" ? "Retour à la page précédente" : lang === "es" ? "Volver a la página anterior" : "Back to the previous page"}
                       onClick={() => openView("menu")}
                     />
                   }
@@ -3378,22 +3378,28 @@ React.useEffect(() => {
                     <InfoDot
                       size={42}
                       title={view === "friends"
-                        ? (lang === "fr" ? "Informations sur la page Amis" : "Friends page information")
+                        ? (lang === "fr" ? "Informations sur la page Amis" : lang === "es" ? "Información sobre la página Amigos" : "Friends page information")
                         : view === "me"
-                          ? (lang === "fr" ? "Informations sur la page Mon profil" : "My profile page information")
-                          : (lang === "fr" ? "Informations sur la page Galerie" : "Gallery page information")}
+                          ? (lang === "fr" ? "Informations sur la page Mon profil" : lang === "es" ? "Información sobre la página Mi perfil" : "My profile page information")
+                          : (lang === "fr" ? "Informations sur la page Galerie" : lang === "es" ? "Información sobre la página Galería" : "Gallery page information")}
                       content={
                         view === "friends"
                           ? (lang === "fr"
                               ? "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations."
-                              : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information.")
+                              : lang === "es"
+                                ? "Esta página muestra los amigos sincronizados con tu cuenta Online.\n\n• Consulta su estado de presencia.\n• Revisa sus principales estadísticas de juego.\n• Usa «Recargar» para actualizar la lista y la información."
+                                : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information.")
                           : view === "me"
                             ? (lang === "fr"
                                 ? "Cette page affiche ton profil actif synchronisé avec ton compte.\n\n• Consulte ton avatar, ton statut et tes statistiques principales.\n• Modifie tes informations personnelles.\n• Accède rapidement à l'édition, aux statistiques et aux réglages liés à ton profil."
-                                : "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.")
+                                : lang === "es"
+                                  ? "Esta página muestra tu perfil activo sincronizado con tu cuenta.\n\n• Consulta tu avatar, estado y estadísticas principales.\n• Modifica tu información personal.\n• Accede rápidamente a la edición, las estadísticas y los ajustes del perfil."
+                                  : "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.")
                             : (lang === "fr"
                                 ? "Cette page regroupe la galerie du compte avec les avatars IA, profils locaux, bots CPU, teams et l'avatar du profil actif.\n\n• Parcours les avatars disponibles.\n• Filtre et scanne automatiquement les éléments.\n• Attribue rapidement un avatar au profil actif, à un profil local ou à un bot."
-                                : "This page gathers the account gallery with AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n\n• Browse the available avatars.\n• Filter and automatically scan gallery items.\n• Quickly assign an avatar to the active profile, a local profile or a bot.")
+                                : lang === "es"
+                                  ? "Esta página reúne la galería de la cuenta con avatares IA, perfiles locales, bots CPU, equipos y el avatar del perfil activo.\n\n• Explora los avatares disponibles.\n• Filtra y escanea automáticamente los elementos.\n• Asigna rápidamente un avatar al perfil activo, a un perfil local o a un bot."
+                                  : "This page gathers the account gallery with AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n\n• Browse the available avatars.\n• Filter and automatically scan gallery items.\n• Quickly assign an avatar to the active profile, a local profile or a bot.")
                       }
                     />
                   }
@@ -3464,7 +3470,7 @@ React.useEffect(() => {
                 {view === "locals" && (
                   <TopTicker
                     src={lang === "fr" ? tickerProfilesLocaux : tickerLocalProfiles}
-                    alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : "Local profiles"}
+                    alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : lang === "es" ? "Perfiles locales" : "Local profiles"}
                     maxWidth="min(100%, calc(100vw - 72px), 560px)"
                     marginBottom={0}
                   />
@@ -3704,7 +3710,7 @@ function ProfilesMenuView({
   const sportKey = String(sportResolved || "").toLowerCase();
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const primary = theme.primary;
 
   const CardBtn: React.FC<{
@@ -3889,7 +3895,7 @@ function ProfilesMenuView({
       ) : null}
 
       <CardBtn
-        title={t("profiles.menu.teams.title", `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`)}
+        title={t("profiles.menu.teams.title", lang === "fr" ? `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})` : lang === "es" ? `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})` : `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`)}
         subtitle={t(
           "profiles.menu.teams.subtitle",
           "Crée et gère tes équipes pour le sport actif."
@@ -6751,7 +6757,7 @@ function LocalProfilesRefonte({
   const sportResolved = sport;
   const isDarts = sportResolved === "darts";
   const isBabyFoot = isBabyFootSportKey(sportResolved);
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const primary = theme.primary;
   const [localSection, setLocalSection] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
   const [listDetailOpen, setListDetailOpen] = React.useState(false);
@@ -7086,9 +7092,17 @@ function LocalProfilesRefonte({
     const ok = window.confirm(
       t(
         "profiles.locals.actions.deleteConfirm",
-        `Supprimer uniquement la fiche locale « ${profileName} » ?
+        lang === "fr"
+          ? `Supprimer uniquement la fiche locale « ${profileName} » ?
 
 Ses parties et statistiques historiques resteront enregistrées. Si un profil du même nom est recréé plus tard, l’application proposera de les rétablir.`
+          : lang === "es"
+          ? `¿Eliminar únicamente la ficha local «${profileName}»?
+
+Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelante se vuelve a crear un perfil con el mismo nombre, la aplicación propondrá restaurarlas.`
+          : `Delete only the local profile “${profileName}”?
+
+Its historical matches and statistics will remain saved. If a profile with the same name is created later, the app will offer to restore them.`
       )
     );
     if (!ok) return;

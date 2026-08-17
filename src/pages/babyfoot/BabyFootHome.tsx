@@ -513,7 +513,7 @@ function NewsCard({
 
 export default function BabyFootHome({ store, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
   const seed = String(activeProfile?.id ?? "anon");
@@ -582,7 +582,7 @@ export default function BabyFootHome({ store, go }: Props) {
         ],
       },
     ];
-  }, [babyfootGlobalStats, t]);
+  }, [babyfootGlobalStats, t, lang]);
 
   // ✅ Auto-fit title
   const { wrapRef: titleWrapRef, textRef: titleTextRef, scale: titleScale } = useAutoFitTitle([
@@ -607,26 +607,26 @@ export default function BabyFootHome({ store, go }: Props) {
     return [
       t(
         "babyfoot.home.results.line1",
-        `Bilan: ${babyfootGlobalStats.wins}V / ${babyfootGlobalStats.draws}N / ${losses}D · win ${Math.round(babyfootGlobalStats.winRate * 100)}%.`
+        lang === "fr" ? `Bilan: ${babyfootGlobalStats.wins}V / ${babyfootGlobalStats.draws}N / ${losses}D · win ${Math.round(babyfootGlobalStats.winRate * 100)}%.` : lang === "es" ? `Balance: ${babyfootGlobalStats.wins}V / ${babyfootGlobalStats.draws}E / ${losses}D · victorias ${Math.round(babyfootGlobalStats.winRate * 100)}%.` : `Record: ${babyfootGlobalStats.wins}W / ${babyfootGlobalStats.draws}D / ${losses}L · win ${Math.round(babyfootGlobalStats.winRate * 100)}%.`
       ),
-      t("babyfoot.home.results.line2", `Buts pour: ${babyfootGlobalStats.goalsFor} · buts contre: ${babyfootGlobalStats.goalsAgainst}.`),
-      t("babyfoot.home.results.line3", `Différence moyenne: ${babyfootGlobalStats.avgDiff.toFixed(1)} but(s)/match.`),
-      t("babyfoot.home.results.line4", `Moy. buts marqués: ${babyfootGlobalStats.avgGF.toFixed(1)} · encaissés: ${babyfootGlobalStats.avgGA.toFixed(1)}.`),
-      t("babyfoot.home.results.line5", `Conversion tirs: ${convLabel}.`),
+      t("babyfoot.home.results.line2", lang === "fr" ? `Buts pour: ${babyfootGlobalStats.goalsFor} · buts contre: ${babyfootGlobalStats.goalsAgainst}.` : lang === "es" ? `Goles a favor: ${babyfootGlobalStats.goalsFor} · goles en contra: ${babyfootGlobalStats.goalsAgainst}.` : `Goals for: ${babyfootGlobalStats.goalsFor} · goals against: ${babyfootGlobalStats.goalsAgainst}.`),
+      t("babyfoot.home.results.line3", lang === "fr" ? `Différence moyenne: ${babyfootGlobalStats.avgDiff.toFixed(1)} but(s)/match.` : lang === "es" ? `Diferencia media: ${babyfootGlobalStats.avgDiff.toFixed(1)} gol(es)/partida.` : `Average difference: ${babyfootGlobalStats.avgDiff.toFixed(1)} goal(s)/match.`),
+      t("babyfoot.home.results.line4", lang === "fr" ? `Moy. buts marqués: ${babyfootGlobalStats.avgGF.toFixed(1)} · encaissés: ${babyfootGlobalStats.avgGA.toFixed(1)}.` : lang === "es" ? `Media de goles marcados: ${babyfootGlobalStats.avgGF.toFixed(1)} · recibidos: ${babyfootGlobalStats.avgGA.toFixed(1)}.` : `Avg. goals scored: ${babyfootGlobalStats.avgGF.toFixed(1)} · conceded: ${babyfootGlobalStats.avgGA.toFixed(1)}.`),
+      t("babyfoot.home.results.line5", lang === "fr" ? `Conversion tirs: ${convLabel}.` : lang === "es" ? `Conversión de tiros: ${convLabel}.` : `Shot conversion: ${convLabel}.`),
     ];
-  }, [babyfootGlobalStats, convLabel, t]);
+  }, [babyfootGlobalStats, convLabel, t, lang]);
 
   const leaguePool = useMemo(() => {
     if (!babyfootGlobalStats.sessions) {
       return [t("babyfoot.home.league.empty", "Aucune stat Babyfoot — joue un match pour alimenter la ligue/classement.")];
     }
     return [
-      t("babyfoot.home.league.line1", `Ratio BP/BC: ${formatBabyFootRatio(babyfootGlobalStats.ratio)} · ${babyfootGlobalStats.sessions} matchs.`),
-      t("babyfoot.home.league.line2", `Win%: ${Math.round(babyfootGlobalStats.winRate * 100)}% · série: ${babyfootGlobalStats.currentWinStreak} · clean: ${babyfootGlobalStats.cleanSheets}.`),
+      t("babyfoot.home.league.line1", lang === "fr" ? `Ratio BP/BC: ${formatBabyFootRatio(babyfootGlobalStats.ratio)} · ${babyfootGlobalStats.sessions} matchs.` : lang === "es" ? `Ratio GF/GC: ${formatBabyFootRatio(babyfootGlobalStats.ratio)} · ${babyfootGlobalStats.sessions} partidas.` : `GF/GA ratio: ${formatBabyFootRatio(babyfootGlobalStats.ratio)} · ${babyfootGlobalStats.sessions} matches.`),
+      t("babyfoot.home.league.line2", lang === "fr" ? `Win%: ${Math.round(babyfootGlobalStats.winRate * 100)}% · série: ${babyfootGlobalStats.currentWinStreak} · clean: ${babyfootGlobalStats.cleanSheets}.` : lang === "es" ? `Victorias: ${Math.round(babyfootGlobalStats.winRate * 100)}% · racha: ${babyfootGlobalStats.currentWinStreak} · porterías a cero: ${babyfootGlobalStats.cleanSheets}.` : `Win%: ${Math.round(babyfootGlobalStats.winRate * 100)}% · streak: ${babyfootGlobalStats.currentWinStreak} · clean sheets: ${babyfootGlobalStats.cleanSheets}.`),
       t("babyfoot.home.league.line3", `Objectif ligue: enchaîne 3 matchs pour stabiliser ton rating.`),
       t("babyfoot.home.league.line4", `Conseil: joue en sets pour mieux comparer tes performances.`),
     ];
-  }, [babyfootGlobalStats, t]);
+  }, [babyfootGlobalStats, t, lang]);
 
   const newsPool = useMemo(() => {
     const base = [
@@ -646,22 +646,26 @@ export default function BabyFootHome({ store, go }: Props) {
     const finished = !!st?.finished;
 
     if (finished) live.push(t("babyfoot.news.live.finished", "Match terminé : pense à consulter l’historique."));
-    else if (a > 0 || b > 0) live.push(t("babyfoot.news.live.match", `Match en cours : ${a} — ${b} (objectif ${target}).`));
+    else if (a > 0 || b > 0) live.push(t("babyfoot.news.live.match", lang === "fr" ? `Match en cours : ${a} — ${b} (objectif ${target}).` : lang === "es" ? `Partido en curso: ${a} — ${b} (objetivo ${target}).` : `Match in progress: ${a} — ${b} (target ${target}).`));
 
     if (babyfootGlobalStats.sessions) {
       live.push(
         t(
           "babyfoot.news.live.winrate",
-          `Bilan profil : ${babyfootGlobalStats.wins}/${babyfootGlobalStats.sessions} victoires (win ${Math.round(
+          lang === "fr" ? `Bilan profil : ${babyfootGlobalStats.wins}/${babyfootGlobalStats.sessions} victoires (win ${Math.round(
+            babyfootGlobalStats.winRate * 100
+          )}%).` : lang === "es" ? `Balance del perfil: ${babyfootGlobalStats.wins}/${babyfootGlobalStats.sessions} victorias (${Math.round(
+            babyfootGlobalStats.winRate * 100
+          )}%).` : `Profile record: ${babyfootGlobalStats.wins}/${babyfootGlobalStats.sessions} wins (${Math.round(
             babyfootGlobalStats.winRate * 100
           )}%).`
         )
       );
-      live.push(t("babyfoot.news.live.diff", `Différence moyenne : ${babyfootGlobalStats.avgDiff.toFixed(1)} but(s)/match.`));
+      live.push(t("babyfoot.news.live.diff", lang === "fr" ? `Différence moyenne : ${babyfootGlobalStats.avgDiff.toFixed(1)} but(s)/match.` : lang === "es" ? `Diferencia media: ${babyfootGlobalStats.avgDiff.toFixed(1)} gol(es)/partida.` : `Average difference: ${babyfootGlobalStats.avgDiff.toFixed(1)} goal(s)/match.`));
     }
 
     return shuffleWithSeed([...live, ...base], `${seed}::newsPool`);
-  }, [t, seed, st, babyfootGlobalStats]);
+  }, [t, lang, seed, st, babyfootGlobalStats]);
 
   const [resultsIdx, setResultsIdx] = useState(0);
   const [leagueIdx, setLeagueIdx] = useState(0);

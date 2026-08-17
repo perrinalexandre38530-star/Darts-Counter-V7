@@ -1836,7 +1836,7 @@ const ranking = useMemo(() => {
       if (!name) return;
       initialTurnSpokenRef.current = true;
       window.setTimeout(
-        () => speak(lang === "fr" ? `${name}, à toi de jouer.` : `${name}, your turn.`, { lang: ttsLang }),
+        () => speak(lang === "fr" ? `${name}, à toi de jouer.` : lang === "es" ? `${name}, te toca.` : `${name}, your turn.`, { lang: ttsLang }),
         700
       );
     } catch {}

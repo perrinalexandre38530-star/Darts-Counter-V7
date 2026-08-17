@@ -53,7 +53,7 @@ export type Profile = {
 
 /* ===== Réglages ===== */
 export type Settings = {
-  lang: "fr" | "en";
+  lang: "fr" | "en" | "es";
   ttsOnThird: boolean;
   neonTheme: boolean;
   defaultX01: 301 | 501 | 701 | 1001;

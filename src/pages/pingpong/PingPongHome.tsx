@@ -269,7 +269,7 @@ function pickTickerImage(category: PingPongTickerCategory, seed: string, variant
 
 export default function PingPongHome({ store, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
 
@@ -385,7 +385,11 @@ export default function PingPongHome({ store, go }: Props) {
       : st?.setsA || st?.setsB || st?.pointsA || st?.pointsB
       ? t(
           "pingpong.home.ticker.resume.dynamic",
-          `Reprends : Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
+          lang === "fr"
+            ? `Reprends : Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
+            : lang === "es"
+            ? `Continúa: Sets ${st.setsA}-${st.setsB} · Puntos ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
+            : `Resume: Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
         )
       : t("pingpong.home.ticker.resume.empty", "Aucun match en cours — lance une partie pour commencer.");
 

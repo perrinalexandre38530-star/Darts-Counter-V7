@@ -2368,7 +2368,6 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
 }
 
 type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
-type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
 
 function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
   const uniqKeep = new Set((keepIds || []).filter(Boolean).map(String));

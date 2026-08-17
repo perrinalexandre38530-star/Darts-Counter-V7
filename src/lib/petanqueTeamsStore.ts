@@ -35,9 +35,6 @@ export type TeamEntity = {
   imageUrl?: string | null;
   imageAssetId?: string | null;
   logoSha256?: string | null;
-  /** Logo choisi dans la bibliothèque interne: stable entre builds/appareils/NAS. */
-  logoLibraryId?: string | null;
-  logoLibraryFileName?: string | null;
 
   // ---------------------------
   // Champs étendus (optionnels)

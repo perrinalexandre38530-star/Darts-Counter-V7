@@ -27,12 +27,14 @@ import { ro } from "./ro";
 import { sr } from "./sr";
 import { hr } from "./hr";
 import { cs } from "./cs";
+import { frAuto, enAuto, esAuto } from "./auto";
+import { frExtras, enExtras, esExtras } from "./extras";
 
 // Mapping global utilisable par LangContext
 export const DICT: Record<string, Dict> = {
-  fr,
-  en,
-  es,
+  fr: { ...fr, ...frAuto, ...frExtras },
+  en: { ...en, ...enAuto, ...enExtras },
+  es: { ...es, ...esAuto, ...esExtras },
   de,
   it,
   pt,

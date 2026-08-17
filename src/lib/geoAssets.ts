@@ -44,21 +44,24 @@ const COUNTRY_CODE_ALIASES: Record<string, string> = {
   "GB-ENG": "ENG",
   ENGLAND: "ENG",
   ANGLETERRE: "ENG",
+  INGLATERRA: "ENG",
   "GB-SCT": "SCO",
   "GB-SCO": "SCO",
   SCOTLAND: "SCO",
   ECOSSE: "SCO",
   "ÉCOSSE": "SCO",
+  ESCOCIA: "SCO",
   "GB-WLS": "WAL",
   "GB-WAL": "WAL",
   WALES: "WAL",
   "PAYS DE GALLES": "WAL",
+  GALES: "WAL",
 };
 
 const SPECIAL_COUNTRY_LABELS: Record<string, Record<string, string>> = {
-  ENG: { fr: "Angleterre", en: "England" },
-  SCO: { fr: "Écosse", en: "Scotland" },
-  WAL: { fr: "Pays de Galles", en: "Wales" },
+  ENG: { fr: "Angleterre", en: "England", es: "Inglaterra" },
+  SCO: { fr: "Écosse", en: "Scotland", es: "Escocia" },
+  WAL: { fr: "Pays de Galles", en: "Wales", es: "Gales" },
 };
 
 const FR_REGION_LOGOS: Record<string, string> = {
@@ -104,7 +107,8 @@ export function getCountryFlagSrc(countryCode?: string | null): string | null {
 export type CountryFlagOption = { code: string; label: string; flagSrc: string };
 
 export function getCountryFlagOptions(locale = "fr"): CountryFlagOption[] {
-  const lang = String(locale || "fr").toLowerCase().startsWith("en") ? "en" : "fr";
+  const localeKey = String(locale || "fr").toLowerCase();
+  const lang = localeKey.startsWith("es") ? "es" : localeKey.startsWith("en") ? "en" : "fr";
   let displayNames: Intl.DisplayNames | null = null;
   try {
     displayNames = new Intl.DisplayNames([lang], { type: "region" });

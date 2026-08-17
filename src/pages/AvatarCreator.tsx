@@ -1307,7 +1307,7 @@ function AvatarCreator({
     const maxMb = 12;
     if (f.size > maxMb * 1024 * 1024) {
       setError(
-        t("avatar.error.tooBig", `L’image est trop lourde (max ${maxMb} Mo).`),
+        t("avatar.error.tooBig", lang === "fr" ? `L’image est trop lourde (max ${maxMb} Mo).` : lang === "es" ? `La imagen es demasiado pesada (máx. ${maxMb} MB).` : `The image is too large (max ${maxMb} MB).`),
       );
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
@@ -1633,6 +1633,20 @@ function AvatarCreator({
           </p>
           <p style={{ marginBottom: 0 }}>
             Le diagnostic API est masqué et visible uniquement en mode développeur.
+          </p>
+        </>
+      ) : lang === "es" ? (
+        <>
+          <p style={{ marginTop: 0 }}>
+            <strong>AVATAR IA</strong>: importa una foto en el medallón,
+            recórtala, genera una caricatura estilo cartoon y guarda el WebP final.
+          </p>
+          <p>
+            El primer avatar IA es gratuito. Después, cada generación completada
+            consume 1 crédito.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            El diagnóstico de la API está oculto y solo se muestra en modo desarrollador.
           </p>
         </>
       ) : (
@@ -2516,7 +2530,7 @@ function AvatarCreator({
         >
           <TopTicker
             src={lang === "fr" ? tickerAvatarIa : tickerAiAvatar}
-            alt={lang === "fr" ? "Avatar IA" : "AI Avatar"}
+            alt={lang === "fr" ? "Avatar IA" : lang === "es" ? "Avatar IA" : "AI Avatar"}
             maxWidth="100%"
             marginBottom={0}
             startSlot={
@@ -2524,12 +2538,12 @@ function AvatarCreator({
                 onClick={handleBack}
                 size={40}
                 color={primary}
-                title={lang === "fr" ? "Retour à la page précédente" : "Back to the previous page"}
+                title={lang === "fr" ? "Retour à la page précédente" : lang === "es" ? "Volver a la página anterior" : "Back to the previous page"}
               />
             }
             endSlot={
               <InfoDot
-                title={lang === "fr" ? "Infos Avatar IA" : "AI Avatar info"}
+                title={lang === "fr" ? "Infos Avatar IA" : lang === "es" ? "Información del Avatar IA" : "AI Avatar info"}
                 content={infoContent}
                 size={40}
                 color={primary}

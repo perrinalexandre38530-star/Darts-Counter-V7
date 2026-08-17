@@ -1972,7 +1972,7 @@ function captureAnnouncementPhrases(
   stolen: boolean,
   previousOwnerName?: string,
 ): string[] {
-  const formerOwner = previousOwnerName || (lang === "fr" ? "l'adversaire" : "the opponent");
+  const formerOwner = previousOwnerName || (lang === "fr" ? "l'adversaire" : lang === "es" ? "el adversario" : "the opponent");
 
   if (lang === "fr") {
     return stolen
@@ -3051,7 +3051,7 @@ export default function DepartementsPlay(props: any) {
       const replayState = normalizeTerritoriesState(next).state;
       setGame(replayState);
       window.setTimeout(() => {
-        speak(lang === "fr" ? "Bull ! Tu rejoues une fois." : "Bull! One extra turn.", {
+        speak(lang === "fr" ? "Bull ! Tu rejoues une fois." : lang === "es" ? "¡Bull! Juegas un turno extra." : "Bull! One extra turn.", {
           lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR",
           rate: 0.96,
           pitch: 1.02,

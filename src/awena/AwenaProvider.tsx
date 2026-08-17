@@ -7,7 +7,7 @@ import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
 import { loadAwenaSettings, saveAwenaSettings } from "./AwenaSettings";
 import { awenaLine } from "./AwenaVoiceCatalog";
-import { buildAwenaRecordsReply } from "./AwenaRecords";
+import { buildAwenaRecordsReply, warmAwenaRecordsCache } from "./AwenaRecords";
 import type { AwenaMessage, AwenaRuntimeContext, AwenaSettings, AwenaSpeechCue, AwenaVoiceOption, AwenaVoiceStatus } from "./awena.types";
 
 type AwenaContextValue = {
@@ -114,6 +114,29 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Pré-indexer l'historique quand le navigateur est au repos. Ainsi, la
+  // première question Records ne paie généralement pas le coût de lecture et
+  // de normalisation au moment où l'utilisateur attend sa réponse.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const w = window as any;
+    let idleId: any = null;
+    let timerId: number | null = null;
+    if (typeof w.requestIdleCallback === "function") {
+      idleId = w.requestIdleCallback(() => warmAwenaRecordsCache(), { timeout: 1400 });
+    } else {
+      timerId = window.setTimeout(() => warmAwenaRecordsCache(), 700);
+    }
+    return () => {
+      if (idleId != null && typeof w.cancelIdleCallback === "function") w.cancelIdleCallback(idleId);
+      if (timerId != null) window.clearTimeout(timerId);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (panelOpen) warmAwenaRecordsCache();
+  }, [panelOpen]);
+
   const say = React.useCallback(async (text: string, messageId?: string) => {
     if (muted) return;
     const utteranceId = messageId || `awena-manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -125,6 +148,12 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
   const ask = React.useCallback(async (question: string, options?: { speak?: boolean }) => {
     const clean = String(question || "").trim();
     if (!clean) return "";
+
+    // Afficher la question immédiatement. Les requêtes Records peuvent devoir
+    // parcourir l'historique ; l'interface ne doit pas donner l'impression
+    // qu'Awena n'a pas reçu la demande pendant ce calcul.
+    const userMessage = message("user", clean);
+    setMessages((prev) => [...prev, userMessage].slice(-40));
 
     const explicitMode = findAwenaMode(clean, runtime.mode || runtime.route);
     const contextForReply = explicitMode ? { ...runtime, mode: explicitMode.id } : runtime;
@@ -141,31 +170,32 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
       setRuntimeState((prev) => ({ ...prev, mode: reply.modeId || prev.mode }));
     }
 
-    const userMessage = message("user", clean);
     const awenaMessage = message("awena", reply.text, reply.actions);
     const shouldSpeak = (options?.speak ?? settingsState.autoSpeak) && settingsState.voiceEnabled && !muted;
 
     if (shouldSpeak) {
-      // Keep the answer hidden until the exact moment Android starts playback.
       setSpeechCue({ messageId: awenaMessage.id, phase: "pending" });
     }
 
-    setMessages((prev) => [
-      ...prev,
-      userMessage,
-      awenaMessage,
-    ].slice(-40));
+    setMessages((prev) => [...prev, awenaMessage].slice(-40));
 
     if (shouldSpeak) {
-      const ok = await awenaVoice.speak(
+      // La génération vocale neuronale ne doit pas bloquer la réponse ni le
+      // champ de saisie. Le texte est déjà disponible ; la voix démarre en
+      // parallèle et ses événements synchronisent ensuite l'affichage progressif.
+      void awenaVoice.speak(
         textForSpeech(reply.text),
         settingsState,
         String(lang || "fr"),
         awenaMessage.id,
-      );
-      if (!ok) {
+      ).then((ok) => {
+        if (!ok) {
+          setSpeechCue((prev) => prev?.messageId === awenaMessage.id ? { ...prev, phase: "done" } : prev);
+        }
+      }).catch((error) => {
+        console.warn("[AwenaVoice] synthèse non bloquante interrompue", error);
         setSpeechCue((prev) => prev?.messageId === awenaMessage.id ? { ...prev, phase: "done" } : prev);
-      }
+      });
     }
     return reply.text;
   }, [lang, muted, runtime, settingsState]);

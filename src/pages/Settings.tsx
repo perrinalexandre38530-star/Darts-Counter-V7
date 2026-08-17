@@ -26,6 +26,8 @@
 // ============================================
 
 import React from "react";
+import BackDot from "../components/BackDot";
+import RulesModal from "../components/RulesModal";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -634,6 +636,58 @@ async function clearGameDataAndStatsOnly() {
 
 // ---------------- UI card menu (settings shell) ----------------
 
+function SettingsInfoDot({
+  title,
+  content,
+  theme,
+  size = 32,
+}: {
+  title: string;
+  content: React.ReactNode;
+  theme: any;
+  size?: number;
+}) {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Informations — ${title}`}
+        title={title}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 999,
+          border: `1px solid ${theme.primary}88`,
+          background: `radial-gradient(circle at 30% 30%, ${theme.primary}28, rgba(0,0,0,0.86))`,
+          color: "#fff",
+          display: "grid",
+          placeItems: "center",
+          fontSize: Math.max(16, Math.round(size * 0.54)),
+          fontFamily: "Georgia, serif",
+          fontWeight: 700,
+          lineHeight: 1,
+          boxShadow: `0 0 0 1px ${theme.primary}22, 0 0 10px ${theme.primary}44`,
+          cursor: "pointer",
+          flexShrink: 0,
+          padding: 0,
+        }}
+      >
+        i
+      </button>
+      <RulesModal open={open} onClose={() => setOpen(false)} title={title}>
+        {content}
+      </RulesModal>
+    </>
+  );
+}
+
 function SettingsMenuCard({
   title,
   subtitle,
@@ -647,6 +701,17 @@ function SettingsMenuCard({
   onClick?: () => void;
   rightHint?: string;
 }) {
+  const infoContent = (
+    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
+      {subtitle}
+      {rightHint ? (
+        <div style={{ marginTop: 10, color: theme.primary, fontWeight: 900, letterSpacing: 0.5 }}>
+          {rightHint}
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div
       className="dc-settings-shell-card"
@@ -655,106 +720,128 @@ function SettingsMenuCard({
         borderRadius: 16,
         background: theme.card,
         border: `1px solid ${theme.borderSoft}`,
-        // ✅ FIX: rgba alpha invalide -> 0.55
-        boxShadow: `0 16px 32px rgba(0,0,0,0.55), 0 0 18px ${theme.primary}22`,
+        boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`,
         overflow: "hidden",
       }}
     >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: -2,
-          borderRadius: 18,
-          background: "radial-gradient(circle at 15% 0%, rgba(255,255,255,.10), transparent 60%)",
-          opacity: 0.0,
-          pointerEvents: "none",
-          animation: "dcSettingsCardGlow 3.6s ease-in-out infinite",
-          mixBlendMode: "screen",
-        }}
-      />
       <button
+        type="button"
         onClick={onClick}
         style={{
           width: "100%",
+          minHeight: 70,
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: 14,
+          padding: "14px 56px 14px 16px",
           background: "transparent",
           border: "none",
-          cursor: "pointer",
+          cursor: onClick ? "pointer" : "default",
           textAlign: "left",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 900,
-              letterSpacing: 0.6,
-              textTransform: "uppercase",
-              color: theme.primary,
-              textShadow: `0 0 10px ${theme.primary}55`,
-              whiteSpace: "normal",
-              overflow: "hidden",
-            }}
-          >
-            {title}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: theme.textSoft,
-              lineHeight: 1.3,
-              maxWidth: 360,
-              whiteSpace: "normal",
-              overflow: "hidden",
-            }}
-          >
-            {subtitle}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {rightHint && (
-            <div
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: `1px solid ${theme.primary}44`,
-                color: theme.primary,
-                background: "rgba(0,0,0,0.35)",
-                fontWeight: 900,
-                fontSize: 11,
-                letterSpacing: 0.4,
-                boxShadow: `0 0 10px ${theme.primary}22`,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {rightHint}
-            </div>
-          )}
-
-          <div
-            style={{
-              flexShrink: 0,
-              width: 34,
-              height: 34,
-              borderRadius: 999,
-              border: `1px solid ${theme.primary}66`,
-              background: "rgba(0,0,0,0.45)",
-              boxShadow: `0 0 10px ${theme.primary}33`,
-              display: "grid",
-              placeItems: "center",
-              color: theme.primary,
-              fontWeight: 900,
-            }}
-          >
-            ›
-          </div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 900,
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            color: theme.primary,
+            textShadow: `0 0 10px ${theme.primary}55`,
+            lineHeight: 1.2,
+            whiteSpace: "normal",
+            overflow: "hidden",
+          }}
+        >
+          {title}
         </div>
       </button>
+
+      <div
+        style={{
+          position: "absolute",
+          right: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          zIndex: 2,
+        }}
+      >
+        <SettingsInfoDot title={title} content={infoContent} theme={theme} size={30} />
+      </div>
+    </div>
+  );
+}
+
+function SettingsPageHeader({
+  title,
+  subtitle,
+  theme,
+  onBack,
+  backTitle = "Retour",
+}: {
+  title: string;
+  subtitle: string;
+  theme: any;
+  onBack: () => void;
+  backTitle?: string;
+}) {
+  return (
+    <div style={{ width: "100%", paddingInline: 8, boxSizing: "border-box", marginBottom: 10 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "42px minmax(0, 1fr) 42px",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+        }}
+      >
+        <BackDot onClick={onBack} title={backTitle} size={38} color={theme.primary} glow={`${theme.primary}55`} />
+
+        <div
+          style={{
+            minWidth: 0,
+            textAlign: "center",
+            fontWeight: 900,
+            letterSpacing: 1.1,
+            textTransform: "uppercase",
+            color: theme.primary,
+            fontSize: "clamp(23px, 6.4vw, 34px)",
+            lineHeight: 1.05,
+            textShadow: `0 0 10px ${theme.primary}33`,
+          }}
+        >
+          {title}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <SettingsInfoDot
+            title={title}
+            theme={theme}
+            size={38}
+            content={
+              <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, color: "rgba(255,255,255,0.92)", fontSize: 13 }}>
+                {subtitle}
+              </div>
+            }
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 9,
+          paddingInline: 10,
+          textAlign: "center",
+          fontSize: 12,
+          lineHeight: 1.35,
+          color: theme.textSoft,
+          maxWidth: 390,
+          marginLeft: "auto",
+          marginRight: "auto",
+        }}
+      >
+        {subtitle}
+      </div>
     </div>
   );
 }
@@ -1199,6 +1286,7 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 // ---------------- Composant principal ----------------
 
 type SettingsTab = "menu" | "account" | "monetization" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
+type DeveloperSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
 
 const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
 const ACCOUNT_DELETION_URL = "https://darts-counter-v7.pages.dev/account-deletion.html";
@@ -1339,12 +1427,14 @@ function forceAuthRoute(hash: "#/auth/login" | "#/auth/signup", reload = false) 
 
 function AccountPages({
   go,
-  onBackToSettingsMenu,
   onFullReset,
+  page,
+  setPage,
 }: {
   go?: (tab: any, params?: any) => void;
-  onBackToSettingsMenu: () => void;
   onFullReset?: () => void | Promise<void>;
+  page: AccountPage;
+  setPage: React.Dispatch<React.SetStateAction<AccountPage>>;
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -1355,12 +1445,6 @@ function AccountPages({
 
   const emailLabel = (user as any)?.email || "—";
   const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
-
-  const [page, setPage] = React.useState<AccountPage>(() => {
-    if (typeof window === "undefined") return "account_menu";
-    const hash = String(window.location.hash || "");
-    return /[?&]account=storage(?:&|$)/.test(hash) ? "account_storage" : "account_menu";
-  });
 
   const [displayName, setDisplayName] = React.useState(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
   const [country, setCountry] = React.useState(profile?.country || "");
@@ -2016,24 +2100,6 @@ function AccountPages({
     marginBottom: 16,
   };
 
-  const miniBack = (
-    <button
-      type="button"
-      onClick={() => setPage("account_menu")}
-      style={{
-        border: "none",
-        background: "transparent",
-        color: theme.textSoft,
-        fontSize: 14,
-        cursor: "pointer",
-        padding: 0,
-        marginBottom: 10,
-      }}
-    >
-      ← {t("settings.account.back", "Retour compte")}
-    </button>
-  );
-
   const accountStatusHint =
     status === "signed_in"
       ? t("settings.account.connectedShort", "Connecté")
@@ -2056,10 +2122,11 @@ function AccountPages({
   }
 
   const softCard: React.CSSProperties = {
-    borderRadius: 16,
+    borderRadius: 18,
     border: `1px solid ${theme.borderSoft}`,
-    background: "rgba(255,255,255,0.035)",
-    padding: 12,
+    background: "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.028))",
+    padding: 14,
+    boxShadow: `0 10px 22px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)`,
   };
 
   return (
@@ -2067,88 +2134,77 @@ function AccountPages({
       {/* MENU COMPTE */}
       {page === "account_menu" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <section style={sectionBox}>
-            {miniBack}
-            <h2 style={{ margin: 0, marginBottom: 12, fontSize: 18, color: theme.primary }}>Compte</h2>
+          <section style={{ ...sectionBox, background: "transparent", border: "none", padding: 0, boxShadow: "none" }}>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ ...softCard, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
-                    Statut
+              <div style={{ ...softCard, display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                      Statut
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 19, color: "#fff", fontWeight: 950 }}>
+                      {accountStatusHint}
+                    </div>
+                    <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 11.5, lineHeight: 1.4, wordBreak: "break-word" }}>
+                      {status === "signed_in" ? (
+                        <>
+                          <div>{emailLabel}</div>
+                          <div style={{ marginTop: 2, opacity: 0.8 }}>{userIdLabel}</div>
+                        </>
+                      ) : (
+                        "Compte non connecté ou session locale."
+                      )}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 17, color: "#fff", fontWeight: 950 }}>
-                    {accountStatusHint}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
-                    {status === "signed_in"
-                      ? `${emailLabel} ${userIdLabel}`
-                      : "Compte non connecté ou session locale."}
-                  </div>
+
+                  {status === "signed_in" ? (
+                    <button
+                      type="button"
+                      onClick={handleLogoutV8}
+                      style={{
+                        borderRadius: 999,
+                        border: `1px solid ${theme.borderSoft}`,
+                        padding: "11px 14px",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "#fff",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Se déconnecter
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openAccountLogin}
+                      style={{
+                        borderRadius: 999,
+                        border: `1px solid ${theme.primary}77`,
+                        padding: "11px 14px",
+                        background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                        color: "#000",
+                        fontWeight: 950,
+                        cursor: "pointer",
+                        boxShadow: `0 0 16px ${theme.primary}33`,
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      Se connecter
+                    </button>
+                  )}
                 </div>
-                {status === "signed_in" ? (
-                  <button
-                    type="button"
-                    onClick={handleLogoutV8}
-                    style={{
-                      borderRadius: 999,
-                      border: `1px solid ${theme.borderSoft}`,
-                      padding: "10px 12px",
-                      background: "rgba(255,255,255,0.06)",
-                      color: "#fff",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      flexShrink: 0,
-                    }}
-                  >
-                    Se déconnecter
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={openAccountLogin}
-                    style={{
-                      borderRadius: 999,
-                      border: `1px solid ${theme.primary}77`,
-                      padding: "10px 14px",
-                      background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                      color: "#000",
-                      fontWeight: 950,
-                      cursor: "pointer",
-                      boxShadow: `0 0 16px ${theme.primary}33`,
-                      whiteSpace: "nowrap",
-                      flexShrink: 0,
-                    }}
-                  >
-                    Se connecter
-                  </button>
-                )}
               </div>
 
-              <div style={softCard}>
-                <h3 style={{ margin: 0, marginBottom: 6, fontSize: 16, color: theme.primary }}>Profil joueur</h3>
-                <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.4, marginBottom: 10 }}>
-                  Le surnom, l’avatar et les informations joueur se modifient depuis la carte Mon profil dans l’onglet Profils.
-                </div>
-                <button
-                  type="button"
-                  onClick={openMyProfile}
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: `1px solid ${theme.primary}77`,
-                    padding: "11px 12px",
-                    background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                    color: "#000",
-                    fontWeight: 950,
-                    cursor: "pointer",
-                    boxShadow: `0 0 16px ${theme.primary}22`,
-                  }}
-                >
-                  Ouvrir le profil
-                </button>
-              </div>
+              <SettingsMenuCard
+                title="Profil joueur"
+                subtitle="Le surnom, l’avatar et les informations joueur se modifient depuis Mon profil."
+                theme={theme}
+                onClick={openMyProfile}
+              />
             </div>
           </section>
 
@@ -2179,12 +2235,6 @@ function AccountPages({
       {/* STOCKAGE / ABONNEMENTS */}
       {page === "account_storage" && (
         <section style={sectionBox}>
-          {miniBack}
-
-          <h2 style={{ margin: 0, marginBottom: 8, fontSize: 18, color: theme.primary }}>
-            Stockage & abonnements
-          </h2>
-
           <p style={{ margin: 0, marginBottom: 12, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.45 }}>
             Chaque compte choisit sa destination : mémoire locale gratuite, fichier placé sur ordinateur/HDD/USB/NAS monté,
             cloud personnel synchronisé, Cloudflare R2 PREMIUM, ou NAS fondateur. Supabase reste limité à l’authentification et aux données légères du profil ;
@@ -2849,16 +2899,6 @@ function AccountPages({
       {/* NOTIFICATIONS */}
       {page === "account_notifications" && (
         <section style={sectionBox}>
-          {miniBack}
-
-          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
-            {t("settings.account.notifications.title", "Notifications & communications")}
-          </h2>
-
-          <p className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
-            Ces réglages sont conservés localement. Ils ne déclenchent pas encore de vrais emails/push tant qu’aucun service de notifications n’est branché côté app.
-          </p>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
             <ToggleRow
               label={t("settings.account.notifications.emailsNews", "Emails de nouveautés / promotions")}
@@ -2894,12 +2934,6 @@ function AccountPages({
       {/* DANGER */}
       {page === "account_danger" && (
         <section style={sectionBox}>
-          {miniBack}
-
-          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: "#ff6b6b" }}>
-            {t("settings.account.danger", "Zone dangereuse")}
-          </h2>
-
           <div style={{ display: "grid", gap: 10 }}>
             <div
               style={{
@@ -3255,6 +3289,12 @@ export function Settings({ go }: Props) {
     : LEGACY_CARD_BG;
 
   const [tab, setTab] = React.useState<SettingsTab>("menu");
+  const [accountPage, setAccountPage] = React.useState<AccountPage>(() => {
+    if (typeof window === "undefined") return "account_menu";
+    const hash = String(window.location.hash || "");
+    return /[?&]account=storage(?:&|$)/.test(hash) ? "account_storage" : "account_menu";
+  });
+  const [devSub, setDevSub] = React.useState<DeveloperSub>("menu");
   const [nasBusy, setNasBusy] = React.useState<null | "backup" | "restore">(null);
   const [nasStatus, setNasStatus] = React.useState<string>("");
   const [nasLastInfo, setNasLastInfo] = React.useState<any>(null);
@@ -3337,10 +3377,6 @@ export function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
-          {t("settings.theme", "Thème")}
-        </h2>
-
         <div
           style={{
             marginTop: 12,
@@ -3454,10 +3490,6 @@ export function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-          {t("settings.lang", "Langue")}
-        </h2>
-
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
           {LANG_CHOICES.map((opt) => (
             <LanguageChoiceButton
@@ -3499,17 +3531,6 @@ export function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-          {t("settings.audio.title", "INTRO")}
-        </h2>
-
-        <p style={{ fontSize: 12, color: theme.textSoft, margin: "0 0 14px", lineHeight: 1.45 }}>
-          {t(
-            "settings.audio.subtitle",
-            "Active ou désactive complètement l’intro de démarrage de l’application."
-          )}
-        </p>
-
         <button
           type="button"
           role="switch"
@@ -4078,19 +4099,9 @@ export function Settings({ go }: Props) {
 
 
   function DeveloperSection() {
-    type DevSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
-    const [devSub, setDevSub] = React.useState<DevSub>("menu");
-
-    const box: React.CSSProperties = {
-      background: CARD_BG,
-      borderRadius: 18,
-      border: `1px solid ${theme.borderSoft}`,
-      padding: 16,
-      marginBottom: 16,
-    };
 
     if (devSub !== "menu") {
-      const titles: Record<DevSub, string> = {
+      const titles: Record<DeveloperSub, string> = {
         menu: "Développeur",
         diagnostics: "Diagnostic",
         tests: "Tests & simulations",
@@ -4102,30 +4113,6 @@ export function Settings({ go }: Props) {
 
       return (
         <div>
-          <button
-            type="button"
-            onClick={() => setDevSub("menu")}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: theme.textSoft,
-              fontSize: 14,
-              cursor: "pointer",
-              padding: 0,
-              marginBottom: 10,
-            }}
-          >
-            ← Retour développeur
-          </button>
-
-          <section style={box}>
-            <div style={{ fontSize: 16, fontWeight: 950, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.8 }}>
-              {titles[devSub]}
-            </div>
-            <div style={{ marginTop: 5, fontSize: 12, color: theme.textSoft, lineHeight: 1.35 }}>
-              Zone réservée aux tests, diagnostics et actions techniques NAS. Les anciennes références Supabase/configurations obsolètes ne sont pas affichées ici.
-            </div>
-          </section>
 
           {devSub === "diagnostics" && <DiagnosticsSection />}
           {devSub === "tests" && <DevModeBlock go={go} />}
@@ -4139,14 +4126,6 @@ export function Settings({ go }: Props) {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <section style={box}>
-          <div style={{ fontSize: 16, fontWeight: 950, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.8 }}>
-            Mode développeur
-          </div>
-          <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft, lineHeight: 1.4 }}>
-            Tous les outils techniques sont regroupés ici : diagnostic, simulations, push/pull NAS, logs et sécurité. La page Réglages reste propre pour l’usage normal.
-          </div>
-        </section>
 
         <SettingsMenuCard title="Diagnostic" subtitle="Mémoire, store, routes, warnings, erreurs runtime et crashs capturés." theme={theme} onClick={() => setDevSub("diagnostics")} />
         <SettingsMenuCard title="Tests & simulations" subtitle="Déverrouillage DEV, simulation offline/online et création de parties fictives tous jeux." theme={theme} onClick={() => setDevSub("tests")} />
@@ -4269,14 +4248,6 @@ export function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-          {t("settings.sport.title", "Choix de sport")}
-        </h2>
-
-        <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
-          {t("settings.sport.subtitle.short", "Sélectionne le jeu à utiliser au démarrage.")}
-        </p>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {sortedGames.map((g) => {
             const enabled = !!ENABLED[g.id];
@@ -4376,11 +4347,17 @@ export function Settings({ go }: Props) {
     tab === "menu"
       ? t("settings.title", "Réglages")
       : tab === "account"
-      ? t("settings.menu.account", "Compte")
+      ? accountPage === "account_storage"
+        ? "Stockage & abonnements"
+        : accountPage === "account_notifications"
+        ? t("settings.account.notifications.title", "Notifications & communications")
+        : accountPage === "account_danger"
+        ? t("settings.account.danger", "Zone dangereuse")
+        : t("settings.menu.account", "Compte")
       : tab === "monetization"
       ? "Publicité & Boutique"
       : tab === "privacy"
-      ? "Confidentialité"
+      ? "Confidentialité & données"
       : tab === "awena"
       ? "Awena"
       : tab === "theme"
@@ -4394,18 +4371,36 @@ export function Settings({ go }: Props) {
       : tab === "castViewer"
       ? "Cast / Viewer"
       : tab === "developer"
-      ? t("settings.menu.developer", "Développeur")
+      ? devSub === "diagnostics"
+        ? "Diagnostic"
+        : devSub === "tests"
+        ? "Tests & simulations"
+        : devSub === "onlineCleanup"
+        ? "Nettoyage Online"
+        : devSub === "nas"
+        ? "Push / Pull NAS"
+        : devSub === "logs"
+        ? "Logs techniques"
+        : devSub === "security"
+        ? "Sécurité technique"
+        : t("settings.menu.developer", "Développeur")
       : t("settings.menu.sport", "Choix de sport");
 
   const headerSubtitle =
     tab === "menu"
       ? t("settings.subtitle", "Personnalise le thème et la langue de l’application.")
       : tab === "account"
-      ? t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")
+      ? accountPage === "account_storage"
+        ? "Destination du compte, stockage local/cloud, quota, abonnements et sauvegardes."
+        : accountPage === "account_notifications"
+        ? "Options locales de notifications, sons et communications de l’application."
+        : accountPage === "account_danger"
+        ? "Suppression du compte et réinitialisation des données locales."
+        : "Compte connecté, profil joueur, stockage, notifications et sécurité."
       : tab === "monetization"
       ? "Bannières, vidéo de fin de partie, Premium et packs additionnels."
       : tab === "privacy"
-      ? "Politique de confidentialité, droits et suppression du compte."
+      ? "Politique de confidentialité, droits, contact et suppression du compte."
       : tab === "awena"
       ? "Présence, voix locale et comportement de l’assistante officielle."
       : tab === "theme"
@@ -4419,8 +4414,26 @@ export function Settings({ go }: Props) {
       : tab === "castViewer"
       ? "Paramètres des deux sorties écran : Google Cast TV et Viewer tablette."
       : tab === "developer"
-      ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
+      ? devSub === "menu"
+        ? t("settings.dev.pageSubtitle", "Diagnostic, tests, logs, sécurité technique et outils NAS avancés.")
+        : "Zone réservée aux tests, diagnostics et actions techniques avancées."
       : "Backup NAS, synchronisation et restauration du compte.";
+
+  const handleHeaderBack = () => {
+    if (tab === "menu") {
+      go?.("home");
+      return;
+    }
+    if (tab === "account" && accountPage !== "account_menu") {
+      setAccountPage("account_menu");
+      return;
+    }
+    if (tab === "developer" && devSub !== "menu") {
+      setDevSub("menu");
+      return;
+    }
+    setTab("menu");
+  };
 
   return (
     <div
@@ -4433,69 +4446,14 @@ export function Settings({ go }: Props) {
         color: theme.text,
       }}
     >
-      <div style={{ paddingInline: 16, marginBottom: 10 }}>
-        <button
-          type="button"
-          onClick={() => {
-            if (tab !== "menu") setTab("menu");
-            else go && go("home");
-          }}
-          style={{
-            border: "none",
-            background: "transparent",
-            color: theme.textSoft,
-            fontSize: 15,
-            cursor: "pointer",
-          }}
-        >
-          ← {t("settings.back", "Retour")}
-        </button>
-      </div>
-
-      <div style={{ width: "100%", maxWidth: 520, paddingInline: 18, marginInline: "auto", marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ textAlign: "left" }}>
-            <div
-              style={{
-                fontWeight: 900,
-                letterSpacing: 0.9,
-                textTransform: "uppercase",
-                color: theme.primary,
-                fontSize: "clamp(26px, 8vw, 40px)",
-                textShadow: `0 0 14px ${theme.primary}66`,
-                marginBottom: 4,
-              }}
-            >
-              {headerTitle}
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
-              {headerSubtitle}
-            </div>
-          </div>
-
-          {false && tab === "menu" && (
-            <button
-              onClick={() => setTab("general")}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${theme.primary}`,
-                padding: "6px 12px",
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-                background: theme.card,
-                color: theme.primary,
-                boxShadow: `0 0 12px ${theme.primary}55`,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {t("settings.quickReset", "Reset")}
-            </button>
-          )}
-        </div>
+      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto" }}>
+        <SettingsPageHeader
+          title={headerTitle}
+          subtitle={headerSubtitle}
+          theme={theme}
+          onBack={handleHeaderBack}
+          backTitle={t("settings.back", "Retour")}
+        />
       </div>
 
       <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
@@ -4581,9 +4539,12 @@ export function Settings({ go }: Props) {
           </div>
         )}
 
-        {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} onFullReset={handleFullReset} />}
+        {tab === "account" && <AccountPages go={go} onFullReset={handleFullReset} page={accountPage} setPage={setAccountPage} />}
+
         {tab === "monetization" && <MonetizationSettingsPanel />}
-        {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => setTab("account")} />}
+
+        {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => { setAccountPage("account_menu"); setTab("account"); }} />}
+
         {tab === "awena" && <AwenaSettingsSection />}
 
         {tab === "theme" && <ThemeSection />}

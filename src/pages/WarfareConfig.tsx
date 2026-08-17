@@ -385,7 +385,7 @@ function TeamBlock({
 
 export default function WarfareConfigPage({ store, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   React.useLayoutEffect(() => {
     try {
@@ -661,7 +661,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
 
         <div style={{ marginTop: 14, fontSize: 12, color: canStart ? theme.textSoft : "#ff8a8a" }}>
           {canStart
-            ? t("warfare.valid", `OK — ${countTop} vs ${countBottom} (total ${total}/12)`)
+            ? t("warfare.valid", lang === "fr" ? `OK — ${countTop} vs ${countBottom} (total ${total}/12)` : lang === "es" ? `OK — ${countTop} vs ${countBottom} (total ${total}/12)` : `OK — ${countTop} vs ${countBottom} (total ${total}/12)`)
             : t("warfare.invalid", "Sélection invalide : 1 à 6 joueurs par armée.")}
         </div>
       </div>

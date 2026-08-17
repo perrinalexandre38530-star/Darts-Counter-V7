@@ -134,7 +134,7 @@ function ProgressiveAwenaText({
   speechCue: AwenaSpeechCue | null;
 }) {
   const isTarget = speechCue?.messageId === messageId;
-  const [ratio, setRatio] = React.useState(isTarget && speechCue?.phase !== "done" ? 0 : 1);
+  const [ratio, setRatio] = React.useState(isTarget && speechCue?.phase !== "done" ? 0.18 : 1);
 
   React.useEffect(() => {
     if (!isTarget || !speechCue) {
@@ -142,7 +142,9 @@ function ProgressiveAwenaText({
       return;
     }
     if (speechCue.phase === "pending") {
-      setRatio(0);
+      // Le texte utile apparaît immédiatement pendant que le moteur neuronal
+      // prépare l'audio. On garde une partie à révéler lorsque la voix démarre.
+      setRatio(0.18);
       return;
     }
     if (speechCue.phase === "done") {
@@ -156,7 +158,7 @@ function ProgressiveAwenaText({
 
     const tick = () => {
       const elapsed = Math.max(0, Date.now() - startedAt);
-      const next = Math.min(1, elapsed / durationMs);
+      const next = Math.min(1, Math.max(0.18, elapsed / durationMs));
       setRatio(next);
       if (next < 1) frame = window.requestAnimationFrame(tick);
     };
@@ -166,8 +168,14 @@ function ProgressiveAwenaText({
 
   if (isTarget && speechCue?.phase === "pending") {
     return (
-      <div aria-label="Awena prépare sa réponse" style={{ color: primary, fontWeight: 900, letterSpacing: 2 }}>
-        •••
+      <div>
+        <RichAwenaText text={progressiveSlice(text, ratio)} primary={primary} />
+        <div
+          aria-label="Awena prépare sa voix"
+          style={{ marginTop: 7, color: primary, opacity: .72, fontSize: 9.5, fontWeight: 850, letterSpacing: .35 }}
+        >
+          Voix en préparation…
+        </div>
       </div>
     );
   }
@@ -296,7 +304,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.3</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.5.1</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -333,7 +341,26 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
                   {m.role === "awena" ? <ProgressiveAwenaText messageId={m.id} text={m.text} primary={primary} speechCue={speechCue} /> : m.text}
                   {m.role === "awena" && (
                     <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 5 }}>
-                      <button type="button" onClick={() => void say(m.text, m.id)} title="Écouter Awena" style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}>🔊</button>
+                      <button
+                          type="button"
+                          onClick={() => {
+                            const active = speechCue?.messageId === m.id && speechCue.phase !== "done";
+                            if (active) {
+                              void stop();
+                            } else {
+                              void say(m.text, m.id);
+                            }
+                          }}
+                          title={speechCue?.messageId === m.id && speechCue.phase !== "done"
+                            ? "Arrêter Awena et afficher toute la réponse"
+                            : "Écouter Awena"}
+                          aria-label={speechCue?.messageId === m.id && speechCue.phase !== "done"
+                            ? "Arrêter la voix d'Awena et afficher tout le texte"
+                            : "Écouter la réponse d'Awena"}
+                          style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}
+                        >
+                          {speechCue?.messageId === m.id && speechCue.phase !== "done" ? "🔇" : "🔊"}
+                        </button>
                     </div>
                   )}
                 </div>

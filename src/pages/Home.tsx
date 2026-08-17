@@ -1843,6 +1843,7 @@ function buildChangelogSlides(
 
 function buildContextualSlides(
   t: (k: string, d?: string) => string,
+  lang: string,
   profile: Profile | null,
   s: ActiveProfileStats
 ): LiveTipSlide[] {
@@ -1939,7 +1940,11 @@ function buildContextualSlides(
       title: t("home.ctx.fav.title", "Ton segment du moment"),
       text: t(
         "home.ctx.fav.text",
-        `Tu touches souvent ${String(fav)} : utilise-le comme repère pour tes finishes.`
+        lang === "fr"
+          ? `Tu touches souvent ${String(fav)} : utilise-le comme repère pour tes finishes.`
+          : lang === "es"
+          ? `Sueles acertar ${String(fav)}: úsalo como referencia para tus cierres.`
+          : `You often hit ${String(fav)}: use it as a reference for your finishes.`
       ),
       imageKey: "tipAdvice",
       weight: 3,
@@ -1951,12 +1956,13 @@ function buildContextualSlides(
 
 function buildLiveTipSlides(args: {
   t: (k: string, d?: string) => string;
+  lang: string;
   profile: Profile | null;
   stats: ActiveProfileStats;
   feedItems: HomeFeedItem[];
   changelogEntries: ChangelogEntry[];
 }): LiveTipSlide[] {
-  const { t, profile, stats, feedItems, changelogEntries } = args;
+  const { t, lang, profile, stats, feedItems, changelogEntries } = args;
 
   // base fallback = tes slides actuels (on les conserve)
   const fallback: LiveTipSlide[] = buildTipSlides(t).map((x) => ({
@@ -1973,7 +1979,7 @@ function buildLiveTipSlides(args: {
     hot: (x as any).hot === true,
   }));
 
-  const ctx = buildContextualSlides(t, profile, stats);
+  const ctx = buildContextualSlides(t, lang, profile, stats);
   const ch = buildChangelogSlides(t, changelogEntries);
   const feed = buildFeedSlides(feedItems);
 
@@ -2165,13 +2171,13 @@ function buildArcadeItems(
       x01MultiSessions > 0
         ? t(
             "home.ticker.localLast.text.dynamic",
-            `Tu as déjà joué ${x01MultiSessions} matchs X01 multi en local.`
+            lang === "fr" ? `Tu as déjà joué ${x01MultiSessions} matchs X01 multi en local.` : lang === "es" ? `Ya has jugado ${x01MultiSessions} partidas X01 multijugador en local.` : `You have already played ${x01MultiSessions} local X01 multiplayer matches.`
           )
         : t(
             "home.ticker.localLast.text.empty",
             "Aucun match local pour l’instant, invite des amis et lance une partie."
           ),
-    detail: x01MultiSessions > 0 ? `${x01MultiSessions} matchs X01 multi` : "",
+    detail: x01MultiSessions > 0 ? (lang === "fr" ? `${x01MultiSessions} matchs X01 multi` : lang === "es" ? `${x01MultiSessions} partidas X01 multi` : `${x01MultiSessions} X01 multiplayer matches`) : "",
     backgroundImage: pickTickerImage("local", `${seed}::last-local-match`),
     accentColor: "#52FFC4",
   });
@@ -2183,7 +2189,7 @@ function buildArcadeItems(
       onlineMatches > 0
         ? t(
             "home.ticker.onlineLast.text.dynamic",
-            `Tu as joué ${onlineMatches} matchs online.`
+            lang === "fr" ? `Tu as joué ${onlineMatches} matchs online.` : lang === "es" ? `Has jugado ${onlineMatches} partidas online.` : `You have played ${onlineMatches} online matches.`
           )
         : t(
             "home.ticker.onlineLast.text.empty",
@@ -2193,7 +2199,7 @@ function buildArcadeItems(
       onlineMatches > 0
         ? [
             `${onlineMatches} matchs`,
-            onlineWinratePct != null ? `${onlineWinratePct}% de victoires` : null,
+            onlineWinratePct != null ? (lang === "fr" ? `${onlineWinratePct}% de victoires` : lang === "es" ? `${onlineWinratePct}% de victorias` : `${onlineWinratePct}% wins`) : null,
           ]
             .filter(Boolean)
             .join(" · ")
@@ -2209,7 +2215,7 @@ function buildArcadeItems(
       onlineBestRank != null
         ? t(
             "home.ticker.onlineLeader.text.dynamic",
-            `Ton meilleur rang online est #${onlineBestRank}.`
+            lang === "fr" ? `Ton meilleur rang online est #${onlineBestRank}.` : lang === "es" ? `Tu mejor puesto online es #${onlineBestRank}.` : `Your best online rank is #${onlineBestRank}.`
           )
         : t(
             "home.ticker.onlineLeader.text.empty",
@@ -2226,7 +2232,7 @@ function buildArcadeItems(
       trainingHitsTotal > 0
         ? t(
             "home.ticker.training.text.dynamic",
-            `Tu as déjà enregistré ${trainingHitsTotal} hits en Training X01.`
+            lang === "fr" ? `Tu as déjà enregistré ${trainingHitsTotal} hits en Training X01.` : lang === "es" ? `Ya has registrado ${trainingHitsTotal} impactos en el Entrenamiento X01.` : `You have already recorded ${trainingHitsTotal} hits in X01 Training.`
           )
         : t(
             "home.ticker.training.text.empty",
@@ -2234,7 +2240,7 @@ function buildArcadeItems(
           ),
     detail:
       trainingHitsTotal > 0 && trainingGoalPct != null
-        ? `Objectifs réussis : ${trainingGoalPct}%`
+        ? (lang === "fr" ? `Objectifs réussis : ${trainingGoalPct}%` : lang === "es" ? `Objetivos logrados: ${trainingGoalPct}%` : `Goals completed: ${trainingGoalPct}%`)
         : "",
     backgroundImage: pickTickerImage("training", `${seed}::training-summary`),
     accentColor: "#9EFF5E",
@@ -2248,7 +2254,7 @@ function buildArcadeItems(
       killerSessions > 0
         ? t(
             "home.ticker.killer.text.dynamic",
-            `Tu as joué ${killerSessions} parties Killer sur ce profil.`
+            lang === "fr" ? `Tu as joué ${killerSessions} parties Killer sur ce profil.` : lang === "es" ? `Has jugado ${killerSessions} partidas de Killer con este perfil.` : `You have played ${killerSessions} Killer games on this profile.`
           )
         : t(
             "home.ticker.killer.text.empty",
@@ -2257,7 +2263,7 @@ function buildArcadeItems(
     detail:
       killerSessions > 0
         ? [
-            `${killerSessions} parties`,
+            lang === "fr" ? `${killerSessions} parties` : lang === "es" ? `${killerSessions} partidas` : `${killerSessions} games`,
             killerWinratePct != null ? `${killerWinratePct}% win` : null,
             killerKills > 0 ? `${killerKills} kills` : null,
           ]
@@ -2275,7 +2281,7 @@ function buildArcadeItems(
       sessionsGlobal > 0
         ? t(
             "home.ticker.month.text.dynamic",
-            `Ce profil a enregistré ${sessionsGlobal} sessions au total.`
+            lang === "fr" ? `Ce profil a enregistré ${sessionsGlobal} sessions au total.` : lang === "es" ? `Este perfil ha registrado ${sessionsGlobal} sesiones en total.` : `This profile has recorded ${sessionsGlobal} sessions in total.`
           )
         : t(
             "home.ticker.month.text.empty",
@@ -2283,8 +2289,8 @@ function buildArcadeItems(
           ),
     detail: [
       sessionsGlobal > 0 ? `${sessionsGlobal} sessions` : null,
-      winrateGlobalPct != null ? `${winrateGlobalPct}% de victoires` : null,
-      clockTargets > 0 ? `${clockTargets} cibles à l’Horloge` : null,
+      winrateGlobalPct != null ? (lang === "fr" ? `${winrateGlobalPct}% de victoires` : lang === "es" ? `${winrateGlobalPct}% de victorias` : `${winrateGlobalPct}% wins`) : null,
+      clockTargets > 0 ? (lang === "fr" ? `${clockTargets} cibles à l’Horloge` : lang === "es" ? `${clockTargets} objetivos en Around the Clock` : `${clockTargets} Around the Clock targets`) : null,
     ]
       .filter(Boolean)
       .join(" · "),
@@ -2510,7 +2516,7 @@ export default function Home({ store, go, activeSport }: Props) {
     return () => { offPrefs(); offEntitlements(); };
   }, []);
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const auth = useAuthOnline();
   const sportCtx = useSport();
 
@@ -2777,12 +2783,13 @@ export default function Home({ store, go, activeSport }: Props) {
     if (isFootSport) return buildFootTipSlides(footStats);
     return buildLiveTipSlides({
       t,
+      lang,
       profile: activeProfile,
       stats,
       feedItems: homeFeedItems,
       changelogEntries,
     });
-  }, [isFootSport, footStats, t, activeProfile?.id, stats, homeFeedItems, changelogEntries]);
+  }, [isFootSport, footStats, t, lang, activeProfile?.id, stats, homeFeedItems, changelogEntries]);
 
   useEffect(() => {
     if (!tipSlides.length) {

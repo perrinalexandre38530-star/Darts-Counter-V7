@@ -3581,7 +3581,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       <div style={shellStyle}>
         <StorageTickerHeader
           ticker={lang === "fr" ? tickerStorageBackupFr : tickerStorageBackupEn}
-          alt={lang === "fr" ? "Centre de sauvegarde" : "Backup center"}
+          alt={lang === "fr" ? "Centre de sauvegarde" : lang === "es" ? "Centro de copias de seguridad" : "Backup center"}
           busy={busy || restoreRunning}
           help={pageHelp}
           onBack={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}

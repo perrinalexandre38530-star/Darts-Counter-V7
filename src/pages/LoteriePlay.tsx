@@ -200,7 +200,13 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
   const animationMs = `${SCORE_REVEAL_MS}ms`;
   const scoreLabel = String(result?.label || score || 0);
   const aura = isMiss ? "#ff718a" : (outOfRange ? "#ff5a72" : (alreadyValidated ? GOLD : material.aura));
-  const alreadyValidatedText = lang === "fr" ? "NUMÉRO DÉJÀ VALIDÉ" : "NUMBER ALREADY VALIDATED";
+  const alreadyValidatedText = lang === "fr" ? "NUMÉRO DÉJÀ VALIDÉ" : lang === "es" ? "NÚMERO YA VALIDADO" : "NUMBER ALREADY VALIDATED";
+  const outLabel = lang === "fr" ? "HORS LOT" : lang === "es" ? "FUERA DEL SORTEO" : "OUT OF DRAW";
+  const outScoreLabel = lang === "fr" ? "SCORE HORS LOT" : lang === "es" ? "PUNTUACIÓN FUERA DEL SORTEO" : "OUT OF DRAW SCORE";
+  const notOwnedLabel = lang === "fr" ? "NON POSSÉDÉ" : lang === "es" ? "NO POSEÍDO" : "NOT OWNED";
+  const missedLabel = lang === "fr" ? "RATÉ" : lang === "es" ? "FALLADO" : "MISSED";
+  const revealedLabel = lang === "fr" ? "DÉVOILÉ" : lang === "es" ? "REVELADO" : "REVEALED";
+  const turnEndedMiss = lang === "fr" ? "MISS · TOUR TERMINÉ" : lang === "es" ? "MISS · TURNO TERMINADO" : "MISS · TURN ENDED";
   return (
     <div
       aria-live="assertive"
@@ -221,11 +227,11 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: aura, opacity: .58, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
             <>
-              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : "Card OUT OF DRAW") : `Résultat ${scoreLabel}`)} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good || alreadyValidated ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : lang === "es" ? "Carta FUERA DEL SORTEO" : "Card OUT OF DRAW") : (lang === "fr" ? `Résultat ${scoreLabel}` : lang === "es" ? `Resultado ${scoreLabel}` : `Result ${scoreLabel}`))} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good || alreadyValidated ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: alreadyValidated ? "linear-gradient(180deg, rgba(246,194,86,.22), rgba(91,64,12,.16))" : "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: alreadyValidated ? `inset 0 0 0 2px ${GOLD}b8, inset 0 0 34px rgba(246,194,86,.24), 0 0 26px rgba(246,194,86,.16)` : `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
-                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${status}aa`, background: alreadyValidated ? "rgba(44,31,5,.82)" : "rgba(34,4,10,.72)", color: status, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{alreadyValidated ? alreadyValidatedText : isMiss ? (result?.endedByMiss ? "MISS · TOUR TERMINÉ" : "MISS") : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ")}</div>
+                  <div aria-hidden style={{ position: "absolute", left: 14, right: 14, bottom: 14, zIndex: 4, borderRadius: 12, padding: "6px 8px", border: `1px solid ${status}aa`, background: alreadyValidated ? "rgba(44,31,5,.82)" : "rgba(34,4,10,.72)", color: status, textAlign: "center", fontSize: 10.5, fontWeight: 1000, letterSpacing: .6 }}>{alreadyValidated ? alreadyValidatedText : isMiss ? (result?.endedByMiss ? turnEndedMiss : "MISS") : (outOfRange ? outLabel : notOwnedLabel)}</div>
                 </>
               ) : null}
             </>
@@ -235,19 +241,19 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
               <div aria-hidden style={{ position: "absolute", inset: "10% 10% auto", height: "44%", background: `radial-gradient(circle at 50% 68%, ${aura}55, transparent 70%)` }} />
               <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateRows: "auto 1fr auto", alignItems: "center", justifyItems: "center", padding: "16px 14px 18px" }}>
                 <div style={{ width: "100%", textAlign: "center" }}>
-                  <div style={{ color: BAD, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>{lang === "fr" ? "HORS LOT" : "OUT OF DRAW"}</div>
-                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>{lang === "fr" ? "SCORE HORS LOT" : "OUT OF DRAW SCORE"}</div>
+                  <div style={{ color: BAD, fontSize: 10.5, fontWeight: 1000, letterSpacing: 1.4 }}>{outLabel}</div>
+                  <div style={{ marginTop: 3, color: "rgba(107,78,48,.88)", fontSize: 8.2, fontWeight: 1000, letterSpacing: .5 }}>{outScoreLabel}</div>
                 </div>
                 <div style={{ display: "grid", justifyItems: "center", gap: 8 }}>
                   <div style={{ color: BAD, fontSize: 72, fontWeight: 1000, lineHeight: .92, textShadow: `0 0 18px ${aura}` }}>{scoreLabel}</div>
                   <div style={{ width: 92, height: 1, background: "rgba(132,97,62,.4)" }} />
-                  <div style={{ color: BAD, fontSize: 12.5, fontWeight: 1000, letterSpacing: 1.1 }}>RATÉ</div>
+                  <div style={{ color: BAD, fontSize: 12.5, fontWeight: 1000, letterSpacing: 1.1 }}>{missedLabel}</div>
                 </div>
                 <div style={{ width: "100%", display: "grid", justifyItems: "center", gap: 6 }}>
                   <div style={{ color: "#ae854f", fontSize: 17, lineHeight: 1 }}>★</div>
                   <div style={{ width: "72%", display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8, color: BAD }}>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
-                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>{outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "NON POSSÉDÉ"}</div>
+                    <div style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .9 }}>{outOfRange ? outLabel : notOwnedLabel}</div>
                     <div style={{ height: 1, background: "rgba(132,97,62,.4)" }} />
                   </div>
                 </div>
@@ -256,8 +262,8 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           )}
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
-          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? "DÉVOILÉ" : alreadyValidated ? alreadyValidatedText : isMiss ? "MISS" : (outOfRange ? (lang === "fr" ? "HORS LOT" : "OUT OF DRAW") : "RATÉ")}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : alreadyValidated ? GOLD : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? `Résultat ${scoreLabel} découvert` : alreadyValidated ? (lang === "fr" ? `Le numéro ${scoreLabel} était déjà validé` : `Number ${scoreLabel} was already validated`) : isMiss ? (result?.endedByMiss ? "MISS · tour terminé" : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : `Result ${scoreLabel} out of draw`) : `Résultat ${scoreLabel} non possédé`)}</div>
+          <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? revealedLabel : alreadyValidated ? alreadyValidatedText : isMiss ? "MISS" : (outOfRange ? outLabel : missedLabel)}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : alreadyValidated ? GOLD : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? (lang === "fr" ? `Résultat ${scoreLabel} découvert` : lang === "es" ? `Resultado ${scoreLabel} revelado` : `Result ${scoreLabel} revealed`) : alreadyValidated ? (lang === "fr" ? `Le numéro ${scoreLabel} était déjà validé` : lang === "es" ? `El número ${scoreLabel} ya estaba validado` : `Number ${scoreLabel} was already validated`) : isMiss ? (result?.endedByMiss ? (lang === "fr" ? "MISS · tour terminé" : lang === "es" ? "MISS · turno terminado" : "MISS · turn ended") : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : lang === "es" ? `Resultado ${scoreLabel} fuera del sorteo` : `Result ${scoreLabel} out of draw`) : (lang === "fr" ? `Résultat ${scoreLabel} non possédé` : lang === "es" ? `Resultado ${scoreLabel} no poseído` : `Result ${scoreLabel} not owned`))}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>
@@ -1641,7 +1647,7 @@ export default function LoteriePlay({ setTab, go, store, params, onFinish }: any
 
       {rankingOpen ? <div role="dialog" aria-modal="true" onClick={() => setRankingOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.72)", backdropFilter: "blur(7px)", display: "grid", placeItems: "center", padding: 14 }}><div onClick={(e) => e.stopPropagation()} style={{ ...panelStyle(), width: "min(520px,100%)", maxHeight: "78dvh", overflowY: "auto", padding: 13, borderColor: `${themeAccent}55` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div style={{ color: themeAccent, fontWeight: 1000, letterSpacing: .8 }}>CLASSEMENT LOTERIE</div><button type="button" onClick={() => setRankingOpen(false)} style={carouselBtnStyle(themeAccent)}>×</button></div><div style={{ display: "grid", gap: 7, marginTop: 10 }}>{ranking.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: p.id === active?.id ? `color-mix(in srgb, ${themeAccent} 9%, transparent)` : "rgba(255,255,255,.035)", border: `1px solid ${p.id === active?.id ? themeAccent + "55" : "rgba(255,255,255,.07)"}` }}><div style={{ color: i === 0 ? themeAccent : SOFT, fontSize: 16, fontWeight: 1000, textAlign: "center" }}>{i + 1}</div><div style={{ minWidth: 0 }}><div style={{ fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div><div style={{ marginTop: 2, color: SOFT, fontSize: 9 }}>{p.stats.cellsRevealed} cases · {p.stats.visits} tours</div></div><div style={{ color: themeAccent, fontSize: 18, fontWeight: 1000 }}>{bestCardProgress(p)}/{p.cards[0]?.cells?.length || config.cellsPerCard}</div></div>)}</div></div></div> : null}
 
-      <ScoreResultOverlay result={scoreReveal} lang={lang === "fr" ? "fr" : "en"} />
+      <ScoreResultOverlay result={scoreReveal} lang={lang} />
 
       {winner ? <LoterieEndPanel finalPlayers={players} winnerId={winnerId} events={events} config={{ ...config, participantMode }} accent={themeAccent} onReplay={resetGame} onStats={(focusId: string) => (go || setTab)?.("statsHub", { tab: "stats", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "loterie" })} onMenu={() => (go || setTab)?.("games")} /> : null}
     </div>

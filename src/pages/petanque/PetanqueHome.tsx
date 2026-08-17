@@ -568,7 +568,7 @@ function useAutoFitTitle(deps: any[] = []) {
 
 export default function PetanqueHome({ store, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
 
@@ -699,7 +699,7 @@ const [kpis, setKpis] = useState<{
     const resume = finished
       ? t("petanque.home.ticker.results.finished", "Partie terminée — consulte le résumé ou relance une partie.")
       : ends > 0
-      ? t("petanque.home.ticker.results.live", `Partie en cours : ${a} — ${b} (objectif ${target}).`)
+      ? t("petanque.home.ticker.results.live", lang === "fr" ? `Partie en cours : ${a} — ${b} (objectif ${target}).` : lang === "es" ? `Partida en curso: ${a} — ${b} (objetivo ${target}).` : `Match in progress: ${a} — ${b} (target ${target}).`)
       : t("petanque.home.ticker.results.empty", "Aucun résultat récent — lance une partie pour commencer.");
 
     // ✅ Contenu “éditorial” : tu pourras brancher ça plus tard (Supabase/news feed)

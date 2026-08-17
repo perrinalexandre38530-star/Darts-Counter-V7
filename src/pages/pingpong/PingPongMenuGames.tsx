@@ -310,7 +310,6 @@ export default function PingPongMenuGames({ go }: Props) {
                 textAlign: "left",
                 borderRadius: 16,
                 border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-                background: theme.card,
                 boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.55 : 1,

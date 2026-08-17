@@ -83,7 +83,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
     if (!f) return;
 
     if (!f.type.startsWith("image/")) {
-      setError(lang === "fr" ? "Fichier non valide." : "Invalid file.");
+      setError(lang === "fr" ? "Fichier non valide." : lang === "es" ? "Archivo no válido." : "Invalid file.");
       return;
     }
 
@@ -170,7 +170,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
             fontSize: 12,
           }}
         >
-          {lang === "fr" ? "Fermer" : "Close"}
+          {lang === "fr" ? "Fermer" : lang === "es" ? "Cerrar" : "Close"}
         </button>
 
         <div
@@ -277,7 +277,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
               fontSize: 12,
             }}
           >
-            {lang === "fr" ? "Choisir une photo" : "Pick photo"}
+            {lang === "fr" ? "Choisir une photo" : lang === "es" ? "Elegir una foto" : "Pick photo"}
           </button>
 
           <button

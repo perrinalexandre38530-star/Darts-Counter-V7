@@ -75,20 +75,6 @@ export type ScramRules = {
 };
 
 
-export type ScramRules = {
-  /**
-   * Objectif de points pour l'équipe "scorers" en phase SCRAM.
-   * Si 0, la condition de victoire est uniquement "closers ont tout fermé".
-   */
-  objective: number;
-  /** Cap de tours (0 = illimité). Un "tour" = une volée (0..3 fléchettes) d'un joueur. */
-  maxRounds?: number;
-  /** Inclure le bull (25) dans les cibles. */
-  useBull?: boolean;
-  /** Nombre de marques nécessaires pour fermer une cible (défaut 3, comme Cricket). */
-  marksToClose?: 1 | 2 | 3;
-};
-
 export type MatchRules =
   | ({ mode: "x01" } & X01Rules)
   | ({ mode: "cricket" } & CricketRules)

@@ -6915,7 +6915,6 @@ function HeaderBlock(props: HeaderBlockProps) {
                   padding: 5,
                   borderRadius: 12,
                   maxWidth: "100%",
-                  minWidth: 0,
                   overflow: "hidden",
                   border: "1px solid rgba(255,255,255,.08)",
                   background:
