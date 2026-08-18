@@ -32,6 +32,10 @@ assert.ok(settings.includes('setShopInitialTab("packs")'), "Navigation directe v
 assert.ok(catalog.includes('title: "Pack Arenas & Ambiances"'), "Pack Boutique non renommé.");
 assert.ok(themeContext.includes("canUseTheme(id)"), "Le ThemeContext ne protège pas les thèmes payants.");
 assert.ok(presets.includes("ambientOverlay") && presets.includes("pageBackground") && presets.includes("cardBackground"), "Extensions visuelles premium incomplètes.");
+assert.ok(presets.includes("textureOverlay") && presets.includes("surfaceSheen") && presets.includes("buttonBackground"), "Matières/reliefs premium V2 incomplets.");
+assert.ok(settings.includes("Mini vraie page de l'application"), "Aperçu global de l'application absent.");
+assert.ok(settings.includes("VALIDER LA VOLÉE") && settings.includes("NAVIGATION") && settings.includes("AVG 3D"), "Le mini-écran ne montre pas assez de surfaces thémées.");
+assert.ok(themeContext.includes("--dc-theme-texture") && themeContext.includes("--dc-theme-surface-shadow"), "Variables globales de matière premium absentes.");
 
 console.log("✅ ARENAS & AMBIANCES SHOP REGRESSION OK");
 console.log(`   ${ids.length} thèmes premium contrôlés`);

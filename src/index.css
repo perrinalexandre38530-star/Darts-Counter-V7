@@ -75,7 +75,7 @@ h1.title-xl{
   border:1px solid var(--stroke);
   border-radius:18px;
   padding:16px;
-  box-shadow:0 20px 45px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow:var(--dc-theme-surface-shadow, 0 20px 45px rgba(0,0,0,.35)), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 /* Grilles / flex utilitaires */
@@ -104,7 +104,7 @@ h1.title-xl{
 }
 .btn:hover{box-shadow:0 8px 20px rgba(0,0,0,.25)}
 .btn:active{transform:scale(.98)}
-.btn.primary{background:var(--gold); color:#1a1200; border-color:transparent; font-weight:700}
+.btn.primary{background:var(--dc-theme-button, var(--gold)); color:#1a1200; border-color:transparent; font-weight:700}
 .btn.ok{background:var(--ok); border-color:transparent}
 .btn.danger{background:var(--danger); border-color:transparent}
 .btn.ghost{background:transparent}
@@ -127,7 +127,7 @@ h1.title-xl{
   position:fixed; left:0; right:0; bottom:0; z-index:60;
   display:flex; gap:10px; justify-content:flex-start;
   padding:10px 12px calc(12px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg, rgba(8,8,10,.55), rgba(8,8,10,.9));
+  background:var(--dc-theme-nav, linear-gradient(180deg, rgba(8,8,10,.55), rgba(8,8,10,.9)));
   border-top:1px solid var(--stroke);
   backdrop-filter: blur(14px);
   overflow-x:auto;
@@ -420,6 +420,28 @@ body {
 }
 
 
+/* ====== Matière / texture premium des thèmes Boutique ======
+   Calque purement CSS, sans image externe : léger, offline et compatible WebView. */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:1;
+  background:var(--dc-theme-texture, none);
+  opacity:var(--dc-theme-texture-opacity, 0);
+  mix-blend-mode:var(--dc-theme-texture-blend, normal);
+  background-attachment:fixed;
+}
+
+:root[data-dc-theme^="arena"] .card,
+:root[data-dc-theme^="arena"] .badge{
+  box-shadow:var(--dc-theme-surface-shadow, 0 20px 45px rgba(0,0,0,.35));
+}
+:root[data-dc-theme^="arena"] .btn.primary{
+  box-shadow:0 9px 24px color-mix(in srgb, var(--dc-accent) 28%, transparent), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
 /* ====== Ambiance visuelle légère des thèmes Boutique ======
    Un seul calque fixe, non interactif et animé uniquement par transform/opacity
    pour conserver une navigation fluide sur mobile. */
@@ -463,3 +485,47 @@ body::after{
 }
 /* Les surfaces publicitaires inline restent toujours au-dessus du voile d'ambiance. */
 [data-dc-paid-inline-ad]{position:relative;z-index:3}
+
+
+/* ====== Aperçu détaillé Réglages > Thème ====== */
+.dc-theme-preview-texture,
+.dc-theme-preview-ambient,
+.dc-theme-preview-sheen{
+  position:absolute;
+  inset:-8%;
+  pointer-events:none;
+  transform:translate3d(0,0,0);
+  will-change:transform,opacity;
+}
+.dc-theme-preview-texture{z-index:0}
+.dc-theme-preview-ambient{z-index:1}
+.dc-theme-preview-sheen{z-index:4;opacity:.38;mix-blend-mode:screen}
+.dc-theme-preview-drift{animation:dcThemePreviewDrift 9s ease-in-out infinite alternate}
+.dc-theme-preview-pulse{animation:dcThemePreviewPulse 5.5s ease-in-out infinite alternate}
+.dc-theme-preview-scan{animation:dcThemePreviewScan 7s ease-in-out infinite alternate}
+.dc-theme-preview-sheen{animation:dcThemePreviewSheen 5.8s ease-in-out infinite}
+
+@keyframes dcThemePreviewDrift{
+  from{transform:translate3d(-2%,-1%,0) scale(1.04)}
+  to{transform:translate3d(2%,1.4%,0) scale(1.09)}
+}
+@keyframes dcThemePreviewPulse{
+  from{transform:scale(1.02);opacity:.72}
+  to{transform:scale(1.08);opacity:1}
+}
+@keyframes dcThemePreviewScan{
+  from{transform:translate3d(-4%,0,0) scale(1.04)}
+  to{transform:translate3d(4%,0,0) scale(1.04)}
+}
+@keyframes dcThemePreviewSheen{
+  0%,20%{transform:translate3d(-38%,0,0) rotate(-1deg);opacity:0}
+  36%{opacity:.44}
+  55%,100%{transform:translate3d(42%,0,0) rotate(-1deg);opacity:0}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .dc-theme-preview-drift,
+  .dc-theme-preview-pulse,
+  .dc-theme-preview-scan,
+  .dc-theme-preview-sheen{animation:none!important;transform:none!important}
+}

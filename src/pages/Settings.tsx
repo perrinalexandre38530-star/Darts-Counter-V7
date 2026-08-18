@@ -787,79 +787,180 @@ function ThemePreviewBlock({
   onOpenShop?: () => void;
 }) {
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
+  const premiumPreview = !!preview && isArenasTheme(preview.id);
   const previewBackground = preview
     ? preview.pageBackground || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
     : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
   const previewCard = preview?.cardBackground || preview?.card;
+  const previewTextureOpacity = premiumPreview
+    ? Math.min(.34, Math.max(.14, preview?.textureOpacity ?? .20))
+    : 0;
+  const ambientOpacity = premiumPreview
+    ? Math.min(.24, Math.max(.085, (preview?.ambientOpacity || .05) * 2.5))
+    : Math.min(.14, Math.max(.04, (preview?.ambientOpacity || .04) * 1.7));
 
   return (
     <div
       style={{
-        minHeight: 0,
-        aspectRatio: "16 / 9",
-        borderRadius: 18,
+        minHeight: preview ? 350 : 230,
+        borderRadius: 20,
         border: `1px solid ${preview?.borderSoft || theme.borderSoft}`,
         background: previewBackground,
         overflow: "hidden",
         position: "relative",
-        boxShadow: preview ? `0 0 24px ${preview.primary}22, inset 0 0 28px rgba(0,0,0,.28)` : "inset 0 0 30px rgba(0,0,0,.38)",
+        boxShadow: preview
+          ? preview.surfaceShadow || `0 18px 42px rgba(0,0,0,.52), 0 0 28px ${preview.primary}24, inset 0 1px 0 rgba(255,255,255,.07)`
+          : "inset 0 0 30px rgba(0,0,0,.38)",
         display: "grid",
         placeItems: "center",
-        padding: 14,
+        padding: preview ? 12 : 14,
+        isolation: "isolate",
       }}
     >
-      {preview?.ambientOverlay ? (
+      {preview?.textureOverlay ? (
         <div
           aria-hidden="true"
+          className="dc-theme-preview-texture"
           style={{
-            position: "absolute",
-            inset: "-8%",
-            background: preview.ambientOverlay,
-            opacity: Math.min(.16, Math.max(.045, (preview.ambientOpacity || .04) * 1.8)),
-            pointerEvents: "none",
+            background: preview.textureOverlay,
+            opacity: previewTextureOpacity,
+            mixBlendMode: preview.textureBlendMode || "soft-light",
           }}
         />
       ) : null}
+      {preview?.ambientOverlay ? (
+        <div
+          aria-hidden="true"
+          className={`dc-theme-preview-ambient dc-theme-preview-${preview.ambientAnimation || "pulse"}`}
+          style={{
+            background: preview.ambientOverlay,
+            opacity: ambientOpacity,
+          }}
+        />
+      ) : null}
+      {preview?.surfaceSheen ? (
+        <div
+          aria-hidden="true"
+          className="dc-theme-preview-sheen"
+          style={{ background: preview.surfaceSheen }}
+        />
+      ) : null}
+
       {!preview ? (
         <div style={{ textAlign: "center" }}>
           <img src="/img/settings-theme-logo-preview.webp" alt="MULTISPORTS SCORING" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} />
           <div style={{ position: "absolute", left: 14, right: 14, bottom: 10, textAlign: "center", color: "rgba(255,255,255,.78)", fontSize: 10.5, fontWeight: 850, textShadow: "0 2px 10px rgba(0,0,0,.9)" }}>Sélectionne un pack puis un thème pour afficher l’aperçu</div>
         </div>
       ) : (
-        <div style={{ width: "100%", maxWidth: 350, position: "relative", zIndex: 1 }}>
-          {locked ? (
-            <div style={{ position: "absolute", top: -6, right: 0, borderRadius: 999, border: `1px solid ${preview.primary}77`, background: "rgba(3,5,13,.86)", color: preview.primary, padding: "4px 8px", fontSize: 8.5, fontWeight: 1000, boxShadow: `0 0 12px ${preview.primary}28` }}>🔒 PACK BOUTIQUE</div>
-          ) : null}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-            <div style={{ paddingRight: locked ? 85 : 0 }}>
-              <div style={{ color: preview.primary, fontWeight: 1000, fontSize: 19, textTransform: "uppercase", letterSpacing: .7, textShadow: `0 0 12px ${preview.primary}55` }}>{THEME_META[preview.id]?.defaultLabel || preview.name}</div>
-              <div style={{ marginTop: 3, color: preview.textSoft, fontSize: 10.5 }}>{THEME_META[preview.id]?.defaultDesc || preview.name}</div>
+        <div style={{ width: "100%", maxWidth: 390, position: "relative", zIndex: 3 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 9, marginBottom: 8 }}>
+            <div style={{ minWidth: 0, paddingRight: locked ? 4 : 0 }}>
+              <div style={{ color: preview.primary, fontWeight: 1000, fontSize: 18, textTransform: "uppercase", letterSpacing: .75, lineHeight: 1, textShadow: `0 0 13px ${preview.primary}70` }}>{THEME_META[preview.id]?.defaultLabel || preview.name}</div>
+              <div style={{ marginTop: 4, color: preview.textSoft, fontSize: 9.6, lineHeight: 1.25 }}>{THEME_META[preview.id]?.defaultDesc || preview.name}</div>
             </div>
-            <div style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${preview.primary}88`, background: previewCard, boxShadow: `0 0 18px ${preview.primary}33`, flexShrink: 0 }} />
-          </div>
-          <div style={{ borderRadius: 16, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 12, boxShadow: `0 12px 22px rgba(0,0,0,.35), 0 0 16px ${preview.primary}16` }}>
-            <div style={{ color: preview.text, fontSize: 12.5, fontWeight: 950 }}>Exemple de carte</div>
-            <div style={{ color: preview.textSoft, fontSize: 10.5, marginTop: 3 }}>Fond, carte, halo et accents de cet univers.</div>
-            <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
-              <div style={{ flex: 1, height: 32, borderRadius: 11, border: `1px solid ${preview.primary}66`, background: `${preview.primary}18`, color: preview.primary, display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 950 }}>BOUTON</div>
-              <div style={{ width: 32, height: 32, borderRadius: 999, border: `1px solid ${preview.primary}77`, background: "rgba(0,0,0,.35)", color: preview.primary, display: "grid", placeItems: "center", fontWeight: 1000 }}>i</div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+              {locked ? <div style={{ borderRadius: 999, border: `1px solid ${preview.primary}88`, background: "rgba(2,4,10,.78)", color: preview.primary, padding: "3px 7px", fontSize: 7.7, fontWeight: 1000, boxShadow: `0 0 12px ${preview.primary}32` }}>🔒 PACK BOUTIQUE</div> : null}
+              {premiumPreview ? <div style={{ color: preview.textSoft, fontSize: 7.2, fontWeight: 900, letterSpacing: .7 }}>IMMERSIVE V2</div> : null}
             </div>
           </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+            {["FOND", "CARTES", "KPI", "BOUTONS", "NAVIGATION"].map((label) => (
+              <span key={label} style={{ borderRadius: 999, border: `1px solid ${preview.borderSoft}`, background: "rgba(0,0,0,.26)", color: preview.textSoft, padding: "2px 6px", fontSize: 6.9, fontWeight: 900, letterSpacing: .45 }}>{label}</span>
+            ))}
+          </div>
+
+          {/* Mini vraie page de l'application : l'aperçu montre toutes les surfaces affectées. */}
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 16,
+              border: `1px solid ${preview.primary}70`,
+              background: previewBackground,
+              boxShadow: preview.surfaceShadow || `0 12px 28px rgba(0,0,0,.52), 0 0 20px ${preview.primary}22`,
+            }}
+          >
+            {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: Math.min(.30, previewTextureOpacity + .02), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+            {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen }} /> : null}
+
+            <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, padding: "7px 9px", borderBottom: `1px solid ${preview.borderSoft}`, background: "rgba(3,5,12,.34)", backdropFilter: "blur(7px)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                <img src={logoDarts} alt="" style={{ width: 22, height: 22, objectFit: "contain", filter: `drop-shadow(0 0 7px ${preview.primary}55)` }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: preview.text, fontSize: 8.8, fontWeight: 1000, lineHeight: 1 }}>MULTISPORTS SCORING</div>
+                  <div style={{ color: preview.primary, fontSize: 7.2, fontWeight: 950, marginTop: 2 }}>X01 · PARTIE EN COURS</div>
+                </div>
+              </div>
+              <span style={{ borderRadius: 999, border: `1px solid ${preview.success}77`, background: `${preview.success}18`, color: preview.success, padding: "3px 6px", fontSize: 6.8, fontWeight: 1000, boxShadow: `0 0 10px ${preview.success}24` }}>● LIVE</span>
+            </div>
+
+            <div style={{ position: "relative", zIndex: 2, padding: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(0,.8fr)", gap: 7 }}>
+                <div style={{ position: "relative", overflow: "hidden", borderRadius: 13, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 8, boxShadow: preview.surfaceShadow || `0 10px 20px rgba(0,0,0,.40), 0 0 14px ${preview.primary}15` }}>
+                  {preview.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.surfaceSheen, opacity: .24, pointerEvents: "none" }} /> : null}
+                  <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 999, padding: 2, background: `linear-gradient(135deg,${preview.primary},${preview.accent2})`, boxShadow: `0 0 14px ${preview.primary}55` }}>
+                      <div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(2,4,9,.90)", color: preview.text, fontSize: 14, fontWeight: 1000 }}>N</div>
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="dc-player-name" style={{ color: preview.text, fontSize: 11.5, fontWeight: 1000, lineHeight: 1 }}>NINJA</div>
+                      <div style={{ color: preview.textSoft, fontSize: 7.2, marginTop: 3 }}>Joueur actif · Manche 2</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: preview.primary, fontSize: 24, fontWeight: 1000, lineHeight: .9, textShadow: `0 0 12px ${preview.primary}55` }}>301</div>
+                      <div style={{ color: preview.textSoft, fontSize: 6.7, marginTop: 3 }}>SCORE</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 13, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 8, display: "flex", flexDirection: "column", justifyContent: "center", boxShadow: `0 9px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.05)` }}>
+                  <div style={{ color: preview.textSoft, fontSize: 6.6, fontWeight: 900 }}>OBJECTIF</div>
+                  <div style={{ color: preview.accent2, fontSize: 13.5, fontWeight: 1000, marginTop: 2, textShadow: `0 0 9px ${preview.accent2}55` }}>T20</div>
+                  <div style={{ color: preview.textSoft, fontSize: 6.6, marginTop: 2 }}>checkout conseillé</div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5, marginTop: 6 }}>
+                {[["AVG 3D", "62.4"], ["MEILLEUR", "180"], ["CHECKOUT", "96"]].map(([label, value]) => (
+                  <div key={label} style={{ borderRadius: 10, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: "5px 6px", textAlign: "center", boxShadow: `inset 0 1px 0 rgba(255,255,255,.04), 0 5px 12px rgba(0,0,0,.25)` }}>
+                    <div style={{ color: preview.textSoft, fontSize: 6.1, fontWeight: 900 }}>{label}</div>
+                    <div style={{ color: preview.text, fontSize: 10.5, fontWeight: 1000, marginTop: 1 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, marginTop: 6 }}>
+                <div style={{ minHeight: 30, borderRadius: 10, border: `1px solid ${preview.primary}88`, background: preview.buttonBackground || preview.primary, color: "#050712", display: "grid", placeItems: "center", fontSize: 8, fontWeight: 1000, letterSpacing: .25, boxShadow: `0 0 16px ${preview.primary}2e, inset 0 1px 0 rgba(255,255,255,.22)` }}>VALIDER LA VOLÉE</div>
+                <div style={{ width: 34, minHeight: 30, borderRadius: 10, border: `1px solid ${preview.borderSoft}`, background: previewCard, color: preview.primary, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 1000 }}>↶</div>
+              </div>
+            </div>
+
+            <div style={{ position: "relative", zIndex: 2, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 3, padding: "5px 7px 6px", borderTop: `1px solid ${preview.borderSoft}`, background: preview.navBackground || "rgba(4,6,13,.82)", backdropFilter: "blur(9px)" }}>
+              {[["◉", "JEUX"], ["◎", "PROFILS"], ["▥", "STATS"], ["⚙", "RÉGLAGES"]].map(([icon, label], index) => (
+                <div key={label} style={{ minWidth: 0, borderRadius: 8, border: index === 3 ? `1px solid ${preview.primary}70` : "1px solid transparent", background: index === 3 ? `${preview.primary}13` : "transparent", color: index === 3 ? preview.primary : preview.textSoft, textAlign: "center", padding: "3px 1px", boxShadow: index === 3 ? `0 0 10px ${preview.primary}22` : "none" }}>
+                  <div style={{ fontSize: 9, lineHeight: 1 }}>{icon}</div>
+                  <div style={{ fontSize: 5.6, fontWeight: 900, marginTop: 2 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => locked ? onOpenShop?.() : onApply(preview.id)}
             style={{
-              marginTop: 10,
+              marginTop: 8,
               width: "100%",
-              minHeight: 38,
-              borderRadius: 12,
+              minHeight: 34,
+              borderRadius: 11,
               border: `1px solid ${preview.primary}88`,
-              background: locked ? `linear-gradient(135deg,${preview.primary},${preview.accent2 || preview.primary})` : preview.id === activeThemeId ? `${preview.primary}20` : preview.primary,
+              background: locked ? (preview.buttonBackground || `linear-gradient(135deg,${preview.primary},${preview.accent2 || preview.primary})`) : preview.id === activeThemeId ? `${preview.primary}20` : (preview.buttonBackground || preview.primary),
               color: locked ? "#050712" : preview.id === activeThemeId ? preview.primary : "#050712",
-              fontSize: 11,
+              fontSize: 9.5,
               fontWeight: 1000,
               cursor: "pointer",
-              boxShadow: `0 0 15px ${preview.primary}2c`,
+              boxShadow: `0 0 18px ${preview.primary}32, inset 0 1px 0 rgba(255,255,255,.16)`,
             }}
           >
             {locked ? "🔒 VOIR CE PACK DANS LA BOUTIQUE" : preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME"}
