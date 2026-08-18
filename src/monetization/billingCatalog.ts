@@ -1,3 +1,5 @@
+import { STORE_PRODUCT_IDS } from "./productIds";
+
 export type PlayBillingProductType = "inapp" | "subs";
 
 export type PlayBillingProductSpec = {
@@ -19,9 +21,9 @@ export const PLAY_BILLING_PRODUCTS: PlayBillingProductSpec[] = [
   { productId: "msc_pack_avatars_arcade_01", productType: "inapp", label: "Pack Avatars Arcade" },
   { productId: "msc_pack_logos_clubs_01", productType: "inapp", label: "Pack Logos Clubs" },
   { productId: "msc_pack_dartsets_pro_01", productType: "inapp", label: "Pack Dartsets Pro" },
-  { productId: "msc_pack_themes_neon_01", productType: "inapp", label: "Pack Thèmes Neon+" },
+  { productId: STORE_PRODUCT_IDS.themesArenas, productType: "inapp", label: "Pack Arenas & Ambiances" },
   { productId: "msc_pack_bots_ai_champions_01", productType: "inapp", label: "Pack Bots IA Champions" },
-  { productId: "msc_bundle_cosmetics_01", productType: "inapp", label: "Bundle Personnalisation" },
+  { productId: STORE_PRODUCT_IDS.cosmeticsBundle, productType: "inapp", label: "Bundle Personnalisation" },
 ];
 
 export function getPlayBillingProductSpec(productId: string): PlayBillingProductSpec | null {

@@ -3769,7 +3769,7 @@ React.useEffect(() => {
 
             {view === "locals" && (
               <Card compact>
-                <MemoLocalProfilesRefonte
+                <LocalProfilesRefonte
                   profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}
                   onCreate={(name, file, privateInfo) => {
@@ -6474,15 +6474,24 @@ function FavoriteDartSetBadge({
       return null;
     }
   }, [profileId]);
-  const [favorite, setFavorite] = React.useState<DartSet | null>(() => readFavorite());
+  const [favorite, setFavorite] = React.useState<DartSet | null>(null);
 
   React.useEffect(() => {
-    setFavorite(readFavorite());
-    if (typeof window === "undefined") return;
-    const refresh = () => setFavorite(readFavorite());
+    let cancelled = false;
+    let cancelIdle: (() => void) | null = null;
+    const refresh = () => {
+      cancelIdle?.();
+      cancelIdle = scheduleRuntimeIdle(() => {
+        if (!cancelled) setFavorite(readFavorite());
+      }, { timeoutMs: 2_500, fallbackDelayMs: 300 });
+    };
+    refresh();
+    if (typeof window === "undefined") return () => { cancelled = true; cancelIdle?.(); };
     const events = ["dc-dartsets-updated", "dc-user-media-restored", "dc-background-restore-finished", "storage"];
     for (const eventName of events) window.addEventListener(eventName, refresh as EventListener);
     return () => {
+      cancelled = true;
+      cancelIdle?.();
       for (const eventName of events) window.removeEventListener(eventName, refresh as EventListener);
     };
   }, [readFavorite]);
@@ -6656,6 +6665,8 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
   const [loaded, setLoaded] = React.useState(false);
   const [broken, setBroken] = React.useState(false);
 
+  const mediaSig = localGridMediaSig(profile);
+
   React.useEffect(() => {
     let cancelled = false;
     const nextImmediate = getLocalGridAvatarImmediate(profile);
@@ -6667,7 +6678,7 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
       if (!cancelled && next) setSrc(next);
     });
     return () => { cancelled = true; };
-  }, [id, revision]);
+  }, [id, revision, mediaSig]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6821,14 +6832,28 @@ function LocalProfileGridCard({
   );
 }
 
+function localGridMediaSig(profile: any): string {
+  const compact = (value: any) => {
+    const raw = typeof value === "string" ? value : "";
+    if (!raw) return "0";
+    return `${raw.length}:${raw.slice(0, 18)}:${raw.slice(-18)}`;
+  };
+  return [
+    Number(profile?.avatarUpdatedAt || 0),
+    compact(profile?.avatarUrl),
+    compact(profile?.avatarDataUrl),
+    compact(profile?.photoDataUrl),
+    String(profile?.avatarAssetId || profile?.avatarThumbAssetId || ""),
+  ].join("|");
+}
+
 const MemoLocalProfileGridCard = React.memo(LocalProfileGridCard, (prev, next) => {
   const a: any = prev.profile || {};
   const b: any = next.profile || {};
   return (
     String(a.id || "") === String(b.id || "") &&
     String(a.name || "") === String(b.name || "") &&
-    Number(a.avatarUpdatedAt || 0) === Number(b.avatarUpdatedAt || 0) &&
-    String(a.avatarUrl || "") === String(b.avatarUrl || "") &&
+    localGridMediaSig(a) === localGridMediaSig(b) &&
     String(a.privateInfo?.country || a.country || "") === String(b.privateInfo?.country || b.country || "") &&
     prev.accent === next.accent &&
     prev.sportKey === next.sportKey &&
@@ -7186,19 +7211,43 @@ function LocalProfilesRefonte({
     };
   }, []);
 
-  const allModesUsageCounts = React.useMemo(
-    () => readAllModesProfileUsageCounts(),
-    [profileUsageRevision]
-  );
+  // PERF/FIX V72 : le classement par fréquence n'a pas le droit de retarder
+  // le premier affichage de la grille. On affiche immédiatement les profils puis
+  // on calcule le classement d'usage pendant un temps mort du navigateur.
+  const [allModesUsageCounts, setAllModesUsageCounts] = React.useState<ProfileUsageCounts>({});
+  React.useEffect(() => {
+    let cancelled = false;
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      if (cancelled) return;
+      const next = readAllModesProfileUsageCounts();
+      if (!cancelled) setAllModesUsageCounts(next);
+    }, { timeoutMs: 4_000, fallbackDelayMs: 700 });
+    return () => { cancelled = true; cancelIdle(); };
+  }, [profileUsageRevision]);
 
   // ✅ Profils locaux :
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*"
   // - on classe d'abord par nombre total d'utilisations, puis par nom
+  //
+  // FIX V72 anti-écran vide : certaines réhydratations Android commencent par
+  // profiles=[] puis remplissent le même tableau. On garde immédiatement la
+  // dernière copie locale sûre au lieu d'afficher « Aucun profil » pendant/à cause
+  // d'une réhydratation transitoire. Aucun réseau n'est utilisé ici.
+  const fallbackProfilesRef = React.useRef<Profile[] | null>(null);
+  if ((profiles || []).length > 0) {
+    fallbackProfilesRef.current = profiles;
+  } else if (fallbackProfilesRef.current == null) {
+    fallbackProfilesRef.current = readProfilesCache();
+  }
+  const localProfilesSource = (profiles || []).length > 0
+    ? profiles
+    : (fallbackProfilesRef.current || []);
+
   const locals = React.useMemo(() => {
     if (onboardingMode) return [];
 
-    const filtered = profiles.filter(
+    const filtered = localProfilesSource.filter(
       (p: any) => p.id !== activeProfileId && !isMirrorProfile(p)
     );
 
@@ -7219,7 +7268,7 @@ function LocalProfilesRefonte({
       if (byName !== 0) return byName;
       return collator.compare(String(a?.id || ""), String(b?.id || ""));
     });
-  }, [profiles, activeProfileId, onboardingMode, allModesUsageCounts]);
+  }, [localProfilesSource, activeProfileId, onboardingMode, allModesUsageCounts]);
 
   const handleCreateLocal = React.useCallback(
     async (

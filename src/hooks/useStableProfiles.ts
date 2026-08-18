@@ -3,9 +3,8 @@ import React from "react";
 function compactMediaSig(value: any) {
   const raw = typeof value === "string" ? value : "";
   if (!raw) return "";
-  // Une photo locale peut représenter plusieurs Mo. La concaténer entièrement à
-  // chaque render de Profils gelait inutilement la WebView. Longueur + extrémités
-  // suffisent ici, avatarUpdatedAt/assetId assurant déjà la vraie révision média.
+  // Les photos peuvent peser plusieurs Mo. On ne concatène jamais le base64 entier
+  // pour savoir si un profil a changé : longueur + extrémités + avatarUpdatedAt suffisent.
   if (raw.length > 256) return `${raw.length}:${raw.slice(0, 28)}:${raw.slice(-28)}`;
   return raw;
 }
@@ -16,12 +15,11 @@ function profileSig(p: any) {
     p?.name || "",
     p?.avatarUpdatedAt || 0,
     compactMediaSig(p?.avatarUrl),
-    p?.avatarSha256 || p?.avatarAssetId || (p?.avatarDataUrl ? `data:${String(p.avatarDataUrl).length}` : ""),
+    compactMediaSig(p?.avatarDataUrl),
+    compactMediaSig(p?.photoDataUrl),
+    p?.avatarSha256 || p?.avatarAssetId || "",
     p?.country || "",
     p?.privateInfo?.country || "",
-    // Les préférences applicatives doivent faire partie de la signature.
-    // Sinon useStableProfiles réutilise l'ancien objet (ex: appLang=fr)
-    // même quand Settings vient de passer l'app en EN/ES.
     p?.privateInfo?.appLang || p?.preferences?.appLang || "",
     p?.privateInfo?.appTheme || p?.preferences?.appTheme || "",
     p?.privateInfo?.favX01 ?? p?.preferences?.favX01 ?? "",
@@ -31,34 +29,32 @@ function profileSig(p: any) {
   ].join(":");
 }
 
+/**
+ * Conserve les références des profils réellement inchangés sans figer la liste.
+ *
+ * FIX V72 : le Store historique peut réhydrater/muter son tableau `profiles` en place.
+ * Une signature enveloppée dans useMemo([profiles]) ne voyait alors JAMAIS la mutation
+ * si la référence du tableau restait identique. La page Profils locaux pouvait rester
+ * bloquée sur le premier tableau vide. La signature compacte est maintenant recalculée
+ * à chaque render (travail O(n) très léger, sans parcourir les base64 complets).
+ */
 export function useStableProfiles<T extends Record<string, any>>(profiles: T[]): T[] {
-  const previousRef = React.useRef<T[]>(profiles || []);
-  const signature = React.useMemo(() => {
-    return (profiles || []).map(profileSig).join("|");
-  }, [profiles]);
+  const source = Array.isArray(profiles) ? profiles : [];
+  const previousRef = React.useRef<T[]>(source);
+  const signature = source.map(profileSig).join("|");
 
   return React.useMemo(() => {
     const prev = previousRef.current || [];
-    const prevById = new Map(prev.map((p: any) => [p?.id, p]));
-    const next = (profiles || []).map((profile: any) => {
-      const old = prevById.get(profile?.id);
+    const prevById = new Map(prev.map((p: any) => [String(p?.id || ""), p]));
+    const next = source.map((profile: any) => {
+      const old = prevById.get(String(profile?.id || ""));
       if (!old) return profile;
-      const same =
-        old?.name === profile?.name &&
-        old?.avatarUpdatedAt === profile?.avatarUpdatedAt &&
-        old?.avatarUrl === profile?.avatarUrl &&
-        old?.avatarDataUrl === profile?.avatarDataUrl &&
-        old?.country === profile?.country &&
-        old?.privateInfo?.country === profile?.privateInfo?.country &&
-        (old?.privateInfo?.appLang ?? old?.preferences?.appLang) === (profile?.privateInfo?.appLang ?? profile?.preferences?.appLang) &&
-        (old?.privateInfo?.appTheme ?? old?.preferences?.appTheme) === (profile?.privateInfo?.appTheme ?? profile?.preferences?.appTheme) &&
-        (old?.privateInfo?.favX01 ?? old?.preferences?.favX01) === (profile?.privateInfo?.favX01 ?? profile?.preferences?.favX01) &&
-        (old?.privateInfo?.favDoubleOut ?? old?.preferences?.favDoubleOut) === (profile?.privateInfo?.favDoubleOut ?? profile?.preferences?.favDoubleOut) &&
-        (old?.privateInfo?.ttsVoice ?? old?.preferences?.ttsVoice) === (profile?.privateInfo?.ttsVoice ?? profile?.preferences?.ttsVoice) &&
-        (old?.privateInfo?.sfxVolume ?? old?.preferences?.sfxVolume) === (profile?.privateInfo?.sfxVolume ?? profile?.preferences?.sfxVolume);
+      const same = profileSig(old) === profileSig(profile);
       return same ? old : profile;
     }) as T[];
     previousRef.current = next;
     return next;
-  }, [signature, profiles]);
+    // La signature primitive détecte aussi les mutations in-place du tableau Store.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
 }

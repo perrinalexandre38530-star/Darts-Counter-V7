@@ -1,4 +1,5 @@
 import type { StorePack } from "./types";
+import { STORE_PRODUCT_IDS } from "./productIds";
 
 export const GOOGLE_PLAY_CORE_PRODUCTS = {
   premiumMonthly: "msc_premium_monthly",
@@ -40,13 +41,13 @@ export const STORE_PACKS: StorePack[] = [
   },
   {
     id: "themes_neon_01",
-    googlePlayProductId: "msc_pack_themes_neon_01",
+    googlePlayProductId: STORE_PRODUCT_IDS.themesArenas,
     category: "themes",
-    title: "Pack Thèmes Neon+",
-    subtitle: "Thèmes premium, variantes sombres et effets supplémentaires.",
-    contents: ["Thèmes supplémentaires", "Accents premium", "Fonds exclusifs"],
-    entitlementKeys: ["themes.pack.neon.01"],
-    badge: "THÈMES",
+    title: "Pack Arenas & Ambiances",
+    subtitle: "8 univers immersifs qui transforment fonds, cartes, halos et ambiance de l’application.",
+    contents: ["Darts Pub", "Championship Arena", "Cyber Arena", "Street Sport", "Stadium Night", "Luxury Club", "Retro Arcade", "Fire & Ice"],
+    entitlementKeys: ["themes.pack.neon.01", "themes.pack.arenas.01"],
+    badge: "THÈMES PREMIUM",
   },
   {
     id: "bots_ai_champions_01",
@@ -60,7 +61,7 @@ export const STORE_PACKS: StorePack[] = [
   },
   {
     id: "cosmetics_bundle_01",
-    googlePlayProductId: "msc_bundle_cosmetics_01",
+    googlePlayProductId: STORE_PRODUCT_IDS.cosmeticsBundle,
     category: "bundle",
     title: "Bundle Personnalisation",
     subtitle: "Avatars + logos + sets + thèmes dans un seul pack.",
@@ -70,6 +71,7 @@ export const STORE_PACKS: StorePack[] = [
       "logos.pack.clubs.01",
       "dartsets.pack.pro.01",
       "themes.pack.neon.01",
+      "themes.pack.arenas.01",
     ],
     badge: "BUNDLE",
   },

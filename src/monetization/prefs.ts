@@ -94,6 +94,16 @@ function normalizeVerifiedProducts(runtime: VerifiedRuntimeEntitlements | null):
   return Array.isArray(runtime?.products) ? runtime!.products!.map(String) : [];
 }
 
+export function getVerifiedProductIds(): string[] {
+  return normalizeVerifiedProducts(readVerifiedRuntimeEntitlements());
+}
+
+export function hasVerifiedProduct(...productIds: string[]): boolean {
+  if (!productIds.length) return false;
+  const owned = new Set(getVerifiedProductIds());
+  return productIds.some((id) => owned.has(String(id || "").trim()));
+}
+
 /**
  * IMPORTANT : le Premium réel ne doit jamais être déduit d'un simple localStorage.
  * Le backend / Google Play doit injecter ici un entitlement DÉJÀ vérifié.

@@ -18,8 +18,9 @@ import { areNativePurchasesEnabled, getNativeBillingStatus, purchaseNativeProduc
 import { getAdMobRuntimeConfig } from "./adMobConfig";
 
 type Mode = "advertising" | "shop" | "all";
+type ShopTab = "premium" | "packs" | "billing";
 
-type Props = { mode?: Mode };
+type Props = { mode?: Mode; initialShopTab?: ShopTab; focusPackId?: string | null };
 
 function MonoIcon({ name, size = 24 }: { name: "ads" | "shop" | "play" | "premium" | "billing" | "privacy"; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
@@ -31,7 +32,7 @@ function MonoIcon({ name, size = 24 }: { name: "ads" | "shop" | "play" | "premiu
   return <svg width={size} height={size} viewBox="0 0 24 24"><path {...p} d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path {...p} d="M9.5 12 11 13.5l3.5-4"/></svg>;
 }
 
-export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
+export default function MonetizationSettingsPanel({ mode = "all", initialShopTab = "premium", focusPackId = null }: Props) {
   const { theme } = useTheme() as any;
   const [prefs, setPrefs] = React.useState<MonetizationPrefs>(() => loadMonetizationPrefs());
   const [runtimeTick, setRuntimeTick] = React.useState(0);
@@ -42,7 +43,7 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
   const [billingMessage, setBillingMessage] = React.useState("");
   const [billingProducts, setBillingProducts] = React.useState<Record<string, NativeBillingProduct | null>>({});
   const [adTab, setAdTab] = React.useState<"ads" | "endgame" | "admob">("ads");
-  const [shopTab, setShopTab] = React.useState<"premium" | "packs" | "billing">("premium");
+  const [shopTab, setShopTab] = React.useState<ShopTab>(initialShopTab);
   const [entitlementRevision, setEntitlementRevision] = React.useState(0);
   const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
   const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
@@ -52,10 +53,25 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
   React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
   React.useEffect(() => {
+    if (mode === "shop") setShopTab(initialShopTab);
+  }, [mode, initialShopTab]);
+  React.useEffect(() => {
+    if (mode !== "shop" || shopTab !== "packs" || !focusPackId || typeof document === "undefined") return;
+    const timer = window.setTimeout(() => {
+      document.querySelector(`[data-store-pack="${focusPackId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [mode, shopTab, focusPackId]);
+  React.useEffect(() => {
     if (!isCapacitorNativeRuntime()) return;
     void getNativeAdMobStatus().then(setNativeStatus);
     void getNativeBillingStatus().then(setBillingStatus);
-    const productIds = [GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly, GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly, GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime];
+    const productIds = [
+      GOOGLE_PLAY_CORE_PRODUCTS.premiumMonthly,
+      GOOGLE_PLAY_CORE_PRODUCTS.premiumYearly,
+      GOOGLE_PLAY_CORE_PRODUCTS.removeAdsLifetime,
+      ...STORE_PACKS.map((pack) => pack.googlePlayProductId),
+    ];
     void Promise.all(productIds.map(async (id) => [id, await queryNativeBillingProduct(id)] as const)).then((pairs) => setBillingProducts(Object.fromEntries(pairs)));
   }, []);
 
@@ -255,13 +271,36 @@ export default function MonetizationSettingsPanel({ mode = "all" }: Props) {
             <section style={card}>
               <SectionHead icon={<MonoIcon name="shop" />} title="PACKS ADDITIONNELS" subtitle="Avatars, logos, sets, thèmes, bots IA et bundles de personnalisation." />
               <div style={{ display: "grid", gap: 8 }}>
-                {STORE_PACKS.map((pack) => (
-                  <div key={pack.id} style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: 11 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}><div><div style={{ fontSize: 12, fontWeight: 950 }}>{pack.title}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>{pack.subtitle}</div></div><span style={{ color: theme.primary, fontSize: 8.5, fontWeight: 1000, flexShrink: 0 }}>{pack.badge}</span></div>
-                    <div style={{ marginTop: 7, display: "flex", flexWrap: "wrap", gap: 5 }}>{pack.contents.map((item) => <span key={item} style={{ borderRadius: 999, border: `1px solid ${theme.primary}33`, background: `${theme.primary}0c`, color: theme.textSoft, padding: "4px 7px", fontSize: 8.5, fontWeight: 850 }}>{item}</span>)}</div>
-                    <button type="button" disabled={billingBusy} onClick={() => void purchase(pack.googlePlayProductId)} style={{ ...button(true), width: "100%", marginTop: 8 }}>{billingBusy ? "…" : isCapacitorNativeRuntime() ? "VOIR / ACHETER SUR GOOGLE PLAY" : "DISPONIBLE SUR ANDROID"}</button>
-                  </div>
-                ))}
+                {STORE_PACKS.map((pack) => {
+                  const focused = focusPackId === pack.id;
+                  const price = billingProducts[pack.googlePlayProductId]?.formattedPrice || "";
+                  return (
+                    <div
+                      key={pack.id}
+                      data-store-pack={pack.id}
+                      style={{
+                        borderRadius: 14,
+                        border: `1px solid ${focused ? theme.primary : theme.borderSoft}`,
+                        background: focused ? `${theme.primary}0d` : "rgba(255,255,255,.025)",
+                        padding: 11,
+                        boxShadow: focused ? `0 0 20px ${theme.primary}22` : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 950 }}>{pack.title}</div>
+                          <div style={{ marginTop: 2, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <span style={{ color: theme.primary, fontSize: 8.5, fontWeight: 1000 }}>{focused ? "SÉLECTIONNÉ" : pack.badge}</span>
+                          {price ? <div style={{ marginTop: 3, color: theme.text, fontSize: 10.5, fontWeight: 950 }}>{price}</div> : null}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 7, display: "flex", flexWrap: "wrap", gap: 5 }}>{pack.contents.map((item) => <span key={item} style={{ borderRadius: 999, border: `1px solid ${theme.primary}33`, background: `${theme.primary}0c`, color: theme.textSoft, padding: "4px 7px", fontSize: 8.5, fontWeight: 850 }}>{item}</span>)}</div>
+                      <button type="button" disabled={billingBusy} onClick={() => void purchase(pack.googlePlayProductId)} style={{ ...button(true), width: "100%", marginTop: 8 }}>{billingBusy ? "…" : isCapacitorNativeRuntime() ? (price ? `ACHETER · ${price}` : "VOIR / ACHETER SUR GOOGLE PLAY") : "DISPONIBLE SUR ANDROID"}</button>
+                    </div>
+                  );
+                })}
               </div>
               {billingMessage ? <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>{billingMessage}</div> : null}
             </section>

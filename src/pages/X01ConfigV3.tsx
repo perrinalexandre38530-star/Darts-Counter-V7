@@ -38,6 +38,8 @@ import {
   bumpDartSetUsage,
   getDartSetThumbImageSrc,
   getDartSetMainImageSrc,
+  resolveDartSetLocalImageSrc,
+  resolveDartSetBestImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
@@ -821,11 +823,22 @@ export function x01MostUsedDartSetIdForProfile(profileId: string, allProfiles: a
   return null;
 }
 
+function x01DartSetMatchesId(set: any, id: any): boolean {
+  const wanted = String(id || "").trim();
+  if (!wanted || !set) return false;
+  const ids = [
+    set?.id, set?.dartSetId, set?.setId, set?.linkedSourceDartSetId, set?.sourceDartSetId,
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  return ids.includes(wanted);
+}
+
 function x01GetDartSetByIdLoose(id: any): any | null {
   const wanted = String(id || "").trim();
   if (!wanted) return null;
   try {
-    return (getAllDartSets() || []).find((set: any) => String(set?.id || "") === wanted) || null;
+    return (getAllDartSets() || []).find((set: any) => x01DartSetMatchesId(set, wanted)) || null;
   } catch {
     return null;
   }
@@ -1548,12 +1561,57 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
   const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);
   const selectedSet = React.useMemo(() => {
-    const fromPicker = orderedSets.find((s: any) => String(s?.id) === String(dartSetId || "")) || null;
+    const fromPicker = orderedSets.find((s: any) => x01DartSetMatchesId(s, dartSetId)) || null;
     const canonical = dartSetId ? x01GetDartSetByIdLoose(dartSetId) : null;
     if (!fromPicker) return canonical;
     if (!canonical) return fromPicker;
     return x01DartSetVisualScore(canonical) > x01DartSetVisualScore(fromPicker) ? canonical : fromPicker;
   }, [orderedSets, dartSetId]);
+
+  // FIX V72 : le petit médaillon X01 résout explicitement le coffre média du set
+  // sélectionné. On ne dépend plus d'une ancienne URL /media cassée conservée sur
+  // l'objet de configuration. La résolution locale est prioritaire et non bloquante.
+  const [selectedVisualSrc, setSelectedVisualSrc] = React.useState<string>("");
+  React.useEffect(() => {
+    let cancelled = false;
+    setSelectedVisualSrc("");
+    if (!selectedSet) return () => { cancelled = true; };
+
+    void (async () => {
+      const local = await resolveDartSetLocalImageSrc(selectedSet, true).catch(() => null);
+      if (!cancelled && local) {
+        setSelectedVisualSrc(String(local));
+        return;
+      }
+      const best = await resolveDartSetBestImageSrc(selectedSet, true).catch(() => null);
+      if (!cancelled && best) setSelectedVisualSrc(String(best));
+    })();
+
+    return () => { cancelled = true; };
+  }, [
+    dartSetId,
+    (selectedSet as any)?.id,
+    (selectedSet as any)?.mediaUpdatedAt,
+    (selectedSet as any)?.updatedAt,
+    (selectedSet as any)?.mainImageAssetId,
+    (selectedSet as any)?.thumbImageAssetId,
+  ]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refresh = () => {
+      if (!selectedSet) return;
+      void resolveDartSetLocalImageSrc(selectedSet, true).then((src) => {
+        if (src) setSelectedVisualSrc(String(src));
+      }).catch(() => undefined);
+    };
+    window.addEventListener("dc-user-media-restored", refresh as EventListener);
+    window.addEventListener("dc-background-restore-finished", refresh as EventListener);
+    return () => {
+      window.removeEventListener("dc-user-media-restored", refresh as EventListener);
+      window.removeEventListener("dc-background-restore-finished", refresh as EventListener);
+    };
+  }, [selectedSet]);
 
   const selectSet = (id: string | null) => {
     onChange(id);
@@ -1624,6 +1682,7 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           >
             <DartSetImage
               set={selectedSet}
+              src={selectedVisualSrc || null}
               preferThumb
               alt=""
               loading="eager"

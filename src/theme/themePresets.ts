@@ -21,7 +21,15 @@ export type ThemeId =
   | "darkTitanium"
   | "darkCarbon"
   | "darkFrost"
-  | "darkObsidian";
+  | "darkObsidian"
+  | "arenaDartsPub"
+  | "arenaChampionship"
+  | "arenaCyber"
+  | "arenaStreet"
+  | "arenaStadiumNight"
+  | "arenaLuxuryClub"
+  | "arenaRetroArcade"
+  | "arenaFireIce";
 
 export type AppTheme = {
   id: ThemeId;
@@ -36,6 +44,12 @@ export type AppTheme = {
   borderSoft: string;
   success: string;
   danger: string;
+  // Extensions visuelles facultatives pour les packs premium.
+  pageBackground?: string;
+  cardBackground?: string;
+  ambientOverlay?: string;
+  ambientOpacity?: number;
+  ambientAnimation?: "drift" | "pulse" | "scan";
 };
 
 export const DEFAULT_THEME_ID: ThemeId = "gold";
@@ -306,5 +320,162 @@ export const THEMES: AppTheme[] = [
     borderSoft: "rgba(255,255,255,0.10)",
     success: "#4CD964",
     danger: "#FF4A4A",
+  },
+
+  // --------------------------------------------
+  // Boutique · ARENAS & AMBIANCES
+  // Univers plus immersifs : fonds, cartes, halos et ambiance légère.
+  // --------------------------------------------
+  {
+    id: "arenaDartsPub",
+    name: "Darts Pub",
+    primary: "#F2B84B",
+    bg: "#100C08",
+    card: "#1A130D",
+    text: "#FFF8EA",
+    textSoft: "rgba(244,226,195,0.78)",
+    accent1: "#D9872E",
+    accent2: "#5FDB78",
+    borderSoft: "rgba(242,184,75,0.30)",
+    success: "#5FDB78",
+    danger: "#FF685C",
+    pageBackground: "radial-gradient(760px 420px at 52% -8%, rgba(242,184,75,.20), transparent 64%), repeating-linear-gradient(90deg, rgba(121,70,32,.11) 0 2px, transparent 2px 42px), linear-gradient(180deg,#160f09 0%,#0b0908 54%,#080708 100%)",
+    cardBackground: "linear-gradient(145deg,rgba(48,31,18,.96),rgba(20,15,12,.98))",
+    ambientOverlay: "radial-gradient(circle at 18% 14%, rgba(242,184,75,.55), transparent 24%), radial-gradient(circle at 82% 30%, rgba(95,219,120,.22), transparent 20%)",
+    ambientOpacity: 0.055,
+    ambientAnimation: "pulse",
+  },
+  {
+    id: "arenaChampionship",
+    name: "Championship Arena",
+    primary: "#FF424E",
+    bg: "#09070A",
+    card: "#171014",
+    text: "#FFF4F5",
+    textSoft: "rgba(242,213,216,0.78)",
+    accent1: "#FF424E",
+    accent2: "#FFD45A",
+    borderSoft: "rgba(255,66,78,0.34)",
+    success: "#38E38A",
+    danger: "#FF424E",
+    pageBackground: "radial-gradient(520px 360px at 16% 0%, rgba(255,66,78,.22), transparent 70%), radial-gradient(520px 360px at 84% 0%, rgba(255,212,90,.11), transparent 72%), linear-gradient(180deg,#12090d 0%,#08070a 60%,#050507 100%)",
+    cardBackground: "linear-gradient(155deg,rgba(40,18,24,.96),rgba(15,10,13,.98))",
+    ambientOverlay: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,.35) 48%, transparent 59%)",
+    ambientOpacity: 0.035,
+    ambientAnimation: "scan",
+  },
+  {
+    id: "arenaCyber",
+    name: "Cyber Arena",
+    primary: "#20E7FF",
+    bg: "#040815",
+    card: "#091226",
+    text: "#ECFDFF",
+    textSoft: "rgba(190,236,244,0.78)",
+    accent1: "#20E7FF",
+    accent2: "#F347FF",
+    borderSoft: "rgba(32,231,255,0.38)",
+    success: "#39F29D",
+    danger: "#FF4D7A",
+    pageBackground: "radial-gradient(700px 440px at 16% 2%, rgba(32,231,255,.20), transparent 65%), radial-gradient(650px 430px at 92% 20%, rgba(243,71,255,.16), transparent 62%), linear-gradient(180deg,#071126 0%,#030713 100%)",
+    cardBackground: "linear-gradient(145deg,rgba(9,28,55,.96),rgba(7,10,28,.98))",
+    ambientOverlay: "repeating-linear-gradient(90deg, rgba(32,231,255,.26) 0 1px, transparent 1px 54px), repeating-linear-gradient(0deg, rgba(243,71,255,.18) 0 1px, transparent 1px 54px)",
+    ambientOpacity: 0.032,
+    ambientAnimation: "drift",
+  },
+  {
+    id: "arenaStreet",
+    name: "Street Sport",
+    primary: "#A7FF3F",
+    bg: "#0C0D0D",
+    card: "#151718",
+    text: "#F7FAF2",
+    textSoft: "rgba(215,222,207,0.74)",
+    accent1: "#A7FF3F",
+    accent2: "#FF8A34",
+    borderSoft: "rgba(167,255,63,0.28)",
+    success: "#60E66B",
+    danger: "#FF664F",
+    pageBackground: "radial-gradient(620px 360px at 0% 12%, rgba(167,255,63,.12), transparent 70%), repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 1px, transparent 1px 18px), linear-gradient(180deg,#141616 0%,#090a0b 100%)",
+    cardBackground: "linear-gradient(145deg,rgba(31,34,34,.97),rgba(16,17,18,.98))",
+    ambientOverlay: "radial-gradient(circle at 20% 80%, rgba(167,255,63,.34), transparent 25%), radial-gradient(circle at 88% 22%, rgba(255,138,52,.30), transparent 22%)",
+    ambientOpacity: 0.035,
+    ambientAnimation: "drift",
+  },
+  {
+    id: "arenaStadiumNight",
+    name: "Stadium Night",
+    primary: "#4DA3FF",
+    bg: "#050A16",
+    card: "#0A1427",
+    text: "#F2F7FF",
+    textSoft: "rgba(199,217,242,0.78)",
+    accent1: "#4DA3FF",
+    accent2: "#E8F3FF",
+    borderSoft: "rgba(77,163,255,0.34)",
+    success: "#42DF8B",
+    danger: "#FF5D67",
+    pageBackground: "radial-gradient(360px 520px at 10% -6%, rgba(221,240,255,.16), transparent 70%), radial-gradient(360px 520px at 90% -6%, rgba(77,163,255,.20), transparent 70%), linear-gradient(180deg,#0a1730 0%,#050914 72%,#03050b 100%)",
+    cardBackground: "linear-gradient(150deg,rgba(16,34,63,.96),rgba(8,14,29,.98))",
+    ambientOverlay: "linear-gradient(74deg, transparent 34%, rgba(255,255,255,.25) 45%, transparent 55%), linear-gradient(106deg, transparent 36%, rgba(77,163,255,.28) 47%, transparent 57%)",
+    ambientOpacity: 0.038,
+    ambientAnimation: "pulse",
+  },
+  {
+    id: "arenaLuxuryClub",
+    name: "Luxury Club",
+    primary: "#E8C56B",
+    bg: "#080808",
+    card: "#11100F",
+    text: "#FFF9EA",
+    textSoft: "rgba(225,214,190,0.76)",
+    accent1: "#E8C56B",
+    accent2: "#F7E9B7",
+    borderSoft: "rgba(232,197,107,0.28)",
+    success: "#4FD08B",
+    danger: "#E35B61",
+    pageBackground: "radial-gradient(760px 400px at 50% -8%, rgba(232,197,107,.18), transparent 66%), linear-gradient(120deg,rgba(255,255,255,.018) 25%,transparent 25% 50%,rgba(255,255,255,.018) 50% 75%,transparent 75%), linear-gradient(180deg,#11100e 0%,#060607 100%)",
+    cardBackground: "linear-gradient(145deg,rgba(31,28,22,.98),rgba(13,13,13,.99))",
+    ambientOverlay: "radial-gradient(circle at 50% 12%, rgba(247,233,183,.40), transparent 25%)",
+    ambientOpacity: 0.032,
+    ambientAnimation: "pulse",
+  },
+  {
+    id: "arenaRetroArcade",
+    name: "Retro Arcade",
+    primary: "#FF4FD8",
+    bg: "#09051A",
+    card: "#160B2A",
+    text: "#FFF1FE",
+    textSoft: "rgba(229,205,244,0.80)",
+    accent1: "#FF4FD8",
+    accent2: "#35E8FF",
+    borderSoft: "rgba(255,79,216,0.34)",
+    success: "#45F49A",
+    danger: "#FF5576",
+    pageBackground: "radial-gradient(660px 400px at 50% -2%, rgba(255,79,216,.20), transparent 64%), linear-gradient(180deg,#17072d 0%,#080515 66%,#04040c 100%)",
+    cardBackground: "linear-gradient(145deg,rgba(43,16,64,.96),rgba(14,8,28,.98))",
+    ambientOverlay: "repeating-linear-gradient(0deg, rgba(53,232,255,.22) 0 1px, transparent 1px 34px), repeating-linear-gradient(90deg, rgba(255,79,216,.20) 0 1px, transparent 1px 34px)",
+    ambientOpacity: 0.035,
+    ambientAnimation: "scan",
+  },
+  {
+    id: "arenaFireIce",
+    name: "Fire & Ice",
+    primary: "#70D8FF",
+    bg: "#080A10",
+    card: "#11131A",
+    text: "#F8FBFF",
+    textSoft: "rgba(216,225,238,0.78)",
+    accent1: "#70D8FF",
+    accent2: "#FF6848",
+    borderSoft: "rgba(112,216,255,0.30)",
+    success: "#55E095",
+    danger: "#FF6848",
+    pageBackground: "radial-gradient(620px 500px at -6% 12%, rgba(54,170,255,.28), transparent 67%), radial-gradient(620px 500px at 106% 12%, rgba(255,92,54,.25), transparent 67%), linear-gradient(180deg,#0d1018 0%,#06070b 100%)",
+    cardBackground: "linear-gradient(110deg,rgba(13,29,44,.97),rgba(22,17,21,.97) 52%,rgba(44,22,16,.97))",
+    ambientOverlay: "radial-gradient(circle at 12% 60%, rgba(112,216,255,.42), transparent 26%), radial-gradient(circle at 88% 40%, rgba(255,104,72,.42), transparent 26%)",
+    ambientOpacity: 0.045,
+    ambientAnimation: "drift",
   },
 ];

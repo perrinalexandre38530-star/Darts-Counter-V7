@@ -36,6 +36,8 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
+import { ARENAS_THEME_IDS, areArenasThemesUnlocked, canUseTheme, isArenasTheme } from "../theme/themeAccess";
+import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import OnlineStatsCleanupPanel from "../components/OnlineStatsCleanupPanel";
@@ -159,6 +161,8 @@ type Props = { go?: (tab: any, params?: any) => void; params?: any };
 const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "orange", "white"];
 const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
+const ARENAS: ThemeId[] = [...ARENAS_THEME_IDS];
+const ARENAS_STORE_PACK_ID = "themes_neon_01";
 
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
   gold: { defaultLabel: "Gold néon", defaultDesc: "Thème premium doré" },
@@ -180,6 +184,15 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   darkCarbon: { defaultLabel: "Carbone", defaultDesc: "Ambiance fibre carbone moderne" },
   darkFrost: { defaultLabel: "Givre sombre", defaultDesc: "Noir givré futuriste" },
   darkObsidian: { defaultLabel: "Obsidienne", defaultDesc: "Noir poli premium et lisible" },
+
+  arenaDartsPub: { defaultLabel: "Darts Pub", defaultDesc: "Bois sombre, lumière chaude et touches pub" },
+  arenaChampionship: { defaultLabel: "Championship Arena", defaultDesc: "Rouge compétition, projecteurs et ambiance TV" },
+  arenaCyber: { defaultLabel: "Cyber Arena", defaultDesc: "Cyan, magenta et profondeur holographique" },
+  arenaStreet: { defaultLabel: "Street Sport", defaultDesc: "Béton sombre, énergie urbaine et accents lime" },
+  arenaStadiumNight: { defaultLabel: "Stadium Night", defaultDesc: "Bleu nuit, projecteurs et ambiance grand stade" },
+  arenaLuxuryClub: { defaultLabel: "Luxury Club", defaultDesc: "Noir, or et finition club premium" },
+  arenaRetroArcade: { defaultLabel: "Retro Arcade", defaultDesc: "Néons rétro modernisés et grille lumineuse" },
+  arenaFireIce: { defaultLabel: "Fire & Ice", defaultDesc: "Contraste glace bleue et chaleur rouge-orange" },
 };
 
 function getPreset(id: ThemeId): AppTheme {
@@ -749,15 +762,36 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "dark";
-const THEME_PACKS: Array<{ id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[] }> = [
+type ThemePackId = "neons" | "soft" | "dark" | "arenas";
+type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
+const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
   { id: "soft", ids: SOFTS, label: "COULEURS DOUCES", subtitle: "Tons modernes, naturels et apaisés", colors: ["#22E6FF", "#3B82F6", "#A3B18A", "#A7D8FF"] },
   { id: "dark", ids: DARKS, label: "DARK PREMIUM", subtitle: "Métal, carbone et noirs premium", colors: ["#5A5A5A", "#263238", "#8CA6B8", "#1D1D24"] },
+  { id: "arenas", ids: ARENAS, label: "ARENAS & AMBIANCES", subtitle: "8 univers immersifs · fonds, cartes, halos et animations", colors: ["#20E7FF", "#FF424E", "#E8C56B", "#FF4FD8"], premium: true },
 ];
 
-function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { themeIdPreview: ThemeId | null; activeThemeId: ThemeId; theme: any; onApply: (id: ThemeId) => void }) {
+function ThemePreviewBlock({
+  themeIdPreview,
+  activeThemeId,
+  theme,
+  onApply,
+  locked = false,
+  onOpenShop,
+}: {
+  themeIdPreview: ThemeId | null;
+  activeThemeId: ThemeId;
+  theme: any;
+  onApply: (id: ThemeId) => void;
+  locked?: boolean;
+  onOpenShop?: () => void;
+}) {
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
+  const previewBackground = preview
+    ? preview.pageBackground || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
+    : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
+  const previewCard = preview?.cardBackground || preview?.card;
+
   return (
     <div
       style={{
@@ -765,9 +799,7 @@ function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { 
         aspectRatio: "16 / 9",
         borderRadius: 18,
         border: `1px solid ${preview?.borderSoft || theme.borderSoft}`,
-        background: preview
-          ? `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
-          : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)",
+        background: previewBackground,
         overflow: "hidden",
         position: "relative",
         boxShadow: preview ? `0 0 24px ${preview.primary}22, inset 0 0 28px rgba(0,0,0,.28)` : "inset 0 0 30px rgba(0,0,0,.38)",
@@ -776,23 +808,38 @@ function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { 
         padding: 14,
       }}
     >
+      {preview?.ambientOverlay ? (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: "-8%",
+            background: preview.ambientOverlay,
+            opacity: Math.min(.16, Math.max(.045, (preview.ambientOpacity || .04) * 1.8)),
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
       {!preview ? (
         <div style={{ textAlign: "center" }}>
           <img src="/img/settings-theme-logo-preview.webp" alt="MULTISPORTS SCORING" style={{ width: "100%", height: "100%", objectFit: "cover", position: "absolute", inset: 0 }} />
           <div style={{ position: "absolute", left: 14, right: 14, bottom: 10, textAlign: "center", color: "rgba(255,255,255,.78)", fontSize: 10.5, fontWeight: 850, textShadow: "0 2px 10px rgba(0,0,0,.9)" }}>Sélectionne un pack puis un thème pour afficher l’aperçu</div>
         </div>
       ) : (
-        <div style={{ width: "100%", maxWidth: 350 }}>
+        <div style={{ width: "100%", maxWidth: 350, position: "relative", zIndex: 1 }}>
+          {locked ? (
+            <div style={{ position: "absolute", top: -6, right: 0, borderRadius: 999, border: `1px solid ${preview.primary}77`, background: "rgba(3,5,13,.86)", color: preview.primary, padding: "4px 8px", fontSize: 8.5, fontWeight: 1000, boxShadow: `0 0 12px ${preview.primary}28` }}>🔒 PACK BOUTIQUE</div>
+          ) : null}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-            <div>
+            <div style={{ paddingRight: locked ? 85 : 0 }}>
               <div style={{ color: preview.primary, fontWeight: 1000, fontSize: 19, textTransform: "uppercase", letterSpacing: .7, textShadow: `0 0 12px ${preview.primary}55` }}>{THEME_META[preview.id]?.defaultLabel || preview.name}</div>
               <div style={{ marginTop: 3, color: preview.textSoft, fontSize: 10.5 }}>{THEME_META[preview.id]?.defaultDesc || preview.name}</div>
             </div>
-            <div style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${preview.primary}88`, background: preview.card, boxShadow: `0 0 18px ${preview.primary}33` }} />
+            <div style={{ width: 42, height: 42, borderRadius: 14, border: `1px solid ${preview.primary}88`, background: previewCard, boxShadow: `0 0 18px ${preview.primary}33`, flexShrink: 0 }} />
           </div>
-          <div style={{ borderRadius: 16, border: `1px solid ${preview.borderSoft}`, background: preview.card, padding: 12, boxShadow: `0 12px 22px rgba(0,0,0,.35), 0 0 16px ${preview.primary}16` }}>
+          <div style={{ borderRadius: 16, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 12, boxShadow: `0 12px 22px rgba(0,0,0,.35), 0 0 16px ${preview.primary}16` }}>
             <div style={{ color: preview.text, fontSize: 12.5, fontWeight: 950 }}>Exemple de carte</div>
-            <div style={{ color: preview.textSoft, fontSize: 10.5, marginTop: 3 }}>Texte secondaire et accent de l’interface.</div>
+            <div style={{ color: preview.textSoft, fontSize: 10.5, marginTop: 3 }}>Fond, carte, halo et accents de cet univers.</div>
             <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
               <div style={{ flex: 1, height: 32, borderRadius: 11, border: `1px solid ${preview.primary}66`, background: `${preview.primary}18`, color: preview.primary, display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 950 }}>BOUTON</div>
               <div style={{ width: 32, height: 32, borderRadius: 999, border: `1px solid ${preview.primary}77`, background: "rgba(0,0,0,.35)", color: preview.primary, display: "grid", placeItems: "center", fontWeight: 1000 }}>i</div>
@@ -800,22 +847,22 @@ function ThemePreviewBlock({ themeIdPreview, activeThemeId, theme, onApply }: { 
           </div>
           <button
             type="button"
-            onClick={() => onApply(preview.id)}
+            onClick={() => locked ? onOpenShop?.() : onApply(preview.id)}
             style={{
               marginTop: 10,
               width: "100%",
               minHeight: 38,
               borderRadius: 12,
               border: `1px solid ${preview.primary}88`,
-              background: preview.id === activeThemeId ? `${preview.primary}20` : preview.primary,
-              color: preview.id === activeThemeId ? preview.primary : "#050712",
+              background: locked ? `linear-gradient(135deg,${preview.primary},${preview.accent2 || preview.primary})` : preview.id === activeThemeId ? `${preview.primary}20` : preview.primary,
+              color: locked ? "#050712" : preview.id === activeThemeId ? preview.primary : "#050712",
               fontSize: 11,
               fontWeight: 1000,
               cursor: "pointer",
               boxShadow: `0 0 15px ${preview.primary}2c`,
             }}
           >
-            {preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME"}
+            {locked ? "🔒 VOIR CE PACK DANS LA BOUTIQUE" : preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME"}
           </button>
         </div>
       )}
@@ -3920,6 +3967,7 @@ export function Settings({ go, params }: Props) {
   // immédiatement la préférence du profil actif. L'ouverture de MON PROFIL
   // ne doit jamais pouvoir réinjecter un ancien thème.
   const applyThemePreference = React.useCallback((nextTheme: ThemeId) => {
+    if (!canUseTheme(nextTheme)) return;
     setThemeId(nextTheme);
 
     try {
@@ -3952,12 +4000,12 @@ export function Settings({ go, params }: Props) {
   }, [setThemeId, storeBridge]);
 
   const isBlueNightTheme = themeId === "blueNight";
-  const PAGE_BG = isBlueNightTheme
+  const PAGE_BG = theme.pageBackground || (isBlueNightTheme
     ? "radial-gradient(900px 520px at 50% -14%, rgba(34,230,255,0.14), transparent 62%), radial-gradient(680px 360px at 0% 28%, rgba(122,247,255,0.08), transparent 62%), #06111F"
-    : LEGACY_PAGE_BG;
-  const CARD_BG = isBlueNightTheme
+    : LEGACY_PAGE_BG);
+  const CARD_BG = theme.cardBackground || (isBlueNightTheme
     ? "linear-gradient(180deg, rgba(15,34,55,0.96), rgba(6,17,31,0.98))"
-    : LEGACY_CARD_BG;
+    : LEGACY_CARD_BG);
 
   const validSettingsTabs: SettingsTab[] = ["menu", "account", "advertising", "shop", "privacy", "theme", "lang", "audio", "general", "sport", "castViewer", "developer", "awena"];
   const validAccountPages: AccountPage[] = ["account_menu", "account_storage", "account_notifications", "account_danger"];
@@ -3965,6 +4013,8 @@ export function Settings({ go, params }: Props) {
     ? (String(params?.settingsTab) as SettingsTab)
     : "menu";
   const [tab, setTab] = React.useState<SettingsTab>(initialSettingsTab);
+  const [shopInitialTab, setShopInitialTab] = React.useState<"premium" | "packs" | "billing">("premium");
+  const [shopFocusPackId, setShopFocusPackId] = React.useState<string | null>(null);
   const [accountPage, setAccountPage] = React.useState<AccountPage>(() => {
     const requested = String(params?.accountPage || "") as AccountPage;
     if (validAccountPages.includes(requested)) return requested;
@@ -4065,9 +4115,22 @@ export function Settings({ go, params }: Props) {
     const [previewThemeId, setPreviewThemeId] = React.useState<ThemeId | null>(null);
     const [pickerOpen, setPickerOpen] = React.useState(false);
     const [pickerPackId, setPickerPackId] = React.useState<ThemePackId | null>(null);
+    const [entitlementRevision, setEntitlementRevision] = React.useState(0);
 
+    React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
+
+    const arenasUnlocked = React.useMemo(() => areArenasThemesUnlocked(), [entitlementRevision]);
     const selectedPack = selectedPackId ? THEME_PACKS.find((pack) => pack.id === selectedPackId) || null : null;
     const pickerPack = pickerPackId ? THEME_PACKS.find((pack) => pack.id === pickerPackId) || null : null;
+
+    const themeLocked = (id: ThemeId | null | undefined) => Boolean(id && isArenasTheme(id) && !arenasUnlocked);
+    const packLocked = (pack: ThemePack) => Boolean(pack.premium && !arenasUnlocked);
+
+    const openThemeShop = () => {
+      setShopInitialTab("packs");
+      setShopFocusPackId(ARENAS_STORE_PACK_ID);
+      setTab("shop");
+    };
 
     const openPack = (packId: ThemePackId) => {
       const pack = THEME_PACKS.find((entry) => entry.id === packId) || null;
@@ -4077,44 +4140,60 @@ export function Settings({ go, params }: Props) {
 
     const applyTheme = (id: ThemeId) => {
       setPreviewThemeId(id);
+      if (themeLocked(id)) return;
       applyThemePreference(id);
     };
 
-    const packCard = (pack: (typeof THEME_PACKS)[number]) => (
-      <button
-        key={pack.id}
-        type="button"
-        onClick={() => openPack(pack.id)}
-        style={{
-          minHeight: 86,
-          borderRadius: 17,
-          border: `1px solid ${theme.borderSoft}`,
-          background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
-          color: theme.text,
-          textAlign: "left",
-          padding: "12px 14px",
-          cursor: "pointer",
-          boxShadow: `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,19px)", gap: 5 }}>
-            {pack.colors.slice(0,4).map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
+    const packCard = (pack: ThemePack) => {
+      const locked = packLocked(pack);
+      return (
+        <button
+          key={pack.id}
+          type="button"
+          onClick={() => openPack(pack.id)}
+          style={{
+            minHeight: pack.premium ? 96 : 86,
+            borderRadius: 17,
+            border: `1px solid ${pack.premium ? `${pack.colors[0]}77` : theme.borderSoft}`,
+            background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
+            color: theme.text,
+            textAlign: "left",
+            padding: "12px 14px",
+            cursor: "pointer",
+            boxShadow: pack.premium ? `0 12px 25px rgba(0,0,0,.36), 0 0 20px ${pack.colors[0]}24` : `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          {pack.premium ? (
+            <span style={{ position: "absolute", top: 7, right: 8, borderRadius: 999, border: `1px solid ${pack.colors[0]}66`, background: "rgba(0,0,0,.52)", color: pack.colors[0], padding: "3px 7px", fontSize: 7.8, fontWeight: 1000, letterSpacing: .45 }}>
+              {locked ? "🔒 BOUTIQUE" : "✓ DÉBLOQUÉ"}
+            </span>
+          ) : null}
+          <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", paddingTop: pack.premium ? 8 : 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,19px)", gap: 5 }}>
+              {pack.colors.slice(0,4).map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
+              <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
+            </div>
+            <div style={{ color: pack.premium ? pack.colors[2] : theme.textSoft, fontSize: 9.5, fontWeight: 900, whiteSpace: "nowrap" }}>{pack.ids.length} thèmes ›</div>
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
-            <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
-          </div>
-          <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 900, whiteSpace: "nowrap" }}>{pack.ids.length} thèmes ›</div>
-        </div>
-      </button>
-    );
+        </button>
+      );
+    };
 
     return (
       <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16, overflow: "hidden" }}>
-        <ThemePreviewBlock themeIdPreview={previewThemeId} activeThemeId={themeId} theme={theme} onApply={applyTheme} />
+        <ThemePreviewBlock
+          themeIdPreview={previewThemeId}
+          activeThemeId={themeId}
+          theme={theme}
+          onApply={applyTheme}
+          locked={themeLocked(previewThemeId)}
+          onOpenShop={openThemeShop}
+        />
 
         <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
           <button
@@ -4149,7 +4228,7 @@ export function Settings({ go, params }: Props) {
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                 <button type="button" onClick={() => { setSelectedPackId(null); setPreviewThemeId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
-                <div style={{ color: theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}</div>
+                <div style={{ color: selectedPack.premium ? selectedPack.colors[0] : theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}{selectedPack.premium && !arenasUnlocked ? " · 🔒 BOUTIQUE" : ""}</div>
               </div>
               <SettingsLoopCarousel
                 items={selectedPack.ids}
@@ -4167,6 +4246,7 @@ export function Settings({ go, params }: Props) {
                   const meta = THEME_META[id];
                   const isActive = id === themeId;
                   const isPreview = id === previewThemeId;
+                  const locked = themeLocked(id);
                   return (
                     <button
                       type="button"
@@ -4176,7 +4256,7 @@ export function Settings({ go, params }: Props) {
                         height: 118,
                         borderRadius: 16,
                         border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
-                        background: `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`,
+                        background: preset.cardBackground || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`,
                         color: preset.text,
                         padding: 10,
                         cursor: "pointer",
@@ -4186,15 +4266,22 @@ export function Settings({ go, params }: Props) {
                         alignItems: "center",
                         justifyContent: "center",
                         gap: 7,
+                        position: "relative",
+                        overflow: "hidden",
                       }}
                     >
-                      <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55` }} />
-                      <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15 }}>{meta.defaultLabel}</span>
-                      <span style={{ fontSize: 8.5, color: preset.textSoft }}>{isActive ? "ACTIF" : "APERÇU"}</span>
+                      {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .08, pointerEvents: "none" }} /> : null}
+                      {locked ? <span style={{ position: "absolute", top: 6, right: 6, fontSize: 12 }}>🔒</span> : null}
+                      <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55`, position: "relative" }} />
+                      <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>
+                      <span style={{ fontSize: 8.5, color: locked ? preset.primary : preset.textSoft, position: "relative" }}>{locked ? "APERÇU BOUTIQUE" : isActive ? "ACTIF" : "APERÇU"}</span>
                     </button>
                   );
                 }}
               />
+              {selectedPack.premium && !arenasUnlocked ? (
+                <button type="button" onClick={openThemeShop} style={{ width: "100%", marginTop: 10, minHeight: 40, borderRadius: 13, border: `1px solid ${selectedPack.colors[0]}77`, background: `linear-gradient(135deg,${selectedPack.colors[0]},${selectedPack.colors[3]})`, color: "#050712", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${selectedPack.colors[0]}2b` }}>🔒 DÉBLOQUER ARENAS & AMBIANCES</button>
+              ) : null}
             </>
           )}
         </div>
@@ -4207,16 +4294,38 @@ export function Settings({ go, params }: Props) {
                 <button type="button" onClick={() => setPickerOpen(false)} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: theme.text, fontSize: 20, cursor: "pointer" }}>×</button>
               </div>
               <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
-                  {THEME_PACKS.map((pack) => (
-                    <button key={pack.id} type="button" onClick={() => setPickerPackId(pack.id)} style={{ minHeight: 62, borderRadius: 13, border: `1px solid ${pickerPackId === pack.id ? pack.colors[0] : theme.borderSoft}`, background: `linear-gradient(135deg,${pack.colors[0]}20,rgba(255,255,255,.025))`, color: pickerPackId === pack.id ? pack.colors[0] : theme.text, fontSize: 9.5, fontWeight: 950, cursor: "pointer", padding: 8 }}>{pack.label}</button>
-                  ))}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
+                  {THEME_PACKS.map((pack) => {
+                    const locked = packLocked(pack);
+                    return (
+                      <button key={pack.id} type="button" onClick={() => setPickerPackId(pack.id)} style={{ minHeight: 62, borderRadius: 13, border: `1px solid ${pickerPackId === pack.id ? pack.colors[0] : theme.borderSoft}`, background: `linear-gradient(135deg,${pack.colors[0]}20,rgba(255,255,255,.025))`, color: pickerPackId === pack.id ? pack.colors[0] : theme.text, fontSize: 9.5, fontWeight: 950, cursor: "pointer", padding: 8, position: "relative" }}>
+                        {pack.label}{locked ? " · 🔒" : ""}
+                      </button>
+                    );
+                  })}
                 </div>
                 {pickerPack ? (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
                     {pickerPack.ids.map((id) => {
-                      const preset = getPreset(id); const meta = THEME_META[id];
-                      return <button key={id} type="button" onClick={() => { setSelectedPackId(pickerPack.id); applyTheme(id); setPickerOpen(false); }} style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${id === themeId ? preset.primary : theme.borderSoft}`, background: `${preset.primary}12`, color: id === themeId ? preset.primary : theme.text, padding: 9, fontSize: 10.5, fontWeight: 900, cursor: "pointer", textAlign: "left" }}><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: preset.primary, marginRight: 7, boxShadow: `0 0 8px ${preset.primary}66` }} />{meta.defaultLabel}</button>;
+                      const preset = getPreset(id);
+                      const meta = THEME_META[id];
+                      const locked = themeLocked(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPackId(pickerPack.id);
+                            setPreviewThemeId(id);
+                            if (!locked) applyThemePreference(id);
+                            setPickerOpen(false);
+                          }}
+                          style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${id === themeId ? preset.primary : theme.borderSoft}`, background: `${preset.primary}12`, color: id === themeId ? preset.primary : theme.text, padding: 9, fontSize: 10.5, fontWeight: 900, cursor: "pointer", textAlign: "left" }}
+                        >
+                          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: preset.primary, marginRight: 7, boxShadow: `0 0 8px ${preset.primary}66` }} />
+                          {meta.defaultLabel}{locked ? "  🔒" : ""}
+                        </button>
+                      );
                     })}
                   </div>
                 ) : null}
@@ -5323,7 +5432,7 @@ export function Settings({ go, params }: Props) {
               title={L("BOUTIQUE", "STORE", "TIENDA")}
               subtitle={L("Premium, packs additionnels et achats Google Play.", "Premium, add-on packs and Google Play purchases.", "Premium, packs adicionales y compras de Google Play.")}
               theme={theme}
-              onClick={() => setTab("shop")}
+              onClick={() => { setShopInitialTab("premium"); setShopFocusPackId(null); setTab("shop"); }}
             />
             <SettingsMenuCard
               title={L("CONFIDENTIALITÉ & DONNÉES", "PRIVACY & DATA", "PRIVACIDAD Y DATOS")}
@@ -5348,7 +5457,7 @@ export function Settings({ go, params }: Props) {
 
         {tab === "advertising" && <MonetizationSettingsPanel mode="advertising" />}
 
-        {tab === "shop" && <MonetizationSettingsPanel mode="shop" />}
+        {tab === "shop" && <MonetizationSettingsPanel mode="shop" initialShopTab={shopInitialTab} focusPackId={shopFocusPackId} />}
 
         {tab === "privacy" && <PrivacyDataSection onOpenAccount={() => { setAccountPage("account_menu"); setTab("account"); }} />}
 

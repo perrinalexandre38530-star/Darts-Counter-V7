@@ -419,3 +419,47 @@ body {
   backdrop-filter: blur(10px);
 }
 
+
+/* ====== Ambiance visuelle légère des thèmes Boutique ======
+   Un seul calque fixe, non interactif et animé uniquement par transform/opacity
+   pour conserver une navigation fluide sur mobile. */
+body::after{
+  content:"";
+  position:fixed;
+  inset:-8%;
+  pointer-events:none;
+  z-index:2;
+  background:var(--dc-theme-ambient, none);
+  opacity:var(--dc-theme-ambient-opacity, 0);
+  transform:translate3d(0,0,0) scale(1.04);
+  transform-origin:center;
+  will-change:transform,opacity;
+}
+
+:root[data-dc-theme-ambient="drift"] body::after{
+  animation:dcThemeAmbientDrift 15s ease-in-out infinite alternate;
+}
+:root[data-dc-theme-ambient="pulse"] body::after{
+  animation:dcThemeAmbientPulse 8s ease-in-out infinite alternate;
+}
+:root[data-dc-theme-ambient="scan"] body::after{
+  animation:dcThemeAmbientScan 13s ease-in-out infinite alternate;
+}
+
+@keyframes dcThemeAmbientDrift{
+  from{transform:translate3d(-1.5%,-.5%,0) scale(1.04)}
+  to{transform:translate3d(1.5%,1%,0) scale(1.08)}
+}
+@keyframes dcThemeAmbientPulse{
+  from{transform:translate3d(0,0,0) scale(1.03)}
+  to{transform:translate3d(0,-.6%,0) scale(1.07)}
+}
+@keyframes dcThemeAmbientScan{
+  from{transform:translate3d(-2%,0,0) scale(1.04)}
+  to{transform:translate3d(2%,0,0) scale(1.05)}
+}
+@media (prefers-reduced-motion: reduce){
+  body::after{animation:none!important;transform:none!important}
+}
+/* Les surfaces publicitaires inline restent toujours au-dessus du voile d'ambiance. */
+[data-dc-paid-inline-ad]{position:relative;z-index:3}

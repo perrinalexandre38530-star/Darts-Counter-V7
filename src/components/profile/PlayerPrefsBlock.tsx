@@ -13,6 +13,7 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang, type Lang } from "../../contexts/LangContext";
 import { THEMES, type ThemeId } from "../../theme/themePresets";
+import { canUseTheme } from "../../theme/themeAccess";
 import type { Profile } from "../../lib/types";
 
 export type PlayerPrefs = {
@@ -45,10 +46,10 @@ function normalizeTheme(input: unknown): ThemeId {
   const rawLower = raw.toLowerCase();
   const ids = THEMES.map((th) => String(th.id));
   const idMatch = ids.find((id) => id.toLowerCase() === rawLower);
-  if (idMatch) return idMatch as ThemeId;
+  if (idMatch && canUseTheme(idMatch as ThemeId)) return idMatch as ThemeId;
 
   const labelMatch = THEMES.find((th) => String(th.label ?? th.id).trim().toLowerCase() === rawLower);
-  if (labelMatch) return labelMatch.id as ThemeId;
+  if (labelMatch && canUseTheme(labelMatch.id)) return labelMatch.id as ThemeId;
 
   return (THEMES[0]?.id || "gold") as ThemeId;
 }
@@ -163,7 +164,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           value={current.appTheme}
           onChange={(e) => update("appTheme", e.target.value as ThemeId)}
         >
-          {THEMES.map((th) => (
+          {THEMES.filter((th) => canUseTheme(th.id)).map((th) => (
             <option key={th.id} value={th.id}>
               {th.label ?? th.id}
             </option>

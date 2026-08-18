@@ -12,6 +12,8 @@ import {
   type ThemeId,
   type AppTheme,
 } from "../theme/themePresets";
+import { canUseTheme } from "../theme/themeAccess";
+import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 
 type ThemeContextValue = {
   theme: AppTheme;
@@ -45,7 +47,7 @@ function loadInitialThemeId(): ThemeId {
     if (!raw) return DEFAULT_THEME_ID;
     const id = raw as ThemeId;
     const exists = THEMES.some((t) => t.id === id);
-    return exists ? id : DEFAULT_THEME_ID;
+    return exists && canUseTheme(id) ? id : DEFAULT_THEME_ID;
   } catch {
     return DEFAULT_THEME_ID;
   }
@@ -61,6 +63,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [themeId]);
 
   const setThemeId = React.useCallback((id: ThemeId) => {
+    if (!canUseTheme(id)) return;
     setThemeIdState(id);
     try {
       if (typeof window !== "undefined") {
@@ -70,6 +73,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, []);
+
+  React.useEffect(() => subscribeVerifiedEntitlements(() => {
+    setThemeIdState((current) => {
+      try {
+        const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
+        if (stored && THEMES.some((item) => item.id === stored) && canUseTheme(stored)) return stored;
+      } catch {}
+      return canUseTheme(current) ? current : DEFAULT_THEME_ID;
+    });
+  }), []);
 
   // 🔥 Export des couleurs du thème en variables CSS globales
   React.useEffect(() => {
@@ -91,13 +104,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Elles permettent au thème Bleu nuit de reprendre le même rendu partout :
     // fond nuit, panneaux bleu sombre, bordures cyan et halos lumineux.
     root.style.setProperty("--bg", theme.bg);
-    root.style.setProperty(
-      "--bg-grad",
-      `radial-gradient(900px 520px at 50% -14%, ${glow1}, transparent 62%), radial-gradient(680px 360px at 0% 28%, ${glow2}, transparent 62%), ${theme.bg}`
-    );
+    const pageBackground = theme.pageBackground || `radial-gradient(900px 520px at 50% -14%, ${glow1}, transparent 62%), radial-gradient(680px 360px at 0% 28%, ${glow2}, transparent 62%), ${theme.bg}`;
+    const cardBackground = theme.cardBackground || `linear-gradient(180deg, ${glassTop}, ${glassBottom})`;
+
+    root.style.setProperty("--bg-grad", pageBackground);
     root.style.setProperty("--panel", theme.card);
     root.style.setProperty("--panel-2", theme.bg);
-    root.style.setProperty("--glass", `linear-gradient(180deg, ${glassTop}, ${glassBottom})`);
+    root.style.setProperty("--glass", cardBackground);
+    root.style.setProperty("--dc-theme-ambient", theme.ambientOverlay || "none");
+    root.style.setProperty("--dc-theme-ambient-opacity", String(theme.ambientOpacity ?? 0));
+    root.style.setProperty("--dc-theme-ambient-animation", theme.ambientAnimation || "none");
+    root.dataset.dcTheme = theme.id;
+    root.dataset.dcThemeAmbient = theme.ambientAnimation || "none";
     root.style.setProperty("--stroke", theme.borderSoft);
     root.style.setProperty("--text", theme.text);
     root.style.setProperty("--muted", theme.textSoft);
