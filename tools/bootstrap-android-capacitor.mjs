@@ -50,6 +50,7 @@ run("npm", ["run", "build"]);
 // Pipeline natif sûr : UN seul sync, puis injections AdMob + Billing.
 // Ne jamais relancer cap sync après, sinon les fichiers Gradle/Manifest peuvent être régénérés.
 run("npx", ["cap", "sync", "android"]);
+run("node", ["./tools/configure-android-awena-translation.mjs"]);
 run("node", ["./tools/configure-android-admob.mjs"]);
 run("node", ["./tools/configure-android-play-billing.mjs"]);
 run("node", ["./tools/android-release-check.mjs"]);

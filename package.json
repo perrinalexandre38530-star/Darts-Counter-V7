@@ -24,7 +24,7 @@
     "test:storage": "npm run test:r2-backups && node ./tools/test-storage-destinations.mjs",
     "test:monetization": "node ./tools/test-monetization-regression.mjs",
     "android:bootstrap": "node ./tools/bootstrap-android-capacitor.mjs",
-    "android:sync": "npm run version:sync && npm run build && npx cap sync android && npm run android:configure-admob && npm run android:configure-play && npm run android:release-check && npm run version:check",
+    "android:sync": "npm run version:sync && npm run build && npx cap sync android && npm run android:configure-awena-translation && npm run android:configure-admob && npm run android:configure-play && npm run android:release-check && npm run version:check",
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
@@ -65,7 +65,8 @@
     "test:ocean-control": "node tools/test-ocean-control-integration.mjs && node ./tools/run-ts-regressions.mjs --only tools/test-ocean-control-regression.ts",
     "test:football": "node tools/test-football-integration.mjs && node --experimental-strip-types tools/test-football-regression.ts && node --experimental-strip-types tools/test-football-codec.ts",
     "android:jdk:check": "node ./tools/android-java-runtime.mjs",
-    "test:android-jdk": "node ./tools/test-android-java-runtime.mjs"
+    "test:android-jdk": "node ./tools/test-android-java-runtime.mjs",
+    "android:configure-awena-translation": "node ./tools/configure-android-awena-translation.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
