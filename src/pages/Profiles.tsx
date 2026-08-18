@@ -4013,7 +4013,7 @@ function ProfilesMenuView({
         </div>
       </div>
 
-      <PageAdBanner placement="profiles" slotKey="page-profiles-menu-under-header" />
+      <PageAdBanner placement="profiles" slotKey="page-profiles-under-header" />
   
       <CardBtn
         title={t("profiles.menu.avatar.title", "CREER AVATAR")}
@@ -6539,6 +6539,56 @@ function FavoriteDartSetBadge({
   );
 }
 
+function LocalGridFavoriteDartSetBadge({
+  set,
+  accent,
+  size = 29,
+  style,
+}: {
+  set?: DartSet | null;
+  accent: string;
+  size?: number;
+  style?: React.CSSProperties;
+}) {
+  if (!set) return null;
+  return (
+    <span
+      title={`Set préféré : ${set.name || "Set de fléchettes"}`}
+      aria-label={`Set préféré ${set.name || ""}`}
+      style={{
+        position: "absolute",
+        left: 2,
+        bottom: 2,
+        zIndex: 12,
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        overflow: "hidden",
+        background: "rgba(3,8,18,.97)",
+        border: `1px solid ${accent}`,
+        boxShadow: `0 0 9px ${accent}55, 0 5px 12px rgba(0,0,0,.45)`,
+        ...style,
+      }}
+    >
+      <DartSetImage
+        set={set}
+        preferThumb
+        alt=""
+        loading="lazy"
+        recovery="local"
+        fallback={<span aria-hidden>🎯</span>}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: (set as any)?.kind === "photo" ? "cover" : "contain",
+        }}
+      />
+    </span>
+  );
+}
+
 function LocalCountryFlagBadge({
   profile,
   accent,
@@ -6583,14 +6633,24 @@ function LocalCountryFlagBadge({
 
 
 // ---------------------------------------------------------------------------
-// PERF V71 — Avatar ultra-léger réservé à la grille PROFILS LOCAUX.
-// ProfileAvatar est volontairement très robuste (store, bots, NAS, R2, overlays,
-// mirrors, etc.) mais cette robustesse coûte cher quand 9 cartes montent d'un coup.
-// La grille ne fait ici que : miniature RAM/localStorage -> source déjà dans le profil
-// -> UNE lecture IndexedDB locale en secours. Aucun NAS/R2, aucun scan de store.
+// PERF V73 — chemin ultra-léger réservé à la grille PROFILS LOCAUX.
+// Point chaud réel constaté sur Android : 9 cartes pouvaient décoder simultanément
+// 9 grosses data:image pleine résolution. Même avec decoding="async", la WebView
+// saturait le thread de rendu et la navigation devenait inutilisable.
+//
+// Règle V73 :
+// 1) premier paint = cache miniature / URL légère / initiales ;
+// 2) fallback IndexedDB chargé dans une petite file (2 jobs max) ;
+// 3) grosse data:image du profil uniquement en DERNIER recours et donc étalée.
+// Aucun NAS/R2 et aucun scan global du store sur cette grille.
 // ---------------------------------------------------------------------------
 const localGridAvatarResolved = new Map<string, { revision: number; src: string }>();
 const localGridAvatarPending = new Map<string, Promise<string>>();
+type LocalGridAvatarJob = { profile: any; resolve: (src: string) => void };
+const localGridAvatarQueue: LocalGridAvatarJob[] = [];
+let localGridAvatarWorkers = 0;
+const LOCAL_GRID_AVATAR_MAX_WORKERS = 2;
+const LOCAL_GRID_INLINE_FAST_MAX_CHARS = 280_000;
 
 function normalizeLocalGridAvatarSrc(value: unknown): string {
   const raw = typeof value === "string" ? value.trim() : "";
@@ -6602,6 +6662,10 @@ function normalizeLocalGridAvatarSrc(value: unknown): string {
   return "";
 }
 
+function isLocalGridFastInline(src: string): boolean {
+  return /^data:image\//i.test(src) && src.length <= LOCAL_GRID_INLINE_FAST_MAX_CHARS;
+}
+
 function getLocalGridAvatarImmediate(profile: any): string {
   const id = String(profile?.id || "").trim();
   const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
@@ -6609,49 +6673,91 @@ function getLocalGridAvatarImmediate(profile: any): string {
   if (cachedResolved && (!revision || cachedResolved.revision >= revision)) return cachedResolved.src;
 
   const fast: any = id ? getAvatarCacheFast(id) : null;
-  const fastSrc = normalizeLocalGridAvatarSrc(fast?.avatarThumbDataUrl || fast?.avatarDataUrl || "");
-  if (fastSrc) return fastSrc;
-
-  // Évite de décoder une énorme photo base64 pleine résolution si un cache local
-  // miniature existe/arrive. Elle reste néanmoins un fallback fonctionnel.
-  const direct = [
-    profile?.avatarDataUrl,
-    profile?.photoDataUrl,
-    profile?.avatar,
-    profile?.avatarUrl,
-    profile?.avatarPath,
-    profile?.photoUrl,
-  ];
-  for (const candidate of direct) {
+  const fastCandidates = [fast?.avatarThumbDataUrl, fast?.avatarDataUrl, fast?.avatarUrl];
+  for (const candidate of fastCandidates) {
     const src = normalizeLocalGridAvatarSrc(candidate);
-    if (src) return src;
+    if (!src) continue;
+    if (!/^data:image\//i.test(src) || isLocalGridFastInline(src)) return src;
+  }
+
+  // IMPORTANT : ne jamais envoyer immédiatement une photo base64 pleine résolution
+  // aux 9 <img> de la grille. Les URLs/asset légers restent autorisés au premier paint.
+  const directLight = [profile?.avatarUrl, profile?.avatarPath, profile?.photoUrl, profile?.avatar];
+  for (const candidate of directLight) {
+    const src = normalizeLocalGridAvatarSrc(candidate);
+    if (!src) continue;
+    if (!/^data:image\//i.test(src) || isLocalGridFastInline(src)) return src;
   }
   return "";
 }
 
-async function loadLocalGridAvatar(profile: any): Promise<string> {
+async function loadLocalGridAvatarNow(profile: any): Promise<string> {
   const id = String(profile?.id || "").trim();
   if (!id) return "";
   const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
+
+  const immediate = getLocalGridAvatarImmediate(profile);
+  if (immediate) {
+    localGridAvatarResolved.set(id, { revision, src: immediate });
+    return immediate;
+  }
+
+  // Le coffre avatar contient normalement une miniature compactée (~320px).
+  const local = await readLocalUserMediaFallback(profileAvatarMediaKey(id)).catch(() => "");
+  const localSrc = normalizeLocalGridAvatarSrc(local);
+  if (localSrc) {
+    localGridAvatarResolved.set(id, { revision, src: localSrc });
+    return localSrc;
+  }
+
+  // Compatibilité anciens profils : si aucune miniature n'a jamais été capturée,
+  // on garde la grosse data:image comme ultime fallback, mais la file V73 garantit
+  // qu'elle ne sera pas décodée pour 9 joueurs simultanément.
+  const heavyCandidates = [profile?.avatarDataUrl, profile?.photoDataUrl];
+  for (const candidate of heavyCandidates) {
+    const src = normalizeLocalGridAvatarSrc(candidate);
+    if (src) {
+      localGridAvatarResolved.set(id, { revision, src });
+      return src;
+    }
+  }
+  return "";
+}
+
+function pumpLocalGridAvatarQueue(): void {
+  while (localGridAvatarWorkers < LOCAL_GRID_AVATAR_MAX_WORKERS && localGridAvatarQueue.length > 0) {
+    const job = localGridAvatarQueue.shift();
+    if (!job) return;
+    localGridAvatarWorkers += 1;
+    void loadLocalGridAvatarNow(job.profile)
+      .then(job.resolve, () => job.resolve(""))
+      .finally(() => {
+        localGridAvatarWorkers = Math.max(0, localGridAvatarWorkers - 1);
+        // Rend la main entre deux vagues de décodage pour garder le scroll/clic fluide.
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(() => pumpLocalGridAvatarQueue());
+        } else {
+          pumpLocalGridAvatarQueue();
+        }
+      });
+  }
+}
+
+function loadLocalGridAvatar(profile: any): Promise<string> {
+  const id = String(profile?.id || "").trim();
+  if (!id) return Promise.resolve("");
+  const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
   const cached = localGridAvatarResolved.get(id);
-  if (cached && (!revision || cached.revision >= revision)) return cached.src;
+  if (cached && (!revision || cached.revision >= revision)) return Promise.resolve(cached.src);
   const pending = localGridAvatarPending.get(id);
   if (pending) return pending;
 
-  const job = (async () => {
-    const immediate = getLocalGridAvatarImmediate(profile);
-    if (immediate) {
-      localGridAvatarResolved.set(id, { revision, src: immediate });
-      return immediate;
-    }
-    const local = await readLocalUserMediaFallback(profileAvatarMediaKey(id)).catch(() => "");
-    const src = normalizeLocalGridAvatarSrc(local);
-    if (src) localGridAvatarResolved.set(id, { revision, src });
-    return src;
-  })().finally(() => localGridAvatarPending.delete(id));
-
-  localGridAvatarPending.set(id, job);
-  return job;
+  const promise = new Promise<string>((resolve) => {
+    localGridAvatarQueue.push({ profile, resolve });
+    pumpLocalGridAvatarQueue();
+  }).finally(() => localGridAvatarPending.delete(id));
+  localGridAvatarPending.set(id, promise);
+  return promise;
 }
 
 function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: number }) {
@@ -6659,7 +6765,7 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
   const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
   const immediate = React.useMemo(
     () => getLocalGridAvatarImmediate(profile),
-    [id, revision, profile?.avatarUrl, profile?.avatarPath, profile?.avatarDataUrl, profile?.photoDataUrl],
+    [id, revision, profile?.avatarUrl, profile?.avatarPath],
   );
   const [src, setSrc] = React.useState(immediate);
   const [loaded, setLoaded] = React.useState(false);
@@ -6698,11 +6804,11 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
       window.removeEventListener("dc:profile-avatar-updated", refresh as EventListener);
       window.removeEventListener("dc-user-media-restored", refresh as EventListener);
     };
-  }, [id, revision]);
+  }, [id, revision, mediaSig]);
 
   const initials = String(profile?.name || "P").trim().slice(0, 2).toUpperCase() || "P";
   return (
-    <span style={{ width: size, height: size, position: "relative", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%" }}>
+    <span style={{ width: size, height: size, position: "relative", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%", contain: "paint" }}>
       {(!src || !loaded || broken) ? (
         <span aria-hidden style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: Math.max(18, Math.round(size * .28)), fontWeight: 950, color: "rgba(255,255,255,.8)", background: "radial-gradient(circle at 35% 30%, rgba(255,255,255,.10), rgba(0,0,0,.18))" }}>
           {initials}
@@ -6719,13 +6825,11 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
           onError={() => {
             setBroken(true);
             localGridAvatarResolved.delete(id);
-            void readLocalUserMediaFallback(profileAvatarMediaKey(id)).then((next) => {
-              const local = normalizeLocalGridAvatarSrc(next);
-              if (local && local !== src) {
-                localGridAvatarResolved.set(id, { revision, src: local });
+            void loadLocalGridAvatar(profile).then((next) => {
+              if (next && next !== src) {
                 setBroken(false);
                 setLoaded(false);
-                setSrc(local);
+                setSrc(next);
               }
             }).catch(() => undefined);
           }}
@@ -6742,6 +6846,7 @@ function LocalProfileGridCard({
   sportKey,
   showStars,
   disabledStats,
+  favoriteDartSet,
   onClick,
 }: {
   profile: any;
@@ -6749,6 +6854,7 @@ function LocalProfileGridCard({
   sportKey: string;
   showStars: boolean;
   disabledStats: boolean;
+  favoriteDartSet?: DartSet | null;
   onClick: () => void;
 }) {
   // La grille doit être instantanée : aucun scan History/StatsHub par carte.
@@ -6809,7 +6915,7 @@ function LocalProfileGridCard({
           <LocalProfileGridAvatar profile={profile} size={76} />
         </div>
         {showStars && !disabledStats ? (
-          <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
+          <LocalGridFavoriteDartSetBadge set={favoriteDartSet || null} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
         ) : null}
         <LocalCountryFlagBadge profile={profile} accent={accent} size={29} style={{ right: 2, bottom: 4 }} />
       </div>
@@ -6858,7 +6964,9 @@ const MemoLocalProfileGridCard = React.memo(LocalProfileGridCard, (prev, next) =
     prev.accent === next.accent &&
     prev.sportKey === next.sportKey &&
     prev.showStars === next.showStars &&
-    prev.disabledStats === next.disabledStats
+    prev.disabledStats === next.disabledStats &&
+    String((prev.favoriteDartSet as any)?.id || "") === String((next.favoriteDartSet as any)?.id || "") &&
+    Number((prev.favoriteDartSet as any)?.mediaUpdatedAt || (prev.favoriteDartSet as any)?.updatedAt || 0) === Number((next.favoriteDartSet as any)?.mediaUpdatedAt || (next.favoriteDartSet as any)?.updatedAt || 0)
   );
 });
 
@@ -7220,7 +7328,7 @@ function LocalProfilesRefonte({
     const cancelIdle = scheduleRuntimeIdle(() => {
       if (cancelled) return;
       const next = readAllModesProfileUsageCounts();
-      if (!cancelled) setAllModesUsageCounts(next);
+      if (!cancelled) React.startTransition(() => setAllModesUsageCounts(next));
     }, { timeoutMs: 4_000, fallbackDelayMs: 700 });
     return () => { cancelled = true; cancelIdle(); };
   }, [profileUsageRevision]);
@@ -7297,6 +7405,54 @@ function LocalProfilesRefonte({
     () => locals.slice(safeGridPage * gridPageSize, safeGridPage * gridPageSize + gridPageSize),
     [locals, safeGridPage]
   );
+
+  // PERF V73 : l'ancien FavoriteDartSetBadge montait 9 effets séparés et chacun
+  // recalculait son sélecteur de dartsets. On charge les favoris de la page visible
+  // dans UNE seule tâche coopérative après le premier paint.
+  const [gridDartSetRevision, setGridDartSetRevision] = React.useState(0);
+  const [gridFavoriteByProfile, setGridFavoriteByProfile] = React.useState<Record<string, DartSet | null>>({});
+  const gridProfileIdsSig = React.useMemo(
+    () => gridProfiles.map((p: any) => String(p?.id || "")).filter(Boolean).join("|"),
+    [gridProfiles]
+  );
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onDartSetsUpdated = () => setGridDartSetRevision((value) => value + 1);
+    window.addEventListener("dc-dartsets-updated", onDartSetsUpdated as EventListener);
+    window.addEventListener("dc-user-media-restored", onDartSetsUpdated as EventListener);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", onDartSetsUpdated as EventListener);
+      window.removeEventListener("dc-user-media-restored", onDartSetsUpdated as EventListener);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!isDarts || listDetailOpen || localSection !== "list" || !gridProfiles.length) {
+      if (!listDetailOpen && !isDarts) setGridFavoriteByProfile({});
+      return () => { cancelled = true; };
+    }
+
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        const next: Record<string, DartSet | null> = {};
+        const yieldIfNeeded = createCooperativeYielder(5);
+        for (const profile of gridProfiles) {
+          if (cancelled) return;
+          const pid = String((profile as any)?.id || "").trim();
+          if (!pid) continue;
+          try { next[pid] = getFavoriteDartSetForProfile(pid) || null; }
+          catch { next[pid] = null; }
+          await yieldIfNeeded();
+        }
+        if (cancelled) return;
+        React.startTransition(() => setGridFavoriteByProfile(next));
+      })();
+    }, { timeoutMs: 3_500, fallbackDelayMs: 900 });
+
+    return () => { cancelled = true; cancelIdle(); };
+  }, [isDarts, listDetailOpen, localSection, gridProfileIdsSig, gridDartSetRevision]);
 
   React.useEffect(() => {
     if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));
@@ -7725,6 +7881,7 @@ Its historical matches and statistics will remain saved. If a profile with the s
                     sportKey={sportResolved}
                     showStars={isDarts}
                     disabledStats={deferHeavy}
+                    favoriteDartSet={gridFavoriteByProfile[String(profile?.id || "")] || null}
                     onClick={() => {
                       goToLocalIndex(Math.max(0, profileIndex));
                       setListDetailOpen(true);

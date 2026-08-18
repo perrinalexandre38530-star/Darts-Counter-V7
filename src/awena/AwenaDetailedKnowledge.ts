@@ -292,6 +292,203 @@ const DEEP: Record<string, ModeDeepDetail> = {
       { title: "VOLÉE / SAISIE", bullets: ["1 · Éclair, 2 · Tactique, 3 · Standard selon le format proposé.", "Clavier ou cible interactive."] },
     ],
   },
+
+  training_x01: {
+    rules: [
+      { title: "OBJECTIF", body: "Entraînement basé sur le X01 : travailler le scoring, les sorties et les routines sans logique de match classique." },
+      { title: "PARTICIPANTS", body: "Solo, multi-joueurs ou équipes selon la configuration. Chacun s'entraîne à son tour ; en multi / équipes, un comparatif final est généré." },
+      { title: "STATISTIQUES", body: "Les variantes de score de départ et de mode OUT restent séparées dans les statistiques Training afin de comparer des sessions équivalentes." },
+    ],
+    configuration: [
+      { title: "SCORE DE DÉPART", bullets: ["301", "501", "701", "901 selon les choix proposés."] },
+      { title: "MODE OUT", bullets: ["Simple", "Double", "Master."] },
+      { title: "PARTICIPANTS", body: "Sélection du ou des profils / équipes utilisés pour la session Training." },
+      { title: "SAISIE", body: "La configuration peut proposer la commande vocale de score en plus des méthodes de saisie usuelles." },
+    ],
+  },
+
+  tour_horloge: {
+    rules: [
+      { title: "OBJECTIF", body: "Toucher les numéros dans l'ordre, généralement de **1 à 20**, puis terminer selon la variante choisie." },
+      { title: "VARIANTES", bullets: ["Simple : la zone simple valide la cible.", "Double : seul le double valide.", "Triple : seul le triple valide."] },
+      { title: "PERFORMANCE", body: "L'objectif principal est de terminer le parcours avec le moins de fléchettes possible." },
+    ],
+    configuration: [
+      { title: "PARCOURS", body: "Choix de la variante / multiplicateur lorsque l'écran le propose." },
+      { title: "SESSION", body: "Training solo : le résultat mesure surtout le nombre de fléchettes et la progression, pas un score de match." },
+    ],
+  },
+
+  training_doubleio: {
+    rules: [
+      { title: "OBJECTIF", body: "Chaque round impose un **double exact** à toucher en trois fléchettes maximum." },
+      { title: "DI", body: "Double In travaille une séquence large de doubles pour apprendre à ouvrir un X01 en Double In." },
+      { title: "DO", body: "Double Out privilégie les doubles utilisés pour les checkouts." },
+      { title: "DIDO", body: "DIDO alterne travail d'entrée et de sortie." },
+    ],
+    configuration: [
+      { title: "VARIANTE", bullets: ["DI", "DO", "DIDO."] },
+      { title: "STATISTIQUES", body: "La session peut enregistrer réussite, précision et progression par cible." },
+    ],
+  },
+
+  training_challenges: {
+    rules: [
+      { title: "PRINCIPE", body: "Pack de mini-défis solo. Chaque défi impose un objectif précis et une limite de fléchettes." },
+      { title: "EXEMPLES DU CATALOGUE", bullets: ["Trois doubles en neuf fléchettes.", "Séquence BULL → T20 → D20.", "Checkout 40."] },
+      { title: "STATISTIQUES", body: "Réussite, précision et progression sont conservées lorsque le défi le prévoit." },
+    ],
+    configuration: [
+      { title: "DÉFI", body: "Choix du challenge disponible dans le menu Training." },
+      { title: "OBJECTIF", body: "La cible et la limite viennent du défi choisi ; il n'y a pas de condition de victoire multi-joueurs." },
+    ],
+  },
+
+  training_ghost: {
+    rules: [
+      { title: "ADVERSAIRE FANTÔME", body: "Tu affrontes un Ghost dont la **moyenne /3** est configurable." },
+      { title: "DÉROULÉ", body: "Le score théorique du Ghost avance après chaque volée pendant le nombre de volées défini." },
+      { title: "RÉUSSITE", body: "À la fin, ta moyenne /3 doit être au moins égale à celle du Ghost." },
+    ],
+    configuration: [
+      { title: "NIVEAU DU GHOST", body: "Réglage de la moyenne cible du fantôme." },
+      { title: "DURÉE", body: "Nombre de volées de la session." },
+    ],
+  },
+
+  training_precision_gauntlet: {
+    rules: [
+      { title: "OBJECTIF", body: "Parcours de précision : une cible exacte est imposée à chaque étape." },
+      { title: "CIBLES", bullets: ["Simple", "Double", "Triple", "Bull", "Double Bull selon le parcours."] },
+      { title: "ERREURS", body: "Une touche valide fait avancer ; une erreur consomme la tolérance choisie." },
+      { title: "PERFORMANCE", body: "Finir le parcours avec le moins de fléchettes possible." },
+    ],
+    configuration: [
+      { title: "PARCOURS", body: "Sélection du parcours / niveau proposé par le Training." },
+      { title: "TOLÉRANCE", body: "Nombre d'erreurs acceptées selon la difficulté de la session." },
+    ],
+  },
+
+  training_repeat_master: {
+    rules: [
+      { title: "OBJECTIF", body: "Toucher **N fois de suite la même cible exacte**." },
+      { title: "SOFT", body: "Une erreur remet la série à zéro, mais la session continue." },
+      { title: "HARDCORE", body: "La première erreur termine la session." },
+      { title: "MESURES", body: "Meilleure série et précision servent de références." },
+    ],
+    configuration: [
+      { title: "CIBLE", body: "Choix de la cible exacte à répéter." },
+      { title: "SÉRIE", body: "Nombre de répétitions à atteindre et mode SOFT / HARDCORE selon l'écran." },
+    ],
+  },
+
+  training_super_bull: {
+    rules: [
+      { title: "OBJECTIF", body: "Drill solo centré sur le Bull." },
+      { title: "VALEURS", bullets: ["Bull = 25.", "Double Bull = 50.", "Les autres zones comptent comme des ratés Training."] },
+      { title: "FIN", body: "Atteindre l'objectif de points avant la limite de fléchettes." },
+    ],
+    configuration: [
+      { title: "OBJECTIF", body: "Score cible de la session." },
+      { title: "LIMITE", body: "Nombre maximal de fléchettes disponible." },
+    ],
+  },
+
+  training_time_attack: {
+    rules: [
+      { title: "OBJECTIF", body: "Marquer le plus de points possible avant la fin du chrono." },
+      { title: "CHRONO", bullets: ["30 secondes", "60 secondes", "120 secondes selon les choix du Training."] },
+      { title: "STATISTIQUES", bullets: ["Moyenne /3.", "Meilleure volée.", "Paliers 100+ / 140+ / 180."] },
+    ],
+    configuration: [
+      { title: "DURÉE", body: "Choix du temps de jeu." },
+      { title: "DÉPART", body: "Le chrono démarre avec la première volée." },
+    ],
+  },
+
+  killer_progressive: {
+    rules: [
+      { title: "ATTRIBUTION", body: "Chaque joueur obtient un numéro avec un lancer de la main opposée." },
+      { title: "MONTER À 5", body: "Toucher son propre numéro fait progresser les cœurs : Simple = 1, Double = 2, Triple = 3." },
+      { title: "STATUT KILLER", body: "À **5 cœurs**, le joueur devient Killer et peut retirer des cœurs aux adversaires." },
+      { title: "PERTE DU STATUT", body: "Sous 5 cœurs, le statut Killer est perdu." },
+      { title: "ÉLIMINATION", body: "À 0 cœur le joueur reste vivant ; il est éliminé seulement lorsque son total passe **sous 0**." },
+    ],
+    configuration: [
+      { title: "PARTICIPANTS", body: "Jusqu'à 12 joueurs dans le registre actuel, avec BOTS IA." },
+      { title: "RÈGLE PROGRESSIVE", body: "La progression 0 → 5 et l'élimination sous 0 distinguent ce mode du Killer classique." },
+    ],
+  },
+
+  departements: {
+    rules: [
+      { title: "DEUX MODES", bullets: ["Classique : capturer / reprendre des territoires.", "Forteresses : protéger ses possessions et attaquer les forteresses adverses."] },
+      { title: "VALEURS UNIQUES", body: "Chaque territoire jouable reçoit une valeur distincte calculée à partir de la carte et du niveau des participants. Pour agir, le total de la volée doit respecter la règle EXACT lorsqu'elle est imposée." },
+      { title: "FORTERESSES", body: "Un score exact sur un territoire allié peut placer une forteresse. Une attaque exacte brise d'abord une forteresse ennemie ; une nouvelle réussite exacte permet ensuite la conquête." },
+      { title: "VOLÉE", body: "Le joueur peut valider après 1 ou 2 fléchettes : il n'est pas obligé de lancer les 3." },
+      { title: "BULL / DBULL", body: "L'option spéciale peut donner une nouvelle volée au même joueur, une seule fois avant de rendre la main." },
+    ],
+    configuration: [
+      { title: "PARTICIPANTS", bullets: ["Joueurs : 2 à 10 participants, profils locaux et BOTS compris.", "Équipes : 2 à 4 équipes de 2 ou 3 joueurs, maximum 10 participants au total."] },
+      { title: "SÉLECTION DE CIBLE", bullets: ["LIBRE : choisir le territoire sur la carte.", "VOLÉE DIRECTE : le total de la volée désigne automatiquement le territoire portant cette valeur."] },
+      { title: "MODE", bullets: ["Classique.", "Forteresses."] },
+      { title: "VICTOIRE", bullets: ["Objectif territoires.", "Régions.", "Temps.", "Majorité en nombre.", "Majorité en valeur.", "Conquête totale selon le mode choisi."] },
+      { title: "FORTERESSES", body: "Nombre maximal de forteresses actives configurable par joueur / équipe ; une nouvelle protection déplace la plus ancienne lorsque la limite est atteinte." },
+    ],
+  },
+
+  bastard: {
+    rules: [
+      { title: "BUT", body: "Tous les joueurs affrontent la même séquence de rounds. Chaque round impose une cible ou un type de touche." },
+      { title: "VALIDER", body: "Une volée contient jusqu'à 3 fléchettes. Il faut atteindre le nombre de touches valides demandé pour passer au round suivant." },
+      { title: "ÉCHEC", body: "La pénalité choisie peut être : aucune, points retirés, recul dans la séquence ou round à rejouer." },
+      { title: "VICTOIRE", bullets: ["Meilleur score : tous terminent, total le plus élevé.", "Premier au bout : fin immédiate lorsqu'un joueur termine la séquence."] },
+    ],
+    configuration: [
+      { title: "PARTICIPANTS", body: "Profils humains + BOTS personnels / Pro, avec difficulté Facile / Normal / Difficile." },
+      { title: "PRESETS", bullets: ["Classic : rounds variés.", "Progressif : 1 → 20 puis Bull.", "Punition : malus actifs."] },
+      { title: "ÉCHEC D'UN ROUND", bullets: ["Aucune pénalité.", "Points de malus.", "Round à rejouer.", "Recul dans la séquence."] },
+      { title: "ÉDITEUR DE SÉQUENCE", body: "En configuration complète, les rounds peuvent être ajoutés, supprimés, réordonnés et édités : nom, type, multiplicateur et cible selon le round." },
+    ],
+  },
+
+  battle_royale: {
+    rules: [
+      { title: "PRINCIPE", body: "Mode d'élimination : les joueurs s'affrontent en tours jusqu'à ce qu'il ne reste qu'un survivant." },
+      { title: "PRESSION", body: "Les règles de la partie peuvent éliminer un joueur sur échec, objectif raté ou perte de ses ressources selon la configuration active." },
+    ],
+    configuration: [
+      { title: "PARTICIPANTS", body: "Jusqu'à 12 joueurs ; BOTS IA pris en charge ; pas d'équipes dans le registre actuel." },
+      { title: "VARIANTE", body: "Les paramètres exacts de pression / élimination sont ceux proposés par l'écran de configuration. Awena peut également lire les contrôles visibles pour détailler un réglage précis." },
+    ],
+  },
+
+  warfare: {
+    rules: [
+      { title: "CAMPS", body: "Chaque camp possède des soldats / cibles à protéger." },
+      { title: "ATTAQUE", body: "Toucher une cible ennemie blesse ou élimine selon la règle Simple / Double / Triple utilisée." },
+      { title: "OPTIONS TACTIQUES", body: "Certaines variantes prévoient friendly fire, soin ou résurrection." },
+      { title: "VICTOIRE", body: "Le camp qui élimine les forces adverses gagne." },
+    ],
+    configuration: [
+      { title: "PARTICIPANTS", body: "Équipes et BOTS IA sont pris en charge dans le registre actuel." },
+      { title: "RÈGLES TACTIQUES", body: "Les options visibles à l'écran définissent les dégâts, soins, résurrections et autres variantes actives." },
+    ],
+  },
+
+  football: {
+    rules: [
+      { title: "PRINCIPE", body: "Le mode simule un match de football : terrain, possession, attaque, défense, tirs, gardien et buts." },
+      { title: "IMPACTS", body: "Simple fait progresser ou repousse le ballon ; Double peut intercepter ou accélérer ; Triple peut déclencher une contre-attaque ou une frappe directe selon l'état du jeu." },
+      { title: "VARIANTES", bullets: ["Match.", "Golden Goal.", "Tirs au but.", "Classic."] },
+    ],
+    configuration: [
+      { title: "MATCH", bullets: ["RAPIDE : 2 × 3 tours, sans gardien.", "STANDARD : 2 × 5 tours, complet.", "TACTIQUE : 2 × 8 tours, prolongation."] },
+      { title: "PARTICIPANTS", bullets: ["1 contre 1.", "2 équipes.", "BOTS IA possibles en duel avec niveau Facile / Normal / Difficile."] },
+      { title: "ÉGALITÉ", bullets: ["Match nul.", "Golden Goal.", "Tirs au but.", "Tours de prolongation configurables si Golden Goal."] },
+      { title: "AUTRES OPTIONS", bullets: ["Gardien sur tirs cadrés.", "Volée sans cible = ballon perdu.", "Ordre de départ aléatoire en duel.", "Clavier compact ou cible tactile."] },
+    ],
+  },
 };
 
 function renderSections(sections: Section[]) {

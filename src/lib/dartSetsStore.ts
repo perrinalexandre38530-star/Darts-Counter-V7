@@ -2203,6 +2203,7 @@ export async function resolveDartSetLocalImageSrc(set: any, preferThumb = false)
 
   const ids = uniqStrings([
     set?.id, set?.dartSetId, set?.setId, set?.linkedSourceDartSetId, set?.sourceDartSetId,
+    set?.remoteDartSetId, set?.originalId,
     ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
     ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
   ]);
@@ -2210,7 +2211,14 @@ export async function resolveDartSetLocalImageSrc(set: any, preferThumb = false)
     ? [...ids.map(dartSetThumbMediaKey), ...ids.map(dartSetMainMediaKey)]
     : [...ids.map(dartSetMainMediaKey), ...ids.map(dartSetThumbMediaKey)];
   const local = await readFirstLocalUserMediaFallback(localKeys);
-  return local || primary || getDartSetPresetImageSrc(set, preferThumb);
+  if (local) return local;
+
+  // IMPORTANT V73 : cette fonction s'appelle LOCAL. Une ancienne URL /media ou
+  // https cassée ne doit donc plus être renvoyée comme si elle avait été retrouvée
+  // localement. X01 arrêtait alors son pipeline et n'essayait jamais le fallback R2.
+  const preset = getDartSetPresetImageSrc(set, preferThumb);
+  if (preset && /^(data:image\/|blob:|\/assets\/|\/images\/|\.\.?\/)/i.test(preset)) return preset;
+  return null;
 }
 
 /**
@@ -2218,6 +2226,58 @@ export async function resolveDartSetLocalImageSrc(set: any, preferThumb = false)
  * backups peuvent référencer le même dartset avec un id source, un alias ou un
  * id fusionné ; toutes ces identités sont donc essayées avant l'ancienne URL.
  */
+/**
+ * Relance une récupération après l'échec réel d'un <img>. Contrairement au
+ * résolveur normal, la source primaire cassée est explicitement exclue : on force
+ * coffre local / alias / R2 / preset avant de rendre la main à l'UI.
+ */
+export async function resolveDartSetRecoveryImageSrc(
+  set: any,
+  preferThumb = false,
+  failedSrcInput: string | null = null,
+): Promise<string | null> {
+  if (!set || typeof set !== "object") return null;
+  const failedSrc = s(failedSrcInput);
+  const ids = uniqStrings([
+    set?.id,
+    set?.dartSetId,
+    set?.setId,
+    set?.linkedSourceDartSetId,
+    set?.sourceDartSetId,
+    set?.remoteDartSetId,
+    set?.originalId,
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ]);
+
+  const localKeys = preferThumb
+    ? [...ids.map(dartSetThumbMediaKey), ...ids.map(dartSetMainMediaKey)]
+    : [...ids.map(dartSetMainMediaKey), ...ids.map(dartSetThumbMediaKey)];
+  const local = await readFirstLocalUserMediaFallback(localKeys);
+  if (local && local !== failedSrc) return local;
+
+  const remoteKeys = uniqStrings([
+    preferThumb ? set?.r2ThumbMediaKey : set?.r2MainMediaKey,
+    preferThumb ? set?.r2MainMediaKey : set?.r2ThumbMediaKey,
+    ...ids.flatMap((id) => preferThumb
+      ? [dartSetThumbMediaKey(id), dartSetMainMediaKey(id)]
+      : [dartSetMainMediaKey(id), dartSetThumbMediaKey(id)]),
+  ]).slice(0, 10);
+
+  for (const key of remoteKeys) {
+    const kind = key.includes(":thumb:") || key.includes("thumb") ? "dartset_thumb" : "dartset_main";
+    const recovered = await resolveUserMediaFallback(key, "", {
+      kind,
+      allowR2: true,
+      mirrorRecoveredToR2: true,
+    }).catch(() => "");
+    if (recovered && recovered !== failedSrc) return recovered;
+  }
+
+  const preset = getDartSetPresetImageSrc(set, preferThumb);
+  return preset && preset !== failedSrc ? preset : null;
+}
+
 export async function resolveDartSetBestImageSrc(set: any, preferThumb = false): Promise<string | null> {
   if (!set || typeof set !== "object") return null;
 

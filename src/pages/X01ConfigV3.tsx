@@ -38,8 +38,6 @@ import {
   bumpDartSetUsage,
   getDartSetThumbImageSrc,
   getDartSetMainImageSrc,
-  resolveDartSetLocalImageSrc,
-  resolveDartSetBestImageSrc,
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
@@ -1568,50 +1566,11 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     return x01DartSetVisualScore(canonical) > x01DartSetVisualScore(fromPicker) ? canonical : fromPicker;
   }, [orderedSets, dartSetId]);
 
-  // FIX V72 : le petit médaillon X01 résout explicitement le coffre média du set
-  // sélectionné. On ne dépend plus d'une ancienne URL /media cassée conservée sur
-  // l'objet de configuration. La résolution locale est prioritaire et non bloquante.
-  const [selectedVisualSrc, setSelectedVisualSrc] = React.useState<string>("");
-  React.useEffect(() => {
-    let cancelled = false;
-    setSelectedVisualSrc("");
-    if (!selectedSet) return () => { cancelled = true; };
-
-    void (async () => {
-      const local = await resolveDartSetLocalImageSrc(selectedSet, true).catch(() => null);
-      if (!cancelled && local) {
-        setSelectedVisualSrc(String(local));
-        return;
-      }
-      const best = await resolveDartSetBestImageSrc(selectedSet, true).catch(() => null);
-      if (!cancelled && best) setSelectedVisualSrc(String(best));
-    })();
-
-    return () => { cancelled = true; };
-  }, [
-    dartSetId,
-    (selectedSet as any)?.id,
-    (selectedSet as any)?.mediaUpdatedAt,
-    (selectedSet as any)?.updatedAt,
-    (selectedSet as any)?.mainImageAssetId,
-    (selectedSet as any)?.thumbImageAssetId,
-  ]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const refresh = () => {
-      if (!selectedSet) return;
-      void resolveDartSetLocalImageSrc(selectedSet, true).then((src) => {
-        if (src) setSelectedVisualSrc(String(src));
-      }).catch(() => undefined);
-    };
-    window.addEventListener("dc-user-media-restored", refresh as EventListener);
-    window.addEventListener("dc-background-restore-finished", refresh as EventListener);
-    return () => {
-      window.removeEventListener("dc-user-media-restored", refresh as EventListener);
-      window.removeEventListener("dc-background-restore-finished", refresh as EventListener);
-    };
-  }, [selectedSet]);
+  // FIX V73 : un seul pipeline image. V72 lançait une résolution IDB/R2 ici PUIS
+  // DartSetImage relançait sa propre résolution, soit deux chaînes asynchrones par
+  // joueur sélectionné. En plus, une vieille URL /media truthy pouvait couper la
+  // recherche avant le R2. DartSetImage est désormais l'unique source de rendu et
+  // sait relancer le coffre média après un vrai onError.
 
   const selectSet = (id: string | null) => {
     onChange(id);
@@ -1682,10 +1641,10 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           >
             <DartSetImage
               set={selectedSet}
-              src={selectedVisualSrc || null}
               preferThumb
               alt=""
               loading="eager"
+              recovery="full"
               fallback={<span style={{ fontSize: 13, lineHeight: 1 }}>🎯</span>}
               style={{
                 width: "100%",

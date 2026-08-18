@@ -8,8 +8,10 @@ import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
 import { answerAwenaScreenQuestion } from "./AwenaScreenKnowledge";
 import { answerAwenaAppAtlas, awenaAtlasCount } from "./AwenaAppAtlas";
 import { answerAwenaLiveScreenQuestion, visibleConfigurationAppendix } from "./AwenaLiveScreen";
-import { getAwenaHelpText } from "./AwenaHelpRegistry";
+import { answerAwenaRegisteredHelp, awenaRegisteredHelpCount, getAwenaHelpText } from "./AwenaHelpRegistry";
 import { answerAwenaSportsKnowledge, awenaSportsKnowledgeCount } from "./AwenaSportsKnowledge";
+import { answerAwenaDeepKnowledge, awenaDeepKnowledgeCount } from "./AwenaDeepKnowledge";
+import { answerAwenaRouteAtlas, awenaRouteAtlasCount } from "./AwenaRouteAtlas";
 
 function normalize(text: string) {
   return String(text || "")
@@ -88,7 +90,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels de l’application** et **${awenaSportsKnowledgeCount()} fiches détaillées hors Fléchettes**, le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les écrans de configuration.
+Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis** et un index de **${awenaRouteAtlasCount()} écrans / routes réels**. J’exploite aussi l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}), le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les contrôles visibles.
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -134,6 +136,11 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   // externe. Le sujet retenu est mémorisé pour les relances courtes.
   const encyclopediaReply = answerAwenaEncyclopedia(question, rememberedKnowledgeTopic);
   if (encyclopediaReply) return encyclopediaReply;
+
+  // Couche approfondie : stockage, profils, social, caméra, scoring,
+  // trainings, autres sports, dépannage et fonctions transversales.
+  const deepReply = answerAwenaDeepKnowledge(question, rememberedKnowledgeTopic);
+  if (deepReply) return deepReply;
 
   if (/quels jeux|quels modes|liste des jeux|liste des modes|modes disponibles|jeux disponibles/.test(q)) {
     if (sport && sport.id !== "darts") {
@@ -270,6 +277,16 @@ Sur Android, ta question peut être traduite localement vers ma base de connaiss
       knowledgeTopic: "atlas:language",
     };
   }
+
+  // Réutilise les aides InfoDot réellement rencontrées. Cette couche est
+  // volontairement placée après les règles/configurations structurées afin de
+  // compléter les trous sans remplacer les réponses plus précises.
+  const registeredHelpReply = answerAwenaRegisteredHelp(question, context.route);
+  if (registeredHelpReply) return registeredHelpReply;
+
+  // Dernier filet de navigation : index de toutes les routes déclarées dans App.
+  const routeAtlasReply = answerAwenaRouteAtlas(question);
+  if (routeAtlasReply) return routeAtlasReply;
 
   if (navTopic) return { text: navTopic.description, actions: actionForNavigation(navTopic) };
   if (sportMode) return { text: `${sportMode.summary} ${sportMode.howToPlayInApp}`, actions: actionForSportMode(sportMode) };

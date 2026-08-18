@@ -48,6 +48,17 @@ export function captureAwenaScreenSnapshot(): AwenaScreenSnapshot | null {
     if (label && label.length <= 120) pushUnique(controls, { kind: "heading", label });
   }
 
+  // Texte explicatif réellement visible : utile pour répondre à des questions
+  // sur une option, un avertissement ou une aide qui n'a pas encore de fiche
+  // statique dans l'encyclopédie.
+  const explanatory = Array.from(document.querySelectorAll('p,li,small,[data-awena-help],[data-awena-description]'))
+    .filter((el) => visible(el) && !excluded(el))
+    .slice(0, 55);
+  for (const el of explanatory) {
+    const label = cleanText((el as HTMLElement).innerText || el.textContent || "");
+    if (label && label.length >= 8 && label.length <= 280) pushUnique(controls, { kind: "text", label });
+  }
+
   const interactives = Array.from(document.querySelectorAll('button,[role="button"],input,select,textarea,label'))
     .filter((el) => visible(el) && !excluded(el))
     .slice(0, 120);
@@ -116,6 +127,7 @@ function snapshotFrom(context: AwenaRuntimeContext): AwenaScreenSnapshot | null 
 function listControls(snapshot: AwenaScreenSnapshot) {
   const buttons = snapshot.controls.filter((item) => item.kind === "button").slice(0, 18);
   const fields = snapshot.controls.filter((item) => item.kind === "field" || item.kind === "choice").slice(0, 18);
+  const explanatory = snapshot.controls.filter((item) => item.kind === "text").slice(0, 14);
 
   const parts: string[] = [];
   if (fields.length) {
@@ -127,7 +139,26 @@ function listControls(snapshot: AwenaScreenSnapshot) {
   if (buttons.length) {
     parts.push(`## ACTIONS VISIBLES\n${buttons.map((item) => `- **${item.label}**${item.disabled ? " — indisponible" : ""}`).join("\n")}`);
   }
+  if (explanatory.length) {
+    parts.push(`## AIDE / TEXTE VISIBLE\n${explanatory.map((item) => `- ${item.label}`).join("\n")}`);
+  }
   return parts.join("\n\n");
+}
+
+function relevantVisibleText(question: string, snapshot: AwenaScreenSnapshot) {
+  const qTokens = norm(question).split(" ").filter((token) => token.length >= 3 && !["quoi","sert","signifie","veut","dire","cette","option","bouton","ecran","ici","comment","fonctionne"].includes(token));
+  if (!qTokens.length) return [];
+  return snapshot.controls
+    .filter((item) => item.kind === "text" || item.kind === "field" || item.kind === "choice" || item.kind === "button")
+    .map((item) => {
+      const hay = norm(`${item.label} ${item.value || ""}`);
+      const score = qTokens.reduce((sum, token) => sum + (hay.includes(token) ? 1 : 0), 0);
+      return { item, score };
+    })
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map((row) => row.item);
 }
 
 export function answerAwenaLiveScreenQuestion(question: string, context: AwenaRuntimeContext): AwenaReply | null {
@@ -137,6 +168,24 @@ export function answerAwenaLiveScreenQuestion(question: string, context: AwenaRu
 
   const asksVisible =
     /que vois tu|qu y a t il|quoi sur cet ecran|boutons visibles|boutons ici|options visibles|options ici|champs visibles|choix disponibles|quels boutons|quelles options|quels reglages/.test(q);
+
+  const asksAboutVisibleThing =
+    /sur cet ecran|sur cette page|ici|ce bouton|cette option|ce reglage|ce réglage|ce choix/.test(q) &&
+    /a quoi sert|que signifie|que veut dire|c est quoi|qu est ce|explique|comment fonctionne/.test(q);
+
+  if (asksAboutVisibleThing) {
+    const hits = relevantVisibleText(question, snapshot);
+    if (hits.length) {
+      return {
+        text: `## CE QUE L'ÉCRAN MONTRE${snapshot.title ? ` — ${snapshot.title.toUpperCase()}` : ""}\n${hits.map((item) => {
+          const value = item.value ? ` — valeur actuelle : **${item.value}**` : "";
+          const state = item.checked != null ? (item.checked ? " — activé" : " — désactivé") : "";
+          return `- **${item.label}**${value}${state}`;
+        }).join("\n")}\n\n> Je me base ici sur le texte et les contrôles réellement visibles. Si tu me donnes le nom exact de l'option, je peux croiser cela avec mon encyclopédie et l'aide InfoDot.`,
+      };
+    }
+  }
+
   if (!asksVisible) return null;
 
   const detail = listControls(snapshot);

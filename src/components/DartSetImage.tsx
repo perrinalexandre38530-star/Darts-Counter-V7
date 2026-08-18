@@ -5,6 +5,7 @@ import {
   getDartSetThumbImageSrc,
   resolveDartSetBestImageSrc,
   resolveDartSetLocalImageSrc,
+  resolveDartSetRecoveryImageSrc,
 } from "../lib/dartSetsStore";
 
 type Props = {
@@ -137,10 +138,12 @@ const DartSetImage: React.FC<Props> = ({
   const [loaded, setLoaded] = React.useState(false);
   const [failedAll, setFailedAll] = React.useState(false);
   const triedRef = React.useRef<Set<string>>(new Set());
+  const recoveryAttemptedRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     let cancelled = false;
     triedRef.current = new Set();
+    recoveryAttemptedRef.current = new Set();
     setFailedAll(false);
     setLoaded(false);
     setResolvedSrc(immediate);
@@ -171,18 +174,42 @@ const DartSetImage: React.FC<Props> = ({
     const failed = text(resolvedSrc);
     if (failed) triedRef.current.add(failed);
 
-    const ordered = Array.from(new Set([text(resolvedSrc), ...candidates].filter(Boolean)));
-    const next = ordered.find((candidate) => !triedRef.current.has(candidate)) || null;
-    if (next) {
+    const advanceSyncCandidate = () => {
+      const ordered = Array.from(new Set([text(resolvedSrc), ...candidates].filter(Boolean)));
+      const next = ordered.find((candidate) => !triedRef.current.has(candidate)) || null;
+      if (next) {
+        setLoaded(false);
+        setFailedAll(false);
+        setResolvedSrc(next);
+        return;
+      }
       setLoaded(false);
-      setResolvedSrc(next);
+      setFailedAll(true);
+      setResolvedSrc(null);
+    };
+
+    // FIX V73 : si l'URL réellement affichée vient d'échouer, ne pas simplement
+    // essayer une autre vieille URL du même objet. On force d'abord le coffre média
+    // local/R2 avec les alias du DartSet, exactement comme la carte "Set of darts".
+    if (set && recovery === "full" && failed && !recoveryAttemptedRef.current.has(failed)) {
+      recoveryAttemptedRef.current.add(failed);
+      setLoaded(false);
+      void resolveDartSetRecoveryImageSrc(set, preferThumb, failed)
+        .then((recovered) => {
+          const next = text(recovered);
+          if (next && next !== failed && !triedRef.current.has(next)) {
+            setFailedAll(false);
+            setResolvedSrc(next);
+            return;
+          }
+          advanceSyncCandidate();
+        })
+        .catch(() => advanceSyncCandidate());
       return;
     }
 
-    setLoaded(false);
-    setFailedAll(true);
-    setResolvedSrc(null);
-  }, [resolvedSrc, candidates]);
+    advanceSyncCandidate();
+  }, [resolvedSrc, candidates, set, recovery, preferThumb]);
 
   const showFallback = !resolvedSrc || !loaded || failedAll;
 
