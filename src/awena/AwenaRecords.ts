@@ -1,4 +1,5 @@
-import { loadNormalizedHistory, normalizeMany, type NormalizedMatch, type NormalizedPlayer } from "../lib/statsNormalized";
+import { normalizeMany, type NormalizedMatch, type NormalizedPlayer } from "../lib/statsNormalized";
+import { sampleFromRec as x01SampleFromRec } from "../lib/x01StatsSource";
 import { History } from "../lib/history";
 import { findAwenaMode, findAwenaModeById, type AwenaModeKnowledge } from "./AwenaKnowledge";
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
@@ -17,7 +18,7 @@ type PlayerAgg = {
   bestCheckout: number;
 };
 
-type FastHistorySnapshot = {
+type AuthoritativeHistorySnapshot = {
   at: number;
   raw: any[];
   normalized: NormalizedMatch[];
@@ -40,12 +41,12 @@ type DynamicPlayerAgg = {
   values: Record<string, { sum: number; count: number; max: number }>;
 };
 
-let fastHistoryCache: FastHistorySnapshot | null = null;
-let hydratedHistoryCache: { at: number; rows: NormalizedMatch[] } | null = null;
-let hydratedHistoryPromise: Promise<NormalizedMatch[]> | null = null;
+let authoritativeHistoryCache: AuthoritativeHistorySnapshot | null = null;
+let authoritativeHistoryPromise: Promise<AuthoritativeHistorySnapshot> | null = null;
+let detailedModeCache = new Map<string, { at: number; fingerprint: string; raw: any[]; normalized: NormalizedMatch[] }>();
 
-const FAST_CACHE_MS = 2_500;
-const HYDRATED_CACHE_MS = 30_000;
+const AUTHORITATIVE_CACHE_MS = 12_000;
+const DETAILED_MODE_CACHE_MS = 45_000;
 
 function norm(v: unknown) {
   return String(v ?? "")
@@ -98,83 +99,128 @@ function getTimestamp(rec: any) {
   ) || 0;
 }
 
+
+function isFinishedHistoryRecord(rec: any) {
+  const status = norm(rec?.status);
+  const explicitlyFinished = ["finished", "done", "ended", "match end", "match_end"].includes(status);
+  if (explicitlyFinished) return true;
+  if (rec?.summary?.finished === true || rec?.payload?.summary?.finished === true || rec?.resume?.summary?.finished === true) return true;
+  if (rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || rec?.payload?.summary?.winnerId) return true;
+  if (Array.isArray(rec?.summary?.rankings) && rec.summary.rankings.length > 0) return true;
+  if (["in progress", "in_progress", "inprogress", "playing", "live"].includes(status)) return false;
+  // Compatibilité legacy : les anciens matchs n'avaient pas toujours de status,
+  // mais une ligne Historique sans marqueur "en cours" est traitée comme terminée.
+  return true;
+}
+
 function fingerprint(rows: any[]) {
   let latest = 0;
   for (const row of rows || []) latest = Math.max(latest, getTimestamp(row));
   return `${rows?.length || 0}:${latest}`;
 }
 
-function fastHistory(): FastHistorySnapshot {
-  const now = Date.now();
-  if (fastHistoryCache && now - fastHistoryCache.at < FAST_CACHE_MS) return fastHistoryCache;
-
-  let raw: any[] = [];
-  try {
-    const rows = History.readAll();
-    raw = Array.isArray(rows) ? rows : [];
-  } catch (error) {
-    console.warn("[AwenaRecords] History.readAll indisponible", error);
-  }
-
-  const fp = fingerprint(raw);
-  if (fastHistoryCache?.fingerprint === fp) {
-    fastHistoryCache = { ...fastHistoryCache, at: now, raw };
-    return fastHistoryCache;
-  }
-
+function normalizeSnapshot(raw: any[]): AuthoritativeHistorySnapshot {
   let normalized: NormalizedMatch[] = [];
   try {
-    normalized = normalizeMany(raw as any[]);
+    normalized = normalizeMany(Array.isArray(raw) ? raw : []);
   } catch (error) {
-    console.warn("[AwenaRecords] normalisation légère indisponible", error);
+    console.warn("[AwenaRecords] normalisation Historique indisponible", error);
   }
-
-  fastHistoryCache = { at: now, raw, normalized, fingerprint: fp };
-  return fastHistoryCache;
+  return {
+    at: Date.now(),
+    raw: Array.isArray(raw) ? raw : [],
+    normalized,
+    fingerprint: fingerprint(raw),
+  };
 }
 
-export function warmAwenaRecordsCache() {
-  try {
-    fastHistory();
-  } catch {
-    // Le préchauffage est une optimisation uniquement : jamais bloquant.
-  }
-}
-
-async function hydratedHistory(): Promise<NormalizedMatch[]> {
+/**
+ * SOURCE DE VÉRITÉ AWENA RECORDS
+ * --------------------------------
+ * Les records doivent partir de History.list(), donc de TOUTES les parties
+ * réellement enregistrées dans IndexedDB + fallback localStorage. History.readAll()
+ * n'est qu'un cache UI léger (limité et possiblement vide au démarrage) : il ne doit
+ * jamais décider qu'une partie/statistique n'existe pas.
+ */
+async function authoritativeHistory(force = false): Promise<AuthoritativeHistorySnapshot> {
   const now = Date.now();
-  if (hydratedHistoryCache && now - hydratedHistoryCache.at < HYDRATED_CACHE_MS) {
-    return hydratedHistoryCache.rows;
+  if (!force && authoritativeHistoryCache && now - authoritativeHistoryCache.at < AUTHORITATIVE_CACHE_MS) {
+    return authoritativeHistoryCache;
   }
-  if (hydratedHistoryPromise) return hydratedHistoryPromise;
+  if (!force && authoritativeHistoryPromise) return authoritativeHistoryPromise;
 
-  hydratedHistoryPromise = (async () => {
+  authoritativeHistoryPromise = (async () => {
     try {
-      const rows = await loadNormalizedHistory();
-      const safe = Array.isArray(rows) ? rows : [];
-      hydratedHistoryCache = { at: Date.now(), rows: safe };
-      return safe;
+      const rows = await History.list();
+      const snapshot = normalizeSnapshot(Array.isArray(rows) ? rows : []);
+      authoritativeHistoryCache = snapshot;
+      return snapshot;
     } catch (error) {
-      console.warn("[AwenaRecords] historique détaillé indisponible", error);
-      return fastHistory().normalized;
+      console.warn("[AwenaRecords] History.list indisponible, fallback cache UI", error);
+      let fallback: any[] = [];
+      try {
+        const rows = History.readAll();
+        fallback = Array.isArray(rows) ? rows : [];
+      } catch {}
+      const snapshot = normalizeSnapshot(fallback);
+      authoritativeHistoryCache = snapshot;
+      return snapshot;
     } finally {
-      hydratedHistoryPromise = null;
+      authoritativeHistoryPromise = null;
     }
   })();
 
-  return hydratedHistoryPromise;
+  return authoritativeHistoryPromise;
+}
+
+function invalidateAwenaRecordsCaches() {
+  authoritativeHistoryCache = null;
+  authoritativeHistoryPromise = null;
+  detailedModeCache.clear();
+}
+
+try {
+  if (typeof window !== "undefined") {
+    window.addEventListener("dc-history-updated", invalidateAwenaRecordsCaches as EventListener);
+    window.addEventListener("dc-stats-index-updated", invalidateAwenaRecordsCaches as EventListener);
+    window.addEventListener("storage", (event: StorageEvent) => {
+      const key = String(event?.key || "").toLowerCase();
+      if (!key || key.includes("history") || key.includes("stats")) invalidateAwenaRecordsCaches();
+    });
+  }
+} catch {}
+
+/** Précharge l'index COMPLET de l'Historique en arrière-plan. */
+export function warmAwenaRecordsCache() {
+  void authoritativeHistory().catch(() => {});
 }
 
 export function isAwenaRecordsQuestion(question: string, context?: AwenaRuntimeContext) {
   const q = norm(question);
-  const explicitStats =
-    /record|records|stat|statistique|classement|ranking|top\s*\d*|meilleur|meilleure|pire|plus mauvais|plus mauvaise|pourcentage.*victoire|taux.*victoire|%.*victoire|moyenne|kills?|morts?|deces|décès|eliminations?|dégats|degats|vies|lancers?|flechettes?|fléchettes?|hits?|touches?|bulls?|dbulls?|doubles?|triples?|miss|ratés?|rates?|resurrections?|désarmements?|desarmements?|boucliers?|shields?|auto hits?|auto kills?|checkout|sortie|captures?|vols?|steals?|territoires?|precision|précision|\b180\b|\b140\+?\b|\b100\+?\b|\b60\+?\b|meilleure volee|meilleure volée|best visit/.test(q);
-  if (explicitStats) return true;
+  if (!q) return false;
 
-  // Une question comparative dans le contexte d'un mode est presque toujours
-  // une demande de statistiques : "qui a le plus de...", "qui est premier...", etc.
-  const comparative = /^(qui|quel joueur|quelle joueuse).*(plus|moins|premier|premiere|dernier|derniere|meilleur|meilleure|pire)|\bcombien\b.*\b(a|ont|de)\b/.test(q);
-  return !!context?.mode && comparative;
+  const definitionOnly = /^(qu est ce que|c est quoi|que signifie|ca veut dire quoi|ça veut dire quoi|a quoi correspond|a quoi sert|comment fonctionne (?:la|le|les) |que contient|explique moi ce qu est|definition de|définition de)/.test(q);
+  if (definitionOnly && !/\brecords?\b|\bstats?\b|statistique|classement|ranking|top/.test(q)) return false;
+
+  // Intentions statistiques explicites. Les simples mots de vocabulaire
+  // (« c'est quoi un double ? », « qu'est-ce qu'un Bull ? ») ne doivent PAS
+  // être détournés vers Records.
+  if (/\brecords?\b|\bstats?\b|statistique|classement|ranking|\btop\s*\d*\b|tableau des scores|leaderboard/.test(q)) return true;
+  if (/pourcentage.*victoire|taux.*victoire|%.*victoire|win rate|moyenne|avg3|avg 1|best visit|best 9|meilleure volee|meilleure volée|meilleur checkout|meilleure sortie|hits? %|taux de touches|miss %|simple %|double %|triple %|bull %|dbull %|bust %|co %|ratio legs|ratio sets/.test(q)) return true;
+
+  const comparative =
+    /^(qui|quel joueur|quelle joueuse|quel profil|quelle equipe|quelle équipe).*(plus|moins|premier|premiere|dernier|derniere|meilleur|meilleure|pire)/.test(q)
+    || /\b(plus|moins) de\b.*\b(kill|mort|elimination|degat|vie|flechette|lancer|hit|touche|bull|double|triple|miss|bust|checkout|capture|vol|territoire|180|140|100|60)/.test(q);
+  if (comparative) return true;
+
+  const numericQuestion = /\bcombien\b.*\b(kill|mort|elimination|degat|vie|flechette|lancer|hit|touche|bull|double|triple|miss|bust|checkout|capture|vol|territoire|victoire|partie|180|140|100|60)/.test(q);
+  if (numericQuestion) return true;
+
+  // Relance courte après un sujet Records déjà actif.
+  const remembered = String(context?.extra?.awenaKnowledgeTopic || "");
+  if (/record|stat/.test(norm(remembered)) && /^(et |sinon |alors )?(qui|combien|lequel|laquelle|top|meilleur|pire|plus|moins)/.test(q)) return true;
+
+  return false;
 }
 
 function periodFromQuestion(question: string) {
@@ -272,6 +318,9 @@ const NORMALIZED_MODE_BY_AWENA: Record<string, string> = {
 
 function matchMode(m: NormalizedMatch, mode: AwenaModeKnowledge) {
   const blob = rawBlob(m);
+  // Les sessions Training X01 sont un mode statistique distinct : elles ne
+  // doivent pas gonfler les records du X01 de match classique.
+  if (mode.id === "x01" && /training x01|trainingx01/.test(blob)) return false;
   const directAliases = [mode.id, mode.label, ...mode.aliases].map(norm).filter(Boolean);
   if (directAliases.some((alias) => alias.length >= 3 && blob.includes(alias))) return true;
 
@@ -290,10 +339,63 @@ function rawMatchesMode(rec: any, mode: AwenaModeKnowledge) {
     rec?.payload?.summary?.mode, rec?.payload?.summary?.gameId,
     rec?.payload?.stats?.mode,
   ].filter(Boolean).join(" "));
+  if (mode.id === "x01" && /training x01|trainingx01/.test(blob)) return false;
   const aliases = [mode.id, mode.label, ...mode.aliases].map(norm).filter((x) => x.length >= 3);
   if (aliases.some((alias) => blob.includes(alias))) return true;
   const expected = NORMALIZED_MODE_BY_AWENA[mode.id];
   return !!expected && blob.includes(norm(expected));
+}
+
+
+async function detailedModeHistory(
+  mode: AwenaModeKnowledge,
+  snapshot: AuthoritativeHistorySnapshot,
+  periodSince = 0,
+) {
+  const cacheKey = `${mode.id}:${periodSince || 0}`;
+  const cached = detailedModeCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && cached.fingerprint === snapshot.fingerprint && now - cached.at < DETAILED_MODE_CACHE_MS) {
+    return cached;
+  }
+
+  const headers = snapshot.raw.filter(
+    (rec) => isFinishedHistoryRecord(rec) && (!periodSince || getTimestamp(rec) >= periodSince) && rawMatchesMode(rec, mode),
+  );
+  if (!headers.length) {
+    const empty = { at: now, fingerprint: snapshot.fingerprint, raw: [] as any[], normalized: [] as NormalizedMatch[] };
+    detailedModeCache.set(cacheKey, empty);
+    return empty;
+  }
+
+  const fullRows = headers.slice();
+  const CONCURRENCY = 8;
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(CONCURRENCY, headers.length) }, async () => {
+    while (cursor < headers.length) {
+      const index = cursor++;
+      const header = headers[index];
+      const id = String(header?.id ?? header?.matchId ?? "").trim();
+      if (!id) continue;
+      try {
+        const full = await History.get(id);
+        if (full) fullRows[index] = { ...header, ...full, payload: (full as any)?.payload ?? header?.payload };
+      } catch {
+        // Le header reste exploitable : une ancienne partie corrompue ne doit
+        // pas empêcher les autres parties de participer aux records.
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  const result = {
+    at: Date.now(),
+    fingerprint: snapshot.fingerprint,
+    raw: fullRows,
+    normalized: normalizeMany(fullRows),
+  };
+  detailedModeCache.set(cacheKey, result);
+  return result;
 }
 
 function playerKeys(p: NormalizedPlayer) {
@@ -614,6 +716,318 @@ function playerRowsForRecord(rec: any) {
   return Array.from(target.entries()).map(([key, row]) => ({ key, row }));
 }
 
+
+type X01MetricId =
+  | "avg3" | "avg1" | "bestVisit" | "best9" | "bestCheckout" | "darts" | "visits" | "points"
+  | "hitsTotal" | "hitRate" | "singles" | "singleRate" | "doubles" | "doubleRate"
+  | "triples" | "tripleRate" | "bulls" | "bullRate" | "dbulls" | "dbullRate"
+  | "misses" | "missRate" | "busts" | "bustRate"
+  | "h50" | "h60" | "h80" | "h100" | "h120" | "h140" | "h180"
+  | "checkoutHits" | "checkoutAttempts" | "checkoutRate"
+  | "legsWon" | "legsPlayed" | "legWinRate" | "setsWon" | "setsPlayed" | "setWinRate";
+
+type X01MetricDef = {
+  id: X01MetricId;
+  label: string;
+  aggregation: "sum" | "max" | "avg3" | "avg1" | "rate";
+  aliases: string[];
+};
+
+const X01_METRICS: X01MetricDef[] = [
+  { id: "avg3", label: "AVG3D / moyenne 3 fléchettes", aggregation: "avg3", aliases: ["avg3", "avg3d", "moyenne", "moyenne 3 flechettes", "moyenne trois flechettes", "moyenne generale", "moyenne globale"] },
+  { id: "avg1", label: "AVG 1 dart", aggregation: "avg1", aliases: ["avg 1 dart", "avg1", "moyenne 1 flechette", "moyenne une flechette", "moyenne par flechette"] },
+  { id: "bestVisit", label: "meilleure volée / Best visit", aggregation: "max", aliases: ["meilleure volee", "best visit", "meilleur score sur une volee", "meilleure visite"] },
+  { id: "best9", label: "Best 9 darts", aggregation: "max", aliases: ["best 9", "best9", "9 meilleures flechettes", "neuf meilleures flechettes", "meilleur debut 9 flechettes"] },
+  { id: "bestCheckout", label: "meilleur checkout", aggregation: "max", aliases: ["meilleur checkout", "best checkout", "meilleure sortie", "plus grosse sortie"] },
+  { id: "checkoutRate", label: "CO % / réussite checkout", aggregation: "rate", aliases: ["co %", "co%", "taux de checkout", "reussite checkout", "pourcentage checkout", "precision checkout", "checkout rate", "best co %"] },
+  { id: "checkoutAttempts", label: "CO tentés / tentatives de checkout", aggregation: "sum", aliases: ["co tentes", "tentatives checkout", "checkout attempts", "tentatives de sortie"] },
+  { id: "checkoutHits", label: "CO réussis / checkouts réussis", aggregation: "sum", aliases: ["co reussis", "checkouts reussis", "sorties reussies", "checkout hits", "nombre de checkout"] },
+  { id: "hitRate", label: "Hits % / taux de touches", aggregation: "rate", aliases: ["hits %", "hit %", "taux de touches", "pourcentage de touches", "precision globale", "taux de hit"] },
+  { id: "hitsTotal", label: "Hits totaux / touches", aggregation: "sum", aliases: ["hits totaux", "total hits", "touches totales", "nombre de touches", "hits"] },
+  { id: "missRate", label: "Miss %", aggregation: "rate", aliases: ["miss %", "taux de miss", "pourcentage de miss", "taux de rates", "pourcentage de rates"] },
+  { id: "singleRate", label: "Simple %", aggregation: "rate", aliases: ["simple %", "taux de simples", "pourcentage de simples"] },
+  { id: "doubleRate", label: "Double %", aggregation: "rate", aliases: ["double %", "taux de doubles", "pourcentage de doubles"] },
+  { id: "tripleRate", label: "Triple %", aggregation: "rate", aliases: ["triple %", "taux de triples", "pourcentage de triples"] },
+  { id: "bullRate", label: "Bull %", aggregation: "rate", aliases: ["bull %", "taux de bull", "pourcentage de bull"] },
+  { id: "dbullRate", label: "DBull %", aggregation: "rate", aliases: ["dbull %", "double bull %", "taux de dbull", "pourcentage de dbull"] },
+  { id: "bustRate", label: "Bust %", aggregation: "rate", aliases: ["bust %", "taux de bust", "pourcentage de bust"] },
+  { id: "h180", label: "180", aggregation: "sum", aliases: ["180", "nombre de 180"] },
+  { id: "h140", label: "140+", aggregation: "sum", aliases: ["140+", "140 plus", "nombre de 140"] },
+  { id: "h120", label: "120+", aggregation: "sum", aliases: ["120+", "120 plus", "nombre de 120"] },
+  { id: "h100", label: "100+", aggregation: "sum", aliases: ["100+", "100 plus", "nombre de 100"] },
+  { id: "h80", label: "80+", aggregation: "sum", aliases: ["80+", "80 plus", "nombre de 80"] },
+  { id: "h60", label: "60+", aggregation: "sum", aliases: ["60+", "60 plus", "nombre de 60"] },
+  { id: "h50", label: "50+", aggregation: "sum", aliases: ["50+", "50 plus", "nombre de 50"] },
+  { id: "dbulls", label: "DBull (50)", aggregation: "sum", aliases: ["dbull", "dbulls", "double bull", "double bulls"] },
+  { id: "bulls", label: "Bull (25)", aggregation: "sum", aliases: ["bull", "bulls"] },
+  { id: "triples", label: "triples", aggregation: "sum", aliases: ["triple", "triples"] },
+  { id: "doubles", label: "doubles", aggregation: "sum", aliases: ["double", "doubles"] },
+  { id: "singles", label: "simples", aggregation: "sum", aliases: ["simple", "simples"] },
+  { id: "misses", label: "MISS / ratés", aggregation: "sum", aliases: ["miss", "misses", "rates", "rates", "manques"] },
+  { id: "busts", label: "busts", aggregation: "sum", aliases: ["bust", "busts"] },
+  { id: "darts", label: "fléchettes lancées", aggregation: "sum", aliases: ["flechettes", "darts", "lancers", "flechettes lancees"] },
+  { id: "visits", label: "volées / visites", aggregation: "sum", aliases: ["volees", "visites", "visits", "nombre de volees"] },
+  { id: "points", label: "points scorés", aggregation: "sum", aliases: ["points", "points scores", "score total"] },
+  { id: "legWinRate", label: "Ratio legs W %", aggregation: "rate", aliases: ["ratio legs", "legs w %", "taux de legs", "pourcentage de legs", "legs win rate"] },
+  { id: "legsPlayed", label: "legs joués", aggregation: "sum", aliases: ["legs joues", "manches jouees"] },
+  { id: "legsWon", label: "legs gagnés", aggregation: "sum", aliases: ["legs gagnes", "manches gagnees"] },
+  { id: "setWinRate", label: "Ratio sets W %", aggregation: "rate", aliases: ["ratio sets", "sets w %", "taux de sets", "pourcentage de sets", "sets win rate"] },
+  { id: "setsPlayed", label: "sets joués", aggregation: "sum", aliases: ["sets joues"] },
+  { id: "setsWon", label: "sets gagnés", aggregation: "sum", aliases: ["sets gagnes"] },
+];
+
+function resolveX01Metric(question: string): X01MetricDef | null {
+  const q = norm(question);
+  // Les formulations les plus spécifiques d'abord pour éviter que « checkout »
+  // masque « taux de checkout » ou « tentatives de checkout ».
+  const ordered = [
+    "checkoutRate", "checkoutAttempts", "checkoutHits", "bestCheckout", "best9", "bestVisit",
+    "legWinRate", "setWinRate", "hitRate", "missRate", "singleRate", "doubleRate", "tripleRate", "bullRate", "dbullRate", "bustRate",
+    "hitsTotal", "h180", "h140", "h120", "h100", "h80", "h60", "h50",
+    "dbulls", "bulls", "triples", "doubles", "singles", "misses", "busts",
+    "avg1", "avg3", "darts", "visits", "points", "legsPlayed", "legsWon", "setsPlayed", "setsWon",
+  ] as X01MetricId[];
+  for (const id of ordered) {
+    const metric = X01_METRICS.find((item) => item.id === id)!;
+    if (metric.aliases.some((alias) => q.includes(norm(alias)))) return metric;
+  }
+  return null;
+}
+
+function rawIdentityKeys(row: any, fallbackKey = "") {
+  return Array.from(new Set([
+    row?.id, row?.playerId, row?.profileId, row?.sourcePlayerId, row?.sourceProfileId, fallbackKey, row?.name,
+  ].map((value) => String(value ?? "").trim()).filter(Boolean)));
+}
+
+function mappedNumber(container: any, mapNames: string[], identities: string[]) {
+  if (!container || typeof container !== "object") return null;
+  for (const mapName of mapNames) {
+    const map = container?.[mapName];
+    if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+    for (const identity of identities) {
+      if (Object.prototype.hasOwnProperty.call(map, identity)) {
+        const n = num(map[identity]);
+        if (n != null) return n;
+      }
+      const wanted = norm(identity);
+      for (const [key, value] of Object.entries(map)) {
+        if (norm(key) !== wanted) continue;
+        const n = num(value);
+        if (n != null) return n;
+      }
+    }
+  }
+  return null;
+}
+
+const x01SampleCache = new WeakMap<object, Map<string, any>>();
+
+function x01SampleForRecord(rec: any, row: any, fallbackKey: string) {
+  if (!rec || typeof rec !== "object") return null;
+  const identities = rawIdentityKeys(row, fallbackKey);
+  const cacheKey = identities[0] || norm(row?.name || fallbackKey);
+  let byPlayer = x01SampleCache.get(rec);
+  if (!byPlayer) {
+    byPlayer = new Map<string, any>();
+    x01SampleCache.set(rec, byPlayer);
+  }
+  if (byPlayer.has(cacheKey)) return byPlayer.get(cacheKey);
+  const profileLike = {
+    id: row?.profileId ?? row?.playerId ?? row?.id ?? fallbackKey,
+    profileId: row?.profileId,
+    playerId: row?.playerId ?? row?.id,
+    name: row?.name ?? row?.playerName ?? row?.displayName ?? fallbackKey,
+  };
+  let sample = null;
+  try { sample = x01SampleFromRec(rec, profileLike); } catch {}
+  byPlayer.set(cacheKey, sample);
+  return sample;
+}
+
+function x01HitTotalFromRecord(rec: any, row: any, fallbackKey: string) {
+  const direct = firstFinite(row?.hitsTotal, row?.totalHits, row?.stats?.hitsTotal);
+  if (direct != null) return direct;
+  const components = ["singles", "doubles", "triples", "bulls", "dbulls"] as X01MetricId[];
+  let total = 0;
+  let found = false;
+  for (const id of components) {
+    const value = x01ValueFromRecord(rec, row, fallbackKey, id);
+    if (value != null) { total += value; found = true; }
+  }
+  if (found) return total;
+  const sample = x01SampleForRecord(rec, row, fallbackKey);
+  if (!sample) return null;
+  return Number(sample.singleHits || 0) + Number(sample.doubleHits || 0) + Number(sample.tripleHits || 0) + Number(sample.bull25 || 0) + Number(sample.bull50 || 0);
+}
+
+function x01ValueFromRecord(rec: any, row: any, fallbackKey: string, metricId: X01MetricId) {
+  const identities = rawIdentityKeys(row, fallbackKey);
+  const summary = rec?.summary || {};
+  const payloadSummary = rec?.payload?.summary || {};
+  const legacy = summary?.legacy || rec?.payload?.legacy || payloadSummary?.legacy || {};
+  const buckets = row?.buckets || row?.stats?.buckets || {};
+
+  const mapSources = [summary, payloadSummary, legacy, rec?.payload || {}, rec || {}];
+  const fromMaps = (names: string[]) => {
+    for (const source of mapSources) {
+      const value = mappedNumber(source, names, identities);
+      if (value != null) return value;
+    }
+    return null;
+  };
+
+  if (metricId === "avg3") return firstFinite(row?.avg3, row?.avg3d, row?.average, row?.stats?.avg3, fromMaps(["avg3ByPlayer", "avg3", "averageByPlayer"]), x01SampleForRecord(rec, row, fallbackKey)?.avg3);
+  if (metricId === "avg1") {
+    const points = x01ValueFromRecord(rec, row, fallbackKey, "points");
+    const darts = x01ValueFromRecord(rec, row, fallbackKey, "darts");
+    if (points != null && darts != null && darts > 0) return points / darts;
+    const avg3 = x01ValueFromRecord(rec, row, fallbackKey, "avg3");
+    return avg3 != null ? avg3 / 3 : null;
+  }
+  if (metricId === "bestVisit") return firstFinite(row?.bestVisit, row?.bestScore, row?.stats?.bestVisit, fromMaps(["bestVisitByPlayer", "bestVisit"]), x01SampleForRecord(rec, row, fallbackKey)?.bestVisit);
+  if (metricId === "best9") return firstFinite(row?.best9Score, row?.best9, row?.stats?.best9Score, fromMaps(["best9ScoreByPlayer", "best9Score", "best9"]), x01SampleForRecord(rec, row, fallbackKey)?.best9Score);
+  if (metricId === "bestCheckout") return firstFinite(row?.bestCheckout, row?.bestCO, row?.checkout, row?.co, row?.stats?.bestCheckout, fromMaps(["bestCheckoutByPlayer", "bestCheckout"]), x01SampleForRecord(rec, row, fallbackKey)?.bestCheckout);
+  if (metricId === "darts") return firstFinite(row?.darts, row?.totalDarts, row?._sumDarts, row?.dartsThrown, row?.stats?.darts, fromMaps(["dartsByPlayer", "darts", "totalDartsByPlayer"]));
+  if (metricId === "visits") return firstFinite(row?.visits, row?.totalVisits, row?._sumVisits, row?.stats?.visits, fromMaps(["visitsByPlayer", "visits"]));
+  if (metricId === "points") return firstFinite(row?.points, row?._sumPoints, row?.totalPoints, row?.score, row?.stats?.points, fromMaps(["pointsByPlayer", "points"]));
+  if (metricId === "hitsTotal") return x01HitTotalFromRecord(rec, row, fallbackKey);
+  if (metricId === "singles") return firstFinite(row?.singles, row?.hits?.S, row?.hits?.s, row?.stats?.singles, fromMaps(["singlesByPlayer", "singles"]), x01SampleForRecord(rec, row, fallbackKey)?.singleHits);
+  if (metricId === "doubles") return firstFinite(row?.doubles, row?.hits?.D, row?.hits?.d, row?.stats?.doubles, fromMaps(["doublesByPlayer", "doubles"]), x01SampleForRecord(rec, row, fallbackKey)?.doubleHits);
+  if (metricId === "triples") return firstFinite(row?.triples, row?.hits?.T, row?.hits?.t, row?.stats?.triples, fromMaps(["triplesByPlayer", "triples"]), x01SampleForRecord(rec, row, fallbackKey)?.tripleHits);
+  if (metricId === "bulls") return firstFinite(row?.bulls, row?.bull, row?.stats?.bulls, fromMaps(["bullsByPlayer", "bulls"]), x01SampleForRecord(rec, row, fallbackKey)?.bull25);
+  if (metricId === "dbulls") return firstFinite(row?.dbulls, row?.dbull, row?.stats?.dbulls, fromMaps(["dbullsByPlayer", "dbulls"]), x01SampleForRecord(rec, row, fallbackKey)?.bull50);
+  if (metricId === "misses") return firstFinite(row?.misses, row?.miss, row?.hits?.M, row?.hits?.m, row?.stats?.misses, fromMaps(["missesByPlayer", "misses", "miss"]), x01SampleForRecord(rec, row, fallbackKey)?.miss);
+  if (metricId === "busts") return firstFinite(row?.busts, row?.bust, row?.stats?.busts, fromMaps(["bustsByPlayer", "busts", "bust"]), x01SampleForRecord(rec, row, fallbackKey)?.bust);
+  if (metricId === "h50") return firstFinite(buckets?.["50+"], buckets?.h50, row?.h50, fromMaps(["h50", "hits50", "count50"]), x01SampleForRecord(rec, row, fallbackKey)?.h50);
+  if (metricId === "h60") return firstFinite(buckets?.["60+"], buckets?.h60, row?.h60, fromMaps(["h60", "hits60", "count60"]), x01SampleForRecord(rec, row, fallbackKey)?.h60);
+  if (metricId === "h80") return firstFinite(buckets?.["80+"], buckets?.h80, row?.h80, fromMaps(["h80", "hits80", "count80"]), x01SampleForRecord(rec, row, fallbackKey)?.h80);
+  if (metricId === "h100") return firstFinite(buckets?.["100+"], buckets?.h100, row?.h100, fromMaps(["h100", "hits100", "count100"]), x01SampleForRecord(rec, row, fallbackKey)?.h100);
+  if (metricId === "h120") return firstFinite(buckets?.["120+"], buckets?.h120, row?.h120, fromMaps(["h120", "hits120", "count120"]), x01SampleForRecord(rec, row, fallbackKey)?.h120);
+  if (metricId === "h140") return firstFinite(buckets?.["140+"], buckets?.h140, row?.h140, fromMaps(["h140", "hits140", "count140"]), x01SampleForRecord(rec, row, fallbackKey)?.h140);
+  if (metricId === "h180") return firstFinite(buckets?.["180"], buckets?.h180, row?.h180, row?.count180, fromMaps(["h180", "hits180", "count180", "visits180"]), x01SampleForRecord(rec, row, fallbackKey)?.h180);
+  if (metricId === "checkoutHits") return firstFinite(row?.checkoutHits, row?.checkouts, row?.stats?.checkoutHits, fromMaps(["checkoutHitsByPlayer", "checkoutHits"]), x01SampleForRecord(rec, row, fallbackKey)?.coSuccess);
+  if (metricId === "checkoutAttempts") return firstFinite(row?.checkoutAttempts, row?.stats?.checkoutAttempts, fromMaps(["checkoutAttemptsByPlayer", "checkoutAttempts"]), x01SampleForRecord(rec, row, fallbackKey)?.coAttempts);
+  if (metricId === "legsWon") return firstFinite(row?.legsWon, row?.stats?.legsWon, fromMaps(["legsByPlayer", "legsWon", "legsScore"]), x01SampleForRecord(rec, row, fallbackKey)?.legsWon);
+  if (metricId === "legsPlayed") return firstFinite(row?.legsPlayed, row?.stats?.legsPlayed, fromMaps(["legsPlayedByPlayer", "legsPlayed"]));
+  if (metricId === "setsWon") return firstFinite(row?.setsWon, row?.stats?.setsWon, fromMaps(["setsByPlayer", "setsWon", "setsScore"]), x01SampleForRecord(rec, row, fallbackKey)?.setsWon);
+  if (metricId === "setsPlayed") return firstFinite(row?.setsPlayed, row?.stats?.setsPlayed, fromMaps(["setsPlayedByPlayer", "setsPlayed"]));
+  return null;
+}
+
+type X01MetricRow = {
+  key: string;
+  name: string;
+  games: number;
+  wins: number;
+  value: number;
+  coverage: number;
+};
+
+function aggregateX01Metric(records: any[], metric: X01MetricDef, averageRequested = false): X01MetricRow[] {
+  const buckets = new Map<string, {
+    key: string; name: string; games: number; wins: number; coverage: number;
+    sum: number; max: number; avgSum: number; avgCount: number;
+    points: number; darts: number; checkoutHits: number; checkoutAttempts: number;
+    rateNumerator: number; rateDenominator: number;
+  }>();
+
+  for (const rec of records) {
+    const winner = winnerIdFor(rec);
+    for (const { key, row } of playerRowsForRecord(rec)) {
+      const ident = rawPlayerIdentity(row, key);
+      if (!ident.key) continue;
+      const current = buckets.get(ident.key) || {
+        key: ident.key, name: ident.name, games: 0, wins: 0, coverage: 0,
+        sum: 0, max: 0, avgSum: 0, avgCount: 0, points: 0, darts: 0,
+        checkoutHits: 0, checkoutAttempts: 0, rateNumerator: 0, rateDenominator: 0,
+      };
+      current.name = ident.name || current.name;
+      current.games += 1;
+      if ((winner && winner === ident.key) || boolish(row?.winner) || boolish(row?.win) || Number(row?.rank ?? row?.place ?? 0) === 1) current.wins += 1;
+
+      if (metric.id === "avg3" || metric.id === "avg1") {
+        const points = x01ValueFromRecord(rec, row, key, "points");
+        const darts = x01ValueFromRecord(rec, row, key, "darts");
+        const avg = x01ValueFromRecord(rec, row, key, metric.id);
+        if (points != null && darts != null && darts > 0) {
+          current.points += points;
+          current.darts += darts;
+          current.coverage += 1;
+        } else if (avg != null) {
+          current.avgSum += avg;
+          current.avgCount += 1;
+          current.coverage += 1;
+        }
+      } else if (metric.aggregation === "rate") {
+        let numerator: number | null = null;
+        let denominator: number | null = null;
+        if (metric.id === "checkoutRate") { numerator = x01ValueFromRecord(rec, row, key, "checkoutHits"); denominator = x01ValueFromRecord(rec, row, key, "checkoutAttempts"); }
+        else if (metric.id === "hitRate") { numerator = x01ValueFromRecord(rec, row, key, "hitsTotal"); denominator = x01ValueFromRecord(rec, row, key, "darts"); }
+        else if (metric.id === "missRate") { numerator = x01ValueFromRecord(rec, row, key, "misses"); denominator = x01ValueFromRecord(rec, row, key, "darts"); }
+        else if (metric.id === "singleRate") { numerator = x01ValueFromRecord(rec, row, key, "singles"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "doubleRate") { numerator = x01ValueFromRecord(rec, row, key, "doubles"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "tripleRate") { numerator = x01ValueFromRecord(rec, row, key, "triples"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "bullRate") { numerator = x01ValueFromRecord(rec, row, key, "bulls"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "dbullRate") { numerator = x01ValueFromRecord(rec, row, key, "dbulls"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "bustRate") { numerator = x01ValueFromRecord(rec, row, key, "busts"); denominator = x01ValueFromRecord(rec, row, key, "hitsTotal"); }
+        else if (metric.id === "legWinRate") { numerator = x01ValueFromRecord(rec, row, key, "legsWon"); denominator = x01ValueFromRecord(rec, row, key, "legsPlayed"); }
+        else if (metric.id === "setWinRate") { numerator = x01ValueFromRecord(rec, row, key, "setsWon"); denominator = x01ValueFromRecord(rec, row, key, "setsPlayed"); }
+        if (numerator != null && denominator != null && denominator > 0) {
+          current.rateNumerator += numerator;
+          current.rateDenominator += denominator;
+          current.coverage += 1;
+        }
+      } else {
+        const value = x01ValueFromRecord(rec, row, key, metric.id);
+        if (value != null) {
+          current.sum += value;
+          current.max = Math.max(current.max, value);
+          current.coverage += 1;
+        }
+      }
+      buckets.set(ident.key, current);
+    }
+  }
+
+  return Array.from(buckets.values()).map((row) => {
+    let value = Number.NaN;
+    if (metric.aggregation === "avg3") {
+      value = row.darts > 0 ? (row.points / row.darts) * 3 : row.avgCount > 0 ? row.avgSum / row.avgCount : Number.NaN;
+    } else if (metric.aggregation === "avg1") {
+      value = row.darts > 0 ? row.points / row.darts : row.avgCount > 0 ? row.avgSum / row.avgCount : Number.NaN;
+    } else if (metric.aggregation === "rate") {
+      value = row.rateDenominator > 0 ? (row.rateNumerator / row.rateDenominator) * 100 : Number.NaN;
+    } else if (metric.aggregation === "max") {
+      value = row.coverage > 0 ? row.max : Number.NaN;
+    } else {
+      value = row.coverage > 0 ? (averageRequested && row.games > 0 ? row.sum / row.games : row.sum) : Number.NaN;
+    }
+    return { key: row.key, name: row.name, games: row.games, wins: row.wins, value, coverage: row.coverage };
+  });
+}
+
+function formatX01MetricValue(metric: X01MetricDef, value: number, averageRequested = false) {
+  if (metric.aggregation === "rate") return `${value.toFixed(1)} %`;
+  if (metric.aggregation === "avg3" || metric.aggregation === "avg1") return value.toFixed(2);
+  if (averageRequested && metric.aggregation === "sum") return `${value.toFixed(2)} par partie`;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function rankX01Metric(rows: X01MetricRow[], metric: X01MetricDef, question: string) {
+  const count = requestedCount(question);
+  const worst = asksWorst(question);
+  return rows
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => worst ? a.value - b.value : b.value - a.value)
+    .slice(0, count)
+    .map((row, index) => ({ ...row, rank: index + 1, formatted: formatX01MetricValue(metric, row.value, asksAverage(question)) }));
+}
+
+function x01MetricBulletList(rows: ReturnType<typeof rankX01Metric>) {
+  return rows.map((row) => `- **${row.rank}. ${row.name}** — ${row.formatted}`).join("\n");
+}
+
 function winnerIdFor(rec: any) {
   return norm(
     rec?.winnerId ??
@@ -830,11 +1244,14 @@ function aggregateDynamicField(records: any[], metric: DynamicMetric) {
   });
 }
 
-function unavailableMetricReply(mode: AwenaModeKnowledge, question: string, periodLabel: string) {
+function unavailableMetricReply(mode: AwenaModeKnowledge, question: string, periodLabel: string, matchCount?: number) {
+  const source = typeof matchCount === "number"
+    ? `\n\n> J'ai vérifié **${matchCount} partie${matchCount > 1 ? "s" : ""} ${mode.label} enregistrée${matchCount > 1 ? "s" : ""} dans Historique** pour cette période.`
+    : "";
   return {
     text:
       `## STATISTIQUE NON DISPONIBLE — ${mode.label.toUpperCase()}\n` +
-      `Je comprends ta demande, mais je ne trouve pas cette statistique dans les données enregistrées ${periodLabel}.\n\n` +
+      `Je comprends ta demande, mais je ne trouve pas cette statistique dans les données enregistrées ${periodLabel}.` + source + `\n\n` +
       `> Je préfère te dire clairement que je n'ai pas cette donnée plutôt que d'inventer un résultat. Si cette statistique est ajoutée aux sauvegardes du mode, je pourrai ensuite la classer, faire un Top 3, calculer une moyenne ou filtrer par période.`,
     modeId: mode.id,
   } satisfies AwenaReply;
@@ -851,10 +1268,41 @@ function killerDashboard(records: any[], mode: AwenaModeKnowledge, periodLabel: 
   return sections.join("\n\n");
 }
 
-async function universalRowsForMode(mode: AwenaModeKnowledge, periodSince: number, preferDetailed: boolean) {
-  const snapshot = fastHistory();
-  let all = snapshot.normalized;
-  let matches = all.filter((m) => (!periodSince || m.date >= periodSince) && matchMode(m, mode));
+
+function x01Dashboard(records: any[], rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
+  const sections: string[] = [
+    `## RECORDS — ${mode.label.toUpperCase()}\n${periodLabel}.\n\n> Source : **${records.length} partie${records.length > 1 ? "s" : ""} enregistrée${records.length > 1 ? "s" : ""} dans Historique**.`,
+  ];
+  const rate = rankRows(rows, "winRate", false, 3);
+  if (rate.length) sections.push(`## % DE VICTOIRE\n${bulletList(rate, "winRate")}`);
+  const wins = rankRows(rows, "wins", false, 3);
+  if (wins.length) sections.push(`## VICTOIRES\n${bulletList(wins, "wins")}`);
+
+  for (const metricId of ["avg3", "bestVisit", "bestCheckout", "checkoutRate", "hitRate", "h180"] as X01MetricId[]) {
+    const metric = X01_METRICS.find((item) => item.id === metricId)!;
+    const ranked = rankX01Metric(aggregateX01Metric(records, metric), metric, `top 3 ${metric.aliases[0]}`);
+    if (!ranked.length) continue;
+    sections.push(`## ${metric.label.toUpperCase()}\n${x01MetricBulletList(ranked)}`);
+  }
+
+  sections.push(
+    "> Tu peux aussi me demander : 60+, 100+, 140+, 180, Bulls, Double Bulls, simples, doubles, triples, MISS, busts, fléchettes, volées, points, legs, sets, tentatives de checkout ou taux de réussite au checkout.",
+  );
+  return sections.join("\n\n");
+}
+
+function historySourceLine(matchCount: number) {
+  return `> Source : **${matchCount} partie${matchCount > 1 ? "s" : ""} enregistrée${matchCount > 1 ? "s" : ""} dans Historique**.`;
+}
+
+async function universalRowsForMode(
+  mode: AwenaModeKnowledge,
+  periodSince: number,
+  preferDetailed: boolean,
+  snapshot: AuthoritativeHistorySnapshot,
+) {
+  // Toujours partir de History.list() : c'est la base de référence complète.
+  let matches = snapshot.normalized.filter((m) => isFinishedHistoryRecord(m.raw) && (!periodSince || m.date >= periodSince) && matchMode(m, mode));
   let rows = aggregate(matches);
 
   const needsDetailedFallback =
@@ -862,9 +1310,11 @@ async function universalRowsForMode(mode: AwenaModeKnowledge, periodSince: numbe
     (!rows.length ||
       rows.every((row) => row.avg3Count === 0 && row.genericAvgCount === 0 && row.bestCheckout === 0));
 
+  // Pour les anciennes parties dont les métriques n'étaient présentes que dans
+  // le payload, hydrate TOUTES les parties du mode concerné (sans limite à 260).
   if (needsDetailedFallback) {
-    all = await hydratedHistory();
-    matches = all.filter((m) => (!periodSince || m.date >= periodSince) && matchMode(m, mode));
+    const detailed = await detailedModeHistory(mode, snapshot, periodSince);
+    matches = detailed.normalized.filter((m) => matchMode(m, mode));
     rows = aggregate(matches);
   }
 
@@ -875,65 +1325,147 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
   if (!isAwenaRecordsQuestion(question, context)) return null;
 
   try {
-    const mode = findAwenaMode(question, context.mode || context.route) || findAwenaModeById(context.mode);
+    const rememberedModeId = String(context.extra?.awenaRememberedMode || "");
+    const mode = findAwenaMode(question, context.mode || rememberedModeId || context.route)
+      || findAwenaModeById(context.mode)
+      || findAwenaModeById(rememberedModeId);
     if (!mode) {
       return { text: "Pour établir un classement ou un record, indique-moi le mode concerné, par exemple « top 3 X01 au pourcentage de victoire »." };
     }
 
     const period = periodFromQuestion(question);
     const q = norm(question);
-    const snapshot = fastHistory();
-    const rawModeRecords = snapshot.raw.filter((rec) => (!period.since || getTimestamp(rec) >= period.since) && rawMatchesMode(rec, mode));
+    const snapshot = await authoritativeHistory();
+    let rawModeRecords = snapshot.raw.filter((rec) => isFinishedHistoryRecord(rec) && (!period.since || getTimestamp(rec) >= period.since) && rawMatchesMode(rec, mode));
 
     const asksOnlyDashboard =
-      /records?/.test(q) &&
-      !/top|meilleur|moyenne|victoire|checkout|partie|pire|mauvais|kill|mort|deces|degat|vie|lancer|flechette|hit|touche|bull|double|triple|resurrection|desarmement|bouclier|capture|vol|precision/.test(q.replace(/records?/g, ""));
+      /records?|stats?|statistiques?/.test(q) &&
+      !/top|meilleur|moyenne|victoire|checkout|partie|pire|mauvais|kill|mort|deces|degat|vie|lancer|flechette|hit|touche|bull|double|triple|resurrection|desarmement|bouclier|capture|vol|precision|180|140|100|60|bust|miss|leg|set/.test(q.replace(/records?|stats?|statistiques?/g, ""));
+
+
+    // X01 : moteur dédié basé en priorité sur les résumés de TOUTES les parties
+    // enregistrées dans Historique. Les payloads complets ne sont relus que si
+    // une ancienne partie ne contient pas la métrique demandée dans son header.
+    if (mode.id === "x01") {
+      const x01Metric = resolveX01Metric(question);
+      if (x01Metric) {
+        if (!rawModeRecords.length) {
+          return { text: `Je ne trouve aucune partie ${mode.label} enregistrée ${period.label}. Je ne vais pas inventer une statistique.`, modeId: mode.id };
+        }
+
+        let metricRows = aggregateX01Metric(rawModeRecords, x01Metric, asksAverage(question));
+        let hasMetric = metricRows.some((row) => Number.isFinite(row.value));
+
+        // Compatibilité historique : certaines anciennes sauvegardes n'avaient
+        // les stats détaillées que dans payload. On hydrate alors toutes les
+        // parties X01 concernées, sans limite arbitraire, puis on recalcule.
+        if (!hasMetric) {
+          const detailed = await detailedModeHistory(mode, snapshot, period.since);
+          if (detailed.raw.length) {
+            rawModeRecords = detailed.raw;
+            metricRows = aggregateX01Metric(rawModeRecords, x01Metric, asksAverage(question));
+            hasMetric = metricRows.some((row) => Number.isFinite(row.value));
+          }
+        }
+
+        if (!hasMetric) {
+          return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
+        }
+
+        const wantedPlayer = requestedPlayerKey(question, metricRows, context);
+        if (wantedPlayer) {
+          const player = metricRows.find((row) => norm(row.key || row.name) === wantedPlayer);
+          if (!player || !Number.isFinite(player.value)) {
+            return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
+          }
+          return {
+            text: `## ${player.name.toUpperCase()} — X01\n**${x01Metric.label}** ${period.label}\n\n**${formatX01MetricValue(x01Metric, player.value, asksAverage(question))}**\n\n${historySourceLine(rawModeRecords.length)}`,
+            modeId: mode.id,
+          };
+        }
+
+        const ranked = rankX01Metric(metricRows, x01Metric, question);
+        if (!ranked.length) return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
+        const title = asksWorst(question) ? "CLASSEMENT INVERSÉ" : requestedCount(question) === 1 ? "MEILLEUR RÉSULTAT" : `TOP ${requestedCount(question)}`;
+        return {
+          text: `## ${title} — X01\n**${x01Metric.label}** ${period.label}\n\n${x01MetricBulletList(ranked)}\n\n${historySourceLine(rawModeRecords.length)}`,
+          modeId: mode.id,
+        };
+      }
+    }
 
     // Killer : catalogue riche prioritaire, y compris "kills reçus".
     if (mode.id === "killer") {
       const killerMetric = resolveKillerMetric(question);
       if (killerMetric) {
         if (!rawModeRecords.length) {
-          return { text: `Je ne trouve aucune partie ${mode.label} exploitable ${period.label}. Je ne vais pas inventer un classement.`, modeId: mode.id };
+          return { text: `Je ne trouve aucune partie ${mode.label} enregistrée ${period.label}. Je ne vais pas inventer un classement.`, modeId: mode.id };
         }
-        const rows = aggregateKillerMetric(rawModeRecords, killerMetric);
-        const wantedPlayer = requestedPlayerKey(question, rows, context);
+
+        let killerRows = aggregateKillerMetric(rawModeRecords, killerMetric);
+        let hasKillerMetric = killerRows.some((row) => Number.isFinite(metricValue(row, killerMetric, asksAverage(question))));
+        if (!hasKillerMetric) {
+          const detailed = await detailedModeHistory(mode, snapshot, period.since);
+          if (detailed.raw.length) {
+            rawModeRecords = detailed.raw;
+            killerRows = aggregateKillerMetric(rawModeRecords, killerMetric);
+            hasKillerMetric = killerRows.some((row) => Number.isFinite(metricValue(row, killerMetric, asksAverage(question))));
+          }
+        }
+        if (!hasKillerMetric) return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
+
+        const wantedPlayer = requestedPlayerKey(question, killerRows, context);
         if (wantedPlayer) {
-          const player = rows.find((row) => norm(row.key || row.name) === wantedPlayer);
-          if (!player) return unavailableMetricReply(mode, question, period.label);
+          const player = killerRows.find((row) => norm(row.key || row.name) === wantedPlayer);
+          if (!player) return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
           const value = metricValue(player, killerMetric, asksAverage(question));
-          if (!Number.isFinite(value)) return unavailableMetricReply(mode, question, period.label);
+          if (!Number.isFinite(value)) return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
           return {
-            text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${killerMetric.label}** ${period.label}\n\n**${formatDynamicValue(killerMetric, value, asksAverage(question))}**`,
+            text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${killerMetric.label}** ${period.label}\n\n**${formatDynamicValue(killerMetric, value, asksAverage(question))}**\n\n${historySourceLine(rawModeRecords.length)}`,
             modeId: mode.id,
           };
         }
 
-        const ranked = rankDynamic(rows, killerMetric, question);
+        const ranked = rankDynamic(killerRows, killerMetric, question);
         if (!ranked.length || ranked.every((x) => !Number.isFinite(x.value))) {
-          return unavailableMetricReply(mode, question, period.label);
+          return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
         }
         const title = asksWorst(question) ? "CLASSEMENT INVERSÉ" : requestedCount(question) === 1 ? "MEILLEUR RÉSULTAT" : `TOP ${requestedCount(question)}`;
         return {
-          text: `## ${title} — ${mode.label.toUpperCase()}\n**${killerMetric.label}** ${period.label}\n\n${dynamicMetricBulletList(ranked)}`,
+          text: `## ${title} — ${mode.label.toUpperCase()}\n**${killerMetric.label}** ${period.label}\n\n${dynamicMetricBulletList(ranked)}\n\n${historySourceLine(rawModeRecords.length)}`,
           modeId: mode.id,
         };
       }
     }
 
     const preferDetailed = mode.id === "x01" && /moyenne|avg3|checkout|sortie/.test(q);
-    const { matches, rows } = await universalRowsForMode(mode, period.since, preferDetailed);
+    const { matches, rows } = await universalRowsForMode(mode, period.since, preferDetailed, snapshot);
 
     if (!matches.length && !rawModeRecords.length) {
       return { text: `Je ne trouve aucune partie ${mode.label} exploitable ${period.label}. Je ne vais pas inventer un classement.`, modeId: mode.id };
     }
 
-    if (asksOnlyDashboard || /^records?$/.test(q)) {
+    if (asksOnlyDashboard || /^(?:records?|stats?|statistiques?)$/.test(q)) {
       if (!rows.length) {
         return { text: `Les parties ${mode.label} existent, mais je n'arrive pas à identifier suffisamment les joueurs pour produire un classement fiable.`, modeId: mode.id };
       }
+      if (mode.id === "x01") {
+        let dashboardRecords = rawModeRecords;
+        const probes = ["avg3", "bestCheckout", "hitRate", "h180"] as X01MetricId[];
+        const hasDetailedHeaderStats = probes.some((metricId) => {
+          const metric = X01_METRICS.find((item) => item.id === metricId)!;
+          return aggregateX01Metric(dashboardRecords, metric).some((row) => Number.isFinite(row.value));
+        });
+        if (!hasDetailedHeaderStats && dashboardRecords.length) {
+          const detailed = await detailedModeHistory(mode, snapshot, period.since);
+          if (detailed.raw.length) dashboardRecords = detailed.raw;
+        }
+        return { text: x01Dashboard(dashboardRecords, rows, mode, period.label), modeId: mode.id };
+      }
       return {
-        text: mode.id === "killer" ? killerDashboard(rawModeRecords, mode, period.label, rows) : dashboard(rows, mode, period.label),
+        text: mode.id === "killer"
+          ? killerDashboard(rawModeRecords, mode, period.label, rows)
+          : `${dashboard(rows, mode, period.label)}\n\n${historySourceLine(rawModeRecords.length || matches.length)}`,
         modeId: mode.id,
       };
     }
@@ -950,12 +1482,12 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
           const value = valueFor(player, metric);
           if (Number.isFinite(value) && (metric !== "bestCheckout" || value > 0)) {
             return {
-              text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n**${formatValue(metric, value, player)}**`,
+              text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n**${formatValue(metric, value, player)}**\n\n${historySourceLine(rawModeRecords.length || matches.length)}`,
               modeId: mode.id,
             };
           }
         }
-        return unavailableMetricReply(mode, question, period.label);
+        return unavailableMetricReply(mode, question, period.label, rawModeRecords.length || matches.length);
       }
 
       const worst = asksWorst(question);
@@ -964,20 +1496,27 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
       if (ranked.length) {
         const direction = worst ? "Classement du plus faible au plus fort" : count === 1 ? "Meilleur résultat" : `Top ${count}`;
         return {
-          text: `## ${direction.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n${bulletList(ranked, metric)}`,
+          text: `## ${direction.toUpperCase()} — ${mode.label.toUpperCase()}\n**${metricLabel(metric)}** ${period.label}\n\n${bulletList(ranked, metric)}\n\n${historySourceLine(rawModeRecords.length || matches.length)}`,
           modeId: mode.id,
         };
       }
       // Si la métrique universelle était explicitement demandée mais absente,
       // on ne retombe pas sur une réponse vague.
-      if (/avg3|moyenne|checkout|sortie/.test(q)) return unavailableMetricReply(mode, question, period.label);
+      if (/avg3|moyenne|checkout|sortie/.test(q)) return unavailableMetricReply(mode, question, period.label, rawModeRecords.length || matches.length);
     }
 
     // Dernier niveau : introspection des champs numériques réellement sauvegardés.
     // Cela permet à Awena de répondre à de nombreuses stats propres aux modes
     // sans inventer un catalogue figé.
     if (rawModeRecords.length) {
-      const dynamicMetric = resolveDynamicFieldMetric(question, rawModeRecords);
+      let dynamicMetric = resolveDynamicFieldMetric(question, rawModeRecords);
+      if (!dynamicMetric) {
+        const detailed = await detailedModeHistory(mode, snapshot, period.since);
+        if (detailed.raw.length) {
+          rawModeRecords = detailed.raw;
+          dynamicMetric = resolveDynamicFieldMetric(question, rawModeRecords);
+        }
+      }
       if (dynamicMetric) {
         const dynamicRows = aggregateDynamicField(rawModeRecords, dynamicMetric);
         const wantedPlayer = requestedPlayerKey(question, dynamicRows, context);
@@ -987,19 +1526,19 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
             const value = metricValue(player, dynamicMetric, asksAverage(question));
             if (Number.isFinite(value)) {
               return {
-                text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${dynamicMetric.label}** ${period.label}\n\n**${formatDynamicValue(dynamicMetric, value, asksAverage(question))}**`,
+                text: `## ${player.name.toUpperCase()} — ${mode.label.toUpperCase()}\n**${dynamicMetric.label}** ${period.label}\n\n**${formatDynamicValue(dynamicMetric, value, asksAverage(question))}**\n\n${historySourceLine(rawModeRecords.length)}`,
                 modeId: mode.id,
               };
             }
           }
-          return unavailableMetricReply(mode, question, period.label);
+          return unavailableMetricReply(mode, question, period.label, rawModeRecords.length);
         }
 
         const ranked = rankDynamic(dynamicRows, dynamicMetric, question);
         if (ranked.length && ranked.some((x) => Number.isFinite(x.value))) {
           const title = asksWorst(question) ? "CLASSEMENT INVERSÉ" : requestedCount(question) === 1 ? "MEILLEUR RÉSULTAT" : `TOP ${requestedCount(question)}`;
           return {
-            text: `## ${title} — ${mode.label.toUpperCase()}\n**${dynamicMetric.label}** ${period.label}\n\n${dynamicMetricBulletList(ranked)}`,
+            text: `## ${title} — ${mode.label.toUpperCase()}\n**${dynamicMetric.label}** ${period.label}\n\n${dynamicMetricBulletList(ranked)}\n\n${historySourceLine(rawModeRecords.length)}`,
             modeId: mode.id,
           };
         }
@@ -1009,10 +1548,13 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
     // Toute question qui a été reconnue comme demande de stats doit terminer
     // par une réponse explicite d'indisponibilité, jamais par le fallback
     // conversationnel générique.
-    return unavailableMetricReply(mode, question, period.label);
+    return unavailableMetricReply(mode, question, period.label, rawModeRecords.length || matches.length);
   } catch (error) {
     console.warn("[AwenaRecords] erreur neutralisée", error);
-    const mode = findAwenaMode(question, context.mode || context.route) || findAwenaModeById(context.mode);
+    const rememberedModeId = String(context.extra?.awenaRememberedMode || "");
+    const mode = findAwenaMode(question, context.mode || rememberedModeId || context.route)
+      || findAwenaModeById(context.mode)
+      || findAwenaModeById(rememberedModeId);
     return {
       text: mode
         ? `## RECORDS — ${mode.label.toUpperCase()}\nJe n'arrive pas à lire les statistiques pour le moment. Je n'invente aucun résultat. Réessaie après avoir ouvert l'écran Stats ou après une nouvelle partie.`

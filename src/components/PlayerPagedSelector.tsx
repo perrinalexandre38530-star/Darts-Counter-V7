@@ -2,7 +2,6 @@
 import React from "react";
 import ProfileAvatar from "./ProfileAvatar";
 import ProfileStarRing from "./ProfileStarRing";
-import { StatsBridge } from "../lib/statsBridge";
 import { getX01ProfileStarData, loadX01ProfileStatsForStarring, x01ProfileIdentityKeys as sharedX01ProfileIdentityKeys } from "../lib/x01ProfileStarring";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
@@ -13,6 +12,8 @@ import {
   profileUsageScore,
   readProfileUsageCounts,
 } from "../lib/profileUsage";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { createCooperativeYielder } from "../lib/mainThreadYield";
 
 type ProfileStarData = { kind: "avg3d"; value: number } | { kind: "level"; value: number };
 
@@ -349,8 +350,8 @@ function isDartsSportContextForProfileStarring(): boolean {
 
 function renderProfileStars(star: ProfileStarData | null, anchorSize: number, starSize: number, gapPx = -6) {
   if (!star) return null;
-  if (star.kind === "avg3d") return <ProfileStarRing avg3d={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
-  return <ProfileStarRing botLevel={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} />;
+  if (star.kind === "avg3d") return <ProfileStarRing avg3d={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} animateGlow={false} />;
+  return <ProfileStarRing botLevel={star.value} anchorSize={anchorSize} starSize={starSize} gapPx={gapPx} animateGlow={false} />;
 }
 
 function usageKeyOf(value: any): string {
@@ -477,6 +478,10 @@ function readX01PlayerUsageCounts(): Record<string, number> {
   }
 }
 
+const selectorUsageHistoryRefreshedAt = new Map<string, number>();
+const SELECTOR_USAGE_HISTORY_TTL_MS = 120_000;
+
+
 export default function PlayerPagedSelector({
   profiles,
   selectedIds,
@@ -517,55 +522,49 @@ export default function PlayerPagedSelector({
     };
   }, [normalizedUsageMode]);
 
+  // PERF V74 : auparavant chaque PlayerPagedSelector lançait History.list()
+  // avec setTimeout(0) dès son montage. Dans X01Config il existe plusieurs
+  // sélecteurs, donc l'ouverture de l'étape Joueurs pouvait déclencher plusieurs
+  // scans complets d'historique au moment exact où l'utilisateur clique.
+  //
+  // Les compteurs persistés sont suffisants pour le premier affichage. Le scan
+  // de compatibilité historique est conservé, mais uniquement en idle, lorsque
+  // le sélecteur est réellement utilisé, et au maximum une fois / 2 min / mode.
   React.useEffect(() => {
     let cancelled = false;
-    if (typeof window === "undefined" || !normalizedUsageMode || normalizedUsageMode === "global") return;
-    const run = async () => {
-      try {
-        const mod = await import("../lib/history");
-        const rows = await mod.History.list().catch(() => []);
-        if (cancelled) return;
-        const merged = mergeProfileUsageFromHistory(rows as any[], normalizedUsageMode, profiles || []);
-        if (!cancelled) setHistoryUsageById(merged);
-      } catch {}
-    };
-    const id = window.setTimeout(run, 0);
+    if (
+      typeof window === "undefined" ||
+      !normalizedUsageMode ||
+      normalizedUsageMode === "global" ||
+      (!open && !listOpen)
+    ) return;
+
+    // Si les compteurs modernes existent déjà, aucun scan de l'historique
+    // n'est nécessaire dans ce composant de navigation.
+    const persisted = readProfileUsageCounts(normalizedUsageMode);
+    if (Object.keys(persisted || {}).length > 0) return;
+
+    const last = selectorUsageHistoryRefreshedAt.get(normalizedUsageMode) || 0;
+    if (Date.now() - last < SELECTOR_USAGE_HISTORY_TTL_MS) return;
+
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        try {
+          const mod = await import("../lib/history");
+          const rows = await mod.History.list().catch(() => []);
+          if (cancelled) return;
+          const merged = mergeProfileUsageFromHistory(rows as any[], normalizedUsageMode, profiles || []);
+          selectorUsageHistoryRefreshedAt.set(normalizedUsageMode, Date.now());
+          if (!cancelled) React.startTransition(() => setHistoryUsageById(merged));
+        } catch {}
+      })();
+    }, { timeoutMs: 10_000, fallbackDelayMs: 1_500 });
+
     return () => {
       cancelled = true;
-      try { window.clearTimeout(id); } catch {}
+      cancelIdle();
     };
-  }, [normalizedUsageMode, profiles]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    if (!effectiveShowProfileStarring) {
-      setStatsById({});
-      return;
-    }
-    const ids = Array.from(new Set((profiles || []).flatMap((p: any) => profileIdentityKeys(p))));
-    if (!ids.length) {
-      setStatsById({});
-      return;
-    }
-    const profileByKey = new Map<string, any>();
-    for (const p of profiles || []) {
-      for (const key of profileIdentityKeys(p)) profileByKey.set(key, p);
-    }
-    Promise.all(ids.map(async (id) => {
-      const stats = await loadBestProfileStatsForStars(id, profileByKey.get(id));
-      return [id, stats] as const;
-    })).then((entries) => {
-      if (cancelled) return;
-      const next: Record<string, any> = {};
-      for (const [id, stats] of entries) {
-        if (stats && (Number(stats.avg3) > 0 || Number(stats.avg3d) > 0 || Number(stats.games) > 0 || Number(stats.darts) > 0)) next[id] = stats;
-      }
-      setStatsById(next);
-    }).catch(() => {
-      if (!cancelled) setStatsById({});
-    });
-    return () => { cancelled = true; };
-  }, [profiles, effectiveShowProfileStarring]);
+  }, [normalizedUsageMode, profiles, open, listOpen]);
 
   const ordered = React.useMemo(() => {
     const nameOf = (p: any) => String(p?.name || p?.label || p?.displayName || "");
@@ -581,6 +580,56 @@ export default function PlayerPagedSelector({
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize));
   const safePage = Math.min(Math.max(page, 0), pages - 1);
   const pageItems = React.useMemo(() => ordered.slice(safePage * pageSize, safePage * pageSize + pageSize), [ordered, safePage, pageSize]);
+
+  // PERF V74 : ne charge plus les stats étoile des 59 profils au montage.
+  // On ne calcule que les cartes réellement visibles (ou le résumé sélectionné),
+  // après le paint, avec restitution régulière du main thread.
+  const starTargets = React.useMemo(
+    () => open ? pageItems : (showSelectedSummary ? selected : []),
+    [open, pageItems, showSelectedSummary, selected]
+  );
+  const starTargetSig = React.useMemo(
+    () => starTargets.map((p: any) => String(p?.id || p?.profileId || "")).join("|"),
+    [starTargets]
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!effectiveShowProfileStarring || !starTargets.length) return;
+
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        const next: Record<string, any> = {};
+        const yieldIfNeeded = createCooperativeYielder(6);
+        for (const profile of starTargets) {
+          if (cancelled) return;
+          const ids = profileIdentityKeys(profile);
+          for (const id of ids) {
+            if (cancelled) return;
+            if (statsById[id]) continue;
+            try {
+              const stats = await loadBestProfileStatsForStars(id, profile);
+              if (stats && (Number(stats.avg3) > 0 || Number(stats.avg3d) > 0 || Number(stats.games) > 0 || Number(stats.darts) > 0)) {
+                next[id] = stats;
+              }
+            } catch {}
+            await yieldIfNeeded();
+          }
+        }
+        if (!cancelled && Object.keys(next).length) {
+          React.startTransition(() => setStatsById((prev) => ({ ...prev, ...next })));
+        }
+      })();
+    }, { timeoutMs: 8_000, fallbackDelayMs: 450 });
+
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
+    // statsById intentionally omitted: existing rows are checked inside the job;
+    // re-triggering on every resolved stat would restart the queue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveShowProfileStarring, starTargetSig]);
 
   React.useEffect(() => {
     if (open) setPage(0);
@@ -617,7 +666,7 @@ export default function PlayerPagedSelector({
             return (
               <button key={p.id} type="button" onClick={() => handlePick(p.id)} style={{ width: "100%", border: "none", borderRadius: 12, background: active ? `${accent}18` : "transparent", color: "#fff", padding: "7px 8px", display: "grid", gridTemplateColumns: "26px 38px 1fr", gap: 8, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
                 <span style={{ color: active ? accent : "rgba(255,255,255,.45)", fontWeight: 1000 }}>{active ? "☑" : "☐"}</span>
-                <ProfileAvatar profile={p} size={34} showStars={effectiveShowProfileStarring} />
+                <ProfileAvatar profile={p} size={34} showStars={effectiveShowProfileStarring} loading="eager" fallbackMode="local" />
                 <span style={{ fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
               </button>
             );
@@ -655,7 +704,7 @@ export default function PlayerPagedSelector({
                         {renderProfileStars(star, 88, 12, -2)}
                         <div style={{ width: 82, height: 82, borderRadius: "50%", overflow: "hidden", border: `2px solid ${active ? accent : `${accent}88`}`, boxShadow: `0 0 16px ${accent}55`, background: "rgba(0,0,0,.55)", display: "grid", placeItems: "center" }}>
                           <div style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
-                            <ProfileAvatar profile={p} size={76} noFrame showStars={false} />
+                            <ProfileAvatar profile={p} size={76} noFrame showStars={false} loading="eager" fallbackMode="local" />
                           </div>
                         </div>
                         {active ? renderAvatarOverlay?.(p) : null}
@@ -709,7 +758,7 @@ const SelectedCard = React.memo(function SelectedCard({ p, statsById, showProfil
         {renderProfileStars(star, 72, 10, -2)}
         <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", border: `2px solid ${accent}88`, boxShadow: `0 0 14px ${accent}55`, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)" }}>
           <div style={{ width: 60, height: 60, borderRadius: "50%", overflow: "hidden", display: "grid", placeItems: "center" }}>
-            <ProfileAvatar profile={p} size={60} noFrame showStars={false} />
+            <ProfileAvatar profile={p} size={60} noFrame showStars={false} loading="eager" fallbackMode="local" />
           </div>
         </div>
         {renderAvatarOverlay?.(p)}

@@ -81,7 +81,7 @@ import {
 } from "../lib/friendsApi";
 
 import { getAvatarCache as getAvatarCacheLib, getAvatarCacheFast, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
-import { mirrorAvatarFallbackToR2 } from "../lib/avatarR2Fallback";
+import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
 import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
@@ -91,7 +91,7 @@ import { useStableProfiles } from "../hooks/useStableProfiles";
 import { useBackgroundRestoreState } from "../lib/backgroundRestore";
 import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { createCooperativeYielder } from "../lib/mainThreadYield";
-import { profileAvatarMediaKey, readLocalUserMediaFallback } from "../lib/userMediaFallback";
+import { profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
 
 /**
@@ -6646,6 +6646,20 @@ function LocalCountryFlagBadge({
 // ---------------------------------------------------------------------------
 const localGridAvatarResolved = new Map<string, { revision: number; src: string }>();
 const localGridAvatarPending = new Map<string, Promise<string>>();
+const localGridAvatarFailed = new Map<string, Set<string>>();
+
+function localGridAvatarWasFailed(profileId: string, src: string): boolean {
+  if (!profileId || !src) return false;
+  return localGridAvatarFailed.get(profileId)?.has(src) === true;
+}
+
+function markLocalGridAvatarFailed(profileId: string, src: string): void {
+  if (!profileId || !src) return;
+  const set = localGridAvatarFailed.get(profileId) || new Set<string>();
+  set.add(src);
+  localGridAvatarFailed.set(profileId, set);
+  localGridAvatarResolved.delete(profileId);
+}
 type LocalGridAvatarJob = { profile: any; resolve: (src: string) => void };
 const localGridAvatarQueue: LocalGridAvatarJob[] = [];
 let localGridAvatarWorkers = 0;
@@ -6670,13 +6684,17 @@ function getLocalGridAvatarImmediate(profile: any): string {
   const id = String(profile?.id || "").trim();
   const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
   const cachedResolved = id ? localGridAvatarResolved.get(id) : null;
-  if (cachedResolved && (!revision || cachedResolved.revision >= revision)) return cachedResolved.src;
+  if (
+    cachedResolved &&
+    (!revision || cachedResolved.revision >= revision) &&
+    !localGridAvatarWasFailed(id, cachedResolved.src)
+  ) return cachedResolved.src;
 
   const fast: any = id ? getAvatarCacheFast(id) : null;
   const fastCandidates = [fast?.avatarThumbDataUrl, fast?.avatarDataUrl, fast?.avatarUrl];
   for (const candidate of fastCandidates) {
     const src = normalizeLocalGridAvatarSrc(candidate);
-    if (!src) continue;
+    if (!src || localGridAvatarWasFailed(id, src)) continue;
     if (!/^data:image\//i.test(src) || isLocalGridFastInline(src)) return src;
   }
 
@@ -6685,7 +6703,7 @@ function getLocalGridAvatarImmediate(profile: any): string {
   const directLight = [profile?.avatarUrl, profile?.avatarPath, profile?.photoUrl, profile?.avatar];
   for (const candidate of directLight) {
     const src = normalizeLocalGridAvatarSrc(candidate);
-    if (!src) continue;
+    if (!src || localGridAvatarWasFailed(id, src)) continue;
     if (!/^data:image\//i.test(src) || isLocalGridFastInline(src)) return src;
   }
   return "";
@@ -6705,22 +6723,47 @@ async function loadLocalGridAvatarNow(profile: any): Promise<string> {
   // Le coffre avatar contient normalement une miniature compactée (~320px).
   const local = await readLocalUserMediaFallback(profileAvatarMediaKey(id)).catch(() => "");
   const localSrc = normalizeLocalGridAvatarSrc(local);
-  if (localSrc) {
+  if (localSrc && !localGridAvatarWasFailed(id, localSrc)) {
     localGridAvatarResolved.set(id, { revision, src: localSrc });
     return localSrc;
   }
 
   // Compatibilité anciens profils : si aucune miniature n'a jamais été capturée,
-  // on garde la grosse data:image comme ultime fallback, mais la file V73 garantit
+  // on garde la grosse data:image comme fallback, mais la file garantit
   // qu'elle ne sera pas décodée pour 9 joueurs simultanément.
   const heavyCandidates = [profile?.avatarDataUrl, profile?.photoDataUrl];
   for (const candidate of heavyCandidates) {
     const src = normalizeLocalGridAvatarSrc(candidate);
-    if (src) {
+    if (src && !localGridAvatarWasFailed(id, src)) {
       localGridAvatarResolved.set(id, { revision, src });
       return src;
     }
   }
+
+  // FIX V74 : la fiche détaillée utilisait le resolver complet ProfileAvatar alors
+  // que la grille V73 s'arrêtait ici. D'où le bug exact observé : avatar visible
+  // après clic sur la fiche, mais uniquement les initiales dans la liste.
+  //
+  // On autorise désormais la même récupération robuste EN ARRIÈRE-PLAN, toujours
+  // derrière la file limitée à 2 workers : aucun burst de 9 appels R2/NAS au paint.
+  const primaryHint = normalizeLocalGridAvatarSrc(
+    profile?.avatarUrl || profile?.avatarPath || profile?.photoUrl || profile?.avatar || ""
+  );
+  const mediaKey = profileAvatarMediaKey(id);
+  let recovered = await resolveUserMediaFallback(mediaKey, primaryHint, {
+    kind: "profile_avatar",
+    allowR2: true,
+    mirrorRecoveredToR2: false,
+  }).catch(() => "");
+  if (!recovered) {
+    recovered = await resolveAvatarFallback(id).catch(() => "");
+  }
+  const recoveredSrc = normalizeLocalGridAvatarSrc(recovered);
+  if (recoveredSrc && !localGridAvatarWasFailed(id, recoveredSrc)) {
+    localGridAvatarResolved.set(id, { revision, src: recoveredSrc });
+    return recoveredSrc;
+  }
+
   return "";
 }
 
@@ -6790,6 +6833,7 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
     if (typeof window === "undefined") return;
     const refresh = () => {
       localGridAvatarResolved.delete(id);
+      localGridAvatarFailed.delete(id);
       void loadLocalGridAvatar(profile).then((next) => {
         if (next) {
           setBroken(false);
@@ -6818,13 +6862,13 @@ function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: n
         <img
           src={src}
           alt=""
-          loading="lazy"
+          loading="eager"
           decoding="async"
           draggable={false}
           onLoad={() => setLoaded(true)}
           onError={() => {
             setBroken(true);
-            localGridAvatarResolved.delete(id);
+            markLocalGridAvatarFailed(id, src);
             void loadLocalGridAvatar(profile).then((next) => {
               if (next && next !== src) {
                 setBroken(false);
@@ -7453,6 +7497,32 @@ function LocalProfilesRefonte({
 
     return () => { cancelled = true; cancelIdle(); };
   }, [isDarts, listDetailOpen, localSection, gridProfileIdsSig, gridDartSetRevision]);
+
+  // PERF V74 : précharge silencieusement la page voisine APRÈS le paint courant.
+  // Le clic "page suivante" ne doit pas déclencher à ce moment-là les résolutions
+  // IndexedDB/R2 et les décodages des 9 avatars.
+  React.useEffect(() => {
+    if (typeof window === "undefined" || localSection !== "list" || listDetailOpen || !locals.length) return;
+    let cancelled = false;
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        const nextPage = safeGridPage + 1 < gridPages ? safeGridPage + 1 : (safeGridPage > 0 ? safeGridPage - 1 : -1);
+        if (nextPage < 0) return;
+        const start = nextPage * gridPageSize;
+        const targets = locals.slice(start, start + gridPageSize);
+        const yieldIfNeeded = createCooperativeYielder(6);
+        for (const profile of targets) {
+          if (cancelled) return;
+          void loadLocalGridAvatar(profile).catch(() => "");
+          await yieldIfNeeded();
+        }
+      })();
+    }, { timeoutMs: 6_000, fallbackDelayMs: 1_200 });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
+  }, [localSection, listDetailOpen, safeGridPage, gridPages, locals, gridPageSize]);
 
   React.useEffect(() => {
     if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));

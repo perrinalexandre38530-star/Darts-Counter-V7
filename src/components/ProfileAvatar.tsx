@@ -60,6 +60,9 @@ type VisualOpts = {
   // "local" = RAM/IndexedDB uniquement : aucune restauration NAS/fichier/R2 pendant
   // le paint d'une grille. Les vues détaillées gardent le mode "full" par défaut.
   fallbackMode?: "full" | "local";
+  // Permet aux grilles réellement visibles de forcer le chargement immédiat
+  // sans rendre tous les avatars de l'application eager par défaut.
+  loading?: "eager" | "lazy";
 };
 
 function isDeadRemoteAvatar(src: string) {
@@ -643,7 +646,7 @@ export default function ProfileAvatar(props: Props) {
             key={img as string}
             src={img as string}
             alt={name ?? "avatar"}
-            loading={size <= 96 ? "lazy" : "eager"}
+            loading={props.loading ?? (size <= 96 ? "lazy" : "eager")}
             decoding="async"
             onLoad={() => {
               setLoaded(true);

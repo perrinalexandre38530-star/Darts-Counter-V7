@@ -12,6 +12,7 @@ import { answerAwenaRegisteredHelp, awenaRegisteredHelpCount, getAwenaHelpText }
 import { answerAwenaSportsKnowledge, awenaSportsKnowledgeCount } from "./AwenaSportsKnowledge";
 import { answerAwenaDeepKnowledge, awenaDeepKnowledgeCount } from "./AwenaDeepKnowledge";
 import { answerAwenaRouteAtlas, awenaRouteAtlasCount } from "./AwenaRouteAtlas";
+import { answerAwenaAdvancedEncyclopedia, awenaAdvancedEncyclopediaCount } from "./AwenaAdvancedEncyclopedia";
 
 function normalize(text: string) {
   return String(text || "")
@@ -90,7 +91,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis** et un index de **${awenaRouteAtlasCount()} écrans / routes réels**. J’exploite aussi l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}), le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les contrôles visibles.
+Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées** et un index de **${awenaRouteAtlasCount()} écrans / routes réels**. J’exploite aussi l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}), le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les contrôles visibles.
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -136,6 +137,11 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   // externe. Le sujet retenu est mémorisé pour les relances courtes.
   const encyclopediaReply = answerAwenaEncyclopedia(question, rememberedKnowledgeTopic);
   if (encyclopediaReply) return encyclopediaReply;
+
+  // Encyclopédie avancée : statistiques, Historique, définitions précises X01,
+  // centres Stats multisports et méthode de calcul des records.
+  const advancedReply = answerAwenaAdvancedEncyclopedia(question, context, rememberedKnowledgeTopic);
+  if (advancedReply) return advancedReply;
 
   // Couche approfondie : stockage, profils, social, caméra, scoring,
   // trainings, autres sports, dépannage et fonctions transversales.

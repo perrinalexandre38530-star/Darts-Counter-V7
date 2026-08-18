@@ -49,6 +49,8 @@ import { BOT_PRO_TEAMS } from "../lib/botTeams";
 import { COUNTRY_NAME_TO_CODE, getCountryFlag } from "../lib/countryNames";
 import { getCountryFlagSrc, normalizeCountryAssetCode } from "../lib/geoAssets";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
+import { createCooperativeYielder } from "../lib/mainThreadYield";
 import {
   findRememberedGeneratedTeam,
   generateShuffledTeams,
@@ -619,6 +621,9 @@ function x01MergePlayerUsageFromHistory(rows: any[], base: Record<string, number
   }
   return out;
 }
+
+let x01ConfigHistoryUsageRefreshedAt = 0;
+const X01_CONFIG_HISTORY_USAGE_TTL_MS = 120_000;
 
 function sortProfilesByUsageThenAlpha(profiles: Profile[], usageCounts: Record<string, number>, activeProfileId?: string | null): Profile[] {
   const usageScore = (p: any) => {
@@ -1547,8 +1552,15 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     if (!profileId || autoOpenToken == null) return;
     if (lastAutoOpenTokenRef.current === autoOpenToken) return;
     lastAutoOpenTokenRef.current = autoOpenToken;
-    reloadSets();
+
+    // PERF V74 : ouvrir d'abord le modal, puis rafraîchir la bibliothèque.
+    // Le clic joueur ne doit jamais attendre le tri/dédoublonnage de tous les sets.
     setOpen(true);
+    const cancelIdle = scheduleRuntimeIdle(() => reloadSets(), {
+      timeoutMs: 1_500,
+      fallbackDelayMs: 40,
+    });
+    return () => cancelIdle();
   }, [profileId, autoOpenToken, reloadSets]);
 
   const hasProfile = !!profileId;
@@ -1586,8 +1598,13 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          reloadSets();
+          // Réponse visuelle immédiate. La liste est déjà en cache dans la majorité
+          // des cas ; son éventuel refresh se fait juste après l'ouverture.
           setOpen(true);
+          scheduleRuntimeIdle(() => reloadSets(), {
+            timeoutMs: 1_500,
+            fallbackDelayMs: 40,
+          });
         }}
         aria-label={chooseLabel}
         title={titleLabel}
@@ -1773,6 +1790,8 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                       alignItems: "center",
                       gap: 7,
                       minWidth: 0,
+                      contentVisibility: "auto",
+                      containIntrinsicSize: "132px 156px",
                     }}
                   >
                     <span
@@ -1842,6 +1861,8 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                             size={24}
                             showStars={false}
                             noFrame
+                            loading="eager"
+                            fallbackMode="local"
                           />
                         </span>
                       ) : null}
@@ -2021,30 +2042,35 @@ export function SelectedParticipantsCompactBlock({
     const profilesToLoad = safeItems
       .map((item: any) => item?.profile || item)
       .filter((profile: any) => profile && profile.isBot !== true);
-    const ids = Array.from(new Set(profilesToLoad.flatMap((profile: any) => x01ProfileIdentityKeysForStars(profile))));
-    if (!ids.length) {
+    if (!profilesToLoad.length) {
       setSelectedStatsById({});
       return () => { cancelled = true; };
     }
-    const profileByKey = new Map<string, any>();
-    for (const item of safeItems || []) {
-      const profile = item?.profile || item;
-      for (const key of x01ProfileIdentityKeysForStars(profile)) profileByKey.set(key, profile);
-    }
-    Promise.all(ids.map(async (id) => {
-      const stats = await x01LoadBestProfileStatsForStars(id, profileByKey.get(id));
-      return [id, stats] as const;
-    })).then((entries) => {
-      if (cancelled) return;
-      const next: Record<string, any> = {};
-      for (const [id, stats] of entries) {
-        if (stats) next[id] = stats;
-      }
-      setSelectedStatsById(next);
-    }).catch(() => {
-      if (!cancelled) setSelectedStatsById({});
-    });
-    return () => { cancelled = true; };
+
+    // PERF V74 : les stats étoile ne doivent pas retarder l'affichage des joueurs
+    // sélectionnés. On les complète après le paint, une par une, en rendant la main.
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        const next: Record<string, any> = {};
+        const yieldIfNeeded = createCooperativeYielder(6);
+        for (const profile of profilesToLoad) {
+          for (const id of x01ProfileIdentityKeysForStars(profile)) {
+            if (cancelled) return;
+            try {
+              const stats = await x01LoadBestProfileStatsForStars(id, profile);
+              if (stats) next[id] = stats;
+            } catch {}
+            await yieldIfNeeded();
+          }
+        }
+        if (!cancelled) React.startTransition(() => setSelectedStatsById(next));
+      })();
+    }, { timeoutMs: 8_000, fallbackDelayMs: 500 });
+
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
   }, [safeItems.map((item: any) => String(item?.id || item?.profile?.id || "")).join("|")]);
 
   if (!safeItems.length) return null;
@@ -2323,28 +2349,36 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     let alive = true;
-    const run = async () => {
-      try {
-        const mod = await import("../lib/history");
-        const rows = await mod.History.list().catch(() => []);
-        if (!alive) return;
-        const merged = x01MergePlayerUsageFromHistory(rows as any[], x01ReadPlayerUsageCounts(), humanProfiles);
-        try { window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(merged)); } catch {}
-        setPlayerUsageCounts(merged);
-        try { window.dispatchEvent(new Event("dc-x01-player-usage-updated")); } catch {}
-        try { console.info("[x01-history-usage-scan-done]", { matches: Array.isArray(rows) ? rows.length : 0, players: Object.keys(merged).length }); } catch {}
-      } catch {}
-    };
-    const w: any = window as any;
-    // L'ordre "plus utilisés" doit être prêt dès l'ouverture du sélecteur.
-    // Avant, requestIdleCallback pouvait attendre plusieurs secondes, donc la
-    // première page restait alphabétique. On lance le scan une fois le rendu rendu.
-    const id = window.setTimeout(run, 0);
+
+    // PERF V74 : le scan History.list() était lancé à setTimeout(0), donc juste
+    // après le premier paint de X01Config. Avec des centaines de matchs il
+    // bloquait précisément les clics "Joueurs" / "Choisir joueurs" / "SET".
+    //
+    // Le store d'usage est désormais la source normale et est alimenté à chaque
+    // partie. Le scan historique complet ne sert plus qu'à migrer une vieille
+    // installation qui n'a encore AUCUN compteur.
+    const persistedUsage = x01ReadPlayerUsageCounts();
+    if (Object.keys(persistedUsage).length > 0) return;
+    if (Date.now() - x01ConfigHistoryUsageRefreshedAt < X01_CONFIG_HISTORY_USAGE_TTL_MS) return;
+
+    const cancelIdle = scheduleRuntimeIdle(() => {
+      void (async () => {
+        try {
+          const mod = await import("../lib/history");
+          const rows = await mod.History.list().catch(() => []);
+          if (!alive) return;
+          const merged = x01MergePlayerUsageFromHistory(rows as any[], x01ReadPlayerUsageCounts(), humanProfiles);
+          x01ConfigHistoryUsageRefreshedAt = Date.now();
+          try { window.localStorage.setItem(X01_PLAYER_USAGE_KEY, JSON.stringify(merged)); } catch {}
+          if (alive) React.startTransition(() => setPlayerUsageCounts(merged));
+          try { window.dispatchEvent(new Event("dc-x01-player-usage-updated")); } catch {}
+        } catch {}
+      })();
+    }, { timeoutMs: 12_000, fallbackDelayMs: 2_000 });
+
     return () => {
       alive = false;
-      try {
-        window.clearTimeout(id as any);
-      } catch {}
+      cancelIdle();
     };
   }, [humanProfiles]);
 
