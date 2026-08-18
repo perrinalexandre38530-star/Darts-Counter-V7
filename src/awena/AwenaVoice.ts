@@ -11,9 +11,9 @@ type NativeVoicePlugin = {
   speak(options: { text: string; utteranceId?: string; language?: string; voiceName?: string | null; rate?: number; pitch?: number; volume?: number }): Promise<{ ok: boolean; voiceName?: string | null }>;
   addListener(eventName: "speechStart" | "speechEnd", listener: (event: { utteranceId?: string; durationMs?: number }) => void): Promise<PluginListenerHandle>;
   stop(): Promise<{ ok: boolean }>;
-  getStatus(): Promise<AwenaVoiceStatus>;
+  getStatus(options?: { language?: string }): Promise<AwenaVoiceStatus>;
   getVoices(options?: { language?: string }): Promise<{ voices: AwenaVoiceOption[] }>;
-  setVoice(options: { voiceName: string | null }): Promise<{ ok: boolean; voiceName?: string | null }>;
+  setVoice(options: { voiceName: string | null; language?: string }): Promise<{ ok: boolean; voiceName?: string | null }>;
   installNeuralVoice(): Promise<AwenaVoiceStatus & { ok?: boolean }>;
   removeNeuralVoice(): Promise<AwenaVoiceStatus & { ok?: boolean }>;
 };
@@ -21,15 +21,32 @@ type NativeVoicePlugin = {
 const NativeAwenaVoice = registerPlugin<NativeVoicePlugin>("AwenaVoice");
 
 function localeForLang(lang: string | undefined): string {
-  const value = String(lang || "fr").toLowerCase();
-  if (value.startsWith("fr")) return "fr-FR";
-  if (value.startsWith("en")) return "en-GB";
-  if (value.startsWith("es")) return "es-ES";
-  if (value.startsWith("de")) return "de-DE";
-  if (value.startsWith("it")) return "it-IT";
-  if (value.startsWith("pt")) return "pt-PT";
-  if (value.startsWith("nl")) return "nl-NL";
-  return value.includes("-") ? value : `${value}-${value.toUpperCase()}`;
+  const value = String(lang || "fr").toLowerCase().split("-")[0];
+  const locales: Record<string, string> = {
+    fr: "fr-FR",
+    en: "en-GB",
+    es: "es-ES",
+    de: "de-DE",
+    it: "it-IT",
+    pt: "pt-PT",
+    nl: "nl-NL",
+    ru: "ru-RU",
+    zh: "zh-CN",
+    ja: "ja-JP",
+    ar: "ar-SA",
+    hi: "hi-IN",
+    tr: "tr-TR",
+    da: "da-DK",
+    no: "no-NO",
+    sv: "sv-SE",
+    is: "is-IS",
+    pl: "pl-PL",
+    ro: "ro-RO",
+    sr: "sr-RS",
+    hr: "hr-HR",
+    cs: "cs-CZ",
+  };
+  return locales[value] || String(lang || "fr-FR");
 }
 
 function webVoiceFor(language: string, voiceName?: string | null): SpeechSynthesisVoice | null {
@@ -161,7 +178,7 @@ export class AwenaVoiceEngine {
 
   async getStatus(lang = "fr"): Promise<AwenaVoiceStatus> {
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
-      try { return await NativeAwenaVoice.getStatus(); } catch {}
+      try { return await NativeAwenaVoice.getStatus({ language: localeForLang(lang) }); } catch {}
     }
     const available = typeof window !== "undefined" && "speechSynthesis" in window;
     const voice = available ? webVoiceFor(localeForLang(lang), null) : null;
@@ -190,9 +207,9 @@ export class AwenaVoiceEngine {
       .map((voice) => ({ name: voice.name, language: voice.lang, offline: !!voice.localService }));
   }
 
-  async setVoice(voiceName: string | null): Promise<void> {
+  async setVoice(voiceName: string | null, lang = "fr"): Promise<void> {
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
-      try { await NativeAwenaVoice.setVoice({ voiceName }); } catch {}
+      try { await NativeAwenaVoice.setVoice({ voiceName, language: localeForLang(lang) }); } catch {}
     }
   }
 

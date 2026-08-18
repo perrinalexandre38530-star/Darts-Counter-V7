@@ -14,6 +14,7 @@ import RulesModal from "./RulesModal";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import { routeToAwenaMode } from "../awena/AwenaKnowledge";
 import AwenaModeDot from "../awena/components/AwenaModeDot";
+import { registerAwenaHelp } from "../awena/AwenaHelpRegistry";
 
 type InfoDotContent = React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
 
@@ -45,6 +46,17 @@ type Props = {
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 const AWENA_NEON = "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)";
 
+function awenaReactText(node: React.ReactNode, depth = 0): string {
+  if (depth > 8 || node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map((item) => awenaReactText(item, depth + 1)).filter(Boolean).join(" ");
+  if (React.isValidElement(node)) {
+    return awenaReactText((node.props as any)?.children, depth + 1);
+  }
+  return "";
+}
+
+
 export default function InfoDot({
   onClick,
   glow,
@@ -64,6 +76,12 @@ export default function InfoDot({
   const iconColor = color ?? theme.primary;
   const halo = glow ?? `${iconColor}88`;
   const awenaScreenMode = routeToAwenaMode(awena?.runtime?.route);
+
+  React.useEffect(() => {
+    if (!awena?.runtime?.route || content == null) return;
+    const helpText = awenaReactText(renderedContent).replace(/\s+/g, " ").trim();
+    if (helpText) registerAwenaHelp(awena.runtime.route, title, helpText);
+  }, [awena?.runtime?.route, title, content, renderedContent]);
 
   const handle = React.useCallback(
     (e: any) => {

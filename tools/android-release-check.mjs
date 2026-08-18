@@ -41,6 +41,8 @@ check(
   gradle.includes('exclude group: "com.github.k2-fsa.sherpa-onnx", module: "sherpa-onnx-jvm"')
 );
 check("Commons Compress présent", gradle.includes("org.apache.commons:commons-compress:1.27.1"));
+check("Awena ML Kit Translation 17.0.3 présent", gradle.includes("com.google.mlkit:translate:17.0.3"));
+check("AwenaTranslation plugin registered", main.includes("registerPlugin(AwenaTranslationPlugin.class)"));
 check("compileSdkVersion 36", /compileSdkVersion\s*=\s*36/.test(vars));
 check("targetSdkVersion 36", /targetSdkVersion\s*=\s*36/.test(vars));
 check("Billing Library 9.1.0", gradle.includes("com.android.billingclient:billing:9.1.0"));

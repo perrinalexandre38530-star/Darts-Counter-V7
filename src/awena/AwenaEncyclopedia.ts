@@ -806,8 +806,10 @@ La langue de l’interface se règle dans **Réglages**.
 ## COHÉRENCE
 Lorsqu’une langue est changée, les textes traduits, titres et préférences associées doivent rester cohérents entre les écrans.
 
-## MA VOIX
-Ma voix stable actuelle est française. Les termes anglais connus passent par un dictionnaire de prononciation afin d’éviter une lecture lettre par lettre.`,
+## AWENA MULTILINGUE
+Awena suit la langue choisie dans l'application. En français, elle conserve sa voix neuronale locale. Dans les autres langues, ses réponses peuvent être traduites localement sur Android puis lues avec une voix Android compatible avec la langue sélectionnée.
+
+> Le premier usage d'une nouvelle langue peut nécessiter le téléchargement de son modèle de traduction.`,
     route: "settings",
     routeLabel: "Ouvrir Réglages",
   },

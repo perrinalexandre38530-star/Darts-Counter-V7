@@ -6,6 +6,10 @@ import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKno
 import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
 import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
 import { answerAwenaScreenQuestion } from "./AwenaScreenKnowledge";
+import { answerAwenaAppAtlas, awenaAtlasCount } from "./AwenaAppAtlas";
+import { answerAwenaLiveScreenQuestion, visibleConfigurationAppendix } from "./AwenaLiveScreen";
+import { getAwenaHelpText } from "./AwenaHelpRegistry";
+import { answerAwenaSportsKnowledge, awenaSportsKnowledgeCount } from "./AwenaSportsKnowledge";
 
 function normalize(text: string) {
   return String(text || "")
@@ -84,7 +88,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et plusieurs écrans de configuration.
+Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels de l’application** et **${awenaSportsKnowledgeCount()} fiches détaillées hors Fléchettes**, le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les écrans de configuration.
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -100,6 +104,12 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   const screenReply = answerAwenaScreenQuestion(question, context);
   if (screenReply) return screenReply;
 
+  // Lecture des contrôles réellement visibles : Awena peut répondre à
+  // « quelles options vois-tu ici ? » même si cet écran n'a pas encore une fiche
+  // dédiée dans son catalogue statique.
+  const liveScreenReply = answerAwenaLiveScreenQuestion(question, context);
+  if (liveScreenReply) return liveScreenReply;
+
   // Questions générales et vocabulaire de l'application.
   // Cette couche passe AVANT la configuration du mode actif pour éviter par
   // exemple que « Qu'est-ce qu'un bot ? » soit interprété comme
@@ -107,6 +117,17 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   const rememberedKnowledgeTopic = String(context.extra?.awenaKnowledgeTopic || "");
   const generalReply = answerAwenaGeneralQuestion(question, rememberedKnowledgeTopic);
   if (generalReply) return generalReply;
+
+  // Atlas de toute l'application : compte, sécurité, stockage, sauvegardes,
+  // synchronisation, publicité, profils, Online, compétitions, Cast, caméra,
+  // maintenance et autres fonctions transversales.
+  const atlasReply = answerAwenaAppAtlas(question, rememberedKnowledgeTopic);
+  if (atlasReply) return atlasReply;
+
+  // Les autres sports ont leur propre corpus détaillé. Cette couche connaît
+  // les modes, formats et options réellement déclarés dans leurs menus/configs.
+  const sportsReply = answerAwenaSportsKnowledge(question, context);
+  if (sportsReply) return sportsReply;
 
   // Encyclopédie locale à correspondance pondérée. Elle couvre les paraphrases
   // et formulations moins prévisibles sans envoyer la question vers un service
@@ -179,8 +200,10 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
     if (/bots|bot ia|ia/.test(q) && !/configuration|options|parametre|reglage/.test(q)) {
       return { text: `## BOTS IA\n${activeMode.supportsBots ? `${activeMode.label} prend en charge les bots IA.` : `${activeMode.label} est déclaré sans bots IA dans le registre actuel.`}`, modeId: activeMode.id };
     }
+    const integratedHelp = getAwenaHelpText(context.route, activeMode.label);
+    const visible = visibleConfigurationAppendix(context);
     return {
-      text: detailedConfigurationText(activeMode),
+      text: `${detailedConfigurationText(activeMode)}${integratedHelp ? `\n\n## AIDE INTÉGRÉE À CET ÉCRAN\n${integratedHelp}` : ""}${visible}`,
       modeId: activeMode.id,
       actions: actionsForAwenaMode(activeMode, context.route),
     };
@@ -191,7 +214,14 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
     (/explique(?: moi)?(?: clairement)?/.test(q) && !asksConfig);
   if (asksRules) {
     if (sportMode) return { text: sportMode.summary, actions: actionForSportMode(sportMode) };
-    if (activeMode) return { text: detailedRulesText(activeMode), modeId: activeMode.id, actions: actionsForAwenaMode(activeMode, context.route) };
+    if (activeMode) {
+      const integratedHelp = getAwenaHelpText(context.route, activeMode.label);
+      return {
+        text: `${detailedRulesText(activeMode)}${integratedHelp ? `\n\n## AIDE INTÉGRÉE À CET ÉCRAN\n${integratedHelp}` : ""}`,
+        modeId: activeMode.id,
+        actions: actionsForAwenaMode(activeMode, context.route),
+      };
+    }
     if (sport) return { text: `${sport.description} Demande-moi le nom d'un mode précis pour sa règle détaillée. Modes connus : ${sport.modes.map((item) => item.label).join(", ")}.`, actions: actionForSport(sport) };
     return { text: `Dis-moi le mode que tu veux comprendre. Côté Fléchettes, ma base couvre maintenant les ${allAwenaModes().length} modes déclarés disponibles ; je connais aussi les principaux modes Pétanque, Baby-foot, Ping-pong, Mölkky, Dés et Football.` };
   }
@@ -225,8 +255,20 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
     return { text: "Je peux te conseiller plus précisément dès que je connais le mode et l'état de la partie. Indique-moi son nom ou ouvre-le." };
   }
 
-  if (/voix|parle|audio|son|prononce|prononciation|anglais|francais/.test(q)) {
-    return { text: "Ma voix stable actuelle est un modèle français local. Pour les titres et termes anglais de l'application, j'utilise un dictionnaire de prononciation dédié afin de les faire sonner correctement sans changer de voix au milieu d'une phrase." };
+  if (/voix|parle|audio|son|prononce|prononciation|anglais|francais|espagnol|allemand|langue/.test(q)) {
+    return {
+      text: `## LANGUE ET VOIX D'AWENA
+Je suis liée à la **langue choisie dans l'application**.
+
+## FRANÇAIS
+J'utilise ma **voix neuronale locale stable**.
+
+## AUTRES LANGUES
+Sur Android, ta question peut être traduite localement vers ma base de connaissances puis ma réponse est retraduite vers la langue choisie. Pour la lecture, j'utilise alors une **voix Android de cette langue** afin d'éviter une prononciation française artificielle.
+
+> Le premier usage d'une langue peut nécessiter le téléchargement de son modèle de traduction. Ensuite, la traduction peut fonctionner localement sur l'appareil.`,
+      knowledgeTopic: "atlas:language",
+    };
   }
 
   if (navTopic) return { text: navTopic.description, actions: actionForNavigation(navTopic) };

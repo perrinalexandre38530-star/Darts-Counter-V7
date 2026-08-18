@@ -2,6 +2,9 @@ import React from "react";
 import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaMode, findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLang } from "../../contexts/LangContext";
+import { awenaUi } from "../AwenaLocale";
+import { awenaTranslation } from "../AwenaTranslation";
 import type { AwenaAction, AwenaSpeechCue } from "../awena.types";
 import { hideAllInlineGoogleAds } from "../../monetization/inlineAdMob";
 
@@ -127,11 +130,13 @@ function ProgressiveAwenaText({
   text,
   primary,
   speechCue,
+  voicePreparing,
 }: {
   messageId: string;
   text: string;
   primary: string;
   speechCue: AwenaSpeechCue | null;
+  voicePreparing: string;
 }) {
   const isTarget = speechCue?.messageId === messageId;
   const [ratio, setRatio] = React.useState(isTarget && speechCue?.phase !== "done" ? 0.18 : 1);
@@ -174,7 +179,7 @@ function ProgressiveAwenaText({
           aria-label="Awena prépare sa voix"
           style={{ marginTop: 7, color: primary, opacity: .72, fontSize: 9.5, fontWeight: 850, letterSpacing: .35 }}
         >
-          Voix en préparation…
+          {voicePreparing}
         </div>
       </div>
     );
@@ -195,6 +200,8 @@ export default function AwenaOverlay(props: Props) {
 
 function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & { awena: AwenaContextValue }) {
   const { theme } = useTheme() as any;
+  const { lang } = useLang();
+  const ui = awenaUi(lang);
   const { settings, runtime, setRuntime, messages, ask, say, stop, speechCue, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -269,6 +276,11 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     try { await ask(clean); } finally { setBusy(false); }
   }
 
+  async function submitCanonical(promptFr: string) {
+    const localized = await awenaTranslation.textFromFrench(promptFr, String(lang || "fr"));
+    await submit(localized);
+  }
+
   function runAction(action: AwenaAction) {
     if (action.kind === "ask" && action.prompt) {
       void submit(action.prompt);
@@ -299,7 +311,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
       </button>}
 
       {open && (
-        <div style={{
+        <div data-awena-overlay="1" style={{
           position: "fixed", right: 12, ...(inGame ? { top: 78, bottom: "auto" } : { bottom: 166 }), zIndex: 1199,
           width: "min(390px, calc(100vw - 24px))", maxHeight: inGame ? "min(620px, calc(100vh - 96px))" : "min(620px, calc(100vh - 210px))",
           display: "flex", flexDirection: "column", overflow: "hidden",
@@ -312,7 +324,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V7.7</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V8.0</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -327,32 +339,32 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>
             {(currentMode && !live
               ? [
-                  ["Règles", `Explique-moi clairement les règles de ${currentMode.label}.`],
-                  ["Configuration", `Détaille uniquement la configuration de ${currentMode.label} : chaque option, valeur possible, variante, format et réglage disponible.`],
-                  ["Records", `Donne-moi les records de ${currentMode.label} et les principaux classements disponibles.`],
+                  [ui.rules, `Explique-moi clairement les règles de ${currentMode.label}.`],
+                  [ui.configuration, `Détaille uniquement la configuration de ${currentMode.label} : chaque option, valeur possible, variante, format et réglage disponible.`],
+                  [ui.records, `Donne-moi les records de ${currentMode.label} et les principaux classements disponibles.`],
                 ]
               : currentMode && live
                 ? [
-                    ["Règles", `Explique-moi les règles de ${currentMode.label}.`],
-                    [currentMode.id === "x01" ? "Que viser ?" : "Conseil", currentMode.id === "x01" ? "Que me conseilles-tu de viser ?" : `Donne-moi un conseil pour ${currentMode.label}.`],
-                    ["Records", `Donne-moi les records de ${currentMode.label}.`],
+                    [ui.rules, `Explique-moi les règles de ${currentMode.label}.`],
+                    [currentMode.id === "x01" ? ui.whatToAim : ui.advice, currentMode.id === "x01" ? "Que me conseilles-tu de viser ?" : `Donne-moi un conseil pour ${currentMode.label}.`],
+                    [ui.records, `Donne-moi les records de ${currentMode.label}.`],
                   ]
                 : [
-                    ["Cet écran", "Que puis-je faire sur cet écran ?"],
-                    ["Navigation", "Aide-moi à trouver une fonction dans l'application."],
-                    ["Que sais-tu ?", "Que peux-tu m'expliquer dans l'application ?"],
+                    [ui.thisScreen, "Que puis-je faire sur cet écran ?"],
+                    [ui.navigation, "Aide-moi à trouver une fonction dans l'application."],
+                    [ui.whatDoYouKnow, "Que peux-tu m'expliquer dans l'application ?"],
                   ]
             ).map(([label, prompt]) => (
-              <button key={label} onClick={() => void submit(prompt)} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${primary}55`, background: `${primary}10`, color: "#fff", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>
+              <button key={label} onClick={() => void submitCanonical(prompt)} style={{ minHeight: 34, borderRadius: 11, border: `1px solid ${primary}55`, background: `${primary}10`, color: "#fff", fontSize: 10.5, fontWeight: 900, cursor: "pointer" }}>{label}</button>
             ))}
           </div>
 
           <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", minHeight: 190, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-            {messages.length === 0 && <div style={{ color: "#98a1c7", fontSize: 12 }}>Je suis prête.</div>}
+            {messages.length === 0 && <div style={{ color: "#98a1c7", fontSize: 12 }}>{ui.ready}</div>}
             {messages.map((m) => (
               <div key={m.id} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
                 <div style={{ padding: "9px 11px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", border: m.role === "user" ? "1px solid rgba(255,255,255,.10)" : `1px solid ${primary}44`, background: m.role === "user" ? "rgba(255,255,255,.07)" : `linear-gradient(135deg,${primary}12,rgba(255,56,199,.08))`, color: "#f7f8ff", fontSize: 12.5, lineHeight: 1.45 }}>
-                  {m.role === "awena" ? <ProgressiveAwenaText messageId={m.id} text={m.text} primary={primary} speechCue={speechCue} /> : m.text}
+                  {m.role === "awena" ? <ProgressiveAwenaText messageId={m.id} text={m.text} primary={primary} speechCue={speechCue} voicePreparing={ui.voicePreparing} /> : m.text}
                   {m.role === "awena" && (
                     <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 5 }}>
                       <button
@@ -366,15 +378,20 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
                             }
                           }}
                           title={speechCue?.messageId === m.id && speechCue.phase !== "done"
-                            ? "Arrêter Awena et afficher toute la réponse"
-                            : "Écouter Awena"}
+                            ? ui.stopVoice
+                            : ui.listen}
                           aria-label={speechCue?.messageId === m.id && speechCue.phase !== "done"
-                            ? "Arrêter la voix d'Awena et afficher tout le texte"
-                            : "Écouter la réponse d'Awena"}
+                            ? ui.stopVoice
+                            : ui.listen}
                           style={{ border: 0, background: "transparent", color: primary, cursor: "pointer", fontSize: 14, padding: "2px 4px" }}
                         >
                           {speechCue?.messageId === m.id && speechCue.phase !== "done" ? "🔇" : "🔊"}
                         </button>
+                    </div>
+                  )}
+                  {m.role === "awena" && !String(lang || "fr").toLowerCase().startsWith("fr") && (
+                    <div style={{ marginTop: 3, color: "#8f98b8", fontSize: 8.5, textAlign: "right", opacity: .78 }}>
+                      Traduction automatique · Google Translate
                     </div>
                   )}
                 </div>
@@ -422,7 +439,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); void submit(input); }} style={{ display: "flex", gap: 7, padding: 10, borderTop: "1px solid rgba(255,255,255,.08)" }}>
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Pose une question à Awena…" style={{ flex: 1, minWidth: 0, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.055)", color: "#fff", padding: "10px 11px", outline: "none", fontSize: 12 }} />
+            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={ui.placeholder} style={{ flex: 1, minWidth: 0, borderRadius: 13, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.055)", color: "#fff", padding: "10px 11px", outline: "none", fontSize: 12 }} />
             <button disabled={busy || !input.trim()} style={{ minWidth: 48, borderRadius: 13, border: `1px solid ${primary}`, background: `${primary}22`, color: primary, fontWeight: 950, cursor: "pointer" }}>{busy ? "…" : "➜"}</button>
           </form>
         </div>

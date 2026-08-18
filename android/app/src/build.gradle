@@ -1,3 +1,12 @@
+import java.util.Properties
+
+def playKeyPropertiesFile = rootProject.file("key.properties")
+def playKeyProperties = new Properties()
+def playSigningConfigured = playKeyPropertiesFile.exists()
+if (playSigningConfigured) {
+    playKeyPropertiesFile.withInputStream { stream -> playKeyProperties.load(stream) }
+}
+
 apply plugin: 'com.android.application'
 
 android {
@@ -16,8 +25,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (playSigningConfigured) {
+            release {
+                storeFile rootProject.file(playKeyProperties['storeFile'])
+                storePassword playKeyProperties['storePassword']
+                keyAlias playKeyProperties['keyAlias']
+                keyPassword playKeyProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (playSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -32,9 +54,16 @@ repositories {
 
 dependencies {
     // Awena Voice V6: moteur TTS local sherpa-onnx / VITS-Piper.
-    implementation "com.github.k2-fsa:sherpa-onnx:v1.13.4"
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.13.5") {
+        // Le AAR Android contient déjà les classes JVM.
+        // sherpa-onnx-jvm est également déclaré transitivement en 1.13.5,
+        // ce qui provoque :app:checkDebugDuplicateClasses.
+        exclude group: "com.github.k2-fsa.sherpa-onnx", module: "sherpa-onnx-jvm"
+    }
     // Extraction locale du pack vocal .tar.bz2 d'Awena.
     implementation "org.apache.commons:commons-compress:1.27.1"
+    // Awena V8: traduction locale multi-langues (modèles téléchargés à la demande).
+    implementation "com.google.mlkit:translate:17.0.3"
     implementation "com.android.billingclient:billing:9.1.0"
     implementation "com.google.android.gms:play-services-ads:${rootProject.ext.playServicesAdsVersion}"
     implementation fileTree(include: ['*.jar'], dir: 'libs')

@@ -1440,21 +1440,38 @@ function savePrimary(list: DartSet[], reason = "save"): boolean {
   return true;
 }
 
-let loadAllCacheAt = 0;
 let loadAllCache: DartSet[] | null = null;
+let allSelectableCache: DartSet[] | null = null;
+let publicSelectorCache: DartSet[] | null = null;
+const profileSelectorCache = new Map<string, DartSet[]>();
 
 function invalidateLoadAllCache() {
-  loadAllCacheAt = 0;
   loadAllCache = null;
+  allSelectableCache = null;
+  publicSelectorCache = null;
+  profileSelectorCache.clear();
 }
 
+// PERF V71: dc_dart_sets_v1 peut contenir plusieurs photos base64 compressées.
+// Le relire/décompresser toutes les 750 ms bloquait le thread principal à chaque
+// changement de page. Le cache reste désormais valide jusqu'à une vraie mutation.
 function loadAll(): DartSet[] {
-  const now = Date.now();
-  if (loadAllCache && now - loadAllCacheAt < 750) return loadAllCache.slice();
+  if (loadAllCache) return loadAllCache.slice();
   loadAllCache = loadPrimaryAuthoritative();
-  loadAllCacheAt = now;
   return loadAllCache.slice();
 }
+
+try {
+  if (typeof window !== "undefined" && !(window as any).__dcDartSetsStoreCacheV71) {
+    (window as any).__dcDartSetsStoreCacheV71 = true;
+    window.addEventListener("storage", (event: StorageEvent) => {
+      const key = String(event?.key || "");
+      if (!key || key === STORAGE_KEY || key === META_KEY || key === IMAGE_BANK_KEY || LEGACY_DARTSET_STORAGE_KEYS.includes(key)) {
+        invalidateLoadAllCache();
+      }
+    });
+  }
+} catch {}
 
 function collectProfileAliasIds(profileId: string): Set<string> {
   const aliases = new Set<string>();
@@ -1933,14 +1950,16 @@ export function getAllDartSets(): DartSet[] {
 }
 
 export function getAllSelectableDartSets(): DartSet[] {
+  if (allSelectableCache) return allSelectableCache.slice();
   // MES FLÉCHETTES = bibliothèque officielle créée par l'utilisateur.
   // On accepte aussi les dartsets explicites présents dans appStore/anciennes clés
   // pour réparer les publics perdus, mais jamais les presets inventés / profils / teams / URLs.
   const list = dedupeVisibleDartSets(
     loadAll().filter((set) => !isLikelyBadRecoveredDartSet(set))
   );
+  allSelectableCache = list;
   backfillDartSetMediaToR2(list);
-  return list;
+  return list.slice();
 }
 
 export function setAllDartSets(list: DartSet[]) {
@@ -2045,6 +2064,7 @@ function collectOwnerlessPublicRecoveryCandidates(primary: DartSet[]): DartSet[]
 }
 
 export function getPublicDartSetsForSelector(): DartSet[] {
+  if (publicSelectorCache) return publicSelectorCache.slice();
   // Sélecteurs de partie : publics disponibles pour ABSOLUMENT tous les joueurs.
   // Base officielle : dc_dart_sets_v1 normalisé.
   const primary = loadAll();
@@ -2078,15 +2098,18 @@ export function getPublicDartSetsForSelector(): DartSet[] {
   // limitée aux sources dartSets explicites, pas à la banque d’images.
   const ownerlessPublicFallback = collectOwnerlessPublicRecoveryCandidates(primary);
 
-  return dedupeVisibleDartSets([
+  publicSelectorCache = dedupeVisibleDartSets([
     ...publicFromPrimary,
     ...missingPublicFallback,
     ...ownerlessPublicFallback,
   ]);
+  return publicSelectorCache.slice();
 }
 
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   const pid = s(profileId);
+  const cached = profileSelectorCache.get(pid);
+  if (cached) return cached.slice();
   const all = getAllSelectableDartSets();
   const publics = getPublicDartSetsForSelector();
   const privateForOwner = all.filter((set) => {
@@ -2108,7 +2131,8 @@ export function getDartSetsForProfile(profileId: string): DartSet[] {
       names: result.map((x) => `${x.name}:${x.scope}:${x.profileId}`).slice(0, 20),
     });
   } catch {}
-  return result;
+  profileSelectorCache.set(pid, result);
+  return result.slice();
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
@@ -2163,6 +2187,30 @@ export function getDartSetThumbImageSrc(set: any): string | null {
   const recovered = recoverImageForSet(set);
   const recoveredSrc = recovered ? readThumbImage(recovered) || readMainImage(recovered) : "";
   return recoveredSrc || null;
+}
+
+/**
+ * Résolution locale ultra-légère (RAM/IndexedDB uniquement). Utilisée dans les
+ * grilles où lancer une restauration NAS/R2 pour 9 cartes en parallèle ferait
+ * ramer la navigation.
+ */
+export async function resolveDartSetLocalImageSrc(set: any, preferThumb = false): Promise<string | null> {
+  if (!set || typeof set !== "object") return null;
+  const primary = preferThumb
+    ? (getDartSetThumbImageSrc(set) || getDartSetMainImageSrc(set) || "")
+    : (getDartSetMainImageSrc(set) || getDartSetThumbImageSrc(set) || "");
+  if (primary && /^(data:image\/|blob:|\/assets\/|\/images\/|\.\.?\/)/i.test(primary)) return primary;
+
+  const ids = uniqStrings([
+    set?.id, set?.dartSetId, set?.setId, set?.linkedSourceDartSetId, set?.sourceDartSetId,
+    ...(Array.isArray(set?.duplicateIds) ? set.duplicateIds : []),
+    ...(Array.isArray(set?.aliasIds) ? set.aliasIds : []),
+  ]);
+  const localKeys = preferThumb
+    ? [...ids.map(dartSetThumbMediaKey), ...ids.map(dartSetMainMediaKey)]
+    : [...ids.map(dartSetMainMediaKey), ...ids.map(dartSetThumbMediaKey)];
+  const local = await readFirstLocalUserMediaFallback(localKeys);
+  return local || primary || getDartSetPresetImageSrc(set, preferThumb);
 }
 
 /**

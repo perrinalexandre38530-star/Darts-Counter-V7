@@ -4,6 +4,7 @@ import {
   getDartSetPresetImageSrc,
   getDartSetThumbImageSrc,
   resolveDartSetBestImageSrc,
+  resolveDartSetLocalImageSrc,
 } from "../lib/dartSetsStore";
 
 type Props = {
@@ -15,10 +16,30 @@ type Props = {
   style?: React.CSSProperties;
   fallback?: React.ReactNode;
   loading?: "eager" | "lazy";
+  recovery?: "full" | "local" | "none";
 };
 
 type CacheValue = string | null | Promise<string | null>;
 const resolvedImageCache = new Map<string, CacheValue>();
+
+// PERF/FIX V71 : le cache de résolution est module-global pour éviter des lectures
+// IndexedDB répétées, mais il doit être invalidé quand une photo de DartSet vient
+// d’être importée/restaurée. Sinon une ancienne URL cassée/null peut rester mémorisée
+// même si les pixels sont désormais présents dans le coffre média local.
+function clearResolvedDartSetImageCache() {
+  resolvedImageCache.clear();
+}
+
+try {
+  if (typeof window !== "undefined") {
+    const events = ["dc-dartsets-updated", "dc-user-media-restored", "dc-background-restore-finished"];
+    for (const eventName of events) window.addEventListener(eventName, clearResolvedDartSetImageCache as EventListener);
+    window.addEventListener("storage", (event: StorageEvent) => {
+      const key = String(event?.key || "");
+      if (!key || /dart.?set|user.?media/i.test(key)) clearResolvedDartSetImageCache();
+    });
+  }
+} catch {}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -55,15 +76,16 @@ function syncCandidates(set: any, explicitSrc?: string | null, preferThumb = fal
   return Array.from(new Set(candidates));
 }
 
-function resolveCached(set: any, preferThumb: boolean): Promise<string | null> {
-  const key = setIdentity(set, preferThumb);
+function resolveCached(set: any, preferThumb: boolean, recovery: "full" | "local" | "none"): Promise<string | null> {
+  const key = `${setIdentity(set, preferThumb)}:${recovery}`;
   const cached = resolvedImageCache.get(key);
   if (typeof cached === "string" || cached === null) return Promise.resolve(cached ?? null);
   if (cached && typeof (cached as Promise<string | null>).then === "function") {
     return cached as Promise<string | null>;
   }
 
-  const pending = resolveDartSetBestImageSrc(set, preferThumb)
+  const resolver = recovery === "local" ? resolveDartSetLocalImageSrc : resolveDartSetBestImageSrc;
+  const pending = resolver(set, preferThumb)
     .then((src) => {
       const normalized = text(src) || null;
       resolvedImageCache.set(key, normalized);
@@ -93,6 +115,7 @@ const DartSetImage: React.FC<Props> = ({
   style,
   fallback = <span aria-hidden="true">🎯</span>,
   loading = "lazy",
+  recovery = "full",
 }) => {
   const identity = React.useMemo(
     () => `${setIdentity(set, preferThumb)}:${text(src)}`,
@@ -122,7 +145,7 @@ const DartSetImage: React.FC<Props> = ({
     setLoaded(false);
     setResolvedSrc(immediate);
 
-    if (!set) {
+    if (!set || recovery === "none") {
       setResolvedSrc(candidates[0] || null);
       return () => { cancelled = true; };
     }
@@ -131,14 +154,14 @@ const DartSetImage: React.FC<Props> = ({
     // nécessaire avant le premier paint.
     if (immediate) return () => { cancelled = true; };
 
-    void resolveCached(set, preferThumb).then((localOrBest) => {
+    void resolveCached(set, preferThumb, recovery).then((localOrBest) => {
       if (cancelled) return;
       const next = text(localOrBest) || candidates[0] || null;
       setResolvedSrc(next);
     });
 
     return () => { cancelled = true; };
-  }, [identity, preferThumb, immediate, candidates]);
+  }, [identity, preferThumb, immediate, candidates, recovery]);
 
   React.useEffect(() => {
     setLoaded(false);
@@ -192,7 +215,7 @@ const DartSetImage: React.FC<Props> = ({
           src={resolvedSrc}
           alt={alt}
           className={className}
-          style={{ ...style, opacity: loaded ? 1 : 0, display: "block" }}
+          style={{ ...style, opacity: loaded ? 1 : 0, visibility: loaded ? "visible" : "hidden", display: "block" }}
           loading={loading}
           decoding="async"
           draggable={false}

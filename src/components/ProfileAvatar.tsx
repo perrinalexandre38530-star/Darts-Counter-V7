@@ -29,7 +29,7 @@ import { loadBots as loadStoredBots, isBotLike, resolveBotAvatarSrc } from "../l
 import { getAvatarCacheFast } from "../lib/avatarCache";
 import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { queueAvatarFallbackMirror, resolveAvatarFallback } from "../lib/avatarR2Fallback";
-import { captureUserMediaFallback, profileAvatarMediaKey, resolveUserMediaFallback } from "../lib/userMediaFallback";
+import { captureUserMediaFallback, profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import DartSetImage from "./DartSetImage";
 import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
 
@@ -57,6 +57,9 @@ type VisualOpts = {
   // Il permet de retrouver le cache local puis la copie Cloudflare R2 si le NAS tombe.
   profileId?: string | null;
   fallbackDataUrl?: any;
+  // "local" = RAM/IndexedDB uniquement : aucune restauration NAS/fichier/R2 pendant
+  // le paint d'une grille. Les vues détaillées gardent le mode "full" par défaut.
+  fallbackMode?: "full" | "local";
 };
 
 function isDeadRemoteAvatar(src: string) {
@@ -149,6 +152,7 @@ const PROFILE_RESOLVE_CACHE_MS = 15_000;
 function clearProfileAvatarResolverCache() {
   resolvedProfileMemory.clear();
   resolvedProfilePending.clear();
+  safetyProfilesSnapshot = null;
 }
 
 try {
@@ -191,6 +195,16 @@ function scheduleAvatarSafetyMirror(
 /* ============================================================
    ✅ GLOBAL PROFILE RESOLVER
 ============================================================ */
+let safetyProfilesSnapshot: { at: number; profiles: any[] } | null = null;
+function getSafetyProfilesSnapshot(): any[] {
+  const now = Date.now();
+  if (safetyProfilesSnapshot && now - safetyProfilesSnapshot.at < 12_000) return safetyProfilesSnapshot.profiles;
+  let profiles: any[] = [];
+  try { profiles = getCachedLocalProfilesForSafety()?.profiles || []; } catch {}
+  safetyProfilesSnapshot = { at: now, profiles: Array.isArray(profiles) ? profiles : [] };
+  return safetyProfilesSnapshot.profiles;
+}
+
 async function getProfileByIdFromStore(
   profileId: string
 ): Promise<ProfileLike | null> {
@@ -205,13 +219,18 @@ async function getProfileByIdFromStore(
 
   const task = (async (): Promise<ProfileLike | null> => {
     try {
-      // 1) PRIORITÉ aux profils locaux déjà en mémoire. Avant, chaque avatar humain
-      // commençait par relire le store des bots, donc 9 cartes = 9 parsings inutiles.
+      // 1) PRIORITÉ ABSOLUE au store React déjà en RAM. Lire le cache sécurité
+      // localStorage pour chaque carte provoquait 9 JSON.parse de la liste profils.
       let pr: any = null;
       try {
-        const cached = getCachedLocalProfilesForSafety();
-        pr = (cached?.profiles || []).find((x: any) => String(x?.id || "") === id) || null;
+        const live = Array.isArray((window as any)?.__appStore?.store?.profiles)
+          ? (window as any).__appStore.store.profiles
+          : [];
+        pr = live.find((x: any) => String(x?.id || "") === id) || null;
       } catch {}
+      if (!pr) {
+        try { pr = getSafetyProfilesSnapshot().find((x: any) => String(x?.id || "") === id) || null; } catch {}
+      }
 
       if (pr) {
         return {
@@ -299,6 +318,14 @@ export default function ProfileAvatar(props: Props) {
 
   const inputProfile: ProfileLike | null =
     ("profile" in props ? props.profile : null) ?? null;
+  const inputProfileId = String(props.profileId || inputProfile?.id || "").trim();
+  const inputFastCache = React.useMemo(
+    () => (inputProfileId ? (getAvatarCacheFast(inputProfileId) as any) : null),
+    [inputProfileId, (inputProfile as any)?.avatarUpdatedAt],
+  );
+  const inputHasFastMedia = Boolean(
+    normalizeImport(inputFastCache?.avatarThumbDataUrl) || normalizeImport(inputFastCache?.avatarDataUrl)
+  );
 
   const [resolvedProfile, setResolvedProfile] =
     React.useState<ProfileLike | null>(null);
@@ -314,7 +341,7 @@ export default function ProfileAvatar(props: Props) {
         return;
       }
 
-      if (!isLiteProfile(p)) {
+      if (!isLiteProfile(p) || (inputHasFastMedia && !isBotLike(p))) {
         if (mounted) setResolvedProfile(null);
         return;
       }
@@ -349,6 +376,7 @@ export default function ProfileAvatar(props: Props) {
     inputProfile?.avatarPath,
     inputProfile?.avatarDataUrl,
     inputProfile?.avatarUpdatedAt,
+    inputHasFastMedia,
   ]);
 
   const p: ProfileLike | null = resolvedProfile ?? inputProfile;
@@ -394,8 +422,10 @@ export default function ProfileAvatar(props: Props) {
   // mémoire/CPU. Si la miniature locale correspond à la révision actuelle, elle gagne.
   const effectiveProfileId = String(props.profileId || p?.id || "").trim();
   const fastAvatarCache = React.useMemo(
-    () => (effectiveProfileId ? (getAvatarCacheFast(effectiveProfileId) as any) : null),
-    [effectiveProfileId, (p as any)?.avatarUpdatedAt],
+    () => effectiveProfileId && effectiveProfileId === inputProfileId
+      ? inputFastCache
+      : (effectiveProfileId ? (getAvatarCacheFast(effectiveProfileId) as any) : null),
+    [effectiveProfileId, inputProfileId, inputFastCache, (p as any)?.avatarUpdatedAt],
   );
   const cachedThumb = React.useMemo(
     () =>
@@ -443,10 +473,12 @@ export default function ProfileAvatar(props: Props) {
   const [fallbackRaw, setFallbackRaw] = React.useState<string>(() => readCachedFallback());
   const [primaryBroken, setPrimaryBroken] = React.useState(false);
   const [fallbackBroken, setFallbackBroken] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
 
   React.useEffect(() => {
     setPrimaryBroken(false);
     setFallbackBroken(false);
+    setLoaded(false);
     setFallbackRaw(readCachedFallback());
   }, [rawImg, effectiveProfileId, readCachedFallback]);
 
@@ -477,8 +509,14 @@ export default function ProfileAvatar(props: Props) {
 
     const mediaKey = profileAvatarMediaKey(effectiveProfileId);
     void (async () => {
-      let src = await resolveUserMediaFallback(mediaKey, primaryImg || rawImg || "", { kind: "profile_avatar" }).catch(() => "");
-      if (!src) src = await resolveAvatarFallback(effectiveProfileId).catch(() => "");
+      let src = "";
+      if (props.fallbackMode === "local") {
+        // Grilles : une seule lecture IDB locale, sans scan de sauvegardes, NAS ou R2.
+        src = await readLocalUserMediaFallback(mediaKey).catch(() => "");
+      } else {
+        src = await resolveUserMediaFallback(mediaKey, primaryImg || rawImg || "", { kind: "profile_avatar" }).catch(() => "");
+        if (!src) src = await resolveAvatarFallback(effectiveProfileId).catch(() => "");
+      }
       if (!cancelled && src) {
         setFallbackBroken(false);
         setFallbackRaw(src);
@@ -486,7 +524,7 @@ export default function ProfileAvatar(props: Props) {
     })();
 
     return () => { cancelled = true; };
-  }, [effectiveProfileId, fallbackImg, fallbackBroken, primaryImg, primaryBroken, rawImg]);
+  }, [effectiveProfileId, fallbackImg, fallbackBroken, primaryImg, primaryBroken, rawImg, props.fallbackMode]);
 
   const useFallback = (!primaryImg || primaryBroken) && !!fallbackImg && !fallbackBroken;
   const img = useFallback ? fallbackImg : (primaryImg && !primaryBroken ? primaryImg : null);
@@ -573,53 +611,18 @@ export default function ProfileAvatar(props: Props) {
           outline: "none",
         }}
       >
-        {shouldShowImg ? (
-          <img
-            key={img as string}
-            src={img as string}
-            alt={name ?? "avatar"}
-            loading={size <= 96 ? "lazy" : "eager"}
-            decoding="async"
-            onLoad={() => {
-              // La copie de sécurité existe toujours, mais canvas/IDB/R2 attendent un
-              // vrai temps mort : le paint de la page reste prioritaire.
-              const displayingFreshCachedThumb = cachedThumbFresh && !!cachedThumb && rawImg === cachedThumb;
-              if (!useFallback && effectiveProfileId && primaryImg && !displayingFreshCachedThumb) {
-                scheduleAvatarSafetyMirror(effectiveProfileId, primaryImg, {
-                  avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
-                  avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,
-                });
-              }
-            }}
-            onError={() => {
-              if (useFallback) setFallbackBroken(true);
-              else setPrimaryBroken(true);
-            }}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              objectPosition: "50% 50%",
-              display: "block",
-              // IMPORTANT: pas de borderRadius ici, c’est le wrapper qui clip
-              borderRadius: 0,
-              background: "transparent",
-              boxShadow: "none",
-              outline: "none",
-            }}
-          />
-        ) : (
+        {(!shouldShowImg || !loaded) ? (
           <div
             style={{
-              width: "100%",
-              height: "100%",
+              position: "absolute",
+              inset: 0,
               color: textColor,
               display: "grid",
               placeItems: "center",
               textAlign: "center",
               lineHeight: 1,
               userSelect: "none",
-              background: "transparent", // déjà géré par wrapper fallbackBg
+              background: "transparent",
             }}
           >
             <div
@@ -634,7 +637,45 @@ export default function ProfileAvatar(props: Props) {
               {(name ?? "P").trim().slice(0, 1).toUpperCase()}
             </div>
           </div>
-        )}
+        ) : null}
+        {shouldShowImg ? (
+          <img
+            key={img as string}
+            src={img as string}
+            alt={name ?? "avatar"}
+            loading={size <= 96 ? "lazy" : "eager"}
+            decoding="async"
+            onLoad={() => {
+              setLoaded(true);
+              const displayingFreshCachedThumb = cachedThumbFresh && !!cachedThumb && rawImg === cachedThumb;
+              if (!useFallback && effectiveProfileId && primaryImg && !displayingFreshCachedThumb) {
+                scheduleAvatarSafetyMirror(effectiveProfileId, primaryImg, {
+                  avatarUpdatedAt: Number((p as any)?.avatarUpdatedAt || Date.now()) || Date.now(),
+                  avatarAssetId: String((p as any)?.avatarAssetId || (p as any)?.avatarThumbAssetId || "") || null,
+                });
+              }
+            }}
+            onError={() => {
+              setLoaded(false);
+              if (useFallback) setFallbackBroken(true);
+              else setPrimaryBroken(true);
+            }}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "50% 50%",
+              display: "block",
+              opacity: loaded ? 1 : 0,
+              borderRadius: 0,
+              background: "transparent",
+              boxShadow: "none",
+              outline: "none",
+            }}
+          />
+        ) : null}
       </div>
 
       {showStars && <ProfileStarRing avg3d={avg3D ?? 0} anchorSize={size} />}

@@ -1347,15 +1347,47 @@ function x01DartSetSelectableForProfile(set: any, profileId: string, allProfiles
   return false;
 }
 
+function x01DartSetVisualScore(set: any): number {
+  if (!set) return 0;
+  const candidates = [
+    set?.photoThumbDataUrl, set?.thumbDataUrl, set?.thumbImageDataUrl,
+    set?.photoDataUrl, set?.mainImageDataUrl, set?.imageDataUrl, set?.dartSetImageDataUrl,
+    set?.thumbImageUrl, set?.mainImageUrl,
+  ];
+  let score = 0;
+  for (const raw of candidates) {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (!value) continue;
+    if (/^data:image\//i.test(value)) score = Math.max(score, 1_000_000 + Math.min(value.length, 500_000));
+    else if (/^blob:/i.test(value)) score = Math.max(score, 900_000);
+    else if (/^\/assets\/|^\/images\/|^\.\.?\//i.test(value)) score = Math.max(score, 800_000);
+    else score = Math.max(score, 300_000);
+  }
+  if (set?.mainImageAssetId || set?.thumbImageAssetId || set?.photoAssetId) score += 250_000;
+  score += Math.min(100_000, Number(set?.mediaUpdatedAt || set?.updatedAt || 0) / 10_000_000);
+  return score;
+}
+
 function x01DedupeDartSets(list: DartSet[]): DartSet[] {
   const out: DartSet[] = [];
-  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
   for (const set of Array.isArray(list) ? list : []) {
     const id = String((set as any)?.id || "").trim();
     const key = id || `${String((set as any)?.name || "").trim().toLowerCase()}|${String((set as any)?.mainImageUrl || (set as any)?.thumbImageUrl || "")}`;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(set);
+    if (!key) continue;
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex == null) {
+      indexByKey.set(key, out.length);
+      out.push(set);
+      continue;
+    }
+    // Plusieurs sources X01 peuvent renvoyer le même ID. On garde la version
+    // qui possède le visuel le plus riche/récent au lieu de conserver le premier
+    // objet legacy dont l'URL peut être cassée.
+    const existing = out[existingIndex] as any;
+    if (x01DartSetVisualScore(set) > x01DartSetVisualScore(existing)) {
+      out[existingIndex] = set;
+    }
   }
   return out;
 }
@@ -1515,10 +1547,13 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
   const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);
-  const selectedSet = React.useMemo(
-    () => orderedSets.find((s: any) => String(s?.id) === String(dartSetId || "")) || null,
-    [orderedSets, dartSetId]
-  );
+  const selectedSet = React.useMemo(() => {
+    const fromPicker = orderedSets.find((s: any) => String(s?.id) === String(dartSetId || "")) || null;
+    const canonical = dartSetId ? x01GetDartSetByIdLoose(dartSetId) : null;
+    if (!fromPicker) return canonical;
+    if (!canonical) return fromPicker;
+    return x01DartSetVisualScore(canonical) > x01DartSetVisualScore(fromPicker) ? canonical : fromPicker;
+  }, [orderedSets, dartSetId]);
 
   const selectSet = (id: string | null) => {
     onChange(id);
@@ -1740,6 +1775,7 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
                         preferThumb
                         alt=""
                         loading="lazy"
+                        recovery="local"
                         fallback={<span style={{ fontSize: 26 }}>🎯</span>}
                         style={{
                           width: "100%",

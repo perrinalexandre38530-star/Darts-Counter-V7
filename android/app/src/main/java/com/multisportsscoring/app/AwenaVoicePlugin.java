@@ -116,6 +116,34 @@ public class AwenaVoicePlugin extends Plugin {
         }
     }
 
+    private boolean isFrenchLanguage(String languageTag) {
+        return "fr".equalsIgnoreCase(localeFromTag(languageTag).getLanguage());
+    }
+
+    private JSObject buildSystemStatus(String languageTag) {
+        Locale locale = localeFromTag(languageTag);
+        JSObject out = new JSObject();
+        out.put("available", tts != null);
+        out.put("ready", ready);
+        out.put("engine", ready ? "android-native" : "none");
+        out.put("enginePackage", tts == null ? null : tts.getDefaultEngine());
+        Voice active = tts == null ? null : tts.getVoice();
+        out.put("voiceName", active == null ? null : active.getName());
+        out.put("language", locale.toLanguageTag());
+        out.put("offline", active == null ? null : !active.isNetworkConnectionRequired());
+        out.put("neuralInstalled", AwenaNeuralModelManager.isInstalled(getContext()));
+        out.put("neuralReady", neuralEngine != null && neuralEngine.isReady());
+        out.put("neuralInitializing", neuralInitializing);
+        out.put("installing", AwenaNeuralModelManager.isInstalling());
+        out.put("installProgress", AwenaNeuralModelManager.getProgress(getContext()));
+        out.put("downloadedBytes", AwenaNeuralModelManager.getDownloadedBytes());
+        out.put("totalBytes", AwenaNeuralModelManager.getTotalBytes());
+        out.put("currentFile", AwenaNeuralModelManager.getCurrentFile());
+        out.put("lastError", neuralLastError != null ? neuralLastError : AwenaNeuralModelManager.getLastError());
+        out.put("packId", AwenaNeuralModelManager.PACK_ID);
+        return out;
+    }
+
     private synchronized AwenaPocketTtsEngine ensureNeuralEngine() throws Exception {
         if (!AwenaNeuralModelManager.isInstalled(getContext())) {
             throw new IllegalStateException("Le pack vocal stable d'Awena n'est pas installé.");
@@ -178,9 +206,12 @@ public class AwenaVoicePlugin extends Plugin {
         final double volume = call.getDouble("volume", 0.9);
         final double requestedRate = call.getDouble("rate", 1.0);
         final String utteranceId = call.getString("utteranceId", "awena-" + UUID.randomUUID());
+        final String language = call.getString("language", "fr-FR");
 
-        // Final Awena path: once installed, the stable local neural voice is mandatory. Never fall back silently.
-        if (AwenaNeuralModelManager.isInstalled(getContext())) {
+        // French keeps Awena's stable neural identity. Other app languages use
+        // Android TTS in the selected locale so English/Spanish/etc. are not
+        // spoken with French phonemes.
+        if (AwenaNeuralModelManager.isInstalled(getContext()) && isFrenchLanguage(language)) {
             try {
                 if (tts != null) tts.stop();
             } catch (Exception ignored) {}
@@ -221,8 +252,8 @@ public class AwenaVoicePlugin extends Plugin {
             return;
         }
 
-        // Temporary fallback only while the neural pack has not been installed.
-        final String language = call.getString("language", "fr-FR");
+        // System TTS path: temporary French fallback before neural install,
+        // and the permanent multilingual voice path for non-French languages.
         final String voiceName = call.getString("voiceName");
         final double rate = call.getDouble("rate", 1.0);
         final double pitch = call.getDouble("pitch", 1.0);
@@ -241,10 +272,20 @@ public class AwenaVoicePlugin extends Plugin {
                 }
 
                 if (voiceName != null && !voiceName.trim().isEmpty()) {
-                    selectedVoiceName = voiceName.trim();
-                    getContext().getSharedPreferences("awena_voice", Context.MODE_PRIVATE)
-                        .edit().putString("voiceName", selectedVoiceName).apply();
-                    applySelectedVoice();
+                    Set<Voice> currentVoices = tts.getVoices();
+                    if (currentVoices != null) {
+                        for (Voice candidate : currentVoices) {
+                            if (candidate != null
+                                && voiceName.trim().equals(candidate.getName())
+                                && locale.getLanguage().equalsIgnoreCase(candidate.getLocale().getLanguage())) {
+                                selectedVoiceName = voiceName.trim();
+                                getContext().getSharedPreferences("awena_voice", Context.MODE_PRIVATE)
+                                    .edit().putString("voiceName", selectedVoiceName).apply();
+                                try { tts.setVoice(candidate); } catch (Exception ignored) {}
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 tts.setSpeechRate((float)Math.max(0.65, Math.min(1.45, rate)));
@@ -396,20 +437,25 @@ public class AwenaVoicePlugin extends Plugin {
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        // Do not initialize Android TTS just to report status when the neural pack is installed.
-        if (AwenaNeuralModelManager.isInstalled(getContext())) {
+        final String language = call.getString("language", "fr-FR");
+        if (AwenaNeuralModelManager.isInstalled(getContext()) && isFrenchLanguage(language)) {
             call.resolve(buildStatus());
             return;
         }
-
-        initEngine(() -> call.resolve(buildStatus()));
+        initEngine(() -> {
+            if (ready && tts != null) {
+                try { tts.setLanguage(localeFromTag(language)); } catch (Exception ignored) {}
+            }
+            call.resolve(buildSystemStatus(language));
+        });
     }
 
     @PluginMethod
     public void getVoices(PluginCall call) {
         JSArray result = new JSArray();
+        final String language = call.getString("language", "fr-FR");
 
-        if (AwenaNeuralModelManager.isInstalled(getContext())) {
+        if (AwenaNeuralModelManager.isInstalled(getContext()) && isFrenchLanguage(language)) {
             JSObject awena = new JSObject();
             awena.put("name", "Awena · voix française stable");
             awena.put("language", "fr-FR");
@@ -424,7 +470,6 @@ public class AwenaVoicePlugin extends Plugin {
             return;
         }
 
-        final String language = call.getString("language", "fr-FR");
         initEngine(() -> {
             if (ready && tts != null) {
                 String languagePrefix = localeFromTag(language).getLanguage();
@@ -453,7 +498,8 @@ public class AwenaVoicePlugin extends Plugin {
 
     @PluginMethod
     public void setVoice(PluginCall call) {
-        if (AwenaNeuralModelManager.isInstalled(getContext())) {
+        final String language = call.getString("language", "fr-FR");
+        if (AwenaNeuralModelManager.isInstalled(getContext()) && isFrenchLanguage(language)) {
             JSObject out = new JSObject();
             out.put("ok", true);
             out.put("voiceName", "Awena · voix française stable");
@@ -469,6 +515,9 @@ public class AwenaVoicePlugin extends Plugin {
             getContext().getSharedPreferences("awena_voice", Context.MODE_PRIVATE).edit().putString("voiceName", selectedVoiceName).apply();
         }
         initEngine(() -> {
+            if (ready && tts != null) {
+                try { tts.setLanguage(localeFromTag(language)); } catch (Exception ignored) {}
+            }
             applySelectedVoice();
             JSObject out = new JSObject();
             out.put("ok", true);

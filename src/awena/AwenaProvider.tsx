@@ -2,6 +2,8 @@ import React from "react";
 import { useLang } from "../contexts/LangContext";
 import { useAudio } from "../contexts/AudioContext";
 import { buildAwenaReply } from "./AwenaCore";
+import { awenaTranslation } from "./AwenaTranslation";
+import { captureAwenaScreenSnapshot } from "./AwenaLiveScreen";
 import { findAwenaMode } from "./AwenaKnowledge";
 import { AWENA_CONTEXT_EVENT } from "./AwenaContextBridge";
 import { awenaVoice } from "./AwenaVoice";
@@ -137,6 +139,29 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     if (panelOpen) warmAwenaRecordsCache();
   }, [panelOpen]);
 
+  // The app language is the language of Awena as well. On Android the
+  // translation model is prepared in the background as soon as the user changes
+  // language, so the first real question does not pay the full download/setup cost.
+  React.useEffect(() => {
+    if (String(lang || "fr").toLowerCase().startsWith("fr")) return;
+    void awenaTranslation.prepare(String(lang || "fr"));
+  }, [lang]);
+
+  // Localize the initial greeting when the language changes and the conversation
+  // has not started yet. Existing conversation history is intentionally preserved.
+  React.useEffect(() => {
+    const target = String(lang || "fr");
+    if (target.toLowerCase().startsWith("fr")) return;
+    const introFr = awenaLine("identity", "intro");
+    void awenaTranslation.textFromFrench(introFr, target).then((localized) => {
+      setMessages((prev) => {
+        if (prev.some((item) => item.role === "user")) return prev;
+        if (!prev.length) return [message("awena", localized)];
+        return [{ ...prev[0], text: localized }, ...prev.slice(1)];
+      });
+    });
+  }, [lang]);
+
   const say = React.useCallback(async (text: string, messageId?: string) => {
     if (muted) return;
     const utteranceId = messageId || `awena-manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -155,18 +180,32 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     const userMessage = message("user", clean);
     setMessages((prev) => [...prev, userMessage].slice(-40));
 
-    const explicitMode = findAwenaMode(clean, runtime.mode || runtime.route);
-    const contextForReply = explicitMode ? { ...runtime, mode: explicitMode.id } : runtime;
+    // Canonical reasoning language = French. This lets the whole existing
+    // knowledge base stay consistent while the user can ask in the language
+    // selected in Settings.
+    const canonicalQuestion = await awenaTranslation.questionToFrench(clean, String(lang || "fr"));
+
+    const explicitMode = findAwenaMode(canonicalQuestion, runtime.mode || runtime.route);
+    const screenSnapshot = captureAwenaScreenSnapshot();
+    const baseContext: AwenaRuntimeContext = {
+      ...runtime,
+      extra: {
+        ...(runtime.extra || {}),
+        ...(screenSnapshot ? { awenaScreenSnapshot: screenSnapshot } : {}),
+      },
+    };
+    const contextForReply = explicitMode ? { ...baseContext, mode: explicitMode.id } : baseContext;
 
     let recordsReply = null;
     try {
-      recordsReply = await buildAwenaRecordsReply(clean, contextForReply);
+      recordsReply = await buildAwenaRecordsReply(canonicalQuestion, contextForReply);
     } catch (error) {
       console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
     }
-    const reply = recordsReply ?? buildAwenaReply(clean, contextForReply);
+    const canonicalReply = recordsReply ?? buildAwenaReply(canonicalQuestion, contextForReply);
+    const reply = await awenaTranslation.replyFromFrench(canonicalReply, String(lang || "fr"));
 
-    if (reply.modeId || reply.knowledgeTopic) {
+    if (canonicalReply.modeId || canonicalReply.knowledgeTopic) {
       setRuntimeState((prev) => ({
         ...prev,
         // Le mode actif appartient à l'écran réel. Une simple conversation sur
@@ -174,8 +213,8 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
         // Le sujet conversationnel est mémorisé séparément dans extra.
         extra: {
           ...(prev.extra || {}),
-          ...(reply.modeId ? { awenaRememberedMode: reply.modeId } : {}),
-          ...(reply.knowledgeTopic ? { awenaKnowledgeTopic: reply.knowledgeTopic } : {}),
+          ...(canonicalReply.modeId ? { awenaRememberedMode: canonicalReply.modeId } : {}),
+          ...(canonicalReply.knowledgeTopic ? { awenaKnowledgeTopic: canonicalReply.knowledgeTopic } : {}),
         },
       }));
     }

@@ -1,10 +1,12 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLang } from "../../contexts/LangContext";
 import { useAwena } from "../AwenaProvider";
 import type { AwenaInterventionMode } from "../awena.types";
 import { AWENA_VOICE_PROFILE } from "../AwenaVoiceProfile";
 import { awenaLine } from "../AwenaVoiceCatalog";
 import { awenaVoice } from "../AwenaVoice";
+import { awenaTranslation } from "../AwenaTranslation";
 
 const AVATAR = "/awena/awena-avatar.webp";
 
@@ -15,6 +17,7 @@ function mb(bytes?: number) {
 
 export default function AwenaSettingsSection() {
   const { theme } = useTheme() as any;
+  const { lang } = useLang();
   const { settings, setSettings, voiceStatus, refreshVoices, stop } = useAwena();
   const [voiceBusy, setVoiceBusy] = React.useState(false);
   const [voiceError, setVoiceError] = React.useState<string | null>(null);
@@ -33,6 +36,7 @@ export default function AwenaSettingsSection() {
 
   const neuralInstalled = !!voiceStatus?.neuralInstalled;
   const neuralReady = !!voiceStatus?.neuralReady;
+  const isFrench = String(lang || "fr").toLowerCase().startsWith("fr");
   const installing = voiceBusy || !!voiceStatus?.installing || !!voiceStatus?.neuralInitializing;
   const progress = Math.max(0, Math.min(1, Number(voiceStatus?.installProgress || 0)));
 
@@ -74,13 +78,14 @@ export default function AwenaSettingsSection() {
     setVoiceBusy(true);
     setVoiceError(null);
     try {
-      const testText = `${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`;
-      // This is a diagnostic button: bypass the application's global mute state and explicitly
-      // exercise Awena's native output path.
+      const testTextFr = `${awenaLine("identity", "hello")} ${awenaLine("identity", "welcome")} ${awenaLine("identity", "ready")}`;
+      const testText = await awenaTranslation.textFromFrench(testTextFr, String(lang || "fr"));
+      // Diagnostic button: French uses the neural identity; the other app
+      // languages use Android TTS in the selected locale.
       const ok = await awenaVoice.speak(
         testText,
         { ...settings, enabled: true, voiceEnabled: true },
-        "fr",
+        String(lang || "fr"),
       );
       if (!ok) setVoiceError("Le moteur Awena n'a pas confirmé la lecture audio.");
     } catch (error) {
@@ -100,7 +105,7 @@ export default function AwenaSettingsSection() {
             <div style={{ color: "#fff", fontWeight: 950, fontSize: 20, letterSpacing: 1 }}>AWENA</div>
             <div style={{ color: primary, fontSize: 11, fontWeight: 900, letterSpacing: .5 }}>PRÉSENTATRICE · ASSISTANTE · BOT IA</div>
             <div style={{ color: theme.textSoft, fontSize: 11, marginTop: 5, lineHeight: 1.35 }}>
-              Awena dispose maintenant de son moteur vocal neuronal local et de sa voix française stable. Une fois le pack installé, la synthèse se fait directement sur l'appareil.
+              Awena suit la langue de l’application. En français, elle utilise sa voix neuronale locale stable ; dans les autres langues, ses réponses sont traduites localement sur Android puis lues avec une voix Android compatible.
             </div>
           </div>
         </div>
@@ -122,20 +127,22 @@ export default function AwenaSettingsSection() {
       <section style={{ borderRadius: 18, border: `1px solid ${neuralReady ? "#36f59a88" : theme.borderSoft}`, background: theme.card, padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Stable V6.4</div>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Awena Voice · Multilingue V8.0</div>
             <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 3, lineHeight: 1.45 }}>
-              {neuralReady
-                ? "VITS/Piper FR · sherpa-onnx · local / hors ligne"
-                : neuralInstalled
-                  ? "Pack vocal installé · initialisation du moteur neuronal…"
-                  : installing
-                    ? "Installation du pack vocal Awena…"
-                    : "Pack vocal neural Awena non installé"}
+              {!isFrench
+                ? `Android TTS · ${String(lang || "fr").toUpperCase()} · traduction locale`
+                : neuralReady
+                  ? "VITS/Piper FR · sherpa-onnx · local / hors ligne"
+                  : neuralInstalled
+                    ? "Pack vocal installé · initialisation du moteur neuronal…"
+                    : installing
+                      ? "Installation du pack vocal Awena…"
+                      : "Pack vocal neural Awena non installé"}
             </div>
-            <div style={{ marginTop: 4, color: neuralReady ? "#36f59a" : "#ffd84a", fontWeight: 900, fontSize: 10.5 }}>
-              {AWENA_VOICE_PROFILE.displayName}
+            <div style={{ marginTop: 4, color: isFrench && neuralReady ? "#36f59a" : primary, fontWeight: 900, fontSize: 10.5 }}>
+              {isFrench ? AWENA_VOICE_PROFILE.displayName : `Voix Android · ${String(lang || "fr").toUpperCase()}`}
             </div>
-            {neuralReady && voiceStatus?.neuralSampleCount ? (
+            {isFrench && neuralReady && voiceStatus?.neuralSampleCount ? (
               <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35 }}>
                 Sortie {voiceStatus.neuralPlaybackMode || "MEDIA"} · {voiceStatus.neuralSampleRate || 0} Hz ·
                 signal {Number(voiceStatus.neuralRms || 0).toFixed(3)} RMS ·
@@ -148,7 +155,19 @@ export default function AwenaSettingsSection() {
           </button>
         </div>
 
-        {!neuralReady && (
+        <div style={{ marginTop: 9, padding: "8px 10px", borderRadius: 11, border: `1px solid ${primary}33`, background: `${primary}08`, color: theme.textSoft, fontSize: 10, lineHeight: 1.4 }}>
+          <b style={{ color: primary }}>Langue Awena :</b> {String(lang || "fr").toUpperCase()} ·
+          {String(lang || "fr").toLowerCase().startsWith("fr")
+            ? " voix neuronale locale Awena"
+            : " traduction locale Android + voix Android de la langue"}
+        </div>
+        {!isFrench ? (
+          <div style={{ marginTop: 5, color: theme.textSoft, fontSize: 9, lineHeight: 1.35 }}>
+            Traduction automatique sur appareil via Google ML Kit / Google Translate. La qualité peut varier selon la langue.
+          </div>
+        ) : null}
+
+        {isFrench && !neuralReady && (
           <div style={{ marginTop: 12, borderRadius: 13, border: `1px solid ${primary}44`, background: "rgba(0,0,0,.2)", padding: 11 }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>
               Installation unique du moteur vocal français stable
@@ -192,13 +211,17 @@ export default function AwenaSettingsSection() {
           <input type="checkbox" checked={settings.autoSpeak} onChange={(e) => patch({ autoSpeak: e.target.checked })} /> Lire automatiquement les réponses d'Awena
         </label>
 
-        <div style={{ display: "grid", gridTemplateColumns: neuralReady ? "1fr 1fr 1fr" : "1fr", gap: 7, marginTop: 12 }}>
-          {neuralReady && <>
+        <div style={{ display: "grid", gridTemplateColumns: (!isFrench || neuralReady) ? "1fr 1fr 1fr" : "1fr", gap: 7, marginTop: 12 }}>
+          {(!isFrench || neuralReady) && <>
             <button onClick={() => void testAwenaStableVoice()} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Tester Awena</button>
             <button onClick={() => void stop()} style={{ borderRadius: 11, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Stop</button>
-            <button onClick={() => void removeAwenaStableVoice()} style={{ borderRadius: 11, border: "1px solid rgba(255,90,110,.45)", background: "rgba(255,60,90,.06)", color: "#ffb2bb", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Supprimer pack</button>
+            {isFrench ? (
+              <button onClick={() => void removeAwenaStableVoice()} style={{ borderRadius: 11, border: "1px solid rgba(255,90,110,.45)", background: "rgba(255,60,90,.06)", color: "#ffb2bb", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Supprimer pack</button>
+            ) : (
+              <div style={{ alignSelf: "center", color: theme.textSoft, fontSize: 9.5, textAlign: "center" }}>Traduction automatique locale</div>
+            )}
           </>}
-          {!neuralReady && neuralInstalled && !installing && (
+          {isFrench && !neuralReady && neuralInstalled && !installing && (
             <button onClick={() => void installAwenaStableVoice()} style={{ borderRadius: 11, border: `1px solid ${primary}`, background: `${primary}18`, color: "#fff", padding: 9, fontWeight: 900, cursor: "pointer", fontSize: 10.5 }}>Initialiser Awena</button>
           )}
         </div>

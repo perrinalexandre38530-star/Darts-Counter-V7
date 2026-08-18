@@ -80,7 +80,7 @@ import {
   type ProfileFriendLink,
 } from "../lib/friendsApi";
 
-import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
+import { getAvatarCache as getAvatarCacheLib, getAvatarCacheFast, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
 import { mirrorAvatarFallbackToR2 } from "../lib/avatarR2Fallback";
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
@@ -91,6 +91,8 @@ import { useStableProfiles } from "../hooks/useStableProfiles";
 import { useBackgroundRestoreState } from "../lib/backgroundRestore";
 import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { createCooperativeYielder } from "../lib/mainThreadYield";
+import { profileAvatarMediaKey, readLocalUserMediaFallback } from "../lib/userMediaFallback";
+import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
 
 /**
  * Totalise les utilisations enregistrées dans tous les modes de jeu.
@@ -2093,39 +2095,23 @@ export default function Profiles({
 
   // La vue PROFILS LOCAUX doit toujours s'ouvrir en haut, même lorsque le
   // conteneur principal (ou un parent applicatif) conserve son ancien scroll.
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if (view !== "locals" || typeof window === "undefined") return;
 
-    const resetProfilesScroll = () => {
-      try {
-        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      } catch {
-        window.scrollTo(0, 0);
+    // PERF V71 : le reset scroll ne doit jamais bloquer le premier paint.
+    // L'ancienne version le faisait synchroniquement en useLayoutEffect puis le
+    // répétait encore en RAF + timer 180 ms en écrivant scrollTop sur tous les parents.
+    const raf = window.requestAnimationFrame(() => {
+      try { window.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch { window.scrollTo(0, 0); }
+      try { document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: "auto" }); } catch {}
+      const ownScroller = profilesPageRef.current;
+      if (ownScroller) {
+        ownScroller.scrollTop = 0;
+        ownScroller.scrollLeft = 0;
       }
+    });
 
-      try {
-        document.scrollingElement?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      } catch {}
-
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-
-      let node: HTMLElement | null = profilesPageRef.current;
-      while (node) {
-        node.scrollTop = 0;
-        node.scrollLeft = 0;
-        node = node.parentElement;
-      }
-    };
-
-    resetProfilesScroll();
-    const raf = window.requestAnimationFrame(resetProfilesScroll);
-    const delayed = window.setTimeout(resetProfilesScroll, 180);
-
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.clearTimeout(delayed);
-    };
+    return () => window.cancelAnimationFrame(raf);
   }, [view]);
 
   React.useEffect(() => {
@@ -2942,49 +2928,52 @@ React.useEffect(() => {
   ]);  
 
   // ✅ Réhydratation multi-profils depuis le cache avatar unifié
-  // - utile après reset/reconnexion si le store restauré a perdu des dataUrl
+  // PERF V71 : maintenance différée. La grille locale lit directement ses miniatures ;
+  // réécrire tout le store au moment où l'utilisateur ouvre LISTE provoquait un gros
+  // pic JSON/cache inutile avec plusieurs dizaines de profils.
   React.useEffect(() => {
+    if (view === "locals") return;
     if (!(stableProfiles as any[]) || (stableProfiles as any[]).length === 0) return;
-
-    const needsRestore = ((stableProfiles as any[]) || []).some((p: any) => {
-      const hasAny =
-        !!String((p as any)?.avatarUrl || "").trim() ||
-        !!String((p as any)?.avatarDataUrl || "").trim();
-      if (hasAny) return false;
-      const cached = getAvatarCache(String((p as any)?.id || "")) || getAvatarCacheLib(String((p as any)?.id || ""));
-      return !!String((cached as any)?.avatarUrl || (cached as any)?.avatarDataUrl || "").trim();
-    });
-
-    if (!needsRestore) return;
-
-    setProfilesSafe((arr) => {
-      let changed = false;
-      const next = (arr || []).map((p: any) => {
+    return scheduleRuntimeIdle(() => {
+      const needsRestore = ((stableProfiles as any[]) || []).some((p: any) => {
         const hasAny =
           !!String((p as any)?.avatarUrl || "").trim() ||
           !!String((p as any)?.avatarDataUrl || "").trim();
-        if (hasAny) return p;
-
-        const cached = getAvatarCache(String((p as any)?.id || "")) || getAvatarCacheLib(String((p as any)?.id || ""));
-        const cUrl = String((cached as any)?.avatarUrl || "").trim();
-        const cData = String((cached as any)?.avatarDataUrl || "").trim();
-        if (!cUrl && !cData) return p;
-
-        changed = true;
-        return {
-          ...(p || {}),
-          avatarUrl: cUrl || undefined,
-          avatarDataUrl: cData || undefined,
-          avatarUpdatedAt:
-            typeof (cached as any)?.avatarUpdatedAt === "number"
-              ? (cached as any).avatarUpdatedAt
-              : Date.now(),
-        };
+        if (hasAny) return false;
+        const cached = getAvatarCacheLib(String((p as any)?.id || ""));
+        return !!String((cached as any)?.avatarUrl || (cached as any)?.avatarDataUrl || "").trim();
       });
-      return changed ? next : arr;
-    });
+
+      if (!needsRestore) return;
+      setProfilesSafe((arr) => {
+        let changed = false;
+        const next = (arr || []).map((p: any) => {
+          const hasAny =
+            !!String((p as any)?.avatarUrl || "").trim() ||
+            !!String((p as any)?.avatarDataUrl || "").trim();
+          if (hasAny) return p;
+
+          const cached = getAvatarCacheLib(String((p as any)?.id || ""));
+          const cUrl = String((cached as any)?.avatarUrl || "").trim();
+          const cData = String((cached as any)?.avatarDataUrl || "").trim();
+          if (!cUrl && !cData) return p;
+
+          changed = true;
+          return {
+            ...(p || {}),
+            avatarUrl: cUrl || undefined,
+            avatarDataUrl: cData || undefined,
+            avatarUpdatedAt:
+              typeof (cached as any)?.avatarUpdatedAt === "number"
+                ? (cached as any).avatarUpdatedAt
+                : Date.now(),
+          };
+        });
+        return changed ? next : arr;
+      });
+    }, { timeoutMs: 8_000, fallbackDelayMs: 2_000 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stableProfiles]);
+  }, [view, stableProfiles]);
 
   async function resetActiveStats() {
     if (!active?.id) return;
@@ -6529,6 +6518,7 @@ function FavoriteDartSetBadge({
         preferThumb
         alt=""
         loading="lazy"
+        recovery="local"
         fallback={<span aria-hidden>🎯</span>}
         style={{
           width: "100%",
@@ -6578,6 +6568,159 @@ function LocalCountryFlagBadge({
       }}
     >
       <span style={{ transform: "translateY(-1px)" }}>{flag}</span>
+    </span>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// PERF V71 — Avatar ultra-léger réservé à la grille PROFILS LOCAUX.
+// ProfileAvatar est volontairement très robuste (store, bots, NAS, R2, overlays,
+// mirrors, etc.) mais cette robustesse coûte cher quand 9 cartes montent d'un coup.
+// La grille ne fait ici que : miniature RAM/localStorage -> source déjà dans le profil
+// -> UNE lecture IndexedDB locale en secours. Aucun NAS/R2, aucun scan de store.
+// ---------------------------------------------------------------------------
+const localGridAvatarResolved = new Map<string, { revision: number; src: string }>();
+const localGridAvatarPending = new Map<string, Promise<string>>();
+
+function normalizeLocalGridAvatarSrc(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+  if (/^data:image\//i.test(raw) || /^blob:/i.test(raw)) return raw;
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("/media/")) return resolveRuntimeMediaUrl(raw).replace(/ /g, "%20");
+  if (raw.startsWith("/assets/") || raw.startsWith("/images/") || raw.startsWith("./") || raw.startsWith("../")) return raw.replace(/ /g, "%20");
+  if (/\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(raw)) return raw.replace(/ /g, "%20");
+  return "";
+}
+
+function getLocalGridAvatarImmediate(profile: any): string {
+  const id = String(profile?.id || "").trim();
+  const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
+  const cachedResolved = id ? localGridAvatarResolved.get(id) : null;
+  if (cachedResolved && (!revision || cachedResolved.revision >= revision)) return cachedResolved.src;
+
+  const fast: any = id ? getAvatarCacheFast(id) : null;
+  const fastSrc = normalizeLocalGridAvatarSrc(fast?.avatarThumbDataUrl || fast?.avatarDataUrl || "");
+  if (fastSrc) return fastSrc;
+
+  // Évite de décoder une énorme photo base64 pleine résolution si un cache local
+  // miniature existe/arrive. Elle reste néanmoins un fallback fonctionnel.
+  const direct = [
+    profile?.avatarDataUrl,
+    profile?.photoDataUrl,
+    profile?.avatar,
+    profile?.avatarUrl,
+    profile?.avatarPath,
+    profile?.photoUrl,
+  ];
+  for (const candidate of direct) {
+    const src = normalizeLocalGridAvatarSrc(candidate);
+    if (src) return src;
+  }
+  return "";
+}
+
+async function loadLocalGridAvatar(profile: any): Promise<string> {
+  const id = String(profile?.id || "").trim();
+  if (!id) return "";
+  const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
+  const cached = localGridAvatarResolved.get(id);
+  if (cached && (!revision || cached.revision >= revision)) return cached.src;
+  const pending = localGridAvatarPending.get(id);
+  if (pending) return pending;
+
+  const job = (async () => {
+    const immediate = getLocalGridAvatarImmediate(profile);
+    if (immediate) {
+      localGridAvatarResolved.set(id, { revision, src: immediate });
+      return immediate;
+    }
+    const local = await readLocalUserMediaFallback(profileAvatarMediaKey(id)).catch(() => "");
+    const src = normalizeLocalGridAvatarSrc(local);
+    if (src) localGridAvatarResolved.set(id, { revision, src });
+    return src;
+  })().finally(() => localGridAvatarPending.delete(id));
+
+  localGridAvatarPending.set(id, job);
+  return job;
+}
+
+function LocalProfileGridAvatar({ profile, size = 76 }: { profile: any; size?: number }) {
+  const id = String(profile?.id || "").trim();
+  const revision = Number(profile?.avatarUpdatedAt || 0) || 0;
+  const immediate = React.useMemo(
+    () => getLocalGridAvatarImmediate(profile),
+    [id, revision, profile?.avatarUrl, profile?.avatarPath, profile?.avatarDataUrl, profile?.photoDataUrl],
+  );
+  const [src, setSrc] = React.useState(immediate);
+  const [loaded, setLoaded] = React.useState(false);
+  const [broken, setBroken] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const nextImmediate = getLocalGridAvatarImmediate(profile);
+    setSrc(nextImmediate);
+    setLoaded(false);
+    setBroken(false);
+    if (nextImmediate) return () => { cancelled = true; };
+    void loadLocalGridAvatar(profile).then((next) => {
+      if (!cancelled && next) setSrc(next);
+    });
+    return () => { cancelled = true; };
+  }, [id, revision]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const refresh = () => {
+      localGridAvatarResolved.delete(id);
+      void loadLocalGridAvatar(profile).then((next) => {
+        if (next) {
+          setBroken(false);
+          setLoaded(false);
+          setSrc(next);
+        }
+      });
+    };
+    window.addEventListener("dc:profile-avatar-updated", refresh as EventListener);
+    window.addEventListener("dc-user-media-restored", refresh as EventListener);
+    return () => {
+      window.removeEventListener("dc:profile-avatar-updated", refresh as EventListener);
+      window.removeEventListener("dc-user-media-restored", refresh as EventListener);
+    };
+  }, [id, revision]);
+
+  const initials = String(profile?.name || "P").trim().slice(0, 2).toUpperCase() || "P";
+  return (
+    <span style={{ width: size, height: size, position: "relative", display: "grid", placeItems: "center", overflow: "hidden", borderRadius: "50%" }}>
+      {(!src || !loaded || broken) ? (
+        <span aria-hidden style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", fontSize: Math.max(18, Math.round(size * .28)), fontWeight: 950, color: "rgba(255,255,255,.8)", background: "radial-gradient(circle at 35% 30%, rgba(255,255,255,.10), rgba(0,0,0,.18))" }}>
+          {initials}
+        </span>
+      ) : null}
+      {src && !broken ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setBroken(true);
+            localGridAvatarResolved.delete(id);
+            void readLocalUserMediaFallback(profileAvatarMediaKey(id)).then((next) => {
+              const local = normalizeLocalGridAvatarSrc(next);
+              if (local && local !== src) {
+                localGridAvatarResolved.set(id, { revision, src: local });
+                setBroken(false);
+                setLoaded(false);
+                setSrc(local);
+              }
+            }).catch(() => undefined);
+          }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", opacity: loaded ? 1 : 0, visibility: loaded ? "visible" : "hidden", display: "block" }}
+        />
+      ) : null}
     </span>
   );
 }
@@ -6652,7 +6795,7 @@ function LocalProfileGridCard({
             placeItems: "center",
           }}
         >
-          <ProfileAvatar profile={profile} size={76} noFrame showStars={false} />
+          <LocalProfileGridAvatar profile={profile} size={76} />
         </div>
         {showStars && !disabledStats ? (
           <FavoriteDartSetBadge profileId={profile?.id} accent={accent} size={29} style={{ left: 2, bottom: 4 }} />
@@ -6677,6 +6820,22 @@ function LocalProfileGridCard({
     </button>
   );
 }
+
+const MemoLocalProfileGridCard = React.memo(LocalProfileGridCard, (prev, next) => {
+  const a: any = prev.profile || {};
+  const b: any = next.profile || {};
+  return (
+    String(a.id || "") === String(b.id || "") &&
+    String(a.name || "") === String(b.name || "") &&
+    Number(a.avatarUpdatedAt || 0) === Number(b.avatarUpdatedAt || 0) &&
+    String(a.avatarUrl || "") === String(b.avatarUrl || "") &&
+    String(a.privateInfo?.country || a.country || "") === String(b.privateInfo?.country || b.country || "") &&
+    prev.accent === next.accent &&
+    prev.sportKey === next.sportKey &&
+    prev.showStars === next.showStars &&
+    prev.disabledStats === next.disabledStats
+  );
+});
 
 function LocalAssociationsPanel({
   locals,
@@ -7094,22 +7253,6 @@ function LocalProfilesRefonte({
     if (gridPage > gridPages - 1) setGridPage(Math.max(0, gridPages - 1));
   }, [gridPage, gridPages]);
 
-  const localsAvatarCacheKey = React.useMemo(
-    () => locals.map((p: any) => `${String(p?.id || "")}:${Number((p as any)?.avatarUpdatedAt || 0)}`).join("|"),
-    [locals]
-  );
-
-  const avatarCacheById = React.useMemo(() => {
-    const map = new Map<string, any>();
-    for (const p of locals as any[]) {
-      const id = String(p?.id || "");
-      if (!id) continue;
-      const cached = getAvatarCacheLib(id);
-      if (cached) map.set(id, cached);
-    }
-    return map;
-  }, [localsAvatarCacheKey]);
-
   const [index, setIndex] = React.useState(0);
   const navTimerRef = React.useRef<number | null>(null);
   const [localNavBusy, setLocalNavBusy] = React.useState(false);
@@ -7201,9 +7344,11 @@ function LocalProfilesRefonte({
   }, [locals, locals.length, index]);
   const current = locals[index] || null;
   const renderedCurrent = current;
+  // PERF V71: ne jamais parcourir/décompresser les caches avatar de TOUS les
+  // profils pour ouvrir la grille. La fiche détaillée ne lit que son profil courant.
   const currentAvatarCache = React.useMemo(
-    () => current?.id ? (avatarCacheById.get(String((current as any).id || "")) || null) : null,
-    [avatarCacheById, current?.id]
+    () => listDetailOpen && current?.id ? (getAvatarCacheLib(String((current as any).id || "")) || null) : null,
+    [listDetailOpen, current?.id, (current as any)?.avatarUpdatedAt]
   );
   const linkedFriendUserId = String((current as any)?.linkedFriendUserId || (current as any)?.linkedUserId || (current as any)?.privateInfo?.linkedFriendUserId || (current as any)?.privateInfo?.linkedUserId || "").trim();
   const linkedFriend = linkedFriendUserId ? (onlineFriends || []).find((f: any) => String(f?.userId || f?.id || "") === linkedFriendUserId) : null;
@@ -7524,7 +7669,7 @@ Its historical matches and statistics will remain saved. If a profile with the s
               {gridProfiles.map((profile: any) => {
                 const profileIndex = locals.findIndex((row: any) => String(row?.id || "") === String(profile?.id || ""));
                 return (
-                  <LocalProfileGridCard
+                  <MemoLocalProfileGridCard
                     key={String(profile?.id || profileIndex)}
                     profile={profile}
                     accent={primary}

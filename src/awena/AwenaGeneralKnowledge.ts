@@ -630,7 +630,16 @@ Les préférences visuelles se règlent dans **Réglages**. Elles permettent d'a
     return reply(
       "settings",
       `## LANGUE
-La langue de l'interface se choisit dans **Réglages**. Elle doit piloter les textes traduits de l'application et les préférences associées.`,
+La langue de l'interface se choisit dans **Réglages > Langues**.
+
+## AWENA
+Awena suit désormais cette langue sur Android :
+- ta question est ramenée vers sa base de connaissances canonique ;
+- la réponse est traduite localement vers la langue choisie ;
+- le français conserve la voix neuronale Awena ;
+- les autres langues utilisent une voix Android adaptée à leur prononciation.
+
+> Le premier usage d'une nouvelle langue peut demander le téléchargement local de son modèle de traduction.`,
       nav("language", "Ouvrir Réglages", "settings"),
     );
   }
