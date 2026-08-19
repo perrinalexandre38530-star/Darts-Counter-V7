@@ -1,7 +1,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { GOOGLE_PLAY_CORE_PRODUCTS, STORE_PACKS } from "./catalog";
-import { getMonetizationRuntimeSnapshot, previewEndGameInterstitial } from "./MonetizationManager";
+import * as MonetizationManager from "./MonetizationManager";
 import {
   applyVerifiedEntitlements,
   arePaidAdsLockedForFreeAccount,
@@ -43,12 +43,14 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
   const [billingBusy, setBillingBusy] = React.useState(false);
   const [billingMessage, setBillingMessage] = React.useState("");
   const [billingProducts, setBillingProducts] = React.useState<Record<string, NativeBillingProduct | null>>({});
+  const [adDiagnosticBusy, setAdDiagnosticBusy] = React.useState<"preload" | "interstitial" | "rewarded" | null>(null);
+  const [adDiagnosticMessage, setAdDiagnosticMessage] = React.useState("");
   const [adTab, setAdTab] = React.useState<"ads" | "endgame" | "admob">("ads");
   const [shopTab, setShopTab] = React.useState<ShopTab>(initialShopTab);
   const [entitlementRevision, setEntitlementRevision] = React.useState(0);
   const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
   const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
-  const runtime = React.useMemo(() => getMonetizationRuntimeSnapshot(), [runtimeTick]);
+  const runtime = React.useMemo(() => MonetizationManager.getMonetizationRuntimeSnapshot(), [runtimeTick]);
   const adMobConfig = getAdMobRuntimeConfig();
   const productionAdsLocked = adMobConfig.mode === "production";
   const freeAdsLocked = arePaidAdsLockedForFreeAccount();
@@ -89,6 +91,41 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
       setNativeStatus(ads);
       setBillingStatus(billing);
     } finally { setNativeBusy(false); }
+  };
+
+  const runAdDiagnostic = async (kind: "preload" | "interstitial" | "rewarded") => {
+    if (!isCapacitorNativeRuntime()) {
+      setAdDiagnosticMessage("Les tests plein écran AdMob nécessitent l’application Android native.");
+      return;
+    }
+    setAdDiagnosticBusy(kind);
+    setAdDiagnosticMessage("");
+    try {
+      if (kind === "preload") {
+        const fn = (MonetizationManager as any).preloadGoogleTestFullscreenAds;
+        if (typeof fn !== "function") throw new Error("Diagnostic V78 indisponible dans ce build.");
+        const result = await fn();
+        setAdDiagnosticMessage(`Préchargement Google TEST · interstitiel ${result?.interstitialPreloaded ? "OK" : "NON"} · rewarded ${result?.rewardedPreloaded ? "OK" : "NON"}.`);
+      } else if (kind === "interstitial") {
+        const fn = (MonetizationManager as any).previewGoogleTestInterstitial;
+        if (typeof fn !== "function") throw new Error("Diagnostic interstitiel indisponible dans ce build.");
+        const result = await fn();
+        setAdDiagnosticMessage(result?.status === "shown" ? "Interstitiel Google TEST affiché correctement." : `Interstitiel Google TEST : ${String(result?.status || "indisponible")}.`);
+      } else {
+        const fn = (MonetizationManager as any).previewGoogleTestRewarded;
+        if (typeof fn !== "function") throw new Error("Diagnostic rewarded indisponible dans ce build.");
+        const result = await fn();
+        if (result?.status === "shown" && result?.earned) {
+          setAdDiagnosticMessage("Rewarded Google TEST validé par le SDK. Aucun bonus applicatif n’a été attribué.");
+        } else {
+          setAdDiagnosticMessage(`Rewarded Google TEST : ${String(result?.status || "indisponible")} · récompense SDK ${result?.earned ? "reçue" : "non reçue"}.`);
+        }
+      }
+    } catch (error: any) {
+      setAdDiagnosticMessage(`Test AdMob impossible : ${String(error?.message || error || "erreur inconnue")}`);
+    } finally {
+      setAdDiagnosticBusy(null);
+    }
   };
 
   const openPrivacyOptions = async () => {
@@ -211,10 +248,12 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
                 <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / 1 PARTIE</div>
                 <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
               </div>
-              {adMobConfig.mode !== "production" ? <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
+              {adMobConfig.mode !== "production" ? <button type="button" onClick={() => void MonetizationManager.previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
               <div style={{ marginTop: 9, display: "grid", gap: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>
                 <div>Interstitiel AdMob : <b style={{ color: adMobConfig.interstitialReady ? theme.primary : theme.textSoft }}>{adMobConfig.interstitialReady ? "ID PRÊT" : "ID À CRÉER DANS ADMOB"}</b></div>
                 <div>Rewarded AdMob : <b style={{ color: adMobConfig.rewardedReady ? theme.primary : theme.textSoft }}>{adMobConfig.rewardedReady ? "ID PRÊT" : "TECHNIQUE PRÊTE · ID À CRÉER"}</b></div>
+                <div>Préchargement interstitiel : <b style={{ color: theme.primary }}>ACTIF PENDANT LES RÉSULTATS</b></div>
+                <div>Rewarded : bonus accordé uniquement après confirmation réelle de la récompense AdMob.</div>
                 <div>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
               </div>
               <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...button(false), marginTop: 7 }}>Rafraîchir</button>
@@ -229,6 +268,18 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
                 {isCapacitorNativeRuntime() ? <button type="button" disabled={nativeBusy} onClick={() => void refreshNativeStatus()} style={button(true)}>{nativeBusy ? "…" : "VÉRIFIER"}</button> : null}
               </div>
               {isCapacitorNativeRuntime() && nativeStatus?.privacyOptionsRequired ? <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={{ ...button(false), width: "100%", marginTop: 8 }}>Options de confidentialité</button> : null}
+
+              <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.primary}33`, background: `${theme.primary}08`, padding: 10 }}>
+                <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 10.5 }}>TESTS PLEIN ÉCRAN GOOGLE · AUCUN REVENU</div>
+                <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.2, lineHeight: 1.4 }}>Utilise exclusivement les IDs de démonstration officiels Google. Ces boutons servent à valider le SDK Android avant de créer les vrais blocs Interstitiel et Rewarded.</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
+                  <button type="button" disabled={!!adDiagnosticBusy || !isCapacitorNativeRuntime()} onClick={() => void runAdDiagnostic("preload")} style={button(false)}>{adDiagnosticBusy === "preload" ? "…" : "PRÉCHARGER"}</button>
+                  <button type="button" disabled={!!adDiagnosticBusy || !isCapacitorNativeRuntime()} onClick={() => void runAdDiagnostic("interstitial")} style={button(true)}>{adDiagnosticBusy === "interstitial" ? "…" : "INTERSTITIEL"}</button>
+                  <button type="button" disabled={!!adDiagnosticBusy || !isCapacitorNativeRuntime()} onClick={() => void runAdDiagnostic("rewarded")} style={button(true)}>{adDiagnosticBusy === "rewarded" ? "…" : "REWARDED"}</button>
+                </div>
+                {adDiagnosticMessage ? <div style={{ marginTop: 8, color: theme.text, fontSize: 9.3, lineHeight: 1.4 }}>{adDiagnosticMessage}</div> : null}
+              </div>
+
               <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
                 <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Détails techniques</summary>
                 <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || adMobConfig.mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}<br/>Interstitiel : {nativeStatus?.interstitialReady ? "prêt" : "ID manquant"}<br/>Rewarded : {nativeStatus?.rewardedReady ? "prêt" : "ID manquant"}</div>

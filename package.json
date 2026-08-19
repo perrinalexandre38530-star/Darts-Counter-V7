@@ -28,7 +28,7 @@
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
-    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs",
     "android:configure-admob": "node ./tools/configure-android-admob.mjs",
     "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
     "android:release-check": "node ./tools/android-release-check.mjs",
@@ -67,7 +67,10 @@
     "android:jdk:check": "node ./tools/android-java-runtime.mjs",
     "test:android-jdk": "node ./tools/test-android-java-runtime.mjs",
     "android:configure-awena-translation": "node ./tools/configure-android-awena-translation.mjs",
-    "test:monetization-free-lock": "node ./tools/test-monetization-free-lock-v75.mjs"
+    "test:monetization-free-lock": "node ./tools/test-monetization-free-lock-v75.mjs",
+    "test:admob-fullscreen": "node ./tools/test-admob-fullscreen-v76.mjs",
+    "test:admob-diagnostics": "node ./tools/test-admob-diagnostics-v78.mjs",
+    "test:awena:v84": "node ./tools/test-awena-v84-expert-reference.mjs && node ./tools/test-awena-v83-max-knowledge.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

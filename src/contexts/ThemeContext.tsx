@@ -22,9 +22,23 @@ type ThemeContextValue = {
   themes: AppTheme[];
 };
 
-const ThemeContext = React.createContext<ThemeContextValue | undefined>(
-  undefined
-);
+// Keep the context identity stable across Vite/WebContainer hot reloads.
+// When ThemeContext.tsx is invalidated during a live patch, recreating the
+// context object can momentarily leave BottomNav/Settings subscribed to a
+// different context instance than the mounted ThemeProvider, causing:
+// "useTheme must be used within a ThemeProvider".
+const THEME_CONTEXT_HMR_KEY = "__dc_theme_context_v1__";
+const themeContextHost = globalThis as typeof globalThis & {
+  [THEME_CONTEXT_HMR_KEY]?: React.Context<ThemeContextValue | undefined>;
+};
+
+const ThemeContext =
+  themeContextHost[THEME_CONTEXT_HMR_KEY] ??
+  React.createContext<ThemeContextValue | undefined>(undefined);
+
+if (!themeContextHost[THEME_CONTEXT_HMR_KEY]) {
+  themeContextHost[THEME_CONTEXT_HMR_KEY] = ThemeContext;
+}
 
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {

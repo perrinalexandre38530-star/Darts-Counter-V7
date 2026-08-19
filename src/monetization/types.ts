@@ -21,6 +21,13 @@ export type AdShowResult = {
   error?: string;
 };
 
+export type RewardedAdResult = AdShowResult & {
+  earned: boolean;
+  rewardId?: string;
+  rewardType?: string;
+  rewardAmount?: number;
+};
+
 export type MonetizationPrefs = {
   adsEnabled: boolean;
   bannersEnabled: boolean;

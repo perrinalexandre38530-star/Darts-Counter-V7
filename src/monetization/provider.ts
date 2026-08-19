@@ -1,7 +1,7 @@
-import type { AdShowResult } from "./types";
+import type { AdShowResult, RewardedAdResult } from "./types";
 import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs } from "./prefs";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
-import { showNativeInterstitial, showNativeRewarded } from "./nativeAdMob";
+import * as nativeAdMob from "./nativeAdMob";
 import { purchaseNativeProduct, restoreNativePurchases } from "./nativeBilling";
 
 export type PurchaseResult = {
@@ -70,13 +70,26 @@ function testInterstitial(title: string): Promise<AdShowResult> {
   });
 }
 
+export async function preloadInterstitialAd(forceTest = false): Promise<boolean> {
+  // Un diagnostic forceTest utilise uniquement les IDs de test Google et peut donc
+  // être lancé même sur un compte Premium/Sans pub. Aucun revenu n'est généré.
+  if (!forceTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) return false;
+  if (!isCapacitorNativeRuntime()) return false;
+  try {
+    const fn = (nativeAdMob as any).preloadNativeInterstitial;
+    return typeof fn === "function" ? await fn(forceTest) : false;
+  } catch {
+    return false;
+  }
+}
+
 export async function showInterstitialAd(reason = "end_game", forceTest = false): Promise<AdShowResult> {
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+  if (!forceTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
     return { status: "skipped", provider: "none" };
   }
   if (isCapacitorNativeRuntime()) {
     try {
-      const shown = await showNativeInterstitial(forceTest);
+      const shown = await nativeAdMob.showNativeInterstitial(forceTest);
       return shown
         ? { status: "shown", provider: "android-admob" }
         : { status: "unavailable", provider: "android-admob" };
@@ -100,33 +113,64 @@ export async function showInterstitialAd(reason = "end_game", forceTest = false)
   return { status: "unavailable", provider: "none" };
 }
 
-export async function showRewardedAd(rewardId: string): Promise<AdShowResult> {
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
-    return { status: "skipped", provider: "none" };
+export async function preloadRewardedAd(forceTest = false): Promise<boolean> {
+  if (!forceTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) return false;
+  if (!isCapacitorNativeRuntime()) return false;
+  try {
+    const fn = (nativeAdMob as any).preloadNativeRewarded;
+    return typeof fn === "function" ? await fn(forceTest) : false;
+  } catch {
+    return false;
+  }
+}
+
+export async function showRewardedAd(rewardId: string, forceTest = false): Promise<RewardedAdResult> {
+  if (!forceTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    return { status: "skipped", provider: "none", earned: false, rewardId };
   }
   if (isCapacitorNativeRuntime()) {
     try {
-      const reward = await showNativeRewarded();
-      return reward
-        ? { status: "shown", provider: "android-admob" }
-        : { status: "unavailable", provider: "android-admob" };
+      const showRewarded = (nativeAdMob as any).showNativeRewarded;
+      const reward = typeof showRewarded === "function" ? await showRewarded(forceTest) : null;
+      if (!reward) return { status: "unavailable", provider: "android-admob", earned: false, rewardId };
+      const amount = Number((reward as any)?.amount);
+      return {
+        status: "shown",
+        provider: "android-admob",
+        earned: true,
+        rewardId,
+        rewardType: (reward as any)?.type != null ? String((reward as any).type) : undefined,
+        rewardAmount: Number.isFinite(amount) ? amount : undefined,
+      };
     } catch (e: any) {
-      return { status: "error", provider: "android-admob", error: String(e?.message || e || "Rewarded error") };
+      return { status: "error", provider: "android-admob", earned: false, rewardId, error: String(e?.message || e || "Rewarded error") };
     }
   }
 
   const bridge = nativeBridge();
   if (bridge?.showRewarded) {
     try {
-      await bridge.showRewarded({ rewardId });
-      return { status: "shown", provider: "android" };
+      const result = await bridge.showRewarded({ rewardId });
+      const earned = result?.earned === true || result?.rewarded === true;
+      const amount = Number(result?.amount ?? result?.rewardAmount);
+      return {
+        status: "shown",
+        provider: "android",
+        earned,
+        rewardId,
+        rewardType: result?.type != null ? String(result.type) : result?.rewardType != null ? String(result.rewardType) : undefined,
+        rewardAmount: Number.isFinite(amount) ? amount : undefined,
+      };
     } catch (e: any) {
-      return { status: "error", provider: "android", error: String(e?.message || e || "Rewarded error") };
+      return { status: "error", provider: "android", earned: false, rewardId, error: String(e?.message || e || "Rewarded error") };
     }
   }
   const prefs = loadMonetizationPrefs();
-  if (prefs.testMode) return testInterstitial(`Récompense : ${rewardId}`);
-  return { status: "unavailable", provider: "none" };
+  if (forceTest || prefs.testMode) {
+    const shown = await testInterstitial(`Récompense TEST : ${rewardId}`);
+    return { ...shown, earned: shown.status === "shown", rewardId, rewardType: "test", rewardAmount: shown.status === "shown" ? 1 : undefined };
+  }
+  return { status: "unavailable", provider: "none", earned: false, rewardId };
 }
 
 export async function purchaseProduct(productId: string): Promise<PurchaseResult> {

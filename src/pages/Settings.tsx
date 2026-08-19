@@ -36,7 +36,7 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
-import { ARENAS_THEME_IDS, areArenasThemesUnlocked, canUseTheme, isArenasTheme } from "../theme/themeAccess";
+import { ARENAS_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
 import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
@@ -162,7 +162,11 @@ const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "
 const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
 const ARENAS: ThemeId[] = [...ARENAS_THEME_IDS];
-const ARENAS_STORE_PACK_ID = "themes_neon_01";
+const MATERIALS: ThemeId[] = ["materialBoisNoble", "materialMarbreVert", "materialCuivreFondu"];
+const METALS: ThemeId[] = ["metalAluminiumPro", "metalAcierBrosse", "metalTitaneForge"];
+const EXTREMES: ThemeId[] = ["extremeLavaCore", "extremeFireGlace", "extremeArcticPulse"];
+const LUXES: ThemeId[] = ["luxePlatineRoyale", "luxeOrDiamant", "luxeEmeraudeNoire"];
+const PREMIUM_THEMES_STORE_PACK_ID = "themes_neon_01";
 
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
   gold: { defaultLabel: "Gold néon", defaultDesc: "Thème premium doré" },
@@ -193,6 +197,22 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   arenaLuxuryClub: { defaultLabel: "Luxury Club", defaultDesc: "Noir, or et finition club premium" },
   arenaRetroArcade: { defaultLabel: "Retro Arcade", defaultDesc: "Néons rétro modernisés et grille lumineuse" },
   arenaFireIce: { defaultLabel: "Fire & Ice", defaultDesc: "Contraste glace bleue et chaleur rouge-orange" },
+
+  materialBoisNoble: { defaultLabel: "Bois Noble", defaultDesc: "Bois premium ambré, relief chaud et vernis noble" },
+  materialMarbreVert: { defaultLabel: "Marbre Vert", defaultDesc: "Pierre sombre veinée avec éclats jade" },
+  materialCuivreFondu: { defaultLabel: "Cuivre Fondu", defaultDesc: "Cuivre incandescent et reflets métalliques" },
+
+  metalAluminiumPro: { defaultLabel: "Aluminium Pro", defaultDesc: "Métal clair usiné et ambiance technique" },
+  metalAcierBrosse: { defaultLabel: "Acier Brossé", defaultDesc: "Acier industriel avec brossage horizontal" },
+  metalTitaneForge: { defaultLabel: "Titane Forgé", defaultDesc: "Titane sombre, forgé et très haut de gamme" },
+
+  extremeLavaCore: { defaultLabel: "Lava Core", defaultDesc: "Lave craquelée, énergie chaude et magma" },
+  extremeFireGlace: { defaultLabel: "Feu & Glace", defaultDesc: "Split thermique spectaculaire rouge et bleu" },
+  extremeArcticPulse: { defaultLabel: "Arctic Pulse", defaultDesc: "Glace lumineuse et pulsation électronique" },
+
+  luxePlatineRoyale: { defaultLabel: "Platine Royale", defaultDesc: "Platine, métal noble et prestige sobre" },
+  luxeOrDiamant: { defaultLabel: "Or & Diamant", defaultDesc: "Obsidienne noire, or poli et facettes précieuses" },
+  luxeEmeraudeNoire: { defaultLabel: "Émeraude Noire", defaultDesc: "Bijou sombre et reflets émeraude premium" },
 };
 
 function getPreset(id: ThemeId): AppTheme {
@@ -762,13 +782,17 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "dark" | "arenas";
+type ThemePackId = "neons" | "soft" | "dark" | "arenas" | "materials" | "metals" | "extremes" | "luxe";
 type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
 const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
   { id: "soft", ids: SOFTS, label: "COULEURS DOUCES", subtitle: "Tons modernes, naturels et apaisés", colors: ["#22E6FF", "#3B82F6", "#A3B18A", "#A7D8FF"] },
   { id: "dark", ids: DARKS, label: "DARK PREMIUM", subtitle: "Métal, carbone et noirs premium", colors: ["#5A5A5A", "#263238", "#8CA6B8", "#1D1D24"] },
   { id: "arenas", ids: ARENAS, label: "ARENAS & AMBIANCES", subtitle: "8 univers immersifs · fonds, cartes, halos et animations", colors: ["#20E7FF", "#FF424E", "#E8C56B", "#FF4FD8"], premium: true },
+  { id: "materials", ids: MATERIALS, label: "MATIÈRES D’EXCEPTION", subtitle: "Bois, marbre et cuivre avec textures marquées", colors: ["#E8B764", "#4BD4A3", "#F08B57", "#FFD57E"], premium: true },
+  { id: "metals", ids: METALS, label: "MÉTAUX & INDUSTRIE", subtitle: "Aluminium, acier brossé et titane forgé", colors: ["#DCE4EE", "#C7D6E6", "#AFBFCE", "#62C6FF"], premium: true },
+  { id: "extremes", ids: EXTREMES, label: "ÉLÉMENTS EXTRÊMES", subtitle: "Lave, feu & glace et pulsations arctiques", colors: ["#FF8A3D", "#FF7C3D", "#7DDBFF", "#9CE8FF"], premium: true },
+  { id: "luxe", ids: LUXES, label: "LUXE & JOYAUX", subtitle: "Platine, or & diamant et émeraude noire", colors: ["#F3F5F9", "#F5C85E", "#29D4A7", "#FFF6D6"], premium: true },
 ];
 
 function ThemePreviewBlock({
@@ -787,7 +811,7 @@ function ThemePreviewBlock({
   onOpenShop?: () => void;
 }) {
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
-  const premiumPreview = !!preview && isArenasTheme(preview.id);
+  const premiumPreview = !!preview && isPremiumTheme(preview.id);
   const previewBackground = preview
     ? preview.pageBackground || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
     : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
@@ -860,7 +884,7 @@ function ThemePreviewBlock({
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
               {locked ? <div style={{ borderRadius: 999, border: `1px solid ${preview.primary}88`, background: "rgba(2,4,10,.78)", color: preview.primary, padding: "3px 7px", fontSize: 7.7, fontWeight: 1000, boxShadow: `0 0 12px ${preview.primary}32` }}>🔒 PACK BOUTIQUE</div> : null}
-              {premiumPreview ? <div style={{ color: preview.textSoft, fontSize: 7.2, fontWeight: 900, letterSpacing: .7 }}>IMMERSIVE V2</div> : null}
+              {premiumPreview ? <div style={{ color: preview.textSoft, fontSize: 7.2, fontWeight: 900, letterSpacing: .7 }}>TEXTURES PREMIUM</div> : null}
             </div>
           </div>
 
@@ -4220,16 +4244,16 @@ export function Settings({ go, params }: Props) {
 
     React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
 
-    const arenasUnlocked = React.useMemo(() => areArenasThemesUnlocked(), [entitlementRevision]);
+    const premiumThemesUnlocked = React.useMemo(() => arePremiumThemesUnlocked(), [entitlementRevision]);
     const selectedPack = selectedPackId ? THEME_PACKS.find((pack) => pack.id === selectedPackId) || null : null;
     const pickerPack = pickerPackId ? THEME_PACKS.find((pack) => pack.id === pickerPackId) || null : null;
 
-    const themeLocked = (id: ThemeId | null | undefined) => Boolean(id && isArenasTheme(id) && !arenasUnlocked);
-    const packLocked = (pack: ThemePack) => Boolean(pack.premium && !arenasUnlocked);
+    const themeLocked = (id: ThemeId | null | undefined) => Boolean(id && isPremiumTheme(id) && !premiumThemesUnlocked);
+    const packLocked = (pack: ThemePack) => Boolean(pack.premium && !premiumThemesUnlocked);
 
     const openThemeShop = () => {
       setShopInitialTab("packs");
-      setShopFocusPackId(ARENAS_STORE_PACK_ID);
+      setShopFocusPackId(PREMIUM_THEMES_STORE_PACK_ID);
       setTab("shop");
     };
 
@@ -4329,7 +4353,7 @@ export function Settings({ go, params }: Props) {
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                 <button type="button" onClick={() => { setSelectedPackId(null); setPreviewThemeId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
-                <div style={{ color: selectedPack.premium ? selectedPack.colors[0] : theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}{selectedPack.premium && !arenasUnlocked ? " · 🔒 BOUTIQUE" : ""}</div>
+                <div style={{ color: selectedPack.premium ? selectedPack.colors[0] : theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}{selectedPack.premium && !premiumThemesUnlocked ? " · 🔒 BOUTIQUE" : ""}</div>
               </div>
               <SettingsLoopCarousel
                 items={selectedPack.ids}
@@ -4371,7 +4395,9 @@ export function Settings({ go, params }: Props) {
                         overflow: "hidden",
                       }}
                     >
-                      {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .08, pointerEvents: "none" }} /> : null}
+                      {preset.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: .22, mixBlendMode: preset.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                      {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .14, pointerEvents: "none" }} /> : null}
+                      {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .34, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
                       {locked ? <span style={{ position: "absolute", top: 6, right: 6, fontSize: 12 }}>🔒</span> : null}
                       <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55`, position: "relative" }} />
                       <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>
@@ -4380,8 +4406,8 @@ export function Settings({ go, params }: Props) {
                   );
                 }}
               />
-              {selectedPack.premium && !arenasUnlocked ? (
-                <button type="button" onClick={openThemeShop} style={{ width: "100%", marginTop: 10, minHeight: 40, borderRadius: 13, border: `1px solid ${selectedPack.colors[0]}77`, background: `linear-gradient(135deg,${selectedPack.colors[0]},${selectedPack.colors[3]})`, color: "#050712", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${selectedPack.colors[0]}2b` }}>🔒 DÉBLOQUER ARENAS & AMBIANCES</button>
+              {selectedPack.premium && !premiumThemesUnlocked ? (
+                <button type="button" onClick={openThemeShop} style={{ width: "100%", marginTop: 10, minHeight: 40, borderRadius: 13, border: `1px solid ${selectedPack.colors[0]}77`, background: `linear-gradient(135deg,${selectedPack.colors[0]},${selectedPack.colors[3]})`, color: "#050712", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: `0 0 18px ${selectedPack.colors[0]}2b` }}>🔒 DÉBLOQUER {selectedPack.label}</button>
               ) : null}
             </>
           )}

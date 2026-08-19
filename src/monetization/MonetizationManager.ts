@@ -1,5 +1,33 @@
 import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
-import { showInterstitialAd } from "./provider";
+import * as monetizationProvider from "./provider";
+
+// Compatibilité HMR / patch partiel : un ancien provider peut ne pas encore exposer
+// preloadInterstitialAd pendant un remplacement de fichiers. Un namespace import évite
+// le crash ESM au boot ("does not provide an export named...").
+const preloadInterstitialAd = async (forceTest = false): Promise<boolean> => {
+  const fn = (monetizationProvider as any).preloadInterstitialAd;
+  if (typeof fn !== "function") return false;
+  try { return await fn(forceTest); } catch { return false; }
+};
+
+const showInterstitialAd = (...args: Parameters<typeof monetizationProvider.showInterstitialAd>) =>
+  monetizationProvider.showInterstitialAd(...args);
+
+const preloadRewardedAd = async (forceTest = false): Promise<boolean> => {
+  const fn = (monetizationProvider as any).preloadRewardedAd;
+  if (typeof fn !== "function") return false;
+  try { return await fn(forceTest); } catch { return false; }
+};
+
+const showRewardedAd = async (rewardId: string, forceTest = false) => {
+  const fn = (monetizationProvider as any).showRewardedAd;
+  if (typeof fn !== "function") {
+    return { status: "unavailable", provider: "none", earned: false, rewardId } as const;
+  }
+  try { return await fn(rewardId, forceTest); } catch (error: any) {
+    return { status: "error", provider: "none", earned: false, rewardId, error: String(error?.message || error || "Rewarded error") } as const;
+  }
+};
 
 const RUNTIME_KEY = "dc_monetization_runtime_v1";
 
@@ -127,6 +155,14 @@ export function markCompletedMatchForAds(matchId: string, mode?: string): void {
   saveRuntime(state);
 
   const prefs = loadMonetizationPrefs();
+  // "Après résultats" : on prépare l'interstitiel en arrière-plan dès que la
+  // partie est sauvegardée. Il sera ainsi généralement déjà chargé lorsque
+  // l'utilisateur quittera le tableau final. Un échec de préchargement ne
+  // bloque jamais la navigation : showInterstitialAd retentera une fois.
+  if (state.pending && prefs.endGameAdTiming === "after_results") {
+    void preloadInterstitialAd(false);
+  }
+
   // "Avant résultats" : on couvre immédiatement l'écran avec l'interstitiel.
   // Le résultat peut se préparer derrière, mais aucune navigation n'est bloquée.
   if (state.pending && prefs.endGameAdTiming === "before_results") {
@@ -178,6 +214,32 @@ export function interceptMonetizedNavigation(args: {
 
 export async function previewEndGameInterstitial(): Promise<void> {
   await showInterstitialAd("settings_preview", true);
+}
+
+export type AdMobFullscreenDiagnostic = {
+  interstitialPreloaded: boolean;
+  rewardedPreloaded: boolean;
+};
+
+/**
+ * Diagnostic manuel utilisant exclusivement les IDs de test officiels Google.
+ * Il ne crédite aucun produit, aucun entitlement et ne génère aucun revenu.
+ */
+export async function preloadGoogleTestFullscreenAds(): Promise<AdMobFullscreenDiagnostic> {
+  const [interstitialPreloaded, rewardedPreloaded] = await Promise.all([
+    preloadInterstitialAd(true),
+    preloadRewardedAd(true),
+  ]);
+  return { interstitialPreloaded, rewardedPreloaded };
+}
+
+export async function previewGoogleTestInterstitial() {
+  return showInterstitialAd("settings_google_test", true);
+}
+
+export async function previewGoogleTestRewarded() {
+  // Identifiant purement diagnostic : aucun bonus applicatif n'est attribué ici.
+  return showRewardedAd("diagnostic_only_no_app_reward", true);
 }
 
 export function getMonetizationRuntimeSnapshot() {

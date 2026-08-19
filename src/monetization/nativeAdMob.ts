@@ -35,9 +35,9 @@ type AdMobPlugin = {
   showConsentForm: () => Promise<any>;
   showPrivacyOptionsForm: () => Promise<void>;
   prepareInterstitial: (options: any) => Promise<any>;
-  showInterstitial: () => Promise<void>;
+  showInterstitial: (options?: any) => Promise<void>;
   prepareRewardVideoAd: (options: any) => Promise<any>;
-  showRewardVideoAd: () => Promise<any>;
+  showRewardVideoAd: (options?: any) => Promise<any>;
   showBanner: (options: any) => Promise<void>;
   hideBanner?: () => Promise<void>;
   removeBanner: () => Promise<void>;
@@ -46,6 +46,37 @@ type AdMobPlugin = {
 let pluginCache: AdMobPlugin | null | undefined;
 let readyPromise: Promise<NativeAdMobStatus> | null = null;
 let bannerSignature: string | null = null;
+
+// Les pubs plein écran sont préchargées pour éviter d'attendre le réseau au moment
+// où l'utilisateur quitte les résultats. Une pub préparée n'est jamais réutilisée
+// après affichage : le SDK attend un nouveau chargement pour l'impression suivante.
+let interstitialPreparedKey: string | null = null;
+let interstitialPrepareKey: string | null = null;
+let interstitialPreparePromise: Promise<boolean> | null = null;
+let rewardedPreparedKey: string | null = null;
+let rewardedPrepareKey: string | null = null;
+let rewardedPreparePromise: Promise<boolean> | null = null;
+
+function fullscreenKey(adId: string, isTesting: boolean): string {
+  return `${adId}|${isTesting ? "test" : "live"}`;
+}
+
+function clearInterstitialCache(): void {
+  interstitialPreparedKey = null;
+  interstitialPrepareKey = null;
+  interstitialPreparePromise = null;
+}
+
+function clearRewardedCache(): void {
+  rewardedPreparedKey = null;
+  rewardedPrepareKey = null;
+  rewardedPreparePromise = null;
+}
+
+export function clearNativeFullscreenAdCache(): void {
+  clearInterstitialCache();
+  clearRewardedCache();
+}
 
 function getAdMobPlugin(): AdMobPlugin | null {
   if (pluginCache !== undefined) return pluginCache;
@@ -182,8 +213,11 @@ export async function showNativePrivacyOptions(): Promise<boolean> {
   }
 }
 
-export async function showNativeInterstitial(forceGoogleTest = false): Promise<boolean> {
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
+export async function preloadNativeInterstitial(forceGoogleTest = false): Promise<boolean> {
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearInterstitialCache();
+    return false;
+  }
   const plugin = getAdMobPlugin();
   if (!plugin) return false;
   const status = await ensureNativeAdMobReady();
@@ -192,31 +226,135 @@ export async function showNativeInterstitial(forceGoogleTest = false): Promise<b
   if (!forceGoogleTest && !config.interstitialReady) return false;
   const adId = forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.interstitial : config.interstitialIdAndroid;
   if (!adId) return false;
-  await plugin.prepareInterstitial({
-    adId,
-    isTesting: forceGoogleTest || config.testMode,
-    immersiveMode: true,
-  });
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return false;
-  await plugin.showInterstitial();
-  return true;
+
+  const isTesting = forceGoogleTest || config.testMode;
+  const key = fullscreenKey(adId, isTesting);
+  if (interstitialPreparedKey === key) return true;
+  if (interstitialPreparePromise && interstitialPrepareKey === key) return interstitialPreparePromise;
+
+  interstitialPrepareKey = key;
+  interstitialPreparePromise = (async () => {
+    try {
+      await plugin.prepareInterstitial({ adId, isTesting, immersiveMode: true });
+      if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+        clearInterstitialCache();
+        return false;
+      }
+      interstitialPreparedKey = key;
+      return true;
+    } catch {
+      interstitialPreparedKey = null;
+      return false;
+    } finally {
+      if (interstitialPrepareKey === key) {
+        interstitialPrepareKey = null;
+        interstitialPreparePromise = null;
+      }
+    }
+  })();
+  return interstitialPreparePromise;
 }
 
-export async function showNativeRewarded(): Promise<any | null> {
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return null;
+export async function showNativeInterstitial(forceGoogleTest = false): Promise<boolean> {
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearInterstitialCache();
+    return false;
+  }
+  const plugin = getAdMobPlugin();
+  if (!plugin) return false;
+  const config = getAdMobRuntimeConfig();
+  if (!forceGoogleTest && !config.interstitialReady) return false;
+  const adId = forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.interstitial : config.interstitialIdAndroid;
+  if (!adId) return false;
+  const key = fullscreenKey(adId, forceGoogleTest || config.testMode);
+
+  const prepared = interstitialPreparedKey === key || await preloadNativeInterstitial(forceGoogleTest);
+  if (!prepared) return false;
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearInterstitialCache();
+    return false;
+  }
+
+  try {
+    await plugin.showInterstitial({ adId });
+    return true;
+  } finally {
+    // Un interstitiel chargé est à usage unique. Le match suivant déclenchera
+    // automatiquement un nouveau préchargement pendant ses résultats.
+    clearInterstitialCache();
+  }
+}
+
+export async function preloadNativeRewarded(forceGoogleTest = false): Promise<boolean> {
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearRewardedCache();
+    return false;
+  }
+  const plugin = getAdMobPlugin();
+  if (!plugin) return false;
+  const status = await ensureNativeAdMobReady();
+  if (!status.canRequestAds) return false;
+  const config = getAdMobRuntimeConfig();
+  if (!forceGoogleTest && !config.rewardedReady) return false;
+  const adId = forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.rewarded : config.rewardedIdAndroid;
+  if (!adId) return false;
+
+  const isTesting = forceGoogleTest || config.testMode;
+  const key = fullscreenKey(adId, isTesting);
+  if (rewardedPreparedKey === key) return true;
+  if (rewardedPreparePromise && rewardedPrepareKey === key) return rewardedPreparePromise;
+
+  rewardedPrepareKey = key;
+  rewardedPreparePromise = (async () => {
+    try {
+      await plugin.prepareRewardVideoAd({ adId, isTesting, immersiveMode: true });
+      if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) {
+        clearRewardedCache();
+        return false;
+      }
+      rewardedPreparedKey = key;
+      return true;
+    } catch {
+      rewardedPreparedKey = null;
+      return false;
+    } finally {
+      if (rewardedPrepareKey === key) {
+        rewardedPrepareKey = null;
+        rewardedPreparePromise = null;
+      }
+    }
+  })();
+  return rewardedPreparePromise;
+}
+
+export async function showNativeRewarded(forceGoogleTest = false): Promise<any | null> {
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearRewardedCache();
+    return null;
+  }
   const plugin = getAdMobPlugin();
   if (!plugin) return null;
-  const status = await ensureNativeAdMobReady();
-  if (!status.canRequestAds) return null;
   const config = getAdMobRuntimeConfig();
-  if (!config.rewardedReady || !config.rewardedIdAndroid) return null;
-  await plugin.prepareRewardVideoAd({
-    adId: config.rewardedIdAndroid,
-    isTesting: config.testMode,
-    immersiveMode: true,
-  });
-  if (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active) return null;
-  return plugin.showRewardVideoAd();
+  if (!forceGoogleTest && (!config.rewardedReady || !config.rewardedIdAndroid)) return null;
+  const adId = forceGoogleTest ? ADMOB_ANDROID_GOOGLE_TEST_UNITS.rewarded : config.rewardedIdAndroid;
+  if (!adId) return null;
+  const key = fullscreenKey(adId, forceGoogleTest || config.testMode);
+
+  const prepared = rewardedPreparedKey === key || await preloadNativeRewarded(forceGoogleTest);
+  if (!prepared) return null;
+  if (!forceGoogleTest && (!canRequestPaidAds(loadMonetizationPrefs()) || getVerifiedAdFreeState().active)) {
+    clearRewardedCache();
+    return null;
+  }
+
+  try {
+    // Le plugin résout cette Promise avec l'AdMobRewardItem seulement quand
+    // la récompense a réellement été gagnée. Le code appelant peut donc
+    // attribuer le bonus uniquement après cette résolution.
+    return await plugin.showRewardVideoAd({ adId });
+  } finally {
+    clearRewardedCache();
+  }
 }
 
 export async function showNativeBanner(
