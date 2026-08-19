@@ -36,6 +36,9 @@ import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
+import { preloadInterstitialAd, showInterstitialAd } from "../monetization/provider";
+import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
+import { hasSeenX01AwenaRulesIntro, markX01AwenaRulesIntroSeen } from "../lib/x01AwenaRulesIntro";
 import {
   DARTS_GAMES,
   GAME_CATEGORIES,
@@ -493,6 +496,9 @@ export default function Games({ setTab, params }: Props) {
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
+  const [x01RulesIntroOpen, setX01RulesIntroOpen] = React.useState(false);
+  const [x01IntroBusy, setX01IntroBusy] = React.useState(false);
+  const x01PendingLaunchRef = React.useRef<null | (() => void)>(null);
 
   // Menu JEUX à 3 niveaux : HUB -> FAVORIS / TOUS LES JEUX / TRAINING.
   // Le bottom-nav appelle "games" sans params : on retombe donc toujours
@@ -522,6 +528,40 @@ export default function Games({ setTab, params }: Props) {
   function backFromGamesView() {
     if (gamesView === "hub") setTab("home");
     else setTab("games");
+  }
+
+  React.useEffect(() => {
+    if (hasSeenX01AwenaRulesIntro()) return;
+    // Précharge l'interstitiel Android si la version FREE peut afficher des pubs.
+    // Le provider gère lui-même Premium / consentement / indisponibilité.
+    void preloadInterstitialAd(false);
+  }, []);
+
+  async function openX01WithFirstRules(launch: () => void) {
+    if (hasSeenX01AwenaRulesIntro()) {
+      launch();
+      return;
+    }
+    if (x01IntroBusy || x01RulesIntroOpen) return;
+
+    setX01IntroBusy(true);
+    try {
+      // L'interstitiel est tenté AVANT la vidéo. S'il est indisponible, Premium,
+      // sans consentement ou en erreur, l'accès aux règles n'est jamais bloqué.
+      try { await showInterstitialAd("x01_rules_first_open"); } catch {}
+      x01PendingLaunchRef.current = launch;
+      markX01AwenaRulesIntroSeen();
+      setX01RulesIntroOpen(true);
+    } finally {
+      setX01IntroBusy(false);
+    }
+  }
+
+  function finishX01RulesIntro() {
+    const launch = x01PendingLaunchRef.current;
+    x01PendingLaunchRef.current = null;
+    setX01RulesIntroOpen(false);
+    if (launch) launch();
   }
 
   // Smart navigation for ticker items
@@ -820,6 +860,10 @@ export default function Games({ setTab, params }: Props) {
       // on passe par le routeur "configPath" pour supporter les presets/variantes (ex: Cricket -> Enculette/Cut-Throat)
       if (g) {
         const path = configPathForGame(g);
+        if (String(g.id) === "x01") {
+          void openX01WithFirstRules(() => navSmart(path));
+          return;
+        }
         navSmart(path);
         return;
       }
@@ -1056,7 +1100,13 @@ export default function Games({ setTab, params }: Props) {
       <div style={{ display: "flex", justifyContent: "center" }}>
         <button
           type="button"
-          onClick={() => navSmart(current.configPath)}
+          onClick={() => {
+            if (String(current.id) === "x01") {
+              void openX01WithFirstRules(() => navSmart(current.configPath));
+              return;
+            }
+            navSmart(current.configPath);
+          }}
           style={{
             width: "100%",
             maxWidth: 800,
@@ -1672,6 +1722,10 @@ export default function Games({ setTab, params }: Props) {
                           const gameParams = g.variantId
                             ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId }
                             : undefined;
+                          if (String(g.id) === "x01") {
+                            void openX01WithFirstRules(() => navigate(g.tab, gameParams));
+                            return;
+                          }
                           return navigate(g.tab, gameParams);
                         }}
                         style={{
@@ -1759,6 +1813,12 @@ export default function Games({ setTab, params }: Props) {
           </div>
         </>
       )}
+
+      <X01AwenaRulesVideo
+        open={x01RulesIntroOpen}
+        firstLaunch
+        onDone={finishX01RulesIntro}
+      />
 
       {/* Overlay d'information */}
       {infoGame && (

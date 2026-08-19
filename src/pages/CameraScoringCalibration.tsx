@@ -12,6 +12,8 @@ import BackDot from "../components/BackDot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { saveCameraCalibration, loadCameraCalibration, type CameraCalibrationV1 } from "../lib/cameraCalibrationStore";
+import { useAwenaOptional } from "../awena/AwenaProvider";
+import { awenaProcedurePromptForRoute } from "../awena/AwenaProceduralAcademy";
 
 type Props = {
   go: (tab: any, params?: any) => void;
@@ -21,6 +23,7 @@ type Props = {
 export default function CameraScoringCalibration({ go, params }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const awena = useAwenaOptional();
 
   const primary = theme?.primary ?? "#f7c85c";
   const textMain = theme?.text ?? "#f5f5ff";
@@ -171,7 +174,40 @@ export default function CameraScoringCalibration({ go, params }: Props) {
           {t("cameraScoring.calibration", "Calibration caméra")}
         </div>
 
-        <div style={{ width: 36 }} />
+        {awena ? (
+          <button
+            type="button"
+            aria-label="Awena · Calibration caméra"
+            title="Awena · Calibration caméra"
+            onClick={() => {
+              awena.setRuntime({
+                route: "camera_scoring_calibration",
+                mode: "settings-help",
+                phase: "menu",
+                inGame: false,
+                screenLabel: "Calibration caméra",
+              });
+              awena.openPanel();
+              void awena.ask(awenaProcedurePromptForRoute("camera_scoring_calibration"));
+            }}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              border: "none",
+              padding: 3,
+              background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)",
+              boxShadow: "0 0 12px rgba(22,232,255,.38),0 0 20px rgba(255,56,199,.2),0 0 0 2px rgba(0,0,0,.42)",
+              cursor: "pointer",
+            }}
+          >
+            <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+              <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </span>
+          </button>
+        ) : (
+          <div style={{ width: 36 }} />
+        )}
       </div>
 
       {/* Video area */}

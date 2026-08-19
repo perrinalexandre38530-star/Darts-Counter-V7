@@ -22,7 +22,7 @@ must(records.includes("training x01|trainingx01"), "classic X01 records must exc
 must(advanced.match(/id: "/g)?.length >= 95, "advanced encyclopedia should contain at least 95 topics");
 must(advanced.includes("0 ≠ DONNÉE ABSENTE") && advanced.includes("MOYENNE PONDÉRÉE") && advanced.includes("HITS TOTAUX"), "advanced stats precision topics missing");
 must(core.includes("answerAwenaAdvancedEncyclopedia"), "advanced encyclopedia not wired into AwenaCore");
-must(overlay.includes("LOCAL V8.2.1"), "Awena overlay version is not V8.2.1");
+must(/LOCAL V8\.[2-9]/.test(overlay), "Awena overlay version is V8.2.1 or newer");
 
 must(!/text:\s*"/.test(advanced), "advanced encyclopedia must use md(...) blocks, not fragile multiline quoted strings");
 console.log("✅ AWENA V8.2.1 History-first Records + clean Advanced Encyclopedia: OK");

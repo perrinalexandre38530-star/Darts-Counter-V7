@@ -24,6 +24,8 @@ import { createAutoBackup, getAutoBackups, clearAutoBackups } from "../lib/backu
 import { supabase } from "../lib/supabaseClient";
 import { EventBuffer } from "../lib/sync/EventBuffer";
 import SyncStatusChip from "../components/sync/SyncStatusChip";
+import { useAwenaOptional } from "../awena/AwenaProvider";
+import { awenaProcedurePromptForRoute } from "../awena/AwenaProceduralAcademy";
 
 type Props = {
   store: Store;
@@ -37,6 +39,7 @@ type PanelMode = "none" | "local" | "peer" | "cloud";
 export default function SyncCenter({ store, go, profileId }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const awena = useAwenaOptional();
 
   const [mode, setMode] = React.useState<PanelMode>("local");
 
@@ -1248,25 +1251,53 @@ async function handleCloudAutoTest() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowHelp((v) => !v)}
-            style={{
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.7)",
-              color: theme.textSoft,
-              padding: "5px 12px",
-              fontSize: 11.5,
-              fontWeight: 700,
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-              cursor: "pointer",
-              boxShadow: `0 0 10px ${theme.primary}33`,
-            }}
-          >
-            {t("syncCenter.help.button", "Aide")}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {awena?.settings?.enabled && awena?.settings?.interventionMode !== "off" ? (
+              <button
+                type="button"
+                aria-label="Awena · Sync & Partage"
+                title="Awena · Guide Sync & Partage"
+                onClick={() => {
+                  awena.setRuntime({ route: "sync_center", mode: "settings-help", phase: "menu", inGame: false, screenLabel: "Sync & Partage" });
+                  awena.openPanel();
+                  void awena.ask(awenaProcedurePromptForRoute("sync_center"));
+                }}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 999,
+                  border: "none",
+                  padding: 3,
+                  background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)",
+                  boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+                  <img src="/awena/awena-avatar.webp" alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setShowHelp((v) => !v)}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(0,0,0,0.7)",
+                color: theme.textSoft,
+                padding: "5px 12px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                cursor: "pointer",
+                boxShadow: `0 0 10px ${theme.primary}33`,
+              }}
+            >
+              {t("syncCenter.help.button", "Aide")}
+            </button>
+          </div>
         </div>
 
         <div

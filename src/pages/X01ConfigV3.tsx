@@ -30,6 +30,7 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import SelectionStickyBanner from "../components/SelectionStickyBanner";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
+import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 import {
   getAllDartSets,
@@ -2290,6 +2291,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   const cardBg = "rgba(10, 12, 24, 0.96)";
 
   const [rulesOpen, setRulesOpen] = React.useState(false);
+  const [rulesVideoOpen, setRulesVideoOpen] = React.useState(false);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -3855,6 +3857,41 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
           <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary, marginBottom: 8 }}>
             Configuration X01
           </div>
+
+          <button
+            type="button"
+            onClick={() => setRulesVideoOpen(true)}
+            style={{
+              width: "100%",
+              minHeight: 42,
+              marginBottom: 10,
+              padding: "8px 12px",
+              borderRadius: 14,
+              border: `1px solid ${primary}55`,
+              background: `linear-gradient(135deg, ${primary}1F, rgba(255,255,255,.045))`,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              cursor: "pointer",
+              boxShadow: `0 0 18px ${primary}16`,
+            }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+              <span style={{ color: primary, fontSize: 18, lineHeight: 1 }}>▶</span>
+              <span style={{ textAlign: "left", minWidth: 0 }}>
+                <span style={{ display: "block", color: primary, fontSize: 10.5, fontWeight: 950, letterSpacing: .85, textTransform: "uppercase" }}>
+                  AWENA · RÈGLES X01
+                </span>
+                <span style={{ display: "block", marginTop: 2, color: "#e9ebf7", fontSize: 11.5, fontWeight: 800 }}>
+                  Voir l’explication vidéo
+                </span>
+              </span>
+            </span>
+            <span style={{ flex: "0 0 auto", color: "#9298bb", fontSize: 10.5, fontWeight: 850 }}>35 s</span>
+          </button>
+
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PillButton
               label="Guidée"
@@ -5565,9 +5602,37 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
                 Les options <b>Sets</b>/<b>Manches</b> déterminent le format du match, et l’ordre de service peut être aléatoire ou alterné selon ton réglage.
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setRulesOpen(false);
+                setRulesVideoOpen(true);
+              }}
+              style={{
+                width: "100%",
+                minHeight: 42,
+                marginTop: 14,
+                borderRadius: 999,
+                border: `1px solid ${primary}66`,
+                background: `linear-gradient(90deg, ${primary}22, rgba(255,255,255,.06))`,
+                color: "#fff",
+                fontWeight: 950,
+                fontSize: 11.5,
+                letterSpacing: .45,
+                cursor: "pointer",
+              }}
+            >
+              ▶ AWENA · VOIR LES RÈGLES EN VIDÉO · 35 S
+            </button>
           </div>
         </div>
       )}
+
+      <X01AwenaRulesVideo
+        open={rulesVideoOpen}
+        onDone={() => setRulesVideoOpen(false)}
+      />
 
     </div>
   );

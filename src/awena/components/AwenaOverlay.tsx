@@ -13,6 +13,7 @@ import {
   parseAwenaVoiceIntent,
   publishAwenaVoiceTranscript,
 } from "../AwenaVoiceCommands";
+import { awenaProcedurePromptForRoute, isAwenaComplexRoute } from "../AwenaProceduralAcademy";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
@@ -344,6 +345,8 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
   const neon = "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)";
   const currentMode = findAwenaModeById(runtime.mode) || findAwenaMode("", route || "");
   const live = runtime.phase === "play" && typeof runtime.remaining === "number";
+  const proceduralRoute = !currentMode && isAwenaComplexRoute(String(route || runtime.route || ""));
+  const proceduralPrompt = proceduralRoute ? awenaProcedurePromptForRoute(String(route || runtime.route || "")) : "";
 
   async function submit(text: string) {
     const clean = text.trim();
@@ -430,7 +433,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V8.6 · VOICE X01</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V8.7 · ACADEMY + VOICE X01</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -443,7 +446,13 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>
-            {(currentMode && !live
+            {(proceduralRoute
+              ? [
+                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Tutoriel pas à pas" : "Step-by-step", proceduralPrompt],
+                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Prérequis" : "Prerequisites", `${proceduralPrompt} Donne-moi d'abord uniquement les prérequis et ce qu'il faut préparer.`],
+                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Diagnostic" : "Troubleshoot", `${proceduralPrompt} Je suis bloqué : commence par les vérifications et les erreurs fréquentes.`],
+                ]
+              : currentMode && !live
               ? [
                   [ui.rules, `Explique-moi clairement les règles de ${currentMode.label}.`],
                   [ui.configuration, `Détaille uniquement la configuration de ${currentMode.label} : chaque option, valeur possible, variante, format et réglage disponible.`],

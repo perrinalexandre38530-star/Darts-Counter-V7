@@ -15,6 +15,7 @@ import { useAwenaOptional } from "../awena/AwenaProvider";
 import { routeToAwenaMode } from "../awena/AwenaKnowledge";
 import AwenaModeDot from "../awena/components/AwenaModeDot";
 import { registerAwenaHelp } from "../awena/AwenaHelpRegistry";
+import { awenaProcedurePromptForRoute, isAwenaComplexRoute } from "../awena/AwenaProceduralAcademy";
 
 type InfoDotContent = React.ReactNode | ((controls: { close: () => void }) => React.ReactNode);
 
@@ -112,6 +113,58 @@ export default function InfoDot({
 
   if (awenaMenuTakesOver && awenaScreenMode) {
     return <AwenaModeDot modeId={awenaScreenMode.id} size={Math.max(36, size)} />;
+  }
+
+  // V8.7 : sur les parcours complexes (caméra, compétition, sync, sauvegarde,
+  // écrans externes...), l'ancien InfoDot devient un accès direct à l'Académie Awena.
+  // Le contenu historique du InfoDot est toujours indexé ci-dessus dans le registre
+  // d'aide, donc rien n'est perdu : Awena peut l'utiliser dans son explication.
+  const awenaComplexTakesOver = Boolean(
+    awena?.runtime?.route &&
+    isAwenaComplexRoute(awena.runtime.route) &&
+    awena?.settings?.enabled &&
+    awena?.settings?.interventionMode !== "off"
+  );
+
+  if (awenaComplexTakesOver && awena) {
+    const awenaSize = Math.max(36, size);
+    const openProcedure = async (e: any) => {
+      try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
+      awena.openPanel();
+      await awena.ask(awenaProcedurePromptForRoute(awena.runtime.route));
+    };
+    return (
+      <div
+        role="button"
+        aria-label={`Awena · ${title}`}
+        title={`Awena · ${title}`}
+        tabIndex={0}
+        onClick={(e: any) => { void openProcedure(e); }}
+        onKeyDown={(e: any) => {
+          if (e.key === "Enter" || e.key === " ") void openProcedure(e);
+        }}
+        style={{
+          width: awenaSize,
+          height: awenaSize,
+          borderRadius: 999,
+          padding: 3,
+          display: "grid",
+          placeItems: "center",
+          cursor: "pointer",
+          userSelect: "none",
+          WebkitTapHighlightColor: "transparent",
+          border: "none",
+          background: AWENA_NEON,
+          boxShadow: "0 0 18px rgba(22,232,255,.42),0 0 28px rgba(255,56,199,.28),0 0 0 2px rgba(0,0,0,.4)",
+          flex: "0 0 auto",
+          pointerEvents: "auto",
+        }}
+      >
+        <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}>
+          <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }} />
+        </span>
+      </div>
+    );
   }
 
   // En partie, Awena remplace volontairement l’ancien InfoDot.
