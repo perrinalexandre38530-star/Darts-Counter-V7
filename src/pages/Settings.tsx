@@ -207,12 +207,12 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   metalTitaneForge: { defaultLabel: "Titane Forgé", defaultDesc: "Titane sombre, forgé et très haut de gamme" },
 
   extremeLavaCore: { defaultLabel: "Lava Core", defaultDesc: "Lave craquelée, énergie chaude et magma" },
-  extremeFireGlace: { defaultLabel: "Feu & Glace", defaultDesc: "Split thermique spectaculaire rouge et bleu" },
-  extremeArcticPulse: { defaultLabel: "Arctic Pulse", defaultDesc: "Glace lumineuse et pulsation électronique" },
+  extremeFireGlace: { defaultLabel: "Feu Solaire", defaultDesc: "Feu incandescent, braises premium et intensité orange" },
+  extremeArcticPulse: { defaultLabel: "Glace Polaire", defaultDesc: "Glace cristalline, froid bleu et éclat premium" },
 
   luxePlatineRoyale: { defaultLabel: "Platine Royale", defaultDesc: "Platine, métal noble et prestige sobre" },
-  luxeOrDiamant: { defaultLabel: "Or & Diamant", defaultDesc: "Obsidienne noire, or poli et facettes précieuses" },
-  luxeEmeraudeNoire: { defaultLabel: "Émeraude Noire", defaultDesc: "Bijou sombre et reflets émeraude premium" },
+  luxeOrDiamant: { defaultLabel: "Or Royal", defaultDesc: "Or brossé premium et luxe lumineux" },
+  luxeEmeraudeNoire: { defaultLabel: "Diamant Noir", defaultDesc: "Facettes sombres, éclats glacés et prestige minéral" },
 };
 
 function getPreset(id: ThemeId): AppTheme {
@@ -791,8 +791,8 @@ const THEME_PACKS: ThemePack[] = [
   { id: "arenas", ids: ARENAS, label: "ARENAS & AMBIANCES", subtitle: "8 univers immersifs · fonds, cartes, halos et animations", colors: ["#20E7FF", "#FF424E", "#E8C56B", "#FF4FD8"], premium: true },
   { id: "materials", ids: MATERIALS, label: "MATIÈRES D’EXCEPTION", subtitle: "Bois, marbre et cuivre avec textures marquées", colors: ["#E8B764", "#4BD4A3", "#F08B57", "#FFD57E"], premium: true },
   { id: "metals", ids: METALS, label: "MÉTAUX & INDUSTRIE", subtitle: "Aluminium, acier brossé et titane forgé", colors: ["#DCE4EE", "#C7D6E6", "#AFBFCE", "#62C6FF"], premium: true },
-  { id: "extremes", ids: EXTREMES, label: "ÉLÉMENTS EXTRÊMES", subtitle: "Lave, feu & glace et pulsations arctiques", colors: ["#FF8A3D", "#FF7C3D", "#7DDBFF", "#9CE8FF"], premium: true },
-  { id: "luxe", ids: LUXES, label: "LUXE & JOYAUX", subtitle: "Platine, or & diamant et émeraude noire", colors: ["#F3F5F9", "#F5C85E", "#29D4A7", "#FFF6D6"], premium: true },
+  { id: "extremes", ids: EXTREMES, label: "ÉLÉMENTS EXTRÊMES", subtitle: "Lave, feu solaire et glace polaire", colors: ["#FF8A3D", "#FF7C3D", "#7DDBFF", "#9CE8FF"], premium: true },
+  { id: "luxe", ids: LUXES, label: "LUXE & JOYAUX", subtitle: "Platine, or royal et diamant noir", colors: ["#F3F5F9", "#F5C85E", "#A8C4E8", "#FFF6D6"], premium: true },
 ];
 
 function ThemePreviewBlock({

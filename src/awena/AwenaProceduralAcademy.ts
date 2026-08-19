@@ -1,4 +1,5 @@
 import type { AwenaAction, AwenaReply, AwenaRuntimeContext } from "./awena.types";
+import { AWENA_V89_PROCEDURES } from "./AwenaProceduralV89";
 
 export type AwenaProcedureEntry = {
   id: string; domain: string; title: string; aliases: string[]; route?: string;
@@ -1295,6 +1296,7 @@ const PROCEDURES: AwenaProcedureEntry[] = [
     warnings: [],
     related: ["Liste des modes"],
   },
+  ...AWENA_V89_PROCEDURES,
 ];
 
 

@@ -74,7 +74,8 @@
     "test:awena:v85": "node ./tools/test-awena-v85-omni-knowledge.mjs && npm run test:awena:v84",
     "test:awena:v86": "node ./tools/test-awena-v86-voice-ultra.mjs && npm run test:awena:v85",
     "test:awena:v87": "node tools/test-awena-v87-procedural-academy.mjs",
-    "test:awena:v88": "node tools/test-awena-v88-guide-pro.mjs"
+    "test:awena:v88": "node tools/test-awena-v88-guide-pro.mjs",
+    "test:awena:v89": "node tools/test-awena-v89-master-knowledge.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
