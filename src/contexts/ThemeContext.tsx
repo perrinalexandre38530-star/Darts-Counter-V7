@@ -135,6 +135,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty("--dc-theme-surface-shadow", theme.surfaceShadow || "0 20px 45px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)");
     root.style.setProperty("--dc-theme-nav", theme.navBackground || "linear-gradient(180deg, rgba(8,8,10,.55), rgba(8,8,10,.9))");
     root.style.setProperty("--dc-theme-button", theme.buttonBackground || theme.primary);
+    root.style.setProperty("--dc-theme-frame", theme.frameOverlay || "none");
+    root.style.setProperty("--dc-theme-frame-opacity", String(theme.frameOpacity ?? 0));
     root.dataset.dcTheme = theme.id;
     root.dataset.dcThemeAmbient = theme.ambientAnimation || "none";
     root.style.setProperty("--stroke", theme.borderSoft);

@@ -42,6 +42,9 @@ type Props = {
 
   /** Compatibilité avec les anciens appels <InfoDot active />. */
   active?: boolean;
+
+  /** Force l’InfoDot classique sans remplacement automatique par Awena. */
+  disableAwenaTakeover?: boolean;
 };
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
@@ -67,6 +70,7 @@ export default function InfoDot({
   content,
   modalTitleAddon,
   active = false,
+  disableAwenaTakeover = false,
 }: Props) {
   const { theme } = useTheme();
   const awena = useAwenaOptional();
@@ -111,7 +115,7 @@ export default function InfoDot({
     awena?.settings?.interventionMode !== "off"
   );
 
-  if (awenaMenuTakesOver && awenaScreenMode) {
+  if (!disableAwenaTakeover && awenaMenuTakesOver && awenaScreenMode) {
     return <AwenaModeDot modeId={awenaScreenMode.id} size={Math.max(36, size)} />;
   }
 
@@ -126,7 +130,7 @@ export default function InfoDot({
     awena?.settings?.interventionMode !== "off"
   );
 
-  if (awenaComplexTakesOver && awena) {
+  if (!disableAwenaTakeover && awenaComplexTakesOver && awena) {
     const awenaSize = Math.max(36, size);
     const openProcedure = async (e: any) => {
       try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
@@ -176,7 +180,7 @@ export default function InfoDot({
     awena?.settings?.interventionMode !== "off"
   );
 
-  if (awenaTakesOver && awena) {
+  if (!disableAwenaTakeover && awenaTakesOver && awena) {
     const awenaSize = Math.max(36, size);
     return (
       <div

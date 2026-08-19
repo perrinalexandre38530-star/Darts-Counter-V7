@@ -817,7 +817,7 @@ function ThemePreviewBlock({
     : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
   const previewCard = preview?.cardBackground || preview?.card;
   const previewTextureOpacity = premiumPreview
-    ? Math.min(.34, Math.max(.14, preview?.textureOpacity ?? .20))
+    ? Math.min(.62, Math.max(.30, preview?.textureOpacity ?? .42))
     : 0;
   const ambientOpacity = premiumPreview
     ? Math.min(.24, Math.max(.085, (preview?.ambientOpacity || .05) * 2.5))
@@ -869,6 +869,12 @@ function ThemePreviewBlock({
           style={{ background: preview.surfaceSheen }}
         />
       ) : null}
+      {preview?.frameOverlay ? (
+        <div
+          aria-hidden="true"
+          style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: preview.frameOpacity ?? .86, pointerEvents: "none", zIndex: 2 }}
+        />
+      ) : null}
 
       {!preview ? (
         <div style={{ textAlign: "center" }}>
@@ -905,8 +911,9 @@ function ThemePreviewBlock({
               boxShadow: preview.surfaceShadow || `0 12px 28px rgba(0,0,0,.52), 0 0 20px ${preview.primary}22`,
             }}
           >
-            {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: Math.min(.30, previewTextureOpacity + .02), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+            {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: Math.min(.58, previewTextureOpacity + .04), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
             {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen }} /> : null}
+            {preview.frameOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: Math.max(.56, (preview.frameOpacity ?? .86) - .12), pointerEvents: "none", zIndex: 1 }} /> : null}
 
             <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, padding: "7px 9px", borderBottom: `1px solid ${preview.borderSoft}`, background: "rgba(3,5,12,.34)", backdropFilter: "blur(7px)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -922,7 +929,9 @@ function ThemePreviewBlock({
             <div style={{ position: "relative", zIndex: 2, padding: 8 }}>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(0,.8fr)", gap: 7 }}>
                 <div style={{ position: "relative", overflow: "hidden", borderRadius: 13, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 8, boxShadow: preview.surfaceShadow || `0 10px 20px rgba(0,0,0,.40), 0 0 14px ${preview.primary}15` }}>
-                  {preview.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.surfaceSheen, opacity: .24, pointerEvents: "none" }} /> : null}
+                  {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: .30, mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                  {preview.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.surfaceSheen, opacity: .28, pointerEvents: "none" }} /> : null}
+                  {preview.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: Math.max(.38, (preview.frameOpacity ?? .86) - .30), pointerEvents: "none" }} /> : null}
                   <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 38, height: 38, borderRadius: 999, padding: 2, background: `linear-gradient(135deg,${preview.primary},${preview.accent2})`, boxShadow: `0 0 14px ${preview.primary}55` }}>
                       <div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(2,4,9,.90)", color: preview.text, fontSize: 14, fontWeight: 1000 }}>N</div>
@@ -1409,7 +1418,7 @@ function SettingsMenuCard({
           zIndex: 2,
         }}
       >
-        <InfoDot title={title} content={infoContent} size={32} color={theme.primary} glow={`${theme.primary}66`} />
+        <InfoDot title={title} content={infoContent} size={32} color={theme.primary} glow={`${theme.primary}66`} disableAwenaTakeover />
       </div>
     </div>
   );
@@ -4395,9 +4404,10 @@ export function Settings({ go, params }: Props) {
                         overflow: "hidden",
                       }}
                     >
-                      {preset.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: .22, mixBlendMode: preset.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
-                      {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .14, pointerEvents: "none" }} /> : null}
-                      {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .34, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
+                      {preset.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: .46, mixBlendMode: preset.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                      {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .18, pointerEvents: "none" }} /> : null}
+                      {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .38, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
+                      {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: Math.max(.52, (preset.frameOpacity ?? .86) - .18), pointerEvents: "none" }} /> : null}
                       {locked ? <span style={{ position: "absolute", top: 6, right: 6, fontSize: 12 }}>🔒</span> : null}
                       <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55`, position: "relative" }} />
                       <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>

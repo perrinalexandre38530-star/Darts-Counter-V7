@@ -49,6 +49,8 @@ input[name="displayName"] {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  --dc-theme-frame:none;
+  --dc-theme-frame-opacity:0;
 }
 
 *{box-sizing:border-box}
@@ -440,6 +442,119 @@ body::before{
 }
 :root[data-dc-theme^="arena"] .btn.primary{
   box-shadow:0 9px 24px color-mix(in srgb, var(--dc-accent) 28%, transparent), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+/* ====== Skins premium avec vraies textures importées ====== */
+:root[data-dc-theme^="material"] .card,
+:root[data-dc-theme^="material"] .badge,
+:root[data-dc-theme^="material"] .item,
+:root[data-dc-theme^="metal"] .card,
+:root[data-dc-theme^="metal"] .badge,
+:root[data-dc-theme^="metal"] .item,
+:root[data-dc-theme^="extreme"] .card,
+:root[data-dc-theme^="extreme"] .badge,
+:root[data-dc-theme^="extreme"] .item,
+:root[data-dc-theme^="luxe"] .card,
+:root[data-dc-theme^="luxe"] .badge,
+:root[data-dc-theme^="luxe"] .item,
+:root[data-dc-theme^="material"] .dc-settings-shell-card,
+:root[data-dc-theme^="metal"] .dc-settings-shell-card,
+:root[data-dc-theme^="extreme"] .dc-settings-shell-card,
+:root[data-dc-theme^="luxe"] .dc-settings-shell-card{
+  background:var(--glass) !important;
+  box-shadow:var(--dc-theme-surface-shadow, 0 20px 45px rgba(0,0,0,.45));
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+}
+
+:root[data-dc-theme^="material"] .card::before,
+:root[data-dc-theme^="material"] .badge::before,
+:root[data-dc-theme^="material"] .item::before,
+:root[data-dc-theme^="material"] .dc-settings-shell-card::before,
+:root[data-dc-theme^="metal"] .card::before,
+:root[data-dc-theme^="metal"] .badge::before,
+:root[data-dc-theme^="metal"] .item::before,
+:root[data-dc-theme^="metal"] .dc-settings-shell-card::before,
+:root[data-dc-theme^="extreme"] .card::before,
+:root[data-dc-theme^="extreme"] .badge::before,
+:root[data-dc-theme^="extreme"] .item::before,
+:root[data-dc-theme^="extreme"] .dc-settings-shell-card::before,
+:root[data-dc-theme^="luxe"] .card::before,
+:root[data-dc-theme^="luxe"] .badge::before,
+:root[data-dc-theme^="luxe"] .item::before,
+:root[data-dc-theme^="luxe"] .dc-settings-shell-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:var(--dc-theme-texture, none);
+  opacity:.42;
+  mix-blend-mode:var(--dc-theme-texture-blend, normal);
+  z-index:0;
+}
+
+:root[data-dc-theme^="material"] .card::after,
+:root[data-dc-theme^="material"] .badge::after,
+:root[data-dc-theme^="material"] .item::after,
+:root[data-dc-theme^="material"] .dc-settings-shell-card::after,
+:root[data-dc-theme^="metal"] .card::after,
+:root[data-dc-theme^="metal"] .badge::after,
+:root[data-dc-theme^="metal"] .item::after,
+:root[data-dc-theme^="metal"] .dc-settings-shell-card::after,
+:root[data-dc-theme^="extreme"] .card::after,
+:root[data-dc-theme^="extreme"] .badge::after,
+:root[data-dc-theme^="extreme"] .item::after,
+:root[data-dc-theme^="extreme"] .dc-settings-shell-card::after,
+:root[data-dc-theme^="luxe"] .card::after,
+:root[data-dc-theme^="luxe"] .badge::after,
+:root[data-dc-theme^="luxe"] .item::after,
+:root[data-dc-theme^="luxe"] .dc-settings-shell-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:var(--dc-theme-frame, none);
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  opacity:var(--dc-theme-frame-opacity, 0);
+  z-index:1;
+}
+
+:root[data-dc-theme^="material"] .card > *,
+:root[data-dc-theme^="material"] .badge > *,
+:root[data-dc-theme^="material"] .item > *,
+:root[data-dc-theme^="material"] .dc-settings-shell-card > *,
+:root[data-dc-theme^="metal"] .card > *,
+:root[data-dc-theme^="metal"] .badge > *,
+:root[data-dc-theme^="metal"] .item > *,
+:root[data-dc-theme^="metal"] .dc-settings-shell-card > *,
+:root[data-dc-theme^="extreme"] .card > *,
+:root[data-dc-theme^="extreme"] .badge > *,
+:root[data-dc-theme^="extreme"] .item > *,
+:root[data-dc-theme^="extreme"] .dc-settings-shell-card > *,
+:root[data-dc-theme^="luxe"] .card > *,
+:root[data-dc-theme^="luxe"] .badge > *,
+:root[data-dc-theme^="luxe"] .item > *,
+:root[data-dc-theme^="luxe"] .dc-settings-shell-card > *{
+  position:relative;
+  z-index:2;
+}
+
+:root[data-dc-theme^="material"] .btn.primary,
+:root[data-dc-theme^="metal"] .btn.primary,
+:root[data-dc-theme^="extreme"] .btn.primary,
+:root[data-dc-theme^="luxe"] .btn.primary{
+  background:var(--dc-theme-button, var(--gold)) !important;
+  box-shadow:0 8px 22px color-mix(in srgb, var(--dc-accent) 34%, transparent), inset 0 1px 0 rgba(255,255,255,.30);
+}
+
+:root[data-dc-theme^="material"] .bottom-nav,
+:root[data-dc-theme^="metal"] .bottom-nav,
+:root[data-dc-theme^="extreme"] .bottom-nav,
+:root[data-dc-theme^="luxe"] .bottom-nav{
+  background:var(--dc-theme-nav) !important;
+  box-shadow:0 -10px 28px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.07);
 }
 
 /* ====== Ambiance visuelle légère des thèmes Boutique ======
