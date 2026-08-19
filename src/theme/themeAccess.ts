@@ -76,6 +76,49 @@ export const STREET_THEME_IDS = [
   "streetPisteColors",
 ] as const satisfies readonly ThemeId[];
 
+export const PRESTIGE_THEME_IDS = [
+  "prestigeDiamantPur",
+  "prestigeDiamantBrume",
+  "prestigeDiamantRose",
+  "prestigeQuartzDore",
+  "prestigeSaphirCristal",
+  "prestigeEmeraudeRoyale",
+  "prestigeEmeraudeLumiere",
+  "prestigeOrPatine",
+  "prestigeOrVelours",
+  "prestigeOrSoie",
+  "prestigeOrBrut",
+  "prestigeOrFusion",
+  "prestigeOrFacettes",
+  "prestigeSaphirRoyal",
+  "prestigeSaphirNuit",
+] as const satisfies readonly ThemeId[];
+
+export const ABSTRACT_THEME_IDS = [
+  "abstractGreenSplash",
+  "abstractVioletInk",
+  "abstractOrangeRugged",
+  "abstractVioletMur",
+  "abstractOrangeFusion",
+  "abstractOrangeFlare",
+  "abstractGreenBurst",
+  "abstractOrangeObsidian",
+  "abstractAmberStorm",
+  "abstractWatercolor",
+  "abstractPurpleGrunge",
+  "abstractIceRed",
+  "abstractPatina",
+  "abstractSolarDust",
+  "abstractCrimsonIce",
+  "abstractSolarGlow",
+  "abstractOxydBlue",
+  "abstractOliveCanvas",
+  "abstractSpectrumDust",
+  "abstractTurquoiseRust",
+  "abstractVioletPoster",
+  "abstractPurpleNebula",
+] as const satisfies readonly ThemeId[];
+
 export const LUXE_THEME_IDS = [
   "luxePlatineRoyale",
   "luxeOrDiamant",
@@ -93,6 +136,8 @@ export const PREMIUM_THEME_IDS = [
   ...GRAFFITI_THEME_IDS,
   ...ARCADE_THEME_IDS,
   ...STREET_THEME_IDS,
+  ...PRESTIGE_THEME_IDS,
+  ...ABSTRACT_THEME_IDS,
 ] as const satisfies readonly ThemeId[];
 
 const ARENAS_THEME_SET = new Set<ThemeId>(ARENAS_THEME_IDS);
@@ -106,7 +151,21 @@ export function isPremiumTheme(id: ThemeId | string | null | undefined): id is (
   return PREMIUM_THEME_SET.has(String(id || "") as ThemeId);
 }
 
+const DEV_FORCE_PREMIUM_THEME_ACCESS = true;
+const PREMIUM_THEME_TEST_KEY = "mss_force_premium_themes";
+
+function hasLocalPremiumThemeOverride(): boolean {
+  try {
+    if (typeof window === "undefined") return false;
+    const raw = window.localStorage.getItem(PREMIUM_THEME_TEST_KEY);
+    return raw === "1" || raw === "true";
+  } catch {
+    return false;
+  }
+}
+
 export function arePremiumThemesUnlocked(): boolean {
+  if (DEV_FORCE_PREMIUM_THEME_ACCESS || hasLocalPremiumThemeOverride()) return true;
   return hasVerifiedProduct(STORE_PRODUCT_IDS.themesArenas, STORE_PRODUCT_IDS.cosmeticsBundle);
 }
 

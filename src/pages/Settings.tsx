@@ -36,7 +36,7 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
-import { FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
+import { FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, PRESTIGE_THEME_IDS, ABSTRACT_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
 import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
@@ -166,6 +166,8 @@ const PUBS: ThemeId[] = [...PUB_THEME_IDS];
 const GRAFFITIS: ThemeId[] = [...GRAFFITI_THEME_IDS];
 const ARCADES: ThemeId[] = [...ARCADE_THEME_IDS];
 const STREETS: ThemeId[] = [...STREET_THEME_IDS];
+const PRESTIGES: ThemeId[] = [...PRESTIGE_THEME_IDS];
+const ABSTRACTS: ThemeId[] = [...ABSTRACT_THEME_IDS];
 const PREMIUM_THEMES_STORE_PACK_ID = "themes_neon_01";
 
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
@@ -242,6 +244,43 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   streetMurStreetArt: { defaultLabel: "Street Art", defaultDesc: "Mur street art coloré et brut" },
   streetAcierUrbain: { defaultLabel: "Acier Urbain", defaultDesc: "Façade urbaine bleutée et lignes métal" },
   streetPisteColors: { defaultLabel: "Piste Colors", defaultDesc: "Asphalte peint et explosions de couleurs" },
+  prestigeDiamantPur: { defaultLabel: "Diamant Pur", defaultDesc: "Cristal blanc facetté et prestige glacé" },
+  prestigeDiamantBrume: { defaultLabel: "Diamant Brume", defaultDesc: "Diamant nacré et reflets argentés" },
+  prestigeDiamantRose: { defaultLabel: "Diamant Rose", defaultDesc: "Facettes roses et luxe pop cristallin" },
+  prestigeQuartzDore: { defaultLabel: "Quartz Doré", defaultDesc: "Cristaux dorés et éclats luxueux" },
+  prestigeSaphirCristal: { defaultLabel: "Saphir Cristal", defaultDesc: "Saphir lavande aux facettes lumineuses" },
+  prestigeEmeraudeRoyale: { defaultLabel: "Émeraude Royale", defaultDesc: "Prismes verts profonds et élégance minérale" },
+  prestigeEmeraudeLumiere: { defaultLabel: "Émeraude Lumière", defaultDesc: "Émeraude lumineuse et halo précieux" },
+  prestigeOrPatine: { defaultLabel: "Or Patiné", defaultDesc: "Or texturé patiné et finition noble" },
+  prestigeOrVelours: { defaultLabel: "Or Velours", defaultDesc: "Or velours diffus et chaleur premium" },
+  prestigeOrSoie: { defaultLabel: "Or Soie", defaultDesc: "Voile d’or soyeux et texture fine" },
+  prestigeOrBrut: { defaultLabel: "Or Brut", defaultDesc: "Or brut minéral et caractère luxueux" },
+  prestigeOrFusion: { defaultLabel: "Or Fusion", defaultDesc: "Matière dorée fusionnée et éclat intense" },
+  prestigeOrFacettes: { defaultLabel: "Or Facettes", defaultDesc: "Or facetté et éclats joaillerie" },
+  prestigeSaphirRoyal: { defaultLabel: "Saphir Royal", defaultDesc: "Saphir profond et prestige nocturne" },
+  prestigeSaphirNuit: { defaultLabel: "Saphir Nuit", defaultDesc: "Éclats bleus électriques et cristal nuit" },
+  abstractGreenSplash: { defaultLabel: "Vert Splash", defaultDesc: "Projection verte sombre et texture urbaine" },
+  abstractVioletInk: { defaultLabel: "Encre Violette", defaultDesc: "Splash violet néon sur fond noir" },
+  abstractOrangeRugged: { defaultLabel: "Orange Rugueux", defaultDesc: "Éclats orange bruts et fond charbon" },
+  abstractVioletMur: { defaultLabel: "Mur Violet", defaultDesc: "Mur abstrait violet très profond" },
+  abstractOrangeFusion: { defaultLabel: "Orange Fusion", defaultDesc: "Matière orange chaleureuse et diffuse" },
+  abstractOrangeFlare: { defaultLabel: "Orange Flare", defaultDesc: "Orange incandescent et énergie vive" },
+  abstractGreenBurst: { defaultLabel: "Green Burst", defaultDesc: "Éclats verts et jaunes sur fond intense" },
+  abstractOrangeObsidian: { defaultLabel: "Orange Obsidienne", defaultDesc: "Grunge noir/orange très contrasté" },
+  abstractAmberStorm: { defaultLabel: "Ambre Storm", defaultDesc: "Lumière ambre diffuse et texture artistique" },
+  abstractWatercolor: { defaultLabel: "Aquarelle Verte", defaultDesc: "Aquarelle douce et fraîcheur moderne" },
+  abstractPurpleGrunge: { defaultLabel: "Purple Grunge", defaultDesc: "Béton violet nocturne et ambiance club" },
+  abstractIceRed: { defaultLabel: "Glace Rouge", defaultDesc: "Stries glacées rouges et ambiance polaire" },
+  abstractPatina: { defaultLabel: "Patine Matière", defaultDesc: "Patine minérale beige et rouille douce" },
+  abstractSolarDust: { defaultLabel: "Solar Dust", defaultDesc: "Explosion rouge/orange et halo de chaleur" },
+  abstractCrimsonIce: { defaultLabel: "Crimson Ice", defaultDesc: "Cristaux rouges et texture glacée" },
+  abstractSolarGlow: { defaultLabel: "Solar Glow", defaultDesc: "Lumière chaude et matière brûlante" },
+  abstractOxydBlue: { defaultLabel: "Oxyd Bleu", defaultDesc: "Oxydation bleu/gris et grain industriel" },
+  abstractOliveCanvas: { defaultLabel: "Olive Canvas", defaultDesc: "Toile olive diffuse et relief subtil" },
+  abstractSpectrumDust: { defaultLabel: "Spectrum Dust", defaultDesc: "Nuancier grunge multicolore et fond sombre" },
+  abstractTurquoiseRust: { defaultLabel: "Turquoise Rust", defaultDesc: "Turquoise patiné et texture froide" },
+  abstractVioletPoster: { defaultLabel: "Poster Violet", defaultDesc: "Poster violet vibrant et grain mural" },
+  abstractPurpleNebula: { defaultLabel: "Purple Nebula", defaultDesc: "Nébuleuse violette et profondeur grunge" },
 };
 
 function getPreset(id: ThemeId): AppTheme {
@@ -811,7 +850,7 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street";
+type ThemePackId = "neons" | "soft" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street" | "prestige" | "abstract";
 type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
 const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
@@ -822,6 +861,8 @@ const THEME_PACKS: ThemePack[] = [
   { id: "graffiti", ids: GRAFFITIS, label: "GRAFFITI", subtitle: "Murs, tags et explosions urbaines très visuelles", colors: ["#56E9FF", "#FF4D73", "#B98AFF", "#F6F7FB"], premium: true },
   { id: "arcade", ids: ARCADES, label: "ARCADE", subtitle: "Pixels, néons et écrans rétro-futuristes", colors: ["#FF5AD7", "#39F2FF", "#B95BFF", "#F1F768"], premium: true },
   { id: "street", ids: STREETS, label: "STREET", subtitle: "Asphalte, street art et matières urbaines colorées", colors: ["#FFA34B", "#4DE7FF", "#FFD05D", "#FF7060"], premium: true },
+  { id: "prestige", ids: PRESTIGES, label: "PRESTIGE", subtitle: "Or, pierres précieuses et finitions luxueuses — un thème par image", colors: ["#FFD768", "#46D49D", "#4D7BFF", "#FF7DC4"], premium: true },
+  { id: "abstract", ids: ABSTRACTS, label: "ABSTRAIT", subtitle: "Textures artistiques, grunge et couleurs intenses — un thème par image", colors: ["#FF8C37", "#B55CFF", "#43E3C2", "#E8F1FF"], premium: true },
 ];
 
 function ThemePreviewBlock({
