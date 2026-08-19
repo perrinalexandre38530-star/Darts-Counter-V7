@@ -6,28 +6,22 @@ import { detailedConfigurationText, detailedRulesText } from "./AwenaDetailedKno
 import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
 import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
 import { answerAwenaScreenQuestion } from "./AwenaScreenKnowledge";
-import { answerAwenaAppAtlas, awenaAtlasCount } from "./AwenaAppAtlas";
+import { answerAwenaAppAtlas } from "./AwenaAppAtlas";
 import { answerAwenaLiveScreenQuestion, visibleConfigurationAppendix } from "./AwenaLiveScreen";
-import { answerAwenaRegisteredHelp, awenaRegisteredHelpCount, getAwenaHelpText } from "./AwenaHelpRegistry";
-import { answerAwenaSportsKnowledge, awenaSportsKnowledgeCount } from "./AwenaSportsKnowledge";
-import { answerAwenaDeepKnowledge, awenaDeepKnowledgeCount } from "./AwenaDeepKnowledge";
-import { answerAwenaRouteAtlas, awenaRouteAtlasCount } from "./AwenaRouteAtlas";
-import { answerAwenaAdvancedEncyclopedia, awenaAdvancedEncyclopediaCount } from "./AwenaAdvancedEncyclopedia";
-import { answerAwenaMasterEncyclopedia, awenaMasterDartsCount, awenaMasterStaticCount } from "./AwenaMasterEncyclopedia";
-import { answerAwenaSourceAtlas, awenaSourceAtlasCount, awenaSourceFactsCount } from "./AwenaSourceAtlas";
-import { answerAwenaExpertReference, awenaExpertReferenceCount } from "./AwenaExpertReference";
-import { answerAwenaOmniKnowledge, awenaOmniKnowledgeCount } from "./AwenaOmniKnowledge";
-import { answerAwenaUltraLexicon, awenaUltraLexiconCount } from "./AwenaUltraLexicon";
-import { answerAwenaProceduralAcademy, awenaProceduralAliasCount, awenaProceduralCount, awenaProceduralStepCount, awenaProceduralTroubleshootingCount } from "./AwenaProceduralAcademy";
-import { answerAwenaGuidePro, awenaGuideProAliasCount, awenaGuideProCount, awenaGuideProDomainCount } from "./AwenaGuidePro";
-import { answerAwenaMasterKnowledgeV89, awenaMasterKnowledgeV89AliasCount, awenaMasterKnowledgeV89Count, awenaMasterKnowledgeV89DomainCount } from "./AwenaMasterKnowledgeV89";
-import { answerAwenaExpertCompanionV90, awenaExpertCompanionV90AliasCount, awenaExpertCompanionV90Count, awenaExpertCompanionV90DomainCount } from "./AwenaExpertCompanionV90";
-import { answerAwenaDiagnosticV90, awenaDiagnosticV90AliasCount, awenaDiagnosticV90CheckCount, awenaDiagnosticV90Count, awenaDiagnosticV90FixCount } from "./AwenaDiagnosticV90";
-import { answerAwenaGrandLibraryV91, awenaGrandLibraryV91AliasCount, awenaGrandLibraryV91Count, awenaGrandLibraryV91DomainCount } from "./AwenaGrandLibraryV91";
-import { answerAwenaComparisonV91, awenaComparisonV91AliasCount, awenaComparisonV91Count } from "./AwenaComparisonV91";
-import { answerAwenaErrorLexiconV91, awenaErrorLexiconV91AliasCount, awenaErrorLexiconV91CheckCount, awenaErrorLexiconV91Count } from "./AwenaErrorLexiconV91";
-import { answerAwenaUniversalGuide, awenaUniversalGuideSourceRouteCount } from "./AwenaUniversalGuide";
-import { answerAwenaKnowledgeTool, AWENA_KNOWLEDGE_TOOL_COUNT } from "./AwenaKnowledgeTools";
+import { answerAwenaRegisteredHelp, getAwenaHelpText } from "./AwenaHelpRegistry";
+import { answerAwenaSportsKnowledge } from "./AwenaSportsKnowledge";
+import { answerAwenaDeepKnowledge } from "./AwenaDeepKnowledge";
+import { answerAwenaRouteAtlas } from "./AwenaRouteAtlas";
+import { answerAwenaAdvancedEncyclopedia } from "./AwenaAdvancedEncyclopedia";
+import { answerAwenaMasterEncyclopedia } from "./AwenaMasterEncyclopedia";
+import { answerAwenaSourceAtlas } from "./AwenaSourceAtlas";
+import { answerAwenaExpertReference } from "./AwenaExpertReference";
+import { answerAwenaOmniKnowledge } from "./AwenaOmniKnowledge";
+import { answerAwenaUltraLexicon } from "./AwenaUltraLexicon";
+import { answerAwenaProceduralAcademy } from "./AwenaProceduralAcademy";
+import { answerAwenaUserGuideV92, awenaUserGuideV92Count, awenaUserGuideV92StepCount } from "./AwenaUserGuideV92";
+import { answerAwenaUniversalGuide } from "./AwenaUniversalGuide";
+import { answerAwenaKnowledgeTool } from "./AwenaKnowledgeTools";
 
 function normalize(text: string) {
   return String(text || "")
@@ -103,15 +97,22 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   if (/qui es tu|qui est awena|ton role|que peux tu faire|a quoi sers tu/.test(q)) {
     return {
       text: `## QUI JE SUIS
-Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
+Je suis **Awéna**, le guide IA intégré à MULTISPORTS SCORING.
 
-## CE QUE JE CONNAIS
-Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${awenaUltraLexiconCount()} entrées Ultra Lexicon supplémentaires**, **${awenaProceduralCount()} tutoriels procéduraux**, **${awenaProceduralAliasCount()} formulations comprises**, **${awenaProceduralStepCount()} étapes guidées**, **${awenaProceduralTroubleshootingCount()} branches de dépannage**, **${awenaGuideProCount()} dossiers Guide Pro**, **${awenaGuideProAliasCount()} formulations techniques**, **${awenaGuideProDomainCount()} domaines Guide Pro**, **${awenaMasterKnowledgeV89Count()} dossiers Master Knowledge V8.9**, **${awenaMasterKnowledgeV89AliasCount()} formulations V8.9**, **${awenaMasterKnowledgeV89DomainCount()} domaines V8.9**, **${awenaExpertCompanionV90Count()} dossiers Expert Companion V9.0**, **${awenaExpertCompanionV90AliasCount()} formulations V9.0**, **${awenaExpertCompanionV90DomainCount()} domaines V9.0**, **${awenaDiagnosticV90Count()} diagnostics guidés V9.0**, **${awenaDiagnosticV90AliasCount()} formulations de panne**, **${awenaDiagnosticV90CheckCount()} vérifications ordonnées** et **${awenaDiagnosticV90FixCount()} pistes de correction**, **${awenaGrandLibraryV91Count()} dossiers Grand Library V9.1**, **${awenaGrandLibraryV91AliasCount()} formulations V9.1**, **${awenaGrandLibraryV91DomainCount()} domaines V9.1**, **${awenaComparisonV91Count()} comparaisons guidées**, **${awenaComparisonV91AliasCount()} formulations de comparaison**, **${awenaErrorLexiconV91Count()} erreurs/symptômes expliqués**, **${awenaErrorLexiconV91AliasCount()} formulations d’erreur** et **${awenaErrorLexiconV91CheckCount()} vérifications de diagnostic V9.1**, un guide universel alimenté par **${awenaUniversalGuideSourceRouteCount()} routes d’écrans sourcées**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
+## MON RÔLE
+Je suis là pour t'expliquer **comment utiliser l'application**, du geste le plus simple jusqu'aux opérations les plus complexes.
 
-## CE QUE JE PEUX FAIRE
-Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
+Je peux notamment :
+- t'indiquer **où aller et quoi appuyer** ;
+- t'expliquer un écran, une option, un sport ou un mode ;
+- te guider **étape par étape** pour X01, Cast, Viewer, caméra, sauvegardes, synchronisation, compétitions, profils, Stats, Online et Réglages ;
+- te dire **ce que tu dois voir à l'écran** pour vérifier qu'une étape a réussi ;
+- t'aider quand une fonction ne marche pas, en commençant par les vérifications les plus simples et les plus sûres ;
+- répondre aux questions de règles, stratégie et statistiques des sports de l'application.
 
-> Si une règle, une option ou une donnée n'existe pas dans l'application, je dois le dire plutôt que l'inventer.`,
+Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pratiques** et **${awenaUserGuideV92StepCount()} étapes utilisateur** dédiées au fonctionnement réel de l'application.
+
+> Je ne suis pas un manuel de programmation : je t'explique l'application du point de vue de la personne qui l'utilise.`,
       modeId: mode?.id || context.mode || null,
     };
   }
@@ -140,24 +141,14 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   );
   if (proceduralReply) return proceduralReply;
 
-  // V9.0 Expert Companion : diagnostics multi-causes avec ordre de vérification,
-  // corrections progressives et précautions. Cette couche mémorise le problème
-  // pour les relances courtes : « pourquoi ? », « par quoi commencer ? », etc.
-  const diagnosticV90Reply = answerAwenaDiagnosticV90(
+  // V9.2 Guide Utilisateur : priorité aux explications du fonctionnement réel
+  // de l'application, formulées depuis le point de vue de l'utilisateur.
+  const userGuideV92Reply = answerAwenaUserGuideV92(
     question,
     context,
     String(context.extra?.awenaKnowledgeTopic || ""),
   );
-  if (diagnosticV90Reply) return diagnosticV90Reply;
-
-  // V9.0 Expert Companion : vocabulaire technique et sportif supplémentaire,
-  // avec réponses graduées simple -> approfondie -> pratique -> diagnostic.
-  const expertV90Reply = answerAwenaExpertCompanionV90(
-    question,
-    context,
-    String(context.extra?.awenaKnowledgeTopic || ""),
-  );
-  if (expertV90Reply) return expertV90Reply;
+  if (userGuideV92Reply) return userGuideV92Reply;
 
   // V8.8 Guide IA Pro : seconde couche procédurale universelle. Quand aucun
   // tutoriel spécialisé V8.7 ne correspond, elle construit un guide contextualisé
@@ -168,26 +159,6 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
     String(context.extra?.awenaKnowledgeTopic || ""),
   );
   if (universalGuideReply) return universalGuideReply;
-
-  // V8.8 Encyclopédie technique adaptative : définition courte, explication
-  // approfondie, usage pratique ou diagnostic selon la formulation. Elle garde
-  // le sujet en mémoire pour « plus de détails », « pourquoi ? », « comment ? ».
-  const guideProReply = answerAwenaGuidePro(
-    question,
-    context,
-    String(context.extra?.awenaKnowledgeTopic || ""),
-  );
-  if (guideProReply) return guideProReply;
-
-  // V8.9 Master Knowledge : couche technique et encyclopédique étendue.
-  // Elle couvre Android/Google Play, réseau, cloud, stockage, sécurité,
-  // publicité, billing, performance, statistiques et vocabulaire sportif.
-  const masterV89Reply = answerAwenaMasterKnowledgeV89(
-    question,
-    context,
-    String(context.extra?.awenaKnowledgeTopic || ""),
-  );
-  if (masterV89Reply) return masterV89Reply;
 
   // Questions générales et vocabulaire de l'application.
   // Cette couche passe AVANT la configuration du mode actif pour éviter par
@@ -215,6 +186,17 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   // réellement configurés dans MULTISPORTS SCORING.
   const expertReply = answerAwenaExpertReference(question, context, rememberedKnowledgeTopic);
   if (expertReply) return expertReply;
+
+  // Awéna est un guide d'utilisation, pas un assistant de développement.
+  // Les termes internes ne sont pas expliqués pour eux-mêmes ; on ramène la
+  // discussion vers le symptôme ou la fonction visible par l'utilisateur.
+  const developerOnlyQuestion = /\b(react|typescript|javascript|useeffect|hook|gradle|r8|proguard|capacitor|webview|indexeddb|localstorage|service worker|cors|tls|dns|stack trace|logcat|source code|code source|architecture logicielle)\b/.test(q);
+  if (developerOnlyQuestion) {
+    return {
+      text: `Je suis conçue pour t'aider à **utiliser MULTISPORTS SCORING**, pas pour expliquer son code interne.\n\nDécris-moi plutôt ce que tu veux faire ou ce que tu vois à l'écran — par exemple **« mes profils sont lents »**, **« Viewer ne se met plus à jour »**, **« comment sauvegarder mes données ? »** ou **« la caméra ne détecte pas la cible »** — et je te guiderai étape par étape.`,
+      modeId: context.mode || null,
+    };
+  }
 
   // V8.6 Ultra Lexicon : vocabulaire sportif, technique, statistiques, architecture
   // et nouvelles notions de commande vocale. Les termes très précis passent

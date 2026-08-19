@@ -82,7 +82,7 @@
     "admob:fullscreen:check": "node ./tools/admob-release-check.mjs --require-fullscreen",
     "admob:fullscreen:set": "node ./tools/set-admob-fullscreen-ids.mjs",
     "test:admob-release-gate": "node ./tools/test-admob-release-gate-v80.mjs",
-    "test:awena:v91": "node tools/test-awena-v91-grand-library.mjs"
+    "test:awena:v92": "node tools/test-awena-v92-user-guide.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

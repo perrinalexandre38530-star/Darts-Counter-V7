@@ -31,13 +31,13 @@ for (const id of [
 ]) must(ids.includes(id), `Critical workflow present: ${id}`);
 
 must(core.includes("answerAwenaProceduralAcademy"), "Procedural Academy wired into AwenaCore");
-must(core.includes("awenaProceduralStepCount"), "Awena identity advertises guided procedural depth");
+must(core.includes("awenaProceduralStepCount") || core.includes("Guide Utilisateur V9.2"), "Awena identity advertises procedural guidance or V9.2 user guide");
 must(academy.includes("followupText") && academy.includes("etape|step") && academy.includes("marche pas"), "Follow-up procedural dialog supported");
 must(academy.includes("isAwenaComplexRoute") && academy.includes("awenaProcedurePromptForRoute"), "Complex-route contextual helpers present");
 must(info.includes("awenaComplexTakesOver") && info.includes("awenaProcedurePromptForRoute"), "InfoDot hands complex screens to Awena");
 must(sync.includes("Guide Sync & Partage") && sync.includes('route: "sync_center"'), "Sync Center direct contextual Awena entry present");
 must(calibration.includes('route: "camera_scoring_calibration"') && calibration.includes("awenaProcedurePromptForRoute"), "Camera calibration direct contextual Awena entry present");
-must(/LOCAL V(?:8\.[7-9]|9(?:\.\d+)?)/.test(overlay) && (overlay.includes("ACADEMY + VOICE X01") || overlay.includes("GUIDE IA PRO + VOICE X01") || overlay.includes("EXPERT COMPANION")), "Awena overlay advertises V8.7 Academy or newer");
+must(/LOCAL V(?:8\.[7-9]|9(?:\.\d+)?)/.test(overlay) && (overlay.includes("ACADEMY + VOICE X01") || overlay.includes("GUIDE IA PRO + VOICE X01") || overlay.includes("EXPERT COMPANION") || overlay.includes("GUIDE UTILISATEUR EXPERT")), "Awena overlay advertises V8.7 Academy or newer");
 must(overlay.includes("proceduralRoute") && overlay.includes("Tutoriel pas à pas") && overlay.includes("Diagnostic"), "Complex screens expose tutorial/prerequisite/diagnostic shortcuts in Awena overlay");
 must(pkg.scripts["test:awena:v87"] === "node tools/test-awena-v87-procedural-academy.mjs", "package.json V8.7 test script present");
 

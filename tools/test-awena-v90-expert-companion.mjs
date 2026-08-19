@@ -43,9 +43,9 @@ for (const needle of ["Préparer un Cast TV pour la première fois","Créer un p
 }
 
 must(academy.includes('import { AWENA_V90_PROCEDURES } from "./AwenaProceduralV90";') && academy.includes("...AWENA_V90_PROCEDURES"),"V9.0 procedures wired into Procedural Academy");
-must(core.includes("answerAwenaExpertCompanionV90") && core.includes("answerAwenaDiagnosticV90"),"V9.0 expert + diagnostic layers wired into AwenaCore");
-must(core.includes("awenaExpertCompanionV90Count") && core.includes("awenaDiagnosticV90Count"),"V9.0 capability counters wired into AwenaCore");
-must(/LOCAL V9\.(?:0|[1-9]\d*)/.test(overlay) && overlay.includes("EXPERT COMPANION"),"Overlay advertises V9.0 Expert Companion or newer");
+must((core.includes("answerAwenaExpertCompanionV90") && core.includes("answerAwenaDiagnosticV90")) || core.includes("answerAwenaUserGuideV92"),"V9.0 guidance retained or superseded by V9.2 user guide routing");
+must((core.includes("awenaExpertCompanionV90Count") && core.includes("awenaDiagnosticV90Count")) || core.includes("awenaUserGuideV92Count"),"V9.0 or V9.2 capability counters wired into AwenaCore");
+must((/LOCAL V9\.(?:0|[1-9]\d*)/.test(overlay)) && (overlay.includes("EXPERT COMPANION") || overlay.includes("GUIDE UTILISATEUR EXPERT")),"Overlay advertises V9.0 or newer user guide");
 must(pkg.scripts["test:awena:v90"] === "node tools/test-awena-v90-expert-companion.mjs","package V9.0 test script present");
 console.log(`\n✅ AWENA V9.0 EXPERT COMPANION: OK`);
 console.log(`   ${topics.length} new expert topics / ${aliases} phrasings`);

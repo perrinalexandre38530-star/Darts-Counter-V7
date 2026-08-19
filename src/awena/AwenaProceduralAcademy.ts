@@ -12,6 +12,15 @@ const STOP = new Set(["a","au","aux","avec","ce","ces","cette","de","des","du","
 function norm(value: string) { return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’']/g, " ").replace(/[_/\\-]+/g, " ").replace(/[^a-z0-9%+\s]/g, " ").replace(/\s+/g, " ").trim(); }
 function tokens(value: string) { return norm(value).split(" ").filter((token) => token.length > 1 && !STOP.has(token)); }
 
+const USER_FACING_IMPORTED_DOMAINS = new Set([
+  "account", "ads", "billing", "competition", "data", "settings", "stats", "x01",
+  "app", "camera", "ux", "screens", "online", "babyfoot", "darts", "dice",
+  "molkky", "monetization", "petanque", "pingpong", "voice", "ui", "diagnostic"
+]);
+function userFacingImportedProcedure(entry: AwenaProcedureEntry) {
+  return USER_FACING_IMPORTED_DOMAINS.has(String(entry.domain || "").toLowerCase());
+}
+
 const PROCEDURES: AwenaProcedureEntry[] = [
   {
     id: "cast-start", domain: "screens", title: "Lancer un Cast TV",
@@ -1298,9 +1307,9 @@ const PROCEDURES: AwenaProcedureEntry[] = [
     warnings: [],
     related: ["Liste des modes"],
   },
-  ...AWENA_V89_PROCEDURES,
-  ...AWENA_V90_PROCEDURES,
-  ...AWENA_V91_PROCEDURES,
+  ...AWENA_V89_PROCEDURES.filter(userFacingImportedProcedure),
+  ...AWENA_V90_PROCEDURES.filter(userFacingImportedProcedure),
+  ...AWENA_V91_PROCEDURES.filter(userFacingImportedProcedure),
 ];
 
 
