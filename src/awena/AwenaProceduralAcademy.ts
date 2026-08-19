@@ -1,6 +1,7 @@
 import type { AwenaAction, AwenaReply, AwenaRuntimeContext } from "./awena.types";
 import { AWENA_V89_PROCEDURES } from "./AwenaProceduralV89";
 import { AWENA_V90_PROCEDURES } from "./AwenaProceduralV90";
+import { AWENA_V91_PROCEDURES } from "./AwenaProceduralV91";
 
 export type AwenaProcedureEntry = {
   id: string; domain: string; title: string; aliases: string[]; route?: string;
@@ -1299,6 +1300,7 @@ const PROCEDURES: AwenaProcedureEntry[] = [
   },
   ...AWENA_V89_PROCEDURES,
   ...AWENA_V90_PROCEDURES,
+  ...AWENA_V91_PROCEDURES,
 ];
 
 

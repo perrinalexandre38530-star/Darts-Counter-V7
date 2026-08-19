@@ -16,6 +16,7 @@ export type ThemeId =
   | "blueNight"
   | "blueOcean"
   | "limeYellow"
+  | "citrusVolt"
   | "sage"
   | "skyBlue"
   | "darkTitanium"
@@ -318,6 +319,34 @@ export const THEMES: AppTheme[] = [
     borderSoft: "rgba(177,219,7,0.35)",
     success: "#4CD964",
     danger: "#FF4A4A",
+  },
+  {
+    id: "citrusVolt",
+    name: "Citrus Volt",
+    primary: "#D8F26B",
+    bg: "#071009",
+    card: "#111811",
+    text: "#F7F9EE",
+    textSoft: "rgba(230,238,205,.84)",
+    accent1: "#D8F26B",
+    accent2: "#E7BE6A",
+    borderSoft: "rgba(216,242,107,.30)",
+    success: "#78E38F",
+    danger: "#FF715F",
+    pageBackground: "radial-gradient(820px 440px at 50% -12%, rgba(216,242,107,.18), transparent 58%), linear-gradient(180deg, rgba(4,9,8,.40), rgba(4,9,8,.74)), url(/theme-textures/citrus-volt-page.webp) center/cover fixed, linear-gradient(180deg,#071009 0%,#060C0A 55%,#030507 100%)",
+    cardBackground: "linear-gradient(145deg, rgba(9,15,12,.72), rgba(9,15,12,.82)), url(/theme-textures/citrus-volt-card.webp) center/cover no-repeat",
+    ambientOverlay: "radial-gradient(circle at 18% 18%, rgba(216,242,107,.16), transparent 20%), radial-gradient(circle at 84% 20%, rgba(231,190,106,.14), transparent 24%), linear-gradient(110deg, rgba(255,255,255,.05), transparent 24%, transparent 72%, rgba(255,255,255,.04) 100%), url(/theme-textures/citrus-volt-ambient.webp) center/cover no-repeat",
+    ambientOpacity: 0.09,
+    ambientAnimation: "drift",
+    textureOverlay: "linear-gradient(126deg, rgba(255,255,255,.05), transparent 28%, rgba(231,190,106,.09) 72%, rgba(11,22,14,.22) 100%), url(/theme-textures/citrus-volt-overlay.webp) center/cover no-repeat",
+    textureOpacity: 0.24,
+    textureBlendMode: "screen",
+    surfaceSheen: "linear-gradient(112deg, transparent 10%, rgba(255,255,255,.16) 30%, transparent 44%), radial-gradient(circle at 80% 18%, rgba(231,190,106,.18), transparent 16%)",
+    surfaceShadow: "0 22px 48px rgba(0,0,0,.68), 0 0 28px rgba(216,242,107,.10), inset 0 1px 0 rgba(255,255,255,.10)",
+    navBackground: "linear-gradient(180deg, rgba(11,17,13,.97), rgba(6,10,8,.995))",
+    buttonBackground: "linear-gradient(135deg, #EEF6B1 0%, #D8F26B 38%, #A7C645 68%, #E7BE6A 100%)",
+    frameOverlay: "url(/theme-textures/frame-emerald.webp) center/100% 100% no-repeat",
+    frameOpacity: 0.84,
   },
   {
     id: "sage",

@@ -159,7 +159,7 @@ type Props = { go?: (tab: any, params?: any) => void; params?: any };
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 
 const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "orange", "white"];
-const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
+const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "citrusVolt", "sage", "skyBlue"];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
 const FACTORY: ThemeId[] = [...FACTORY_THEME_IDS];
 const PUBS: ThemeId[] = [...PUB_THEME_IDS];
@@ -183,6 +183,7 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   blueNight: { defaultLabel: "Bleu nuit", defaultDesc: "Fond sombre + flash bleu clair" },
   blueOcean: { defaultLabel: "Bleu océan", defaultDesc: "Bleu naturel océan / ciel" },
   limeYellow: { defaultLabel: "Vert jaune", defaultDesc: "Couleur lime hyper flashy" },
+  citrusVolt: { defaultLabel: "Citrus Volt", defaultDesc: "Marbre vert profond, touches olive et veines dorées" },
   sage: { defaultLabel: "Vert sauge", defaultDesc: "Tons verts naturels et doux" },
   skyBlue: { defaultLabel: "Bleu pastel", defaultDesc: "Bleu très doux et lumineux" },
 
@@ -4314,10 +4315,14 @@ export function Settings({ go, params }: Props) {
     return getNasReportLines(kind, summary, res).join("\n");
   }
 
+  const themeBackActionRef = React.useRef<(() => boolean) | null>(null);
+
   function ThemeSection() {
     const [selectedPackId, setSelectedPackId] = React.useState<ThemePackId | null>(null);
     const [previewThemeId, setPreviewThemeId] = React.useState<ThemeId | null>(null);
     const [pickerOpen, setPickerOpen] = React.useState(false);
+    const [packCarouselIndex, setPackCarouselIndex] = React.useState(0);
+    const [selectedThemeIndex, setSelectedThemeIndex] = React.useState(0);
     const [pickerPackId, setPickerPackId] = React.useState<ThemePackId | null>(null);
     const [entitlementRevision, setEntitlementRevision] = React.useState(0);
 
@@ -4336,10 +4341,14 @@ export function Settings({ go, params }: Props) {
       setTab("shop");
     };
 
-    const openPack = (packId: ThemePackId) => {
-      const pack = THEME_PACKS.find((entry) => entry.id === packId) || null;
+    const openPack = (packId: ThemePackId, themeId?: ThemeId | null) => {
+      const packIndex = Math.max(0, THEME_PACKS.findIndex((entry) => entry.id === packId));
+      const pack = THEME_PACKS[packIndex] || null;
+      const resolvedThemeId = themeId && pack?.ids.includes(themeId) ? themeId : (previewThemeId && pack?.ids.includes(previewThemeId) ? previewThemeId : (pack?.ids[0] || null));
+      setPackCarouselIndex(packIndex);
       setSelectedPackId(packId);
-      setPreviewThemeId(pack?.ids[0] || null);
+      setPreviewThemeId(resolvedThemeId);
+      setSelectedThemeIndex(Math.max(0, pack?.ids.indexOf(resolvedThemeId as ThemeId) ?? 0));
     };
 
     const applyTheme = (id: ThemeId) => {
@@ -4348,13 +4357,25 @@ export function Settings({ go, params }: Props) {
       applyThemePreference(id);
     };
 
+    React.useEffect(() => {
+      const callback = pickerOpen
+        ? () => { setPickerOpen(false); return true; }
+        : selectedPackId
+        ? () => { setSelectedPackId(null); return true; }
+        : null;
+      themeBackActionRef.current = callback;
+      return () => {
+        if (themeBackActionRef.current === callback) themeBackActionRef.current = null;
+      };
+    }, [pickerOpen, selectedPackId]);
+
     const packCard = (pack: ThemePack) => {
       const locked = packLocked(pack);
       return (
         <button
           key={pack.id}
           type="button"
-          onClick={() => openPack(pack.id)}
+          onClick={() => openPack(pack.id, pack.ids[0] || null)}
           style={{
             minHeight: pack.premium ? 96 : 86,
             borderRadius: 17,
@@ -4423,17 +4444,47 @@ export function Settings({ go, params }: Props) {
         <div style={{ marginTop: 14 }}>
           {!selectedPack ? (
             <>
-              <div style={{ marginBottom: 8, color: theme.textSoft, fontSize: 10, textTransform: "uppercase", fontWeight: 950, letterSpacing: .75 }}>PACKS DE THÈMES</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 9 }}>
-                {THEME_PACKS.map(packCard)}
+              <div style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ color: theme.textSoft, fontSize: 10, textTransform: "uppercase", fontWeight: 950, letterSpacing: .75 }}>PACKS DE THÈMES</div>
+                <div style={{ color: theme.textSoft, fontSize: 9.5, fontWeight: 850 }}>{packCarouselIndex + 1} / {THEME_PACKS.length}</div>
               </div>
+              <SettingsLoopCarousel
+                items={THEME_PACKS}
+                theme={theme}
+                itemWidth={276}
+                gap={10}
+                initialIndex={packCarouselIndex}
+                ariaLabel="Carrousel des packs de thèmes"
+                onActiveIndexChange={(index) => setPackCarouselIndex(index)}
+                renderItem={(pack: ThemePack) => packCard(pack)}
+              />
+              <button
+                type="button"
+                onClick={() => { const currentPack = THEME_PACKS[packCarouselIndex] || THEME_PACKS[0]; if (currentPack) openPack(currentPack.id, currentPack.ids[0] || null); }}
+                style={{
+                  width: "100%",
+                  minHeight: 40,
+                  marginTop: 10,
+                  borderRadius: 13,
+                  border: `1px solid ${theme.primary}66`,
+                  background: `${theme.primary}16`,
+                  color: theme.primary,
+                  fontSize: 10.5,
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                  boxShadow: `0 0 16px ${theme.primary}20`,
+                }}
+              >
+                OUVRIR LE PACK SÉLECTIONNÉ
+              </button>
             </>
           ) : (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                <button type="button" onClick={() => { setSelectedPackId(null); setPreviewThemeId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
+                <button type="button" onClick={() => { setSelectedPackId(null); }} style={{ border: "none", background: "transparent", color: theme.primary, fontSize: 10.5, fontWeight: 950, cursor: "pointer", padding: 0 }}>← PACKS</button>
                 <div style={{ color: selectedPack.premium ? selectedPack.colors[0] : theme.textSoft, fontSize: 10, fontWeight: 900 }}>{selectedPack.label}{selectedPack.premium && !premiumThemesUnlocked ? " · 🔒 BOUTIQUE" : ""}</div>
               </div>
+              <div style={{ marginBottom: 7, color: theme.textSoft, fontSize: 9.2, fontWeight: 850, textAlign: "center", letterSpacing: .35 }}>THÈME {Math.min(selectedPack.ids.length, selectedThemeIndex + 1)} / {selectedPack.ids.length} · Défile thème par thème</div>
               <SettingsLoopCarousel
                 items={selectedPack.ids}
                 theme={theme}
@@ -4442,6 +4493,7 @@ export function Settings({ go, params }: Props) {
                 initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
                 ariaLabel="Carrousel de thèmes"
                 onActiveIndexChange={(index) => {
+                  setSelectedThemeIndex(index);
                   const id = selectedPack.ids[index];
                   if (id) setPreviewThemeId(id);
                 }}
@@ -4505,7 +4557,7 @@ export function Settings({ go, params }: Props) {
                   {THEME_PACKS.map((pack) => {
                     const locked = packLocked(pack);
                     return (
-                      <button key={pack.id} type="button" onClick={() => setPickerPackId(pack.id)} style={{ minHeight: 62, borderRadius: 13, border: `1px solid ${pickerPackId === pack.id ? pack.colors[0] : theme.borderSoft}`, background: `linear-gradient(135deg,${pack.colors[0]}20,rgba(255,255,255,.025))`, color: pickerPackId === pack.id ? pack.colors[0] : theme.text, fontSize: 9.5, fontWeight: 950, cursor: "pointer", padding: 8, position: "relative" }}>
+                      <button key={pack.id} type="button" onClick={() => { setPickerPackId(pack.id); setPackCarouselIndex(Math.max(0, THEME_PACKS.findIndex((entry) => entry.id === pack.id))); }} style={{ minHeight: 62, borderRadius: 13, border: `1px solid ${pickerPackId === pack.id ? pack.colors[0] : theme.borderSoft}`, background: `linear-gradient(135deg,${pack.colors[0]}20,rgba(255,255,255,.025))`, color: pickerPackId === pack.id ? pack.colors[0] : theme.text, fontSize: 9.5, fontWeight: 950, cursor: "pointer", padding: 8, position: "relative" }}>
                         {pack.label}{locked ? " · 🔒" : ""}
                       </button>
                     );
@@ -4522,8 +4574,7 @@ export function Settings({ go, params }: Props) {
                           key={id}
                           type="button"
                           onClick={() => {
-                            setSelectedPackId(pickerPack.id);
-                            setPreviewThemeId(id);
+                            openPack(pickerPack.id, id);
                             if (!locked) applyThemePreference(id);
                             setPickerOpen(false);
                           }}
@@ -5498,7 +5549,7 @@ export function Settings({ go, params }: Props) {
       : tab === "awena"
       ? L("Présence, voix locale et comportement de l’assistante officielle.", "Presence, local voice and behavior of the official assistant.", "Presencia, voz local y comportamiento de la asistente oficial.")
       : tab === "theme"
-      ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
+      ? t("settings.theme.subtitle", "Choisis un pack puis fais défiler les thèmes pour personnaliser toute l’interface.")
       : tab === "lang"
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "audio"
@@ -5540,6 +5591,9 @@ export function Settings({ go, params }: Props) {
     }
     if (tab === "developer" && devSub !== "menu") {
       setDevSub("menu");
+      return;
+    }
+    if (tab === "theme" && themeBackActionRef.current?.()) {
       return;
     }
     setTab("menu");

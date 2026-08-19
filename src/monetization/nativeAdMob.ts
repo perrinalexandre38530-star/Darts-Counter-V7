@@ -15,6 +15,7 @@ export type NativeAdMobStatus = {
   productionReady: boolean;
   interstitialReady: boolean;
   rewardedReady: boolean;
+  fullMonetizationReady: boolean;
   testDeviceCount: number;
   testDevicesManagedByAdMobConsole: boolean;
   realTestUseGoogleDemoBanners: boolean;
@@ -108,6 +109,7 @@ function baseStatus() {
     productionReady: config.productionReady,
     interstitialReady: config.interstitialReady,
     rewardedReady: config.rewardedReady,
+    fullMonetizationReady: config.fullMonetizationReady,
     testDeviceCount: config.testDeviceIds.length,
     testDevicesManagedByAdMobConsole: config.testDevicesManagedByAdMobConsole,
     realTestUseGoogleDemoBanners: config.realTestUseGoogleDemoBanners,

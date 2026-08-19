@@ -328,6 +328,19 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
               </div>
               {isCapacitorNativeRuntime() && nativeStatus?.privacyOptionsRequired ? <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={{ ...button(false), width: "100%", marginTop: 8 }}>Options de confidentialité</button> : null}
 
+              <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${adMobConfig.fullMonetizationReady ? theme.primary : theme.borderSoft}`, background: adMobConfig.fullMonetizationReady ? `${theme.primary}0d` : "rgba(255,255,255,.025)", padding: 10 }}>
+                <div style={{ color: adMobConfig.fullMonetizationReady ? theme.primary : theme.text, fontWeight: 1000, fontSize: 10.5 }}>
+                  {adMobConfig.fullMonetizationReady ? "MONÉTISATION ADMOB COMPLÈTE · PRÊTE" : adMobConfig.productionReady ? "BANNIÈRES LIVE · PLEIN ÉCRAN EN ATTENTE" : "ADMOB · CONFIGURATION À VÉRIFIER"}
+                </div>
+                <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.2, lineHeight: 1.4 }}>
+                  {adMobConfig.fullMonetizationReady
+                    ? "App ID, bannières, interstitiel et rewarded utilisent des IDs réels valides du même éditeur. Le garde-fou de release peut valider la monétisation complète."
+                    : adMobConfig.productionReady
+                      ? "Les bannières réelles sont déjà prêtes. L’interstitiel et le rewarded resteront désactivés tant que leurs deux IDs AdMob réels ne sont pas renseignés."
+                      : "La configuration AdMob n’est pas encore prête pour une release publicitaire complète."}
+                </div>
+              </div>
+
               <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.primary}33`, background: `${theme.primary}08`, padding: 10 }}>
                 <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 10.5 }}>TESTS PLEIN ÉCRAN GOOGLE · AUCUN REVENU</div>
                 <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.2, lineHeight: 1.4 }}>Utilise exclusivement les IDs de démonstration officiels Google. Ces boutons servent à valider le SDK Android avant de créer les vrais blocs Interstitiel et Rewarded.</div>
@@ -341,7 +354,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
 
               <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
                 <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Détails techniques</summary>
-                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || adMobConfig.mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}<br/>Interstitiel : {nativeStatus?.interstitialReady ? "prêt" : "ID manquant"}<br/>Rewarded : {nativeStatus?.rewardedReady ? "prêt" : "ID manquant"}</div>
+                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || adMobConfig.mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}<br/>Interstitiel : {nativeStatus?.interstitialReady ? "prêt" : "ID manquant"}<br/>Rewarded : {nativeStatus?.rewardedReady ? "prêt" : "ID manquant"}<br/>Monétisation complète : {nativeStatus?.fullMonetizationReady ? "PRÊTE" : "en attente"}</div>
               </details>
             </section>
           ) : null}

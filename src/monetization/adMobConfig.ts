@@ -13,6 +13,7 @@ export type AdMobRuntimeConfig = {
   productionReady: boolean;
   interstitialReady: boolean;
   rewardedReady: boolean;
+  fullMonetizationReady: boolean;
   appIdAndroid: string;
   bannerIdAndroid: string;
   bannerIdsAndroid: Record<AdPlacement, string>;
@@ -255,6 +256,7 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
       productionReady: false,
       interstitialReady: false,
       rewardedReady: false,
+      fullMonetizationReady: false,
       appIdAndroid: GOOGLE_ANDROID_TEST_IDS.appId,
       bannerIdAndroid: GOOGLE_ANDROID_TEST_IDS.banner,
       bannerIdsAndroid: googleBanners,
@@ -287,6 +289,7 @@ export function getAdMobRuntimeConfig(): AdMobRuntimeConfig {
     productionReady: mode === "production" && realConfigurationReady,
     interstitialReady: mode === "real_test" || interstitialReady,
     rewardedReady: mode === "real_test" || rewardedReady,
+    fullMonetizationReady: mode === "production" && realConfigurationReady && interstitialReady && rewardedReady,
     appIdAndroid: real.appIdAndroid,
     bannerIdAndroid: real.bannerIdAndroid,
     bannerIdsAndroid: real.bannerIdsAndroid,

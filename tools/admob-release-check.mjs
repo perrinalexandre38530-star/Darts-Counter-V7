@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
+const requireFullscreen = process.argv.includes("--require-fullscreen") || process.env.ADMOB_REQUIRE_FULLSCREEN === "1";
 const envPath = path.join(root, ".env");
 const publicConfigPath = path.join(root, "config", "admob.public.json");
 const stringsPath = path.join(root, "android", "app", "src", "main", "res", "values", "strings.xml");
@@ -96,6 +97,7 @@ check("Mode AdMob reconnu", ["google_test", "real_test", "production"].includes(
 if (mode === "google_test") {
   const strings = fs.existsSync(stringsPath) ? fs.readFileSync(stringsPath, "utf8") : "";
   check("App ID Android Google TEST", strings.includes(GOOGLE_TEST_APP_ID), GOOGLE_TEST_APP_ID);
+  if (requireFullscreen) check("Monétisation complète réservée au mode production", false, mode);
   console.log("\nℹ️ Contrôle AdMob : mode google_test, aucune annonce ne sera monétisée.");
 } else {
   check("App ID réel valide", isAppId(appId), appId || "manquant");
@@ -110,6 +112,7 @@ if (mode === "google_test") {
   check("App ID réel injecté dans Android", !!appId && strings.includes(`<string name="admob_app_id">${appId}</string>`), appId);
 
   if (mode === "real_test") {
+    if (requireFullscreen) check("Monétisation complète réservée au mode production", false, mode);
     check("Appareil de test protégé", testDevices.length > 0 || consoleManaged, consoleManaged && testDevices.length > 0 ? `console AdMob + ${testDevices.length} appareil(s) SDK` : consoleManaged ? "déclaré dans la console AdMob" : `${testDevices.length} appareil(s) SDK`);
     check("App ID non démonstration", appId !== GOOGLE_TEST_APP_ID, appId);
     if (units.interstitial) check("Interstitiel renseigné valide", isUnitId(units.interstitial), units.interstitial);
@@ -123,6 +126,7 @@ if (mode === "google_test") {
       check("Interstitiel du même éditeur", publisher(units.interstitial) === pub, pub);
       check("Interstitiel non démonstration", !GOOGLE_TEST_UNITS.has(units.interstitial), units.interstitial);
     } else {
+      if (requireFullscreen) check("Interstitiel réel obligatoire pour la monétisation complète", false, "ID manquant");
       console.log("ℹ️ Interstitiel réel non créé : format désactivé, bannières live autorisées.");
     }
     if (units.rewarded) {
@@ -130,7 +134,11 @@ if (mode === "google_test") {
       check("Rewarded du même éditeur", publisher(units.rewarded) === pub, pub);
       check("Rewarded non démonstration", !GOOGLE_TEST_UNITS.has(units.rewarded), units.rewarded);
     } else {
+      if (requireFullscreen) check("Rewarded réel obligatoire pour la monétisation complète", false, "ID manquant");
       console.log("ℹ️ Rewarded réel non créé : format désactivé, bannières live autorisées.");
+    }
+    if (requireFullscreen && units.interstitial && units.rewarded) {
+      check("Monétisation plein écran complète", true, "interstitiel + rewarded réels");
     }
     check("App ID et bannières sans ID de démonstration Google", appId !== GOOGLE_TEST_APP_ID && [units.banner, ...placementUnits.map(([, id]) => id)].every((id) => !GOOGLE_TEST_UNITS.has(id)), "production bannières");
     check("Aucun appareil de test local dans le build production", testDevices.length === 0, `${testDevices.length} appareil(s)`);
@@ -149,3 +157,8 @@ if (failed.length) {
   process.exit(1);
 }
 console.log(`\n✅ AdMob release guard: ${checks.length}/${checks.length}`);
+if (requireFullscreen) {
+  console.log("✅ MONÉTISATION COMPLÈTE PRÊTE : bannières + interstitiel + rewarded réels validés.");
+} else if (mode === "production" && (!units.interstitial || !units.rewarded)) {
+  console.log("ℹ️ Release banner-only autorisée. Lance npm run admob:fullscreen:check le jour où les deux IDs plein écran seront créés.");
+}

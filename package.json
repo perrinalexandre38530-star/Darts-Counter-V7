@@ -24,11 +24,11 @@
     "test:storage": "npm run test:r2-backups && node ./tools/test-storage-destinations.mjs",
     "test:monetization": "node ./tools/test-monetization-regression.mjs",
     "android:bootstrap": "node ./tools/bootstrap-android-capacitor.mjs",
-    "android:sync": "npm run version:sync && npm run build && npx cap sync android && npm run android:configure-awena-translation && npm run android:configure-admob && npm run android:configure-play && npm run android:release-check && npm run version:check",
+    "android:sync": "npm run version:sync && npm run build && npx cap sync android && npm run android:configure-awena-translation && npm run android:configure-admob && npm run android:configure-play && npm run admob:release-check && npm run android:release-check && npm run version:check",
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
-    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs && node ./tools/test-admob-rewarded-pass-v79.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs && node ./tools/test-admob-rewarded-pass-v79.mjs && node ./tools/test-admob-release-gate-v80.mjs",
     "android:configure-admob": "node ./tools/configure-android-admob.mjs",
     "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
     "android:release-check": "node ./tools/android-release-check.mjs",
@@ -77,7 +77,12 @@
     "test:awena:v88": "node tools/test-awena-v88-guide-pro.mjs",
     "test:awena:v89": "node tools/test-awena-v89-master-knowledge.mjs",
     "test:admob-rewarded-pass": "node ./tools/test-admob-rewarded-pass-v79.mjs",
-    "test:awena:v90": "node tools/test-awena-v90-expert-companion.mjs"
+    "test:awena:v90": "node tools/test-awena-v90-expert-companion.mjs",
+    "admob:release-check": "node ./tools/admob-release-check.mjs",
+    "admob:fullscreen:check": "node ./tools/admob-release-check.mjs --require-fullscreen",
+    "admob:fullscreen:set": "node ./tools/set-admob-fullscreen-ids.mjs",
+    "test:admob-release-gate": "node ./tools/test-admob-release-gate-v80.mjs",
+    "test:awena:v91": "node tools/test-awena-v91-grand-library.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
