@@ -16,6 +16,8 @@ import { answerAwenaAdvancedEncyclopedia, awenaAdvancedEncyclopediaCount } from 
 import { answerAwenaMasterEncyclopedia, awenaMasterDartsCount, awenaMasterStaticCount } from "./AwenaMasterEncyclopedia";
 import { answerAwenaSourceAtlas, awenaSourceAtlasCount, awenaSourceFactsCount } from "./AwenaSourceAtlas";
 import { answerAwenaExpertReference, awenaExpertReferenceCount } from "./AwenaExpertReference";
+import { answerAwenaOmniKnowledge, awenaOmniKnowledgeCount } from "./AwenaOmniKnowledge";
+import { answerAwenaKnowledgeTool, AWENA_KNOWLEDGE_TOOL_COUNT } from "./AwenaKnowledgeTools";
 
 function normalize(text: string) {
   return String(text || "")
@@ -94,7 +96,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
+Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -130,12 +132,23 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   const atlasReply = answerAwenaAppAtlas(question, rememberedKnowledgeTopic);
   if (atlasReply) return atlasReply;
 
+  // V8.5 : outils déterministes. Ils calculent localement les questions qui
+  // ne doivent pas dépendre d'une fiche statique : score d'une volée, AVG3,
+  // taux de victoire, Best Of, ratios et probabilités simples aux dés.
+  const toolReply = answerAwenaKnowledgeTool(question, context);
+  if (toolReply) return toolReply;
+
   // V8.4 : références expertes. Cette couche répond aux questions précises
   // de culture sportive, technique, stratégie, vocabulaire et statistiques.
   // Elle sépare volontairement les règles officielles de référence des presets
   // réellement configurés dans MULTISPORTS SCORING.
   const expertReply = answerAwenaExpertReference(question, context, rememberedKnowledgeTopic);
   if (expertReply) return expertReply;
+
+  // V8.5 Omni Knowledge : 320 fiches supplémentaires à correspondance stricte.
+  // Cette couche complète V8.4 sans remplacer les règles spécifiques aux modes.
+  const omniReply = answerAwenaOmniKnowledge(question, context, rememberedKnowledgeTopic);
+  if (omniReply) return omniReply;
 
   // Encyclopédie maître. Elle croise le registre Fléchettes V74
   // (63 entrées actuellement déclarées READY, y compris les concepts encore
