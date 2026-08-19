@@ -3855,13 +3855,75 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             border: `1px solid ${primary}33`,
           }}
         >
-          <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-            <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>
                 Configuration X01
               </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <PillButton
+                  label="Guidée"
+                  active={configViewMode === "guided"}
+                  onClick={() => selectConfigViewMode("guided")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+                <PillButton
+                  label="Complète"
+                  active={configViewMode === "complete"}
+                  onClick={() => selectConfigViewMode("complete")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+              </div>
+
               <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
-                Accède à l’explication vidéo d’Awena à tout moment.
+                La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
+              </div>
+
+              <div style={{ marginTop: "auto", width: "100%" }}>
+                <div
+                  style={{
+                    position: "relative",
+                    height: 44,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    boxShadow: `0 0 16px ${primary}20`,
+                    border: `1px solid ${primary}30`,
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 760 88"
+                    preserveAspectRatio="none"
+                    style={{ display: "block", width: "100%", height: "100%" }}
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <linearGradient id="awenaExplainGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor={primary} stopOpacity="0.96" />
+                        <stop offset="55%" stopColor="#ffe09a" stopOpacity="0.96" />
+                        <stop offset="100%" stopColor="#ff9adf" stopOpacity="0.96" />
+                      </linearGradient>
+                      <mask id="awenaExplainCutoutMask">
+                        <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="white" />
+                        <text
+                          x="380"
+                          y="57"
+                          textAnchor="middle"
+                          fontSize="28"
+                          fontWeight="900"
+                          letterSpacing="1.6"
+                          fill="black"
+                          style={{ textTransform: "uppercase" }}
+                        >
+                          AWENA VOUS EXPLIQUE
+                        </text>
+                      </mask>
+                    </defs>
+                    <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="url(#awenaExplainGradient)" mask="url(#awenaExplainCutoutMask)" />
+                  </svg>
+                </div>
               </div>
             </div>
 
@@ -3873,6 +3935,7 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
               style={{
                 flex: "0 0 auto",
                 width: 98,
+                alignSelf: "stretch",
                 borderRadius: 18,
                 border: `1px solid ${primary}66`,
                 background: "linear-gradient(180deg, rgba(10,14,28,.98), rgba(6,8,18,.98))",
@@ -3950,26 +4013,6 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
                 </div>
               </div>
             </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <PillButton
-              label="Guidée"
-              active={configViewMode === "guided"}
-              onClick={() => selectConfigViewMode("guided")}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-            <PillButton
-              label="Complète"
-              active={configViewMode === "complete"}
-              onClick={() => selectConfigViewMode("complete")}
-              primary={primary}
-              primarySoft={primarySoft}
-            />
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
-            La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
           </div>
         </section>
 
