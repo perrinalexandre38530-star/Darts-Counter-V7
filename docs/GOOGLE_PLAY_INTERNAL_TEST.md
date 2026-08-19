@@ -1,7 +1,7 @@
 # MULTISPORTS SCORING — Google Play test
 
-Version de référence : **1.0.0-rc7**  
-Code Google Play : **8**
+Version de référence : **1.0.0-rc8**  
+Code Google Play : **9**
 
 ## Source unique de version
 
@@ -28,7 +28,7 @@ npm run version:check
 
 - Application : **MULTISPORTS SCORING**
 - Package : `com.multisportsscoring.app`
-- Version actuellement présente sur Google Play avant cette mise à jour : `versionCode 5`, `versionName 1.0.0-rc4`
+- Version candidate préparée dans ce projet : `versionCode 9`, `versionName 1.0.0-rc8`
 - Artefact : Android App Bundle (`.aab`)
 
 ## Construire l’AAB signé
@@ -43,12 +43,11 @@ Le résultat attendu est :
 
 Les `.aab`, `.apk`, dossiers `releases/` et clés de signature restent locaux et sont ignorés par Git.
 
-## Prochaine Release Candidate
+## Release Candidate actuelle
 
-Le prochain bundle Google Play devra utiliser un `versionCode` strictement supérieur à 3. Pour RC3 :
+Cette base est préparée pour **RC8** avec `versionCode 9`. Avant l’envoi sur Google Play, ce code doit rester strictement supérieur au plus grand `versionCode` déjà téléversé dans Play Console.
 
 ```powershell
-npm run android:version -- 4 1.0.0-rc3
 npm run version:check
 npm run android:play:aab
 ```

@@ -1045,21 +1045,20 @@ export default function KillerConfigPage(props: Props) {
                   accent={primary}
                   pageSize={9}
                   modalTitle="Choisir des joueurs"
-                  renderActions={(p: any) => {
+                  renderActions={numberAssignMode === "none" ? ((p: any) => {
                     const num = killerNumberById[p.id] ?? 20;
-                    const disableManualNumber = numberAssignMode === "throw";
                     return (
                       <div
                         onClick={(e) => e.stopPropagation()}
-                        style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center", opacity: disableManualNumber ? 0.55 : 1, pointerEvents: disableManualNumber ? "none" : "auto" }}
-                        title={disableManualNumber ? "Mode 1er lancer : le numéro sera choisi pendant la partie." : "Ajuster le numéro KILLER"}
+                        style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}
+                        title="Ajuster le numéro KILLER"
                       >
-                        <button type="button" onClick={() => { setNumberAssignMode("none"); setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 })); }} style={miniRoundBtn}>−</button>
+                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num - 1 < 1 ? 20 : num - 1 }))} style={miniRoundBtn}>−</button>
                         <div style={{ width: 40, height: 30, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#111", background: `linear-gradient(135deg, ${primary}, #ffe9a3)`, boxShadow: `0 0 14px ${primary}55` }}>{num}</div>
-                        <button type="button" onClick={() => { setNumberAssignMode("none"); setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 })); }} style={miniRoundBtn}>+</button>
+                        <button type="button" onClick={() => setKillerNumberById((prev) => uniqueKillerNumbers({ ...prev, [p.id]: num + 1 > 20 ? 1 : num + 1 }))} style={miniRoundBtn}>+</button>
                       </div>
                     );
-                  }}
+                  }) : undefined}
                 />
               </div>
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
@@ -1259,7 +1258,7 @@ export default function KillerConfigPage(props: Props) {
             </div>
 
             <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              En “Choix manuel”, les numéros affichés sous chaque joueur sont utilisés. En “1er lancer”, ils sont ignorés.
+              Les sélecteurs de numéros sous les joueurs s’affichent uniquement en “Choix manuel”. En “Numéros aléatoires” ou “1er lancer”, aucun numéro manuel n’est affiché.
             </div>
 
             {blindLocksThrow && (

@@ -1,7 +1,7 @@
-# MULTISPORTS SCORING — état Android (référence ZIP 43)
+# MULTISPORTS SCORING — état Android (référence ZIP 13 / RC8)
 
-Version de référence : **1.0.0-rc7**  
-Code Google Play : **8**
+Version de référence : **1.0.0-rc8**  
+Code Google Play : **9**
 
 ## Identité
 - App: `MULTISPORTS SCORING`
