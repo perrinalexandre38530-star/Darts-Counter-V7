@@ -19,7 +19,7 @@ must(core.includes("answerAwenaGuidePro") && core.includes("answerAwenaUniversal
 must(atlas.includes("getAwenaSourceScreensForRoute") && atlas.includes("awenaSourceRouteCount"),"SourceAtlas exposes grounded screen context");
 must(uni.includes("ÉLÉMENTS RÉELLEMENT PRÉSENTS SUR CET ÉCRAN") && uni.includes("GUIDE CONTEXTUEL"),"Universal guide is source-grounded");
 must(routes.size >= 180, `Current app route breadth detected: ${routes.size} routes`);
-must(/LOCAL V8\.(?:8|9|[1-9]\d)/.test(overlay) && overlay.includes("GUIDE IA PRO") && overlay.includes("VOICE X01"),"Overlay advertises V8.8 Guide IA Pro or newer");
+must(/LOCAL V(?:8\.(?:8|9)|9(?:\.\d+)?|[1-9]\d(?:\.\d+)?)/.test(overlay) && overlay.includes("GUIDE IA PRO") && overlay.includes("VOICE X01"),"Overlay advertises V8.8 Guide IA Pro or newer");
 must(pkg.scripts["test:awena:v88"] === "node tools/test-awena-v88-guide-pro.mjs","package V8.8 test script present");
 console.log(`\n✅ AWENA V8.8 Guide IA Pro: OK`);
 console.log(`   ${ids.length} adaptive technical topics`);

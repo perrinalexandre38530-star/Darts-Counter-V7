@@ -34,7 +34,7 @@ assert.match(overlay, /parseAwenaVoiceIntent/);
 assert.match(overlay, /voiceCommandsEnabled/);
 assert.match(overlay, /awenaVoiceSetup:\s*true/);
 assert.match(overlay, /publishAwenaVoiceTranscript/);
-assert.match(overlay, /LOCAL V8\.[6-9].*VOICE X01/);
+assert.match(overlay, /LOCAL V(?:8\.[6-9]|9(?:\.\d+)?).*VOICE X01/);
 
 assert.match(config, /voiceSetupRequested/);
 assert.match(config, /Très bien\. Je lance la configuration vocale de votre partie X01/);

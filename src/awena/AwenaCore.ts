@@ -21,6 +21,8 @@ import { answerAwenaUltraLexicon, awenaUltraLexiconCount } from "./AwenaUltraLex
 import { answerAwenaProceduralAcademy, awenaProceduralAliasCount, awenaProceduralCount, awenaProceduralStepCount, awenaProceduralTroubleshootingCount } from "./AwenaProceduralAcademy";
 import { answerAwenaGuidePro, awenaGuideProAliasCount, awenaGuideProCount, awenaGuideProDomainCount } from "./AwenaGuidePro";
 import { answerAwenaMasterKnowledgeV89, awenaMasterKnowledgeV89AliasCount, awenaMasterKnowledgeV89Count, awenaMasterKnowledgeV89DomainCount } from "./AwenaMasterKnowledgeV89";
+import { answerAwenaExpertCompanionV90, awenaExpertCompanionV90AliasCount, awenaExpertCompanionV90Count, awenaExpertCompanionV90DomainCount } from "./AwenaExpertCompanionV90";
+import { answerAwenaDiagnosticV90, awenaDiagnosticV90AliasCount, awenaDiagnosticV90CheckCount, awenaDiagnosticV90Count, awenaDiagnosticV90FixCount } from "./AwenaDiagnosticV90";
 import { answerAwenaUniversalGuide, awenaUniversalGuideSourceRouteCount } from "./AwenaUniversalGuide";
 import { answerAwenaKnowledgeTool, AWENA_KNOWLEDGE_TOOL_COUNT } from "./AwenaKnowledgeTools";
 
@@ -101,7 +103,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${awenaUltraLexiconCount()} entrées Ultra Lexicon supplémentaires**, **${awenaProceduralCount()} tutoriels procéduraux**, **${awenaProceduralAliasCount()} formulations comprises**, **${awenaProceduralStepCount()} étapes guidées**, **${awenaProceduralTroubleshootingCount()} branches de dépannage**, **${awenaGuideProCount()} dossiers Guide Pro**, **${awenaGuideProAliasCount()} formulations techniques**, **${awenaGuideProDomainCount()} domaines Guide Pro**, **${awenaMasterKnowledgeV89Count()} dossiers Master Knowledge V8.9**, **${awenaMasterKnowledgeV89AliasCount()} formulations V8.9**, **${awenaMasterKnowledgeV89DomainCount()} domaines V8.9**, un guide universel alimenté par **${awenaUniversalGuideSourceRouteCount()} routes d’écrans sourcées**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
+Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${awenaUltraLexiconCount()} entrées Ultra Lexicon supplémentaires**, **${awenaProceduralCount()} tutoriels procéduraux**, **${awenaProceduralAliasCount()} formulations comprises**, **${awenaProceduralStepCount()} étapes guidées**, **${awenaProceduralTroubleshootingCount()} branches de dépannage**, **${awenaGuideProCount()} dossiers Guide Pro**, **${awenaGuideProAliasCount()} formulations techniques**, **${awenaGuideProDomainCount()} domaines Guide Pro**, **${awenaMasterKnowledgeV89Count()} dossiers Master Knowledge V8.9**, **${awenaMasterKnowledgeV89AliasCount()} formulations V8.9**, **${awenaMasterKnowledgeV89DomainCount()} domaines V8.9**, **${awenaExpertCompanionV90Count()} dossiers Expert Companion V9.0**, **${awenaExpertCompanionV90AliasCount()} formulations V9.0**, **${awenaExpertCompanionV90DomainCount()} domaines V9.0**, **${awenaDiagnosticV90Count()} diagnostics guidés V9.0**, **${awenaDiagnosticV90AliasCount()} formulations de panne**, **${awenaDiagnosticV90CheckCount()} vérifications ordonnées** et **${awenaDiagnosticV90FixCount()} pistes de correction**, un guide universel alimenté par **${awenaUniversalGuideSourceRouteCount()} routes d’écrans sourcées**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -134,6 +136,25 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
     String(context.extra?.awenaKnowledgeTopic || ""),
   );
   if (proceduralReply) return proceduralReply;
+
+  // V9.0 Expert Companion : diagnostics multi-causes avec ordre de vérification,
+  // corrections progressives et précautions. Cette couche mémorise le problème
+  // pour les relances courtes : « pourquoi ? », « par quoi commencer ? », etc.
+  const diagnosticV90Reply = answerAwenaDiagnosticV90(
+    question,
+    context,
+    String(context.extra?.awenaKnowledgeTopic || ""),
+  );
+  if (diagnosticV90Reply) return diagnosticV90Reply;
+
+  // V9.0 Expert Companion : vocabulaire technique et sportif supplémentaire,
+  // avec réponses graduées simple -> approfondie -> pratique -> diagnostic.
+  const expertV90Reply = answerAwenaExpertCompanionV90(
+    question,
+    context,
+    String(context.extra?.awenaKnowledgeTopic || ""),
+  );
+  if (expertV90Reply) return expertV90Reply;
 
   // V8.8 Guide IA Pro : seconde couche procédurale universelle. Quand aucun
   // tutoriel spécialisé V8.7 ne correspond, elle construit un guide contextualisé

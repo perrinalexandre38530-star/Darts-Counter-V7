@@ -24,7 +24,7 @@ for (const needle of ["Google Play Console","Row Level Security","ANR","First 9 
 for (const needle of ["Générer un AAB Android propre","Mettre à jour les testeurs Google Play","Diagnostiquer des profils locaux lents","Mettre l’application à jour sans risquer ses données","Diagnostiquer Cast sur un réseau local compliqué"]) must(proc.includes(`title: \"${needle}\"`),`Critical V8.9 tutorial: ${needle}`);
 must(academy.includes("...AWENA_V89_PROCEDURES"),"V8.9 procedures wired into Procedural Academy");
 must(core.includes("answerAwenaMasterKnowledgeV89") && core.includes("awenaMasterKnowledgeV89Count"),"V8.9 Master Knowledge wired into AwenaCore");
-must(overlay.includes("LOCAL V8.9") && overlay.includes("MASTER KNOWLEDGE"),"Overlay advertises V8.9 Master Knowledge");
+must(/LOCAL V(?:8\.9|9(?:\.\d+)?|[1-9]\d(?:\.\d+)?)/.test(overlay) && overlay.includes("MASTER KNOWLEDGE"),"Overlay advertises V8.9 Master Knowledge or newer");
 must(pkg.scripts["test:awena:v89"] === "node tools/test-awena-v89-master-knowledge.mjs","package V8.9 test script present");
 console.log(`\n✅ AWENA V8.9 MASTER KNOWLEDGE: OK`);
 console.log(`   ${entries.length} new knowledge topics`);

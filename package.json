@@ -76,7 +76,8 @@
     "test:awena:v87": "node tools/test-awena-v87-procedural-academy.mjs",
     "test:awena:v88": "node tools/test-awena-v88-guide-pro.mjs",
     "test:awena:v89": "node tools/test-awena-v89-master-knowledge.mjs",
-    "test:admob-rewarded-pass": "node ./tools/test-admob-rewarded-pass-v79.mjs"
+    "test:admob-rewarded-pass": "node ./tools/test-admob-rewarded-pass-v79.mjs",
+    "test:awena:v90": "node tools/test-awena-v90-expert-companion.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

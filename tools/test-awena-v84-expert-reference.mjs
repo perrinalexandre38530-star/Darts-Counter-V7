@@ -39,6 +39,6 @@ for (const marker of [
 assert(core.includes("answerAwenaExpertReference"), "AwenaCore branche la couche ExpertReference");
 assert(core.indexOf("answerAwenaExpertReference") < core.indexOf("answerAwenaMasterEncyclopedia(question"), "couche experte prioritaire sur les réponses sportives génériques");
 assert(core.includes("awenaExpertReferenceCount()"), "Awena annonce le volume de références expertes");
-assert(/LOCAL V8\.[3-9]/.test(overlay), "badge Awena LOCAL V8.4+");
+assert(/LOCAL V(?:8\.[3-9]|9(?:\.\d+)?)/.test(overlay), "badge Awena LOCAL V8.4+");
 
 console.log("\nAWENA V8.4 — EXPERT REFERENCE: OK");
