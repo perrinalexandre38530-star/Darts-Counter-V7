@@ -4736,6 +4736,8 @@ case "babyfoot_team_edit":
               go("x01_play_v3", { fresh: Date.now() });
             }}
             go={go}
+            voiceSetupRequested={!!routeParams?.awenaVoiceSetup}
+            voiceSetupRequestId={routeParams?.awenaVoiceRequestId ?? null}
           />
         );
         break;

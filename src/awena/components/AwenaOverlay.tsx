@@ -7,6 +7,12 @@ import { awenaUi } from "../AwenaLocale";
 import { awenaTranslation } from "../AwenaTranslation";
 import type { AwenaAction, AwenaSpeechCue } from "../awena.types";
 import { hideAllInlineGoogleAds } from "../../monetization/inlineAdMob";
+import { awenaSpeechRecognition, type AwenaSpeechStatus } from "../AwenaSpeechRecognition";
+import {
+  getAwenaVoiceDialogOwner,
+  parseAwenaVoiceIntent,
+  publishAwenaVoiceTranscript,
+} from "../AwenaVoiceCommands";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
@@ -202,8 +208,10 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
   const { theme } = useTheme() as any;
   const { lang } = useLang();
   const ui = awenaUi(lang);
-  const { settings, runtime, setRuntime, messages, ask, say, stop, speechCue, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
+  const { settings, setSettings, runtime, setRuntime, messages, ask, say, stop, speechCue, panelOpen: open, openPanel, closePanel, togglePanel } = awena;
   const [input, setInput] = React.useState("");
+  const [speechStatus, setSpeechStatus] = React.useState<AwenaSpeechStatus | null>(null);
+  const voiceIntentBusyRef = React.useRef(false);
   const [busy, setBusy] = React.useState(false);
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -241,6 +249,75 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, speechCue, open]);
+
+  React.useEffect(() => {
+    return awenaSpeechRecognition.onStatus(setSpeechStatus);
+  }, []);
+
+  React.useEffect(() => {
+    const shouldListen = !!settings.enabled
+      && settings.interventionMode !== "off"
+      && !!settings.voiceCommandsEnabled
+      && !inGame;
+    if (!shouldListen) {
+      void awenaSpeechRecognition.stop();
+      return;
+    }
+    void awenaSpeechRecognition.start(String(lang || "fr"), {
+      preferOffline: settings.preferOnDeviceRecognition !== false,
+      requestPermission: false,
+    });
+    return () => { void awenaSpeechRecognition.stop(); };
+  }, [settings.enabled, settings.interventionMode, settings.voiceCommandsEnabled, settings.preferOnDeviceRecognition, lang, inGame]);
+
+  // Awena ne doit jamais interpréter sa propre voix comme une commande.
+  React.useEffect(() => {
+    if (!settings.voiceCommandsEnabled || inGame) return;
+    if (speechCue?.phase === "pending" || speechCue?.phase === "speaking") {
+      void awenaSpeechRecognition.pause();
+      return;
+    }
+    if (speechCue?.phase === "done") {
+      const timer = window.setTimeout(() => { void awenaSpeechRecognition.resume(); }, 320);
+      return () => window.clearTimeout(timer);
+    }
+  }, [speechCue?.phase, speechCue?.messageId, settings.voiceCommandsEnabled, inGame]);
+
+  React.useEffect(() => {
+    return awenaSpeechRecognition.onResult((result) => {
+      if (!result.final || !settings.voiceCommandsEnabled || inGame) return;
+      const text = String(result.text || "").trim();
+      if (!text) return;
+
+      if (getAwenaVoiceDialogOwner()) {
+        publishAwenaVoiceTranscript({ text, confidence: result.confidence ?? undefined, final: true });
+        return;
+      }
+
+      const intent = parseAwenaVoiceIntent(text);
+      if (intent.kind === "none" || voiceIntentBusyRef.current) return;
+      voiceIntentBusyRef.current = true;
+
+      void (async () => {
+        try {
+          await awenaSpeechRecognition.pause();
+          if (intent.kind === "x01-start") {
+            go?.("x01_config_v3", { awenaVoiceSetup: true, awenaVoiceRequestId: Date.now() });
+            closePanel();
+            return;
+          }
+          if (intent.kind === "ask") {
+            await ask(intent.prompt, { speak: true });
+          }
+        } finally {
+          voiceIntentBusyRef.current = false;
+          if (!getAwenaVoiceDialogOwner()) {
+            window.setTimeout(() => { void awenaSpeechRecognition.resume(); }, 420);
+          }
+        }
+      })();
+    });
+  }, [settings.voiceCommandsEnabled, inGame, ask, go, closePanel]);
 
   // Les bannières AdMob inline Android sont des vues natives superposées à la
   // WebView : un simple z-index CSS ne peut donc pas les placer derrière Awena.
@@ -296,6 +373,35 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
     <>
       {!inGame && <button
         type="button"
+        aria-label={settings.voiceCommandsEnabled ? "Désactiver les commandes vocales Awena" : "Activer les commandes vocales Awena"}
+        title={settings.voiceCommandsEnabled ? "Awena écoute son nom" : "Activer « Awena… »"}
+        onClick={() => {
+          void (async () => {
+            if (settings.voiceCommandsEnabled) {
+              setSettings((prev) => ({ ...prev, voiceCommandsEnabled: false }));
+              await awenaSpeechRecognition.stop();
+              return;
+            }
+            const granted = await awenaSpeechRecognition.requestPermission();
+            if (!granted) return;
+            setSettings((prev) => ({ ...prev, enabled: true, voiceCommandsEnabled: true }));
+          })();
+        }}
+        style={{
+          position: "fixed", right: 57, bottom: 137, zIndex: 1201,
+          width: 31, height: 31, borderRadius: "50%", padding: 0,
+          border: `1px solid ${settings.voiceCommandsEnabled ? "#36f59a" : "rgba(255,255,255,.28)"}`,
+          background: settings.voiceCommandsEnabled ? "rgba(25,91,68,.95)" : "rgba(8,10,23,.95)",
+          color: settings.voiceCommandsEnabled ? "#64ffad" : "#c6cbdb", cursor: "pointer",
+          boxShadow: settings.voiceCommandsEnabled ? "0 0 14px rgba(54,245,154,.35)" : "0 5px 15px rgba(0,0,0,.4)",
+          fontSize: 15,
+        }}
+      >🎙️</button>}
+
+      {!inGame && settings.voiceCommandsEnabled && speechStatus?.listening && <span aria-hidden="true" style={{ position: "fixed", right: 52, bottom: 161, zIndex: 1202, width: 8, height: 8, borderRadius: "50%", background: "#36f59a", boxShadow: "0 0 9px #36f59a" }} />}
+
+      {!inGame && <button
+        type="button"
         aria-label="Ouvrir Awena"
         onClick={togglePanel}
         style={{
@@ -324,7 +430,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V8.5</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V8.6 · VOICE X01</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}

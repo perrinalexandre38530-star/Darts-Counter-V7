@@ -71,7 +71,8 @@
     "test:admob-fullscreen": "node ./tools/test-admob-fullscreen-v76.mjs",
     "test:admob-diagnostics": "node ./tools/test-admob-diagnostics-v78.mjs",
     "test:awena:v84": "node ./tools/test-awena-v84-expert-reference.mjs && node ./tools/test-awena-v83-max-knowledge.mjs",
-    "test:awena:v85": "node ./tools/test-awena-v85-omni-knowledge.mjs && npm run test:awena:v84"
+    "test:awena:v85": "node ./tools/test-awena-v85-omni-knowledge.mjs && npm run test:awena:v84",
+    "test:awena:v86": "node ./tools/test-awena-v86-voice-ultra.mjs && npm run test:awena:v85"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

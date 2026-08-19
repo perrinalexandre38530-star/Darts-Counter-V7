@@ -20,6 +20,8 @@ import type { X01ConfigV3 } from "../types/x01v3";
 import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useAwenaOptional } from "../awena/AwenaProvider";
+import { AWENA_VOICE_TRANSCRIPT_EVENT, normalizeAwenaVoiceText, setAwenaVoiceDialogOwner } from "../awena/AwenaVoiceCommands";
 import ProfileAvatar from "../components/ProfileAvatar";
 import DartSetImage from "../components/DartSetImage";
 import ProfileStarRing from "../components/ProfileStarRing";
@@ -125,6 +127,9 @@ type Props = {
   onBack: () => void;
   onStart: (cfg: X01ConfigV3) => void;
   go?: (tab: any, params?: any) => void; // pour ouvrir "Créer BOT"
+  /** Déclenche le pilote de configuration X01 entièrement guidé par Awena. */
+  voiceSetupRequested?: boolean;
+  voiceSetupRequestId?: number | string | null;
 };
 
 const START_SCORES: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
@@ -2198,9 +2203,82 @@ export function SelectedParticipantsCompactBlock({
   );
 }
 
-export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
+
+type X01AwenaVoiceStep =
+  | "idle" | "participant" | "team-source" | "players" | "teams"
+  | "start-score" | "in-mode" | "out-mode" | "format-unit" | "set-format" | "leg-format"
+  | "serve" | "score-input" | "arcade" | "hits" | "game-voice" | "external" | "external-device" | "confirm";
+
+function x01VoiceNorm(value: unknown) {
+  return normalizeAwenaVoiceText(String(value || ""));
+}
+
+function x01VoiceYes(text: string) {
+  const t = x01VoiceNorm(text);
+  return /\b(oui|ouais|ok|d accord|dac|yes|yep|active|activer|garde|conserve|correct|valide|lance)\b/.test(t);
+}
+
+function x01VoiceNo(text: string) {
+  const t = x01VoiceNorm(text);
+  return /\b(non|no|desactive|desactiver|coupe|couper|sans|change|modifier)\b/.test(t);
+}
+
+function x01VoiceStartScore(text: string): 301 | 501 | 701 | 901 | null {
+  const t = x01VoiceNorm(text).replace(/\s+/g, " ");
+  if (/\b(301|trois cent un|trois cent et un)\b/.test(t)) return 301;
+  if (/\b(501|cinq cent un|cinq cent et un)\b/.test(t)) return 501;
+  if (/\b(701|sept cent un|sept cent et un)\b/.test(t)) return 701;
+  if (/\b(901|neuf cent un|neuf cent et un)\b/.test(t)) return 901;
+  return null;
+}
+
+function x01VoiceInteger(text: string): number | null {
+  const t = x01VoiceNorm(text);
+  const direct = t.match(/\b(\d{1,2})\b/);
+  if (direct) return Math.max(1, Number(direct[1]));
+  const map: Array<[RegExp, number]> = [
+    [/\b(un|une|one)\b/,1],[/\b(deux|two)\b/,2],[/\b(trois|three)\b/,3],[/\b(quatre|four)\b/,4],
+    [/\b(cinq|five)\b/,5],[/\b(six)\b/,6],[/\b(sept|seven)\b/,7],[/\b(huit|eight)\b/,8],
+    [/\b(neuf|nine)\b/,9],[/\b(dix|ten)\b/,10],[/\b(onze|eleven)\b/,11],[/\b(douze|twelve)\b/,12],
+    [/\b(treize|thirteen)\b/,13],[/\b(quatorze|fourteen)\b/,14],[/\b(quinze|fifteen)\b/,15],
+    [/\b(seize|sixteen)\b/,16],[/\b(dix sept|seventeen)\b/,17],[/\b(dix huit|eighteen)\b/,18],
+  ];
+  for (const [rx, n] of map) if (rx.test(t)) return n;
+  return null;
+}
+
+function x01VoiceVictory(text: string): { mode: MatchVictoryModeV3; target: number } | null {
+  const t = x01VoiceNorm(text);
+  const n = x01VoiceInteger(t);
+  if (!n) return null;
+  if (/\b(first to|premier a|premiere a|jusqu a|gagner)\b/.test(t)) return { mode: "first_to", target: n };
+  if (/\b(bo|best of|meilleur des|meilleure des|sur)\b/.test(t)) {
+    const odd = n % 2 === 0 ? n + 1 : n;
+    return { mode: "best_of", target: odd };
+  }
+  // Une valeur seule est interprétée comme un Best Of, cohérent avec les boutons X01.
+  return { mode: "best_of", target: n % 2 === 0 ? n + 1 : n };
+}
+
+function x01VoiceMode(text: string): InModeV3 | OutModeV3 | null {
+  const t = x01VoiceNorm(text);
+  if (/\b(master|maitre)\b/.test(t)) return "master";
+  if (/\b(double)\b/.test(t)) return "double";
+  if (/\b(simple|single|libre|straight)\b/.test(t)) return "simple";
+  return null;
+}
+
+function x01VoiceNameMatches(transcript: string, name: string) {
+  const hay = ` ${x01VoiceNorm(transcript)} `;
+  const needle = x01VoiceNorm(name);
+  if (!needle || needle.length < 2) return false;
+  return hay.includes(` ${needle} `) || (needle.length >= 5 && hay.includes(needle));
+}
+
+export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go, voiceSetupRequested = false, voiceSetupRequestId = null }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
+  const awena = useAwenaOptional();
 
   // ⚠️ Garde ces constantes de thème tout en haut du composant.
   // Les versions minifiées peuvent renommer `primary` en R1/B1/etc. ;
@@ -2604,6 +2682,11 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   });
   const [guidedStep, setGuidedStep] = React.useState<number>(0);
   const [participantMode, setParticipantMode] = React.useState<ParticipantMode>("players");
+  const [awenaVoiceSetupActive, setAwenaVoiceSetupActive] = React.useState(false);
+  const [awenaVoiceStep, setAwenaVoiceStep] = React.useState<X01AwenaVoiceStep>("idle");
+  const [awenaVoiceLastHeard, setAwenaVoiceLastHeard] = React.useState("");
+  const [awenaVoicePrompt, setAwenaVoicePrompt] = React.useState("");
+  const awenaVoiceRequestSeenRef = React.useRef<string | null>(null);
 
   const selectConfigViewMode = React.useCallback((mode: ConfigViewMode) => {
     setConfigViewMode(mode);
@@ -3175,6 +3258,353 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
     return manualTeams;
   }
 
+  // ---------------------------------------------------------------------------
+  // AWENA VOICE X01 V8.6 — dialogue de configuration guidée
+  // ---------------------------------------------------------------------------
+  const awenaVoiceSpeak = React.useCallback(async (text: string, nextStep?: X01AwenaVoiceStep) => {
+    setAwenaVoicePrompt(text);
+    if (nextStep) setAwenaVoiceStep(nextStep);
+    try { await awena?.say?.(text); } catch {}
+  }, [awena]);
+
+  const stopAwenaVoiceSetup = React.useCallback(async (message?: string) => {
+    setAwenaVoiceSetupActive(false);
+    setAwenaVoiceStep("idle");
+    setAwenaVoiceDialogOwner(null);
+    if (message) {
+      try { await awena?.say?.(message); } catch {}
+    }
+  }, [awena]);
+
+  const startAwenaVoiceSetup = React.useCallback(async () => {
+    setAwenaVoiceDialogOwner("x01-config");
+    setAwenaVoiceSetupActive(true);
+    setAwenaVoiceLastHeard("");
+    setConfigViewMode("guided");
+    setGuidedStep(0);
+    await awenaVoiceSpeak(
+      "Très bien. Je lance la configuration vocale de votre partie X01. Tu peux dire annule à tout moment. Première question : souhaites-tu jouer avec des joueurs individuels, ou avec des équipes enregistrées ?",
+      "participant",
+    );
+  }, [awenaVoiceSpeak]);
+
+  React.useEffect(() => {
+    if (!voiceSetupRequested) return;
+    const requestKey = String(voiceSetupRequestId ?? "voice-x01");
+    if (awenaVoiceRequestSeenRef.current === requestKey) return;
+    awenaVoiceRequestSeenRef.current = requestKey;
+    void startAwenaVoiceSetup();
+  }, [voiceSetupRequested, voiceSetupRequestId, startAwenaVoiceSetup]);
+
+  React.useEffect(() => {
+    return () => {
+      setAwenaVoiceDialogOwner(null);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!awenaVoiceSetupActive || typeof window === "undefined") return;
+
+    const onTranscript = (event: Event) => {
+      const detail = (event as CustomEvent<any>)?.detail || {};
+      if (detail.final === false) return;
+      const raw = String(detail.text || "").trim();
+      const text = x01VoiceNorm(raw);
+      if (!text) return;
+      setAwenaVoiceLastHeard(raw);
+
+      void (async () => {
+        if (/\b(annule|annuler|stop|arrete|arreter|abandonne|quitte)\b/.test(text)) {
+          await stopAwenaVoiceSetup("D'accord. J'annule la configuration vocale X01. Les réglages déjà choisis restent visibles à l'écran.");
+          return;
+        }
+        if (/\b(recommence|recommencer|restart|depuis le debut)\b/.test(text)) {
+          await startAwenaVoiceSetup();
+          return;
+        }
+
+        if (awenaVoiceStep === "participant") {
+          if (/\b(equipe|equipes|team|teams)\b/.test(text)) {
+            setParticipantMode("teams");
+            setMatchMode("teams");
+            setGuidedStep(0);
+            await awenaVoiceSpeak("Très bien, une partie par équipes. Pour ce pilote vocal, je peux sélectionner directement tes équipes enregistrées. Dis équipes enregistrées pour continuer. Tu peux aussi dire joueurs pour revenir en mode individuel.", "team-source");
+            return;
+          }
+          if (/\b(joueur|joueurs|profil|profils|individuel|individuels|duel|multi)\b/.test(text)) {
+            setParticipantMode("players");
+            setMatchMode(/\bmulti\b/.test(text) ? "multi" : "solo");
+            setGuidedStep(1);
+            await awenaVoiceSpeak("Parfait. Prononce maintenant les noms des joueurs ou des bots qui participent, dans une seule phrase. Tu peux aussi dire moi pour inclure ton profil actif.", "players");
+            return;
+          }
+          await awenaVoiceSpeak("Je n'ai pas compris. Dis joueurs, ou équipes.");
+          return;
+        }
+
+        if (awenaVoiceStep === "team-source") {
+          if (/\b(joueur|joueurs|individuel)\b/.test(text)) {
+            setParticipantMode("players");
+            setMatchMode("solo");
+            setGuidedStep(1);
+            await awenaVoiceSpeak("D'accord, mode joueurs. Prononce les noms des participants.", "players");
+            return;
+          }
+          if (/\b(enregistree|enregistrees|saved|existante|existantes|equipe|equipes)\b/.test(text)) {
+            setTeamsSourceMode("saved");
+            setGuidedStep(1);
+            const names = (storedDartsTeams || []).slice(0, 12).map((team: any) => team?.name).filter(Boolean);
+            await awenaVoiceSpeak(names.length
+              ? `Prononce le nom d'au moins deux équipes enregistrées. Équipes disponibles : ${names.join(", ")}.`
+              : "Je ne trouve aucune équipe enregistrée pour les fléchettes. Tu peux dire joueurs pour configurer une partie individuelle.", "teams");
+            return;
+          }
+          if (/\b(manuel|manuelle|brassage|auto|automatique)\b/.test(text)) {
+            await awenaVoiceSpeak("La composition vocale des équipes manuelles et le brassage automatique arriveront dans une prochaine extension. Pour ce pilote X01, dis équipes enregistrées ou joueurs.");
+            return;
+          }
+          await awenaVoiceSpeak("Dis équipes enregistrées, ou joueurs.");
+          return;
+        }
+
+        if (awenaVoiceStep === "players") {
+          const candidates: any[] = [
+            ...(humanProfiles || []).map((p: any) => ({ ...p, __voiceName: p?.name || p?.displayName || "" })),
+            ...(botProfiles || []).map((p: any) => ({ ...p, __voiceName: p?.name || "" })),
+          ];
+          let matches = candidates.filter((p: any) => x01VoiceNameMatches(text, p.__voiceName));
+          matches = matches.filter((p: any) => !matches.some((other: any) => other !== p && x01VoiceNorm(other.__voiceName).length > x01VoiceNorm(p.__voiceName).length && x01VoiceNorm(other.__voiceName).includes(x01VoiceNorm(p.__voiceName))));
+          const ids = Array.from(new Set(matches.map((p: any) => String(p?.id || "")).filter(Boolean)));
+          if (/\b(moi|me|mon profil)\b/.test(text) && activeProfileId) ids.unshift(String(activeProfileId));
+          const uniqueIds = Array.from(new Set(ids));
+          if (uniqueIds.length < 2) {
+            const names = candidates.slice(0, 14).map((p: any) => p.__voiceName).filter(Boolean);
+            await awenaVoiceSpeak(`Je n'ai identifié que ${uniqueIds.length} participant. Il m'en faut au moins deux. Répète les noms clairement.${names.length ? ` Exemples disponibles : ${names.join(", ")}.` : ""}`);
+            return;
+          }
+          playersTouchedRef.current = true;
+          setSelectedIds(uniqueIds);
+          setMatchMode(uniqueIds.length === 2 ? "solo" : "multi");
+          setGuidedStep(2);
+          const pickedNames = candidates.filter((p: any) => uniqueIds.includes(String(p?.id))).map((p: any) => p.__voiceName);
+          await awenaVoiceSpeak(`J'ai sélectionné ${pickedNames.join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
+          return;
+        }
+
+        if (awenaVoiceStep === "teams") {
+          const matched = (storedDartsTeams || []).filter((team: any) => x01VoiceNameMatches(text, team?.name || ""));
+          if (matched.length < 2) {
+            await awenaVoiceSpeak(`Je n'ai identifié que ${matched.length} équipe. Prononce au moins deux noms d'équipes enregistrées.`);
+            return;
+          }
+          setSelectedStoredTeamIds([]);
+          setSelectedBotTeamIds([]);
+          setSavedTeamMemberSelections({});
+          matched.forEach((team: any) => addStoredTeamSelection(String(team.id), (team.playerIds || []).map(String)));
+          setParticipantMode("teams");
+          setMatchMode("teams");
+          setTeamsSourceMode("saved");
+          setGuidedStep(2);
+          await awenaVoiceSpeak(`Équipes sélectionnées : ${matched.map((team: any) => team.name).join(", ")}. Quel score de départ veux-tu : 301, 501, 701 ou 901 ?`, "start-score");
+          return;
+        }
+
+        if (awenaVoiceStep === "start-score") {
+          const value = x01VoiceStartScore(text);
+          if (!value) {
+            await awenaVoiceSpeak("Je n'ai pas reconnu le score. Dis 301, 501, 701 ou 901.");
+            return;
+          }
+          startTouchedRef.current = true;
+          setStartScore(value);
+          await awenaVoiceSpeak(`${value}, c'est noté. Pour l'entrée en jeu, veux-tu Simple In, Double In ou Master In ?`, "in-mode");
+          return;
+        }
+
+        if (awenaVoiceStep === "in-mode") {
+          const mode = x01VoiceMode(text);
+          if (!mode) {
+            await awenaVoiceSpeak("Dis Simple In, Double In ou Master In.");
+            return;
+          }
+          setInMode(mode as InModeV3);
+          await awenaVoiceSpeak(`${mode} in. Et pour terminer : Simple Out, Double Out ou Master Out ?`, "out-mode");
+          return;
+        }
+
+        if (awenaVoiceStep === "out-mode") {
+          const mode = x01VoiceMode(text);
+          if (!mode) {
+            await awenaVoiceSpeak("Dis Simple Out, Double Out ou Master Out.");
+            return;
+          }
+          outTouchedRef.current = true;
+          setOutMode(mode as OutModeV3);
+          setGuidedStep(3);
+          await awenaVoiceSpeak(`${mode} out. Veux-tu jouer un match directement en legs, ou un format en sets ?`, "format-unit");
+          return;
+        }
+
+        if (awenaVoiceStep === "format-unit") {
+          if (/\b(set|sets|manche|manches)\b/.test(text)) {
+            setMatchFormatUnit("sets");
+            await awenaVoiceSpeak("D'accord, format en sets. Donne le format des sets, par exemple Best Of 5 sets, ou premier à 3 sets.", "set-format");
+            return;
+          }
+          if (/\b(leg|legs|direct|directement)\b/.test(text)) {
+            setMatchFormatUnit("legs");
+            setMatchVictoryMode("best_of");
+            setSetVictoryTarget(1);
+            setSetsToWin(1);
+            await awenaVoiceSpeak("D'accord, legs directs. Donne le format, par exemple Best Of 5 legs, ou premier à 3 legs.", "leg-format");
+            return;
+          }
+          await awenaVoiceSpeak("Dis sets, ou legs.");
+          return;
+        }
+
+        if (awenaVoiceStep === "set-format") {
+          const victory = x01VoiceVictory(text);
+          if (!victory) {
+            await awenaVoiceSpeak("Je n'ai pas reconnu le format. Dis par exemple Best Of 5, ou premier à 3.");
+            return;
+          }
+          const target = Math.max(1, Math.min(13, victory.target));
+          setMatchVictoryMode(victory.mode);
+          setSetVictoryTarget(target);
+          setSetsToWin(totalCountFromSelection(victory.mode, target));
+          setMatchFormatUnit("sets");
+          await awenaVoiceSpeak(`${victory.mode === "first_to" ? `Premier à ${target}` : `Best Of ${target}`} sets. Maintenant, combien de legs par set ? Dis par exemple Best Of 5 legs, ou premier à 3 legs.`, "leg-format");
+          return;
+        }
+
+        if (awenaVoiceStep === "leg-format") {
+          const victory = x01VoiceVictory(text);
+          if (!victory) {
+            await awenaVoiceSpeak("Je n'ai pas reconnu le format des legs. Dis par exemple Best Of 5, ou premier à 3.");
+            return;
+          }
+          const target = Math.max(1, Math.min(31, victory.target));
+          setLegVictoryMode(victory.mode);
+          setLegVictoryTarget(target);
+          setLegsPerSet(totalCountFromSelection(victory.mode, target));
+          await awenaVoiceSpeak(`${victory.mode === "first_to" ? `Premier à ${target}` : `Best Of ${target}`} legs. Pour l'ordre de départ, veux-tu alterné ou aléatoire ?`, "serve");
+          return;
+        }
+
+        if (awenaVoiceStep === "serve") {
+          if (/\b(aleatoire|random|hasard)\b/.test(text)) setServeMode("random");
+          else if (/\b(alterne|alterne|alternance|tour a tour)\b/.test(text)) setServeMode("alternate");
+          else {
+            await awenaVoiceSpeak("Dis alterné, ou aléatoire.");
+            return;
+          }
+          setGuidedStep(4);
+          await awenaVoiceSpeak("Quelle méthode de saisie veux-tu pendant la partie : keypad, cible, presets, ou voice pour annoncer les fléchettes ?", "score-input");
+          return;
+        }
+
+        if (awenaVoiceStep === "score-input") {
+          let method: ScoreInputMethod | null = null;
+          if (/\b(voice|voix|vocal|vocale|dictee)\b/.test(text)) method = "voice";
+          else if (/\b(cible|dartboard|plateau)\b/.test(text)) method = "dartboard";
+          else if (/\b(preset|presets|raccourci|raccourcis)\b/.test(text)) method = "presets";
+          else if (/\b(keypad|clavier|manuel|manuelle|bouton|boutons)\b/.test(text)) method = "keypad";
+          if (!method) {
+            await awenaVoiceSpeak("Dis keypad, cible, presets, ou voice.");
+            return;
+          }
+          selectScoreInputMethod(method);
+          await awenaVoiceSpeak(`${method} sélectionné. Veux-tu activer les sons arcade ?`, "arcade");
+          return;
+        }
+
+        if (awenaVoiceStep === "arcade") {
+          if (!x01VoiceYes(text) && !x01VoiceNo(text)) { await awenaVoiceSpeak("Réponds oui ou non pour les sons arcade."); return; }
+          setArcadeEnabled(x01VoiceYes(text));
+          await awenaVoiceSpeak("Veux-tu activer les bruitages d'impact des fléchettes ?", "hits");
+          return;
+        }
+
+        if (awenaVoiceStep === "hits") {
+          if (!x01VoiceYes(text) && !x01VoiceNo(text)) { await awenaVoiceSpeak("Réponds oui ou non pour les bruitages."); return; }
+          setHitEnabled(x01VoiceYes(text));
+          await awenaVoiceSpeak("Veux-tu activer la voix pendant la partie ?", "game-voice");
+          return;
+        }
+
+        if (awenaVoiceStep === "game-voice") {
+          if (!x01VoiceYes(text) && !x01VoiceNo(text)) { await awenaVoiceSpeak("Réponds oui ou non pour la voix de partie."); return; }
+          setVoiceEnabled(x01VoiceYes(text));
+          await awenaVoiceSpeak("Veux-tu utiliser un comptage externe, par exemple un téléphone, une caméra, Scolia ou Grandarts ?", "external");
+          return;
+        }
+
+        if (awenaVoiceStep === "external") {
+          if (x01VoiceNo(text)) {
+            setExternalScoringEnabled(false);
+          } else if (x01VoiceYes(text)) {
+            setExternalScoringEnabled(true);
+            setVoiceScoreEnabled(false);
+            await awenaVoiceSpeak("Quel appareil externe : téléphone, caméra locale, bridge, Scolia, Grandarts ou Bluetooth ?", "external-device");
+            return;
+          } else {
+            await awenaVoiceSpeak("Réponds oui ou non pour le comptage externe.");
+            return;
+          }
+        }
+
+        if (awenaVoiceStep === "external-device") {
+          let device: string | null = null;
+          if (/\b(telephone|phone|mobile|smartphone)\b/.test(text)) device = "phone_companion";
+          else if (/\b(camera|local)\b/.test(text)) device = "camera_assisted";
+          else if (/\b(scolia)\b/.test(text)) device = "scolia";
+          else if (/\b(grandarts|gran darts|grand arts)\b/.test(text)) device = "grandarts";
+          else if (/\b(bluetooth)\b/.test(text)) device = "bluetooth";
+          else if (/\b(bridge|websocket)\b/.test(text)) device = "websocket_bridge";
+          if (!device) { await awenaVoiceSpeak("Dis téléphone, caméra locale, bridge, Scolia, Grandarts ou Bluetooth."); return; }
+          setExternalDeviceMode(device);
+        }
+
+        if (awenaVoiceStep === "external" || awenaVoiceStep === "external-device") {
+          setGuidedStep(5);
+          const playerLabel = participantMode === "teams"
+            ? `${selectedSavedTeamsCount || selectedStoredTeamIds.length} équipes`
+            : (selectedParticipantProfiles || []).map((p: any) => p?.name).filter(Boolean).join(", ") || `${selectedIds.length} joueurs`;
+          const formatLabel = formatSummaryLabel(matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet);
+          await awenaVoiceSpeak(`Récapitulatif. ${playerLabel}. Départ ${startScore}. ${inMode} in, ${outMode} out. Format ${formatLabel}. Ordre ${serveMode === "alternate" ? "alterné" : "aléatoire"}. Saisie ${scoreInputMethod}. Sons arcade ${arcadeEnabled ? "activés" : "désactivés"}, bruitages ${hitEnabled ? "activés" : "désactivés"}, voix de partie ${voiceEnabled ? "activée" : "désactivée"}. Comptage externe ${externalScoringEnabled ? "activé" : "désactivé"}. Si tout est correct, dis oui lance la partie. Sinon, dis recommence ou annule.`, "confirm");
+          return;
+        }
+
+        if (awenaVoiceStep === "confirm") {
+          if (x01VoiceYes(text)) {
+            setAwenaVoiceSetupActive(false);
+            setAwenaVoiceStep("idle");
+            setAwenaVoiceDialogOwner(null);
+            try { await awena?.say?.("Parfait. Configuration validée. Je lance la partie X01."); } catch {}
+            handleStart();
+            return;
+          }
+          if (x01VoiceNo(text)) {
+            await awenaVoiceSpeak("D'accord. Dis recommence pour reprendre la configuration vocale depuis le début, ou annule pour garder la page et modifier les réglages manuellement.");
+            return;
+          }
+          await awenaVoiceSpeak("Dis oui lance la partie, recommence, ou annule.");
+        }
+      })();
+    };
+
+    window.addEventListener(AWENA_VOICE_TRANSCRIPT_EVENT, onTranscript as EventListener);
+    return () => window.removeEventListener(AWENA_VOICE_TRANSCRIPT_EVENT, onTranscript as EventListener);
+  }, [
+    awenaVoiceSetupActive, awenaVoiceStep, awenaVoiceSpeak, stopAwenaVoiceSetup, startAwenaVoiceSetup,
+    activeProfileId, humanProfiles, botProfiles, storedDartsTeams, selectedStoredTeamIds.length,
+    selectedSavedTeamsCount, selectedParticipantProfiles, selectedIds.length, participantMode,
+    matchVictoryMode, setVictoryTarget, setsToWin, legVictoryMode, legVictoryTarget, legsPerSet,
+    startScore, inMode, outMode, serveMode, scoreInputMethod, arcadeEnabled, hitEnabled, voiceEnabled,
+    externalScoringEnabled, awena,
+  ]);
+
   // ---- validation & lancement ----
   function handleStart() {
     if (!canStart) {
@@ -3445,6 +3875,19 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.
           </div>
         </section>
+
+        {awenaVoiceSetupActive && (
+          <section style={{ borderRadius: 18, padding: 12, marginBottom: 14, border: "1px solid rgba(54,245,154,.55)", background: "linear-gradient(135deg,rgba(21,72,58,.44),rgba(10,17,35,.96))", boxShadow: "0 0 24px rgba(54,245,154,.12)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div>
+                <div style={{ color: "#64ffad", fontSize: 12, fontWeight: 950, letterSpacing: .8 }}>🎙️ AWENA VOICE · CONFIGURATION X01</div>
+                <div style={{ color: "#dce7e3", fontSize: 11, marginTop: 5, lineHeight: 1.4 }}>{awenaVoicePrompt || "Awena écoute ta réponse…"}</div>
+                {awenaVoiceLastHeard && <div style={{ color: "#8ea8a0", fontSize: 10, marginTop: 5 }}>Entendu : « {awenaVoiceLastHeard} »</div>}
+              </div>
+              <button type="button" onClick={() => void stopAwenaVoiceSetup("Configuration vocale arrêtée.")} style={{ flex: "0 0 auto", borderRadius: 999, border: "1px solid rgba(255,255,255,.18)", background: "rgba(0,0,0,.25)", color: "#fff", padding: "7px 10px", fontSize: 10, fontWeight: 900, cursor: "pointer" }}>ANNULER</button>
+            </div>
+          </section>
+        )}
 
         {configViewMode === "guided" ? (
           <>

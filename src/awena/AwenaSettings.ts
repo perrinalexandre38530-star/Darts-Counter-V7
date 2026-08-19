@@ -5,6 +5,8 @@ export const AWENA_SETTINGS_KEY = "dc_awena_settings_v1";
 export const DEFAULT_AWENA_SETTINGS: AwenaSettings = {
   enabled: true,
   voiceEnabled: true,
+  voiceCommandsEnabled: false,
+  preferOnDeviceRecognition: true,
   interventionMode: "active",
   autoSpeak: true,
   volume: 0.9,
@@ -24,6 +26,8 @@ export function normalizeAwenaSettings(input: Partial<AwenaSettings> | null | un
   return {
     enabled: input?.enabled !== false,
     voiceEnabled: input?.voiceEnabled !== false,
+    voiceCommandsEnabled: input?.voiceCommandsEnabled === true,
+    preferOnDeviceRecognition: input?.preferOnDeviceRecognition !== false,
     interventionMode: mode === "off" || mode === "discreet" || mode === "active" || mode === "coach" ? mode : "active",
     autoSpeak: input?.autoSpeak !== false,
     volume: clamp(input?.volume, 0, 1, DEFAULT_AWENA_SETTINGS.volume),

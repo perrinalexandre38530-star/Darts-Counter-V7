@@ -17,6 +17,7 @@ import { answerAwenaMasterEncyclopedia, awenaMasterDartsCount, awenaMasterStatic
 import { answerAwenaSourceAtlas, awenaSourceAtlasCount, awenaSourceFactsCount } from "./AwenaSourceAtlas";
 import { answerAwenaExpertReference, awenaExpertReferenceCount } from "./AwenaExpertReference";
 import { answerAwenaOmniKnowledge, awenaOmniKnowledgeCount } from "./AwenaOmniKnowledge";
+import { answerAwenaUltraLexicon, awenaUltraLexiconCount } from "./AwenaUltraLexicon";
 import { answerAwenaKnowledgeTool, AWENA_KNOWLEDGE_TOOL_COUNT } from "./AwenaKnowledgeTools";
 
 function normalize(text: string) {
@@ -96,7 +97,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
+Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées**, **${awenaExpertReferenceCount()} références expertes sport / stratégie / statistiques**, **${awenaOmniKnowledgeCount()} fiches Omni supplémentaires**, **${awenaUltraLexiconCount()} entrées Ultra Lexicon supplémentaires**, **${AWENA_KNOWLEDGE_TOOL_COUNT} outils de calcul local** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -144,6 +145,12 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   // réellement configurés dans MULTISPORTS SCORING.
   const expertReply = answerAwenaExpertReference(question, context, rememberedKnowledgeTopic);
   if (expertReply) return expertReply;
+
+  // V8.6 Ultra Lexicon : vocabulaire sportif, technique, statistiques, architecture
+  // et nouvelles notions de commande vocale. Les termes très précis passent
+  // avant la couche Omni générale, sans masquer les règles X01 plus prioritaires.
+  const ultraReply = answerAwenaUltraLexicon(question, context, rememberedKnowledgeTopic);
+  if (ultraReply) return ultraReply;
 
   // V8.5 Omni Knowledge : 320 fiches supplémentaires à correspondance stricte.
   // Cette couche complète V8.4 sans remplacer les règles spécifiques aux modes.

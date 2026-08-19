@@ -19,6 +19,10 @@ export type AwenaRuntimeContext = {
 export type AwenaSettings = {
   enabled: boolean;
   voiceEnabled: boolean;
+  /** Active la reconnaissance des commandes adressées à « Awena ». */
+  voiceCommandsEnabled: boolean;
+  /** Préfère le moteur Android embarqué quand le téléphone le permet. */
+  preferOnDeviceRecognition: boolean;
   interventionMode: AwenaInterventionMode;
   autoSpeak: boolean;
   volume: number;

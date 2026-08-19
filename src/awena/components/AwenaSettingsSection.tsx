@@ -7,6 +7,7 @@ import { AWENA_VOICE_PROFILE } from "../AwenaVoiceProfile";
 import { awenaLine } from "../AwenaVoiceCatalog";
 import { awenaVoice } from "../AwenaVoice";
 import { awenaTranslation } from "../AwenaTranslation";
+import { awenaSpeechRecognition, type AwenaSpeechStatus } from "../AwenaSpeechRecognition";
 
 const AVATAR = "/awena/awena-avatar.webp";
 
@@ -21,6 +22,7 @@ export default function AwenaSettingsSection() {
   const { settings, setSettings, voiceStatus, refreshVoices, stop } = useAwena();
   const [voiceBusy, setVoiceBusy] = React.useState(false);
   const [voiceError, setVoiceError] = React.useState<string | null>(null);
+  const [speechStatus, setSpeechStatus] = React.useState<AwenaSpeechStatus | null>(null);
   const primary = theme?.primary || "#22e6ff";
 
   function patch(next: Partial<typeof settings>) {
@@ -39,6 +41,29 @@ export default function AwenaSettingsSection() {
   const isFrench = String(lang || "fr").toLowerCase().startsWith("fr");
   const installing = voiceBusy || !!voiceStatus?.installing || !!voiceStatus?.neuralInitializing;
   const progress = Math.max(0, Math.min(1, Number(voiceStatus?.installProgress || 0)));
+
+  React.useEffect(() => {
+    let alive = true;
+    void awenaSpeechRecognition.getStatus().then((next) => { if (alive) setSpeechStatus(next); });
+    return awenaSpeechRecognition.onStatus((next) => { if (alive) setSpeechStatus(next); });
+  }, []);
+
+  async function toggleVoiceCommands() {
+    setVoiceError(null);
+    if (settings.voiceCommandsEnabled) {
+      patch({ voiceCommandsEnabled: false });
+      await awenaSpeechRecognition.stop();
+      return;
+    }
+    const granted = await awenaSpeechRecognition.requestPermission();
+    const status = await awenaSpeechRecognition.getStatus();
+    setSpeechStatus(status);
+    if (!granted) {
+      setVoiceError("L'autorisation Micro est nécessaire pour les commandes vocales Awena.");
+      return;
+    }
+    patch({ voiceCommandsEnabled: true, enabled: true });
+  }
 
   async function installAwenaStableVoice() {
     if (installing) return;
@@ -121,6 +146,43 @@ export default function AwenaSettingsSection() {
               <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 2 }}>{desc}</div>
             </button>;
           })}
+        </div>
+      </section>
+
+      <section style={{ borderRadius: 18, border: `1px solid ${settings.voiceCommandsEnabled ? primary : theme.borderSoft}`, background: theme.card, padding: 14, boxShadow: settings.voiceCommandsEnabled ? `0 0 20px ${primary}16` : "none" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: primary, fontWeight: 950, fontSize: 13, textTransform: "uppercase" }}>Commandes vocales Awena · Bêta X01</div>
+            <div style={{ color: theme.textSoft, fontSize: 10.5, marginTop: 4, lineHeight: 1.45 }}>
+              Dis par exemple : <b style={{ color: "#fff" }}>« Awena, lance une partie de X01 »</b>. Awena ouvre la configuration et te pose les questions nécessaires à l'oral.
+            </div>
+          </div>
+          <button onClick={() => void toggleVoiceCommands()} style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 11px", border: `1px solid ${settings.voiceCommandsEnabled ? primary : theme.borderSoft}`, background: settings.voiceCommandsEnabled ? `${primary}22` : "rgba(0,0,0,.2)", color: settings.voiceCommandsEnabled ? primary : theme.textSoft, fontWeight: 900, cursor: "pointer" }}>
+            {settings.voiceCommandsEnabled ? "MICRO ON" : "ACTIVER"}
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 10 }}>
+          <div style={{ padding: 9, borderRadius: 11, background: "rgba(0,0,0,.18)", border: `1px solid ${theme.borderSoft}` }}>
+            <div style={{ color: theme.textSoft, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>Reconnaissance</div>
+            <div style={{ color: speechStatus?.available ? "#36f59a" : "#ffb55a", fontSize: 10.5, fontWeight: 900, marginTop: 3 }}>
+              {speechStatus?.available ? (speechStatus.engine === "android-on-device" ? "Android · sur appareil" : speechStatus.engine === "android-system" ? "Android · système" : speechStatus.engine === "web-speech" ? "Web Speech" : "Disponible") : "Indisponible"}
+            </div>
+          </div>
+          <div style={{ padding: 9, borderRadius: 11, background: "rgba(0,0,0,.18)", border: `1px solid ${theme.borderSoft}` }}>
+            <div style={{ color: theme.textSoft, fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>Micro</div>
+            <div style={{ color: speechStatus?.permission === "granted" ? "#36f59a" : "#ffb55a", fontSize: 10.5, fontWeight: 900, marginTop: 3 }}>
+              {speechStatus?.permission === "granted" ? "Autorisé" : "Autorisation requise"}
+            </div>
+          </div>
+        </div>
+
+        <label style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8, color: theme.textSoft, fontSize: 10.5, cursor: "pointer" }}>
+          <input type="checkbox" checked={settings.preferOnDeviceRecognition} onChange={(e) => patch({ preferOnDeviceRecognition: e.target.checked })} />
+          Privilégier la reconnaissance locale sur l'appareil quand Android la propose.
+        </label>
+        <div style={{ marginTop: 7, color: theme.textSoft, opacity: .78, fontSize: 9.5, lineHeight: 1.4 }}>
+          Pilote actuel : X01. L'écoute fonctionne lorsque MULTISPORTS SCORING est ouverte au premier plan ; le micro est suspendu pendant qu'Awena parle pour éviter qu'elle s'entende elle-même.
         </div>
       </section>
 

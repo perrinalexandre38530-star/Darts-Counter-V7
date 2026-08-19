@@ -45,7 +45,7 @@ must(core.includes("answerAwenaOmniKnowledge"), "Omni Knowledge branché dans Aw
 must(core.indexOf("answerAwenaKnowledgeTool(question") < core.indexOf("answerAwenaExpertReference(question"), "calcul déterministe prioritaire sur les fiches statiques");
 must(core.indexOf("answerAwenaOmniKnowledge(question") < core.indexOf("answerAwenaMasterEncyclopedia(question"), "Omni complète les encyclopédies avant le fallback maître");
 must(core.includes("awenaOmniKnowledgeCount()") && core.includes("AWENA_KNOWLEDGE_TOOL_COUNT"), "Awena annonce les nouveaux volumes de connaissances/outils");
-must(overlay.includes("LOCAL V8.5"), "badge Awena LOCAL V8.5");
+must(/LOCAL V8\.[5-9]/.test(overlay), "badge Awena LOCAL V8.5 ou version supérieure");
 must(pkg.scripts["test:awena:v85"]?.includes("test-awena-v85-omni-knowledge.mjs"), "script package V8.5 présent");
 must(pkg.scripts["test:admob-native"]?.includes("test-admob-diagnostics-v78.mjs"), "évolutions package V80 / AdMob conservées");
 must(pkg.dependencies?.["@capacitor/android"] === "^8.4.2", "dépendances V80 conservées");

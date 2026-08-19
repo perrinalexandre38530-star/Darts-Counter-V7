@@ -48,6 +48,6 @@ const core = read("src/awena/AwenaCore.ts");
 assert(core.includes("answerAwenaMasterEncyclopedia") && core.includes("answerAwenaSourceAtlas"), "AwenaCore branche les nouvelles couches de connaissance");
 
 const overlay = read("src/awena/components/AwenaOverlay.tsx");
-assert(overlay.includes("LOCAL V8.5") || overlay.includes("LOCAL V8.4") || overlay.includes("LOCAL V8.3"), "badge Awena LOCAL V8.3+");
+assert(/LOCAL V8\.[3-9]/.test(overlay), "badge Awena LOCAL V8.3+");
 
 console.log("\nAWENA V8.3 — MAX KNOWLEDGE: OK");
