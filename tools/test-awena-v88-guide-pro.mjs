@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+import fs from "node:fs";
+const read=(p)=>fs.readFileSync(p,"utf8");
+const must=(ok,msg)=>{ if(!ok){console.error(`❌ ${msg}`);process.exit(1)} console.log(`✅ ${msg}`); };
+const pro=read("src/awena/AwenaGuidePro.ts");
+const uni=read("src/awena/AwenaUniversalGuide.ts");
+const atlas=read("src/awena/AwenaSourceAtlas.ts");
+const core=read("src/awena/AwenaCore.ts");
+const overlay=read("src/awena/components/AwenaOverlay.tsx");
+const app=read("src/App.tsx");
+const pkg=JSON.parse(read("package.json"));
+const ids=[...pro.matchAll(/\n\s*id:\s*"([^"]+)"/g)].map(m=>m[1]);
+const aliases=[...pro.matchAll(/aliases:\s*(\[[^\n]+\])/g)].reduce((n,m)=>{try{return n+JSON.parse(m[1]).length}catch{return n}},0);
+const routes=new Set([...app.matchAll(/case\s+"([^"]+)"/g)].map(m=>m[1]));
+must(ids.length >= 120, `Guide Pro depth: ${ids.length} technical topics`);
+must(aliases >= 180, `Guide Pro vocabulary: ${aliases} aliases`);
+for (const id of ["app-route","data-indexeddb","data-backup","network-cast","network-viewer","devices-calibration","stats-avg3","stats-roundrobin","awena-wakeword","awena-capacitor","troubleshooting-safe-diagnosis","concept-official-vs-app"]) must(ids.includes(id),`Critical Guide Pro topic: ${id}`);
+must(core.includes("answerAwenaGuidePro") && core.includes("answerAwenaUniversalGuide"),"V8.8 layers wired into AwenaCore");
+must(atlas.includes("getAwenaSourceScreensForRoute") && atlas.includes("awenaSourceRouteCount"),"SourceAtlas exposes grounded screen context");
+must(uni.includes("ÉLÉMENTS RÉELLEMENT PRÉSENTS SUR CET ÉCRAN") && uni.includes("GUIDE CONTEXTUEL"),"Universal guide is source-grounded");
+must(routes.size >= 180, `Current app route breadth detected: ${routes.size} routes`);
+must(overlay.includes("LOCAL V8.8") && overlay.includes("GUIDE IA PRO + VOICE X01"),"Overlay advertises V8.8 Guide IA Pro");
+must(pkg.scripts["test:awena:v88"] === "node tools/test-awena-v88-guide-pro.mjs","package V8.8 test script present");
+console.log(`\n✅ AWENA V8.8 Guide IA Pro: OK`);
+console.log(`   ${ids.length} adaptive technical topics`);
+console.log(`   ${aliases} aliases / phrasings`);
+console.log(`   ${routes.size} real App routes eligible for universal contextual guidance`);

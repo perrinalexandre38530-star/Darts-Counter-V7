@@ -1,6 +1,7 @@
 import type { AwenaReply, AwenaRuntimeContext } from "./awena.types";
 
-type SourceEntry = { route: string; component: string; sport: string; source: string; facts: string[] };
+export type AwenaSourceEntry = { route: string; component: string; sport: string; source: string; facts: string[] };
+type SourceEntry = AwenaSourceEntry;
 
 function norm(value: string) {
   return String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[’']/g, " ").replace(/[_./\\-]+/g, " ").replace(/[^a-z0-9+%\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -4134,3 +4135,16 @@ export function answerAwenaSourceAtlas(question: string, context: AwenaRuntimeCo
 
 export function awenaSourceAtlasCount() { return ENTRIES.length; }
 export function awenaSourceFactsCount() { return ENTRIES.reduce((sum, entry) => sum + entry.facts.length, 0); }
+
+export function getAwenaSourceScreensForRoute(route?: string, sport?: string): AwenaSourceEntry[] {
+  const r = norm(route || "");
+  const sp = norm(sport || "");
+  if (!r) return [];
+  const exact = ENTRIES.filter((entry) => norm(entry.route) === r && (!sp || norm(entry.sport) === sp));
+  if (exact.length) return exact.map((entry) => ({ ...entry, facts: [...entry.facts] }));
+  return ENTRIES.filter((entry) => norm(entry.route) === r).map((entry) => ({ ...entry, facts: [...entry.facts] }));
+}
+
+export function awenaSourceRouteCount() {
+  return new Set(ENTRIES.map((entry) => entry.route)).size;
+}
