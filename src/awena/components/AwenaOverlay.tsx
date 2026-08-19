@@ -122,6 +122,17 @@ function RichAwenaText({ text, primary }: { text: string; primary: string }) {
   return <div style={{ display: "grid", gap: 7 }}>{blocks}</div>;
 }
 
+function MicNavIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 11.5a5 5 0 0 0 10 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 16.5V20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M9 20h6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function progressiveSlice(text: string, ratio: number) {
   const source = String(text || "");
   if (ratio >= 1) return source;
@@ -374,50 +385,100 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
 
   return (
     <>
-      {!inGame && <button
-        type="button"
-        aria-label={settings.voiceCommandsEnabled ? "Désactiver les commandes vocales Awena" : "Activer les commandes vocales Awena"}
-        title={settings.voiceCommandsEnabled ? "Awena écoute son nom" : "Activer « Awena… »"}
-        onClick={() => {
-          void (async () => {
-            if (settings.voiceCommandsEnabled) {
-              setSettings((prev) => ({ ...prev, voiceCommandsEnabled: false }));
-              await awenaSpeechRecognition.stop();
-              return;
-            }
-            const granted = await awenaSpeechRecognition.requestPermission();
-            if (!granted) return;
-            setSettings((prev) => ({ ...prev, enabled: true, voiceCommandsEnabled: true }));
-          })();
-        }}
-        style={{
-          position: "fixed", right: 57, bottom: 137, zIndex: 1201,
-          width: 31, height: 31, borderRadius: "50%", padding: 0,
-          border: `1px solid ${settings.voiceCommandsEnabled ? "#36f59a" : "rgba(255,255,255,.28)"}`,
-          background: settings.voiceCommandsEnabled ? "rgba(25,91,68,.95)" : "rgba(8,10,23,.95)",
-          color: settings.voiceCommandsEnabled ? "#64ffad" : "#c6cbdb", cursor: "pointer",
-          boxShadow: settings.voiceCommandsEnabled ? "0 0 14px rgba(54,245,154,.35)" : "0 5px 15px rgba(0,0,0,.4)",
-          fontSize: 15,
-        }}
-      >🎙️</button>}
+      {!inGame && (
+        <div
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 96,
+            width: 74,
+            height: 74,
+            zIndex: 1200,
+            pointerEvents: "none",
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Ouvrir Awena"
+            onClick={togglePanel}
+            style={{
+              position: "absolute",
+              right: 0,
+              bottom: 0,
+              width: 58,
+              height: 58,
+              borderRadius: "50%",
+              padding: 3,
+              border: "none",
+              background: neon,
+              cursor: "pointer",
+              pointerEvents: "auto",
+              boxShadow: "0 0 18px rgba(34,230,255,.45),0 0 30px rgba(255,56,199,.24),0 14px 28px rgba(0,0,0,.55)",
+            }}
+          >
+            <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
+              <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </span>
+          </button>
 
-      {!inGame && settings.voiceCommandsEnabled && speechStatus?.listening && <span aria-hidden="true" style={{ position: "fixed", right: 52, bottom: 161, zIndex: 1202, width: 8, height: 8, borderRadius: "50%", background: "#36f59a", boxShadow: "0 0 9px #36f59a" }} />}
+          <button
+            type="button"
+            aria-label={settings.voiceCommandsEnabled ? "Désactiver les commandes vocales Awena" : "Activer les commandes vocales Awena"}
+            title={settings.voiceCommandsEnabled ? "Awena écoute son nom" : "Activer « Awena… »"}
+            onClick={() => {
+              void (async () => {
+                if (settings.voiceCommandsEnabled) {
+                  setSettings((prev) => ({ ...prev, voiceCommandsEnabled: false }));
+                  await awenaSpeechRecognition.stop();
+                  return;
+                }
+                const granted = await awenaSpeechRecognition.requestPermission();
+                if (!granted) return;
+                setSettings((prev) => ({ ...prev, enabled: true, voiceCommandsEnabled: true }));
+              })();
+            }}
+            style={{
+              position: "absolute",
+              right: -1,
+              bottom: -1,
+              zIndex: 2,
+              width: 29,
+              height: 29,
+              borderRadius: "50%",
+              padding: 0,
+              display: "grid",
+              placeItems: "center",
+              border: `1px solid ${settings.voiceCommandsEnabled ? "#36f59a" : "rgba(255,255,255,.24)"}`,
+              background: "linear-gradient(180deg, rgba(20,32,58,.98), rgba(7,10,23,.98))",
+              color: settings.voiceCommandsEnabled ? "#64ffad" : "#f2f6ff",
+              cursor: "pointer",
+              pointerEvents: "auto",
+              boxShadow: settings.voiceCommandsEnabled
+                ? "0 0 12px rgba(54,245,154,.28), 0 8px 18px rgba(0,0,0,.45)"
+                : "0 8px 18px rgba(0,0,0,.45)",
+            }}
+          >
+            <MicNavIcon size={15} />
+          </button>
 
-      {!inGame && <button
-        type="button"
-        aria-label="Ouvrir Awena"
-        onClick={togglePanel}
-        style={{
-          position: "fixed", right: 16, bottom: 96, zIndex: 1200,
-          width: 58, height: 58, borderRadius: "50%", padding: 3,
-          border: "none", background: neon, cursor: "pointer",
-          boxShadow: "0 0 18px rgba(34,230,255,.45),0 0 30px rgba(255,56,199,.24),0 14px 28px rgba(0,0,0,.55)",
-        }}
-      >
-        <span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#060815" }}>
-          <img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-        </span>
-      </button>}
+          {settings.voiceCommandsEnabled && speechStatus?.listening && (
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                right: 8,
+                bottom: 28,
+                zIndex: 3,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#36f59a",
+                boxShadow: "0 0 9px #36f59a",
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {open && (
         <div data-awena-overlay="1" style={{

@@ -1,4 +1,4 @@
-export const X01_AWENA_RULES_INTRO_SEEN_KEY = "dc_x01_awena_rules_intro_seen_v1";
+export const X01_AWENA_RULES_INTRO_SEEN_KEY = "dc_x01_awena_rules_intro_seen_v2";
 
 export function hasSeenX01AwenaRulesIntro(): boolean {
   if (typeof window === "undefined") return true;

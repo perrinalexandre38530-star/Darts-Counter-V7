@@ -32,6 +32,7 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
+import x01AwenaRulesPoster from "../assets/videos/x01_awena_rules_poster.webp";
 import {
   getAllDartSets,
   getAllSelectableDartSets,
@@ -3854,43 +3855,102 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
             border: `1px solid ${primary}33`,
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary, marginBottom: 8 }}>
-            Configuration X01
-          </div>
+          <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+            <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>
+                Configuration X01
+              </div>
+              <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.35 }}>
+                Accède à l’explication vidéo d’Awena à tout moment.
+              </div>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setRulesVideoOpen(true)}
-            style={{
-              width: "100%",
-              minHeight: 42,
-              marginBottom: 10,
-              padding: "8px 12px",
-              borderRadius: 14,
-              border: `1px solid ${primary}55`,
-              background: `linear-gradient(135deg, ${primary}1F, rgba(255,255,255,.045))`,
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              cursor: "pointer",
-              boxShadow: `0 0 18px ${primary}16`,
-            }}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-              <span style={{ color: primary, fontSize: 18, lineHeight: 1 }}>▶</span>
-              <span style={{ textAlign: "left", minWidth: 0 }}>
-                <span style={{ display: "block", color: primary, fontSize: 10.5, fontWeight: 950, letterSpacing: .85, textTransform: "uppercase" }}>
+            <button
+              type="button"
+              onClick={() => setRulesVideoOpen(true)}
+              aria-label="Voir la vidéo Awena des règles du X01"
+              title="Awena · Voir l’explication vidéo"
+              style={{
+                flex: "0 0 auto",
+                width: 98,
+                borderRadius: 18,
+                border: `1px solid ${primary}66`,
+                background: "linear-gradient(180deg, rgba(10,14,28,.98), rgba(6,8,18,.98))",
+                padding: 5,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                cursor: "pointer",
+                boxShadow: `0 0 20px ${primary}1c`,
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  width: "100%",
+                  aspectRatio: "9 / 16",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  background: "#050713",
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
+                }}
+              >
+                <img src={x01AwenaRulesPoster} alt="Awena vous explique les règles du X01" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.36))",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 30,
+                    height: 30,
+                    borderRadius: "50%",
+                    background: "rgba(4,8,18,.82)",
+                    border: `1px solid ${primary}77`,
+                    boxShadow: `0 0 18px ${primary}30`,
+                    display: "grid",
+                    placeItems: "center",
+                    color: "#fff",
+                    fontSize: 14,
+                    lineHeight: 1,
+                  }}
+                >
+                  ▶
+                </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 6,
+                    bottom: 6,
+                    padding: "2px 6px",
+                    borderRadius: 999,
+                    background: "rgba(5,8,18,.86)",
+                    border: "1px solid rgba(255,255,255,.12)",
+                    color: "#fff",
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                  }}
+                >
+                  35 s
+                </div>
+              </div>
+              <div style={{ textAlign: "left", minWidth: 0, padding: "0 3px 2px" }}>
+                <div style={{ color: primary, fontSize: 9.5, fontWeight: 950, letterSpacing: .75, textTransform: "uppercase" }}>
                   AWENA · RÈGLES X01
-                </span>
-                <span style={{ display: "block", marginTop: 2, color: "#e9ebf7", fontSize: 11.5, fontWeight: 800 }}>
-                  Voir l’explication vidéo
-                </span>
-              </span>
-            </span>
-            <span style={{ flex: "0 0 auto", color: "#9298bb", fontSize: 10.5, fontWeight: 850 }}>35 s</span>
-          </button>
+                </div>
+                <div style={{ marginTop: 2, color: "#e9ebf7", fontSize: 10.5, fontWeight: 800, lineHeight: 1.2 }}>
+                  Voir la vidéo
+                </div>
+              </div>
+            </button>
+          </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <PillButton
