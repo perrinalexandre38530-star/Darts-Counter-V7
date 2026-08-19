@@ -1,4 +1,5 @@
 import type { MonetizationPrefs, PremiumState } from "./types";
+import { getAdMobRuntimeConfig } from "./adMobConfig";
 
 const PREFS_KEY = "dc_monetization_prefs_v1";
 export const PREFS_CHANGED_EVENT = "dc:monetization-prefs-changed";
@@ -20,7 +21,7 @@ export const DEFAULT_MONETIZATION_PREFS: MonetizationPrefs = {
 };
 
 function normalize(raw: any): MonetizationPrefs {
-  return {
+  const next: MonetizationPrefs = {
     ...DEFAULT_MONETIZATION_PREFS,
     ...(raw && typeof raw === "object" ? raw : {}),
     // Migration forcée : les anciennes préférences 1/3 + 8 min ne doivent plus
@@ -30,6 +31,17 @@ function normalize(raw: any): MonetizationPrefs {
     endGameEveryMatches: 1,
     minInterstitialIntervalMs: 0,
   };
+
+  // En production, un compte FREE ne peut pas contourner la monétisation en
+  // modifiant les préférences locales depuis Settings ou le localStorage.
+  // La suppression des pubs dépend uniquement d'un droit Premium/Sans pub vérifié.
+  if (getAdMobRuntimeConfig().mode === "production") {
+    next.adsEnabled = true;
+    next.bannersEnabled = true;
+    next.endGameVideoEnabled = true;
+  }
+
+  return next;
 }
 
 export function loadMonetizationPrefs(): MonetizationPrefs {
@@ -206,10 +218,20 @@ export function subscribeVerifiedEntitlements(listener: () => void): () => void 
   return () => window.removeEventListener(VERIFIED_ENTITLEMENTS_CHANGED_EVENT, handler as EventListener);
 }
 
+export function arePaidAdsLockedForFreeAccount(): boolean {
+  return getAdMobRuntimeConfig().mode === "production" && !getVerifiedAdFreeState().active;
+}
+
 export function canRequestPaidAds(prefs: MonetizationPrefs = loadMonetizationPrefs()): boolean {
-  return prefs.adsEnabled && !getVerifiedAdFreeState().active;
+  if (getVerifiedAdFreeState().active) return false;
+  // Production : les pubs sont une règle du compte FREE, pas une préférence locale.
+  if (getAdMobRuntimeConfig().mode === "production") return true;
+  return prefs.adsEnabled;
 }
 
 export function canRequestBannerAds(prefs: MonetizationPrefs = loadMonetizationPrefs()): boolean {
-  return canRequestPaidAds(prefs) && prefs.bannersEnabled;
+  if (!canRequestPaidAds(prefs)) return false;
+  // Même protection pour les bannières : impossible de les couper localement en FREE.
+  if (getAdMobRuntimeConfig().mode === "production") return true;
+  return prefs.bannersEnabled;
 }

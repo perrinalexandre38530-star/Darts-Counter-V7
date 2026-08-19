@@ -29,6 +29,7 @@ import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import { PageAdBanner } from "../monetization/AdSlot";
 import tickerTrainingFr from "../assets/tickers/ticker_menu_training_fr.png";
 import tickerTrainingEn from "../assets/tickers/ticker_menu_training_en.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
@@ -505,6 +506,8 @@ export default function TrainingMenu({ go }: Props) {
     </div>
   </div>
 </div>
+
+      <PageAdBanner placement="games" slotKey="page-games-training-under-header" style={{ marginBottom: 14 }} />
 
       {/* Pinned modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

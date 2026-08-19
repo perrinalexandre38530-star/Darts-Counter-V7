@@ -17,7 +17,7 @@ import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
-import { getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
+import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
 import footHomeCover03 from "../assets/tickers/foot-03.webp";
@@ -2685,8 +2685,7 @@ export default function Home({ store, go, activeSport }: Props) {
       : ensureKillerTickerItemFirst(tickerItemsRaw, t, theme.primary);
     const adPrefs = loadMonetizationPrefs();
     const adsAllowed =
-      adPrefs.adsEnabled &&
-      adPrefs.bannersEnabled &&
+      canRequestBannerAds(adPrefs) &&
       !getVerifiedAdFreeState().active;
     if (!adsAllowed) return baseItems;
 

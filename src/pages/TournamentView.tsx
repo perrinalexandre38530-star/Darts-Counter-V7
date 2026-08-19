@@ -40,6 +40,7 @@ import React from "react";
 import MatchDetailCard from "../components/tournament/MatchDetailCard";
 import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
+import { PageAdBanner } from "../monetization/AdSlot";
 
 import { startMatch, submitResult } from "../lib/tournaments/engine";
 import {
@@ -3130,6 +3131,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
           </div>
         </div>
       ) : null}
+
+      <PageAdBanner placement="competitions" slotKey="page-competitions-view-under-header" style={{ marginBottom: 12 }} />
 
       {/* NAVIGATION PRINCIPALE : titre supprimé, icônes intégrées à la place */}
       <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0, 1fr) 88px", alignItems: "center", gap: 10 }}>

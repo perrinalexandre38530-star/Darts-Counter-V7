@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  canRequestBannerAds,
   getVerifiedAdFreeState,
   loadMonetizationPrefs,
   subscribeMonetizationPrefs,
@@ -200,7 +201,7 @@ export function PaidInlineSurface({
     return () => window.removeEventListener("dc:awena-panel-visibility", sync as EventListener);
   }, []);
 
-  const paidEligible = active && prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive && !awenaPanelOpen;
+  const paidEligible = active && canRequestBannerAds(prefs) && !adFreeActive && !awenaPanelOpen;
 
   React.useEffect(() => {
     if (!native || !paidEligible) {
@@ -399,7 +400,7 @@ export function InlineAdBanner({
     return () => window.clearInterval(id);
   }, [prefs.houseAdsEnabled]);
 
-  const eligible = prefs.adsEnabled && prefs.bannersEnabled && !adFreeActive;
+  const eligible = canRequestBannerAds(prefs) && !adFreeActive;
   if (!eligible) return null;
 
   const stableSlotKey = slotKey || `menu-${placement}`;

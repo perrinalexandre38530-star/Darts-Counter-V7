@@ -43,6 +43,7 @@ import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
+import { PageAdBanner } from "../monetization/AdSlot";
 import { getDartSetsForProfile, type DartSet } from "../lib/dartSetsStore";
 import {
   listFriends,
@@ -3909,6 +3910,8 @@ const doLogout = React.useCallback(async () => {
           </div>
         </div>
       </NeonCard>
+
+      <PageAdBanner placement="online" slotKey={`page-online-${activeOnlineTab}-under-header`} style={{ marginBottom: 14 }} />
 
       {/* ================= TICKER ================= */}
       <OnlineTicker items={tickerItems} speedSec={22} />

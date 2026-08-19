@@ -1,4 +1,4 @@
-import { getVerifiedAdFreeState, loadMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
+import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeVerifiedEntitlements } from "./prefs";
 import { showInterstitialAd } from "./provider";
 
 const RUNTIME_KEY = "dc_monetization_runtime_v1";
@@ -87,7 +87,7 @@ function isResultRoute(tab: string, params?: any): boolean {
 
 function dueNow(_state: RuntimeState): boolean {
   const prefs = loadMonetizationPrefs();
-  if (!prefs.adsEnabled || !prefs.endGameVideoEnabled || prefs.endGameAdTiming === "off") return false;
+  if (!canRequestPaidAds(prefs) || !prefs.endGameVideoEnabled || prefs.endGameAdTiming === "off") return false;
   if (getVerifiedAdFreeState().active) return false;
 
   // Politique FREE retenue : chaque partie réellement terminée et sauvegardée
@@ -143,7 +143,7 @@ export function interceptMonetizedNavigation(args: {
 }): boolean {
   installEntitlementGuard();
   const prefs = loadMonetizationPrefs();
-  if (prefs.endGameAdTiming !== "after_results" || !prefs.endGameVideoEnabled || !prefs.adsEnabled) return false;
+  if (prefs.endGameAdTiming !== "after_results" || !prefs.endGameVideoEnabled || !canRequestPaidAds(prefs)) return false;
   if (getVerifiedAdFreeState().active) return false;
 
   const state = loadRuntime();

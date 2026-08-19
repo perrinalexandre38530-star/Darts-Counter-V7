@@ -4,6 +4,7 @@ import { GOOGLE_PLAY_CORE_PRODUCTS, STORE_PACKS } from "./catalog";
 import { getMonetizationRuntimeSnapshot, previewEndGameInterstitial } from "./MonetizationManager";
 import {
   applyVerifiedEntitlements,
+  arePaidAdsLockedForFreeAccount,
   getVerifiedAdFreeState,
   getVerifiedPremiumState,
   loadMonetizationPrefs,
@@ -48,7 +49,10 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
   const premium = React.useMemo(() => getVerifiedPremiumState(), [entitlementRevision]);
   const adFree = React.useMemo(() => getVerifiedAdFreeState(), [entitlementRevision]);
   const runtime = React.useMemo(() => getMonetizationRuntimeSnapshot(), [runtimeTick]);
-  const allowSessionEntitlementTest = getAdMobRuntimeConfig().mode !== "production";
+  const adMobConfig = getAdMobRuntimeConfig();
+  const productionAdsLocked = adMobConfig.mode === "production";
+  const freeAdsLocked = arePaidAdsLockedForFreeAccount();
+  const allowSessionEntitlementTest = adMobConfig.mode !== "production";
 
   React.useEffect(() => subscribeMonetizationPrefs(setPrefs), []);
   React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
@@ -151,8 +155,8 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
     </div>
   );
 
-  const Toggle = ({ label, help, value, onChange }: { label: string; help: string; value: boolean; onChange: (v: boolean) => void }) => (
-    <button type="button" onClick={() => onChange(!value)} style={{ width: "100%", border: "none", borderTop: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.text, padding: "11px 0", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", textAlign: "left", cursor: "pointer" }}>
+  const Toggle = ({ label, help, value, onChange, disabled = false }: { label: string; help: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
+    <button type="button" disabled={disabled} onClick={() => { if (!disabled) onChange(!value); }} style={{ width: "100%", border: "none", borderTop: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.text, padding: "11px 0", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", textAlign: "left", cursor: disabled ? "default" : "pointer", opacity: disabled ? .82 : 1 }}>
       <div><div style={{ fontSize: 12, fontWeight: 950 }}>{label}</div><div style={{ marginTop: 2, color: theme.textSoft, fontSize: 10, lineHeight: 1.35 }}>{help}</div></div>
       <span style={{ width: 46, height: 26, borderRadius: 999, padding: 3, background: value ? theme.primary : "rgba(255,255,255,.10)", display: "flex", justifyContent: value ? "flex-end" : "flex-start", alignItems: "center", boxShadow: value ? `0 0 12px ${theme.primary}44` : "none" }}><span style={{ width: 20, height: 20, borderRadius: "50%", background: value ? "#061018" : "rgba(255,255,255,.85)" }} /></span>
     </button>
@@ -193,8 +197,8 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
             <section style={card}>
               <SectionHead icon={<MonoIcon name="ads" />} title="PUBLICITÉ" subtitle="Contrôle les emplacements autorisés sans surcharger les écrans de jeu." />
               <div style={{ borderRadius: 14, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.025)", padding: "0 11px" }}>
-                <Toggle label="Espaces publicitaires" help="Accueil, Jeux, Stats, Historique et Réglages uniquement." value={prefs.adsEnabled} onChange={(v) => patch({ adsEnabled: v })} />
-                <Toggle label="Bannières" help="Jamais sur le keypad ou pendant une volée." value={prefs.bannersEnabled} onChange={(v) => patch({ bannersEnabled: v })} />
+                <Toggle label="Espaces publicitaires" help={productionAdsLocked ? (freeAdsLocked ? "Compte FREE : publicités actives automatiquement. Premium/Sans pub les supprime." : "Géré automatiquement par le droit Premium/Sans pub vérifié.") : "Accueil, Jeux, Stats, Historique et Réglages uniquement."} value={prefs.adsEnabled} onChange={(v) => patch({ adsEnabled: v })} disabled={productionAdsLocked} />
+                <Toggle label="Bannières" help={productionAdsLocked ? (freeAdsLocked ? "Compte FREE : bannières actives automatiquement, jamais pendant le jeu." : "Géré automatiquement par le droit Premium/Sans pub vérifié.") : "Jamais sur le keypad ou pendant une volée."} value={prefs.bannersEnabled} onChange={(v) => patch({ bannersEnabled: v })} disabled={productionAdsLocked} />
                 <Toggle label="Promotions MULTISPORTS" help="Affiche les packs maison si aucune bannière AdMob n’est disponible." value={prefs.houseAdsEnabled} onChange={(v) => patch({ houseAdsEnabled: v })} />
               </div>
             </section>
@@ -204,11 +208,15 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
             <section style={card}>
               <SectionHead icon={<MonoIcon name="play" />} title="FIN DE PARTIE" subtitle="Interstitiel réservé aux comptes FREE, uniquement après les résultats." />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / PARTIE</div>
+                <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / 1 PARTIE</div>
                 <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
               </div>
-              {getAdMobRuntimeConfig().mode !== "production" ? <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
-              <div style={{ marginTop: 9, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
+              {adMobConfig.mode !== "production" ? <button type="button" onClick={() => void previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
+              <div style={{ marginTop: 9, display: "grid", gap: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>
+                <div>Interstitiel AdMob : <b style={{ color: adMobConfig.interstitialReady ? theme.primary : theme.textSoft }}>{adMobConfig.interstitialReady ? "ID PRÊT" : "ID À CRÉER DANS ADMOB"}</b></div>
+                <div>Rewarded AdMob : <b style={{ color: adMobConfig.rewardedReady ? theme.primary : theme.textSoft }}>{adMobConfig.rewardedReady ? "ID PRÊT" : "TECHNIQUE PRÊTE · ID À CRÉER"}</b></div>
+                <div>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
+              </div>
               <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...button(false), marginTop: 7 }}>Rafraîchir</button>
             </section>
           ) : null}
@@ -223,7 +231,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
               {isCapacitorNativeRuntime() && nativeStatus?.privacyOptionsRequired ? <button type="button" disabled={nativeBusy} onClick={() => void openPrivacyOptions()} style={{ ...button(false), width: "100%", marginTop: 8 }}>Options de confidentialité</button> : null}
               <details style={{ marginTop: 10, color: theme.textSoft, fontSize: 9.5 }}>
                 <summary style={{ cursor: "pointer", color: theme.primary, fontWeight: 900 }}>Détails techniques</summary>
-                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || getAdMobRuntimeConfig().mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}</div>
+                <div style={{ marginTop: 8, lineHeight: 1.5 }}>Consentement : {nativeStatus?.consentStatus || "—"}<br/>Demandes autorisées : {nativeStatus?.canRequestAds ? "oui" : "non"}<br/>Mode : {nativeStatus?.mode || adMobConfig.mode}<br/>Bannières réelles : {nativeStatus?.productionReady ? "oui" : "non"}<br/>Interstitiel : {nativeStatus?.interstitialReady ? "prêt" : "ID manquant"}<br/>Rewarded : {nativeStatus?.rewardedReady ? "prêt" : "ID manquant"}</div>
               </details>
             </section>
           ) : null}

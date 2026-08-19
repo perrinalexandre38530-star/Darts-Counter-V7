@@ -8,6 +8,7 @@
 
 import React from "react";
 import BackDot from "../components/BackDot";
+import { PageAdBanner } from "../monetization/AdSlot";
 import type { Store } from "../lib/types";
 
 // ✅ NEW: source de vérité local (IDB cache + event refresh)
@@ -978,6 +979,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           </div>
         </div>
       </div>
+
+      <PageAdBanner placement="competitions" slotKey={`page-competitions-list-${listContext}-under-header`} style={{ marginTop: 12, marginBottom: 2 }} />
 
       <div
         style={{

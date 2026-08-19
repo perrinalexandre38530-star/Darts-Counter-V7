@@ -489,6 +489,501 @@ const DEEP: Record<string, ModeDeepDetail> = {
       { title: "AUTRES OPTIONS", bullets: ["Gardien sur tirs cadrés.", "Volée sans cible = ballon perdu.", "Ordre de départ aléatoire en duel.", "Clavier compact ou cible tactile."] },
     ],
   },
+
+  // AWENA V8.3 — couverture détaillée des modes ajoutés au registre V74.
+  // Pour les concepts marqués "À implémenter" dans la source, Awena indique
+  // explicitement leur état et n’invente pas une mécanique finale.
+  enculette: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Mode jouable via la famille Cricket avec la variante Enculette / Vache." },
+      { title: "PRINCIPE", body: "Mode de score sur un nombre de rounds défini. Chaque volée ajoute son total au score." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Une volée à **0** entraîne une pénalité de **-50 points**.",
+        "Un objectif peut être défini : le premier qui l’atteint gagne.",
+        "Si l’objectif est réglé à 0, le meilleur total à la fin des rounds gagne.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Mode jouable via la famille Cricket avec la variante Enculette / Vache." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "nombre de rounds",
+        "objectif de score optionnel",
+        "participants / BOTS selon le Cricket",
+        "preset de variante Enculette",
+      ] },
+    ],
+  },
+  cricket_cut_throat: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Variante Cricket dédiée dans le registre actuel." },
+      { title: "PRINCIPE", body: "Cut-Throat inverse la logique des points : quand tu marques sur une cible que tu as fermée et qu’un adversaire n’a pas encore fermée, les points sont ajoutés aux adversaires encore ouverts." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Les fermetures restent basées sur les cibles Cricket.",
+        "L’objectif stratégique est d’éviter d’accumuler les points reçus : être devant signifie généralement avoir **le moins de points** tout en remplissant la condition de fermeture.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Variante Cricket dédiée dans le registre actuel." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "preset Cut-Throat du Cricket",
+        "participants / équipes selon le Cricket",
+        "BOTS IA pris en charge",
+        "cibles Cricket 15 à 20 + Bull",
+      ] },
+    ],
+  },
+  super_bull: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Mode présent et jouable dans une version MVP ; le registre précise que la mécanique Bull / Double Bull dédiée doit encore être consolidée." },
+      { title: "PRINCIPE", body: "Dans la version actuelle décrite par le registre, les joueurs enchaînent des volées notées de 0 à 180 sur un nombre de rounds défini." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Un objectif de score peut être activé.",
+        "Avec objectif : le premier à l’atteindre gagne.",
+        "Sans objectif atteint : le meilleur total à la fin des rounds gagne.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Mode présent et jouable dans une version MVP ; le registre précise que la mécanique Bull / Double Bull dédiée doit encore être consolidée." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "nombre de rounds",
+        "objectif optionnel",
+        "paramètres Bull / Double Bull proposés par l’écran",
+      ] },
+    ],
+  },
+  happy_mille: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Variante X01 / course au score présente dans l’application." },
+      { title: "PRINCIPE", body: "Course au score sur un nombre de rounds défini, avec **1000 points par défaut** comme objectif." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le premier joueur à atteindre l’objectif gagne.",
+        "Si personne ne l’atteint avant la fin des rounds, le meilleur total gagne.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Variante X01 / course au score présente dans l’application." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "nombre de rounds",
+        "objectif de score modifiable",
+        "BOTS IA selon le registre",
+      ] },
+    ],
+  },
+  v170: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Défi 170 présent dans l’application." },
+      { title: "PRINCIPE", body: "Chaque volée cherche **exactement 170**. Une volée qui fait exactement 170 rapporte **1 réussite / point**." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Les autres totaux ne valident pas la réussite.",
+        "Après le nombre de rounds prévu, le joueur avec le plus de réussites gagne.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Défi 170 présent dans l’application." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "nombre de rounds",
+        "ordre de départ",
+        "BOTS IA selon le registre",
+      ] },
+    ],
+  },
+  count_up: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Mode Count-Up présent avec configuration dédiée." },
+      { title: "PRINCIPE", body: "Chaque volée est ajoutée au total du joueur : le score monte au lieu de descendre." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Avec objectif : le premier à atteindre la cible gagne.",
+        "Sans objectif ou si personne ne l’atteint : meilleur total en fin de rounds.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Mode Count-Up présent avec configuration dédiée." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "nombre de rounds",
+        "objectif de score optionnel",
+        "ordre de départ",
+      ] },
+    ],
+  },
+  knockout: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Une entrée et une configuration existent, mais le registre indique encore **À implémenter** pour la mécanique complète." },
+      { title: "PRINCIPE", body: "Concept d’élimination par score, proche de Les 5 Vies mais prévu pour être configurable." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le détail exact des critères d’élimination doit être pris sur l’écran réellement disponible.",
+        "Awena ne doit pas inventer une règle finale tant que le code source la marque comme à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Une entrée et une configuration existent, mais le registre indique encore **À implémenter** pour la mécanique complète." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "BOTS IA",
+        "paramètres d’élimination visibles",
+        "paramètres de score visibles",
+      ] },
+    ],
+  },
+  rugby: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Une entrée / configuration Darts Rugby existe, mais le registre indique encore **À implémenter**." },
+      { title: "PRINCIPE", body: "Concept basé sur une progression de territoires / zones, puis validation d’un essai et d’une transformation." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "La description source prévoit une progression de zones.",
+        "Bull peut servir à l’essai et Double à la transformation dans le concept actuel.",
+        "Les règles finales doivent être confirmées par l’écran / code actif car le registre marque encore l’implémentation incomplète.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Une entrée / configuration Darts Rugby existe, mais le registre indique encore **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "BOTS si proposés",
+        "paramètres de match / score visibles",
+        "options de territoires / progression",
+      ] },
+    ],
+  },
+  tic_tac_toe: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Une configuration Morpion existe, mais le registre marque encore la mécanique comme **À implémenter**." },
+      { title: "PRINCIPE", body: "Concept de grille **3 × 3** : chaque case correspond à une cible. Une touche capture une case et le premier alignement de 3 gagne." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Ligne, colonne ou diagonale de 3 cases pour gagner.",
+        "Les paramètres exacts de validation doivent être lus sur l’écran tant que l’implémentation reste incomplète.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Une configuration Morpion existe, mais le registre marque encore la mécanique comme **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "participants",
+        "grille / cibles",
+        "règle de validation",
+        "ordre de départ",
+      ] },
+    ],
+  },
+  fun_gages: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré mais sans écran Play / configuration dédié dans la version actuelle." },
+      { title: "PRINCIPE", body: "Mode transversal de gages déclenchés par certains événements de partie." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le registre cite notamment bust, 180 et Bull comme événements possibles.",
+        "Le concept prévoit un réglage ON/OFF et un overlay de gage.",
+        "**À implémenter** : ne pas le présenter comme un mode finalisé.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré mais sans écran Play / configuration dédié dans la version actuelle." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "concept de gages",
+        "événements déclencheurs",
+        "activation / désactivation prévue",
+      ] },
+    ],
+  },
+  bingo: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré mais sans implémentation dédiée finalisée." },
+      { title: "PRINCIPE", body: "Concept de Bingo avec grille de cibles **3 × 3 ou 5 × 5**." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Les joueurs cherchent une ligne, colonne, diagonale ou éventuellement la grille complète selon la variante.",
+        "Le registre prévoit des grilles aléatoires ou communes.",
+        "**À implémenter** dans le code actuel.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré mais sans implémentation dédiée finalisée." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "taille de grille prévue",
+        "condition ligne / colonne / diagonale / complète",
+        "grille aléatoire ou commune",
+      ] },
+    ],
+  },
+  follow_the_leader: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Un leader établit une cible / combinaison, les suivants doivent la reproduire." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le concept distingue reproduction exacte numéro + multiplicateur ou reproduction partielle du numéro.",
+        "Un échec entraîne une pénalité selon la variante.",
+        "Variantes conceptuelles : Chase / Copycat.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "règle de reproduction",
+        "pénalité d’échec",
+        "variantes Chase / Copycat",
+      ] },
+    ],
+  },
+  conquest: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept de jeu enregistré mais non finalisé." },
+      { title: "PRINCIPE", body: "Jeu de capture de zones / influence où les adversaires peuvent reprendre des territoires." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Objectifs conceptuels : majorité, influence ou domination.",
+        "Les règles définitives ne sont pas encore implémentées dans une page dédiée.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept de jeu enregistré mais non finalisé." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "zones / territoires",
+        "objectif majorité / domination",
+        "règles de reprise",
+      ] },
+    ],
+  },
+  domination: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, sans implémentation dédiée finalisée." },
+      { title: "PRINCIPE", body: "Chaque round impose une contrainte — par exemple Doubles, nombres impairs ou Bull — et les effets ne s’appliquent que si la contrainte est respectée." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "La contrainte change le choix de cible.",
+        "Les bonus / effets exacts doivent être définis par l’implémentation future.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, sans implémentation dédiée finalisée." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "contraintes de round",
+        "effets conditionnels",
+        "nombre de rounds",
+      ] },
+    ],
+  },
+  mines_traps: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Des segments cachés contiennent des mines / pièges qui déclenchent des pénalités." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le concept prévoit un rôle de détection / risque.",
+        "Bull peut servir de scan ou de désarmement selon la règle prévue.",
+        "Aucune règle finale ne doit être inventée avant implémentation.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "placement des mines",
+        "pénalités",
+        "fonction Bull scan / désarmement",
+      ] },
+    ],
+  },
+  last_man_standing: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept de survie enregistré mais non finalisé." },
+      { title: "PRINCIPE", body: "Chaque joueur possède un nombre de vies et doit réussir un objectif à chaque tour." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Un échec fait perdre une vie.",
+        "Le dernier joueur encore vivant gagne.",
+        "Le détail des objectifs / vies reste à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept de survie enregistré mais non finalisé." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "vies de départ",
+        "objectifs par tour",
+        "pénalité d’échec",
+      ] },
+    ],
+  },
+  bomb_countdown: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Une bombe possède un compte à rebours. Les touches peuvent le réduire tandis que les échecs peuvent l’accélérer." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le joueur qui provoque l’arrivée à zéro peut perdre ou subir l’effet prévu selon la règle finale.",
+        "Les détails exacts sont encore conceptuels.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "compte à rebours",
+        "effet des touches",
+        "effet des MISS",
+        "condition d’explosion",
+      ] },
+    ],
+  },
+  infection: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Un joueur infecté peut transmettre l’infection à un adversaire en remplissant une condition de touche." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "La partie cherche un dernier non-infecté ou un survivant selon la future variante.",
+        "La condition exacte de transmission reste à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "infecté initial",
+        "condition de contamination",
+        "condition de victoire",
+      ] },
+    ],
+  },
+  randomizer: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré mais sans moteur finalisé." },
+      { title: "PRINCIPE", body: "Chaque volée peut recevoir une cible, une règle, un bonus ou un malus aléatoire." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le but est d’adapter rapidement sa stratégie.",
+        "Les tables aléatoires et effets définitifs restent à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré mais sans moteur finalisé." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "fréquence des tirages",
+        "cibles aléatoires",
+        "bonus / malus",
+      ] },
+    ],
+  },
+  casino: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Les segments déclenchent des effets de casino : gain, vol, inversion, banqueroute ou autres événements." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Bull est prévu comme Jackpot dans le concept.",
+        "La victoire peut dépendre d’un objectif ou du meilleur total selon la future règle.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "table des effets",
+        "Jackpot Bull",
+        "objectif / meilleur total",
+      ] },
+    ],
+  },
+  chaos_mode: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Les règles changent périodiquement, par exemple toutes les X fléchettes, avec bonus et malus." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le joueur doit s’adapter aux mutations de règle.",
+        "Les objectifs possibles incluent survie ou score maximal, mais le moteur final n’est pas encore implémenté.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "fréquence des changements",
+        "pool de règles",
+        "bonus / malus",
+        "condition de victoire",
+      ] },
+    ],
+  },
+  coop_mission: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept coopératif enregistré mais non finalisé." },
+      { title: "PRINCIPE", body: "Les joueurs coopèrent sur des objectifs communs, potentiellement avec des rôles complémentaires." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "La mission doit être accomplie avant une limite de temps ou de tours.",
+        "Les objectifs et rôles définitifs restent à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept coopératif enregistré mais non finalisé." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "mission",
+        "rôles",
+        "limite de temps / tours",
+        "objectifs communs",
+      ] },
+    ],
+  },
+  boss_battle: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept coopératif enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Un Boss possède des points de vie et plusieurs phases ; certaines zones deviennent vulnérables selon la phase." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Les joueurs coopèrent pour réduire les PV du Boss.",
+        "La victoire conceptuelle consiste à le battre avant le timer / nombre de rounds.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept coopératif enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "PV du Boss",
+        "phases",
+        "zones vulnérables",
+        "timer / rounds",
+      ] },
+    ],
+  },
+  rpg_darts: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept RPG enregistré mais sans implémentation dédiée finalisée." },
+      { title: "PRINCIPE", body: "Concept de progression persistante : niveaux, expérience, compétences et bonus passifs." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "L’expérience / les compétences doivent former une méta-progression.",
+        "Le système précis n’est pas encore implémenté dans le registre actuel.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept RPG enregistré mais sans implémentation dédiée finalisée." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "progression / XP",
+        "niveaux",
+        "compétences",
+        "bonus passifs",
+      ] },
+    ],
+  },
+  blind_darts: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept expérimental enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "Concept où la cible ou les indications sont partiellement masquées afin de travailler concentration et repères." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "La quantité d’information cachée doit être définie par l’implémentation.",
+        "Ne pas confondre avec une règle sportive officielle.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept expérimental enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "niveau de masquage",
+        "consignes minimales",
+        "format de session",
+      ] },
+    ],
+  },
+  sound_darts: {
+    rules: [
+      { title: "ÉTAT DANS L’APPLICATION", body: "Concept expérimental enregistré, marqué **À implémenter**." },
+      { title: "PRINCIPE", body: "La cible à viser est dictée par un signal / une consigne audio, avec un objectif de réaction." },
+      { title: "RÈGLES / MÉCANIQUES", bullets: [
+        "Le concept prévoit potentiellement un timer.",
+        "Les règles de scoring et de réaction restent à implémenter.",
+      ] },
+    ],
+    configuration: [
+      { title: "ÉTAT / MATURITÉ", body: "Concept expérimental enregistré, marqué **À implémenter**." },
+      { title: "RÉGLAGES CONNUS / PRÉVUS", bullets: [
+        "consignes audio",
+        "timer / réaction",
+        "barème futur",
+      ] },
+    ],
+  },
+
 };
 
 function renderSections(sections: Section[]) {

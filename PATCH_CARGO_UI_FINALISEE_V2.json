@@ -1,0 +1,19 @@
+{
+  "name": "MULTISPORTS_SCORING_PATCH_CARGO_UI_FINALISEE_V2_BASE72",
+  "baseReference": "Darts-Counter-V7 (72).zip",
+  "generatedAt": "2026-08-19T11:00:00+02:00",
+  "files": [
+    {
+      "path": "src/pages/CargoPlay.tsx",
+      "bytes": 62970,
+      "sha256": "b1457895967e636c2679c67522ec01d45bc6f36376eda904a696f5b319174322",
+      "status": "modified"
+    }
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "cargoIntegrationContract": "passed",
+    "cargoRegression": "passed",
+    "viteBuild": "not_run_vite_binary_missing"
+  }
+}

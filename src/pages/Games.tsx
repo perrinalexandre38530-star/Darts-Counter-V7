@@ -35,6 +35,7 @@ import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import { PageAdBanner } from "../monetization/AdSlot";
 import {
   DARTS_GAMES,
   GAME_CATEGORIES,
@@ -1455,6 +1456,12 @@ export default function Games({ setTab, params }: Props) {
           {pageSubtitle}
         </div>
       ) : null}
+
+      <PageAdBanner
+        placement="games"
+        slotKey={`page-games-darts-${gamesView}-under-header`}
+        style={{ marginBottom: 14 }}
+      />
 
       {/* ============================================================
           HUB JEUX : NEW GAME + 3 cartes + lancement rapide défilant

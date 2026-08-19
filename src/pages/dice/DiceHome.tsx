@@ -12,6 +12,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import { PageAdBanner } from "../../monetization/AdSlot";
 
 const PAGE_MAX_WIDTH = 620;
 const SECTION_PAD_X = 10;
@@ -170,6 +171,10 @@ export default function DiceHome({ store, update, go }: Props) {
             Dice Scoring
           </div>
         </div>
+      </div>
+
+      <div style={{ ...sectionWrap, marginBottom: 0 }}>
+        <PageAdBanner placement="home" slotKey="page-home-dice-under-header" />
       </div>
 
       <div style={sectionWrap}>

@@ -14,6 +14,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { loadBabyFootState } from "../../lib/babyfootStore";
 import { History } from "../../lib/history";
@@ -824,6 +825,10 @@ export default function BabyFootHome({ store, go }: Props) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ ...sectionWrap, marginBottom: 0 }}>
+        <PageAdBanner placement="home" slotKey="page-home-babyfoot-under-header" />
       </div>
 
       {/* ✅ Carte joueur actif */}

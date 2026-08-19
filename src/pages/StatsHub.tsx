@@ -27,6 +27,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import statsCenterTicker from "../assets/tickers/ticker_statistics_center_universal.webp";
 import BackDot from "../components/BackDot";
+import { PageAdBanner } from "../monetization/AdSlot";
 import type { Dart as UIDart } from "../lib/types";
 import {
   getCricketProfileStats,
@@ -8249,6 +8250,7 @@ if (tab === "training") {
 if (tab === "history") {
   return (
     <div style={{ padding: 16, paddingBottom: 80 }}>
+      <PageAdBanner placement="history" slotKey="page-history-stats-hub-under-header" style={{ marginBottom: 12 }} />
       <div style={card}>
         {isMolkkySport ? (
           <MolkkyStatsHistoryPage store={store as any} go={go} />

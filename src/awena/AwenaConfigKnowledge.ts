@@ -1,3 +1,5 @@
+import { dartsGameRegistry } from "../games/dartsGameRegistry";
+
 export type AwenaModeConfigDetail = {
   options: string[];
   victory: string;
@@ -263,9 +265,48 @@ const DETAILS: Record<string, AwenaModeConfigDetail> = {
   },
 };
 
+function fallbackDetailFromRegistry(modeId: string): AwenaModeConfigDetail | null {
+  const game = dartsGameRegistry.find((item) => item.id === modeId);
+  if (!game) return null;
+
+  const participants = game.maxPlayers === 1 ? "mode solo" : `jusqu'à ${game.maxPlayers} joueurs`;
+  const options = [
+    participants,
+    game.supportsTeams ? "équipes prises en charge" : "pas d'équipes dans le registre actuel",
+    game.supportsBots ? "BOTS IA pris en charge" : "pas de BOTS IA dans le registre actuel",
+    `catégorie ${game.category}`,
+  ];
+
+  const variants = Array.from(new Set([
+    game.variantId,
+    game.presetVariantId,
+    game.baseGame ? `famille ${game.baseGame}` : undefined,
+  ].filter(Boolean) as string[]));
+
+  const sentences = String(game.infoBody || "")
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const victory = sentences.find((sentence) => /gagne|victoire|vainqueur|dernier survivant|premier a|premier à|meilleur total/i.test(sentence))
+    || game.infoBody
+    || `respecter l'objectif du mode ${game.label}`;
+
+  const notes: string[] = [];
+  if (game.tab === "mode_not_ready") {
+    notes.push("État actuel : concept présent dans le registre mais sans écran de configuration / Play dédié ; la source le marque encore à implémenter.");
+  } else if (/a implementer|à implementer/i.test(game.infoBody)) {
+    notes.push("État actuel : une entrée / configuration existe, mais le registre indique encore À implémenter pour une partie de la mécanique.");
+  } else if (/sera consolidee|sera consolidée|a venir|à venir/i.test(game.infoBody)) {
+    notes.push("État actuel : le registre signale encore une mécanique à consolider / compléter.");
+  }
+
+  return { options, victory, variants: variants.length ? variants : undefined, notes: notes.length ? notes : undefined };
+}
+
 export function getAwenaModeConfigDetail(modeId?: string | null): AwenaModeConfigDetail | null {
   if (!modeId) return null;
-  return DETAILS[String(modeId)] || null;
+  const id = String(modeId);
+  return DETAILS[id] || fallbackDetailFromRegistry(id);
 }
 
 export function formatAwenaConfiguration(modeLabel: string, base: string, detail: AwenaModeConfigDetail | null) {

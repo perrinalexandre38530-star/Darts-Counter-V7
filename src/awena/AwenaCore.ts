@@ -13,6 +13,8 @@ import { answerAwenaSportsKnowledge, awenaSportsKnowledgeCount } from "./AwenaSp
 import { answerAwenaDeepKnowledge, awenaDeepKnowledgeCount } from "./AwenaDeepKnowledge";
 import { answerAwenaRouteAtlas, awenaRouteAtlasCount } from "./AwenaRouteAtlas";
 import { answerAwenaAdvancedEncyclopedia, awenaAdvancedEncyclopediaCount } from "./AwenaAdvancedEncyclopedia";
+import { answerAwenaMasterEncyclopedia, awenaMasterDartsCount, awenaMasterStaticCount } from "./AwenaMasterEncyclopedia";
+import { answerAwenaSourceAtlas, awenaSourceAtlasCount, awenaSourceFactsCount } from "./AwenaSourceAtlas";
 
 function normalize(text: string) {
   return String(text || "")
@@ -91,7 +93,7 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
 Je suis **Awena**, la présentatrice et assistante de MULTISPORTS SCORING.
 
 ## CE QUE JE CONNAIS
-Ma base locale couvre les ${allAwenaModes().length} modes Fléchettes déclarés disponibles, les principaux modes des autres sports, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées** et un index de **${awenaRouteAtlasCount()} écrans / routes réels**. J’exploite aussi l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}), le vocabulaire du scoring, les profils, BOTS IA, statistiques, stockage, Online, compétitions, écrans externes et les contrôles visibles.
+Ma base locale couvre les **${awenaMasterDartsCount()} entrées Fléchettes du registre actuel**, dont les concepts encore en développement sont signalés comme tels, plus **${awenaMasterStaticCount()} dossiers multisports / fonctionnels supplémentaires**, **${awenaAtlasCount()} grands sujets fonctionnels**, **${awenaSportsKnowledgeCount()} fiches multisports détaillées**, **${awenaDeepKnowledgeCount()} sujets approfondis**, **${awenaAdvancedEncyclopediaCount()} fiches encyclopédiques avancées** et un index de **${awenaRouteAtlasCount()} routes réelles**. J’exploite aussi **${awenaSourceAtlasCount()} fiches d’écrans extraites du code et ${awenaSourceFactsCount()} éléments UI / aides**, ainsi que l’aide InfoDot déjà rencontrée dans l’application (${awenaRegisteredHelpCount()} fiche${awenaRegisteredHelpCount() > 1 ? "s" : ""} mémorisée${awenaRegisteredHelpCount() > 1 ? "s" : ""}).
 
 ## CE QUE JE PEUX FAIRE
 Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, répondre à des relances courtes et exploiter les statistiques réellement enregistrées.
@@ -127,6 +129,13 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   const atlasReply = answerAwenaAppAtlas(question, rememberedKnowledgeTopic);
   if (atlasReply) return atlasReply;
 
+  // V8.3 : encyclopédie maître. Elle croise le registre Fléchettes V74
+  // (63 entrées actuellement déclarées READY, y compris les concepts encore
+  // marqués à implémenter) avec des dossiers précis Pétanque, Ping-Pong,
+  // Mölkky, Dés, FOOT et Baby-foot.
+  const masterReply = answerAwenaMasterEncyclopedia(question, context);
+  if (masterReply) return masterReply;
+
   // Les autres sports ont leur propre corpus détaillé. Cette couche connaît
   // les modes, formats et options réellement déclarés dans leurs menus/configs.
   const sportsReply = answerAwenaSportsKnowledge(question, context);
@@ -147,6 +156,12 @@ Je peux expliquer, comparer, guider vers un écran, décrire la page actuelle, r
   // trainings, autres sports, dépannage et fonctions transversales.
   const deepReply = answerAwenaDeepKnowledge(question, rememberedKnowledgeTopic);
   if (deepReply) return deepReply;
+
+  // Atlas de source : dernier complément structuré avant les intentions de jeu.
+  // Il utilise les libellés / aides réellement présents dans les composants de
+  // la V74 pour répondre aux questions sur une option, un bouton ou un écran.
+  const sourceReply = answerAwenaSourceAtlas(question, context);
+  if (sourceReply) return sourceReply;
 
   if (/quels jeux|quels modes|liste des jeux|liste des modes|modes disponibles|jeux disponibles/.test(q)) {
     if (sport && sport.id !== "darts") {

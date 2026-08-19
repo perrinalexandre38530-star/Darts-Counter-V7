@@ -8,7 +8,6 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import DartboardClickable from "../components/DartboardClickable";
 import InfoDot from "../components/InfoDot";
-import Keypad from "../components/Keypad";
 import PageHeader from "../components/PageHeader";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useTheme } from "../contexts/ThemeContext";
@@ -177,11 +176,49 @@ function ContractCard({ contract, active, progress = 0, detailed = false }: any)
 }
 
 function QuickButton({ icon, label, value, color, onClick, disabled = false }: any) {
-  return <button type="button" onClick={onClick} disabled={disabled} style={{ minWidth: 0, height: "100%", minHeight: 0, borderRadius: 15, border: `1px solid ${disabled ? "rgba(255,255,255,.07)" : `${color}55`}`, background: disabled ? "rgba(255,255,255,.018)" : `linear-gradient(180deg,${color}12,rgba(255,255,255,.025))`, color: disabled ? "rgba(255,255,255,.28)" : "#fff", padding: "7px 4px", cursor: disabled ? "default" : "pointer", boxShadow: disabled ? "none" : `inset 0 1px rgba(255,255,255,.04),0 8px 18px rgba(0,0,0,.18)` }}>
-    <div style={{ color: disabled ? "rgba(255,255,255,.22)" : color, fontSize: 18, lineHeight: 1, fontWeight: 900 }}>{icon}</div>
-    <div style={{ marginTop: 4, fontSize: 7.4, fontWeight: 1050, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-    <div style={{ marginTop: 2, color: disabled ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.56)", fontSize: 7.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ minWidth: 0, height: "100%", minHeight: 0, borderRadius: 15, border: `1px solid ${disabled ? "rgba(255,255,255,.055)" : `${color}42`}`, background: disabled ? "rgba(255,255,255,.012)" : `linear-gradient(180deg,${color}10,rgba(255,255,255,.018))`, color: disabled ? "rgba(255,255,255,.24)" : "#fff", padding: "6px 3px 5px", cursor: disabled ? "default" : "pointer", boxShadow: disabled ? "none" : `inset 0 1px rgba(255,255,255,.03),0 0 15px ${color}0d`, display: "grid", placeItems: "center", alignContent: "center" }}>
+    <div style={{ color: disabled ? "rgba(255,255,255,.20)" : color, fontSize: 16, lineHeight: 1, fontWeight: 950, textShadow: disabled ? "none" : `0 0 10px ${color}55` }}>{icon}</div>
+    <div style={{ marginTop: 4, fontSize: 8.1, fontWeight: 1050, letterSpacing: .52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{label}</div>
+    {value ? <div style={{ marginTop: 2, color: disabled ? "rgba(255,255,255,.18)" : "rgba(255,255,255,.48)", fontSize: 7.1, fontWeight: 850, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{value}</div> : null}
   </button>;
+}
+
+function cargoDartLabel(dart?: UiDart) {
+  if (!dart) return "—";
+  if (dart.v === 0) return "MISS";
+  if (dart.v === 25) return dart.mult === 2 ? "DBULL" : "BULL";
+  return `${dart.mult === 3 ? "T" : dart.mult === 2 ? "D" : "S"}${dart.v}`;
+}
+
+function CargoAiryKeypad({
+  currentThrow, multiplier, onSimple, onDouble, onTriple, onBackspace, onCancel, onNumber, onBull, onValidate, centerSlot, noticeSlot, validateAttention = false, disabled = false,
+}: any) {
+  const rows = [[0,1,2,3,4,5,6],[7,8,9,10,11,12,13],[14,15,16,17,18,19,20]];
+  return <div className="cargo-airy-keypad" style={{ width: "100%", height: "100%", minHeight: 0, display: "grid", gridTemplateRows: "42px 52px minmax(16px,auto) minmax(205px,1fr) 58px", gap: 11, padding: "12px", boxSizing: "border-box", borderRadius: 20, background: "linear-gradient(180deg,rgba(22,22,23,.85),rgba(12,12,14,.95))", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 10px 30px rgba(0,0,0,.35)", opacity: disabled ? .50 : 1, pointerEvents: disabled ? "none" : "auto", overflow: "hidden", userSelect: "none" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10, alignItems: "stretch" }}>
+      {[0,1,2].map((index) => <div key={index} style={{ minWidth: 0, display: "grid", placeItems: "center", borderRadius: 14, background: "rgba(0,0,0,.48)", border: "1px solid rgba(255,255,255,.08)", color: index === 0 ? "#eec7ff" : index === 1 ? "#cfe6ff" : "#ffe7c0", fontSize: 10.8, fontWeight: 950, letterSpacing: .5, boxShadow: "0 0 18px rgba(250,213,75,.08)" }}>{cargoDartLabel(currentThrow[index])}</div>)}
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      <button type="button" aria-pressed={multiplier === 2} onClick={onDouble} style={{ minWidth: 0, borderRadius: 16, border: `1px solid ${multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)"}`, background: "rgba(46,150,193,.20)", color: "#bfeaff", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: multiplier === 2 ? "0 0 18px rgba(86,201,255,.18)" : "none" }}>DOUBLE</button>
+      <button type="button" aria-pressed={multiplier === 3} onClick={onTriple} style={{ minWidth: 0, borderRadius: 16, border: `1px solid ${multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)"}`, background: "rgba(179,68,151,.20)", color: "#ffccff", fontSize: 10.5, fontWeight: 1000, cursor: "pointer", boxShadow: multiplier === 3 ? "0 0 18px rgba(217,140,255,.18)" : "none" }}>TRIPLE</button>
+      <button type="button" onClick={onCancel} onContextMenu={(event) => { event.preventDefault(); onBackspace?.(); }} aria-label="Annuler" title="Annuler" style={{ minWidth: 0, borderRadius: 16, border: "1px solid rgba(255,180,0,.30)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontSize: 10.5, fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button>
+    </div>
+
+    <div style={{ minWidth: 0, display: "grid", placeItems: "center", overflow: "hidden" }}>{noticeSlot || <span style={{ color: "rgba(255,255,255,.28)", fontSize: 7.8, fontWeight: 850 }}>SIMPLE PAR DÉFAUT · D/T POUR LA PROCHAINE FLÉCHETTE</span>}</div>
+
+    <div style={{ minHeight: 0, display: "grid", gridTemplateRows: "repeat(3,minmax(0,1fr))", gap: 9 }}>
+      {rows.map((row, rowIndex) => <div key={rowIndex} style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 8 }}>
+        {row.map((number) => <button key={number} type="button" onClick={() => onNumber(number)} title={number === 0 ? "MISS" : String(number)} style={{ minWidth: 0, minHeight: 0, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", fontSize: "clamp(15px,4.2vw,20px)", fontWeight: 900, cursor: "pointer", boxShadow: "inset 0 1px rgba(255,255,255,.025)", touchAction: "manipulation" }}>{number}</button>)}
+      </div>)}
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10, alignItems: "stretch" }}>
+      <button type="button" onClick={onBull} style={{ minWidth: 0, borderRadius: 16, border: "1px solid rgba(139,224,184,.18)", background: "rgba(22,92,66,.35)", color: "#8be0b8", fontSize: 12.5, fontWeight: 1050, cursor: "pointer" }}>BULL</button>
+      <div style={{ display: "grid", placeItems: "center", minWidth: 0 }}>{centerSlot}</div>
+      <button type="button" onClick={onValidate} disabled={!currentThrow.length} style={{ minWidth: 0, borderRadius: 16, border: currentThrow.length ? "1px solid rgba(255,180,0,.30)" : "1px solid rgba(255,255,255,.06)", background: currentThrow.length ? (validateAttention ? "linear-gradient(180deg,#ffffff,#ffd666)" : "linear-gradient(180deg,#ffc63a,#ffaf00)") : "rgba(255,255,255,.035)", color: currentThrow.length ? "#1a1a1a" : "rgba(255,255,255,.24)", fontSize: 11.5, fontWeight: 1100, letterSpacing: .55, cursor: currentThrow.length ? "pointer" : "default", boxShadow: currentThrow.length ? (validateAttention ? "0 0 24px rgba(255,255,255,.46),0 10px 22px rgba(255,170,0,.24)" : "0 10px 22px rgba(255,170,0,.24)") : "none" }}>VALIDER</button>
+    </div>
+  </div>;
 }
 
 
@@ -272,7 +309,7 @@ export default function CargoPlay(props: any) {
   const scoreUnit = isParcel ? "COLIS" : "KG";
 
   function backToConfig() { if (typeof go === "function") go("cargo_config", config); }
-  function addDart(v: number, mult?: 1 | 2 | 3) { if (botThinking || state.phase !== "playing" || throwDarts.length >= 3) return; setThrowDarts((prev) => [...prev, { v: Number(v) || 0, mult: (mult || multiplier) as any }].slice(0, 3)); }
+  function addDart(v: number, mult?: 1 | 2 | 3) { if (botThinking || state.phase !== "playing" || throwDarts.length >= 3) return; const selected = (mult || multiplier) as 1 | 2 | 3; setThrowDarts((prev) => [...prev, { v: Number(v) || 0, mult: selected }].slice(0, 3)); setMultiplier(1); }
   function commitVisit(source?: UiDart[]) {
     const darts = (source || throwDarts).slice(0, 3); if (!darts.length || state.phase !== "playing") return;
     setUndoStack((prev) => [...prev.slice(-29), cloneCargoState(state)]);
@@ -336,43 +373,82 @@ export default function CargoPlay(props: any) {
   React.useEffect(() => { if (state.phase === "finished" || state.visits.length === 0) return; const timer = window.setTimeout(() => { void (History as any).upsert(buildHistoryRecord("in_progress")); }, 280); return () => window.clearTimeout(timer); }, [state]);
   React.useEffect(() => { if (state.phase !== "finished") return; setShowEnd(true); if (autoSavedRef.current === matchIdRef.current) return; autoSavedRef.current = matchIdRef.current; try { onFinish?.(buildHistoryRecord("finished"), { navigate: false }); } catch {} }, [state.phase]);
 
-  const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 18, fontWeight: 1200 }}>{activeScore} {scoreUnit}</div><div style={{ color: activeSeries ? GREEN : SOFT, fontSize: 8.5, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
-  const keypadNotice = <div style={{ color: botThinking ? GOLD : SOFT, fontSize: 8.5, fontWeight: 900, textAlign: "center", lineHeight: 1.25 }}>{botThinking ? "BOT EN CHARGEMENT…" : notice}</div>;
+  const centerScore = <div style={{ textAlign: "center" }}><div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 21, lineHeight: 1, fontWeight: 1200 }}>{activeScore} <span style={{ fontSize: 11, opacity: .82 }}>{scoreUnit}</span></div><div style={{ marginTop: 4, color: activeSeries ? GREEN : SOFT, fontSize: 8.3, fontWeight: 1000 }}>{activeSeries ? `SÉRIE ${activeSeries.count}${isParcel ? "/5" : ""}` : `TOUR ${state.roundIndex}/${config.rounds}`}</div></div>;
+  const objectiveNow = cargoCurrentObjective(state);
+  const visibleNotice = botThinking ? "BOT EN CHARGEMENT…" : (notice && notice !== objectiveNow ? notice : "");
+  const keypadNotice = visibleNotice ? <div style={{ width: "100%", color: botThinking ? GOLD : "rgba(255,255,255,.60)", fontSize: 8.1, fontWeight: 900, textAlign: "center", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{visibleNotice}</div> : null;
 
-  return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(255,155,66,.22),#080a0e 43%,#020203 100%)", padding: "10px 8px max(4px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={72} tickerBottomGap={3} left={<BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} />} right={<InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} />} />
-    <main style={{ flex: 1, minHeight: 0, width: "min(980px,100%)", margin: "0 auto", padding: "3px 4px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "104px 48px minmax(0,1fr)", gap: 5, overflow: "hidden" }}>
-      <section style={{ minHeight: 0, borderRadius: 18, overflow: "hidden", border: `1px solid ${activeColor}55`, background: "radial-gradient(circle at 12% 0%,rgba(255,155,66,.15),transparent 34%),linear-gradient(180deg,#17191e,#080a0e)", boxShadow: `0 0 22px ${activeColor}14,0 14px 34px rgba(0,0,0,.30)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 30px" }}>
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "48px minmax(0,1fr) auto 44px", gap: 8, alignItems: "center", padding: "7px 8px 5px", position: "relative" }}>
-          <div aria-hidden style={{ position: "absolute", left: 56, bottom: -42, opacity: .075, transform: "scale(2.2)", pointerEvents: "none" }}><ProfileAvatar profile={activeProfile} size={74} /></div>
-          <ProfileAvatar profile={activeProfile} size={46} />
-          <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
-            <div style={{ color: activeColor, fontSize: 13.5, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(activeProfile)}</div>
-            <div style={{ marginTop: 4, color: SOFT, fontSize: 8.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds} · Rang #{activeStanding?.rank || 1}/{state.standings.length}</div>
-            <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 7, height: 7, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 10px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1050, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`} · ${activeContract?.label || activeSeries.labels?.[0] || "Chargement"}` : "Nouvelle série disponible"}</span></div>
+  const cargoTarget = isParcel
+    ? Math.max(30, config.rounds * 5)
+    : config.variant === "exact_load"
+      ? Math.max(1, Number(config.targetWeight || config.truckCapacity || 1000))
+      : Math.max(1, Number(config.truckCapacity || config.targetWeight || 1000));
+  const cargoFill = Math.max(0, Math.min(100, activeScore / Math.max(1, cargoTarget) * 100));
+  const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
+
+  return <div style={{ position: "fixed", inset: 0, zIndex: 40, minHeight: 0, color: theme?.text || "#fff", background: `radial-gradient(circle at 50% -6%,${ORANGE}20 0,${theme?.bg || "#080a11"} 44%,#020305 100%)`, padding: "0 0 max(6px,env(safe-area-inset-bottom))", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <PageHeader tickerSrc={tickerCargo} tickerAlt="CARGO" tickerHeight={92} tickerFit="cover" tickerBottomGap={8} left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={ORANGE} glow={`${ORANGE}88`} /></div>} right={<div style={{ marginRight: 6 }}><InfoDot title="Règles CARGO" color={GOLD} glow={`${GOLD}88`} content={<Rules config={config} />} /></div>} />
+
+    <main className="cargo-play-main" style={{ flex: 1, minHeight: 0, width: "100%", maxWidth: 980, margin: "0 auto", padding: "7px 8px 0", boxSizing: "border-box", display: "grid", gridTemplateRows: "132px 58px minmax(0,1fr)", gap: 9, overflow: "hidden" }}>
+      <section style={{ minHeight: 0, borderRadius: 20, overflow: "hidden", border: `1px solid ${activeColor}78`, background: "linear-gradient(180deg,rgba(18,20,27,.93),rgba(6,8,12,.96))", boxShadow: `0 0 24px ${activeColor}1c,0 12px 30px rgba(0,0,0,.26)`, display: "grid", gridTemplateRows: "minmax(0,1fr) 34px" }}>
+        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) 126px", alignItems: "stretch", position: "relative" }}>
+          <div style={{ minWidth: 0, position: "relative", overflow: "hidden", padding: "9px 9px 7px 10px", display: "grid", gridTemplateColumns: "58px minmax(0,1fr) auto", gap: 9, alignItems: "center" }}>
+            <div aria-hidden style={{ position: "absolute", right: -26, top: -32, width: 150, height: 150, opacity: .13, transform: "scale(1.45)", pointerEvents: "none", filter: "saturate(.9)" }}><ProfileAvatar profile={activeProfile} size={104} /></div>
+            <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(9,11,16,.98) 0%,rgba(9,11,16,.92) 48%,rgba(9,11,16,.54) 78%,rgba(9,11,16,.18) 100%)", pointerEvents: "none" }} />
+            <div style={{ position: "relative", zIndex: 1, width: 56, height: 56, borderRadius: 999, display: "grid", placeItems: "center", boxShadow: `0 0 0 1px ${activeColor}66,0 0 15px ${activeColor}66` }}><ProfileAvatar profile={activeProfile} size={54} /></div>
+            <div style={{ minWidth: 0, position: "relative", zIndex: 1 }}>
+              <div style={{ color: activeColor, fontSize: 16, lineHeight: 1, fontWeight: 1100, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textShadow: `0 0 10px ${activeColor}44` }}>{playerName(activeProfile)}</div>
+              <div style={{ marginTop: 6, color: "rgba(255,255,255,.58)", fontSize: 8.4, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoVariantLabel(config.variant)} · Tour {Math.min(state.roundIndex, config.rounds)}/{config.rounds}</div>
+              <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: activeSeries ? GREEN : ORANGE, boxShadow: `0 0 9px ${activeSeries ? GREEN : ORANGE}` }} /><span style={{ color: activeSeries ? GREEN : GOLD, fontSize: 8.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeSeries ? `Série ${activeSeries.count}${isParcel ? "/5" : `/${activeContract?.targetCount || config.maxSeries}`}` : "Nouvelle série disponible"}</span></div>
+            </div>
+            <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
+              <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 33, lineHeight: .9, fontWeight: 1200, textShadow: `0 0 14px ${(isParcel ? BLUE : ORANGE)}42` }}>{activeScore}</div>
+              <div style={{ marginTop: 6, color: SOFT, fontSize: 7.4, fontWeight: 1000, letterSpacing: .5 }}>{scoreUnit}</div>
+            </div>
           </div>
-          <div style={{ minWidth: 58, textAlign: "center", position: "relative", zIndex: 1 }}>
-            <div style={{ color: isParcel ? BLUE : ORANGE, fontSize: 31, lineHeight: .82, fontWeight: 1200 }}>{activeScore}</div>
-            <div style={{ marginTop: 6, color: SOFT, fontSize: 7.5, fontWeight: 1000 }}>{scoreUnit}</div>
-          </div>
-          <button type="button" onClick={() => setOverlay("truck")} aria-label="Ouvrir le camion" title="Camion et chargement" style={{ width: 42, height: 42, borderRadius: 13, border: `1px solid ${ORANGE}66`, background: `linear-gradient(180deg,${ORANGE}20,rgba(255,255,255,.025))`, color: ORANGE, display: "grid", placeItems: "center", cursor: "pointer", boxShadow: `0 0 16px ${ORANGE}18` }}><TruckMiniIcon /></button>
+
+          <button type="button" onClick={() => setOverlay("truck")} aria-label="Ouvrir le camion" title="Camion et chargement" style={{ position: "relative", minWidth: 0, border: "none", borderLeft: `1px solid ${ORANGE}42`, background: "radial-gradient(circle at 50% 105%,rgba(255,155,66,.20),rgba(3,5,9,.98) 64%)", color: "#fff", padding: 8, cursor: "pointer", overflow: "hidden" }}>
+            <div style={{ position: "absolute", inset: 0, opacity: .08, transform: "scale(1.7) translate(9px,8px)", display: "grid", placeItems: "center", color: ORANGE }}><TruckMiniIcon size={54} /></div>
+            <div style={{ position: "relative", height: "100%", display: "grid", alignContent: "center", justifyItems: "center", gap: 4 }}>
+              <span style={{ width: 39, height: 39, display: "grid", placeItems: "center", borderRadius: 13, color: ORANGE, border: `1px solid ${ORANGE}55`, background: `${ORANGE}12`, boxShadow: `0 0 15px ${ORANGE}18` }}><TruckMiniIcon size={24} /></span>
+              <strong style={{ color: ORANGE, fontSize: 8.1, letterSpacing: .6 }}>{isParcel ? "LIVRAISON" : "CHARGEMENT"}</strong>
+              <span style={{ color: "#fff", fontSize: 17, lineHeight: 1, fontWeight: 1100 }}>{Math.round(cargoFill)}%</span>
+              <span style={{ color: "rgba(255,255,255,.42)", fontSize: 7 }}>{isParcel ? `${activeScore}/${cargoTarget} colis` : `${activeScore}/${cargoTarget} kg`}</span>
+            </div>
+          </button>
         </div>
-        <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 7, alignItems: "center", padding: "4px 8px", background: "rgba(0,0,0,.34)", borderTop: "1px solid rgba(255,255,255,.06)" }}><span style={{ color: "rgba(255,255,255,.80)", fontSize: 8.2, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cargoCurrentObjective(state)}</span><span style={{ color: SOFT, fontSize: 7.3, fontWeight: 900 }}>{throwDarts.length}/3</span></div>
+
+        <div style={{ minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "5px 10px", background: "rgba(0,0,0,.28)", borderTop: "1px solid rgba(255,255,255,.05)" }}>
+          <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}><span style={{ flex: "0 0 auto", width: 6, height: 6, borderRadius: 999, background: GOLD, boxShadow: `0 0 8px ${GOLD}88` }} /><span style={{ color: "rgba(255,255,255,.82)", fontSize: 8.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{objectiveNow}</span></div>
+          <span style={{ color: throwDarts.length === 3 ? GOLD : SOFT, fontSize: 7.7, fontWeight: 950 }}>{throwDarts.length}/3</span>
+        </div>
       </section>
 
-      <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
-        <QuickButton icon="▦" label={isParcel ? "TOURNÉE" : "MANIFESTE"} value={isParcel ? `${activeStats.parcelDeliveries || 0} livr.` : `${state.contracts.length} contrats`} color={GOLD} onClick={() => setOverlay("manifest")} />
+      <section style={{ minHeight: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
+        <QuickButton icon="▦" label={isParcel ? "TOURNÉE" : "MANIFESTE"} value={`${state.contracts.length} contrat${state.contracts.length > 1 ? "s" : ""}`} color={GOLD} onClick={() => setOverlay("manifest")} />
         <QuickButton icon="≡" label="CLASSEMENT" value={`#${activeStanding?.rank || 1}/${state.standings.length}`} color={ORANGE} onClick={() => setOverlay("standings")} />
-        <QuickButton icon="⌁" label="STATS" value={`${pct(activeStats.hits, activeStats.darts)}%`} color={GREEN} onClick={() => setOverlay("stats")} />
+        <QuickButton icon="⌁" label="STATS" value={`${activeAccuracy}% précision`} color={GREEN} onClick={() => setOverlay("stats")} />
         <QuickButton icon="↺" label="JOURNAL" value={`${state.visits.length} volée${state.visits.length > 1 ? "s" : ""}`} color={BLUE} onClick={() => setOverlay("timeline")} disabled={!state.visits.length} />
       </section>
 
-      {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
-        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 17, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(20,20,23,.94),rgba(8,8,11,.98))", padding: 7, display: "grid", gridTemplateRows: "minmax(0,1fr) 48px", gap: 6 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(310, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .37)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "1fr .8fr 1fr", gap: 7 }}><button type="button" onClick={cancelOrUndo} style={action(RED)}>↶ ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} style={{ ...action(GOLD), color: "#171008", background: "linear-gradient(180deg,#ffc63a,#ffad00)" }}>VALIDER</button></div></div> : <div style={{ width: "100%", opacity: botThinking ? .48 : 1, pointerEvents: botThinking ? "none" : "auto" }}><Keypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => setThrowDarts((prev) => prev.slice(0,-1))} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} safeBottomPad={false} footerGap={8} /></div>}
+      {state.phase === "playing" ? <section style={{ minHeight: 0, overflow: "hidden", display: "flex", justifyContent: "center", alignItems: "stretch", borderRadius: 20, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.018)", padding: 7, boxShadow: "0 12px 32px rgba(0,0,0,.24)" }}>
+        {config.scoreInputMethod === "dartboard" ? <div style={{ width: "100%", height: "100%", minHeight: 0, borderRadius: 18, background: "linear-gradient(180deg,rgba(20,20,23,.82),rgba(8,8,11,.93))", padding: 10, display: "grid", gridTemplateRows: "minmax(0,1fr) 56px", gap: 12 }}><div style={{ minHeight: 0, display: "grid", placeItems: "center", overflow: "hidden" }}><DartboardClickable size={Math.min(330, Math.max(220, Math.floor((typeof window !== "undefined" ? window.innerHeight : 803) * .39)))} multiplier={multiplier} disabled={botThinking || throwDarts.length >= 3} onHit={(segment, mult) => addDart(segment, mult)} /></div><div style={{ display: "grid", gridTemplateColumns: "minmax(88px,.8fr) minmax(64px,.44fr) minmax(120px,1fr)", gap: 10 }}><button type="button" onClick={cancelOrUndo} style={{ borderRadius: 16, border: "1px solid rgba(255,180,0,.3)", background: "linear-gradient(180deg,#ffc63a,#ffaf00)", color: "#1a1a1a", fontWeight: 1050, cursor: "pointer", boxShadow: "0 9px 20px rgba(255,170,0,.20)" }}>ANNULER</button><div style={{ display: "grid", placeItems: "center" }}>{centerScore}</div><button type="button" onClick={() => commitVisit()} disabled={!throwDarts.length} style={{ borderRadius: 16, border: throwDarts.length ? "1px solid rgba(255,180,0,.3)" : "1px solid rgba(255,255,255,.06)", color: throwDarts.length ? "#171008" : "rgba(255,255,255,.24)", background: throwDarts.length ? "linear-gradient(180deg,#ffc63a,#ffad00)" : "rgba(255,255,255,.035)", fontWeight: 1100, cursor: throwDarts.length ? "pointer" : "default" }}>VALIDER</button></div></div> : <div style={{ width: "100%", height: "100%", minHeight: 0 }}>
+          <CargoAiryKeypad currentThrow={throwDarts as any} multiplier={multiplier} onSimple={() => setMultiplier(1)} onDouble={() => setMultiplier(2)} onTriple={() => setMultiplier(3)} onBackspace={() => { setThrowDarts((prev) => prev.slice(0,-1)); setMultiplier(1); }} onCancel={cancelOrUndo} onNumber={(number: number) => addDart(number)} onBull={() => addDart(25, multiplier === 2 ? 2 : 1)} onValidate={() => commitVisit()} centerSlot={centerScore} noticeSlot={keypadNotice} validateAttention={throwDarts.length === 3} disabled={botThinking} />
+        </div>}
       </section> : null}
     </main>
 
-    <style>{`@keyframes cargo-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}`}</style>
+    <style>{`
+      @keyframes cargo-toast-in{from{opacity:0;transform:translate(-50%,-12px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+      @media (max-height:720px){
+        .cargo-play-main{grid-template-rows:112px 48px minmax(0,1fr)!important;gap:7px!important}
+        .cargo-airy-keypad{grid-template-rows:32px 44px minmax(12px,auto) minmax(132px,1fr) 48px!important;gap:7px!important;padding:9px!important}
+      }
+      @media (min-height:930px){
+        .cargo-play-main{grid-template-rows:140px 62px minmax(0,1fr)!important;gap:11px!important}
+        .cargo-airy-keypad{grid-template-rows:46px 56px minmax(18px,auto) minmax(250px,1fr) 62px!important;gap:13px!important;padding:14px!important}
+      }
+    `}</style>
     {eventToast ? <EventToast toast={eventToast} onClose={() => setEventToast(null)} /> : null}
     {overlay === "truck" ? <TruckModal state={state} stats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}
     {overlay === "manifest" ? <ManifestModal state={state} activeStats={activeStats} activeContract={activeContract} onClose={() => setOverlay(null)} /> : null}

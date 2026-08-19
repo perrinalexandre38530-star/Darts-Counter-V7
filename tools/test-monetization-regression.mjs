@@ -93,6 +93,15 @@ for (const [name, source, placement] of [
 assert.ok(manager.includes("getVerifiedAdFreeState().active"), "Garde Premium/Sans pub vérifiée absente du manager.");
 assert.ok(!/localStorage[^\n]*(premium|entitlement)/i.test(manager), "Le manager ne doit pas faire confiance à un Premium localStorage.");
 
+
+// 9) Production FREE : impossible de couper les pubs via Settings/localStorage.
+assert.ok(prefs.includes('getAdMobRuntimeConfig().mode === "production"'), "Le verrou FREE production n'est pas relié au mode AdMob.");
+assert.ok(prefs.includes("next.adsEnabled = true") && prefs.includes("next.bannersEnabled = true"), "La migration production ne réactive pas les pubs FREE.");
+assert.ok(prefs.includes("arePaidAdsLockedForFreeAccount"), "Helper de verrou publicitaire FREE absent.");
+assert.ok(manager.includes("canRequestPaidAds(prefs)"), "L'interstitiel peut encore être contourné par une préférence locale.");
+assert.ok(adSlot.includes("canRequestBannerAds(prefs)"), "Les bannières peuvent encore être contournées par une préférence locale.");
+assert.ok(homePage.includes("canRequestBannerAds(adPrefs)"), "Le ticker Home peut encore être contourné par une préférence locale.");
+
 console.log("✅ MONETIZATION RC REGRESSION OK");
 console.log(`   Product IDs contrôlés : ${new Set(productIds).size}`);
 console.log("   History.upsert final : centralisé");

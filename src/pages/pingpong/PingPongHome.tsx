@@ -16,6 +16,7 @@ import { useLang } from "../../contexts/LangContext";
 import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard, { type ActiveProfileStats } from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
+import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { loadPingPongState, newPingPongState, savePingPongState } from "../../lib/pingpongStore";
 import { loadPingPongHistory } from "../../lib/pingpongHistory";
@@ -568,6 +569,10 @@ export default function PingPongHome({ store, go }: Props) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div style={{ ...sectionWrap, marginBottom: 0 }}>
+        <PageAdBanner placement="home" slotKey="page-home-pingpong-under-header" />
       </div>
 
       {/* ===== BODY ===== */}
