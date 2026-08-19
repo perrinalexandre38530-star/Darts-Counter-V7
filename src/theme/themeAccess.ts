@@ -32,6 +32,50 @@ export const EXTREMES_THEME_IDS = [
   "extremeArcticPulse",
 ] as const satisfies readonly ThemeId[];
 
+
+export const FACTORY_THEME_IDS = [
+  "factoryArgentSatine",
+  "factoryDegradeGraphite",
+  "factoryAtelierGrunge",
+  "factoryPlaquesDecoupees",
+  "factoryLamesMetal",
+  "factoryAcierFissure",
+  "factoryAcierRaye",
+  "factoryToleGivree",
+  "factoryBrossagePro",
+  "factoryBrumeArgent",
+  "factoryMurIndustriel",
+] as const satisfies readonly ThemeId[];
+
+export const PUB_THEME_IDS = [
+  "pubBoisViolet",
+  "pubSceneAmbree",
+  "pubComptoirVintage",
+] as const satisfies readonly ThemeId[];
+
+export const GRAFFITI_THEME_IDS = [
+  "graffitiTagsNocturnes",
+  "graffitiEclatCyan",
+  "graffitiMurPop",
+  "graffitiRuelle",
+  "graffitiExplosionBlanche",
+  "graffitiRougeUnderground",
+] as const satisfies readonly ThemeId[];
+
+export const ARCADE_THEME_IDS = [
+  "arcadePixelRose",
+  "arcadeNeonPixels",
+  "arcadePortailBleu",
+  "arcadeVioletMatrix",
+] as const satisfies readonly ThemeId[];
+
+export const STREET_THEME_IDS = [
+  "streetRouteUrbex",
+  "streetMurStreetArt",
+  "streetAcierUrbain",
+  "streetPisteColors",
+] as const satisfies readonly ThemeId[];
+
 export const LUXE_THEME_IDS = [
   "luxePlatineRoyale",
   "luxeOrDiamant",
@@ -44,6 +88,11 @@ export const PREMIUM_THEME_IDS = [
   ...METALS_THEME_IDS,
   ...EXTREMES_THEME_IDS,
   ...LUXE_THEME_IDS,
+  ...FACTORY_THEME_IDS,
+  ...PUB_THEME_IDS,
+  ...GRAFFITI_THEME_IDS,
+  ...ARCADE_THEME_IDS,
+  ...STREET_THEME_IDS,
 ] as const satisfies readonly ThemeId[];
 
 const ARENAS_THEME_SET = new Set<ThemeId>(ARENAS_THEME_IDS);

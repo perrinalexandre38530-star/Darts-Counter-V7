@@ -36,7 +36,7 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
-import { ARENAS_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
+import { FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
 import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
@@ -161,11 +161,11 @@ type Props = { go?: (tab: any, params?: any) => void; params?: any };
 const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "orange", "white"];
 const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
-const ARENAS: ThemeId[] = [...ARENAS_THEME_IDS];
-const MATERIALS: ThemeId[] = ["materialBoisNoble", "materialMarbreVert", "materialCuivreFondu"];
-const METALS: ThemeId[] = ["metalAluminiumPro", "metalAcierBrosse", "metalTitaneForge"];
-const EXTREMES: ThemeId[] = ["extremeLavaCore", "extremeFireGlace", "extremeArcticPulse"];
-const LUXES: ThemeId[] = ["luxePlatineRoyale", "luxeOrDiamant", "luxeEmeraudeNoire"];
+const FACTORY: ThemeId[] = [...FACTORY_THEME_IDS];
+const PUBS: ThemeId[] = [...PUB_THEME_IDS];
+const GRAFFITIS: ThemeId[] = [...GRAFFITI_THEME_IDS];
+const ARCADES: ThemeId[] = [...ARCADE_THEME_IDS];
+const STREETS: ThemeId[] = [...STREET_THEME_IDS];
 const PREMIUM_THEMES_STORE_PACK_ID = "themes_neon_01";
 
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
@@ -213,6 +213,35 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   luxePlatineRoyale: { defaultLabel: "Platine Royale", defaultDesc: "Platine, métal noble et prestige sobre" },
   luxeOrDiamant: { defaultLabel: "Or Royal", defaultDesc: "Or brossé premium et luxe lumineux" },
   luxeEmeraudeNoire: { defaultLabel: "Diamant Noir", defaultDesc: "Facettes sombres, éclats glacés et prestige minéral" },
+
+  factoryArgentSatine: { defaultLabel: "Argent Satiné", defaultDesc: "Aluminium satiné doux et propre" },
+  factoryDegradeGraphite: { defaultLabel: "Dégradé Graphite", defaultDesc: "Dégradé graphite minimal et élégant" },
+  factoryAtelierGrunge: { defaultLabel: "Atelier Grunge", defaultDesc: "Plaque grise mate et usure atelier" },
+  factoryPlaquesDecoupees: { defaultLabel: "Plaques Découpées", defaultDesc: "Panneaux acier géométriques et modernes" },
+  factoryLamesMetal: { defaultLabel: "Lames Métal", defaultDesc: "Lames industrielles anthracite et relief" },
+  factoryAcierFissure: { defaultLabel: "Acier Fissuré", defaultDesc: "Acier usé fissuré et contraste fort" },
+  factoryAcierRaye: { defaultLabel: "Acier Rayé", defaultDesc: "Brossage horizontal net et éclat froid" },
+  factoryToleGivree: { defaultLabel: "Tôle Givrée", defaultDesc: "Tôle claire patinée et lumière froide" },
+  factoryBrossagePro: { defaultLabel: "Brossage Pro", defaultDesc: "Acier brossé premium ultra lisible" },
+  factoryBrumeArgent: { defaultLabel: "Brume Argent", defaultDesc: "Brume métallique douce et profonde" },
+  factoryMurIndustriel: { defaultLabel: "Mur Industriel", defaultDesc: "Mur d’atelier sombre et poussiéreux" },
+  pubBoisViolet: { defaultLabel: "Bois Violet", defaultDesc: "Lames de bois froides et halo lounge" },
+  pubSceneAmbree: { defaultLabel: "Scène Ambrée", defaultDesc: "Scène pub chaude et spots ambrés" },
+  pubComptoirVintage: { defaultLabel: "Comptoir Vintage", defaultDesc: "Bois patiné et ambiance bistrot" },
+  graffitiTagsNocturnes: { defaultLabel: "Tags Nocturnes", defaultDesc: "Mur noir saturé de tags urbains" },
+  graffitiEclatCyan: { defaultLabel: "Éclat Cyan", defaultDesc: "Jet cyan graphique et énergie street" },
+  graffitiMurPop: { defaultLabel: "Mur Pop", defaultDesc: "Mur pop coloré et vibe graffiti" },
+  graffitiRuelle: { defaultLabel: "Ruelle Graff", defaultDesc: "Ruelle sombre avec touches colorées" },
+  graffitiExplosionBlanche: { defaultLabel: "Explosion Blanche", defaultDesc: "Impact blanc et spray contrasté" },
+  graffitiRougeUnderground: { defaultLabel: "Rouge Underground", defaultDesc: "Tags rouges agressifs et ambiance night" },
+  arcadePixelRose: { defaultLabel: "Pixel Rose", defaultDesc: "Pixel art rose et violet arcade" },
+  arcadeNeonPixels: { defaultLabel: "Néon Pixels", defaultDesc: "Grille néon multi-couleurs hyper arcade" },
+  arcadePortailBleu: { defaultLabel: "Portail Bleu", defaultDesc: "Portail numérique bleu électrique" },
+  arcadeVioletMatrix: { defaultLabel: "Violet Matrix", defaultDesc: "Mosaïque violette et néons froids" },
+  streetRouteUrbex: { defaultLabel: "Route Urbex", defaultDesc: "Asphalte usé, lignes jaunes et énergie urbaine" },
+  streetMurStreetArt: { defaultLabel: "Street Art", defaultDesc: "Mur street art coloré et brut" },
+  streetAcierUrbain: { defaultLabel: "Acier Urbain", defaultDesc: "Façade urbaine bleutée et lignes métal" },
+  streetPisteColors: { defaultLabel: "Piste Colors", defaultDesc: "Asphalte peint et explosions de couleurs" },
 };
 
 function getPreset(id: ThemeId): AppTheme {
@@ -782,17 +811,17 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "dark" | "arenas" | "materials" | "metals" | "extremes" | "luxe";
+type ThemePackId = "neons" | "soft" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street";
 type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
 const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
   { id: "soft", ids: SOFTS, label: "COULEURS DOUCES", subtitle: "Tons modernes, naturels et apaisés", colors: ["#22E6FF", "#3B82F6", "#A3B18A", "#A7D8FF"] },
   { id: "dark", ids: DARKS, label: "DARK PREMIUM", subtitle: "Métal, carbone et noirs premium", colors: ["#5A5A5A", "#263238", "#8CA6B8", "#1D1D24"] },
-  { id: "arenas", ids: ARENAS, label: "ARENAS & AMBIANCES", subtitle: "8 univers immersifs · fonds, cartes, halos et animations", colors: ["#20E7FF", "#FF424E", "#E8C56B", "#FF4FD8"], premium: true },
-  { id: "materials", ids: MATERIALS, label: "MATIÈRES D’EXCEPTION", subtitle: "Bois, marbre et cuivre avec textures marquées", colors: ["#E8B764", "#4BD4A3", "#F08B57", "#FFD57E"], premium: true },
-  { id: "metals", ids: METALS, label: "MÉTAUX & INDUSTRIE", subtitle: "Aluminium, acier brossé et titane forgé", colors: ["#DCE4EE", "#C7D6E6", "#AFBFCE", "#62C6FF"], premium: true },
-  { id: "extremes", ids: EXTREMES, label: "ÉLÉMENTS EXTRÊMES", subtitle: "Lave, feu solaire et glace polaire", colors: ["#FF8A3D", "#FF7C3D", "#7DDBFF", "#9CE8FF"], premium: true },
-  { id: "luxe", ids: LUXES, label: "LUXE & JOYAUX", subtitle: "Platine, or royal et diamant noir", colors: ["#F3F5F9", "#F5C85E", "#A8C4E8", "#FFF6D6"], premium: true },
+  { id: "factory", ids: FACTORY, label: "USINE & MÉTAUX", subtitle: "Un thème par texture industrielle : alu, acier, grunge et atelier", colors: ["#E3EAF2", "#9EACBC", "#62C9FF", "#DCE4EE"], premium: true },
+  { id: "pub", ids: PUBS, label: "AMBIANCE PUB", subtitle: "Bois, lumière chaude et atmosphères de bar / pub", colors: ["#F1B86C", "#B39CFF", "#5FD0C2", "#FF7E45"], premium: true },
+  { id: "graffiti", ids: GRAFFITIS, label: "GRAFFITI", subtitle: "Murs, tags et explosions urbaines très visuelles", colors: ["#56E9FF", "#FF4D73", "#B98AFF", "#F6F7FB"], premium: true },
+  { id: "arcade", ids: ARCADES, label: "ARCADE", subtitle: "Pixels, néons et écrans rétro-futuristes", colors: ["#FF5AD7", "#39F2FF", "#B95BFF", "#F1F768"], premium: true },
+  { id: "street", ids: STREETS, label: "STREET", subtitle: "Asphalte, street art et matières urbaines colorées", colors: ["#FFA34B", "#4DE7FF", "#FFD05D", "#FF7060"], premium: true },
 ];
 
 function ThemePreviewBlock({

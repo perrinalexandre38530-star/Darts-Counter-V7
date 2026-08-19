@@ -43,13 +43,24 @@ type RuntimeState = {
   lastInterstitialAt: number;
   recentMatchIds: string[];
   pending: PendingAd | null;
+  rewardedInterstitialPasses: number;
+  rewardedPassesEarnedTotal: number;
+  lastRewardedAt: number;
+  lastRewardedPassUsedAt: number;
 };
+
+const REWARDED_PASS_MATCHES = 3;
+const REWARDED_PASS_ID = "skip_next_3_end_game_interstitials";
 
 const DEFAULT_RUNTIME: RuntimeState = {
   completedMatches: 0,
   lastInterstitialAt: 0,
   recentMatchIds: [],
   pending: null,
+  rewardedInterstitialPasses: 0,
+  rewardedPassesEarnedTotal: 0,
+  lastRewardedAt: 0,
+  lastRewardedPassUsedAt: 0,
 };
 
 let interstitialInFlight: Promise<void> | null = null;
@@ -78,6 +89,13 @@ function loadRuntime(): RuntimeState {
       ...(parsed && typeof parsed === "object" ? parsed : {}),
       recentMatchIds: Array.isArray(parsed?.recentMatchIds) ? parsed.recentMatchIds.map(String).slice(-30) : [],
       pending: parsed?.pending && typeof parsed.pending === "object" ? parsed.pending : null,
+      // Un Rewarded crédite exactement 3 prochaines parties sans interstitiel.
+      // Le compteur est volontairement borné : impossible de stocker une quantité
+      // illimitée via une ancienne version ou une valeur locale corrompue.
+      rewardedInterstitialPasses: Math.max(0, Math.min(REWARDED_PASS_MATCHES, Math.floor(Number(parsed?.rewardedInterstitialPasses) || 0))),
+      rewardedPassesEarnedTotal: Math.max(0, Math.floor(Number(parsed?.rewardedPassesEarnedTotal) || 0)),
+      lastRewardedAt: Math.max(0, Number(parsed?.lastRewardedAt) || 0),
+      lastRewardedPassUsedAt: Math.max(0, Number(parsed?.lastRewardedPassUsedAt) || 0),
     };
   } catch {
     return { ...DEFAULT_RUNTIME };
@@ -150,7 +168,14 @@ export function markCompletedMatchForAds(matchId: string, mode?: string): void {
   state.pending = null;
 
   if (dueNow(state)) {
-    state.pending = { matchId: id, mode: mode ? String(mode) : undefined, at: Date.now(), seenResults: false };
+    if (state.rewardedInterstitialPasses > 0) {
+      // Récompense explicite : chaque pass consomme UNE des 3 prochaines
+      // parties qui auraient normalement déclenché un interstitiel.
+      state.rewardedInterstitialPasses -= 1;
+      state.lastRewardedPassUsedAt = Date.now();
+    } else {
+      state.pending = { matchId: id, mode: mode ? String(mode) : undefined, at: Date.now(), seenResults: false };
+    }
   }
   saveRuntime(state);
 
@@ -210,6 +235,57 @@ export function interceptMonetizedNavigation(args: {
   }
 
   return false;
+}
+
+
+export type RewardedInterstitialPassResult = {
+  status: "earned" | "unavailable" | "skipped" | "error";
+  passesRemaining: number;
+  error?: string;
+};
+
+/**
+ * Précharge le Rewarded réel uniquement quand l'utilisateur FREE peut en bénéficier.
+ * Aucun Rewarded n'est affiché automatiquement : l'affichage reste strictement opt-in.
+ */
+export async function preloadRewardedInterstitialPassAd(): Promise<boolean> {
+  installEntitlementGuard();
+  if (getVerifiedAdFreeState().active) return false;
+  const state = loadRuntime();
+  if (state.rewardedInterstitialPasses > 0) return false;
+  return preloadRewardedAd(false);
+}
+
+/**
+ * Récompense V79 : 1 Rewarded complété = 3 prochaines parties sans interstitiel.
+ * Les bannières restent actives et aucun droit Premium/Sans pub n'est accordé.
+ */
+export async function claimRewardedInterstitialPasses(): Promise<RewardedInterstitialPassResult> {
+  installEntitlementGuard();
+  if (getVerifiedAdFreeState().active) {
+    return { status: "skipped", passesRemaining: loadRuntime().rewardedInterstitialPasses };
+  }
+
+  const before = loadRuntime();
+  if (before.rewardedInterstitialPasses > 0) {
+    return { status: "skipped", passesRemaining: before.rewardedInterstitialPasses };
+  }
+
+  const result = await showRewardedAd(REWARDED_PASS_ID, false);
+  if (result.status === "shown" && result.earned) {
+    const state = loadRuntime();
+    state.rewardedInterstitialPasses = REWARDED_PASS_MATCHES;
+    state.rewardedPassesEarnedTotal += REWARDED_PASS_MATCHES;
+    state.lastRewardedAt = Date.now();
+    saveRuntime(state);
+    return { status: "earned", passesRemaining: state.rewardedInterstitialPasses };
+  }
+
+  return {
+    status: result.status === "error" ? "error" : result.status === "skipped" ? "skipped" : "unavailable",
+    passesRemaining: loadRuntime().rewardedInterstitialPasses,
+    error: result.error,
+  };
 }
 
 export async function previewEndGameInterstitial(): Promise<void> {

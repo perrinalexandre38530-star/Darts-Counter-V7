@@ -45,6 +45,8 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
   const [billingProducts, setBillingProducts] = React.useState<Record<string, NativeBillingProduct | null>>({});
   const [adDiagnosticBusy, setAdDiagnosticBusy] = React.useState<"preload" | "interstitial" | "rewarded" | null>(null);
   const [adDiagnosticMessage, setAdDiagnosticMessage] = React.useState("");
+  const [rewardedPassBusy, setRewardedPassBusy] = React.useState(false);
+  const [rewardedPassMessage, setRewardedPassMessage] = React.useState("");
   const [adTab, setAdTab] = React.useState<"ads" | "endgame" | "admob">("ads");
   const [shopTab, setShopTab] = React.useState<ShopTab>(initialShopTab);
   const [entitlementRevision, setEntitlementRevision] = React.useState(0);
@@ -80,6 +82,12 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
     ];
     void Promise.all(productIds.map(async (id) => [id, await queryNativeBillingProduct(id)] as const)).then((pairs) => setBillingProducts(Object.fromEntries(pairs)));
   }, []);
+
+  React.useEffect(() => {
+    if (adTab !== "endgame" || !isCapacitorNativeRuntime() || adFree.active || !adMobConfig.rewardedReady) return;
+    const fn = (MonetizationManager as any).preloadRewardedInterstitialPassAd;
+    if (typeof fn === "function") void fn();
+  }, [adTab, adFree.active, adMobConfig.rewardedReady, runtimeTick]);
 
   const patch = (next: Partial<MonetizationPrefs>) => setPrefs(saveMonetizationPrefs(next));
 
@@ -125,6 +133,36 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
       setAdDiagnosticMessage(`Test AdMob impossible : ${String(error?.message || error || "erreur inconnue")}`);
     } finally {
       setAdDiagnosticBusy(null);
+    }
+  };
+
+  const claimRewardedPass = async () => {
+    if (!isCapacitorNativeRuntime()) {
+      setRewardedPassMessage("La pub récompensée est disponible dans l’application Android.");
+      return;
+    }
+    setRewardedPassBusy(true);
+    setRewardedPassMessage("");
+    try {
+      const fn = (MonetizationManager as any).claimRewardedInterstitialPasses;
+      if (typeof fn !== "function") throw new Error("Bonus Rewarded indisponible dans ce build.");
+      const result = await fn();
+      setRuntimeTick((v) => v + 1);
+      if (result?.status === "earned") {
+        setRewardedPassMessage(`Bonus obtenu : ${Number(result?.passesRemaining) || 3} prochaines parties sans interstitiel.`);
+      } else if (result?.status === "skipped" && Number(result?.passesRemaining) > 0) {
+        setRewardedPassMessage(`Bonus déjà actif : ${Number(result?.passesRemaining)} partie(s) sans interstitiel restante(s).`);
+      } else if (result?.status === "skipped" && adFree.active) {
+        setRewardedPassMessage("Ton compte est déjà Sans pub / Premium.");
+      } else if (!adMobConfig.rewardedReady) {
+        setRewardedPassMessage("Le bonus est prêt côté application ; il manque encore l’ID Rewarded réel dans AdMob.");
+      } else {
+        setRewardedPassMessage("Rewarded indisponible pour le moment. Aucun bonus n’a été consommé.");
+      }
+    } catch (error: any) {
+      setRewardedPassMessage(`Rewarded impossible : ${String(error?.message || error || "erreur inconnue")}`);
+    } finally {
+      setRewardedPassBusy(false);
     }
   };
 
@@ -248,6 +286,26 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
                 <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>1 PUB / 1 PARTIE</div>
                 <div style={{ ...button(true), display: "grid", placeItems: "center", cursor: "default" }}>APRÈS RÉSULTATS</div>
               </div>
+              {!adFree.active ? (
+                <div style={{ marginTop: 10, borderRadius: 14, border: `1px solid ${theme.primary}44`, background: `${theme.primary}09`, padding: 11 }}>
+                  <div style={{ color: theme.primary, fontWeight: 1000, fontSize: 10.5 }}>PUB RÉCOMPENSÉE · BONUS SANS COUPURE</div>
+                  <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 9.3, lineHeight: 1.45 }}>
+                    Choix volontaire : regarde 1 Rewarded jusqu’à la validation de la récompense et les <b style={{ color: theme.text }}>3 prochaines parties</b> n’auront pas d’interstitiel de fin. Les bannières restent actives.
+                  </div>
+                  <div style={{ marginTop: 7, color: theme.text, fontSize: 10, fontWeight: 900 }}>
+                    Passes restants : <b style={{ color: theme.primary }}>{runtime.rewardedInterstitialPasses || 0} / 3</b>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={rewardedPassBusy || !isCapacitorNativeRuntime() || !adMobConfig.rewardedReady || (runtime.rewardedInterstitialPasses || 0) > 0}
+                    onClick={() => void claimRewardedPass()}
+                    style={{ ...button(true), width: "100%", marginTop: 8, opacity: (!adMobConfig.rewardedReady || (runtime.rewardedInterstitialPasses || 0) > 0) ? .62 : 1 }}
+                  >
+                    {rewardedPassBusy ? "CHARGEMENT…" : (runtime.rewardedInterstitialPasses || 0) > 0 ? "BONUS ACTIF" : adMobConfig.rewardedReady ? "REGARDER 1 PUB → 3 PARTIES" : "PRÊT · ID REWARDED À CRÉER"}
+                  </button>
+                  {rewardedPassMessage ? <div style={{ marginTop: 7, color: theme.text, fontSize: 9.3, lineHeight: 1.4 }}>{rewardedPassMessage}</div> : null}
+                </div>
+              ) : null}
               {adMobConfig.mode !== "production" ? <button type="button" onClick={() => void MonetizationManager.previewEndGameInterstitial()} style={{ ...button(true), width: "100%", marginTop: 9 }}>APERÇU INTERSTITIEL</button> : null}
               <div style={{ marginTop: 9, display: "grid", gap: 5, color: theme.textSoft, fontSize: 9.5, lineHeight: 1.4 }}>
                 <div>Interstitiel AdMob : <b style={{ color: adMobConfig.interstitialReady ? theme.primary : theme.textSoft }}>{adMobConfig.interstitialReady ? "ID PRÊT" : "ID À CRÉER DANS ADMOB"}</b></div>
@@ -255,6 +313,7 @@ export default function MonetizationSettingsPanel({ mode = "all", initialShopTab
                 <div>Préchargement interstitiel : <b style={{ color: theme.primary }}>ACTIF PENDANT LES RÉSULTATS</b></div>
                 <div>Rewarded : bonus accordé uniquement après confirmation réelle de la récompense AdMob.</div>
                 <div>Parties comptées : {runtime.completedMatches} · Dernière pub : {runtime.lastInterstitialAt ? new Date(runtime.lastInterstitialAt).toLocaleString("fr-FR") : "—"}</div>
+                <div>Bonus Rewarded cumulés : {runtime.rewardedPassesEarnedTotal || 0} · Dernier bonus : {runtime.lastRewardedAt ? new Date(runtime.lastRewardedAt).toLocaleString("fr-FR") : "—"}</div>
               </div>
               <button type="button" onClick={() => setRuntimeTick((v) => v + 1)} style={{ ...button(false), marginTop: 7 }}>Rafraîchir</button>
             </section>

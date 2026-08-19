@@ -28,7 +28,7 @@
     "android:open": "npx cap open android",
     "android:doctor": "npx cap doctor",
     "test:android-bootstrap": "node ./tools/test-android-bootstrap.mjs",
-    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs",
+    "test:admob-native": "node ./tools/test-admob-native.mjs && node ./tools/test-admob-live-banners.mjs && node ./tools/test-admob-fullscreen-v76.mjs && node ./tools/test-admob-diagnostics-v78.mjs && node ./tools/test-admob-rewarded-pass-v79.mjs",
     "android:configure-admob": "node ./tools/configure-android-admob.mjs",
     "android:configure-play": "node ./tools/configure-android-play-billing.mjs",
     "android:release-check": "node ./tools/android-release-check.mjs",
@@ -75,7 +75,8 @@
     "test:awena:v86": "node ./tools/test-awena-v86-voice-ultra.mjs && npm run test:awena:v85",
     "test:awena:v87": "node tools/test-awena-v87-procedural-academy.mjs",
     "test:awena:v88": "node tools/test-awena-v88-guide-pro.mjs",
-    "test:awena:v89": "node tools/test-awena-v89-master-knowledge.mjs"
+    "test:awena:v89": "node tools/test-awena-v89-master-knowledge.mjs",
+    "test:admob-rewarded-pass": "node ./tools/test-admob-rewarded-pass-v79.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
