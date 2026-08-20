@@ -36,7 +36,7 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
-import { FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, PRESTIGE_THEME_IDS, ABSTRACT_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
+import { CITRUS_THEME_IDS, FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, PRESTIGE_THEME_IDS, ABSTRACT_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
 import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
@@ -159,7 +159,8 @@ type Props = { go?: (tab: any, params?: any) => void; params?: any };
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 
 const NEONS: ThemeId[] = ["gold", "pink", "petrol", "green", "magenta", "red", "orange", "white"];
-const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "citrusVolt", "sage", "skyBlue"];
+const SOFTS: ThemeId[] = ["blueNight", "blueOcean", "limeYellow", "sage", "skyBlue"];
+const CITRUS: ThemeId[] = [...CITRUS_THEME_IDS];
 const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidian"];
 const FACTORY: ThemeId[] = [...FACTORY_THEME_IDS];
 const PUBS: ThemeId[] = [...PUB_THEME_IDS];
@@ -184,6 +185,10 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   blueOcean: { defaultLabel: "Bleu océan", defaultDesc: "Bleu naturel océan / ciel" },
   limeYellow: { defaultLabel: "Vert jaune", defaultDesc: "Couleur lime hyper flashy" },
   citrusVolt: { defaultLabel: "Citrus Volt", defaultDesc: "Marbre vert profond, touches olive et veines dorées" },
+  citrusOliveMarble: { defaultLabel: "Olive Marbre", defaultDesc: "Marbre olive sombre et nervures dorées" },
+  citrusJadeFlow: { defaultLabel: "Jade Flow", defaultDesc: "Flux jade lumineux et reflets premium" },
+  citrusGildedInk: { defaultLabel: "Encre Dorée", defaultDesc: "Encre vert-or avec relief artistique" },
+  citrusLimeAurora: { defaultLabel: "Lime Aurora", defaultDesc: "Fusion jaune-vert intense et énergie lumineuse" },
   sage: { defaultLabel: "Vert sauge", defaultDesc: "Tons verts naturels et doux" },
   skyBlue: { defaultLabel: "Bleu pastel", defaultDesc: "Bleu très doux et lumineux" },
 
@@ -851,11 +856,12 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street" | "prestige" | "abstract";
+type ThemePackId = "neons" | "soft" | "citrus" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street" | "prestige" | "abstract";
 type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
 const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
   { id: "soft", ids: SOFTS, label: "COULEURS DOUCES", subtitle: "Tons modernes, naturels et apaisés", colors: ["#22E6FF", "#3B82F6", "#A3B18A", "#A7D8FF"] },
+  { id: "citrus", ids: CITRUS, label: "CITRUS & JADE", subtitle: "Marbres olive, encres dorées et fluides vert premium", colors: ["#D8F26B", "#8EF1B9", "#EBD97B", "#8EDB6F"], premium: true },
   { id: "dark", ids: DARKS, label: "DARK PREMIUM", subtitle: "Métal, carbone et noirs premium", colors: ["#5A5A5A", "#263238", "#8CA6B8", "#1D1D24"] },
   { id: "factory", ids: FACTORY, label: "USINE & MÉTAUX", subtitle: "Un thème par texture industrielle : alu, acier, grunge et atelier", colors: ["#E3EAF2", "#9EACBC", "#62C9FF", "#DCE4EE"], premium: true },
   { id: "pub", ids: PUBS, label: "AMBIANCE PUB", subtitle: "Bois, lumière chaude et atmosphères de bar / pub", colors: ["#F1B86C", "#B39CFF", "#5FD0C2", "#FF7E45"], premium: true },
@@ -3806,7 +3812,7 @@ function AccountPages({
                 onClick={clearGameDataAndStatsOnly}
                 style={{
                   width: "100%",
-                  padding: "12px 14px",
+                  padding: "12px 13px",
                   borderRadius: 12,
                   border: `1px solid ${theme.primary}66`,
                   background: "rgba(0,0,0,0.35)",
@@ -3838,7 +3844,7 @@ function AccountPages({
                 onClick={() => onFullReset?.()}
                 style={{
                   width: "100%",
-                  padding: "12px 14px",
+                  padding: "12px 13px",
                   borderRadius: 12,
                   border: "1px solid rgba(255,120,120,0.55)",
                   background: "rgba(255,0,0,0.06)",
@@ -3875,7 +3881,7 @@ function AccountPages({
                 onClick={handleDeleteAccountV8}
                 style={{
                   width: "100%",
-                  padding: "12px 14px",
+                  padding: "12px 13px",
                   borderRadius: 12,
                   background: "linear-gradient(180deg, #ff5c5c, #c92a2a)",
                   color: "#fff",
@@ -4369,21 +4375,47 @@ export function Settings({ go, params }: Props) {
       };
     }, [pickerOpen, selectedPackId]);
 
+    const renderThemeTextureSwatch = (preset: AppTheme, key: string, size = 19, radius: number | string = 999) => (
+      <span
+        key={key}
+        aria-hidden="true"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          position: "relative",
+          overflow: "hidden",
+          display: "inline-block",
+          background: preset.cardBackground || `${preset.primary}18`,
+          boxShadow: `0 0 10px ${preset.primary}55`,
+          border: "1px solid rgba(255,255,255,.28)",
+          isolation: "isolate",
+          flexShrink: 0,
+        }}
+      >
+        {preset.textureOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: Math.min(.30, Math.max(.14, preset.textureOpacity ?? .20)), mixBlendMode: preset.textureBlendMode || "soft-light" }} /> : null}
+        {preset.ambientOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: Math.min(.16, Math.max(.06, preset.ambientOpacity ?? .08)) }} /> : null}
+        {preset.surfaceSheen ? <span style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .30, mixBlendMode: "screen" }} /> : null}
+        {preset.frameOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: Math.max(.30, (preset.frameOpacity ?? .82) - .40) }} /> : null}
+      </span>
+    );
+
     const packCard = (pack: ThemePack) => {
       const locked = packLocked(pack);
+      const swatchPresets = pack.ids.slice(0, 4).map((id) => getPreset(id));
       return (
         <button
           key={pack.id}
           type="button"
           onClick={() => openPack(pack.id, pack.ids[0] || null)}
           style={{
-            minHeight: pack.premium ? 96 : 86,
+            minHeight: pack.premium ? 94 : 84,
             borderRadius: 17,
             border: `1px solid ${pack.premium ? `${pack.colors[0]}77` : theme.borderSoft}`,
             background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
             color: theme.text,
             textAlign: "left",
-            padding: "12px 14px",
+            padding: "12px 13px",
             cursor: "pointer",
             boxShadow: pack.premium ? `0 12px 25px rgba(0,0,0,.36), 0 0 20px ${pack.colors[0]}24` : `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
             position: "relative",
@@ -4395,9 +4427,9 @@ export function Settings({ go, params }: Props) {
               {locked ? "🔒 BOUTIQUE" : "✓ DÉBLOQUÉ"}
             </span>
           ) : null}
-          <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "center", paddingTop: pack.premium ? 8 : 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center", paddingTop: pack.premium ? 8 : 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2,19px)", gap: 5 }}>
-              {pack.colors.slice(0,4).map((color) => <span key={color} style={{ width: 19, height: 19, borderRadius: 999, background: color, boxShadow: `0 0 10px ${color}77`, border: "1px solid rgba(255,255,255,.28)" }} />)}
+              {swatchPresets.map((preset, idx) => renderThemeTextureSwatch(preset, `${pack.id}-${idx}`))}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
@@ -4451,8 +4483,8 @@ export function Settings({ go, params }: Props) {
               <SettingsLoopCarousel
                 items={THEME_PACKS}
                 theme={theme}
-                itemWidth={276}
-                gap={10}
+                itemWidth={226}
+                gap={8}
                 initialIndex={packCarouselIndex}
                 ariaLabel="Carrousel des packs de thèmes"
                 onActiveIndexChange={(index) => setPackCarouselIndex(index)}
@@ -4488,8 +4520,8 @@ export function Settings({ go, params }: Props) {
               <SettingsLoopCarousel
                 items={selectedPack.ids}
                 theme={theme}
-                itemWidth={132}
-                gap={9}
+                itemWidth={108}
+                gap={7}
                 initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
                 ariaLabel="Carrousel de thèmes"
                 onActiveIndexChange={(index) => {
@@ -4509,7 +4541,7 @@ export function Settings({ go, params }: Props) {
                       onClick={() => applyTheme(id)}
                       style={{
                         width: "100%",
-                        height: 118,
+                        height: 110,
                         borderRadius: 16,
                         border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
                         background: preset.cardBackground || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`,
@@ -4521,7 +4553,7 @@ export function Settings({ go, params }: Props) {
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 7,
+                        gap: 6,
                         position: "relative",
                         overflow: "hidden",
                       }}
@@ -4531,7 +4563,7 @@ export function Settings({ go, params }: Props) {
                       {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .38, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
                       {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: Math.max(.52, (preset.frameOpacity ?? .86) - .18), pointerEvents: "none" }} /> : null}
                       {locked ? <span style={{ position: "absolute", top: 6, right: 6, fontSize: 12 }}>🔒</span> : null}
-                      <span style={{ width: 42, height: 42, borderRadius: 14, border: `2px solid ${preset.primary}`, background: `${preset.primary}16`, boxShadow: `0 0 14px ${preset.primary}55`, position: "relative" }} />
+                      {renderThemeTextureSwatch(preset, `${id}-preview`, 40, 13)}
                       <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>
                       <span style={{ fontSize: 8.5, color: locked ? preset.primary : preset.textSoft, position: "relative" }}>{locked ? "APERÇU BOUTIQUE" : isActive ? "ACTIF" : "APERÇU"}</span>
                     </button>
@@ -4580,7 +4612,7 @@ export function Settings({ go, params }: Props) {
                           }}
                           style={{ minHeight: 48, borderRadius: 13, border: `1px solid ${id === themeId ? preset.primary : theme.borderSoft}`, background: `${preset.primary}12`, color: id === themeId ? preset.primary : theme.text, padding: 9, fontSize: 10.5, fontWeight: 900, cursor: "pointer", textAlign: "left" }}
                         >
-                          <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: preset.primary, marginRight: 7, boxShadow: `0 0 8px ${preset.primary}66` }} />
+                          <span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 7 }}>{renderThemeTextureSwatch(preset, `${id}-picker`, 12, 999)}</span>
                           {meta.defaultLabel}{locked ? "  🔒" : ""}
                         </button>
                       );

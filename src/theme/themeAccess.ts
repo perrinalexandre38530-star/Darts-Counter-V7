@@ -33,6 +33,14 @@ export const EXTREMES_THEME_IDS = [
 ] as const satisfies readonly ThemeId[];
 
 
+export const CITRUS_THEME_IDS = [
+  "citrusVolt",
+  "citrusOliveMarble",
+  "citrusJadeFlow",
+  "citrusGildedInk",
+  "citrusLimeAurora",
+] as const satisfies readonly ThemeId[];
+
 export const FACTORY_THEME_IDS = [
   "factoryArgentSatine",
   "factoryDegradeGraphite",
@@ -131,6 +139,7 @@ export const PREMIUM_THEME_IDS = [
   ...METALS_THEME_IDS,
   ...EXTREMES_THEME_IDS,
   ...LUXE_THEME_IDS,
+  ...CITRUS_THEME_IDS,
   ...FACTORY_THEME_IDS,
   ...PUB_THEME_IDS,
   ...GRAFFITI_THEME_IDS,
