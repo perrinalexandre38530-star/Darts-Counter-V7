@@ -38,7 +38,9 @@ import BackDot from "../components/BackDot";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { preloadInterstitialAd, showInterstitialAd } from "../monetization/provider";
 import X01AwenaRulesVideo from "../components/X01AwenaRulesVideo";
+import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
 import { hasSeenX01AwenaRulesIntro, markX01AwenaRulesIntroSeen } from "../lib/x01AwenaRulesIntro";
+import { hasSeenKillerAwenaRulesIntro, markKillerAwenaRulesIntroSeen } from "../lib/killerAwenaRulesIntro";
 import {
   DARTS_GAMES,
   GAME_CATEGORIES,
@@ -499,6 +501,9 @@ export default function Games({ setTab, params }: Props) {
   const [x01RulesIntroOpen, setX01RulesIntroOpen] = React.useState(false);
   const [x01IntroBusy, setX01IntroBusy] = React.useState(false);
   const x01PendingLaunchRef = React.useRef<null | (() => void)>(null);
+  const [killerRulesIntroOpen, setKillerRulesIntroOpen] = React.useState(false);
+  const [killerIntroBusy, setKillerIntroBusy] = React.useState(false);
+  const killerPendingLaunchRef = React.useRef<null | (() => void)>(null);
 
   // Menu JEUX à 3 niveaux : HUB -> FAVORIS / TOUS LES JEUX / TRAINING.
   // Le bottom-nav appelle "games" sans params : on retombe donc toujours
@@ -531,9 +536,9 @@ export default function Games({ setTab, params }: Props) {
   }
 
   React.useEffect(() => {
-    if (hasSeenX01AwenaRulesIntro()) return;
-    // Précharge l'interstitiel Android si la version FREE peut afficher des pubs.
-    // Le provider gère lui-même Premium / consentement / indisponibilité.
+    if (hasSeenX01AwenaRulesIntro() && hasSeenKillerAwenaRulesIntro()) return;
+    // Précharge l'interstitiel Android si au moins une vidéo de règles de première ouverture
+    // n'a pas encore été vue. Le provider gère Premium / consentement / indisponibilité.
     void preloadInterstitialAd(false);
   }, []);
 
@@ -561,6 +566,33 @@ export default function Games({ setTab, params }: Props) {
     const launch = x01PendingLaunchRef.current;
     x01PendingLaunchRef.current = null;
     setX01RulesIntroOpen(false);
+    if (launch) launch();
+  }
+
+  async function openKillerWithFirstRules(launch: () => void) {
+    if (hasSeenKillerAwenaRulesIntro()) {
+      launch();
+      return;
+    }
+    if (killerIntroBusy || killerRulesIntroOpen) return;
+
+    setKillerIntroBusy(true);
+    try {
+      // Même parcours que X01 : publicité interstitielle FREE, puis Awena.
+      // Une indisponibilité pub ne bloque jamais l'accès au mode.
+      try { await showInterstitialAd("killer_rules_first_open"); } catch {}
+      killerPendingLaunchRef.current = launch;
+      markKillerAwenaRulesIntroSeen();
+      setKillerRulesIntroOpen(true);
+    } finally {
+      setKillerIntroBusy(false);
+    }
+  }
+
+  function finishKillerRulesIntro() {
+    const launch = killerPendingLaunchRef.current;
+    killerPendingLaunchRef.current = null;
+    setKillerRulesIntroOpen(false);
     if (launch) launch();
   }
 
@@ -864,6 +896,10 @@ export default function Games({ setTab, params }: Props) {
           void openX01WithFirstRules(() => navSmart(path));
           return;
         }
+        if (String(g.id) === "killer") {
+          void openKillerWithFirstRules(() => navSmart(path));
+          return;
+        }
         navSmart(path);
         return;
       }
@@ -1009,6 +1045,21 @@ export default function Games({ setTab, params }: Props) {
         >
           {label}
         </div>
+
+        {g ? (
+          <div
+            style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 4 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <InfoDot
+              disableAwenaTakeover
+              title={lang === "fr" ? g.infoTitle : localizedGameLabel(g, lang)}
+              content={g.infoBody}
+              color={titleColor}
+              glow={glow}
+            />
+          </div>
+        ) : null}
       </button>
     );
   }
@@ -1103,6 +1154,10 @@ export default function Games({ setTab, params }: Props) {
           onClick={() => {
             if (String(current.id) === "x01") {
               void openX01WithFirstRules(() => navSmart(current.configPath));
+              return;
+            }
+            if (String(current.id) === "killer") {
+              void openKillerWithFirstRules(() => navSmart(current.configPath));
               return;
             }
             navSmart(current.configPath);
@@ -1326,6 +1381,7 @@ export default function Games({ setTab, params }: Props) {
           }}
         >
           <InfoDot
+            disableAwenaTakeover
             title={opts.infoTitle}
             size={38}
             color={opts.tint.title}
@@ -1726,6 +1782,10 @@ export default function Games({ setTab, params }: Props) {
                             void openX01WithFirstRules(() => navigate(g.tab, gameParams));
                             return;
                           }
+                          if (String(g.id) === "killer") {
+                            void openKillerWithFirstRules(() => navigate(g.tab, gameParams));
+                            return;
+                          }
                           return navigate(g.tab, gameParams);
                         }}
                         style={{
@@ -1792,6 +1852,7 @@ export default function Games({ setTab, params }: Props) {
                           }}
                         >
                           <InfoDot
+                            disableAwenaTakeover
                             onClick={(ev) => {
                               ev.stopPropagation();
                               setInfoGame({
@@ -1818,6 +1879,12 @@ export default function Games({ setTab, params }: Props) {
         open={x01RulesIntroOpen}
         firstLaunch
         onDone={finishX01RulesIntro}
+      />
+
+      <KillerAwenaRulesVideo
+        open={killerRulesIntroOpen}
+        firstLaunch
+        onDone={finishKillerRulesIntro}
       />
 
       {/* Overlay d'information */}

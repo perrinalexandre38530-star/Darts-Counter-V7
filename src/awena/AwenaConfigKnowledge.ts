@@ -34,13 +34,22 @@ const DETAILS: Record<string, AwenaModeConfigDetail> = {
   killer: {
     options: [
       "sélection des joueurs et des bots IA",
-      "ordre de départ",
-      "nombre de vies de départ",
-      "règles d’activation du statut Killer",
-      "fonctions spéciales disponibles dans la variante, notamment protections / résurrection lorsqu’elles sont proposées",
+      "attribution des numéros : manuel, aléatoire ou 1er lancer",
+      "1 à 6 vies de départ en Killer classique",
+      "activation Killer : toucher son numéro ou double sur son numéro",
+      "dégâts : -1 par hit ou multiplicateur Simple / Double / Triple",
+      "auto-pénalité et multiplicateur d’auto-pénalité",
+      "vol de vies (Life Steal)",
+      "Blind Killer",
+      "BULL dégâts à tous, BULL soins +1/+2/+3 et Rotation BULL",
+      "DBULL dégâts à tous, bouclier 1 à 5 tours, désarmement et Rotation DBULL",
+      "bonus bouclier au choix du numéro quand l’attribution se fait au 1er lancer",
+      "MISS = auto-hit",
+      "résurrection OFF / 1 Joueur (1×) / All (1×) / All illimité avec 1 à 6 vies rendues",
     ],
     victory: "être le dernier joueur encore en vie après avoir utilisé son statut Killer pour retirer les vies adverses",
-    variants: ["Killer classique", "Killer Progressif", "fonctions spéciales lorsqu’elles sont activées"],
+    variants: ["Killer classique", "Killer Progressif", "Life Steal", "BULL dégâts", "BULL soins", "Rotation BULL", "DBULL bouclier", "DBULL désarmement", "Rotation DBULL", "Résurrections"],
+    notes: ["Certaines variantes sont incompatibles et sont automatiquement grisées selon les choix actifs."],
   },
   shanghai: {
     options: [

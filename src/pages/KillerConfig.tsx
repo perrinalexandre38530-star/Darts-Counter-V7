@@ -35,6 +35,8 @@ import { recordProfileUsageForMode } from "../lib/profileUsage";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
+import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
+import killerAwenaRulesPoster from "../assets/videos/killer_awena_rules_poster.webp";
 import { loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 
 // 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
@@ -597,6 +599,7 @@ export default function KillerConfigPage(props: Props) {
 
   // ✅ bouton "i" (règles / variantes)
   const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
+  const [rulesVideoOpen, setRulesVideoOpen] = React.useState<boolean>(false);
   const [resInfo, setResInfo] = React.useState<{ title: string; text: string } | null>(null);
 
   const contentRef = React.useRef<HTMLDivElement | null>(null);
@@ -993,6 +996,155 @@ export default function KillerConfigPage(props: Props) {
 
       {/* CONTENT */}
       <div ref={contentRef as any} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        {!isProgressive && (
+          <section
+            style={{
+              background: "rgba(10,12,24,0.94)",
+              borderRadius: 18,
+              padding: 12,
+              marginBottom: 14,
+              boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+              border: `1px solid ${primary}33`,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 900, color: primary }}>
+                  Configuration Killer
+                </div>
+
+                <div style={{ fontSize: 11, color: "#9298bb", lineHeight: 1.4 }}>
+                  Configure les joueurs, l’attribution des numéros, les vies et les variantes du Killer. Awena peut aussi te présenter les règles en vidéo.
+                </div>
+
+                <div style={{ marginTop: "auto", width: "100%" }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      height: 44,
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      boxShadow: `0 0 16px ${primary}20`,
+                      border: `1px solid ${primary}30`,
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 760 88"
+                      preserveAspectRatio="none"
+                      style={{ display: "block", width: "100%", height: "100%" }}
+                      aria-hidden="true"
+                    >
+                      <defs>
+                        <linearGradient id="killerAwenaExplainGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor={primary} stopOpacity="0.96" />
+                          <stop offset="55%" stopColor="#ffe09a" stopOpacity="0.96" />
+                          <stop offset="100%" stopColor="#ff9adf" stopOpacity="0.96" />
+                        </linearGradient>
+                        <mask id="killerAwenaExplainCutoutMask">
+                          <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="white" />
+                          <text
+                            x="380"
+                            y="57"
+                            textAnchor="middle"
+                            fontSize="28"
+                            fontWeight="900"
+                            letterSpacing="1.6"
+                            fill="black"
+                          >
+                            AWENA VOUS EXPLIQUE
+                          </text>
+                        </mask>
+                      </defs>
+                      <rect x="0" y="0" width="760" height="88" rx="16" ry="16" fill="url(#killerAwenaExplainGradient)" mask="url(#killerAwenaExplainCutoutMask)" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setRulesVideoOpen(true)}
+                aria-label="Voir la vidéo Awena des règles du Killer"
+                title="Awena · Voir l’explication vidéo"
+                style={{
+                  flex: "0 0 auto",
+                  width: 98,
+                  alignSelf: "stretch",
+                  borderRadius: 18,
+                  border: `1px solid ${primary}66`,
+                  background: "linear-gradient(180deg, rgba(10,14,28,.98), rgba(6,8,18,.98))",
+                  padding: 5,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  cursor: "pointer",
+                  boxShadow: `0 0 20px ${primary}1c`,
+                }}
+              >
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    aspectRatio: "9 / 16",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "#050713",
+                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
+                  }}
+                >
+                  <img src={killerAwenaRulesPoster} alt="Awena vous explique le Killer" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.36))" }} />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: 30,
+                      height: 30,
+                      borderRadius: "50%",
+                      background: "rgba(4,8,18,.82)",
+                      border: `1px solid ${primary}77`,
+                      boxShadow: `0 0 18px ${primary}30`,
+                      display: "grid",
+                      placeItems: "center",
+                      color: "#fff",
+                      fontSize: 14,
+                      lineHeight: 1,
+                    }}
+                  >
+                    ▶
+                  </div>
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 6,
+                      bottom: 6,
+                      padding: "2px 6px",
+                      borderRadius: 999,
+                      background: "rgba(5,8,18,.86)",
+                      border: "1px solid rgba(255,255,255,.12)",
+                      color: "#fff",
+                      fontSize: 9.5,
+                      fontWeight: 900,
+                    }}
+                  >
+                    1:20
+                  </div>
+                </div>
+                <div style={{ textAlign: "left", minWidth: 0, padding: "0 3px 2px" }}>
+                  <div style={{ color: primary, fontSize: 9.5, fontWeight: 950, letterSpacing: .75, textTransform: "uppercase" }}>
+                    AWENA · KILLER
+                  </div>
+                  <div style={{ marginTop: 2, color: "#e9ebf7", fontSize: 10.5, fontWeight: 800, lineHeight: 1.2 }}>
+                    Voir la vidéo
+                  </div>
+                </div>
+              </button>
+            </div>
+          </section>
+        )}
+
         {isProgressive && (
           <div
             style={{
@@ -2026,12 +2178,40 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                   Astuce : certaines variantes sont incompatibles entre elles. Quand c’est le cas, l’option se grise avec une
                   explication. Les fonctions BULL et DBULL sont regroupées pour une lecture plus claire ; une seule fonction peut être active par case, sauf si la rotation est activée.
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInfoOpen(false);
+                    setRulesVideoOpen(true);
+                  }}
+                  style={{
+                    width: "100%",
+                    minHeight: 42,
+                    marginTop: 14,
+                    borderRadius: 999,
+                    border: `1px solid ${primary}66`,
+                    background: `linear-gradient(90deg, ${primary}22, rgba(255,255,255,.06))`,
+                    color: "#fff",
+                    fontWeight: 950,
+                    fontSize: 11.5,
+                    letterSpacing: .45,
+                    cursor: "pointer",
+                  }}
+                >
+                  ▶ AWENA · VOIR LES RÈGLES EN VIDÉO · 1 MIN 20
+                </button>
               </div>
               )}
             </div>
           </div>
         </div>
       )}
+
+      <KillerAwenaRulesVideo
+        open={rulesVideoOpen}
+        onDone={() => setRulesVideoOpen(false)}
+      />
 
       {/* ✅ mini modal : détails Résurrection */}
       {resInfo && (

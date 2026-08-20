@@ -7,8 +7,8 @@ import { answerAwenaGeneralQuestion } from "./AwenaGeneralKnowledge";
 import { answerAwenaEncyclopedia } from "./AwenaEncyclopedia";
 import { answerAwenaScreenQuestion } from "./AwenaScreenKnowledge";
 import { answerAwenaAppAtlas } from "./AwenaAppAtlas";
-import { answerAwenaLiveScreenQuestion, visibleConfigurationAppendix } from "./AwenaLiveScreen";
-import { answerAwenaRegisteredHelp, getAwenaHelpText } from "./AwenaHelpRegistry";
+import { answerAwenaLiveScreenQuestion } from "./AwenaLiveScreen";
+import { answerAwenaRegisteredHelp } from "./AwenaHelpRegistry";
 import { answerAwenaSportsKnowledge } from "./AwenaSportsKnowledge";
 import { answerAwenaDeepKnowledge } from "./AwenaDeepKnowledge";
 import { answerAwenaRouteAtlas } from "./AwenaRouteAtlas";
@@ -91,6 +91,8 @@ export function buildAwenaReply(question: string, context: AwenaRuntimeContext):
   const sportMode = findAwenaSportMode(question, context.sport);
   const sport = findAwenaSport(question, context.sport);
   const navTopic = findAwenaNavigationTopic(question);
+  const rememberedMode = findAwenaModeById(context.mode || rememberedModeId);
+  const activeMode = mode || rememberedMode;
 
   if (!q) return { text: "Je suis là. Pose-moi une question sur l'application, un sport, un mode, sa configuration, ses règles ou ta partie.", modeId: mode?.id || context.mode || null };
 
@@ -114,6 +116,50 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
 
 > Je ne suis pas un manuel de programmation : je t'explique l'application du point de vue de la personne qui l'utilise.`,
       modeId: mode?.id || context.mode || null,
+    };
+  }
+
+  // V9.3 MODE PRECISION : les trois actions RÈGLES / CONFIGURATION / RECORDS
+  // d'un mode sont des intentions strictes. Elles ne doivent jamais être
+  // détournées par une encyclopédie générale, l'aide d'écran ou un tutoriel.
+  const forcedModeTopic = String(context.extra?.awenaModeTopic || "").toLowerCase();
+  const explicitRulesIntent = /\b(regle|regles|règle|règles|but du jeu|objectif du jeu|principe du jeu)\b/.test(q);
+  const explicitConfigIntent = /\b(configuration|configurer|parametres?|paramètres?|options? de configuration|reglages? du mode|réglages? du mode)\b/.test(q);
+
+  // Un clic sur un bouton de mode est prioritaire sur tous les mots de la phrase.
+  if (activeMode && forcedModeTopic === "rules") {
+    return {
+      text: detailedRulesText(activeMode),
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+      knowledgeTopic: `mode:${activeMode.id}:rules`,
+    };
+  }
+  if (activeMode && forcedModeTopic === "config") {
+    return {
+      text: detailedConfigurationText(activeMode),
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+      knowledgeTopic: `mode:${activeMode.id}:config`,
+    };
+  }
+
+  // En langage libre, « configuration » est plus spécifique que « règles » :
+  // « options/règles de configuration X01 » doit donc rester dans CONFIGURATION.
+  if (activeMode && explicitConfigIntent) {
+    return {
+      text: detailedConfigurationText(activeMode),
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+      knowledgeTopic: `mode:${activeMode.id}:config`,
+    };
+  }
+  if (activeMode && explicitRulesIntent) {
+    return {
+      text: detailedRulesText(activeMode),
+      modeId: activeMode.id,
+      actions: actionsForAwenaMode(activeMode, context.route),
+      knowledgeTopic: `mode:${activeMode.id}:rules`,
     };
   }
 
@@ -291,9 +337,6 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
     if (sport) return { text: `D'accord. J'ouvre le menu ${sport.label}.`, actions: actionForSport(sport) };
   }
 
-  const rememberedMode = findAwenaModeById(context.mode || rememberedModeId);
-  const activeMode = mode || rememberedMode;
-
   // Configuration doit être prioritaire sur les mots génériques comme
   // "explique" ou "condition de victoire". Le bouton Configuration d'Awena
   // utilise volontairement une phrase détaillée qui contient ces termes.
@@ -308,10 +351,8 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
     if (/bots|bot ia|ia/.test(q) && !/configuration|options|parametre|reglage/.test(q)) {
       return { text: `## BOTS IA\n${activeMode.supportsBots ? `${activeMode.label} prend en charge les bots IA.` : `${activeMode.label} est déclaré sans bots IA dans le registre actuel.`}`, modeId: activeMode.id };
     }
-    const integratedHelp = getAwenaHelpText(context.route, activeMode.label);
-    const visible = visibleConfigurationAppendix(context);
     return {
-      text: `${detailedConfigurationText(activeMode)}${integratedHelp ? `\n\n## AIDE INTÉGRÉE À CET ÉCRAN\n${integratedHelp}` : ""}${visible}`,
+      text: detailedConfigurationText(activeMode),
       modeId: activeMode.id,
       actions: actionsForAwenaMode(activeMode, context.route),
     };
@@ -323,9 +364,8 @@ Ma couche Guide Utilisateur V9.2 ajoute **${awenaUserGuideV92Count()} sujets pra
   if (asksRules) {
     if (sportMode) return { text: sportMode.summary, actions: actionForSportMode(sportMode) };
     if (activeMode) {
-      const integratedHelp = getAwenaHelpText(context.route, activeMode.label);
       return {
-        text: `${detailedRulesText(activeMode)}${integratedHelp ? `\n\n## AIDE INTÉGRÉE À CET ÉCRAN\n${integratedHelp}` : ""}`,
+        text: detailedRulesText(activeMode),
         modeId: activeMode.id,
         actions: actionsForAwenaMode(activeMode, context.route),
       };

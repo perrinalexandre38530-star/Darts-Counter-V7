@@ -16,7 +16,7 @@ for(const banned of ['answerAwenaGuidePro(', 'answerAwenaMasterKnowledgeV89(', '
   if(core.includes(banned)) throw new Error(`Developer layer still active in normal routing: ${banned}`);
 }
 if(!proc.includes('USER_FACING_IMPORTED_DOMAINS')) throw new Error('Procedural filter missing');
-if(!overlay.includes('LOCAL V9.2 · GUIDE UTILISATEUR EXPERT')) throw new Error('V9.2 badge missing');
+if(!/LOCAL V9\.[2-9]/.test(overlay)) throw new Error('V9.2+ badge missing');
 if(pkg.scripts?.['test:awena:v92'] !== 'node tools/test-awena-v92-user-guide.mjs') throw new Error('V9.2 package script missing');
 
 console.log(`AWENA V9.2 USER GUIDE OK — ${count} user-facing topics, ${steps} step-enabled topics.`);

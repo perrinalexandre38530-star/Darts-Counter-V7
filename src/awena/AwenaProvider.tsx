@@ -18,7 +18,7 @@ type AwenaContextValue = {
   runtime: AwenaRuntimeContext;
   setRuntime: (next: Partial<AwenaRuntimeContext>) => void;
   messages: AwenaMessage[];
-  ask: (question: string, options?: { speak?: boolean }) => Promise<string>;
+  ask: (question: string, options?: { speak?: boolean; modeTopic?: "rules" | "config" | "records" }) => Promise<string>;
   say: (text: string, messageId?: string) => Promise<void>;
   stop: () => Promise<void>;
   clearMessages: () => void;
@@ -170,7 +170,7 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
     if (!ok) setSpeechCue((prev) => prev?.messageId === utteranceId ? { ...prev, phase: "done" } : prev);
   }, [lang, muted, settingsState]);
 
-  const ask = React.useCallback(async (question: string, options?: { speak?: boolean }) => {
+  const ask = React.useCallback(async (question: string, options?: { speak?: boolean; modeTopic?: "rules" | "config" | "records" }) => {
     const clean = String(question || "").trim();
     if (!clean) return "";
 
@@ -192,15 +192,21 @@ export function AwenaProvider({ children }: { children: React.ReactNode }) {
       extra: {
         ...(runtime.extra || {}),
         ...(screenSnapshot ? { awenaScreenSnapshot: screenSnapshot } : {}),
+        ...(options?.modeTopic ? { awenaModeTopic: options.modeTopic } : {}),
       },
     };
     const contextForReply = explicitMode ? { ...baseContext, mode: explicitMode.id } : baseContext;
 
     let recordsReply = null;
-    try {
-      recordsReply = await buildAwenaRecordsReply(canonicalQuestion, contextForReply);
-    } catch (error) {
-      console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
+    // Séparation stricte des trois boutons de mode : une demande RÈGLES ou
+    // CONFIGURATION ne passe jamais par le moteur Records, même si un libellé
+    // statistique apparaît accidentellement dans la phrase traduite.
+    if (options?.modeTopic !== "rules" && options?.modeTopic !== "config") {
+      try {
+        recordsReply = await buildAwenaRecordsReply(canonicalQuestion, contextForReply);
+      } catch (error) {
+        console.warn("[AwenaRecords] réponse records interrompue, fallback conversationnel", error);
+      }
     }
     const canonicalReply = recordsReply ?? buildAwenaReply(canonicalQuestion, contextForReply);
     const reply = await awenaTranslation.replyFromFrench(canonicalReply, String(lang || "fr"));

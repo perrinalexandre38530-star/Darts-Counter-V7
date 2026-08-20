@@ -45,6 +45,33 @@ let authoritativeHistoryCache: AuthoritativeHistorySnapshot | null = null;
 let authoritativeHistoryPromise: Promise<AuthoritativeHistorySnapshot> | null = null;
 let detailedModeCache = new Map<string, { at: number; fingerprint: string; raw: any[]; normalized: NormalizedMatch[] }>();
 
+// Les tableaux Records ouverts sans métrique précise varient à chaque clic.
+const lastRecordDashboardSelection = new Map<string, string>();
+type RecordDashboardSection = { id: string; text: string };
+
+function randomDashboardSections(modeId: string, candidates: RecordDashboardSection[], maxSections = 5) {
+  const unique = [...new Map(candidates.filter((item) => item.text.trim()).map((item) => [item.id, item])).values()];
+  if (unique.length <= 1) return unique;
+  const maxWanted = Math.min(maxSections, unique.length);
+  const minWanted = Math.min(2, maxWanted);
+  let selected: RecordDashboardSection[] = [];
+  let signature = "";
+  const previous = lastRecordDashboardSelection.get(modeId) || "";
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const wanted = minWanted + Math.floor(Math.random() * Math.max(1, maxWanted - minWanted + 1));
+    const shuffled = [...unique];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    selected = shuffled.slice(0, wanted);
+    signature = selected.map((item) => item.id).sort().join("|");
+    if (signature !== previous || unique.length <= wanted) break;
+  }
+  lastRecordDashboardSelection.set(modeId, signature);
+  return selected;
+}
+
 const AUTHORITATIVE_CACHE_MS = 12_000;
 const DETAILED_MODE_CACHE_MS = 45_000;
 
@@ -314,36 +341,106 @@ const NORMALIZED_MODE_BY_AWENA: Record<string, string> = {
   five_lives: "five_lives",
   scram: "scram",
   warfare: "warfare",
+  attrape_moi: "attrape_moi",
+  killer_progressive: "killer_progressive",
+  mario_kart: "darts_racer",
+  bobs_27: "bobs_27",
+  shooter: "shooter",
+  baseball: "baseball",
+  president: "president",
+  capital: "capital",
+  loterie: "loterie",
+  prisoner: "prisoner",
+  bowling: "bowling",
+  halve_it: "halve_it",
 };
 
-function matchMode(m: NormalizedMatch, mode: AwenaModeKnowledge) {
-  const blob = rawBlob(m);
-  // Les sessions Training X01 sont un mode statistique distinct : elles ne
-  // doivent pas gonfler les records du X01 de match classique.
-  if (mode.id === "x01" && /training x01|trainingx01/.test(blob)) return false;
-  const directAliases = [mode.id, mode.label, ...mode.aliases].map(norm).filter(Boolean);
-  if (directAliases.some((alias) => alias.length >= 3 && blob.includes(alias))) return true;
+function rawModeIdentityValues(rec: any) {
+  return [
+    rec?.kind, rec?.mode, rec?.gameId, rec?.game?.mode, rec?.game?.id,
+    rec?.summary?.mode, rec?.summary?.gameId,
+    rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.gameId,
+    rec?.payload?.summary?.mode, rec?.payload?.summary?.gameId,
+    rec?.payload?.stats?.mode,
+  ].map(norm).filter(Boolean);
+}
 
+function rawVariantIdentityValues(rec: any) {
+  return [
+    rec?.variant, rec?.variantId, rec?.summary?.variant, rec?.summary?.variantId,
+    rec?.payload?.variant, rec?.payload?.variantId, rec?.payload?.config?.variant,
+  ].map(norm).filter(Boolean);
+}
+
+function modeIdentityAliases(mode: AwenaModeKnowledge) {
   const expected = NORMALIZED_MODE_BY_AWENA[mode.id];
-  if (expected && mode.id === expected && String(m.mode) === expected) return true;
-  if (mode.id === "x01" && m.mode === "x01") return true;
+  return new Set([mode.id, expected, mode.label, ...mode.aliases].map(norm).filter(Boolean));
+}
+
+function hasConflictingVariant(rec: any, mode: AwenaModeKnowledge) {
+  const variants = rawVariantIdentityValues(rec);
+  if (!variants.length) return false;
+  const joined = variants.join(" ");
+  if (mode.id === "x01" && /training/.test(joined)) return true;
+  if (mode.id === "killer" && /progress/.test(joined)) return true;
+  if (mode.id === "cricket" && /(cut throat|cutthroat|enculette|vache)/.test(joined)) return true;
+  if (mode.id === "shanghai" && /variant/.test(joined) && !/shanghai/.test(joined)) return true;
   return false;
 }
 
+function hasConflictingModeIdentity(values: string[], mode: AwenaModeKnowledge) {
+  const joined = values.join(" ");
+  if (mode.id === "x01" && /training x01|x01 training/.test(joined)) return true;
+  if (mode.id === "killer" && /killer progressive|progressive killer/.test(joined)) return true;
+  if (mode.id === "cricket" && /cricket cut throat|cricket cutthroat|enculette|vache/.test(joined)) return true;
+  return false;
+}
+
+function legacyIdentityMatches(value: string, expected: string, aliases: Set<string>) {
+  if (aliases.has(value) || value === expected) return true;
+  // Compatibilité des anciens kinds : x01_match, cargo_result, killer_game...
+  // On n'autorise que des suffixes génériques, jamais un autre nom de variante.
+  const suffix = value.startsWith(`${expected} `) ? value.slice(expected.length + 1) : "";
+  return /^(match|game|result|history|end|ended|finished|summary)$/.test(suffix);
+}
+
 function rawMatchesMode(rec: any, mode: AwenaModeKnowledge) {
+  const modeValues = rawModeIdentityValues(rec);
+  const variantValues = rawVariantIdentityValues(rec);
+  const aliases = modeIdentityAliases(mode);
+  const expected = norm(NORMALIZED_MODE_BY_AWENA[mode.id] || mode.id);
+
+  if (hasConflictingVariant(rec, mode) || hasConflictingModeIdentity(modeValues, mode)) return false;
+
+  // Variantes qui partagent un moteur avec un jeu de base : on exige leur
+  // identifiant de variante afin de ne jamais mélanger leurs records.
+  if (mode.id === "cricket_cut_throat") return variantValues.some((v) => /cut throat|cutthroat/.test(v));
+  if (mode.id === "enculette") return variantValues.some((v) => /enculette|vache/.test(v));
+  if (mode.id === "killer_progressive") {
+    return modeValues.some((v) => v === norm(mode.id) || v === expected) || variantValues.some((v) => /progress/.test(v));
+  }
+
+  // Dès qu'un enregistrement possède un identifiant explicite, on compare des
+  // valeurs exactes. On évite ainsi "killer" qui avalerait "killer_progressive".
+  if (modeValues.length) {
+    if (modeValues.some((value) => legacyIdentityMatches(value, expected, aliases))) return true;
+    return false;
+  }
+
+  // Compatibilité des très vieux historiques sans gameId/mode : seulement ici,
+  // on autorise une recherche textuelle prudente.
   const blob = norm([
-    rec?.kind, rec?.mode, rec?.gameId, rec?.variant, rec?.variantId, rec?.sport,
-    rec?.game?.mode, rec?.game?.id,
-    rec?.summary?.mode, rec?.summary?.gameId, rec?.summary?.variant, rec?.summary?.variantId,
-    rec?.payload?.kind, rec?.payload?.mode, rec?.payload?.gameId, rec?.payload?.variant, rec?.payload?.variantId,
-    rec?.payload?.summary?.mode, rec?.payload?.summary?.gameId,
-    rec?.payload?.stats?.mode,
+    rec?.sport, rec?.summary?.variant, rec?.payload?.variant,
   ].filter(Boolean).join(" "));
-  if (mode.id === "x01" && /training x01|trainingx01/.test(blob)) return false;
-  const aliases = [mode.id, mode.label, ...mode.aliases].map(norm).filter((x) => x.length >= 3);
-  if (aliases.some((alias) => blob.includes(alias))) return true;
-  const expected = NORMALIZED_MODE_BY_AWENA[mode.id];
-  return !!expected && blob.includes(norm(expected));
+  return [...aliases].some((alias) => alias.length >= 4 && blob === alias);
+}
+
+function matchMode(m: NormalizedMatch, mode: AwenaModeKnowledge) {
+  if (m?.raw && rawModeIdentityValues(m.raw).length) return rawMatchesMode(m.raw, mode);
+  const expected = norm(NORMALIZED_MODE_BY_AWENA[mode.id] || mode.id);
+  const normalizedMode = norm(m.mode);
+  if (normalizedMode && (normalizedMode === expected || modeIdentityAliases(mode).has(normalizedMode))) return true;
+  return false;
 }
 
 
@@ -538,21 +635,34 @@ function bulletList(ranked: ReturnType<typeof rankRows>, metric: Metric) {
   return ranked.map((item, index) => `- **${index + 1}. ${item.row.name}** — ${formatValue(metric, item.value, item.row)}`).join("\n");
 }
 
-function dashboard(rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
-  const sections: string[] = [`## RECORDS — ${mode.label.toUpperCase()}\n${periodLabel}.`];
+function universalDashboardCandidates(rows: PlayerAgg[]): RecordDashboardSection[] {
+  const candidates: RecordDashboardSection[] = [];
   const rate = rankRows(rows, "winRate", false, 3);
-  if (rate.length) sections.push(`## % DE VICTOIRE\n${bulletList(rate, "winRate")}`);
+  if (rate.length) candidates.push({ id: "winRate", text: `## % DE VICTOIRE
+${bulletList(rate, "winRate")}` });
   const wins = rankRows(rows, "wins", false, 3);
-  if (wins.length) sections.push(`## VICTOIRES\n${bulletList(wins, "wins")}`);
-  if (mode.id === "x01") {
-    const avg = rankRows(rows, "avg3", false, 3);
-    if (avg.length) sections.push(`## MOYENNE 3 FLÉCHETTES\n${bulletList(avg, "avg3")}`);
-    const co = rankRows(rows, "bestCheckout", false, 3);
-    if (co.length) sections.push(`## MEILLEUR CHECKOUT\n${bulletList(co, "bestCheckout")}`);
-  }
-  if (sections.length === 1) return `Je n'ai pas encore assez de statistiques exploitables pour établir les records de ${mode.label} ${periodLabel}.`;
-  sections.push(`> Tu peux me demander une statistique précise, un top 3, le meilleur ou le plus mauvais joueur, et une période comme « depuis 1 mois ». Si la statistique demandée n'existe pas dans les données enregistrées, je te le dirai clairement.`);
-  return sections.join("\n\n");
+  if (wins.length) candidates.push({ id: "wins", text: `## VICTOIRES
+${bulletList(wins, "wins")}` });
+  const games = rankRows(rows, "games", false, 3);
+  if (games.length) candidates.push({ id: "games", text: `## PARTIES JOUÉES
+${bulletList(games, "games")}` });
+  const avg3 = rankRows(rows, "avg3", false, 3);
+  if (avg3.length) candidates.push({ id: "avg3", text: `## MOYENNE 3 FLÉCHETTES
+${bulletList(avg3, "avg3")}` });
+  const average = rankRows(rows, "average", false, 3);
+  if (average.length) candidates.push({ id: "average", text: `## MOYENNE ENREGISTRÉE
+${bulletList(average, "average")}` });
+  const checkout = rankRows(rows, "bestCheckout", false, 3);
+  if (checkout.length) candidates.push({ id: "bestCheckout", text: `## MEILLEUR CHECKOUT
+${bulletList(checkout, "bestCheckout")}` });
+  return candidates;
+}
+
+function dashboard(rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
+  const chosen = randomDashboardSections(`${mode.id}:universal`, universalDashboardCandidates(rows), 4);
+  if (!chosen.length) return `Je n'ai pas encore assez de statistiques exploitables pour établir les records de ${mode.label} ${periodLabel}.`;
+  return [`## RECORDS — ${mode.label.toUpperCase()}
+${periodLabel}.`, ...chosen.map((item) => item.text)].join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -1244,6 +1354,25 @@ function aggregateDynamicField(records: any[], metric: DynamicMetric) {
   });
 }
 
+function discoverDynamicFieldMetrics(records: any[]): DynamicMetric[] {
+  const seen = new Map<string, number>();
+  for (const rec of records.slice(0, 300)) {
+    for (const { row } of playerRowsForRecord(rec)) {
+      for (const leaf of flattenedNumericLeaves(row)) {
+        if (!FIELD_TRANSLATIONS[leaf.key]) continue;
+        seen.set(leaf.key, (seen.get(leaf.key) || 0) + 1);
+      }
+    }
+  }
+  return [...seen.keys()].map((key) => {
+    const aliases = candidateAliases(key);
+    const label = FIELD_TRANSLATIONS[key]?.[0] || aliases[0] || key;
+    const aggregation: DynamicMetric["aggregation"] = /avg|average|moyenne|rate|ratio|precision|accuracy|percent/.test(key)
+      ? "avg" : /best|max|record/.test(key) ? "max" : "sum";
+    return { id: `raw:${key}`, label, aliases, aggregation };
+  });
+}
+
 function unavailableMetricReply(mode: AwenaModeKnowledge, question: string, periodLabel: string, matchCount?: number) {
   const source = typeof matchCount === "number"
     ? `\n\n> J'ai vérifié **${matchCount} partie${matchCount > 1 ? "s" : ""} ${mode.label} enregistrée${matchCount > 1 ? "s" : ""} dans Historique** pour cette période.`
@@ -1258,38 +1387,65 @@ function unavailableMetricReply(mode: AwenaModeKnowledge, question: string, peri
 }
 
 function killerDashboard(records: any[], mode: AwenaModeKnowledge, periodLabel: string, fallbackRows: PlayerAgg[]) {
-  const sections = [dashboard(fallbackRows, mode, periodLabel)];
-  const killsMetric = KILLER_METRICS.find((m) => m.id === "kills")!;
-  const deathsMetric = KILLER_METRICS.find((m) => m.id === "killsReceived")!;
-  const kills = rankDynamic(aggregateKillerMetric(records, killsMetric), killsMetric, "top 3 kills");
-  const deaths = rankDynamic(aggregateKillerMetric(records, deathsMetric), deathsMetric, "top 3 kills reçus");
-  if (kills.length) sections.push(`## KILLS RÉALISÉS\n${dynamicMetricBulletList(kills)}`);
-  if (deaths.length) sections.push(`## KILLS REÇUS / ÉLIMINATIONS SUBIES\n${dynamicMetricBulletList(deaths)}`);
-  return sections.join("\n\n");
-}
+  const candidates: RecordDashboardSection[] = [...universalDashboardCandidates(fallbackRows)];
+  for (const metric of KILLER_METRICS) {
+    const ranked = rankDynamic(aggregateKillerMetric(records, metric), metric, `top 3 ${metric.aliases[0]}`);
+    if (!ranked.length || ranked.every((item) => !Number.isFinite(item.value) || item.value === 0)) continue;
+    candidates.push({ id: `killer:${metric.id}`, text: `## ${metric.label.toUpperCase()}
+${dynamicMetricBulletList(ranked)}` });
+  }
+  const chosen = randomDashboardSections(`${mode.id}:records`, candidates, 5);
+  if (!chosen.length) return `Je ne trouve pas encore de records exploitables pour ${mode.label} ${periodLabel}.`;
+  return [
+    `## RECORDS — ${mode.label.toUpperCase()}
+${periodLabel}.
 
+${historySourceLine(records.length)}`,
+    ...chosen.map((item) => item.text),
+    `> Sélection variable : Awena pioche à chaque ouverture parmi les records Killer réellement enregistrés.`,
+  ].join("\n\n");
+}
 
 function x01Dashboard(records: any[], rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
-  const sections: string[] = [
-    `## RECORDS — ${mode.label.toUpperCase()}\n${periodLabel}.\n\n> Source : **${records.length} partie${records.length > 1 ? "s" : ""} enregistrée${records.length > 1 ? "s" : ""} dans Historique**.`,
-  ];
-  const rate = rankRows(rows, "winRate", false, 3);
-  if (rate.length) sections.push(`## % DE VICTOIRE\n${bulletList(rate, "winRate")}`);
-  const wins = rankRows(rows, "wins", false, 3);
-  if (wins.length) sections.push(`## VICTOIRES\n${bulletList(wins, "wins")}`);
-
-  for (const metricId of ["avg3", "bestVisit", "bestCheckout", "checkoutRate", "hitRate", "h180"] as X01MetricId[]) {
-    const metric = X01_METRICS.find((item) => item.id === metricId)!;
+  const candidates: RecordDashboardSection[] = [...universalDashboardCandidates(rows).filter((item) => !["avg3", "bestCheckout"].includes(item.id))];
+  for (const metric of X01_METRICS) {
     const ranked = rankX01Metric(aggregateX01Metric(records, metric), metric, `top 3 ${metric.aliases[0]}`);
-    if (!ranked.length) continue;
-    sections.push(`## ${metric.label.toUpperCase()}\n${x01MetricBulletList(ranked)}`);
+    if (!ranked.length || ranked.every((item) => !Number.isFinite(item.value) || item.value === 0)) continue;
+    candidates.push({ id: `x01:${metric.id}`, text: `## ${metric.label.toUpperCase()}
+${x01MetricBulletList(ranked)}` });
   }
+  const chosen = randomDashboardSections(`${mode.id}:records`, candidates, 6);
+  if (!chosen.length) return `Je ne trouve pas encore de records X01 exploitables ${periodLabel}.`;
+  return [
+    `## RECORDS — ${mode.label.toUpperCase()}
+${periodLabel}.
 
-  sections.push(
-    "> Tu peux aussi me demander : 60+, 100+, 140+, 180, Bulls, Double Bulls, simples, doubles, triples, MISS, busts, fléchettes, volées, points, legs, sets, tentatives de checkout ou taux de réussite au checkout.",
-  );
-  return sections.join("\n\n");
+${historySourceLine(records.length)}`,
+    ...chosen.map((item) => item.text),
+    `> Sélection aléatoire parmi les records X01 réellement disponibles. Rouvre Records pour afficher d'autres rubriques.`,
+  ].join("\n\n");
 }
+
+function genericModeDashboard(records: any[], rows: PlayerAgg[], mode: AwenaModeKnowledge, periodLabel: string) {
+  const candidates: RecordDashboardSection[] = [...universalDashboardCandidates(rows)];
+  for (const metric of discoverDynamicFieldMetrics(records)) {
+    const ranked = rankDynamic(aggregateDynamicField(records, metric), metric, `top 3 ${metric.aliases[0] || metric.label}`);
+    if (!ranked.length || ranked.every((item) => !Number.isFinite(item.value) || item.value === 0)) continue;
+    candidates.push({ id: `${mode.id}:${metric.id}`, text: `## ${metric.label.toUpperCase()}
+${dynamicMetricBulletList(ranked)}` });
+  }
+  const chosen = randomDashboardSections(`${mode.id}:records`, candidates, 5);
+  if (!chosen.length) return `Je n'ai pas encore assez de statistiques exploitables pour établir les records de ${mode.label} ${periodLabel}.`;
+  return [
+    `## RECORDS — ${mode.label.toUpperCase()}
+${periodLabel}.
+
+${historySourceLine(records.length)}`,
+    ...chosen.map((item) => item.text),
+    `> Awena affiche une sélection différente parmi les records réellement enregistrés pour **${mode.label}**. Aucun autre mode n'est mélangé.`,
+  ].join("\n\n");
+}
+
 
 function historySourceLine(matchCount: number) {
   return `> Source : **${matchCount} partie${matchCount > 1 ? "s" : ""} enregistrée${matchCount > 1 ? "s" : ""} dans Historique**.`;
@@ -1465,7 +1621,7 @@ export async function buildAwenaRecordsReply(question: string, context: AwenaRun
       return {
         text: mode.id === "killer"
           ? killerDashboard(rawModeRecords, mode, period.label, rows)
-          : `${dashboard(rows, mode, period.label)}\n\n${historySourceLine(rawModeRecords.length || matches.length)}`,
+          : genericModeDashboard(rawModeRecords, rows, mode, period.label),
         modeId: mode.id,
       };
     }

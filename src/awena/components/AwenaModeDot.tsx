@@ -71,7 +71,7 @@ export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Pr
         : topic === "config"
           ? `Détaille uniquement la configuration de ${mode!.label} : chaque option, valeur possible, variante, format et réglage disponible.`
           : `Donne-moi les records de ${mode!.label} et les principaux classements disponibles.`;
-    await awena.ask(prompt);
+    await awena.ask(prompt, { modeTopic: topic });
   }
 
   const primary = theme?.primary || "#22e6ff";
