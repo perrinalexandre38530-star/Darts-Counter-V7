@@ -4,6 +4,8 @@ import novaAvatar from "../assets/avatars/attrape-moi/nova.png";
 import slykAvatar from "../assets/avatars/attrape-moi/slyk.png";
 import ravenAvatar from "../assets/avatars/attrape-moi/raven.png";
 import kronAvatar from "../assets/avatars/attrape-moi/kron.png";
+import esquiveTeamLogo from "../assets/avatars/attrape-moi/team_esquive.webp";
+import sniperTeamLogo from "../assets/avatars/attrape-moi/team_sniper.webp";
 
 export type CatchMeBotRole = "runner" | "chaser";
 
@@ -329,6 +331,7 @@ export function buildAttrapeMoiBotTeams(botProfiles: any[] = ATTRAPE_MOI_IA_BOTS
       name: "ESQUIVE",
       subtitle: "Fuyards IA",
       color: "#ff5d9e",
+      logoUrl: esquiveTeamLogo,
       botTeamLevel: 4.5,
       playerIds: ["amstp_bot_slyk", "amstp_bot_eliaz", "amstp_bot_nova"],
     },
@@ -337,6 +340,7 @@ export function buildAttrapeMoiBotTeams(botProfiles: any[] = ATTRAPE_MOI_IA_BOTS
       name: "SNIPER",
       subtitle: "Chasseurs IA",
       color: "#42d6ff",
+      logoUrl: sniperTeamLogo,
       botTeamLevel: 4,
       playerIds: ["amstp_bot_raven", "amstp_bot_bleiz", "amstp_bot_kron"],
     },

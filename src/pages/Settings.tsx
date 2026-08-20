@@ -893,12 +893,18 @@ function ThemePreviewBlock({
     ? preview.pageBackground || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
     : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
   const previewCard = preview?.cardBackground || preview?.card;
+  const fx = getThemeFxProfile(preview);
   const previewTextureOpacity = premiumPreview
-    ? Math.min(.62, Math.max(.30, preview?.textureOpacity ?? .42))
+    ? clamp01(preview?.previewTextureOpacity ?? Math.min(.62, Math.max(.30, preview?.textureOpacity ?? .42)) * fx.texture)
     : 0;
   const ambientOpacity = premiumPreview
-    ? Math.min(.24, Math.max(.085, (preview?.ambientOpacity || .05) * 2.5))
-    : Math.min(.14, Math.max(.04, (preview?.ambientOpacity || .04) * 1.7));
+    ? clamp01(preview?.previewAmbientOpacity ?? Math.min(.24, Math.max(.085, (preview?.ambientOpacity || .05) * 2.5)) * fx.ambient)
+    : clamp01(Math.min(.14, Math.max(.04, (preview?.ambientOpacity || .04) * 1.7)) * .85);
+  const previewSheenOpacity = clamp01(preview?.previewSheenOpacity ?? fx.sheen);
+  const previewFrameOpacity = clamp01(preview?.previewFrameOpacity ?? Math.min(.78, preview?.frameOpacity ?? .72) * fx.frame);
+  const innerTextureOpacity = clamp01((preview?.previewTextureOpacity ?? previewTextureOpacity) * (fx.innerTexture / Math.max(fx.texture, .01)));
+  const innerSheenOpacity = clamp01(Math.max(0, previewSheenOpacity * (fx.innerSheen / Math.max(fx.sheen || .01, .01))));
+  const innerFrameOpacity = clamp01(Math.max(0, previewFrameOpacity * (fx.innerFrame / Math.max(fx.frame || .01, .01))));
 
   return (
     <div
@@ -943,13 +949,13 @@ function ThemePreviewBlock({
         <div
           aria-hidden="true"
           className="dc-theme-preview-sheen"
-          style={{ background: preview.surfaceSheen }}
+          style={{ background: preview.surfaceSheen, opacity: previewSheenOpacity }}
         />
       ) : null}
       {preview?.frameOverlay ? (
         <div
           aria-hidden="true"
-          style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: preview.frameOpacity ?? .86, pointerEvents: "none", zIndex: 2 }}
+          style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: previewFrameOpacity, pointerEvents: "none", zIndex: 2 }}
         />
       ) : null}
 
@@ -988,9 +994,9 @@ function ThemePreviewBlock({
               boxShadow: preview.surfaceShadow || `0 12px 28px rgba(0,0,0,.52), 0 0 20px ${preview.primary}22`,
             }}
           >
-            {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: Math.min(.58, previewTextureOpacity + .04), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
-            {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen }} /> : null}
-            {preview.frameOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: Math.max(.56, (preview.frameOpacity ?? .86) - .12), pointerEvents: "none", zIndex: 1 }} /> : null}
+            {preview.textureOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: innerTextureOpacity, mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+            {preview.surfaceSheen ? <div aria-hidden="true" className="dc-theme-preview-sheen" style={{ background: preview.surfaceSheen, opacity: innerSheenOpacity }} /> : null}
+            {preview.frameOverlay ? <div aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: innerFrameOpacity, pointerEvents: "none", zIndex: 1 }} /> : null}
 
             <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, padding: "7px 9px", borderBottom: `1px solid ${preview.borderSoft}`, background: "rgba(3,5,12,.34)", backdropFilter: "blur(7px)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
@@ -1006,9 +1012,9 @@ function ThemePreviewBlock({
             <div style={{ position: "relative", zIndex: 2, padding: 8 }}>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.45fr) minmax(0,.8fr)", gap: 7 }}>
                 <div style={{ position: "relative", overflow: "hidden", borderRadius: 13, border: `1px solid ${preview.borderSoft}`, background: previewCard, padding: 8, boxShadow: preview.surfaceShadow || `0 10px 20px rgba(0,0,0,.40), 0 0 14px ${preview.primary}15` }}>
-                  {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: .30, mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
-                  {preview.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.surfaceSheen, opacity: .28, pointerEvents: "none" }} /> : null}
-                  {preview.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: Math.max(.38, (preview.frameOpacity ?? .86) - .30), pointerEvents: "none" }} /> : null}
+                  {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .88), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                  {preview.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.surfaceSheen, opacity: clamp01(innerSheenOpacity * .85), pointerEvents: "none" }} /> : null}
+                  {preview.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.frameOverlay, opacity: clamp01(innerFrameOpacity * .75), pointerEvents: "none" }} /> : null}
                   <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 38, height: 38, borderRadius: 999, padding: 2, background: `linear-gradient(135deg,${preview.primary},${preview.accent2})`, boxShadow: `0 0 14px ${preview.primary}55` }}>
                       <div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(2,4,9,.90)", color: preview.text, fontSize: 14, fontWeight: 1000 }}>N</div>
@@ -4375,7 +4381,9 @@ export function Settings({ go, params }: Props) {
       };
     }, [pickerOpen, selectedPackId]);
 
-    const renderThemeTextureSwatch = (preset: AppTheme, key: string, size = 19, radius: number | string = 999) => (
+    const renderThemeTextureSwatch = (preset: AppTheme, key: string, size = 19, radius: number | string = 999) => {
+      const fx = getThemeFxProfile(preset);
+      return (
       <span
         key={key}
         aria-hidden="true"
@@ -4393,12 +4401,13 @@ export function Settings({ go, params }: Props) {
           flexShrink: 0,
         }}
       >
-        {preset.textureOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: Math.min(.30, Math.max(.14, preset.textureOpacity ?? .20)), mixBlendMode: preset.textureBlendMode || "soft-light" }} /> : null}
-        {preset.ambientOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: Math.min(.16, Math.max(.06, preset.ambientOpacity ?? .08)) }} /> : null}
-        {preset.surfaceSheen ? <span style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .30, mixBlendMode: "screen" }} /> : null}
-        {preset.frameOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: Math.max(.30, (preset.frameOpacity ?? .82) - .40) }} /> : null}
+        {preset.textureOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: clamp01((preset.previewTextureOpacity ?? Math.min(.30, Math.max(.14, preset.textureOpacity ?? .20))) * fx.swatchTexture / .20), mixBlendMode: preset.textureBlendMode || "soft-light" }} /> : null}
+        {preset.ambientOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: clamp01((preset.previewAmbientOpacity ?? Math.min(.16, Math.max(.06, preset.ambientOpacity ?? .08))) * fx.swatchAmbient / .10) }} /> : null}
+        {preset.surfaceSheen ? <span style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: clamp01((preset.previewSheenOpacity ?? .30) * fx.swatchSheen / .18), mixBlendMode: "screen" }} /> : null}
+        {preset.frameOverlay ? <span style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: clamp01((preset.previewFrameOpacity ?? Math.max(.30, (preset.frameOpacity ?? .82) - .40)) * fx.swatchFrame / .20) }} /> : null}
       </span>
-    );
+      );
+    };
 
     const packCard = (pack: ThemePack) => {
       const locked = packLocked(pack);
@@ -4558,10 +4567,10 @@ export function Settings({ go, params }: Props) {
                         overflow: "hidden",
                       }}
                     >
-                      {preset.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: .46, mixBlendMode: preset.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
+                      {preset.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.textureOverlay, opacity: clamp01((preset.previewTextureOpacity ?? .22) + (getThemeFxProfile(preset).tileTexture - .16)), mixBlendMode: preset.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
                       {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: .18, pointerEvents: "none" }} /> : null}
-                      {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: .38, mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
-                      {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: Math.max(.52, (preset.frameOpacity ?? .86) - .18), pointerEvents: "none" }} /> : null}
+                      {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: clamp01((preset.previewSheenOpacity ?? .14) + (getThemeFxProfile(preset).tileSheen - .10)), mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
+                      {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: clamp01((preset.previewFrameOpacity ?? .18) + (getThemeFxProfile(preset).tileFrame - .12)), pointerEvents: "none" }} /> : null}
                       {locked ? <span style={{ position: "absolute", top: 6, right: 6, fontSize: 12 }}>🔒</span> : null}
                       {renderThemeTextureSwatch(preset, `${id}-preview`, 40, 13)}
                       <span style={{ fontSize: 10.5, fontWeight: 950, textAlign: "center", lineHeight: 1.15, position: "relative" }}>{meta.defaultLabel}</span>
