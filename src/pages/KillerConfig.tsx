@@ -36,7 +36,8 @@ import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
 import KillerAwenaRulesVideo from "../components/KillerAwenaRulesVideo";
-import killerAwenaRulesPoster from "../assets/videos/killer_awena_rules_poster.webp";
+import killerAwenaRulesPosterFr from "../assets/videos/killer_awena_rules_poster.webp";
+import killerAwenaRulesPosterEn from "../assets/videos/killer_awena_rules_poster_en.webp";
 import { loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 
 // 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
@@ -426,7 +427,7 @@ export default function KillerConfigPage(props: Props) {
     null;
 
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   React.useLayoutEffect(() => {
     try {
@@ -600,6 +601,9 @@ export default function KillerConfigPage(props: Props) {
   // ✅ bouton "i" (règles / variantes)
   const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
   const [rulesVideoOpen, setRulesVideoOpen] = React.useState<boolean>(false);
+  const killerRulesVideoIsFrench = String(lang || "fr").toLowerCase() === "fr";
+  const killerAwenaRulesPoster = killerRulesVideoIsFrench ? killerAwenaRulesPosterFr : killerAwenaRulesPosterEn;
+  const killerRulesVideoDuration = killerRulesVideoIsFrench ? "1:20" : "1:11";
   const [resInfo, setResInfo] = React.useState<{ title: string; text: string } | null>(null);
 
   const contentRef = React.useRef<HTMLDivElement | null>(null);
@@ -1051,7 +1055,7 @@ export default function KillerConfigPage(props: Props) {
                             letterSpacing="1.6"
                             fill="black"
                           >
-                            AWENA VOUS EXPLIQUE
+                            {killerRulesVideoIsFrench ? "AWENA VOUS EXPLIQUE" : "AWENA EXPLAINS"}
                           </text>
                         </mask>
                       </defs>
@@ -1064,8 +1068,8 @@ export default function KillerConfigPage(props: Props) {
               <button
                 type="button"
                 onClick={() => setRulesVideoOpen(true)}
-                aria-label="Voir la vidéo Awena des règles du Killer"
-                title="Awena · Voir l’explication vidéo"
+                aria-label={killerRulesVideoIsFrench ? "Voir la vidéo Awena des règles du Killer" : "Watch Awena's Killer rules video"}
+                title={killerRulesVideoIsFrench ? "Awena · Voir l’explication vidéo" : "Awena · Watch rules video"}
                 style={{
                   flex: "0 0 auto",
                   width: 98,
@@ -1092,7 +1096,7 @@ export default function KillerConfigPage(props: Props) {
                     boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
                   }}
                 >
-                  <img src={killerAwenaRulesPoster} alt="Awena vous explique le Killer" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  <img src={killerAwenaRulesPoster} alt={killerRulesVideoIsFrench ? "Awena vous explique le Killer" : "Awena explains Killer"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.36))" }} />
                   <div
                     style={{
@@ -1129,7 +1133,7 @@ export default function KillerConfigPage(props: Props) {
                       fontWeight: 900,
                     }}
                   >
-                    1:20
+                    {killerRulesVideoDuration}
                   </div>
                 </div>
                 <div style={{ textAlign: "left", minWidth: 0, padding: "0 3px 2px" }}>
@@ -1137,7 +1141,7 @@ export default function KillerConfigPage(props: Props) {
                     AWENA · KILLER
                   </div>
                   <div style={{ marginTop: 2, color: "#e9ebf7", fontSize: 10.5, fontWeight: 800, lineHeight: 1.2 }}>
-                    Voir la vidéo
+                    {killerRulesVideoIsFrench ? "Voir la vidéo" : "Watch video"}
                   </div>
                 </div>
               </button>

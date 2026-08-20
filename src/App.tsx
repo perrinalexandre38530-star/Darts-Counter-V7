@@ -78,6 +78,7 @@ import { mirrorAvatarFallbackToR2 } from "./lib/avatarR2Fallback";
 import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import { botAvatarMediaKey, captureUserMediaFallback, hydrateStoreUserMedia, profileAvatarMediaKey } from "./lib/userMediaFallback";
 import BottomNav from "./components/BottomNav";
+import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 // MONETIZATION_V1
@@ -5611,6 +5612,8 @@ case "babyfoot_team_edit":
             </React.Suspense>
           </AppGate>
         </div>
+
+        <NavigationBackgroundMusic route={String(tab)} />
 
         <AwenaOverlay
           route={String(tab)}

@@ -536,11 +536,11 @@ export default function Games({ setTab, params }: Props) {
   }
 
   React.useEffect(() => {
-    if (hasSeenX01AwenaRulesIntro() && hasSeenKillerAwenaRulesIntro()) return;
+    if (hasSeenX01AwenaRulesIntro() && hasSeenKillerAwenaRulesIntro(lang)) return;
     // Précharge l'interstitiel Android si au moins une vidéo de règles de première ouverture
     // n'a pas encore été vue. Le provider gère Premium / consentement / indisponibilité.
     void preloadInterstitialAd(false);
-  }, []);
+  }, [lang]);
 
   async function openX01WithFirstRules(launch: () => void) {
     if (hasSeenX01AwenaRulesIntro()) {
@@ -570,7 +570,7 @@ export default function Games({ setTab, params }: Props) {
   }
 
   async function openKillerWithFirstRules(launch: () => void) {
-    if (hasSeenKillerAwenaRulesIntro()) {
+    if (hasSeenKillerAwenaRulesIntro(lang)) {
       launch();
       return;
     }
@@ -582,7 +582,7 @@ export default function Games({ setTab, params }: Props) {
       // Une indisponibilité pub ne bloque jamais l'accès au mode.
       try { await showInterstitialAd("killer_rules_first_open"); } catch {}
       killerPendingLaunchRef.current = launch;
-      markKillerAwenaRulesIntroSeen();
+      markKillerAwenaRulesIntroSeen(lang);
       setKillerRulesIntroOpen(true);
     } finally {
       setKillerIntroBusy(false);

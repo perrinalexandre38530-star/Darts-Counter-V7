@@ -18,6 +18,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import type { GameDart } from "../lib/types-game";
 import { resolveAttrapeMoiBotSkill } from "../lib/attrapeMoiBots";
+import { playAttrapeMoiIntro, stopAttrapeMoiIntro } from "../lib/sfx";
 import {
   cloneCatchMeState,
   createCatchMeState,
@@ -322,6 +323,17 @@ export default function AttrapeMoiPlay(props: any) {
   const matchIdRef = React.useRef(`attrape-moi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const autoSavedRef = React.useRef("");
   const lastBackRef = React.useRef(0);
+
+  // 🎵 Musique d'intro au lancement de la partie, comme X01 / KILLER / GOLF.
+  React.useEffect(() => {
+    try {
+      playAttrapeMoiIntro(0.5);
+    } catch {}
+
+    return () => {
+      try { stopAttrapeMoiIntro(); } catch {}
+    };
+  }, []);
 
   const byId = React.useMemo(() => new Map(profiles.map((p: any) => [String(p.id), p])), [profiles]);
   const teamById = React.useMemo(() => new Map(teamConfigs.map((t) => [String(t.id), t])), [teamConfigs]);

@@ -29,6 +29,7 @@ import type {
 import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
+import { unlockAudio } from "../lib/sfx";
 import {
   BotTeamsSection,
   PillButton,
@@ -233,6 +234,8 @@ export default function AttrapeMoiConfig(props: any) {
       pursuitRounds: Math.max(1, Math.min(30, Number(pursuitRounds) || 10)), legsBestOf, setsBestOf, legVictoryMode, legVictoryTarget, setVictoryMode, setVictoryTarget, startingRunner, scoreInputMethod,
     };
     try { recordProfileUsageForMode("attrape_moi", orderedIds); } catch {}
+    // Déverrouille l'audio sur le geste utilisateur avant la navigation (mobile / Android).
+    try { void unlockAudio(); } catch {}
     if (typeof go === "function") go("attrape_moi_play", payload);
   }
 

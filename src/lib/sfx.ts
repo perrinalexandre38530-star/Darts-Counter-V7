@@ -28,6 +28,9 @@ import shanghaiMissUrl from "../assets/sounds/shanghai-miss.mp3";
 // 🏌️ Golf — intro (fichier présent dans ton repo)
 import golfIntroUrl from "../assets/sounds/golf_intro.mp3";
 
+// 🏃 ATTRAPE-MOI SI TU PEUX — musique d’intro optimisée
+import attrapeMoiIntroUrl from "../assets/sounds/attrape_moi_intro.mp3";
+
 // 🏌️ Golf — bruitages "arcade" tickers
 import golfTickerEagleUrl from "../assets/sounds/golf_ticker_eagle.wav";
 import golfTickerBirdieUrl from "../assets/sounds/golf_ticker_birdie.wav";
@@ -58,6 +61,9 @@ const SFX = {
 
   // 🏌️ Golf (assets import)
   golfIntro: golfIntroUrl,
+
+  // 🏃 ATTRAPE-MOI SI TU PEUX (assets import)
+  attrapeMoiIntro: attrapeMoiIntroUrl,
 } as const;
 
 type SfxKey = keyof typeof SFX;
@@ -185,6 +191,43 @@ export function stopGolfIntro() {
     if (_golfIntroAudio) {
       try { _golfIntroAudio.pause(); } catch {}
       _golfIntroAudio = null;
+    }
+  } catch {}
+}
+
+// 🏃 ATTRAPE-MOI SI TU PEUX — musique d'intro (arrivée dans AttrapeMoiPlay)
+let _attrapeMoiIntroAudio: HTMLAudioElement | null = null;
+export function playAttrapeMoiIntro(volume: number = 0.5) {
+  try {
+    if (_attrapeMoiIntroAudio) {
+      try { _attrapeMoiIntroAudio.pause(); } catch {}
+      _attrapeMoiIntroAudio = null;
+    }
+    if (!SFX_ENABLED) return;
+
+    const a = getFromPool(SFX.attrapeMoiIntro);
+    if (!a) return;
+
+    try {
+      a.preload = "auto";
+      (a as any).playsInline = true;
+      a.volume = Math.max(0, Math.min(1, volume));
+      a.currentTime = 0;
+    } catch {}
+
+    _attrapeMoiIntroAudio = a;
+
+    const p = a.play();
+    if (p && typeof (p as any).catch === "function") p.catch(() => {});
+  } catch {}
+}
+
+export function stopAttrapeMoiIntro() {
+  try {
+    if (_attrapeMoiIntroAudio) {
+      try { _attrapeMoiIntroAudio.pause(); } catch {}
+      try { _attrapeMoiIntroAudio.currentTime = 0; } catch {}
+      _attrapeMoiIntroAudio = null;
     }
   } catch {}
 }

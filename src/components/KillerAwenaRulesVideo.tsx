@@ -1,6 +1,8 @@
 import React from "react";
-import localVideoSrc from "../assets/videos/killer_awena_rules.mp4";
-import posterSrc from "../assets/videos/killer_awena_rules_poster.webp";
+import localVideoFrSrc from "../assets/videos/killer_awena_rules.mp4";
+import localVideoEnSrc from "../assets/videos/killer_awena_rules_en.mp4";
+import posterFrSrc from "../assets/videos/killer_awena_rules_poster.webp";
+import posterEnSrc from "../assets/videos/killer_awena_rules_poster_en.webp";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
@@ -10,9 +12,16 @@ type Props = {
   firstLaunch?: boolean;
 };
 
-function envVideoUrl(): string {
+function envVideoUrl(isFrench: boolean): string {
   try {
-    return String((import.meta as any)?.env?.VITE_KILLER_AWENA_RULES_URL || "").trim();
+    const env = (import.meta as any)?.env || {};
+    if (isFrench) {
+      return String(env.VITE_KILLER_AWENA_RULES_FR_URL || env.VITE_KILLER_AWENA_RULES_URL || "").trim();
+    }
+    // Important : l'ancienne URL générique peut pointer vers la vidéo FR.
+    // Pour toutes les langues non françaises on n'utilise donc que l'URL EN dédiée,
+    // sinon on retombe sur le MP4 anglais embarqué.
+    return String(env.VITE_KILLER_AWENA_RULES_EN_URL || "").trim();
   } catch {
     return "";
   }
@@ -20,11 +29,15 @@ function envVideoUrl(): string {
 
 export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = false }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const [failedRemote, setFailedRemote] = React.useState(false);
-  const remoteSrc = envVideoUrl();
+  const isFrench = String(lang || "fr").toLowerCase() === "fr";
+  const localVideoSrc = isFrench ? localVideoFrSrc : localVideoEnSrc;
+  const posterSrc = isFrench ? posterFrSrc : posterEnSrc;
+  const remoteSrc = envVideoUrl(isFrench);
   const src = remoteSrc && !failedRemote ? remoteSrc : localVideoSrc;
+  const durationLabel = isFrench ? "1:20" : "1:11";
 
   React.useEffect(() => {
     if (!open) return;
@@ -38,7 +51,7 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
       } catch {}
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [open]);
+  }, [open, isFrench]);
 
   if (!open) return null;
 
@@ -46,7 +59,7 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("killer.awenaVideo.title", "Awena explique le Killer")}
+      aria-label={t("killer.awenaVideo.title", isFrench ? "Awena explique le Killer" : "Awena explains Killer")}
       style={{
         position: "fixed",
         inset: 0,
@@ -84,11 +97,17 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: theme.primary, fontSize: 11, fontWeight: 950, letterSpacing: 1.05, textTransform: "uppercase" }}>
-              AWENA · KILLER
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <div style={{ color: theme.primary, fontSize: 11, fontWeight: 950, letterSpacing: 1.05, textTransform: "uppercase" }}>
+                AWENA · KILLER
+              </div>
+              <span style={{ color: "#8f99b6", fontSize: 9.5, fontWeight: 900 }}>{durationLabel}</span>
             </div>
             <div style={{ color: "#fff", fontSize: 13, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {t("killer.awenaVideo.subtitle", "Les règles en 1 min 20")}
+              {t(
+                "killer.awenaVideo.subtitle",
+                isFrench ? "Les règles en 1 min 20" : "Killer rules in 1 min 11"
+              )}
             </div>
           </div>
           <button
@@ -150,8 +169,18 @@ export default function KillerAwenaRulesVideo({ open, onDone, firstLaunch = fals
         >
           <div style={{ color: "rgba(255,255,255,.66)", fontSize: 10.5, lineHeight: 1.35 }}>
             {firstLaunch
-              ? t("killer.awenaVideo.firstLaunchHint", "Première ouverture : la configuration Killer s'ouvrira ensuite automatiquement.")
-              : t("killer.awenaVideo.replayHint", "Tu peux revoir cette vidéo à tout moment depuis la configuration Killer.")}
+              ? t(
+                  "killer.awenaVideo.firstLaunchHint",
+                  isFrench
+                    ? "Première ouverture : la configuration Killer s'ouvrira ensuite automatiquement."
+                    : "First opening: Killer configuration will open automatically after the video."
+                )
+              : t(
+                  "killer.awenaVideo.replayHint",
+                  isFrench
+                    ? "Tu peux revoir cette vidéo à tout moment depuis la configuration Killer."
+                    : "You can replay this video at any time from Killer configuration."
+                )}
           </div>
           <button
             type="button"
