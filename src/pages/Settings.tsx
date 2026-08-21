@@ -171,6 +171,58 @@ const PRESTIGES: ThemeId[] = [...PRESTIGE_THEME_IDS];
 const ABSTRACTS: ThemeId[] = [...ABSTRACT_THEME_IDS];
 const PREMIUM_THEMES_STORE_PACK_ID = "themes_neon_01";
 
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+type ThemeFxProfile = {
+  texture: number;
+  ambient: number;
+  sheen: number;
+  frame: number;
+  innerTexture: number;
+  innerSheen: number;
+  innerFrame: number;
+  swatchTexture: number;
+  swatchAmbient: number;
+  swatchSheen: number;
+  swatchFrame: number;
+  tileTexture: number;
+  tileSheen: number;
+  tileFrame: number;
+};
+
+const getThemeFxProfile = (preset?: Partial<AppTheme> | null): ThemeFxProfile => {
+  const base: ThemeFxProfile = {
+    texture: 0.42,
+    ambient: 0.16,
+    sheen: 0.24,
+    frame: 0.76,
+    innerTexture: 0.30,
+    innerSheen: 0.22,
+    innerFrame: 0.44,
+    swatchTexture: 0.20,
+    swatchAmbient: 0.10,
+    swatchSheen: 0.18,
+    swatchFrame: 0.20,
+    tileTexture: 0.34,
+    tileSheen: 0.22,
+    tileFrame: 0.32,
+  };
+  switch (preset?.previewVariant) {
+    case "matte":
+      return { ...base, texture: 0.18, ambient: 0.06, sheen: 0.0, frame: 0.10, innerTexture: 0.12, innerSheen: 0.0, innerFrame: 0.06, swatchTexture: 0.12, swatchAmbient: 0.05, swatchSheen: 0.0, swatchFrame: 0.08, tileTexture: 0.16, tileSheen: 0.0, tileFrame: 0.10 };
+    case "etched":
+      return { ...base, texture: 0.20, ambient: 0.06, sheen: 0.04, frame: 0.16, innerTexture: 0.15, innerSheen: 0.04, innerFrame: 0.12, swatchTexture: 0.13, swatchAmbient: 0.05, swatchSheen: 0.02, swatchFrame: 0.10, tileTexture: 0.18, tileSheen: 0.03, tileFrame: 0.14 };
+    case "glass":
+      return { ...base, texture: 0.14, ambient: 0.07, sheen: 0.10, frame: 0.12, innerTexture: 0.11, innerSheen: 0.10, innerFrame: 0.10, swatchTexture: 0.10, swatchAmbient: 0.06, swatchSheen: 0.08, swatchFrame: 0.08, tileTexture: 0.15, tileSheen: 0.10, tileFrame: 0.10 };
+    case "velvet":
+      return { ...base, texture: 0.16, ambient: 0.05, sheen: 0.03, frame: 0.14, innerTexture: 0.13, innerSheen: 0.03, innerFrame: 0.12, swatchTexture: 0.11, swatchAmbient: 0.04, swatchSheen: 0.02, swatchFrame: 0.08, tileTexture: 0.15, tileSheen: 0.03, tileFrame: 0.12 };
+    case "neon":
+      return { ...base, texture: 0.22, ambient: 0.10, sheen: 0.06, frame: 0.14, innerTexture: 0.18, innerSheen: 0.06, innerFrame: 0.12, swatchTexture: 0.14, swatchAmbient: 0.08, swatchSheen: 0.05, swatchFrame: 0.10, tileTexture: 0.21, tileSheen: 0.06, tileFrame: 0.12 };
+    default:
+      return base;
+  }
+};
+
 const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }> = {
   gold: { defaultLabel: "Gold néon", defaultDesc: "Thème premium doré" },
   pink: { defaultLabel: "Rose fluo", defaultDesc: "Ambiance arcade rose" },
