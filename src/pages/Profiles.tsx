@@ -3505,7 +3505,10 @@ React.useEffect(() => {
           width: "100%",
           maxWidth: 760,
           boxSizing: "border-box",
-          background: theme.bg,
+          background: theme.pageBackground || theme.bg,
+          backgroundAttachment: theme.pageBackground ? "fixed" : undefined,
+          backgroundPosition: "center top",
+          backgroundSize: "cover",
           color: theme.text,
           overflowX: "hidden",
         }}

@@ -519,7 +519,7 @@ export default function Games({ setTab, params }: Props) {
   const [counts, setCounts] = React.useState<PlayCountMap>({});
   const [lastPlayed, setLastPlayed] = React.useState<LastPlayedMap>({});
 
-  const PAGE_BG = theme.bg;
+  const PAGE_BG = theme.pageBackground || theme.bg;
   const CARD_BG = theme.card;
 
   function navigate(tab: string, params?: any) {

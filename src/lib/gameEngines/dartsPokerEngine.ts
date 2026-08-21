@@ -51,6 +51,7 @@ export type DartsPokerConfigPayload = {
   powersEnabled: boolean;
   jokerEnabled: boolean;
   contractsEnabled?: boolean;
+  assistanceEnabled?: boolean;
   autoDrawMissing: boolean;
   openHands: boolean;
   randomOrder: boolean;
@@ -874,7 +875,14 @@ export function pickBestPokerMarketSector(state: DartsPokerState, playerId: stri
     const evaluation = cards.length >= 5 ? evaluateBestPokerHand(cards) : null;
     const rankCounts = new Map<number, number>(); cards.filter((c) => !c.joker).forEach((c) => rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1));
     const suitCounts = new Map<string, number>(); cards.filter((c) => !c.joker).forEach((c) => suitCounts.set(String(c.suit), (suitCounts.get(String(c.suit)) || 0) + 1));
-    const heuristic = Number(evaluation?.score || 0) + Math.max(0, ...(rankCounts.values())) * 100000 + Math.max(0, ...(suitCounts.values())) * 1000 + card.rank;
+    let contractBoost = 0;
+    if (state.roundContract) {
+      if (state.roundContract.key === "joker" && card.joker) contractBoost = 900000000;
+      else if (evaluation && isDartsPokerContractCompleted(state.roundContract, evaluation, cards)) contractBoost = 700000000;
+      else if (state.roundContract.key === "flush") contractBoost = Math.max(0, ...(suitCounts.values())) * 70000;
+      else if (["pair", "two_pair", "three_of_a_kind", "full_house"].includes(state.roundContract.key)) contractBoost = Math.max(0, ...(rankCounts.values())) * 90000;
+    }
+    const heuristic = contractBoost + Number(evaluation?.score || 0) + Math.max(0, ...(rankCounts.values())) * 100000 + Math.max(0, ...(suitCounts.values())) * 1000 + card.rank;
     if (heuristic > bestScore) { bestScore = heuristic; bestSector = sector; }
   }
   return bestSector;

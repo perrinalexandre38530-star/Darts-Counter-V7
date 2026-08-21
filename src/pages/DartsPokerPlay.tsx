@@ -23,6 +23,7 @@ import {
   finishDartsPokerHand,
   getDartsPokerActiveHand,
   getDartsPokerActivePlayer,
+  isDartsPokerContractCompleted,
   openDartsPokerChoice,
   pickBestPokerMarketSector,
   playDartsPokerVisit,
@@ -44,6 +45,10 @@ type WonCardPopup = {
   card: PokerCard;
   dartLabel: string;
   bonusLabel?: string | null;
+  beforeStatus?: string | null;
+  afterStatus?: string | null;
+  impactLabel?: string | null;
+  contractLabel?: string | null;
 };
 
 const GOLD = "#f6c256";
@@ -73,7 +78,7 @@ function normalizeConfig(props: any): DartsPokerConfigPayload {
     botLevel: raw?.botLevel === "easy" || raw?.botLevel === "hard" ? raw.botLevel : "normal",
     rounds: ([3,5,7,10].includes(Number(raw?.rounds)) ? Number(raw.rounds) : 5) as any,
     dartsPerHand: 6,
-    powersEnabled: raw?.powersEnabled !== false, jokerEnabled: raw?.jokerEnabled !== false, contractsEnabled: raw?.contractsEnabled !== false, autoDrawMissing: true,
+    powersEnabled: raw?.powersEnabled !== false, jokerEnabled: raw?.jokerEnabled !== false, contractsEnabled: raw?.contractsEnabled !== false, assistanceEnabled: raw?.assistanceEnabled !== false, autoDrawMissing: true,
     openHands: raw?.openHands !== false, randomOrder: Boolean(raw?.randomOrder), scoreInputMethod: raw?.scoreInputMethod === "dartboard" ? "dartboard" : "keypad",
   };
 }
@@ -164,10 +169,22 @@ export default function DartsPokerPlay(props: any) {
       .map((event) => event.label)
       .join(" · ");
     if (cardEvent?.card) {
+      const beforeCards = visit?.cardsBefore || [];
+      const afterCards = visit?.cardsAfter || [];
+      const beforeStatus = describeHandSnapshot(beforeCards);
+      const afterStatus = describeHandSnapshot(afterCards);
+      const afterEvaluation = evaluateBestPokerHand(afterCards);
+      const contractDone = state.roundContract
+        ? (state.roundContract.key === "joker" ? afterCards.some((card) => Boolean(card?.joker)) : isDartsPokerContractCompleted(state.roundContract, afterEvaluation, afterCards))
+        : false;
       setWonCardPopup({
         card: cardEvent.card,
         dartLabel: visit?.labels?.[0] || dartsPokerDartLabel(uiToGameDart(hit)),
         bonusLabel: bonusLabel || null,
+        beforeStatus,
+        afterStatus,
+        impactLabel: describeCardImpact(beforeCards, afterCards, cardEvent.card),
+        contractLabel: contractDone && state.roundContract ? `CONTRAT VALIDÉ · ${state.roundContract.label}` : null,
       });
     }
     setNotice(visit?.events?.map((event) => event.label).join(" · ") || "Fléchette validée.");
@@ -328,10 +345,13 @@ export default function DartsPokerPlay(props: any) {
   const selectedHitLabel = throwDarts[0] ? dartsPokerDartLabel(uiToGameDart(throwDarts[0])) : "—";
   const centerScore = <div style={{ textAlign: "center", minWidth: 58 }}><div style={{ color: throwDarts[0] ? GOLD : SOFT, fontSize: 22, fontWeight: 1200, lineHeight: 1 }}>{selectedHitLabel}</div><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginTop: 3 }}>{remainingDarts} fléchette{remainingDarts > 1 ? "s" : ""} restante{remainingDarts > 1 ? "s" : ""}</div></div>;
   const keypadNotice = <div style={{ color: state.phase === "powers" ? GOLD : SOFT, fontSize: 9, fontWeight: 900, textAlign: "center", lineHeight: 1.3 }}>{botThinking ? "BOT EN RÉFLEXION…" : notice}</div>;
-  const marketTargets = rankMarketSuggestions(state, String(activePlayer?.id || ""), 4);
+  const assistanceEnabled = config.assistanceEnabled !== false;
+  const marketTargets = assistanceEnabled ? rankMarketSuggestions(state, String(activePlayer?.id || ""), 4) : [];
   const bestTarget = marketTargets[0] || null;
   const objective = buildPokerObjectiveHint(state, String(activePlayer?.id || ""), liveEvaluation, remainingDarts);
   const activeAccuracy = pct(Number(activeStats?.hits || 0), Number(activeStats?.darts || 0));
+  const handSnapshot = describeHandSnapshot(activeHand?.cards || []);
+  const contractLive = describeContractLiveState(state.roundContract, activeHand?.cards || []);
   const quickColumns = config.scoreInputMethod === "dartboard" ? 4 : 3;
 
   return <div style={{ minHeight: "100dvh", color: theme?.text || "#fff", background: "radial-gradient(circle at 50% -10%,rgba(232,58,67,.25),#08090d 42%,#020203 100%)", overflowX: "hidden" }}>
@@ -346,6 +366,10 @@ export default function DartsPokerPlay(props: any) {
           </div>
           <div style={{ marginTop: 5, display: "flex", gap: 4, alignItems: "center", minHeight: 36 }}>
             {Array.from({ length: 5 }, (_, index) => <MiniHandCard key={index} card={activeHand?.cards?.[index] || null} />)}
+          </div>
+          <div style={{ marginTop: 4, display: "flex", gap: 5, alignItems: "center", minWidth: 0 }}>
+            <span style={{ color: liveEvaluation ? GREEN : GOLD, fontSize: 7.8, fontWeight: 1050, whiteSpace: "nowrap" }}>{handSnapshot}</span>
+            {state.roundContract ? <span style={{ color: contractLive.done ? GREEN : SOFT, fontSize: 7.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{contractLive.done ? "◆ CONTRAT OK" : `◆ ${contractLive.label}`}</span> : null}
           </div>
         </button>
         <div style={{ display: "grid", gap: 5, justifyItems: "end" }}>
@@ -367,7 +391,8 @@ export default function DartsPokerPlay(props: any) {
             <IconTarget />
           </div>
           <div style={{ color: "#fff", fontSize: 10.5, fontWeight: 950, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.roundContract?.label || objective.title}</div>
-          <div style={{ color: SOFT, fontSize: 8.2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.roundContract ? `+${state.roundContract.bonusPoints} pt · ${state.roundContract.description}` : bestTarget ? `Conseil : S${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
+          <div style={{ color: SOFT, fontSize: 8.2, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{state.roundContract ? `${contractLive.done ? "✓ VALIDÉ" : `+${state.roundContract.bonusPoints} pt`} · ${state.roundContract.description}` : assistanceEnabled && bestTarget ? `Conseil : S${bestTarget.sector} · ${pokerCardLabel(bestTarget.card)}` : objective.description}</div>
+          {assistanceEnabled && bestTarget ? <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: GOLD, fontSize: 8, fontWeight: 1100 }}>CIBLE PRIORITAIRE</span><span style={{ color: "#fff", fontSize: 9, fontWeight: 1100 }}>S{bestTarget.sector}</span><span style={{ color: SOFT, fontSize: 8 }}>{pokerCardLabel(bestTarget.card)}</span><span style={{ color: bestTarget.contractMatch ? GREEN : BLUE, fontSize: 7.5 }}>{bestTarget.contractMatch ? "CONTRAT" : "MAIN"}</span></div> : null}
         </button>
         <div style={{ ...panel(), padding: 6 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 4 }}>
@@ -394,10 +419,10 @@ export default function DartsPokerPlay(props: any) {
     {showRound && state.phase === "round_result" ? <RoundModal state={state} profilesById={profilesById} onNext={nextRound} /> : null}
     {showTimeline ? <TimelineModal state={state} profilesById={profilesById} onClose={() => setShowTimeline(false)} /> : null}
     {quickPanel === "active" ? <ActivePlayerModal state={state} activeProfile={activeProfile} activePlayer={activePlayer} activeHand={activeHand} activeColor={activeColor} activeStats={activeStats} liveEvaluation={liveEvaluation} onClose={() => setQuickPanel(null)} onExchange={exchangeCard} onChoice={useChoice} onValidate={validateHand} /> : null}
-    {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "market" ? <MarketModal state={state} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "table" ? <TableModal state={state} profilesById={profilesById} config={config} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "stats" ? <LiveStatsModal state={state} profilesById={profilesById} onClose={() => setQuickPanel(null)} /> : null}
-    {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} onClose={() => setQuickPanel(null)} /> : null}
+    {quickPanel === "objectives" ? <ObjectivesModal objective={objective} contract={state.roundContract} suggestions={marketTargets} assistanceEnabled={assistanceEnabled} onClose={() => setQuickPanel(null)} /> : null}
     {quickPanel === "dartboard" ? <DartboardPanel multiplier={multiplier} onSetMultiplier={setMultiplier} disabled={botThinking || throwDarts.length >= 1 || remainingDarts <= 0 || Boolean(wonCardPopup)} onHit={(segment, mult) => addDart(segment, mult)} onClose={() => setQuickPanel(null)} /> : null}
     {showEnd && state.phase === "finished" ? <DartsPokerEnd state={state} profilesById={profilesById} onClose={() => setShowEnd(false)} onReplay={resetMatch} onStats={() => { const focusId = state.players[0]?.id; if (typeof go === "function") go("statsHub", { tab: "stats", mode: "active", initialPlayerId: focusId, playerId: focusId, initialStatsSubTab: "darts_poker" }); }} onHistory={() => { try { onFinish?.(buildHistoryRecord("finished"), { navigate: true }); } catch { if (typeof go === "function") go("statsHub", { tab: "history" }); } }} /> : null}
   </div>;
@@ -431,14 +456,17 @@ function IconUndo() { return <IconShell><svg viewBox="0 0 24 24" width="17" heig
 
 
 function WonCardModal({ popup, onClose }: { popup: WonCardPopup; onClose: () => void }) {
-  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.84)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 12 }}>
-    <div onClick={(event) => event.stopPropagation()} style={{ ...panel(), width: "min(330px,100%)", padding: 18, textAlign: "center", borderColor: `${GOLD}88`, background: "linear-gradient(180deg,#211317,#08090d)", boxShadow: `0 0 34px ${GOLD}25, 0 20px 60px rgba(0,0,0,.65)` }}>
-      <div style={{ color: GOLD, fontSize: 11, fontWeight: 1100, letterSpacing: 1 }}>CARTE REMPORTÉE</div>
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.86)", backdropFilter: "blur(9px)", display: "grid", placeItems: "center", padding: 12 }}>
+    <div onClick={(event) => event.stopPropagation()} style={{ ...panel(), width: "min(360px,100%)", padding: 17, textAlign: "center", borderColor: `${GOLD}88`, background: "radial-gradient(circle at 50% 0%,rgba(246,194,86,.13),#211317 26%,#08090d 72%)", boxShadow: `0 0 38px ${GOLD}28, 0 22px 64px rgba(0,0,0,.68)` }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 7 }}><span style={{ color: GOLD, fontSize: 15 }}>♠</span><div style={{ color: GOLD, fontSize: 11, fontWeight: 1100, letterSpacing: 1 }}>CARTE REMPORTÉE</div><span style={{ color: RED, fontSize: 15 }}>♥</span></div>
       <div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{popup.dartLabel}</div>
-      <div style={{ marginTop: 14, display: "flex", justifyContent: "center", transform: "scale(1.22)", transformOrigin: "center" }}><CardView card={popup.card} /></div>
-      <div style={{ color: "#fff", fontSize: 18, fontWeight: 1200, marginTop: 22 }}>{pokerCardLabel(popup.card)}</div>
-      {popup.bonusLabel ? <div style={{ color: GREEN, fontSize: 9, fontWeight: 1000, marginTop: 6 }}>{popup.bonusLabel}</div> : null}
-      <button type="button" onClick={onClose} style={{ ...action(GOLD), width: "100%", marginTop: 14 }}>CONTINUER</button>
+      <div style={{ marginTop: 13, display: "flex", justifyContent: "center", transform: "scale(1.28)", transformOrigin: "center" }}><CardView card={popup.card} /></div>
+      <div style={{ color: "#fff", fontSize: 19, fontWeight: 1200, marginTop: 23 }}>{pokerCardLabel(popup.card)}</div>
+      {popup.impactLabel ? <div style={{ color: GREEN, fontSize: 10, fontWeight: 1050, marginTop: 5 }}>{popup.impactLabel}</div> : null}
+      {(popup.beforeStatus || popup.afterStatus) ? <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 7, alignItems: "center", padding: 8, borderRadius: 12, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div><div style={{ color: SOFT, fontSize: 7 }}>AVANT</div><div style={{ color: "#fff", fontSize: 9, fontWeight: 950 }}>{popup.beforeStatus || "—"}</div></div><div style={{ color: GOLD, fontSize: 15 }}>→</div><div><div style={{ color: SOFT, fontSize: 7 }}>APRÈS</div><div style={{ color: GOLD, fontSize: 9, fontWeight: 1050 }}>{popup.afterStatus || "—"}</div></div></div> : null}
+      {popup.bonusLabel ? <div style={{ color: BLUE, fontSize: 9, fontWeight: 1000, marginTop: 8 }}>{popup.bonusLabel}</div> : null}
+      {popup.contractLabel ? <div style={{ color: GREEN, fontSize: 9, fontWeight: 1100, marginTop: 6, borderRadius: 999, padding: "5px 8px", border: `1px solid ${GREEN}55`, background: `${GREEN}0c` }}>{popup.contractLabel}</div> : null}
+      <button type="button" onClick={onClose} style={{ ...action(GOLD), width: "100%", marginTop: 13 }}>CONTINUER</button>
     </div>
   </div>;
 }
@@ -472,8 +500,12 @@ function ActivePlayerModal({ state, activeProfile, activePlayer, activeHand, act
   return <FloatingPanel title="Bloc joueur actif" subtitle={playerName(activeProfile)} accent={activeColor} onClose={onClose} width="min(720px,100%)"><div style={{ display: "grid", gridTemplateColumns: "56px minmax(0,1fr)", gap: 10, alignItems: "center" }}><ProfileAvatar profile={activeProfile || activePlayer} size={52} /><div><div style={{ color: activeColor, fontWeight: 1100 }}>{playerName(activeProfile || activePlayer)}</div><div style={{ color: liveEvaluation ? GREEN : SOFT, fontSize: 10, marginTop: 3 }}>{liveEvaluation?.label || "Aucune combinaison encore verrouillée"}</div></div></div><div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }}>{(activeHand?.cards || []).map((card: PokerCard, index: number) => <CardView key={`${card.id}-${index}`} card={card} selected={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker} onClick={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? () => onExchange(index) : undefined} badge={state.phase === "powers" && (activeHand?.exchangeTokens || 0) > 0 && !card.joker ? "ÉCH." : undefined} />)}</div><div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}><MiniStat label="Points" value={`${activeStats?.roundPoints || 0}`} color={GOLD} /><MiniStat label="Précision" value={`${pct(activeStats?.hits || 0, activeStats?.darts || 0)}%`} color={GREEN} /><MiniStat label="Échanges" value={`${activeHand?.exchangeTokens || 0}`} color={BLUE} /><MiniStat label="Contrats" value={`${activeStats?.contractHits || 0}`} color={RED} /></div>{state.phase === "powers" ? <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><button disabled={!activeHand?.choiceTokens || !!state.pendingChoice} onClick={onChoice} style={{ ...action(GOLD), opacity: activeHand?.choiceTokens ? 1 : .4 }}>✦ UTILISER UN CHOIX</button><button onClick={onValidate} style={action(GREEN)}>✓ VALIDER LA MAIN</button></div> : null}</FloatingPanel>;
 }
 
-function MarketModal({ state, suggestions, onClose }: any) {
-  return <FloatingPanel title="Marché des 20 cartes" subtitle="Touchez un secteur sur la cible ou saisissez-le au clavier" accent={GOLD} onClose={onClose} width="min(860px,100%)"><div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>{Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => { const hot = suggestions.some((item: any) => item.sector === sector); return <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "6px 2px", borderRadius: 12, background: hot ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ color: hot ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", marginTop: 5 }}><CardView card={state.market[sector]} small /></div>{hot ? <div style={{ color: SOFT, fontSize: 7.2, marginTop: 4 }}>conseillé</div> : null}</div>; })}</div></FloatingPanel>;
+function MarketModal({ state, suggestions, assistanceEnabled, onClose }: any) {
+  const bestSectors = new Set((suggestions || []).map((item: any) => Number(item.sector)));
+  return <FloatingPanel title="Marché des 20 cartes" subtitle={assistanceEnabled ? "Lecture stratégique du marché en temps réel" : "20 cartes visibles · une carte remplacée après chaque prise"} accent={GOLD} onClose={onClose} width="min(880px,100%)">
+    {assistanceEnabled && suggestions?.length ? <div style={{ marginBottom: 11 }}><div style={{ color: SOFT, fontSize: 8, fontWeight: 1000, marginBottom: 6 }}>TOP CIBLES</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{suggestions.map((item: any, index: number) => <div key={item.sector} style={{ padding: 8, borderRadius: 13, border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.10)"}`, background: index === 0 ? `${GOLD}10` : "rgba(255,255,255,.025)", display: "grid", gridTemplateColumns: "42px minmax(0,1fr)", gap: 7, alignItems: "center" }}><CardView card={item.card} small /><div style={{ minWidth: 0 }}><div style={{ color: index === 0 ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>S{item.sector} · {pokerCardLabel(item.card)}</div><div style={{ color: item.contractMatch ? GREEN : SOFT, fontSize: 7.5, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.contractMatch ? "Priorité contrat" : item.reason}</div></div></div>)}</div></div> : null}
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 7 }}>{Array.from({ length: 20 }, (_, i) => i + 1).map((sector) => { const hot = assistanceEnabled && bestSectors.has(sector); const rank = (suggestions || []).findIndex((item: any) => Number(item.sector) === sector); return <div key={sector} style={{ minWidth: 0, textAlign: "center", padding: "6px 2px", borderRadius: 12, background: hot ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${hot ? GOLD : "rgba(255,255,255,.08)"}`, position: "relative" }}>{hot ? <div style={{ position: "absolute", right: 4, top: 4, width: 17, height: 17, borderRadius: 999, display: "grid", placeItems: "center", background: GOLD, color: "#111", fontSize: 7.5, fontWeight: 1200 }}>{rank + 1}</div> : null}<div style={{ color: hot ? GOLD : "#fff", fontSize: 10, fontWeight: 1100 }}>{sector}</div><div style={{ display: "flex", justifyContent: "center", marginTop: 5 }}><CardView card={state.market[sector]} small /></div></div>; })}</div>
+  </FloatingPanel>;
 }
 
 function TableModal({ state, profilesById, config, onClose }: any) {
@@ -484,8 +516,12 @@ function LiveStatsModal({ state, profilesById, onClose }: any) {
   return <FloatingPanel title="Statistiques live" subtitle="Résumé rapide de la partie en cours" accent={GREEN} onClose={onClose} width="min(760px,100%)"><div style={{ display: "grid", gap: 8 }}>{state.players.map((player: any) => { const stats = state.statsByPlayer[player.id] || {}; const profile = profilesById.get(player.id) || player; return <div key={player.id} style={{ padding: 9, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><ProfileAvatar profile={profile} size={34} /><div style={{ color: "#fff", fontWeight: 1100 }}>{playerName(profile)}</div></div><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label="Points" value={`${stats.roundPoints || 0}`} color={GOLD} /><MiniStat label="Préc." value={`${pct(stats.hits || 0, stats.darts || 0)}%`} color={GREEN} /><MiniStat label="Contrats" value={`${stats.contractHits || 0}`} color={RED} /><MiniStat label="Lancers" value={`${stats.visits || 0}`} color={BLUE} /></div></div>; })}</div></FloatingPanel>;
 }
 
-function ObjectivesModal({ objective, contract, suggestions, onClose }: any) {
-  return <FloatingPanel title="Contrat & suggestions" subtitle="Objectif bonus et aide à la meilleure main" accent={GOLD} onClose={onClose} width="min(720px,100%)">{contract ? <div style={{ padding: 11, borderRadius: 14, background: `${GOLD}10`, border: `1px solid ${GOLD}55` }}><div style={{ color: GOLD, fontSize: 9, fontWeight: 1100 }}>CONTRAT · +{contract.bonusPoints} POINT</div><div style={{ color: "#fff", fontWeight: 1100, marginTop: 4 }}>{contract.label}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{contract.description}</div></div> : null}<div style={{ marginTop: contract ? 8 : 0, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: "#fff", fontWeight: 1100 }}>{objective.title}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{objective.description}</div></div><div style={{ marginTop: 12, display: "grid", gap: 7 }}>{suggestions.map((item: any, index: number) => <div key={`${item.sector}-${index}`} style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr)", gap: 10, alignItems: "center", padding: 8, borderRadius: 13, background: index === 0 ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8.5, fontWeight: 1100 }}>SECTEUR {item.sector}</div><div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><CardView card={item.card} small /></div></div><div><div style={{ color: "#fff", fontWeight: 1000 }}>{index === 0 ? "Meilleur choix conseillé" : `Alternative ${index}`}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{item.reason}</div></div></div>)}</div></FloatingPanel>;
+function ObjectivesModal({ objective, contract, suggestions, assistanceEnabled, onClose }: any) {
+  return <FloatingPanel title="Contrat & stratégie" subtitle={assistanceEnabled ? "Objectif bonus + lecture du marché" : "Objectif de manche"} accent={GOLD} onClose={onClose} width="min(720px,100%)">
+    {contract ? <div style={{ padding: 11, borderRadius: 14, background: `${GOLD}10`, border: `1px solid ${GOLD}55` }}><div style={{ color: GOLD, fontSize: 9, fontWeight: 1100 }}>CONTRAT · +{contract.bonusPoints} POINT</div><div style={{ color: "#fff", fontWeight: 1100, marginTop: 4 }}>{contract.label}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{contract.description}</div></div> : null}
+    <div style={{ marginTop: contract ? 8 : 0, padding: 10, borderRadius: 14, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: "#fff", fontWeight: 1100 }}>{objective.title}</div><div style={{ color: SOFT, fontSize: 10, lineHeight: 1.45, marginTop: 5 }}>{objective.description}</div></div>
+    {assistanceEnabled ? <div style={{ marginTop: 12, display: "grid", gap: 7 }}>{suggestions.map((item: any, index: number) => <div key={`${item.sector}-${index}`} style={{ display: "grid", gridTemplateColumns: "64px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: 8, borderRadius: 13, background: index === 0 ? `${GOLD}0e` : "rgba(255,255,255,.025)", border: `1px solid ${index === 0 ? GOLD : "rgba(255,255,255,.08)"}` }}><div style={{ textAlign: "center" }}><div style={{ color: index === 0 ? GOLD : SOFT, fontSize: 8.5, fontWeight: 1100 }}>SECTEUR {item.sector}</div><div style={{ marginTop: 5, display: "flex", justifyContent: "center" }}><CardView card={item.card} small /></div></div><div><div style={{ color: "#fff", fontWeight: 1000 }}>{index === 0 ? "Meilleur choix" : `Alternative ${index}`}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 3 }}>{item.reason}</div></div><div style={{ color: item.contractMatch ? GREEN : BLUE, border: `1px solid ${item.contractMatch ? GREEN : BLUE}55`, borderRadius: 999, padding: "4px 6px", fontSize: 7, fontWeight: 1050 }}>{item.contractMatch ? "CONTRAT" : "MAIN"}</div></div>)}</div> : <div style={{ marginTop: 10, color: SOFT, fontSize: 9, textAlign: "center" }}>Conseils stratégiques désactivés dans la configuration.</div>}
+  </FloatingPanel>;
 }
 
 function DartboardPanel({ multiplier, onSetMultiplier, disabled, onHit, onClose }: any) {
@@ -504,13 +540,21 @@ function rankMarketSuggestions(state: DartsPokerState, playerId: string, count =
     futureCards.filter((c: any) => !c?.joker).forEach((c: any) => { rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1); suitCounts.set(String(c.suit), (suitCounts.get(String(c.suit)) || 0) + 1); });
     const bestRank = Math.max(0, ...Array.from(rankCounts.values()));
     const bestSuit = Math.max(0, ...Array.from(suitCounts.values()));
-    const score = Number(futureEval?.score || 0) + bestRank * 100000 + bestSuit * 1000 + Number(card.rank || 0);
-    return { sector, card, score, reason: describeSuggestionReason(hand.cards || [], card, futureEval, bestRank, bestSuit) };
+    const contract = state.roundContract;
+    const contractMatch = contract ? (contract.key === "joker" ? Boolean(card.joker) || futureCards.some((c: any) => c?.joker) : Boolean(futureEval && isDartsPokerContractCompleted(contract, futureEval, futureCards))) : false;
+    let contractBoost = contractMatch ? 900000000 : 0;
+    if (contract && !contractMatch) {
+      if (contract.key === "flush") contractBoost += bestSuit * 80000;
+      if (["pair", "two_pair", "three_of_a_kind", "full_house"].includes(contract.key)) contractBoost += bestRank * 110000;
+    }
+    const score = contractBoost + Number(futureEval?.score || 0) + bestRank * 100000 + bestSuit * 1000 + Number(card.rank || 0);
+    return { sector, card, score, contractMatch, reason: describeSuggestionReason(hand.cards || [], card, futureEval, bestRank, bestSuit, contractMatch) };
   }).filter(Boolean) as any[];
   return suggestions.sort((a, b) => b.score - a.score).slice(0, count);
 }
 
-function describeSuggestionReason(currentCards: PokerCard[], card: PokerCard, evaluation: any, bestRankCount: number, bestSuitCount: number) {
+function describeSuggestionReason(currentCards: PokerCard[], card: PokerCard, evaluation: any, bestRankCount: number, bestSuitCount: number, contractMatch = false) {
+  if (contractMatch) return "Cette carte valide ou sécurise directement le contrat de la manche.";
   if (card?.joker) return "Le Joker améliore presque toutes les combinaisons et sécurise un gros showdown.";
   if (evaluation?.categoryRank >= 6) return `Cette carte peut te rapprocher d'une main premium : ${evaluation.label}.`;
   if (bestRankCount >= 3) return `Très bon potentiel de brelan/carré avec ${pokerRankLabel(card.rank)}.`;
@@ -518,6 +562,46 @@ function describeSuggestionReason(currentCards: PokerCard[], card: PokerCard, ev
   const sameRank = currentCards.filter((row: any) => !row?.joker && row?.rank === card.rank).length;
   if (sameRank >= 1) return `Elle renforce une paire ou un brelan de ${pokerRankLabel(card.rank)}.`;
   return `Carte utile pour améliorer la valeur moyenne de la main avec ${pokerCardLabel(card)}.`;
+}
+
+function describeHandSnapshot(cards: PokerCard[] = []): string {
+  if (!cards.length) return "Main vide";
+  const evaluation = evaluateBestPokerHand(cards);
+  if (evaluation) return evaluation.label;
+  const clean = cards.filter((card) => !card?.joker);
+  const rankCounts = new Map<number, number>();
+  const suitCounts = new Map<string, number>();
+  clean.forEach((card) => { rankCounts.set(card.rank, (rankCounts.get(card.rank) || 0) + 1); suitCounts.set(String(card.suit), (suitCounts.get(String(card.suit)) || 0) + 1); });
+  const maxRank = Math.max(0, ...Array.from(rankCounts.values()));
+  const maxSuit = Math.max(0, ...Array.from(suitCounts.values()));
+  if (cards.some((card) => card?.joker)) return `${cards.length}/5 · Joker en main`;
+  if (maxRank >= 3) return `${cards.length}/5 · Brelan en construction`;
+  if (maxRank >= 2) return `${cards.length}/5 · Paire en construction`;
+  if (maxSuit >= 3) return `${cards.length}/5 · Couleur en vue`;
+  return `${cards.length}/5 · Main en construction`;
+}
+
+function describeCardImpact(beforeCards: PokerCard[] = [], afterCards: PokerCard[] = [], card?: PokerCard | null): string {
+  const before = describeHandSnapshot(beforeCards);
+  const after = describeHandSnapshot(afterCards);
+  if (after !== before) return `Impact : ${after}`;
+  if (card?.joker) return "Impact : Joker stratégique";
+  const sameRank = beforeCards.filter((row) => !row?.joker && row.rank === card?.rank).length;
+  if (sameRank >= 1) return `Impact : renforce les ${pokerRankLabel(Number(card?.rank || 0))}`;
+  const sameSuit = beforeCards.filter((row) => !row?.joker && row.suit === card?.suit).length;
+  if (sameSuit >= 2) return `Impact : couleur ${pokerSuitSymbol(card?.suit || null)} renforcée`;
+  return "Impact : nouvelle option de combinaison";
+}
+
+function describeContractLiveState(contract: any, cards: PokerCard[] = []) {
+  if (!contract) return { done: false, label: "Aucun contrat" };
+  const evaluation = evaluateBestPokerHand(cards);
+  const done = contract.key === "joker" ? cards.some((card) => Boolean(card?.joker)) : isDartsPokerContractCompleted(contract, evaluation, cards);
+  if (done) return { done: true, label: "Validé" };
+  if (contract.key === "joker") return { done: false, label: cards.some((card) => card?.joker) ? "Joker acquis" : "DBULL requis" };
+  if (!evaluation) return { done: false, label: `${cards.length}/5 cartes` };
+  const missing = Math.max(0, Number(contract.minimumCategoryRank || 0) - Number(evaluation.categoryRank || 0));
+  return { done: false, label: missing <= 1 ? "À portée" : "En construction" };
 }
 
 function buildPokerObjectiveHint(state: DartsPokerState, playerId: string, liveEvaluation: any, remainingDarts: number) {

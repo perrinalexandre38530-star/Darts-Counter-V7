@@ -21,6 +21,11 @@ function awardWinner(state: DartsPokerState, metric: (stats: any, standing: any)
 export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, onStats, onHistory }: { state: DartsPokerState; profilesById: Map<string, any>; onClose: () => void; onReplay: () => void; onStats: () => void; onHistory: () => void; }) {
   const standings = state.standings || [];
   const best = standings[0];
+  const totalDarts = Object.values(state.statsByPlayer || {}).reduce((sum: number, stats: any) => sum + Number(stats?.darts || 0), 0);
+  const totalContracts = Object.values(state.statsByPlayer || {}).reduce((sum: number, stats: any) => sum + Number(stats?.contractHits || 0), 0);
+  const totalJokers = Object.values(state.statsByPlayer || {}).reduce((sum: number, stats: any) => sum + Number(stats?.jokers || 0), 0);
+  const bestHandGlobal = standings.slice().sort((a, b) => Number(b?.bestHandScore || 0) - Number(a?.bestHandScore || 0))[0]?.bestHandLabel || "—";
+  const winnerProfile = best ? profilesById.get(String(best.id)) || best : null;
   const awards = [
     { label: "SHARK DE LA TABLE", icon: "♠", color: GOLD, row: awardWinner(state, (_s, standing) => Number(standing?.points || 0)), value: (row: any) => `${row?.standing?.points || 0} pts` },
     { label: "TIREUR D'ÉLITE", icon: "◎", color: GREEN, row: awardWinner(state, (stats) => Number(stats?.darts || 0) ? Number(stats?.hits || 0) / Number(stats?.darts || 1) : 0), value: (row: any) => pct(row?.stats?.hits || 0, row?.stats?.darts || 0) },
@@ -37,7 +42,14 @@ export default function DartsPokerEnd({ state, profilesById, onClose, onReplay, 
         <div style={{ color: SOFT, fontSize: 9, marginTop: 4 }}>{state.config.contractsEnabled ? "Victoires + contrats bonus" : "Classement aux victoires"}</div>
       </div>
 
-      <div style={{ marginTop: 13, display: "grid", gap: 7 }}>
+      {best ? <div style={{ marginTop: 12, padding: 11, borderRadius: 18, border: `1px solid ${GOLD}66`, background: `linear-gradient(135deg,${GOLD}14,${RED}10)`, display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}><ProfileAvatar profile={winnerProfile} size={50} /><div style={{ minWidth: 0 }}><div style={{ color: GOLD, fontSize: 8, fontWeight: 1100, letterSpacing: .8 }}>TABLE CHAMPION</div><div style={{ color: "#fff", fontSize: 16, fontWeight: 1200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{playerName(winnerProfile)}</div><div style={{ color: SOFT, fontSize: 8.5, marginTop: 2 }}>{best.bestHandLabel || "—"}</div></div><div style={{ textAlign: "right" }}><div style={{ color: GOLD, fontSize: 25, fontWeight: 1200, lineHeight: 1 }}>{best.points || 0}</div><div style={{ color: SOFT, fontSize: 7 }}>POINTS</div></div></div> : null}
+
+      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>
+        {[["MANCHES", state.rounds?.length || 0, GOLD],["FLÉCHETTES", totalDarts, BLUE],["CONTRATS", totalContracts, GREEN],["JOKERS", totalJokers, RED]].map(([label,value,color]: any) => <div key={label} style={{ padding: 7, borderRadius: 12, textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color, fontSize: 14, fontWeight: 1100 }}>{value}</div><div style={{ color: SOFT, fontSize: 6.8 }}>{label}</div></div>)}
+      </div>
+      <div style={{ marginTop: 6, textAlign: "center", color: SOFT, fontSize: 8 }}>Meilleure main de la table : <strong style={{ color: GOLD }}>{bestHandGlobal}</strong></div>
+
+      <div style={{ marginTop: 11, display: "grid", gap: 7 }}>
         {standings.map((row) => {
           const stats = state.statsByPlayer[row.id] || ({} as any);
           const profile = profilesById.get(String(row.id)) || { id: row.id, name: row.name };

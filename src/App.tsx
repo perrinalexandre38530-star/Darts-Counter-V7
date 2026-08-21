@@ -224,7 +224,7 @@ import X01DeviceCameraPage from "./pages/X01DeviceCameraPage";
 // 🌟 Nouveau : SYNC / Partage stats locales
 
 // Contexts
-import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { LangProvider } from "./contexts/LangContext";
 import { StoreProvider } from "./contexts/StoreContext";
 import { AudioProvider } from "./contexts/AudioContext";
@@ -476,6 +476,41 @@ function isGameplayRouteName(tabLike: unknown): boolean {
     routeName.endsWith(".play") ||
     routeName.includes("_play_")
   );
+}
+
+
+type ThemePageScope = "full" | "soft" | "off";
+
+function getThemePageScope(tabLike: unknown): ThemePageScope {
+  const routeName = String(tabLike || "").toLowerCase();
+  if (!routeName) return "full";
+
+  // Surfaces volontairement neutres : authentification, écrans externes,
+  // caméra/calibration et sorties spectateur. On évite ici qu'une texture
+  // décorative gêne les QR codes, la vidéo ou l'affichage distant.
+  if (
+    routeName.startsWith("auth_") ||
+    routeName === "account_start" ||
+    routeName.startsWith("cast_") ||
+    routeName.startsWith("viewer_") ||
+    routeName === "spectator" ||
+    routeName.includes("camera") ||
+    routeName.includes("calibration")
+  ) return "off";
+
+  // Partie en cours / résultats : on conserve l'identité du thème mais le
+  // fond devient plus discret afin de privilégier la lecture du scoring.
+  if (
+    isGameplayRouteName(routeName) ||
+    routeName.endsWith("_end") ||
+    routeName.endsWith("_summary") ||
+    routeName.includes("summary") ||
+    routeName.includes("match_result")
+  ) return "soft";
+
+  // Navigation, profils, stats, réglages, menus et configurations :
+  // le fond complet du thème est actif.
+  return "full";
 }
 
 
@@ -1559,6 +1594,7 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  const { theme } = useTheme();
 useEffect(() => {
   diagMarkStart("boot:App");
   runtimeDiag("boot:App:mounted");
@@ -1719,6 +1755,21 @@ useEffect(() => {
   // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
+  const themePageScope = getThemePageScope(tab);
+  const themedPageBackground = theme.pageBackground || theme.bg;
+  const routedPageBackground = themePageScope === "off"
+    ? undefined
+    : themePageScope === "soft"
+      ? `linear-gradient(rgba(3,5,8,.82), rgba(3,5,8,.88)), ${themedPageBackground}`
+      : themedPageBackground;
+
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.dcThemePageScope = themePageScope;
+    return () => {
+      delete document.documentElement.dataset.dcThemePageScope;
+    };
+  }, [themePageScope]);
 
   useEffect(() => {
     trackRender("App");
@@ -5605,7 +5656,17 @@ case "babyfoot_team_edit":
           />
         )}
 
-        <div className="container" style={{ paddingBottom: 88 }}>
+        <div
+          className={`container dc-themed-route dc-themed-route--${themePageScope}`}
+          style={{
+            paddingBottom: 88,
+            minHeight: "100dvh",
+            background: routedPageBackground,
+            backgroundAttachment: themePageScope === "full" ? "fixed" : undefined,
+            backgroundPosition: "center top",
+            backgroundSize: "cover",
+          }}
+        >
           <AppGate go={go} tab={tab}>
             <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
               {page}

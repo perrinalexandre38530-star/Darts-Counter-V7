@@ -644,3 +644,29 @@ body::after{
   .dc-theme-preview-scan,
   .dc-theme-preview-sheen{animation:none!important;transform:none!important}
 }
+
+
+/* ===== Thèmes : portée globale par type de page =====
+   full = menus / profils / stats / réglages / configs
+   soft = parties & résultats (fond fortement assombri)
+   off  = auth / cast / viewer / caméra / spectateur
+*/
+.dc-themed-route{
+  transition: background .22s ease;
+  background-repeat:no-repeat;
+}
+html[data-dc-theme-page-scope="full"] body{
+  background:var(--bg-grad);
+  background-attachment:fixed;
+  background-position:center top;
+  background-size:cover;
+}
+html[data-dc-theme-page-scope="soft"] body{
+  background:linear-gradient(rgba(3,5,8,.82),rgba(3,5,8,.88)),var(--bg-grad);
+  background-attachment:fixed;
+  background-position:center top;
+  background-size:cover;
+}
+html[data-dc-theme-page-scope="off"] body{
+  background:var(--dc-bg,#050712);
+}

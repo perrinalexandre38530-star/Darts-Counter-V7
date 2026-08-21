@@ -68,6 +68,7 @@ export default function DartsPokerConfig(props: any) {
   const [powersEnabled, setPowersEnabled] = React.useState(saved.powersEnabled !== false);
   const [jokerEnabled, setJokerEnabled] = React.useState(saved.jokerEnabled !== false);
   const [contractsEnabled, setContractsEnabled] = React.useState(saved.contractsEnabled !== false);
+  const [assistanceEnabled, setAssistanceEnabled] = React.useState(saved.assistanceEnabled !== false);
   const autoDrawMissing = true;
   const [openHands, setOpenHands] = React.useState(saved.openHands !== false);
   const [randomOrder, setRandomOrder] = React.useState(Boolean(saved.randomOrder));
@@ -98,7 +99,7 @@ export default function DartsPokerConfig(props: any) {
     const payload: DartsPokerConfigPayload = {
       mode: "darts_poker", players: ids.length, selectedIds: ids, playersList, playerDartSets,
       botIds, botsEnabled: botIds.length > 0, botLevel, rounds, dartsPerHand, powersEnabled,
-      jokerEnabled, contractsEnabled, autoDrawMissing, openHands, randomOrder, scoreInputMethod,
+      jokerEnabled, contractsEnabled, assistanceEnabled, autoDrawMissing, openHands, randomOrder, scoreInputMethod,
     };
     try { localStorage.setItem(LS_KEY, JSON.stringify({ ...payload, botsPanel })); } catch {}
     try { recordProfileUsageForMode("darts_poker", ids); } catch {}
@@ -139,14 +140,18 @@ export default function DartsPokerConfig(props: any) {
   const inputBlock = <section style={block}>
     <div style={{ color: GREEN, fontSize: 12, fontWeight: 1000, letterSpacing: 1, marginBottom: 7 }}>SAISIE & CONFORT</div>
     <OptionRow label="Mode de saisie"><OptionSelect value={scoreInputMethod} options={[{ value: "keypad", label: "Clavier" }, { value: "dartboard", label: "Cible interactive" }]} onChange={setScoreInputMethod} /></OptionRow>
-    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Chaque fléchette est saisie et validée individuellement. Tous les impacts S/D/T/Bull/DBull/Miss sont enregistrés pour l’historique et les statistiques.</div>
+    <OptionRow label="Conseils stratégiques"><OptionToggle value={assistanceEnabled} onChange={setAssistanceEnabled} /></OptionRow>
+    <div style={{ color: soft, fontSize: 10.5, lineHeight: 1.5, marginTop: 8 }}>Chaque fléchette est validée individuellement. L’assistance met en avant les secteurs qui renforcent la main ou le contrat, sans modifier le résultat du lancer.</div>
+    <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5 }}>
+      {[["S","CARTE",GOLD],["D","+ ÉCHANGE",BLUE],["T","+ CHOIX",RED],["BULL","2 CARTES",GREEN],["DBULL","JOKER",GOLD]].map(([key,label,color]: any) => <div key={key} style={{ padding: "7px 3px", borderRadius: 10, textAlign: "center", border: `1px solid ${color}44`, background: `${color}0c` }}><div style={{ color, fontWeight: 1100, fontSize: 10 }}>{key}</div><div style={{ color: soft, fontSize: 6.8, marginTop: 2 }}>{label}</div></div>)}
+    </div>
   </section>;
 
   const summaryBlock = <section style={{ ...block, borderColor: `${GOLD}70`, background: `linear-gradient(135deg,${RED}16,${GOLD}0e)` }}>
     <div style={{ textAlign: "center", color: "#fff", fontSize: 15, fontWeight: 1100 }}>TABLE PRÊTE</div>
-    <div style={{ textAlign: "center", color: GOLD, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{rounds} manches · {dartsPerHand} fléchettes · {powersEnabled ? "Pouvoirs actifs" : "Poker pur"} · {contractsEnabled ? "Contrats ON" : "Contrats OFF"}</div>
+    <div style={{ textAlign: "center", color: GOLD, fontSize: 11, fontWeight: 1000, marginTop: 4 }}>{rounds} manches · {dartsPerHand} fléchettes · {powersEnabled ? "Pouvoirs actifs" : "Poker pur"} · {contractsEnabled ? "Contrats ON" : "Contrats OFF"} · {assistanceEnabled ? "Conseils ON" : "Conseils OFF"}</div>
     <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
-      {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["CONTRAT", contractsEnabled ? "OUI" : "NON"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
+      {[["JOUEURS", selectedIds.length], ["MARCHÉ", "20 CARTES"], ["AIDE", assistanceEnabled ? "ON" : "OFF"]].map(([label, value]) => <div key={String(label)} style={{ padding: 9, borderRadius: 12, textAlign: "center", background: "rgba(0,0,0,.30)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ color: soft, fontSize: 8, fontWeight: 950 }}>{label}</div><div style={{ color: label === "MARCHÉ" ? GOLD : "#fff", fontWeight: 1100, fontSize: 13 }}>{value}</div></div>)}
     </div>
   </section>;
 

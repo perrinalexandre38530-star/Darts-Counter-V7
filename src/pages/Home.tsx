@@ -2874,7 +2874,7 @@ React.useEffect(() => {
     <div
       style={{
         minHeight: "100%",
-        background: "#05060C",
+        background: theme.pageBackground || theme.bg || "#05060C",
         color: "#FFFFFF",
         display: "flex",
         justifyContent: "center",

@@ -400,7 +400,10 @@ function wrap(theme: any): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     padding: "18px 14px",
-    backgroundColor: "#000",
+    background: theme.pageBackground || theme.bg || "#000",
+    backgroundAttachment: theme.pageBackground ? "fixed" : undefined,
+    backgroundPosition: "center top",
+    backgroundSize: "cover",
     overflow: "hidden",
   };
 }

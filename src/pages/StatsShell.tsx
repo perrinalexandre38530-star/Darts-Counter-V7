@@ -67,7 +67,10 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         paddingTop: 16,
         paddingBottom: 0,
         alignItems: "center",
-        background: theme.bg,
+        background: theme.pageBackground || theme.bg,
+        backgroundAttachment: theme.pageBackground ? "fixed" : undefined,
+        backgroundPosition: "center top",
+        backgroundSize: "cover",
         color: theme.text,
       }}
     >

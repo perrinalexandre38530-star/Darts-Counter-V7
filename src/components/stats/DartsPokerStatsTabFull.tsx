@@ -60,7 +60,11 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
   const contracts = rows.reduce((sum: number, row: any) => sum + n(row?.contractHits), 0);
   const contractBonus = rows.reduce((sum: number, row: any) => sum + n(row?.contractBonusPoints), 0);
   const choices = rows.reduce((sum: number, row: any) => sum + n(row?.choicesUsed), 0);
+  const choicesEarned = rows.reduce((sum: number, row: any) => sum + n(row?.choicesEarned), 0);
   const exchanges = rows.reduce((sum: number, row: any) => sum + n(row?.exchangesUsed), 0);
+  const exchangesEarned = rows.reduce((sum: number, row: any) => sum + n(row?.exchangesEarned), 0);
+  const powerEarned = choicesEarned + exchangesEarned;
+  const powerUsed = choices + exchanges;
   const jokers = rows.reduce((sum: number, row: any) => sum + n(row?.jokers), 0);
   const cards = rows.reduce((sum: number, row: any) => sum + n(row?.cardsCollected), 0);
   const bestRow = rows.slice().sort((a: any, b: any) => n(b?.bestHandScore) - n(a?.bestHandScore))[0] || null;
@@ -89,14 +93,18 @@ export default function DartsPokerStatsTabFull({ records = [], playerId, playerN
         <Kpi label="Parties" value={games} color={GOLD} />
         <Kpi label="Victoires" value={wins} detail={pct(wins, games)} color={GREEN} />
         <Kpi label="Points Poker" value={points} detail={`${handsWon} victoire${handsWon > 1 ? "s" : ""}`} color={GOLD} />
-        <Kpi label="Contrats réussis" value={contracts} detail={`+${contractBonus} points bonus`} color={RED} />
-        <Kpi label="Mains gagnées" value={handsWon} detail={`${handsPlayed} jouées`} color={GREEN} />
+        <Kpi label="Contrats réussis" value={contracts} detail={`${pct(contracts, handsPlayed)} de réussite · +${contractBonus} pts`} color={RED} />
+        <Kpi label="Mains gagnées" value={handsWon} detail={`${handsPlayed} jouées · ${pct(handsWon, handsPlayed)}`} color={GREEN} />
         <Kpi label="Précision" value={pct(hits, darts)} detail={`${hits}/${darts} fléchettes`} color={BLUE} />
+        <Kpi label="Pouvoirs exploités" value={powerUsed} detail={`${pct(powerUsed, powerEarned)} des ${powerEarned} gagnés`} color={PINK} />
+        <Kpi label="Points / partie" value={games ? (Math.round((points / games) * 10) / 10) : 0} detail={`${points} points cumulés`} color={GOLD} />
         <Kpi label="Cartes gagnées" value={cards} color={GOLD} />
         <Kpi label="Choix utilisés" value={choices} color={PINK} />
         <Kpi label="Échanges" value={exchanges} color={BLUE} />
         <Kpi label="Jokers" value={jokers} color={RED} />
       </div>
+
+      <Section title="Efficacité stratégique" accent={GREEN}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}><Kpi label="Contrats" value={pct(contracts, handsPlayed)} detail={`${contracts}/${handsPlayed}`} color={RED} /><Kpi label="Pouvoirs" value={pct(powerUsed, powerEarned)} detail={`${powerUsed}/${powerEarned}`} color={PINK} /><Kpi label="Mains gagnées" value={pct(handsWon, handsPlayed)} detail={`${handsWon}/${handsPlayed}`} color={GREEN} /><Kpi label="Hit rate" value={pct(hits, darts)} detail={`${hits}/${darts}`} color={BLUE} /></div></Section>
 
       <Section title="Meilleure main" accent={GOLD}><div style={{ padding: 13, borderRadius: 15, textAlign: "center", background: `linear-gradient(135deg,${RED}16,${GOLD}10)`, border: `1px solid ${GOLD}44` }}><div style={{ color: GOLD, fontSize: 22, fontWeight: 1200 }}>{bestRow?.bestHandLabel || "—"}</div><div style={{ color: SOFT, fontSize: 9, marginTop: 4 }}>{handsPlayed} mains analysées · {pct(handsWon, handsPlayed)} de mains remportées</div></div></Section>
 
