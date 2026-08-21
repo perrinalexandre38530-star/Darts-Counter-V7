@@ -53,13 +53,9 @@ import { useSport } from "../contexts/SportContext";
 // MONETIZATION_V1
 import MonetizationSettingsPanel from "../monetization/MonetizationSettingsPanel";
 import AwenaSettingsSection from "../awena/components/AwenaSettingsSection";
-import SplashScreen from "../components/SplashScreen";
+import AudioSettingsPanel from "../components/settings/AudioSettingsPanel";
 import { useAwenaOptional } from "../awena/AwenaProvider";
-import {
-  getStartupIntroEnabled,
-  setStartupIntroEnabled,
-  stopStartupIntroAudio,
-} from "../lib/startupAudioPrefs";
+import { getAudioPreferences } from "../lib/audioPreferences";
 
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
@@ -4916,46 +4912,7 @@ export function Settings({ go, params }: Props) {
   }
 
   function StartupIntroSection() {
-    const [introEnabled, setIntroEnabledState] = React.useState<boolean>(() => getStartupIntroEnabled());
-
-    const setIntro = (next: boolean) => {
-      setIntroEnabledState(next);
-      setStartupIntroEnabled(next);
-      if (!next) stopStartupIntroAudio();
-    };
-
-    return (
-      <section style={{ background: CARD_BG, borderRadius: 18, border: `1px solid ${theme.borderSoft}`, padding: 12, marginBottom: 16 }}>
-        <div
-          style={{
-            height: 270,
-            borderRadius: 18,
-            border: `1px solid ${introEnabled ? `${theme.primary}77` : theme.borderSoft}`,
-            overflow: "hidden",
-            position: "relative",
-            background: "#07070b",
-            boxShadow: introEnabled ? `0 0 22px ${theme.primary}22, inset 0 0 32px rgba(0,0,0,.36)` : "inset 0 0 32px rgba(0,0,0,.46)",
-          }}
-        >
-          <SplashScreen onFinish={() => {}} previewLoop />
-          <div style={{ position: "absolute", top: 10, right: 10, zIndex: 10, borderRadius: 999, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: "rgba(0,0,0,.72)", color: introEnabled ? theme.primary : theme.textSoft, padding: "5px 9px", fontSize: 9.5, fontWeight: 1000 }}>
-            {introEnabled ? "ACTIVÉE" : "DÉSACTIVÉE"}
-          </div>
-          <div style={{ position: "absolute", left: 10, bottom: 8, zIndex: 10, color: "rgba(255,255,255,.72)", fontSize: 9.5, fontWeight: 850, padding: "4px 7px", borderRadius: 999, background: "rgba(0,0,0,.58)" }}>APERÇU EN BOUCLE</div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-          <button type="button" onClick={() => setIntro(true)} style={{ minHeight: 48, borderRadius: 15, border: `1px solid ${introEnabled ? theme.primary : theme.borderSoft}`, background: introEnabled ? `${theme.primary}20` : "rgba(255,255,255,.03)", color: introEnabled ? theme.primary : theme.textSoft, fontSize: 13, fontWeight: 1000, cursor: "pointer", boxShadow: introEnabled ? `0 0 15px ${theme.primary}33` : "none" }}>ON</button>
-          <button type="button" onClick={() => setIntro(false)} style={{ minHeight: 48, borderRadius: 15, border: `1px solid ${!introEnabled ? "rgba(255,90,105,.75)" : theme.borderSoft}`, background: !introEnabled ? "rgba(255,70,90,.11)" : "rgba(255,255,255,.03)", color: !introEnabled ? "#ff7e8c" : theme.textSoft, fontSize: 13, fontWeight: 1000, cursor: "pointer", boxShadow: !introEnabled ? "0 0 15px rgba(255,70,90,.24)" : "none" }}>OFF</button>
-        </div>
-
-        <div style={{ marginTop: 10, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.45, textAlign: "center" }}>
-          {introEnabled
-            ? t("settings.audio.startupMusic.on", "Activée : animation et musique sont jouées au lancement.")
-            : t("settings.audio.startupMusic.off", "Désactivée : accès direct à la sélection des jeux.")}
-        </div>
-      </section>
-    );
+    return <AudioSettingsPanel />;
   }
 
   function GeneralSection() {
@@ -5601,7 +5558,7 @@ export function Settings({ go, params }: Props) {
       : tab === "lang"
       ? t("settings.menu.lang", "Langues")
       : tab === "audio"
-      ? t("settings.menu.audio", "INTRO")
+      ? t("settings.menu.audio", "AUDIO")
       : tab === "general"
       ? L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")
       : tab === "castViewer"
@@ -5646,7 +5603,7 @@ export function Settings({ go, params }: Props) {
       : tab === "lang"
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "audio"
-      ? t("settings.audio.pageSubtitle", "Animation et musique de démarrage.")
+      ? t("settings.audio.pageSubtitle", "Musiques, playlist, volumes, bruitages et intro de démarrage.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
       : tab === "castViewer"
@@ -5763,10 +5720,10 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("theme")}
             />
             <SettingsMenuCard
-              title={t("settings.menu.audio", "INTRO")}
-              subtitle={t("settings.menu.audio.sub", L("Aperçu de l’intro et activation ON / OFF.", "Intro preview and ON / OFF control.", "Vista previa de la intro y control ON / OFF."))}
+              title={t("settings.menu.audio", "AUDIO")}
+              subtitle={t("settings.menu.audio.sub", L("Musiques de fond, ordre des pistes, volumes, bruitages de partie et intro.", "Background music, track order, volumes, game effects and intro.", "Música de fondo, orden, volúmenes, efectos e intro."))}
               theme={theme}
-              rightHint={getStartupIntroEnabled() ? "ON" : "OFF"}
+              rightHint={getAudioPreferences().masterEnabled ? "ON" : "OFF"}
               onClick={() => setTab("audio")}
             />
             <SettingsMenuCard

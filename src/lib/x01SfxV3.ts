@@ -19,6 +19,8 @@
 //   (c’est la seule façon d’éviter “toujours féminin” quand la langue n’a pas de voix masculine)
 // ============================================
 
+import { isAudioCategoryEnabled, isMasterAudioEnabled, resolveAudioVolume, type AudioSfxCategory } from "./audioPreferences";
+
 export type DartLike = any;
 
 export type SfxKey =
@@ -244,6 +246,8 @@ export async function x01PlaySfxV3(
   x01EnsureAudioUnlocked();
 
   if (!ENABLED) return;
+  const category: AudioSfxCategory = ["dart_hit", "double", "triple", "bull", "dbull"].includes(key) ? "impact" : "arcade";
+  if (!isAudioCategoryEnabled(category)) return;
   const now = Date.now();
   const rl = opts?.rateLimitMs ?? 80;
   if (last[key] && now - last[key] < rl) return;
@@ -254,7 +258,7 @@ export async function x01PlaySfxV3(
     // Les touches rapprochées redémarrent simplement ce SFX ; les clés différentes
     // disposent chacune de leur propre élément et peuvent toujours se superposer.
     const node = getAudio(key);
-    node.volume = clamp01(opts?.volume ?? VOLUME);
+    node.volume = resolveAudioVolume(clamp01(opts?.volume ?? VOLUME), category);
     try {
       node.pause();
       node.currentTime = 0;
@@ -479,7 +483,7 @@ function dcSpeak(
     lang?: string;
   }
 ) {
-  if (!VOICE_ENABLED) return;
+  if (!VOICE_ENABLED || !isMasterAudioEnabled()) return;
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
 

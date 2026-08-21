@@ -45,6 +45,7 @@ import {
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
+import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 import { SCORE_INPUT_LS_KEY, sanitizeScoreInputMethod, type ScoreInputMethod } from "../lib/scoreInput/types";
 import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
 import { useCurrentProfile } from "../contexts/StoreContext";
@@ -2533,11 +2534,19 @@ export default function X01ConfigV3({ profiles, activeProfileId: activeProfileId
   }, [legVictoryMode]);
 
   // ---- NEW : AUDIO OPTIONS ----
-  const [arcadeEnabled, setArcadeEnabled] = React.useState<boolean>(true);
-  const [hitEnabled, setHitEnabled] = React.useState<boolean>(true);
+  const [arcadeEnabled, setArcadeEnabled] = React.useState<boolean>(() => { const p = getAudioPreferences(); return p.gameplaySfxEnabled && p.arcadeSfxEnabled; });
+  const [hitEnabled, setHitEnabled] = React.useState<boolean>(() => { const p = getAudioPreferences(); return p.gameplaySfxEnabled && p.impactSfxEnabled; });
   const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(true);
   const [voiceId, setVoiceId] = React.useState<string>("default");
   const [profileSfxVolume, setProfileSfxVolume] = React.useState<number>(0.8);
+
+  React.useEffect(() => {
+    updateAudioPreferences({
+      gameplaySfxEnabled: arcadeEnabled || hitEnabled,
+      arcadeSfxEnabled: arcadeEnabled,
+      impactSfxEnabled: hitEnabled,
+    });
+  }, [arcadeEnabled, hitEnabled]);
 
   // ---- NEW : COMPTAGE EXTERNE / APPAREILS ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);

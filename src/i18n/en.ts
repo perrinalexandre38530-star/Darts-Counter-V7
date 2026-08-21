@@ -475,10 +475,10 @@ export const en: Dict = {
   "settings.back": "Back",
   "settings.subtitle":
     "Customize the app theme and language",
-  "settings.menu.audio": "INTRO",
-  "settings.menu.audio.sub": "Turn the full animated and musical startup intro on or off.",
+  "settings.menu.audio": "AUDIO",
+  "settings.menu.audio.sub": "Background music, playlist, volumes, game effects and startup intro.",
   "settings.audio.title": "INTRO",
-  "settings.audio.pageSubtitle": "Startup animation and music.",
+  "settings.audio.pageSubtitle": "Music, playlist, volumes, game effects and startup intro.",
   "settings.audio.subtitle": "Enable or completely disable the application startup intro.",
   "settings.audio.startupMusic": "Startup intro",
   "settings.audio.startupMusic.on": "On: the animation and music play at startup.",

@@ -12,13 +12,31 @@
 // - Bruitages tickers: golf_ticker_*.wav
 // ============================================
 
-let SFX_ENABLED = true;
+import {
+  getAudioPreferences,
+  isAudioCategoryEnabled,
+  resolveAudioVolume,
+  subscribeAudioPreferences,
+  type AudioSfxCategory,
+} from "./audioPreferences";
 
+let SFX_ENABLED = getAudioPreferences().gameplaySfxEnabled;
+
+// Une modification depuis Settings > Audio doit réactiver/désactiver aussi
+// l'override historique utilisé par certains menus de configuration.
+if (typeof window !== "undefined") {
+  subscribeAudioPreferences((prefs) => {
+    SFX_ENABLED = prefs.gameplaySfxEnabled;
+  });
+}
+
+/** Override de session utilisé par les configurations de partie. */
 export function setSfxEnabled(v: boolean) {
   SFX_ENABLED = !!v;
 }
-export function isSfxEnabled() {
-  return SFX_ENABLED;
+export function isSfxEnabled(category: AudioSfxCategory = "gameplay") {
+  if (category === "ui") return isAudioCategoryEnabled("ui");
+  return SFX_ENABLED && isAudioCategoryEnabled(category);
 }
 
 // ✅ Shanghai: fichiers DANS src/assets/sounds/
@@ -112,7 +130,7 @@ function getFromPool(url: string) {
  * appelle ça sur un vrai geste utilisateur (clic "LANCER LA PARTIE").
  */
 export async function unlockAudio() {
-  if (!SFX_ENABLED) return;
+  if (!isSfxEnabled("gameplay")) return;
 
   try {
     const url = SFX.hit;
@@ -136,15 +154,17 @@ export async function unlockAudio() {
   } catch {}
 }
 
-function playSafeUrl(url?: string, vol = 0.9) {
-  if (!url || !SFX_ENABLED) return;
+function playSafeUrl(url?: string, vol = 0.9, category: AudioSfxCategory = "gameplay") {
+  if (!url || !isSfxEnabled(category)) return;
+  const effectiveVolume = resolveAudioVolume(vol, category);
+  if (effectiveVolume <= 0) return;
 
   try {
     const a = getFromPool(url);
     if (!a) return;
 
     try {
-      a.volume = vol;
+      a.volume = effectiveVolume;
       a.currentTime = 0;
       a.preload = "auto";
     } catch {}
@@ -154,9 +174,23 @@ function playSafeUrl(url?: string, vol = 0.9) {
   } catch {}
 }
 
-/** Joue un son par clé */
-export function playSfx(key: SfxKey) {
-  playSafeUrl(SFX[key]);
+const IMPACT_SFX_KEYS = new Set<SfxKey>(["hit", "dble", "trpl", "bull", "dbull", "shanghaiMiss"]);
+
+function inferSfxCategory(value: string): AudioSfxCategory {
+  const normalized = String(value || "").toLowerCase();
+  return ["dart-hit", "double", "triple", "bull", "impact", "water_", "smoke_clear"].some((token) => normalized.includes(token))
+    ? "impact"
+    : "arcade";
+}
+
+/** Joue un son par clé ou URL en respectant les préférences globales. */
+export function playSfx(keyOrUrl: SfxKey | string, opts?: { volume?: number }) {
+  const knownKey = keyOrUrl as SfxKey;
+  const knownUrl = Object.prototype.hasOwnProperty.call(SFX, knownKey) ? SFX[knownKey] : null;
+  const category: AudioSfxCategory = knownUrl
+    ? (IMPACT_SFX_KEYS.has(knownKey) ? "impact" : "arcade")
+    : inferSfxCategory(String(keyOrUrl));
+  playSafeUrl(knownUrl || String(keyOrUrl || ""), opts?.volume ?? 0.9, category);
 }
 
 // 🏌️ Golf — musique d'intro (arrivée dans GolfPlay)
@@ -167,7 +201,7 @@ export function playGolfIntro(volume: number = 0.5) {
       try { _golfIntroAudio.pause(); } catch {}
       _golfIntroAudio = null;
     }
-    if (!SFX_ENABLED) return;
+    if (!isSfxEnabled("arcade")) return;
 
     const a = getFromPool(SFX.golfIntro);
     if (!a) return;
@@ -175,7 +209,7 @@ export function playGolfIntro(volume: number = 0.5) {
     try {
       a.preload = "auto";
       (a as any).playsInline = true;
-      a.volume = Math.max(0, Math.min(1, volume));
+      a.volume = resolveAudioVolume(volume, "arcade");
       a.currentTime = 0;
     } catch {}
 
@@ -203,7 +237,7 @@ export function playAttrapeMoiIntro(volume: number = 0.5) {
       try { _attrapeMoiIntroAudio.pause(); } catch {}
       _attrapeMoiIntroAudio = null;
     }
-    if (!SFX_ENABLED) return;
+    if (!isSfxEnabled("arcade")) return;
 
     const a = getFromPool(SFX.attrapeMoiIntro);
     if (!a) return;
@@ -211,7 +245,7 @@ export function playAttrapeMoiIntro(volume: number = 0.5) {
     try {
       a.preload = "auto";
       (a as any).playsInline = true;
-      a.volume = Math.max(0, Math.min(1, volume));
+      a.volume = resolveAudioVolume(volume, "arcade");
       a.currentTime = 0;
     } catch {}
 
@@ -247,10 +281,10 @@ export function playGolfTickerSound(
   volume: number = 0.95
 ) {
   try {
-    if (!SFX_ENABLED) return;
+    if (!isSfxEnabled("arcade")) return;
     const url = GOLF_TICKER_SOUNDS[perf];
     if (!url) return;
-    playSafeUrl(url, Math.max(0, Math.min(1, volume)));
+    playSafeUrl(url, Math.max(0, Math.min(1, volume)), "arcade");
   } catch {}
 }
 
@@ -333,7 +367,7 @@ function pickVariant(perf: GolfPerf) {
 export function playGolfPerfSfx(perf: GolfPerf, volume: number = 0.85) {
   const url = pickVariant(perf);
   if (!url) return;
-  playSafeUrl(url, Math.max(0, Math.min(1, volume)));
+  playSafeUrl(url, Math.max(0, Math.min(1, volume)), "arcade");
 }
 
 /** Son d'impact standard (TOUS MODES) */
@@ -378,15 +412,15 @@ export function playBust(isBust: boolean) {
 ============================================================ */
 
 export function playUiClick() {
-  playSafeUrl(SFX.uiClick, 0.55);
+  playSafeUrl(SFX.uiClick, 0.55, "ui");
 }
 
 export function playUiClickSoft() {
-  playSafeUrl(SFX.uiClickSoft, 0.45);
+  playSafeUrl(SFX.uiClickSoft, 0.45, "ui");
 }
 
 export function playUiConfirm() {
-  playSafeUrl(SFX.uiConfirm, 0.65);
+  playSafeUrl(SFX.uiConfirm, 0.65, "ui");
 }
 
 export const UISfx = {

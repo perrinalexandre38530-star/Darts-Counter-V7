@@ -515,10 +515,10 @@ export const fr: Dict = {
   "settings.title": "Réglages",
   "settings.subtitle":
     "Personnalise le thème et la langue de l'application",
-  "settings.menu.audio": "INTRO",
-  "settings.menu.audio.sub": "Active ou coupe entièrement l’intro animée et musicale au démarrage.",
+  "settings.menu.audio": "AUDIO",
+  "settings.menu.audio.sub": "Musiques de fond, playlist, volumes, bruitages de partie et intro.",
   "settings.audio.title": "INTRO",
-  "settings.audio.pageSubtitle": "Animation et musique de démarrage.",
+  "settings.audio.pageSubtitle": "Musiques, playlist, volumes, bruitages et intro de démarrage.",
   "settings.audio.subtitle": "Active ou désactive complètement l’intro de démarrage de l’application.",
   "settings.audio.startupMusic": "Intro au démarrage",
   "settings.audio.startupMusic.on": "Activée : animation et musique sont jouées au lancement.",

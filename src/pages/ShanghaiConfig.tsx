@@ -24,6 +24,7 @@ import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
 
 // ✅ NEW
 import { setSfxEnabled } from "../lib/sfx";
+import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 import { setVoiceEnabled } from "../lib/voice";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 
@@ -163,8 +164,7 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
 
   // ✅ NEW: toggles (persist settings)
   const [sfxEnabled, setSfx] = React.useState<boolean>(() => {
-    const v = (store as any)?.settings?.sfxEnabled;
-    return v !== false; // default ON
+    return getAudioPreferences().gameplaySfxEnabled;
   });
   const [voiceEnabled, setVoice] = React.useState<boolean>(() => {
     const v = (store as any)?.settings?.voiceEnabled;
@@ -174,6 +174,7 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
   // ✅ Applique au montage (au cas où settings existent déjà)
   React.useEffect(() => {
     setSfxEnabled(sfxEnabled);
+    updateAudioPreferences({ gameplaySfxEnabled: sfxEnabled });
   }, [sfxEnabled]);
 
   React.useEffect(() => {

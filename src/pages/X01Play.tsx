@@ -7,6 +7,7 @@
 // =============================================================
 
 import React from "react";
+import { resolveAudioVolume } from "../lib/audioPreferences";
 import { useViewport } from "../hooks/useViewport";
 
 import type {
@@ -1408,7 +1409,7 @@ const playPublicSound = React.useCallback(
     try {
       if (typeof Audio === "undefined") return null as any;
       const a = new Audio(`/sounds/${fileName}`);
-      a.volume = Math.max(0, Math.min(1, opts?.volume ?? sfxVolume ?? 0.75));
+      a.volume = resolveAudioVolume(Math.max(0, Math.min(1, opts?.volume ?? sfxVolume ?? 0.75)), "arcade");
       // évite empilement
       a.currentTime = 0;
       a.play().catch(() => {});

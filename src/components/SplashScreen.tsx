@@ -11,6 +11,7 @@ import React from "react";
 // ⚠️ Depuis src/components -> ../assets
 import AppLogo from "../assets/LOGO.png";
 import { getStartupIntroEnabled, stopStartupIntroAudio } from "../lib/startupAudioPrefs";
+import { getAudioPreferences } from "../lib/audioPreferences";
 
 type Props = {
   onFinish: () => void;
@@ -38,7 +39,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
     // 🔊 En aperçu Réglages on rejoue uniquement la cinématique visuelle en boucle :
     // on ne déclenche pas le jingle en permanence dans la page de configuration.
     if (!previewLoop) {
-      const introEnabled = getStartupIntroEnabled();
+      const introEnabled = getStartupIntroEnabled() && getAudioPreferences().masterEnabled;
       const a = document.getElementById("dc-splash-audio") as HTMLAudioElement | null;
       if (!introEnabled) {
         stopStartupIntroAudio();

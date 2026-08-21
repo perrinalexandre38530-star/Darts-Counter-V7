@@ -4,6 +4,7 @@ import InfoDot from "../../components/InfoDot";
 import { getFootFormat } from "./footFormats";
 import { getFootGameTicker } from "./footTickers";
 import footPitchBg from "../../assets/foot-pitch.webp";
+import { resolveAudioVolume } from "../../lib/audioPreferences";
 
 type Props = { go: (route: any, params?: any) => void; params?: any; onFinish?: (match: any) => void };
 type EventType = "goal" | "assist" | "yellow" | "red" | "own_goal" | "penalty_scored" | "penalty_missed" | "foul" | "shot_on" | "shot_off" | "post" | "crossbar" | "substitution";
@@ -1674,6 +1675,8 @@ function ActionModal({ data, onClose, onGoal, onStat }: any) {
 }
 function playFootBuzzer() {
   try {
+    const effectiveVolume = resolveAudioVolume(0.8, "arcade");
+    if (effectiveVolume <= 0) return;
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
@@ -1695,7 +1698,7 @@ function playFootBuzzer() {
       osc.start(now + i * 0.22);
       osc.stop(now + i * 0.22 + 0.19);
     });
-    master.gain.exponentialRampToValueAtTime(0.8, now + 0.02);
+    master.gain.exponentialRampToValueAtTime(effectiveVolume, now + 0.02);
     master.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
     window.setTimeout(() => ctx.close().catch(() => {}), 1200);
   } catch {}

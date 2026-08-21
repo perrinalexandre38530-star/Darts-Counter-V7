@@ -1,28 +1,20 @@
 import React from "react";
 import { useAudio } from "../contexts/AudioContext";
 import { useAwenaOptional } from "../awena/AwenaProvider";
-import multisportsScoringNav from "../assets/audio/navigation/multisports_scoring_nav.m4a";
-import msamstpNav from "../assets/audio/navigation/msamstp_nav.m4a";
-import msElectrodynNav from "../assets/audio/navigation/ms_electrodyn_nav.m4a";
-import msElectrodyn2Nav from "../assets/audio/navigation/ms_electrodyn_2_nav.m4a";
+import {
+  getAudioPreferences,
+  getEnabledTrackIds,
+  NAVIGATION_MUSIC_PREVIEW_EVENT,
+  subscribeAudioPreferences,
+  type AudioPreferences,
+} from "../lib/audioPreferences";
+import {
+  getNavigationMusicTrack,
+  type NavigationMusicTrackId,
+} from "../lib/navigationMusicCatalog";
 
 type NavigationMusicZone = "navigation" | null;
 
-const TRACKS = [
-  multisportsScoringNav,
-  msamstpNav,
-  msElectrodynNav,
-  msElectrodyn2Nav,
-] as const;
-
-// Les masters sont normalisés autour de -17/-18 LUFS. On garde ensuite un
-// volume de navigation volontairement bas pour que la musique habille l'app
-// sans fatiguer l'oreille ni concurrencer les voix / SFX.
-const NAV_VOLUME = 0.22;
-const AWENA_DUCK_VOLUME = 0.055;
-
-// La musique couvre désormais toute la navigation de l'application. Seuls les
-// écrans où une partie / un entraînement est réellement en cours sont exclus.
 const GAMEPLAY_ROUTE_ALIASES = new Set([
   "x01",
   "cricket",
@@ -49,22 +41,25 @@ export function navigationMusicZoneForRoute(routeLike: unknown): NavigationMusic
   return "navigation";
 }
 
-export function createRandomTrackOrder(trackCount: number, avoidFirstIndex = -1): number[] {
-  const safeCount = Math.max(0, Math.floor(trackCount));
-  const order = Array.from({ length: safeCount }, (_, index) => index);
-
+export function createRandomTrackOrder<T>(trackIds: readonly T[], avoidFirst?: T | null): T[] {
+  const order = [...trackIds];
   for (let index = order.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    [order[index], order[swapIndex]] = [order[swapIndex], order[index]];
+    const current = order[index];
+    const swap = order[swapIndex];
+    if (current === undefined || swap === undefined) continue;
+    order[index] = swap;
+    order[swapIndex] = current;
   }
-
-  // À chaque nouveau cycle, on évite que le dernier morceau du cycle précédent
-  // soit immédiatement rejoué. Les quatre pistes passent une fois avant mélange.
-  if (order.length > 1 && order[0] === avoidFirstIndex) {
+  if (order.length > 1 && avoidFirst != null && order[0] === avoidFirst) {
     const swapIndex = 1 + Math.floor(Math.random() * (order.length - 1));
-    [order[0], order[swapIndex]] = [order[swapIndex], order[0]];
+    const first = order[0];
+    const swap = order[swapIndex];
+    if (first !== undefined && swap !== undefined) {
+      order[0] = swap;
+      order[swapIndex] = first;
+    }
   }
-
   return order;
 }
 
@@ -73,33 +68,29 @@ function isAudibleVideo(target: EventTarget | null): target is HTMLVideoElement 
   return !target.muted && Number(target.volume ?? 1) > 0;
 }
 
-/**
- * Ambiance musicale persistante sur toutes les pages hors gameplay.
- *
- * Règles :
- * - toute la navigation partage la même session et conserve le timestamp ;
- * - lancement gameplay : arrêt + remise à zéro ;
- * - retour depuis une partie : nouvelle playlist aléatoire depuis le début ;
- * - Awena parle : la piste continue mais est fortement duckée ;
- * - vidéo audible : pause exacte, puis reprise au même timestamp après fermeture/fin.
- */
 export default function NavigationBackgroundMusic({ route }: { route: string }) {
   const { muted } = useAudio();
   const awena = useAwenaOptional();
   const zone = navigationMusicZoneForRoute(route);
+  const [prefs, setPrefs] = React.useState<AudioPreferences>(() => getAudioPreferences());
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const zoneRef = React.useRef<NavigationMusicZone>(null);
-  const trackOrderRef = React.useRef<number[]>([]);
-  const trackOrderCursorRef = React.useRef(0);
-  const currentTrackIndexRef = React.useRef<number | null>(null);
+  const cycleRef = React.useRef<NavigationMusicTrackId[]>([]);
+  const cursorRef = React.useRef(0);
+  const currentTrackIdRef = React.useRef<NavigationMusicTrackId | null>(null);
   const pausedByVideoRef = React.useRef(false);
+  const pausedByPreviewRef = React.useRef(false);
   const activeVideoRefs = React.useRef<Set<HTMLVideoElement>>(new Set());
   const pendingAutoplayRef = React.useRef(false);
   const volumeRafRef = React.useRef<number | null>(null);
   const mountedRef = React.useRef(false);
+  const prefsRef = React.useRef(prefs);
 
   const awenaSpeaking = awena?.speechCue?.phase === "pending" || awena?.speechCue?.phase === "speaking";
+
+  React.useEffect(() => subscribeAudioPreferences(setPrefs), []);
+  React.useEffect(() => { prefsRef.current = prefs; }, [prefs]);
 
   const cancelVolumeRamp = React.useCallback(() => {
     if (volumeRafRef.current != null && typeof window !== "undefined") {
@@ -107,6 +98,12 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       volumeRafRef.current = null;
     }
   }, []);
+
+  const getTargetVolume = React.useCallback((settings = prefsRef.current) => {
+    const base = Math.max(0, Math.min(1, settings.navigationVolume));
+    if (awenaSpeaking && settings.duckAwenaEnabled) return base * settings.duckAwenaRatio;
+    return base;
+  }, [awenaSpeaking]);
 
   const rampVolume = React.useCallback((target: number, durationMs = 320) => {
     const audio = audioRef.current;
@@ -121,7 +118,6 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
     const started = performance.now();
     const tick = (now: number) => {
       const ratio = Math.min(1, Math.max(0, (now - started) / Math.max(1, durationMs)));
-      // Smoothstep évite un changement brutal au début/à la fin du ducking.
       const eased = ratio * ratio * (3 - 2 * ratio);
       audio.volume = from + (to - from) * eased;
       if (ratio < 1) volumeRafRef.current = window.requestAnimationFrame(tick);
@@ -130,95 +126,102 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
     volumeRafRef.current = window.requestAnimationFrame(tick);
   }, [cancelVolumeRamp]);
 
-  const targetVolume = React.useCallback(() => {
-    return awenaSpeaking ? AWENA_DUCK_VOLUME : NAV_VOLUME;
-  }, [awenaSpeaking]);
+  const canPlay = React.useCallback(() => {
+    const settings = prefsRef.current;
+    return !!zoneRef.current
+      && !muted
+      && settings.masterEnabled
+      && settings.navigationMusicEnabled
+      && getEnabledTrackIds(settings).length > 0
+      && !pausedByVideoRef.current
+      && !pausedByPreviewRef.current;
+  }, [muted]);
 
-  const takeNextTrackIndex = React.useCallback(() => {
-    if (trackOrderCursorRef.current >= trackOrderRef.current.length) {
-      trackOrderRef.current = createRandomTrackOrder(
-        TRACKS.length,
-        currentTrackIndexRef.current ?? -1,
-      );
-      trackOrderCursorRef.current = 0;
-    }
-
-    const nextIndex = trackOrderRef.current[trackOrderCursorRef.current] ?? 0;
-    trackOrderCursorRef.current += 1;
-    currentTrackIndexRef.current = nextIndex;
-    return nextIndex;
+  const rebuildCycle = React.useCallback((settings = prefsRef.current) => {
+    const active = getEnabledTrackIds(settings);
+    cycleRef.current = settings.navigationPlaybackMode === "random"
+      ? createRandomTrackOrder(active, currentTrackIdRef.current)
+      : active;
+    cursorRef.current = 0;
   }, []);
 
+  const takeNextTrackId = React.useCallback(() => {
+    const settings = prefsRef.current;
+    if (cursorRef.current >= cycleRef.current.length) rebuildCycle(settings);
+    const fallback = getEnabledTrackIds(settings)[0] ?? null;
+    const next = cycleRef.current[cursorRef.current] ?? fallback;
+    if (!next) return null;
+    cursorRef.current += 1;
+    currentTrackIdRef.current = next;
+    return next;
+  }, [rebuildCycle]);
+
   const loadNextTrack = React.useCallback((audio: HTMLAudioElement) => {
-    const nextIndex = takeNextTrackIndex();
-    audio.src = TRACKS[nextIndex];
+    const nextId = takeNextTrackId();
+    const track = getNavigationMusicTrack(nextId);
+    if (!track) return false;
+    audio.src = track.url;
     audio.preload = "auto";
     try { audio.currentTime = 0; } catch {}
     try { audio.load(); } catch {}
-  }, [takeNextTrackIndex]);
+    return true;
+  }, [takeNextTrackId]);
 
   const requestPlay = React.useCallback(async () => {
     const audio = audioRef.current;
-    if (!audio || !zoneRef.current || pausedByVideoRef.current) return;
-    audio.muted = muted;
-    rampVolume(targetVolume(), 220);
+    if (!audio || !canPlay()) return;
+    audio.muted = false;
+    rampVolume(getTargetVolume(), 220);
     try {
       await audio.play();
       pendingAutoplayRef.current = false;
     } catch {
-      // Chrome/Android peut refuser un play() si la navigation n'a pas encore
-      // fourni d'activation utilisateur. Le prochain pointer/keyboard reprend.
       pendingAutoplayRef.current = true;
     }
-  }, [muted, rampVolume, targetVolume]);
+  }, [canPlay, getTargetVolume, rampVolume]);
 
   const resetPlaylist = React.useCallback((keepZone: NavigationMusicZone = zoneRef.current) => {
     const audio = audioRef.current;
     if (!audio) return;
     try { audio.pause(); } catch {}
-    trackOrderRef.current = [];
-    trackOrderCursorRef.current = 0;
-    currentTrackIndexRef.current = null;
+    cycleRef.current = [];
+    cursorRef.current = 0;
+    currentTrackIdRef.current = null;
     zoneRef.current = keepZone;
     pendingAutoplayRef.current = false;
-
     if (keepZone) {
+      rebuildCycle();
       loadNextTrack(audio);
     } else {
       try { audio.currentTime = 0; } catch {}
+      audio.removeAttribute("src");
     }
-  }, [loadNextTrack]);
+  }, [loadNextTrack, rebuildCycle]);
 
-  const resumeAfterVideoIfPossible = React.useCallback(() => {
+  const resumeAfterBlockingMedia = React.useCallback(() => {
     const connected = new Set<HTMLVideoElement>();
     activeVideoRefs.current.forEach((video) => {
       if (video.isConnected && !video.ended) connected.add(video);
     });
     activeVideoRefs.current = connected;
-    const stillBlocked = connected.size > 0;
-    pausedByVideoRef.current = stillBlocked;
-    if (!stillBlocked && zoneRef.current) void requestPlay();
+    pausedByVideoRef.current = connected.size > 0;
+    if (!pausedByVideoRef.current && !pausedByPreviewRef.current) void requestPlay();
   }, [requestPlay]);
 
-  // Crée un seul player pour toute la vie de l'App : il ne se démonte donc pas
-  // à chaque changement de page et conserve naturellement son currentTime.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     mountedRef.current = true;
     const audio = new Audio();
     audio.preload = "auto";
     audio.loop = false;
-    audio.volume = NAV_VOLUME;
-    audio.muted = muted;
+    audio.volume = getTargetVolume();
     audioRef.current = audio;
 
     const onEnded = () => {
       if (!mountedRef.current || !zoneRef.current) return;
-      loadNextTrack(audio);
-      void requestPlay();
+      if (loadNextTrack(audio)) void requestPlay();
     };
     audio.addEventListener("ended", onEnded);
-
     return () => {
       mountedRef.current = false;
       cancelVolumeRamp();
@@ -226,51 +229,72 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       try { audio.pause(); } catch {}
       audioRef.current = null;
     };
-  // Le player doit être créé une seule fois. muted/volume sont synchronisés
-  // par les effets dédiés ci-dessous.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Toute la navigation appartient à une seule zone musicale. Les changements
-  // de page ne touchent donc pas au player ; seuls les gameplays l'arrêtent.
   React.useEffect(() => {
     const previousZone = zoneRef.current;
     if (zone === previousZone) {
-      if (zone && !pausedByVideoRef.current) void requestPlay();
+      if (zone) void requestPlay();
       return;
     }
-
     if (!zone) {
       zoneRef.current = null;
       resetPlaylist(null);
       return;
     }
-
-    // Retour depuis un gameplay vers la navigation : nouvelle session aléatoire.
     zoneRef.current = zone;
     resetPlaylist(zone);
     void requestPlay();
   }, [zone, requestPlay, resetPlaylist]);
 
-  // Mute global de l'app.
+  const playlistSignature = React.useMemo(() => JSON.stringify({
+    enabledTrackIds: prefs.enabledTrackIds,
+    trackOrder: prefs.trackOrder,
+    mode: prefs.navigationPlaybackMode,
+  }), [prefs.enabledTrackIds, prefs.trackOrder, prefs.navigationPlaybackMode]);
+
+  const previousPlaylistSignatureRef = React.useRef(playlistSignature);
+  React.useEffect(() => {
+    if (previousPlaylistSignatureRef.current === playlistSignature) return;
+    previousPlaylistSignatureRef.current = playlistSignature;
+    if (!zoneRef.current) return;
+    resetPlaylist(zoneRef.current);
+    void requestPlay();
+  }, [playlistSignature, requestPlay, resetPlaylist]);
+
   React.useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.muted = muted;
-  }, [muted]);
+    const allowed = !muted && prefs.masterEnabled && prefs.navigationMusicEnabled && getEnabledTrackIds(prefs).length > 0;
+    if (!allowed) {
+      try { audio.pause(); } catch {}
+      return;
+    }
+    if (zoneRef.current && !pausedByVideoRef.current && !pausedByPreviewRef.current) void requestPlay();
+  }, [muted, prefs.masterEnabled, prefs.navigationMusicEnabled, prefs.enabledTrackIds, requestPlay]);
 
-  // Ducking Awena : la piste ne s'arrête jamais, seul le niveau baisse.
   React.useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    rampVolume(awenaSpeaking ? AWENA_DUCK_VOLUME : NAV_VOLUME, awenaSpeaking ? 180 : 520);
-  }, [awenaSpeaking, rampVolume]);
+    rampVolume(getTargetVolume(prefs), awenaSpeaking ? 180 : 520);
+  }, [prefs.navigationVolume, prefs.duckAwenaEnabled, prefs.duckAwenaRatio, awenaSpeaking, getTargetVolume, rampVolume]);
 
-  // Toute vidéo audible ouverte dans la zone met la musique en pause sans
-  // modifier currentTime. Elle reprend après fin ou fermeture du lecteur.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPreview = (event: Event) => {
+      const active = !!(event as CustomEvent<{ active?: boolean }>).detail?.active;
+      pausedByPreviewRef.current = active;
+      if (active) {
+        try { audioRef.current?.pause(); } catch {}
+      } else if (!pausedByVideoRef.current) {
+        void requestPlay();
+      }
+    };
+    window.addEventListener(NAVIGATION_MUSIC_PREVIEW_EVENT, onPreview as EventListener);
+    return () => window.removeEventListener(NAVIGATION_MUSIC_PREVIEW_EVENT, onPreview as EventListener);
+  }, [requestPlay]);
+
   React.useEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") return;
-
     const onPlay = (event: Event) => {
       if (!isAudibleVideo(event.target) || !zoneRef.current) return;
       const video = event.target;
@@ -279,47 +303,38 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       pendingAutoplayRef.current = false;
       try { audioRef.current?.pause(); } catch {}
     };
-
     const onEnded = (event: Event) => {
       if (!(event.target instanceof HTMLVideoElement)) return;
       activeVideoRefs.current.delete(event.target);
-      resumeAfterVideoIfPossible();
+      resumeAfterBlockingMedia();
     };
-
     const onPause = (event: Event) => {
       if (!(event.target instanceof HTMLVideoElement)) return;
       const video = event.target;
-      // Si l'utilisateur met simplement la vidéo en pause, on garde la musique
-      // coupée. Si la modale est fermée juste après, le MutationObserver la retire.
       window.setTimeout(() => {
         if (!video.isConnected || video.ended) {
           activeVideoRefs.current.delete(video);
-          resumeAfterVideoIfPossible();
+          resumeAfterBlockingMedia();
         }
       }, 80);
     };
-
     document.addEventListener("play", onPlay, true);
     document.addEventListener("ended", onEnded, true);
     document.addEventListener("pause", onPause, true);
-
-    const observer = new MutationObserver(() => resumeAfterVideoIfPossible());
+    const observer = new MutationObserver(() => resumeAfterBlockingMedia());
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-
     return () => {
       document.removeEventListener("play", onPlay, true);
       document.removeEventListener("ended", onEnded, true);
       document.removeEventListener("pause", onPause, true);
       observer.disconnect();
     };
-  }, [resumeAfterVideoIfPossible]);
+  }, [resumeAfterBlockingMedia]);
 
-  // Fallback autoplay : si le premier play() a été bloqué, le prochain geste
-  // utilisateur démarre la musique sans imposer de clic supplémentaire dédié.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const retry = () => {
-      if (!pendingAutoplayRef.current || !zoneRef.current || pausedByVideoRef.current) return;
+      if (!pendingAutoplayRef.current || !canPlay()) return;
       void requestPlay();
     };
     window.addEventListener("pointerdown", retry, { passive: true });
@@ -328,7 +343,7 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       window.removeEventListener("pointerdown", retry);
       window.removeEventListener("keydown", retry);
     };
-  }, [requestPlay]);
+  }, [canPlay, requestPlay]);
 
   return null;
 }

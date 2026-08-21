@@ -4,6 +4,8 @@
 // - speak() safe (ignore si non supporté / désactivé)
 // ============================================
 
+import { isMasterAudioEnabled } from "./audioPreferences";
+
 let VOICE_ENABLED = true;
 
 export function setVoiceEnabled(v: boolean) {
@@ -27,7 +29,7 @@ type SpeakOpts = {
 };
 
 export function speak(text: string, opts?: SpeakOpts) {
-  if (!VOICE_ENABLED) return;
+  if (!VOICE_ENABLED || !isMasterAudioEnabled()) return;
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
 

@@ -1,11 +1,14 @@
 // ============================================================
 // src/contexts/AudioContext.tsx
-// Audio global (V7 STABLE)
-// - Export nommé: AudioProvider (obligatoire car App.tsx l'importe)
-// - Hook optionnel: useAudio()
+// Audio global persistant, synchronisé avec Settings > Audio.
 // ============================================================
 
 import React from "react";
+import {
+  getAudioPreferences,
+  subscribeAudioPreferences,
+  updateAudioPreferences,
+} from "../lib/audioPreferences";
 
 type AudioContextValue = {
   muted: boolean;
@@ -15,14 +18,27 @@ type AudioContextValue = {
 const AudioContext = React.createContext<AudioContextValue | null>(null);
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
-  const [muted, setMuted] = React.useState(false);
+  const [muted, setMutedState] = React.useState(() => !getAudioPreferences().masterEnabled);
+
+  React.useEffect(() => {
+    return subscribeAudioPreferences((prefs) => setMutedState(!prefs.masterEnabled));
+  }, []);
+
+  React.useEffect(() => {
+    if (!muted || typeof document === "undefined") return;
+    const startupAudio = document.getElementById("dc-splash-audio") as HTMLAudioElement | null;
+    if (!startupAudio) return;
+    try { startupAudio.pause(); } catch {}
+  }, [muted]);
+
+  const setMuted = React.useCallback((nextMuted: boolean) => {
+    setMutedState(!!nextMuted);
+    updateAudioPreferences({ masterEnabled: !nextMuted });
+  }, []);
 
   const value = React.useMemo(
-    () => ({
-      muted,
-      setMuted,
-    }),
-    [muted]
+    () => ({ muted, setMuted }),
+    [muted, setMuted]
   );
 
   return <AudioContext.Provider value={value}>{children}</AudioContext.Provider>;
@@ -31,8 +47,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 export function useAudio(): AudioContextValue {
   const ctx = React.useContext(AudioContext);
   if (!ctx) {
-    // fallback SAFE si jamais un composant est monté hors provider
-    return { muted: false, setMuted: () => {} };
+    const prefs = getAudioPreferences();
+    return { muted: !prefs.masterEnabled, setMuted: () => {} };
   }
   return ctx;
 }

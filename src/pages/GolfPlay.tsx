@@ -31,6 +31,7 @@ import { useLang } from "../contexts/LangContext";
 import { History, type SavedMatch } from "../lib/history";
 import { canonicalVisitFromUiDarts } from "../lib/dartsTelemetry";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
+import { resolveAudioVolume } from "../lib/audioPreferences";
 
 /**
  * GOLF (darts) — Play
@@ -1315,6 +1316,8 @@ const teamIndexByKey = useMemo(() => {
   function playTickerBlip() {
     try {
       if (typeof window === "undefined") return;
+      const effectiveGain = resolveAudioVolume(0.18, "arcade");
+      if (effectiveGain <= 0) return;
       const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AC) return;
       const ctx = new AC();
@@ -1327,7 +1330,7 @@ const teamIndexByKey = useMemo(() => {
       gain.connect(ctx.destination);
       const t0 = ctx.currentTime;
       osc.start(t0);
-      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(effectiveGain, t0 + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
       osc.stop(t0 + 0.085);
       osc.onended = () => {

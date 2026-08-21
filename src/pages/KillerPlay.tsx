@@ -69,6 +69,7 @@ import killerListIcon from "../assets/icons/killer-list.png";
 import deadActiveIcon from "../assets/icons/dead-active.png";
 import deadListIcon from "../assets/icons/dead-list.png";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
+import { isAudioCategoryEnabled, isMasterAudioEnabled, resolveAudioVolume } from "../lib/audioPreferences";
 
 type Props = {
   store: Store;
@@ -1611,7 +1612,8 @@ function useKillerSfx(enabled: boolean) {
 
   const playCandidates = React.useCallback(
     (key: string, sources: string[], vol = 0.85, restart = true) => {
-      if (!enabled) return false;
+      const category = key === "hit" ? "impact" : "arcade";
+      if (!enabled || !isAudioCategoryEnabled(category)) return false;
       const list = (sources || []).filter(Boolean);
       if (!list.length) return false;
 
@@ -1631,7 +1633,7 @@ function useKillerSfx(enabled: boolean) {
             a.pause();
             a.currentTime = 0;
           }
-          a.volume = vol;
+          a.volume = resolveAudioVolume(vol, category);
 
           // Si le fichier n'existe pas, on recevra souvent onerror / promise rejection
           const onError = () => {
@@ -1662,7 +1664,7 @@ function useKillerSfx(enabled: boolean) {
 
   const beep = React.useCallback(
     (freq: number, durMs: number, gain = 0.06) => {
-      if (!enabled) return;
+      if (!enabled || !isAudioCategoryEnabled("arcade")) return;
       try {
         const AC: any =
           (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -1675,7 +1677,9 @@ function useKillerSfx(enabled: boolean) {
         const g = ctx.createGain();
         o.type = "sine";
         o.frequency.value = freq;
-        g.gain.value = gain;
+        const effectiveGain = resolveAudioVolume(gain, "arcade");
+        if (effectiveGain <= 0) return;
+        g.gain.value = effectiveGain;
 
         o.connect(g);
         g.connect(ctx.destination);
@@ -1684,7 +1688,7 @@ function useKillerSfx(enabled: boolean) {
         o.start(t0);
         o.stop(t0 + durMs / 1000);
 
-        g.gain.setValueAtTime(gain, t0);
+        g.gain.setValueAtTime(effectiveGain, t0);
         g.gain.exponentialRampToValueAtTime(0.0001, t0 + durMs / 1000);
       } catch {}
     },
@@ -1909,7 +1913,7 @@ function useKillerVoice(enabled: boolean) {
 
   const speakLater = React.useCallback(
     (kind: VoiceKind, vars: { killer: string; victim?: string }, delayMs = 2300) => {
-      if (!enabled) return;
+      if (!enabled || !isMasterAudioEnabled()) return;
       const synth = (globalThis as any).speechSynthesis as SpeechSynthesis | undefined;
       if (!synth) return;
 
@@ -1931,6 +1935,7 @@ function useKillerVoice(enabled: boolean) {
       if (!text) return;
 
       setTimeout(() => {
+        if (!isMasterAudioEnabled()) return;
         try {
           const u = new SpeechSynthesisUtterance(text);
           u.lang = "fr-FR";

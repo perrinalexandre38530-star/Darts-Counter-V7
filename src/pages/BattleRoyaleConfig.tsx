@@ -17,6 +17,7 @@ import BackDot from "../components/BackDot";
 import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
 import tickerImg from "../assets/tickers/ticker_battle_royale.png";
 import { setSfxEnabled } from "../lib/sfx";
+import { getAudioPreferences, updateAudioPreferences } from "../lib/audioPreferences";
 import { setVoiceEnabled } from "../lib/voice";
 import { recordProfileUsageForMode, sortProfilesByModeUsage } from "../lib/profileUsage";
 
@@ -110,8 +111,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
 
   // ✅ toggles (persist settings)
   const [sfxEnabled, setSfx] = React.useState<boolean>(() => {
-    const v = (store as any)?.settings?.sfxEnabled;
-    return v !== false; // default ON
+    return getAudioPreferences().gameplaySfxEnabled;
   });
   const [voiceEnabled, setVoice] = React.useState<boolean>(() => {
     const v = (store as any)?.settings?.voiceEnabled;
@@ -120,6 +120,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
 
   React.useEffect(() => {
     setSfxEnabled(sfxEnabled);
+    updateAudioPreferences({ gameplaySfxEnabled: sfxEnabled });
   }, [sfxEnabled]);
   React.useEffect(() => {
     setVoiceEnabled(voiceEnabled);

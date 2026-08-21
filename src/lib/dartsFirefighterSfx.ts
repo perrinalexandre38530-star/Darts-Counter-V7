@@ -1,3 +1,5 @@
+import { isAudioCategoryEnabled, resolveAudioVolume } from "./audioPreferences";
+
 export type FirefighterSfxKey =
   | "water1"
   | "water2"
@@ -62,13 +64,14 @@ export function preloadDartsFirefighterSfx() {
 }
 
 export function playDartsFirefighterSfx(key: FirefighterSfxKey, volume = 0.78) {
+  if (!isAudioCategoryEnabled("arcade")) return null;
   try {
     const pool = ensurePool(key);
     if (!pool.length) return null;
     const cursor = cursors.get(key) || 0;
     const audio = pool[cursor % pool.length];
     cursors.set(key, (cursor + 1) % pool.length);
-    audio.volume = Math.max(0, Math.min(1, Number(volume) || 0));
+    audio.volume = resolveAudioVolume(Math.max(0, Math.min(1, Number(volume) || 0)), "arcade");
     try { audio.currentTime = 0; } catch {}
     void audio.play().catch(() => {});
     return audio;
