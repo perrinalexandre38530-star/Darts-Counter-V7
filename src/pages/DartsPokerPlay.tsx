@@ -37,6 +37,7 @@ import {
   type PokerCard,
 } from "../lib/gameEngines/dartsPokerEngine";
 import { History } from "../lib/history";
+import { deriveDartsPokerMatchMetrics, deriveDartsPokerPlayerMetrics } from "../lib/dartsPokerAnalytics";
 import tickerDartsPoker from "../assets/tickers/ticker_darts_poker.png";
 import DartsPokerEnd from "./DartsPokerEnd";
 
@@ -281,32 +282,31 @@ export default function DartsPokerPlay(props: any) {
         id: player.id, playerId: player.id, profileId: player.id, name: playerName(profile), avatarDataUrl: profile?.avatarDataUrl ?? profile?.avatarUrl ?? profile?.avatar ?? null,
         dartSetId: config.playerDartSets?.[player.id] ?? profile?.dartSetId ?? null, color: PLAYER_COLORS[index % PLAYER_COLORS.length],
         rank: standing?.rank || null, win: finished && state.winnerIds.includes(player.id), winner: finished && state.winnerIds.includes(player.id),
-        ...stats, accuracy: pct(stats.hits, stats.darts), averageHandScore: stats.handsPlayed ? stats.totalHandScore / stats.handsPlayed : 0,
+        ...stats,
+        ...deriveDartsPokerPlayerMetrics({ playerId: player.id, stats, rounds: state.rounds, visits: state.visits, contractsEnabled: config.contractsEnabled !== false }),
+        accuracy: pct(stats.hits, stats.darts), averageHandScore: stats.handsPlayed ? stats.totalHandScore / stats.handsPlayed : 0,
         visitsHistory: visits, visitHistory: visits, rounds, dartsDetail, hitsBySegment: { ...(stats.hitsBySegment || {}) },
+        cardsByRank: { ...(stats.cardsByRank || {}) }, cardsBySuit: { ...(stats.cardsBySuit || {}) },
       };
     });
     const totalDarts = playerRows.reduce((sum, row) => sum + Number(row.darts || 0), 0);
     const totalHits = playerRows.reduce((sum, row) => sum + Number(row.hits || 0), 0);
+    const derivedMatchStats = deriveDartsPokerMatchMetrics(playerRows, state.rounds, Math.max(0, now - state.startedAt));
     const matchStats = {
-      statisticsVersion: 1, telemetryVersion: 1, roundsPlayed: state.rounds.length, configuredRounds: config.rounds,
+      ...derivedMatchStats, statisticsVersion: 2, telemetryVersion: 2, configuredRounds: config.rounds,
       totalHands: playerRows.reduce((sum, row) => sum + Number(row.handsPlayed || 0), 0),
       totalHandsWon: playerRows.reduce((sum, row) => sum + Number(row.handsWon || 0), 0),
-      totalDarts, totalHits, accuracy: pct(totalHits, totalDarts), totalVisits: state.visits.length,
-      cardsCollected: playerRows.reduce((sum, row) => sum + Number(row.cardsCollected || 0), 0),
-      exchangesUsed: playerRows.reduce((sum, row) => sum + Number(row.exchangesUsed || 0), 0),
-      choicesUsed: playerRows.reduce((sum, row) => sum + Number(row.choicesUsed || 0), 0),
-      jokers: playerRows.reduce((sum, row) => sum + Number(row.jokers || 0), 0),
-      totalPoints: playerRows.reduce((sum, row) => sum + Number(row.roundPoints || 0), 0),
-      contractsCompleted: playerRows.reduce((sum, row) => sum + Number(row.contractHits || 0), 0),
-      contractBonusPoints: playerRows.reduce((sum, row) => sum + Number(row.contractBonusPoints || 0), 0),
+      totalDarts, totalHits, totalVisits: state.visits.length,
       pairs: playerRows.reduce((sum, row) => sum + Number(row.pairs || 0), 0), twoPairs: playerRows.reduce((sum, row) => sum + Number(row.twoPairs || 0), 0),
       threeOfAKinds: playerRows.reduce((sum, row) => sum + Number(row.threeOfAKinds || 0), 0), straights: playerRows.reduce((sum, row) => sum + Number(row.straights || 0), 0),
       flushes: playerRows.reduce((sum, row) => sum + Number(row.flushes || 0), 0), fullHouses: playerRows.reduce((sum, row) => sum + Number(row.fullHouses || 0), 0),
       fourOfAKinds: playerRows.reduce((sum, row) => sum + Number(row.fourOfAKinds || 0), 0), straightFlushes: playerRows.reduce((sum, row) => sum + Number(row.straightFlushes || 0), 0),
-      royalFlushes: playerRows.reduce((sum, row) => sum + Number(row.royalFlushes || 0), 0), durationMs: Math.max(0, now - state.startedAt),
+      royalFlushes: playerRows.reduce((sum, row) => sum + Number(row.royalFlushes || 0), 0),
+      highCardHands: playerRows.reduce((sum, row) => sum + Number(row.highCardHands || 0), 0),
+      durationMs: Math.max(0, now - state.startedAt),
     };
     const summary = {
-      kind: "darts_poker", mode: "darts_poker", sport: "darts", finished, statisticsVersion: 1, telemetryVersion: 1,
+      kind: "darts_poker", mode: "darts_poker", sport: "darts", finished, statisticsVersion: 2, telemetryVersion: 2,
       winnerId: finished ? state.winnerIds[0] || null : null, winnerIds: finished ? state.winnerIds : [],
       winnerName: finished ? state.standings.filter((row) => row.rank === 1).map((row) => row.name).join(" / ") : null,
       roundsPlayed: state.rounds.length, configuredRounds: config.rounds, dartsPerHand: config.dartsPerHand,
@@ -318,11 +318,11 @@ export default function DartsPokerPlay(props: any) {
     };
     return {
       id: matchIdRef.current, matchId: matchIdRef.current, kind: "darts_poker", mode: "darts_poker", sport: "darts", status,
-      statisticsVersion: 1, telemetryVersion: 1, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now,
+      statisticsVersion: 2, telemetryVersion: 2, createdAt: state.startedAt, startedAt: state.startedAt, updatedAt: now,
       ...(finished ? { finishedAt: now, endedAt: now } : {}), winnerId: summary.winnerId, winnerIds: summary.winnerIds, winnerName: summary.winnerName,
       players: playerRows, resumeId: matchIdRef.current, resume: { config, state: cloneDartsPokerState(state), updatedAt: now }, game: summary.game, summary,
       payload: {
-        kind: "darts_poker", mode: "darts_poker", sport: "darts", statisticsVersion: 1, telemetryVersion: 1,
+        kind: "darts_poker", mode: "darts_poker", sport: "darts", statisticsVersion: 2, telemetryVersion: 2,
         config, players: playerRows, summary, rounds: state.rounds, visits: state.visits, visitHistory: state.visits, stateSnapshot: cloneDartsPokerState(state),
         stats: { sport: "darts", mode: "darts_poker", players: playerRows, match: matchStats, global: matchStats },
       },

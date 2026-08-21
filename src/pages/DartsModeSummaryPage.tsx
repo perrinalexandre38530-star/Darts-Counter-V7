@@ -1,5 +1,6 @@
 import * as React from "react";
 import AttrapeMoiMatchStatsView from "../components/AttrapeMoiMatchStatsView";
+import { deriveDartsPokerPlayerMetrics, pokerRound1, resolveDartsPokerRounds, resolveDartsPokerStateStats, resolveDartsPokerVisits } from "../lib/dartsPokerAnalytics";
 
 type Props = {
   store?: any;
@@ -621,46 +622,73 @@ export default function DartsModeSummaryPage({ go, params }: Props) {
 function DartsPokerSummaryTables({ rec, rows, accent }: { rec: any; rows: any[]; accent: string }) {
   const summary = pick(rec?.summary, rec?.payload?.summary, {}) || {};
   const match = pick(summary?.matchStats, rec?.payload?.stats?.match, rec?.payload?.stats?.global, {}) || {};
-  const rounds = asArray(pick(rec?.payload?.rounds, rec?.payload?.stateSnapshot?.rounds, summary?.rounds));
-  const visits = asArray(pick(rec?.payload?.visits, rec?.payload?.visitHistory, rec?.payload?.stateSnapshot?.visits));
+  const rounds = resolveDartsPokerRounds(rec);
+  const visits = resolveDartsPokerVisits(rec);
+  const contractsEnabled = pick(rec?.payload?.config?.contractsEnabled, summary?.contractsEnabled, true) !== false;
+  const pokerRows = rows.map((row: any) => {
+    const snapshot = resolveDartsPokerStateStats(rec, String(row.id));
+    const base = { ...(snapshot || {}), ...(row.raw || {}) };
+    const metrics = deriveDartsPokerPlayerMetrics({ playerId: String(row.id), stats: base, rounds, visits, contractsEnabled });
+    return { ...row, raw: { ...base, ...metrics } };
+  });
   const suit = (value: any) => ({ S: "♠", H: "♥", D: "♦", C: "♣" } as any)[String(value || "")] || "";
   const rank = (value: any) => ({ 11: "J", 12: "Q", 13: "K", 14: "A" } as any)[Number(value)] || String(value || "");
   const cardLabel = (c: any) => c?.joker ? "JOKER" : `${rank(c?.rank)}${suit(c?.suit)}`;
-  const totalHands = rows.reduce((sum, row) => sum + num(row?.raw?.handsPlayed), 0);
-  const choices = rows.reduce((sum, row) => sum + num(row?.raw?.choicesUsed), 0);
-  const exchanges = rows.reduce((sum, row) => sum + num(row?.raw?.exchangesUsed), 0);
-  const jokers = rows.reduce((sum, row) => sum + num(row?.raw?.jokers), 0);
-  const cards = rows.reduce((sum, row) => sum + num(row?.raw?.cardsCollected), 0);
-  const points = rows.reduce((sum, row) => sum + num(row?.raw?.roundPoints ?? row?.raw?.handsWon), 0);
-  const contracts = rows.reduce((sum, row) => sum + num(row?.raw?.contractHits), 0);
+  const sum = (key: string) => pokerRows.reduce((total, row) => total + num(row?.raw?.[key]), 0);
+  const totalHands = sum("handsPlayed"), handsWon = sum("handsWon"), handsTied = sum("handsTied");
+  const choices = sum("choicesUsed"), choicesEarned = sum("choicesEarned"), exchanges = sum("exchangesUsed"), exchangesEarned = sum("exchangesEarned");
+  const jokers = sum("jokers"), cards = sum("cardsCollected"), marketCards = sum("marketCards"), autoDraws = sum("autoDraws"), powerCards = sum("powerCards");
+  const points = sum("points") || sum("roundPoints"), contracts = sum("contractHits"), contractAttempts = sum("contractsAttempted"), contractBonus = sum("contractBonusPoints");
+  const darts = sum("darts"), hits = sum("hits"), misses = sum("misses"), powersUsed = choices + exchanges, powersEarned = choicesEarned + exchangesEarned;
+  const pctText = (a:any,b?:any) => b === undefined ? `${pokerRound1(num(a))}%` : num(b)>0 ? `${pokerRound1(num(a)/num(b)*100)}%` : "0%";
+  const fmt = (value:any,digits=1) => { const nValue=num(value); return Number.isInteger(nValue)?String(nValue):nValue.toFixed(digits); };
+  const categories = [
+    ["Carte haute","highCardHands"],["Paire","pairs"],["Double paire","twoPairs"],["Brelan","threeOfAKinds"],["Suite","straights"],["Couleur","flushes"],["Full","fullHouses"],["Carré","fourOfAKinds"],["Quinte flush","straightFlushes"],["Royale","royalFlushes"],
+  ];
   return <>
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Table de poker</div>
+      <div style={sectionTitle(accent)}>Table de poker · statistiques complètes</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(125px,1fr))", gap: 8 }}>
         <Kpi label="Manches jouées" value={num(pick(summary?.roundsPlayed, rounds.length), rounds.length)} accent={accent} />
         <Kpi label="Mains évaluées" value={totalHands || num(match?.totalHands)} accent="#f5f7fb" />
+        <Kpi label="Mains gagnées" value={handsWon} accent="#5ce6a8" />
+        <Kpi label="Égalités" value={handsTied} accent="#55c7ff" />
+        <Kpi label="Total fléchettes" value={darts || num(match?.totalDarts)} accent="#55c7ff" />
+        <Kpi label="Précision table" value={pctText(hits,darts)} accent="#5ce6a8" />
+        <Kpi label="MISS" value={misses} accent="#e83a43" />
         <Kpi label="Cartes collectées" value={cards || num(match?.cardsCollected)} accent="#55c7ff" />
-        <Kpi label="Choix" value={choices} accent="#ff63b8" />
-        <Kpi label="Échanges" value={exchanges} accent="#55c7ff" />
+        <Kpi label="Marché" value={marketCards} accent="#55c7ff" />
+        <Kpi label="Auto-draw" value={autoDraws} accent="#aeb2c3" />
+        <Kpi label="Via pouvoirs" value={powerCards} accent="#ff63b8" />
         <Kpi label="Jokers" value={jokers} accent="#e83a43" />
+        <Kpi label="Pouvoirs utilisés" value={`${powersUsed}/${powersEarned}`} accent="#ff63b8" />
         <Kpi label="Points distribués" value={points || num(match?.totalPoints)} accent="#f6c256" />
-        <Kpi label="Contrats réussis" value={contracts || num(match?.contractsCompleted)} accent="#5ce6a8" />
+        <Kpi label="Contrats" value={`${contracts}/${contractAttempts}`} accent="#5ce6a8" />
+        <Kpi label="Bonus contrats" value={`+${contractBonus}`} accent="#f6c256" />
       </div>
     </section>
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Statistiques des joueurs</div>
-      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", fontSize: 11 }}>
-        <thead><tr style={{ color: accent, textAlign: "left" }}><th style={th}>Joueur</th><th style={th}>Mains</th><th style={th}>Gagnées</th><th style={th}>Points</th><th style={th}>Contrats</th><th style={th}>Best</th><th style={th}>Préc.</th><th style={th}>Cartes</th><th style={th}>Choix</th><th style={th}>Échanges</th><th style={th}>Jokers</th><th style={th}>S/D/T</th><th style={th}>Bull/DB</th><th style={th}>MISS</th></tr></thead>
-        <tbody>{rows.map((row: any) => { const p = row.raw || {}; const darts = num(p.darts ?? p.dartsThrown); const hits = num(p.hits); const accuracy = num(p.accuracy, darts > 0 ? hits / darts * 100 : 0); return <tr key={`poker-${row.id}`}><td style={td}>{row.name}</td><td style={td}>{num(p.handsPlayed)}</td><td style={td}>{num(p.handsWon)}</td><td style={td}>{num(p.roundPoints ?? p.handsWon)}</td><td style={td}>{num(p.contractHits)}</td><td style={td}>{String(p.bestHandLabel || "—")}</td><td style={td}>{accuracy.toFixed(1)}%</td><td style={td}>{num(p.cardsCollected)}</td><td style={td}>{num(p.choicesUsed)}</td><td style={td}>{num(p.exchangesUsed)}</td><td style={td}>{num(p.jokers)}</td><td style={td}>{num(p.singles)}/{num(p.doubles)}/{num(p.triples)}</td><td style={td}>{num(p.bulls)}/{num(p.dbulls)}</td><td style={td}>{num(p.misses)}</td></tr>; })}</tbody>
+      <div style={sectionTitle(accent)}>Tableau complet des joueurs</div>
+      <div style={{ overflowX: "auto" }}><table style={{ width: "100%", minWidth: 2600, borderCollapse: "collapse", fontSize: 10 }}>
+        <thead><tr style={{ color: accent, textAlign: "left" }}>{["Joueur","Rang","Points","Mains","V","Égal.","Win %","Podiums","Rang moy.","Contrats","Contrat %","Bonus","Darts","Hits","Préc.","S","D","T","Bull","DB","MISS","Série hit","Segment fav.","Cartes","Marché","Auto","Pouvoir","Joker","Choix E/U","Éch. E/U","Pouvoir %","Best","Force moy.","Fortes","Premium","Rang carte","Couleur","Pts/main","Pts/dart"].map((label)=><th key={label} style={th}>{label}</th>)}</tr></thead>
+        <tbody>{pokerRows.map((row: any) => { const p=row.raw||{}; return <tr key={`poker-${row.id}`}>
+          <td style={td}><b>{row.name}</b></td><td style={td}>#{row.rank||"—"}</td><td style={{...td,color:"#f6c256",fontWeight:900}}>{fmt(p.points)}</td><td style={td}>{fmt(p.handsPlayed)}</td><td style={td}>{fmt(p.handsWon)}</td><td style={td}>{fmt(p.handsTied)}</td><td style={td}>{pctText(p.handWinRate)}</td><td style={td}>{fmt(p.podiums)}</td><td style={td}>{p.averageRoundRank?fmt(p.averageRoundRank):"—"}</td>
+          <td style={td}>{fmt(p.contractHits)}/{fmt(p.contractsAttempted)}</td><td style={td}>{pctText(p.contractSuccessRate)}</td><td style={td}>+{fmt(p.contractBonusPoints)}</td><td style={td}>{fmt(p.darts)}</td><td style={td}>{fmt(p.hits)}</td><td style={{...td,color:"#5ce6a8"}}>{pctText(p.accuracy)}</td><td style={td}>{fmt(p.singles)}</td><td style={td}>{fmt(p.doubles)}</td><td style={td}>{fmt(p.triples)}</td><td style={td}>{fmt(p.bulls)}</td><td style={td}>{fmt(p.dbulls)}</td><td style={td}>{fmt(p.misses)}</td><td style={td}>{fmt(p.bestHitStreak)}</td><td style={td}>{p.favoriteSegment} ×{fmt(p.favoriteSegmentHits)}</td>
+          <td style={td}>{fmt(p.cardsCollected)}</td><td style={td}>{fmt(p.marketCards)}</td><td style={td}>{fmt(p.autoDraws)}</td><td style={td}>{fmt(p.powerCards)}</td><td style={td}>{fmt(p.jokers)}</td><td style={td}>{fmt(p.choicesEarned)}/{fmt(p.choicesUsed)}</td><td style={td}>{fmt(p.exchangesEarned)}/{fmt(p.exchangesUsed)}</td><td style={td}>{pctText(p.powerUseRate)}</td><td style={{...td,color:"#f6c256"}}>{String(p.bestHandLabel||"—")}</td><td style={td}>{fmt(p.averageCategoryRank)}/9</td><td style={td}>{fmt(p.strongHands)} ({pctText(p.strongHandRate)})</td><td style={td}>{fmt(p.premiumHands)} ({pctText(p.premiumHandRate)})</td><td style={td}>{p.favoriteCardRank} ×{fmt(p.favoriteCardRankCount)}</td><td style={td}>{p.favoriteCardSuit} ×{fmt(p.favoriteCardSuitCount)}</td><td style={td}>{fmt(p.pointsPerHand,2)}</td><td style={td}>{fmt(p.pointsPerDart,3)}</td>
+        </tr>; })}</tbody>
       </table></div>
     </section>
+    <section style={card(accent)}>
+      <div style={sectionTitle(accent)}>Répartition des combinaisons par joueur</div>
+      <div style={{ overflowX:"auto" }}><table style={{ width:"100%", minWidth:1050, borderCollapse:"collapse", fontSize:10 }}><thead><tr style={{color:accent,textAlign:"left"}}><th style={th}>Joueur</th>{categories.map(([label])=><th key={label} style={th}>{label}</th>)}</tr></thead><tbody>{pokerRows.map((row:any)=><tr key={`cats-${row.id}`}><td style={td}><b>{row.name}</b></td>{categories.map(([label,key])=><td key={key} style={td}>{num(row.raw?.[key])}</td>)}</tr>)}</tbody></table></div>
+    </section>
     {rounds.length ? <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Showdowns</div>
-      <div style={{ display: "grid", gap: 7 }}>{rounds.map((round: any, index: number) => <div key={String(round?.round || index)} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: accent }}>MANCHE {num(round?.round, index + 1)}</strong>{round?.contract ? <div style={{ color: "#f6c256", fontSize: 9, marginTop: 2 }}>CONTRAT · {round.contract.label}</div> : null}</div><strong>{asArray(round?.winnerNames).join(" / ") || asArray(round?.winnerIds).map((id:any) => rows.find((r:any)=>String(r.id)===String(id))?.name || id).join(" / ") || "—"}</strong></div><div style={{ marginTop: 7, display: "grid", gap: 5 }}>{asArray(round?.rows).map((r:any) => <div key={String(r?.playerId)} style={{ display: "grid", gridTemplateColumns: "28px minmax(100px,1fr) minmax(125px,1.5fr) minmax(150px,2fr)", gap: 6, fontSize: 10, alignItems: "center" }}><b style={{ color: r?.win ? accent : "#aeb2bf" }}>#{num(r?.rank)}</b><span>{rows.find((x:any)=>String(x.id)===String(r?.playerId))?.name || r?.playerName || r?.playerId}</span><div><strong style={{ color: r?.win ? "#5ce6a8" : "#fff" }}>{r?.evaluation?.label || "—"}</strong><div style={{ color: r?.contractCompleted ? "#f6c256" : "#8d94a2", fontSize: 8 }}>{r?.contractCompleted ? `CONTRAT ✓ · +${num(r?.pointsAwarded)} pt` : `+${num(r?.pointsAwarded)} pt`}</div></div><span style={{ color: "#c5cad5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asArray(r?.bestFive).map(cardLabel).join(" ")}</span></div>)}</div></div>)}</div>
+      <div style={sectionTitle(accent)}>Showdowns manche par manche</div>
+      <div style={{ display: "grid", gap: 7 }}>{rounds.map((round: any, index: number) => <div key={String(round?.round || index)} style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.09)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div><strong style={{ color: accent }}>MANCHE {num(round?.round, index + 1)}</strong>{round?.contract ? <div style={{ color: "#f6c256", fontSize: 9, marginTop: 2 }}>CONTRAT · {round.contract.label}</div> : null}</div><strong>{asArray(round?.winnerNames).join(" / ") || asArray(round?.winnerIds).map((id:any) => pokerRows.find((r:any)=>String(r.id)===String(id))?.name || id).join(" / ") || "—"}</strong></div><div style={{ marginTop: 7, display: "grid", gap: 5 }}>{asArray(round?.rows).map((r:any) => <div key={String(r?.playerId)} style={{ display: "grid", gridTemplateColumns: "28px minmax(100px,1fr) minmax(125px,1.5fr) minmax(150px,2fr)", gap: 6, fontSize: 10, alignItems: "center" }}><b style={{ color: r?.win ? accent : "#aeb2bf" }}>#{num(r?.rank)}</b><span>{pokerRows.find((x:any)=>String(x.id)===String(r?.playerId))?.name || r?.playerName || r?.playerId}</span><div><strong style={{ color: r?.win ? "#5ce6a8" : "#fff" }}>{r?.evaluation?.label || "—"}</strong><div style={{ color: r?.contractCompleted ? "#f6c256" : "#8d94a2", fontSize: 8 }}>{r?.contractCompleted ? `CONTRAT ✓ · +${num(r?.pointsAwarded)} pt` : `+${num(r?.pointsAwarded)} pt`}</div></div><span style={{ color: "#c5cad5", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{asArray(r?.bestFive).map(cardLabel).join(" ")}</span></div>)}</div></div>)}</div>
     </section> : null}
     <section style={card(accent)}>
-      <div style={sectionTitle(accent)}>Journal des lancers</div>
-      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 50).map((visit:any,index:number) => <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{rows.find((r:any)=>String(r.id)===String(visit?.playerId))?.name || visit?.playerName || "Joueur"} · M{num(visit?.round,1)} · V{num(visit?.visit,1)}</strong><strong style={{ color: accent }}>{asArray(visit?.labels).join(" / ") || "—"}</strong></div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 3 }}>{asArray(visit?.events).map((event:any)=>event?.label).filter(Boolean).join(" · ") || "Aucun effet"}</div></div>) : <div style={{ color: "#c9c9d4" }}>Aucun lancer enregistré.</div>}</div>
+      <div style={sectionTitle(accent)}>Journal complet des lancers</div>
+      <div style={{ display: "grid", gap: 7 }}>{visits.length ? [...visits].reverse().slice(0, 120).map((visit:any,index:number) => <div key={String(visit?.id || index)} style={{ padding: 9, borderRadius: 13, background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.08)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{pokerRows.find((r:any)=>String(r.id)===String(visit?.playerId))?.name || visit?.playerName || "Joueur"} · M{num(visit?.round,1)} · L{num(visit?.visit,1)}</strong><strong style={{ color: accent }}>{asArray(visit?.labels).join(" / ") || "—"}</strong></div><div style={{ color: "#9fa5b2", fontSize: 10, marginTop: 3 }}>{asArray(visit?.events).map((event:any)=>event?.label).filter(Boolean).join(" · ") || "Aucun effet"}</div></div>) : <div style={{ color: "#c9c9d4" }}>Aucun lancer enregistré.</div>}</div>
     </section>
   </>;
 }

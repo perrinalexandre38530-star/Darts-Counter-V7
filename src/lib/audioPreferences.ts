@@ -4,7 +4,7 @@ export type NavigationPlaybackMode = "random" | "ordered";
 export type AudioSfxCategory = "gameplay" | "impact" | "arcade" | "ui";
 
 export type AudioPreferences = {
-  version: 2;
+  version: 5;
   masterEnabled: boolean;
   navigationMusicEnabled: boolean;
   navigationVolume: number;
@@ -25,8 +25,31 @@ export const AUDIO_PREFERENCES_STORAGE_KEY = "dc_audio_preferences_v2";
 export const AUDIO_PREFERENCES_EVENT = "dc:audio-preferences-changed";
 export const NAVIGATION_MUSIC_PREVIEW_EVENT = "dc:navigation-music-preview";
 
+const ORIGINAL_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  "stadium_pulse",
+  "victory_circuit",
+  "neon_overdrive",
+  "electric_horizon",
+];
+
+const VERSION_3_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  ...ORIGINAL_DEFAULT_TRACK_IDS,
+  "midnight_enigma",
+  "shadow_frequency",
+  "titan_groove",
+  "night_drive",
+];
+
+const VERSION_4_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  ...VERSION_3_DEFAULT_TRACK_IDS,
+  "stellar_riot",
+  "bass_nebula",
+  "orbital_echo",
+  "garage_impact",
+];
+
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
-  version: 2,
+  version: 5,
   masterEnabled: true,
   navigationMusicEnabled: true,
   navigationVolume: 0.22,
@@ -58,19 +81,35 @@ const sanitizeTrackIds = (value: unknown, fallback: NavigationMusicTrackId[]) =>
 };
 
 export function sanitizeAudioPreferences(value: unknown): AudioPreferences {
-  const raw = value && typeof value === "object" ? (value as Partial<AudioPreferences>) : {};
+  const raw = value && typeof value === "object" ? (value as Partial<AudioPreferences> & { version?: number }) : {};
+  const rawVersion = Number(raw.version || 0);
   const trackOrder = sanitizeTrackIds(raw.trackOrder, [...NAVIGATION_MUSIC_TRACK_IDS]);
   for (const id of NAVIGATION_MUSIC_TRACK_IDS) {
     if (!trackOrder.includes(id)) trackOrder.push(id);
   }
 
+  const storedEnabledTrackIds = sanitizeTrackIds(raw.enabledTrackIds, [...NAVIGATION_MUSIC_TRACK_IDS]);
+  const hadOriginalDefaultPlaylist = rawVersion > 0
+    && rawVersion < 3
+    && storedEnabledTrackIds.length === ORIGINAL_DEFAULT_TRACK_IDS.length
+    && ORIGINAL_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const hadVersion3DefaultPlaylist = rawVersion === 3
+    && storedEnabledTrackIds.length === VERSION_3_DEFAULT_TRACK_IDS.length
+    && VERSION_3_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const hadVersion4DefaultPlaylist = rawVersion === 4
+    && storedEnabledTrackIds.length === VERSION_4_DEFAULT_TRACK_IDS.length
+    && VERSION_4_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist
+    ? [...NAVIGATION_MUSIC_TRACK_IDS]
+    : storedEnabledTrackIds;
+
   return {
-    version: 2,
+    version: 5,
     masterEnabled: raw.masterEnabled !== false,
     navigationMusicEnabled: raw.navigationMusicEnabled !== false,
     navigationVolume: clamp01(raw.navigationVolume, DEFAULT_AUDIO_PREFERENCES.navigationVolume),
     navigationPlaybackMode: raw.navigationPlaybackMode === "ordered" ? "ordered" : "random",
-    enabledTrackIds: sanitizeTrackIds(raw.enabledTrackIds, [...NAVIGATION_MUSIC_TRACK_IDS]),
+    enabledTrackIds,
     trackOrder,
     duckAwenaEnabled: raw.duckAwenaEnabled !== false,
     duckAwenaRatio: clamp01(raw.duckAwenaRatio, DEFAULT_AUDIO_PREFERENCES.duckAwenaRatio),
@@ -118,7 +157,7 @@ export function setAudioPreferences(nextValue: unknown): AudioPreferences {
 }
 
 export function updateAudioPreferences(patch: Partial<AudioPreferences>): AudioPreferences {
-  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 2 });
+  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 5 });
 }
 
 export function resetAudioPreferences(): AudioPreferences {
