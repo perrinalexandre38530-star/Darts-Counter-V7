@@ -3,10 +3,17 @@ import { useAudio } from "../contexts/AudioContext";
 import { useAwenaOptional } from "../awena/AwenaProvider";
 import multisportsScoringNav from "../assets/audio/navigation/multisports_scoring_nav.m4a";
 import msamstpNav from "../assets/audio/navigation/msamstp_nav.m4a";
+import msElectrodynNav from "../assets/audio/navigation/ms_electrodyn_nav.m4a";
+import msElectrodyn2Nav from "../assets/audio/navigation/ms_electrodyn_2_nav.m4a";
 
-type NavigationMusicZone = "games" | "stats" | null;
+type NavigationMusicZone = "navigation" | null;
 
-const TRACKS = [multisportsScoringNav, msamstpNav] as const;
+const TRACKS = [
+  multisportsScoringNav,
+  msamstpNav,
+  msElectrodynNav,
+  msElectrodyn2Nav,
+] as const;
 
 // Les masters sont normalisés autour de -17/-18 LUFS. On garde ensuite un
 // volume de navigation volontairement bas pour que la musique habille l'app
@@ -14,56 +21,51 @@ const TRACKS = [multisportsScoringNav, msamstpNav] as const;
 const NAV_VOLUME = 0.22;
 const AWENA_DUCK_VOLUME = 0.055;
 
-const GAME_MENU_ALIASES = new Set([
-  "killer",
-  "shanghai",
-  "battle_royale",
-  "training",
-  "training_x01",
-  "x01setup",
-  "x01_online_setup",
-  "darts_mode_config",
-  "x01_config_v3",
-  "petanque_menu",
-  "petanque.menu",
-  "babyfoot_menu",
-  "pingpong_menu",
-  "molkky_menu",
-  "dice_menu",
-  "foot_menu",
+// La musique couvre désormais toute la navigation de l'application. Seuls les
+// écrans où une partie / un entraînement est réellement en cours sont exclus.
+const GAMEPLAY_ROUTE_ALIASES = new Set([
+  "x01",
+  "cricket",
+  "x01_device_camera",
+  "training_clock",
+  "training_mode",
+  "pingpong_training",
+  "petanque_tournament_match_score",
 ]);
 
-const STATS_DETAIL_ALIASES = new Set([
-  "cricket_match_detail",
-  "pingpong_match_detail",
-]);
+export function isNavigationGameplayRoute(routeLike: unknown): boolean {
+  const route = String(routeLike || "").trim().toLowerCase();
+  if (!route) return false;
+  return (
+    route.endsWith("_play") ||
+    route.endsWith(".play") ||
+    GAMEPLAY_ROUTE_ALIASES.has(route)
+  );
+}
 
 export function navigationMusicZoneForRoute(routeLike: unknown): NavigationMusicZone {
   const route = String(routeLike || "").trim().toLowerCase();
-  if (!route) return null;
+  if (!route || isNavigationGameplayRoute(route)) return null;
+  return "navigation";
+}
 
-  if (
-    route === "stats" ||
-    route === "statshub" ||
-    route.startsWith("stats") ||
-    route.includes("_stats") ||
-    route.endsWith("_stats") ||
-    route.endsWith(".stats") ||
-    STATS_DETAIL_ALIASES.has(route)
-  ) {
-    return "stats";
+export function createRandomTrackOrder(trackCount: number, avoidFirstIndex = -1): number[] {
+  const safeCount = Math.max(0, Math.floor(trackCount));
+  const order = Array.from({ length: safeCount }, (_, index) => index);
+
+  for (let index = order.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [order[index], order[swapIndex]] = [order[swapIndex], order[index]];
   }
 
-  if (
-    route === "games" ||
-    route.endsWith("_config") ||
-    route.endsWith(".config") ||
-    GAME_MENU_ALIASES.has(route)
-  ) {
-    return "games";
+  // À chaque nouveau cycle, on évite que le dernier morceau du cycle précédent
+  // soit immédiatement rejoué. Les quatre pistes passent une fois avant mélange.
+  if (order.length > 1 && order[0] === avoidFirstIndex) {
+    const swapIndex = 1 + Math.floor(Math.random() * (order.length - 1));
+    [order[0], order[swapIndex]] = [order[swapIndex], order[0]];
   }
 
-  return null;
+  return order;
 }
 
 function isAudibleVideo(target: EventTarget | null): target is HTMLVideoElement {
@@ -72,12 +74,12 @@ function isAudibleVideo(target: EventTarget | null): target is HTMLVideoElement 
 }
 
 /**
- * Ambiance musicale persistante des écrans JEUX/CONFIG et STATS.
+ * Ambiance musicale persistante sur toutes les pages hors gameplay.
  *
  * Règles :
- * - navigation dans une même zone : la lecture continue au même timestamp ;
- * - sortie de la zone / lancement gameplay : arrêt + remise à zéro ;
- * - retour ultérieur dans JEUX ou STATS : playlist depuis le début ;
+ * - toute la navigation partage la même session et conserve le timestamp ;
+ * - lancement gameplay : arrêt + remise à zéro ;
+ * - retour depuis une partie : nouvelle playlist aléatoire depuis le début ;
  * - Awena parle : la piste continue mais est fortement duckée ;
  * - vidéo audible : pause exacte, puis reprise au même timestamp après fermeture/fin.
  */
@@ -88,7 +90,9 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const zoneRef = React.useRef<NavigationMusicZone>(null);
-  const trackIndexRef = React.useRef(0);
+  const trackOrderRef = React.useRef<number[]>([]);
+  const trackOrderCursorRef = React.useRef(0);
+  const currentTrackIndexRef = React.useRef<number | null>(null);
   const pausedByVideoRef = React.useRef(false);
   const activeVideoRefs = React.useRef<Set<HTMLVideoElement>>(new Set());
   const pendingAutoplayRef = React.useRef(false);
@@ -130,6 +134,29 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
     return awenaSpeaking ? AWENA_DUCK_VOLUME : NAV_VOLUME;
   }, [awenaSpeaking]);
 
+  const takeNextTrackIndex = React.useCallback(() => {
+    if (trackOrderCursorRef.current >= trackOrderRef.current.length) {
+      trackOrderRef.current = createRandomTrackOrder(
+        TRACKS.length,
+        currentTrackIndexRef.current ?? -1,
+      );
+      trackOrderCursorRef.current = 0;
+    }
+
+    const nextIndex = trackOrderRef.current[trackOrderCursorRef.current] ?? 0;
+    trackOrderCursorRef.current += 1;
+    currentTrackIndexRef.current = nextIndex;
+    return nextIndex;
+  }, []);
+
+  const loadNextTrack = React.useCallback((audio: HTMLAudioElement) => {
+    const nextIndex = takeNextTrackIndex();
+    audio.src = TRACKS[nextIndex];
+    audio.preload = "auto";
+    try { audio.currentTime = 0; } catch {}
+    try { audio.load(); } catch {}
+  }, [takeNextTrackIndex]);
+
   const requestPlay = React.useCallback(async () => {
     const audio = audioRef.current;
     if (!audio || !zoneRef.current || pausedByVideoRef.current) return;
@@ -149,14 +176,18 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
     const audio = audioRef.current;
     if (!audio) return;
     try { audio.pause(); } catch {}
-    trackIndexRef.current = 0;
-    audio.src = TRACKS[0];
-    audio.preload = "auto";
-    try { audio.currentTime = 0; } catch {}
-    try { audio.load(); } catch {}
+    trackOrderRef.current = [];
+    trackOrderCursorRef.current = 0;
+    currentTrackIndexRef.current = null;
     zoneRef.current = keepZone;
     pendingAutoplayRef.current = false;
-  }, []);
+
+    if (keepZone) {
+      loadNextTrack(audio);
+    } else {
+      try { audio.currentTime = 0; } catch {}
+    }
+  }, [loadNextTrack]);
 
   const resumeAfterVideoIfPossible = React.useCallback(() => {
     const connected = new Set<HTMLVideoElement>();
@@ -174,7 +205,7 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     mountedRef.current = true;
-    const audio = new Audio(TRACKS[0]);
+    const audio = new Audio();
     audio.preload = "auto";
     audio.loop = false;
     audio.volume = NAV_VOLUME;
@@ -183,11 +214,7 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
 
     const onEnded = () => {
       if (!mountedRef.current || !zoneRef.current) return;
-      trackIndexRef.current = (trackIndexRef.current + 1) % TRACKS.length;
-      audio.src = TRACKS[trackIndexRef.current];
-      audio.preload = "auto";
-      try { audio.currentTime = 0; } catch {}
-      try { audio.load(); } catch {}
+      loadNextTrack(audio);
       void requestPlay();
     };
     audio.addEventListener("ended", onEnded);
@@ -204,8 +231,8 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Entrée/sortie des deux zones musicales. Un simple changement de page dans
-  // JEUX->CONFIG ou STATS->sous-page ne touche PAS au player.
+  // Toute la navigation appartient à une seule zone musicale. Les changements
+  // de page ne touchent donc pas au player ; seuls les gameplays l'arrêtent.
   React.useEffect(() => {
     const previousZone = zoneRef.current;
     if (zone === previousZone) {
@@ -219,7 +246,7 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       return;
     }
 
-    // Entrée dans une nouvelle zone (y compris JEUX -> STATS) : nouvelle session.
+    // Retour depuis un gameplay vers la navigation : nouvelle session aléatoire.
     zoneRef.current = zone;
     resetPlaylist(zone);
     void requestPlay();
