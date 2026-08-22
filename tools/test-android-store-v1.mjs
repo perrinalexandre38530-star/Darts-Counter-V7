@@ -8,7 +8,7 @@ const quickSwitch = fs.readFileSync("src/components/SportQuickSwitch.tsx", "utf8
 const bottomNav = fs.readFileSync("src/components/BottomNav.tsx", "utf8");
 const games = fs.readFileSync("src/pages/Games.tsx", "utf8");
 
-for (const id of ["darts", "babyfoot", "petanque"]) {
+for (const id of ["darts", "babyfoot", "petanque", "running"]) {
   assert.ok(policy.includes(`"${id}"`), `Sport Store V1 manquant: ${id}`);
 }
 for (const id of [
@@ -19,12 +19,14 @@ for (const id of [
   assert.ok(policy.includes(`"${id}"`), `Mode Darts Store V1 manquant: ${id}`);
 }
 assert.ok(gameSelect.includes("filterSportsForCurrentRuntime"), "GameSelect ne filtre pas les sports Android V1.");
+assert.ok(gameSelect.includes('id: "running"'), "Running doit être exposé dans GameSelect.");
+assert.ok(gameSelect.includes("RunningModule"), "RunningModule doit être câblé dans GameSelect.");
 assert.ok(quickSwitch.includes("filterSportsForCurrentRuntime"), "SportQuickSwitch ne filtre pas les sports Android V1.");
 assert.ok(bottomNav.includes("shouldHideOnlineMessagingForCurrentRuntime"), "BottomNav n'applique pas la politique Online/Messages Android V1.");
 assert.ok(bottomNav.includes('{ k: "tournaments"'), "Compétitions doit rester disponible en Android V1.");
 assert.ok(bottomNav.includes('{ k: "cast_host"'), "Écrans/Cast doit rester disponible en Android V1.");
 assert.ok(games.includes("filterDartsGamesForCurrentRuntime"), "Games n'applique pas la whitelist Darts Android V1.");
 console.log("✅ ANDROID STORE V1 POLICY CHECK OK");
-console.log("   Sports: Darts · Baby-foot · Pétanque");
+console.log("   Sports: Darts · Baby-foot · Pétanque · Running");
 console.log("   Online/Messages masqués · Compétitions/Cast conservés");
 console.log("   Darts: Store V1 validé, Darts Firefighter inclus");
