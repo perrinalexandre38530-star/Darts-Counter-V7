@@ -50,6 +50,10 @@ function readStoredSport(): QuickSportId {
 
 export default function SportQuickSwitch({ onAfterSwitch }: { onAfterSwitch?: () => void }) {
   const sportApi = useSport() as any;
+
+  // Important pour l'APK : le switch rapide ne doit jamais réexposer un sport
+  // masqué par la politique Android Store V1. Running reste volontairement
+  // accessible depuis le sélecteur principal, où son Activity Engine est monté.
   const availableSports = React.useMemo(() => filterSportsForCurrentRuntime(SPORTS), []);
   const currentSport = normalizeSport(sportApi?.sport ?? readStoredSport());
   const currentIndex = Math.max(0, availableSports.findIndex((sport) => sport.id === currentSport));
