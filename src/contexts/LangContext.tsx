@@ -118,9 +118,11 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
 
   // --- setLang() ---
   const setLang = React.useCallback((next: Lang) => {
-    // Prépare immédiatement le traducteur local du navigateur pendant le clic
-    // utilisateur (Chrome peut exiger cette activation au 1er téléchargement).
+    // Prépare immédiatement les traducteurs locaux pendant le clic utilisateur.
+    // Chrome peut exiger cette activation et Android ML Kit peut télécharger le
+    // modèle EN au premier usage. Le rendu statique reste disponible en secours.
     warmUiLiteralTranslator(next);
+    void awenaTranslation.prepare(next).catch(() => false);
     setLangState(next);
     try {
       window.localStorage.setItem(
@@ -129,6 +131,14 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       );
     } catch {}
   }, []);
+
+  // Couvre aussi un démarrage direct avec EN déjà enregistré dans localStorage :
+  // dans ce cas l'utilisateur ne reclique pas forcément sur le sélecteur.
+  React.useEffect(() => {
+    if (lang === "fr") return;
+    warmUiLiteralTranslator(lang);
+    void awenaTranslation.prepare(lang).catch(() => false);
+  }, [lang]);
 
   // État persistant entre deux changements de langue : permet de restaurer le
   // texte source exact lorsqu'on repasse en FR, sans forcer un reload de l'app.
@@ -147,7 +157,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     type AttrState = LiteralState;
     const textState = literalTextStateRef.current as WeakMap<Text, TextState>;
     const attrState = literalAttrStateRef.current as WeakMap<Element, Map<string, AttrState>>;
-    const translatedAttrs = ["placeholder", "title", "aria-label"] as const;
+    const translatedAttrs = ["placeholder", "title", "aria-label", "alt"] as const;
     let cancelled = false;
     const pendingText = new WeakMap<Text, string>();
     const pendingAttr = new WeakMap<Element, Map<string, string>>();
@@ -257,7 +267,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       }
 
       if ((root as ParentNode).querySelectorAll) {
-        (root as ParentNode).querySelectorAll("[placeholder],[title],[aria-label]").forEach((el) => {
+        (root as ParentNode).querySelectorAll("[placeholder],[title],[aria-label],[alt]").forEach((el) => {
           for (const attr of translatedAttrs) applyAttr(el, attr);
         });
       }

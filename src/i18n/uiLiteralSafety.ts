@@ -289,6 +289,154 @@ const EN_EXACT: Record<string, string> = {
   "Les 5 vies": "Five Lives",
   "KILLER PROGRESSIF": "PROGRESSIVE KILLER",
   "Killer progressif": "Progressive Killer",
+
+  // Residual literals found by the V7(13) full-source audit.
+  "FIN DU MATCH": "END OF MATCH",
+  "Fin du match": "End of match",
+  "Afficher tous les jeux": "Show all games",
+  "Afficher seulement": "Show only",
+  "Afficher les filtres": "Show filters",
+  "Changer la couverture": "Change cover",
+  "Nouveau nom du groupe": "New group name",
+  "Comparer les stats": "Compare stats",
+  "Simuler le tournoi": "Simulate tournament",
+  "Les prochains matchs jouables.": "Next playable matches.",
+  "Les prochains matchs jouables": "Next playable matches",
+  "Affiner la main": "Refine hand",
+  "Valide le showdown": "Confirm showdown",
+  "Profil local": "Local profile",
+  "Résumé": "Summary",
+  "Détails": "Details",
+  "Année": "Year",
+  "Résultats": "Results",
+  "Évolution": "Trend",
+  "Meilleur score": "Best score",
+  "Score de départ": "Starting score",
+  "Mode de jeu préféré": "Favorite game mode",
+  "Difficulté IA": "AI difficulty",
+  "Débutant": "Beginner",
+  "débutant": "beginner",
+  "Intermédiaire": "Intermediate",
+  "intermédiaire": "intermediate",
+  "Difficile": "Hard",
+  "difficile": "hard",
+  "Facile": "Easy",
+  "facile": "easy",
+  "Légende": "Legend",
+  "légende": "legend",
+  "Confirmé": "Advanced",
+  "confirmé": "advanced",
+  "Défaut": "Default",
+  "Niveau": "Level",
+  "Nom": "Name",
+  "Téléphone": "Phone",
+  "Actualité": "News",
+  "Nouvelle partie": "New match",
+  "Adresse email": "Email address",
+  "Repêchage": "Repechage",
+  "Score cible": "Target score",
+  "À proximité": "Nearby",
+  "Créer une équipe": "Create a team",
+  "Liste équipes": "Team list",
+  "Nom du tournoi": "Tournament name",
+  "Score final": "Final score",
+  "Période": "Period",
+  "Événements": "Events",
+  "Personnalisé": "Custom",
+  "Personnalisée": "Custom",
+  "Mettre à jour": "Update",
+  "Nouveau mot de passe": "New password",
+  "Nom de l’équipe": "Team name",
+  "Nom d’équipe requis.": "Team name required.",
+  "Nom de profil requis.": "Profile name required.",
+  "Région": "Region",
+  "Région / Département": "Region / Department",
+  "Joueurs sélectionnés": "Selected players",
+  "Équipes existantes": "Existing teams",
+  "Résultat": "Result",
+  "Résurrection": "Resurrection",
+  "Publicité": "Advertising",
+  "Préparation de la sauvegarde…": "Preparing backup…",
+  "Fichier de sauvegarde": "Backup file",
+  "Fichier configuré": "File configured",
+  "Fichier invalide": "Invalid file",
+  "Erreur inconnue": "Unknown error",
+  "Choisir un fichier": "Choose a file",
+  "Choisir un avatar": "Choose an avatar",
+  "Choisir un mode": "Choose a mode",
+  "Choisir une couverture": "Choose a cover",
+  "Choisir équipe": "Choose team",
+  "Choisir...": "Choose...",
+  "Choisir langue": "Choose language",
+  "Choix de sport": "Sport selection",
+  "Méthode de saisie": "Input method",
+  "Mode de saisie": "Input mode",
+  "Score moyen": "Average score",
+  "Score total": "Total score",
+  "Score cumulé": "Cumulative score",
+  "Points marqués": "Points scored",
+  "Matchs joués": "Matches played",
+  "Partie terminée": "Match finished",
+  "Fin de partie": "End of match",
+  "Pays du joueur": "Player country",
+  "Profil": "Profile",
+  "JOUEUR": "PLAYER",
+  "JOUEURS": "PLAYERS",
+  "ÉQUIPE": "TEAM",
+  "ÉQUIPES": "TEAMS",
+  "Équipe A": "Team A",
+  "Équipe B": "Team B",
+  "Victoires": "Wins",
+  "Défaites": "Losses",
+  "Égalité": "Draw",
+  "Mènes": "Ends",
+  "Flèches": "Darts",
+  "CIBLE": "TARGET",
+  "Démarrer la partie": "Start match",
+  "LANCER LA PARTIE": "START MATCH",
+  "Aucune donnée": "No data",
+  "Aucune donnée.": "No data.",
+  "Aucun joueur": "No player",
+  "Aucun profil.": "No profile.",
+  "Match nul": "Draw",
+  "Tous matchs": "All matches",
+  "TOUS": "ALL",
+  "TOUTES": "ALL",
+  "Tous": "All",
+  "Toutes": "All",
+  "Jeux": "Games",
+  "Autres jeux": "Other games",
+  "Tournoi": "Tournament",
+  "TOURNOI": "TOURNAMENT",
+  "Amis": "Friends",
+  "Ami": "Friend",
+  "Envoyer": "Send",
+  "Ouvrir": "Open",
+  "Les mots de passe ne correspondent pas.": "Passwords do not match.",
+  "Nom de la ligue": "League name",
+  "Nom du club": "Club name",
+  "Premier Fuyard": "First Runner",
+  "Premier double": "First double",
+  "Dernier double": "Last double",
+  "Comprendre les valeurs": "Understand the values",
+  "Caster sur un appareil": "Cast to a device",
+  "Ouvrir Awena": "Open Awena",
+  "Me rendre disponible": "Make me available",
+  "Publier une recherche": "Post a search",
+  "Publier une actu": "Post an update",
+  "Temps de jeu": "Playing time",
+  "Photos de match": "Match photos",
+  "Feuilles de match": "Match sheets",
+  "Mettre corbeille": "Move to trash",
+  "Scanner un QR": "Scan a QR code",
+  "Masquer liste": "Hide list",
+  "Score restant": "Remaining score",
+  "Confirmer le score": "Confirm score",
+  "Valide ou corrige le score": "Confirm or correct the score",
+  "COMPOSITION DES CAMPS": "TEAM COMPOSITION",
+  "Buts / match": "Goals / match",
+  "SAISIE SCORE": "SCORE INPUT",
+  "tous sets confondus": "across all sets",
 };
 
 // Rules are deliberately ordered from the most specific phrases to generic words.
@@ -296,6 +444,29 @@ const EN_EXACT: Record<string, string> = {
 const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
   [/\bconfiguration guidée\b/gi, "guided setup"],
   [/\bconfiguration complète\b/gi, "full setup"],
+  [/\bafficher tous les jeux\b/gi, "show all games"],
+  [/\bafficher seulement\b/gi, "show only"],
+  [/\bafficher les filtres\b/gi, "show filters"],
+  [/\bchanger la couverture\b/gi, "change cover"],
+  [/\bnouveau nom du groupe\b/gi, "new group name"],
+  [/\bsimuler le tournoi\b/gi, "simulate tournament"],
+  [/\bprochains matchs jouables\b/gi, "next playable matches"],
+  [/\baffiner la main\b/gi, "refine hand"],
+  [/\bvalide le showdown\b/gi, "confirm showdown"],
+  [/\bcomparer les stats\b/gi, "compare stats"],
+  [/\bfin du match\b/gi, "end of match"],
+  [/\bmeilleur score\b/gi, "best score"],
+  [/\bscore de départ\b/gi, "starting score"],
+  [/\bmode de jeu préféré\b/gi, "favorite game mode"],
+  [/\bdifficulté ia\b/gi, "AI difficulty"],
+  [/\bnouvelle partie\b/gi, "new match"],
+  [/\bnouveau mot de passe\b/gi, "new password"],
+  [/\badresse email\b/gi, "email address"],
+  [/\bnom du tournoi\b/gi, "tournament name"],
+  [/\bnom de l[’']équipe\b/gi, "team name"],
+  [/\bprofil local\b/gi, "local profile"],
+  [/\bjoueurs sélectionnés\b/gi, "selected players"],
+  [/\béquipes existantes\b/gi, "existing teams"],
   [/\bordre de passage\b/gi, "turn order"],
   [/\bordre de départ\b/gi, "starting order"],
   [/\bau moins\b/gi, "at least"],
@@ -324,6 +495,101 @@ const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
   [/\bhors cible\b/gi, "off target"],
   [/\bpartie lancée\b/gi, "match started"],
   [/\bparties récentes\b/gi, "recent matches"],
+  [/\baléatoire\b/gi, "random"],
+  [/\béliminé(?:e|es|s)?\b/gi, "eliminated"],
+  [/\bélimination\b/gi, "elimination"],
+  [/\bréinitialiser\b/gi, "reset"],
+  [/\bconnecté(?:e|es|s)?\b/gi, "connected"],
+  [/\bcumulé(?:e|es|s)?\b/gi, "cumulative"],
+  [/\bafficher\b/gi, "show"],
+  [/\bintensité\b/gi, "intensity"],
+  [/\brafraîchir\b/gi, "refresh"],
+  [/\bsécurité\b/gi, "safety"],
+  [/\bgagné(?:e|es|s)?\b/gi, "won"],
+  [/\bremporté(?:e|es|s)?\b/gi, "won"],
+  [/\brécupération\b/gi, "recovery"],
+  [/\breçue(?:s)?\b/gi, "received"],
+  [/\benvoyé(?:e|es|s)?\b/gi, "sent"],
+  [/\bprénom\b/gi, "first name"],
+  [/\brécapitulatif\b/gi, "summary"],
+  [/\brépondre\b/gi, "reply"],
+  [/\bse déconnecter\b/gi, "sign out"],
+  [/\btélécharger\b/gi, "download"],
+  [/\bvalidé(?:e|es|s)?\b/gi, "confirmed"],
+  [/\bcaméra locale\b/gi, "local camera"],
+  [/\bbientôt disponible\b/gi, "coming soon"],
+  [/\bà venir\b/gi, "coming soon"],
+  [/\bà définir\b/gi, "to be defined"],
+  [/\bà planifier\b/gi, "to schedule"],
+  [/\bpièce jointe\b/gi, "attachment"],
+  [/\bactions spéciales\b/gi, "special actions"],
+  [/\bbonus bouclier\b/gi, "shield bonus"],
+  [/\bcases spéciales\b/gi, "special cells"],
+  [/\bcalibration caméra\b/gi, "camera calibration"],
+  [/\bfléchettes jouées\b/gi, "darts thrown"],
+  [/\bmanches jouées\b/gi, "rounds played"],
+  [/\btours joués\b/gi, "rounds played"],
+  [/\bmatch partagé\b/gi, "shared match"],
+  [/\bpartie partagée\b/gi, "shared match"],
+  [/\butilisateur non connecté\b/gi, "user not signed in"],
+  [/\brésumé\b/gi, "summary"],
+  [/\bdétails\b/gi, "details"],
+  [/\bannée\b/gi, "year"],
+  [/\brésultats\b/gi, "results"],
+  [/\bévolution\b/gi, "trend"],
+  [/\bdébutant\b/gi, "beginner"],
+  [/\bintermédiaire\b/gi, "intermediate"],
+  [/\bdifficile\b/gi, "hard"],
+  [/\bfacile\b/gi, "easy"],
+  [/\blégende\b/gi, "legend"],
+  [/\bconfirmé\b/gi, "advanced"],
+  [/\bdéfaut\b/gi, "default"],
+  [/\btéléphone\b/gi, "phone"],
+  [/\bactualité\b/gi, "news"],
+  [/\brepêchage\b/gi, "repechage"],
+  [/\bà proximité\b/gi, "nearby"],
+  [/\bpériode\b/gi, "period"],
+  [/\bévénements\b/gi, "events"],
+  [/\bpersonnalisé(?:e|es|s)?\b/gi, "custom"],
+  [/\bmettre à jour\b/gi, "update"],
+  [/\brésurrection\b/gi, "resurrection"],
+  [/\bpublicité\b/gi, "advertising"],
+  [/\brégion\b/gi, "region"],
+  [/\bméthode de saisie\b/gi, "input method"],
+  [/\bmode de saisie\b/gi, "input mode"],
+  [/\bmatch nul\b/gi, "draw"],
+  [/\btous matchs\b/gi, "all matches"],
+  [/\bautres jeux\b/gi, "other games"],
+  [/\btournoi\b/gi, "tournament"],
+  [/\bjeux\b/gi, "games"],
+  [/\bamis\b/gi, "friends"],
+  [/\bami\b/gi, "friend"],
+  [/\benvoyer\b/gi, "send"],
+  [/\bouvrir\b/gi, "open"],
+  [/\bmots de passe\b/gi, "passwords"],
+  [/\bnom de la ligue\b/gi, "league name"],
+  [/\bnom du club\b/gi, "club name"],
+  [/\bpremier fuyard\b/gi, "first runner"],
+  [/\bpremier double\b/gi, "first double"],
+  [/\bdernier double\b/gi, "last double"],
+  [/\bcomprendre les valeurs\b/gi, "understand the values"],
+  [/\bcaster sur un appareil\b/gi, "cast to a device"],
+  [/\bpublier une recherche\b/gi, "post a search"],
+  [/\bpublier une actu\b/gi, "post an update"],
+  [/\btemps de jeu\b/gi, "playing time"],
+  [/\bphotos de match\b/gi, "match photos"],
+  [/\bfeuilles de match\b/gi, "match sheets"],
+  [/\bmettre corbeille\b/gi, "move to trash"],
+  [/\bmasquer liste\b/gi, "hide list"],
+  [/\bscore restant\b/gi, "remaining score"],
+  [/\bconfirmer le score\b/gi, "confirm score"],
+  [/\bvalide ou corrige le score\b/gi, "confirm or correct the score"],
+  [/\bcomposition des camps\b/gi, "team composition"],
+  [/\bbuts\b/gi, "goals"],
+  [/\bsaisie score\b/gi, "score input"],
+  [/\btous sets confondus\b/gi, "across all sets"],
+  [/\btous\b/gi, "all"],
+  [/\btoutes\b/gi, "all"],
   [/\bpartie\b/gi, "match"],
   [/\bparties\b/gi, "matches"],
   [/\bjoueurs\b/gi, "players"],
@@ -427,7 +693,7 @@ const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
   [/\bnon\b/gi, "no"],
 ];
 
-const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ]|\b(?:retour|fermer|annuler|valider|suivant|précédent|joueur|joueurs|équipe|équipes|partie|parties|manche|manches|volée|volées|fléchette|fléchettes|règles|objectif|cible|cibles|victoire|victoires|défaite|défaites|vainqueur|statistiques|historique|profil|profils|préférences|paramètres|réglages|langue|thème|compte|sauvegarde|connexion|déconnexion|chargement|erreur|impossible|sélection|choisir|créer|supprimer|modifier|ajouter|démarrer|lancer|arrêter|reprendre|continuer|quitter|aucun|aucune|durée|moyenne|meilleur|meilleure|série|réussite|échec|raté|terminé|fumée|feu|menace|territoire)\b/i;
+const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ]|\b(?:retour|fermer|annuler|valider|suivant|précédent|joueur|joueurs|équipe|équipes|partie|parties|manche|manches|volée|volées|fléchette|fléchettes|règles|objectif|cible|cibles|victoire|victoires|défaite|défaites|vainqueur|statistiques|historique|profil|profils|préférences|paramètres|réglages|langue|thème|compte|sauvegarde|connexion|déconnexion|chargement|erreur|impossible|sélection|choisir|créer|supprimer|modifier|ajouter|démarrer|lancer|arrêter|reprendre|continuer|quitter|aucun|aucune|durée|moyenne|meilleur|meilleure|série|réussite|échec|raté|terminé|fumée|feu|menace|territoire|afficher|changer|nouveau|nouvelle|seulement|simuler|prochain|prochains|couverture|groupe|résumé|détails|année|résultats|évolution|débutant|intermédiaire|difficile|facile|légende|confirmé|défaut|téléphone|actualité|repêchage|proximité|période|événements|personnalisé|publicité|région|méthode|mot de passe|adresse email|aléatoire|éliminé|élimination|réinitialiser|connecté|cumulé|intensité|rafraîchir|sécurité|gagné|remporté|récupération|reçue|envoyé|prénom|récapitulatif|répondre|télécharger|validé|caméra|bientôt|définir|planifier|pièce jointe|actions spéciales|calibration|jouées|partagé|utilisateur|tournoi|jeux|amis|ami|envoyer|ouvrir|mots de passe|nom|publier|recherche|temps|feuilles|mettre|corbeille|masquer|liste|restant|confirmer|valide|corrige|camps|buts|saisie|tous|toutes|comprendre|valeurs|appareil|membres|messagerie|groupes|retirer|assigne|clique)\b/i;
 
 const PROPER_NAME_EXCEPTIONS = new Set([
   "Auvergne-Rhône-Alpes",
@@ -436,6 +702,12 @@ const PROPER_NAME_EXCEPTIONS = new Set([
   "Provence-Alpes-Côte d'Azur",
   "Pays de la Loire",
   "Hauts-de-France",
+  "Pétanque",
+  "PÉTANQUE",
+  "pétanque",
+  "Mölkky",
+  "MÖLKKY",
+  "mölkky",
 ]);
 
 function normalize(value: string): string {
@@ -449,6 +721,31 @@ function matchCase(source: string, translated: string): string {
     return translated.charAt(0).toUpperCase() + translated.slice(1);
   }
   return translated;
+}
+
+// JavaScript \b is ASCII-oriented: it does not see É/À/Ç as normal word
+// characters. Convert boundary-based rules to Unicode letter/number boundaries
+// so existing rules work for both "Equipe" and "Équipe".
+const unicodeRuleCache = new WeakMap<RegExp, RegExp>();
+function unicodeWordPattern(pattern: RegExp): RegExp {
+  const cached = unicodeRuleCache.get(pattern);
+  if (cached) return cached;
+  const boundaryCount = (pattern.source.match(/\\b/g) || []).length;
+  if (!boundaryCount) {
+    unicodeRuleCache.set(pattern, pattern);
+    return pattern;
+  }
+  let seen = 0;
+  const source = pattern.source.replace(/\\b/g, () => {
+    seen += 1;
+    return seen === 1
+      ? "(?<![\\p{L}\\p{N}_])"
+      : "(?![\\p{L}\\p{N}_])";
+  });
+  const flags = pattern.flags.includes("u") ? pattern.flags : `${pattern.flags}u`;
+  const converted = new RegExp(source, flags);
+  unicodeRuleCache.set(pattern, converted);
+  return converted;
 }
 
 function buildReverseDictionary(dicts: UiDictTable, targetLang: string): Map<string, string> {
@@ -466,6 +763,21 @@ function buildReverseDictionary(dicts: UiDictTable, targetLang: string): Map<str
     }
   }
   return out;
+}
+
+function buildCaseInsensitiveMap(source: Map<string, string>): Map<string, string> {
+  const out = new Map<string, string>();
+  source.forEach((value, key) => {
+    const lowered = normalize(key).toLocaleLowerCase("fr");
+    if (!out.has(lowered)) out.set(lowered, value);
+  });
+  return out;
+}
+
+const EN_EXACT_CI = new Map<string, string>();
+for (const [source, target] of Object.entries(EN_EXACT)) {
+  const key = normalize(source).toLocaleLowerCase("fr");
+  if (!EN_EXACT_CI.has(key)) EN_EXACT_CI.set(key, target);
 }
 
 export function looksFrenchUiText(value: string): boolean {
@@ -537,6 +849,7 @@ export async function translateUiLiteralWithBrowser(raw: string, targetLang: str
 
 export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string) {
   const reverse = buildReverseDictionary(dicts, targetLang);
+  const reverseCi = buildCaseInsensitiveMap(reverse);
 
   return (raw: string): string => {
     if (!raw || targetLang === "fr") return raw;
@@ -548,6 +861,8 @@ export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string
 
     const dictionaryExact = reverse.get(core);
     if (dictionaryExact != null) return `${lead}${dictionaryExact}${trail}`;
+    const dictionaryCi = reverseCi.get(core.toLocaleLowerCase("fr"));
+    if (dictionaryCi != null) return `${lead}${matchCase(core, dictionaryCi)}${trail}`;
 
     // English is the universal non-French fallback for hardcoded UI literals.
     // For a language with no exact dictionary match, do not inject French.
@@ -558,11 +873,14 @@ export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string
 
     const explicit = EN_EXACT[core];
     if (explicit != null) return `${lead}${explicit}${trail}`;
+    const explicitCi = EN_EXACT_CI.get(core.toLocaleLowerCase("fr"));
+    if (explicitCi != null) return `${lead}${matchCase(core, explicitCi)}${trail}`;
     if (!FRENCH_SIGNAL.test(core)) return raw;
 
     let translated = core;
     for (const [pattern, replacement] of EN_FRAGMENT_RULES) {
-      translated = translated.replace(pattern, (match) => matchCase(match, replacement));
+      const safePattern = unicodeWordPattern(pattern);
+      translated = translated.replace(safePattern, (match) => matchCase(match, replacement));
     }
 
     return translated === core ? raw : `${lead}${translated}${trail}`;

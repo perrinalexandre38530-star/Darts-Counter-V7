@@ -6,6 +6,7 @@ import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
 import Section from "../../components/Section";
 import RunningPlanView from "./RunningPlanView";
+import RunningGoalView from "./RunningGoalView";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { awenaVoice } from "../../awena/AwenaVoice";
 import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPlanSession, type RunningPlanState } from "../../activity/runningTraining";
@@ -13,7 +14,7 @@ import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGa
 import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
 import type { ActivityLap, ActivityRecord, GeoPoint } from "../../activity/activityTypes";
-type View = "setup" | "record" | "history" | "detail" | "records" | "plan";
+type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
 type SetupTab = "quick" | "training" | "pacer" | "custom";
 type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
 type WorkoutStep = {
@@ -128,7 +129,7 @@ export default function RunningModule({ go, params }: Props) {
     const lang = String(langApi?.lang || "fr").toLowerCase();
     const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
     const textSoft = (theme as any)?.textSoft || "#a8a8b3";
-    const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : params?.runningView === "plan" ? "plan" : "setup";
+    const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : params?.runningView === "plan" ? "plan" : params?.runningView === "goal" ? "goal" : "setup";
     const initialPreset = String(params?.runningPresetId || (params?.runningTargetM ? "distance" : "free"));
     const [view, setView] = React.useState<View>(initialView);
     const [setupTab, setSetupTab] = React.useState<SetupTab>(initialPreset === "pacer" ? "pacer" : initialPreset === "custom" ? "custom" : ["easy", "tempo", "intervals", "long", "recovery"].includes(initialPreset) ? "training" : "quick");
@@ -473,6 +474,10 @@ export default function RunningModule({ go, params }: Props) {
     if (view === "plan") {
         return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.plan} subtitle={lang === "fr" ? "Construis ta progression semaine après semaine" : lang === "es" ? "Construye tu progresión semana a semana" : "Build progress week by week"} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/><div style={{ marginTop: 10 }}><RunningPlanView activities={activities} lang={lang} accent={accent} textSoft={textSoft} onStart={startPlanSession}/></div></div>;
     }
+    if (view === "goal") {
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={lang === "fr" ? "OBJECTIF DE COURSE" : lang === "es" ? "OBJETIVO DE CARRERA" : "RACE GOAL"} subtitle={lang === "fr" ? "Date · chrono cible · allure · prédiction" : lang === "es" ? "Fecha · tiempo objetivo · ritmo · predicción" : "Date · target time · pace · prediction"} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><div style={{ marginTop: 10 }}><RunningGoalView stats={stats} lang={lang} accent={accent} textSoft={textSoft}/></div></div>;
+    }
+
     if (view === "records") {
         const records = [{ label: "400 M", value: stats.best400m }, { label: "1 KM", value: stats.best1k }, { label: "1 MILE", value: stats.bestMile }, { label: "5 KM", value: stats.best5k }, { label: "10 KM", value: stats.best10k }, { label: "21.1 KM", value: stats.bestHalf }, { label: "42.2 KM", value: stats.bestMarathon }];
         return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.records} subtitle={copy.bestEfforts} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
