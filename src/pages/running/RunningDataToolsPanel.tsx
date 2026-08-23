@@ -6,6 +6,7 @@ import { downloadGpx, parseRunningImport } from "../../activity/runningInterop";
 import { loadRunningPrivacyPrefs, saveRunningPrivacyPrefs, type RunningPrivacyPrefs, type RunningPrivacyRadiusM } from "../../activity/runningPrivacy";
 import { upsertRunningRoute } from "../../activity/runningRoutes";
 import type { ActivityRecord } from "../../activity/activityTypes";
+import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 
 type Props = {
   activities: ActivityRecord[];
@@ -13,9 +14,10 @@ type Props = {
   accent: string;
   textSoft: string;
   onActivitiesChanged: () => void | Promise<void>;
+  selectedSport?: OutdoorPerformanceSport;
 };
 
-export default function RunningDataToolsPanel({ activities, lang, accent, textSoft, onActivitiesChanged }: Props) {
+export default function RunningDataToolsPanel({ activities, lang, accent, textSoft, onActivitiesChanged, selectedSport = "running" }: Props) {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState("");
@@ -78,10 +80,12 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
       if (file.size > 12_000_000) throw new Error("12 Mo max");
       const result = parseRunningImport(await file.text(), file.name);
       if (result.kind === "activity") {
+        result.activity.sport = selectedSport;
         await saveActivity(result.activity);
         await onActivitiesChanged();
         setStatus(`${copy.importedActivity} · ${formatDistance(result.activity.distanceM)} · ${formatDuration(result.activity.elapsedMs)}${result.warnings.length ? ` · ${result.warnings.join(" ")}` : ""}`);
       } else {
+        result.route.sport = selectedSport;
         upsertRunningRoute(result.route);
         setStatus(`${copy.importedRoute} · ${formatDistance(result.route.distanceM)}${result.warnings.length ? ` · ${result.warnings.join(" ")}` : ""}`);
       }

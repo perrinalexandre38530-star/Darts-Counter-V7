@@ -1,4 +1,4 @@
-export type ActivitySport = "running" | "cycling" | "mtb" | "bmx" | "roller" | "walking" | "hiking";
+export type ActivitySport = "running" | "trail" | "cycling" | "mtb" | "bmx" | "roller" | "walking" | "hiking" | "nordic-walking";
 export type ActivitySource = "phone-gps" | "manual" | "health-connect" | "apple-health" | "garmin" | "fit" | "gpx" | "tcx";
 export type ActivityVerification = "declared" | "gps" | "connected" | "certified";
 export type GeoPoint = {
@@ -10,6 +10,18 @@ export type GeoPoint = {
     speed?: number;
     /** Active elapsed time at this GPS point (pauses excluded when available). */
     elapsedMs?: number;
+};
+export type ActivitySensorSample = {
+    timestamp: number;
+    elapsedMs?: number;
+    heartRateBpm?: number;
+    cadenceSpm?: number;
+    sensorSpeedMps?: number;
+    strideLengthM?: number;
+};
+export type ActivitySensorDevice = {
+    kind: "heart-rate" | "running-speed-cadence";
+    name: string;
 };
 export type ActivitySplit = {
     index: number;
@@ -45,7 +57,7 @@ export type ActivityRecord = {
     targetDistanceM?: number | null;
     targetDurationMs?: number | null;
     targetPaceSecPerKm?: number | null;
-    workoutType?: "free" | "distance" | "easy" | "tempo" | "intervals" | "long" | "pacer";
+    workoutType?: "free" | "distance" | "easy" | "tempo" | "intervals" | "long" | "pacer" | "hills";
     manualLaps?: ActivityLap[];
     planId?: string;
     planSessionId?: string;
@@ -59,6 +71,8 @@ export type ActivityRecord = {
     deviceName?: string;
     sourceFileName?: string;
     importedAt?: number;
+    sensorSamples?: ActivitySensorSample[];
+    sensorDevices?: ActivitySensorDevice[];
     createdAt: number;
 };
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";

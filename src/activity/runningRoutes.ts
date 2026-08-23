@@ -1,5 +1,5 @@
 import { haversineMeters, routeDistanceMeters } from "./activityMath";
-import type { ActivityRecord, GeoPoint } from "./activityTypes";
+import type { ActivityRecord, ActivitySport, GeoPoint } from "./activityTypes";
 
 export type RunningRouteTemplate = {
   id: string;
@@ -12,6 +12,7 @@ export type RunningRouteTemplate = {
   createdAt: number;
   source?: "activity" | "gpx" | "tcx";
   sourceFileName?: string;
+  sport?: ActivitySport;
 };
 
 const STORAGE_KEY = "mss-running-routes-v1";
@@ -72,6 +73,7 @@ export function routeTemplateFromActivity(activity: ActivityRecord, name?: strin
     referenceElapsedMs: activity.elapsedMs || Number(normalized[normalized.length - 1]?.elapsedMs || 0),
     createdAt: activity.startedAt || Date.now(),
     source: "activity",
+    sport: activity.sport,
   };
 }
 

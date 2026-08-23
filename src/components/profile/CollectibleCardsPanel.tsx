@@ -17,9 +17,14 @@ import awenaArgent from "../../assets/collectible-cards/awena-argent.webp";
 import awenaPlatine from "../../assets/collectible-cards/awena-platine.webp";
 import awenaOr from "../../assets/collectible-cards/awena-or.webp";
 import awenaDiamant from "../../assets/collectible-cards/awena-diamant.webp";
+import firefighterKaelPresentation from "../../assets/collectible-cards/firefighter-kael-presentation.webp";
+import firefighterKaelBronze from "../../assets/collectible-cards/firefighter-kael-bronze.webp";
+import firefighterKaelArgent from "../../assets/collectible-cards/firefighter-kael-argent.webp";
+import firefighterKaelPlatine from "../../assets/collectible-cards/firefighter-kael-platine.webp";
+import firefighterKaelOr from "../../assets/collectible-cards/firefighter-kael-or.webp";
+import firefighterKaelDiamant from "../../assets/collectible-cards/firefighter-kael-diamant.webp";
 import firefighterLyna from "../../assets/collectible-cards/firefighter-lyna.webp";
 import firefighterZephyr from "../../assets/collectible-cards/firefighter-zephyr.webp";
-import firefighterKael from "../../assets/collectible-cards/firefighter-kael.webp";
 import firefighterBraze from "../../assets/collectible-cards/firefighter-braze.webp";
 import firefighterAero from "../../assets/collectible-cards/firefighter-aero.webp";
 import firefighterMalysia from "../../assets/collectible-cards/firefighter-malysia.webp";
@@ -30,9 +35,14 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_platine: awenaPlatine,
   awena_or: awenaOr,
   awena_diamant: awenaDiamant,
+  firefighter_kael_presentation: firefighterKaelPresentation,
+  firefighter_kael_bronze: firefighterKaelBronze,
+  firefighter_kael_argent: firefighterKaelArgent,
+  firefighter_kael_platine: firefighterKaelPlatine,
+  firefighter_kael_or: firefighterKaelOr,
+  firefighter_kael_diamant: firefighterKaelDiamant,
   firefighter_lyna: firefighterLyna,
   firefighter_zephyr: firefighterZephyr,
-  firefighter_kael: firefighterKael,
   firefighter_braze: firefighterBraze,
   firefighter_aero: firefighterAero,
   firefighter_malysia: firefighterMalysia,
@@ -50,6 +60,8 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterCriticalExtinguishes: 0,
   firefighterCanadairs: 0,
   firefighterMatches: 0,
+  firefighterKaelMatches: 0,
+  firefighterKaelWins: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {

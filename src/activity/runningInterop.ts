@@ -1,5 +1,5 @@
 import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, movingTimeMs, routeDistanceMeters } from "./activityMath";
-import type { ActivityRecord, ActivitySource, GeoPoint } from "./activityTypes";
+import type { ActivityRecord, ActivitySensorDevice, ActivitySensorSample, ActivitySource, GeoPoint } from "./activityTypes";
 import type { RunningRouteTemplate } from "./runningRoutes";
 import { privacyTrimRoute, type RunningPrivacyPrefs } from "./runningPrivacy";
 
@@ -54,6 +54,53 @@ function parseTcx(xml: string): GeoPoint[] {
     points.push({ lat: Number(lat), lon: Number(lon), altitude, timestamp: timestamp || 0 });
   }
   return points;
+}
+
+
+function sensorValue(body: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
+    const value = numberFrom(pattern.exec(body)?.[1]);
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function parseImportedSensorSamples(xml: string, ext: "gpx" | "tcx", startedAt: number): { samples: ActivitySensorSample[]; devices: ActivitySensorDevice[] } {
+  const samples: ActivitySensorSample[] = [];
+  let hasHeartRate = false;
+  let hasCadence = false;
+  let hasSpeed = false;
+  const re = ext === "tcx"
+    ? /<(?:[\w.-]+:)?Trackpoint\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?Trackpoint>/gi
+    : /<(?:[\w.-]+:)?trkpt\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?trkpt>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(xml))) {
+    const body = match[1] || "";
+    const timestamp = timeFrom(/<(?:[\w.-]+:)?(?:Time|time)\b[^>]*>([^<]+)<\//i.exec(body)?.[1]);
+    if (!timestamp) continue;
+    const heartRateBpm = ext === "tcx"
+      ? sensorValue(body, [/<(?:[\w.-]+:)?HeartRateBpm\b[^>]*>[\s\S]*?<(?:[\w.-]+:)?Value\b[^>]*>([^<]+)<\//i, /<(?:[\w.-]+:)?hr\b[^>]*>([^<]+)<\//i])
+      : sensorValue(body, [/<(?:[\w.-]+:)?hr\b[^>]*>([^<]+)<\//i]);
+    const cadenceSpm = ext === "tcx"
+      ? sensorValue(body, [/<(?:[\w.-]+:)?Cadence\b[^>]*>([^<]+)<\//i, /<(?:[\w.-]+:)?RunCadence\b[^>]*>([^<]+)<\//i])
+      : sensorValue(body, [/<(?:[\w.-]+:)?cad\b[^>]*>([^<]+)<\//i, /<(?:[\w.-]+:)?cadence\b[^>]*>([^<]+)<\//i]);
+    const sensorSpeedMps = sensorValue(body, [/<(?:[\w.-]+:)?Speed\b[^>]*>([^<]+)<\//i, /<(?:[\w.-]+:)?speed\b[^>]*>([^<]+)<\//i]);
+    if (!Number.isFinite(heartRateBpm) && !Number.isFinite(cadenceSpm) && !Number.isFinite(sensorSpeedMps)) continue;
+    if (Number.isFinite(heartRateBpm)) hasHeartRate = true;
+    if (Number.isFinite(cadenceSpm)) hasCadence = true;
+    if (Number.isFinite(sensorSpeedMps)) hasSpeed = true;
+    samples.push({
+      timestamp,
+      elapsedMs: Math.max(0, timestamp - startedAt),
+      heartRateBpm,
+      cadenceSpm,
+      sensorSpeedMps,
+    });
+  }
+  const devices: ActivitySensorDevice[] = [];
+  if (hasHeartRate) devices.push({ kind: "heart-rate", name: `${ext.toUpperCase()} · Cardio` });
+  if (hasCadence || hasSpeed) devices.push({ kind: "running-speed-cadence", name: `${ext.toUpperCase()} · Cadence/Vitesse` });
+  return { samples, devices };
 }
 
 function normalizeTimedPoints(points: GeoPoint[]): { points: GeoPoint[]; timed: boolean; startedAt: number; endedAt: number } {
@@ -116,6 +163,7 @@ export function parseRunningImport(text: string, fileName: string): RunningImpor
   }
 
   const elapsedMs = Math.max(1, normalized.endedAt - normalized.startedAt);
+  const importedSensors = parseImportedSensorSamples(xml, ext, normalized.startedAt);
   const activity: ActivityRecord = {
     id: makeId(`import_${ext}`),
     sport: "running",
@@ -135,6 +183,8 @@ export function parseRunningImport(text: string, fileName: string): RunningImpor
     workoutType: "free",
     deviceName: ext.toUpperCase(),
     sourceFileName: fileName,
+    sensorSamples: importedSensors.samples.length ? importedSensors.samples : undefined,
+    sensorDevices: importedSensors.devices.length ? importedSensors.devices : undefined,
     importedAt: Date.now(),
     createdAt: Date.now(),
   };

@@ -8,9 +8,14 @@ export type CollectibleCardId =
   | "awena_platine"
   | "awena_or"
   | "awena_diamant"
+  | "firefighter_kael_presentation"
+  | "firefighter_kael_bronze"
+  | "firefighter_kael_argent"
+  | "firefighter_kael_platine"
+  | "firefighter_kael_or"
+  | "firefighter_kael_diamant"
   | "firefighter_lyna"
   | "firefighter_zephyr"
-  | "firefighter_kael"
   | "firefighter_braze"
   | "firefighter_aero"
   | "firefighter_malysia";
@@ -24,7 +29,9 @@ export type CollectibleMetricKey =
   | "firefighterWins"
   | "firefighterCriticalExtinguishes"
   | "firefighterCanadairs"
-  | "firefighterMatches";
+  | "firefighterMatches"
+  | "firefighterKaelMatches"
+  | "firefighterKaelWins";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -70,8 +77,23 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_zephyr", collection: "firefighter", name: "ZÉPHYR", accent: "#4bc7ff", subtitle: { fr: "Experte météo & vent", en: "Weather & wind expert", es: "Experta en clima y viento" }, requirements: [
     { metric: "firefighterWindMatches", target: 10, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
   ] },
-  { id: "firefighter_kael", collection: "firefighter", name: "KAËL", accent: "#ffb23f", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
-    { metric: "firefighterWins", target: 10, label: { fr: "Victoires Firefighter", en: "Firefighter wins", es: "Victorias Firefighter" } },
+  { id: "firefighter_kael_presentation", collection: "firefighter", name: "KAËL", accent: "#ff563f", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelMatches", target: 1, label: { fr: "Mission terminée avec Kaël", en: "Completed mission with Kaël", es: "Misión completada con Kaël" } },
+  ] },
+  { id: "firefighter_kael_bronze", collection: "firefighter", name: "KAËL · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelWins", target: 3, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
+  ] },
+  { id: "firefighter_kael_argent", collection: "firefighter", name: "KAËL · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelWins", target: 10, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
+  ] },
+  { id: "firefighter_kael_platine", collection: "firefighter", name: "KAËL · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelWins", target: 25, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
+  ] },
+  { id: "firefighter_kael_or", collection: "firefighter", name: "KAËL · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelWins", target: 50, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
+  ] },
+  { id: "firefighter_kael_diamant", collection: "firefighter", name: "KAËL · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
+    { metric: "firefighterKaelWins", target: 100, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
   ] },
   { id: "firefighter_braze", collection: "firefighter", name: "BRAZE", accent: "#ff5140", subtitle: { fr: "Attaque lourde", en: "Heavy attack", es: "Ataque pesado" }, requirements: [
     { metric: "firefighterCriticalExtinguishes", target: 25, label: { fr: "Feux critiques éteints", en: "Critical fires extinguished", es: "Incendios críticos extinguidos" } },
@@ -85,7 +107,7 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -162,6 +184,27 @@ function countCanadairs(row: any, profileId: string): number {
   }, 0);
 }
 
+function rowPlayerMatchesCharacter(player: any, characterId: string): boolean {
+  const target = String(characterId || "").trim().toLowerCase();
+  if (!target) return false;
+  const rawId = String(player?.characterId || player?.officialCharacterId || player?.botCharacterId || "").trim().toLowerCase();
+  if (rawId === target) return true;
+  const playerId = String(player?.id || player?.playerId || player?.profileId || "").trim().toLowerCase();
+  if (playerId === `bot_ff_${target}`) return true;
+  const name = String(player?.name || "").trim().toLowerCase();
+  return name === target || name.normalize('NFD').replace(/[̀-ͯ]/g, '') === target.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function rowPlayersForCharacter(row: any, characterId: string): any[] {
+  const lists = [row?.players, row?.summary?.players, row?.summary?.perPlayer, row?.payload?.players, row?.payload?.stats?.players];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    const found = list.filter((player: any) => rowPlayerMatchesCharacter(player, characterId));
+    if (found.length) return found;
+  }
+  return [];
+}
+
 export async function computeCollectibleMetrics(profileIdInput: string): Promise<CollectibleMetrics> {
   const profileId = String(profileIdInput || "").trim();
   const metrics = emptyMetrics();
@@ -192,6 +235,14 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
     if (row?.won === true || player?.win === true || player?.winner === true) metrics.firefighterWins += 1;
     metrics.firefighterCriticalExtinguishes += countCriticalExtinguishes(row, profileId);
     metrics.firefighterCanadairs += countCanadairs(row, profileId);
+
+    const kaelPlayers = rowPlayersForCharacter(row, "kael");
+    if (kaelPlayers.length) {
+      metrics.firefighterKaelMatches += 1;
+      if (kaelPlayers.some((entry: any) => entry?.win === true || entry?.winner === true || row?.won === true)) {
+        metrics.firefighterKaelWins += 1;
+      }
+    }
   }
 
   return metrics;
