@@ -3,18 +3,17 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
-import runningLogo from "../../assets/games/logo-running-performance.png";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { listActivities } from "../../activity/activityStore";
 import { buildRunningStats } from "../../activity/runningInsights";
 import { formatDistance, formatDuration, formatPace } from "../../activity/activityMath";
 import type { ActivityRecord } from "../../activity/activityTypes";
-import { activePlanWeekIndex, buildTrainingStatus, loadRunningPlan, nextPlanSession, paceZonesFromStats, planCompletionPct, planDurationWeeks, racePredictions } from "../../activity/runningTraining";
+import { activePlanWeekIndex, buildTrainingStatus, loadRunningPlan, nextPlanSession, planCompletionPct, planDurationWeeks } from "../../activity/runningTraining";
 import { buildRunningRaceGoalSnapshot, distanceGoalLabel, loadRunningRaceGoal } from "../../activity/runningGoals";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 const PAGE_MAX_WIDTH = 620;
-const sectionWrap: React.CSSProperties = { width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 10 };
+const sectionWrap: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
 const GOAL_KEY = "mss-running-weekly-goal-km-v1";
 type Props = {
     store?: any;
@@ -78,17 +77,17 @@ export default function RunningHome({ store, go }: Props) {
     const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
     const { wrapRef, textRef, scale } = useAutoFitTitle([accent, lang]);
     const copy = pickLegacyLocalizedValue(lang, {
-        welcome: "Bienvenue", title: "RUNNING PERFORMANCE", beta: "BETA WEB / PWA", overview: "Vue globale Running", distance: "Distance", sessions: "Sorties", best: "Meilleure allure", climb: "D+ cumulé", longest: "Plus longue", time: "Temps total",
+        welcome: "Bienvenue", title: "RUNNING PERF", overview: "Vue globale Running", distance: "Distance", sessions: "Sorties", best: "Meilleure allure", climb: "D+ cumulé", longest: "Plus longue", time: "Temps total",
         start: "LANCE TA SORTIE", free: "COURSE LIBRE", freeSub: "GPS · carte · splits · tours", easy: "EASY RUN", easySub: "30 min faciles · endurance", intervals: "INTERVALLES", intervalsSub: "6 × 1 min rapide / 1 min récup", pacer: "PACER", pacerSub: "Objectif d’allure · avance / retard", five: "5 KM", fiveSub: "Course objectif · meilleur effort",
         coach: "COACH RUNNING", weekGoal: "OBJECTIF HEBDO", thisWeek: "Cette semaine", previous: "vs semaine précédente", streak: "Série active", weeks: "semaines", days: "jours", plan: "RECOMMANDATION", open: "OUVRIR",
         trend: "RYTHME DES 7 DERNIERS JOURS", month: "VOLUME SUR 4 SEMAINES", records: "MEILLEURS EFFORTS", recent: "DERNIÈRES SORTIES", allRuns: "VOIR TOUT", challenges: "CHALLENGES", threeRuns: "3 sorties dans la semaine", goalChallenge: "Atteindre l’objectif distance", devices: "MONTRES & CAPTEURS", devicesSub: "BLE cardio/cadence/FTMS · GPS Android natif · Synchro Health Connect", soon: "BIENTÔT", trainingStatus: "ÉTAT D’ENTRAÎNEMENT", freshness: "Fraîcheur estimée", load7: "Charge 7 jours", load28: "Base hebdo 28 j", balanced: "ÉQUILIBRÉE", high: "ÉLEVÉE", low: "FAIBLE", indicative: "Indicateur basé sur tes sorties et ton ressenti, pas une mesure médicale.", program: "PROGRAMME ACTIF", noProgram: "Aucun programme actif", createProgram: "CRÉER UN PLAN", nextWorkout: "Prochaine séance", zones: "ZONES D’ALLURE", predictions: "PRÉDICTIONS DE COURSE", basedOn: "Basé sur tes meilleurs efforts GPS",
     }, {
-        welcome: "Welcome", title: "RUNNING PERFORMANCE", beta: "WEB / PWA BETA", overview: "Running overview", distance: "Distance", sessions: "Runs", best: "Best pace", climb: "Total climb", longest: "Longest", time: "Total time",
+        welcome: "Welcome", title: "RUNNING PERF", overview: "Running overview", distance: "Distance", sessions: "Runs", best: "Best pace", climb: "Total climb", longest: "Longest", time: "Total time",
         start: "START YOUR RUN", free: "FREE RUN", freeSub: "GPS · map · splits · laps", easy: "EASY RUN", easySub: "30 easy min · aerobic base", intervals: "INTERVALS", intervalsSub: "6 × 1 min fast / 1 min easy", pacer: "PACER", pacerSub: "Target pace · ahead / behind", five: "5 KM", fiveSub: "Goal race · best effort",
         coach: "RUNNING COACH", weekGoal: "WEEKLY GOAL", thisWeek: "This week", previous: "vs previous week", streak: "Active streak", weeks: "weeks", days: "days", plan: "RECOMMENDATION", open: "OPEN",
         trend: "LAST 7 DAYS", month: "4-WEEK VOLUME", records: "BEST EFFORTS", recent: "RECENT RUNS", allRuns: "VIEW ALL", challenges: "CHALLENGES", threeRuns: "3 runs this week", goalChallenge: "Complete distance goal", devices: "WATCHES & SENSORS", devicesSub: "BLE HR/cadence/FTMS · native Android GPS · Health Connect sync", soon: "SOON", trainingStatus: "TRAINING STATUS", freshness: "Estimated freshness", load7: "7-day load", load28: "28-day weekly base", balanced: "BALANCED", high: "HIGH", low: "LOW", indicative: "Indicator based on your runs and feedback, not a medical measurement.", program: "ACTIVE PLAN", noProgram: "No active plan", createProgram: "CREATE PLAN", nextWorkout: "Next workout", zones: "PACE ZONES", predictions: "RACE PREDICTIONS", basedOn: "Based on your GPS best efforts",
     }, {
-        welcome: "Bienvenido", title: "RUNNING PERFORMANCE", beta: "BETA WEB / PWA", overview: "Vista global Running", distance: "Distancia", sessions: "Carreras", best: "Mejor ritmo", climb: "D+ total", longest: "Más larga", time: "Tiempo total",
+        welcome: "Bienvenido", title: "RUNNING PERF", overview: "Vista global Running", distance: "Distancia", sessions: "Carreras", best: "Mejor ritmo", climb: "D+ total", longest: "Más larga", time: "Tiempo total",
         start: "INICIA TU CARRERA", free: "CARRERA LIBRE", freeSub: "GPS · mapa · splits · vueltas", easy: "EASY RUN", easySub: "30 min suaves · resistencia", intervals: "INTERVALOS", intervalsSub: "6 × 1 min rápido / 1 min suave", pacer: "PACER", pacerSub: "Ritmo objetivo · adelanto / retraso", five: "5 KM", fiveSub: "Carrera objetivo · mejor esfuerzo",
         coach: "COACH RUNNING", weekGoal: "OBJETIVO SEMANAL", thisWeek: "Esta semana", previous: "vs semana anterior", streak: "Racha activa", weeks: "semanas", days: "días", plan: "RECOMENDACIÓN", open: "ABRIR",
         trend: "RITMO DE LOS ÚLTIMOS 7 DÍAS", month: "VOLUMEN EN 4 SEMANAS", records: "MEJORES ESFUERZOS", recent: "ÚLTIMAS CARRERAS", allRuns: "VER TODO", challenges: "RETOS", threeRuns: "3 carreras esta semana", goalChallenge: "Completar el objetivo de distancia", devices: "RELOJES Y SENSORES", devicesSub: "BLE cardio/cadencia/FTMS · GPS Android nativo · Sincronización Health Connect", soon: "PRONTO", trainingStatus: "ESTADO DE ENTRENAMIENTO", freshness: "Frescura estimada", load7: "Carga 7 días", load28: "Base semanal 28 d", balanced: "EQUILIBRADA", high: "ALTA", low: "BAJA", indicative: "Indicador basado en tus carreras y sensaciones, no es una medida médica.", program: "PLAN ACTIVO", noProgram: "Sin plan activo", createProgram: "CREAR PLAN", nextWorkout: "Próxima sesión", zones: "ZONAS DE RITMO", predictions: "PREDICCIONES DE CARRERA", basedOn: "Basado en tus mejores esfuerzos GPS",
@@ -110,8 +109,6 @@ export default function RunningHome({ store, go }: Props) {
     }, [activitySport, copy.easy, copy.easySub, copy.intervals, copy.intervalsSub, lang, stats.lastRun, stats.sessions, stats.weekSessions]);
     const trainingStatus = useMemo(() => buildTrainingStatus(activities), [activities]);
     const raceGoalSnapshot = useMemo(() => raceGoal ? buildRunningRaceGoalSnapshot(raceGoal, stats) : null, [raceGoal, stats]);
-    const paceZones = useMemo(() => paceZonesFromStats(stats), [stats]);
-    const predictions = useMemo(() => racePredictions(stats), [stats]);
     const planCompletion = activePlan ? planCompletionPct(activePlan, activities) : 0;
     const currentPlanWeek = activePlan ? activePlanWeekIndex(activePlan) + 1 : 0;
     const nextWorkout = activePlan ? nextPlanSession(activePlan, activities) : null;
@@ -139,11 +136,17 @@ export default function RunningHome({ store, go }: Props) {
         setWeeklyGoalKm(next);
         localStorage.setItem(GOAL_KEY, String(next));
     };
-    return <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 96 }}>
-    <div style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 8 }}><div style={{ ...sectionWrap, borderRadius: 20, border: `1px solid ${(theme as any)?.cardSoft || "rgba(255,255,255,.14)"}`, background: `radial-gradient(circle at 50% -15%,${accent}18,rgba(0,0,0,.24) 45%,rgba(0,0,0,.28))`, boxShadow: "0 18px 70px rgba(0,0,0,.55)", padding: "11px 14px 14px", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `linear-gradient(110deg,transparent 15%,${accent}08 48%,transparent 80%)` }}/><div style={{ position: "relative", display: "grid", justifyItems: "center" }}><img src={runningLogo} alt="Running Performance" style={{ width: 94, height: 94, objectFit: "contain", filter: `drop-shadow(0 0 18px ${accent}33)`, marginBottom: 2 }}/><div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap", marginBottom: 7 }}><span style={pill(theme)}>👋 {copy.welcome}</span><span style={{ ...pill(theme), color: accent, borderColor: `${accent}66` }}>● {copy.beta}</span></div>
-      <div ref={wrapRef} style={{ width: "100%", display: "flex", justifyContent: "center", overflow: "hidden" }}><div ref={textRef} style={{ transform: `scale(${scale})`, transformOrigin: "center", fontSize: "clamp(23px,7vw,31px)", fontWeight: 1000, letterSpacing: "clamp(.5px,.75vw,2.2px)", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite" }}>{copy.title}</div></div></div>
-    </div></div>
+    return <div style={{ minHeight: "100%", background: (theme as any).pageBackground || (theme as any).bg || "#05060C", color: "#FFFFFF", display: "flex", justifyContent: "center", padding: "16px 12px 96px", boxSizing: "border-box" }}>
+    <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
+      <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
+      <div style={{ borderRadius: 28, padding: 18, marginBottom: 16, background: "linear-gradient(135deg, rgba(8,10,20,0.98), rgba(14,18,34,0.98))", border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,0.10)"}`, boxShadow: "0 20px 40px rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${accent}`, background: "linear-gradient(135deg, rgba(0,0,0,0.9), rgba(255,255,255,0.06))", marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.1, textTransform: "uppercase", color: accent }}>{copy.welcome}</span>
+        </div>
+        <div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}>
+          <div ref={textRef} style={{ width: "fit-content", marginInline: "auto", fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg, ${accent}, #ffffff, ${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "center" }}>{copy.title}</div>
+        </div>
+      </div>
 
     <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>
 
@@ -197,21 +200,14 @@ export default function RunningHome({ store, go }: Props) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Challenge label={copy.goalChallenge} value={`${Math.round(goalPct)}%`} progress={goalPct} accent={accent}/><Challenge label={copy.threeRuns} value={`${stats.weekSessions}/3`} progress={sessionsPct} accent={accent}/></div>
     </div></div>
 
-    <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><SectionTitle text={copy.trend} accent={accent}/><Bars rows={stats.sevenDays.map((d) => ({ label: d.label, value: d.distanceM / 1000 }))} accent={accent} suffix="km"/></div></div>
-    <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><SectionTitle text={copy.month} accent={accent}/><Bars rows={stats.fourWeeks.map((d) => ({ label: d.label, value: d.distanceM / 1000 }))} accent={accent} suffix="km" tall/></div></div>
-
-    {activitySport === "running" && paceZones.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><SectionTitle text={copy.zones} accent={accent}/><div style={{ display: "grid", gap: 6 }}>{paceZones.map((zone) => <PaceZoneRow key={zone.id} zone={zone} accent={accent} textSoft={textSoft}/>)}</div></div></div> : null}
-
-    {activitySport === "running" && predictions.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><SectionTitle text={copy.predictions} accent={accent}/><span style={{ color: textSoft, fontSize: 8.5 }}>{copy.basedOn}</span></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>{predictions.map((prediction) => <PredictionMini key={prediction.distanceM} distanceM={prediction.distanceM} predictedMs={prediction.predictedMs} accent={accent}/>)}</div></div></div> : null}
-
-    <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><SectionTitle text={copy.records} accent={accent}/><button className="btn" style={{ minHeight: 34, fontSize: 9.5 }} onClick={() => go("stats")}>{copy.open}</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 8 }}><RecordMini label="1 KM" value={stats.best1k ? formatDuration(stats.best1k.elapsedMs) : "—"} accent={accent}/><RecordMini label="5 KM" value={stats.best5k ? formatDuration(stats.best5k.elapsedMs) : "—"} accent={accent}/><RecordMini label="10 KM" value={stats.best10k ? formatDuration(stats.best10k.elapsedMs) : "—"} accent={accent}/></div></div></div>
+    <div style={{ ...sectionWrap, marginTop: 12 }}><button type="button" onClick={() => go("stats")} className="card" style={{ width: "100%", display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 11, alignItems: "center", padding: 13, color: "inherit", textAlign: "left", cursor: "pointer", borderColor: `${accent}32`, background: `linear-gradient(145deg,${accent}0c,rgba(255,255,255,.02))` }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>📊</div><div><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .8 }}>{pickLegacyLocalizedText(lang, "ANALYSES & STATISTIQUES", "ANALYSIS & STATS", "ANÁLISIS Y ESTADÍSTICAS")}</div><div style={{ marginTop: 3, fontSize: 10, color: textSoft, lineHeight: 1.35 }}>{pickLegacyLocalizedText(lang, "Courbes, zones d’allure, prédictions, records, segments et historique sont regroupés dans Stats.", "Charts, pace zones, predictions, records, segments and history are grouped in Stats.", "Gráficas, zonas de ritmo, predicciones, récords, segmentos e historial están agrupados en Stats.")}</div></div><b style={{ color: accent, fontSize: 18 }}>›</b></button></div>
 
     {activities.length ? <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ padding: 14 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><SectionTitle text={copy.recent} accent={accent}/><button className="btn" style={{ minHeight: 34, fontSize: 9.5 }} onClick={() => go("stats")}>{copy.allRuns}</button></div><div style={{ display: "grid", gap: 7, marginTop: 8 }}>{activities.slice(0, 3).map((a) => <RecentRun key={a.id} activity={a} accent={accent} textSoft={textSoft}/>)}</div></div></div> : null}
 
     <div style={{ ...sectionWrap, marginTop: 12 }}><div className="card" style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 12, alignItems: "center", padding: 13, opacity: .86 }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}16`, border: `1px solid ${accent}38`, fontSize: 22 }}>⌚</div><div><div style={{ fontWeight: 1000, fontSize: 11 }}>{copy.devices}</div><div style={{ fontSize: 10, color: textSoft, marginTop: 3, lineHeight: 1.35 }}>{copy.devicesSub}</div></div><button className="btn" onClick={() => go("stats")} style={{ minHeight: 32, fontSize: 8, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>{pickLegacyLocalizedText(lang, "OUVRIR", "OPEN", "ABRIR")}</button></div></div>
+    </div>
   </div>;
 }
-function pill(theme: any): React.CSSProperties { return { display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 999, border: `1px solid ${theme?.cardSoft || "rgba(255,255,255,.13)"}`, background: "rgba(0,0,0,.25)", color: theme?.textSoft || "#ddd", fontSize: 10, fontWeight: 900 }; }
 function SectionTitle({ text, accent }: {
     text: string;
     accent: string;
@@ -234,23 +230,7 @@ function Challenge({ label, value, progress, accent }: {
     progress: number;
     accent: string;
 }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontSize: 9.5 }}><span style={{ opacity: .72 }}>{label}</span><b style={{ color: accent }}>{value}</b></div><Progress value={progress} accent={accent}/></div>; }
-function Bars({ rows, accent, suffix, tall = false }: {
-    rows: Array<{
-        label: string;
-        value: number;
-    }>;
-    accent: string;
-    suffix: string;
-    tall?: boolean;
-}) { const max = Math.max(1, ...rows.map((r) => r.value)); return <div style={{ display: "grid", gridTemplateColumns: `repeat(${rows.length},minmax(0,1fr))`, gap: 7, alignItems: "end", minHeight: tall ? 122 : 104, paddingTop: 6 }}>{rows.map((r) => <div key={r.label} style={{ display: "grid", gridTemplateRows: "1fr auto auto", gap: 4, height: "100%", alignItems: "end", textAlign: "center" }}><div style={{ display: "flex", alignItems: "end", height: tall ? 80 : 64, borderRadius: 8, background: "rgba(255,255,255,.025)", overflow: "hidden" }}><div style={{ width: "100%", height: `${Math.max(r.value > 0 ? 8 : 2, r.value / max * 100)}%`, background: `linear-gradient(180deg,${accent},${accent}66)`, borderRadius: "7px 7px 3px 3px", boxShadow: r.value ? `0 0 14px ${accent}30` : "none" }}/></div><b style={{ fontSize: 8.5 }}>{r.value ? r.value.toFixed(1) : "—"}<small style={{ fontSize: 6.5, opacity: .55 }}> {r.value ? suffix : ""}</small></b><span style={{ fontSize: 8, opacity: .55 }}>{r.label}</span></div>)}</div>; }
 function TrainingKpi({ label, value, accent }: { label: string; value: string; accent: string }) { return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)", textAlign: "center" }}><div style={{ fontSize: 8.2, opacity: .58, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000, color: accent }}>{value}</div></div>; }
-function PaceZoneRow({ zone, accent, textSoft }: { zone: { label: string; purpose: string; fastSecPerKm: number; slowSecPerKm: number }; accent: string; textSoft: string }) { return <div style={{ display: "grid", gridTemplateColumns: "78px 1fr auto", gap: 8, alignItems: "center", padding: "8px 9px", borderRadius: 11, background: "rgba(255,255,255,.022)", border: "1px solid rgba(255,255,255,.055)" }}><b style={{ color: accent, fontSize: 9 }}>{zone.label}</b><span style={{ color: textSoft, fontSize: 8.7 }}>{zone.purpose}</span><b style={{ fontSize: 9.5 }}>{formatPace(zone.fastSecPerKm)}–{formatPace(zone.slowSecPerKm)}<small style={{ fontSize: 7, opacity: .55 }}>/km</small></b></div>; }
-function PredictionMini({ distanceM, predictedMs, accent }: { distanceM: number; predictedMs: number; accent: string }) { const label = Math.abs(distanceM - 21097) < 10 ? "21.1 KM" : Math.abs(distanceM - 42195) < 10 ? "42.2 KM" : `${distanceM / 1000} KM`; return <div style={{ padding: 10, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 8.5, opacity: .6, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 3, color: accent, fontSize: 19, fontWeight: 1000 }}>{formatDuration(predictedMs)}</div></div>; }
-function RecordMini({ label, value, accent }: {
-    label: string;
-    value: string;
-    accent: string;
-}) { return <div style={{ textAlign: "center", borderRadius: 13, padding: "10px 5px", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ fontSize: 9, opacity: .58, fontWeight: 900 }}>{label}</div><div style={{ marginTop: 4, fontSize: 17, fontWeight: 1000, color: value === "—" ? undefined : accent }}>{value}</div></div>; }
 function RecentRun({ activity, accent, textSoft }: {
     activity: ActivityRecord;
     accent: string;
