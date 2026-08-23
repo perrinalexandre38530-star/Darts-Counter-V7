@@ -214,13 +214,32 @@ public class ActivityTrackingService extends Service implements LocationListener
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
         try {
+            Location freshest = null;
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1500L, 1.0f, this);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0.5f, this);
+                freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
             }
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3500L, 4.0f, this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2500L, 2.0f, this);
+                freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER));
             }
+            // A very recent cached fix avoids displaying 0 GPS for several seconds when
+            // Android already has a valid position from Maps / the system location stack.
+            if (isFreshUsableLocation(freshest)) onLocationChanged(freshest);
         } catch (Exception ignored) {}
+    }
+
+    private Location fresherLocation(Location current, Location candidate) {
+        if (candidate == null) return current;
+        if (current == null) return candidate;
+        return candidate.getTime() > current.getTime() ? candidate : current;
+    }
+
+    private boolean isFreshUsableLocation(Location location) {
+        if (location == null) return false;
+        long ageMs = Math.max(0L, System.currentTimeMillis() - location.getTime());
+        if (ageMs > 15000L) return false;
+        return !location.hasAccuracy() || location.getAccuracy() <= 80f;
     }
 
     private void removeLocationUpdates() {

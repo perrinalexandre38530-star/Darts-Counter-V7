@@ -2,6 +2,7 @@ package com.multisportsscoring.app;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 
 import androidx.core.content.ContextCompat;
@@ -43,14 +44,14 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
         JSObject result = ActivityTrackingService.snapshot(false);
         result.put("available", true);
         result.put("platform", "android-native");
-        result.put("locationPermission", getPermissionState("location") == PermissionState.GRANTED ? "granted" : "prompt");
+        result.put("locationPermission", hasFineLocationPermission() ? "granted" : hasLocationPermission() ? "approximate" : "prompt");
         result.put("notificationPermission", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED ? "granted" : "prompt");
         call.resolve(result);
     }
 
     @PluginMethod
     public void requestTrackingPermissions(PluginCall call) {
-        if (getPermissionState("location") != PermissionState.GRANTED) {
+        if (!hasFineLocationPermission()) {
             requestPermissionForAlias("location", call, "locationPermissionCallback");
             return;
         }
@@ -59,8 +60,8 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
 
     @PermissionCallback
     private void locationPermissionCallback(PluginCall call) {
-        if (getPermissionState("location") != PermissionState.GRANTED) {
-            JSObject result = new JSObject(); result.put("granted", false); result.put("location", false); call.resolve(result); return;
+        if (!hasLocationPermission()) {
+            JSObject result = new JSObject(); result.put("granted", false); result.put("location", false); result.put("precise", false); call.resolve(result); return;
         }
         requestNotificationsIfNeeded(call);
     }
@@ -78,15 +79,16 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
 
     private void resolvePermissions(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("granted", getPermissionState("location") == PermissionState.GRANTED);
-        result.put("location", getPermissionState("location") == PermissionState.GRANTED);
+        result.put("granted", hasLocationPermission());
+        result.put("location", hasLocationPermission());
+        result.put("precise", hasFineLocationPermission());
         result.put("notifications", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED);
         call.resolve(result);
     }
 
     @PluginMethod
     public void startTracking(PluginCall call) {
-        if (getPermissionState("location") != PermissionState.GRANTED) {
+        if (!hasLocationPermission()) {
             call.reject("Location permission required", "LOCATION_DENIED"); return;
         }
         String sport = call.getString("sport", "running");
@@ -109,6 +111,15 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
     }
 
     @PluginMethod public void getTrack(PluginCall call) { call.resolve(ActivityTrackingService.snapshot(true)); }
+
+    private boolean hasFineLocationPermission() {
+        return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasLocationPermission() {
+        return hasFineLocationPermission() ||
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
 
     private void sendAction(String action) {
         Intent intent = new Intent(getContext(), ActivityTrackingService.class);
