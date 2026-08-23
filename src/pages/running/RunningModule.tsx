@@ -12,6 +12,8 @@ import { awenaVoice } from "../../awena/AwenaVoice";
 import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPlanSession, type RunningPlanState } from "../../activity/runningTraining";
 import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, formatDistance, formatDuration, formatPace, movingTimeMs, rollingPaceSecPerKm, routeDistanceMeters, shouldAcceptRunningPoint, } from "../../activity/activityMath";
 import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
+import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunningRoutes, removeRunningRoute, routeTemplateFromActivity, upsertRunningRoute, type RunningRouteTemplate } from "../../activity/runningRoutes";
+import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
 import type { ActivityLap, ActivityRecord, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
@@ -156,12 +158,17 @@ export default function RunningModule({ go, params }: Props) {
     const [splitToast, setSplitToast] = React.useState<string | null>(null);
     const [finishBadges, setFinishBadges] = React.useState<string[]>([]);
     const [historyFilter, setHistoryFilter] = React.useState<"all" | "free" | "training" | "pacer">("all");
-    const [customWorkout, setCustomWorkout] = React.useState<RunningCustomWorkoutSpec>(() => ({ warmupMin: 8, workMin: 2, recoveryMin: 1, reps: 6, cooldownMin: 6, title: "SÉANCE PERSONNALISÉE" }));
+    const [customWorkout, setCustomWorkout] = React.useState<RunningCustomWorkoutSpec>(() => params?.runningCustomWorkout ? { ...params.runningCustomWorkout } : ({ warmupMin: 8, workMin: 2, recoveryMin: 1, reps: 6, cooldownMin: 6, title: "SÉANCE PERSONNALISÉE" }));
     const [planId, setPlanId] = React.useState<string | undefined>(() => params?.runningPlanId ? String(params.runningPlanId) : undefined);
     const [planSessionId, setPlanSessionId] = React.useState<string | undefined>(() => params?.runningPlanSessionId ? String(params.runningPlanSessionId) : undefined);
     const [presetOverrideTitle, setPresetOverrideTitle] = React.useState<string | null>(() => params?.runningPlanSessionTitle ? String(params.runningPlanSessionTitle) : null);
     const [presetOverrideDurationMs, setPresetOverrideDurationMs] = React.useState<number | null>(() => Number.isFinite(Number(params?.runningTargetDurationMs)) ? Number(params.runningTargetDurationMs) : null);
     const [audioCoach, setAudioCoach] = React.useState(() => { try { const raw = localStorage.getItem(RUNNING_AUDIO_COACH_KEY); return raw == null ? true : raw === "1"; } catch { return true; } });
+    const [savedRoutes, setSavedRoutes] = React.useState<RunningRouteTemplate[]>(() => loadRunningRoutes());
+    const [selectedRouteId, setSelectedRouteId] = React.useState<string | null>(null);
+    const [ghostEnabled, setGhostEnabled] = React.useState(false);
+    const [shoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
+    const [selectedShoeId, setSelectedShoeId] = React.useState<string>(() => loadRunningShoes().find((shoe) => !shoe.retired)?.id || "");
     const watchIdRef = React.useRef<number | null>(null);
     const pointsRef = React.useRef<GeoPoint[]>([]);
     const startedAtRef = React.useRef(0);
@@ -191,7 +198,17 @@ export default function RunningModule({ go, params }: Props) {
         if (presetOverrideTitle) base = { ...base, fr: presetOverrideTitle, en: presetOverrideTitle, es: presetOverrideTitle };
         return base;
     }, [customWorkout, pacerDistanceM, pacerPace, presetOverrideDurationMs, presetOverrideTitle, selectedPreset, selectedPresetId]);
-    const targetDistanceM = effectivePreset.targetDistanceM ?? null;
+    const routeOptions = React.useMemo(() => {
+        const savedSourceIds = new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean));
+        const recent = activities
+            .filter((activity) => Array.isArray(activity.route) && activity.route.length >= 2 && activity.distanceM >= 300 && !savedSourceIds.has(activity.id))
+            .slice(0, 6)
+            .map((activity) => routeTemplateFromActivity(activity));
+        return [...savedRoutes, ...recent].slice(0, 10);
+    }, [activities, savedRoutes]);
+    const selectedRoute = React.useMemo(() => routeOptions.find((route) => route.id === selectedRouteId) || null, [routeOptions, selectedRouteId]);
+    const favoriteSourceIds = React.useMemo(() => new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean)), [savedRoutes]);
+    const targetDistanceM = selectedRoute && effectivePreset.type === "free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
     const targetDurationMs = effectivePreset.targetDurationMs ?? null;
     const targetPaceSecPerKm = effectivePreset.type === "pacer" ? pacerPace : null;
     React.useEffect(() => { try { localStorage.setItem(RUNNING_AUDIO_COACH_KEY, audioCoach ? "1" : "0"); } catch {} }, [audioCoach]);
@@ -226,6 +243,8 @@ export default function RunningModule({ go, params }: Props) {
     const progress = distanceProgress ?? durationProgress;
     const paceDelta = targetPaceSecPerKm ? targetPaceDeltaMs(liveDistance, elapsedMs, targetPaceSecPerKm) : null;
     const projected = targetDistanceM ? projectedFinishMs(liveDistance, elapsedMs, targetDistanceM) : null;
+    const liveGhostMatch = React.useMemo(() => ghostEnabled ? runningGhostMatch(selectedRoute, points[points.length - 1], liveDistance, elapsedMs) : null, [elapsedMs, ghostEnabled, liveDistance, points, selectedRoute]);
+    const liveGhostDelta = liveGhostMatch?.deltaMs ?? null;
     const targetReached = (targetDistanceM && liveDistance >= targetDistanceM) || (targetDurationMs && elapsedMs >= targetDurationMs);
     React.useEffect(() => {
         if (!isRecording || !phase) return;
@@ -378,7 +397,8 @@ export default function RunningModule({ go, params }: Props) {
         const route = pointsRef.current;
         const distanceM = routeDistanceMeters(route);
         const splits = buildKilometerSplits(route, startedAtRef.current);
-        const record: ActivityRecord = { id: makeId(), sport: "running", source: "phone-gps", verification: "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: movingTimeMs(route) || elapsed, distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps, planId, planSessionId, title: presetLabel(effectivePreset, lang), deviceName: "Phone GPS", createdAt: Date.now() };
+        const finalGhostDelta = ghostEnabled ? runningGhostMatch(selectedRoute, route[route.length - 1], distanceM, elapsed)?.deltaMs ?? null : null;
+        const record: ActivityRecord = { id: makeId(), sport: "running", source: "phone-gps", verification: "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: movingTimeMs(route) || elapsed, distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps, planId, planSessionId, title: presetLabel(effectivePreset, lang), shoeId: selectedShoeId || undefined, routeReferenceId: selectedRoute?.id, ghostEnabled: ghostEnabled && !!selectedRoute, ghostDeltaMs: finalGhostDelta, deviceName: "Phone GPS", createdAt: Date.now() };
         const prior = buildRunningStats(activities, Date.now(), lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB");
         const badges: string[] = [];
         if (!activities.length)
@@ -404,7 +424,7 @@ export default function RunningModule({ go, params }: Props) {
         setSelected(record);
         await refreshActivities();
         setView("detail");
-    }, [activities, copy.consistency, copy.firstRun, copy.insufficient, copy.longestBadge, copy.negative, copy.personalBest, effectivePreset, lang, manualLaps, refreshActivities, stopWatch, targetDistanceM, targetDurationMs, targetPaceSecPerKm, planId, planSessionId]);
+    }, [activities, copy.consistency, copy.firstRun, copy.insufficient, copy.longestBadge, copy.negative, copy.personalBest, effectivePreset, ghostEnabled, lang, manualLaps, planId, planSessionId, refreshActivities, selectedRoute, selectedShoeId, stopWatch, targetDistanceM, targetDurationMs, targetPaceSecPerKm]);
     const removeSelected = React.useCallback(async () => { if (!selected)
         return; await deleteActivity(selected.id); setSelected(null); await refreshActivities(); setView("history"); }, [refreshActivities, selected]);
     const updateSelected = React.useCallback(async (patch: Partial<ActivityRecord>) => {
@@ -421,6 +441,27 @@ export default function RunningModule({ go, params }: Props) {
         setPresetOverrideTitle(null);
         setPresetOverrideDurationMs(null);
     }, []);
+    const selectRoute = React.useCallback((route: RunningRouteTemplate) => {
+        setSelectedRouteId(route.id);
+        setGhostEnabled(true);
+        selectManualPreset("free");
+        setSetupTab("quick");
+    }, [selectManualPreset]);
+    const toggleFavoriteRoute = React.useCallback((route: RunningRouteTemplate) => {
+        const saved = savedRoutes.find((item) => item.id === route.id || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
+        if (saved) {
+            const next = removeRunningRoute(saved.id);
+            setSavedRoutes(next);
+            if (selectedRouteId === saved.id) setSelectedRouteId(null);
+            return;
+        }
+        const source = route.sourceActivityId ? activities.find((activity) => activity.id === route.sourceActivityId) : null;
+        if (!source) return;
+        const favorite = favoriteRouteFromActivity(source, route.name);
+        const next = upsertRunningRoute(favorite);
+        setSavedRoutes(next);
+        if (selectedRouteId === route.id) setSelectedRouteId(favorite.id);
+    }, [activities, savedRoutes, selectedRouteId]);
     const startPlanSession = React.useCallback((plan: RunningPlanState, session: RunningPlanSession) => {
         setPlanId(plan.id);
         setPlanSessionId(session.id);
@@ -456,6 +497,8 @@ export default function RunningModule({ go, params }: Props) {
 
       {targetPaceSecPerKm ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.targetPace} value={`${formatPace(targetPaceSecPerKm)}/km`} accent={accent}/><Metric label={deltaGood ? copy.ahead : copy.behind} value={formatSignedDuration(paceDelta)} accent={deltaGood ? "#71ff9a" : "#ff8a67"}/><Metric label={copy.projected} value={projected ? formatDuration(projected) : "—"} accent={accent}/></div> : null}
 
+      {selectedRoute && ghostEnabled ? <div style={{ marginTop: 10 }}><Section title={lang === "fr" ? "GHOST · SORTIE DE RÉFÉRENCE" : lang === "es" ? "GHOST · CARRERA DE REFERENCIA" : "GHOST · REFERENCE RUN"} right={<span style={{ color: liveGhostMatch?.matchedBy === "position" ? "#71ff9a" : accent, fontSize: 8.5, fontWeight: 1000 }}>{liveGhostMatch?.matchedBy === "position" ? (lang === "fr" ? "SUR LE TRACÉ" : lang === "es" ? "EN RUTA" : "ON ROUTE") : selectedRoute.name}</span>}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={lang === "fr" ? "RÉFÉRENCE" : lang === "es" ? "REFERENCIA" : "REFERENCE"} value={formatDuration(selectedRoute.referenceElapsedMs)} accent={accent}/><MiniStat label={liveGhostDelta != null && liveGhostDelta <= 0 ? copy.ahead : copy.behind} value={liveGhostDelta == null ? "—" : formatDuration(Math.abs(liveGhostDelta))} accent={liveGhostDelta != null && liveGhostDelta <= 0 ? "#71ff9a" : "#ff8a67"}/><MiniStat label={copy.targetDistance} value={formatDistance(selectedRoute.distanceM)} accent={accent}/></div></Section></div> : null}
+
       <div style={{ marginTop: 10 }}><Section title={copy.route} right={<span style={{ fontSize: 9.5, color: textSoft }}>{points.length} GPS</span>}><RouteMap points={points} accent={accent} waiting={copy.waiting}/></Section></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Metric label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/><Metric label={copy.accuracy} value={accuracy ? `±${Math.round(accuracy)} m` : "—"} accent={accent}/><Metric label={copy.moving} value={formatDuration(liveMoving || elapsedMs)} accent={accent}/></div>
       {liveSplits.length ? <div style={{ marginTop: 10 }}><Section title={copy.splits}><SplitTable splits={liveSplits.slice(-4)} accent={accent}/></Section></div> : null}
@@ -466,21 +509,21 @@ export default function RunningModule({ go, params }: Props) {
     }
     if (view === "history") {
         const filtered = activities.filter((a) => historyFilter === "all" || historyFilter === "free" && (!a.workoutType || a.workoutType === "free" || a.workoutType === "distance") || historyFilter === "pacer" && a.workoutType === "pacer" || historyFilter === "training" && ["easy", "tempo", "intervals", "long"].includes(String(a.workoutType)));
-        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.history} subtitle={`${activities.length} ${lang === "fr" ? "sorties" : lang === "es" ? "carreras" : "runs"}`} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.history} subtitle={`${activities.length} ${lang === "fr" ? "sorties" : lang === "es" ? "carreras" : "runs"}`} left={<BackDot onClick={() => go("stats")}/>} right={infoDot}/>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{(["all", "free", "training", "pacer"] as const).map((key, i) => <button key={key} className="btn" onClick={() => setHistoryFilter(key)} style={{ minHeight: 34, padding: "5px 4px", fontSize: 8.5, fontWeight: 1000, borderColor: historyFilter === key ? `${accent}77` : undefined, color: historyFilter === key ? accent : undefined }}>{copy.filters[i]}</button>)}</div>
       {filtered.length ? <div style={{ display: "grid", gap: 9, marginTop: 11 }}>{filtered.map((a) => <HistoryCard key={a.id} activity={a} lang={lang} accent={accent} onClick={() => { setSelected(a); setFinishBadges([]); setView("detail"); }}/>)}</div> : <Empty text={copy.empty} accent={accent}/>}
     </div>;
     }
     if (view === "plan") {
-        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.plan} subtitle={lang === "fr" ? "Construis ta progression semaine après semaine" : lang === "es" ? "Construye tu progresión semana a semana" : "Build progress week by week"} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/><div style={{ marginTop: 10 }}><RunningPlanView activities={activities} lang={lang} accent={accent} textSoft={textSoft} onStart={startPlanSession}/></div></div>;
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.plan} subtitle={lang === "fr" ? "Construis ta progression semaine après semaine" : lang === "es" ? "Construye tu progresión semana a semana" : "Build progress week by week"} left={<BackDot onClick={() => go("running_plan")}/>} right={infoDot}/><div style={{ marginTop: 10 }}><RunningPlanView activities={activities} lang={lang} accent={accent} textSoft={textSoft} onStart={startPlanSession}/></div></div>;
     }
     if (view === "goal") {
-        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={lang === "fr" ? "OBJECTIF DE COURSE" : lang === "es" ? "OBJETIVO DE CARRERA" : "RACE GOAL"} subtitle={lang === "fr" ? "Date · chrono cible · allure · prédiction" : lang === "es" ? "Fecha · tiempo objetivo · ritmo · predicción" : "Date · target time · pace · prediction"} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><div style={{ marginTop: 10 }}><RunningGoalView stats={stats} lang={lang} accent={accent} textSoft={textSoft}/></div></div>;
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={lang === "fr" ? "OBJECTIF DE COURSE" : lang === "es" ? "OBJETIVO DE CARRERA" : "RACE GOAL"} subtitle={lang === "fr" ? "Date · chrono cible · allure · prédiction" : lang === "es" ? "Fecha · tiempo objetivo · ritmo · predicción" : "Date · target time · pace · prediction"} left={<BackDot onClick={() => go("running_plan")}/>} right={infoDot}/><div style={{ marginTop: 10 }}><RunningGoalView stats={stats} lang={lang} accent={accent} textSoft={textSoft}/></div></div>;
     }
 
     if (view === "records") {
         const records = [{ label: "400 M", value: stats.best400m }, { label: "1 KM", value: stats.best1k }, { label: "1 MILE", value: stats.bestMile }, { label: "5 KM", value: stats.best5k }, { label: "10 KM", value: stats.best10k }, { label: "21.1 KM", value: stats.bestHalf }, { label: "42.2 KM", value: stats.bestMarathon }];
-        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.records} subtitle={copy.bestEfforts} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.records} subtitle={copy.bestEfforts} left={<BackDot onClick={() => go("stats")}/>} right={infoDot}/>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, margin: "12px 0" }}><MiniStat label={copy.distance} value={formatDistance(stats.totalDistanceM)} accent={accent}/><MiniStat label={copy.longestLabel} value={formatDistance(stats.longestM)} accent={accent}/><MiniStat label={copy.avgPace} value={`${formatPace(stats.bestPaceSecPerKm)}/km`} accent={accent}/></div>
       <div style={{ display: "grid", gap: 10 }}>{records.map((r) => <div className="card" key={r.label} style={{ padding: 14, display: "grid", gridTemplateColumns: "56px 1fr auto", gap: 12, alignItems: "center" }}><div style={{ width: 54, height: 54, display: "grid", placeItems: "center", borderRadius: 17, background: `${accent}14`, border: `1px solid ${accent}35`, color: accent, fontWeight: 1000 }}>{r.label}</div><div><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.personalBest}</div><div style={{ fontSize: 25, fontWeight: 1000, color: r.value ? accent : undefined, marginTop: 2 }}>{r.value ? formatDuration(r.value.elapsedMs) : copy.noRecord}</div></div>{r.value ? <div style={{ textAlign: "right", fontSize: 9.5, color: textSoft }}>{activityDate(r.value.startedAt, lang)}</div> : null}</div>)}</div>
       <div style={{ marginTop: 12 }}><Section title={lang === "fr" ? "PROGRESSION 4 SEMAINES" : lang === "es" ? "PROGRESO 4 SEMANAS" : "4-WEEK PROGRESS"}><Bars rows={stats.fourWeeks.map((w) => ({ label: w.label, value: w.distanceM / 1000 }))} accent={accent}/></Section></div>
@@ -490,19 +533,22 @@ export default function RunningModule({ go, params }: Props) {
         const consistency = splitConsistencyScore(selected.splits);
         const neg = hasNegativeSplit(selected.splits);
         const e1 = bestEffortMs(selected.route, 1000), e5 = bestEffortMs(selected.route, 5000), e10 = bestEffortMs(selected.route, 10000);
+        const selectedShoe = shoes.find((shoe) => shoe.id === selected.shoeId) || null;
+        const savedRoute = savedRoutes.find((route) => route.sourceActivityId === selected.id) || null;
         return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.complete} subtitle={activityDate(selected.startedAt, lang)} left={<BackDot onClick={() => setView("history")}/>} right={infoDot}/>
       <div className="card" style={{ padding: "18px 14px", textAlign: "center", borderColor: `${accent}48`, background: `radial-gradient(circle at 50% 0,${accent}18,rgba(8,10,16,.84) 58%)` }}><div style={{ display: "inline-flex", padding: "6px 10px", borderRadius: 999, border: `1px solid ${accent}55`, color: accent, fontSize: 9.5, fontWeight: 1000 }}>✓ {copy.verified}</div><div style={{ fontSize: "clamp(48px,14vw,72px)", fontWeight: 1000, color: accent, lineHeight: 1.05, marginTop: 12 }}>{formatDistance(selected.distanceM)}</div><div style={{ fontWeight: 1000, marginTop: 5 }}>{selected.title || String(selected.workoutType || "RUNNING").toUpperCase()}</div></div>
       {finishBadges.length ? <div style={{ marginTop: 10 }}><Section title={copy.achievements}><div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{finishBadges.map((b) => <span key={b} style={{ padding: "7px 9px", borderRadius: 999, border: `1px solid ${accent}55`, background: `${accent}10`, color: accent, fontSize: 9.5, fontWeight: 1000 }}>🏆 {b}</span>)}</div></Section></div> : null}
       <div style={{ marginTop: 10 }}><Section title={copy.feedback}><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000 }}>{copy.effort}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 4, marginTop: 6 }}>{Array.from({ length: 10 }, (_, i) => i + 1).map((value) => <button key={value} className="btn" onClick={() => void updateSelected({ effortRating: value })} style={{ minWidth: 0, minHeight: 32, padding: 0, fontSize: 8.5, fontWeight: 1000, borderColor: selected.effortRating === value ? `${accent}88` : undefined, color: selected.effortRating === value ? accent : undefined }}>{value}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.feeling}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 6 }}>{([['great','😄'],['good','🙂'],['normal','😐'],['tired','😮‍💨'],['hard','🥵']] as const).map(([value, icon]) => <button key={value} className="btn" onClick={() => void updateSelected({ feeling: value })} style={{ minHeight: 38, padding: 3, fontSize: 17, borderColor: selected.feeling === value ? `${accent}88` : undefined, background: selected.feeling === value ? `${accent}10` : undefined }}>{icon}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.notes}</div><textarea value={selected.notes || ""} onChange={(event) => setSelected({ ...selected, notes: event.target.value.slice(0, 500) })} onBlur={() => { if (selected) void saveActivity(selected).then(refreshActivities); }} placeholder={lang === "fr" ? "Comment s’est passée la sortie ?" : lang === "es" ? "¿Cómo fue la carrera?" : "How did the run feel?"} style={{ width: "100%", minHeight: 72, marginTop: 6, resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.16)", color: "inherit", padding: 10, font: "inherit", fontSize: 10, outline: "none" }}/></Section></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.time} value={formatDuration(selected.elapsedMs)} accent={accent}/><Metric label={copy.moving} value={formatDuration(selected.movingMs)} accent={accent}/><Metric label={copy.avgPace} value={`${formatPace(selected.avgPaceSecPerKm)}/km`} accent={accent}/><Metric label={copy.speed} value={`${(selected.avgSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(selected.elevationGainM)} m`} accent={accent}/><Metric label={copy.consistency} value={consistency == null ? "—" : `${consistency}%`} accent={accent}/></div>
+      {(selected.ghostDeltaMs != null || selectedShoe) ? <div style={{ marginTop: 10 }}><Section title={lang === "fr" ? "COMPARAISON & ÉQUIPEMENT" : lang === "es" ? "COMPARACIÓN Y EQUIPO" : "COMPARISON & GEAR"}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>{selected.ghostDeltaMs != null ? <MiniStat label={selected.ghostDeltaMs <= 0 ? copy.ahead : copy.behind} value={formatDuration(Math.abs(selected.ghostDeltaMs))} accent={selected.ghostDeltaMs <= 0 ? "#71ff9a" : "#ff8a67"}/> : null}{selectedShoe ? <MiniStat label={lang === "fr" ? "CHAUSSURES" : lang === "es" ? "ZAPATILLAS" : "SHOES"} value={selectedShoe.name} accent={accent}/> : null}</div></Section></div> : null}
       <div style={{ marginTop: 10 }}><Section title={copy.bestEfforts}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Effort label="1 KM" value={e1} accent={accent}/><Effort label="5 KM" value={e5} accent={accent}/><Effort label="10 KM" value={e10} accent={accent}/></div>{neg ? <div style={{ marginTop: 9, color: "#71ff9a", fontSize: 10, fontWeight: 1000 }}>✓ {copy.negative}</div> : null}</Section></div>
-      <div style={{ marginTop: 10 }}><Section title={copy.route}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting}/></Section></div>
+      <div style={{ marginTop: 10 }}><Section title={copy.route} right={<button className="btn" onClick={() => { if (savedRoute) { setSavedRoutes(removeRunningRoute(savedRoute.id)); } else { setSavedRoutes(upsertRunningRoute(favoriteRouteFromActivity(selected))); } }} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, color: savedRoute ? accent : undefined, borderColor: savedRoute ? `${accent}77` : undefined }}>{savedRoute ? "★ " : "☆ "}{lang === "fr" ? "FAVORI" : lang === "es" ? "FAVORITA" : "FAVORITE"}</button>}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting}/></Section></div>
       <div style={{ marginTop: 10 }}><Section title={copy.splits}>{selected.splits.length ? <SplitTable splits={selected.splits} accent={accent}/> : <div style={{ color: textSoft, fontSize: 10 }}>—</div>}</Section></div>
       {selected.manualLaps?.length ? <div style={{ marginTop: 10 }}><Section title={copy.laps}><LapTable laps={selected.manualLaps} accent={accent}/></Section></div> : null}
       <button className="btn danger" style={{ width: "100%", marginTop: 2, fontWeight: 1000 }} onClick={() => void removeSelected()}>{copy.delete}</button>
     </div>;
     }
-    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><div style={{ textAlign: "center", margin: "2px 0 9px" }}><span style={{ display: "inline-flex", padding: "5px 9px", borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}0e`, color: accent, fontSize: 8.8, fontWeight: 1000 }}>{copy.local}</span></div><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><div style={{ textAlign: "center", margin: "2px 0 9px" }}><span style={{ display: "inline-flex", padding: "5px 9px", borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}0e`, color: accent, fontSize: 8.8, fontWeight: 1000 }}>{copy.local}</span></div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{(["quick", "training", "pacer", "custom"] as const).map((key) => <button key={key} className="btn" onClick={() => { setSetupTab(key); if (key === "pacer") selectManualPreset("pacer"); if (key === "custom") selectManualPreset("custom"); }} style={{ minHeight: 38, padding: "6px 3px", fontSize: 8.4, fontWeight: 1000, borderColor: setupTab === key ? `${accent}77` : undefined, color: setupTab === key ? accent : undefined }}>{key === "quick" ? copy.quick : key === "training" ? copy.training : key === "pacer" ? copy.pacer : copy.custom}</button>)}</div>
 
     {setupTab === "quick" ? <div style={{ marginTop: 10 }}><Section title={copy.quick}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{PRESETS.slice(0, 4).map((p) => <PresetCard key={p.id} preset={p} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div></Section></div> : null}
@@ -513,6 +559,10 @@ export default function RunningModule({ go, params }: Props) {
 
     <div className="card" style={{ marginTop: 10, padding: 13, borderColor: `${accent}3d` }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: 15, background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 23 }}>{effectivePreset.icon}</div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 9.5, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></div>
 
+    {routeOptions.length ? <div style={{ marginTop: 10 }}><Section title={lang === "fr" ? "PARCOURS & GHOST" : lang === "es" ? "RUTAS & GHOST" : "ROUTES & GHOST"} right={selectedRoute ? <button className="btn" onClick={() => setGhostEnabled((value) => !value)} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, fontWeight: 1000, color: ghostEnabled ? accent : undefined, borderColor: ghostEnabled ? `${accent}77` : undefined }}>GHOST {ghostEnabled ? "ON" : "OFF"}</button> : undefined}><div style={{ color: textSoft, fontSize: 9.2, lineHeight: 1.4, marginBottom: 8 }}>{lang === "fr" ? "Rejoue un ancien parcours et compare ton temps au même endroit, en direct." : lang === "es" ? "Repite una ruta anterior y compara tu tiempo en el mismo punto, en directo." : "Run a previous route again and compare your time at the same distance, live."}</div><div style={{ display: "grid", gap: 7 }}>{routeOptions.slice(0, 6).map((route) => { const active = selectedRouteId === route.id; const favorite = !!route.sourceActivityId && favoriteSourceIds.has(route.sourceActivityId); return <div key={route.id} className="card" style={{ padding: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 7, alignItems: "center", borderColor: active ? `${accent}66` : undefined, background: active ? `${accent}0d` : undefined }}><button type="button" onClick={() => selectRoute(route)} style={{ border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><div style={{ fontSize: 10, fontWeight: 1000, color: active ? accent : undefined }}>{route.name}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{formatDistance(route.distanceM)} · +{Math.round(route.elevationGainM)} m · {formatDuration(route.referenceElapsedMs)}</div></button><button className="btn" onClick={() => toggleFavoriteRoute(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}66` : undefined }}>{favorite ? "★" : "☆"}</button></div>; })}</div>{selectedRoute ? <div style={{ marginTop: 8 }}><RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting}/></div> : null}</Section></div> : null}
+
+    <div style={{ marginTop: 10 }}><Section title={lang === "fr" ? "ÉQUIPEMENT" : lang === "es" ? "EQUIPO" : "GEAR"}>{shoes.length ? <><div style={{ color: textSoft, fontSize: 9.1, marginBottom: 8 }}>{lang === "fr" ? "Associe une paire à cette sortie pour suivre son kilométrage dans Stats." : lang === "es" ? "Asocia unas zapatillas para seguir su kilometraje en Stats." : "Attach shoes to this run to track their mileage in Stats."}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>{shoes.filter((shoe) => !shoe.retired).map((shoe) => <Choice key={shoe.id} active={selectedShoeId === shoe.id} accent={accent} onClick={() => setSelectedShoeId(selectedShoeId === shoe.id ? "" : shoe.id)}>👟 {shoe.name}</Choice>)}</div></> : <div style={{ color: textSoft, fontSize: 9.2, lineHeight: 1.4 }}>{lang === "fr" ? "Aucune paire enregistrée. Ajoute tes chaussures depuis Stats > Équipement." : lang === "es" ? "No hay zapatillas registradas. Añádelas desde Stats > Equipo." : "No shoes saved yet. Add them from Stats > Gear."}</div>}</Section></div>
+
     <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", borderColor: audioCoach ? `${accent}38` : undefined }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>🎙️</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.audioCoach}</div><div style={{ marginTop: 3, fontSize: 8.7, color: textSoft, lineHeight: 1.35 }}>{copy.audioCoachSub}</div></div><button className="btn" onClick={() => setAudioCoach((value) => !value)} style={{ minWidth: 58, minHeight: 36, borderColor: audioCoach ? `${accent}77` : undefined, color: audioCoach ? accent : undefined, fontWeight: 1000 }}>{audioCoach ? "ON" : "OFF"}</button></div>
 
     <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>📍</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.gps}</div><div style={{ marginTop: 2, fontSize: 9.5, color: gpsMessage === copy.gpsReady ? "#71ff9a" : textSoft }}>{gpsChecked ? gpsMessage : copy.gpsUnknown}{accuracy ? ` · ±${Math.round(accuracy)} m` : ""}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{copy.gpsHint}</div></div><button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button></div>
@@ -520,21 +570,6 @@ export default function RunningModule({ go, params }: Props) {
     <div className="card" style={{ marginTop: 10, padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", opacity: .78 }}><div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12` }}>⌚</div><div><b style={{ fontSize: 9.5 }}>{copy.watches}</b><div style={{ color: textSoft, fontSize: 8.7, marginTop: 2 }}>Health Connect · Garmin · FIT · GPX · TCX</div></div><span style={{ color: accent, fontSize: 8.5, fontWeight: 1000 }}>{copy.soon}</span></div>
   </div>;
 }
-function TabBar({ view, setView, labels, accent }: {
-    view: View;
-    setView: (v: View) => void;
-    labels: {
-        setup: string;
-        history: string;
-        records: string;
-        plan: string;
-    };
-    accent: string;
-}) { const items: Array<{
-    key: View;
-    label: string;
-    icon: string;
-}> = [{ key: "setup", label: labels.setup, icon: "🏃" }, { key: "plan", label: labels.plan, icon: "▦" }, { key: "history", label: labels.history, icon: "▤" }, { key: "records", label: labels.records, icon: "🏆" }]; return <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{items.map((item) => <button key={item.key} className="btn" onClick={() => setView(item.key)} style={{ minHeight: 40, padding: "6px 3px", fontSize: 8.4, fontWeight: 1000, borderColor: view === item.key ? `${accent}77` : undefined, color: view === item.key ? accent : undefined }}>{item.icon} {item.label}</button>)}</div>; }
 function PresetCard({ preset, lang, selected, accent, onClick }: {
     preset: Preset;
     lang: string;

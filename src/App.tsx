@@ -312,6 +312,8 @@ import FootPlay from "./pages/foot/FootPlay";
 // ✅ RUNNING (WEB/PWA BETA — volontairement hors whitelist Android Store V1)
 import RunningHome from "./pages/running/RunningHome";
 import RunningModule from "./pages/running/RunningModule";
+import RunningPlanCenter from "./pages/running/RunningPlanCenter";
+import RunningStatsPage from "./pages/running/RunningStatsPage";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -874,6 +876,7 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  | "running_plan"
   | "cast_join"
   | "cast_host"
   | "cast_room"
@@ -3975,6 +3978,14 @@ const unifiedStats = (() => {
           );
         break;
 
+      case "running_plan":
+        page = activeSport === "running" ? (
+          <RunningPlanCenter go={go} />
+        ) : (
+          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+        );
+        break;
+
       case "cast_join":
         page = <CastJoinPage go={go} />;
         break;
@@ -4256,6 +4267,8 @@ case "babyfoot_team_edit":
             <BabyFootStatsShell store={store} go={go} />
           ) : activeSport === "pingpong" ? (
             <PingPongStatsShell store={store} go={go} />
+          ) : activeSport === "running" ? (
+            <RunningStatsPage go={go} />
           ) : (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
           );

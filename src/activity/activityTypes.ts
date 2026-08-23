@@ -52,6 +52,10 @@ export type ActivityRecord = {
     effortRating?: number;
     feeling?: "great" | "good" | "normal" | "tired" | "hard";
     notes?: string;
+    shoeId?: string;
+    routeReferenceId?: string;
+    ghostEnabled?: boolean;
+    ghostDeltaMs?: number | null;
     deviceName?: string;
     createdAt: number;
 };
