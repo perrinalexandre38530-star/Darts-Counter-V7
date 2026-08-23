@@ -1,7 +1,7 @@
 # MULTISPORTS SCORING — Google Play test
 
-Version de référence : **1.0.0-rc9**  
-Code Google Play : **10**
+Version de référence : **1.0.0-rc10**  
+Code Google Play : **11**
 
 ## Source unique de version
 
@@ -28,7 +28,7 @@ npm run version:check
 
 - Application : **MULTISPORTS SCORING**
 - Package : `com.multisportsscoring.app`
-- Version candidate préparée dans ce projet : `versionCode 10`, `versionName 1.0.0-rc9`
+- Version candidate préparée dans ce projet : `versionCode 11`, `versionName 1.0.0-rc10`
 - Artefact : Android App Bundle (`.aab`)
 
 ## Construire l’AAB signé

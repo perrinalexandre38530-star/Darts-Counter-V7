@@ -40,6 +40,10 @@ function allPrefs(): Record<string, OutdoorLongDistancePrefs> {
   } catch { return {}; }
 }
 
+export function gpsIntervalSecForBatteryMode(mode: OutdoorBatteryMode): number {
+  return mode === "ultra" ? 10 : mode === "eco" ? 5 : 1;
+}
+
 function recommendedBatteryMode(expectedMs: number): OutdoorBatteryMode {
   if (expectedMs >= 6 * 3_600_000) return "ultra";
   if (expectedMs >= 3 * 3_600_000) return "eco";
@@ -105,6 +109,6 @@ export function buildOutdoorLongDistancePlan(route: RunningRouteTemplate, sport:
     distanceM,
     stages,
     suggestedBatteryMode,
-    estimatedGpsIntervalSec: suggestedBatteryMode === "ultra" ? 10 : suggestedBatteryMode === "eco" ? 5 : 2,
+    estimatedGpsIntervalSec: gpsIntervalSecForBatteryMode(suggestedBatteryMode),
   };
 }

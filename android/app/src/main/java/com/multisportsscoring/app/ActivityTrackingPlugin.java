@@ -92,11 +92,21 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
             call.reject("Location permission required", "LOCATION_DENIED"); return;
         }
         String sport = call.getString("sport", "running");
+        String batteryMode = call.getString("batteryMode", "normal");
+        Integer hydrationReminderMin = call.getInt("hydrationReminderMin", 0);
+        Integer fuelReminderMin = call.getInt("fuelReminderMin", 0);
         Intent intent = new Intent(getContext(), ActivityTrackingService.class);
         intent.setAction(ActivityTrackingService.ACTION_START);
         intent.putExtra(ActivityTrackingService.EXTRA_SPORT, sport);
+        intent.putExtra(ActivityTrackingService.EXTRA_BATTERY_MODE, batteryMode);
+        intent.putExtra(ActivityTrackingService.EXTRA_HYDRATION_MIN, hydrationReminderMin == null ? 0 : Math.max(0, hydrationReminderMin));
+        intent.putExtra(ActivityTrackingService.EXTRA_FUEL_MIN, fuelReminderMin == null ? 0 : Math.max(0, fuelReminderMin));
         ContextCompat.startForegroundService(getContext(), intent);
-        JSObject out = new JSObject(); out.put("started", true); out.put("sport", sport); call.resolve(out);
+        JSObject out = new JSObject();
+        out.put("started", true);
+        out.put("sport", sport);
+        out.put("batteryMode", batteryMode);
+        call.resolve(out);
     }
 
     @PluginMethod public void pauseTracking(PluginCall call) { sendAction(ActivityTrackingService.ACTION_PAUSE); call.resolve(ActivityTrackingService.snapshot(false)); }

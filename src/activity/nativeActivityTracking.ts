@@ -1,5 +1,6 @@
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import type { GeoPoint } from "./activityTypes";
+import type { OutdoorBatteryMode } from "./outdoorLongDistance";
 
 export type NativeTrackingSnapshot = {
   available?: boolean;
@@ -14,12 +15,25 @@ export type NativeTrackingSnapshot = {
   locationPermission?: string;
   notificationPermission?: string;
   platform?: string;
+  batteryMode?: OutdoorBatteryMode;
+  gpsIntervalMs?: number;
+  hydrationReminderMin?: number;
+  fuelReminderMin?: number;
+  reminderSeq?: number;
+  lastReminderKind?: "hydration" | "fuel" | null;
+  lastReminderAtElapsedMs?: number;
+};
+
+export type NativeTrackingStartOptions = {
+  batteryMode?: OutdoorBatteryMode;
+  hydrationReminderMin?: number;
+  fuelReminderMin?: number;
 };
 
 type ActivityTrackingPlugin = {
   getStatus?: () => Promise<NativeTrackingSnapshot>;
   requestTrackingPermissions?: () => Promise<{ granted?: boolean; location?: boolean; notifications?: boolean }>;
-  startTracking?: (options: { sport: string }) => Promise<{ started?: boolean; sport?: string }>;
+  startTracking?: (options: { sport: string; batteryMode?: OutdoorBatteryMode; hydrationReminderMin?: number; fuelReminderMin?: number }) => Promise<{ started?: boolean; sport?: string; batteryMode?: OutdoorBatteryMode }>;
   pauseTracking?: () => Promise<NativeTrackingSnapshot>;
   resumeTracking?: () => Promise<NativeTrackingSnapshot>;
   stopTracking?: () => Promise<NativeTrackingSnapshot>;
@@ -58,10 +72,10 @@ export async function requestNativeTrackingPermissions() {
   if (!p?.requestTrackingPermissions) return { granted: false, location: false, notifications: false };
   return p.requestTrackingPermissions();
 }
-export async function startNativeTracking(sport: string) {
+export async function startNativeTracking(sport: string, options: NativeTrackingStartOptions = {}) {
   const p = plugin();
   if (!p?.startTracking) throw new Error("Native tracking unavailable");
-  return p.startTracking({ sport });
+  return p.startTracking({ sport, ...options });
 }
 export async function pauseNativeTracking() { return plugin()?.pauseTracking?.(); }
 export async function resumeNativeTracking() { return plugin()?.resumeTracking?.(); }

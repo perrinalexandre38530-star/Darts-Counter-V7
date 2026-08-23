@@ -799,7 +799,7 @@ function SettingsLoopCarousel({
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", gap: 6, alignItems: "center" }} aria-label={ariaLabel}>
+    <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) 34px", gap: 10, alignItems: "center" }} aria-label={ariaLabel}>
       <button type="button" aria-label={`${ariaLabel} précédent`} onClick={() => scrollByOne(-1)} style={arrowStyle}>‹</button>
       <div
         ref={scrollerRef}
@@ -810,7 +810,7 @@ function SettingsLoopCarousel({
           gap,
           overflowX: "auto",
           scrollSnapType: "x mandatory",
-          padding: "4px 2px 8px",
+          padding: "8px 8px 12px",
           WebkitOverflowScrolling: "touch",
           overscrollBehaviorX: "contain",
         }}
@@ -4560,16 +4560,17 @@ export function Settings({ go, params }: Props) {
         <button
           key={pack.id}
           type="button"
+          className={pack.id === "postapoc" ? "dc-postapoc-pack-card" : undefined}
           onClick={() => openPack(pack.id, pack.ids[0] || null)}
           style={{
-            minHeight: 110,
-            height: 110,
+            minHeight: 114,
+            height: 114,
             borderRadius: 17,
             border: `1px solid ${pack.premium ? `${pack.colors[0]}77` : theme.borderSoft}`,
             background: `linear-gradient(180deg, rgba(6,8,14,.96), rgba(4,6,12,.98))`,
             color: theme.text,
             textAlign: "center",
-            padding: "12px 10px 11px",
+            padding: "13px 11px 12px",
             cursor: "pointer",
             boxShadow: pack.premium ? `0 12px 25px rgba(0,0,0,.36), 0 0 20px ${pack.colors[0]}24` : `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
             position: "relative",
@@ -4577,7 +4578,7 @@ export function Settings({ go, params }: Props) {
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
-            gap: 10,
+            gap: 12,
           }}
         >
           {pack.premium ? (
@@ -4650,8 +4651,8 @@ export function Settings({ go, params }: Props) {
               <SettingsLoopCarousel
                 items={THEME_PACKS}
                 theme={theme}
-                itemWidth={188}
-                gap={8}
+                itemWidth={168}
+                gap={14}
                 initialIndex={packCarouselIndex}
                 ariaLabel="Carrousel des packs de thèmes"
                 onActiveIndexChange={(index) => setPackCarouselIndex(index)}
@@ -4687,8 +4688,8 @@ export function Settings({ go, params }: Props) {
               <SettingsLoopCarousel
                 items={selectedPack.ids}
                 theme={theme}
-                itemWidth={142}
-                gap={10}
+                itemWidth={132}
+                gap={14}
                 initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
                 ariaLabel="Carrousel de thèmes"
                 onActiveIndexChange={(index) => {
@@ -4742,7 +4743,8 @@ export function Settings({ go, params }: Props) {
                       {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: clamp01((preset.previewSheenOpacity ?? .14) + (fx.tileSheen - .10)), mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
                       {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: clamp01((preset.previewFrameOpacity ?? .18) + (fx.tileFrame - .12)), pointerEvents: "none" }} /> : null}
                       {imageCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: isPostApocCard ? "linear-gradient(180deg, rgba(4,5,6,.03) 0%, rgba(4,5,6,.08) 42%, rgba(4,5,6,.72) 73%, rgba(4,5,6,.97) 100%)" : "linear-gradient(180deg, rgba(4,6,12,.04) 0%, rgba(4,6,12,.18) 38%, rgba(4,6,12,.84) 76%, rgba(4,6,12,.96) 100%)", pointerEvents: "none" }} /> : null}
-                      {isPostApocCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat", opacity: .42, mixBlendMode: "multiply", pointerEvents: "none" }} /> : null}
+                      {isPostApocCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat", opacity: .52, mixBlendMode: "multiply", pointerEvents: "none" }} /> : null}
+                      {isPostApocCard ? <span className="dc-postapoc-overgrowth" aria-hidden="true" /> : null}
                       {locked ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}55`, background: "rgba(0,0,0,.55)", fontSize: 12 }}>🔒</span> : null}
                       {!locked && (isPreview || isActive) ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}88`, background: "rgba(0,0,0,.55)", color: preset.primary, fontSize: 12, fontWeight: 1000 }}>✓</span> : null}
                       {imageCard ? (

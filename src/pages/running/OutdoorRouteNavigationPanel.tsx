@@ -2,6 +2,7 @@ import React from "react";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
 import { buildOutdoorRouteCheckpoints, estimateOutdoorRouteDurationMs, outdoorRouteProgress } from "../../activity/outdoorNavigation";
 import type { GeoPoint } from "../../activity/activityTypes";
+import { gpsIntervalSecForBatteryMode, type OutdoorLongDistancePrefs } from "../../activity/outdoorLongDistance";
 import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { loadOutdoorRouteExtras, waypointIcon, type OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
@@ -19,6 +20,7 @@ type Props = {
   currentPoint?: GeoPoint | null;
   liveElevationGainM?: number;
   extras?: OutdoorRouteExtras | null;
+  longDistancePrefs?: OutdoorLongDistancePrefs | null;
 };
 
 function Mini({ label, value, accent }: { label: string; value: string; accent: string }) {
@@ -32,7 +34,7 @@ function checkpointLabel(checkpoint: ReturnType<typeof buildOutdoorRouteCheckpoi
   return `${Math.round(checkpoint.distanceM / 1000)} KM`;
 }
 
-export default function OutdoorRouteNavigationPanel({ route, sport, lang, accent, textSoft, mode = "preview", liveDistanceM = 0, elapsedMs = 0, currentPoint = null, liveElevationGainM = 0, extras: extrasProp = null }: Props) {
+export default function OutdoorRouteNavigationPanel({ route, sport, lang, accent, textSoft, mode = "preview", liveDistanceM = 0, elapsedMs = 0, currentPoint = null, liveElevationGainM = 0, extras: extrasProp = null, longDistancePrefs = null }: Props) {
   const extras = extrasProp || loadOutdoorRouteExtras(route.id);
   const checkpoints = React.useMemo(() => buildOutdoorRouteCheckpoints(route, sport, extras.waypoints), [extras.waypoints, route, sport]);
   const expectedMs = React.useMemo(() => estimateOutdoorRouteDurationMs(route, sport), [route, sport]);
@@ -58,6 +60,7 @@ export default function OutdoorRouteNavigationPanel({ route, sport, lang, accent
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 8 }}><Mini label={t.remaining} value={formatDistance(live.remainingM)} accent={accent}/><Mini label={t.eta} value={live.etaMs != null ? formatDuration(live.etaMs) : "—"} accent={accent}/><Mini label={t.next} value={next ? checkpointLabel(next, lang) : "—"} accent={accent}/><Mini label={t.routeGap} value={offRoute == null ? "—" : `${Math.round(offRoute)} m`} accent={offRouteColor}/></div>
       <div style={{ marginTop: 8, padding: 9, borderRadius: 12, border: `1px solid ${accent}22`, background: "linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.014))" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><div style={{ color: accent, fontSize: 7.7, fontWeight: 1000 }}>{t.ahead}</div><div style={{ fontSize: 7.2, color: textSoft }}>{formatDistance(live.ahead.horizonM)}</div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 6 }}><Mini label={t.gain} value={`+${Math.round(live.ahead.gainM)} m`} accent={accent}/><Mini label="D−" value={`-${Math.round(live.ahead.lossM)} m`} accent={accent}/><Mini label={t.grade} value={`${live.ahead.avgGradePct.toFixed(1)}%`} accent={accent}/><Mini label={t.maxGrade} value={`${live.ahead.maxGradePct.toFixed(1)}%`} accent={accent}/></div></div>
       {live.verticalSpeedMPerHour != null ? <div style={{ marginTop: 7, fontSize: 7.7, color: textSoft }}>{t.vertical} · <b style={{ color: accent }}>{Math.round(live.verticalSpeedMPerHour)} m/h</b>{live.nextCheckpointDistanceM != null && next ? ` · ${checkpointLabel(next, lang)} dans ${formatDistance(live.nextCheckpointDistanceM)}` : ""}</div> : null}
+      {longDistancePrefs ? <div style={{ marginTop: 7, display: "flex", gap: 5, flexWrap: "wrap" }}><span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${accent}2f`, background: `${accent}0b`, color: accent, fontSize: 6.9, fontWeight: 1000 }}>🔋 {longDistancePrefs.batteryMode.toUpperCase()} · GPS ~{gpsIntervalSecForBatteryMode(longDistancePrefs.batteryMode)} s</span>{longDistancePrefs.hydrationReminderMin ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(96,200,255,.22)", color: "#8fd7ff", fontSize: 6.9, fontWeight: 1000 }}>💧 {longDistancePrefs.hydrationReminderMin} min</span> : null}{longDistancePrefs.fuelReminderMin ? <span style={{ padding: "4px 7px", borderRadius: 999, border: "1px solid rgba(255,198,86,.22)", color: "#ffd36d", fontSize: 6.9, fontWeight: 1000 }}>🥪 {longDistancePrefs.fuelReminderMin} min</span> : null}</div> : null}
     </> : <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}><Mini label={t.estimate} value={formatDuration(expectedMs)} accent={accent}/><Mini label="D+" value={`+${Math.round(route.elevationGainM || 0)} m`} accent={accent}/><Mini label={t.checkpoints} value={String(checkpoints.length)} accent={accent}/></div>
       <div style={{ marginTop: 7, color: textSoft, fontSize: 7.6, lineHeight: 1.4 }}>{t.estimateHint}</div>

@@ -13,8 +13,12 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -31,6 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Foreground GPS recorder used by RUNNING PERFORMANCE.
  * The route continues to be sampled while the WebView is paused / screen is locked.
+ * V19 also applies the selected battery profile and long-distance reminders natively.
  * RUNNING PERFORMANCE remains hidden from Android Store V1 until manual validation.
  */
 public class ActivityTrackingService extends Service implements LocationListener {
@@ -39,21 +44,43 @@ public class ActivityTrackingService extends Service implements LocationListener
     public static final String ACTION_RESUME = "com.multisportsscoring.app.activity.RESUME";
     public static final String ACTION_STOP = "com.multisportsscoring.app.activity.STOP";
     public static final String EXTRA_SPORT = "sport";
+    public static final String EXTRA_BATTERY_MODE = "batteryMode";
+    public static final String EXTRA_HYDRATION_MIN = "hydrationReminderMin";
+    public static final String EXTRA_FUEL_MIN = "fuelReminderMin";
 
     private static final String CHANNEL_ID = "running_performance_tracking";
+    private static final String REMINDER_CHANNEL_ID = "running_performance_reminders";
     private static final int NOTIFICATION_ID = 24014;
+    private static final int HYDRATION_NOTIFICATION_ID = 24015;
+    private static final int FUEL_NOTIFICATION_ID = 24016;
     private static final Object LOCK = new Object();
     private static final List<TrackPoint> ROUTE = new ArrayList<>();
     private static final CopyOnWriteArrayList<Listener> LISTENERS = new CopyOnWriteArrayList<>();
     private static boolean running = false;
     private static boolean paused = false;
     private static String sport = "running";
+    private static String batteryMode = "normal";
+    private static int hydrationReminderMin = 0;
+    private static int fuelReminderMin = 0;
+    private static long nextHydrationElapsedMs = Long.MAX_VALUE;
+    private static long nextFuelElapsedMs = Long.MAX_VALUE;
+    private static long reminderSeq = 0L;
+    private static String lastReminderKind = null;
+    private static long lastReminderAtElapsedMs = 0L;
     private static long startedWallMs = 0L;
     private static long startedRealtimeMs = 0L;
     private static long pausedStartedRealtimeMs = 0L;
     private static long pausedTotalMs = 0L;
 
     private LocationManager locationManager;
+    private Handler reminderHandler;
+
+    private final Runnable reminderRunnable = new Runnable() {
+        @Override public void run() {
+            checkReminders();
+            if (reminderHandler != null && running) reminderHandler.postDelayed(this, 15000L);
+        }
+    };
 
     public interface Listener { void onSnapshot(JSObject snapshot); }
 
@@ -98,6 +125,13 @@ public class ActivityTrackingService extends Service implements LocationListener
             out.put("running", running);
             out.put("paused", paused);
             out.put("sport", sport);
+            out.put("batteryMode", batteryMode);
+            out.put("gpsIntervalMs", gpsIntervalMsForMode(batteryMode));
+            out.put("hydrationReminderMin", hydrationReminderMin);
+            out.put("fuelReminderMin", fuelReminderMin);
+            out.put("reminderSeq", reminderSeq);
+            if (lastReminderKind != null) out.put("lastReminderKind", lastReminderKind);
+            out.put("lastReminderAtElapsedMs", lastReminderAtElapsedMs);
             out.put("startedAt", startedWallMs);
             out.put("elapsedMs", activeElapsedNow());
             out.put("pointCount", ROUTE.size());
@@ -129,8 +163,9 @@ public class ActivityTrackingService extends Service implements LocationListener
     @Override
     public void onCreate() {
         super.onCreate();
-        createChannel();
+        createChannels();
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        reminderHandler = new Handler(Looper.getMainLooper());
     }
 
     @Override
@@ -149,29 +184,41 @@ public class ActivityTrackingService extends Service implements LocationListener
             stopSelf();
             return START_NOT_STICKY;
         }
-        String nextSport = intent == null ? null : intent.getStringExtra(EXTRA_SPORT);
-        startSession(nextSport);
+        startSession(intent);
         return START_STICKY;
     }
 
-    private void startSession(String nextSport) {
+    private void startSession(Intent intent) {
+        String nextSport = intent == null ? null : intent.getStringExtra(EXTRA_SPORT);
+        String nextBatteryMode = normalizeBatteryMode(intent == null ? null : intent.getStringExtra(EXTRA_BATTERY_MODE));
+        int nextHydrationMin = sanitizeReminderMinutes(intent == null ? 0 : intent.getIntExtra(EXTRA_HYDRATION_MIN, 0));
+        int nextFuelMin = sanitizeReminderMinutes(intent == null ? 0 : intent.getIntExtra(EXTRA_FUEL_MIN, 0));
         synchronized (LOCK) {
             ROUTE.clear();
             running = true;
             paused = false;
             sport = nextSport == null || nextSport.trim().isEmpty() ? "running" : nextSport.trim();
+            batteryMode = nextBatteryMode;
+            hydrationReminderMin = nextHydrationMin;
+            fuelReminderMin = nextFuelMin;
+            nextHydrationElapsedMs = reminderTargetMs(hydrationReminderMin);
+            nextFuelElapsedMs = reminderTargetMs(fuelReminderMin);
+            reminderSeq = 0L;
+            lastReminderKind = null;
+            lastReminderAtElapsedMs = 0L;
             startedWallMs = System.currentTimeMillis();
             startedRealtimeMs = SystemClock.elapsedRealtime();
             pausedStartedRealtimeMs = 0L;
             pausedTotalMs = 0L;
         }
-        Notification notification = buildNotification("Suivi GPS en cours");
+        Notification notification = buildNotification("Suivi GPS · " + batteryModeLabel(batteryMode) + " · ~" + Math.max(1L, gpsIntervalMsForMode(batteryMode) / 1000L) + " s");
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         } catch (Exception error) {
             startForeground(NOTIFICATION_ID, notification);
         }
         requestLocationUpdates();
+        scheduleReminderLoop();
         emit();
     }
 
@@ -193,12 +240,13 @@ public class ActivityTrackingService extends Service implements LocationListener
             pausedStartedRealtimeMs = 0L;
             paused = false;
         }
-        updateNotification("Suivi GPS en cours");
+        updateNotification("Suivi GPS · " + batteryModeLabel(batteryMode));
         emit();
     }
 
     private void stopSession() {
         removeLocationUpdates();
+        stopReminderLoop();
         synchronized (LOCK) {
             if (paused && pausedStartedRealtimeMs > 0L) pausedTotalMs += Math.max(0L, SystemClock.elapsedRealtime() - pausedStartedRealtimeMs);
             running = false;
@@ -209,6 +257,50 @@ public class ActivityTrackingService extends Service implements LocationListener
         try { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); } catch (Exception ignored) {}
     }
 
+    private static String normalizeBatteryMode(String value) {
+        if ("eco".equalsIgnoreCase(value)) return "eco";
+        if ("ultra".equalsIgnoreCase(value)) return "ultra";
+        return "normal";
+    }
+
+    private static String batteryModeLabel(String value) {
+        if ("ultra".equals(value)) return "ULTRA";
+        if ("eco".equals(value)) return "ÉCO";
+        return "NORMAL";
+    }
+
+    private static int sanitizeReminderMinutes(int value) {
+        return Math.max(0, Math.min(240, value));
+    }
+
+    private static long reminderTargetMs(int minutes) {
+        return minutes > 0 ? minutes * 60000L : Long.MAX_VALUE;
+    }
+
+    private static long gpsIntervalMsForMode(String mode) {
+        if ("ultra".equals(mode)) return 10000L;
+        if ("eco".equals(mode)) return 5000L;
+        return 1000L;
+    }
+
+    private static float gpsMinDistanceMForMode(String mode) {
+        if ("ultra".equals(mode)) return 6.0f;
+        if ("eco".equals(mode)) return 3.0f;
+        return 0.5f;
+    }
+
+    private static long networkIntervalMsForMode(String mode) {
+        if ("ultra".equals(mode)) return 30000L;
+        if ("eco".equals(mode)) return 10000L;
+        return 2500L;
+    }
+
+    private static float networkMinDistanceMForMode(String mode) {
+        if ("ultra".equals(mode)) return 15.0f;
+        if ("eco".equals(mode)) return 8.0f;
+        return 2.0f;
+    }
+
     private void requestLocationUpdates() {
         if (locationManager == null) return;
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
@@ -216,11 +308,11 @@ public class ActivityTrackingService extends Service implements LocationListener
         try {
             Location freshest = null;
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0.5f, this);
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, gpsIntervalMsForMode(batteryMode), gpsMinDistanceMForMode(batteryMode), this);
                 freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER));
             }
             if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 2500L, 2.0f, this);
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, networkIntervalMsForMode(batteryMode), networkMinDistanceMForMode(batteryMode), this);
                 freshest = fresherLocation(freshest, locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER));
             }
             // A very recent cached fix avoids displaying 0 GPS for several seconds when
@@ -247,6 +339,76 @@ public class ActivityTrackingService extends Service implements LocationListener
         try { locationManager.removeUpdates(this); } catch (Exception ignored) {}
     }
 
+    private void scheduleReminderLoop() {
+        if (reminderHandler == null) return;
+        reminderHandler.removeCallbacks(reminderRunnable);
+        if (hydrationReminderMin <= 0 && fuelReminderMin <= 0) return;
+        reminderHandler.postDelayed(reminderRunnable, 15000L);
+    }
+
+    private void stopReminderLoop() {
+        if (reminderHandler != null) reminderHandler.removeCallbacks(reminderRunnable);
+    }
+
+    private void checkReminders() {
+        String dueKind = null;
+        long elapsed = 0L;
+        synchronized (LOCK) {
+            if (!running || paused) return;
+            elapsed = activeElapsedNow();
+            if (hydrationReminderMin > 0 && elapsed >= nextHydrationElapsedMs) {
+                dueKind = "hydration";
+                nextHydrationElapsedMs += hydrationReminderMin * 60000L;
+            } else if (fuelReminderMin > 0 && elapsed >= nextFuelElapsedMs) {
+                dueKind = "fuel";
+                nextFuelElapsedMs += fuelReminderMin * 60000L;
+            }
+            if (dueKind != null) {
+                reminderSeq += 1L;
+                lastReminderKind = dueKind;
+                lastReminderAtElapsedMs = elapsed;
+            }
+        }
+        if (dueKind != null) {
+            postReminderNotification(dueKind);
+            vibrateReminder();
+            emit();
+        }
+    }
+
+    private void postReminderNotification(String kind) {
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        String title = "hydration".equals(kind) ? "RUNNING PERFORMANCE · HYDRATATION" : "RUNNING PERFORMANCE · RAVITAILLEMENT";
+        String text = "hydration".equals(kind) ? "Pense à boire quelques gorgées." : "Pense à ton ravitaillement et reste régulier.";
+        Intent open = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        android.app.PendingIntent pending = null;
+        if (open != null) {
+            int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+            pending = android.app.PendingIntent.getActivity(this, "hydration".equals(kind) ? HYDRATION_NOTIFICATION_ID : FUEL_NOTIFICATION_ID, open, flags);
+        }
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, REMINDER_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_running_performance)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(Notification.DEFAULT_VIBRATE);
+        if (pending != null) builder.setContentIntent(pending);
+        manager.notify("hydration".equals(kind) ? HYDRATION_NOTIFICATION_ID : FUEL_NOTIFICATION_ID, builder.build());
+    }
+
+    private void vibrateReminder() {
+        try {
+            Vibrator vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) vibrator.vibrate(VibrationEffect.createOneShot(260L, VibrationEffect.DEFAULT_AMPLITUDE));
+            else vibrator.vibrate(260L);
+        } catch (Exception ignored) {}
+    }
+
     @Override
     public void onLocationChanged(Location location) {
         synchronized (LOCK) {
@@ -271,13 +433,17 @@ public class ActivityTrackingService extends Service implements LocationListener
     @Override public void onProviderDisabled(String provider) {}
     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
 
-    private void createChannel() {
+    private void createChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (manager == null) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Running Performance", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Suivi d'activité GPS en arrière-plan");
-        manager.createNotificationChannel(channel);
+        NotificationChannel tracking = new NotificationChannel(CHANNEL_ID, "Running Performance", NotificationManager.IMPORTANCE_LOW);
+        tracking.setDescription("Suivi d'activité GPS en arrière-plan");
+        manager.createNotificationChannel(tracking);
+        NotificationChannel reminders = new NotificationChannel(REMINDER_CHANNEL_ID, "Running Performance · Rappels", NotificationManager.IMPORTANCE_DEFAULT);
+        reminders.setDescription("Rappels hydratation et ravitaillement pendant les sorties longues");
+        reminders.enableVibration(true);
+        manager.createNotificationChannel(reminders);
     }
 
     private Notification buildNotification(String text) {
@@ -311,6 +477,7 @@ public class ActivityTrackingService extends Service implements LocationListener
     @Override
     public void onDestroy() {
         removeLocationUpdates();
+        stopReminderLoop();
         super.onDestroy();
     }
 }
