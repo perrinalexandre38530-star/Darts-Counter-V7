@@ -7,6 +7,7 @@ export type HealthConnectStatus = {
   provider?: string;
   permissionsGranted?: boolean;
   exerciseRoutesGranted?: boolean;
+  exerciseRouteWriteGranted?: boolean;
   grantedPermissions?: string[];
 };
 
@@ -47,6 +48,33 @@ export async function readHealthConnectWorkoutSessions(days = 30): Promise<Healt
   if (!p?.readWorkoutSessions) throw new Error("Health Connect workout sync unavailable");
   const result = await p.readWorkoutSessions({ days: Math.max(1, Math.min(30, Math.round(days || 30))) });
   return { days: Number(result?.days || days), exerciseRoutesGranted: !!result?.exerciseRoutesGranted, sessions: Array.isArray(result?.sessions) ? result.sessions : [] };
+}
+
+export type HealthConnectWriteResult = {
+  clientRecordId: string;
+  recordIds: string[];
+};
+
+export async function writeHealthConnectActivity(activity: ActivityRecord): Promise<HealthConnectWriteResult> {
+  const p = healthPlugin();
+  if (!p?.writeWorkoutSession) throw new Error("Health Connect write bridge unavailable");
+  if (activity.source === "health-connect") throw new Error("Health Connect imported activities are not re-exported");
+  const clientRecordId = `mss:${activity.id}`;
+  const result = await p.writeWorkoutSession({
+    clientRecordId,
+    sport: activity.sport,
+    title: activity.title || "MULTISPORTS SCORING",
+    notes: activity.notes || "",
+    startedAt: activity.startedAt,
+    endedAt: activity.endedAt,
+    distanceM: activity.distanceM,
+    elevationGainM: activity.elevationGainM,
+    route: (activity.route || []).map((point) => ({
+      lat: point.lat, lon: point.lon, timestamp: point.timestamp,
+      accuracy: point.accuracy, altitude: point.altitude,
+    })),
+  });
+  return { clientRecordId: String(result?.clientRecordId || clientRecordId), recordIds: Array.isArray(result?.recordIds) ? result.recordIds.map(String) : [] };
 }
 export async function requestHealthConnectExerciseRoute(sessionId: string) {
   const p = healthPlugin();

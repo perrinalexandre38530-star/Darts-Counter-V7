@@ -21,6 +21,8 @@ import androidx.health.connect.client.records.StepsCadenceRecord;
 import androidx.health.connect.client.records.metadata.Metadata;
 import androidx.health.connect.client.request.ReadRecordsRequest;
 import androidx.health.connect.client.response.ReadRecordsResponse;
+import androidx.health.connect.client.response.InsertRecordsResponse;
+import androidx.health.connect.client.units.Length;
 import androidx.health.connect.client.time.TimeRangeFilter;
 
 import com.getcapacitor.JSArray;
@@ -31,7 +33,11 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import org.json.JSONObject;
+
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,6 +66,10 @@ import kotlin.jvm.JvmClassMappingKt;
 public class HealthConnectPlugin extends Plugin {
     private static final String PROVIDER = "com.google.android.apps.healthdata";
     private static final String READ_ROUTES = "android.permission.health.READ_EXERCISE_ROUTES";
+    private static final Set<String> CORE_WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.WRITE_EXERCISE"
+    ));
     private static final Set<String> WORKOUT_PERMISSIONS = new LinkedHashSet<>(Arrays.asList(
         "android.permission.health.READ_EXERCISE",
         "android.permission.health.WRITE_EXERCISE",
@@ -173,7 +183,8 @@ public class HealthConnectPlugin extends Plugin {
             out.put("available", status == HealthConnectClient.SDK_AVAILABLE);
             out.put("status", status == HealthConnectClient.SDK_AVAILABLE ? "available" : status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ? "update-required" : "unavailable");
             out.put("provider", PROVIDER);
-            out.put("permissionsGranted", granted.containsAll(WORKOUT_PERMISSIONS));
+            out.put("permissionsGranted", granted.containsAll(CORE_WORKOUT_PERMISSIONS));
+            out.put("exerciseRouteWriteGranted", granted.contains("android.permission.health.WRITE_EXERCISE_ROUTE"));
             out.put("exerciseRoutesGranted", granted.contains(READ_ROUTES));
             JSArray rows = new JSArray();
             for (String permission : granted) rows.put(permission);
@@ -203,7 +214,7 @@ public class HealthConnectPlugin extends Plugin {
             ActivityResultContract<Set<String>, Set<String>> contract = PermissionController.createRequestPermissionResultContract(PROVIDER);
             Set<String> permissions = contract.parseResult(result == null ? Activity.RESULT_CANCELED : result.getResultCode(), result == null ? null : result.getData());
             JSObject out = new JSObject();
-            out.put("granted", permissions != null && permissions.containsAll(WORKOUT_PERMISSIONS));
+            out.put("granted", permissions != null && permissions.containsAll(CORE_WORKOUT_PERMISSIONS));
             JSArray rows = new JSArray();
             if (permissions != null) for (String permission : permissions) rows.put(permission);
             out.put("permissions", rows);
@@ -247,6 +258,94 @@ public class HealthConnectPlugin extends Plugin {
                 call.reject("Unable to read Health Connect workouts: " + safeMessage(error), error);
             }
         });
+    }
+
+    @PluginMethod
+    public void writeWorkoutSession(PluginCall call) {
+        if (sdkStatus() != HealthConnectClient.SDK_AVAILABLE) {
+            call.reject("Health Connect unavailable", "HEALTH_CONNECT_UNAVAILABLE"); return;
+        }
+        final String clientRecordId = call.getString("clientRecordId", "");
+        final String sport = call.getString("sport", "running");
+        final String title = call.getString("title", "MULTISPORTS SCORING");
+        final String notes = call.getString("notes", "");
+        final Long startedAt = call.getLong("startedAt");
+        final Long endedAt = call.getLong("endedAt");
+        final Double distanceM = call.getDouble("distanceM", 0.0);
+        final Double elevationGainM = call.getDouble("elevationGainM", 0.0);
+        final JSArray routeInput = call.getArray("route", new JSArray());
+        if (clientRecordId == null || clientRecordId.trim().isEmpty() || startedAt == null || endedAt == null || endedAt <= startedAt) {
+            call.reject("Invalid workout payload"); return;
+        }
+
+        io.execute(() -> {
+            try {
+                HealthConnectClient client = clientOrNull();
+                if (client == null) throw new IllegalStateException("Health Connect unavailable");
+                Set<String> permissions = awaitSuspend(continuation -> client.getPermissionController().getGrantedPermissions(continuation));
+                if (!permissions.contains("android.permission.health.WRITE_EXERCISE")) throw new SecurityException("WRITE_EXERCISE permission is required");
+
+                Instant start = Instant.ofEpochMilli(startedAt);
+                Instant end = Instant.ofEpochMilli(endedAt);
+                ZoneOffset startOffset = ZoneId.systemDefault().getRules().getOffset(start);
+                ZoneOffset endOffset = ZoneId.systemDefault().getRules().getOffset(end);
+                Metadata sessionMetadata = Metadata.manualEntry(clientRecordId);
+                ExerciseRoute exerciseRoute = null;
+
+                if (routeInput != null && routeInput.length() >= 2 && permissions.contains("android.permission.health.WRITE_EXERCISE_ROUTE")) {
+                    List<ExerciseRoute.Location> locations = new ArrayList<>();
+                    for (int i = 0; i < routeInput.length(); i++) {
+                        JSONObject point = routeInput.getJSONObject(i);
+                        double lat = point.optDouble("lat", Double.NaN);
+                        double lon = point.optDouble("lon", Double.NaN);
+                        long timestamp = point.optLong("timestamp", 0L);
+                        if (!Double.isFinite(lat) || !Double.isFinite(lon) || timestamp < startedAt || timestamp >= endedAt) continue;
+                        Double accuracy = point.has("accuracy") ? point.optDouble("accuracy") : null;
+                        Double altitude = point.has("altitude") ? point.optDouble("altitude") : null;
+                        locations.add(new ExerciseRoute.Location(
+                            Instant.ofEpochMilli(timestamp), lat, lon,
+                            accuracy != null && Double.isFinite(accuracy) ? Length.meters(Math.max(0, accuracy)) : null,
+                            null,
+                            altitude != null && Double.isFinite(altitude) ? Length.meters(altitude) : null
+                        ));
+                    }
+                    if (locations.size() >= 2) exerciseRoute = new ExerciseRoute(locations);
+                }
+
+                ExerciseSessionRecord session = new ExerciseSessionRecord(
+                    start, startOffset, end, endOffset, sessionMetadata, exerciseTypeForSport(sport),
+                    title, notes == null || notes.trim().isEmpty() ? null : notes,
+                    Collections.emptyList(), Collections.emptyList(), exerciseRoute
+                );
+                List<Record> records = new ArrayList<>();
+                records.add(session);
+                if (distanceM != null && distanceM > 0 && permissions.contains("android.permission.health.WRITE_DISTANCE")) {
+                    records.add(new DistanceRecord(start, startOffset, end, endOffset, Length.meters(distanceM), Metadata.manualEntry(clientRecordId + ":distance")));
+                }
+                if (elevationGainM != null && elevationGainM > 0 && permissions.contains("android.permission.health.WRITE_ELEVATION_GAINED")) {
+                    records.add(new ElevationGainedRecord(start, startOffset, end, endOffset, Length.meters(elevationGainM), Metadata.manualEntry(clientRecordId + ":elevation")));
+                }
+
+                InsertRecordsResponse inserted = awaitSuspend(continuation -> client.insertRecords(records, continuation));
+                JSObject result = new JSObject();
+                result.put("clientRecordId", clientRecordId);
+                JSArray recordIds = new JSArray();
+                for (String id : inserted.getRecordIdsList()) recordIds.put(id);
+                result.put("recordIds", recordIds);
+                result.put("routeWritten", exerciseRoute != null);
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("Unable to write Health Connect workout: " + safeMessage(error), error);
+            }
+        });
+    }
+
+    private int exerciseTypeForSport(String sport) {
+        String value = sport == null ? "" : sport.trim().toLowerCase();
+        if ("treadmill".equals(value)) return ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL;
+        if ("hiking".equals(value)) return ExerciseSessionRecord.EXERCISE_TYPE_HIKING;
+        if ("walking".equals(value) || "nordic-walking".equals(value)) return ExerciseSessionRecord.EXERCISE_TYPE_WALKING;
+        return ExerciseSessionRecord.EXERCISE_TYPE_RUNNING;
     }
 
     @PluginMethod

@@ -88,6 +88,11 @@ export type ActivityRecord = {
         routeStatus?: string;
         syncedAt?: number;
     };
+    healthConnectExport?: {
+        clientRecordId: string;
+        recordIds: string[];
+        exportedAt: number;
+    };
     createdAt: number;
 };
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";
