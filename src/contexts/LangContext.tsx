@@ -14,6 +14,7 @@ import {
   warmUiLiteralTranslator,
 } from "../i18n/uiLiteralSafety";
 import { awenaTranslation } from "../awena/AwenaTranslation";
+import { registerConfigUiLiteralSources } from "../i18n/configUiLiteralRegistry";
 
 // -----------------------------
 // Types publics
@@ -85,6 +86,9 @@ const ALL_LANGS: Lang[] = [
 // Force type dynamique
 const DICT_ANY = DICT as any;
 
+// Register every historical Config/Setup literal before the first DOM scan.
+registerConfigUiLiteralSources();
+
 // -----------------------------
 // Helpers
 // -----------------------------
@@ -138,10 +142,11 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   // Couvre aussi un démarrage direct avec EN déjà enregistré dans localStorage :
   // dans ce cas l'utilisateur ne reclique pas forcément sur le sélecteur.
   React.useEffect(() => {
-    if (lang === "fr") return;
+    // Warm both canonical source directions. This matters for configuration
+    // screens because historical literals exist in both French and English.
     warmUiLiteralTranslator(lang, "fr");
     warmUiLiteralTranslator(lang, "en");
-    void awenaTranslation.prepare(lang).catch(() => false);
+    if (lang !== "fr") void awenaTranslation.prepare(lang).catch(() => false);
   }, [lang]);
 
   // Keep the document metadata in sync with the selected language. This is
@@ -175,7 +180,6 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     const pendingAttr = new WeakMap<Element, Map<string, string>>();
 
     const resolveLiteralAsync = async (source: string): Promise<string | null> => {
-      if (lang === "fr") return null;
       const sourceLanguage = getUiLiteralSourceLanguage(source);
       if (!sourceLanguage || sourceLanguage === lang) return null;
 
@@ -200,7 +204,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     };
 
     const scheduleTextResolve = (node: Text, source: string) => {
-      if (lang === "fr" || !getUiLiteralSourceLanguage(source) || pendingText.get(node) === source) return;
+      if (!getUiLiteralSourceLanguage(source) || pendingText.get(node) === source) return;
       pendingText.set(node, source);
       void resolveLiteralAsync(source).then((resolved) => {
         if (cancelled || !resolved) return;
@@ -217,7 +221,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     };
 
     const scheduleAttrResolve = (el: Element, attr: string, source: string) => {
-      if (lang === "fr" || !getUiLiteralSourceLanguage(source)) return;
+      if (!getUiLiteralSourceLanguage(source)) return;
       let map = pendingAttr.get(el);
       if (!map) { map = new Map<string, string>(); pendingAttr.set(el, map); }
       if (map.get(attr) === source) return;
@@ -241,7 +245,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const source = prev && current === prev.applied ? prev.source : current;
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
-      const applied = lang === "fr" ? source : (resolved || translateLiteral(source));
+      const applied = resolved || translateLiteral(source);
       textState.set(node, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) node.nodeValue = applied;
       if (!resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
@@ -259,7 +263,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const source = prev && current === prev.applied ? prev.source : current;
       const sourceChanged = !prev || source !== prev.source;
       const resolved = !sourceChanged && prev?.resolvedLang === lang ? prev.resolved : undefined;
-      const applied = lang === "fr" ? source : (resolved || translateLiteral(source));
+      const applied = resolved || translateLiteral(source);
       map.set(attr, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) el.setAttribute(attr, applied);
       if (!resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);

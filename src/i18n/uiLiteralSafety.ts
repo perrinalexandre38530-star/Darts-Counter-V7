@@ -439,9 +439,327 @@ const EN_EXACT: Record<string, string> = {
   "tous sets confondus": "across all sets",
 };
 
+// Deterministic configuration-screen translations. These cover the most common
+// setup labels and the complete X01 guided flow immediately, without waiting
+// for an on-device model download.
+Object.assign(EN_EXACT, {
+  "Configuration X01": "X01 SETUP",
+  "Guidée": "Guided",
+  "Complète": "Full",
+  "La configuration guidée va à l’essentiel. La configuration complète reste disponible avec tous les réglages avancés.": "Guided setup focuses on the essentials. Full setup remains available with all advanced settings.",
+  "AWENA VOUS EXPLIQUE": "AWENA EXPLAINS",
+  "Voir la vidéo": "Watch the video",
+  "Voir la vidéo Awena des règles du X01": "Watch Awena's X01 rules video",
+  "Awena · Voir l’explication vidéo": "Awena · Watch the explanation video",
+  "Awena vous explique les règles du X01": "Awena explains the X01 rules",
+  "AWENA · RÈGLES X01": "AWENA · X01 RULES",
+  "🎙️ AWENA VOICE · CONFIGURATION X01": "🎙️ AWENA VOICE · X01 SETUP",
+  "Awena écoute ta réponse…": "Awena is listening to your answer…",
+  "Entendu : «": "Heard: “",
+  "Configuration guidée": "Guided setup",
+  "Étape": "Step",
+  "1. Type de partie": "1. MATCH TYPE",
+  "Commence par choisir si tu joues avec des profils individuels ou avec des équipes.": "First choose whether you are playing with individual profiles or teams.",
+  "Joueurs": "Players",
+  "Duel 1v1 ou multi-joueurs.": "1v1 duel or multiplayer.",
+  "Équipes": "Teams",
+  "Teams manuelles ou équipes enregistrées.": "Manual teams or saved teams.",
+  "Format joueurs": "Player format",
+  "Duel 1v1": "1v1 Duel",
+  "Multi": "Multi",
+  "Duel = exactement 2 joueurs. Multi = 2 joueurs ou plus.": "Duel = exactly 2 players. Multi = 2 or more players.",
+  "Source des équipes": "Team source",
+  "Manuel": "Manual",
+  "Équipes enregistrées": "Saved teams",
+  "Brassage auto": "Auto shuffle",
+  "Manuel = Gold/Pink/Blue/Green. Équipes enregistrées = teams existantes. Brassage auto = génération aléatoire ou équilibrée.": "Manual = Gold/Pink/Blue/Green. Saved teams = existing teams. Auto shuffle = random or balanced generation.",
+  "2. Joueurs": "2. PLAYERS",
+  "2. Équipes": "2. TEAMS",
+  "Profils sélectionnés": "SELECTED PROFILES",
+  "Choisir des joueurs": "Choose players",
+  "Choisir les joueurs": "Choose players",
+  "Liste profils": "Profile list",
+  "Bots IA": "AI BOTS",
+  "BOTS IA": "AI BOTS",
+  "Équipes / joueurs sélectionnés": "Selected teams / players",
+  "3. Score et sortie": "3. SCORE & CHECKOUT",
+  "Score de départ": "Starting score",
+  "Mode d’entrée": "Entry mode",
+  "Mode de sortie": "Checkout mode",
+  "Simple IN": "Single IN",
+  "Double IN": "Double IN",
+  "Master IN": "Master IN",
+  "Simple OUT": "Single OUT",
+  "Double OUT": "Double OUT",
+  "Master OUT": "Master OUT",
+  "4. Format": "4. FORMAT",
+  "Format des legs": "Leg format",
+  "Format des sets": "Set format",
+  "Formats Pro / avancés": "Pro / advanced formats",
+  "Afficher": "Show",
+  "Masquer": "Hide",
+  "Sélection actuelle :": "Current selection:",
+  "Ordre de départ": "Starting order",
+  "Alterné": "Alternate",
+  "Aléatoire": "Shuffle",
+  "5. Saisie et audio": "5. INPUT & AUDIO",
+  "Méthode de saisie": "Input method",
+  "CIBLE": "BOARD",
+  "Comptage externe vidéo": "External video scoring",
+  "TÉLÉPHONE": "PHONE",
+  "CAMÉRA LOCALE": "LOCAL CAMERA",
+  "Relier / calibrer le téléphone": "Connect / calibrate phone",
+  "En guidée, choisis l'appareil ici. Les réglages détaillés restent dans la configuration complète.": "In guided setup, choose the device here. Detailed settings remain available in full setup.",
+  "6. Récapitulatif": "6. SUMMARY",
+  "Participants": "Participants",
+  "Sélection": "Selection",
+  "Saisie": "Input",
+  "La configuration n’est pas encore complète. Reviens aux étapes précédentes pour sélectionner les participants nécessaires.": "Setup is not complete yet. Go back to the previous steps and select the required participants.",
+  "Tout est prêt. Tu peux lancer la partie avec le bouton en bas.": "Everything is ready. You can start the match with the button at the bottom.",
+  "← Précédent": "← Previous",
+  "Suivant →": "Next →",
+  "Paramètres": "Settings",
+  "Paramètres de base": "Basic settings",
+  "Paramètres avancés": "Advanced settings",
+  "Récapitulatif": "Summary",
+  "RÉCAPITULATIF": "SUMMARY",
+  "RÈGLES DU MATCH": "MATCH RULES",
+  "RÈGLES DU FORMAT": "FORMAT RULES",
+  "Règles & format": "Rules & format",
+  "Règles & saisie": "Rules & input",
+  "Nombre de manches": "Number of rounds",
+  "Nombre d'équipes": "Number of teams",
+  "Nombre de cibles": "Number of targets",
+  "Joueurs par équipe": "Players per team",
+  "Format du match": "Match format",
+  "FORMAT DU MATCH": "MATCH FORMAT",
+  "FORMAT DE PARTIE": "MATCH FORMAT",
+  "STYLE DE PARTIE": "MATCH STYLE",
+  "SOLO OU ÉQUIPES": "SOLO OR TEAMS",
+  "Joueurs / Équipes": "Players / Teams",
+  "JOUEURS DU MATCH": "MATCH PLAYERS",
+  "ÉQUIPES DU MATCH": "MATCH TEAMS",
+  "Ordre des joueurs": "Player order",
+  "Score cible": "Target score",
+  "Score cible par set": "Target score per set",
+  "Règle de sortie": "Checkout rule",
+  "Règle de service": "Service rule",
+  "Victoire / Règles": "Win condition / Rules",
+  "Victoire :": "Win:",
+  "Difficulté": "Difficulty",
+  "Niveau général": "Overall level",
+  "Niveau des bots": "Bot level",
+  "Niveau des BOTS": "Bot level",
+  "Choisir les BOTS": "Choose BOTS",
+  "Choisir les BOTS IA": "Choose AI BOTS",
+  "Ajouter des BOTS IA": "Add AI BOTS",
+  "Vies de départ": "Starting lives",
+  "Durée": "Duration",
+  "Temps": "Time",
+  "Volée": "Visit",
+  "fléchettes": "darts",
+  "3 fléchettes": "3 darts",
+  "1 fléchette": "1 dart",
+  "Règles :": "Rules:",
+  "Sélectionne": "Select",
+  "Prêts :": "Ready:",
+  "Tout éteindre": "Turn all off",
+  "RÉINITIALISER": "RESET",
+  "← PRÉCÉDENT": "← PREVIOUS",
+  "CONFIG GUIDÉE": "GUIDED SETUP",
+  "CONFIG COMPLÈTE": "FULL SETUP",
+  "TOUS LES RÉGLAGES": "ALL SETTINGS",
+  "Vérifie et lance.": "Review and start.",
+  "Mode téléphone :": "Phone mode:",
+  "Relier le téléphone": "Connect phone",
+  "Clavier ou cible": "Keypad or board",
+  "Score + saisie": "Score + input",
+  "Saisie et audio": "Input & audio"
+});
+
+// Additional common labels shared by the other game configuration screens.
+Object.assign(EN_EXACT, {
+  "PRISONNIER": "PRISONER",
+  "CAPTURE": "CAPTURE",
+  "MAIN": "HAND",
+  "POUVOIRS": "POWERS",
+  "CLASSEMENT": "RANKING",
+  "CONTRAT": "CONTRACT",
+  "CARTONS": "CARDS",
+  "CONTRATS": "CONTRACTS",
+  "CAMION": "TRUCK",
+  "RISQUES": "RISKS",
+  "COLIS": "PACKAGES",
+  "SONAR": "SONAR",
+  "ESCARMOUCHE": "SKIRMISH",
+  "CLASSIQUE": "CLASSIC",
+  "TACTIQUE": "TACTICAL",
+  "FUYARD": "RUNNER",
+  "CHASSEUR": "HUNTER",
+  "ALTERNANCE": "ALTERNATION",
+  "POURSUITE": "CHASE",
+  "PLI": "TRICK",
+  "TAXE": "TAX",
+  "CHAOS": "CHAOS",
+  "VARIANTE": "VARIANT",
+  "PRINCIPE": "PRINCIPLE",
+  "ATTAQUE": "ATTACK",
+  "CAMP": "SIDE",
+  "AFFICHE": "DISPLAY",
+  "VITESSE": "SPEED",
+  "PERSONNALISER": "CUSTOMIZE",
+  "PROPAGATION": "SPREAD",
+  "BRIGADE": "BRIGADE",
+  "CARTE": "MAP",
+  "ZONES": "ZONES",
+  "FOYERS": "FIRE OUTBREAKS",
+  "CROISSANCE": "GROWTH",
+  "USURE": "WEAR",
+  "JAUGE": "GAUGE",
+  "GAGES": "FORFEITS",
+  "BUT": "GOAL",
+  "PROGRESSIF": "PROGRESSIVE",
+  "PUNITION": "PENALTY",
+  "TYPE": "TYPE",
+  "MULTIPLICATEUR": "MULTIPLIER",
+  "LIMITE": "LIMIT",
+  "PARCOURS": "COURSE",
+  "DÉFI": "CHALLENGE",
+  "Défi": "Challenge",
+  "SAISIE": "INPUT",
+  "SÉRIES": "STREAKS",
+  "FUMÉES": "SMOKE ZONES",
+  "Dégâts": "Damage",
+  "numéro": "number",
+  "Déroulé": "Flow",
+  "Masqués": "Hidden",
+  "Régions": "Regions",
+  "PÉNALITÉ": "PENALTY",
+  "SÉQUENCE": "SEQUENCE",
+  "Conquête": "Conquest",
+  "Protéger": "Protect",
+  "TOLÉRANCE": "TOLERANCE",
+  "TABLE PRÊTE": "TABLE READY",
+  "Zone valide": "Valid zone",
+  "ZÉRO TOUCHE": "ZERO HIT",
+  "Charge cible": "Target load",
+  "Cible numéro": "Target number",
+  "Dés / lancer": "Dice / roll",
+  "Hors-cible =": "Off-target =",
+  "Joueur local": "Local player",
+  "LANCER CARGO": "LAUNCH CARGO",
+  "NOM DU ROUND": "ROUND NAME",
+  "Nom d’équipe": "Team name",
+  "PLAGE CIBLES": "TARGET RANGE",
+  "RÈGLE DE BAR": "BAR RULE",
+  "Règles CARGO": "CARGO rules",
+  "Règles GAGES": "FORFEITS rules",
+  "Règles — X01": "X01 rules",
+  "Volée + MISS": "Visit + MISS",
+  "main opposée": "opposite hand",
+  "OBJECTIF BULL": "BULL TARGET",
+  "Preset règles": "Rules preset",
+  "Retour en jeu": "Return to play",
+  "RÈGLE D'ÉCHEC": "FAILURE RULE",
+  "Règles BÂTARD": "BASTARD rules",
+  "Score cible :": "Target score:",
+  "Sets à gagner": "Sets to win",
+  "Visite guidée": "Guided tour",
+  "Volée et MISS": "Visit and MISS",
+  "au 1er lancer": "on the first throw",
+  "Cartes / joueur": "Cards / player",
+  "Cases spéciales": "Special squares",
+  "Changer le logo": "Change logo",
+  "Conquête totale": "Total conquest",
+  "Départ : Fuyard": "Start: Runner",
+  "FARKLE — Règles": "FARKLE — Rules",
+  "RÈGLES AVANCÉES": "ADVANCED RULES",
+  "Règles HALVE-IT": "HALVE-IT rules",
+  "Règles KNOCKOUT": "KNOCKOUT rules",
+  "Résumé (rapide)": "Quick summary",
+  "Score d’évasion": "Escape score",
+  "SÉRIES & RISQUE": "STREAKS & RISK",
+  "Équipes BOTS IA": "AI BOT TEAMS",
+  "4. Règles de jeu": "4. GAME RULES",
+  "En cas d’égalité": "In case of a tie",
+  "Nombre d'équipes": "Number of teams",
+  "Nombre de cibles": "Number of targets",
+  "Nouveaux départs": "New outbreaks",
+  "Profil du moteur": "Engine profile",
+  "QR téléphone X01": "X01 phone QR",
+  "RÈGLES DE PARTIE": "GAME RULES",
+  "SAISIE & CONFORT": "INPUT & COMFORT",
+  "SYSTÈMES D’ARMES": "WEAPON SYSTEMS",
+  "VALIDER UN ROUND": "CONFIRM ROUND",
+  "Volée et saisie.": "Visit and input.",
+  "joueur(s) requis": "player(s) required",
+  "ÉCHEC D’UN ROUND": "ROUND FAILURE",
+  "Équipe existante": "Existing team",
+  "1. Type de partie": "1. MATCH TYPE",
+  "Attaque / Défense": "Attack / Defense",
+  "Choisir 2 équipes": "Choose 2 teams",
+  "Cible + puissance": "Target + power",
+  "Croissance du feu": "Fire growth",
+  "Créer une liaison": "Create a link",
+  "Erreur de secteur": "Sector error",
+  "INTENSITÉ GLOBALE": "OVERALL INTENSITY",
+  "Numéros de grille": "Grid numbers",
+  "PARCOURS & RÈGLES": "COURSE & RULES",
+  "Pêche défensive :": "Defensive fishing:",
+  "Pêche offensive :": "Offensive fishing:",
+  "Règles de SHOOTER": "SHOOTER rules",
+  "Règles — Shanghai": "Shanghai rules",
+  "SÉRIE À ATTEINDRE": "TARGET STREAK",
+  "Tous commencent à": "Everyone starts at",
+  "Tous les 2 points": "Every 2 points",
+  "cible interactive": "interactive board",
+  "1 LANCER = 1 VOLÉE": "1 THROW = 1 VISIT",
+  "5 cœurs exactement": "exactly 5 hearts",
+  "Capacité du camion": "Truck capacity",
+  "Choisir au minimum": "Choose at least",
+  "Erreur WebSocket :": "WebSocket error:",
+  "Format des manches": "Round format",
+  "Lancer le training": "Start training",
+  "Marks pour valider": "Marks to confirm",
+  "Nombre de mi-temps": "Number of halves",
+  "Objectif principal": "Main objective",
+  "Règle BULL / DBULL": "BULL / DBULL rule",
+  "Règles DARTS POKER": "DARTS POKER rules",
+  "Règles TERRITORIES": "TERRITORIES rules",
+  "Règles TIC-TAC-TOE": "TIC-TAC-TOE rules",
+  "Règles de Bob's 27": "Bob's 27 rules",
+  "Règles de PRISONER": "PRISONER rules",
+  "Règles — Dice Duel": "Dice Duel rules",
+  "Source des équipes": "Team source",
+  "Sélecteur de logos": "Logo selector",
+  "Vent et prévisions": "Wind and forecast",
+  "toucher son numéro": "hit your number",
+  "Ajouter des BOTS IA": "Add AI BOTS",
+  "Changements de côté": "Side changes",
+  "Choisir des pilotes": "Choose drivers",
+  "Choisir les flottes": "Choose fleets",
+  "DURÉE DE LA SESSION": "SESSION DURATION",
+  "Difficulté IA Scram": "Scram AI difficulty",
+  "Difficulté de visée": "Aiming difficulty",
+  "Défense + critiques": "Defense + criticals",
+  "Fléchettes par main": "Darts per hand",
+  "OBJECTIF DE MISSION": "MISSION OBJECTIVE",
+  "PARAMÈTRES DU MATCH": "MATCH SETTINGS"
+});
+
+Object.assign(EN_EXACT, {"IA":"AI","TOURDELHORLOGE":"AROUND THE CLOCK"});
+
 // Rules are deliberately ordered from the most specific phrases to generic words.
 // They cover dynamic strings that cannot be exact-matched (counts, names, scores...).
 const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
+  [/\bbruitages\b/gi, "sound effects"],
+  [/\bvoix\b/gi, "voice"],
+  [/\bcomptage externe\b/gi, "external scoring"],
+  [/\bmode de sortie\b/gi, "checkout mode"],
+  [/\bmode d[’']entrée\b/gi, "entry mode"],
+  [/\bformat des legs\b/gi, "leg format"],
+  [/\bformat des sets\b/gi, "set format"],
+  [/\bliste profils\b/gi, "profile list"],
   [/\bconfiguration guidée\b/gi, "guided setup"],
   [/\bconfiguration complète\b/gi, "full setup"],
   [/\bafficher tous les jeux\b/gi, "show all games"],
@@ -693,7 +1011,9 @@ const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
   [/\bnon\b/gi, "no"],
 ];
 
-const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ]|\b(?:retour|fermer|annuler|valider|suivant|précédent|joueur|joueurs|équipe|équipes|partie|parties|manche|manches|volée|volées|fléchette|fléchettes|règles|objectif|cible|cibles|victoire|victoires|défaite|défaites|vainqueur|statistiques|historique|profil|profils|préférences|paramètres|réglages|langue|thème|compte|sauvegarde|connexion|déconnexion|chargement|erreur|impossible|sélection|choisir|créer|supprimer|modifier|ajouter|démarrer|lancer|arrêter|reprendre|continuer|quitter|aucun|aucune|durée|moyenne|meilleur|meilleure|série|réussite|échec|raté|terminé|fumée|feu|menace|territoire|afficher|changer|nouveau|nouvelle|seulement|simuler|prochain|prochains|couverture|groupe|résumé|détails|année|résultats|évolution|débutant|intermédiaire|difficile|facile|légende|confirmé|défaut|téléphone|actualité|repêchage|proximité|période|événements|personnalisé|publicité|région|méthode|mot de passe|adresse email|aléatoire|éliminé|élimination|réinitialiser|connecté|cumulé|intensité|rafraîchir|sécurité|gagné|remporté|récupération|reçue|envoyé|prénom|récapitulatif|répondre|télécharger|validé|caméra|bientôt|définir|planifier|pièce jointe|actions spéciales|calibration|jouées|partagé|utilisateur|tournoi|jeux|amis|ami|envoyer|ouvrir|mots de passe|nom|publier|recherche|temps|feuilles|mettre|corbeille|masquer|liste|restant|confirmer|valide|corrige|camps|buts|saisie|tous|toutes|comprendre|valeurs|appareil|membres|messagerie|groupes|retirer|assigne|clique)\b/i;
+const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ]|\b(?:retour|fermer|annuler|valider|suivant|précédent|joueur|joueurs|équipe|équipes|partie|parties|manche|manches|volée|volées|fléchette|fléchettes|règles|objectif|cible|cibles|victoire|victoires|défaite|défaites|vainqueur|statistiques|historique|profil|profils|préférences|paramètres|réglages|langue|thème|compte|sauvegarde|connexion|déconnexion|chargement|erreur|impossible|sélection|choisir|créer|supprimer|modifier|ajouter|démarrer|lancer|arrêter|reprendre|continuer|quitter|aucun|aucune|durée|moyenne|meilleur|meilleure|série|réussite|échec|raté|terminé|fumée|feu|menace|territoire|afficher|changer|nouveau|nouvelle|seulement|simuler|prochain|prochains|couverture|groupe|résumé|détails|année|résultats|évolution|débutant|intermédiaire|difficile|facile|légende|confirmé|défaut|téléphone|actualité|repêchage|proximité|période|événements|personnalisé|publicité|région|méthode|mot de passe|adresse email|aléatoire|éliminé|élimination|réinitialiser|connecté|cumulé|intensité|rafraîchir|sécurité|gagné|remporté|récupération|reçue|envoyé|prénom|récapitulatif|répondre|télécharger|validé|caméra|bientôt|définir|planifier|pièce jointe|actions spéciales|calibration|jouées|partagé|utilisateur|tournoi|jeux|amis|ami|envoyer|ouvrir|mots de passe|nom|publier|recherche|temps|feuilles|mettre|corbeille|masquer|liste|restant|confirmer|valide|corrige|camps|buts|saisie|tous|toutes|comprendre|valeurs|appareil|membres|messagerie|groupes|retirer|assigne|clique|bruitages|voix|sortie|depart|départ|manuel|manuelle|manuelles|enregistrée|enregistrées|enregistree|enregistrees|individuel|individuels|duel|actuelle|alterne|alterné|prolongation|gardien|coeur|cœur|vies|numero|numéro|proteger|protéger|degats|dégâts|fumees|fumées|regions|régions|deroule|déroulé|masques|masqués|prets|prêts|reussir|réussir|recupere|récupère|cote|côté|boules|quilles|navires|foyers|protections|relier|calibrer|comptage|externe|sondage|parcours|penalite|pénalité|sequence|séquence|conquete|conquête|tolerance|tolérance|personnaliser|propagation|brigade|croissance|usure|jauge|gage|gages|punition|multiplicateur|limite|fuyard|chasseur|poursuite|attaque|defense|défense|taxe|variante|principe|affiche|vitesse)\b/i;
+
+const ENGLISH_UI_SIGNAL = /\b(?:back|close|cancel|confirm|next|previous|player|players|team|teams|guided|full|setup|starting|checkout|input|audio|voice|board|keypad|presets|best\s+of|first\s+to|match|matches|rules|target|targets|random|shuffle|alternate|show|hide|select|selected|selection|profile|profiles|bot|bots|summary|format|home|games|stats|competition|competitions|winner|difficulty|start|continue|manual|saved|auto|custom|advanced|basic|easy|normal|hard|expert|duration|points|win|loss|draw|reset|add|remove|delete|choose|camera|phone|external|video|network|bridge|server|host|ready|loading|connect|connected|disconnected|single|double|master|training|level|sets|legs|visit|visits|darts|dart|sound|effects|settings|public|private|online|local|goal|goals|field|race|laps|turn|turns|order)\b/i;
 
 const PROPER_NAME_EXCEPTIONS = new Set([
   "Auvergne-Rhône-Alpes",
@@ -785,6 +1105,11 @@ export function looksFrenchUiText(value: string): boolean {
   return !!core && !PROPER_NAME_EXCEPTIONS.has(core) && FRENCH_SIGNAL.test(core);
 }
 
+export function looksEnglishUiText(value: string): boolean {
+  const core = normalize(String(value || ""));
+  return !!core && !PROPER_NAME_EXCEPTIONS.has(core) && ENGLISH_UI_SIGNAL.test(core);
+}
+
 // t(...) can register the source language of a temporary fallback when a
 // selected-language dictionary does not yet contain a recent key. The text
 // remains visually normal, while the DOM safety-net knows whether it must ask
@@ -809,7 +1134,9 @@ export function getUiLiteralSourceLanguage(value: string): string | null {
   if (!core || PROPER_NAME_EXCEPTIONS.has(core)) return null;
   const registered = registeredSourceLanguages.get(core);
   if (registered) return registered;
-  return looksFrenchUiText(core) ? "fr" : null;
+  if (looksFrenchUiText(core)) return "fr";
+  if (looksEnglishUiText(core)) return "en";
+  return null;
 }
 
 type BrowserTranslatorLike = {
@@ -883,43 +1210,61 @@ export async function translateUiLiteralWithBrowser(
 }
 
 export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string) {
-  const reverse = buildReverseDictionary(dicts, targetLang);
+  const target = String(targetLang || "fr").toLowerCase().split("-")[0];
+  const reverse = buildReverseDictionary(dicts, target);
   const reverseCi = buildCaseInsensitiveMap(reverse);
 
   return (raw: string): string => {
-    if (!raw || targetLang === "fr") return raw;
+    if (!raw) return raw;
 
     const lead = raw.match(/^\s*/)?.[0] || "";
     const trail = raw.match(/\s*$/)?.[0] || "";
     const core = normalize(raw);
     if (!core || PROPER_NAME_EXCEPTIONS.has(core)) return raw;
 
+    const sourceLanguage = registeredSourceLanguages.get(core) || null;
+
+    // First choice for every language, including French: reuse authored
+    // dictionaries in reverse. This also lets hard-coded English config labels
+    // return to French instead of staying English forever.
     const dictionaryExact = reverse.get(core);
     if (dictionaryExact != null) return `${lead}${dictionaryExact}${trail}`;
     const dictionaryCi = reverseCi.get(core.toLocaleLowerCase("fr"));
     if (dictionaryCi != null) return `${lead}${matchCase(core, dictionaryCi)}${trail}`;
 
-    // For non-English target languages, never silently replace a missing
-    // translation with English. Keep the canonical French literal intact so
-    // LangContext's async on-device/browser translator can resolve it into the
-    // language the user actually selected.
-    if (targetLang !== "en") {
-      return raw;
+    // English has a sizeable deterministic compatibility table so the UI stays
+    // readable even before an ML Kit model has finished downloading. Explicit
+    // config translations win even if a legacy literal was ambiguously tagged
+    // as English (e.g. "Bots IA" or "4. Format").
+    if (target === "en") {
+      const explicit = EN_EXACT[core];
+      if (explicit != null) return `${lead}${explicit}${trail}`;
+      const explicitCi = EN_EXACT_CI.get(core.toLocaleLowerCase("fr"));
+      if (explicitCi != null) return `${lead}${matchCase(core, explicitCi)}${trail}`;
     }
 
-    const explicit = EN_EXACT[core];
-    if (explicit != null) return `${lead}${explicit}${trail}`;
-    const explicitCi = EN_EXACT_CI.get(core.toLocaleLowerCase("fr"));
-    if (explicitCi != null) return `${lead}${matchCase(core, explicitCi)}${trail}`;
-    if (!FRENCH_SIGNAL.test(core)) return raw;
+    if (sourceLanguage === target) return raw;
 
-    let translated = core;
-    for (const [pattern, replacement] of EN_FRAGMENT_RULES) {
-      const safePattern = unicodeWordPattern(pattern);
-      translated = translated.replace(safePattern, (match) => matchCase(match, replacement));
+    if (target === "en") {
+      // Registered configuration sentences must be translated as one complete
+      // sentence by the local translator. Fragment replacement is deliberately
+      // avoided here because it produced hybrids such as
+      // "Commence par choose si tu joues...".
+      if (sourceLanguage === "fr" && /\s/.test(core)) return raw;
+      if (!FRENCH_SIGNAL.test(core)) return raw;
+
+      let translated = core;
+      for (const [pattern, replacement] of EN_FRAGMENT_RULES) {
+        const safePattern = unicodeWordPattern(pattern);
+        translated = translated.replace(safePattern, (match) => matchCase(match, replacement));
+      }
+      return translated === core ? raw : `${lead}${translated}${trail}`;
     }
 
-    return translated === core ? raw : `${lead}${translated}${trail}`;
+    // Other selected languages never inherit English just because a key is
+    // missing. Keep the registered source intact; LangContext resolves the whole
+    // literal through the local Android/Chrome translation layer.
+    return raw;
   };
 }
 
