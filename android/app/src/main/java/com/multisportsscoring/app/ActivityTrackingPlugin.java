@@ -24,7 +24,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 )
 public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingService.Listener {
 
-    @Override protected void load() {
+    @Override public void load() {
         super.load();
         ActivityTrackingService.addListener(this);
     }

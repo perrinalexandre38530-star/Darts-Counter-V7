@@ -113,7 +113,7 @@ public class HealthConnectPlugin extends Plugin {
             ActivityResultContract<Set<String>, Set<String>> contract = PermissionController.createRequestPermissionResultContract(PROVIDER);
             Intent intent = contract.createIntent(getContext(), WORKOUT_PERMISSIONS);
             startActivityForResult(call, intent, "healthPermissionsResult");
-        } catch (Throwable error) {
+        } catch (Exception error) {
             call.reject("Unable to request Health Connect permissions: " + error.getMessage(), error);
         }
     }
@@ -130,7 +130,7 @@ public class HealthConnectPlugin extends Plugin {
             if (permissions != null) for (String permission : permissions) rows.put(permission);
             out.put("permissions", rows);
             call.resolve(out);
-        } catch (Throwable error) {
+        } catch (Exception error) {
             call.reject("Unable to read Health Connect permission result: " + error.getMessage(), error);
         }
     }
@@ -163,7 +163,7 @@ public class HealthConnectPlugin extends Plugin {
                 result.put("exerciseRoutesGranted", permissions.contains(READ_ROUTES));
                 result.put("sessions", out);
                 call.resolve(result);
-            } catch (Throwable error) {
+            } catch (Exception error) {
                 call.reject("Unable to read Health Connect workouts: " + safeMessage(error), error);
             }
         });
@@ -179,7 +179,7 @@ public class HealthConnectPlugin extends Plugin {
             ExerciseRouteRequestContract contract = new ExerciseRouteRequestContract();
             Intent intent = contract.createIntent(getContext(), sessionId);
             startActivityForResult(call, intent, "exerciseRouteResult");
-        } catch (Throwable error) {
+        } catch (Exception error) {
             call.reject("Unable to request exercise route: " + safeMessage(error), error);
         }
     }
@@ -194,13 +194,13 @@ public class HealthConnectPlugin extends Plugin {
             out.put("route", route == null ? new JSArray() : routeToJson(route));
             out.put("granted", route != null);
             call.resolve(out);
-        } catch (Throwable error) {
+        } catch (Exception error) {
             call.reject("Unable to read exercise route result: " + safeMessage(error), error);
         }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private <T extends Record> List<T> read(HealthConnectClient client, Class<T> type, Instant start, Instant end, boolean ascending, int pageSize) {
+    private <T extends Record> List<T> read(HealthConnectClient client, Class<T> type, Instant start, Instant end, boolean ascending, int pageSize) throws Exception {
         ReadRecordsRequest<T> request = new ReadRecordsRequest(
             JvmClassMappingKt.getKotlinClass(type),
             TimeRangeFilter.between(start, end),
@@ -213,7 +213,7 @@ public class HealthConnectPlugin extends Plugin {
         return response.getRecords();
     }
 
-    private JSObject sessionToJson(HealthConnectClient client, ExerciseSessionRecord session, boolean routesGranted) {
+    private JSObject sessionToJson(HealthConnectClient client, ExerciseSessionRecord session, boolean routesGranted) throws Exception {
         Instant start = session.getStartTime();
         Instant end = session.getEndTime();
         Metadata metadata = session.getMetadata();
@@ -340,7 +340,7 @@ public class HealthConnectPlugin extends Plugin {
             market.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(market);
             call.resolve();
-        } catch (Throwable error) {
+        } catch (Exception error) {
             call.reject("Unable to open Health Connect: " + safeMessage(error), error);
         }
     }
