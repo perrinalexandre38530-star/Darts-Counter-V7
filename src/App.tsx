@@ -309,6 +309,10 @@ import FootMenuGames from "./pages/foot/FootMenuGames";
 import FootConfig from "./pages/foot/FootConfig";
 import FootPlay from "./pages/foot/FootPlay";
 
+// ✅ RUNNING (WEB/PWA BETA — volontairement hors whitelist Android Store V1)
+import RunningHome from "./pages/running/RunningHome";
+import RunningModule from "./pages/running/RunningModule";
+
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 import DartsModeConfig from "./pages/modes/DartsModeConfig";
@@ -584,7 +588,7 @@ function safeRouteParamsForCrash(input: any) {
 }
 
 const START_GAME_KEY = "dc-start-game";
-type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -3942,6 +3946,8 @@ const unifiedStats = (() => {
             <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
             <PingPongHome store={store} update={update} go={go} />
+          ) : activeSport === "running" ? (
+            <RunningHome go={go} />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -3962,6 +3968,8 @@ const unifiedStats = (() => {
             <BabyFootMenuGames go={go} store={store} params={routeParams} />
           ) : activeSport === "pingpong" ? (
             <PingPongMenuGames go={go} />
+          ) : activeSport === "running" ? (
+            <RunningModule go={go} />
           ) : (
             <Games setTab={(t: any, p?: any) => go(t, p)} params={routeParams} />
           );

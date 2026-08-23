@@ -20,6 +20,7 @@ import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
+import logoRunning from "../assets/games/logo-running.svg";
 
 // ✅ Sports à venir (affichés en SOON dans le GameSelect)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -47,6 +48,7 @@ type GameId =
   | "petanque"
   | "pingpong"
   | "babyfoot"
+  | "running"
   | "archery"
   | "molkky"
   | "padel"
@@ -126,6 +128,16 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("babyfoot");
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "running",
+      label: "Running Scoring",
+      logo: logoRunning,
+      enabled: true,
+      onClick: () => {
+        setSport("running");
         go(GAMES_ROUTE);
       },
     },

@@ -85,6 +85,8 @@ import { mirrorAvatarFallbackToR2, resolveAvatarFallback } from "../lib/avatarR2
 import { loadBots, saveBots } from "../lib/bots";
 import { loadTeams } from "../lib/petanqueTeamsStore";
 import { AVATAR_GALLERY_EVENT, deleteAvatarGalleryItem, readAvatarGallery, syncAvatarGalleryFromSources, upsertAvatarGalleryItem, type AvatarGalleryCategory, type AvatarGalleryItem } from "../lib/avatarGallery";
+import CollectibleCardsPanel from "../components/profile/CollectibleCardsPanel";
+import type { CollectibleUnlockMap } from "../lib/collectibleCards";
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
@@ -2294,6 +2296,28 @@ export default function Profiles({
     setToast({ type: "success", message: "Image supprimée de la galerie" });
   }, [avatarGalleryAccountId]);
 
+  const persistCollectibleUnlocks = React.useCallback((profileIdInput: string, unlocks: CollectibleUnlockMap) => {
+    const profileId = String(profileIdInput || "").trim();
+    if (!profileId) return;
+    const nowTs = Date.now();
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
+      const nextProfiles = prevProfiles.map((profile: any) => String(profile?.id || "") === profileId ? {
+        ...(profile || {}),
+        collectibleCards: { version: 1, unlocks: { ...(unlocks || {}) }, updatedAt: nowTs },
+      } : profile);
+      nextStoreSnapshot = { ...(s || {}), profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
+    setProfilesSafe((arr) => arr.map((profile: any) => String(profile?.id || "") === profileId ? {
+      ...(profile || {}),
+      collectibleCards: { version: 1, unlocks: { ...(unlocks || {}) }, updatedAt: nowTs },
+    } : profile));
+    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_collectible_cards", nextStoreSnapshot, { cloud: false, delayMs: 1800 });
+    try { window.dispatchEvent(new CustomEvent("dc:collectible-cards-updated", { detail: { profileId } })); } catch {}
+  }, [scheduleProfilesPersist, setProfilesSafe, update]);
+
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
     // - params.mode: signin/signup (compat)
@@ -3583,10 +3607,10 @@ React.useEffect(() => {
                                   ? "Esta página muestra tu perfil activo sincronizado con tu cuenta.\n\n• Consulta tu avatar, estado y estadísticas principales.\n• Modifica tu información personal.\n• Accede rápidamente a la edición, las estadísticas y los ajustes del perfil."
                                   : "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.")
                             : (lang === "fr"
-                                ? "Cette page regroupe la galerie du compte avec les avatars IA, profils locaux, bots CPU, teams et l'avatar du profil actif.\n\n• Parcours les avatars disponibles.\n• Filtre et scanne automatiquement les éléments.\n• Attribue rapidement un avatar au profil actif, à un profil local ou à un bot."
+                                ? "Cette page regroupe deux espaces : la collection de cartes à débloquer du profil actif et la galerie médias du compte.\n\n• CARTES : relève les défis AWENA et Darts Firefighter, suis chaque jauge et débloque définitivement les cartes pour le profil actif.\n• AVATARS & LOGOS : retrouve les avatars IA, profils locaux, bots CPU, teams et l’avatar du profil actif.\n• Les cartes déjà obtenues restent débloquées même si les statistiques évoluent ensuite."
                                 : lang === "es"
-                                  ? "Esta página reúne la galería de la cuenta con avatares IA, perfiles locales, bots CPU, equipos y el avatar del perfil activo.\n\n• Explora los avatares disponibles.\n• Filtra y escanea automáticamente los elementos.\n• Asigna rápidamente un avatar al perfil activo, a un perfil local o a un bot."
-                                  : "This page gathers the account gallery with AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n\n• Browse the available avatars.\n• Filter and automatically scan gallery items.\n• Quickly assign an avatar to the active profile, a local profile or a bot.")
+                                  ? "Esta página reúne dos espacios: la colección de cartas desbloqueables del perfil activo y la galería multimedia de la cuenta.\n\n• CARTAS: completa desafíos de AWENA y Darts Firefighter, sigue cada progreso y desbloquea las cartas de forma permanente para el perfil activo.\n• AVATARES Y LOGOS: encuentra avatares IA, perfiles locales, bots CPU, equipos y el avatar del perfil activo.\n• Las cartas obtenidas permanecen desbloqueadas aunque las estadísticas cambien después."
+                                  : "This page contains two spaces: the active profile’s unlockable card collection and the account media gallery.\n\n• CARDS: complete AWENA and Darts Firefighter challenges, track each progress bar and permanently unlock cards for the active profile.\n• AVATARS & LOGOS: browse AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n• Cards already earned stay unlocked even if statistics change later.")
                       }
                     />
                   }
@@ -3819,7 +3843,7 @@ React.useEffect(() => {
             {view === "avatarGallery" && (
               <Card title={t("profiles.avatarGallery.title", "GALERIE")}>
                 {avatarGalleryHeavyReady && !restoreBusy ? (
-                  <AvatarGalleryPanel
+                  <GalleryHubPanel
                     items={avatarGalleryItems}
                     profiles={(stableProfiles as any[]).filter((p: any) => !!p && !isMirrorProfile(p))}
                     bots={loadBots() as any[]}
@@ -3829,6 +3853,7 @@ React.useEffect(() => {
                     onApplyToProfile={applyGalleryAvatarToProfile}
                     onApplyToBot={applyGalleryAvatarToBot}
                     onDeleteItem={deleteGalleryItem}
+                    onPersistCollectibleUnlocks={persistCollectibleUnlocks}
                   />
                 ) : (
                   <HeavySectionPlaceholder minHeight={360} />
@@ -4110,6 +4135,36 @@ const AVATAR_GALLERY_TABS: Array<{ id: "all" | AvatarGalleryCategory; label: str
   { id: "team", label: "TEAMS" },
   { id: "ia", label: "AVATAR IA" },
 ];
+
+function GalleryHubPanel({ items, profiles, bots, activeProfileId, onRefresh, onApplyToActive, onApplyToProfile, onApplyToBot, onDeleteItem, onPersistCollectibleUnlocks }: {
+  items: AvatarGalleryItem[]; profiles: any[]; bots: any[]; activeProfileId?: string;
+  onRefresh: () => void;
+  onApplyToActive: (item: AvatarGalleryItem) => void | Promise<void>;
+  onApplyToProfile: (profileId: string, item: AvatarGalleryItem) => void | Promise<void>;
+  onApplyToBot: (botId: string, item: AvatarGalleryItem) => void | Promise<void>;
+  onDeleteItem: (item: AvatarGalleryItem) => void;
+  onPersistCollectibleUnlocks?: (profileId: string, unlocks: CollectibleUnlockMap) => void | Promise<void>;
+}) {
+  const { theme } = useTheme();
+  const { lang } = useLang();
+  const [section, setSection] = React.useState<"cards" | "avatars">("cards");
+  const activeProfile = React.useMemo(() => (profiles || []).find((profile: any) => String(profile?.id || "") === String(activeProfileId || "")) || null, [profiles, activeProfileId]);
+  const unlocks = ((activeProfile as any)?.collectibleCards?.unlocks || {}) as CollectibleUnlockMap;
+  const labels = lang === "en"
+    ? { cards: "CARDS", avatars: "AVATARS & LOGOS", cardsHint: "Collections and challenges", avatarsHint: "Account media gallery" }
+    : lang === "es"
+      ? { cards: "CARTAS", avatars: "AVATARES Y LOGOS", cardsHint: "Colecciones y desafíos", avatarsHint: "Galería multimedia de la cuenta" }
+      : { cards: "CARTES", avatars: "AVATARS & LOGOS", cardsHint: "Collections et défis", avatarsHint: "Galerie médias du compte" };
+  return <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, padding: 6, borderRadius: 18, background: "rgba(0,0,0,.22)", border: `1px solid ${theme.borderSoft}` }}>
+      {([["cards", labels.cards, labels.cardsHint, "🃏"], ["avatars", labels.avatars, labels.avatarsHint, "🖼️"]] as const).map(([id,label,hint,icon]) => {
+        const active = section === id;
+        return <button key={id} type="button" onClick={() => setSection(id)} style={{ minWidth:0, border:`1px solid ${active ? theme.primary : "transparent"}`, background:active ? `${theme.primary}20` : "rgba(255,255,255,.025)", color:active ? theme.primary : theme.textSoft, borderRadius:14, padding:"10px 9px", cursor:"pointer", textAlign:"left", boxShadow:active ? `0 0 18px ${theme.primary}22` : "none" }}><div style={{ fontSize:10.5, fontWeight:1000, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{icon} {label}</div><div style={{ fontSize:8.5, opacity:.7, marginTop:2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{hint}</div></button>;
+      })}
+    </div>
+    {section === "cards" ? <CollectibleCardsPanel profileId={String(activeProfileId || "")} profileName={String(activeProfile?.name || activeProfile?.displayName || "")} persistedUnlocks={unlocks} onPersistUnlocks={onPersistCollectibleUnlocks} /> : <AvatarGalleryPanel items={items} profiles={profiles} bots={bots} activeProfileId={activeProfileId} onRefresh={onRefresh} onApplyToActive={onApplyToActive} onApplyToProfile={onApplyToProfile} onApplyToBot={onApplyToBot} onDeleteItem={onDeleteItem} />}
+  </div>;
+}
 
 function AvatarGalleryPanel({
   items,
