@@ -10,6 +10,8 @@ export type RunningRouteTemplate = {
   elevationGainM: number;
   referenceElapsedMs: number;
   createdAt: number;
+  source?: "activity" | "gpx" | "tcx";
+  sourceFileName?: string;
 };
 
 const STORAGE_KEY = "mss-running-routes-v1";
@@ -69,6 +71,7 @@ export function routeTemplateFromActivity(activity: ActivityRecord, name?: strin
     elevationGainM: activity.elevationGainM || 0,
     referenceElapsedMs: activity.elapsedMs || Number(normalized[normalized.length - 1]?.elapsedMs || 0),
     createdAt: activity.startedAt || Date.now(),
+    source: "activity",
   };
 }
 

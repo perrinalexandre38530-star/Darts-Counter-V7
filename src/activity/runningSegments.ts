@@ -95,3 +95,22 @@ export function segmentEffort(segment: RunningSegment, activity: ActivityRecord)
 export function segmentLeaderboard(segment: RunningSegment, activities: ActivityRecord[]) {
   return activities.map((activity) => segmentEffort(segment, activity)).filter((row): row is RunningSegmentEffort => !!row).sort((a, b) => a.elapsedMs - b.elapsedMs);
 }
+
+export function segmentRoutePoints(segment: RunningSegment, activity: ActivityRecord): GeoPoint[] {
+  if (!activity.route?.length) return [];
+  const cumulative = cumulativeRoute(activity.route);
+  const out = activity.route.filter((_, index) => cumulative[index] >= segment.startDistanceM && cumulative[index] <= segment.endDistanceM);
+  if (out.length >= 2) return out;
+  const start = pointNearDistance(activity.route, segment.startDistanceM);
+  const end = pointNearDistance(activity.route, segment.endDistanceM);
+  return start && end ? [start, end] : [];
+}
+
+export function segmentImprovementMs(segment: RunningSegment, activities: ActivityRecord[]) {
+  const board = segmentLeaderboard(segment, activities);
+  if (board.length < 2) return null;
+  const chronological = board.slice().sort((a, b) => a.startedAt - b.startedAt);
+  const first = chronological[0];
+  const best = board[0];
+  return Math.max(0, first.elapsedMs - best.elapsedMs);
+}

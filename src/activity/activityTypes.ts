@@ -57,6 +57,8 @@ export type ActivityRecord = {
     ghostEnabled?: boolean;
     ghostDeltaMs?: number | null;
     deviceName?: string;
+    sourceFileName?: string;
+    importedAt?: number;
     createdAt: number;
 };
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";

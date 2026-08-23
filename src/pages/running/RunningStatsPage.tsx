@@ -12,6 +12,8 @@ import { buildTrainingStatus, racePredictions } from "../../activity/runningTrai
 import { createRunningShoe, loadRunningShoes, saveRunningShoes, shoeDistanceM, shoeWearPct, type RunningShoe } from "../../activity/runningGear";
 import type { ActivityRecord } from "../../activity/activityTypes";
 import RunningPerformanceInsightsPanel from "./RunningPerformanceInsightsPanel";
+import RunningActivityCalendar from "./RunningActivityCalendar";
+import RunningDataToolsPanel from "./RunningDataToolsPanel";
 
 type Props = { go: (route: any, params?: any) => void };
 
@@ -26,7 +28,8 @@ export default function RunningStatsPage({ go }: Props) {
   const [shoes, setShoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
   const [newShoeName, setNewShoeName] = React.useState("");
 
-  React.useEffect(() => { void listActivities("running").then(setActivities); }, []);
+  const refreshActivities = React.useCallback(async () => setActivities(await listActivities("running")), []);
+  React.useEffect(() => { void refreshActivities(); }, [refreshActivities]);
 
   const stats = React.useMemo(() => buildRunningStats(activities, Date.now(), locale), [activities, locale]);
   const training = React.useMemo(() => buildTrainingStatus(activities), [activities]);
@@ -81,6 +84,8 @@ export default function RunningStatsPage({ go }: Props) {
         </div>
       </Section></div>
 
+      <div style={{ marginTop: 12 }}><RunningActivityCalendar activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} /></div>
+
       <div style={{ marginTop: 12 }}><Section title={copy.load}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
           <Mini label={copy.freshness} value={`${training.freshnessScore}%`} accent={accent} />
@@ -110,6 +115,8 @@ export default function RunningStatsPage({ go }: Props) {
       </Section></div> : null}
 
       <RunningPerformanceInsightsPanel activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
+
+      <RunningDataToolsPanel activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} onActivitiesChanged={refreshActivities} />
 
       <div style={{ marginTop: 12 }}><Section title={copy.recent}>
         {activities.length ? <div style={{ display: "grid", gap: 7 }}>
