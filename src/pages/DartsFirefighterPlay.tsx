@@ -732,16 +732,67 @@ function Rules({ config }: { config: DartsFirefighterConfigPayload }) {
   </div>;
 }
 
-function buildBotVisit(state: DartsFirefighterState, level: string): { darts: UiDart[]; selectedId: string | null } {
-  const targets = [...state.territories].filter((t) => t.playable && !t.destroyed)
-    .sort((a, b) => Number(b.critical) - Number(a.critical) || b.fireLevel - a.fireLevel || Number(b.smoke) - Number(a.smoke) || a.protection - b.protection);
+function normalizeFirefighterBotLevel(profile: any, fallbackLevel: string): "easy" | "normal" | "hard" {
+  const explicit = String(profile?.firefighterAiDifficulty || "").toLowerCase();
+  if (explicit === "easy" || explicit === "normal" || explicit === "hard") return explicit;
+
+  const raw = String(profile?.botLevel ?? profile?.level ?? profile?.difficulty ?? "").toLowerCase().replace(",", ".");
+  const fraction = raw.match(/(\d+(?:\.\d+)?)\s*\/\s*5/);
+  const stars = fraction ? Number(fraction[1]) : Number(profile?.profileStarring ?? profile?.stars ?? NaN);
+  if (Number.isFinite(stars)) {
+    if (stars >= 4.5) return "hard";
+    if (stars >= 3) return "normal";
+    return "easy";
+  }
+  if (/legend|légende|legende|pro|elite|élite|strong|fort|hard|expert/.test(raw)) return "hard";
+  if (/medium|normal|moyen|standard|rising|mixte|challenger/.test(raw)) return "normal";
+  if (/easy|facile|rookie|debutant|débutant|recrue/.test(raw)) return "easy";
+  return fallbackLevel === "hard" || fallbackLevel === "easy" ? fallbackLevel : "normal";
+}
+
+function firefighterBotTrait(profile: any): string {
+  return String(profile?.firefighterAiTrait || "").toLowerCase();
+}
+
+function firefighterBotTargetScore(territory: FireTerritory, state: DartsFirefighterState, trait: string): number {
+  const forecast = new Set(state.forecastTerritoryIds || []);
+  let score =
+    Number(territory.critical) * 150
+    + Number(territory.fireLevel || 0) * 135
+    + Number(territory.smoke) * 65
+    + Number(forecast.has(territory.id)) * 54
+    + Math.max(0, 3 - Number(territory.protection || 0)) * 8;
+
+  if (trait === "commander") score += Number(territory.critical) * 110 + Number(forecast.has(territory.id)) * 60;
+  else if (trait === "wildfire") score += Number(territory.fireLevel || 0) * 70 + Number(territory.smoke) * 55;
+  else if (trait === "weather") score += Number(forecast.has(territory.id)) * 145 + Number(territory.smoke) * 40;
+  else if (trait === "heavy") score += Number(territory.fireLevel || 0) * 105;
+  else if (trait === "scout") score += Number(territory.smoke) * 105 + Number(forecast.has(territory.id)) * 95 + Number(territory.critical) * 45;
+  else if (trait === "air_support") {
+    const adjacentIncidents = (territory.neighbors || []).filter((id) => {
+      const row = state.territories.find((item) => item.id === id);
+      return row && !row.destroyed && (row.fireLevel > 0 || row.smoke);
+    }).length;
+    score += adjacentIncidents * 85 + Number(territory.fireLevel || 0) * 35;
+  }
+  return score;
+}
+
+function buildBotVisit(state: DartsFirefighterState, profile: any, fallbackLevel: string): { darts: UiDart[]; selectedId: string | null } {
+  const level = normalizeFirefighterBotLevel(profile, fallbackLevel);
+  const trait = firefighterBotTrait(profile);
+  const targets = [...state.territories]
+    .filter((t) => t.playable && !t.destroyed)
+    .sort((a, b) => firefighterBotTargetScore(b, state, trait) - firefighterBotTargetScore(a, state, trait));
   const target = targets[0] || null;
   const dartsPerTurn = Math.max(1, Math.min(3, Number(state.config.dartsPerTurn || 3)));
   const scoreTargetMode = state.targetMode === "visit_score" || Number(state.config.activeTerritories || 0) > 20;
 
   if (scoreTargetMode && target) {
     const checkout = findCheckoutForTarget(target.target, dartsPerTurn);
-    const successChance = level === "hard" ? .90 : level === "easy" ? .48 : .72;
+    const baseSuccess = level === "hard" ? .90 : level === "easy" ? .48 : .72;
+    const traitBoost = trait === "commander" ? .04 : trait === "weather" || trait === "scout" ? .025 : trait === "wildfire" ? .015 : 0;
+    const successChance = Math.min(.97, baseSuccess + traitBoost);
     if (checkout && Math.random() < successChance) return { darts: checkout, selectedId: target.id };
     if (checkout?.length) {
       const missed = checkout.map((dart) => ({ ...dart }));
@@ -753,16 +804,28 @@ function buildBotVisit(state: DartsFirefighterState, level: string): { darts: Ui
     }
   }
 
-  const missChance = level === "hard" ? .04 : level === "easy" ? .25 : .11;
-  const bullChance = level === "hard" ? .18 : level === "easy" ? .04 : .10;
+  let missChance = level === "hard" ? .04 : level === "easy" ? .25 : .11;
+  let bullChance = level === "hard" ? .18 : level === "easy" ? .04 : .10;
+  if (trait === "commander") missChance = Math.max(.02, missChance - .02);
+  if (trait === "wildfire") missChance = Math.max(.03, missChance - .015);
+  if (trait === "weather" || trait === "scout") missChance = Math.max(.025, missChance - .01);
+  if (trait === "heavy") missChance = Math.min(.22, missChance + .035);
+  if (trait === "air_support" && state.config.bullAirSupport !== false) bullChance = Math.max(bullChance, level === "hard" ? .34 : .24);
+
   const darts: UiDart[] = [];
   for (let i = 0; i < dartsPerTurn; i += 1) {
     const r = Math.random();
     if (r < missChance) darts.push({ v: 0, mult: 1 });
-    else if (r < missChance + bullChance) darts.push({ v: 25, mult: level === "hard" && Math.random() > .48 ? 2 : 1 });
-    else {
-      const multiplier = level === "hard" ? (Math.random() < .55 ? 3 : 2) : level === "easy" ? (Math.random() < .78 ? 1 : 2) : (Math.random() < .34 ? 3 : Math.random() < .55 ? 2 : 1);
-      darts.push({ v: Math.max(1, Math.min(20, target?.target || (1 + Math.floor(Math.random() * 20)))), mult: multiplier as any });
+    else if (r < missChance + bullChance) {
+      const dbullChance = trait === "air_support" ? .78 : level === "hard" ? .52 : .24;
+      darts.push({ v: 25, mult: Math.random() < dbullChance ? 2 : 1 });
+    } else {
+      let multiplier: 1 | 2 | 3;
+      if (trait === "heavy") multiplier = Math.random() < .72 ? 3 : 2;
+      else if (level === "hard") multiplier = Math.random() < .55 ? 3 : 2;
+      else if (level === "easy") multiplier = Math.random() < .78 ? 1 : 2;
+      else multiplier = Math.random() < .34 ? 3 : Math.random() < .55 ? 2 : 1;
+      darts.push({ v: Math.max(1, Math.min(20, target?.target || (1 + Math.floor(Math.random() * 20)))), mult: multiplier });
     }
   }
   return { darts, selectedId: target?.id || null };
@@ -1231,7 +1294,7 @@ export default function DartsFirefighterPlay(props: any) {
     if (!activePlayer || !isBot(activeProfile, botIds) || state.finished || botThinking || actionRevealQueue.length > 0 || throwDarts.length) return;
     setBotThinking(true);
     const timer = window.setTimeout(() => {
-      const plan = buildBotVisit(state, config.botLevel || "normal");
+      const plan = buildBotVisit(state, activeProfile, config.botLevel || "normal");
       let prepared = state;
       if (plan.selectedId) prepared = selectFireTerritory(prepared, plan.selectedId);
       setUndoStack((prev) => [...prev.slice(-19), cloneDartsFirefighterState(state)]);

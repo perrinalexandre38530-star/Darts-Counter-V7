@@ -3947,7 +3947,7 @@ const unifiedStats = (() => {
           ) : activeSport === "pingpong" ? (
             <PingPongHome store={store} update={update} go={go} />
           ) : activeSport === "running" ? (
-            <RunningHome go={go} />
+            <RunningHome store={store} go={go} />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -3969,7 +3969,7 @@ const unifiedStats = (() => {
           ) : activeSport === "pingpong" ? (
             <PingPongMenuGames go={go} />
           ) : activeSport === "running" ? (
-            <RunningModule go={go} />
+            <RunningModule go={go} store={store} params={routeParams} />
           ) : (
             <Games setTab={(t: any, p?: any) => go(t, p)} params={routeParams} />
           );

@@ -163,7 +163,7 @@ function CountryFlagBadge({ bot, accent, size = 26 }: { bot: any; accent: string
   );
 }
 
-const GROUP_ORDER = ["Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
+const GROUP_ORDER = ["Firefighter IA", "Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
 
 export default function BotPagedSelector({
   bots,
@@ -371,7 +371,10 @@ export default function BotPagedSelector({
                       <div style={{ color: active ? "#fff" : "#cbd1e8", fontSize: 12, fontWeight: 950, textAlign: "center", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {bot.name}
                       </div>
-                      <span style={{ padding: "2px 9px", borderRadius: 999, fontSize: 9, fontWeight: 950, background: `linear-gradient(180deg, ${accent}, ${accent}AA)`, color: "#020611", border: "1px solid rgba(255,255,255,.45)" }}>BOT</span>
+                      {bot?.firefighterRole ? <div style={{ color: "#8f9bb4", fontSize: 8.5, fontWeight: 850, textAlign: "center", lineHeight: 1.2, minHeight: 20 }}>
+                        {bot.firefighterRole} · {level || 0}/5
+                      </div> : null}
+                      <span style={{ padding: "2px 9px", borderRadius: 999, fontSize: 9, fontWeight: 950, background: `linear-gradient(180deg, ${accent}, ${accent}AA)`, color: "#020611", border: "1px solid rgba(255,255,255,.45)" }}>{bot?.firefighterLevelLabel || "BOT"}</span>
                     </button>
                   );
                 })}

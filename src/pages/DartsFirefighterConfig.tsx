@@ -15,6 +15,7 @@ import PageHeader from "../components/PageHeader";
 import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
+import { DARTS_FIREFIGHTER_BOTS, isDartsFirefighterBot } from "../lib/dartsFirefighterBots";
 import { TERRITORY_MAPS } from "../lib/territories/maps";
 import { buildTerritoriesMap } from "../territories/map";
 import { buildTerritoryValueCalibration } from "../territories/territoryValueBalancing";
@@ -60,7 +61,7 @@ const HELP_MULTI_INTERVENTION = "Petites cartes uniquement : chaque fléchette n
 
 const OPTION_INFO: Record<string, string> = {
   "Difficulté générale": "Charge automatiquement un comportement cohérent du feu : croissance, propagation, fumée, usure des protections et tolérance aux pertes. Recrue est la plus accessible ; Inferno la plus agressive.",
-  "Niveau tactique des Bots": "Règle la précision des Bots et leur capacité à choisir les territoires les plus urgents. Cela n'altère pas le niveau des joueurs humains.",
+  "Niveau tactique des Bots": "Niveau de secours pour les Bots CPU créés par le joueur lorsqu’ils n’ont pas déjà un niveau personnel. Kaël, Malysia, Aero, Zéphyr, Braze et Lyna conservent chacun leur propre niveau IA.",
   "Ordre de passage aléatoire": "Mélange l'ordre de la brigade au lancement. Désactivé, l'ordre sélectionné est conservé.",
   "Carte": "Choisis le territoire de jeu : pays, continent ou carte mondiale. Les zones disponibles et les formes affichées dépendent directement de cette carte.",
   "Zones actives": "Définit la taille réelle de la mission. Carte complète active toutes les zones disponibles. Sur une grande carte, chaque territoire reçoit automatiquement une cible unique.",
@@ -107,7 +108,7 @@ const OPTION_INFO: Record<string, string> = {
 
 const OPTION_SHORT: Record<string, string> = {
   "Difficulté générale": "Profil moteur",
-  "Niveau tactique des Bots": "Précision IA",
+  "Niveau tactique des Bots": "Secours CPU",
   "Ordre de passage aléatoire": "Fixe / aléatoire",
   "Carte": "Zone de jeu",
   "Zones actives": "Taille mission",
@@ -167,6 +168,14 @@ function readSaved() {
 }
 function isBotLike(profile: any) {
   return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel);
+}
+function isLegacyProBot(profile: any) {
+  const id = String(profile?.id || "").trim().toLowerCase();
+  return id === "bot_awena_official"
+    || /^bot_pro_/.test(id)
+    || /^pro_/.test(id)
+    || profile?.source === "pro"
+    || profile?.isProBot === true;
 }
 function unique(ids: any[]) {
   return Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
@@ -421,11 +430,28 @@ export default function DartsFirefighterConfig(props: any) {
 
   const allProfiles = React.useMemo(() => Array.isArray(store?.profiles) ? store.profiles : [], [store?.profiles]);
   const humanProfiles = React.useMemo(() => allProfiles.filter((p: any) => !isBotLike(p)), [allProfiles]);
-  const customBots = React.useMemo(() => {
-    try { return loadBotPlayers().map((b: any) => ({ ...b, id: String(b.id), isBot: true })); }
-    catch { return []; }
+  // DARTS FIREFIGHTER possède désormais sa propre brigade IA.
+  // Les anciens BOTS PRO génériques sont exclus de ce mode, mais les BOTS CPU
+  // créés par le joueur restent disponibles et sélectionnables.
+  const userCpuBots = React.useMemo(() => {
+    try {
+      return loadBotPlayers()
+        .filter((b: any) => !isDartsFirefighterBot(b) && !isLegacyProBot(b))
+        .map((b: any) => ({
+          ...b,
+          id: String(b.id),
+          isBot: true,
+          source: "cpu",
+          isUserBot: true,
+          groupLabel: "CPU Home",
+        }));
+    } catch {
+      return [];
+    }
   }, []);
-  const profilePool = React.useMemo(() => [...humanProfiles, ...customBots], [humanProfiles, customBots]);
+  const firefighterBots = React.useMemo(() => DARTS_FIREFIGHTER_BOTS.map((bot) => ({ ...bot })), []);
+  const botPool = React.useMemo(() => [...firefighterBots, ...userCpuBots], [firefighterBots, userCpuBots]);
+  const profilePool = React.useMemo(() => [...humanProfiles, ...botPool], [humanProfiles, botPool]);
   const byId = React.useMemo(() => new Map(profilePool.map((p: any) => [String(p.id), p])), [profilePool]);
 
   const initialConfig = React.useMemo(() => normalizeDartsFirefighterConfig(saved), []);
@@ -480,7 +506,9 @@ export default function DartsFirefighterConfig(props: any) {
     ? `${targetRangeMin}-${targetRangeMax} · UNIQUES`
     : `1-${config?.activeTerritories || 20} · SURFACE`;
   const selectedBots = selectedItems.filter(isBotLike);
-  const valid = selectedIds.length >= 1 && selectedIds.length <= 8;
+  const selectedFirefighterBots = selectedBots.filter(isDartsFirefighterBot);
+  const selectedCpuBots = selectedBots.filter((bot: any) => !isDartsFirefighterBot(bot));
+  const valid = selectedItems.length >= 1 && selectedItems.length <= 8;
   const activeMissionPreset = PRESETS.find((preset) => preset.id === config.missionPreset) || null;
   const isCustomMission = config.missionPreset === "custom";
   const guidedPresetLocked = viewMode === "guided" && !isCustomMission;
@@ -579,6 +607,12 @@ export default function DartsFirefighterConfig(props: any) {
   }
 
   React.useEffect(() => {
+    // Nettoie automatiquement les anciennes sélections de BOTS PRO qui ne font
+    // plus partie de DARTS FIREFIGHTER.
+    setSelectedIds((prev) => prev.filter((id) => byId.has(String(id))).slice(0, 8));
+  }, [byId]);
+
+  React.useEffect(() => {
     setConfig((prev: any) => {
       const activeTerritories = Math.max(8, Math.min(playableTerritoryCap, Number(prev.activeTerritories || playableTerritoryCap)));
       return {
@@ -598,7 +632,8 @@ export default function DartsFirefighterConfig(props: any) {
 
   function start() {
     if (!valid) return;
-    const ids = config.randomOrder ? shuffle(selectedIds) : [...selectedIds];
+    const availableIds = selectedIds.filter((id) => byId.has(String(id)));
+    const ids = config.randomOrder ? shuffle(availableIds) : [...availableIds];
     const playersList = ids.map((id) => byId.get(id)).filter(Boolean).map((profile: any) => ({
       ...profile, id: String(profile.id), name: profile?.name || profile?.displayName || "Pompier",
       dartSetId: playerDartSets[String(profile.id)] ?? null, isBot: isBotLike(profile),
@@ -683,10 +718,13 @@ export default function DartsFirefighterConfig(props: any) {
       <ConfigAccordion title="Ajouter des pompiers" subtitle="Joueurs disponibles" icon="👨‍🚒" color={WATER} badge={`${selectedIds.length}/8`} defaultOpen={!selectedIds.length}>
         <PlayerPagedSelector usageMode="darts_firefighter" profiles={humanProfiles} selectedIds={selectedIds} onToggle={togglePlayer} accent={WATER} pageSize={9} modalTitle="Choisir les pompiers" showSelectedSummary={false} />
       </ConfigAccordion>
-      <ConfigAccordion title="Bots pompiers" subtitle="Équipiers IA" icon="🤖" color={WATER} badge={selectedBots.length ? `${selectedBots.length} ACTIF${selectedBots.length > 1 ? "S" : ""}` : "OPTIONNEL"} defaultOpen={botsPanel || Boolean(selectedBots.length)}>
+      <ConfigAccordion title="Bots pompiers" subtitle="Brigade IA + tes Bots CPU" icon="🤖" color={WATER} badge={selectedBots.length ? `${selectedBots.length} ACTIF${selectedBots.length > 1 ? "S" : ""}` : "OPTIONNEL"} defaultOpen={botsPanel || Boolean(selectedBots.length)}>
         <button type="button" onClick={() => setBotsPanel((v) => !v)} style={{ minHeight: 36, borderRadius: 11, border: `1px solid ${WATER}66`, background: botsPanel ? `${WATER}18` : "rgba(255,255,255,.035)", color: WATER, fontWeight: 1000 }}>🤖 SÉLECTION DES BOTS {botsPanel ? "▲" : "▼"}</button>
-        {botsPanel ? <BotPagedSelector bots={customBots} selectedIds={selectedIds} onToggle={togglePlayer} accent={WATER} label="BOTS POMPIERS" showCheckbox={false} showSelectedSummary={false} /> : null}
-        {selectedBots.length ? <CfgOption label="Niveau tactique des Bots" hint="Précision et choix des zones prioritaires"><OptionSelect value={botLevel} options={[{ value: "easy", label: "Recrue" }, { value: "normal", label: "Confirmé" }, { value: "hard", label: "Élite" }]} onChange={setBotLevel} /></CfgOption> : null}
+        {botsPanel ? <BotPagedSelector bots={botPool} selectedIds={selectedIds} onToggle={togglePlayer} accent={WATER} label="BOTS FIREFIGHTER + CPU" modalTitle="Choisir la brigade IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+        {selectedFirefighterBots.length ? <div style={{ padding: "8px 10px", borderRadius: 12, border: `1px solid ${FIRE}35`, background: `${FIRE}0d`, color: "#cdd4df", fontSize: 8.5, lineHeight: 1.4 }}>
+          <strong style={{ color: FIRE_2 }}>BOTS FIREFIGHTER</strong> · niveau propre à chaque personnage : {selectedFirefighterBots.map((bot: any) => `${bot.name} ${bot.botLevel}`).join(" · ")}
+        </div> : null}
+        {selectedCpuBots.length ? <CfgOption label="Niveau tactique des Bots" hint="Ce réglage sert uniquement de niveau de secours pour tes Bots CPU sans niveau personnel. Les mascottes Firefighter conservent leur niveau propre."><OptionSelect value={botLevel} options={[{ value: "easy", label: "Recrue" }, { value: "normal", label: "Confirmé" }, { value: "hard", label: "Élite" }]} onChange={setBotLevel} /></CfgOption> : null}
       </ConfigAccordion>
       <ConfigAccordion title="Ordre de passage" subtitle="Ordre des joueurs" icon="🔀" color={GREEN} badge={config.randomOrder ? "ALÉATOIRE" : "FIXE"}>
         <CfgOption label="Ordre de passage aléatoire" hint="Mélange la brigade au lancement"><OptionToggle value={Boolean(config.randomOrder)} onChange={(v) => setField("randomOrder", v)} /></CfgOption>
