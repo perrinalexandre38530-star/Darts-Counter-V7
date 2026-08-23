@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="grain" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="4" seed="27" stitchTiles="stitch" result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0" result="mono"/>
+      <feComponentTransfer in="mono" result="grain">
+        <feFuncR type="linear" slope="0.34" intercept="0.20"/>
+        <feFuncG type="linear" slope="0.34" intercept="0.20"/>
+        <feFuncB type="linear" slope="0.34" intercept="0.20"/>
+        <feFuncA type="linear" slope="0.26" intercept="0"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" in2="grain" mode="soft-light"/>
+    </filter>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#343330"/>
+      <stop offset="0.42" stop-color="#1d1e1e"/>
+      <stop offset="1" stop-color="#0d0f10"/>
+    </linearGradient>
+    <radialGradient id="wear" cx="18%" cy="8%" r="86%">
+      <stop offset="0" stop-color="#8a8377" stop-opacity=".12"/>
+      <stop offset=".45" stop-color="#4e4b45" stop-opacity=".05"/>
+      <stop offset="1" stop-color="#080909" stop-opacity=".35"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#base)"/>
+  <rect width="1024" height="1024" fill="url(#wear)"/>
+  <rect width="1024" height="1024" fill="#242524" filter="url(#grain)" opacity=".82"/>
+  <g opacity=".18" fill="#050606">
+    <ellipse cx="148" cy="116" rx="42" ry="13"/>
+    <ellipse cx="818" cy="152" rx="68" ry="18"/>
+    <ellipse cx="410" cy="716" rx="56" ry="15"/>
+    <ellipse cx="884" cy="842" rx="47" ry="12"/>
+    <ellipse cx="208" cy="900" rx="72" ry="14"/>
+  </g>
+  <g opacity=".12" fill="#a45d32">
+    <ellipse cx="760" cy="356" rx="78" ry="16"/>
+    <ellipse cx="130" cy="594" rx="46" ry="12"/>
+    <ellipse cx="552" cy="946" rx="84" ry="13"/>
+  </g>
+</svg>

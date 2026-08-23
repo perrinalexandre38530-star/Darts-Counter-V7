@@ -943,6 +943,28 @@ const THEME_PACKS: ThemePack[] = [
   { id: "abstract", ids: ABSTRACTS, label: "ABSTRAIT", subtitle: "Textures artistiques, grunge et couleurs intenses — un thème par image", colors: ["#FF8C37", "#B55CFF", "#43E3C2", "#E8F1FF"], premium: true },
 ];
 
+const localizeThemeBackground = (value?: string | null): string =>
+  String(value || "").replace(/\bfixed\b/g, "scroll");
+
+const getThemeSceneUrl = (preset?: Partial<AppTheme> | null): string | null => {
+  const source = String(preset?.pageBackground || preset?.cardBackground || "");
+  const match = source.match(/url\((['"]?)([^)'"]+)\1\)/i);
+  return match?.[2] || null;
+};
+
+const POSTAPOC_CARD_SUBTITLE: Partial<Record<ThemeId, string>> = {
+  postApocAubeRuines: "ATMOSPHÈRE CHAUDE",
+  postApocBetonGris: "ATMOSPHÈRE FROIDE",
+  postApocPluieNeon: "ATMOSPHÈRE URBAINE",
+  postApocCrepusculeCorbeau: "CRÉPUSCULE TOXIQUE",
+  postApocHorizonCendre: "HORIZON DE CENDRE",
+  postApocTourBrisee: "BÉTON & VÉGÉTATION",
+  postApocEdenPerdu: "RUINES TROPICALES",
+  postApocChuteFinale: "CHAOS TERMINAL",
+  postApocAvenueSilence: "VILLE DÉSERTÉE",
+};
+
+
 function ThemePreviewBlock({
   themeIdPreview,
   activeThemeId,
@@ -961,9 +983,9 @@ function ThemePreviewBlock({
   const preview = themeIdPreview ? getPreset(themeIdPreview) : null;
   const premiumPreview = !!preview && isPremiumTheme(preview.id);
   const previewBackground = preview
-    ? preview.pageBackground || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
+    ? localizeThemeBackground(preview.pageBackground) || `radial-gradient(circle at 50% 10%, ${preview.primary}26, transparent 52%), ${preview.bg}`
     : "radial-gradient(circle at 50% 35%, rgba(255,255,255,.05), rgba(0,0,0,.28) 62%)";
-  const previewCard = preview?.cardBackground || preview?.card;
+  const previewCard = localizeThemeBackground(preview?.cardBackground) || preview?.card;
   const fx = getThemeFxProfile(preview);
   const previewTextureOpacity = premiumPreview
     ? clamp01(preview?.previewTextureOpacity ?? Math.min(.62, Math.max(.30, preview?.textureOpacity ?? .42)) * fx.texture)
@@ -1006,20 +1028,24 @@ function ThemePreviewBlock({
   }
 
   const shellOuterBackground = isPostApocPreview
-    ? `linear-gradient(180deg, rgba(5,6,7,.18), rgba(5,6,7,.62)), url(/theme-textures/postapoc-cracked-concrete.webp) center/cover no-repeat, #090909`
+    ? `linear-gradient(180deg, rgba(4,4,4,.34), rgba(4,4,4,.78)), url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat, #080808`
     : previewBackground;
   const shellPanelBackground = isPostApocPreview
-    ? `linear-gradient(180deg, rgba(13,13,13,.96), rgba(7,7,7,.985)), url(/theme-textures/postapoc-cracked-concrete.webp) center/cover no-repeat`
+    ? `linear-gradient(180deg, rgba(30,29,27,.78), rgba(8,9,9,.95)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat, url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat`
     : previewCard;
-  const heroBackground = preview.pageBackground || previewCard || previewBackground;
+  const sceneUrl = getThemeSceneUrl(preview);
+  const heroBackground = sceneUrl
+    ? `linear-gradient(180deg, rgba(4,5,7,.08) 0%, rgba(4,5,7,.18) 38%, rgba(4,5,7,.80) 100%), url(${sceneUrl}) center/cover no-repeat`
+    : localizeThemeBackground(preview.pageBackground || previewCard || previewBackground);
   const titleColor = isPostApocPreview ? "#F4F2EC" : preview.primary;
   const subtitleColor = isPostApocPreview ? "rgba(242,240,234,.68)" : preview.textSoft;
   const activeLabel = locked ? "🔒 VOIR CE PACK DANS LA BOUTIQUE" : preview.id === activeThemeId ? "THÈME ACTIF" : "APPLIQUER CE THÈME";
 
   return (
     <div
+      className={isPostApocPreview ? "dc-postapoc-theme-preview" : undefined}
       style={{
-        minHeight: isPostApocPreview ? 510 : 380,
+        minHeight: isPostApocPreview ? 530 : 380,
         borderRadius: isPostApocPreview ? 28 : 20,
         border: `1px solid ${isPostApocPreview ? `${preview.primary}48` : (preview?.borderSoft || theme.borderSoft)}`,
         background: shellOuterBackground,
@@ -1054,6 +1080,7 @@ function ThemePreviewBlock({
         </div>
 
         <div
+          className={isPostApocPreview ? "dc-postapoc-preview-panel" : undefined}
           style={{
             position: "relative",
             overflow: "hidden",
@@ -1089,7 +1116,7 @@ function ThemePreviewBlock({
             </div>
 
             <div style={{ position: "relative", padding: isPostApocPreview ? 12 : 8 }}>
-              <div style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 18 : 13, border: `1px solid ${preview.borderSoft}`, background: heroBackground, minHeight: isPostApocPreview ? 155 : 110, boxShadow: `0 10px 22px rgba(0,0,0,.44)` }}>
+              <div className={isPostApocPreview ? "dc-postapoc-scene" : undefined} style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 18 : 13, border: `1px solid ${preview.borderSoft}`, background: heroBackground, backgroundAttachment: "scroll", backgroundPosition: "center center", backgroundRepeat: "no-repeat", backgroundSize: "cover", minHeight: isPostApocPreview ? 170 : 110, boxShadow: `0 10px 22px rgba(0,0,0,.44)` }}>
                 <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(2,4,8,.12), rgba(2,4,8,.14) 35%, rgba(2,4,8,.82) 100%)", pointerEvents: "none" }} />
                 {preview.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.ambientOverlay, opacity: isPostApocPreview ? .22 : .16, pointerEvents: "none" }} /> : null}
                 <div style={{ position: "absolute", left: 12, right: 12, bottom: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(120px,.72fr)", gap: 8, alignItems: "end" }}>
@@ -1111,7 +1138,7 @@ function ThemePreviewBlock({
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
                 {[["AVG 3D", "62.4"], ["MEILLEUR", "180"], ["CHECKOUT", "96"]].map(([label, value]) => (
-                  <div key={label} style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 12 : 10, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, padding: isPostApocPreview ? "8px 7px" : "5px 6px", textAlign: "center", boxShadow: `inset 0 1px 0 rgba(255,255,255,.04), 0 5px 12px rgba(0,0,0,.25)` }}>
+                  <div key={label} className={isPostApocPreview ? "dc-postapoc-kpi" : undefined} style={{ position: "relative", overflow: "hidden", borderRadius: isPostApocPreview ? 10 : 10, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, padding: isPostApocPreview ? "8px 7px" : "5px 6px", textAlign: "center", boxShadow: `inset 0 1px 0 rgba(255,255,255,.04), 0 5px 12px rgba(0,0,0,.25)` }}>
                     {preview.textureOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preview.textureOverlay, opacity: clamp01(innerTextureOpacity * .78), mixBlendMode: preview.textureBlendMode || "soft-light", pointerEvents: "none" }} /> : null}
                     <div style={{ position: "relative", color: preview.textSoft, fontSize: isPostApocPreview ? 6.7 : 6.1, fontWeight: 900 }}>{label}</div>
                     <div style={{ position: "relative", color: preview.text, fontSize: isPostApocPreview ? 12.8 : 10.5, fontWeight: 1000, marginTop: 2 }}>{value}</div>
@@ -1120,9 +1147,9 @@ function ThemePreviewBlock({
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: isPostApocPreview ? "1fr" : "1fr auto", gap: 6, marginTop: 7 }}>
-                <div style={{ minHeight: isPostApocPreview ? 42 : 30, borderRadius: isPostApocPreview ? 13 : 10, border: `1px solid ${preview.primary}88`, background: preview.buttonBackground || preview.primary, color: isPostApocPreview ? "#F9F6F0" : "#050712", display: "grid", placeItems: "center", fontSize: isPostApocPreview ? 9.6 : 8, fontWeight: 1000, letterSpacing: .25, textTransform: "uppercase", textShadow: isPostApocPreview ? "0 2px 4px rgba(0,0,0,.55)" : "none", boxShadow: `0 0 16px ${preview.primary}2e, inset 0 1px 0 rgba(255,255,255,.16)` }}>Valider la volée</div>
+                <div className={isPostApocPreview ? "dc-postapoc-action dc-postapoc-action-primary" : undefined} style={{ minHeight: isPostApocPreview ? 44 : 30, borderRadius: isPostApocPreview ? 9 : 10, border: `1px solid ${preview.primary}88`, background: preview.buttonBackground || preview.primary, color: isPostApocPreview ? "#F9F6F0" : "#050712", display: "grid", placeItems: "center", fontSize: isPostApocPreview ? 9.6 : 8, fontWeight: 1000, letterSpacing: .25, textTransform: "uppercase", textShadow: isPostApocPreview ? "0 2px 4px rgba(0,0,0,.55)" : "none", boxShadow: `0 0 16px ${preview.primary}2e, inset 0 1px 0 rgba(255,255,255,.16)` }}>Valider la volée</div>
                 {isPostApocPreview ? (
-                  <div style={{ marginTop: 6, minHeight: 38, borderRadius: 12, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, color: preview.text, display: "grid", placeItems: "center", fontSize: 9.2, fontWeight: 950, textTransform: "uppercase", boxShadow: `0 8px 16px rgba(0,0,0,.28)` }}>Appliquer ce thème</div>
+                  <div className="dc-postapoc-action dc-postapoc-action-secondary" style={{ marginTop: 6, minHeight: 40, borderRadius: 9, border: `1px solid ${preview.borderSoft}`, background: shellPanelBackground, color: preview.text, display: "grid", placeItems: "center", fontSize: 9.2, fontWeight: 950, textTransform: "uppercase", boxShadow: `0 8px 16px rgba(0,0,0,.28)` }}>Appliquer ce thème</div>
                 ) : (
                   <div style={{ width: 34, minHeight: 30, borderRadius: 10, border: `1px solid ${preview.borderSoft}`, background: previewCard, color: preview.primary, display: "grid", placeItems: "center", fontSize: 13, fontWeight: 1000 }}>↶</div>
                 )}
@@ -1141,6 +1168,7 @@ function ThemePreviewBlock({
         </div>
 
         <button
+          className={isPostApocPreview ? "dc-postapoc-apply-button" : undefined}
           type="button"
           onClick={() => locked ? onOpenShop?.() : onApply(preview.id)}
           style={{
@@ -4614,7 +4642,7 @@ export function Settings({ go, params }: Props) {
                 items={selectedPack.ids}
                 theme={theme}
                 itemWidth={142}
-                gap={7}
+                gap={10}
                 initialIndex={Math.max(0, selectedPack.ids.indexOf(previewThemeId || selectedPack.ids[0]))}
                 ariaLabel="Carrousel de thèmes"
                 onActiveIndexChange={(index) => {
@@ -4629,9 +4657,13 @@ export function Settings({ go, params }: Props) {
                   const isPreview = id === previewThemeId;
                   const locked = themeLocked(id);
                   const fx = getThemeFxProfile(preset);
-                  const imageCard = Boolean((preset.pageBackground || "").includes("url("));
+                  const sceneUrl = getThemeSceneUrl(preset);
+                  const imageCard = Boolean(sceneUrl);
+                  const isPostApocCard = String(id).startsWith("postApoc");
+                  const cardSubtitle = POSTAPOC_CARD_SUBTITLE[id] || meta.defaultDesc;
                   return (
                     <button
+                      className={isPostApocCard ? "dc-postapoc-theme-card" : imageCard ? "dc-image-theme-card" : undefined}
                       type="button"
                       onClick={() => applyTheme(id)}
                       style={{
@@ -4639,7 +4671,12 @@ export function Settings({ go, params }: Props) {
                         height: imageCard ? 164 : 132,
                         borderRadius: 18,
                         border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
-                        background: imageCard ? (preset.pageBackground || preset.cardBackground || preset.card) : (preset.cardBackground || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`),
+                        background: imageCard ? "#0B0D10" : (localizeThemeBackground(preset.cardBackground) || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`),
+                        backgroundImage: imageCard && sceneUrl ? `url(${sceneUrl})` : undefined,
+                        backgroundSize: imageCard ? "cover" : undefined,
+                        backgroundPosition: imageCard ? "center center" : undefined,
+                        backgroundRepeat: imageCard ? "no-repeat" : undefined,
+                        backgroundAttachment: "scroll",
                         color: preset.text,
                         padding: imageCard ? 0 : 10,
                         cursor: "pointer",
@@ -4658,13 +4695,14 @@ export function Settings({ go, params }: Props) {
                       {preset.ambientOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.ambientOverlay, opacity: imageCard ? .24 : .18, pointerEvents: "none" }} /> : null}
                       {preset.surfaceSheen ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.surfaceSheen, opacity: clamp01((preset.previewSheenOpacity ?? .14) + (fx.tileSheen - .10)), mixBlendMode: "screen", pointerEvents: "none" }} /> : null}
                       {preset.frameOverlay ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: preset.frameOverlay, opacity: clamp01((preset.previewFrameOpacity ?? .18) + (fx.tileFrame - .12)), pointerEvents: "none" }} /> : null}
-                      {imageCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(4,6,12,.04) 0%, rgba(4,6,12,.18) 38%, rgba(4,6,12,.84) 76%, rgba(4,6,12,.96) 100%)", pointerEvents: "none" }} /> : null}
+                      {imageCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: isPostApocCard ? "linear-gradient(180deg, rgba(4,5,6,.03) 0%, rgba(4,5,6,.08) 42%, rgba(4,5,6,.72) 73%, rgba(4,5,6,.97) 100%)" : "linear-gradient(180deg, rgba(4,6,12,.04) 0%, rgba(4,6,12,.18) 38%, rgba(4,6,12,.84) 76%, rgba(4,6,12,.96) 100%)", pointerEvents: "none" }} /> : null}
+                      {isPostApocCard ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, background: "url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat", opacity: .42, mixBlendMode: "multiply", pointerEvents: "none" }} /> : null}
                       {locked ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}55`, background: "rgba(0,0,0,.55)", fontSize: 12 }}>🔒</span> : null}
                       {!locked && (isPreview || isActive) ? <span style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, borderRadius: 999, display: "grid", placeItems: "center", border: `1px solid ${preset.primary}88`, background: "rgba(0,0,0,.55)", color: preset.primary, fontSize: 12, fontWeight: 1000 }}>✓</span> : null}
                       {imageCard ? (
                         <div style={{ position: "relative", zIndex: 2, marginTop: "auto", padding: "12px 10px 11px" }}>
-                          <div style={{ color: preset.text, fontSize: 10.8, fontWeight: 1000, lineHeight: 1.08, textTransform: "uppercase", textShadow: "0 2px 8px rgba(0,0,0,.75)" }}>{meta.defaultLabel}</div>
-                          <div style={{ marginTop: 4, color: locked ? preset.primary : preset.textSoft, fontSize: 8.4, fontWeight: 900, lineHeight: 1.15, textTransform: "uppercase", letterSpacing: .3 }}>{locked ? "Aperçu boutique" : meta.defaultDesc}</div>
+                          <div style={{ color: preset.text, fontSize: isPostApocCard ? 11.2 : 10.8, fontWeight: 1000, lineHeight: 1.08, textTransform: "uppercase", textShadow: "0 2px 8px rgba(0,0,0,.82)", letterSpacing: isPostApocCard ? .3 : 0 }}>{meta.defaultLabel}</div>
+                          <div style={{ marginTop: 4, color: locked ? preset.primary : (isPostApocCard ? preset.primary : preset.textSoft), fontSize: isPostApocCard ? 8.1 : 8.4, fontWeight: 900, lineHeight: 1.15, textTransform: "uppercase", letterSpacing: .3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{locked ? "Aperçu boutique" : cardSubtitle}</div>
                         </div>
                       ) : (
                         <>

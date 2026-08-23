@@ -700,9 +700,9 @@ html[data-dc-theme-page-scope="off"] body{
   position:absolute;
   inset:0;
   pointer-events:none;
-  background:var(--dc-theme-texture, none);
-  opacity:.20;
-  mix-blend-mode:var(--dc-theme-texture-blend, soft-light);
+  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat, var(--dc-theme-texture, none);
+  opacity:.32;
+  mix-blend-mode:multiply;
   z-index:0;
 }
 
@@ -732,7 +732,7 @@ html[data-dc-theme-page-scope="off"] body{
 :root[data-dc-theme^="postApoc"] .btn{
   border-radius:9px !important;
   border-color:rgba(186,184,174,.28) !important;
-  background:linear-gradient(145deg, rgba(46,46,44,.92), rgba(18,18,18,.98)), url(/theme-textures/postapoc-rusted-steel.webp) center/cover no-repeat;
+  background:linear-gradient(145deg, rgba(54,52,48,.90), rgba(16,17,17,.985)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat, url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat;
   box-shadow:0 8px 18px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.09), inset 0 -2px 0 rgba(0,0,0,.38);
   text-transform:uppercase;
   letter-spacing:.035em;
@@ -760,4 +760,103 @@ html[data-dc-theme-page-scope="off"] body{
   background:var(--dc-theme-nav) !important;
   border-top-color:rgba(177,177,168,.28);
   box-shadow:0 -12px 28px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+
+/* === POST-APOCALYPSE V2 — rendu premium proche du concept validé === */
+:root[data-dc-theme^="postApoc"] body{
+  font-family:"Arial Narrow","Roboto Condensed",Inter,system-ui,Segoe UI,Arial,sans-serif;
+}
+
+:root[data-dc-theme^="postApoc"] .btn,
+:root[data-dc-theme^="postApoc"] button{
+  background-attachment:scroll !important;
+}
+
+.dc-postapoc-theme-preview,
+.dc-postapoc-preview-panel,
+.dc-postapoc-scene,
+.dc-postapoc-theme-card{
+  background-attachment:scroll !important;
+}
+
+.dc-postapoc-preview-panel{
+  border-radius:14px !important;
+  box-shadow:0 22px 46px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.06), inset 0 0 0 1px rgba(0,0,0,.56) !important;
+}
+
+.dc-postapoc-preview-panel::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.36;
+  mix-blend-mode:multiply;
+  z-index:4;
+}
+
+.dc-postapoc-scene{
+  border-radius:8px !important;
+  box-shadow:0 10px 26px rgba(0,0,0,.62), inset 0 0 0 1px rgba(230,225,214,.07) !important;
+}
+
+.dc-postapoc-kpi{
+  border-radius:7px !important;
+  background:linear-gradient(145deg,rgba(47,46,43,.83),rgba(12,13,13,.97)),url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
+  border-color:rgba(174,170,160,.28) !important;
+  box-shadow:0 7px 15px rgba(0,0,0,.43), inset 0 1px 0 rgba(255,255,255,.055), inset 0 -1px 0 rgba(0,0,0,.5) !important;
+}
+
+.dc-postapoc-action{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+  border-radius:7px !important;
+  text-transform:uppercase;
+  letter-spacing:.05em !important;
+  box-shadow:0 9px 19px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.10), inset 0 -2px 0 rgba(0,0,0,.48) !important;
+}
+.dc-postapoc-action::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.42;
+  mix-blend-mode:multiply;
+}
+.dc-postapoc-action-primary{
+  filter:saturate(.72) brightness(.92);
+}
+.dc-postapoc-action-secondary,
+.dc-postapoc-apply-button{
+  background:linear-gradient(145deg,rgba(45,44,41,.90),rgba(10,11,11,.985)),url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
+  border-color:rgba(177,174,164,.30) !important;
+  color:#e7e2d8 !important;
+}
+
+.dc-postapoc-apply-button{
+  border-radius:8px !important;
+  text-transform:uppercase;
+  letter-spacing:.055em;
+  box-shadow:0 10px 22px rgba(0,0,0,.56), inset 0 1px 0 rgba(255,255,255,.07) !important;
+}
+
+.dc-postapoc-theme-card{
+  border-radius:11px !important;
+  background-clip:padding-box !important;
+  box-shadow:0 12px 24px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.05) !important;
+  transform:translateZ(0);
+}
+.dc-postapoc-theme-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.34;
+  mix-blend-mode:multiply;
 }
