@@ -12,7 +12,8 @@ export type CollectibleCardId =
   | "firefighter_zephyr"
   | "firefighter_kael"
   | "firefighter_braze"
-  | "firefighter_aero";
+  | "firefighter_aero"
+  | "firefighter_malysia";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -22,7 +23,8 @@ export type CollectibleMetricKey =
   | "firefighterWindMatches"
   | "firefighterWins"
   | "firefighterCriticalExtinguishes"
-  | "firefighterCanadairs";
+  | "firefighterCanadairs"
+  | "firefighterMatches";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -77,10 +79,13 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_aero", collection: "firefighter", name: "AERO", accent: "#ff8b2e", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
     { metric: "firefighterCanadairs", target: 10, label: { fr: "Interventions Canadair", en: "Water bomber interventions", es: "Intervenciones aéreas" } },
   ] },
+  { id: "firefighter_malysia", collection: "firefighter", name: "MALYSIA", accent: "#ff9a34", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMatches", target: 12, label: { fr: "Missions Firefighter jouées", en: "Firefighter missions played", es: "Misiones Firefighter jugadas" } },
+  ] },
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -183,6 +188,7 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
     if (!player) continue;
     metrics.firefighterTacticalActions += Number(player?.protectionsPlaced || 0) + Number(player?.propagationBlocked || 0);
     if ((row?.payload?.config?.windEnabled ?? row?.summary?.windEnabled ?? true) !== false) metrics.firefighterWindMatches += 1;
+    metrics.firefighterMatches += 1;
     if (row?.won === true || player?.win === true || player?.winner === true) metrics.firefighterWins += 1;
     metrics.firefighterCriticalExtinguishes += countCriticalExtinguishes(row, profileId);
     metrics.firefighterCanadairs += countCanadairs(row, profileId);

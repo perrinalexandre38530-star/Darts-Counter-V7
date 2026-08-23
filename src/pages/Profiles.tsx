@@ -2347,7 +2347,7 @@ export default function Profiles({
     // 1) on met à jour le store
     update((s) => ({ ...s, activeProfileId: id }));
 
-    // 2) si un profil est sélectionné → on applique ses prefs app (lang + thème)
+    // 2) si un profil est sélectionné → on applique son thème, jamais son ancienne langue
     if (!id) return;
     const p = profiles.find((p) => p.id === id);
     if (!p) return;
@@ -2357,13 +2357,13 @@ export default function Profiles({
       appTheme?: ThemeId;
     };
 
-    if (pi.appLang) {
-      try {
-        setLang(pi.appLang);
-      } catch {
-        /* ignore */
-      }
-    }
+    // La langue choisie dans SETTINGS reste la source de vérité globale.
+    // Ouvrir ou sélectionner un profil ne doit pas réappliquer pi.appLang.
+    // Cela évite le retour automatique au français depuis une préférence obsolète.
+    // Le useEffect de synchronisation plus bas aligne ensuite MON PROFIL
+    // sur la langue globale actuellement active dans l'application.
+    // Le thème reste volontairement appliqué depuis le profil sélectionné.
+    // Aucun autre comportement de sélection de profil n'est modifié ici.
     if (pi.appTheme) {
       try {
         setThemeId(pi.appTheme);

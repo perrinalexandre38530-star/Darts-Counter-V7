@@ -1,62 +1,60 @@
-export type ActivitySport =
-  | "running"
-  | "cycling"
-  | "mtb"
-  | "bmx"
-  | "roller"
-  | "walking"
-  | "hiking";
-
-export type ActivitySource =
-  | "phone-gps"
-  | "manual"
-  | "health-connect"
-  | "apple-health"
-  | "garmin"
-  | "fit"
-  | "gpx"
-  | "tcx";
-
+export type ActivitySport = "running" | "cycling" | "mtb" | "bmx" | "roller" | "walking" | "hiking";
+export type ActivitySource = "phone-gps" | "manual" | "health-connect" | "apple-health" | "garmin" | "fit" | "gpx" | "tcx";
 export type ActivityVerification = "declared" | "gps" | "connected" | "certified";
-
 export type GeoPoint = {
-  lat: number;
-  lon: number;
-  timestamp: number;
-  accuracy?: number;
-  altitude?: number;
-  speed?: number;
+    lat: number;
+    lon: number;
+    timestamp: number;
+    accuracy?: number;
+    altitude?: number;
+    speed?: number;
+    /** Active elapsed time at this GPS point (pauses excluded when available). */
+    elapsedMs?: number;
 };
-
 export type ActivitySplit = {
-  index: number;
-  distanceM: number;
-  elapsedMs: number;
-  splitMs: number;
-  paceSecPerKm: number;
+    index: number;
+    distanceM: number;
+    elapsedMs: number;
+    splitMs: number;
+    paceSecPerKm: number;
 };
-
+export type ActivityLap = {
+    index: number;
+    elapsedMs: number;
+    lapMs: number;
+    distanceM: number;
+    lapDistanceM: number;
+    paceSecPerKm: number | null;
+};
 export type ActivityRecord = {
-  id: string;
-  sport: ActivitySport;
-  source: ActivitySource;
-  verification: ActivityVerification;
-  startedAt: number;
-  endedAt: number;
-  elapsedMs: number;
-  movingMs: number;
-  distanceM: number;
-  avgSpeedMps: number;
-  avgPaceSecPerKm: number | null;
-  elevationGainM: number;
-  route: GeoPoint[];
-  splits: ActivitySplit[];
-  title?: string;
-  targetDistanceM?: number | null;
-  deviceName?: string;
-  createdAt: number;
+    id: string;
+    sport: ActivitySport;
+    source: ActivitySource;
+    verification: ActivityVerification;
+    startedAt: number;
+    endedAt: number;
+    elapsedMs: number;
+    movingMs: number;
+    distanceM: number;
+    avgSpeedMps: number;
+    avgPaceSecPerKm: number | null;
+    elevationGainM: number;
+    route: GeoPoint[];
+    splits: ActivitySplit[];
+    title?: string;
+    targetDistanceM?: number | null;
+    targetDurationMs?: number | null;
+    targetPaceSecPerKm?: number | null;
+    workoutType?: "free" | "distance" | "easy" | "tempo" | "intervals" | "long" | "pacer";
+    manualLaps?: ActivityLap[];
+    planId?: string;
+    planSessionId?: string;
+    effortRating?: number;
+    feeling?: "great" | "good" | "normal" | "tired" | "hard";
+    notes?: string;
+    deviceName?: string;
+    createdAt: number;
 };
-
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";
 export const ACTIVITY_DB_VERSION = 1;
 export const ACTIVITY_STORE_NAME = "activities";

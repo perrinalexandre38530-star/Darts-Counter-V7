@@ -20,7 +20,7 @@ import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
-import logoRunning from "../assets/games/logo-running.svg";
+import logoRunning from "../assets/games/logo-running-performance.png";
 
 // ✅ Sports à venir (affichés en SOON dans le GameSelect)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -133,7 +133,7 @@ export default function GameSelect({ go }: Props) {
     },
     {
       id: "running",
-      label: "Running Scoring",
+      label: "Running Performance",
       logo: logoRunning,
       enabled: true,
       onClick: () => {

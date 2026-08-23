@@ -22,6 +22,7 @@ import firefighterZephyr from "../../assets/collectible-cards/firefighter-zephyr
 import firefighterKael from "../../assets/collectible-cards/firefighter-kael.webp";
 import firefighterBraze from "../../assets/collectible-cards/firefighter-braze.webp";
 import firefighterAero from "../../assets/collectible-cards/firefighter-aero.webp";
+import firefighterMalysia from "../../assets/collectible-cards/firefighter-malysia.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_bronze: awenaBronze,
@@ -34,6 +35,7 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_kael: firefighterKael,
   firefighter_braze: firefighterBraze,
   firefighter_aero: firefighterAero,
+  firefighter_malysia: firefighterMalysia,
 };
 
 type FilterId = "all" | "awena" | "firefighter" | "unlocked" | "locked";
@@ -47,6 +49,7 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterWins: 0,
   firefighterCriticalExtinguishes: 0,
   firefighterCanadairs: 0,
+  firefighterMatches: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {

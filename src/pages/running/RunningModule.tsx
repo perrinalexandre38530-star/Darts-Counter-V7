@@ -5,619 +5,646 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
 import Section from "../../components/Section";
-import {
-  averagePaceSecPerKm,
-  averageSpeedMps,
-  buildKilometerSplits,
-  elevationGainMeters,
-  formatDistance,
-  formatDuration,
-  formatPace,
-  routeDistanceMeters,
-  shouldAcceptRunningPoint,
-} from "../../activity/activityMath";
+import RunningPlanView from "./RunningPlanView";
+import { useAwenaOptional } from "../../awena/AwenaProvider";
+import { awenaVoice } from "../../awena/AwenaVoice";
+import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPlanSession, type RunningPlanState } from "../../activity/runningTraining";
+import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, formatDistance, formatDuration, formatPace, movingTimeMs, rollingPaceSecPerKm, routeDistanceMeters, shouldAcceptRunningPoint, } from "../../activity/activityMath";
+import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
-import type { ActivityRecord, GeoPoint } from "../../activity/activityTypes";
-
-type View = "setup" | "record" | "history" | "detail" | "records";
-type TargetDistance = null | 1000 | 5000 | 10000;
-
-type Props = {
-  go: (route: any, params?: any) => void;
-  store?: any;
-  params?: any;
+import type { ActivityLap, ActivityRecord, GeoPoint } from "../../activity/activityTypes";
+type View = "setup" | "record" | "history" | "detail" | "records" | "plan";
+type SetupTab = "quick" | "training" | "pacer" | "custom";
+type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
+type WorkoutStep = {
+    id: string;
+    durationMs: number;
+    fr: string;
+    en: string;
+    es: string;
+    tone: "easy" | "hard" | "steady";
 };
-
-const TARGETS: Array<{ value: TargetDistance; icon: string; fr: string; en: string; es: string; subFr: string; subEn: string; subEs: string }> = [
-  { value: null, icon: "🏃", fr: "COURSE LIBRE", en: "FREE RUN", es: "CARRERA LIBRE", subFr: "Aucune limite. Cours à ton rythme.", subEn: "No limit. Run at your own pace.", subEs: "Sin límite. Corre a tu ritmo." },
-  { value: 1000, icon: "⚡", fr: "1 KM", en: "1 KM", es: "1 KM", subFr: "Rapide, explosif, chrono pur.", subEn: "Fast, explosive, pure timing.", subEs: "Rápido, explosivo, puro crono." },
-  { value: 5000, icon: "🎯", fr: "5 KM", en: "5 KM", es: "5 KM", subFr: "Le format référence pour progresser.", subEn: "The reference distance to improve.", subEs: "La distancia de referencia para progresar." },
-  { value: 10000, icon: "🔥", fr: "10 KM", en: "10 KM", es: "10 KM", subFr: "Endurance et gestion de l'allure.", subEn: "Endurance and pace management.", subEs: "Resistencia y gestión del ritmo." },
+type Preset = {
+    id: string;
+    type: WorkoutType;
+    icon: string;
+    fr: string;
+    en: string;
+    es: string;
+    subFr: string;
+    subEn: string;
+    subEs: string;
+    targetDistanceM?: number | null;
+    targetDurationMs?: number | null;
+    targetPaceSecPerKm?: number | null;
+    steps?: WorkoutStep[];
+};
+type Props = {
+    go: (route: any, params?: any) => void;
+    store?: any;
+    params?: any;
+};
+const PAGE_MAX_WIDTH = 620;
+const PACE_OPTIONS = [270, 300, 330, 360, 390, 420];
+const PACER_DISTANCES = [5000, 10000, 21097, 42195];
+const PRESETS: Preset[] = [
+    { id: "free", type: "free", icon: "🏃", fr: "COURSE LIBRE", en: "FREE RUN", es: "CARRERA LIBRE", subFr: "Cours sans contrainte. GPS, carte, splits et tours.", subEn: "Run without constraints. GPS, map, splits and laps.", subEs: "Corre sin límites. GPS, mapa, splits y vueltas.", targetDistanceM: null },
+    { id: "distance-1k", type: "distance", icon: "⚡", fr: "1 KM", en: "1 KM", es: "1 KM", subFr: "Effort court, rapide et chronométré.", subEn: "Short, fast, fully timed effort.", subEs: "Esfuerzo corto, rápido y cronometrado.", targetDistanceM: 1000 },
+    { id: "distance-5k", type: "distance", icon: "🎯", fr: "5 KM", en: "5 KM", es: "5 KM", subFr: "Le format référence pour mesurer ta progression.", subEn: "The reference distance to measure progress.", subEs: "La distancia de referencia para medir tu progreso.", targetDistanceM: 5000 },
+    { id: "distance-10k", type: "distance", icon: "🔥", fr: "10 KM", en: "10 KM", es: "10 KM", subFr: "Endurance et gestion régulière de l’allure.", subEn: "Endurance and steady pace management.", subEs: "Resistencia y gestión regular del ritmo.", targetDistanceM: 10000 },
+    { id: "easy", type: "easy", icon: "🌱", fr: "EASY RUN · 30 MIN", en: "EASY RUN · 30 MIN", es: "EASY RUN · 30 MIN", subFr: "Une sortie facile pour construire l’endurance.", subEn: "An easy run to build aerobic endurance.", subEs: "Una carrera suave para construir resistencia.", targetDurationMs: 30 * 60000 },
+    { id: "tempo", type: "tempo", icon: "🔥", fr: "TEMPO · 35 MIN", en: "TEMPO · 35 MIN", es: "TEMPO · 35 MIN", subFr: "10 min facile · 20 min soutenu · 5 min retour au calme.", subEn: "10 easy · 20 steady-hard · 5 cool down.", subEs: "10 suave · 20 sostenido · 5 vuelta a la calma.", targetDurationMs: 35 * 60000, steps: [
+            { id: "warm", durationMs: 10 * 60000, fr: "ÉCHAUFFEMENT", en: "WARM UP", es: "CALENTAMIENTO", tone: "easy" },
+            { id: "tempo", durationMs: 20 * 60000, fr: "TEMPO SOUTENU", en: "TEMPO", es: "TEMPO", tone: "hard" },
+            { id: "cool", durationMs: 5 * 60000, fr: "RETOUR AU CALME", en: "COOL DOWN", es: "VUELTA A LA CALMA", tone: "easy" },
+        ] },
+    { id: "intervals", type: "intervals", icon: "⚡", fr: "6 × 1 MIN / 1 MIN", en: "6 × 1 MIN / 1 MIN", es: "6 × 1 MIN / 1 MIN", subFr: "5 min facile · 6 répétitions rapide/récup · 5 min facile.", subEn: "5 easy · 6 fast/easy reps · 5 easy.", subEs: "5 suave · 6 repeticiones rápido/suave · 5 suave.", targetDurationMs: 22 * 60000, steps: buildIntervalSteps() },
+    { id: "long", type: "long", icon: "🛣️", fr: "SORTIE LONGUE · 60 MIN", en: "LONG RUN · 60 MIN", es: "CARRERA LARGA · 60 MIN", subFr: "60 minutes en aisance pour développer l’endurance.", subEn: "60 easy minutes to build endurance.", subEs: "60 minutos suaves para desarrollar resistencia.", targetDurationMs: 60 * 60000 },
+    { id: "recovery", type: "easy", icon: "🫧", fr: "RÉCUPÉRATION · 20 MIN", en: "RECOVERY · 20 MIN", es: "RECUPERACIÓN · 20 MIN", subFr: "Très facile après une séance récente.", subEn: "Very easy after a recent workout.", subEs: "Muy suave después de un entrenamiento reciente.", targetDurationMs: 20 * 60000 },
 ];
-
-function makeId() {
-  try { return crypto.randomUUID(); }
-  catch { return `run_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`; }
+function buildIntervalSteps(): WorkoutStep[] {
+    const out: WorkoutStep[] = [{ id: "warm", durationMs: 5 * 60000, fr: "ÉCHAUFFEMENT", en: "WARM UP", es: "CALENTAMIENTO", tone: "easy" }];
+    for (let i = 1; i <= 6; i += 1) {
+        out.push({ id: `hard-${i}`, durationMs: 60000, fr: `RAPIDE ${i}/6`, en: `FAST ${i}/6`, es: `RÁPIDO ${i}/6`, tone: "hard" });
+        out.push({ id: `easy-${i}`, durationMs: 60000, fr: `RÉCUP ${i}/6`, en: `RECOVERY ${i}/6`, es: `RECUP ${i}/6`, tone: "easy" });
+    }
+    out.push({ id: "cool", durationMs: 5 * 60000, fr: "RETOUR AU CALME", en: "COOL DOWN", es: "VUELTA A LA CALMA", tone: "easy" });
+    return out;
 }
 
-function normalizeTarget(value: any): TargetDistance {
-  const n = Number(value);
-  if (n === 1000 || n === 5000 || n === 10000) return n;
-  return null;
+function customWorkoutSteps(spec: RunningCustomWorkoutSpec): WorkoutStep[] {
+    const out: WorkoutStep[] = [];
+    if (spec.warmupMin > 0) out.push({ id: "custom-warm", durationMs: spec.warmupMin * 60000, fr: "ÉCHAUFFEMENT", en: "WARM UP", es: "CALENTAMIENTO", tone: "easy" });
+    for (let i = 1; i <= spec.reps; i += 1) {
+        out.push({ id: `custom-work-${i}`, durationMs: spec.workMin * 60000, fr: `EFFORT ${i}/${spec.reps}`, en: `WORK ${i}/${spec.reps}`, es: `ESFUERZO ${i}/${spec.reps}`, tone: "hard" });
+        if (spec.recoveryMin > 0 && i < spec.reps + 1) out.push({ id: `custom-recovery-${i}`, durationMs: spec.recoveryMin * 60000, fr: `RÉCUP ${i}/${spec.reps}`, en: `RECOVERY ${i}/${spec.reps}`, es: `RECUP ${i}/${spec.reps}`, tone: "easy" });
+    }
+    if (spec.cooldownMin > 0) out.push({ id: "custom-cool", durationMs: spec.cooldownMin * 60000, fr: "RETOUR AU CALME", en: "COOL DOWN", es: "VUELTA A LA CALMA", tone: "easy" });
+    return out;
 }
-
-function targetLabel(target: TargetDistance, lang: string) {
-  if (!target) return lang === "fr" ? "Course libre" : lang === "es" ? "Carrera libre" : "Free run";
-  return `${target / 1000} KM`;
+function customWorkoutPreset(spec: RunningCustomWorkoutSpec): Preset {
+    const steps = customWorkoutSteps(spec);
+    const targetDurationMs = steps.reduce((sum, step) => sum + step.durationMs, 0);
+    return { id: "custom", type: "intervals", icon: "🧩", fr: spec.title || "SÉANCE PERSONNALISÉE", en: spec.title || "CUSTOM WORKOUT", es: spec.title || "SESIÓN PERSONALIZADA", subFr: `${spec.reps} × ${spec.workMin} min effort / ${spec.recoveryMin} min récup`, subEn: `${spec.reps} × ${spec.workMin} min work / ${spec.recoveryMin} min recovery`, subEs: `${spec.reps} × ${spec.workMin} min esfuerzo / ${spec.recoveryMin} min recuperación`, targetDurationMs, steps };
 }
-
-function activityDate(ts: number, lang: string) {
-  try {
-    return new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB", {
-      day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-    }).format(new Date(ts));
-  } catch {
+function makeId() { try {
+    return crypto.randomUUID();
+}
+catch {
+    return `run_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+} }
+function activityDate(ts: number, lang: string) { try {
+    return new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
+}
+catch {
     return new Date(ts).toLocaleString();
-  }
+} }
+function presetLabel(p: Preset | undefined, lang: string) { if (!p)
+    return "Running"; return lang === "fr" ? p.fr : lang === "es" ? p.es : p.en; }
+function presetSub(p: Preset, lang: string) { return lang === "fr" ? p.subFr : lang === "es" ? p.subEs : p.subEn; }
+function formatSignedDuration(ms: number | null) { if (ms == null || !Number.isFinite(ms))
+    return "—"; const sign = ms > 0 ? "+" : "−"; return `${sign}${formatDuration(Math.abs(ms))}`; }
+function distanceLabel(m: number | null | undefined) { if (!m)
+    return "—"; if (Math.abs(m - 21097) < 5)
+    return "21.1 KM"; if (Math.abs(m - 42195) < 5)
+    return "42.2 KM"; return m >= 1000 ? `${(m / 1000).toFixed(m % 1000 ? 1 : 0)} KM` : `${m} M`; }
+function getPhase(preset: Preset | undefined, elapsedMs: number, lang: string) {
+    if (!preset?.steps?.length)
+        return null;
+    let cursor = 0;
+    for (let i = 0; i < preset.steps.length; i += 1) {
+        const step = preset.steps[i];
+        if (elapsedMs < cursor + step.durationMs)
+            return { index: i, step, elapsedInStep: elapsedMs - cursor, remainingMs: cursor + step.durationMs - elapsedMs, progress: Math.max(0, Math.min(100, (elapsedMs - cursor) / step.durationMs * 100)), label: lang === "fr" ? step.fr : lang === "es" ? step.es : step.en };
+        cursor += step.durationMs;
+    }
+    const last = preset.steps[preset.steps.length - 1];
+    return { index: preset.steps.length - 1, step: last, elapsedInStep: last.durationMs, remainingMs: 0, progress: 100, label: lang === "fr" ? last.fr : lang === "es" ? last.es : last.en };
 }
-
 export default function RunningModule({ go, params }: Props) {
-  const { theme } = useTheme();
-  const langApi = useLang() as any;
-  const lang = String(langApi?.lang || "fr").toLowerCase();
-  const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
-  const textSoft = (theme as any)?.textSoft || "#a8a8b3";
-  const cardSoft = (theme as any)?.cardSoft || "rgba(255,255,255,.12)";
-
-  const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : "setup";
-  const [view, setView] = React.useState<View>(initialView);
-  const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
-  const [selected, setSelected] = React.useState<ActivityRecord | null>(null);
-  const [targetDistance, setTargetDistance] = React.useState<TargetDistance>(() => normalizeTarget(params?.runningTargetM));
-  const [points, setPoints] = React.useState<GeoPoint[]>([]);
-  const [isRecording, setIsRecording] = React.useState(false);
-  const [paused, setPaused] = React.useState(false);
-  const [now, setNow] = React.useState(Date.now());
-  const [accuracy, setAccuracy] = React.useState<number | null>(null);
-  const [gpsMessage, setGpsMessage] = React.useState<string>("");
-
-  const watchIdRef = React.useRef<number | null>(null);
-  const pointsRef = React.useRef<GeoPoint[]>([]);
-  const startedAtRef = React.useRef(0);
-  const pauseStartedRef = React.useRef(0);
-  const pausedTotalRef = React.useRef(0);
-  const pausedRef = React.useRef(false);
-  const autoStartedRef = React.useRef(false);
-
-  const copy = lang === "fr" ? {
-    title: "RUNNING SCORING",
-    setupSub: "Choisis ton objectif et lance ta sortie",
-    recordSub: "Session GPS en cours",
-    history: "MES SORTIES",
-    records: "MES RECORDS",
-    setup: "COURIR",
-    select: "CHOISIS TON FORMAT",
-    start: "DÉMARRER",
-    gpsTitle: "GPS TÉLÉPHONE",
-    gpsReady: "Prêt à enregistrer ton parcours",
-    gpsHint: "La précision dépend du signal GPS de ton appareil. Cette version Web/PWA reste en phase de test.",
-    local: "Données locales",
-    localSub: "Tes sorties restent sur cet appareil pendant la phase bêta.",
-    devices: "MONTRES & CAPTEURS",
-    devicesSub: "Health Connect, Garmin et imports FIT/GPX/TCX seront branchés sur ce même moteur.",
-    soon: "BIENTÔT",
-    acquiring: "Recherche GPS…",
-    active: "GPS ACTIF",
-    paused: "EN PAUSE",
-    poor: "SIGNAL GPS FAIBLE",
-    denied: "Autorise la localisation pour enregistrer ton parcours.",
-    unavailable: "La géolocalisation n'est pas disponible sur cet appareil.",
-    distance: "DISTANCE",
-    time: "TEMPS",
-    pace: "ALLURE",
-    speed: "VITESSE",
-    elevation: "DÉNIVELÉ +",
-    accuracy: "PRÉCISION",
-    target: "OBJECTIF",
-    route: "PARCOURS",
-    waiting: "En attente du premier point GPS…",
-    pause: "PAUSE",
-    resume: "REPRENDRE",
-    finish: "TERMINER",
-    cancel: "ANNULER",
-    insufficient: "Il faut au moins deux points GPS pour enregistrer la sortie.",
-    complete: "SORTIE TERMINÉE",
-    verified: "GPS VÉRIFIÉ",
-    splits: "SPLITS KILOMÉTRIQUES",
-    noSplits: "Le premier split apparaîtra après 1 km.",
-    delete: "SUPPRIMER LA SORTIE",
-    empty: "Aucune sortie enregistrée pour le moment.",
-    back: "Retour",
-    week: "7 DERNIERS JOURS",
-    total: "TOTAL",
-    longest: "PLUS LONGUE",
-    bestPace: "MEILLEURE ALLURE",
-    pr1: "RECORD 1 KM",
-    pr5: "RECORD 5 KM",
-    pr10: "RECORD 10 KM",
-    noRecord: "Pas encore de record",
-    infoTitle: "Running Scoring",
-    info: "Running Scoring enregistre une activité GPS, calcule distance, durée, allure, vitesse, dénivelé et splits. Les données restent locales pour cette bêta Web/PWA. La version Android n'est pas encore activée.",
-    beta: "BETA WEB / PWA — NON PUBLIÉ SUR ANDROID",
-  } : lang === "es" ? {
-    title: "RUNNING SCORING", setupSub: "Elige tu objetivo e inicia tu carrera", recordSub: "Sesión GPS en curso", history: "MIS CARRERAS", records: "MIS RÉCORDS", setup: "CORRER", select: "ELIGE TU FORMATO", start: "INICIAR", gpsTitle: "GPS DEL TELÉFONO", gpsReady: "Listo para registrar tu ruta", gpsHint: "La precisión depende de la señal GPS. Esta versión Web/PWA sigue en pruebas.", local: "Datos locales", localSub: "Tus carreras permanecen en este dispositivo durante la beta.", devices: "RELOJES Y SENSORES", devicesSub: "Health Connect, Garmin e importaciones FIT/GPX/TCX usarán este mismo motor.", soon: "PRONTO", acquiring: "Buscando GPS…", active: "GPS ACTIVO", paused: "EN PAUSA", poor: "SEÑAL GPS DÉBIL", denied: "Autoriza la ubicación para registrar la ruta.", unavailable: "La geolocalización no está disponible.", distance: "DISTANCIA", time: "TIEMPO", pace: "RITMO", speed: "VELOCIDAD", elevation: "DESNIVEL +", accuracy: "PRECISIÓN", target: "OBJETIVO", route: "RUTA", waiting: "Esperando el primer punto GPS…", pause: "PAUSA", resume: "REANUDAR", finish: "TERMINAR", cancel: "CANCELAR", insufficient: "Se necesitan al menos dos puntos GPS para guardar la carrera.", complete: "CARRERA TERMINADA", verified: "GPS VERIFICADO", splits: "SPLITS KILOMÉTRICOS", noSplits: "El primer split aparecerá después de 1 km.", delete: "ELIMINAR CARRERA", empty: "Todavía no hay carreras registradas.", back: "Volver", week: "ÚLTIMOS 7 DÍAS", total: "TOTAL", longest: "MÁS LARGA", bestPace: "MEJOR RITMO", pr1: "RÉCORD 1 KM", pr5: "RÉCORD 5 KM", pr10: "RÉCORD 10 KM", noRecord: "Sin récord todavía", infoTitle: "Running Scoring", info: "Running Scoring registra una actividad GPS y calcula distancia, duración, ritmo, velocidad, desnivel y splits. Los datos son locales durante esta beta Web/PWA. Android aún no está activado.", beta: "BETA WEB / PWA — NO PUBLICADO EN ANDROID",
-  } : {
-    title: "RUNNING SCORING", setupSub: "Choose your target and start your run", recordSub: "GPS session in progress", history: "MY RUNS", records: "MY RECORDS", setup: "RUN", select: "CHOOSE YOUR FORMAT", start: "START", gpsTitle: "PHONE GPS", gpsReady: "Ready to record your route", gpsHint: "Accuracy depends on your device GPS signal. This Web/PWA version is still being tested.", local: "Local data", localSub: "Your runs stay on this device during the beta.", devices: "WATCHES & SENSORS", devicesSub: "Health Connect, Garmin and FIT/GPX/TCX imports will use this same engine.", soon: "SOON", acquiring: "Acquiring GPS…", active: "GPS ACTIVE", paused: "PAUSED", poor: "WEAK GPS SIGNAL", denied: "Allow location access to record your route.", unavailable: "Geolocation is unavailable on this device.", distance: "DISTANCE", time: "TIME", pace: "PACE", speed: "SPEED", elevation: "ELEVATION +", accuracy: "ACCURACY", target: "TARGET", route: "ROUTE", waiting: "Waiting for the first GPS point…", pause: "PAUSE", resume: "RESUME", finish: "FINISH", cancel: "CANCEL", insufficient: "At least two GPS points are required to save the run.", complete: "RUN COMPLETE", verified: "GPS VERIFIED", splits: "KILOMETRE SPLITS", noSplits: "The first split appears after 1 km.", delete: "DELETE RUN", empty: "No runs recorded yet.", back: "Back", week: "LAST 7 DAYS", total: "TOTAL", longest: "LONGEST", bestPace: "BEST PACE", pr1: "1 KM RECORD", pr5: "5 KM RECORD", pr10: "10 KM RECORD", noRecord: "No record yet", infoTitle: "Running Scoring", info: "Running Scoring records a GPS activity and calculates distance, duration, pace, speed, elevation and splits. Data stays local during this Web/PWA beta. Android is not enabled yet.", beta: "WEB / PWA BETA — NOT RELEASED ON ANDROID",
-  };
-
-  const refreshActivities = React.useCallback(async () => {
-    setActivities(await listActivities("running"));
-  }, []);
-
-  React.useEffect(() => { void refreshActivities(); }, [refreshActivities]);
-
-  React.useEffect(() => {
-    if (!isRecording) return;
-    const id = window.setInterval(() => setNow(Date.now()), 500);
-    return () => window.clearInterval(id);
-  }, [isRecording]);
-
-  React.useEffect(() => () => {
-    if (watchIdRef.current != null && navigator.geolocation) navigator.geolocation.clearWatch(watchIdRef.current);
-  }, []);
-
-  const elapsedMs = React.useMemo(() => {
-    if (!startedAtRef.current) return 0;
-    const currentPause = pausedRef.current && pauseStartedRef.current ? Math.max(0, now - pauseStartedRef.current) : 0;
-    return Math.max(0, now - startedAtRef.current - pausedTotalRef.current - currentPause);
-  }, [now, paused]);
-
-  const liveDistance = React.useMemo(() => routeDistanceMeters(points), [points]);
-  const livePace = React.useMemo(() => averagePaceSecPerKm(liveDistance, elapsedMs), [liveDistance, elapsedMs]);
-  const liveSpeed = React.useMemo(() => averageSpeedMps(liveDistance, elapsedMs) * 3.6, [liveDistance, elapsedMs]);
-  const liveElevation = React.useMemo(() => elevationGainMeters(points), [points]);
-  const liveSplits = React.useMemo(() => buildKilometerSplits(points, startedAtRef.current || Date.now()), [points]);
-
-  const stats = React.useMemo(() => {
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const week = activities.filter((item) => Number(item.startedAt || 0) >= weekAgo);
-    const totalM = activities.reduce((sum, item) => sum + Number(item.distanceM || 0), 0);
-    const longest = activities.reduce((best, item) => Math.max(best, Number(item.distanceM || 0)), 0);
-    const paces = activities.map((item) => item.avgPaceSecPerKm).filter((value): value is number => Number.isFinite(value) && Number(value) > 0);
-    const bestTarget = (targetM: number) => {
-      const rows = activities.filter((item) => Number(item.targetDistanceM || 0) === targetM && Number(item.distanceM || 0) >= targetM * .92);
-      if (!rows.length) return null;
-      return rows.reduce((best, item) => Number(item.elapsedMs) < Number(best.elapsedMs) ? item : best, rows[0]);
-    };
-    return {
-      totalM,
-      longest,
-      bestPace: paces.length ? Math.min(...paces) : null,
-      weekM: week.reduce((sum, item) => sum + Number(item.distanceM || 0), 0),
-      weekSessions: week.length,
-      pr1: bestTarget(1000),
-      pr5: bestTarget(5000),
-      pr10: bestTarget(10000),
-    };
-  }, [activities]);
-
-  const stopWatch = React.useCallback(() => {
-    if (watchIdRef.current != null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-  }, []);
-
-  const beginRun = React.useCallback((target: TargetDistance) => {
-    setTargetDistance(target);
-    setPoints([]);
-    pointsRef.current = [];
-    setAccuracy(null);
-    setGpsMessage(copy.acquiring);
-    pausedRef.current = false;
-    pausedTotalRef.current = 0;
-    pauseStartedRef.current = 0;
-    startedAtRef.current = Date.now();
-    setNow(startedAtRef.current);
-    setPaused(false);
-    setIsRecording(true);
-    setView("record");
-
-    if (!navigator.geolocation) {
-      setGpsMessage(copy.unavailable);
-      setIsRecording(false);
-      return;
-    }
-
-    stopWatch();
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const coords = position.coords;
-        const next: GeoPoint = {
-          lat: coords.latitude,
-          lon: coords.longitude,
-          timestamp: position.timestamp || Date.now(),
-          accuracy: Number.isFinite(coords.accuracy) ? Number(coords.accuracy) : undefined,
-          altitude: Number.isFinite(coords.altitude) ? Number(coords.altitude) : undefined,
-          speed: Number.isFinite(coords.speed) ? Number(coords.speed) : undefined,
-        };
-        setAccuracy(Number.isFinite(next.accuracy) ? Number(next.accuracy) : null);
-        if (pausedRef.current) {
-          setGpsMessage(copy.paused);
-          return;
+    const { theme } = useTheme();
+    const langApi = useLang() as any;
+    const awena = useAwenaOptional();
+    const lang = String(langApi?.lang || "fr").toLowerCase();
+    const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
+    const textSoft = (theme as any)?.textSoft || "#a8a8b3";
+    const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : params?.runningView === "plan" ? "plan" : "setup";
+    const initialPreset = String(params?.runningPresetId || (params?.runningTargetM ? "distance" : "free"));
+    const [view, setView] = React.useState<View>(initialView);
+    const [setupTab, setSetupTab] = React.useState<SetupTab>(initialPreset === "pacer" ? "pacer" : initialPreset === "custom" ? "custom" : ["easy", "tempo", "intervals", "long", "recovery"].includes(initialPreset) ? "training" : "quick");
+    const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
+    const [selected, setSelected] = React.useState<ActivityRecord | null>(null);
+    const [selectedPresetId, setSelectedPresetId] = React.useState(() => {
+        if (initialPreset === "distance") {
+            const m = Number(params?.runningTargetM || 5000);
+            return m === 1000 ? "distance-1k" : m === 10000 ? "distance-10k" : "distance-5k";
         }
-        setGpsMessage(Number(next.accuracy || 0) > 45 ? copy.poor : copy.active);
-        const previous = pointsRef.current[pointsRef.current.length - 1];
-        if (!shouldAcceptRunningPoint(previous, next)) return;
-        pointsRef.current = [...pointsRef.current, next];
-        setPoints(pointsRef.current);
-      },
-      (error) => setGpsMessage(error.code === 1 ? copy.denied : `${copy.acquiring} (${error.message})`),
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
-    );
-  }, [copy.acquiring, copy.active, copy.denied, copy.paused, copy.poor, copy.unavailable, stopWatch]);
-
-  React.useEffect(() => {
-    if (!params?.runningAutoStart || autoStartedRef.current) return;
-    autoStartedRef.current = true;
-    const id = window.setTimeout(() => beginRun(normalizeTarget(params?.runningTargetM)), 80);
-    return () => window.clearTimeout(id);
-  }, [beginRun, params?.runningAutoStart, params?.runningTargetM]);
-
-  const togglePause = React.useCallback(() => {
-    if (!isRecording) return;
-    if (!pausedRef.current) {
-      pausedRef.current = true;
-      pauseStartedRef.current = Date.now();
-      setPaused(true);
-      setGpsMessage(copy.paused);
-      return;
-    }
-    const resumedAt = Date.now();
-    if (pauseStartedRef.current) pausedTotalRef.current += Math.max(0, resumedAt - pauseStartedRef.current);
-    pauseStartedRef.current = 0;
-    pausedRef.current = false;
-    setPaused(false);
-    setNow(resumedAt);
-    setGpsMessage(copy.active);
-  }, [copy.active, copy.paused, isRecording]);
-
-  const cancelRun = React.useCallback(() => {
-    stopWatch();
-    setIsRecording(false);
-    setPaused(false);
-    pausedRef.current = false;
-    pointsRef.current = [];
-    setPoints([]);
-    setGpsMessage("");
-    setView("setup");
-  }, [stopWatch]);
-
-  const finishRun = React.useCallback(async () => {
-    if (pointsRef.current.length < 2) {
-      setGpsMessage(copy.insufficient);
-      return;
-    }
-    stopWatch();
-    const endedAt = Date.now();
-    let pauseTotal = pausedTotalRef.current;
-    if (pausedRef.current && pauseStartedRef.current) pauseTotal += endedAt - pauseStartedRef.current;
-    const elapsed = Math.max(1, endedAt - startedAtRef.current - pauseTotal);
-    const route = pointsRef.current;
-    const distanceM = routeDistanceMeters(route);
-    const record: ActivityRecord = {
-      id: makeId(),
-      sport: "running",
-      source: "phone-gps",
-      verification: "gps",
-      startedAt: startedAtRef.current,
-      endedAt,
-      elapsedMs: elapsed,
-      movingMs: elapsed,
-      distanceM,
-      avgSpeedMps: averageSpeedMps(distanceM, elapsed),
-      avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed),
-      elevationGainM: elevationGainMeters(route),
-      route,
-      splits: buildKilometerSplits(route, startedAtRef.current),
-      targetDistanceM: targetDistance,
-      deviceName: "Phone GPS",
-      createdAt: Date.now(),
+        return PRESETS.some((p) => p.id === initialPreset) ? initialPreset : "free";
+    });
+    const [pacerDistanceM, setPacerDistanceM] = React.useState(() => Number(params?.runningTargetM || 5000));
+    const [pacerPace, setPacerPace] = React.useState(330);
+    const [points, setPoints] = React.useState<GeoPoint[]>([]);
+    const [manualLaps, setManualLaps] = React.useState<ActivityLap[]>([]);
+    const [isRecording, setIsRecording] = React.useState(false);
+    const [paused, setPaused] = React.useState(false);
+    const [now, setNow] = React.useState(Date.now());
+    const [accuracy, setAccuracy] = React.useState<number | null>(null);
+    const [gpsMessage, setGpsMessage] = React.useState("");
+    const [gpsChecked, setGpsChecked] = React.useState(false);
+    const [countdown, setCountdown] = React.useState<number | null>(null);
+    const [splitToast, setSplitToast] = React.useState<string | null>(null);
+    const [finishBadges, setFinishBadges] = React.useState<string[]>([]);
+    const [historyFilter, setHistoryFilter] = React.useState<"all" | "free" | "training" | "pacer">("all");
+    const [customWorkout, setCustomWorkout] = React.useState<RunningCustomWorkoutSpec>(() => ({ warmupMin: 8, workMin: 2, recoveryMin: 1, reps: 6, cooldownMin: 6, title: "SÉANCE PERSONNALISÉE" }));
+    const [planId, setPlanId] = React.useState<string | undefined>(() => params?.runningPlanId ? String(params.runningPlanId) : undefined);
+    const [planSessionId, setPlanSessionId] = React.useState<string | undefined>(() => params?.runningPlanSessionId ? String(params.runningPlanSessionId) : undefined);
+    const [presetOverrideTitle, setPresetOverrideTitle] = React.useState<string | null>(() => params?.runningPlanSessionTitle ? String(params.runningPlanSessionTitle) : null);
+    const [presetOverrideDurationMs, setPresetOverrideDurationMs] = React.useState<number | null>(() => Number.isFinite(Number(params?.runningTargetDurationMs)) ? Number(params.runningTargetDurationMs) : null);
+    const [audioCoach, setAudioCoach] = React.useState(() => { try { const raw = localStorage.getItem(RUNNING_AUDIO_COACH_KEY); return raw == null ? true : raw === "1"; } catch { return true; } });
+    const watchIdRef = React.useRef<number | null>(null);
+    const pointsRef = React.useRef<GeoPoint[]>([]);
+    const startedAtRef = React.useRef(0);
+    const pauseStartedRef = React.useRef(0);
+    const pausedTotalRef = React.useRef(0);
+    const pausedRef = React.useRef(false);
+    const lastLapElapsedRef = React.useRef(0);
+    const lastLapDistanceRef = React.useRef(0);
+    const splitCountRef = React.useRef(0);
+    const phaseIndexRef = React.useRef<number | null>(null);
+    const copy = lang === "fr" ? {
+        title: "RUNNING PERFORMANCE", setupSub: "Prépare ta séance avant le départ", recordSub: "Session GPS en cours", history: "MES SORTIES", records: "MES RECORDS", setup: "COURIR", quick: "RAPIDE", training: "ENTRAÎNEMENT", pacer: "PACER", selected: "SÉANCE SÉLECTIONNÉE", start: "DÉMARRER", gps: "GPS", gpsCheck: "TESTER LE GPS", gpsReady: "GPS PRÊT", gpsUnknown: "GPS À VÉRIFIER", gpsPoor: "SIGNAL FAIBLE", gpsDenied: "LOCALISATION REFUSÉE", gpsHint: "Teste le GPS avant le départ pour éviter une sortie sans tracé.", local: "BETA WEB / PWA — RUNNING N'EST PAS ENCORE PUBLIÉ SUR ANDROID", watches: "MONTRES & CAPTEURS", soon: "BIENTÔT", targetPace: "ALLURE CIBLE", targetDistance: "DISTANCE CIBLE", expected: "TEMPS CIBLE", countdown: "PRÊT ?", go: "GO !",
+        distance: "DISTANCE", time: "TEMPS", avgPace: "ALLURE MOY.", livePace: "ALLURE LIVE", speed: "VITESSE", elevation: "DÉNIVELÉ +", accuracy: "PRÉCISION", moving: "TEMPS MOUV.", target: "OBJECTIF", ahead: "EN AVANCE", behind: "EN RETARD", projected: "ARRIVÉE PROJETÉE", phase: "BLOC EN COURS", remaining: "RESTANT", route: "PARCOURS", waiting: "En attente du premier point GPS…", pause: "PAUSE", resume: "REPRENDRE", finish: "TERMINER", cancel: "ANNULER", lap: "TOUR", splits: "SPLITS KM", laps: "TOURS MANUELS", targetReached: "OBJECTIF ATTEINT", insufficient: "Il faut au moins deux points GPS pour enregistrer la sortie.", complete: "SORTIE TERMINÉE", verified: "GPS VÉRIFIÉ", delete: "SUPPRIMER LA SORTIE", empty: "Aucune sortie enregistrée.", noRecord: "Pas encore de record", longestLabel: "PLUS LONGUE", bestEfforts: "MEILLEURS EFFORTS", consistency: "RÉGULARITÉ", negative: "NEGATIVE SPLIT", achievements: "PERFORMANCES DÉBLOQUÉES", firstRun: "PREMIÈRE SORTIE", longestBadge: "PLUS LONGUE SORTIE", personalBest: "NOUVEAU RECORD", filters: ["TOUTES", "LIBRES", "SÉANCES", "PACER"], plan: "PLAN", custom: "SUR MESURE", audioCoach: "COACH VOCAL AWENA", audioCoachSub: "Annonce les blocs, splits et repères de séance pendant la course.", feedback: "RESSENTI APRÈS LA SORTIE", effort: "EFFORT PERÇU", feeling: "SENSATIONS", notes: "NOTES", save: "ENREGISTRER", info: "Le module Running combine GPS, carte, splits, tours, séances structurées, programmes, coaching Awena et stratégie d’allure. Cette version reste volontairement Web/PWA pour être testée avant activation Android.",
+    } : lang === "es" ? {
+        title: "RUNNING PERFORMANCE", setupSub: "Prepara tu sesión antes de salir", recordSub: "Sesión GPS en curso", history: "MIS CARRERAS", records: "MIS RÉCORDS", setup: "CORRER", quick: "RÁPIDO", training: "ENTRENAMIENTO", pacer: "PACER", selected: "SESIÓN SELECCIONADA", start: "INICIAR", gps: "GPS", gpsCheck: "PROBAR GPS", gpsReady: "GPS LISTO", gpsUnknown: "GPS SIN PROBAR", gpsPoor: "SEÑAL DÉBIL", gpsDenied: "UBICACIÓN DENEGADA", gpsHint: "Prueba el GPS antes de salir para evitar una carrera sin ruta.", local: "BETA WEB / PWA — RUNNING AÚN NO ESTÁ PUBLICADO EN ANDROID", watches: "RELOJES Y SENSORES", soon: "PRONTO", targetPace: "RITMO OBJETIVO", targetDistance: "DISTANCIA OBJETIVO", expected: "TIEMPO OBJETIVO", countdown: "¿LISTO?", go: "¡YA!",
+        distance: "DISTANCIA", time: "TIEMPO", avgPace: "RITMO MEDIO", livePace: "RITMO LIVE", speed: "VELOCIDAD", elevation: "DESNIVEL +", accuracy: "PRECISIÓN", moving: "TIEMPO MOV.", target: "OBJETIVO", ahead: "ADELANTADO", behind: "RETRASADO", projected: "LLEGADA PROYECTADA", phase: "BLOQUE ACTUAL", remaining: "RESTANTE", route: "RUTA", waiting: "Esperando el primer punto GPS…", pause: "PAUSA", resume: "REANUDAR", finish: "TERMINAR", cancel: "CANCELAR", lap: "VUELTA", splits: "SPLITS KM", laps: "VUELTAS MANUALES", targetReached: "OBJETIVO CUMPLIDO", insufficient: "Se necesitan al menos dos puntos GPS para guardar la carrera.", complete: "CARRERA TERMINADA", verified: "GPS VERIFICADO", delete: "ELIMINAR CARRERA", empty: "No hay carreras guardadas.", noRecord: "Sin récord todavía", longestLabel: "MÁS LARGA", bestEfforts: "MEJORES ESFUERZOS", consistency: "REGULARIDAD", negative: "NEGATIVE SPLIT", achievements: "LOGROS DESBLOQUEADOS", firstRun: "PRIMERA CARRERA", longestBadge: "CARRERA MÁS LARGA", personalBest: "NUEVO RÉCORD", filters: ["TODAS", "LIBRES", "SESIONES", "PACER"], plan: "PLAN", custom: "A MEDIDA", audioCoach: "COACH VOCAL AWENA", audioCoachSub: "Anuncia bloques, splits y referencias de entrenamiento durante la carrera.", feedback: "SENSACIONES DESPUÉS DE CORRER", effort: "ESFUERZO PERCIBIDO", feeling: "SENSACIONES", notes: "NOTAS", save: "GUARDAR", info: "Running combina GPS, mapa, splits, vueltas, entrenamientos estructurados, planes, coaching Awena y estrategia de ritmo. Esta versión sigue en Web/PWA antes de activar Android.",
+    } : {
+        title: "RUNNING PERFORMANCE", setupSub: "Prepare your workout before the start", recordSub: "GPS session in progress", history: "MY RUNS", records: "MY RECORDS", setup: "RUN", quick: "QUICK", training: "TRAINING", pacer: "PACER", selected: "SELECTED WORKOUT", start: "START", gps: "GPS", gpsCheck: "CHECK GPS", gpsReady: "GPS READY", gpsUnknown: "GPS NOT CHECKED", gpsPoor: "WEAK SIGNAL", gpsDenied: "LOCATION DENIED", gpsHint: "Check GPS before the start to avoid a run without a route.", local: "WEB / PWA BETA — RUNNING IS NOT RELEASED ON ANDROID YET", watches: "WATCHES & SENSORS", soon: "SOON", targetPace: "TARGET PACE", targetDistance: "TARGET DISTANCE", expected: "TARGET TIME", countdown: "READY?", go: "GO!",
+        distance: "DISTANCE", time: "TIME", avgPace: "AVG PACE", livePace: "LIVE PACE", speed: "SPEED", elevation: "ELEVATION +", accuracy: "ACCURACY", moving: "MOVING TIME", target: "TARGET", ahead: "AHEAD", behind: "BEHIND", projected: "PROJECTED FINISH", phase: "CURRENT BLOCK", remaining: "REMAINING", route: "ROUTE", waiting: "Waiting for the first GPS point…", pause: "PAUSE", resume: "RESUME", finish: "FINISH", cancel: "CANCEL", lap: "LAP", splits: "KM SPLITS", laps: "MANUAL LAPS", targetReached: "TARGET REACHED", insufficient: "At least two GPS points are required to save the run.", complete: "RUN COMPLETE", verified: "GPS VERIFIED", delete: "DELETE RUN", empty: "No runs saved yet.", noRecord: "No record yet", longestLabel: "LONGEST", bestEfforts: "BEST EFFORTS", consistency: "CONSISTENCY", negative: "NEGATIVE SPLIT", achievements: "UNLOCKED ACHIEVEMENTS", firstRun: "FIRST RUN", longestBadge: "LONGEST RUN", personalBest: "NEW PERSONAL BEST", filters: ["ALL", "FREE", "WORKOUTS", "PACER"], plan: "PLAN", custom: "CUSTOM", audioCoach: "AWENA VOICE COACH", audioCoachSub: "Announces workout blocks, splits and session cues while you run.", feedback: "POST-RUN FEEDBACK", effort: "PERCEIVED EFFORT", feeling: "FEELING", notes: "NOTES", save: "SAVE", info: "Running combines GPS, map, splits, laps, structured workouts, plans, Awena coaching and pace strategy. This version intentionally remains Web/PWA before Android activation.",
     };
-    await saveActivity(record);
-    setIsRecording(false);
-    setPaused(false);
-    pausedRef.current = false;
-    setSelected(record);
-    await refreshActivities();
-    setView("detail");
-  }, [copy.insufficient, refreshActivities, stopWatch, targetDistance]);
+    const selectedPreset = React.useMemo(() => PRESETS.find((p) => p.id === selectedPresetId) || PRESETS[0], [selectedPresetId]);
+    const effectivePreset: Preset = React.useMemo(() => {
+        let base: Preset = selectedPresetId === "pacer"
+            ? { id: "pacer", type: "pacer", icon: "⏱️", fr: "PACER", en: "PACER", es: "PACER", subFr: "Tiens ton allure cible et suis ton avance en direct.", subEn: "Hold target pace and track live time delta.", subEs: "Mantén el ritmo objetivo y sigue tu diferencia en directo.", targetDistanceM: pacerDistanceM, targetPaceSecPerKm: pacerPace }
+            : selectedPresetId === "custom" ? customWorkoutPreset(customWorkout) : selectedPreset;
+        if (presetOverrideDurationMs && presetOverrideDurationMs > 0) base = { ...base, targetDurationMs: presetOverrideDurationMs };
+        if (presetOverrideTitle) base = { ...base, fr: presetOverrideTitle, en: presetOverrideTitle, es: presetOverrideTitle };
+        return base;
+    }, [customWorkout, pacerDistanceM, pacerPace, presetOverrideDurationMs, presetOverrideTitle, selectedPreset, selectedPresetId]);
+    const targetDistanceM = effectivePreset.targetDistanceM ?? null;
+    const targetDurationMs = effectivePreset.targetDurationMs ?? null;
+    const targetPaceSecPerKm = effectivePreset.type === "pacer" ? pacerPace : null;
+    React.useEffect(() => { try { localStorage.setItem(RUNNING_AUDIO_COACH_KEY, audioCoach ? "1" : "0"); } catch {} }, [audioCoach]);
+    const speakCoach = React.useCallback((text: string) => {
+        if (!audioCoach || !awena?.settings) return;
+        void awenaVoice.speak(text, awena.settings, lang).catch(() => {});
+    }, [audioCoach, awena?.settings, lang]);
+    const refreshActivities = React.useCallback(async () => setActivities(await listActivities("running")), []);
+    React.useEffect(() => { void refreshActivities(); }, [refreshActivities]);
+    React.useEffect(() => { if (!isRecording)
+        return; const id = window.setInterval(() => setNow(Date.now()), 400); return () => window.clearInterval(id); }, [isRecording]);
+    React.useEffect(() => () => { if (watchIdRef.current != null && navigator.geolocation)
+        navigator.geolocation.clearWatch(watchIdRef.current); }, []);
+    const activeElapsedAt = React.useCallback((ts: number) => {
+        if (!startedAtRef.current)
+            return 0;
+        const currentPause = pausedRef.current && pauseStartedRef.current ? Math.max(0, ts - pauseStartedRef.current) : 0;
+        return Math.max(0, ts - startedAtRef.current - pausedTotalRef.current - currentPause);
+    }, []);
+    const elapsedMs = React.useMemo(() => activeElapsedAt(now), [activeElapsedAt, now, paused]);
+    const liveDistance = React.useMemo(() => routeDistanceMeters(points), [points]);
+    const livePace = React.useMemo(() => averagePaceSecPerKm(liveDistance, elapsedMs), [liveDistance, elapsedMs]);
+    const rollingPace = React.useMemo(() => rollingPaceSecPerKm(points), [points]);
+    const liveSpeed = React.useMemo(() => averageSpeedMps(liveDistance, elapsedMs) * 3.6, [liveDistance, elapsedMs]);
+    const liveElevation = React.useMemo(() => elevationGainMeters(points), [points]);
+    const liveMoving = React.useMemo(() => movingTimeMs(points), [points]);
+    const liveSplits = React.useMemo(() => buildKilometerSplits(points, startedAtRef.current || Date.now()), [points]);
+    const stats = React.useMemo(() => buildRunningStats(activities, Date.now(), lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB"), [activities, lang]);
+    const phase = React.useMemo(() => getPhase(effectivePreset, elapsedMs, lang), [effectivePreset, elapsedMs, lang]);
+    const distanceProgress = targetDistanceM ? Math.min(100, liveDistance / targetDistanceM * 100) : null;
+    const durationProgress = !targetDistanceM && targetDurationMs ? Math.min(100, elapsedMs / targetDurationMs * 100) : null;
+    const progress = distanceProgress ?? durationProgress;
+    const paceDelta = targetPaceSecPerKm ? targetPaceDeltaMs(liveDistance, elapsedMs, targetPaceSecPerKm) : null;
+    const projected = targetDistanceM ? projectedFinishMs(liveDistance, elapsedMs, targetDistanceM) : null;
+    const targetReached = (targetDistanceM && liveDistance >= targetDistanceM) || (targetDurationMs && elapsedMs >= targetDurationMs);
+    React.useEffect(() => {
+        if (!isRecording || !phase) return;
+        if (phaseIndexRef.current === phase.index) return;
+        phaseIndexRef.current = phase.index;
+        const phrase = lang === "fr" ? `${phase.label}. ${Math.max(1, Math.ceil(phase.step.durationMs / 60000))} minutes.` : lang === "es" ? `${phase.label}. ${Math.max(1, Math.ceil(phase.step.durationMs / 60000))} minutos.` : `${phase.label}. ${Math.max(1, Math.ceil(phase.step.durationMs / 60000))} minutes.`;
+        speakCoach(phrase);
+    }, [isRecording, lang, phase?.index, speakCoach]);
+    React.useEffect(() => {
+        if (!isRecording || liveSplits.length <= splitCountRef.current)
+            return;
+        const split = liveSplits[liveSplits.length - 1];
+        splitCountRef.current = liveSplits.length;
+        setSplitToast(`KM ${split.index} · ${formatDuration(split.splitMs)} · ${formatPace(split.paceSecPerKm)}/km`);
+        const splitVoice = lang === "fr" ? `Kilomètre ${split.index}. ${formatDuration(split.splitMs)}. Allure ${formatPace(split.paceSecPerKm)} au kilomètre.` : lang === "es" ? `Kilómetro ${split.index}. ${formatDuration(split.splitMs)}. Ritmo ${formatPace(split.paceSecPerKm)} por kilómetro.` : `Kilometre ${split.index}. ${formatDuration(split.splitMs)}. Pace ${formatPace(split.paceSecPerKm)} per kilometre.`;
+        speakCoach(splitVoice);
+        try {
+            navigator.vibrate?.([80, 60, 80]);
+        }
+        catch { }
+        const id = window.setTimeout(() => setSplitToast(null), 3500);
+        return () => window.clearTimeout(id);
+    }, [isRecording, lang, liveSplits, speakCoach]);
+    const stopWatch = React.useCallback(() => { if (watchIdRef.current != null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+    } }, []);
+    const checkGps = React.useCallback(() => {
+        setGpsChecked(true);
+        setGpsMessage(copy.gpsUnknown);
+        if (!navigator.geolocation) {
+            setGpsMessage(copy.gpsDenied);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition((pos) => { const a = Number(pos.coords.accuracy || 999); setAccuracy(a); setGpsMessage(a <= 35 ? copy.gpsReady : copy.gpsPoor); }, () => setGpsMessage(copy.gpsDenied), { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 });
+    }, [copy.gpsDenied, copy.gpsPoor, copy.gpsReady, copy.gpsUnknown]);
+    const startGpsRun = React.useCallback(() => {
+        setPoints([]);
+        pointsRef.current = [];
+        setManualLaps([]);
+        lastLapElapsedRef.current = 0;
+        lastLapDistanceRef.current = 0;
+        splitCountRef.current = 0;
+        phaseIndexRef.current = null;
+        setFinishBadges([]);
+        setAccuracy(null);
+        setGpsMessage(copy.gpsUnknown);
+        pausedRef.current = false;
+        pausedTotalRef.current = 0;
+        pauseStartedRef.current = 0;
+        startedAtRef.current = Date.now();
+        setNow(startedAtRef.current);
+        setPaused(false);
+        setIsRecording(true);
+        setView("record");
+        speakCoach(lang === "fr" ? `Départ. ${presetLabel(effectivePreset, lang)}.` : lang === "es" ? `Salida. ${presetLabel(effectivePreset, lang)}.` : `Start. ${presetLabel(effectivePreset, lang)}.`);
+        if (!navigator.geolocation) {
+            setGpsMessage(copy.gpsDenied);
+            setIsRecording(false);
+            return;
+        }
+        stopWatch();
+        watchIdRef.current = navigator.geolocation.watchPosition((position) => {
+            const ts = position.timestamp || Date.now();
+            const coords = position.coords;
+            const next: GeoPoint = { lat: coords.latitude, lon: coords.longitude, timestamp: ts, elapsedMs: activeElapsedAt(ts), accuracy: Number.isFinite(coords.accuracy) ? Number(coords.accuracy) : undefined, altitude: Number.isFinite(coords.altitude) ? Number(coords.altitude) : undefined, speed: Number.isFinite(coords.speed) ? Number(coords.speed) : undefined };
+            setAccuracy(Number.isFinite(next.accuracy) ? Number(next.accuracy) : null);
+            if (pausedRef.current) {
+                setGpsMessage(copy.pause);
+                return;
+            }
+            setGpsMessage(Number(next.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
+            const previous = pointsRef.current[pointsRef.current.length - 1];
+            if (!shouldAcceptRunningPoint(previous, next))
+                return;
+            pointsRef.current = [...pointsRef.current, next];
+            setPoints(pointsRef.current);
+        }, () => setGpsMessage(copy.gpsDenied), { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
+    }, [activeElapsedAt, copy.gpsDenied, copy.gpsPoor, copy.gpsReady, copy.gpsUnknown, copy.pause, effectivePreset, lang, speakCoach, stopWatch]);
+    const startCountdown = React.useCallback(() => {
+        if (countdown != null || isRecording)
+            return;
+        setCountdown(3);
+        let n = 3;
+        const id = window.setInterval(() => { n -= 1; if (n <= 0) {
+            window.clearInterval(id);
+            setCountdown(0);
+            try {
+                navigator.vibrate?.(120);
+            }
+            catch { }
+            window.setTimeout(() => { setCountdown(null); startGpsRun(); }, 500);
+        }
+        else {
+            setCountdown(n);
+            try {
+                navigator.vibrate?.(45);
+            }
+            catch { }
+        } }, 850);
+    }, [countdown, isRecording, startGpsRun]);
+    const togglePause = React.useCallback(() => {
+        if (!isRecording)
+            return;
+        if (!pausedRef.current) {
+            pausedRef.current = true;
+            pauseStartedRef.current = Date.now();
+            setPaused(true);
+            return;
+        }
+        const resumed = Date.now();
+        if (pauseStartedRef.current)
+            pausedTotalRef.current += Math.max(0, resumed - pauseStartedRef.current);
+        pauseStartedRef.current = 0;
+        pausedRef.current = false;
+        setPaused(false);
+        setNow(resumed);
+    }, [isRecording]);
+    const addLap = React.useCallback(() => {
+        if (!isRecording || paused)
+            return;
+        const currentElapsed = activeElapsedAt(Date.now());
+        const distance = routeDistanceMeters(pointsRef.current);
+        const lapMs = currentElapsed - lastLapElapsedRef.current;
+        const lapDistanceM = distance - lastLapDistanceRef.current;
+        if (lapMs < 1000)
+            return;
+        const lap: ActivityLap = { index: manualLaps.length + 1, elapsedMs: currentElapsed, lapMs, distanceM: distance, lapDistanceM, paceSecPerKm: averagePaceSecPerKm(lapDistanceM, lapMs) };
+        setManualLaps((rows) => [...rows, lap]);
+        lastLapElapsedRef.current = currentElapsed;
+        lastLapDistanceRef.current = distance;
+        setSplitToast(`${copy.lap} ${lap.index} · ${formatDuration(lapMs)} · ${formatPace(lap.paceSecPerKm)}/km`);
+        try {
+            navigator.vibrate?.(70);
+        }
+        catch { }
+    }, [activeElapsedAt, copy.lap, isRecording, manualLaps.length, paused]);
+    const cancelRun = React.useCallback(() => { stopWatch(); setIsRecording(false); setPaused(false); pausedRef.current = false; pointsRef.current = []; setPoints([]); setManualLaps([]); setGpsMessage(""); setView("setup"); }, [stopWatch]);
+    const finishRun = React.useCallback(async () => {
+        if (pointsRef.current.length < 2) {
+            setGpsMessage(copy.insufficient);
+            return;
+        }
+        stopWatch();
+        const endedAt = Date.now();
+        let pauseTotal = pausedTotalRef.current;
+        if (pausedRef.current && pauseStartedRef.current)
+            pauseTotal += endedAt - pauseStartedRef.current;
+        const elapsed = Math.max(1, endedAt - startedAtRef.current - pauseTotal);
+        const route = pointsRef.current;
+        const distanceM = routeDistanceMeters(route);
+        const splits = buildKilometerSplits(route, startedAtRef.current);
+        const record: ActivityRecord = { id: makeId(), sport: "running", source: "phone-gps", verification: "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: movingTimeMs(route) || elapsed, distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps, planId, planSessionId, title: presetLabel(effectivePreset, lang), deviceName: "Phone GPS", createdAt: Date.now() };
+        const prior = buildRunningStats(activities, Date.now(), lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB");
+        const badges: string[] = [];
+        if (!activities.length)
+            badges.push(copy.firstRun);
+        if (distanceM > prior.longestM && prior.longestM > 0)
+            badges.push(copy.longestBadge);
+        for (const d of [1000, 5000, 10000]) {
+            const current = bestEffortMs(route, d);
+            const previous = d === 1000 ? prior.best1k : d === 5000 ? prior.best5k : prior.best10k;
+            if (current && (!previous || current < previous.elapsedMs))
+                badges.push(`${copy.personalBest} · ${d / 1000} KM`);
+        }
+        if (hasNegativeSplit(splits))
+            badges.push(copy.negative);
+        const consistency = splitConsistencyScore(splits);
+        if (consistency != null && consistency >= 90)
+            badges.push(`${copy.consistency} · ${consistency}%`);
+        await saveActivity(record);
+        setFinishBadges(badges);
+        setIsRecording(false);
+        setPaused(false);
+        pausedRef.current = false;
+        setSelected(record);
+        await refreshActivities();
+        setView("detail");
+    }, [activities, copy.consistency, copy.firstRun, copy.insufficient, copy.longestBadge, copy.negative, copy.personalBest, effectivePreset, lang, manualLaps, refreshActivities, stopWatch, targetDistanceM, targetDurationMs, targetPaceSecPerKm, planId, planSessionId]);
+    const removeSelected = React.useCallback(async () => { if (!selected)
+        return; await deleteActivity(selected.id); setSelected(null); await refreshActivities(); setView("history"); }, [refreshActivities, selected]);
+    const updateSelected = React.useCallback(async (patch: Partial<ActivityRecord>) => {
+        if (!selected) return;
+        const next = { ...selected, ...patch };
+        setSelected(next);
+        await saveActivity(next);
+        await refreshActivities();
+    }, [refreshActivities, selected]);
+    const selectManualPreset = React.useCallback((id: string) => {
+        setSelectedPresetId(id);
+        setPlanId(undefined);
+        setPlanSessionId(undefined);
+        setPresetOverrideTitle(null);
+        setPresetOverrideDurationMs(null);
+    }, []);
+    const startPlanSession = React.useCallback((plan: RunningPlanState, session: RunningPlanSession) => {
+        setPlanId(plan.id);
+        setPlanSessionId(session.id);
+        setPresetOverrideTitle(session.title);
+        setPresetOverrideDurationMs(session.targetDurationMs || null);
+        if (session.customWorkout) {
+            setCustomWorkout({ ...session.customWorkout, title: session.title });
+            setSelectedPresetId("custom");
+            setSetupTab("custom");
+        } else {
+            setSelectedPresetId(session.presetId);
+            setSetupTab(session.presetId === "pacer" ? "pacer" : ["easy", "tempo", "intervals", "long", "recovery"].includes(session.presetId) ? "training" : "quick");
+        }
+        setView("setup");
+    }, []);
+    const infoDot = <InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.6 }}>{copy.info}<br /><br /><b>{copy.local}</b></div>}/>;
+    if (countdown != null)
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH, minHeight: "78vh", display: "grid", placeItems: "center" }}><div style={{ textAlign: "center" }}><div style={{ fontSize: 12, color: textSoft, fontWeight: 1000, letterSpacing: 2 }}>{copy.countdown}</div><div style={{ marginTop: 8, fontSize: "clamp(88px,28vw,150px)", lineHeight: 1, fontWeight: 1000, color: accent, textShadow: `0 0 34px ${accent}77` }}>{countdown === 0 ? copy.go : countdown}</div><div style={{ marginTop: 14, fontWeight: 900 }}>{presetLabel(effectivePreset, lang)}</div></div></div>;
+    if (view === "record") {
+        const deltaGood = paceDelta != null && paceDelta <= 0;
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH, paddingBottom: 190 }}>
+      <PageHeader title={copy.title} subtitle={`${presetLabel(effectivePreset, lang)} · ${paused ? copy.pause : copy.recordSub}`} left={<BackDot onClick={cancelRun}/>} right={infoDot}/>
+      {splitToast ? <div style={{ position: "fixed", top: 88, left: "50%", transform: "translateX(-50%)", zIndex: 90, width: "min(92vw,440px)", padding: "10px 14px", borderRadius: 999, textAlign: "center", background: "rgba(5,8,13,.92)", border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 11, boxShadow: "0 12px 36px rgba(0,0,0,.55)", backdropFilter: "blur(14px)" }}>{splitToast}</div> : null}
 
-  const openActivity = (activity: ActivityRecord) => {
-    setSelected(activity);
-    setView("detail");
-  };
-
-  const removeSelected = async () => {
-    if (!selected) return;
-    await deleteActivity(selected.id);
-    setSelected(null);
-    await refreshActivities();
-    setView("history");
-  };
-
-  const infoDot = <InfoDot title={copy.infoTitle} disableAwenaTakeover content={<div style={{ fontSize: 13, lineHeight: 1.55 }}>{copy.info}</div>} />;
-
-  if (view === "record") {
-    const progress = targetDistance ? Math.min(100, (liveDistance / targetDistance) * 100) : null;
-    const statusColor = paused ? "#ffbe45" : accuracy && accuracy > 45 ? "#ff8c5a" : accent;
-    return (
-      <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH, paddingBottom: 138 }}>
-        <PageHeader
-          title={copy.title}
-          subtitle={copy.recordSub}
-          left={<BackDot onClick={cancelRun} title={copy.cancel} />}
-          right={infoDot}
-        />
-
-        <div style={{ display: "flex", justifyContent: "center", margin: "3px 0 12px" }}>
-          <div style={{ ...statusPill, borderColor: `${statusColor}66`, color: statusColor }}><span style={{ ...statusDot, background: statusColor, boxShadow: `0 0 12px ${statusColor}` }} />{paused ? copy.paused : gpsMessage || copy.acquiring}</div>
-        </div>
-
-        <div className="card" style={{ padding: 14, borderColor: `${accent}38`, boxShadow: `0 18px 48px rgba(0,0,0,.38),0 0 34px ${accent}0c` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "start" }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1.2, color: textSoft }}>{copy.distance}</div>
-              <div style={{ marginTop: 3, fontSize: "clamp(42px,12vw,66px)", lineHeight: .95, fontWeight: 1000, letterSpacing: -2, color: accent }}>{liveDistance >= 1000 ? (liveDistance / 1000).toFixed(2) : Math.round(liveDistance)}</div>
-              <div style={{ fontSize: 13, fontWeight: 900, color: textSoft, marginTop: 5 }}>{liveDistance >= 1000 ? "KM" : "M"}</div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1.1, color: textSoft }}>{copy.time}</div>
-              <div style={{ fontSize: 26, fontWeight: 1000, marginTop: 5 }}>{formatDuration(elapsedMs)}</div>
-              <div style={{ fontSize: 10.5, color: accent, fontWeight: 900, marginTop: 6 }}>{targetLabel(targetDistance, lang)}</div>
-            </div>
-          </div>
-          {progress != null ? (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 10.5, fontWeight: 900, color: textSoft }}><span>{copy.target} · {targetLabel(targetDistance, lang)}</span><span style={{ color: accent }}>{Math.round(progress)}%</span></div>
-              <Progress value={progress} accent={accent} />
-            </div>
-          ) : null}
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <Section title={copy.route} right={<span style={{ fontSize: 10, color: textSoft }}>{points.length} GPS</span>}>
-            <RouteMap points={points} accent={accent} waiting={copy.waiting} />
-          </Section>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: -2 }}>
-          <Metric icon="⏱" label={copy.pace} value={`${formatPace(livePace)} /km`} accent={accent} />
-          <Metric icon="⚡" label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent} />
-          <Metric icon="⛰" label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent} />
-          <Metric icon="◎" label={copy.accuracy} value={accuracy ? `±${Math.round(accuracy)} m` : "—"} accent={accent} />
-        </div>
-
-        {liveSplits.length ? (
-          <div style={{ marginTop: 12 }}>
-            <Section title={copy.splits}>
-              <SplitTable splits={liveSplits.slice(-3)} accent={accent} />
-            </Section>
-          </div>
-        ) : null}
-
-        {gpsMessage && ![copy.active, copy.paused, copy.poor, copy.acquiring].includes(gpsMessage) ? <div style={warning}>{gpsMessage}</div> : null}
-
-        <div style={recordDock}>
-          <button type="button" className="btn" onClick={togglePause} disabled={!isRecording} style={{ minHeight: 54, fontWeight: 1000, borderColor: paused ? `${accent}66` : undefined }}>{paused ? `▶ ${copy.resume}` : `Ⅱ ${copy.pause}`}</button>
-          <button type="button" className="btn primary" onClick={() => void finishRun()} disabled={!isRecording} style={{ minHeight: 54, fontWeight: 1000, background: accent }}>■ {copy.finish}</button>
-        </div>
+      <div className="card" style={{ padding: 15, textAlign: "center", borderColor: `${accent}40`, background: `radial-gradient(circle at 50% 0,${accent}18,rgba(8,10,16,.82) 58%)` }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}><StatusPill text={gpsMessage || copy.gpsUnknown} good={gpsMessage === copy.gpsReady} accent={accent}/><StatusPill text={paused ? copy.pause : copy.verified} good={!paused} accent={accent}/></div>
+        <div style={{ marginTop: 13, fontSize: 10, color: textSoft, fontWeight: 1000, letterSpacing: 1 }}>{copy.distance}</div><div style={{ fontSize: "clamp(52px,15vw,78px)", lineHeight: 1.02, fontWeight: 1000, color: accent, textShadow: `0 0 28px ${accent}30` }}>{(liveDistance / 1000).toFixed(2)}<small style={{ fontSize: 17, marginLeft: 5 }}>KM</small></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 13 }}><HeroMetric label={copy.time} value={formatDuration(elapsedMs)}/><HeroMetric label={copy.avgPace} value={`${formatPace(livePace)}/km`}/><HeroMetric label={copy.livePace} value={`${formatPace(rollingPace)}/km`}/></div>
+        {progress != null ? <div style={{ marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: textSoft, fontWeight: 900 }}><span>{copy.target} · {targetDistanceM ? distanceLabel(targetDistanceM) : formatDuration(targetDurationMs || 0)}</span><span style={{ color: targetReached ? "#71ff9a" : accent }}>{targetReached ? copy.targetReached : `${Math.round(progress)}%`}</span></div><Progress value={progress} accent={targetReached ? "#71ff9a" : accent}/></div> : null}
       </div>
-    );
-  }
 
-  if (view === "history") {
-    return (
-      <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}>
-        <PageHeader title={copy.history} subtitle={`${activities.length} ${lang === "fr" ? "sorties" : lang === "es" ? "carreras" : "runs"}`} left={<BackDot onClick={() => go("home")} />} right={infoDot} />
-        <TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records }} accent={accent} />
-        {activities.length === 0 ? <EmptyState text={copy.empty} accent={accent} /> : (
-          <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-            {activities.map((activity, index) => <HistoryCard key={activity.id} activity={activity} index={index} lang={lang} accent={accent} onClick={() => openActivity(activity)} />)}
-          </div>
-        )}
-      </div>
-    );
-  }
+      {phase ? <div style={{ marginTop: 10 }}><Section title={copy.phase} right={<span style={{ color: phase.step.tone === "hard" ? "#ff8a67" : accent, fontSize: 10, fontWeight: 1000 }}>{phase.label}</span>}><div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}><div><div style={{ fontSize: 10, color: textSoft }}>{copy.remaining}</div><div style={{ fontSize: 26, fontWeight: 1000 }}>{formatDuration(phase.remainingMs)}</div></div><div style={{ fontSize: 10, color: textSoft }}>#{phase.index + 1}/{effectivePreset.steps?.length || 1}</div></div><Progress value={phase.progress} accent={phase.step.tone === "hard" ? "#ff8a67" : accent}/></Section></div> : null}
 
-  if (view === "records") {
-    const recordRows = [
-      { icon: "⚡", title: copy.pr1, item: stats.pr1 },
-      { icon: "🎯", title: copy.pr5, item: stats.pr5 },
-      { icon: "🔥", title: copy.pr10, item: stats.pr10 },
-    ];
-    return (
-      <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}>
-        <PageHeader title={copy.records} subtitle={copy.title} left={<BackDot onClick={() => go("home")} />} right={infoDot} />
-        <TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records }} accent={accent} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, margin: "12px 0" }}>
-          <MiniStat label={copy.week} value={`${(stats.weekM / 1000).toFixed(1)} km`} accent={accent} />
-          <MiniStat label={copy.longest} value={formatDistance(stats.longest)} accent={accent} />
-          <MiniStat label={copy.bestPace} value={`${formatPace(stats.bestPace)} /km`} accent={accent} />
-        </div>
-        <div style={{ display: "grid", gap: 10 }}>
-          {recordRows.map((row) => (
-            <div className="card" key={row.title} style={{ display: "grid", gridTemplateColumns: "52px 1fr auto", gap: 12, alignItems: "center", padding: 13 }}>
-              <div style={{ width: 50, height: 50, borderRadius: 16, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 23 }}>{row.icon}</div>
-              <div><div style={{ fontSize: 10.5, letterSpacing: .8, fontWeight: 1000, color: textSoft }}>{row.title}</div><div style={{ fontSize: 23, fontWeight: 1000, color: row.item ? accent : undefined, marginTop: 3 }}>{row.item ? formatDuration(row.item.elapsedMs) : copy.noRecord}</div></div>
-              {row.item ? <div style={{ fontSize: 10.5, textAlign: "right", color: textSoft }}>{formatPace(row.item.avgPaceSecPerKm)} /km<br />{activityDate(row.item.startedAt, lang)}</div> : null}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+      {targetPaceSecPerKm ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.targetPace} value={`${formatPace(targetPaceSecPerKm)}/km`} accent={accent}/><Metric label={deltaGood ? copy.ahead : copy.behind} value={formatSignedDuration(paceDelta)} accent={deltaGood ? "#71ff9a" : "#ff8a67"}/><Metric label={copy.projected} value={projected ? formatDuration(projected) : "—"} accent={accent}/></div> : null}
 
-  if (view === "detail" && selected) {
-    return (
-      <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}>
-        <PageHeader title={copy.complete} subtitle={activityDate(selected.startedAt, lang)} left={<BackDot onClick={() => setView("history")} />} right={infoDot} />
-        <div className="card" style={{ textAlign: "center", borderColor: `${accent}44`, padding: "18px 14px" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 10px", borderRadius: 999, border: `1px solid ${accent}55`, color: accent, fontSize: 10, fontWeight: 1000, letterSpacing: .8 }}>✓ {copy.verified}</div>
-          <div style={{ fontSize: "clamp(42px,12vw,64px)", lineHeight: 1, fontWeight: 1000, color: accent, marginTop: 13 }}>{formatDistance(selected.distanceM)}</div>
-          <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900 }}>{targetLabel(normalizeTarget(selected.targetDistanceM), lang)}</div>
-        </div>
+      <div style={{ marginTop: 10 }}><Section title={copy.route} right={<span style={{ fontSize: 9.5, color: textSoft }}>{points.length} GPS</span>}><RouteMap points={points} accent={accent} waiting={copy.waiting}/></Section></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Metric label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/><Metric label={copy.accuracy} value={accuracy ? `±${Math.round(accuracy)} m` : "—"} accent={accent}/><Metric label={copy.moving} value={formatDuration(liveMoving || elapsedMs)} accent={accent}/></div>
+      {liveSplits.length ? <div style={{ marginTop: 10 }}><Section title={copy.splits}><SplitTable splits={liveSplits.slice(-4)} accent={accent}/></Section></div> : null}
+      {manualLaps.length ? <div style={{ marginTop: 10 }}><Section title={copy.laps}><LapTable laps={manualLaps.slice(-4)} accent={accent}/></Section></div> : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9, marginTop: 10 }}>
-          <Metric icon="⏱" label={copy.time} value={formatDuration(selected.elapsedMs)} accent={accent} />
-          <Metric icon="🎯" label={copy.pace} value={`${formatPace(selected.avgPaceSecPerKm)} /km`} accent={accent} />
-          <Metric icon="⚡" label={copy.speed} value={`${(selected.avgSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent} />
-          <Metric icon="⛰" label={copy.elevation} value={`+${Math.round(selected.elevationGainM)} m`} accent={accent} />
-        </div>
+      <div style={recordDock}><button className="btn" onClick={addLap} disabled={!isRecording || paused} style={{ minHeight: 52, fontWeight: 1000 }}>{copy.lap}</button><button className="btn" onClick={togglePause} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000 }}>{paused ? `▶ ${copy.resume}` : `Ⅱ ${copy.pause}`}</button><button className="btn primary" onClick={() => void finishRun()} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000, background: accent }}>■ {copy.finish}</button></div>
+    </div>;
+    }
+    if (view === "history") {
+        const filtered = activities.filter((a) => historyFilter === "all" || historyFilter === "free" && (!a.workoutType || a.workoutType === "free" || a.workoutType === "distance") || historyFilter === "pacer" && a.workoutType === "pacer" || historyFilter === "training" && ["easy", "tempo", "intervals", "long"].includes(String(a.workoutType)));
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.history} subtitle={`${activities.length} ${lang === "fr" ? "sorties" : lang === "es" ? "carreras" : "runs"}`} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{(["all", "free", "training", "pacer"] as const).map((key, i) => <button key={key} className="btn" onClick={() => setHistoryFilter(key)} style={{ minHeight: 34, padding: "5px 4px", fontSize: 8.5, fontWeight: 1000, borderColor: historyFilter === key ? `${accent}77` : undefined, color: historyFilter === key ? accent : undefined }}>{copy.filters[i]}</button>)}</div>
+      {filtered.length ? <div style={{ display: "grid", gap: 9, marginTop: 11 }}>{filtered.map((a) => <HistoryCard key={a.id} activity={a} lang={lang} accent={accent} onClick={() => { setSelected(a); setFinishBadges([]); setView("detail"); }}/>)}</div> : <Empty text={copy.empty} accent={accent}/>}
+    </div>;
+    }
+    if (view === "plan") {
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.plan} subtitle={lang === "fr" ? "Construis ta progression semaine après semaine" : lang === "es" ? "Construye tu progresión semana a semana" : "Build progress week by week"} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/><div style={{ marginTop: 10 }}><RunningPlanView activities={activities} lang={lang} accent={accent} textSoft={textSoft} onStart={startPlanSession}/></div></div>;
+    }
+    if (view === "records") {
+        const records = [{ label: "400 M", value: stats.best400m }, { label: "1 KM", value: stats.best1k }, { label: "1 MILE", value: stats.bestMile }, { label: "5 KM", value: stats.best5k }, { label: "10 KM", value: stats.best10k }, { label: "21.1 KM", value: stats.bestHalf }, { label: "42.2 KM", value: stats.bestMarathon }];
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.records} subtitle={copy.bestEfforts} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, margin: "12px 0" }}><MiniStat label={copy.distance} value={formatDistance(stats.totalDistanceM)} accent={accent}/><MiniStat label={copy.longestLabel} value={formatDistance(stats.longestM)} accent={accent}/><MiniStat label={copy.avgPace} value={`${formatPace(stats.bestPaceSecPerKm)}/km`} accent={accent}/></div>
+      <div style={{ display: "grid", gap: 10 }}>{records.map((r) => <div className="card" key={r.label} style={{ padding: 14, display: "grid", gridTemplateColumns: "56px 1fr auto", gap: 12, alignItems: "center" }}><div style={{ width: 54, height: 54, display: "grid", placeItems: "center", borderRadius: 17, background: `${accent}14`, border: `1px solid ${accent}35`, color: accent, fontWeight: 1000 }}>{r.label}</div><div><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.personalBest}</div><div style={{ fontSize: 25, fontWeight: 1000, color: r.value ? accent : undefined, marginTop: 2 }}>{r.value ? formatDuration(r.value.elapsedMs) : copy.noRecord}</div></div>{r.value ? <div style={{ textAlign: "right", fontSize: 9.5, color: textSoft }}>{activityDate(r.value.startedAt, lang)}</div> : null}</div>)}</div>
+      <div style={{ marginTop: 12 }}><Section title={lang === "fr" ? "PROGRESSION 4 SEMAINES" : lang === "es" ? "PROGRESO 4 SEMANAS" : "4-WEEK PROGRESS"}><Bars rows={stats.fourWeeks.map((w) => ({ label: w.label, value: w.distanceM / 1000 }))} accent={accent}/></Section></div>
+    </div>;
+    }
+    if (view === "detail" && selected) {
+        const consistency = splitConsistencyScore(selected.splits);
+        const neg = hasNegativeSplit(selected.splits);
+        const e1 = bestEffortMs(selected.route, 1000), e5 = bestEffortMs(selected.route, 5000), e10 = bestEffortMs(selected.route, 10000);
+        return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.complete} subtitle={activityDate(selected.startedAt, lang)} left={<BackDot onClick={() => setView("history")}/>} right={infoDot}/>
+      <div className="card" style={{ padding: "18px 14px", textAlign: "center", borderColor: `${accent}48`, background: `radial-gradient(circle at 50% 0,${accent}18,rgba(8,10,16,.84) 58%)` }}><div style={{ display: "inline-flex", padding: "6px 10px", borderRadius: 999, border: `1px solid ${accent}55`, color: accent, fontSize: 9.5, fontWeight: 1000 }}>✓ {copy.verified}</div><div style={{ fontSize: "clamp(48px,14vw,72px)", fontWeight: 1000, color: accent, lineHeight: 1.05, marginTop: 12 }}>{formatDistance(selected.distanceM)}</div><div style={{ fontWeight: 1000, marginTop: 5 }}>{selected.title || String(selected.workoutType || "RUNNING").toUpperCase()}</div></div>
+      {finishBadges.length ? <div style={{ marginTop: 10 }}><Section title={copy.achievements}><div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{finishBadges.map((b) => <span key={b} style={{ padding: "7px 9px", borderRadius: 999, border: `1px solid ${accent}55`, background: `${accent}10`, color: accent, fontSize: 9.5, fontWeight: 1000 }}>🏆 {b}</span>)}</div></Section></div> : null}
+      <div style={{ marginTop: 10 }}><Section title={copy.feedback}><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000 }}>{copy.effort}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(10,minmax(0,1fr))", gap: 4, marginTop: 6 }}>{Array.from({ length: 10 }, (_, i) => i + 1).map((value) => <button key={value} className="btn" onClick={() => void updateSelected({ effortRating: value })} style={{ minWidth: 0, minHeight: 32, padding: 0, fontSize: 8.5, fontWeight: 1000, borderColor: selected.effortRating === value ? `${accent}88` : undefined, color: selected.effortRating === value ? accent : undefined }}>{value}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.feeling}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr))", gap: 5, marginTop: 6 }}>{([['great','😄'],['good','🙂'],['normal','😐'],['tired','😮‍💨'],['hard','🥵']] as const).map(([value, icon]) => <button key={value} className="btn" onClick={() => void updateSelected({ feeling: value })} style={{ minHeight: 38, padding: 3, fontSize: 17, borderColor: selected.feeling === value ? `${accent}88` : undefined, background: selected.feeling === value ? `${accent}10` : undefined }}>{icon}</button>)}</div><div style={{ fontSize: 9, color: textSoft, fontWeight: 1000, marginTop: 10 }}>{copy.notes}</div><textarea value={selected.notes || ""} onChange={(event) => setSelected({ ...selected, notes: event.target.value.slice(0, 500) })} onBlur={() => { if (selected) void saveActivity(selected).then(refreshActivities); }} placeholder={lang === "fr" ? "Comment s’est passée la sortie ?" : lang === "es" ? "¿Cómo fue la carrera?" : "How did the run feel?"} style={{ width: "100%", minHeight: 72, marginTop: 6, resize: "vertical", borderRadius: 12, border: "1px solid rgba(255,255,255,.12)", background: "rgba(0,0,0,.16)", color: "inherit", padding: 10, font: "inherit", fontSize: 10, outline: "none" }}/></Section></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.time} value={formatDuration(selected.elapsedMs)} accent={accent}/><Metric label={copy.moving} value={formatDuration(selected.movingMs)} accent={accent}/><Metric label={copy.avgPace} value={`${formatPace(selected.avgPaceSecPerKm)}/km`} accent={accent}/><Metric label={copy.speed} value={`${(selected.avgSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(selected.elevationGainM)} m`} accent={accent}/><Metric label={copy.consistency} value={consistency == null ? "—" : `${consistency}%`} accent={accent}/></div>
+      <div style={{ marginTop: 10 }}><Section title={copy.bestEfforts}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><Effort label="1 KM" value={e1} accent={accent}/><Effort label="5 KM" value={e5} accent={accent}/><Effort label="10 KM" value={e10} accent={accent}/></div>{neg ? <div style={{ marginTop: 9, color: "#71ff9a", fontSize: 10, fontWeight: 1000 }}>✓ {copy.negative}</div> : null}</Section></div>
+      <div style={{ marginTop: 10 }}><Section title={copy.route}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting}/></Section></div>
+      <div style={{ marginTop: 10 }}><Section title={copy.splits}>{selected.splits.length ? <SplitTable splits={selected.splits} accent={accent}/> : <div style={{ color: textSoft, fontSize: 10 }}>—</div>}</Section></div>
+      {selected.manualLaps?.length ? <div style={{ marginTop: 10 }}><Section title={copy.laps}><LapTable laps={selected.manualLaps} accent={accent}/></Section></div> : null}
+      <button className="btn danger" style={{ width: "100%", marginTop: 2, fontWeight: 1000 }} onClick={() => void removeSelected()}>{copy.delete}</button>
+    </div>;
+    }
+    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/><div style={{ textAlign: "center", margin: "2px 0 9px" }}><span style={{ display: "inline-flex", padding: "5px 9px", borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}0e`, color: accent, fontSize: 8.8, fontWeight: 1000 }}>{copy.local}</span></div><TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records, plan: copy.plan }} accent={accent}/>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 10 }}>{(["quick", "training", "pacer", "custom"] as const).map((key) => <button key={key} className="btn" onClick={() => { setSetupTab(key); if (key === "pacer") selectManualPreset("pacer"); if (key === "custom") selectManualPreset("custom"); }} style={{ minHeight: 38, padding: "6px 3px", fontSize: 8.4, fontWeight: 1000, borderColor: setupTab === key ? `${accent}77` : undefined, color: setupTab === key ? accent : undefined }}>{key === "quick" ? copy.quick : key === "training" ? copy.training : key === "pacer" ? copy.pacer : copy.custom}</button>)}</div>
 
-        <div style={{ marginTop: 12 }}><Section title={copy.route}><RouteMap points={selected.route} accent={accent} waiting={copy.waiting} /></Section></div>
-        <div style={{ marginTop: 12 }}><Section title={copy.splits}>{selected.splits.length ? <SplitTable splits={selected.splits} accent={accent} /> : <div style={{ fontSize: 12, color: textSoft }}>{copy.noSplits}</div>}</Section></div>
-        <button type="button" className="btn danger" style={{ width: "100%", marginTop: 4, fontWeight: 950 }} onClick={() => void removeSelected()}>{copy.delete}</button>
-      </div>
-    );
-  }
+    {setupTab === "quick" ? <div style={{ marginTop: 10 }}><Section title={copy.quick}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{PRESETS.slice(0, 4).map((p) => <PresetCard key={p.id} preset={p} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div></Section></div> : null}
+    {setupTab === "training" ? <div style={{ marginTop: 10 }}><Section title={copy.training}><div style={{ display: "grid", gap: 8 }}>{PRESETS.filter((p) => ["easy", "tempo", "intervals", "long", "recovery"].includes(p.id)).map((p) => <TrainingCard key={p.id} preset={p} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div></Section></div> : null}
+    {setupTab === "pacer" ? <div style={{ marginTop: 10 }}><Section title={copy.pacer}><div style={{ fontSize: 10, color: textSoft, lineHeight: 1.4 }}>{lang === "fr" ? "Choisis une distance et une allure. Pendant la course, le PACER affiche ton avance ou ton retard et projette ton temps d’arrivée." : lang === "es" ? "Elige distancia y ritmo. Durante la carrera, PACER muestra tu adelanto o retraso y proyecta tu llegada." : "Choose a distance and pace. During the run, PACER shows live ahead/behind time and projected finish."}</div><div style={{ marginTop: 12, fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.targetDistance}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACER_DISTANCES.map((m) => <Choice key={m} active={pacerDistanceM === m} accent={accent} onClick={() => { setPacerDistanceM(m); selectManualPreset("pacer"); }}>{distanceLabel(m)}</Choice>)}</div><div style={{ marginTop: 12, fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.targetPace}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACE_OPTIONS.map((p) => <Choice key={p} active={pacerPace === p} accent={accent} onClick={() => { setPacerPace(p); selectManualPreset("pacer"); }}>{formatPace(p)}/km</Choice>)}</div><div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.targetDistance} value={distanceLabel(pacerDistanceM)} accent={accent}/><MiniStat label={copy.targetPace} value={`${formatPace(pacerPace)}/km`} accent={accent}/><MiniStat label={copy.expected} value={formatDuration(pacerPace * pacerDistanceM)} accent={accent}/></div></Section></div> : null}
 
-  return (
-    <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}>
-      <PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")} />} right={infoDot} />
-      <div style={{ textAlign: "center", margin: "2px 0 10px" }}><span style={{ display: "inline-flex", padding: "5px 9px", borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}0e`, color: accent, fontSize: 9.5, fontWeight: 1000, letterSpacing: .7 }}>{copy.beta}</span></div>
-      <TabBar view={view} setView={setView} labels={{ setup: copy.setup, history: copy.history, records: copy.records }} accent={accent} />
+    {setupTab === "custom" ? <div style={{ marginTop: 10 }}><Section title={copy.custom}><div style={{ color: textSoft, fontSize: 9.5, lineHeight: 1.45, marginBottom: 10 }}>{lang === "fr" ? "Construis une séance d’intervalles instantanée. Les blocs s’enchaînent automatiquement et Awena peut les annoncer pendant la course." : lang === "es" ? "Crea una sesión de intervalos instantánea. Los bloques avanzan automáticamente y Awena puede anunciarlos durante la carrera." : "Build an instant interval workout. Blocks advance automatically and Awena can announce them while you run."}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Adjuster label={lang === "fr" ? "ÉCHAUFFEMENT" : lang === "es" ? "CALENTAMIENTO" : "WARM UP"} value={customWorkout.warmupMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, warmupMin: value }))}/><Adjuster label={lang === "fr" ? "RÉPÉTITIONS" : lang === "es" ? "REPETICIONES" : "REPEATS"} value={customWorkout.reps} suffix="×" min={2} max={12} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, reps: value }))}/><Adjuster label={lang === "fr" ? "EFFORT" : lang === "es" ? "ESFUERZO" : "WORK"} value={customWorkout.workMin} suffix="min" min={1} max={10} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, workMin: value }))}/><Adjuster label={lang === "fr" ? "RÉCUPÉRATION" : lang === "es" ? "RECUPERACIÓN" : "RECOVERY"} value={customWorkout.recoveryMin} suffix="min" min={0} max={6} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, recoveryMin: value }))}/><Adjuster label={lang === "fr" ? "RETOUR AU CALME" : lang === "es" ? "VUELTA A LA CALMA" : "COOL DOWN"} value={customWorkout.cooldownMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, cooldownMin: value }))}/><MiniStat label={lang === "fr" ? "DURÉE TOTALE" : lang === "es" ? "DURACIÓN TOTAL" : "TOTAL TIME"} value={formatDuration(customWorkoutPreset(customWorkout).targetDurationMs || 0)} accent={accent}/></div></Section></div> : null}
 
-      <div style={{ marginTop: 12 }}>
-        <Section title={copy.select}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-            {TARGETS.map((target) => {
-              const label = lang === "fr" ? target.fr : lang === "es" ? target.es : target.en;
-              const subtitle = lang === "fr" ? target.subFr : lang === "es" ? target.subEs : target.subEn;
-              return <TargetCard key={String(target.value)} icon={target.icon} label={label} subtitle={subtitle} accent={accent} onClick={() => beginRun(target.value)} />;
-            })}
-          </div>
-        </Section>
-      </div>
+    <div className="card" style={{ marginTop: 10, padding: 13, borderColor: `${accent}3d` }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: 15, background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 23 }}>{effectivePreset.icon}</div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 9.5, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></div>
 
-      <div className="card" style={{ marginTop: 12, padding: 13, display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 12, alignItems: "center" }}>
-        <div style={{ width: 48, height: 48, borderRadius: 16, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>📍</div>
-        <div><div style={{ fontWeight: 1000, fontSize: 12 }}>{copy.gpsTitle}</div><div style={{ color: textSoft, marginTop: 3, fontSize: 10.5, lineHeight: 1.35 }}>{copy.gpsReady}</div></div>
-        <div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>READY</div>
-      </div>
-      <div style={{ fontSize: 10.5, color: textSoft, lineHeight: 1.45, padding: "8px 4px 0" }}>{copy.gpsHint}</div>
+    <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", borderColor: audioCoach ? `${accent}38` : undefined }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>🎙️</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.audioCoach}</div><div style={{ marginTop: 3, fontSize: 8.7, color: textSoft, lineHeight: 1.35 }}>{copy.audioCoachSub}</div></div><button className="btn" onClick={() => setAudioCoach((value) => !value)} style={{ minWidth: 58, minHeight: 36, borderColor: audioCoach ? `${accent}77` : undefined, color: audioCoach ? accent : undefined, fontWeight: 1000 }}>{audioCoach ? "ON" : "OFF"}</button></div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, marginTop: 12 }}>
-        <InfoCard icon="🔒" title={copy.local} subtitle={copy.localSub} accent={accent} />
-        <InfoCard icon="⌚" title={copy.devices} subtitle={copy.devicesSub} accent={accent} badge={copy.soon} />
-      </div>
-    </div>
-  );
-}
-
-function TabBar({ view, setView, labels, accent }: { view: View; setView: (view: View) => void; labels: { setup: string; history: string; records: string }; accent: string }) {
-  const items: Array<{ key: View; label: string; icon: string }> = [
-    { key: "setup", label: labels.setup, icon: "🏃" },
-    { key: "history", label: labels.history, icon: "📊" },
-    { key: "records", label: labels.records, icon: "🏆" },
-  ];
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, padding: 6, borderRadius: 16, border: "1px solid rgba(255,255,255,.08)", background: "rgba(0,0,0,.18)" }}>{items.map((item) => { const active = view === item.key; return <button key={item.key} type="button" onClick={() => setView(item.key)} style={{ borderRadius: 12, border: `1px solid ${active ? `${accent}55` : "transparent"}`, background: active ? `${accent}14` : "transparent", color: active ? accent : "inherit", padding: "9px 6px", fontSize: 10.5, fontWeight: 1000, cursor: "pointer" }}><span style={{ marginRight: 5 }}>{item.icon}</span>{item.label}</button>; })}</div>;
-}
-
-function TargetCard({ icon, label, subtitle, accent, onClick }: { icon: string; label: string; subtitle: string; accent: string; onClick: () => void }) {
-  return <button type="button" onClick={onClick} style={{ minHeight: 132, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.035)", color: "inherit", padding: 13, textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", justifyContent: "space-between" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><div style={{ width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 20 }}>{icon}</div><span style={{ color: accent, fontWeight: 1000 }}>›</span></div><div><div style={{ fontSize: 13.5, fontWeight: 1000 }}>{label}</div><div style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.4, opacity: .62 }}>{subtitle}</div></div></button>;
-}
-
-function InfoCard({ icon, title, subtitle, accent, badge }: { icon: string; title: string; subtitle: string; accent: string; badge?: string }) {
-  return <div className="card" style={{ padding: 12, minHeight: 126, position: "relative" }}>{badge ? <div style={{ position: "absolute", top: 9, right: 9, color: accent, fontSize: 8.5, fontWeight: 1000, letterSpacing: .7 }}>{badge}</div> : null}<div style={{ fontSize: 22 }}>{icon}</div><div style={{ fontSize: 11.5, fontWeight: 1000, marginTop: 13 }}>{title}</div><div style={{ fontSize: 10, opacity: .6, lineHeight: 1.4, marginTop: 5 }}>{subtitle}</div></div>;
-}
-
-function Metric({ icon, label, value, accent }: { icon: string; label: string; value: string; accent: string }) {
-  return <div className="card" style={{ padding: 12, minHeight: 88 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><span style={{ fontSize: 16 }}>{icon}</span><span style={{ fontSize: 9.5, fontWeight: 1000, letterSpacing: .8, opacity: .55 }}>{label}</span></div><div style={{ fontSize: 20, fontWeight: 1000, color: accent, marginTop: 10 }}>{value}</div></div>;
-}
-
-function MiniStat({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return <div className="card" style={{ padding: 10, textAlign: "center" }}><div style={{ fontSize: 15, fontWeight: 1000, color: accent }}>{value}</div><div style={{ fontSize: 8.5, fontWeight: 950, opacity: .56, marginTop: 5 }}>{label}</div></div>;
-}
-
-function HistoryCard({ activity, index, lang, accent, onClick }: { activity: ActivityRecord; index: number; lang: string; accent: string; onClick: () => void }) {
-  return <button type="button" className="card" onClick={onClick} style={{ width: "100%", color: "inherit", cursor: "pointer", textAlign: "left", display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 12, alignItems: "center", padding: 12 }}><div style={{ width: 46, height: 46, borderRadius: 15, display: "grid", placeItems: "center", background: `${accent}${index === 0 ? "20" : "10"}`, border: `1px solid ${accent}${index === 0 ? "46" : "24"}`, fontSize: 20 }}>{index === 0 ? "🏃" : "↗"}</div><div><div style={{ fontSize: 14, fontWeight: 1000 }}>{formatDistance(activity.distanceM)} · {targetLabel(normalizeTarget(activity.targetDistanceM), lang)}</div><div style={{ fontSize: 10.5, opacity: .6, marginTop: 4 }}>{activityDate(activity.startedAt, lang)} · {formatDuration(activity.elapsedMs)}</div><div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 5, fontSize: 10.5 }}><span style={{ color: accent, fontWeight: 900 }}>{formatPace(activity.avgPaceSecPerKm)} /km</span><span>+{Math.round(activity.elevationGainM)} m</span></div></div><div style={{ color: accent, fontWeight: 1000, fontSize: 20 }}>›</div></button>;
-}
-
-function EmptyState({ text, accent }: { text: string; accent: string }) {
-  return <div className="card" style={{ marginTop: 12, padding: 30, textAlign: "center" }}><div style={{ width: 62, height: 62, margin: "0 auto", borderRadius: 20, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}30`, fontSize: 28 }}>🏃</div><div style={{ marginTop: 13, fontSize: 12, opacity: .62 }}>{text}</div></div>;
-}
-
-function SplitTable({ splits, accent }: { splits: ActivityRecord["splits"]; accent: string }) {
-  return <div style={{ display: "grid", gap: 2 }}>{splits.map((split) => <div key={`${split.index}-${split.elapsedMs}`} style={{ display: "grid", gridTemplateColumns: "58px 1fr auto", gap: 10, padding: "9px 2px", alignItems: "center", borderTop: "1px solid rgba(255,255,255,.065)" }}><div style={{ fontSize: 11, fontWeight: 1000, color: accent }}>KM {split.index}</div><div style={{ fontSize: 12, fontWeight: 900 }}>{formatDuration(split.splitMs)}</div><div style={{ fontSize: 10.5, opacity: .62 }}>{formatPace(split.paceSecPerKm)} /km</div></div>)}</div>;
-}
-
-function Progress({ value, accent }: { value: number; accent: string }) {
-  const width = Math.max(0, Math.min(100, value));
-  return <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", marginTop: 7 }}><div style={{ height: "100%", width: `${width}%`, borderRadius: 999, background: accent, boxShadow: `0 0 14px ${accent}66`, transition: "width .22s ease" }} /></div>;
-}
-
-function RouteMap({ points, accent, waiting }: { points: GeoPoint[]; accent: string; waiting: string }) {
-  const layout = React.useMemo(() => buildMapLayout(points), [points]);
-  return <div style={{ width: "100%", aspectRatio: "5 / 3", minHeight: 210, maxHeight: 350, position: "relative", overflow: "hidden", borderRadius: 16, background: "#0a0d14", border: "1px solid rgba(255,255,255,.08)" }}>
-    {layout ? <>
-      {layout.tiles.map((tile) => <img key={`${tile.z}-${tile.x}-${tile.y}`} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${(tile.left / layout.width) * 100}%`, top: `${(tile.top / layout.height) * 100}%`, width: `${(256 / layout.width) * 100}%`, height: `${(256 / layout.height) * 100}%`, objectFit: "cover", userSelect: "none", filter: "saturate(.72) brightness(.72) contrast(1.08)" }} />)}
-      <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(4,7,12,.04),rgba(4,7,12,.22))", pointerEvents: "none" }} />
-      <svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-        <polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.82)" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-        <polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-        {layout.start ? <circle cx={layout.start.x} cy={layout.start.y} r="10" fill="#1ed86e" stroke="#fff" strokeWidth="3" /> : null}
-        {layout.end ? <circle cx={layout.end.x} cy={layout.end.y} r="10" fill="#ff5868" stroke="#fff" strokeWidth="3" /> : null}
-      </svg>
-    </> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px)", backgroundSize: "28px 28px" }}><div style={{ width: 56, height: 56, margin: "0 auto 10px", borderRadius: 18, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}34`, fontSize: 24 }}>📍</div><div style={{ fontSize: 11, opacity: .62 }}>{waiting}</div></div>}
-    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 5, bottom: 4, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 8, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap</a>
+    <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>📍</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.gps}</div><div style={{ marginTop: 2, fontSize: 9.5, color: gpsMessage === copy.gpsReady ? "#71ff9a" : textSoft }}>{gpsChecked ? gpsMessage : copy.gpsUnknown}{accuracy ? ` · ±${Math.round(accuracy)} m` : ""}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{copy.gpsHint}</div></div><button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button></div>
+    <button className="btn primary" onClick={startCountdown} style={{ width: "100%", minHeight: 58, marginTop: 10, background: accent, fontWeight: 1000, fontSize: 13 }}>▶ {copy.start} · {presetLabel(effectivePreset, lang)}</button>
+    <div className="card" style={{ marginTop: 10, padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center", opacity: .78 }}><div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12` }}>⌚</div><div><b style={{ fontSize: 9.5 }}>{copy.watches}</b><div style={{ color: textSoft, fontSize: 8.7, marginTop: 2 }}>Health Connect · Garmin · FIT · GPX · TCX</div></div><span style={{ color: accent, fontSize: 8.5, fontWeight: 1000 }}>{copy.soon}</span></div>
   </div>;
 }
-
-type MapLayout = { width: number; height: number; polyline: string; start: { x: number; y: number } | null; end: { x: number; y: number } | null; tiles: Array<{ z: number; x: number; y: number; left: number; top: number; url: string }> };
-
-function buildMapLayout(points: GeoPoint[]): MapLayout | null {
-  if (!points.length) return null;
-  const width = 1000;
-  const height = 600;
-  const lats = points.map((point) => point.lat);
-  const lons = points.map((point) => point.lon);
-  const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-  let zoom = 18;
-  for (let z = 18; z >= 3; z -= 1) {
-    const pixels = points.map((point) => mercatorPixel(point.lat, point.lon, z));
-    const xs = pixels.map((point) => point.x);
-    const ys = pixels.map((point) => point.y);
-    if (Math.max(...xs) - Math.min(...xs) <= width * .78 && Math.max(...ys) - Math.min(...ys) <= height * .72) { zoom = z; break; }
-  }
-  const center = mercatorPixel(centerLat, centerLon, zoom);
-  const screen = points.map((point) => { const world = mercatorPixel(point.lat, point.lon, zoom); return { x: world.x - center.x + width / 2, y: world.y - center.y + height / 2 }; });
-  const minTileX = Math.floor((center.x - width / 2) / 256) - 1;
-  const maxTileX = Math.floor((center.x + width / 2) / 256) + 1;
-  const minTileY = Math.floor((center.y - height / 2) / 256) - 1;
-  const maxTileY = Math.floor((center.y + height / 2) / 256) + 1;
-  const tileCount = 2 ** zoom;
-  const tiles: MapLayout["tiles"] = [];
-  for (let tx = minTileX; tx <= maxTileX; tx += 1) {
-    for (let ty = minTileY; ty <= maxTileY; ty += 1) {
-      if (ty < 0 || ty >= tileCount) continue;
-      const wrappedX = ((tx % tileCount) + tileCount) % tileCount;
-      tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${ty}.png` });
+function TabBar({ view, setView, labels, accent }: {
+    view: View;
+    setView: (v: View) => void;
+    labels: {
+        setup: string;
+        history: string;
+        records: string;
+        plan: string;
+    };
+    accent: string;
+}) { const items: Array<{
+    key: View;
+    label: string;
+    icon: string;
+}> = [{ key: "setup", label: labels.setup, icon: "🏃" }, { key: "plan", label: labels.plan, icon: "▦" }, { key: "history", label: labels.history, icon: "▤" }, { key: "records", label: labels.records, icon: "🏆" }]; return <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{items.map((item) => <button key={item.key} className="btn" onClick={() => setView(item.key)} style={{ minHeight: 40, padding: "6px 3px", fontSize: 8.4, fontWeight: 1000, borderColor: view === item.key ? `${accent}77` : undefined, color: view === item.key ? accent : undefined }}>{item.icon} {item.label}</button>)}</div>; }
+function PresetCard({ preset, lang, selected, accent, onClick }: {
+    preset: Preset;
+    lang: string;
+    selected: boolean;
+    accent: string;
+    onClick: () => void;
+}) { return <button onClick={onClick} style={{ minHeight: 112, borderRadius: 15, border: `1px solid ${selected ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: selected ? `${accent}12` : "rgba(255,255,255,.025)", color: "#fff", padding: 11, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 24 }}>{preset.icon}</span>{selected ? <span style={{ color: accent, fontWeight: 1000 }}>✓</span> : null}</div><div style={{ marginTop: 9, fontSize: 11, fontWeight: 1000, color: selected ? accent : undefined }}>{presetLabel(preset, lang)}</div><div style={{ marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .58 }}>{presetSub(preset, lang)}</div></button>; }
+function TrainingCard({ preset, lang, selected, accent, onClick }: {
+    preset: Preset;
+    lang: string;
+    selected: boolean;
+    accent: string;
+    onClick: () => void;
+}) { return <button onClick={onClick} style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", borderRadius: 14, border: `1px solid ${selected ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: selected ? `${accent}10` : "rgba(255,255,255,.025)", color: "#fff", padding: 10, textAlign: "left", cursor: "pointer" }}><span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 13, background: `${accent}12`, fontSize: 22 }}>{preset.icon}</span><span><b style={{ fontSize: 10.5, color: selected ? accent : undefined }}>{presetLabel(preset, lang)}</b><small style={{ display: "block", fontSize: 8.8, opacity: .58, marginTop: 3, lineHeight: 1.3 }}>{presetSub(preset, lang)}</small></span>{selected ? <b style={{ color: accent }}>✓</b> : <span style={{ opacity: .35 }}>›</span>}</button>; }
+function Adjuster({ label, value, suffix, min, max, onChange }: { label: string; value: number; suffix: string; min: number; max: number; onChange: (value: number) => void }) {
+    return <div className="card" style={{ padding: 10 }}><div style={{ fontSize: 8.5, opacity: .62, fontWeight: 1000 }}>{label}</div><div style={{ display: "grid", gridTemplateColumns: "32px 1fr 32px", gap: 6, alignItems: "center", marginTop: 7 }}><button className="btn" onClick={() => onChange(Math.max(min, value - 1))} style={{ minWidth: 32, minHeight: 32, padding: 0, fontWeight: 1000 }}>−</button><div style={{ textAlign: "center", fontWeight: 1000, fontSize: 16 }}>{value}<small style={{ fontSize: 8.5, marginLeft: 3, opacity: .62 }}>{suffix}</small></div><button className="btn" onClick={() => onChange(Math.min(max, value + 1))} style={{ minWidth: 32, minHeight: 32, padding: 0, fontWeight: 1000 }}>+</button></div></div>;
+}
+function Choice({ active, accent, onClick, children }: {
+    active: boolean;
+    accent: string;
+    onClick: () => void;
+    children: React.ReactNode;
+}) { return <button className="btn" onClick={onClick} style={{ minHeight: 36, padding: "6px 4px", fontSize: 8.8, fontWeight: 1000, borderColor: active ? `${accent}77` : undefined, color: active ? accent : undefined }}>{children}</button>; }
+function HeroMetric({ label, value }: {
+    label: string;
+    value: string;
+}) { return <div style={{ borderRadius: 12, padding: "8px 4px", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ fontSize: 7.5, opacity: .54, fontWeight: 1000 }}>{label}</div><div style={{ fontSize: 15, fontWeight: 1000, marginTop: 3 }}>{value}</div></div>; }
+function Metric({ label, value, accent }: {
+    label: string;
+    value: string;
+    accent: string;
+}) { return <div className="card" style={{ padding: 11 }}><div style={{ fontSize: 8.3, opacity: .58, fontWeight: 1000, letterSpacing: .5 }}>{label}</div><div style={{ marginTop: 4, fontSize: 17, fontWeight: 1000, color: accent }}>{value}</div></div>; }
+function MiniStat({ label, value, accent }: {
+    label: string;
+    value: string;
+    accent: string;
+}) { return <div style={{ borderRadius: 12, padding: "9px 5px", textAlign: "center", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div style={{ fontSize: 7.8, opacity: .55, fontWeight: 1000 }}>{label}</div><div style={{ fontSize: 13, color: accent, fontWeight: 1000, marginTop: 3 }}>{value}</div></div>; }
+function StatusPill({ text, good, accent }: {
+    text: string;
+    good: boolean;
+    accent: string;
+}) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 999, border: `1px solid ${good ? `${accent}55` : "rgba(255,255,255,.13)"}`, background: "rgba(0,0,0,.28)", color: good ? accent : "rgba(255,255,255,.7)", fontSize: 8.3, fontWeight: 1000 }}><i style={{ width: 6, height: 6, borderRadius: 999, background: good ? accent : "#ff9c61", boxShadow: good ? `0 0 9px ${accent}` : "none" }}/>{text}</span>; }
+function Progress({ value, accent }: {
+    value: number;
+    accent: string;
+}) { return <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,.07)", overflow: "hidden", marginTop: 6 }}><div style={{ height: "100%", width: `${Math.max(0, Math.min(100, value))}%`, background: accent, borderRadius: 999, boxShadow: `0 0 12px ${accent}55`, transition: "width .25s ease" }}/></div>; }
+function SplitTable({ splits, accent }: {
+    splits: ActivityRecord["splits"];
+    accent: string;
+}) { return <div style={{ display: "grid", gap: 5 }}>{splits.map((s) => <div key={s.index} style={{ display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.025)", fontSize: 9.5 }}><b style={{ color: accent }}>KM {s.index}</b><span>{formatDuration(s.splitMs)}</span><span style={{ opacity: .62 }}>{formatPace(s.paceSecPerKm)}/km</span></div>)}</div>; }
+function LapTable({ laps, accent }: {
+    laps: ActivityLap[];
+    accent: string;
+}) { return <div style={{ display: "grid", gap: 5 }}>{laps.map((l) => <div key={l.index} style={{ display: "grid", gridTemplateColumns: "54px 1fr auto", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: "rgba(255,255,255,.025)", fontSize: 9.5 }}><b style={{ color: accent }}>LAP {l.index}</b><span>{formatDistance(l.lapDistanceM)} · {formatDuration(l.lapMs)}</span><span style={{ opacity: .62 }}>{formatPace(l.paceSecPerKm)}/km</span></div>)}</div>; }
+function Effort({ label, value, accent }: {
+    label: string;
+    value: number | null;
+    accent: string;
+}) { return <div style={{ textAlign: "center", borderRadius: 12, padding: "9px 4px", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ fontSize: 8, opacity: .55, fontWeight: 1000 }}>{label}</div><div style={{ fontSize: 15, fontWeight: 1000, color: value ? accent : undefined, marginTop: 3 }}>{value ? formatDuration(value) : "—"}</div></div>; }
+function HistoryCard({ activity, lang, accent, onClick }: {
+    activity: ActivityRecord;
+    lang: string;
+    accent: string;
+    onClick: () => void;
+}) { return <button onClick={onClick} className="card" style={{ width: "100%", display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", padding: 11, color: "#fff", textAlign: "left", cursor: "pointer" }}><div style={{ width: 46, height: 46, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, fontSize: 21 }}>{activity.workoutType === "intervals" ? "⚡" : activity.workoutType === "pacer" ? "⏱️" : activity.workoutType === "long" ? "🛣️" : "🏃"}</div><div><b style={{ fontSize: 10.5 }}>{activity.title || String(activity.workoutType || "Running").toUpperCase()}</b><div style={{ fontSize: 9, opacity: .56, marginTop: 3 }}>{activityDate(activity.startedAt, lang)} · {formatDistance(activity.distanceM)} · {formatDuration(activity.elapsedMs)}</div></div><div style={{ textAlign: "right", color: accent, fontSize: 10, fontWeight: 1000 }}>{formatPace(activity.avgPaceSecPerKm)}<small style={{ fontSize: 7 }}>/km</small><div style={{ opacity: .5, color: "#fff", marginTop: 3 }}>›</div></div></button>; }
+function Empty({ text, accent }: {
+    text: string;
+    accent: string;
+}) { return <div style={{ marginTop: 12, padding: 30, textAlign: "center", borderRadius: 16, border: `1px dashed ${accent}38`, color: "rgba(255,255,255,.55)", fontSize: 10 }}>{text}</div>; }
+function Bars({ rows, accent }: {
+    rows: Array<{
+        label: string;
+        value: number;
+    }>;
+    accent: string;
+}) { const max = Math.max(1, ...rows.map((r) => r.value)); return <div style={{ display: "grid", gridTemplateColumns: `repeat(${rows.length},minmax(0,1fr))`, gap: 8, alignItems: "end", height: 118 }}>{rows.map((r) => <div key={r.label} style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, alignItems: "end", height: "100%", textAlign: "center" }}><div style={{ height: 88, display: "flex", alignItems: "end", borderRadius: 8, background: "rgba(255,255,255,.025)", overflow: "hidden" }}><div style={{ width: "100%", height: `${Math.max(r.value ? 8 : 2, r.value / max * 100)}%`, background: `linear-gradient(180deg,${accent},${accent}60)`, borderRadius: "7px 7px 2px 2px" }}/></div><div style={{ fontSize: 8 }}>{r.label}<br /><b>{r.value.toFixed(1)}</b></div></div>)}</div>; }
+function RouteMap({ points, accent, waiting }: {
+    points: GeoPoint[];
+    accent: string;
+    waiting: string;
+}) { const layout = React.useMemo(() => buildMapLayout(points), [points]); return <div style={{ width: "100%", aspectRatio: "5/3", maxHeight: 340, minHeight: 190, position: "relative", overflow: "hidden", borderRadius: 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)" }}>{layout ? <>{layout.tiles.map((tile) => <img key={`${tile.z}-${tile.x}-${tile.y}`} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/> : null}{layout.end ? <circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/> : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap</a></div>; }
+type MapLayout = {
+    width: number;
+    height: number;
+    polyline: string;
+    start: {
+        x: number;
+        y: number;
+    } | null;
+    end: {
+        x: number;
+        y: number;
+    } | null;
+    tiles: Array<{
+        z: number;
+        x: number;
+        y: number;
+        left: number;
+        top: number;
+        url: string;
+    }>;
+};
+function buildMapLayout(points: GeoPoint[]): MapLayout | null { if (!points.length)
+    return null; const width = 1000, height = 600, lats = points.map((p) => p.lat), lons = points.map((p) => p.lon), centerLat = (Math.min(...lats) + Math.max(...lats)) / 2, centerLon = (Math.min(...lons) + Math.max(...lons)) / 2; let zoom = 18; for (let z = 18; z >= 3; z -= 1) {
+    const px = points.map((p) => mercatorPixel(p.lat, p.lon, z)), xs = px.map((p) => p.x), ys = px.map((p) => p.y);
+    if (Math.max(...xs) - Math.min(...xs) <= width * .78 && Math.max(...ys) - Math.min(...ys) <= height * .72) {
+        zoom = z;
+        break;
     }
-  }
-  return { width, height, tiles, polyline: screen.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null };
-}
-
-function mercatorPixel(lat: number, lon: number, zoom: number) {
-  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
-  const scale = 256 * 2 ** zoom;
-  const sin = Math.sin((clamped * Math.PI) / 180);
-  return { x: ((lon + 180) / 360) * scale, y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale };
-}
-
-const PAGE_MAX_WIDTH = 620;
-const statusPill: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: 8, padding: "7px 11px", borderRadius: 999, border: "1px solid", background: "rgba(0,0,0,.30)", fontSize: 10, fontWeight: 1000, letterSpacing: .8 };
-const statusDot: React.CSSProperties = { width: 8, height: 8, borderRadius: 999, flex: "0 0 auto" };
-const warning: React.CSSProperties = { marginTop: 10, padding: "10px 12px", borderRadius: 13, background: "rgba(255,164,54,.10)", border: "1px solid rgba(255,177,64,.25)", color: "#ffd28f", fontSize: 11, lineHeight: 1.4 };
-const recordDock: React.CSSProperties = { position: "fixed", left: "max(12px,env(safe-area-inset-left))", right: "max(12px,env(safe-area-inset-right))", bottom: "calc(82px + env(safe-area-inset-bottom))", zIndex: 45, maxWidth: 594, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1.35fr", gap: 9, padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "rgba(8,9,14,.88)", backdropFilter: "blur(16px)", boxShadow: "0 16px 40px rgba(0,0,0,.55)" };
+} const center = mercatorPixel(centerLat, centerLon, zoom); const screen = points.map((p) => { const w = mercatorPixel(p.lat, p.lon, zoom); return { x: w.x - center.x + width / 2, y: w.y - center.y + height / 2 }; }); const minX = Math.floor((center.x - width / 2) / 256) - 1, maxX = Math.floor((center.x + width / 2) / 256) + 1, minY = Math.floor((center.y - height / 2) / 256) - 1, maxY = Math.floor((center.y + height / 2) / 256) + 1, count = 2 ** zoom; const tiles: MapLayout["tiles"] = []; for (let tx = minX; tx <= maxX; tx += 1)
+    for (let ty = minY; ty <= maxY; ty += 1) {
+        if (ty < 0 || ty >= count)
+            continue;
+        const wx = ((tx % count) + count) % count;
+        tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png` });
+    } return { width, height, tiles, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null }; }
+function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat)), scale = 256 * 2 ** zoom, sin = Math.sin(clamped * Math.PI / 180); return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale }; }
+const recordDock: React.CSSProperties = { position: "fixed", left: "max(10px,env(safe-area-inset-left))", right: "max(10px,env(safe-area-inset-right))", bottom: "calc(82px + env(safe-area-inset-bottom))", zIndex: 45, maxWidth: 600, margin: "0 auto", display: "grid", gridTemplateColumns: ".75fr 1fr 1.25fr", gap: 7, padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "rgba(8,9,14,.9)", backdropFilter: "blur(18px)", boxShadow: "0 16px 40px rgba(0,0,0,.58)" };

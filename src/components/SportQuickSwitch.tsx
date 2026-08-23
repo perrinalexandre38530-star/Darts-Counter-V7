@@ -9,7 +9,7 @@ import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 import logoMolkky from "../assets/games/logo-molkky.png";
 import logoDiceGame from "../assets/games/logo-dicegame.png";
 import logoFoot from "../assets/games/logo-foot.png";
-import logoRunning from "../assets/games/logo-running.svg";
+import logoRunning from "../assets/games/logo-running-performance.png";
 
 type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "foot" | "running">;
 
@@ -26,7 +26,7 @@ const SPORTS: Array<{
   { id: "molkky", label: "Mölkky", logo: logoMolkky, accent: "#f7b267" },
   { id: "petanque", label: "Pétanque", logo: logoPetanque, accent: "#8fd7ff" },
   { id: "pingpong", label: "Ping-Pong", logo: logoPingPong, accent: "#ff8fd7" },
-  { id: "running", label: "Running", logo: logoRunning, accent: "#74f7a5" },
+  { id: "running", label: "Running Performance", logo: logoRunning, accent: "#74f7a5" },
 ];
 
 const LS_KEY = "dc-start-game";
