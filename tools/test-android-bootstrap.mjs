@@ -6,6 +6,7 @@ const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const main = fs.readFileSync("src/main.tsx", "utf8");
 const native = fs.readFileSync("src/lib/nativePlatform.ts", "utf8");
 const bootstrap = fs.readFileSync("tools/bootstrap-android-capacitor.mjs", "utf8");
+const androidVars = fs.readFileSync("android/variables.gradle", "utf8");
 
 assert.equal(config.appId, "com.multisportsscoring.app", "Package Android incorrect.");
 assert.equal(config.appName, "MULTISPORTS SCORING", "Nom Android incorrect.");
@@ -15,6 +16,11 @@ assert.ok(main.includes("isCapacitorNativeRuntime"), "main.tsx ne protège pas e
 assert.ok(main.includes("Native Capacitor: Service Worker désactivé"), "Politique SW native absente.");
 assert.ok(bootstrap.includes('CAP_VERSION = "8.4.2"'), "Version Capacitor bootstrap inattendue.");
 assert.ok(bootstrap.includes('APP_ID = "com.multisportsscoring.app"'), "App ID bootstrap inattendu.");
+assert.ok(
+  /minSdkVersion\s*=\s*(?:2[6-9]|[3-9]\d|\d{3,})/.test(androidVars),
+  "Health Connect exige minSdkVersion >= 26."
+);
+
 
 const syncNeedle = 'run("npx", ["cap", "sync", "android"])';
 const syncPos = bootstrap.indexOf(syncNeedle);
