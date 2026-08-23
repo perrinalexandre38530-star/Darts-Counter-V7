@@ -43,7 +43,12 @@ import firefighterBrazeArgent from "../../assets/collectible-cards/firefighter-b
 import firefighterBrazePlatine from "../../assets/collectible-cards/firefighter-braze-platine.webp";
 import firefighterBrazeOr from "../../assets/collectible-cards/firefighter-braze-or.webp";
 import firefighterBrazeDiamant from "../../assets/collectible-cards/firefighter-braze-diamant.webp";
-import firefighterAero from "../../assets/collectible-cards/firefighter-aero.webp";
+import firefighterAeroPresentation from "../../assets/collectible-cards/firefighter-aero-presentation.webp";
+import firefighterAeroBronze from "../../assets/collectible-cards/firefighter-aero-bronze.webp";
+import firefighterAeroArgent from "../../assets/collectible-cards/firefighter-aero-argent.webp";
+import firefighterAeroPlatine from "../../assets/collectible-cards/firefighter-aero-platine.webp";
+import firefighterAeroOr from "../../assets/collectible-cards/firefighter-aero-or.webp";
+import firefighterAeroDiamant from "../../assets/collectible-cards/firefighter-aero-diamant.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_bronze: awenaBronze,
@@ -75,8 +80,13 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_braze_platine: firefighterBrazePlatine,
   firefighter_braze_or: firefighterBrazeOr,
   firefighter_braze_diamant: firefighterBrazeDiamant,
+  firefighter_aero_presentation: firefighterAeroPresentation,
+  firefighter_aero_bronze: firefighterAeroBronze,
+  firefighter_aero_argent: firefighterAeroArgent,
+  firefighter_aero_platine: firefighterAeroPlatine,
+  firefighter_aero_or: firefighterAeroOr,
+  firefighter_aero_diamant: firefighterAeroDiamant,
   firefighter_zephyr: firefighterZephyr,
-  firefighter_aero: firefighterAero,
 };
 
 type FilterId = "all" | "awena" | "firefighter" | "unlocked" | "locked";
@@ -98,6 +108,8 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterLynaMatches: 0,
   firefighterBrazeMatches: 0,
   firefighterBrazeCriticalExtinguishes: 0,
+  firefighterAeroMatches: 0,
+  firefighterAeroCanadairs: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {

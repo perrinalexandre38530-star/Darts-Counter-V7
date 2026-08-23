@@ -32,8 +32,13 @@ export type CollectibleCardId =
   | "firefighter_braze_platine"
   | "firefighter_braze_or"
   | "firefighter_braze_diamant"
-  | "firefighter_zephyr"
-  | "firefighter_aero";
+  | "firefighter_aero_presentation"
+  | "firefighter_aero_bronze"
+  | "firefighter_aero_argent"
+  | "firefighter_aero_platine"
+  | "firefighter_aero_or"
+  | "firefighter_aero_diamant"
+  | "firefighter_zephyr";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -51,7 +56,9 @@ export type CollectibleMetricKey =
   | "firefighterMalysiaWins"
   | "firefighterLynaMatches"
   | "firefighterBrazeMatches"
-  | "firefighterBrazeCriticalExtinguishes";
+  | "firefighterBrazeCriticalExtinguishes"
+  | "firefighterAeroMatches"
+  | "firefighterAeroCanadairs";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -148,8 +155,23 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_braze_diamant", collection: "firefighter", name: "BRAZE · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
     { metric: "firefighterBrazeCriticalExtinguishes", target: 100, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
   ] },
-  { id: "firefighter_aero", collection: "firefighter", name: "AERO", accent: "#ff8b2e", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
-    { metric: "firefighterCanadairs", target: 10, label: { fr: "Interventions Canadair", en: "Water bomber interventions", es: "Intervenciones aéreas" } },
+  { id: "firefighter_aero_presentation", collection: "firefighter", name: "AERO", accent: "#ff8b2e", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroMatches", target: 1, label: { fr: "Mission terminée avec Aero", en: "Completed mission with Aero", es: "Misión completada con Aero" } },
+  ] },
+  { id: "firefighter_aero_bronze", collection: "firefighter", name: "AERO · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroCanadairs", target: 5, label: { fr: "Interventions Canadair avec Aero", en: "Water bomber interventions with Aero", es: "Intervenciones aéreas con Aero" } },
+  ] },
+  { id: "firefighter_aero_argent", collection: "firefighter", name: "AERO · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroCanadairs", target: 15, label: { fr: "Interventions Canadair avec Aero", en: "Water bomber interventions with Aero", es: "Intervenciones aéreas con Aero" } },
+  ] },
+  { id: "firefighter_aero_platine", collection: "firefighter", name: "AERO · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroCanadairs", target: 30, label: { fr: "Interventions Canadair avec Aero", en: "Water bomber interventions with Aero", es: "Intervenciones aéreas con Aero" } },
+  ] },
+  { id: "firefighter_aero_or", collection: "firefighter", name: "AERO · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroCanadairs", target: 60, label: { fr: "Interventions Canadair avec Aero", en: "Water bomber interventions with Aero", es: "Intervenciones aéreas con Aero" } },
+  ] },
+  { id: "firefighter_aero_diamant", collection: "firefighter", name: "AERO · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
+    { metric: "firefighterAeroCanadairs", target: 120, label: { fr: "Interventions Canadair avec Aero", en: "Water bomber interventions with Aero", es: "Intervenciones aéreas con Aero" } },
   ] },
   { id: "firefighter_malysia_presentation", collection: "firefighter", name: "MALYSIA", accent: "#ff9a34", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
     { metric: "firefighterMalysiaMatches", target: 1, label: { fr: "Mission terminée avec Malysia", en: "Completed mission with Malysia", es: "Misión completada con Malysia" } },
@@ -172,7 +194,7 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0, firefighterBrazeMatches: 0, firefighterBrazeCriticalExtinguishes: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0, firefighterBrazeMatches: 0, firefighterBrazeCriticalExtinguishes: 0, firefighterAeroMatches: 0, firefighterAeroCanadairs: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -326,6 +348,12 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
     if (brazePlayers.length) {
       metrics.firefighterBrazeMatches += 1;
       metrics.firefighterBrazeCriticalExtinguishes += countCriticalExtinguishes(row, profileId);
+    }
+
+    const aeroPlayers = rowPlayersForCharacter(row, "aero");
+    if (aeroPlayers.length) {
+      metrics.firefighterAeroMatches += 1;
+      metrics.firefighterAeroCanadairs += countCanadairs(row, profileId);
     }
   }
 

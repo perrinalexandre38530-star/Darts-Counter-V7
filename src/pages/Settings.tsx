@@ -169,6 +169,7 @@ const STREETS: ThemeId[] = [...STREET_THEME_IDS];
 const PRESTIGES: ThemeId[] = [...PRESTIGE_THEME_IDS];
 const ABSTRACTS: ThemeId[] = [...ABSTRACT_THEME_IDS];
 const PREMIUM_THEMES_STORE_PACK_ID = "themes_neon_01";
+const THEME_SECTION_STATE_STORAGE_KEY = "dc_settings_theme_section_state_v4";
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
@@ -1566,7 +1567,7 @@ function SettingsMenuCard({
       style={{
         position: "relative",
         borderRadius: 16,
-        background: theme.card,
+        background: (theme as any).cardBackground || theme.card,
         border: `1px solid ${theme.borderSoft}`,
         boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`,
         overflow: "hidden",
@@ -4441,13 +4442,24 @@ export function Settings({ go, params }: Props) {
 
   const themeBackActionRef = React.useRef<(() => boolean) | null>(null);
 
+  const readSavedThemeSectionState = () => {
+    try {
+      const raw = window.localStorage.getItem(THEME_SECTION_STATE_STORAGE_KEY);
+      if (!raw) return {} as any;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : ({} as any);
+    } catch {
+      return {} as any;
+    }
+  };
+
   function ThemeSection() {
-    const [selectedPackId, setSelectedPackId] = React.useState<ThemePackId | null>(null);
-    const [previewThemeId, setPreviewThemeId] = React.useState<ThemeId | null>(null);
+    const [selectedPackId, setSelectedPackId] = React.useState<ThemePackId | null>(() => readSavedThemeSectionState().selectedPackId ?? null);
+    const [previewThemeId, setPreviewThemeId] = React.useState<ThemeId | null>(() => readSavedThemeSectionState().previewThemeId ?? null);
     const [pickerOpen, setPickerOpen] = React.useState(false);
-    const [packCarouselIndex, setPackCarouselIndex] = React.useState(0);
-    const [selectedThemeIndex, setSelectedThemeIndex] = React.useState(0);
-    const [pickerPackId, setPickerPackId] = React.useState<ThemePackId | null>(null);
+    const [packCarouselIndex, setPackCarouselIndex] = React.useState<number>(() => Number(readSavedThemeSectionState().packCarouselIndex ?? 0) || 0);
+    const [selectedThemeIndex, setSelectedThemeIndex] = React.useState<number>(() => Number(readSavedThemeSectionState().selectedThemeIndex ?? 0) || 0);
+    const [pickerPackId, setPickerPackId] = React.useState<ThemePackId | null>(() => readSavedThemeSectionState().pickerPackId ?? null);
     const [entitlementRevision, setEntitlementRevision] = React.useState(0);
 
     React.useEffect(() => subscribeVerifiedEntitlements(() => setEntitlementRevision((value) => value + 1)), []);
@@ -4455,6 +4467,25 @@ export function Settings({ go, params }: Props) {
     const premiumThemesUnlocked = React.useMemo(() => arePremiumThemesUnlocked(), [entitlementRevision]);
     const selectedPack = selectedPackId ? THEME_PACKS.find((pack) => pack.id === selectedPackId) || null : null;
     const pickerPack = pickerPackId ? THEME_PACKS.find((pack) => pack.id === pickerPackId) || null : null;
+
+    React.useEffect(() => {
+      if (selectedPackId && !selectedPack) setSelectedPackId(null);
+    }, [selectedPackId, selectedPack]);
+
+    React.useEffect(() => {
+      try {
+        window.localStorage.setItem(
+          THEME_SECTION_STATE_STORAGE_KEY,
+          JSON.stringify({
+            selectedPackId,
+            previewThemeId,
+            packCarouselIndex,
+            selectedThemeIndex,
+            pickerPackId: pickerPackId || selectedPackId || null,
+          })
+        );
+      } catch {}
+    }, [selectedPackId, previewThemeId, packCarouselIndex, selectedThemeIndex, pickerPackId]);
 
     const themeLocked = (id: ThemeId | null | undefined) => Boolean(id && isPremiumTheme(id) && !premiumThemesUnlocked);
     const packLocked = (pack: ThemePack) => Boolean(pack.premium && !premiumThemesUnlocked);
@@ -4524,39 +4555,54 @@ export function Settings({ go, params }: Props) {
     const packCard = (pack: ThemePack) => {
       const locked = packLocked(pack);
       const swatchPresets = pack.ids.slice(0, 4).map((id) => getPreset(id));
+      const titleSize = pack.label.length > 20 ? 10.4 : pack.label.length > 16 ? 11.1 : 12.1;
       return (
         <button
           key={pack.id}
           type="button"
           onClick={() => openPack(pack.id, pack.ids[0] || null)}
           style={{
-            minHeight: pack.premium ? 94 : 84,
+            minHeight: 110,
+            height: 110,
             borderRadius: 17,
             border: `1px solid ${pack.premium ? `${pack.colors[0]}77` : theme.borderSoft}`,
-            background: `linear-gradient(135deg, ${pack.colors[0]}24, ${pack.colors[1]}16 45%, rgba(5,7,18,.96) 78%)`,
+            background: `linear-gradient(180deg, rgba(6,8,14,.96), rgba(4,6,12,.98))`,
             color: theme.text,
-            textAlign: "left",
-            padding: "12px 13px",
+            textAlign: "center",
+            padding: "12px 10px 11px",
             cursor: "pointer",
             boxShadow: pack.premium ? `0 12px 25px rgba(0,0,0,.36), 0 0 20px ${pack.colors[0]}24` : `0 12px 25px rgba(0,0,0,.32), 0 0 16px ${pack.colors[0]}18`,
             position: "relative",
             overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            gap: 10,
           }}
         >
           {pack.premium ? (
-            <span style={{ position: "absolute", top: 7, right: 8, borderRadius: 999, border: `1px solid ${pack.colors[0]}66`, background: "rgba(0,0,0,.52)", color: pack.colors[0], padding: "3px 7px", fontSize: 7.8, fontWeight: 1000, letterSpacing: .45 }}>
-              {locked ? "🔒 BOUTIQUE" : "✓ DÉBLOQUÉ"}
+            <span style={{ position: "absolute", top: 7, right: 8, borderRadius: 999, border: `1px solid ${pack.colors[0]}66`, background: "rgba(0,0,0,.52)", color: pack.colors[0], padding: "3px 7px", fontSize: 7.6, fontWeight: 1000, letterSpacing: .45 }}>
+              {locked ? "🔒" : "✓"}
             </span>
           ) : null}
-          <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center", paddingTop: pack.premium ? 8 : 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,19px)", gap: 5 }}>
-              {swatchPresets.map((preset, idx) => renderThemeTextureSwatch(preset, `${pack.id}-${idx}`))}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: pack.colors[0], fontWeight: 1000, fontSize: 13, letterSpacing: .55 }}>{pack.label}</div>
-              <div style={{ marginTop: 4, color: theme.textSoft, fontSize: 10.5, lineHeight: 1.35 }}>{pack.subtitle}</div>
-            </div>
-            <div style={{ color: pack.premium ? pack.colors[2] : theme.textSoft, fontSize: 9.5, fontWeight: 900, whiteSpace: "nowrap" }}>{pack.ids.length} thèmes ›</div>
+          <div
+            style={{
+              color: pack.colors[0],
+              fontWeight: 1000,
+              fontSize: titleSize,
+              letterSpacing: .42,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              lineHeight: 1.15,
+              paddingRight: pack.premium ? 18 : 0,
+            }}
+            title={pack.label}
+          >
+            {pack.label}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%" }}>
+            {swatchPresets.map((preset, idx) => renderThemeTextureSwatch(preset, `${pack.id}-${idx}`, 28, 999))}
           </div>
         </button>
       );
@@ -4604,7 +4650,7 @@ export function Settings({ go, params }: Props) {
               <SettingsLoopCarousel
                 items={THEME_PACKS}
                 theme={theme}
-                itemWidth={226}
+                itemWidth={188}
                 gap={8}
                 initialIndex={packCarouselIndex}
                 ariaLabel="Carrousel des packs de thèmes"
