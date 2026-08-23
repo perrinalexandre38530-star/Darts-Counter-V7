@@ -37,7 +37,7 @@ import { PageAdBanner } from "../monetization/AdSlot";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
-import { CITRUS_THEME_IDS, FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, PRESTIGE_THEME_IDS, ABSTRACT_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
+import { CITRUS_THEME_IDS, FACTORY_THEME_IDS, PUB_THEME_IDS, GRAFFITI_THEME_IDS, POSTAPOC_THEME_IDS, ARCADE_THEME_IDS, STREET_THEME_IDS, PRESTIGE_THEME_IDS, ABSTRACT_THEME_IDS, arePremiumThemesUnlocked, canUseTheme, isPremiumTheme } from "../theme/themeAccess";
 import { subscribeVerifiedEntitlements } from "../monetization/prefs";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
@@ -163,6 +163,7 @@ const DARKS: ThemeId[] = ["darkTitanium", "darkCarbon", "darkFrost", "darkObsidi
 const FACTORY: ThemeId[] = [...FACTORY_THEME_IDS];
 const PUBS: ThemeId[] = [...PUB_THEME_IDS];
 const GRAFFITIS: ThemeId[] = [...GRAFFITI_THEME_IDS];
+const POSTAPOC: ThemeId[] = [...POSTAPOC_THEME_IDS];
 const ARCADES: ThemeId[] = [...ARCADE_THEME_IDS];
 const STREETS: ThemeId[] = [...STREET_THEME_IDS];
 const PRESTIGES: ThemeId[] = [...PRESTIGE_THEME_IDS];
@@ -292,6 +293,25 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   graffitiRuelle: { defaultLabel: "Ruelle Graff", defaultDesc: "Ruelle sombre avec touches colorées" },
   graffitiExplosionBlanche: { defaultLabel: "Explosion Blanche", defaultDesc: "Impact blanc et spray contrasté" },
   graffitiRougeUnderground: { defaultLabel: "Rouge Underground", defaultDesc: "Tags rouges agressifs et ambiance night" },
+  graffitiChaosPrimaire: { defaultLabel: "Chaos Primaire", defaultDesc: "Graffiti noir ultra dense avec couleurs primaires explosives" },
+  graffitiBetonPastel: { defaultLabel: "Béton Pastel", defaultDesc: "Mur béton clair couvert de tags pastel et halos doux" },
+  graffitiPeaceLove: { defaultLabel: "Peace Love", defaultDesc: "Typographies pop néon, amour street et contrastes magenta" },
+  graffitiSplashAcidule: { defaultLabel: "Splash Acidulé", defaultDesc: "Drips jaune fluo, rose saturé et énergie ultra pop" },
+  graffitiLineLove: { defaultLabel: "Line Love", defaultDesc: "Version lumineuse et calligraphique d’un mur love urbain" },
+  graffitiBlackbookRiot: { defaultLabel: "Blackbook Riot", defaultDesc: "Noir & blanc sauvage avec éclats couleur au centre" },
+  graffitiAtelierSpray: { defaultLabel: "Atelier Spray", defaultDesc: "Mur d’atelier saturé, marqueurs visibles et street fusion" },
+  graffitiCollageChrome: { defaultLabel: "Collage Chrome", defaultDesc: "Collage urbain, traits blancs et reflets chrome colorés" },
+  graffitiBleuLilas: { defaultLabel: "Bleu Lilas", defaultDesc: "Bleus électriques, lilas froid et tag mural moderne" },
+  graffitiRoseHero: { defaultLabel: "Rose Hero", defaultDesc: "Brosses roses, tags arty et énergie créative assumée" },
+  postApocAubeRuines: { defaultLabel: "Aube des Ruines", defaultDesc: "Atmosphère chaude, poussière et soleil sur la ville effondrée" },
+  postApocBetonGris: { defaultLabel: "Béton Gris", defaultDesc: "Ville froide, béton fissuré et silence minéral" },
+  postApocCrepusculeCorbeau: { defaultLabel: "Crépuscule Corbeau", defaultDesc: "Ciel orange, carcasses urbaines et ambiance crépusculaire" },
+  postApocHorizonCendre: { defaultLabel: "Horizon Cendre", defaultDesc: "Fumées, lumière dorée et route abandonnée" },
+  postApocTourBrisee: { defaultLabel: "Tour Brisée", defaultDesc: "Béton clair, végétation sauvage et structures éventrées" },
+  postApocEdenPerdu: { defaultLabel: "Éden Perdu", defaultDesc: "Ruines tropicales, palmiers et soleil de fin du monde" },
+  postApocChuteFinale: { defaultLabel: "Chute Finale", defaultDesc: "Impact céleste, fumées et ville au bord de l’effondrement" },
+  postApocAvenueSilence: { defaultLabel: "Avenue du Silence", defaultDesc: "Rue désertée, gravats et lumière chaude entre les immeubles" },
+  postApocPluieNeon: { defaultLabel: "Néon Déchu", defaultDesc: "Pluie urbaine, reflets cyan et ville abandonnée" },
   arcadePixelRose: { defaultLabel: "Pixel Rose", defaultDesc: "Pixel art rose et violet arcade" },
   arcadeNeonPixels: { defaultLabel: "Néon Pixels", defaultDesc: "Grille néon multi-couleurs hyper arcade" },
   arcadePortailBleu: { defaultLabel: "Portail Bleu", defaultDesc: "Portail numérique bleu électrique" },
@@ -906,7 +926,7 @@ function languageForWorldTerritory(territoryId: string, current: Lang): Lang {
   return primary || candidates[0] || "en";
 }
 
-type ThemePackId = "neons" | "soft" | "citrus" | "dark" | "factory" | "pub" | "graffiti" | "arcade" | "street" | "prestige" | "abstract";
+type ThemePackId = "neons" | "soft" | "citrus" | "dark" | "factory" | "pub" | "graffiti" | "postapoc" | "arcade" | "street" | "prestige" | "abstract";
 type ThemePack = { id: ThemePackId; ids: ThemeId[]; label: string; subtitle: string; colors: string[]; premium?: boolean };
 const THEME_PACKS: ThemePack[] = [
   { id: "neons", ids: NEONS, label: "NÉONS CLASSIQUES", subtitle: "Énergie arcade et accents lumineux", colors: ["#F6C256", "#FF4FA3", "#2ECC71", "#1ABC9C"] },
@@ -916,6 +936,7 @@ const THEME_PACKS: ThemePack[] = [
   { id: "factory", ids: FACTORY, label: "USINE & MÉTAUX", subtitle: "Un thème par texture industrielle : alu, acier, grunge et atelier", colors: ["#E3EAF2", "#9EACBC", "#62C9FF", "#DCE4EE"], premium: true },
   { id: "pub", ids: PUBS, label: "AMBIANCE PUB", subtitle: "Bois, lumière chaude et atmosphères de bar / pub", colors: ["#F1B86C", "#B39CFF", "#5FD0C2", "#FF7E45"], premium: true },
   { id: "graffiti", ids: GRAFFITIS, label: "GRAFFITI", subtitle: "Murs, tags et explosions urbaines très visuelles", colors: ["#56E9FF", "#FF4D73", "#B98AFF", "#F6F7FB"], premium: true },
+  { id: "postapoc", ids: POSTAPOC, label: "POST-APOCALYPSE", subtitle: "Ruines, béton fissuré, métal oxydé et villes abandonnées", colors: ["#D88943", "#D3D6D3", "#5FC8FF", "#655C55"], premium: true },
   { id: "arcade", ids: ARCADES, label: "ARCADE", subtitle: "Pixels, néons et écrans rétro-futuristes", colors: ["#FF5AD7", "#39F2FF", "#B95BFF", "#F1F768"], premium: true },
   { id: "street", ids: STREETS, label: "STREET", subtitle: "Asphalte, street art et matières urbaines colorées", colors: ["#FFA34B", "#4DE7FF", "#FFD05D", "#FF7060"], premium: true },
   { id: "prestige", ids: PRESTIGES, label: "PRESTIGE", subtitle: "Or, pierres précieuses et finitions luxueuses — un thème par image", colors: ["#FFD768", "#46D49D", "#4D7BFF", "#FF7DC4"], premium: true },
@@ -4449,7 +4470,7 @@ export function Settings({ go, params }: Props) {
           position: "relative",
           overflow: "hidden",
           display: "inline-block",
-          background: preset.cardBackground || `${preset.primary}18`,
+          background: String(preset.id).startsWith("postApoc") ? (preset.pageBackground || preset.cardBackground || `${preset.primary}18`) : (preset.cardBackground || `${preset.primary}18`),
           boxShadow: `0 0 10px ${preset.primary}55`,
           border: "1px solid rgba(255,255,255,.28)",
           isolation: "isolate",
@@ -4608,7 +4629,7 @@ export function Settings({ go, params }: Props) {
                         height: 110,
                         borderRadius: 16,
                         border: `1px solid ${isPreview || isActive ? preset.primary : theme.borderSoft}`,
-                        background: preset.cardBackground || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`,
+                        background: String(id).startsWith("postApoc") ? (preset.pageBackground || preset.cardBackground || preset.card) : (preset.cardBackground || `radial-gradient(circle at 50% 0%, ${preset.primary}22, transparent 60%), ${preset.card}`),
                         color: preset.text,
                         padding: 10,
                         cursor: "pointer",

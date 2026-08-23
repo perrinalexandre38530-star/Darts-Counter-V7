@@ -68,6 +68,28 @@ export const GRAFFITI_THEME_IDS = [
   "graffitiRuelle",
   "graffitiExplosionBlanche",
   "graffitiRougeUnderground",
+  "graffitiChaosPrimaire",
+  "graffitiBetonPastel",
+  "graffitiPeaceLove",
+  "graffitiSplashAcidule",
+  "graffitiLineLove",
+  "graffitiBlackbookRiot",
+  "graffitiAtelierSpray",
+  "graffitiCollageChrome",
+  "graffitiBleuLilas",
+  "graffitiRoseHero",
+] as const satisfies readonly ThemeId[];
+
+export const POSTAPOC_THEME_IDS = [
+  "postApocAubeRuines",
+  "postApocBetonGris",
+  "postApocCrepusculeCorbeau",
+  "postApocHorizonCendre",
+  "postApocTourBrisee",
+  "postApocEdenPerdu",
+  "postApocChuteFinale",
+  "postApocAvenueSilence",
+  "postApocPluieNeon",
 ] as const satisfies readonly ThemeId[];
 
 export const ARCADE_THEME_IDS = [
@@ -143,6 +165,7 @@ export const PREMIUM_THEME_IDS = [
   ...FACTORY_THEME_IDS,
   ...PUB_THEME_IDS,
   ...GRAFFITI_THEME_IDS,
+  ...POSTAPOC_THEME_IDS,
   ...ARCADE_THEME_IDS,
   ...STREET_THEME_IDS,
   ...PRESTIGE_THEME_IDS,

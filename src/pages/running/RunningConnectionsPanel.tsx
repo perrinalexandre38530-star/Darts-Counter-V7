@@ -1,48 +1,70 @@
 import React from "react";
 import { RunningSurface } from "./RunningUi";
 import { getHealthConnectStatus, openHealthConnectSettings, requestHealthConnectWorkoutPermissions, type HealthConnectStatus } from "../../activity/healthConnectBridge";
+import { getLastHealthConnectSyncAt, syncHealthConnectWorkouts } from "../../activity/healthConnectSync";
 import { connectHeartRateSensor, connectRunningCadenceSensor, connectTreadmillSensor, detectFitnessConnectorCapabilities, disconnectRunningSensor, getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorKind, type RunningSensorSnapshot } from "../../activity/runningSensors";
 
-export default function RunningConnectionsPanel({ lang, accent, textSoft, compact = false }: { lang: string; accent: string; textSoft: string; compact?: boolean }) {
+export default function RunningConnectionsPanel({ lang, accent, textSoft, compact = false, onActivitiesChanged }: { lang: string; accent: string; textSoft: string; compact?: boolean; onActivitiesChanged?: () => void | Promise<void> }) {
   const [sensor, setSensor] = React.useState<RunningSensorSnapshot>(() => getRunningSensorSnapshot());
   const [busy, setBusy] = React.useState<RunningSensorKind | null>(null);
   const [message, setMessage] = React.useState("");
+  const [messageKind, setMessageKind] = React.useState<"ok" | "error">("ok");
   const [healthStatus, setHealthStatus] = React.useState<HealthConnectStatus | null>(null);
   const [healthBusy, setHealthBusy] = React.useState(false);
+  const [syncBusy, setSyncBusy] = React.useState(false);
+  const [lastSyncAt, setLastSyncAt] = React.useState<number | null>(() => getLastHealthConnectSyncAt());
   const capabilities = React.useMemo(() => detectFitnessConnectorCapabilities(), []);
   React.useEffect(() => subscribeRunningSensors(setSensor), []);
   React.useEffect(() => { if (!capabilities.healthConnectBridge) return; void getHealthConnectStatus().then(setHealthStatus); }, [capabilities.healthConnectBridge]);
 
   const copy = lang === "fr" ? {
-    title: "CONNEXIONS & CAPTEURS", sub: "Capteurs BLE utilisables dès maintenant sur navigateur compatible. Les passerelles santé/cloud sont préparées sans activer Android prématurément.", hr: "CEINTURE CARDIO", foot: "FOOTPOD / CADENCE", treadmill: "TAPIS FTMS", connect: "CONNECTER", disconnect: "DÉCONNECTER", live: "LIVE", unavailable: "BLE NON DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "FICHIERS SPORT", native: "Bridge natif requis", detected: "Bridge détecté", cloud: "API cloud / OAuth requis", configured: "API configurée", filesReady: "GPX / TCX actifs · FIT à câbler", nativeGps: "GPS ANDROID NATIF", screenOff: "Écran éteint / arrière-plan", grant: "AUTORISER", manage: "GÉRER", hcReady: "Autorisations entraînement accordées", hcAvailable: "Disponible · autorisations à accorder", bpm: "bpm", spm: "pas/min",
+    title: "CONNEXIONS & CAPTEURS", sub: "Capteurs BLE utilisables dès maintenant sur navigateur compatible. Les passerelles santé/cloud sont préparées sans activer Android prématurément.", hr: "CEINTURE CARDIO", foot: "FOOTPOD / CADENCE", treadmill: "TAPIS FTMS", connect: "CONNECTER", disconnect: "DÉCONNECTER", live: "LIVE", unavailable: "BLE NON DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "FICHIERS SPORT", native: "Bridge natif requis", detected: "Bridge détecté", cloud: "API cloud / OAuth requis", configured: "API configurée", filesReady: "GPX / TCX actifs · FIT à câbler", nativeGps: "GPS ANDROID NATIF", screenOff: "Écran éteint / arrière-plan", grant: "AUTORISER", manage: "GÉRER", hcReady: "Autorisations entraînement accordées", hcAvailable: "Disponible · autorisations à accorder", bpm: "bpm", spm: "pas/min", sync: "SYNCHRONISER 30 J", syncDone: "Synchronisation terminée", lastSync: "Dernière synchro", routesMissing: "parcours protégés", routesOk: "Parcours autorisés", routesOff: "Parcours à autoriser dans Health Connect",
   } : lang === "es" ? {
-    title: "CONEXIONES Y SENSORES", sub: "Sensores BLE utilizables ahora en navegadores compatibles. Los puentes salud/cloud quedan preparados sin activar Android todavía.", hr: "BANDA CARDÍACA", foot: "FOOTPOD / CADENCIA", treadmill: "CINTA FTMS", connect: "CONECTAR", disconnect: "DESCONECTAR", live: "LIVE", unavailable: "BLE NO DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "ARCHIVOS DEPORTIVOS", native: "Requiere puente nativo", detected: "Puente detectado", cloud: "Requiere API cloud / OAuth", configured: "API configurada", filesReady: "GPX / TCX activos · FIT pendiente", nativeGps: "GPS ANDROID NATIVO", screenOff: "Pantalla apagada / segundo plano", grant: "AUTORIZAR", manage: "GESTIONAR", hcReady: "Permisos de entrenamiento concedidos", hcAvailable: "Disponible · permisos pendientes", bpm: "bpm", spm: "pas/min",
+    title: "CONEXIONES Y SENSORES", sub: "Sensores BLE utilizables ahora en navegadores compatibles. Los puentes salud/cloud quedan preparados sin activar Android todavía.", hr: "BANDA CARDÍACA", foot: "FOOTPOD / CADENCIA", treadmill: "CINTA FTMS", connect: "CONECTAR", disconnect: "DESCONECTAR", live: "LIVE", unavailable: "BLE NO DISPONIBLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "ARCHIVOS DEPORTIVOS", native: "Requiere puente nativo", detected: "Puente detectado", cloud: "Requiere API cloud / OAuth", configured: "API configurada", filesReady: "GPX / TCX activos · FIT pendiente", nativeGps: "GPS ANDROID NATIVO", screenOff: "Pantalla apagada / segundo plano", grant: "AUTORIZAR", manage: "GESTIONAR", hcReady: "Permisos de entrenamiento concedidos", hcAvailable: "Disponible · permisos pendientes", bpm: "bpm", spm: "pas/min", sync: "SINCRONIZAR 30 D", syncDone: "Sincronización terminada", lastSync: "Última sincronización", routesMissing: "rutas protegidas", routesOk: "Rutas autorizadas", routesOff: "Autoriza las rutas en Health Connect",
   } : {
-    title: "CONNECTIONS & SENSORS", sub: "BLE sensors can work now on compatible browsers. Health/cloud bridges are prepared without prematurely enabling Android.", hr: "HEART RATE STRAP", foot: "FOOTPOD / CADENCE", treadmill: "FTMS TREADMILL", connect: "CONNECT", disconnect: "DISCONNECT", live: "LIVE", unavailable: "BLE UNAVAILABLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "SPORT FILES", native: "Native bridge required", detected: "Bridge detected", cloud: "Cloud API / OAuth required", configured: "API configured", filesReady: "GPX / TCX active · FIT next", nativeGps: "NATIVE ANDROID GPS", screenOff: "Screen-off / background", grant: "AUTHORIZE", manage: "MANAGE", hcReady: "Workout permissions granted", hcAvailable: "Available · permissions pending", bpm: "bpm", spm: "steps/min",
+    title: "CONNECTIONS & SENSORS", sub: "BLE sensors can work now on compatible browsers. Health/cloud bridges are prepared without prematurely enabling Android.", hr: "HEART RATE STRAP", foot: "FOOTPOD / CADENCE", treadmill: "FTMS TREADMILL", connect: "CONNECT", disconnect: "DISCONNECT", live: "LIVE", unavailable: "BLE UNAVAILABLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "SPORT FILES", native: "Native bridge required", detected: "Bridge detected", cloud: "Cloud API / OAuth required", configured: "API configured", filesReady: "GPX / TCX active · FIT next", nativeGps: "NATIVE ANDROID GPS", screenOff: "Screen-off / background", grant: "AUTHORIZE", manage: "MANAGE", hcReady: "Workout permissions granted", hcAvailable: "Available · permissions pending", bpm: "bpm", spm: "steps/min", sync: "SYNC 30 DAYS", syncDone: "Sync complete", lastSync: "Last sync", routesMissing: "protected routes", routesOk: "Routes allowed", routesOff: "Allow exercise routes in Health Connect",
   };
 
   const connected = (kind: RunningSensorKind) => sensor.devices.some((d) => d.kind === kind && d.connected);
   const deviceName = (kind: RunningSensorKind) => sensor.devices.find((d) => d.kind === kind)?.name || "";
   const action = async (kind: RunningSensorKind) => {
-    setMessage(""); setBusy(kind);
+    setMessage(""); setMessageKind("ok"); setBusy(kind);
     try {
       if (connected(kind)) await disconnectRunningSensor(kind);
       else if (kind === "heart-rate") await connectHeartRateSensor();
       else if (kind === "fitness-machine-treadmill") await connectTreadmillSensor();
       else await connectRunningCadenceSensor();
-    } catch (error: any) { setMessage(error?.message || String(error)); }
+    } catch (error: any) { setMessageKind("error"); setMessage(error?.message || String(error)); }
     finally { setBusy(null); }
   };
 
   const healthAction = async () => {
     if (!capabilities.healthConnectBridge) return;
-    setHealthBusy(true); setMessage("");
+    setHealthBusy(true); setMessage(""); setMessageKind("ok");
     try {
       if (healthStatus?.permissionsGranted) await openHealthConnectSettings();
       else await requestHealthConnectWorkoutPermissions();
       setHealthStatus(await getHealthConnectStatus());
-    } catch (error: any) { setMessage(error?.message || String(error)); }
+    } catch (error: any) { setMessageKind("error"); setMessage(error?.message || String(error)); }
     finally { setHealthBusy(false); }
+  };
+
+  const syncHealth = async () => {
+    if (!capabilities.healthConnectBridge || !healthStatus?.permissionsGranted) return;
+    setSyncBusy(true); setMessage(""); setMessageKind("ok");
+    try {
+      const report = await syncHealthConnectWorkouts(30);
+      setLastSyncAt(report.lastSyncAt);
+      await onActivitiesChanged?.();
+      setHealthStatus(await getHealthConnectStatus());
+      const detail = `${report.imported} + ${report.updated} ↻${report.routesMissing ? ` · ${report.routesMissing} ${copy.routesMissing}` : ""}`;
+      setMessage(`${copy.syncDone} · ${detail}`);
+    } catch (error: any) {
+      setMessageKind("error");
+      setMessage(error?.message || String(error));
+    } finally {
+      setSyncBusy(false);
+    }
   };
 
   const sensorCard = (kind: RunningSensorKind, icon: string, title: string, value: string) => {
@@ -64,9 +86,9 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
       {sensorCard("running-speed-cadence", "🦶", copy.foot, [sensor.cadenceSpm ? `${sensor.cadenceSpm} ${copy.spm}` : "", sensor.sensorSpeedMps ? `${(sensor.sensorSpeedMps * 3.6).toFixed(1)} km/h` : ""].filter(Boolean).join(" · "))}
       {sensorCard("fitness-machine-treadmill", "🏃‍♂️", copy.treadmill, [sensor.treadmillSpeedMps ? `${(sensor.treadmillSpeedMps * 3.6).toFixed(1)} km/h` : "", sensor.treadmillDistanceM != null ? `${(sensor.treadmillDistanceM / 1000).toFixed(2)} km` : "", sensor.inclinePercent != null ? `${sensor.inclinePercent.toFixed(1)}%` : ""].filter(Boolean).join(" · "))}
     </div>
-    {message ? <div style={{ marginTop: 7, padding: 8, borderRadius: 10, border: "1px solid rgba(255,120,120,.26)", color: "#ffb0b0", fontSize: 8.2 }}>{message}</div> : null}
+    {message ? <div style={{ marginTop: 7, padding: 8, borderRadius: 10, border: `1px solid ${messageKind === "error" ? "rgba(255,120,120,.26)" : `${accent}38`}`, color: messageKind === "error" ? "#ffb0b0" : accent, background: messageKind === "error" ? "rgba(255,90,90,.045)" : `${accent}08`, fontSize: 8.2 }}>{message}</div> : null}
     {!compact ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>
-      <Connector icon="♥" title={copy.health} status={!capabilities.healthConnectBridge ? copy.native : healthStatus?.permissionsGranted ? copy.hcReady : healthStatus?.available ? copy.hcAvailable : healthStatus?.status === "update-required" ? "Mise à jour requise" : copy.detected} accent={accent} active={!!healthStatus?.available} action={capabilities.healthConnectBridge ? (healthStatus?.permissionsGranted ? copy.manage : copy.grant) : undefined} busy={healthBusy} onClick={capabilities.healthConnectBridge ? healthAction : undefined}/>
+      <RunningSurface accent={accent} active={!!healthStatus?.available} padding={10}><div style={{ display: "grid", gridTemplateColumns: "32px 1fr", gap: 7, alignItems: "center" }}><div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", background: `${accent}10`, fontSize: 15 }}>♥</div><div><div style={{ fontSize: 8.5, fontWeight: 1000 }}>{copy.health}</div><div style={{ marginTop: 2, fontSize: 7.4, opacity: .55, lineHeight: 1.25 }}>{!capabilities.healthConnectBridge ? copy.native : healthStatus?.permissionsGranted ? `${copy.hcReady} · ${healthStatus?.exerciseRoutesGranted ? copy.routesOk : copy.routesOff}` : healthStatus?.available ? copy.hcAvailable : healthStatus?.status === "update-required" ? "Mise à jour requise" : copy.detected}</div>{lastSyncAt ? <div style={{ marginTop: 3, fontSize: 7.2, color: accent }}>{copy.lastSync}: {new Date(lastSyncAt).toLocaleString()}</div> : null}</div></div>{capabilities.healthConnectBridge ? <div style={{ display: "grid", gridTemplateColumns: healthStatus?.permissionsGranted ? "1fr 1fr" : "1fr", gap: 6, marginTop: 7 }}><button className="btn" onClick={healthAction} disabled={healthBusy || syncBusy} style={{ minHeight: 30, padding: "4px 7px", fontSize: 7.5, fontWeight: 1000, color: healthStatus?.available ? accent : undefined, borderColor: healthStatus?.available ? `${accent}55` : undefined }}>{healthBusy ? "…" : healthStatus?.permissionsGranted ? copy.manage : copy.grant}</button>{healthStatus?.permissionsGranted ? <button className="btn" onClick={() => void syncHealth()} disabled={syncBusy || healthBusy} style={{ minHeight: 30, padding: "4px 7px", fontSize: 7.5, fontWeight: 1000, color: accent, borderColor: `${accent}66` }}>{syncBusy ? "…" : copy.sync}</button> : null}</div> : null}</RunningSurface>
       <Connector icon="📍" title={copy.nativeGps} status={capabilities.nativeTrackingBridge ? copy.screenOff : copy.native} accent={accent} active={capabilities.nativeTrackingBridge}/>
       <Connector icon="" title={copy.apple} status={capabilities.healthKitBridge ? copy.detected : copy.native} accent={accent} active={capabilities.healthKitBridge}/>
       <Connector icon="⌚" title={copy.garmin} status={capabilities.garminCloudConfigured ? copy.configured : copy.cloud} accent={accent} active={capabilities.garminCloudConfigured}/>

@@ -20,7 +20,12 @@ export type CollectibleCardId =
   | "firefighter_malysia_platine"
   | "firefighter_malysia_or"
   | "firefighter_malysia_diamant"
-  | "firefighter_lyna"
+  | "firefighter_lyna_presentation"
+  | "firefighter_lyna_bronze"
+  | "firefighter_lyna_argent"
+  | "firefighter_lyna_platine"
+  | "firefighter_lyna_or"
+  | "firefighter_lyna_diamant"
   | "firefighter_zephyr"
   | "firefighter_braze"
   | "firefighter_aero";
@@ -38,7 +43,8 @@ export type CollectibleMetricKey =
   | "firefighterKaelMatches"
   | "firefighterKaelWins"
   | "firefighterMalysiaMatches"
-  | "firefighterMalysiaWins";
+  | "firefighterMalysiaWins"
+  | "firefighterLynaMatches";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -78,8 +84,23 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
     { metric: "wins", target: 100, label: { fr: "Victoires", en: "Wins", es: "Victorias" } },
     { metric: "modes", target: 5, label: { fr: "Modes différents", en: "Different modes", es: "Modos diferentes" } },
   ] },
-  { id: "firefighter_lyna", collection: "firefighter", name: "LYNA", accent: "#e5b24a", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
-    { metric: "firefighterTacticalActions", target: 25, label: { fr: "Protections / propagations bloquées", en: "Protections / blocked spreads", es: "Protecciones / propagaciones bloqueadas" } },
+  { id: "firefighter_lyna_presentation", collection: "firefighter", name: "LYNA", accent: "#e5b24a", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterLynaMatches", target: 1, label: { fr: "Mission terminée avec Lyna", en: "Completed mission with Lyna", es: "Misión completada con Lyna" } },
+  ] },
+  { id: "firefighter_lyna_bronze", collection: "firefighter", name: "LYNA · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterTacticalActions", target: 10, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
+  ] },
+  { id: "firefighter_lyna_argent", collection: "firefighter", name: "LYNA · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterTacticalActions", target: 25, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
+  ] },
+  { id: "firefighter_lyna_platine", collection: "firefighter", name: "LYNA · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterTacticalActions", target: 50, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
+  ] },
+  { id: "firefighter_lyna_or", collection: "firefighter", name: "LYNA · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterTacticalActions", target: 100, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
+  ] },
+  { id: "firefighter_lyna_diamant", collection: "firefighter", name: "LYNA · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
+    { metric: "firefighterTacticalActions", target: 200, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
   ] },
   { id: "firefighter_zephyr", collection: "firefighter", name: "ZÉPHYR", accent: "#4bc7ff", subtitle: { fr: "Experte météo & vent", en: "Weather & wind expert", es: "Experta en clima y viento" }, requirements: [
     { metric: "firefighterWindMatches", target: 10, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
@@ -129,7 +150,7 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -272,6 +293,11 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
       if (malysiaPlayers.some((entry: any) => entry?.win === true || entry?.winner === true || row?.won === true)) {
         metrics.firefighterMalysiaWins += 1;
       }
+    }
+
+    const lynaPlayers = rowPlayersForCharacter(row, "lyna");
+    if (lynaPlayers.length) {
+      metrics.firefighterLynaMatches += 1;
     }
   }
 

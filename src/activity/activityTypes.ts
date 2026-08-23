@@ -81,6 +81,13 @@ export type ActivityRecord = {
         manualSpeedKmh?: number;
         inclinePercent?: number;
     };
+    healthConnect?: {
+        recordId: string;
+        clientRecordId?: string;
+        originPackage?: string;
+        routeStatus?: string;
+        syncedAt?: number;
+    };
     createdAt: number;
 };
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";

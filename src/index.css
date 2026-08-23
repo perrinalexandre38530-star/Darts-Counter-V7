@@ -670,3 +670,94 @@ html[data-dc-theme-page-scope="soft"] body{
 html[data-dc-theme-page-scope="off"] body{
   background:var(--dc-bg,#050712);
 }
+
+/* ====== POST-APOCALYPSE — surfaces fissurées, acier oxydé et commandes massives ======
+   Le pack dispose volontairement d'une signature propre : moins de néon, davantage de matière,
+   de contraste et de relief comme dans le mockup premium validé. */
+:root[data-dc-theme^="postApoc"] body{
+  font-family: Inter, system-ui, "Arial Narrow", Segoe UI, Roboto, Arial, sans-serif;
+  letter-spacing:.01em;
+}
+
+:root[data-dc-theme^="postApoc"] .card,
+:root[data-dc-theme^="postApoc"] .badge,
+:root[data-dc-theme^="postApoc"] .item,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card{
+  position:relative;
+  isolation:isolate;
+  overflow:hidden;
+  background:var(--glass) !important;
+  border-color:color-mix(in srgb, var(--dc-accent) 24%, rgba(174,174,168,.34)) !important;
+  border-radius:10px !important;
+  box-shadow:var(--dc-theme-surface-shadow, 0 18px 42px rgba(0,0,0,.66));
+}
+
+:root[data-dc-theme^="postApoc"] .card::before,
+:root[data-dc-theme^="postApoc"] .badge::before,
+:root[data-dc-theme^="postApoc"] .item::before,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:var(--dc-theme-texture, none);
+  opacity:.20;
+  mix-blend-mode:var(--dc-theme-texture-blend, soft-light);
+  z-index:0;
+}
+
+:root[data-dc-theme^="postApoc"] .card::after,
+:root[data-dc-theme^="postApoc"] .badge::after,
+:root[data-dc-theme^="postApoc"] .item::after,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:var(--dc-theme-frame, none);
+  background-size:100% 100%;
+  background-repeat:no-repeat;
+  opacity:calc(var(--dc-theme-frame-opacity, .5) * .62);
+  z-index:1;
+}
+
+:root[data-dc-theme^="postApoc"] .card > *,
+:root[data-dc-theme^="postApoc"] .badge > *,
+:root[data-dc-theme^="postApoc"] .item > *,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card > *{
+  position:relative;
+  z-index:2;
+}
+
+:root[data-dc-theme^="postApoc"] .btn{
+  border-radius:9px !important;
+  border-color:rgba(186,184,174,.28) !important;
+  background:linear-gradient(145deg, rgba(46,46,44,.92), rgba(18,18,18,.98)), url(/theme-textures/postapoc-rusted-steel.webp) center/cover no-repeat;
+  box-shadow:0 8px 18px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.09), inset 0 -2px 0 rgba(0,0,0,.38);
+  text-transform:uppercase;
+  letter-spacing:.035em;
+  font-weight:850;
+}
+
+:root[data-dc-theme^="postApoc"] .btn.primary{
+  background:var(--dc-theme-button, #555) !important;
+  color:var(--dc-text, #f2f0ea) !important;
+  border:1px solid color-mix(in srgb, var(--dc-accent) 42%, rgba(180,180,170,.36)) !important;
+  text-shadow:0 2px 5px rgba(0,0,0,.72);
+  box-shadow:0 10px 22px rgba(0,0,0,.54), 0 0 14px color-mix(in srgb, var(--dc-accent) 13%, transparent), inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+:root[data-dc-theme^="postApoc"] h1,
+:root[data-dc-theme^="postApoc"] h2,
+:root[data-dc-theme^="postApoc"] h3,
+:root[data-dc-theme^="postApoc"] .title-xl{
+  text-transform:uppercase;
+  letter-spacing:.055em;
+  text-shadow:0 2px 0 rgba(0,0,0,.65), 0 0 12px color-mix(in srgb, var(--dc-accent) 16%, transparent);
+}
+
+:root[data-dc-theme^="postApoc"] .bottom-nav{
+  background:var(--dc-theme-nav) !important;
+  border-top-color:rgba(177,177,168,.28);
+  box-shadow:0 -12px 28px rgba(0,0,0,.54), inset 0 1px 0 rgba(255,255,255,.06);
+}
