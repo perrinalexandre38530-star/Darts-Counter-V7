@@ -91,7 +91,7 @@ export default function RunningStatsPage({ go }: Props) {
           <RunningMetricCard label={copy.total} value={formatDistance(stats.totalDistanceM)} accent={accent} icon="↗" />
           <RunningMetricCard label={copy.runs} value={String(stats.sessions)} accent={accent} icon="🏃" />
           <RunningMetricCard label={copy.time} value={formatDuration(stats.totalElapsedMs)} accent={accent} icon="◷" />
-          <RunningMetricCard label={copy.climb} value={`+${Math.round(stats.totalElevationM)} m`} accent={accent} icon="▲" />
+          <RunningMetricCard label={activitySport === "treadmill" ? (lang === "fr" ? "INCLINAISON MOY." : lang === "es" ? "INCLINACIÓN MEDIA" : "AVG INCLINE") : copy.climb} value={activitySport === "treadmill" ? (sensorSummary.avgInclinePercent == null ? "—" : `${sensorSummary.avgInclinePercent.toFixed(1)}%`) : `+${Math.round(stats.totalElevationM)} m`} accent={accent} icon={activitySport === "treadmill" ? "↗" : "▲"} />
           <RunningMetricCard label={copy.best} value={`${formatPace(stats.bestPaceSecPerKm)}/km`} accent={accent} icon="⚡" />
           <RunningMetricCard label={copy.longest} value={formatDistance(stats.longestM)} accent={accent} icon="◎" />
         </div>
@@ -139,7 +139,8 @@ export default function RunningStatsPage({ go }: Props) {
             <RunningMetricCard label={lang === "fr" ? "FC MOY." : lang === "es" ? "FC MEDIA" : "AVG HR"} value={sensorSummary.avgHeartRateBpm == null ? "—" : `${Math.round(sensorSummary.avgHeartRateBpm)} bpm`} accent={accent} icon="❤️" />
             <RunningMetricCard label={lang === "fr" ? "FC MAX" : "MAX HR"} value={sensorSummary.maxHeartRateBpm == null ? "—" : `${Math.round(sensorSummary.maxHeartRateBpm)} bpm`} accent={accent} icon="♥" />
             <RunningMetricCard label={lang === "fr" ? "CADENCE MOY." : lang === "es" ? "CADENCIA MEDIA" : "AVG CADENCE"} value={sensorSummary.avgCadenceSpm == null ? "—" : `${Math.round(sensorSummary.avgCadenceSpm)} spm`} accent={accent} icon="🦶" />
-            <RunningMetricCard label={lang === "fr" ? "ACTIVITÉS CAPTEUR" : lang === "es" ? "ACTIVIDADES SENSOR" : "SENSOR ACTIVITIES"} value={String(sensorSummary.activitiesWithSensors)} accent={accent} icon="⌚" />
+            {activitySport === "treadmill" ? <RunningMetricCard label={lang === "fr" ? "INCLINAISON MOY." : lang === "es" ? "INCLINACIÓN MEDIA" : "AVG INCLINE"} value={sensorSummary.avgInclinePercent == null ? "—" : `${sensorSummary.avgInclinePercent.toFixed(1)}%`} accent={accent} icon="↗" /> : <RunningMetricCard label={lang === "fr" ? "ACTIVITÉS CAPTEUR" : lang === "es" ? "ACTIVIDADES SENSOR" : "SENSOR ACTIVITIES"} value={String(sensorSummary.activitiesWithSensors)} accent={accent} icon="⌚" />}
+            {activitySport === "treadmill" ? <RunningMetricCard label={lang === "fr" ? "VITESSE CAPTEUR" : lang === "es" ? "VELOCIDAD SENSOR" : "SENSOR SPEED"} value={sensorSummary.avgSensorSpeedMps == null ? "—" : `${(sensorSummary.avgSensorSpeedMps * 3.6).toFixed(1)} km/h`} accent={accent} icon="⚡" /> : null}
           </div>
         </RunningSurface> : null}
         <RunningTerrainStatsPanel activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />

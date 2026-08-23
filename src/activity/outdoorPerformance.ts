@@ -1,6 +1,6 @@
 import type { ActivityRecord, ActivitySport } from "./activityTypes";
 
-export type OutdoorPerformanceSport = Extract<ActivitySport, "running" | "trail" | "hiking" | "walking" | "nordic-walking">;
+export type OutdoorPerformanceSport = Extract<ActivitySport, "running" | "trail" | "hiking" | "walking" | "nordic-walking" | "treadmill">;
 
 export type OutdoorSportProfile = {
   id: OutdoorPerformanceSport;
@@ -26,6 +26,7 @@ export const OUTDOOR_PERFORMANCE_SPORTS: OutdoorPerformanceSport[] = [
   "hiking",
   "walking",
   "nordic-walking",
+  "treadmill",
 ];
 
 export const OUTDOOR_SPORT_PROFILES: Record<OutdoorPerformanceSport, OutdoorSportProfile> = {
@@ -34,6 +35,7 @@ export const OUTDOOR_SPORT_PROFILES: Record<OutdoorPerformanceSport, OutdoorSpor
   hiking: { id: "hiking", icon: "🥾", fr: "Randonnée", en: "Hiking", es: "Senderismo", shortFr: "RANDO", shortEn: "HIKE", shortEs: "RUTA", primaryMetric: "speed", supportsPacer: false, supportsIntervals: false, supportsRaceGoals: false, weeklyDistanceKm: 20, weeklyElevationM: 600, weeklySessions: 2 },
   walking: { id: "walking", icon: "🚶", fr: "Marche", en: "Walking", es: "Caminata", shortFr: "MARCHE", shortEn: "WALK", shortEs: "CAMINAR", primaryMetric: "speed", supportsPacer: false, supportsIntervals: false, supportsRaceGoals: false, weeklyDistanceKm: 18, weeklyElevationM: 200, weeklySessions: 4 },
   "nordic-walking": { id: "nordic-walking", icon: "🥢", fr: "Marche nordique", en: "Nordic walking", es: "Marcha nórdica", shortFr: "NORDIQUE", shortEn: "NORDIC", shortEs: "NÓRDICA", primaryMetric: "speed", supportsPacer: false, supportsIntervals: true, supportsRaceGoals: false, weeklyDistanceKm: 20, weeklyElevationM: 300, weeklySessions: 3 },
+  treadmill: { id: "treadmill", icon: "🏃‍♂️", fr: "Tapis roulant", en: "Treadmill", es: "Cinta de correr", shortFr: "TAPIS", shortEn: "TREADMILL", shortEs: "CINTA", primaryMetric: "pace", supportsPacer: true, supportsIntervals: true, supportsRaceGoals: true, weeklyDistanceKm: 20, weeklyElevationM: 0, weeklySessions: 3 },
 };
 
 const STORAGE_KEY = "mss-running-performance-activity-v1";
@@ -81,6 +83,7 @@ export function outdoorPresetIds(sport: OutdoorPerformanceSport) {
   if (sport === "trail") return new Set(["free", "distance-5k", "distance-10k", "easy", "tempo", "intervals", "long", "hills", "recovery"]);
   if (sport === "hiking") return new Set(["free", "distance-5k", "distance-10k", "easy", "long", "hills"]);
   if (sport === "walking") return new Set(["free", "distance-1k", "distance-5k", "distance-10k", "easy", "long"]);
+  if (sport === "treadmill") return new Set(["free", "distance-1k", "distance-5k", "distance-10k", "easy", "tempo", "intervals", "long", "hills", "recovery"]);
   return new Set(["free", "distance-5k", "distance-10k", "easy", "tempo", "intervals", "long", "hills"]);
 }
 
@@ -89,5 +92,6 @@ export function outdoorRecommendationPreset(sport: OutdoorPerformanceSport, hasE
   if (sport === "hiking") return hasElevation ? "hills" : "long";
   if (sport === "walking") return longRoute ? "long" : "easy";
   if (sport === "nordic-walking") return hasElevation ? "hills" : "tempo";
+  if (sport === "treadmill") return "tempo";
   return hasElevation ? "hills" : longRoute ? "long" : "easy";
 }

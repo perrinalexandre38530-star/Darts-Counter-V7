@@ -10,6 +10,8 @@ export type ActivitySensorSummary = {
   avgSensorSpeedMps: number | null;
   maxSensorSpeedMps: number | null;
   avgStrideLengthM: number | null;
+  avgInclinePercent: number | null;
+  maxInclinePercent: number | null;
 };
 
 function finite(values: Array<number | null | undefined>): number[] {
@@ -30,6 +32,7 @@ export function summarizeSensorSamples(samples: ActivitySensorSample[]): Activit
   const cadence = finite(samples.map((sample) => sample.cadenceSpm)).filter((value) => value >= 20 && value <= 260);
   const speed = finite(samples.map((sample) => sample.sensorSpeedMps)).filter((value) => value >= 0 && value <= 25);
   const stride = finite(samples.map((sample) => sample.strideLengthM)).filter((value) => value > 0 && value <= 4);
+  const incline = finite(samples.map((sample) => sample.inclinePercent)).filter((value) => value >= -20 && value <= 40);
   return {
     sampleCount: samples.length,
     activitiesWithSensors: samples.length ? 1 : 0,
@@ -40,6 +43,8 @@ export function summarizeSensorSamples(samples: ActivitySensorSample[]): Activit
     avgSensorSpeedMps: average(speed),
     maxSensorSpeedMps: max(speed),
     avgStrideLengthM: average(stride),
+    avgInclinePercent: average(incline),
+    maxInclinePercent: max(incline),
   };
 }
 

@@ -1,4 +1,4 @@
-export type ActivitySport = "running" | "trail" | "cycling" | "mtb" | "bmx" | "roller" | "walking" | "hiking" | "nordic-walking";
+export type ActivitySport = "running" | "trail" | "cycling" | "mtb" | "bmx" | "roller" | "walking" | "hiking" | "nordic-walking" | "treadmill";
 export type ActivitySource = "phone-gps" | "manual" | "health-connect" | "apple-health" | "garmin" | "fit" | "gpx" | "tcx";
 export type ActivityVerification = "declared" | "gps" | "connected" | "certified";
 export type GeoPoint = {
@@ -18,9 +18,11 @@ export type ActivitySensorSample = {
     cadenceSpm?: number;
     sensorSpeedMps?: number;
     strideLengthM?: number;
+    inclinePercent?: number;
+    treadmillDistanceM?: number;
 };
 export type ActivitySensorDevice = {
-    kind: "heart-rate" | "running-speed-cadence";
+    kind: "heart-rate" | "running-speed-cadence" | "fitness-machine-treadmill";
     name: string;
 };
 export type ActivitySplit = {
@@ -73,6 +75,12 @@ export type ActivityRecord = {
     importedAt?: number;
     sensorSamples?: ActivitySensorSample[];
     sensorDevices?: ActivitySensorDevice[];
+    indoor?: boolean;
+    treadmill?: {
+        distanceSource: "ftms" | "footpod" | "manual-speed";
+        manualSpeedKmh?: number;
+        inclinePercent?: number;
+    };
     createdAt: number;
 };
 export const ACTIVITY_DB_NAME = "multisports-activity-v1";

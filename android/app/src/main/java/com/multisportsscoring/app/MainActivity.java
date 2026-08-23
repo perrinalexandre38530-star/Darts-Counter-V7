@@ -12,6 +12,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AwenaVoicePlugin.class);
         registerPlugin(AwenaSpeechRecognitionPlugin.class);
         registerPlugin(AwenaTranslationPlugin.class);
+        registerPlugin(ActivityTrackingPlugin.class);
+        registerPlugin(HealthConnectPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

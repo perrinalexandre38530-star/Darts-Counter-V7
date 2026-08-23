@@ -3,8 +3,29 @@
 
     <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- RUNNING PERFORMANCE V14 / Health Connect workout permissions. -->
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE_ROUTE" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_SPEED" />
+    <uses-permission android:name="android.permission.health.WRITE_SPEED" />
+    <uses-permission android:name="android.permission.health.READ_ELEVATION_GAINED" />
+    <uses-permission android:name="android.permission.health.WRITE_ELEVATION_GAINED" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
 
     <queries>
+        <package android:name="com.google.android.apps.healthdata" />
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
@@ -36,6 +57,34 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Health Connect privacy rationale. Android 13 and lower use the activity;
+             Android 14+ reaches the same screen through the permission-usage alias. -->
+        <activity
+            android:name=".PermissionsRationaleActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".PermissionsRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+        <service
+            android:name=".ActivityTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

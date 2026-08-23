@@ -37,6 +37,7 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Activité importée",
     importedRoute: "Parcours importé",
     failed: "Import impossible",
+    indoorImport: "Le tapis roulant est une activité indoor sans tracé GPS. Sélectionne Running, Trail, Randonnée ou Marche pour importer un GPX/TCX.",
   } : lang === "es" ? {
     title: "DATOS Y PRIVACIDAD",
     import: "IMPORTAR GPX / TCX",
@@ -51,6 +52,7 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Actividad importada",
     importedRoute: "Ruta importada",
     failed: "Importación imposible",
+    indoorImport: "La cinta es una actividad indoor sin ruta GPS. Selecciona Running, Trail, Senderismo o Caminata para importar GPX/TCX.",
   } : {
     title: "DATA & PRIVACY",
     import: "IMPORT GPX / TCX",
@@ -65,6 +67,7 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Activity imported",
     importedRoute: "Route imported",
     failed: "Import failed",
+    indoorImport: "Treadmill is an indoor activity without a GPS route. Select Running, Trail, Hiking or Walking to import GPX/TCX.",
   };
 
   const updatePrefs = (next: RunningPrivacyPrefs) => {
@@ -74,6 +77,7 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
 
   const onImport = async (file: File | null) => {
     if (!file) return;
+    if (selectedSport === "treadmill") { setStatus(copy.indoorImport); if (inputRef.current) inputRef.current.value = ""; return; }
     setBusy(true);
     setStatus("");
     try {
@@ -105,10 +109,10 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     <div className="card" style={{ padding: 11, display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 9, alignItems: "center" }}>
       <div style={{ width: 44, height: 44, borderRadius: 13, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}30`, fontSize: 21 }}>⇪</div>
       <div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.import}</div><div style={{ marginTop: 3, fontSize: 8.6, lineHeight: 1.35, color: textSoft }}>{copy.importSub}</div></div>
-      <button className="btn" disabled={busy} onClick={() => inputRef.current?.click()} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{busy ? "…" : copy.import}</button>
+      <button className="btn" disabled={busy || selectedSport === "treadmill"} onClick={() => inputRef.current?.click()} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{busy ? "…" : copy.import}</button>
     </div>
 
-    {status ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 11, border: `1px solid ${accent}28`, background: `${accent}0b`, color: textSoft, fontSize: 8.8, lineHeight: 1.4 }}>{status}</div> : null}
+    {selectedSport === "treadmill" ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 11, border: `1px solid ${accent}28`, background: `${accent}0b`, color: textSoft, fontSize: 8.8, lineHeight: 1.4 }}>🏃‍♂️ {copy.indoorImport}</div> : null}{status ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 11, border: `1px solid ${accent}28`, background: `${accent}0b`, color: textSoft, fontSize: 8.8, lineHeight: 1.4 }}>{status}</div> : null}
 
     <div className="card" style={{ marginTop: 8, padding: 11 }}>
       <div style={{ fontSize: 9.5, fontWeight: 1000 }}>{copy.privacy}</div>

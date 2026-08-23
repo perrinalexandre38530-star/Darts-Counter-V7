@@ -14,11 +14,16 @@ export type CollectibleCardId =
   | "firefighter_kael_platine"
   | "firefighter_kael_or"
   | "firefighter_kael_diamant"
+  | "firefighter_malysia_presentation"
+  | "firefighter_malysia_bronze"
+  | "firefighter_malysia_argent"
+  | "firefighter_malysia_platine"
+  | "firefighter_malysia_or"
+  | "firefighter_malysia_diamant"
   | "firefighter_lyna"
   | "firefighter_zephyr"
   | "firefighter_braze"
-  | "firefighter_aero"
-  | "firefighter_malysia";
+  | "firefighter_aero";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -31,7 +36,9 @@ export type CollectibleMetricKey =
   | "firefighterCanadairs"
   | "firefighterMatches"
   | "firefighterKaelMatches"
-  | "firefighterKaelWins";
+  | "firefighterKaelWins"
+  | "firefighterMalysiaMatches"
+  | "firefighterMalysiaWins";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -101,13 +108,28 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_aero", collection: "firefighter", name: "AERO", accent: "#ff8b2e", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
     { metric: "firefighterCanadairs", target: 10, label: { fr: "Interventions Canadair", en: "Water bomber interventions", es: "Intervenciones aéreas" } },
   ] },
-  { id: "firefighter_malysia", collection: "firefighter", name: "MALYSIA", accent: "#ff9a34", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
-    { metric: "firefighterMatches", target: 12, label: { fr: "Missions Firefighter jouées", en: "Firefighter missions played", es: "Misiones Firefighter jugadas" } },
+  { id: "firefighter_malysia_presentation", collection: "firefighter", name: "MALYSIA", accent: "#ff9a34", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 1, label: { fr: "Mission terminée avec Malysia", en: "Completed mission with Malysia", es: "Misión completada con Malysia" } },
+  ] },
+  { id: "firefighter_malysia_bronze", collection: "firefighter", name: "MALYSIA · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 5, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
+  ] },
+  { id: "firefighter_malysia_argent", collection: "firefighter", name: "MALYSIA · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 15, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
+  ] },
+  { id: "firefighter_malysia_platine", collection: "firefighter", name: "MALYSIA · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 30, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
+  ] },
+  { id: "firefighter_malysia_or", collection: "firefighter", name: "MALYSIA · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 60, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
+  ] },
+  { id: "firefighter_malysia_diamant", collection: "firefighter", name: "MALYSIA · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
+    { metric: "firefighterMalysiaMatches", target: 120, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
   ] },
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -241,6 +263,14 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
       metrics.firefighterKaelMatches += 1;
       if (kaelPlayers.some((entry: any) => entry?.win === true || entry?.winner === true || row?.won === true)) {
         metrics.firefighterKaelWins += 1;
+      }
+    }
+
+    const malysiaPlayers = rowPlayersForCharacter(row, "malysia");
+    if (malysiaPlayers.length) {
+      metrics.firefighterMalysiaMatches += 1;
+      if (malysiaPlayers.some((entry: any) => entry?.win === true || entry?.winner === true || row?.won === true)) {
+        metrics.firefighterMalysiaWins += 1;
       }
     }
   }

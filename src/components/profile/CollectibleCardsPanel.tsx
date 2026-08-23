@@ -23,11 +23,16 @@ import firefighterKaelArgent from "../../assets/collectible-cards/firefighter-ka
 import firefighterKaelPlatine from "../../assets/collectible-cards/firefighter-kael-platine.webp";
 import firefighterKaelOr from "../../assets/collectible-cards/firefighter-kael-or.webp";
 import firefighterKaelDiamant from "../../assets/collectible-cards/firefighter-kael-diamant.webp";
+import firefighterMalysiaPresentation from "../../assets/collectible-cards/firefighter-malysia-presentation.webp";
+import firefighterMalysiaBronze from "../../assets/collectible-cards/firefighter-malysia-bronze.webp";
+import firefighterMalysiaArgent from "../../assets/collectible-cards/firefighter-malysia-argent.webp";
+import firefighterMalysiaPlatine from "../../assets/collectible-cards/firefighter-malysia-platine.webp";
+import firefighterMalysiaOr from "../../assets/collectible-cards/firefighter-malysia-or.webp";
+import firefighterMalysiaDiamant from "../../assets/collectible-cards/firefighter-malysia-diamant.webp";
 import firefighterLyna from "../../assets/collectible-cards/firefighter-lyna.webp";
 import firefighterZephyr from "../../assets/collectible-cards/firefighter-zephyr.webp";
 import firefighterBraze from "../../assets/collectible-cards/firefighter-braze.webp";
 import firefighterAero from "../../assets/collectible-cards/firefighter-aero.webp";
-import firefighterMalysia from "../../assets/collectible-cards/firefighter-malysia.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_bronze: awenaBronze,
@@ -41,11 +46,16 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_kael_platine: firefighterKaelPlatine,
   firefighter_kael_or: firefighterKaelOr,
   firefighter_kael_diamant: firefighterKaelDiamant,
+  firefighter_malysia_presentation: firefighterMalysiaPresentation,
+  firefighter_malysia_bronze: firefighterMalysiaBronze,
+  firefighter_malysia_argent: firefighterMalysiaArgent,
+  firefighter_malysia_platine: firefighterMalysiaPlatine,
+  firefighter_malysia_or: firefighterMalysiaOr,
+  firefighter_malysia_diamant: firefighterMalysiaDiamant,
   firefighter_lyna: firefighterLyna,
   firefighter_zephyr: firefighterZephyr,
   firefighter_braze: firefighterBraze,
   firefighter_aero: firefighterAero,
-  firefighter_malysia: firefighterMalysia,
 };
 
 type FilterId = "all" | "awena" | "firefighter" | "unlocked" | "locked";
@@ -62,6 +72,8 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterMatches: 0,
   firefighterKaelMatches: 0,
   firefighterKaelWins: 0,
+  firefighterMalysiaMatches: 0,
+  firefighterMalysiaWins: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {

@@ -53,6 +53,8 @@ repositories {
 }
 
 dependencies {
+    // RUNNING PERFORMANCE V14: Health Connect bridge (stable API).
+    implementation "androidx.health.connect:connect-client:1.1.0"
     implementation "com.google.mlkit:translate:17.0.3"
     // Awena Voice V6: moteur TTS local sherpa-onnx / VITS-Piper.
     implementation("com.github.k2-fsa:sherpa-onnx:v1.13.5") {
