@@ -63,6 +63,8 @@ function FilterButton({ active, label, onClick }: { active: boolean; label: stri
   return <button type="button" onClick={onClick} style={{ flex:"0 0 auto", border:`1px solid ${active ? theme.primary : theme.borderSoft}`, background:active ? `${theme.primary}22` : "rgba(255,255,255,.04)", color:active ? theme.primary : theme.textSoft, borderRadius:999, padding:"8px 11px", fontWeight:950, fontSize:9.5, letterSpacing:.45, cursor:"pointer", whiteSpace:"nowrap" }}>{label}</button>;
 }
 
+const CARD_PREVIEW_ASPECT_RATIO = "2 / 3";
+
 function ProgressRequirements({ card, metrics, lang }: { card: CollectibleCardDefinition; metrics: CollectibleMetrics; lang: string }) {
   const { theme } = useTheme();
   return <div style={{ display:"grid", gap:5 }}>{card.requirements.map((req) => {
@@ -190,8 +192,8 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
         const isUnlocked = !!unlocks[card.id];
         const progress = cardRequirementProgress(card, metrics);
         return <button key={card.id} type="button" onClick={() => setSelectedCardId(card.id)} style={{ minWidth:0, padding:0, borderRadius:16, overflow:"hidden", border:`1px solid ${isUnlocked ? `${card.accent}aa` : theme.borderSoft}`, background:"rgba(0,0,0,.28)", boxShadow:isUnlocked ? `0 0 18px ${card.accent}24` : "none", cursor:"pointer", textAlign:"left" }}>
-          <div style={{ position:"relative", aspectRatio:"3 / 4", overflow:"hidden", background:"#030303" }}>
-            <img src={IMAGE_BY_CARD[card.id]} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"scale(1.005)" }} />
+          <div style={{ position:"relative", aspectRatio:CARD_PREVIEW_ASPECT_RATIO, overflow:"hidden", background:"radial-gradient(circle at 50% 18%, rgba(255,255,255,.08), rgba(3,3,3,1) 58%)", display:"grid", placeItems:"center", padding:8 }}>
+            <img src={IMAGE_BY_CARD[card.id]} alt={card.name} loading="lazy" style={{ width:"100%", height:"100%", objectFit:"contain", objectPosition:"center center", display:"block", filter:isUnlocked ? "none" : "grayscale(.9) brightness(.34)", transform:"none" }} />
             {!isUnlocked && <div style={{ position:"absolute", inset:0, display:"grid", placeItems:"center", background:"linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.45))" }}><div style={{ width:48, height:48, borderRadius:999, display:"grid", placeItems:"center", background:"rgba(0,0,0,.72)", border:"1px solid rgba(255,255,255,.25)", fontSize:20, boxShadow:"0 8px 22px rgba(0,0,0,.55)" }}>🔒</div></div>}
             <div style={{ position:"absolute", left:7, right:7, bottom:7, borderRadius:999, background:"rgba(0,0,0,.7)", overflow:"hidden", height:6, border:"1px solid rgba(255,255,255,.15)" }}><div style={{ width:`${Math.round(progress * 100)}%`, height:"100%", background:isUnlocked ? card.accent : theme.primary }} /></div>
           </div>

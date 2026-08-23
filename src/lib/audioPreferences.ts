@@ -4,7 +4,7 @@ export type NavigationPlaybackMode = "random" | "ordered";
 export type AudioSfxCategory = "gameplay" | "impact" | "arcade" | "ui";
 
 export type AudioPreferences = {
-  version: 5;
+  version: 6;
   masterEnabled: boolean;
   navigationMusicEnabled: boolean;
   navigationVolume: number;
@@ -48,8 +48,16 @@ const VERSION_4_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
   "garage_impact",
 ];
 
+const VERSION_5_DEFAULT_TRACK_IDS: NavigationMusicTrackId[] = [
+  ...VERSION_4_DEFAULT_TRACK_IDS,
+  "pixel_ascension",
+  "dreamwave_horizon",
+  "steel_reactor",
+  "arena_uprising",
+];
+
 export const DEFAULT_AUDIO_PREFERENCES: AudioPreferences = {
-  version: 5,
+  version: 6,
   masterEnabled: true,
   navigationMusicEnabled: true,
   navigationVolume: 0.22,
@@ -99,12 +107,15 @@ export function sanitizeAudioPreferences(value: unknown): AudioPreferences {
   const hadVersion4DefaultPlaylist = rawVersion === 4
     && storedEnabledTrackIds.length === VERSION_4_DEFAULT_TRACK_IDS.length
     && VERSION_4_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
-  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist
+  const hadVersion5DefaultPlaylist = rawVersion === 5
+    && storedEnabledTrackIds.length === VERSION_5_DEFAULT_TRACK_IDS.length
+    && VERSION_5_DEFAULT_TRACK_IDS.every((id) => storedEnabledTrackIds.includes(id));
+  const enabledTrackIds = hadOriginalDefaultPlaylist || hadVersion3DefaultPlaylist || hadVersion4DefaultPlaylist || hadVersion5DefaultPlaylist
     ? [...NAVIGATION_MUSIC_TRACK_IDS]
     : storedEnabledTrackIds;
 
   return {
-    version: 5,
+    version: 6,
     masterEnabled: raw.masterEnabled !== false,
     navigationMusicEnabled: raw.navigationMusicEnabled !== false,
     navigationVolume: clamp01(raw.navigationVolume, DEFAULT_AUDIO_PREFERENCES.navigationVolume),
@@ -157,7 +168,7 @@ export function setAudioPreferences(nextValue: unknown): AudioPreferences {
 }
 
 export function updateAudioPreferences(patch: Partial<AudioPreferences>): AudioPreferences {
-  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 5 });
+  return setAudioPreferences({ ...getAudioPreferences(), ...patch, version: 6 });
 }
 
 export function resetAudioPreferences(): AudioPreferences {

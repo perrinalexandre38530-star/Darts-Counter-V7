@@ -14,6 +14,8 @@ import pixelAscensionUrl from "../assets/audio/navigation/pixel_ascension_nav.m4
 import dreamwaveHorizonUrl from "../assets/audio/navigation/dreamwave_horizon_nav.m4a";
 import steelReactorUrl from "../assets/audio/navigation/steel_reactor_nav.m4a";
 import arenaUprisingUrl from "../assets/audio/navigation/arena_uprising_nav.m4a";
+import stoneReverieUrl from "../assets/audio/navigation/stone_reverie_nav.m4a";
+import obsidianFlowUrl from "../assets/audio/navigation/obsidian_flow_nav.m4a";
 
 export const NAVIGATION_MUSIC_TRACKS = [
   {
@@ -111,6 +113,18 @@ export const NAVIGATION_MUSIC_TRACKS = [
     name: "Arena Uprising",
     subtitle: { fr: "Rock de stade rapide, chœurs et tension compétitive", en: "Fast stadium rock, crowd chants and competitive tension", es: "Rock de estadio rápido, coros y tensión competitiva" },
     url: arenaUprisingUrl,
+  },
+  {
+    id: "stone_reverie",
+    name: "Stone Reverie",
+    subtitle: { fr: "Électro fluide, lumineuse et contemplative", en: "Fluid, luminous and contemplative electro", es: "Electro fluida, luminosa y contemplativa" },
+    url: stoneReverieUrl,
+  },
+  {
+    id: "obsidian_flow",
+    name: "Obsidian Flow",
+    subtitle: { fr: "Ambiance profonde, minérale et hypnotique", en: "Deep, mineral and hypnotic atmosphere", es: "Atmósfera profunda, mineral e hipnótica" },
+    url: obsidianFlowUrl,
   },
 ] as const;
 
