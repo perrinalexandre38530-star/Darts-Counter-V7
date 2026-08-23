@@ -40,9 +40,17 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
+import kotlin.ResultKt;
+import kotlin.coroutines.Continuation;
+import kotlin.coroutines.CoroutineContext;
+import kotlin.coroutines.EmptyCoroutineContext;
+import kotlin.coroutines.intrinsics.IntrinsicsKt;
 import kotlin.jvm.JvmClassMappingKt;
 
 /** Health Connect workout bridge for RUNNING PERFORMANCE.
@@ -69,6 +77,67 @@ public class HealthConnectPlugin extends Plugin {
     ));
     private final ExecutorService io = Executors.newSingleThreadExecutor();
 
+    /**
+     * AndroidX Health Connect exposes several operations as Kotlin suspend functions.
+     * Java sees those methods with an extra Continuation parameter, so calling them
+     * directly without that parameter does not compile. This tiny bridge executes a
+     * suspend call from the plugin's worker thread and waits for its completion.
+     */
+    @FunctionalInterface
+    private interface SuspendCall<T> {
+        Object invoke(Continuation<? super T> continuation) throws Exception;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T awaitSuspend(SuspendCall<T> call) throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<T> value = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        Continuation<T> continuation = new Continuation<T>() {
+            @Override
+            public CoroutineContext getContext() {
+                return EmptyCoroutineContext.INSTANCE;
+            }
+
+            @Override
+            public void resumeWith(Object result) {
+                try {
+                    ResultKt.throwOnFailure(result);
+                    value.set((T) result);
+                } catch (Throwable error) {
+                    failure.set(error);
+                } finally {
+                    latch.countDown();
+                }
+            }
+        };
+
+        Object immediate;
+        try {
+            immediate = call.invoke(continuation);
+        } catch (Throwable error) {
+            if (error instanceof Exception) throw (Exception) error;
+            throw new RuntimeException(error);
+        }
+
+        if (immediate != IntrinsicsKt.getCOROUTINE_SUSPENDED()) {
+            ResultKt.throwOnFailure(immediate);
+            return (T) immediate;
+        }
+
+        if (!latch.await(30, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Health Connect operation timed out");
+        }
+
+        Throwable error = failure.get();
+        if (error != null) {
+            if (error instanceof Exception) throw (Exception) error;
+            throw new RuntimeException(error);
+        }
+        return value.get();
+    }
+
     private int sdkStatus() {
         try { return HealthConnectClient.getSdkStatus(getContext(), PROVIDER); }
         catch (Throwable ignored) { return HealthConnectClient.SDK_UNAVAILABLE; }
@@ -84,24 +153,33 @@ public class HealthConnectPlugin extends Plugin {
     private Set<String> granted() {
         try {
             HealthConnectClient client = clientOrNull();
-            return client == null ? new LinkedHashSet<>() : client.getPermissionController().getGrantedPermissions();
-        } catch (Throwable ignored) { return new LinkedHashSet<>(); }
+            if (client == null) return new LinkedHashSet<>();
+            Set<String> result = awaitSuspend(continuation ->
+                client.getPermissionController().getGrantedPermissions(continuation)
+            );
+            return result == null ? new LinkedHashSet<>() : result;
+        } catch (Throwable ignored) {
+            return new LinkedHashSet<>();
+        }
     }
 
     @PluginMethod
     public void getStatus(PluginCall call) {
-        int status = sdkStatus();
-        Set<String> granted = granted();
-        JSObject out = new JSObject();
-        out.put("available", status == HealthConnectClient.SDK_AVAILABLE);
-        out.put("status", status == HealthConnectClient.SDK_AVAILABLE ? "available" : status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ? "update-required" : "unavailable");
-        out.put("provider", PROVIDER);
-        out.put("permissionsGranted", granted.containsAll(WORKOUT_PERMISSIONS));
-        out.put("exerciseRoutesGranted", granted.contains(READ_ROUTES));
-        JSArray rows = new JSArray();
-        for (String permission : granted) rows.put(permission);
-        out.put("grantedPermissions", rows);
-        call.resolve(out);
+        // getGrantedPermissions() is a suspend operation: keep it off the UI thread.
+        io.execute(() -> {
+            int status = sdkStatus();
+            Set<String> granted = granted();
+            JSObject out = new JSObject();
+            out.put("available", status == HealthConnectClient.SDK_AVAILABLE);
+            out.put("status", status == HealthConnectClient.SDK_AVAILABLE ? "available" : status == HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED ? "update-required" : "unavailable");
+            out.put("provider", PROVIDER);
+            out.put("permissionsGranted", granted.containsAll(WORKOUT_PERMISSIONS));
+            out.put("exerciseRoutesGranted", granted.contains(READ_ROUTES));
+            JSArray rows = new JSArray();
+            for (String permission : granted) rows.put(permission);
+            out.put("grantedPermissions", rows);
+            call.resolve(out);
+        });
     }
 
     @PluginMethod
@@ -146,7 +224,9 @@ public class HealthConnectPlugin extends Plugin {
             try {
                 HealthConnectClient client = clientOrNull();
                 if (client == null) throw new IllegalStateException("Health Connect unavailable");
-                Set<String> permissions = client.getPermissionController().getGrantedPermissions();
+                Set<String> permissions = awaitSuspend(continuation ->
+                    client.getPermissionController().getGrantedPermissions(continuation)
+                );
                 if (!permissions.contains("android.permission.health.READ_EXERCISE")) {
                     throw new SecurityException("READ_EXERCISE permission is required");
                 }
@@ -209,7 +289,9 @@ public class HealthConnectPlugin extends Plugin {
             pageSize,
             null
         );
-        ReadRecordsResponse<T> response = client.readRecords(request);
+        ReadRecordsResponse<T> response = this.<ReadRecordsResponse<T>>awaitSuspend(continuation ->
+            client.readRecords(request, continuation)
+        );
         return response.getRecords();
     }
 
