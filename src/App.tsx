@@ -5705,7 +5705,7 @@ case "babyfoot_team_edit":
         />
 
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
-        {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
+        {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} sportOverride={activeSport} />}
 
         <SWUpdateBanner />
       </>

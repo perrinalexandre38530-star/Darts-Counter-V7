@@ -221,9 +221,11 @@ function readSportFromLS(): SportId | null {
 export default function BottomNav({
   value,
   onChange,
+  sportOverride,
 }: {
   value: TabKey;
   onChange: (k: TabKey) => void;
+  sportOverride?: SportId | null;
 }) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
@@ -237,7 +239,12 @@ export default function BottomNav({
   // SportContext attendu : { sport, setSport }
   const sportFromCtx: SportId | null = (sportCtx?.sport as SportId) ?? null;
   const sportFromLS: SportId | null = React.useMemo(() => readSportFromLS(), []);
-  const sport: SportId = sportFromCtx ?? sportFromLS ?? "darts";
+  // App.tsx connait le sport runtime réellement affiché. Sur Android de test,
+  // SportContext peut volontairement retomber sur Darts à cause de la whitelist
+  // Store V1 alors que RUNNING PERFORMANCE est ouvert en runtime/dev.
+  // La BottomNav doit suivre la page affichée, sans pour autant ouvrir Running
+  // dans la whitelist Android.
+  const sport: SportId = sportOverride ?? sportFromCtx ?? sportFromLS ?? "darts";
 
   // Online masqué uniquement pour les sports sans salon en ligne dédié.
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.

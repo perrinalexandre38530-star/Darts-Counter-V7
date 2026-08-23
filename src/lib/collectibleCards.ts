@@ -26,8 +26,13 @@ export type CollectibleCardId =
   | "firefighter_lyna_platine"
   | "firefighter_lyna_or"
   | "firefighter_lyna_diamant"
+  | "firefighter_braze_presentation"
+  | "firefighter_braze_bronze"
+  | "firefighter_braze_argent"
+  | "firefighter_braze_platine"
+  | "firefighter_braze_or"
+  | "firefighter_braze_diamant"
   | "firefighter_zephyr"
-  | "firefighter_braze"
   | "firefighter_aero";
 
 export type CollectibleMetricKey =
@@ -44,7 +49,9 @@ export type CollectibleMetricKey =
   | "firefighterKaelWins"
   | "firefighterMalysiaMatches"
   | "firefighterMalysiaWins"
-  | "firefighterLynaMatches";
+  | "firefighterLynaMatches"
+  | "firefighterBrazeMatches"
+  | "firefighterBrazeCriticalExtinguishes";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -123,8 +130,23 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_kael_diamant", collection: "firefighter", name: "KAËL · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
     { metric: "firefighterKaelWins", target: 100, label: { fr: "Victoires avec Kaël", en: "Wins with Kaël", es: "Victorias con Kaël" } },
   ] },
-  { id: "firefighter_braze", collection: "firefighter", name: "BRAZE", accent: "#ff5140", subtitle: { fr: "Attaque lourde", en: "Heavy attack", es: "Ataque pesado" }, requirements: [
-    { metric: "firefighterCriticalExtinguishes", target: 25, label: { fr: "Feux critiques éteints", en: "Critical fires extinguished", es: "Incendios críticos extinguidos" } },
+  { id: "firefighter_braze_presentation", collection: "firefighter", name: "BRAZE", accent: "#ff5140", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeMatches", target: 1, label: { fr: "Mission terminée avec Braze", en: "Completed mission with Braze", es: "Misión completada con Braze" } },
+  ] },
+  { id: "firefighter_braze_bronze", collection: "firefighter", name: "BRAZE · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeCriticalExtinguishes", target: 5, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
+  ] },
+  { id: "firefighter_braze_argent", collection: "firefighter", name: "BRAZE · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeCriticalExtinguishes", target: 12, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
+  ] },
+  { id: "firefighter_braze_platine", collection: "firefighter", name: "BRAZE · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeCriticalExtinguishes", target: 25, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
+  ] },
+  { id: "firefighter_braze_or", collection: "firefighter", name: "BRAZE · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeCriticalExtinguishes", target: 50, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
+  ] },
+  { id: "firefighter_braze_diamant", collection: "firefighter", name: "BRAZE · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Héros des flammes", en: "Hero of the flames", es: "Héroe de las llamas" }, requirements: [
+    { metric: "firefighterBrazeCriticalExtinguishes", target: 100, label: { fr: "Feux critiques éteints avec Braze", en: "Critical fires extinguished with Braze", es: "Incendios críticos extinguidos con Braze" } },
   ] },
   { id: "firefighter_aero", collection: "firefighter", name: "AERO", accent: "#ff8b2e", subtitle: { fr: "Pilote Canadair", en: "Water bomber pilot", es: "Piloto de hidroavión" }, requirements: [
     { metric: "firefighterCanadairs", target: 10, label: { fr: "Interventions Canadair", en: "Water bomber interventions", es: "Intervenciones aéreas" } },
@@ -150,7 +172,7 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0 };
+  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0, firefighterBrazeMatches: 0, firefighterBrazeCriticalExtinguishes: 0 };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -298,6 +320,12 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
     const lynaPlayers = rowPlayersForCharacter(row, "lyna");
     if (lynaPlayers.length) {
       metrics.firefighterLynaMatches += 1;
+    }
+
+    const brazePlayers = rowPlayersForCharacter(row, "braze");
+    if (brazePlayers.length) {
+      metrics.firefighterBrazeMatches += 1;
+      metrics.firefighterBrazeCriticalExtinguishes += countCriticalExtinguishes(row, profileId);
     }
   }
 

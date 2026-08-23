@@ -37,7 +37,12 @@ import firefighterLynaPlatine from "../../assets/collectible-cards/firefighter-l
 import firefighterLynaOr from "../../assets/collectible-cards/firefighter-lyna-or.webp";
 import firefighterLynaDiamant from "../../assets/collectible-cards/firefighter-lyna-diamant.webp";
 import firefighterZephyr from "../../assets/collectible-cards/firefighter-zephyr.webp";
-import firefighterBraze from "../../assets/collectible-cards/firefighter-braze.webp";
+import firefighterBrazePresentation from "../../assets/collectible-cards/firefighter-braze-presentation.webp";
+import firefighterBrazeBronze from "../../assets/collectible-cards/firefighter-braze-bronze.webp";
+import firefighterBrazeArgent from "../../assets/collectible-cards/firefighter-braze-argent.webp";
+import firefighterBrazePlatine from "../../assets/collectible-cards/firefighter-braze-platine.webp";
+import firefighterBrazeOr from "../../assets/collectible-cards/firefighter-braze-or.webp";
+import firefighterBrazeDiamant from "../../assets/collectible-cards/firefighter-braze-diamant.webp";
 import firefighterAero from "../../assets/collectible-cards/firefighter-aero.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
@@ -64,8 +69,13 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_lyna_platine: firefighterLynaPlatine,
   firefighter_lyna_or: firefighterLynaOr,
   firefighter_lyna_diamant: firefighterLynaDiamant,
+  firefighter_braze_presentation: firefighterBrazePresentation,
+  firefighter_braze_bronze: firefighterBrazeBronze,
+  firefighter_braze_argent: firefighterBrazeArgent,
+  firefighter_braze_platine: firefighterBrazePlatine,
+  firefighter_braze_or: firefighterBrazeOr,
+  firefighter_braze_diamant: firefighterBrazeDiamant,
   firefighter_zephyr: firefighterZephyr,
-  firefighter_braze: firefighterBraze,
   firefighter_aero: firefighterAero,
 };
 
@@ -86,6 +96,8 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterMalysiaMatches: 0,
   firefighterMalysiaWins: 0,
   firefighterLynaMatches: 0,
+  firefighterBrazeMatches: 0,
+  firefighterBrazeCriticalExtinguishes: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {
