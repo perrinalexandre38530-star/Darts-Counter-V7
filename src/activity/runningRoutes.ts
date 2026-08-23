@@ -10,7 +10,7 @@ export type RunningRouteTemplate = {
   elevationGainM: number;
   referenceElapsedMs: number;
   createdAt: number;
-  source?: "activity" | "gpx" | "tcx";
+  source?: "activity" | "gpx" | "tcx" | "fit";
   sourceFileName?: string;
   sport?: ActivitySport;
 };

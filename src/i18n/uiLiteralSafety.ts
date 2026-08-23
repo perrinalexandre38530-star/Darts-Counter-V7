@@ -1115,6 +1115,31 @@ export function looksEnglishUiText(value: string): boolean {
 // remains visually normal, while the DOM safety-net knows whether it must ask
 // the local translator for FR→target or EN→target.
 const registeredSourceLanguages = new Map<string, string>();
+const registeredTargetTranslations = new Map<string, Map<string, string>>();
+
+export function registerUiLiteralTranslation(
+  value: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+  translatedValue: string
+): void {
+  const core = normalize(String(value || ""));
+  const source = String(sourceLanguage || "").toLowerCase().split("-")[0];
+  const target = String(targetLanguage || "").toLowerCase().split("-")[0];
+  const translated = String(translatedValue || "").trim();
+  if (!core || !source || !target || !translated) return;
+  registerUiLiteralTranslationSource(core, source);
+  let targetMap = registeredTargetTranslations.get(target);
+  if (!targetMap) {
+    targetMap = new Map<string, string>();
+    registeredTargetTranslations.set(target, targetMap);
+  }
+  targetMap.set(core, translated);
+  if (targetMap.size > 2000) {
+    const first = targetMap.keys().next().value;
+    if (first) targetMap.delete(first);
+  }
+}
 
 export function registerUiLiteralTranslationSource(value: string, sourceLanguage: string): void {
   const core = normalize(String(value || ""));
@@ -1223,6 +1248,13 @@ export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string
     if (!core || PROPER_NAME_EXCEPTIONS.has(core)) return raw;
 
     const sourceLanguage = registeredSourceLanguages.get(core) || null;
+
+    // Feature-specific registries can provide authored translations without
+    // bloating the global dictionaries. Monetization uses this for immediate
+    // FR -> EN/ES rendering while every other language still follows the local
+    // whole-sentence translation path below.
+    const registeredTarget = registeredTargetTranslations.get(target)?.get(core);
+    if (registeredTarget != null) return `${lead}${registeredTarget}${trail}`;
 
     // First choice for every language, including French: reuse authored
     // dictionaries in reverse. This also lets hard-coded English config labels

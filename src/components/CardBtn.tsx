@@ -37,7 +37,7 @@ export default function CardBtn({
   const { theme } = useTheme();
 
   const border = `1px solid ${theme?.border ?? "rgba(255,255,255,.10)"}`;
-  const bg = theme?.card ?? "rgba(10,10,10,.55)";
+  const bg = (theme as any)?.cardBackground || theme?.card || "rgba(10,10,10,.55)";
   const textSoft = theme?.textSoft ?? "rgba(255,255,255,.70)";
   const primary = theme?.primary ?? "#b7ff1a";
 
@@ -45,6 +45,7 @@ export default function CardBtn({
 
   return (
     <button
+      className="card dc-postapoc-menu-card"
       onClick={canClick ? onClick : undefined}
       disabled={!canClick}
       style={{

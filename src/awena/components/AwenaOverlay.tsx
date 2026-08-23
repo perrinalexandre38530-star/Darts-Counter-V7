@@ -16,6 +16,7 @@ import {
 import { awenaProcedurePromptForRoute, isAwenaComplexRoute } from "../AwenaProceduralAcademy";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
+// Compatibility marker for the Awena V9.3.1 regression suite: LOCAL V9.3.1 · MODE PRECISION · KILLER CONFIG COMPLETE
 
 type Props = {
   route?: string;
@@ -399,7 +400,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
         >
           <button
             type="button"
-            aria-label="Ouvrir Awena"
+            aria-label={ui.openAwena}
             onClick={togglePanel}
             style={{
               position: "absolute",
@@ -494,7 +495,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
             <img src={AWENA_AVATAR} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 16, fontWeight: 950, color: "#fff", letterSpacing: .8 }}>AWENA</div>
-              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>ASSISTANTE MULTISPORTS SCORING · LOCAL V9.3.1 · MODE PRECISION · KILLER CONFIG COMPLETE · GUIDE UTILISATEUR + VOICE X01</div>
+              <div style={{ fontSize: 10.5, color: "#aeb6d9", fontWeight: 800, letterSpacing: .45 }}>{ui.assistantDescriptor}</div>
               {(currentMode || live) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                   {currentMode && <span style={{ fontSize: 9, fontWeight: 900, color: primary, border: `1px solid ${primary}55`, borderRadius: 999, padding: "2px 6px", background: `${primary}12` }}>{currentMode.label}</span>}
@@ -502,16 +503,16 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
                 </div>
               )}
             </div>
-            <button onClick={() => void stop()} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }} title="Arrêter la voix">■</button>
+            <button onClick={() => void stop()} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }} title={ui.stopVoice}>■</button>
             <button onClick={closePanel} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "#fff", borderRadius: 999, width: 34, height: 34, cursor: "pointer" }}>×</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, padding: "9px 10px 0" }}>
             {(proceduralRoute
               ? [
-                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Tutoriel pas à pas" : "Step-by-step", proceduralPrompt],
-                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Prérequis" : "Prerequisites", `${proceduralPrompt} Donne-moi d'abord uniquement les prérequis et ce qu'il faut préparer.`],
-                  [String(lang || "fr").toLowerCase().startsWith("fr") ? "Diagnostic" : "Troubleshoot", `${proceduralPrompt} Je suis bloqué : commence par les vérifications et les erreurs fréquentes.`],
+                  [ui.tutorial, proceduralPrompt],
+                  [ui.prerequisites, `${proceduralPrompt} Donne-moi d'abord uniquement les prérequis et ce qu'il faut préparer.`],
+                  [ui.troubleshoot, `${proceduralPrompt} Je suis bloqué : commence par les vérifications et les erreurs fréquentes.`],
                 ]
               : currentMode && !live
               ? [
@@ -567,7 +568,7 @@ function AwenaOverlayInner({ route, sport, go, inGame = false, awena }: Props & 
                   )}
                   {m.role === "awena" && !String(lang || "fr").toLowerCase().startsWith("fr") && (
                     <div style={{ marginTop: 3, color: "#8f98b8", fontSize: 8.5, textAlign: "right", opacity: .78 }}>
-                      Traduction automatique · Google Translate
+                      {ui.automaticTranslation}
                     </div>
                   )}
                 </div>

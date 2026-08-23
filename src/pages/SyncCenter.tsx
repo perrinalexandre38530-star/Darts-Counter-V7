@@ -1260,7 +1260,7 @@ async function handleCloudAutoTest() {
                 onClick={() => {
                   awena.setRuntime({ route: "sync_center", mode: "settings-help", phase: "menu", inGame: false, screenLabel: "Sync & Partage" });
                   awena.openPanel();
-                  void awena.ask(awenaProcedurePromptForRoute("sync_center"));
+                  void awena.ask(awenaProcedurePromptForRoute("sync_center"), { canonicalFrench: true });
                 }}
                 style={{
                   width: 38,

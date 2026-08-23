@@ -1749,7 +1749,7 @@ function StorageAwenaDot({ title, size = 36 }: { title: string; size?: number })
     if (!awena) return;
     awena.setRuntime({ route: "storage_vault", mode: "settings-help", phase: "menu", inGame: false, screenLabel: title, extra: { settingsSection: "Sauvegarde" } });
     awena.openPanel();
-    await awena.ask("Explique-moi en détail la page Sauvegarde de MULTISPORTS SCORING : Restaurer, Parties, Sauver, Expert, NAS privé, Cloud R2, sauvegarde locale, fichier/SD/cloud personnel, archives, corbeille, sécurité et précautions. Reste ensuite dans ce contexte pour répondre à mes questions.");
+    await awena.ask("Explique-moi en détail la page Sauvegarde de MULTISPORTS SCORING : Restaurer, Parties, Sauver, Expert, NAS privé, Cloud R2, sauvegarde locale, fichier/SD/cloud personnel, archives, corbeille, sécurité et précautions. Reste ensuite dans ce contexte pour répondre à mes questions.", { canonicalFrench: true });
   };
   return (
     <button type="button" onClick={() => void open()} aria-label={`Awena · ${title}`} title={`Awena · ${title}`} style={{ width: size, height: size, borderRadius: 999, border: "none", padding: 3, background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)", boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)", cursor: awena ? "pointer" : "default", opacity: awena ? 1 : .55, display: "grid", placeItems: "center" }}>

@@ -188,7 +188,7 @@ export default function CameraScoringCalibration({ go, params }: Props) {
                 screenLabel: "Calibration caméra",
               });
               awena.openPanel();
-              void awena.ask(awenaProcedurePromptForRoute("camera_scoring_calibration"));
+              void awena.ask(awenaProcedurePromptForRoute("camera_scoring_calibration"), { canonicalFrench: true });
             }}
             style={{
               width: 36,

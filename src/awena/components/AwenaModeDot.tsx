@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { useAwenaOptional } from "../AwenaProvider";
 import { findAwenaModeById } from "../AwenaKnowledge";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLang } from "../../contexts/LangContext";
+import { awenaUi } from "../AwenaLocale";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 const NEON = "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)";
@@ -16,6 +18,8 @@ type Props = {
 export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Props) {
   const awena = useAwenaOptional();
   const { theme } = useTheme() as any;
+  const { lang } = useLang();
+  const ui = awenaUi(lang);
   const mode = findAwenaModeById(modeId);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const anchorRef = React.useRef<HTMLDivElement | null>(null);
@@ -71,7 +75,7 @@ export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Pr
         : topic === "config"
           ? `Détaille uniquement la configuration de ${mode!.label} : chaque option, valeur possible, variante, format et réglage disponible.`
           : `Donne-moi les records de ${mode!.label} et les principaux classements disponibles.`;
-    await awena.ask(prompt, { modeTopic: topic });
+    await awena.ask(prompt, { modeTopic: topic, canonicalFrench: true });
   }
 
   const primary = theme?.primary || "#22e6ff";
@@ -142,14 +146,14 @@ export default function AwenaModeDot({ modeId, size = 40, disabled = false }: Pr
             <img src={AWENA_AVATAR} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `1px solid ${primary}` }} />
             <div style={{ minWidth: 0 }}>
               <div style={{ color: "#fff", fontSize: 11.5, fontWeight: 950 }}>AWENA · {mode.label}</div>
-              <div style={{ color: "#8e9abb", fontSize: 9.5 }}>Que veux-tu consulter ?</div>
+              <div style={{ color: "#8e9abb", fontSize: 9.5 }}>{ui.whatDoYouKnow}</div>
             </div>
           </div>
           <div style={{ display: "grid", gap: 6 }}>
             {[
-              ["Règles", "rules"],
-              ["Configuration", "config"],
-              ["Records", "records"],
+              [ui.rules, "rules"],
+              [ui.configuration, "config"],
+              [ui.records, "records"],
             ].map(([label, topic]) => (
               <button
                 key={topic}

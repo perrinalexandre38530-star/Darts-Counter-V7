@@ -2,6 +2,7 @@ import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGa
 import type { ActivityRecord, ActivitySensorDevice, ActivitySensorSample, ActivitySource, GeoPoint } from "./activityTypes";
 import type { RunningRouteTemplate } from "./runningRoutes";
 import { privacyTrimRoute, type RunningPrivacyPrefs } from "./runningPrivacy";
+import { parseFitImport } from "./fitInterop";
 
 export type RunningImportResult =
   | { kind: "activity"; activity: ActivityRecord; warnings: string[] }
@@ -126,11 +127,17 @@ function simplifyRoute(points: GeoPoint[], maxPoints = 420): GeoPoint[] {
 }
 
 function titleFromFile(fileName: string) {
-  return decodeXml(String(fileName || "Running import").replace(/\.(gpx|tcx)$/i, "").replace(/[_-]+/g, " ").trim()) || "Running import";
+  return decodeXml(String(fileName || "Running import").replace(/\.(gpx|tcx|fit)$/i, "").replace(/[_-]+/g, " ").trim()) || "Running import";
 }
 
 function makeId(prefix: string) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function parseRunningFile(file: File): Promise<RunningImportResult> {
+  const name = String(file?.name || "");
+  if (/\.fit$/i.test(name)) return parseFitImport(await file.arrayBuffer(), name);
+  return parseRunningImport(await file.text(), name);
 }
 
 export function parseRunningImport(text: string, fileName: string): RunningImportResult {

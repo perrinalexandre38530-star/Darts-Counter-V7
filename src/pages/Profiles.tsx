@@ -3924,6 +3924,7 @@ function ProfilesMenuView({
     disabled?: boolean;
   }> = ({ title, subtitle, onClick, badge, disabled }) => (
     <button
+      className="card dc-postapoc-menu-card"
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       style={{
@@ -3933,7 +3934,7 @@ function ProfilesMenuView({
         padding: 14,
         marginBottom: 10,
         border: `1px solid ${theme.borderSoft}`,
-        background: theme.card,
+        background: (theme as any).cardBackground || theme.card,
         boxShadow: "0 16px 32px rgba(0,0,0,.40)",
         display: "flex",
         alignItems: "center",

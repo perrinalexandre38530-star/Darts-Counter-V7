@@ -70,7 +70,7 @@ function ScreensAwenaDot({ activeTab, theme }: { activeTab: ScreenTab; theme: an
     if (!awena) return;
     awena.setRuntime({ route: "cast_host", mode: "settings-screens", phase: "menu", inGame: false, screenLabel: label, extra: { settingsSection: activeTab } });
     awena.openPanel();
-    await awena.ask(`Explique-moi en détail la page Écrans, section ${label}. Décris chaque fonction, comment l'utiliser, les prérequis, les erreurs fréquentes et les conseils pratiques. Reste disponible pour mes questions suivantes.`);
+    await awena.ask(`Explique-moi en détail la page Écrans, section ${label}. Décris chaque fonction, comment l'utiliser, les prérequis, les erreurs fréquentes et les conseils pratiques. Reste disponible pour mes questions suivantes.`, { canonicalFrench: true });
   };
   return (
     <button type="button" onClick={() => void open()} aria-label={`Awena · ${label}`} title={`Awena · ${label}`} style={{ width: 40, height: 40, borderRadius: 999, border: "none", padding: 3, background: "linear-gradient(135deg,#ffe600 0%,#27ff88 24%,#16e8ff 48%,#ff38c7 73%,#8d52ff 100%)", boxShadow: "0 0 14px rgba(22,232,255,.42),0 0 22px rgba(255,56,199,.22),0 0 0 2px rgba(0,0,0,.45)", cursor: awena ? "pointer" : "default", opacity: awena ? 1 : .5 }}><span style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", display: "block", background: "#050713" }}><img src={AWENA_AVATAR} alt="Awena" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></span></button>

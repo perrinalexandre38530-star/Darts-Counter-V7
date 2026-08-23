@@ -3,6 +3,7 @@ import { canRequestPaidAds, getVerifiedAdFreeState, loadMonetizationPrefs } from
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import * as nativeAdMob from "./nativeAdMob";
 import { purchaseNativeProduct, restoreNativePurchases } from "./nativeBilling";
+import { monetizationUiDynamic, monetizationUiText } from "../i18n/monetizationUiLiteralRegistry";
 
 export type PurchaseResult = {
   status: "purchased" | "verification_required" | "restored" | "cancelled" | "unavailable" | "error";
@@ -26,8 +27,20 @@ function nativeBridge(): NativeMonetizationBridge | null {
   return bridge && typeof bridge === "object" ? bridge : null;
 }
 
+function currentUiLang(): string {
+  if (typeof document !== "undefined" && document.documentElement.lang) return document.documentElement.lang;
+  try {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem("dc_lang_v1") : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed?.lang) return String(parsed.lang);
+  } catch {}
+  return "fr";
+}
+
 function testInterstitial(title: string): Promise<AdShowResult> {
   if (typeof document === "undefined") return Promise.resolve({ status: "unavailable", provider: "none" });
+  const lang = currentUiLang();
+  const M = (fr: string) => monetizationUiText(lang, fr);
   return new Promise((resolve) => {
     const root = document.createElement("div");
     root.setAttribute("data-dc-ad-test", "interstitial");
@@ -42,16 +55,16 @@ function testInterstitial(title: string): Promise<AdShowResult> {
       border: "1px solid rgba(255,196,60,.55)", boxShadow: "0 24px 80px rgba(0,0,0,.65)",
     });
     const label = document.createElement("div");
-    label.textContent = "PUBLICITÉ TEST";
+    label.textContent = M("PUBLICITÉ TEST");
     Object.assign(label.style, { fontSize: "11px", letterSpacing: "1.4px", opacity: ".72", marginBottom: "18px" });
     const heading = document.createElement("div");
-    heading.textContent = title;
+    heading.textContent = M(title);
     Object.assign(heading.style, { fontSize: "22px", fontWeight: "900", marginBottom: "10px" });
     const body = document.createElement("div");
-    body.textContent = "Emplacement vidéo/interstitiel prêt pour AdMob. Aucun réseau réel n'est appelé en mode test.";
+    body.textContent = M("Emplacement vidéo/interstitiel prêt pour AdMob. Aucun réseau réel n'est appelé en mode test.");
     Object.assign(body.style, { fontSize: "13px", lineHeight: "1.45", opacity: ".78", marginBottom: "20px" });
     const button = document.createElement("button");
-    button.textContent = "Fermer";
+    button.textContent = M("Fermer");
     Object.assign(button.style, {
       border: "0", borderRadius: "999px", padding: "11px 22px", fontWeight: "900", cursor: "pointer",
       background: "linear-gradient(180deg,#ffd65a,#ffb300)", color: "#211706",
@@ -167,7 +180,13 @@ export async function showRewardedAd(rewardId: string, forceTest = false): Promi
   }
   const prefs = loadMonetizationPrefs();
   if (forceTest || prefs.testMode) {
-    const shown = await testInterstitial(`Récompense TEST : ${rewardId}`);
+    const lang = currentUiLang();
+    const shown = await testInterstitial(monetizationUiDynamic(
+      lang,
+      `Récompense TEST : ${rewardId}`,
+      `TEST reward: ${rewardId}`,
+      `Recompensa TEST: ${rewardId}`,
+    ));
     return { ...shown, earned: shown.status === "shown", rewardId, rewardType: "test", rewardAmount: shown.status === "shown" ? 1 : undefined };
   }
   return { status: "unavailable", provider: "none", earned: false, rewardId };

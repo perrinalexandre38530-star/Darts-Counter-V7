@@ -682,7 +682,8 @@ html[data-dc-theme-page-scope="off"] body{
 :root[data-dc-theme^="postApoc"] .card,
 :root[data-dc-theme^="postApoc"] .badge,
 :root[data-dc-theme^="postApoc"] .item,
-:root[data-dc-theme^="postApoc"] .dc-settings-shell-card{
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card{
   position:relative;
   isolation:isolate;
   overflow:hidden;
@@ -695,21 +696,29 @@ html[data-dc-theme-page-scope="off"] body{
 :root[data-dc-theme^="postApoc"] .card::before,
 :root[data-dc-theme^="postApoc"] .badge::before,
 :root[data-dc-theme^="postApoc"] .item::before,
-:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::before{
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::before,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card::before{
   content:"";
   position:absolute;
   inset:0;
+  padding:1.25px;
+  border-radius:inherit;
   pointer-events:none;
-  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat, var(--dc-theme-texture, none);
-  opacity:.32;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.20)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.44;
   mix-blend-mode:multiply;
   z-index:0;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
 }
 
 :root[data-dc-theme^="postApoc"] .card::after,
 :root[data-dc-theme^="postApoc"] .badge::after,
 :root[data-dc-theme^="postApoc"] .item::after,
-:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::after{
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::after,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card::after{
   content:"";
   position:absolute;
   inset:0;
@@ -724,7 +733,8 @@ html[data-dc-theme-page-scope="off"] body{
 :root[data-dc-theme^="postApoc"] .card > *,
 :root[data-dc-theme^="postApoc"] .badge > *,
 :root[data-dc-theme^="postApoc"] .item > *,
-:root[data-dc-theme^="postApoc"] .dc-settings-shell-card > *{
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card > *,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card > *{
   position:relative;
   z-index:2;
 }
@@ -763,6 +773,13 @@ html[data-dc-theme-page-scope="off"] body{
 }
 
 
+:root[data-dc-theme^="postApoc"] .bottom-nav .dc-postapoc-menu-card::before,
+:root[data-dc-theme^="postApoc"] .bottom-nav .dc-postapoc-menu-card::after,
+:root[data-dc-theme^="postApoc"] .bottom-nav .card::before,
+:root[data-dc-theme^="postApoc"] .bottom-nav .card::after{
+  display:none !important;
+}
+
 /* === POST-APOCALYPSE V2 — rendu premium proche du concept validé === */
 :root[data-dc-theme^="postApoc"] body{
   font-family:"Arial Narrow","Roboto Condensed",Inter,system-ui,Segoe UI,Arial,sans-serif;
@@ -789,12 +806,17 @@ html[data-dc-theme-page-scope="off"] body{
   content:"";
   position:absolute;
   inset:0;
+  padding:1.25px;
   pointer-events:none;
   border-radius:inherit;
-  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
-  opacity:.36;
+  background:linear-gradient(180deg, rgba(255,255,255,.09), rgba(0,0,0,.22)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.42;
   mix-blend-mode:multiply;
   z-index:4;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
 }
 
 .dc-postapoc-scene{
@@ -803,10 +825,28 @@ html[data-dc-theme-page-scope="off"] body{
 }
 
 .dc-postapoc-kpi{
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
   border-radius:7px !important;
-  background:linear-gradient(145deg,rgba(47,46,43,.83),rgba(12,13,13,.97)),url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
+  background:linear-gradient(145deg,rgba(47,46,43,.83),rgba(12,13,13,.97)),url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
   border-color:rgba(174,170,160,.28) !important;
   box-shadow:0 7px 15px rgba(0,0,0,.43), inset 0 1px 0 rgba(255,255,255,.055), inset 0 -1px 0 rgba(0,0,0,.5) !important;
+}
+.dc-postapoc-kpi::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  padding:1.05px;
+  border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.20)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.38;
+  mix-blend-mode:multiply;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
 }
 
 .dc-postapoc-action{
@@ -822,17 +862,23 @@ html[data-dc-theme-page-scope="off"] body{
   content:"";
   position:absolute;
   inset:0;
+  padding:1.1px;
   pointer-events:none;
-  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
-  opacity:.42;
+  border-radius:inherit;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.20)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.44;
   mix-blend-mode:multiply;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
 }
 .dc-postapoc-action-primary{
   filter:saturate(.72) brightness(.92);
 }
 .dc-postapoc-action-secondary,
 .dc-postapoc-apply-button{
-  background:linear-gradient(145deg,rgba(45,44,41,.90),rgba(10,11,11,.985)),url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
+  background:linear-gradient(145deg,rgba(45,44,41,.90),rgba(10,11,11,.985)),url(/theme-textures/postapoc-panel-concrete.svg) center/cover no-repeat !important;
   border-color:rgba(177,174,164,.30) !important;
   color:#e7e2d8 !important;
 }
@@ -854,9 +900,14 @@ html[data-dc-theme-page-scope="off"] body{
   content:"";
   position:absolute;
   inset:0;
+  padding:1.05px;
   border-radius:inherit;
   pointer-events:none;
-  background:url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
-  opacity:.34;
+  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.20)), url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat;
+  opacity:.38;
   mix-blend-mode:multiply;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
 }

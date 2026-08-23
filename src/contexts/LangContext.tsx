@@ -15,6 +15,7 @@ import {
 } from "../i18n/uiLiteralSafety";
 import { awenaTranslation } from "../awena/AwenaTranslation";
 import { registerConfigUiLiteralSources } from "../i18n/configUiLiteralRegistry";
+import { registerMonetizationUiLiteralSources } from "../i18n/monetizationUiLiteralRegistry";
 
 // -----------------------------
 // Types publics
@@ -86,8 +87,9 @@ const ALL_LANGS: Lang[] = [
 // Force type dynamique
 const DICT_ANY = DICT as any;
 
-// Register every historical Config/Setup literal before the first DOM scan.
+// Register every historical Config/Setup and monetization literal before the first DOM scan.
 registerConfigUiLiteralSources();
+registerMonetizationUiLiteralSources();
 
 // -----------------------------
 // Helpers

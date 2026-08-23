@@ -14,6 +14,13 @@ type UiStrings = {
   ready: string;
   stopVoice: string;
   listen: string;
+  intro: string;
+  assistantDescriptor: string;
+  automaticTranslation: string;
+  openAwena: string;
+  tutorial: string;
+  prerequisites: string;
+  troubleshoot: string;
 };
 
 const FR: UiStrings = {
@@ -30,6 +37,13 @@ const FR: UiStrings = {
   ready: "Je suis prête.",
   stopVoice: "Arrêter Awena et afficher toute la réponse",
   listen: "Écouter Awena",
+  intro: "Bonjour, moi c'est Awena. Je peux t'expliquer les modes de jeu, te guider dans l'application et t'aider pendant tes parties.",
+  assistantDescriptor: "ASSISTANTE MULTISPORTS SCORING · LOCAL V9.3.1 · MODE MULTILINGUE",
+  automaticTranslation: "Traduction automatique · sur appareil",
+  openAwena: "Ouvrir Awena",
+  tutorial: "Tutoriel pas à pas",
+  prerequisites: "Prérequis",
+  troubleshoot: "Diagnostic",
 };
 
 const UI: Partial<Record<Lang, Partial<UiStrings>>> = {
@@ -56,7 +70,120 @@ const UI: Partial<Record<Lang, Partial<UiStrings>>> = {
   cs: { rules: "Pravidla", configuration: "Konfigurace", records: "Rekordy", thisScreen: "Tato obrazovka", navigation: "Navigace", whatDoYouKnow: "Co víš?", advice: "Rada", whatToAim: "Kam mířit?", placeholder: "Zeptej se Awena…", voicePreparing: "Připravuji hlas…", ready: "Jsem připravená.", stopVoice: "Zastavit Awena a zobrazit celou odpověď", listen: "Poslechnout Awena" },
 };
 
+
+type AwenaExtraUi = Pick<UiStrings,
+  "intro" | "assistantDescriptor" | "automaticTranslation" | "openAwena" | "tutorial" | "prerequisites" | "troubleshoot"
+>;
+
+const EXTRA_UI: Partial<Record<Lang, AwenaExtraUi>> = {
+  en: {
+    intro: "Hi, I'm Awena. I can explain the game modes, guide you through the app and help you during matches.",
+    assistantDescriptor: "MULTISPORTS SCORING ASSISTANT · LOCAL V9.3.1 · MULTILINGUAL MODE",
+    automaticTranslation: "Automatic translation · on device", openAwena: "Open Awena", tutorial: "Step-by-step", prerequisites: "Prerequisites", troubleshoot: "Troubleshoot",
+  },
+  es: {
+    intro: "Hola, soy Awena. Puedo explicarte los modos de juego, guiarte por la aplicación y ayudarte durante tus partidas.",
+    assistantDescriptor: "ASISTENTE MULTISPORTS SCORING · LOCAL V9.3.1 · MODO MULTILINGÜE",
+    automaticTranslation: "Traducción automática · en el dispositivo", openAwena: "Abrir Awena", tutorial: "Tutorial paso a paso", prerequisites: "Requisitos previos", troubleshoot: "Diagnóstico",
+  },
+  de: {
+    intro: "Hallo, ich bin Awena. Ich kann dir die Spielmodi erklären, dich durch die App führen und dir während deiner Partien helfen.",
+    assistantDescriptor: "MULTISPORTS-SCORING-ASSISTENTIN · LOCAL V9.3.1 · MEHRSPRACHIGER MODUS",
+    automaticTranslation: "Automatische Übersetzung · auf dem Gerät", openAwena: "Awena öffnen", tutorial: "Schritt für Schritt", prerequisites: "Voraussetzungen", troubleshoot: "Fehlersuche",
+  },
+  it: {
+    intro: "Ciao, sono Awena. Posso spiegarti le modalità di gioco, guidarti nell'app e aiutarti durante le partite.",
+    assistantDescriptor: "ASSISTENTE MULTISPORTS SCORING · LOCAL V9.3.1 · MODALITÀ MULTILINGUE",
+    automaticTranslation: "Traduzione automatica · sul dispositivo", openAwena: "Apri Awena", tutorial: "Passo dopo passo", prerequisites: "Prerequisiti", troubleshoot: "Diagnostica",
+  },
+  pt: {
+    intro: "Olá, sou a Awena. Posso explicar os modos de jogo, orientar-te na aplicação e ajudar-te durante as partidas.",
+    assistantDescriptor: "ASSISTENTE MULTISPORTS SCORING · LOCAL V9.3.1 · MODO MULTILINGUE",
+    automaticTranslation: "Tradução automática · no dispositivo", openAwena: "Abrir Awena", tutorial: "Passo a passo", prerequisites: "Pré-requisitos", troubleshoot: "Diagnóstico",
+  },
+  nl: {
+    intro: "Hallo, ik ben Awena. Ik kan de spelmodi uitleggen, je door de app begeleiden en je tijdens wedstrijden helpen.",
+    assistantDescriptor: "MULTISPORTS SCORING-ASSISTENT · LOCAL V9.3.1 · MEERTALIGE MODUS",
+    automaticTranslation: "Automatische vertaling · op het apparaat", openAwena: "Awena openen", tutorial: "Stap voor stap", prerequisites: "Vereisten", troubleshoot: "Probleemoplossing",
+  },
+  ru: {
+    intro: "Привет, я Awena. Я могу объяснить игровые режимы, помочь ориентироваться в приложении и сопровождать тебя во время матчей.",
+    assistantDescriptor: "АССИСТЕНТ MULTISPORTS SCORING · LOCAL V9.3.1 · МНОГОЯЗЫЧНЫЙ РЕЖИМ",
+    automaticTranslation: "Автоматический перевод · на устройстве", openAwena: "Открыть Awena", tutorial: "Пошагово", prerequisites: "Требования", troubleshoot: "Диагностика",
+  },
+  zh: {
+    intro: "你好，我是 Awena。我可以讲解游戏模式、引导你使用应用，并在比赛过程中帮助你。",
+    assistantDescriptor: "MULTISPORTS SCORING 助手 · LOCAL V9.3.1 · 多语言模式",
+    automaticTranslation: "自动翻译 · 设备端", openAwena: "打开 Awena", tutorial: "分步教程", prerequisites: "准备事项", troubleshoot: "故障排查",
+  },
+  ja: {
+    intro: "こんにちは、Awenaです。ゲームモードの説明、アプリ内の案内、試合中のサポートができます。",
+    assistantDescriptor: "MULTISPORTS SCORING アシスタント · LOCAL V9.3.1 · 多言語モード",
+    automaticTranslation: "自動翻訳 · 端末上", openAwena: "Awenaを開く", tutorial: "ステップごと", prerequisites: "事前準備", troubleshoot: "トラブル診断",
+  },
+  ar: {
+    intro: "مرحبًا، أنا Awena. يمكنني شرح أوضاع اللعب وإرشادك داخل التطبيق ومساعدتك أثناء المباريات.",
+    assistantDescriptor: "مساعدة MULTISPORTS SCORING · LOCAL V9.3.1 · وضع متعدد اللغات",
+    automaticTranslation: "ترجمة تلقائية · على الجهاز", openAwena: "فتح Awena", tutorial: "خطوة بخطوة", prerequisites: "المتطلبات", troubleshoot: "التشخيص",
+  },
+  hi: {
+    intro: "नमस्ते, मैं Awena हूँ। मैं गेम मोड समझा सकती हूँ, ऐप में आपका मार्गदर्शन कर सकती हूँ और मैच के दौरान आपकी मदद कर सकती हूँ।",
+    assistantDescriptor: "MULTISPORTS SCORING सहायक · LOCAL V9.3.1 · बहुभाषी मोड",
+    automaticTranslation: "स्वचालित अनुवाद · डिवाइस पर", openAwena: "Awena खोलें", tutorial: "चरण-दर-चरण", prerequisites: "पूर्व आवश्यकताएँ", troubleshoot: "समस्या निदान",
+  },
+  tr: {
+    intro: "Merhaba, ben Awena. Oyun modlarını açıklayabilir, uygulamada sana rehberlik edebilir ve maçlar sırasında yardımcı olabilirim.",
+    assistantDescriptor: "MULTISPORTS SCORING ASİSTANI · LOCAL V9.3.1 · ÇOK DİLLİ MOD",
+    automaticTranslation: "Otomatik çeviri · cihazda", openAwena: "Awena'yı aç", tutorial: "Adım adım", prerequisites: "Ön koşullar", troubleshoot: "Sorun giderme",
+  },
+  da: {
+    intro: "Hej, jeg er Awena. Jeg kan forklare spiltilstandene, guide dig gennem appen og hjælpe dig under kampene.",
+    assistantDescriptor: "MULTISPORTS SCORING-ASSISTENT · LOCAL V9.3.1 · FLERSPROGET TILSTAND",
+    automaticTranslation: "Automatisk oversættelse · på enheden", openAwena: "Åbn Awena", tutorial: "Trin for trin", prerequisites: "Forudsætninger", troubleshoot: "Fejlfinding",
+  },
+  no: {
+    intro: "Hei, jeg er Awena. Jeg kan forklare spillmodusene, veilede deg i appen og hjelpe deg under kampene.",
+    assistantDescriptor: "MULTISPORTS SCORING-ASSISTENT · LOCAL V9.3.1 · FLERSPRÅKLIG MODUS",
+    automaticTranslation: "Automatisk oversettelse · på enheten", openAwena: "Åpne Awena", tutorial: "Trinn for trinn", prerequisites: "Forutsetninger", troubleshoot: "Feilsøking",
+  },
+  sv: {
+    intro: "Hej, jag är Awena. Jag kan förklara spellägena, guida dig i appen och hjälpa dig under matcherna.",
+    assistantDescriptor: "MULTISPORTS SCORING-ASSISTENT · LOCAL V9.3.1 · FLERSPRÅKIGT LÄGE",
+    automaticTranslation: "Automatisk översättning · på enheten", openAwena: "Öppna Awena", tutorial: "Steg för steg", prerequisites: "Förutsättningar", troubleshoot: "Felsökning",
+  },
+  is: {
+    intro: "Halló, ég er Awena. Ég get útskýrt leikjahamina, leiðbeint þér í appinu og hjálpað þér meðan á leikjum stendur.",
+    assistantDescriptor: "MULTISPORTS SCORING-AÐSTOÐ · LOCAL V9.3.1 · FJÖLTUNGUMÁLASTILLING",
+    automaticTranslation: "Sjálfvirk þýðing · í tækinu", openAwena: "Opna Awena", tutorial: "Skref fyrir skref", prerequisites: "Forsendur", troubleshoot: "Bilanagreining",
+  },
+  pl: {
+    intro: "Cześć, jestem Awena. Mogę wyjaśnić tryby gry, poprowadzić cię po aplikacji i pomagać podczas meczów.",
+    assistantDescriptor: "ASYSTENTKA MULTISPORTS SCORING · LOCAL V9.3.1 · TRYB WIELOJĘZYCZNY",
+    automaticTranslation: "Automatyczne tłumaczenie · na urządzeniu", openAwena: "Otwórz Awena", tutorial: "Krok po kroku", prerequisites: "Wymagania", troubleshoot: "Diagnostyka",
+  },
+  ro: {
+    intro: "Salut, sunt Awena. Pot explica modurile de joc, te pot ghida prin aplicație și te pot ajuta în timpul meciurilor.",
+    assistantDescriptor: "ASISTENT MULTISPORTS SCORING · LOCAL V9.3.1 · MOD MULTILINGV",
+    automaticTranslation: "Traducere automată · pe dispozitiv", openAwena: "Deschide Awena", tutorial: "Pas cu pas", prerequisites: "Cerințe", troubleshoot: "Diagnostic",
+  },
+  sr: {
+    intro: "Здраво, ја сам Awena. Могу да објасним режиме игре, водим те кроз апликацију и помажем током мечева.",
+    assistantDescriptor: "MULTISPORTS SCORING АСИСТЕНТ · LOCAL V9.3.1 · ВИШЕЈЕЗИЧНИ РЕЖИМ",
+    automaticTranslation: "Аутоматски превод · на уређају", openAwena: "Отвори Awena", tutorial: "Корак по корак", prerequisites: "Предуслови", troubleshoot: "Дијагностика",
+  },
+  hr: {
+    intro: "Bok, ja sam Awena. Mogu objasniti načine igre, voditi te kroz aplikaciju i pomagati tijekom mečeva.",
+    assistantDescriptor: "MULTISPORTS SCORING ASISTENT · LOCAL V9.3.1 · VIŠEJEZIČNI NAČIN",
+    automaticTranslation: "Automatski prijevod · na uređaju", openAwena: "Otvori Awena", tutorial: "Korak po korak", prerequisites: "Preduvjeti", troubleshoot: "Dijagnostika",
+  },
+  cs: {
+    intro: "Ahoj, jsem Awena. Mohu vysvětlit herní režimy, provést tě aplikací a pomáhat ti během zápasů.",
+    assistantDescriptor: "ASISTENTKA MULTISPORTS SCORING · LOCAL V9.3.1 · VÍCEJAZYČNÝ REŽIM",
+    automaticTranslation: "Automatický překlad · v zařízení", openAwena: "Otevřít Awena", tutorial: "Krok za krokem", prerequisites: "Předpoklady", troubleshoot: "Diagnostika",
+  },
+};
+
 export function awenaUi(lang: Lang | string | undefined): UiStrings {
   const code = String(lang || "fr").toLowerCase().split("-")[0] as Lang;
-  return { ...FR, ...(UI[code] || {}) };
+  return { ...FR, ...(UI[code] || {}), ...(EXTRA_UI[code] || {}) };
 }

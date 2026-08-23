@@ -2,7 +2,7 @@ import React from "react";
 import Section from "../../components/Section";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
 import { saveActivity } from "../../activity/activityStore";
-import { downloadGpx, parseRunningImport } from "../../activity/runningInterop";
+import { downloadGpx, parseRunningFile } from "../../activity/runningInterop";
 import { loadRunningPrivacyPrefs, saveRunningPrivacyPrefs, type RunningPrivacyPrefs, type RunningPrivacyRadiusM } from "../../activity/runningPrivacy";
 import { upsertRunningRoute } from "../../activity/runningRoutes";
 import type { ActivityRecord } from "../../activity/activityTypes";
@@ -25,8 +25,8 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
 
   const copy = lang === "fr" ? {
     title: "DONNÉES & CONFIDENTIALITÉ",
-    import: "IMPORTER GPX / TCX",
-    importSub: "Importe une ancienne activité ou un parcours provenant d'une autre application ou montre.",
+    import: "IMPORTER FIT / GPX / TCX",
+    importSub: "Importe une activité ou un parcours FIT, GPX ou TCX provenant d’une montre ou d’une autre application.",
     privacy: "ZONE PRIVÉE EXPORT",
     privacySub: "Le fichier local complet reste intact. Seuls les fichiers exportés masquent le départ et l'arrivée.",
     timestamps: "Horodatage GPX",
@@ -37,11 +37,11 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Activité importée",
     importedRoute: "Parcours importé",
     failed: "Import impossible",
-    indoorImport: "Le tapis roulant est une activité indoor sans tracé GPS. Sélectionne Running, Trail, Randonnée ou Marche pour importer un GPX/TCX.",
+    indoorImport: "Le tapis roulant accepte désormais les activités FIT indoor. Pour GPX/TCX avec tracé, sélectionne Running, Trail, Randonnée ou Marche.",
   } : lang === "es" ? {
     title: "DATOS Y PRIVACIDAD",
-    import: "IMPORTAR GPX / TCX",
-    importSub: "Importa una actividad anterior o una ruta de otra aplicación o reloj.",
+    import: "IMPORTAR FIT / GPX / TCX",
+    importSub: "Importa una actividad o ruta FIT, GPX o TCX desde un reloj u otra aplicación.",
     privacy: "ZONA PRIVADA DE EXPORTACIÓN",
     privacySub: "La actividad local completa permanece intacta. Solo los archivos exportados ocultan salida y llegada.",
     timestamps: "Marcas de tiempo GPX",
@@ -52,11 +52,11 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Actividad importada",
     importedRoute: "Ruta importada",
     failed: "Importación imposible",
-    indoorImport: "La cinta es una actividad indoor sin ruta GPS. Selecciona Running, Trail, Senderismo o Caminata para importar GPX/TCX.",
+    indoorImport: "La cinta acepta ahora actividades FIT indoor. Para GPX/TCX con ruta, selecciona Running, Trail, Senderismo o Caminata.",
   } : {
     title: "DATA & PRIVACY",
-    import: "IMPORT GPX / TCX",
-    importSub: "Import a previous activity or route from another app or watch.",
+    import: "IMPORT FIT / GPX / TCX",
+    importSub: "Import a FIT, GPX or TCX activity or route from a watch or another app.",
     privacy: "EXPORT PRIVACY ZONE",
     privacySub: "Your full local activity stays untouched. Only exported files hide the start and finish.",
     timestamps: "GPX timestamps",
@@ -67,7 +67,7 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
     importedActivity: "Activity imported",
     importedRoute: "Route imported",
     failed: "Import failed",
-    indoorImport: "Treadmill is an indoor activity without a GPS route. Select Running, Trail, Hiking or Walking to import GPX/TCX.",
+    indoorImport: "Treadmill now accepts indoor FIT activities. For GPX/TCX routes, select Running, Trail, Hiking or Walking.",
   };
 
   const updatePrefs = (next: RunningPrivacyPrefs) => {
@@ -77,18 +77,20 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
 
   const onImport = async (file: File | null) => {
     if (!file) return;
-    if (selectedSport === "treadmill") { setStatus(copy.indoorImport); if (inputRef.current) inputRef.current.value = ""; return; }
+    if (selectedSport === "treadmill" && !/\.fit$/i.test(file.name)) { setStatus(copy.indoorImport); if (inputRef.current) inputRef.current.value = ""; return; }
     setBusy(true);
     setStatus("");
     try {
-      if (file.size > 12_000_000) throw new Error("12 Mo max");
-      const result = parseRunningImport(await file.text(), file.name);
+      const maxBytes = /\.fit$/i.test(file.name) ? 24_000_000 : 12_000_000;
+      if (file.size > maxBytes) throw new Error(`${Math.round(maxBytes / 1_000_000)} Mo max`);
+      const result = await parseRunningFile(file);
       if (result.kind === "activity") {
-        result.activity.sport = selectedSport;
+        if (selectedSport !== "running" || result.activity.sport === "running") result.activity.sport = selectedSport;
         await saveActivity(result.activity);
         await onActivitiesChanged();
         setStatus(`${copy.importedActivity} · ${formatDistance(result.activity.distanceM)} · ${formatDuration(result.activity.elapsedMs)}${result.warnings.length ? ` · ${result.warnings.join(" ")}` : ""}`);
       } else {
+        if (selectedSport === "treadmill") throw new Error(copy.indoorImport);
         result.route.sport = selectedSport;
         upsertRunningRoute(result.route);
         setStatus(`${copy.importedRoute} · ${formatDistance(result.route.distanceM)}${result.warnings.length ? ` · ${result.warnings.join(" ")}` : ""}`);
@@ -104,12 +106,12 @@ export default function RunningDataToolsPanel({ activities, lang, accent, textSo
   const exportable = activities.filter((activity) => Array.isArray(activity.route) && activity.route.length >= 2).slice(0, 6);
 
   return <div style={{ marginTop: 12 }}><Section title={copy.title}>
-    <input ref={inputRef} type="file" accept=".gpx,.tcx,application/gpx+xml,application/xml,text/xml" style={{ display: "none" }} onChange={(event) => void onImport(event.target.files?.[0] || null)} />
+    <input ref={inputRef} type="file" accept=".fit,.gpx,.tcx,application/octet-stream,application/gpx+xml,application/xml,text/xml" style={{ display: "none" }} onChange={(event) => void onImport(event.target.files?.[0] || null)} />
 
     <div className="card" style={{ padding: 11, display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 9, alignItems: "center" }}>
       <div style={{ width: 44, height: 44, borderRadius: 13, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}30`, fontSize: 21 }}>⇪</div>
       <div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.import}</div><div style={{ marginTop: 3, fontSize: 8.6, lineHeight: 1.35, color: textSoft }}>{copy.importSub}</div></div>
-      <button className="btn" disabled={busy || selectedSport === "treadmill"} onClick={() => inputRef.current?.click()} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{busy ? "…" : copy.import}</button>
+      <button className="btn" disabled={busy} onClick={() => inputRef.current?.click()} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{busy ? "…" : copy.import}</button>
     </div>
 
     {selectedSport === "treadmill" ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 11, border: `1px solid ${accent}28`, background: `${accent}0b`, color: textSoft, fontSize: 8.8, lineHeight: 1.4 }}>🏃‍♂️ {copy.indoorImport}</div> : null}{status ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 11, border: `1px solid ${accent}28`, background: `${accent}0b`, color: textSoft, fontSize: 8.8, lineHeight: 1.4 }}>{status}</div> : null}

@@ -119,7 +119,12 @@ export const awenaTranslation = {
 
   async prepare(targetLanguage: string) {
     const target = baseLang(targetLanguage);
-    return target === "fr" ? true : preparePair("fr", target);
+    if (target === "fr") return true;
+    const [outbound, inbound] = await Promise.all([
+      preparePair("fr", target),
+      preparePair(target, "fr"),
+    ]);
+    return outbound && inbound;
   },
 
   async questionToFrench(question: string, sourceLanguage: string) {

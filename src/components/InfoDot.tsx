@@ -135,7 +135,7 @@ export default function InfoDot({
     const openProcedure = async (e: any) => {
       try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch {}
       awena.openPanel();
-      await awena.ask(awenaProcedurePromptForRoute(awena.runtime.route));
+      await awena.ask(awenaProcedurePromptForRoute(awena.runtime.route), { canonicalFrench: true });
     };
     return (
       <div

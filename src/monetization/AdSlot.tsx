@@ -10,6 +10,8 @@ import { STORE_PACKS } from "./catalog";
 import type { AdPlacement, MonetizationPrefs } from "./types";
 import { removeNativeBanner } from "./nativeAdMob";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
+import { useLang } from "../contexts/LangContext";
+import { monetizationUiText } from "../i18n/monetizationUiLiteralRegistry";
 import {
   hideInlineGoogleAd,
   showInlineGoogleAd,
@@ -43,15 +45,34 @@ type InlineCardProps = {
   compact?: boolean;
 };
 
+const PLACEMENT_FR: Record<AdPlacement, string> = {
+  home: "Accueil",
+  home_secondary: "Accueil",
+  messages: "Messages",
+  profiles: "Profils",
+  games: "Jeux",
+  competitions: "Compétitions",
+  online: "Online",
+  stats: "Stats",
+  settings: "Réglages",
+  screens: "Écrans",
+  history: "Historique",
+};
+
 function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCardProps) {
+  const { lang } = useLang();
   const pack = STORE_PACKS[packIndex % Math.max(1, STORE_PACKS.length)];
   const isPreview = prefs.testMode;
+  const M = React.useCallback((fr: string) => monetizationUiText(lang, fr), [lang]);
+  const placementLabel = M(PLACEMENT_FR[placement] || placement);
+  const packTitle = pack?.title ? M(pack.title) : "MULTISPORTS SCORING";
+  const packSubtitle = pack?.subtitle ? M(pack.subtitle) : M("Nouveautés, contenus et partenaires.");
 
   if (!prefs.houseAdsEnabled && !isPreview) return null;
 
   return (
     <aside
-      aria-label="Espace promotionnel intégré"
+      aria-label={M("Espace promotionnel intégré")}
       data-dc-ad-placement={placement}
       style={{
         width: "100%",
@@ -76,7 +97,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 9, opacity: 0.62, letterSpacing: 1.05, fontWeight: 900 }}>
-            {isPreview ? "PUBLICITÉ · APERÇU INTÉGRÉ" : "MULTISPORTS SCORING"} · {placement.toUpperCase()}
+            {isPreview ? M("PUBLICITÉ · APERÇU INTÉGRÉ") : "MULTISPORTS SCORING"} · {placementLabel.toUpperCase()}
           </div>
           <div
             style={{
@@ -88,7 +109,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
               textOverflow: "ellipsis",
             }}
           >
-            {pack?.title || "MULTISPORTS SCORING"}
+            {packTitle}
           </div>
           <div
             style={{
@@ -100,7 +121,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
               textOverflow: "ellipsis",
             }}
           >
-            {pack?.subtitle || "Nouveautés, contenus et partenaires."}
+            {packSubtitle}
           </div>
         </div>
         <div
@@ -114,7 +135,7 @@ function InlineCard({ placement, prefs, packIndex, compact = false }: InlineCard
             color: "#ffd15a",
           }}
         >
-          {isPreview ? "TEST" : "BIENTÔT"}
+          {isPreview ? "TEST" : M("BIENTÔT")}
         </div>
       </div>
     </aside>
