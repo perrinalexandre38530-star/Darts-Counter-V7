@@ -83,13 +83,13 @@ export const GRAFFITI_THEME_IDS = [
 export const POSTAPOC_THEME_IDS = [
   "postApocAubeRuines",
   "postApocBetonGris",
+  "postApocPluieNeon",
   "postApocCrepusculeCorbeau",
   "postApocHorizonCendre",
   "postApocTourBrisee",
   "postApocEdenPerdu",
   "postApocChuteFinale",
   "postApocAvenueSilence",
-  "postApocPluieNeon",
 ] as const satisfies readonly ThemeId[];
 
 export const ARCADE_THEME_IDS = [
