@@ -7,6 +7,7 @@
 // - Keypad natif Darts Counter
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -200,13 +201,13 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
   const animationMs = `${SCORE_REVEAL_MS}ms`;
   const scoreLabel = String(result?.label || score || 0);
   const aura = isMiss ? "#ff718a" : (outOfRange ? "#ff5a72" : (alreadyValidated ? GOLD : material.aura));
-  const alreadyValidatedText = lang === "fr" ? "NUMÉRO DÉJÀ VALIDÉ" : lang === "es" ? "NÚMERO YA VALIDADO" : "NUMBER ALREADY VALIDATED";
-  const outLabel = lang === "fr" ? "HORS LOT" : lang === "es" ? "FUERA DEL SORTEO" : "OUT OF DRAW";
-  const outScoreLabel = lang === "fr" ? "SCORE HORS LOT" : lang === "es" ? "PUNTUACIÓN FUERA DEL SORTEO" : "OUT OF DRAW SCORE";
-  const notOwnedLabel = lang === "fr" ? "NON POSSÉDÉ" : lang === "es" ? "NO POSEÍDO" : "NOT OWNED";
-  const missedLabel = lang === "fr" ? "RATÉ" : lang === "es" ? "FALLADO" : "MISSED";
-  const revealedLabel = lang === "fr" ? "DÉVOILÉ" : lang === "es" ? "REVELADO" : "REVEALED";
-  const turnEndedMiss = lang === "fr" ? "MISS · TOUR TERMINÉ" : lang === "es" ? "MISS · TURNO TERMINADO" : "MISS · TURN ENDED";
+  const alreadyValidatedText = pickLegacyLocalizedText(lang, "NUMÉRO DÉJÀ VALIDÉ", "NUMBER ALREADY VALIDATED", "NÚMERO YA VALIDADO");
+  const outLabel = pickLegacyLocalizedText(lang, "HORS LOT", "OUT OF DRAW", "FUERA DEL SORTEO");
+  const outScoreLabel = pickLegacyLocalizedText(lang, "SCORE HORS LOT", "OUT OF DRAW SCORE", "PUNTUACIÓN FUERA DEL SORTEO");
+  const notOwnedLabel = pickLegacyLocalizedText(lang, "NON POSSÉDÉ", "NOT OWNED", "NO POSEÍDO");
+  const missedLabel = pickLegacyLocalizedText(lang, "RATÉ", "MISSED", "FALLADO");
+  const revealedLabel = pickLegacyLocalizedText(lang, "DÉVOILÉ", "REVEALED", "REVELADO");
+  const turnEndedMiss = pickLegacyLocalizedText(lang, "MISS · TOUR TERMINÉ", "MISS · TURN ENDED", "MISS · TURNO TERMINADO");
   return (
     <div
       aria-live="assertive"
@@ -227,7 +228,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
           <div aria-hidden style={{ position: "absolute", inset: "8% 6%", borderRadius: "42%", background: aura, opacity: .58, filter: "blur(36px)", transform: "scale(1.08)", animation: "lotMaterialAura 1.1s ease-in-out infinite alternate" }} />
           {src ? (
             <>
-              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (lang === "fr" ? "Carte HORS LOT" : lang === "es" ? "Carta FUERA DEL SORTEO" : "Card OUT OF DRAW") : (lang === "fr" ? `Résultat ${scoreLabel}` : lang === "es" ? `Resultado ${scoreLabel}` : `Result ${scoreLabel}`))} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good || alreadyValidated ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
+              <img src={src} alt={isMiss ? "Carte MISS" : (outOfRange ? (pickLegacyLocalizedText(lang, "Carte HORS LOT", "Card OUT OF DRAW", "Carta FUERA DEL SORTEO")) : (pickLegacyLocalizedText(lang, `Résultat ${scoreLabel}`, `Result ${scoreLabel}`, `Resultado ${scoreLabel}`)))} style={{ position: "relative", zIndex: 2, display: "block", maxWidth: "100%", maxHeight: "64dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: 18, filter: `${good || alreadyValidated ? "" : "saturate(.78) brightness(.92) contrast(1.04) "}drop-shadow(0 0 14px ${aura}) drop-shadow(0 0 30px ${aura}) drop-shadow(0 0 12px ${status})`, boxShadow: `0 0 0 2px ${status}88, 0 0 22px ${status}33, 0 18px 42px rgba(0,0,0,.54)` }} />
               {!good ? (
                 <>
                   <div aria-hidden style={{ position: "absolute", inset: "1.6% 1.8%", zIndex: 3, borderRadius: 18, background: alreadyValidated ? "linear-gradient(180deg, rgba(246,194,86,.22), rgba(91,64,12,.16))" : "linear-gradient(180deg, rgba(255,72,108,.24), rgba(92,6,22,.18))", boxShadow: alreadyValidated ? `inset 0 0 0 2px ${GOLD}b8, inset 0 0 34px rgba(246,194,86,.24), 0 0 26px rgba(246,194,86,.16)` : `inset 0 0 0 2px ${BAD}b8, inset 0 0 34px rgba(255,49,91,.34), 0 0 26px rgba(255,49,91,.16)` }} />
@@ -263,7 +264,7 @@ function ScoreResultOverlay({ result, lang = "fr" }: any) {
         </div>
         <div style={{ minWidth: "min(270px,78vw)", padding: "10px 12px 11px", borderRadius: 15, border: `1px solid ${status}88`, background: "rgba(6,8,12,.92)", boxShadow: `0 0 20px ${status}33, 0 10px 28px rgba(0,0,0,.4)`, textAlign: "center" }}>
           <div style={{ color: status, fontSize: 16, lineHeight: 1, fontWeight: 1000, letterSpacing: .8 }}>{good ? revealedLabel : alreadyValidated ? alreadyValidatedText : isMiss ? "MISS" : (outOfRange ? outLabel : missedLabel)}</div>
-          <div style={{ marginTop: 6, color: good ? SOFT : alreadyValidated ? GOLD : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? (lang === "fr" ? `Résultat ${scoreLabel} découvert` : lang === "es" ? `Resultado ${scoreLabel} revelado` : `Result ${scoreLabel} revealed`) : alreadyValidated ? (lang === "fr" ? `Le numéro ${scoreLabel} était déjà validé` : lang === "es" ? `El número ${scoreLabel} ya estaba validado` : `Number ${scoreLabel} was already validated`) : isMiss ? (result?.endedByMiss ? (lang === "fr" ? "MISS · tour terminé" : lang === "es" ? "MISS · turno terminado" : "MISS · turn ended") : "MISS") : (outOfRange ? (lang === "fr" ? `Résultat ${scoreLabel} hors lot` : lang === "es" ? `Resultado ${scoreLabel} fuera del sorteo` : `Result ${scoreLabel} out of draw`) : (lang === "fr" ? `Résultat ${scoreLabel} non possédé` : lang === "es" ? `Resultado ${scoreLabel} no poseído` : `Result ${scoreLabel} not owned`))}</div>
+          <div style={{ marginTop: 6, color: good ? SOFT : alreadyValidated ? GOLD : BAD, fontSize: 11.2, fontWeight: 900 }}>{good ? (pickLegacyLocalizedText(lang, `Résultat ${scoreLabel} découvert`, `Result ${scoreLabel} revealed`, `Resultado ${scoreLabel} revelado`)) : alreadyValidated ? (pickLegacyLocalizedText(lang, `Le numéro ${scoreLabel} était déjà validé`, `Number ${scoreLabel} was already validated`, `El número ${scoreLabel} ya estaba validado`)) : isMiss ? (result?.endedByMiss ? (pickLegacyLocalizedText(lang, "MISS · tour terminé", "MISS · turn ended", "MISS · turno terminado")) : "MISS") : (outOfRange ? (pickLegacyLocalizedText(lang, `Résultat ${scoreLabel} hors lot`, `Result ${scoreLabel} out of draw`, `Resultado ${scoreLabel} fuera del sorteo`)) : (pickLegacyLocalizedText(lang, `Résultat ${scoreLabel} non possédé`, `Result ${scoreLabel} not owned`, `Resultado ${scoreLabel} no poseído`)))}</div>
           {good && cardNumbers.length ? <div style={{ marginTop: 7, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>{cardNumbers.map((n: number) => <div key={n} style={{ minWidth: 38, padding: "5px 8px", borderRadius: 10, border: `1px solid ${GOOD}90`, background: "rgba(112,239,189,.15)", color: GOOD, fontSize: 11, fontWeight: 1000 }}>C{n}</div>)}</div> : null}
         </div>
       </div>

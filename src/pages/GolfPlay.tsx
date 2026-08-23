@@ -9,6 +9,7 @@ const GOLF_SCORE_DISPLAY: Record<number, { label: string; color: string }> = {
   [5]:  { label: "M",  color: "#ff4d4d" }, // RED
 };
 
+import { pickLegacyBilingualText, pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import BackDot from "../components/BackDot";
@@ -1382,42 +1383,35 @@ const teamIndexByKey = useMemo(() => {
     const actor = (opts.actor ?? "").trim();
     const next = (opts.nextPlayer ?? "").trim();
     const perf = opts.perf ?? null;
+    const isHole = !!opts.isNewHole;
 
-    if (lang === "fr") {
-      const perfTxt = perf ? perfLabelFR(perf) : "";
-      const isHole = !!opts.isNewHole;
-
-      const templates = [
-        (a: string, p: string, n: string) => `${a} a réalisé ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, à toi de jouer.`,
-        (a: string, p: string, n: string) => `${p}, pour ${a}. ${isHole ? `On passe au trou suivant. ` : ""}${n}, à toi.`,
-        (a: string, p: string, n: string) => `Action validée : ${a}, ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, c'est à toi.`,
-      ];
-
-      if (actor && perfTxt && next) {
-        const idx = pickVariant(templates.length);
-        return templates[idx](actor, perfTxt, next);
-      }
-      if (next) {
-        return `${isHole ? "Nouveau trou. " : ""}${next}, à toi de jouer.`;
-      }
-      return "";
-    }
-
-    // EN + fallback (simple)
-    const perfTxt = perf ? String(perf).toLowerCase() : "";
-    const templatesEn = [
-      (a: string, p: string, n: string) => `${a} scored ${p}. ${opts.isNewHole ? "New hole. " : ""}${n}, your turn.`,
-      (a: string, p: string, n: string) => `${p} for ${a}. ${opts.isNewHole ? "Next hole. " : ""}${n}, you're up.`,
+    const perfFr = perf ? perfLabelFR(perf) : "";
+    const perfEn = perf ? String(perf).toLowerCase() : "";
+    const templatesFr = [
+      (a: string, p: string, n: string) => `${a} a réalisé ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, à toi de jouer.`,
+      (a: string, p: string, n: string) => `${p}, pour ${a}. ${isHole ? `On passe au trou suivant. ` : ""}${n}, à toi.`,
+      (a: string, p: string, n: string) => `Action validée : ${a}, ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, c'est à toi.`,
     ];
-    if (actor && perfTxt && next) {
-      const idx = pickVariant(templatesEn.length);
-      return templatesEn[idx](actor, perfTxt, next);
+    const templatesEn = [
+      (a: string, p: string, n: string) => `${a} scored ${p}. ${isHole ? "New hole. " : ""}${n}, your turn.`,
+      (a: string, p: string, n: string) => `${p} for ${a}. ${isHole ? "Next hole. " : ""}${n}, you're up.`,
+      (a: string, p: string, n: string) => `Action confirmed: ${a}, ${p}. ${isHole ? "New hole. " : ""}${n}, your turn.`,
+    ];
+
+    if (actor && perfFr && next) {
+      const idx = pickVariant(templatesFr.length);
+      return pickLegacyBilingualText(lang, templatesFr[idx](actor, perfFr, next), templatesEn[idx](actor, perfEn, next));
     }
-    if (next) return `${opts.isNewHole ? "New hole. " : ""}${next}, your turn.`;
+    if (next) {
+      return pickLegacyBilingualText(
+        lang,
+        `${isHole ? "Nouveau trou. " : ""}${next}, à toi de jouer.`,
+        `${isHole ? "New hole. " : ""}${next}, your turn.`,
+      );
+    }
     return "";
   }
 
-  
   function buildRankingTts(kind: "intermediate" | "final", rankArr: any[]) {
     const top = (rankArr || []).slice(0, 3).map((r) => safeStr(r.name)).filter(Boolean);
     if (top.length === 0) return "";
@@ -1425,18 +1419,18 @@ const teamIndexByKey = useMemo(() => {
     const b = top[1] ?? "";
     const c = top[2] ?? "";
 
-    if (lang === "fr") {
-      const head = kind === "final" ? "Classement final." : "Classement intermédiaire.";
-      // ✅ Format strict demandé: Head + 1er/2e/3e noms uniquement
-      if (a && b && c) return `${head} Premier ${a}. Deuxième ${b}. Troisième ${c}.`;
-      if (a && b) return `${head} Premier ${a}. Deuxième ${b}.`;
-      return `${head} Premier ${a}.`;
+    const headFr = kind === "final" ? "Classement final." : "Classement intermédiaire.";
+    const headEn = kind === "final" ? "Final ranking." : "Intermediate ranking.";
+    let frText = `${headFr} Premier ${a}.`;
+    let enText = `${headEn} First ${a}.`;
+    if (a && b && c) {
+      frText = `${headFr} Premier ${a}. Deuxième ${b}. Troisième ${c}.`;
+      enText = `${headEn} First ${a}. Second ${b}. Third ${c}.`;
+    } else if (a && b) {
+      frText = `${headFr} Premier ${a}. Deuxième ${b}.`;
+      enText = `${headEn} First ${a}. Second ${b}.`;
     }
-
-    const head = kind === "final" ? "Final ranking." : "Intermediate ranking.";
-    if (a && b && c) return `${head} First ${a}. Second ${b}. Third ${c}.`;
-    if (a && b) return `${head} First ${a}. Second ${b}.`;
-    return `${head} First ${a}.`;
+    return pickLegacyBilingualText(lang, frText, enText);
   }
 
 
@@ -1839,7 +1833,7 @@ const ranking = useMemo(() => {
       if (!name) return;
       initialTurnSpokenRef.current = true;
       window.setTimeout(
-        () => speak(lang === "fr" ? `${name}, à toi de jouer.` : lang === "es" ? `${name}, te toca.` : `${name}, your turn.`, { lang: ttsLang }),
+        () => speak(pickLegacyLocalizedText(lang, `${name}, à toi de jouer.`, `${name}, your turn.`, `${name}, te toca.`), { lang: ttsLang }),
         700
       );
     } catch {}

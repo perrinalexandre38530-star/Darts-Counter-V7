@@ -8,6 +8,7 @@
 // - Source: localStorage via loadPetanqueHistory() (lib/petanqueStats)
 // =============================================================
 
+import { pickLegacyBilingualText } from "../../i18n/legacyLocalizedText";
 import * as React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -263,9 +264,11 @@ export default function PetanqueStatsLeaderboardsPage({ go, params }: Props) {
         <RankingsTickerHeader
           onBack={() => go?.("stats")}
           infoContent={
-            langAny?.lang === "fr"
-              ? "Classements Pétanque : compare les joueurs, les équipes et les duos selon la période et la statistique sélectionnées."
-              : "Pétanque rankings: compare players, teams and pairs using the selected period and statistic."
+            pickLegacyBilingualText(
+              langAny?.lang,
+              "Classements Pétanque : compare les joueurs, les équipes et les duos selon la période et la statistique sélectionnées.",
+              "Pétanque rankings: compare players, teams and pairs using the selected period and statistic."
+            )
           }
           marginBottom={0}
         />

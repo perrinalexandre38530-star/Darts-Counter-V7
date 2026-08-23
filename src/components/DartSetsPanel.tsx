@@ -13,6 +13,7 @@
 // ✅ PATCH CLOUD: sync dartsets -> __appStore.update (pour IDB + push cloud)
 // =============================================================
 
+import { pickLegacyBilingualText, pickLegacyLocalizedText, pickLegacyLocalizedTextWithOverrides } from "../i18n/legacyLocalizedText";
 import React from "react";
 import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -258,29 +259,13 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
   if (!dartSet) return null;
 
   const labelMain =
-    lang === "fr"
-      ? "Photo du set"
-      : lang === "es"
-      ? "Foto del set"
-      : lang === "de"
-      ? "Foto des Sets"
-      : "Set photo";
+    pickLegacyLocalizedTextWithOverrides(lang, "Photo du set", "Set photo", "Foto del set", { de: "Foto des Sets" });
 
   const btnLabel =
-    lang === "fr"
-      ? "Choisir une photo"
-      : lang === "es"
-      ? "Elegir foto"
-      : lang === "de"
-      ? "Foto wählen"
-      : "Choose photo";
+    pickLegacyLocalizedTextWithOverrides(lang, "Choisir une photo", "Choose photo", "Elegir foto", { de: "Foto wählen" });
 
   const helper =
-    lang === "fr"
-      ? "Photo compressée automatiquement (mobile-friendly). Stockage local."
-      : lang === "es"
-      ? "La foto se comprime automáticamente (optimizada para móvil) y se guarda localmente."
-      : "Photo is auto-compressed (mobile-friendly). Stored locally.";
+    pickLegacyLocalizedText(lang, "Photo compressée automatiquement (mobile-friendly). Stockage local.", "Photo is auto-compressed (mobile-friendly). Stored locally.", "La foto se comprime automáticamente (optimizada para móvil) y se guarda localmente.");
 
   const currentUrl = getDartSetThumbImageSrc(dartSet) || getDartSetMainImageSrc(dartSet) || "";
 
@@ -316,11 +301,7 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
 
       if (!res) {
         alert(
-          lang === "fr"
-            ? "Impossible d’enregistrer la photo (stockage plein ?)."
-            : lang === "es"
-            ? "No se puede guardar la foto (¿almacenamiento lleno?)."
-            : "Unable to save photo (storage full?)."
+          pickLegacyLocalizedText(lang, "Impossible d’enregistrer la photo (stockage plein ?).", "Unable to save photo (storage full?).", "No se puede guardar la foto (¿almacenamiento lleno?).")
         );
         return;
       }
@@ -344,11 +325,7 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
     } catch (err) {
       console.warn("[DartSetImageUploader] update error", err);
       alert(
-        lang === "fr"
-          ? "Erreur : impossible d’enregistrer la photo (quota mobile ?)."
-          : lang === "es"
-          ? "Error: no se puede guardar la foto (¿cuota del móvil?)."
-          : "Error: unable to save photo (mobile quota?)."
+        pickLegacyLocalizedText(lang, "Erreur : impossible d’enregistrer la photo (quota mobile ?).", "Error: unable to save photo (mobile quota?).", "Error: no se puede guardar la foto (¿cuota del móvil?).")
       );
     }
   };
@@ -700,14 +677,14 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   }, [activeSet, ownersById]);
 
   const ownerLabel = React.useCallback((owner: any) => {
-    if (!owner) return lang === "fr" ? "Profil" : lang === "es" ? "Perfil" : "Profile";
+    if (!owner) return pickLegacyLocalizedText(lang, "Profil", "Profile", "Perfil");
     return String(
       owner?.name ||
       owner?.displayName ||
       owner?.nickname ||
       owner?.surname ||
       owner?.id ||
-      (lang === "fr" ? "Profil" : lang === "es" ? "Perfil" : "Profile")
+      (pickLegacyLocalizedText(lang, "Profil", "Profile", "Perfil"))
     );
   }, [lang]);
 
@@ -759,7 +736,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       }));
     } catch (err) {
       console.warn("[DartSetsPanel] create photo read error", err);
-      alert(lang === "fr" ? "Impossible de charger la photo." : lang === "es" ? "No se puede cargar la foto." : "Unable to load photo.");
+      alert(pickLegacyLocalizedText(lang, "Impossible de charger la photo.", "Unable to load photo.", "No se puede cargar la foto."));
     }
   };
 
@@ -824,7 +801,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       }
 
       if (!created) {
-        alert(lang === "fr" ? "Création impossible (stockage plein ?)" : lang === "es" ? "No se puede crear (¿almacenamiento lleno?)" : "Creation failed (storage full?)");
+        alert(pickLegacyLocalizedText(lang, "Création impossible (stockage plein ?)", "Creation failed (storage full?)", "No se puede crear (¿almacenamiento lleno?)"));
         return;
       }
 
@@ -837,11 +814,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     } catch (err) {
       console.warn("[DartSetsPanel] create error", err);
       alert(
-        lang === "fr"
-          ? "Erreur : création impossible (quota mobile ?). Essaie une photo plus petite."
-          : lang === "es"
-          ? "Error: no se puede crear (¿cuota del móvil?). Prueba con una foto más pequeña."
-          : "Error: creation failed (mobile quota?). Try a smaller photo."
+        pickLegacyLocalizedText(lang, "Erreur : création impossible (quota mobile ?). Essaie une photo plus petite.", "Error: creation failed (mobile quota?). Try a smaller photo.", "Error: no se puede crear (¿cuota del móvil?). Prueba con una foto más pequeña.")
       );
     }
   };
@@ -919,7 +892,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       );
 
       if (!res) {
-        alert(lang === "fr" ? "Mise à jour impossible (stockage plein ?)" : lang === "es" ? "No se puede actualizar (¿almacenamiento lleno?)" : "Update failed (storage full?)");
+        alert(pickLegacyLocalizedText(lang, "Mise à jour impossible (stockage plein ?)", "Update failed (storage full?)", "No se puede actualizar (¿almacenamiento lleno?)"));
         return;
       }
 
@@ -932,7 +905,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] update error", err);
-      alert(lang === "fr" ? "Erreur : mise à jour impossible (quota mobile ?)." : lang === "es" ? "Error: no se puede actualizar (¿cuota del móvil?)." : "Error: update failed (mobile quota?).");
+      alert(pickLegacyLocalizedText(lang, "Erreur : mise à jour impossible (quota mobile ?).", "Error: update failed (mobile quota?).", "Error: no se puede actualizar (¿cuota del móvil?)."));
     }
   };
 
@@ -943,7 +916,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     const ok = deleteDartSet(set.id);
     dartSetDiag("delete:after", { id: set.id, ok });
     if (!ok) {
-      alert(lang === "fr" ? "Suppression impossible (stockage plein ?)" : lang === "es" ? "No se puede eliminar (¿almacenamiento lleno?)" : "Delete failed (storage full?)");
+      alert(pickLegacyLocalizedText(lang, "Suppression impossible (stockage plein ?)", "Delete failed (storage full?)", "No se puede eliminar (¿almacenamiento lleno?)"));
       reloadSets();
       return;
     }
@@ -973,7 +946,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
     if (!ok) {
       keepActiveDartSetIdRef.current = null;
-      alert(lang === "fr" ? "Impossible de modifier le favori." : lang === "es" ? "No se puede modificar el favorito." : "Unable to update favorite.");
+      alert(pickLegacyLocalizedText(lang, "Impossible de modifier le favori.", "Unable to update favorite.", "No se puede modificar el favorito."));
       reloadSets();
       return;
     }
@@ -1001,35 +974,23 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   // ------------------------------------------------------------------
 
   const title =
-    lang === "fr" ? "MES FLÉCHETTES" : lang === "es" ? "MIS DARDOS" : lang === "de" ? "MEINE DARTS" : "MY DARTS";
+    pickLegacyLocalizedTextWithOverrides(lang, "MES FLÉCHETTES", "MY DARTS", "MIS DARDOS", { de: "MEINE DARTS" });
 
   const subtitle =
-    lang === "fr"
-      ? "Associe tes stats à chaque jeu de fléchettes."
-      : lang === "es"
-      ? "Asocia tus estadísticas a cada juego de dardos."
-      : lang === "de"
-      ? "Verknüpfe deine Statistiken mit jedem Dart-Set."
-      : "Link your stats to each dart set.";
+    pickLegacyLocalizedTextWithOverrides(lang, "Associe tes stats à chaque jeu de fléchettes.", "Link your stats to each dart set.", "Asocia tus estadísticas a cada juego de dardos.", { de: "Verknüpfe deine Statistiken mit jedem Dart-Set." });
 
-  const labelCreate = lang === "fr" ? "Créer" : lang === "es" ? "Crear" : lang === "de" ? "Neu" : "Create";
+  const labelCreate = pickLegacyLocalizedTextWithOverrides(lang, "Créer", "Create", "Crear", { de: "Neu" });
 
-  const labelScanner = lang === "fr" ? "Scanner" : lang === "es" ? "Escanear" : "Scan";
-  const labelEdit = lang === "fr" ? "Éditer" : lang === "es" ? "Editar" : lang === "de" ? "Bearbeiten" : "Edit";
-  const labelDelete = lang === "fr" ? "Suppr." : lang === "es" ? "Eliminar" : lang === "de" ? "Löschen" : "Delete";
-  const labelFav = lang === "fr" ? "Favori" : lang === "es" ? "Favorito" : lang === "de" ? "Favorit" : "Favorite";
+  const labelScanner = pickLegacyLocalizedText(lang, "Scanner", "Scan", "Escanear");
+  const labelEdit = pickLegacyLocalizedTextWithOverrides(lang, "Éditer", "Edit", "Editar", { de: "Bearbeiten" });
+  const labelDelete = pickLegacyLocalizedTextWithOverrides(lang, "Suppr.", "Delete", "Eliminar", { de: "Löschen" });
+  const labelFav = pickLegacyLocalizedTextWithOverrides(lang, "Favori", "Favorite", "Favorito", { de: "Favorit" });
 
   const visualLabel =
-    lang === "fr" ? "Visuel preset" : lang === "es" ? "Visual preset" : lang === "de" ? "Visual-Preset" : "Preset visual";
+    pickLegacyLocalizedTextWithOverrides(lang, "Visuel preset", "Preset visual", "Visual preset", { de: "Visual-Preset" });
 
   const uploadLabel =
-    lang === "fr"
-      ? "Charger une photo"
-      : lang === "es"
-      ? "Subir foto"
-      : lang === "de"
-      ? "Foto hochladen"
-      : "Upload photo";
+    pickLegacyLocalizedTextWithOverrides(lang, "Charger une photo", "Upload photo", "Subir foto", { de: "Foto hochladen" });
 
   // ------------------------------------------------------------------
   // Helper UI : sélecteur de preset (SANS "AUCUN VISUEL")
@@ -1340,13 +1301,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 marginBottom: 4,
               }}
             >
-              {lang === "fr"
-                ? "Créer un nouveau set"
-                : lang === "es"
-                ? "Crear un nuevo set"
-                : lang === "de"
-                ? "Neues Set erstellen"
-                : "Create new set"}
+              {pickLegacyLocalizedTextWithOverrides(lang, "Créer un nouveau set", "Create new set", "Crear un nuevo set", { de: "Neues Set erstellen" })}
             </div>
           </div>
 
@@ -1405,7 +1360,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               }}
             >
               <option value="">
-                {lang === "fr" ? "Choisir..." : lang === "es" ? "Elegir..." : lang === "de" ? "Wählen..." : "Select..."}
+                {pickLegacyLocalizedTextWithOverrides(lang, "Choisir...", "Select...", "Elegir...", { de: "Wählen..." })}
               </option>
               {WEIGHT_OPTIONS.map((w) => (
                 <option key={w} value={String(w)}>
@@ -1485,7 +1440,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             <div style={{ gridColumn: "1 / span 2", marginTop: 2, display: "flex", justifyContent: "center" }}>
               <div style={{ width: "100%", maxWidth: 420 }}>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4, textAlign: "center" }}>
-                  {lang === "fr" ? "Set privé associé à" : lang === "es" ? "Set privado asociado a" : "Private set assigned to"}
+                  {pickLegacyLocalizedText(lang, "Set privé associé à", "Private set assigned to", "Set privado asociado a")}
                 </div>
                 <select
                   value={form.privateProfileId}
@@ -1570,7 +1525,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                     minWidth: 160,
                   }}
                 >
-                  {lang === "fr" ? "Enregistrer" : lang === "es" ? "Guardar" : lang === "de" ? "Speichern" : "Save"}
+                  {pickLegacyLocalizedTextWithOverrides(lang, "Enregistrer", "Save", "Guardar", { de: "Speichern" })}
                 </button>
               </div>
 
@@ -1624,7 +1579,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 marginBottom: 4,
               }}
             >
-              {lang === "fr" ? "Modifier ce set" : lang === "es" ? "Editar este set" : lang === "de" ? "Set bearbeiten" : "Edit this set"}
+              {pickLegacyLocalizedTextWithOverrides(lang, "Modifier ce set", "Edit this set", "Editar este set", { de: "Set bearbeiten" })}
             </div>
           </div>
 
@@ -1683,7 +1638,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
               }}
             >
               <option value="">
-                {lang === "fr" ? "Choisir..." : lang === "es" ? "Elegir..." : lang === "de" ? "Wählen..." : "Select..."}
+                {pickLegacyLocalizedTextWithOverrides(lang, "Choisir...", "Select...", "Elegir...", { de: "Wählen..." })}
               </option>
               {WEIGHT_OPTIONS.map((w) => (
                 <option key={w} value={String(w)}>
@@ -1762,7 +1717,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
           {editForm.scope === "private" && availableProfiles.length > 0 && (
             <div style={{ gridColumn: "1 / span 2", marginTop: 4 }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4 }}>
-                {lang === "fr" ? "Set privé associé à" : lang === "es" ? "Set privado asociado a" : "Private set assigned to"}
+                {pickLegacyLocalizedText(lang, "Set privé associé à", "Private set assigned to", "Set privado asociado a")}
               </div>
               <select
                 value={editForm.privateProfileId}
@@ -1809,7 +1764,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 fontSize: 12,
               }}
             >
-              {lang === "fr" ? "Annuler" : lang === "es" ? "Cancelar" : lang === "de" ? "Abbrechen" : "Cancel"}
+              {pickLegacyLocalizedTextWithOverrides(lang, "Annuler", "Cancel", "Cancelar", { de: "Abbrechen" })}
             </button>
 
             <button
@@ -1826,7 +1781,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 letterSpacing: 1.4,
               }}
             >
-              {lang === "fr" ? "Mettre à jour" : lang === "es" ? "Actualizar" : lang === "de" ? "Aktualisieren" : "Update"}
+              {pickLegacyLocalizedTextWithOverrides(lang, "Mettre à jour", "Update", "Actualizar", { de: "Aktualisieren" })}
             </button>
           </div>
         </form>
@@ -2015,23 +1970,19 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
                 >
                   {[
                     {
-                      label: lang === "fr" ? "Marque" : lang === "es" ? "Marca" : "Brand",
+                      label: pickLegacyLocalizedText(lang, "Marque", "Brand", "Marca"),
                       value: activeSet.brand || "—",
                     },
                     {
-                      label: lang === "fr" ? "Poids" : lang === "es" ? "Peso" : "Weight",
+                      label: pickLegacyLocalizedText(lang, "Poids", "Weight", "Peso"),
                       value: typeof activeSet.weightGrams === "number" ? `${activeSet.weightGrams} g` : "—",
                     },
                     {
-                      label: lang === "fr" ? "Accès" : lang === "es" ? "Acceso" : "Scope",
+                      label: pickLegacyLocalizedText(lang, "Accès", "Scope", "Acceso"),
                       value:
                         activeSet.scope === "public"
-                          ? lang === "fr"
-                            ? "Public"
-                            : "Public"
-                          : lang === "fr"
-                          ? "Privé"
-                          : "Private",
+                          ? "Public"
+                          : pickLegacyBilingualText(lang, "Privé", "Private"),
                     },
                   ].map((item) => (
                     <div
@@ -2108,13 +2059,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
             border: "1px solid rgba(255,255,255,.06)",
           }}
         >
-          {lang === "fr"
-            ? "Tu n'as pas encore enregistré de jeu de fléchettes. Crée ton premier set pour commencer à comparer tes stats."
-            : lang === "es"
-            ? "Aún no has registrado ningún juego de dardos. Crea tu primer set para empezar a comparar tus estadísticas."
-            : lang === "de"
-            ? "Du hast noch keine Dart-Sets gespeichert. Erstelle dein erstes Set, um deine Statistiken zu vergleichen."
-            : "You haven't saved any dart sets yet. Create your first set to start comparing your stats."}
+          {pickLegacyLocalizedTextWithOverrides(lang, "Tu n'as pas encore enregistré de jeu de fléchettes. Crée ton premier set pour commencer à comparer tes stats.", "You haven't saved any dart sets yet. Create your first set to start comparing your stats.", "Aún no has registrado ningún juego de dardos. Crea tu primer set para empezar a comparar tus estadísticas.", { de: "Du hast noch keine Dart-Sets gespeichert. Erstelle dein erstes Set, um deine Statistiken zu vergleichen." })}
         </div>
       )}
 

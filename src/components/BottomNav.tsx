@@ -2,6 +2,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
 import { useLang } from "../contexts/LangContext";
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import { pollMessageCenterAndNotify, requestMessageNotificationsPermission, type MessageCenterUnreadSummary } from "../lib/messageCenterNotify";
 import { shouldHideOnlineMessagingForCurrentRuntime } from "../config/androidStoreV1";
 import { dismissBackgroundBackupState, useBackgroundBackupState } from "../lib/backgroundBackup";
@@ -21,7 +22,6 @@ import { dismissBackgroundRestoreState, useBackgroundRestoreState } from "../lib
 type TabKey =
   | "home"
   | "games"
-  | "running_plan"
   | "tournaments"
   | "tournament_create"
   | "tournament_list"
@@ -91,15 +91,6 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
           <path {...p} d="M19 12h2" />
           <path {...p} d="M12 21v-2" />
           <path {...p} d="M3 12h2" />
-        </svg>
-      );
-
-    case "running_plan":
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24">
-          <path {...p} d="M6 3v3M18 3v3M4 8h16" />
-          <rect {...p} x="4" y="5" width="16" height="16" rx="2.5" />
-          <path {...p} d="m8 13 2.2 2.2L16 10" />
         </svg>
       );
 
@@ -228,11 +219,10 @@ export default function BottomNav({
   const { t, lang } = useLang();
   const sportCtx = useSport() as any;
 
-  const tr = React.useCallback((fr: string, en: string, es: string) => {
-    if (lang === "en") return en;
-    if (lang === "es") return es;
-    return fr;
-  }, [lang]);
+  const tr = React.useCallback(
+    (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es),
+    [lang],
+  );
 
   // SportContext attendu : { sport, setSport }
   const sportFromCtx: SportId | null = (sportCtx?.sport as SportId) ?? null;
@@ -242,7 +232,7 @@ export default function BottomNav({
   // Online masqué uniquement pour les sports sans salon en ligne dédié.
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
-  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running";
+  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -302,44 +292,25 @@ export default function BottomNav({
     };
   }, [hideOnline]);
 
-  const tabs: NavItem[] = sportLc === "running"
-    ? [
-        { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="home" /> },
-        {
-          k: "games",
-          label: tr("Courir", "Run", "Correr"),
-          icon: (
-            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="15.5" cy="4.5" r="2" />
-              <path d="m13.8 8.2-3.1 3.2 2.5 2.5 3.6-1.2" />
-              <path d="m10.8 11.2-4.2.8M13.2 13.9l-2.7 5.1M13.2 13.9l4.7 4" />
-            </svg>
-          ),
-        },
-        { k: "running_plan", label: tr("Plan", "Plan", "Plan"), icon: <Icon name="running_plan" /> },
-        { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "profiles", label: tr("Profil", "Profile", "Perfil"), icon: <Icon name="profiles" /> },
-        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
-      ]
-    : [
-        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+  const tabs: NavItem[] = [
+    { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
 
-        ...(hideOnline ? [] : [
-          { k: "messages", label: tr("Messages", "Messages", "Mensajes"), icon: <Icon name="messages" /> },
-        ]),
+    ...(hideOnline ? [] : [
+      { k: "messages", label: tr("Messages", "Messages", "Mensajes"), icon: <Icon name="messages" /> },
+    ]),
 
-        { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
-        { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <Icon name="games" /> },
-        { k: "tournaments", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="tournaments" /> },
+    { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
+    { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <Icon name="games" /> },
+    { k: "tournaments", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="tournaments" /> },
 
-        ...(hideOnline ? [] : [
-          { k: "online", label: "Online", icon: <Icon name="friends" /> },
-        ]),
+    ...(hideOnline ? [] : [
+      { k: "online", label: "Online", icon: <Icon name="friends" /> },
+    ]),
 
-        { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
-        { k: "cast_host", label: tr("Écrans", "Screens", "Pantallas"), icon: <Icon name="cast_host" /> },
-      ];
+    { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
+    { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
+    { k: "cast_host", label: tr("Écrans", "Screens", "Pantallas"), icon: <Icon name="cast_host" /> },
+  ];
 
   const tap = (k: NavItem["k"]) => {
     (navigator as any)?.vibrate?.(8);

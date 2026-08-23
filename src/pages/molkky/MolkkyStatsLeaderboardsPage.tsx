@@ -5,6 +5,7 @@
 // ✅ Données: Mölkky (localStorage dc_molkky_history_v1 via lib/molkkyStore)
 // =============================================================
 
+import { pickLegacyBilingualText } from "../../i18n/legacyLocalizedText";
 import * as React from "react";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -318,9 +319,11 @@ export default function MolkkyStatsLeaderboardsPage({ store, go, params }: Props
           <RankingsTickerHeader
             onBack={() => go("stats")}
             infoContent={
-              langAny?.lang === "fr"
-                ? "Classements Mölkky locaux : filtre la période puis choisis la métrique utilisée pour trier les joueurs."
-                : "Local Mölkky rankings: filter the period, then choose the metric used to sort players."
+              pickLegacyBilingualText(
+                langAny?.lang,
+                "Classements Mölkky locaux : filtre la période puis choisis la métrique utilisée pour trier les joueurs.",
+                "Local Mölkky rankings: filter the period, then choose the metric used to sort players."
+              )
             }
             marginBottom={0}
           />

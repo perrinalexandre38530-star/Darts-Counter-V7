@@ -8,6 +8,7 @@
 // + NEW : Comptage externe (vidéo / bridge) + bouton "i" explicatif (tuto + tests)
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { applyResolvedBotCountries } from "../lib/botCountries";
 import {
@@ -1572,9 +1573,9 @@ export const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
   }, [profileId, autoOpenToken, reloadSets]);
 
   const hasProfile = !!profileId;
-  const noneLabel = lang === "fr" ? "Aucun set" : lang === "es" ? "Ningún set" : "No set";
-  const chooseLabel = lang === "fr" ? "Choix SET" : lang === "es" ? "Elegir SET" : "SET choice";
-  const titleLabel = lang === "fr" ? "Choisir un set" : lang === "es" ? "Elegir un set de dardos" : "Choose dart set";
+  const noneLabel = pickLegacyLocalizedText(lang, "Aucun set", "No set", "Ningún set");
+  const chooseLabel = pickLegacyLocalizedText(lang, "Choix SET", "SET choice", "Elegir SET");
+  const titleLabel = pickLegacyLocalizedText(lang, "Choisir un set", "Choose dart set", "Elegir un set de dardos");
 
   // Ordre demandé : favoris d'abord, puis nombre d'utilisation, puis alphabetique.
   const orderedSets: DartSet[] = React.useMemo(() => sortDartSetsForProfilePicker(sets || []), [sets]);

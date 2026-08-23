@@ -1,11 +1,14 @@
+import { localeForLang, pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
 import React from "react";
 import Section from "../../components/Section";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
 import type { ActivityRecord } from "../../activity/activityTypes";
 import {
   activePlanWeekIndex,
+  buildRunningPlanWeeks,
   createRunningPlan,
   loadRunningPlan,
+  nextPlanSession,
   planCompletionPct,
   planDurationWeeks,
   planSessionCompletion,
@@ -14,7 +17,6 @@ import {
   type RunningPlanSession,
   type RunningPlanState,
 } from "../../activity/runningTraining";
-import { buildAdaptiveRunningPlanWeeks, buildRunningPlanAdaptation, nextAdaptivePlanSession } from "../../activity/runningAdaptivePlan";
 
 type Props = {
   activities: ActivityRecord[];
@@ -33,16 +35,16 @@ const GOALS: Array<{ id: RunningPlanGoal; icon: string; weeks: number; fr: strin
 ];
 
 function localeLabel(goal: (typeof GOALS)[number], lang: string) {
-  return lang === "fr" ? goal.fr : lang === "es" ? goal.es : goal.en;
+  return pickLegacyLocalizedText(lang, goal.fr, goal.en, goal.es);
 }
 
 function localeSub(goal: (typeof GOALS)[number], lang: string) {
-  return lang === "fr" ? goal.subFr : lang === "es" ? goal.subEs : goal.subEn;
+  return pickLegacyLocalizedText(lang, goal.subFr, goal.subEn, goal.subEs);
 }
 
 function sessionDate(ts: number, lang: string) {
   try {
-    return new Intl.DateTimeFormat(lang === "fr" ? "fr-FR" : lang === "es" ? "es-ES" : "en-GB", { weekday: "short", day: "2-digit", month: "short" }).format(new Date(ts));
+    return new Intl.DateTimeFormat(localeForLang(lang), { weekday: "short", day: "2-digit", month: "short" }).format(new Date(ts));
   } catch {
     return new Date(ts).toLocaleDateString();
   }
@@ -68,13 +70,13 @@ export default function RunningPlanView({ activities, lang, accent, textSoft, on
     if (plan) setWeekIndex(activePlanWeekIndex(plan));
   }, [plan?.id]);
 
-  const copy = lang === "fr" ? {
-    title: "PROGRAMME D’ENTRAÎNEMENT", choose: "CHOISIS TON OBJECTIF", frequency: "FRÉQUENCE", sessions: "sorties / semaine", create: "CRÉER LE PROGRAMME", active: "PROGRAMME ACTIF", progress: "Progression globale", next: "PROCHAINE SÉANCE", week: "SEMAINE", done: "FAIT", start: "LANCER", scheduled: "Planifié", reset: "CHANGER DE PROGRAMME", resetHint: "Le programme sera remplacé, mais tes sorties enregistrées restent intactes.", confirmReset: "REMPLACER", cancel: "ANNULER", today: "Aujourd’hui", adaptive: "COACH ADAPTATIF", readiness: "Score adaptation", compliance: "Régularité plan", recover: "ALLÉGÉ", maintain: "STABLE", progressMode: "PROGRESSIF", reasonFatigue: "Fatigue ou charge récente élevée : les prochaines séances d’endurance sont allégées temporairement.", reasonProgress: "Bonne régularité et récupération correcte : progression légère sur les prochaines séances.", reasonMissed: "Plusieurs séances prévues n’ont pas été réalisées : le plan réduit légèrement le volume pour repartir progressivement.", reasonStable: "Charge stable et régularité correcte : le programme reste inchangé.", adaptedHint: "Les ajustements restent volontairement modérés et ne remplacent pas un avis médical ou un encadrement professionnel.", planInfo: "Le calendrier reste flexible : tu peux lancer une séance même un autre jour. La progression est validée lorsqu’une sortie est enregistrée depuis cette séance.",
-  } : lang === "es" ? {
-    title: "PLAN DE ENTRENAMIENTO", choose: "ELIGE TU OBJETIVO", frequency: "FRECUENCIA", sessions: "carreras / semana", create: "CREAR PLAN", active: "PLAN ACTIVO", progress: "Progreso global", next: "PRÓXIMA SESIÓN", week: "SEMANA", done: "HECHO", start: "INICIAR", scheduled: "Planificado", reset: "CAMBIAR PLAN", resetHint: "El plan se reemplazará, pero tus carreras guardadas permanecerán.", confirmReset: "REEMPLAZAR", cancel: "CANCELAR", today: "Hoy", adaptive: "COACH ADAPTATIVO", readiness: "Puntuación", compliance: "Regularidad", recover: "REDUCIDO", maintain: "ESTABLE", progressMode: "PROGRESIVO", reasonFatigue: "Fatiga o carga reciente elevada: las próximas sesiones de resistencia se reducen temporalmente.", reasonProgress: "Buena regularidad y recuperación: ligera progresión en las próximas sesiones.", reasonMissed: "Se han perdido varias sesiones previstas: el plan reduce ligeramente el volumen para retomar progresivamente.", reasonStable: "Carga estable y buena regularidad: el plan se mantiene sin cambios.", adaptedHint: "Los ajustes son deliberadamente moderados y no sustituyen consejo médico o entrenamiento profesional.", planInfo: "El calendario es flexible: puedes iniciar una sesión otro día. El progreso se valida cuando una carrera se guarda desde esa sesión.",
-  } : {
-    title: "TRAINING PLAN", choose: "CHOOSE YOUR GOAL", frequency: "FREQUENCY", sessions: "runs / week", create: "CREATE PLAN", active: "ACTIVE PLAN", progress: "Overall progress", next: "NEXT WORKOUT", week: "WEEK", done: "DONE", start: "START", scheduled: "Scheduled", reset: "CHANGE PLAN", resetHint: "The plan will be replaced, but saved runs stay untouched.", confirmReset: "REPLACE", cancel: "CANCEL", today: "Today", adaptive: "ADAPTIVE COACH", readiness: "Adaptation score", compliance: "Plan consistency", recover: "REDUCED", maintain: "STABLE", progressMode: "PROGRESSIVE", reasonFatigue: "Recent fatigue or training load is elevated: upcoming endurance sessions are temporarily reduced.", reasonProgress: "Good consistency and recovery: upcoming sessions receive a small progression.", reasonMissed: "Several planned sessions were missed: the plan slightly reduces volume to rebuild progressively.", reasonStable: "Training load and consistency are stable: the plan stays unchanged.", adaptedHint: "Adjustments are deliberately moderate and do not replace medical advice or professional coaching.", planInfo: "The calendar stays flexible: you can start a workout on another day. Progress is validated when a run is saved from that workout.",
-  };
+  const copy = pickLegacyLocalizedValue(lang, {
+    title: "PROGRAMME D’ENTRAÎNEMENT", choose: "CHOISIS TON OBJECTIF", frequency: "FRÉQUENCE", sessions: "sorties / semaine", create: "CRÉER LE PROGRAMME", active: "PROGRAMME ACTIF", progress: "Progression globale", next: "PROCHAINE SÉANCE", week: "SEMAINE", done: "FAIT", start: "LANCER", scheduled: "Planifié", reset: "CHANGER DE PROGRAMME", resetHint: "Le programme sera remplacé, mais tes sorties enregistrées restent intactes.", confirmReset: "REMPLACER", cancel: "ANNULER", today: "Aujourd’hui", planInfo: "Le calendrier reste flexible : tu peux lancer une séance même un autre jour. La progression est validée lorsqu’une sortie est enregistrée depuis cette séance.",
+  }, {
+    title: "TRAINING PLAN", choose: "CHOOSE YOUR GOAL", frequency: "FREQUENCY", sessions: "runs / week", create: "CREATE PLAN", active: "ACTIVE PLAN", progress: "Overall progress", next: "NEXT WORKOUT", week: "WEEK", done: "DONE", start: "START", scheduled: "Scheduled", reset: "CHANGE PLAN", resetHint: "The plan will be replaced, but saved runs stay untouched.", confirmReset: "REPLACE", cancel: "CANCEL", today: "Today", planInfo: "The calendar stays flexible: you can start a workout on another day. Progress is validated when a run is saved from that workout.",
+  }, {
+    title: "PLAN DE ENTRENAMIENTO", choose: "ELIGE TU OBJETIVO", frequency: "FRECUENCIA", sessions: "carreras / semana", create: "CREAR PLAN", active: "PLAN ACTIVO", progress: "Progreso global", next: "PRÓXIMA SESIÓN", week: "SEMANA", done: "HECHO", start: "INICIAR", scheduled: "Planificado", reset: "CAMBIAR PLAN", resetHint: "El plan se reemplazará, pero tus carreras guardadas permanecerán.", confirmReset: "REEMPLAZAR", cancel: "CANCELAR", today: "Hoy", planInfo: "El calendario es flexible: puedes iniciar una sesión otro día. El progreso se valida cuando una carrera se guarda desde esa sesión.",
+  });
 
   const [confirmingReset, setConfirmingReset] = React.useState(false);
 
@@ -114,14 +116,12 @@ export default function RunningPlanView({ activities, lang, accent, textSoft, on
     </div>;
   }
 
-  const adaptation = buildRunningPlanAdaptation(plan, activities);
-  const weeks = buildAdaptiveRunningPlanWeeks(plan, activities);
+  const weeks = buildRunningPlanWeeks(plan);
   const currentWeek = weeks[weekIndex] || weeks[0];
   const completion = planCompletionPct(plan, activities);
-  const nextSession = nextAdaptivePlanSession(plan, activities);
+  const nextSession = nextPlanSession(plan, activities);
   const goal = GOALS.find((item) => item.id === plan.goal)!;
   const activeWeek = activePlanWeekIndex(plan);
-  const adaptationReason = adaptation.reasonCode === "fatigue" ? copy.reasonFatigue : adaptation.reasonCode === "progress" ? copy.reasonProgress : adaptation.reasonCode === "missed" ? copy.reasonMissed : copy.reasonStable;
 
   return <div>
     <div className="card" style={{ padding: 14, borderColor: `${accent}44`, background: `radial-gradient(circle at 80% 0,${accent}14,rgba(8,10,16,.78) 56%)` }}>
@@ -131,15 +131,6 @@ export default function RunningPlanView({ activities, lang, accent, textSoft, on
       </div>
       <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,.08)", overflow: "hidden", marginTop: 12 }}><div style={{ width: `${completion}%`, height: "100%", background: accent, borderRadius: 999 }}/></div>
     </div>
-
-    <div style={{ marginTop: 10 }}><Section title={copy.adaptive} right={<span style={{ color: adaptation.mode === "recover" ? "#ffb367" : adaptation.mode === "progress" ? "#71ff9a" : accent, fontSize: 8.5, fontWeight: 1000 }}>{adaptation.mode === "recover" ? copy.recover : adaptation.mode === "progress" ? copy.progressMode : copy.maintain}</span>}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-        <div className="card" style={{ padding: 10, textAlign: "center" }}><div style={{ color: accent, fontSize: 18, fontWeight: 1000 }}>{adaptation.readinessScore}%</div><div style={{ color: textSoft, fontSize: 8, marginTop: 3 }}>{copy.readiness}</div></div>
-        <div className="card" style={{ padding: 10, textAlign: "center" }}><div style={{ color: accent, fontSize: 18, fontWeight: 1000 }}>{adaptation.compliancePct}%</div><div style={{ color: textSoft, fontSize: 8, marginTop: 3 }}>{copy.compliance}</div></div>
-      </div>
-      <div style={{ marginTop: 8, padding: 9, borderRadius: 11, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", color: textSoft, fontSize: 8.8, lineHeight: 1.45 }}>{adaptationReason}</div>
-      <div style={{ marginTop: 6, color: textSoft, opacity: .72, fontSize: 7.6, lineHeight: 1.4 }}>{copy.adaptedHint}</div>
-    </Section></div>
 
     {nextSession ? <div style={{ marginTop: 10 }}><Section title={copy.next}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center" }}>

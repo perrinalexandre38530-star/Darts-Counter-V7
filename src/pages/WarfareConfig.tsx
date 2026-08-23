@@ -8,6 +8,7 @@
 // - CTA sticky visible AU-DESSUS du BottomNav
 // ============================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { loadBotPlayers } from "../lib/bots";
 import type { Store } from "../lib/types";
@@ -661,7 +662,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
 
         <div style={{ marginTop: 14, fontSize: 12, color: canStart ? theme.textSoft : "#ff8a8a" }}>
           {canStart
-            ? t("warfare.valid", lang === "fr" ? `OK — ${countTop} vs ${countBottom} (total ${total}/12)` : lang === "es" ? `OK — ${countTop} vs ${countBottom} (total ${total}/12)` : `OK — ${countTop} vs ${countBottom} (total ${total}/12)`)
+            ? t("warfare.valid", pickLegacyLocalizedText(lang, `OK — ${countTop} vs ${countBottom} (total ${total}/12)`, `OK — ${countTop} vs ${countBottom} (total ${total}/12)`, `OK — ${countTop} vs ${countBottom} (total ${total}/12)`))
             : t("warfare.invalid", "Sélection invalide : 1 à 6 joueurs par armée.")}
         </div>
       </div>

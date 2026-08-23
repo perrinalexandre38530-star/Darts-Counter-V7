@@ -7,6 +7,7 @@
 // - Affiche une vignette si le set possède une image (preset / photo)
 // =============================================================
 
+import { pickLegacyLocalizedTextWithOverrides } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -76,13 +77,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
   const hasSets = sets.length > 0;
 
   const label =
-    lang === "fr"
-      ? "Jeu de fléchettes"
-      : lang === "es"
-      ? "Juego de dardos"
-      : lang === "de"
-      ? "Dart-Set"
-      : "Dart set";
+    pickLegacyLocalizedTextWithOverrides(lang, "Jeu de fléchettes", "Dart set", "Juego de dardos", { de: "Dart-Set" });
 
   if (!hasSets) {
     return (
@@ -112,13 +107,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
             color: "rgba(255,255,255,.5)",
           }}
         >
-          {lang === "fr"
-            ? "Aucun jeu enregistré pour ce profil."
-            : lang === "es"
-            ? "Ningún juego registrado para este perfil."
-            : lang === "de"
-            ? "Kein Dart-Set für dieses Profil gespeichert."
-            : "No dart set saved for this profile."}
+          {pickLegacyLocalizedTextWithOverrides(lang, "Aucun jeu enregistré pour ce profil.", "No dart set saved for this profile.", "Ningún juego registrado para este perfil.", { de: "Kein Dart-Set für dieses Profil gespeichert." })}
         </div>
       </div>
     );
@@ -133,13 +122,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
       : null;
 
   const autoLabel =
-    lang === "fr"
-      ? "Auto : préféré"
-      : lang === "es"
-      ? "Auto: favorito"
-      : lang === "de"
-      ? "Auto: Favorit"
-      : "Auto: favorite";
+    pickLegacyLocalizedTextWithOverrides(lang, "Auto : préféré", "Auto: favorite", "Auto: favorito", { de: "Auto: Favorit" });
 
   return (
     <div
@@ -184,13 +167,7 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
               letterSpacing: 1.2,
             }}
           >
-            {lang === "fr"
-              ? "Sélectionné"
-              : lang === "es"
-              ? "Seleccionado"
-              : lang === "de"
-              ? "Ausgewählt"
-              : "Selected"}
+            {pickLegacyLocalizedTextWithOverrides(lang, "Sélectionné", "Selected", "Seleccionado", { de: "Ausgewählt" })}
           </div>
         )}
       </div>
@@ -242,22 +219,10 @@ const DartSetSelector: React.FC<Props> = ({ profileId, value, onChange }) => {
           let kindLabel: string | null = null;
           if (kind === "preset") {
             kindLabel =
-              lang === "fr"
-                ? "Preset"
-                : lang === "es"
-                ? "Preset"
-                : lang === "de"
-                ? "Preset"
-                : "Preset";
+              pickLegacyLocalizedTextWithOverrides(lang, "Preset", "Preset", "Preset", { de: "Preset" });
           } else if (kind === "photo") {
             kindLabel =
-              lang === "fr"
-                ? "Photo perso"
-                : lang === "es"
-                ? "Foto propia"
-                : lang === "de"
-                ? "Eigenes Foto"
-                : "Custom photo";
+              pickLegacyLocalizedTextWithOverrides(lang, "Photo perso", "Custom photo", "Foto propia", { de: "Eigenes Foto" });
           }
 
           return (

@@ -7,6 +7,7 @@
 // - Thème via ThemeContext + textes via LangContext
 // ============================================
 
+import { pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../i18n/legacyLocalizedText";
 import React, { useDeferredValue } from "react";
 import { PageAdBanner } from "../monetization/AdSlot";
 import { SaveToast } from "../components/ui/SaveToast";
@@ -3395,11 +3396,9 @@ React.useEffect(() => {
 
         setToast({
           type: "success",
-          message: requestedLang === "en"
-            ? (patch.password ? "Data and password saved" : "Data saved")
-            : requestedLang === "es"
-            ? (patch.password ? "Datos y contraseña guardados" : "Datos guardados")
-            : (patch.password ? "Données et mot de passe sauvegardés" : "Données sauvegardées"),
+          message: patch.password
+            ? pickLegacyLocalizedText(requestedLang, "Données et mot de passe sauvegardés", "Data and password saved", "Datos y contraseña guardados")
+            : pickLegacyLocalizedText(requestedLang, "Données sauvegardées", "Data saved", "Datos guardados"),
         });
 
         try {
@@ -3440,11 +3439,12 @@ React.useEffect(() => {
           try { await (auth as any)?.refresh?.(); } catch {}
           setToast({
             type: "success",
-            message: requestedLang === "en"
-              ? "Preferences saved on this device. Account sync will retry after session refresh."
-              : requestedLang === "es"
-              ? "Preferencias guardadas en este dispositivo. La sincronización de la cuenta se reintentará tras actualizar la sesión."
-              : "Préférences enregistrées sur cet appareil. La synchro compte sera retentée après actualisation de la session.",
+            message: pickLegacyLocalizedText(
+              requestedLang,
+              "Préférences enregistrées sur cet appareil. La synchro compte sera retentée après actualisation de la session.",
+              "Preferences saved on this device. Account sync will retry after session refresh.",
+              "Preferencias guardadas en este dispositivo. La sincronización de la cuenta se reintentará tras actualizar la sesión.",
+            ),
           });
         } else {
           setToast({
@@ -3566,16 +3566,16 @@ React.useEffect(() => {
                       ? (lang === "fr" ? tickerMonProfil : tickerMyProfile)
                       : (lang === "fr" ? tickerGalerie : tickerGallery)}
                   alt={view === "friends"
-                    ? (lang === "fr" ? "Amis" : lang === "es" ? "Amigos" : "Friends")
+                    ? (pickLegacyLocalizedText(lang, "Amis", "Friends", "Amigos"))
                     : view === "me"
-                      ? (lang === "fr" ? "Mon profil" : lang === "es" ? "Mi perfil" : "My profile")
-                      : (lang === "fr" ? "Galerie" : lang === "es" ? "Galería" : "Gallery")}
+                      ? (pickLegacyLocalizedText(lang, "Mon profil", "My profile", "Mi perfil"))
+                      : (pickLegacyLocalizedText(lang, "Galerie", "Gallery", "Galería"))}
                   maxWidth="100%"
                   marginBottom={0}
                   startSlot={
                     <BackDot
                       size={42}
-                      title={lang === "fr" ? "Retour à la page précédente" : lang === "es" ? "Volver a la página anterior" : "Back to the previous page"}
+                      title={pickLegacyLocalizedText(lang, "Retour à la page précédente", "Back to the previous page", "Volver a la página anterior")}
                       onClick={() => {
                         if (returnTo?.tab && go) {
                           go(returnTo.tab, returnTo.params);
@@ -3589,28 +3589,16 @@ React.useEffect(() => {
                     <InfoDot
                       size={42}
                       title={view === "friends"
-                        ? (lang === "fr" ? "Informations sur la page Amis" : lang === "es" ? "Información sobre la página Amigos" : "Friends page information")
+                        ? (pickLegacyLocalizedText(lang, "Informations sur la page Amis", "Friends page information", "Información sobre la página Amigos"))
                         : view === "me"
-                          ? (lang === "fr" ? "Informations sur la page Mon profil" : lang === "es" ? "Información sobre la página Mi perfil" : "My profile page information")
-                          : (lang === "fr" ? "Informations sur la page Galerie" : lang === "es" ? "Información sobre la página Galería" : "Gallery page information")}
+                          ? (pickLegacyLocalizedText(lang, "Informations sur la page Mon profil", "My profile page information", "Información sobre la página Mi perfil"))
+                          : (pickLegacyLocalizedText(lang, "Informations sur la page Galerie", "Gallery page information", "Información sobre la página Galería"))}
                       content={
                         view === "friends"
-                          ? (lang === "fr"
-                              ? "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations."
-                              : lang === "es"
-                                ? "Esta página muestra los amigos sincronizados con tu cuenta Online.\n\n• Consulta su estado de presencia.\n• Revisa sus principales estadísticas de juego.\n• Usa «Recargar» para actualizar la lista y la información."
-                                : "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information.")
+                          ? (pickLegacyLocalizedText(lang, "Cette page affiche les amis synchronisés avec ton compte Online.\n\n• Consulte leur statut de présence.\n• Retrouve leurs principales statistiques de jeu.\n• Utilise « Recharger » pour actualiser la liste et les informations.", "This page shows the friends synchronized with your Online account.\n\n• Check their current presence status.\n• View their main game statistics.\n• Use “Reload” to refresh the list and its information.", "Esta página muestra los amigos sincronizados con tu cuenta Online.\n\n• Consulta su estado de presencia.\n• Revisa sus principales estadísticas de juego.\n• Usa «Recargar» para actualizar la lista y la información."))
                           : view === "me"
-                            ? (lang === "fr"
-                                ? "Cette page affiche ton profil actif synchronisé avec ton compte.\n\n• Consulte ton avatar, ton statut et tes statistiques principales.\n• Modifie tes informations personnelles.\n• Accède rapidement à l'édition, aux statistiques et aux réglages liés à ton profil."
-                                : lang === "es"
-                                  ? "Esta página muestra tu perfil activo sincronizado con tu cuenta.\n\n• Consulta tu avatar, estado y estadísticas principales.\n• Modifica tu información personal.\n• Accede rápidamente a la edición, las estadísticas y los ajustes del perfil."
-                                  : "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.")
-                            : (lang === "fr"
-                                ? "Cette page regroupe deux espaces : la collection de cartes à débloquer du profil actif et la galerie médias du compte.\n\n• CARTES : relève les défis AWENA et Darts Firefighter, suis chaque jauge et débloque définitivement les cartes pour le profil actif.\n• AVATARS & LOGOS : retrouve les avatars IA, profils locaux, bots CPU, teams et l’avatar du profil actif.\n• Les cartes déjà obtenues restent débloquées même si les statistiques évoluent ensuite."
-                                : lang === "es"
-                                  ? "Esta página reúne dos espacios: la colección de cartas desbloqueables del perfil activo y la galería multimedia de la cuenta.\n\n• CARTAS: completa desafíos de AWENA y Darts Firefighter, sigue cada progreso y desbloquea las cartas de forma permanente para el perfil activo.\n• AVATARES Y LOGOS: encuentra avatares IA, perfiles locales, bots CPU, equipos y el avatar del perfil activo.\n• Las cartas obtenidas permanecen desbloqueadas aunque las estadísticas cambien después."
-                                  : "This page contains two spaces: the active profile’s unlockable card collection and the account media gallery.\n\n• CARDS: complete AWENA and Darts Firefighter challenges, track each progress bar and permanently unlock cards for the active profile.\n• AVATARS & LOGOS: browse AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n• Cards already earned stay unlocked even if statistics change later.")
+                            ? (pickLegacyLocalizedText(lang, "Cette page affiche ton profil actif synchronisé avec ton compte.\n\n• Consulte ton avatar, ton statut et tes statistiques principales.\n• Modifie tes informations personnelles.\n• Accède rapidement à l'édition, aux statistiques et aux réglages liés à ton profil.", "This page shows your active profile synchronized with your account.\n\n• View your avatar, status and key statistics.\n• Edit your personal information.\n• Quickly access editing, statistics and profile-related settings.", "Esta página muestra tu perfil activo sincronizado con tu cuenta.\n\n• Consulta tu avatar, estado y estadísticas principales.\n• Modifica tu información personal.\n• Accede rápidamente a la edición, las estadísticas y los ajustes del perfil."))
+                            : (pickLegacyLocalizedText(lang, "Cette page regroupe deux espaces : la collection de cartes à débloquer du profil actif et la galerie médias du compte.\n\n• CARTES : relève les défis AWENA et Darts Firefighter, suis chaque jauge et débloque définitivement les cartes pour le profil actif.\n• AVATARS & LOGOS : retrouve les avatars IA, profils locaux, bots CPU, teams et l’avatar du profil actif.\n• Les cartes déjà obtenues restent débloquées même si les statistiques évoluent ensuite.", "This page contains two spaces: the active profile’s unlockable card collection and the account media gallery.\n\n• CARDS: complete AWENA and Darts Firefighter challenges, track each progress bar and permanently unlock cards for the active profile.\n• AVATARS & LOGOS: browse AI avatars, local profiles, CPU bots, teams and the active profile avatar.\n• Cards already earned stay unlocked even if statistics change later.", "Esta página reúne dos espacios: la colección de cartas desbloqueables del perfil activo y la galería multimedia de la cuenta.\n\n• CARTAS: completa desafíos de AWENA y Darts Firefighter, sigue cada progreso y desbloquea las cartas de forma permanente para el perfil activo.\n• AVATARES Y LOGOS: encuentra avatares IA, perfiles locales, bots CPU, equipos y el avatar del perfil activo.\n• Las cartas obtenidas permanecen desbloqueadas aunque las estadísticas cambien después."))
                       }
                     />
                   }
@@ -3681,7 +3669,7 @@ React.useEffect(() => {
                 {view === "locals" && (
                   <TopTicker
                     src={lang === "fr" ? tickerProfilesLocaux : tickerLocalProfiles}
-                    alt={lang === "fr" ? t("profiles.locals.title", "Profils locaux") : lang === "es" ? "Perfiles locales" : "Local profiles"}
+                    alt={t("profiles.locals.title", "Profils locaux")}
                     maxWidth="min(100%, calc(100vw - 72px), 560px)"
                     marginBottom={0}
                   />
@@ -4110,7 +4098,7 @@ function ProfilesMenuView({
       ) : null}
 
       <CardBtn
-        title={t("profiles.menu.teams.title", lang === "fr" ? `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})` : lang === "es" ? `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})` : `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`)}
+        title={t("profiles.menu.teams.title", pickLegacyLocalizedText(lang, `ÉQUIPES (${String(sportResolved || "SPORT").toUpperCase()})`, `TEAMS (${String(sportResolved || "SPORT").toUpperCase()})`, `EQUIPOS (${String(sportResolved || "SPORT").toUpperCase()})`))}
         subtitle={t(
           "profiles.menu.teams.subtitle",
           "Crée et gère tes équipes pour le sport actif."
@@ -4150,11 +4138,12 @@ function GalleryHubPanel({ items, profiles, bots, activeProfileId, onRefresh, on
   const [section, setSection] = React.useState<"cards" | "avatars">("cards");
   const activeProfile = React.useMemo(() => (profiles || []).find((profile: any) => String(profile?.id || "") === String(activeProfileId || "")) || null, [profiles, activeProfileId]);
   const unlocks = ((activeProfile as any)?.collectibleCards?.unlocks || {}) as CollectibleUnlockMap;
-  const labels = lang === "en"
-    ? { cards: "CARDS", avatars: "AVATARS & LOGOS", cardsHint: "Collections and challenges", avatarsHint: "Account media gallery" }
-    : lang === "es"
-      ? { cards: "CARTAS", avatars: "AVATARES Y LOGOS", cardsHint: "Colecciones y desafíos", avatarsHint: "Galería multimedia de la cuenta" }
-      : { cards: "CARTES", avatars: "AVATARS & LOGOS", cardsHint: "Collections et défis", avatarsHint: "Galerie médias du compte" };
+  const labels = pickLegacyLocalizedValue(
+    lang,
+    { cards: "CARTES", avatars: "AVATARS & LOGOS", cardsHint: "Collections et défis", avatarsHint: "Galerie médias du compte" },
+    { cards: "CARDS", avatars: "AVATARS & LOGOS", cardsHint: "Collections and challenges", avatarsHint: "Account media gallery" },
+    { cards: "CARTAS", avatars: "AVATARES Y LOGOS", cardsHint: "Colecciones y desafíos", avatarsHint: "Galería multimedia de la cuenta" },
+  );
   return <div style={{ display: "grid", gap: 12 }}>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, padding: 6, borderRadius: 18, background: "rgba(0,0,0,.22)", border: `1px solid ${theme.borderSoft}` }}>
       {([["cards", labels.cards, labels.cardsHint, "🃏"], ["avatars", labels.avatars, labels.avatarsHint, "🖼️"]] as const).map(([id,label,hint,icon]) => {
@@ -7809,17 +7798,13 @@ function LocalProfilesRefonte({
     const ok = window.confirm(
       t(
         "profiles.locals.actions.deleteConfirm",
-        lang === "fr"
-          ? `Supprimer uniquement la fiche locale « ${profileName} » ?
+        pickLegacyLocalizedText(lang, `Supprimer uniquement la fiche locale « ${profileName} » ?
 
-Ses parties et statistiques historiques resteront enregistrées. Si un profil du même nom est recréé plus tard, l’application proposera de les rétablir.`
-          : lang === "es"
-          ? `¿Eliminar únicamente la ficha local «${profileName}»?
+Ses parties et statistiques historiques resteront enregistrées. Si un profil du même nom est recréé plus tard, l’application proposera de les rétablir.`, `Delete only the local profile “${profileName}”?
 
-Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelante se vuelve a crear un perfil con el mismo nombre, la aplicación propondrá restaurarlas.`
-          : `Delete only the local profile “${profileName}”?
+Its historical matches and statistics will remain saved. If a profile with the same name is created later, the app will offer to restore them.`, `¿Eliminar únicamente la ficha local «${profileName}»?
 
-Its historical matches and statistics will remain saved. If a profile with the same name is created later, the app will offer to restore them.`
+Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelante se vuelve a crear un perfil con el mismo nombre, la aplicación propondrá restaurarlas.`)
       )
     );
     if (!ok) return;

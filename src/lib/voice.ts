@@ -5,6 +5,8 @@
 // ============================================
 
 import { isMasterAudioEnabled } from "./audioPreferences";
+import { awenaTranslation } from "../awena/AwenaTranslation";
+import { getUiLiteralSourceLanguage, translateUiLiteralWithBrowser } from "../i18n/uiLiteralSafety";
 
 let VOICE_ENABLED = true;
 
@@ -28,14 +30,13 @@ type SpeakOpts = {
   interrupt?: boolean; // cancel avant de parler (default true)
 };
 
-export function speak(text: string, opts?: SpeakOpts) {
-  if (!VOICE_ENABLED || !isMasterAudioEnabled()) return;
-  if (typeof window === "undefined") return;
-  if (!("speechSynthesis" in window)) return;
+function baseSpeechLang(value?: string): string {
+  const base = String(value || "fr").toLowerCase().split("-")[0];
+  // App language code is `no`; Web Speech commonly exposes `nb-NO`.
+  return base === "nb" ? "no" : base;
+}
 
-  const msg = String(text ?? "").trim();
-  if (!msg) return;
-
+function speakNow(msg: string, opts?: SpeakOpts) {
   try {
     const u = new SpeechSynthesisUtterance(msg);
     u.lang = opts?.lang ?? "fr-FR";
@@ -50,6 +51,43 @@ export function speak(text: string, opts?: SpeakOpts) {
   } catch {
     // ignore
   }
+}
+
+export function speak(text: string, opts?: SpeakOpts) {
+  if (!VOICE_ENABLED || !isMasterAudioEnabled()) return;
+  if (typeof window === "undefined") return;
+  if (!("speechSynthesis" in window)) return;
+
+  const msg = String(text ?? "").trim();
+  if (!msg) return;
+
+  const sourceLanguage = getUiLiteralSourceLanguage(msg);
+  const targetLanguage = baseSpeechLang(opts?.lang);
+
+  // Some historical game announcements only authored FR/EN/ES copy. When one
+  // of those fallbacks is registered by the i18n bridge, translate it before
+  // speaking instead of reading French/English with a German/Japanese/etc.
+  // voice. Existing already-localized announcements remain fully synchronous.
+  if (sourceLanguage && targetLanguage && sourceLanguage !== targetLanguage) {
+    void (async () => {
+      let translated: string | null = null;
+      try {
+        if (awenaTranslation.isNativeAvailable()) {
+          translated = await awenaTranslation.textBetween(msg, sourceLanguage, targetLanguage);
+        } else {
+          translated = await translateUiLiteralWithBrowser(msg, targetLanguage, sourceLanguage);
+        }
+      } catch {
+        translated = null;
+      }
+
+      if (!VOICE_ENABLED || !isMasterAudioEnabled()) return;
+      speakNow(String(translated || msg).trim(), opts);
+    })();
+    return;
+  }
+
+  speakNow(msg, opts);
 }
 
 // Helpers pratiques (Shanghai)

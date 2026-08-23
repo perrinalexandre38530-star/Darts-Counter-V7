@@ -10,6 +10,7 @@
 // - Carte 7 : Sync & Partage (exports / imports / cloud / device-à-device)
 // - Bouton "i" : popin d'aide (légère aura animée comme Games)
 // ============================================
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { PageAdBanner } from "../monetization/AdSlot";
 import type { Store, Profile } from "../lib/types";
@@ -42,7 +43,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
   const { sport } = useSport();
-  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
+  const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
   const isMolkkySport = effectiveSport === "molkky";
 

@@ -24,6 +24,34 @@ function isAndroidNative() {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 }
 
+// Google ML Kit has no Serbian model. The Android bridge deliberately uses
+// Croatian as its closest translation model for target "sr". Convert that
+// Croatian Latin output to Serbian Cyrillic so the selected Serbian UI does not
+// suddenly display Croatian/Latin fragments on recently added screens.
+function croatianLatinToSerbianCyrillic(value: string): string {
+  const digraphs: Array<[RegExp, string]> = [
+    [/DŽ/g, "Џ"], [/Dž/g, "Џ"], [/dž/g, "џ"],
+    [/LJ/g, "Љ"], [/Lj/g, "Љ"], [/lj/g, "љ"],
+    [/NJ/g, "Њ"], [/Nj/g, "Њ"], [/nj/g, "њ"],
+  ];
+  let out = String(value || "");
+  for (const [pattern, replacement] of digraphs) out = out.replace(pattern, replacement);
+
+  const map: Record<string, string> = {
+    A: "А", B: "Б", C: "Ц", Č: "Ч", Ć: "Ћ", D: "Д", Đ: "Ђ", E: "Е", F: "Ф",
+    G: "Г", H: "Х", I: "И", J: "Ј", K: "К", L: "Л", M: "М", N: "Н", O: "О",
+    P: "П", R: "Р", S: "С", Š: "Ш", T: "Т", U: "У", V: "В", Z: "З", Ž: "Ж",
+    a: "а", b: "б", c: "ц", č: "ч", ć: "ћ", d: "д", đ: "ђ", e: "е", f: "ф",
+    g: "г", h: "х", i: "и", j: "ј", k: "к", l: "л", m: "м", n: "н", o: "о",
+    p: "п", r: "р", s: "с", š: "ш", t: "т", u: "у", v: "в", z: "з", ž: "ж",
+  };
+  return Array.from(out, (char) => map[char] || char).join("");
+}
+
+function normalizeTargetTranslation(value: string, target: string): string {
+  return baseLang(target) === "sr" ? croatianLatinToSerbianCyrillic(value) : value;
+}
+
 async function preparePair(source: string, target: string): Promise<boolean> {
   const s = baseLang(source);
   const t = baseLang(target);
@@ -64,9 +92,9 @@ async function translateText(text: string, source: string, target: string): Prom
       sourceLanguage: s,
       targetLanguage: t,
     });
-    const translated = String(result?.text || clean);
+    const translated = normalizeTargetTranslation(String(result?.text || clean), t);
     cache.set(key, translated);
-    if (cache.size > 240) {
+    if (cache.size > 2400) {
       const first = cache.keys().next().value;
       if (first) cache.delete(first);
     }
@@ -113,6 +141,10 @@ export const awenaTranslation = {
 
   async textFromFrench(text: string, targetLanguage: string) {
     return translateText(text, "fr", targetLanguage);
+  },
+
+  async textBetween(text: string, sourceLanguage: string, targetLanguage: string) {
+    return translateText(text, sourceLanguage, targetLanguage);
   },
 
   async getStatus(targetLanguage: string) {

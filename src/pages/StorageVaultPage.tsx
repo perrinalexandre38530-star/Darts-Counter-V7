@@ -1,3 +1,4 @@
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import * as React from "react";
 import { Capacitor } from "@capacitor/core";
 import BackDot from "../components/BackDot";
@@ -3599,7 +3600,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
       <div style={shellStyle}>
         <StorageTickerHeader
           ticker={lang === "fr" ? tickerStorageBackupFr : tickerStorageBackupEn}
-          alt={lang === "fr" ? "Centre de sauvegarde" : lang === "es" ? "Centro de copias de seguridad" : "Backup center"}
+          alt={pickLegacyLocalizedText(lang, "Centre de sauvegarde", "Backup center", "Centro de copias de seguridad")}
           busy={busy || restoreRunning}
           help={pageHelp}
           onBack={() => { try { if (window.history.length > 1) window.history.back(); else go?.("settings"); } catch { go?.("settings"); } }}

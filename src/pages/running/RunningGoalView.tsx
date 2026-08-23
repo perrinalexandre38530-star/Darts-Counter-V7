@@ -1,3 +1,4 @@
+import { pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
 import React from "react";
 import type { RunningStats } from "../../activity/runningInsights";
 import {
@@ -41,13 +42,13 @@ export default function RunningGoalView({ stats, lang, accent, textSoft, onChang
   const [targetDate, setTargetDate] = React.useState(current?.targetDate || Date.now() + 8 * 7 * 86_400_000);
   const [targetTimeMs, setTargetTimeMs] = React.useState(current?.targetTimeMs || defaultGoalTimeMs(current?.distanceM || 10000));
 
-  const copy = lang === "fr" ? {
+  const copy = pickLegacyLocalizedValue(lang, {
     title: "OBJECTIF DE COURSE", sub: "Fixe une date et un chrono cible pour transformer ton entraînement en mission.", distance: "DISTANCE", date: "DATE DE COURSE", time: "CHRONO CIBLE", pace: "ALLURE CIBLE", prediction: "PRÉDICTION ACTUELLE", gap: "ÉCART À COMBLER", save: "ENREGISTRER L’OBJECTIF", clear: "SUPPRIMER", saved: "OBJECTIF ACTIF", days: "jours", readiness: "PROXIMITÉ DE L’OBJECTIF", noPrediction: "Encore trop peu de données GPS pour estimer ton niveau sur cette distance.", ahead: "Tu es actuellement en avance sur l’objectif.", close: "Tu es très proche du chrono cible.", behind: "L’objectif est ambitieux : ton plan peut maintenant travailler cet écart.",
-  } : lang === "es" ? {
-    title: "OBJETIVO DE CARRERA", sub: "Define una fecha y un tiempo objetivo para convertir tu entrenamiento en una misión.", distance: "DISTANCIA", date: "FECHA", time: "TIEMPO OBJETIVO", pace: "RITMO OBJETIVO", prediction: "PREDICCIÓN ACTUAL", gap: "DIFERENCIA", save: "GUARDAR OBJETIVO", clear: "ELIMINAR", saved: "OBJETIVO ACTIVO", days: "días", readiness: "PROXIMIDAD AL OBJETIVO", noPrediction: "Aún faltan datos GPS para estimar tu nivel en esta distancia.", ahead: "Actualmente estás por delante del objetivo.", close: "Estás muy cerca del tiempo objetivo.", behind: "El objetivo es ambicioso: el plan ya puede trabajar esta diferencia.",
-  } : {
+  }, {
     title: "RACE GOAL", sub: "Set a date and target time to turn training into a clear mission.", distance: "DISTANCE", date: "RACE DATE", time: "TARGET TIME", pace: "TARGET PACE", prediction: "CURRENT PREDICTION", gap: "GAP TO CLOSE", save: "SAVE RACE GOAL", clear: "DELETE", saved: "ACTIVE GOAL", days: "days", readiness: "GOAL PROXIMITY", noPrediction: "Not enough GPS data yet to estimate this race distance.", ahead: "You are currently ahead of the target.", close: "You are very close to the target time.", behind: "This is an ambitious target: your training can now work on the gap.",
-  };
+  }, {
+    title: "OBJETIVO DE CARRERA", sub: "Define una fecha y un tiempo objetivo para convertir tu entrenamiento en una misión.", distance: "DISTANCIA", date: "FECHA", time: "TIEMPO OBJETIVO", pace: "RITMO OBJETIVO", prediction: "PREDICCIÓN ACTUAL", gap: "DIFERENCIA", save: "GUARDAR OBJETIVO", clear: "ELIMINAR", saved: "OBJETIVO ACTIVO", days: "días", readiness: "PROXIMIDAD AL OBJETIVO", noPrediction: "Aún faltan datos GPS para estimar tu nivel en esta distancia.", ahead: "Actualmente estás por delante del objetivo.", close: "Estás muy cerca del tiempo objetivo.", behind: "El objetivo es ambicioso: el plan ya puede trabajar esta diferencia.",
+  });
 
   const draft: RunningRaceGoal = { distanceM, targetDate, targetTimeMs, createdAt: current?.createdAt || Date.now() };
   const snapshot = buildRunningRaceGoalSnapshot(draft, stats);

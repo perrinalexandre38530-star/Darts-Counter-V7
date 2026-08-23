@@ -25,6 +25,7 @@
 // - Panel "Tests & Simulations" (best-effort flags locaux, reset ciblés, etc.)
 // ============================================
 
+import { localeForLang, pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -1191,10 +1192,15 @@ function startOfLocalDayMs(value = Date.now()): number {
 }
 
 function formatPreviousLogin(value: number | null, lang: Lang = "fr"): string {
-  if (!value || !Number.isFinite(value)) return lang === "en" ? "No previous login recorded" : lang === "es" ? "No hay una conexión anterior registrada" : "Aucune connexion antérieure enregistrée";
+  const empty = pickLegacyLocalizedText(
+    lang,
+    "Aucune connexion antérieure enregistrée",
+    "No previous login recorded",
+    "No hay una conexión anterior registrada",
+  );
+  if (!value || !Number.isFinite(value)) return empty;
   try {
-    const locale = lang === "en" ? "en-GB" : lang === "es" ? "es-ES" : "fr-FR";
-    return new Date(value).toLocaleString(locale, {
+    return new Date(value).toLocaleString(localeForLang(lang), {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -1202,7 +1208,7 @@ function formatPreviousLogin(value: number | null, lang: Lang = "fr"): string {
       minute: "2-digit",
     });
   } catch {
-    return lang === "en" ? "No previous login recorded" : lang === "es" ? "No hay una conexión anterior registrada" : "Aucune connexion antérieure enregistrée";
+    return empty;
   }
 }
 
@@ -2096,7 +2102,7 @@ function openLegalUrl(url: string) {
 function PrivacyDataSection({ onOpenAccount }: { onOpenAccount?: () => void }) {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const L = (fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr;
+  const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
 
   const card: React.CSSProperties = {
     borderRadius: 18,
@@ -2211,7 +2217,7 @@ function AccountPages({
 }) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
-  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
+  const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
   const { store } = useStore();
   const { session, status, loading, profile, updateProfile, deleteAccount, logout } = useAuthOnline() as any;
 
@@ -4193,7 +4199,7 @@ export function Settings({ go, params }: Props) {
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
   const storeBridge = useStore();
-  const L = React.useCallback((fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr, [lang]);
+  const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
 
   // Réglages et Préférences du profil partagent la même langue active.
   // Le changement reste localement effectif même si la session cloud est momentanément indisponible.
@@ -4705,7 +4711,7 @@ export function Settings({ go, params }: Props) {
       return [...LANG_CHOICES].sort((left, right) => {
         const a = t(`lang.${left.id}`, left.defaultLabel);
         const b = t(`lang.${right.id}`, right.defaultLabel);
-        return String(a).localeCompare(String(b), lang === "en" ? "en" : lang === "es" ? "es" : "fr", { sensitivity: "base" });
+        return String(a).localeCompare(String(b), localeForLang(lang), { sensitivity: "base" });
       });
     }, [t, lang]);
     const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());

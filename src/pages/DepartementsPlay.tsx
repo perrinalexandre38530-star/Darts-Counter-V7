@@ -8,6 +8,7 @@
 // ✅ Config appliquée : targetSelectionMode / captureRule / victoryMode / winRegions (FR) / time
 // ============================================
 
+import { pickLegacyBilingualText, pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 
@@ -1972,38 +1973,45 @@ function captureAnnouncementPhrases(
   stolen: boolean,
   previousOwnerName?: string,
 ): string[] {
-  const formerOwner = previousOwnerName || (lang === "fr" ? "l'adversaire" : lang === "es" ? "el adversario" : "the opponent");
+  const formerOwner = previousOwnerName || pickLegacyLocalizedText(lang, "l'adversaire", "the opponent", "el adversario");
 
-  if (lang === "fr") {
-    return stolen
-      ? [
-          `${playerName} arrache ${territoryName} à ${formerOwner} !`,
-          `${territoryName} change de camp. ${formerOwner} est destitué par ${playerName} !`,
-          `Coup stratégique ! ${playerName} prend ${territoryName} à ${formerOwner}.`,
-          `${playerName} renverse ${formerOwner} et s'empare de ${territoryName}.`,
-          `Territoire volé ! ${territoryName} passe de ${formerOwner} à ${playerName}.`,
-        ]
-      : [
-          `${playerName} conquiert ${territoryName} !`,
-          `Nouvelle conquête pour ${playerName} : ${territoryName}.`,
-          `${territoryName} tombe aux mains de ${playerName}.`,
-          `${playerName} prend le contrôle de ${territoryName}.`,
-          `Territoire sécurisé ! ${playerName} s'empare de ${territoryName}.`,
-        ];
-  }
+  const fr = stolen
+    ? [
+        `${playerName} arrache ${territoryName} à ${formerOwner} !`,
+        `${territoryName} change de camp. ${formerOwner} est destitué par ${playerName} !`,
+        `Coup stratégique ! ${playerName} prend ${territoryName} à ${formerOwner}.`,
+        `${playerName} renverse ${formerOwner} et s'empare de ${territoryName}.`,
+        `Territoire volé ! ${territoryName} passe de ${formerOwner} à ${playerName}.`,
+      ]
+    : [
+        `${playerName} conquiert ${territoryName} !`,
+        `Nouvelle conquête pour ${playerName} : ${territoryName}.`,
+        `${territoryName} tombe aux mains de ${playerName}.`,
+        `${playerName} prend le contrôle de ${territoryName}.`,
+        `Territoire sécurisé ! ${playerName} s'empare de ${territoryName}.`,
+      ];
 
-  return stolen
+  const en = stolen
     ? [
         `${playerName} steals ${territoryName} from ${formerOwner}!`,
         `${territoryName} changes sides. ${formerOwner} is displaced by ${playerName}!`,
         `${playerName} takes ${territoryName} from ${formerOwner}.`,
+        `${playerName} takes control of ${territoryName} from ${formerOwner}.`,
+        `Territory stolen! ${territoryName} moves from ${formerOwner} to ${playerName}.`,
       ]
     : [
         `${playerName} conquers ${territoryName}!`,
         `New territory for ${playerName}: ${territoryName}.`,
         `${territoryName} is now controlled by ${playerName}.`,
+        `${playerName} takes control of ${territoryName}.`,
+        `Territory secured! ${playerName} captures ${territoryName}.`,
       ];
+
+  if (lang === "fr") return fr;
+  if (lang === "en") return en;
+  return fr.map((frText, index) => pickLegacyBilingualText(lang, frText, en[index] || en[0]));
 }
+
 
 const RULES_TEXT = (cfg: {
   gameMode: "classic" | "fortress";
@@ -3051,7 +3059,7 @@ export default function DepartementsPlay(props: any) {
       const replayState = normalizeTerritoriesState(next).state;
       setGame(replayState);
       window.setTimeout(() => {
-        speak(lang === "fr" ? "Bull ! Tu rejoues une fois." : lang === "es" ? "¡Bull! Juegas un turno extra." : "Bull! One extra turn.", {
+        speak(pickLegacyLocalizedText(lang, "Bull ! Tu rejoues une fois.", "Bull! One extra turn.", "¡Bull! Juegas un turno extra."), {
           lang: TTS_LANG_BY_APP_LANG[lang] || "fr-FR",
           rate: 0.96,
           pitch: 1.02,

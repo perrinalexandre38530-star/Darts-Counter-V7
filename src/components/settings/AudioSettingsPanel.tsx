@@ -1,3 +1,4 @@
+import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import React from "react";
 import SplashScreen from "../SplashScreen";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -30,7 +31,7 @@ function clamp01(value: number) {
 export default function AudioSettingsPanel() {
   const { theme } = useTheme();
   const { lang } = useLang();
-  const L = React.useCallback((fr: string, en: string, es: string) => lang === "fr" ? fr : lang === "en" ? en : es, [lang]);
+  const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
   const [prefs, setPrefs] = React.useState<AudioPreferences>(() => getAudioPreferences());
   const [introEnabled, setIntroEnabledState] = React.useState<boolean>(() => getStartupIntroEnabled());
   const [previewTrackId, setPreviewTrackId] = React.useState<NavigationMusicTrackId | null>(null);
@@ -265,7 +266,7 @@ export default function AudioSettingsPanel() {
                     <span style={{ width: 24, height: 24, flex: "0 0 auto", borderRadius: 999, border: `1px solid ${active ? theme.primary : theme.borderSoft}`, background: active ? `${theme.primary}24` : "rgba(0,0,0,.25)", display: "grid", placeItems: "center", color: active ? theme.primary : theme.textSoft, fontSize: 12, fontWeight: 1000 }}>{active ? "✓" : index + 1}</span>
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 11.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{track.name}</span>
-                      <span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 9.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{track.subtitle[lang === "fr" ? "fr" : lang === "en" ? "en" : "es"]}</span>
+                      <span style={{ display: "block", marginTop: 2, color: theme.textSoft, fontSize: 9.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pickLegacyLocalizedText(lang, track.subtitle.fr, track.subtitle.en, track.subtitle.es)}</span>
                     </span>
                   </button>
                   <div style={{ display: "flex", alignItems: "center", gap: 5 }}>

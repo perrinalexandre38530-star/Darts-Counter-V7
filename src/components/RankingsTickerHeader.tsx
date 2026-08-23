@@ -1,3 +1,4 @@
+import { pickLegacyBilingualText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import TopTicker from "./TopTicker";
 import BackDot from "./BackDot";
@@ -34,7 +35,7 @@ export default function RankingsTickerHeader({
   return (
     <TopTicker
       src={isFr ? tickerClassements : tickerRankings}
-      alt={isFr ? "Classements" : "Rankings"}
+      alt={pickLegacyBilingualText(lang, "Classements", "Rankings")}
       maxWidth={maxWidth}
       marginBottom={marginBottom}
       startSlot={
@@ -42,7 +43,7 @@ export default function RankingsTickerHeader({
           onClick={onBack}
           size={42}
           color={primary}
-          title={backTitle || (isFr ? "Retour à la page précédente" : "Back to the previous page")}
+          title={backTitle || pickLegacyBilingualText(lang, "Retour à la page précédente", "Back to the previous page")}
         />
       }
       endSlot={
@@ -50,12 +51,14 @@ export default function RankingsTickerHeader({
           <InfoDot
             size={42}
             color={primary}
-            title={infoTitle || (isFr ? "Informations sur les classements" : "Rankings information")}
+            title={infoTitle || pickLegacyBilingualText(lang, "Informations sur les classements", "Rankings information")}
             content={
               infoContent ||
-              (isFr
-                ? "Cette page présente les classements globaux du sport actif. Utilise les filtres de période, de mode et de statistique pour comparer les joueurs, équipes ou profils disponibles."
-                : "This page shows the global rankings for the active sport. Use the period, mode and statistic filters to compare available players, teams or profiles.")
+              pickLegacyBilingualText(
+                lang,
+                "Cette page présente les classements globaux du sport actif. Utilise les filtres de période, de mode et de statistique pour comparer les joueurs, équipes ou profils disponibles.",
+                "This page shows the global rankings for the active sport. Use the period, mode and statistic filters to compare available players, teams or profiles."
+              )
             }
           />
         )

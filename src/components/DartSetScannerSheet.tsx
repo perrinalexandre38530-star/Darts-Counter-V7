@@ -6,6 +6,7 @@
 // - Mise à jour du DartSet
 // =============================================================
 
+import { pickLegacyLocalizedText, pickLegacyLocalizedTextWithOverrides, pickLegacyBilingualText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -54,22 +55,10 @@ const DartSetScannerSheet: React.FC<Props> = ({
 
   // ------------------ Textes ------------------
   const t_scanTitle =
-    lang === "fr"
-      ? "Scanner la fléchette"
-      : lang === "es"
-      ? "Escanear el dardo"
-      : lang === "de"
-      ? "Dart scannen"
-      : "Scan dart";
+    pickLegacyLocalizedTextWithOverrides(lang, "Scanner la fléchette", "Scan dart", "Escanear el dardo", { de: "Dart scannen" });
 
   const t_scanSubtitle =
-    lang === "fr"
-      ? "Prends ta fléchette en photo sur fond neutre. L'app va la détourer, la styliser et l’orienter automatiquement."
-      : lang === "es"
-      ? "Fotografía tu dardo sobre un fondo neutro. La app lo recortará y lo orientará automáticamente."
-      : lang === "de"
-      ? "Fotografiere deinen Dart vor neutralem Hintergrund. Die App schneidet ihn aus und richtet ihn automatisch aus."
-      : "Take a picture of your dart on a neutral background. The app will process it automatically.";
+    pickLegacyLocalizedTextWithOverrides(lang, "Prends ta fléchette en photo sur fond neutre. L'app va la détourer, la styliser et l’orienter automatiquement.", "Take a picture of your dart on a neutral background. The app will process it automatically.", "Fotografía tu dardo sobre un fondo neutro. La app lo recortará y lo orientará automáticamente.", { de: "Fotografiere deinen Dart vor neutralem Hintergrund. Die App schneidet ihn aus und richtet ihn automatisch aus." });
 
   // ------------------ Handlers ------------------
 
@@ -83,7 +72,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
     if (!f) return;
 
     if (!f.type.startsWith("image/")) {
-      setError(lang === "fr" ? "Fichier non valide." : lang === "es" ? "Archivo no válido." : "Invalid file.");
+      setError(pickLegacyLocalizedText(lang, "Fichier non valide.", "Invalid file.", "Archivo no válido."));
       return;
     }
 
@@ -124,9 +113,11 @@ const DartSetScannerSheet: React.FC<Props> = ({
     } catch (err) {
       console.error("SCAN ERROR", err);
       setError(
-        lang === "fr"
-          ? "Le scan a échoué. Vérifie ta connexion et réessaie."
-          : "Scan failed. Try again."
+        pickLegacyBilingualText(
+          lang,
+          "Le scan a échoué. Vérifie ta connexion et réessaie.",
+          "Scan failed. Try again."
+        )
       );
       setStatus("error");
     }
@@ -170,7 +161,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
             fontSize: 12,
           }}
         >
-          {lang === "fr" ? "Fermer" : lang === "es" ? "Cerrar" : "Close"}
+          {pickLegacyLocalizedText(lang, "Fermer", "Close", "Cerrar")}
         </button>
 
         <div
@@ -243,9 +234,11 @@ const DartSetScannerSheet: React.FC<Props> = ({
             >
               <div style={{ fontSize: 36 }}>📷</div>
               <div style={{ marginTop: 8, fontSize: 12 }}>
-                {lang === "fr"
-                  ? "Choisis une photo de ta fléchette ou prends-en une."
-                  : "Choose a photo or take one."}
+                {pickLegacyBilingualText(
+                  lang,
+                  "Choisis une photo de ta fléchette ou prends-en une.",
+                  "Choose a photo or take one."
+                )}
               </div>
             </div>
           )}
@@ -277,7 +270,7 @@ const DartSetScannerSheet: React.FC<Props> = ({
               fontSize: 12,
             }}
           >
-            {lang === "fr" ? "Choisir une photo" : lang === "es" ? "Elegir una foto" : "Pick photo"}
+            {pickLegacyLocalizedText(lang, "Choisir une photo", "Pick photo", "Elegir una foto")}
           </button>
 
           <button
@@ -299,12 +292,8 @@ const DartSetScannerSheet: React.FC<Props> = ({
             }}
           >
             {isBusy
-              ? lang === "fr"
-                ? "Scan..."
-                : "Scanning..."
-              : lang === "fr"
-              ? "Lancer le scan"
-              : "Scan dart"}
+              ? pickLegacyBilingualText(lang, "Scan...", "Scanning...")
+              : pickLegacyBilingualText(lang, "Lancer le scan", "Scan dart")}
           </button>
         </div>
       </div>

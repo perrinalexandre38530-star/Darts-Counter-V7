@@ -9,6 +9,7 @@
 // - ✅ Ajout des fonds ticker (images) par catégorie comme Darts/Pétanque
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -386,11 +387,7 @@ export default function PingPongHome({ store, go }: Props) {
       : st?.setsA || st?.setsB || st?.pointsA || st?.pointsB
       ? t(
           "pingpong.home.ticker.resume.dynamic",
-          lang === "fr"
-            ? `Reprends : Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
-            : lang === "es"
-            ? `Continúa: Sets ${st.setsA}-${st.setsB} · Puntos ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
-            : `Resume: Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`
+          pickLegacyLocalizedText(lang, `Reprends : Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`, `Resume: Sets ${st.setsA}-${st.setsB} · Points ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`, `Continúa: Sets ${st.setsA}-${st.setsB} · Puntos ${st.pointsA}-${st.pointsB} (Set ${st.setIndex}).`)
         )
       : t("pingpong.home.ticker.resume.empty", "Aucun match en cours — lance une partie pour commencer.");
 

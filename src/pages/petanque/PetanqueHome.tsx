@@ -4,6 +4,7 @@
 // (ActiveProfileCard + ArcadeTicker + bloc détails)
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
@@ -700,7 +701,7 @@ const [kpis, setKpis] = useState<{
     const resume = finished
       ? t("petanque.home.ticker.results.finished", "Partie terminée — consulte le résumé ou relance une partie.")
       : ends > 0
-      ? t("petanque.home.ticker.results.live", lang === "fr" ? `Partie en cours : ${a} — ${b} (objectif ${target}).` : lang === "es" ? `Partida en curso: ${a} — ${b} (objetivo ${target}).` : `Match in progress: ${a} — ${b} (target ${target}).`)
+      ? t("petanque.home.ticker.results.live", pickLegacyLocalizedText(lang, `Partie en cours : ${a} — ${b} (objectif ${target}).`, `Match in progress: ${a} — ${b} (target ${target}).`, `Partida en curso: ${a} — ${b} (objetivo ${target}).`))
       : t("petanque.home.ticker.results.empty", "Aucun résultat récent — lance une partie pour commencer.");
 
     // ✅ Contenu “éditorial” : tu pourras brancher ça plus tard (Supabase/news feed)

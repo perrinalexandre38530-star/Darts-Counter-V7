@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import React from "react";
 import BackDot from "../../components/BackDot";
 import { PageAdBanner } from "../../monetization/AdSlot";
@@ -256,7 +257,7 @@ function compactInfoBox(title: string, text: string, tone: "ok" | "idle" = "idle
 export default function CastHostPage({ go, initialTab }: Props) {
   const { theme } = useTheme() as any;
   const { lang } = useLang() as any;
-  const L = (fr: string, en: string, es: string) => lang === "en" ? en : lang === "es" ? es : fr;
+  const L = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const [activeTab, setActiveTab] = React.useState<ScreenTab>(() => initialTab || consumeStoredInitialTab() || "cast");
 
   const [castState, setCastState] = React.useState(getGoogleCastState());

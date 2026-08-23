@@ -2,6 +2,7 @@
 // src/pages/Home.tsx — Home v2 (dashboard futuriste)
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -1940,11 +1941,7 @@ function buildContextualSlides(
       title: t("home.ctx.fav.title", "Ton segment du moment"),
       text: t(
         "home.ctx.fav.text",
-        lang === "fr"
-          ? `Tu touches souvent ${String(fav)} : utilise-le comme repère pour tes finishes.`
-          : lang === "es"
-          ? `Sueles acertar ${String(fav)}: úsalo como referencia para tus cierres.`
-          : `You often hit ${String(fav)}: use it as a reference for your finishes.`
+        pickLegacyLocalizedText(lang, `Tu touches souvent ${String(fav)} : utilise-le comme repère pour tes finishes.`, `You often hit ${String(fav)}: use it as a reference for your finishes.`, `Sueles acertar ${String(fav)}: úsalo como referencia para tus cierres.`)
       ),
       imageKey: "tipAdvice",
       weight: 3,
@@ -2172,13 +2169,13 @@ function buildArcadeItems(
       x01MultiSessions > 0
         ? t(
             "home.ticker.localLast.text.dynamic",
-            lang === "fr" ? `Tu as déjà joué ${x01MultiSessions} matchs X01 multi en local.` : lang === "es" ? `Ya has jugado ${x01MultiSessions} partidas X01 multijugador en local.` : `You have already played ${x01MultiSessions} local X01 multiplayer matches.`
+            pickLegacyLocalizedText(lang, `Tu as déjà joué ${x01MultiSessions} matchs X01 multi en local.`, `You have already played ${x01MultiSessions} local X01 multiplayer matches.`, `Ya has jugado ${x01MultiSessions} partidas X01 multijugador en local.`)
           )
         : t(
             "home.ticker.localLast.text.empty",
             "Aucun match local pour l’instant, invite des amis et lance une partie."
           ),
-    detail: x01MultiSessions > 0 ? (lang === "fr" ? `${x01MultiSessions} matchs X01 multi` : lang === "es" ? `${x01MultiSessions} partidas X01 multi` : `${x01MultiSessions} X01 multiplayer matches`) : "",
+    detail: x01MultiSessions > 0 ? (pickLegacyLocalizedText(lang, `${x01MultiSessions} matchs X01 multi`, `${x01MultiSessions} X01 multiplayer matches`, `${x01MultiSessions} partidas X01 multi`)) : "",
     backgroundImage: pickTickerImage("local", `${seed}::last-local-match`),
     accentColor: "#52FFC4",
   });
@@ -2190,7 +2187,7 @@ function buildArcadeItems(
       onlineMatches > 0
         ? t(
             "home.ticker.onlineLast.text.dynamic",
-            lang === "fr" ? `Tu as joué ${onlineMatches} matchs online.` : lang === "es" ? `Has jugado ${onlineMatches} partidas online.` : `You have played ${onlineMatches} online matches.`
+            pickLegacyLocalizedText(lang, `Tu as joué ${onlineMatches} matchs online.`, `You have played ${onlineMatches} online matches.`, `Has jugado ${onlineMatches} partidas online.`)
           )
         : t(
             "home.ticker.onlineLast.text.empty",
@@ -2200,7 +2197,7 @@ function buildArcadeItems(
       onlineMatches > 0
         ? [
             `${onlineMatches} matchs`,
-            onlineWinratePct != null ? (lang === "fr" ? `${onlineWinratePct}% de victoires` : lang === "es" ? `${onlineWinratePct}% de victorias` : `${onlineWinratePct}% wins`) : null,
+            onlineWinratePct != null ? (pickLegacyLocalizedText(lang, `${onlineWinratePct}% de victoires`, `${onlineWinratePct}% wins`, `${onlineWinratePct}% de victorias`)) : null,
           ]
             .filter(Boolean)
             .join(" · ")
@@ -2216,7 +2213,7 @@ function buildArcadeItems(
       onlineBestRank != null
         ? t(
             "home.ticker.onlineLeader.text.dynamic",
-            lang === "fr" ? `Ton meilleur rang online est #${onlineBestRank}.` : lang === "es" ? `Tu mejor puesto online es #${onlineBestRank}.` : `Your best online rank is #${onlineBestRank}.`
+            pickLegacyLocalizedText(lang, `Ton meilleur rang online est #${onlineBestRank}.`, `Your best online rank is #${onlineBestRank}.`, `Tu mejor puesto online es #${onlineBestRank}.`)
           )
         : t(
             "home.ticker.onlineLeader.text.empty",
@@ -2233,7 +2230,7 @@ function buildArcadeItems(
       trainingHitsTotal > 0
         ? t(
             "home.ticker.training.text.dynamic",
-            lang === "fr" ? `Tu as déjà enregistré ${trainingHitsTotal} hits en Training X01.` : lang === "es" ? `Ya has registrado ${trainingHitsTotal} impactos en el Entrenamiento X01.` : `You have already recorded ${trainingHitsTotal} hits in X01 Training.`
+            pickLegacyLocalizedText(lang, `Tu as déjà enregistré ${trainingHitsTotal} hits en Training X01.`, `You have already recorded ${trainingHitsTotal} hits in X01 Training.`, `Ya has registrado ${trainingHitsTotal} impactos en el Entrenamiento X01.`)
           )
         : t(
             "home.ticker.training.text.empty",
@@ -2241,7 +2238,7 @@ function buildArcadeItems(
           ),
     detail:
       trainingHitsTotal > 0 && trainingGoalPct != null
-        ? (lang === "fr" ? `Objectifs réussis : ${trainingGoalPct}%` : lang === "es" ? `Objetivos logrados: ${trainingGoalPct}%` : `Goals completed: ${trainingGoalPct}%`)
+        ? (pickLegacyLocalizedText(lang, `Objectifs réussis : ${trainingGoalPct}%`, `Goals completed: ${trainingGoalPct}%`, `Objetivos logrados: ${trainingGoalPct}%`))
         : "",
     backgroundImage: pickTickerImage("training", `${seed}::training-summary`),
     accentColor: "#9EFF5E",
@@ -2255,7 +2252,7 @@ function buildArcadeItems(
       killerSessions > 0
         ? t(
             "home.ticker.killer.text.dynamic",
-            lang === "fr" ? `Tu as joué ${killerSessions} parties Killer sur ce profil.` : lang === "es" ? `Has jugado ${killerSessions} partidas de Killer con este perfil.` : `You have played ${killerSessions} Killer games on this profile.`
+            pickLegacyLocalizedText(lang, `Tu as joué ${killerSessions} parties Killer sur ce profil.`, `You have played ${killerSessions} Killer games on this profile.`, `Has jugado ${killerSessions} partidas de Killer con este perfil.`)
           )
         : t(
             "home.ticker.killer.text.empty",
@@ -2264,7 +2261,7 @@ function buildArcadeItems(
     detail:
       killerSessions > 0
         ? [
-            lang === "fr" ? `${killerSessions} parties` : lang === "es" ? `${killerSessions} partidas` : `${killerSessions} games`,
+            pickLegacyLocalizedText(lang, `${killerSessions} parties`, `${killerSessions} games`, `${killerSessions} partidas`),
             killerWinratePct != null ? `${killerWinratePct}% win` : null,
             killerKills > 0 ? `${killerKills} kills` : null,
           ]
@@ -2282,7 +2279,7 @@ function buildArcadeItems(
       sessionsGlobal > 0
         ? t(
             "home.ticker.month.text.dynamic",
-            lang === "fr" ? `Ce profil a enregistré ${sessionsGlobal} sessions au total.` : lang === "es" ? `Este perfil ha registrado ${sessionsGlobal} sesiones en total.` : `This profile has recorded ${sessionsGlobal} sessions in total.`
+            pickLegacyLocalizedText(lang, `Ce profil a enregistré ${sessionsGlobal} sessions au total.`, `This profile has recorded ${sessionsGlobal} sessions in total.`, `Este perfil ha registrado ${sessionsGlobal} sesiones en total.`)
           )
         : t(
             "home.ticker.month.text.empty",
@@ -2290,8 +2287,8 @@ function buildArcadeItems(
           ),
     detail: [
       sessionsGlobal > 0 ? `${sessionsGlobal} sessions` : null,
-      winrateGlobalPct != null ? (lang === "fr" ? `${winrateGlobalPct}% de victoires` : lang === "es" ? `${winrateGlobalPct}% de victorias` : `${winrateGlobalPct}% wins`) : null,
-      clockTargets > 0 ? (lang === "fr" ? `${clockTargets} cibles à l’Horloge` : lang === "es" ? `${clockTargets} objetivos en Around the Clock` : `${clockTargets} Around the Clock targets`) : null,
+      winrateGlobalPct != null ? (pickLegacyLocalizedText(lang, `${winrateGlobalPct}% de victoires`, `${winrateGlobalPct}% wins`, `${winrateGlobalPct}% de victorias`)) : null,
+      clockTargets > 0 ? (pickLegacyLocalizedText(lang, `${clockTargets} cibles à l’Horloge`, `${clockTargets} Around the Clock targets`, `${clockTargets} objetivos en Around the Clock`)) : null,
     ]
       .filter(Boolean)
       .join(" · "),

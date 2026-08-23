@@ -4,6 +4,7 @@
 // Poursuite score cumulé, inversion Fuyard/Chasseur, BO3/5/7, équipes, bots.
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import BackDot from "../components/BackDot";
 import DartboardClickable from "../components/DartboardClickable";
@@ -679,7 +680,7 @@ export default function AttrapeMoiPlay(props: any) {
   return <div style={{ minHeight: "100dvh", color: themeText, background: `radial-gradient(circle at 50% -5%, ${primary}18 0, ${theme?.bg || "#080c17"} 48%, #020309 100%)`, overflowX: "hidden", paddingBottom: 8 }}>
     <PageHeader
       tickerSrc={tickerAttrapeMoiLocalized}
-      tickerAlt={lang === "fr" ? "ATTRAPE-MOI SI TU PEUX !" : lang === "es" ? "¡ATRÁPAME SI PUEDES!" : "CATCH ME IF YOU CAN!"}
+      tickerAlt={pickLegacyLocalizedText(lang, "ATTRAPE-MOI SI TU PEUX !", "CATCH ME IF YOU CAN!", "¡ATRÁPAME SI PUEDES!")}
       tickerHeight={92}
       tickerBottomGap={8}
       left={<div style={{ marginLeft: 6 }}><BackDot onClick={backToConfig} color={primary} glow={`${primary}88`} title="Retour à la configuration" /></div>}

@@ -785,16 +785,44 @@ export function looksFrenchUiText(value: string): boolean {
   return !!core && !PROPER_NAME_EXCEPTIONS.has(core) && FRENCH_SIGNAL.test(core);
 }
 
+// t(...) can register the source language of a temporary fallback when a
+// selected-language dictionary does not yet contain a recent key. The text
+// remains visually normal, while the DOM safety-net knows whether it must ask
+// the local translator for FR→target or EN→target.
+const registeredSourceLanguages = new Map<string, string>();
+
+export function registerUiLiteralTranslationSource(value: string, sourceLanguage: string): void {
+  const core = normalize(String(value || ""));
+  const source = String(sourceLanguage || "").toLowerCase().split("-")[0];
+  if (!core || !source) return;
+  registeredSourceLanguages.set(core, source);
+  // Bounded cache: UI strings are finite, but avoid unbounded growth if a
+  // dynamic fallback is accidentally registered.
+  if (registeredSourceLanguages.size > 4000) {
+    const first = registeredSourceLanguages.keys().next().value;
+    if (first) registeredSourceLanguages.delete(first);
+  }
+}
+
+export function getUiLiteralSourceLanguage(value: string): string | null {
+  const core = normalize(String(value || ""));
+  if (!core || PROPER_NAME_EXCEPTIONS.has(core)) return null;
+  const registered = registeredSourceLanguages.get(core);
+  if (registered) return registered;
+  return looksFrenchUiText(core) ? "fr" : null;
+}
+
 type BrowserTranslatorLike = {
   translate(text: string): Promise<string>;
 };
 
 const browserTranslatorCache = new Map<string, Promise<BrowserTranslatorLike | null>>();
 
-function getBrowserTranslator(targetLang: string): Promise<BrowserTranslatorLike | null> {
+function getBrowserTranslator(targetLang: string, sourceLang = "fr"): Promise<BrowserTranslatorLike | null> {
+  const source = String(sourceLang || "fr").toLowerCase().split("-")[0];
   const target = String(targetLang || "en").toLowerCase().split("-")[0];
-  if (target === "fr") return Promise.resolve(null);
-  const key = `fr>${target}`;
+  if (target === source) return Promise.resolve(null);
+  const key = `${source}>${target}`;
   const cached = browserTranslatorCache.get(key);
   if (cached) return cached;
 
@@ -812,7 +840,7 @@ function getBrowserTranslator(targetLang: string): Promise<BrowserTranslatorLike
   try {
     // Deliberately invoke create() synchronously in the caller stack so a direct
     // click on the language selector can satisfy transient user activation.
-    created = api.create({ sourceLanguage: "fr", targetLanguage: target });
+    created = api.create({ sourceLanguage: source, targetLanguage: target });
   } catch (error) {
     console.info("[i18n] Browser Translator unavailable", error);
     const unavailable = Promise.resolve(null);
@@ -829,14 +857,21 @@ function getBrowserTranslator(targetLang: string): Promise<BrowserTranslatorLike
   return promise;
 }
 
-export function warmUiLiteralTranslator(targetLang: string): void {
-  if (String(targetLang || "").toLowerCase().split("-")[0] === "fr") return;
-  void getBrowserTranslator(targetLang);
+export function warmUiLiteralTranslator(targetLang: string, sourceLang = "fr"): void {
+  const source = String(sourceLang || "fr").toLowerCase().split("-")[0];
+  const target = String(targetLang || "").toLowerCase().split("-")[0];
+  if (!target || target === source) return;
+  void getBrowserTranslator(target, source);
 }
 
-export async function translateUiLiteralWithBrowser(raw: string, targetLang: string): Promise<string | null> {
-  if (!looksFrenchUiText(raw)) return null;
-  const translator = await getBrowserTranslator(targetLang);
+export async function translateUiLiteralWithBrowser(
+  raw: string,
+  targetLang: string,
+  sourceLang?: string
+): Promise<string | null> {
+  const source = String(sourceLang || getUiLiteralSourceLanguage(raw) || "").toLowerCase().split("-")[0];
+  if (!source) return null;
+  const translator = await getBrowserTranslator(targetLang, source);
   if (!translator) return null;
   try {
     const translated = String(await translator.translate(raw) || "").trim();
@@ -864,11 +899,12 @@ export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string
     const dictionaryCi = reverseCi.get(core.toLocaleLowerCase("fr"));
     if (dictionaryCi != null) return `${lead}${matchCase(core, dictionaryCi)}${trail}`;
 
-    // English is the universal non-French fallback for hardcoded UI literals.
-    // For a language with no exact dictionary match, do not inject French.
+    // For non-English target languages, never silently replace a missing
+    // translation with English. Keep the canonical French literal intact so
+    // LangContext's async on-device/browser translator can resolve it into the
+    // language the user actually selected.
     if (targetLang !== "en") {
-      const enTranslator = createUiLiteralTranslator(dicts, "en");
-      return enTranslator(raw);
+      return raw;
     }
 
     const explicit = EN_EXACT[core];

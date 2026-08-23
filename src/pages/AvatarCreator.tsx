@@ -9,6 +9,7 @@
 // - Export final WebP compressé en 256x256 pour éviter de regonfler le stockage/NAS
 // ============================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -1307,7 +1308,7 @@ function AvatarCreator({
     const maxMb = 12;
     if (f.size > maxMb * 1024 * 1024) {
       setError(
-        t("avatar.error.tooBig", lang === "fr" ? `L’image est trop lourde (max ${maxMb} Mo).` : lang === "es" ? `La imagen es demasiado pesada (máx. ${maxMb} MB).` : `The image is too large (max ${maxMb} MB).`),
+        t("avatar.error.tooBig", pickLegacyLocalizedText(lang, `L’image est trop lourde (max ${maxMb} Mo).`, `The image is too large (max ${maxMb} MB).`, `La imagen es demasiado pesada (máx. ${maxMb} MB).`)),
       );
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
@@ -1620,50 +1621,31 @@ function AvatarCreator({
 
   const infoContent = (
     <div style={{ lineHeight: 1.45 }}>
-      {lang === "fr" ? (
-        <>
-          <p style={{ marginTop: 0 }}>
-            <strong>AVATAR IA</strong> : importe une photo dans le médaillon,
-            recadre-la, génère une caricature cartoon, puis enregistre le WebP
-            final.
-          </p>
-          <p>
-            Le premier avatar IA est offert. Ensuite, chaque génération réussie
-            consomme 1 crédit.
-          </p>
-          <p style={{ marginBottom: 0 }}>
-            Le diagnostic API est masqué et visible uniquement en mode développeur.
-          </p>
-        </>
-      ) : lang === "es" ? (
-        <>
-          <p style={{ marginTop: 0 }}>
-            <strong>AVATAR IA</strong>: importa una foto en el medallón,
-            recórtala, genera una caricatura estilo cartoon y guarda el WebP final.
-          </p>
-          <p>
-            El primer avatar IA es gratuito. Después, cada generación completada
-            consume 1 crédito.
-          </p>
-          <p style={{ marginBottom: 0 }}>
-            El diagnóstico de la API está oculto y solo se muestra en modo desarrollador.
-          </p>
-        </>
-      ) : (
-        <>
-          <p style={{ marginTop: 0 }}>
-            <strong>AI AVATAR</strong>: import a photo into the medallion,
-            crop it, generate a cartoon caricature, then save the final WebP.
-          </p>
-          <p>
-            The first AI avatar is free. After that, each successful generation
-            consumes 1 credit.
-          </p>
-          <p style={{ marginBottom: 0 }}>
-            API diagnostics are hidden and only visible in developer mode.
-          </p>
-        </>
-      )}
+      <p style={{ marginTop: 0 }}>
+        <strong>{pickLegacyLocalizedText(lang, "AVATAR IA", "AI AVATAR", "AVATAR IA")}</strong>
+        {pickLegacyLocalizedText(
+          lang,
+          " : importe une photo dans le médaillon, recadre-la, génère une caricature cartoon, puis enregistre le WebP final.",
+          ": import a photo into the medallion, crop it, generate a cartoon caricature, then save the final WebP.",
+          ": importa una foto en el medallón, recórtala, genera una caricatura estilo cartoon y guarda el WebP final."
+        )}
+      </p>
+      <p>
+        {pickLegacyLocalizedText(
+          lang,
+          "Le premier avatar IA est offert. Ensuite, chaque génération réussie consomme 1 crédit.",
+          "The first AI avatar is free. After that, each successful generation consumes 1 credit.",
+          "El primer avatar IA es gratuito. Después, cada generación completada consume 1 crédito."
+        )}
+      </p>
+      <p style={{ marginBottom: 0 }}>
+        {pickLegacyLocalizedText(
+          lang,
+          "Le diagnostic API est masqué et visible uniquement en mode développeur.",
+          "API diagnostics are hidden and only visible in developer mode.",
+          "El diagnóstico de la API está oculto y solo se muestra en modo desarrollador."
+        )}
+      </p>
     </div>
   );
 
@@ -2530,7 +2512,7 @@ function AvatarCreator({
         >
           <TopTicker
             src={lang === "fr" ? tickerAvatarIa : tickerAiAvatar}
-            alt={lang === "fr" ? "Avatar IA" : lang === "es" ? "Avatar IA" : "AI Avatar"}
+            alt={pickLegacyLocalizedText(lang, "Avatar IA", "AI Avatar", "Avatar IA")}
             maxWidth="100%"
             marginBottom={0}
             startSlot={
@@ -2538,12 +2520,12 @@ function AvatarCreator({
                 onClick={handleBack}
                 size={40}
                 color={primary}
-                title={lang === "fr" ? "Retour à la page précédente" : lang === "es" ? "Volver a la página anterior" : "Back to the previous page"}
+                title={pickLegacyLocalizedText(lang, "Retour à la page précédente", "Back to the previous page", "Volver a la página anterior")}
               />
             }
             endSlot={
               <InfoDot
-                title={lang === "fr" ? "Infos Avatar IA" : lang === "es" ? "Información del Avatar IA" : "AI Avatar info"}
+                title={pickLegacyLocalizedText(lang, "Infos Avatar IA", "AI Avatar info", "Información del Avatar IA")}
                 content={infoContent}
                 size={40}
                 color={primary}

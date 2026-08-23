@@ -1,3 +1,4 @@
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { PageAdBanner } from "../monetization/AdSlot";
 import type { Store } from "../lib/types";
@@ -34,9 +35,7 @@ function normalizeCompetitionSport(value: any): string {
 }
 
 function tr3(lang: Lang, fr: string, en: string, es: string): string {
-  if (lang === "en") return en;
-  if (lang === "es") return es;
-  return fr;
+  return pickLegacyLocalizedText(lang, fr, en, es);
 }
 
 function sportLabel(sport: string, lang: Lang): string {
@@ -289,7 +288,7 @@ function CompetitionCard({
 
 export default function TournamentsHome({ store, go, params }: Props) {
   const { lang } = useLang();
-  const L = React.useCallback((fr: string, en: string, es: string) => tr3(lang, fr, en, es), [lang]);
+  const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
   const activeSport = pickActiveSport(store, params);
   const label = sportLabel(activeSport, lang);
   const isFoot = activeSport === "foot" || activeSport === "football";

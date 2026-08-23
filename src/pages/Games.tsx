@@ -29,6 +29,7 @@
 // - Chargées via import.meta.glob
 // ============================================
 
+import { pickLegacyLocalizedText } from "../i18n/legacyLocalizedText";
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -136,10 +137,11 @@ const GAME_LABELS_I18N: Record<string, { en: string; es?: string }> = {
 function localizedGameLabel(game: DartsGameDef | null | undefined, langCode: any): string {
   if (!game) return "";
   const lang = String(langCode || "fr").toLowerCase();
-  if (lang === "fr") return String(game.label || game.id || "");
+  const fr = String(game.label || game.id || "");
   const entry = GAME_LABELS_I18N[String(game.id || "")];
-  if (lang === "es" && entry?.es) return entry.es;
-  return entry?.en || String(game.label || game.id || "");
+  const en = entry?.en || fr;
+  const es = entry?.es || en;
+  return pickLegacyLocalizedText(lang, fr, en, es);
 }
 
 const CATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
@@ -152,10 +154,8 @@ const CATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
 
 function localizedCategoryLabel(id: string, fallback: string, langCode: any): string {
   const lang = String(langCode || "fr").toLowerCase();
-  if (lang === "fr") return fallback;
   const entry = CATEGORY_LABELS_I18N[id];
-  if (lang === "es" && entry?.es) return entry.es;
-  return entry?.en || fallback;
+  return pickLegacyLocalizedText(lang, fallback, entry?.en || fallback, entry?.es || entry?.en || fallback);
 }
 
 const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
@@ -179,10 +179,8 @@ const SUBCATEGORY_LABELS_I18N: Record<string, { en: string; es: string }> = {
 
 function localizedSubcategoryLabel(category: string, id: string, fallback: string, langCode: any): string {
   const lang = String(langCode || "fr").toLowerCase();
-  if (lang === "fr") return fallback;
   const entry = SUBCATEGORY_LABELS_I18N[`${category}:${id}`];
-  if (lang === "es" && entry?.es) return entry.es;
-  return entry?.en || fallback;
+  return pickLegacyLocalizedText(lang, fallback, entry?.en || fallback, entry?.es || entry?.en || fallback);
 }
 
 // Les historiques des modes les plus récents ne portent pas tous exactement
@@ -1199,7 +1197,7 @@ export default function Games({ setTab, params }: Props) {
   }
 
   const menuLanguage = lang === "fr" ? "fr" : "en"; // ES reuses EN ticker assets until dedicated ES images exist
-  const menuTextLanguage = lang === "fr" ? "fr" : lang === "es" ? "es" : "en";
+  const menuTextLanguage = pickLegacyLocalizedText(lang, "fr", "en", "es");
 
   const HUB_COPY = React.useMemo(() => {
     if (menuTextLanguage === "fr") {

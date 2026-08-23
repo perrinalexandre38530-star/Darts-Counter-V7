@@ -14,6 +14,7 @@
 // - ✅ Fix: plus de "isDisplayableRow" manquante, plus de crash
 // =============================================================
 
+import { pickLegacyBilingualText } from "../i18n/legacyLocalizedText";
 import * as React from "react";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
@@ -2159,9 +2160,11 @@ export default function StatsLeaderboardsPage({ store, go, sportOverride }: Prop
         <RankingsTickerHeader
           onBack={() => go?.("stats")}
           infoContent={
-            langAny?.lang === "fr"
-              ? "Classements globaux du sport actif. Choisis la source locale ou Online, le mode de jeu, la période et la statistique utilisée pour trier le classement."
-              : "Global rankings for the active sport. Choose the local or Online source, game mode, period and statistic used to sort the rankings."
+            pickLegacyBilingualText(
+              langAny?.lang,
+              "Classements globaux du sport actif. Choisis la source locale ou Online, le mode de jeu, la période et la statistique utilisée pour trier le classement.",
+              "Global rankings for the active sport. Choose the local or Online source, game mode, period and statistic used to sort the rankings."
+            )
           }
           marginBottom={0}
         />

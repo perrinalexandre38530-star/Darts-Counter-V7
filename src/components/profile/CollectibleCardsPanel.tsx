@@ -1,6 +1,7 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import { pickLegacyLocalizedText, pickLegacyLocalizedValue } from "../../i18n/legacyLocalizedText";
 import {
   COLLECTIBLE_CARDS,
   cardRequirementProgress,
@@ -77,7 +78,7 @@ const ZERO_METRICS: CollectibleMetrics = {
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {
-  return lang === "en" ? value.en : lang === "es" ? value.es : value.fr;
+  return pickLegacyLocalizedText(lang, value.fr, value.en, value.es);
 }
 
 function compactNumber(value: number): string {
@@ -184,11 +185,12 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
   const selectedCard = selectedCardId ? COLLECTIBLE_CARDS.find((card) => card.id === selectedCardId) || null : null;
   const unlockCard = unlockQueue.length ? COLLECTIBLE_CARDS.find((card) => card.id === unlockQueue[0]) || null : null;
 
-  const labels = lang === "en"
-    ? { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" }
-    : lang === "es"
-      ? { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" }
-      : { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" };
+  const labels = pickLegacyLocalizedValue(
+    lang,
+    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
+    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
+    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
+  );
 
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
 

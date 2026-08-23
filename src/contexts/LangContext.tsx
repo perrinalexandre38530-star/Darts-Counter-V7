@@ -7,7 +7,9 @@ import React from "react";
 import { DICT } from "../i18n";
 import {
   createUiLiteralTranslator,
+  getUiLiteralSourceLanguage,
   looksFrenchUiText,
+  registerUiLiteralTranslationSource,
   translateUiLiteralWithBrowser,
   warmUiLiteralTranslator,
 } from "../i18n/uiLiteralSafety";
@@ -121,7 +123,8 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     // Prépare immédiatement les traducteurs locaux pendant le clic utilisateur.
     // Chrome peut exiger cette activation et Android ML Kit peut télécharger le
     // modèle EN au premier usage. Le rendu statique reste disponible en secours.
-    warmUiLiteralTranslator(next);
+    warmUiLiteralTranslator(next, "fr");
+    warmUiLiteralTranslator(next, "en");
     void awenaTranslation.prepare(next).catch(() => false);
     setLangState(next);
     try {
@@ -136,8 +139,17 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   // dans ce cas l'utilisateur ne reclique pas forcément sur le sélecteur.
   React.useEffect(() => {
     if (lang === "fr") return;
-    warmUiLiteralTranslator(lang);
+    warmUiLiteralTranslator(lang, "fr");
+    warmUiLiteralTranslator(lang, "en");
     void awenaTranslation.prepare(lang).catch(() => false);
+  }, [lang]);
+
+  // Keep the document metadata in sync with the selected language. This is
+  // especially important for accessibility, native keyboards and Arabic RTL.
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
 
   // État persistant entre deux changements de langue : permet de restaurer le
@@ -163,22 +175,32 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     const pendingAttr = new WeakMap<Element, Map<string, string>>();
 
     const resolveLiteralAsync = async (source: string): Promise<string | null> => {
-      if (lang === "fr" || !looksFrenchUiText(source)) return null;
+      if (lang === "fr") return null;
+      const sourceLanguage = getUiLiteralSourceLanguage(source);
+      if (!sourceLanguage || sourceLanguage === lang) return null;
 
-      // Android: réutilise le moteur ML Kit local déjà intégré pour Awena.
+      // Serbian deserves a real Serbian browser translation when available.
+      // Android ML Kit has no Serbian model and the native bridge therefore
+      // uses Croatian + Cyrillic normalization only as a fallback.
+      if (lang === "sr") {
+        const browser = await translateUiLiteralWithBrowser(source, lang, sourceLanguage);
+        if (browser) return browser;
+      }
+
+      // Android: reuse the on-device ML Kit engine already integrated for Awena.
       if (awenaTranslation.isNativeAvailable()) {
         try {
-          const native = await awenaTranslation.textFromFrench(source, lang);
+          const native = await awenaTranslation.textBetween(source, sourceLanguage, lang);
           if (native && native.trim() && native.trim() !== source.trim()) return native;
         } catch {}
       }
 
-      // Web/desktop Chrome 138+: Translator API on-device, sans service distant.
-      return translateUiLiteralWithBrowser(source, lang);
+      // Web/desktop Chrome: Translator API on-device, no remote translation service.
+      return translateUiLiteralWithBrowser(source, lang, sourceLanguage);
     };
 
     const scheduleTextResolve = (node: Text, source: string) => {
-      if (lang === "fr" || !looksFrenchUiText(source) || pendingText.get(node) === source) return;
+      if (lang === "fr" || !getUiLiteralSourceLanguage(source) || pendingText.get(node) === source) return;
       pendingText.set(node, source);
       void resolveLiteralAsync(source).then((resolved) => {
         if (cancelled || !resolved) return;
@@ -195,7 +217,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     };
 
     const scheduleAttrResolve = (el: Element, attr: string, source: string) => {
-      if (lang === "fr" || !looksFrenchUiText(source)) return;
+      if (lang === "fr" || !getUiLiteralSourceLanguage(source)) return;
       let map = pendingAttr.get(el);
       if (!map) { map = new Map<string, string>(); pendingAttr.set(el, map); }
       if (map.get(attr) === source) return;
@@ -222,7 +244,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const applied = lang === "fr" ? source : (resolved || translateLiteral(source));
       textState.set(node, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) node.nodeValue = applied;
-      if (!resolved && (looksFrenchUiText(applied) || source.trim().length > 45)) scheduleTextResolve(node, source);
+      if (!resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
     };
 
     const applyAttr = (el: Element, attr: string) => {
@@ -240,7 +262,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const applied = lang === "fr" ? source : (resolved || translateLiteral(source));
       map.set(attr, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) el.setAttribute(attr, applied);
-      if (!resolved && (looksFrenchUiText(applied) || source.trim().length > 45)) scheduleAttrResolve(el, attr, source);
+      if (!resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);
     };
 
     const scan = (root: Node) => {
@@ -319,21 +341,50 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
           return dictCurrent[key];
         }
 
-        // 2) Pour toute langue non-FR, l'anglais est le fallback universel.
-        // Ainsi une clé absente ne peut jamais réinjecter du français dans l'UI.
-        if (lang !== "fr") {
+        // 2) English keeps its deterministic static fallback.
+        if (lang === "en") {
           const dictEn = getDictFor("en") || {};
           if (Object.prototype.hasOwnProperty.call(dictEn, key)) {
             return dictEn[key];
           }
 
-          if (fallback) {
-            return createUiLiteralTranslator(DICT_ANY, "en")(fallback);
-          }
-          return key;
+          const sourceFr =
+            (Object.prototype.hasOwnProperty.call(dictFr, key) && dictFr[key]) ||
+            fallback ||
+            key;
+          return createUiLiteralTranslator(DICT_ANY, "en")(sourceFr);
         }
 
-        // 3) En français seulement, fallback FR puis fallback manuel.
+        // 3) For every other selected language, NEVER fall back to English.
+        // Prefer an exact translation already present in that language. If a
+        // recent key is missing (many new screens only exist in fr/en/es),
+        // expose its canonical French source to the DOM safety-net. The local
+        // Android ML Kit / Chrome Translator layer then translates that source
+        // into the language actually selected by the user.
+        if (lang !== "fr") {
+          const dictEn = getDictFor("en") || {};
+          const hasFr = Object.prototype.hasOwnProperty.call(dictFr, key);
+          const hasEn = Object.prototype.hasOwnProperty.call(dictEn, key);
+          const sourceFr = (hasFr && dictFr[key]) || fallback || key;
+
+          const deterministic = createUiLiteralTranslator(DICT_ANY, lang)(sourceFr);
+          if (deterministic !== sourceFr) return deterministic;
+
+          // Most fallbacks are authored in French. Some legacy FR entries use
+          // English technical wording ("Patch notes", "Winrate", ...). When a
+          // matching English dictionary value exists, register EN as the source
+          // so the local translator does not incorrectly force FR→target.
+          if (!looksFrenchUiText(sourceFr) && hasEn) {
+            const sourceEn = dictEn[key];
+            registerUiLiteralTranslationSource(sourceEn, "en");
+            return sourceEn;
+          }
+
+          registerUiLiteralTranslationSource(sourceFr, "fr");
+          return sourceFr;
+        }
+
+        // 4) French only: FR dictionary then manual fallback.
         if (Object.prototype.hasOwnProperty.call(dictFr, key)) {
           return dictFr[key];
         }

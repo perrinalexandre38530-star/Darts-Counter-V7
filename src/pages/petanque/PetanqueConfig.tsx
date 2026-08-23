@@ -20,6 +20,7 @@
 // ✅ NEW (TOURNOI): mode tournoi PÉTANQUE uniquement (format + nb équipes + baseMode)
 // =============================================================
 
+import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import React from "react";
 import type { Store, Profile } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -720,7 +721,7 @@ function handleStart() {
         ? effectiveMode === "singles"
           ? t("petanque.config.needTwo", "Sélectionne exactement 2 joueurs (J1/J2).")
           : t("petanque.config.needThree", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
-        : t("petanque.config.needPlayers", lang === "fr" ? `Sélectionne ${need} joueurs.` : lang === "es" ? `Selecciona ${need} jugadores.` : `Select ${need} players.`)
+        : t("petanque.config.needPlayers", pickLegacyLocalizedText(lang, `Sélectionne ${need} joueurs.`, `Select ${need} players.`, `Selecciona ${need} jugadores.`))
     );
     return;
   }
@@ -1476,7 +1477,7 @@ function handleStart() {
                   ? effectiveMode === "singles"
                     ? t("petanque.config.hintSingles", "Sélectionne exactement 2 joueurs (J1/J2).")
                     : t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
-                  : t("petanque.config.hint", lang === "fr" ? `Sélectionne exactement ${need} joueurs.` : lang === "es" ? `Selecciona exactamente ${need} jugadores.` : `Select exactly ${need} players.`)}
+                  : t("petanque.config.hint", pickLegacyLocalizedText(lang, `Sélectionne exactement ${need} joueurs.`, `Select exactly ${need} players.`, `Selecciona exactamente ${need} jugadores.`))}
               </p>
             </>
           )}
