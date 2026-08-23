@@ -14,6 +14,7 @@ import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGa
 import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
 import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunningRoutes, removeRunningRoute, routeTemplateFromActivity, upsertRunningRoute, type RunningRouteTemplate } from "../../activity/runningRoutes";
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
+import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
 import type { ActivityLap, ActivityRecord, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
@@ -179,6 +180,7 @@ export default function RunningModule({ go, params }: Props) {
     const lastLapDistanceRef = React.useRef(0);
     const splitCountRef = React.useRef(0);
     const phaseIndexRef = React.useRef<number | null>(null);
+    const milestoneRef = React.useRef<Set<number>>(new Set());
     const copy = lang === "fr" ? {
         title: "RUNNING PERFORMANCE", setupSub: "Prépare ta séance avant le départ", recordSub: "Session GPS en cours", history: "MES SORTIES", records: "MES RECORDS", setup: "COURIR", quick: "RAPIDE", training: "ENTRAÎNEMENT", pacer: "PACER", selected: "SÉANCE SÉLECTIONNÉE", start: "DÉMARRER", gps: "GPS", gpsCheck: "TESTER LE GPS", gpsReady: "GPS PRÊT", gpsUnknown: "GPS À VÉRIFIER", gpsPoor: "SIGNAL FAIBLE", gpsDenied: "LOCALISATION REFUSÉE", gpsHint: "Teste le GPS avant le départ pour éviter une sortie sans tracé.", local: "BETA WEB / PWA — RUNNING N'EST PAS ENCORE PUBLIÉ SUR ANDROID", watches: "MONTRES & CAPTEURS", soon: "BIENTÔT", targetPace: "ALLURE CIBLE", targetDistance: "DISTANCE CIBLE", expected: "TEMPS CIBLE", countdown: "PRÊT ?", go: "GO !",
         distance: "DISTANCE", time: "TEMPS", avgPace: "ALLURE MOY.", livePace: "ALLURE LIVE", speed: "VITESSE", elevation: "DÉNIVELÉ +", accuracy: "PRÉCISION", moving: "TEMPS MOUV.", target: "OBJECTIF", ahead: "EN AVANCE", behind: "EN RETARD", projected: "ARRIVÉE PROJETÉE", phase: "BLOC EN COURS", remaining: "RESTANT", route: "PARCOURS", waiting: "En attente du premier point GPS…", pause: "PAUSE", resume: "REPRENDRE", finish: "TERMINER", cancel: "ANNULER", lap: "TOUR", splits: "SPLITS KM", laps: "TOURS MANUELS", targetReached: "OBJECTIF ATTEINT", insufficient: "Il faut au moins deux points GPS pour enregistrer la sortie.", complete: "SORTIE TERMINÉE", verified: "GPS VÉRIFIÉ", delete: "SUPPRIMER LA SORTIE", empty: "Aucune sortie enregistrée.", noRecord: "Pas encore de record", longestLabel: "PLUS LONGUE", bestEfforts: "MEILLEURS EFFORTS", consistency: "RÉGULARITÉ", negative: "NEGATIVE SPLIT", achievements: "PERFORMANCES DÉBLOQUÉES", firstRun: "PREMIÈRE SORTIE", longestBadge: "PLUS LONGUE SORTIE", personalBest: "NOUVEAU RECORD", filters: ["TOUTES", "LIBRES", "SÉANCES", "PACER"], plan: "PLAN", custom: "SUR MESURE", audioCoach: "COACH VOCAL AWENA", audioCoachSub: "Annonce les blocs, splits et repères de séance pendant la course.", feedback: "RESSENTI APRÈS LA SORTIE", effort: "EFFORT PERÇU", feeling: "SENSATIONS", notes: "NOTES", save: "ENREGISTRER", info: "Le module Running combine GPS, carte, splits, tours, séances structurées, programmes, coaching Awena et stratégie d’allure. Cette version reste volontairement Web/PWA pour être testée avant activation Android.",
@@ -259,7 +261,13 @@ export default function RunningModule({ go, params }: Props) {
         const split = liveSplits[liveSplits.length - 1];
         splitCountRef.current = liveSplits.length;
         setSplitToast(`KM ${split.index} · ${formatDuration(split.splitMs)} · ${formatPace(split.paceSecPerKm)}/km`);
-        const splitVoice = lang === "fr" ? `Kilomètre ${split.index}. ${formatDuration(split.splitMs)}. Allure ${formatPace(split.paceSecPerKm)} au kilomètre.` : lang === "es" ? `Kilómetro ${split.index}. ${formatDuration(split.splitMs)}. Ritmo ${formatPace(split.paceSecPerKm)} por kilómetro.` : `Kilometre ${split.index}. ${formatDuration(split.splitMs)}. Pace ${formatPace(split.paceSecPerKm)} per kilometre.`;
+        const splitVoice = adaptiveSplitCoach({
+            split,
+            previous: liveSplits.length > 1 ? liveSplits[liveSplits.length - 2] : undefined,
+            targetPaceSecPerKm,
+            ghostDeltaMs: liveGhostDelta,
+            lang,
+        });
         speakCoach(splitVoice);
         try {
             navigator.vibrate?.([80, 60, 80]);
@@ -267,7 +275,17 @@ export default function RunningModule({ go, params }: Props) {
         catch { }
         const id = window.setTimeout(() => setSplitToast(null), 3500);
         return () => window.clearTimeout(id);
-    }, [isRecording, lang, liveSplits, speakCoach]);
+    }, [isRecording, lang, liveGhostDelta, liveSplits, speakCoach, targetPaceSecPerKm]);
+    React.useEffect(() => {
+        if (!isRecording || progress == null) return;
+        for (const milestone of [25, 50, 75, 90]) {
+            if (progress >= milestone && !milestoneRef.current.has(milestone)) {
+                milestoneRef.current.add(milestone);
+                speakCoach(adaptiveMilestoneCoach(milestone, lang));
+                break;
+            }
+        }
+    }, [isRecording, lang, progress, speakCoach]);
     const stopWatch = React.useCallback(() => { if (watchIdRef.current != null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -289,6 +307,7 @@ export default function RunningModule({ go, params }: Props) {
         lastLapDistanceRef.current = 0;
         splitCountRef.current = 0;
         phaseIndexRef.current = null;
+        milestoneRef.current = new Set();
         setFinishBadges([]);
         setAccuracy(null);
         setGpsMessage(copy.gpsUnknown);

@@ -11,6 +11,7 @@ import { buildRunningStats } from "../../activity/runningInsights";
 import { buildTrainingStatus, racePredictions } from "../../activity/runningTraining";
 import { createRunningShoe, loadRunningShoes, saveRunningShoes, shoeDistanceM, shoeWearPct, type RunningShoe } from "../../activity/runningGear";
 import type { ActivityRecord } from "../../activity/activityTypes";
+import RunningPerformanceInsightsPanel from "./RunningPerformanceInsightsPanel";
 
 type Props = { go: (route: any, params?: any) => void };
 
@@ -47,11 +48,11 @@ export default function RunningStatsPage({ go }: Props) {
   }, [persistShoes, shoes]);
 
   const copy = lang === "fr" ? {
-    title: "STATS RUNNING", sub: "Progression · records · charge · historique", total: "DISTANCE TOTALE", runs: "SORTIES", time: "TEMPS", climb: "D+", best: "MEILLEURE ALLURE", longest: "PLUS LONGUE", week: "7 DERNIERS JOURS", load: "CHARGE D’ENTRAÎNEMENT", freshness: "Préparation", acute: "Charge 7 j", ratio: "Ratio 7/28 j", records: "RECORDS PERSONNELS", predictions: "PRÉDICTIONS", gear: "ÉQUIPEMENT RUNNING", addShoe: "AJOUTER UNE PAIRE", shoePlaceholder: "Nom de la paire…", mileage: "Kilométrage", wear: "Usure estimée", active: "ACTIVE", retired: "RETIRÉE", recent: "DERNIÈRES SORTIES", all: "VOIR TOUT L’HISTORIQUE", less: "RÉDUIRE", noRuns: "Aucune sortie enregistrée pour le moment.", info: "Toutes les statistiques Running Performance sont regroupées ici. Les valeurs de charge et de préparation sont indicatives et ne constituent pas un avis médical."
+    title: "STATS RUNNING", sub: "Progression · segments · trophées · historique", total: "DISTANCE TOTALE", runs: "SORTIES", time: "TEMPS", climb: "D+", best: "MEILLEURE ALLURE", longest: "PLUS LONGUE", week: "7 DERNIERS JOURS", load: "CHARGE D’ENTRAÎNEMENT", freshness: "Préparation", acute: "Charge 7 j", ratio: "Ratio 7/28 j", records: "RECORDS PERSONNELS", predictions: "PRÉDICTIONS", gear: "ÉQUIPEMENT RUNNING", addShoe: "AJOUTER UNE PAIRE", shoePlaceholder: "Nom de la paire…", mileage: "Kilométrage", wear: "Usure estimée", active: "ACTIVE", retired: "RETIRÉE", recent: "DERNIÈRES SORTIES", all: "VOIR TOUT L’HISTORIQUE", less: "RÉDUIRE", noRuns: "Aucune sortie enregistrée pour le moment.", info: "Toutes les statistiques Running Performance sont regroupées ici. Les valeurs de charge et de préparation sont indicatives et ne constituent pas un avis médical."
   } : lang === "es" ? {
-    title: "STATS RUNNING", sub: "Progreso · récords · carga · historial", total: "DISTANCIA TOTAL", runs: "CARRERAS", time: "TIEMPO", climb: "D+", best: "MEJOR RITMO", longest: "MÁS LARGA", week: "ÚLTIMOS 7 DÍAS", load: "CARGA DE ENTRENAMIENTO", freshness: "Preparación", acute: "Carga 7 d", ratio: "Ratio 7/28 d", records: "RÉCORDS PERSONALES", predictions: "PREDICCIONES", gear: "EQUIPO RUNNING", addShoe: "AÑADIR ZAPATILLAS", shoePlaceholder: "Nombre de las zapatillas…", mileage: "Kilometraje", wear: "Desgaste estimado", active: "ACTIVAS", retired: "RETIRADAS", recent: "ÚLTIMAS CARRERAS", all: "VER TODO EL HISTORIAL", less: "REDUCIR", noRuns: "Todavía no hay carreras guardadas.", info: "Todas las estadísticas de Running Performance se agrupan aquí. Las métricas de carga y preparación son orientativas y no son consejo médico."
+    title: "STATS RUNNING", sub: "Progreso · segmentos · trofeos · historial", total: "DISTANCIA TOTAL", runs: "CARRERAS", time: "TIEMPO", climb: "D+", best: "MEJOR RITMO", longest: "MÁS LARGA", week: "ÚLTIMOS 7 DÍAS", load: "CARGA DE ENTRENAMIENTO", freshness: "Preparación", acute: "Carga 7 d", ratio: "Ratio 7/28 d", records: "RÉCORDS PERSONALES", predictions: "PREDICCIONES", gear: "EQUIPO RUNNING", addShoe: "AÑADIR ZAPATILLAS", shoePlaceholder: "Nombre de las zapatillas…", mileage: "Kilometraje", wear: "Desgaste estimado", active: "ACTIVAS", retired: "RETIRADAS", recent: "ÚLTIMAS CARRERAS", all: "VER TODO EL HISTORIAL", less: "REDUCIR", noRuns: "Todavía no hay carreras guardadas.", info: "Todas las estadísticas de Running Performance se agrupan aquí. Las métricas de carga y preparación son orientativas y no son consejo médico."
   } : {
-    title: "RUNNING STATS", sub: "Progress · records · load · history", total: "TOTAL DISTANCE", runs: "RUNS", time: "TIME", climb: "ELEVATION", best: "BEST PACE", longest: "LONGEST", week: "LAST 7 DAYS", load: "TRAINING LOAD", freshness: "Readiness", acute: "7-day load", ratio: "7/28 ratio", records: "PERSONAL RECORDS", predictions: "PREDICTIONS", gear: "RUNNING GEAR", addShoe: "ADD SHOES", shoePlaceholder: "Shoe name…", mileage: "Mileage", wear: "Estimated wear", active: "ACTIVE", retired: "RETIRED", recent: "RECENT RUNS", all: "VIEW FULL HISTORY", less: "SHOW LESS", noRuns: "No runs saved yet.", info: "All Running Performance statistics live here. Training load and readiness metrics are indicative only and are not medical advice."
+    title: "RUNNING STATS", sub: "Progress · segments · trophies · history", total: "TOTAL DISTANCE", runs: "RUNS", time: "TIME", climb: "ELEVATION", best: "BEST PACE", longest: "LONGEST", week: "LAST 7 DAYS", load: "TRAINING LOAD", freshness: "Readiness", acute: "7-day load", ratio: "7/28 ratio", records: "PERSONAL RECORDS", predictions: "PREDICTIONS", gear: "RUNNING GEAR", addShoe: "ADD SHOES", shoePlaceholder: "Shoe name…", mileage: "Mileage", wear: "Estimated wear", active: "ACTIVE", retired: "RETIRED", recent: "RECENT RUNS", all: "VIEW FULL HISTORY", less: "SHOW LESS", noRuns: "No runs saved yet.", info: "All Running Performance statistics live here. Training load and readiness metrics are indicative only and are not medical advice."
   };
 
   const recordRows = [
@@ -107,6 +108,8 @@ export default function RunningStatsPage({ go }: Props) {
           {predictions.map((p) => <div key={p.distanceM} className="card" style={{ padding: 10 }}><div style={{ fontSize: 8.5, color: textSoft, fontWeight: 900 }}>{distanceName(p.distanceM)}</div><div style={{ marginTop: 4, color: accent, fontSize: 15, fontWeight: 1000 }}>{formatDuration(p.predictedMs)}</div></div>)}
         </div>
       </Section></div> : null}
+
+      <RunningPerformanceInsightsPanel activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
 
       <div style={{ marginTop: 12 }}><Section title={copy.recent}>
         {activities.length ? <div style={{ display: "grid", gap: 7 }}>

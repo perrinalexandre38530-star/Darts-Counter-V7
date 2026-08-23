@@ -10,6 +10,7 @@ import type { ActivityRecord } from "../../activity/activityTypes";
 import type { RunningPlanSession, RunningPlanState } from "../../activity/runningTraining";
 import RunningGoalView from "./RunningGoalView";
 import RunningPlanView from "./RunningPlanView";
+import RunningRaceCalendarView from "./RunningRaceCalendarView";
 
 type Props = { go: (route: any, params?: any) => void };
 
@@ -27,10 +28,10 @@ export default function RunningPlanCenter({ go }: Props) {
 
   const stats = React.useMemo(() => buildRunningStats(activities, Date.now(), locale), [activities, locale]);
   const copy = lang === "fr"
-    ? { title: "PLAN & OBJECTIFS", sub: "Programme d’entraînement · objectif de course", info: "Centralise ici ton objectif chronométrique et ton programme de progression. Les séances lancées depuis le plan sont enregistrées comme des sorties Running Performance." }
+    ? { title: "PLAN & OBJECTIFS", sub: "Programme · objectif · calendrier de courses", info: "Centralise ici ton objectif chronométrique et ton programme de progression. Les séances lancées depuis le plan sont enregistrées comme des sorties Running Performance." }
     : lang === "es"
-      ? { title: "PLAN Y OBJETIVOS", sub: "Plan de entrenamiento · objetivo de carrera", info: "Centraliza aquí tu objetivo de tiempo y tu plan de progresión. Las sesiones iniciadas desde el plan se guardan como actividades de Running Performance." }
-      : { title: "PLAN & GOALS", sub: "Training plan · race goal", info: "Keep your target race and training progression in one place. Workouts launched from the plan are saved as Running Performance activities." };
+      ? { title: "PLAN Y OBJETIVOS", sub: "Plan · objetivo · calendario de carreras", info: "Centraliza aquí tu objetivo de tiempo y tu plan de progresión. Las sesiones iniciadas desde el plan se guardan como actividades de Running Performance." }
+      : { title: "PLAN & GOALS", sub: "Training plan · race goal · race calendar", info: "Keep your target race and training progression in one place. Workouts launched from the plan are saved as Running Performance activities." };
 
   const startPlanSession = React.useCallback((plan: RunningPlanState, session: RunningPlanSession) => {
     go("games", {
@@ -54,6 +55,10 @@ export default function RunningPlanCenter({ go }: Props) {
       />
 
       <RunningGoalView stats={stats} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
+
+      <div style={{ marginTop: 14 }}>
+        <RunningRaceCalendarView lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
+      </div>
 
       <div style={{ marginTop: 14 }}>
         <RunningPlanView
