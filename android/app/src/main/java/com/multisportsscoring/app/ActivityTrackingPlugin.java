@@ -1,9 +1,12 @@
 package com.multisportsscoring.app;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.LocationManager;
 import android.os.Build;
+import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
 
@@ -46,6 +49,7 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
         result.put("platform", "android-native");
         result.put("locationPermission", hasFineLocationPermission() ? "granted" : hasLocationPermission() ? "approximate" : "prompt");
         result.put("notificationPermission", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED ? "granted" : "prompt");
+        result.put("locationServicesEnabled", isLocationServicesEnabled());
         call.resolve(result);
     }
 
@@ -83,6 +87,7 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
         result.put("location", hasLocationPermission());
         result.put("precise", hasFineLocationPermission());
         result.put("notifications", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED);
+        result.put("locationServicesEnabled", isLocationServicesEnabled());
         call.resolve(result);
     }
 
@@ -91,22 +96,15 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
         if (!hasLocationPermission()) {
             call.reject("Location permission required", "LOCATION_DENIED"); return;
         }
+        if (!isLocationServicesEnabled()) {
+            call.reject("Android location services are disabled", "LOCATION_SERVICES_DISABLED"); return;
+        }
         String sport = call.getString("sport", "running");
-        String batteryMode = call.getString("batteryMode", "normal");
-        Integer hydrationReminderMin = call.getInt("hydrationReminderMin", 0);
-        Integer fuelReminderMin = call.getInt("fuelReminderMin", 0);
         Intent intent = new Intent(getContext(), ActivityTrackingService.class);
         intent.setAction(ActivityTrackingService.ACTION_START);
         intent.putExtra(ActivityTrackingService.EXTRA_SPORT, sport);
-        intent.putExtra(ActivityTrackingService.EXTRA_BATTERY_MODE, batteryMode);
-        intent.putExtra(ActivityTrackingService.EXTRA_HYDRATION_MIN, hydrationReminderMin == null ? 0 : Math.max(0, hydrationReminderMin));
-        intent.putExtra(ActivityTrackingService.EXTRA_FUEL_MIN, fuelReminderMin == null ? 0 : Math.max(0, fuelReminderMin));
         ContextCompat.startForegroundService(getContext(), intent);
-        JSObject out = new JSObject();
-        out.put("started", true);
-        out.put("sport", sport);
-        out.put("batteryMode", batteryMode);
-        call.resolve(out);
+        JSObject out = new JSObject(); out.put("started", true); out.put("sport", sport); call.resolve(out);
     }
 
     @PluginMethod public void pauseTracking(PluginCall call) { sendAction(ActivityTrackingService.ACTION_PAUSE); call.resolve(ActivityTrackingService.snapshot(false)); }
@@ -121,6 +119,43 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
     }
 
     @PluginMethod public void getTrack(PluginCall call) { call.resolve(ActivityTrackingService.snapshot(true)); }
+
+
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                intent = new Intent(Settings.Panel.ACTION_LOCATION_SERVICES);
+            } else {
+                intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject out = new JSObject(); out.put("opened", true); call.resolve(out);
+        } catch (Exception first) {
+            try {
+                Intent fallback = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                JSObject out = new JSObject(); out.put("opened", true); call.resolve(out);
+            } catch (Exception second) {
+                call.reject("Unable to open Android location settings", second);
+            }
+        }
+    }
+
+    private boolean isLocationServicesEnabled() {
+        try {
+            LocationManager manager = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            if (manager == null) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return manager.isLocationEnabled();
+            return manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
 
     private boolean hasFineLocationPermission() {
         return ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;

@@ -1,6 +1,6 @@
+import { registerPlugin } from "@capacitor/core";
 import { isCapacitorNativeRuntime } from "../lib/nativePlatform";
 import type { GeoPoint } from "./activityTypes";
-import type { OutdoorBatteryMode } from "./outdoorLongDistance";
 
 export type NativeTrackingSnapshot = {
   available?: boolean;
@@ -14,30 +14,19 @@ export type NativeTrackingSnapshot = {
   lastPoint?: GeoPoint;
   locationPermission?: string;
   notificationPermission?: string;
+  locationServicesEnabled?: boolean;
   platform?: string;
-  batteryMode?: OutdoorBatteryMode;
-  gpsIntervalMs?: number;
-  hydrationReminderMin?: number;
-  fuelReminderMin?: number;
-  reminderSeq?: number;
-  lastReminderKind?: "hydration" | "fuel" | null;
-  lastReminderAtElapsedMs?: number;
-};
-
-export type NativeTrackingStartOptions = {
-  batteryMode?: OutdoorBatteryMode;
-  hydrationReminderMin?: number;
-  fuelReminderMin?: number;
 };
 
 type ActivityTrackingPlugin = {
   getStatus?: () => Promise<NativeTrackingSnapshot>;
-  requestTrackingPermissions?: () => Promise<{ granted?: boolean; location?: boolean; notifications?: boolean }>;
-  startTracking?: (options: { sport: string; batteryMode?: OutdoorBatteryMode; hydrationReminderMin?: number; fuelReminderMin?: number }) => Promise<{ started?: boolean; sport?: string; batteryMode?: OutdoorBatteryMode }>;
+  requestTrackingPermissions?: () => Promise<{ granted?: boolean; location?: boolean; notifications?: boolean; locationServicesEnabled?: boolean }>;
+  startTracking?: (options: { sport: string }) => Promise<{ started?: boolean; sport?: string }>;
   pauseTracking?: () => Promise<NativeTrackingSnapshot>;
   resumeTracking?: () => Promise<NativeTrackingSnapshot>;
   stopTracking?: () => Promise<NativeTrackingSnapshot>;
   getTrack?: () => Promise<NativeTrackingSnapshot>;
+  openLocationSettings?: () => Promise<{ opened?: boolean }>;
   addListener?: (eventName: "trackingState", listener: (snapshot: NativeTrackingSnapshot) => void) => Promise<{ remove?: () => Promise<void> | void }> | { remove?: () => Promise<void> | void };
 };
 
@@ -53,15 +42,20 @@ function plugin(): ActivityTrackingPlugin | null {
   if (pluginCache) return pluginCache;
   if (typeof window === "undefined" || !isCapacitorNativeRuntime()) return null;
   try {
-    const cap = (window as any).Capacitor;
-    if (typeof cap?.registerPlugin === "function") {
-      pluginCache = cap.registerPlugin("ActivityTracking") as ActivityTrackingPlugin;
-      return pluginCache;
-    }
-    pluginCache = (cap?.Plugins?.ActivityTracking || null) as ActivityTrackingPlugin | null;
+    // Capacitor 8 custom plugins must be registered through @capacitor/core.
+    // Relying on window.Capacitor.registerPlugin is not guaranteed and can
+    // silently fall back to WebView geolocation, which does not drive our
+    // native foreground tracking permission flow.
+    pluginCache = registerPlugin<ActivityTrackingPlugin>("ActivityTracking");
     return pluginCache;
   } catch {
-    return null;
+    try {
+      const cap = (window as any).Capacitor;
+      pluginCache = (cap?.Plugins?.ActivityTracking || null) as ActivityTrackingPlugin | null;
+      return pluginCache;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -72,15 +66,16 @@ export async function requestNativeTrackingPermissions() {
   if (!p?.requestTrackingPermissions) return { granted: false, location: false, notifications: false };
   return p.requestTrackingPermissions();
 }
-export async function startNativeTracking(sport: string, options: NativeTrackingStartOptions = {}) {
+export async function startNativeTracking(sport: string) {
   const p = plugin();
   if (!p?.startTracking) throw new Error("Native tracking unavailable");
-  return p.startTracking({ sport, ...options });
+  return p.startTracking({ sport });
 }
 export async function pauseNativeTracking() { return plugin()?.pauseTracking?.(); }
 export async function resumeNativeTracking() { return plugin()?.resumeTracking?.(); }
 export async function stopNativeTracking(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.stopTracking?.() || null; } catch { return null; } }
 export async function getNativeTrack(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.getTrack?.() || null; } catch { return null; } }
+export async function openNativeLocationSettings() { try { return await plugin()?.openLocationSettings?.() || { opened: false }; } catch { return { opened: false }; } }
 export function addNativeTrackingListener(listener: (snapshot: NativeTrackingSnapshot) => void) {
   const p = plugin();
   if (!p?.addListener) return () => {};
