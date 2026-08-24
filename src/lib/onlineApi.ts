@@ -441,7 +441,7 @@ function getSiteUrl(): string {
       (import.meta as any).env.VITE_SITE_URL) ||
     "";
 
-  const SITE_URL = String(fromEnv || "https://darts-counter-v7.pages.dev").trim();
+  const SITE_URL = String(fromEnv || "https://multisports-scoring.pages.dev").trim();
   return SITE_URL.replace(/\/+$/, "");
 }
 

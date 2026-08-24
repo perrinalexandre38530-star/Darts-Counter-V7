@@ -188,7 +188,7 @@ function sameOriginApiProxyBase(): string {
     const host = String(window.location.hostname || "").toLowerCase();
     // Le proxy Pages supprime entièrement le problème CORS navigateur tout en
     // conservant le backend NAS/R2 comme source de vérité.
-    if (window.location.protocol === "https:" && (host === "darts-counter-v7.pages.dev" || host.endsWith(".pages.dev"))) {
+    if (window.location.protocol === "https:" && host.endsWith(".pages.dev")) {
       return `${window.location.origin}${SAME_ORIGIN_API_PROXY_PATH}`;
     }
   } catch {}

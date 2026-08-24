@@ -706,6 +706,7 @@ type SettingsLoopCarouselProps = {
   onActiveIndexChange?: (index: number) => void;
   snapMode?: "mandatory" | "proximity";
   recenterOnInitialIndexChange?: boolean;
+  explicitCenterRequest?: { index: number; nonce: number } | null;
 };
 
 function SettingsLoopCarousel({
@@ -719,6 +720,7 @@ function SettingsLoopCarousel({
   onActiveIndexChange,
   snapMode = "mandatory",
   recenterOnInitialIndexChange = true,
+  explicitCenterRequest = null,
 }: SettingsLoopCarouselProps) {
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const lastActiveRef = React.useRef(-1);
@@ -746,6 +748,20 @@ function SettingsLoopCarousel({
     const raf = requestAnimationFrame(() => recenter("auto"));
     return () => cancelAnimationFrame(raf);
   }, [recenter, recenterOnInitialIndexChange]);
+
+  React.useLayoutEffect(() => {
+    // Explicit centering is reserved for deliberate external actions (e.g. a click
+    // on the world map). Normal i18n rerenders must never steal the user's scroll.
+    const el = scrollerRef.current;
+    if (!el || !items.length || !explicitCenterRequest) return;
+    const requestedIndex = ((explicitCenterRequest.index % items.length) + items.length) % items.length;
+    const span = items.length * step;
+    const target = span + requestedIndex * step - Math.max(0, (el.clientWidth - itemWidth) / 2);
+    const raf = requestAnimationFrame(() => {
+      el.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [explicitCenterRequest?.nonce, explicitCenterRequest?.index, items.length, step, itemWidth]);
 
   const reportActive = React.useCallback(() => {
     const el = scrollerRef.current;
@@ -2156,8 +2172,8 @@ function DevModeBlock({ go }: { go?: (tab: any, params?: any) => void }) {
 type SettingsTab = "menu" | "account" | "advertising" | "shop" | "privacy" | "theme" | "lang" | "audio" | "general" | "sport" | "castViewer" | "developer" | "awena";
 type DeveloperSub = "menu" | "diagnostics" | "tests" | "onlineCleanup" | "nas" | "logs" | "security";
 
-const PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
-const ACCOUNT_DELETION_URL = "https://darts-counter-v7.pages.dev/account-deletion.html";
+const PRIVACY_POLICY_URL = "https://multisports-scoring.pages.dev/privacy-policy";
+const ACCOUNT_DELETION_URL = "https://multisports-scoring.pages.dev/account-deletion";
 const PRIVACY_CONTACT_EMAIL = "multisports.scoring@gmail.com";
 
 function openLegalUrl(url: string) {
@@ -4283,6 +4299,7 @@ function SettingsLanguageSection({
   applyLanguage,
 }: SettingsLanguageSectionProps) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [mapCenterRequest, setMapCenterRequest] = React.useState<{ index: number; nonce: number } | null>(null);
   const worldMapBase = React.useMemo(() => buildTerritoriesMap("WORLD"), []);
   const languageMeta = LANGUAGE_WORLD_META[lang] || LANGUAGE_WORLD_META.fr;
   const highlightedIds = React.useMemo(
@@ -4315,7 +4332,10 @@ function SettingsLanguageSection({
   const selectFromTerritory = (territoryId: string) => {
     const nextLang = languageForWorldTerritory(territoryId, lang);
     const nextIndex = sortedLanguages.findIndex((item) => item.id === nextLang);
-    if (nextIndex >= 0) languageCarouselBrowseIndexRef.current = nextIndex;
+    if (nextIndex >= 0) {
+      languageCarouselBrowseIndexRef.current = nextIndex;
+      setMapCenterRequest((previous) => ({ index: nextIndex, nonce: (previous?.nonce || 0) + 1 }));
+    }
     applyLanguage(nextLang);
   };
 
@@ -4420,6 +4440,7 @@ function SettingsLanguageSection({
           initialIndex={carouselInitialIndex}
           snapMode="proximity"
           recenterOnInitialIndexChange={false}
+          explicitCenterRequest={mapCenterRequest}
           onActiveIndexChange={(index) => {
             languageCarouselBrowseIndexRef.current = index;
           }}

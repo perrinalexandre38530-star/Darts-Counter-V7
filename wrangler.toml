@@ -1,6 +1,6 @@
 # Cloudflare Pages — frontend + Functions + stockage R2 direct.
-# Ce fichier est la source de vérité du projet Pages darts-counter-v7.
-name = "darts-counter-v7"
+# Ce fichier est la source de vérité du projet Pages multisports-scoring.
+name = "multisports-scoring"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-07-21"
 compatibility_flags = ["nodejs_compat"]

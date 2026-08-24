@@ -10,13 +10,18 @@ const privacy = read("public/privacy-policy.html");
 const deletion = read("public/account-deletion.html");
 const settings = read("src/pages/Settings.tsx");
 
+const privacyClean = read("public/privacy-policy/index.html");
+const deletionClean = read("public/account-deletion/index.html");
+
 assert(/Politique de confidentialité/i.test(privacy), "Privacy page has a clear title");
 assert(/MULTISPORTS SCORING/.test(privacy), "Privacy page identifies the app");
+assert(privacyClean === privacy, "Extensionless privacy route mirrors canonical page");
+assert(deletionClean === deletion, "Extensionless deletion route mirrors canonical page");
 assert(/multisports\.scoring@gmail\.com/.test(privacy), "Privacy page exposes a contact address");
 assert(/Google AdMob/.test(privacy), "Privacy page discloses AdMob");
 assert(/Cloudflare/.test(privacy) && /Supabase/.test(privacy), "Privacy page discloses cloud providers");
 assert(/durées? de conservation|conserv/.test(privacy), "Privacy page includes retention information");
-assert(/account-deletion\.html/.test(privacy), "Privacy page links to account deletion");
+assert(/href=["\']\/account-deletion(?:\.html)?["\']/.test(privacy), "Privacy page links to account deletion");
 
 assert(/Suppression du compte et des données/i.test(deletion), "Deletion page has a clear title");
 assert(/mailto:multisports\.scoring@gmail\.com/.test(deletion), "Deletion page provides a request mechanism");

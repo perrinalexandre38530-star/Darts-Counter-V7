@@ -25,7 +25,7 @@ const checks = [
   [events.includes("queueCloudR2AccountBackup"), "data changes must queue an R2 account snapshot"],
   [tournaments.includes('emitCloudChange("tournaments:changed")'), "tournament changes must queue cloud backup"],
   [babyfoot.includes('emitCloudChange("babyfoot:leagues:changed")'), "baby-foot league changes must queue cloud backup"],
-  [directR2.includes("https://darts-counter-v7.pages.dev/api/storage/backups"), "native R2 must use the Cloudflare Pages origin"],
+  [directR2.includes("https://multisports-scoring.pages.dev/api/storage/backups"), "native R2 must use the Cloudflare Pages origin"],
   [directR2.includes("isDirectR2MediaFresh") && userMedia.includes("isDirectR2MediaFresh"), "unchanged media must be skipped before image conversion/upload"],
   [configuredBackup.includes('mediaMirror: "background"') && configuredBackup.includes("prepareSnapshotForDirectR2"), "manual R2 save must use the non-blocking slim path"],
   [storage.includes('mediaMirror?: "await" | "background" | "skip"'), "snapshot export must support non-blocking media mirroring"],

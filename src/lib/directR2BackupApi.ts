@@ -18,7 +18,7 @@ const DIRECT_BASE = (() => {
   const protocol = String(window.location.protocol || "").toLowerCase();
   const isNativeWebView = host === "localhost" || host === "127.0.0.1" || protocol === "capacitor:";
   return isNativeWebView
-    ? "https://darts-counter-v7.pages.dev/api/storage/backups"
+    ? "https://multisports-scoring.pages.dev/api/storage/backups"
     : "/api/storage/backups";
 })();
 const REQUEST_TIMEOUT_READ_MS = 15_000;

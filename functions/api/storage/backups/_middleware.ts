@@ -1,5 +1,5 @@
 // CORS Cloudflare Pages/R2 : production + WebView Capacitor + développement local.
-const PROD_ORIGIN = "https://darts-counter-v7.pages.dev";
+const PROD_ORIGIN = "https://multisports-scoring.pages.dev";
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;

@@ -92,7 +92,7 @@ function getSameOriginNasProxyBase(): string {
   if (typeof window === "undefined") return "";
   try {
     const host = String(window.location.hostname || "").toLowerCase();
-    if (window.location.protocol === "https:" && (host === "darts-counter-v7.pages.dev" || host.endsWith(".pages.dev"))) {
+    if (window.location.protocol === "https:" && host.endsWith(".pages.dev")) {
       return `${window.location.origin}/api/backend`;
     }
   } catch {}

@@ -183,7 +183,7 @@ function readFavoriteProfileIds(raw: any): string[] {
 
 function isUrlishText(value: any): boolean {
   const raw = s(value).toLowerCase();
-  return raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/media/") || raw.startsWith("/images/") || raw.startsWith("data:image/") || raw.includes("darts-counter-v7.pages.dev") || raw.includes("/assets/");
+  return raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("/media/") || raw.startsWith("/images/") || raw.startsWith("data:image/") || raw.includes("/assets/");
 }
 
 function isSyntheticRecoveredDartSet(raw: any): boolean {

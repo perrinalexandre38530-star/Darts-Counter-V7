@@ -77,7 +77,7 @@ export function isSupabaseHardDisabledInNasMode(): boolean {
 // /api/backend/*. En Capacitor, on utilise l'origine Pages publique.
 export const PUBLIC_PAGES_ORIGIN =
   sanitizeUrl((import.meta as any)?.env?.VITE_PUBLIC_PAGES_ORIGIN) ||
-  "https://darts-counter-v7.pages.dev";
+  "https://multisports-scoring.pages.dev";
 
 function absoluteNasMediaPath(raw: string): string | null {
   try {

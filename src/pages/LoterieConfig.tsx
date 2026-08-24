@@ -17,6 +17,7 @@ import PlayerPagedSelector from "../components/PlayerPagedSelector";
 import Section from "../components/Section";
 import { useTheme } from "../contexts/ThemeContext";
 import { loadBotPlayers } from "../lib/bots";
+import { DARTS_LOTERIE_BOTS, isDartsLoterieBot } from "../lib/dartsLoterieBots";
 import { findRememberedGeneratedTeam } from "../lib/teamAutoShuffle";
 import { loadTeamsBySport, type TeamEntity } from "../lib/petanqueTeamsStore";
 import { recordProfileUsageForMode } from "../lib/profileUsage";
@@ -38,7 +39,6 @@ import {
   PillButton,
   SelectedParticipantsCompactBlock,
   TeamsSection,
-  X01_PRO_BOTS,
   buildX01DartsBotTeams,
 } from "./X01ConfigV3";
 import tickerLoterie from "../assets/tickers/ticker_loterie.png";
@@ -99,6 +99,14 @@ function avg3Of(p: any): number {
 }
 function isBotLike(profile: any) {
   return Boolean(profile?.isBot || profile?.bot || profile?.type === "bot" || profile?.kind === "bot" || profile?.botLevel);
+}
+function isLegacyProBot(profile: any) {
+  const id = String(profile?.id || "").trim().toLowerCase();
+  return id === "bot_awena_official"
+    || /^bot_pro_/.test(id)
+    || /^pro_/.test(id)
+    || profile?.source === "pro"
+    || profile?.isProBot === true;
 }
 function loadUserBots(): BotLite[] {
   try {
@@ -206,7 +214,7 @@ function RulesContent() {
       <div><strong style={{ color: GOLD }}>CARTONS</strong><br />Chaque participant possède 1 à 4 cartons. Les numéros sont uniques dans un même carton mais peuvent apparaître sur plusieurs cartons : un lancer peut donc ouvrir plusieurs cases.</div>
       <div><strong style={{ color: "#6ef3b2" }}>VICTOIRE</strong><br />Le premier joueur — ou la première équipe — qui complète entièrement un de ses cartons gagne immédiatement.</div>
       <div><strong style={{ color: "#42d6ff" }}>ÉQUIPES</strong><br />En mode ÉQUIPES, chaque équipe possède ses cartons partagés. Les joueurs de l’équipe jouent à tour de rôle sur ces mêmes cartons : chaque découverte compte pour l’équipe, tout en restant attribuée au joueur qui l’a réalisée dans les statistiques.</div>
-      <div><strong style={{ color: GOLD }}>BOTS IA</strong><br />Les BOTS sélectionnés comme dans X01 jouent automatiquement leurs volées selon leur niveau.</div>
+      <div><strong style={{ color: GOLD }}>BOTS IA</strong><br />Les 7 BOTS IA officiels de LOTERIE jouent automatiquement selon leur niveau. Les BOTS CPU personnels restent également disponibles.</div>
     </div>
   );
 }
@@ -259,10 +267,28 @@ export default function LoterieConfig(props: any) {
   React.useLayoutEffect(() => { try { window.scrollTo(0, 0); } catch {} }, []);
   React.useEffect(() => {
     const map = new Map<string, BotLite>();
-    (X01_PRO_BOTS || []).forEach((bot: any) => map.set(String(bot.id), { ...bot, id: String(bot.id), isBot: true }));
-    loadUserBots().forEach((bot) => map.set(String(bot.id), { ...bot, isBot: true }));
+    // LOTERIE utilise son propre casting IA officiel à la place des BOTS IA PRO de X01.
+    (DARTS_LOTERIE_BOTS || []).forEach((bot: any) => map.set(String(bot.id), { ...bot, id: String(bot.id), isBot: true }));
+    // Les BOTS CPU personnels restent disponibles. On exclut uniquement les anciens PRO
+    // génériques et d'éventuels doublons du casting officiel LOTERIE.
+    loadUserBots()
+      .filter((bot: any) => !isDartsLoterieBot(bot) && !isLegacyProBot(bot))
+      .forEach((bot: any) => map.set(String(bot.id), {
+        ...bot,
+        id: String(bot.id),
+        isBot: true,
+        source: "cpu",
+        isUserBot: true,
+        groupLabel: "CPU Home",
+      }));
     setBotProfiles([...map.values()]);
   }, []);
+  React.useEffect(() => {
+    if (!botProfiles.length) return;
+    const allowed = new Set([...humanProfiles, ...botProfiles].map((p: any) => String(p?.id || "")));
+    setSelectedIds((previous) => previous.filter((id) => allowed.has(String(id))));
+  }, [botProfiles, humanProfiles]);
+
   React.useEffect(() => {
     if (selectedIds.length || !humanProfiles.length) return;
     const activeId = String(store?.activeProfileId || "");
@@ -518,8 +544,8 @@ export default function LoterieConfig(props: any) {
               <button type="button" onClick={() => typeof go === "function" && go("profiles_bots")} style={{ padding: "7px 11px", borderRadius: 999, border: `1px solid ${primary}`, background: "rgba(255,255,255,.04)", color: primary, fontWeight: 900, fontSize: 11, textTransform: "uppercase", cursor: "pointer" }}>Gérer les BOTS</button>
             </div>
           </div>
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>Ajoute les mêmes BOTS IA prédéfinis ou personnels que dans X01.</p>
-          {botsPanelEnabled ? <BotPagedSelector bots={botProfiles as any} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} label="BOTS IA" showCheckbox={false} showSelectedSummary={false} /> : null}
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>Choisis parmi les 7 BOTS IA officiels de LOTERIE ou ajoute tes BOTS CPU personnels.</p>
+          {botsPanelEnabled ? <BotPagedSelector bots={botProfiles as any} selectedIds={selectedIds} onToggle={togglePlayer} accent={primary} label="BOTS IA LOTERIE / CPU" showCheckbox={false} showSelectedSummary={false} /> : null}
           {selectedBotCount > 0 ? <div style={{ marginTop: 10, color: textSoft, fontSize: 10.5 }}>Les BOTS jouent automatiquement pendant la partie LOTERIE.</div> : null}
         </section>
       ) : null}

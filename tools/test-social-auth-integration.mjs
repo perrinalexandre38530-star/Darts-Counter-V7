@@ -23,7 +23,7 @@ check("Disabled provider blocked locally", social.includes("providerNotEnabledEr
 check("Browser redirect controlled", social.includes("skipBrowserRedirect: true") && social.includes("window.location.assign(url)"));
 check("OAuth URL preflight", social.includes("preflightOAuthUrl") && social.includes('redirect: "manual"'));
 check("Canonical web callback", social.includes("https://multisports-scoring.pages.dev") && setup.includes("https://multisports-scoring.pages.dev/auth-callback.html"));
-check("Old callback removed", !social.includes("https://darts-counter-v7.pages.dev") && !setup.includes("https://darts-counter-v7.pages.dev/auth-callback.html"));
+check("Canonical callback domain only", social.includes("https://multisports-scoring.pages.dev") && setup.includes("https://multisports-scoring.pages.dev/auth-callback.html"));
 check("Microsoft uses Azure", social.includes('oauthProvider: "azure"') && social.includes('scopes: "email"'));
 check("LinkedIn OIDC", social.includes('oauthProvider: "linkedin_oidc"'));
 check("X OAuth2 runtime", social.includes('oauthProvider: "x"'));

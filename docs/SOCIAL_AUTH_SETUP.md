@@ -30,7 +30,7 @@ L'application interroge désormais le point public Supabase Auth `/auth/v1/setti
 
 Le navigateur n'est plus redirigé automatiquement par `signInWithOAuth` : `skipBrowserRedirect: true` est utilisé sur Web et Android, puis MULTISPORTS SCORING vérifie l'URL OAuth avant de l'ouvrir.
 
-Sur le Web/PWA, l'URL de retour est calculée depuis `window.location.origin`; la valeur de secours officielle est `https://multisports-scoring.pages.dev`. Cela évite de renvoyer un déploiement actuel vers l'ancien domaine `darts-counter-v7.pages.dev`.
+Sur le Web/PWA, l'URL de retour est calculée depuis `window.location.origin`; la valeur de secours officielle est `https://multisports-scoring.pages.dev`. Cela garantit que les déploiements actuels utilisent toujours le domaine public MULTISPORTS SCORING.
 
 **Important :** intégrer un bouton dans le code ne suffit pas à activer son OAuth. Chaque fournisseur doit disposer de ses identifiants développeur (Client ID / secret, clés Apple, etc.) puis être activé dans Supabase Authentication > Providers. Instagram et TikTok nécessitent en plus leurs providers OAuth personnalisés.
 

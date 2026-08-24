@@ -141,7 +141,7 @@ async function createStorageWebhook() {
     console.log("✅ STRIPE_WEBHOOK_SECRET_STORAGE existe déjà dans .env : création webhook ignorée.");
     return null;
   }
-  const webhookUrl = String(process.env.STRIPE_STORAGE_WEBHOOK_URL || "https://darts-counter-v7.pages.dev/api/storage/backups/billing/webhook").trim();
+  const webhookUrl = String(process.env.STRIPE_STORAGE_WEBHOOK_URL || "https://multisports-scoring.pages.dev/api/storage/backups/billing/webhook").trim();
   if (!webhookUrl.startsWith("https://")) {
     throw new Error(`Webhook URL invalide : ${webhookUrl}. Stripe exige une URL HTTPS publique.`);
   }

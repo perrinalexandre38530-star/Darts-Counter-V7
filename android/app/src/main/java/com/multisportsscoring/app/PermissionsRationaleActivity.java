@@ -18,7 +18,7 @@ import android.widget.TextView;
  * screen. JavaScript and DOM storage are intentionally disabled.
  */
 public class PermissionsRationaleActivity extends Activity {
-    private static final String PRIVACY_POLICY_URL = "https://darts-counter-v7.pages.dev/privacy-policy.html";
+    private static final String PRIVACY_POLICY_URL = "https://multisports-scoring.pages.dev/privacy-policy";
     private WebView webView;
 
     @Override

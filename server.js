@@ -33,7 +33,7 @@ let lastDbError = null;
 // Cloudflare/NAS, y compris OPTIONS, SSE et erreurs précoces.
 // -----------------------------------------------------------------------------
 const corsAllowedOrigins = [
-  "https://darts-counter-v7.pages.dev",
+  "https://multisports-scoring.pages.dev",
   // Développement local : Vite peut être lancé sur une machine différente ou
   // un port de preview. Même si le frontend force maintenant 5173, le backend
   // reste tolérant pour les outils de diagnostic et les WebViews locales.
@@ -6265,7 +6265,7 @@ function viewerCleanupExpired() {
 function viewerBuildJoinUrl(req, sessionId) {
   const publicApp = String(process.env.PUBLIC_APP_URL || "").trim().replace(/\/+$/, "");
   const origin = String(req.headers.origin || "").trim().replace(/\/+$/, "");
-  const fallback = "https://darts-counter-v7.pages.dev";
+  const fallback = "https://multisports-scoring.pages.dev";
   const base = publicApp || origin || fallback;
   return `${base}/#/viewer/${encodeURIComponent(sessionId)}`;
 }
