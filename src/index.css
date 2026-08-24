@@ -1178,3 +1178,200 @@ html[data-dc-theme-page-scope="off"] body{
   opacity: .96;
   mix-blend-mode: multiply;
 }
+
+
+/* === POST-APOCALYPSE V7 — rendu beaucoup plus brutal / éclaté === */
+:root[data-dc-theme^="postApoc"] .card,
+:root[data-dc-theme^="postApoc"] .badge,
+:root[data-dc-theme^="postApoc"] .item,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card{
+  border-radius:14px !important;
+  clip-path:polygon(
+    .1% 12.8%, 1.1% 5.2%, 3.8% 1.5%, 8.4% .1%, 14.2% 3.7%, 20.8% .2%, 28.2% 2.8%,
+    36.4% .3%, 45.6% 3.2%, 54.5% .3%, 63.7% 2.9%, 72.4% .4%, 81.6% 3%, 89.5% .6%,
+    95.7% 2.6%, 99.6% 7.9%, 98.2% 15.8%, 99.7% 24.8%, 97.6% 34.7%, 99.6% 44.6%,
+    97.4% 54.7%, 99.8% 65.6%, 97.6% 76.2%, 99.6% 86.8%, 97.1% 94.8%, 92.8% 99.5%,
+    84.4% 96.8%, 75.2% 99.7%, 65.3% 96.4%, 55.4% 99.6%, 45.1% 96.5%, 34.8% 99.8%,
+    24.4% 96.7%, 14.6% 99.8%, 6.4% 97.1%, 1.4% 99.2%, .1% 91.2%, 1.8% 81.7%,
+    .1% 71.7%, 2% 61.6%, .1% 51.1%, 1.9% 40.9%, .1% 30.7%, 1.8% 21.1%);
+  box-shadow:
+    0 24px 54px rgba(0,0,0,.78),
+    0 0 0 1px rgba(255,255,255,.02),
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset 0 -2px 0 rgba(0,0,0,.72) !important;
+}
+
+:root[data-dc-theme^="postApoc"] .card::before,
+:root[data-dc-theme^="postApoc"] .badge::before,
+:root[data-dc-theme^="postApoc"] .item::before,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::before,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card::before{
+  padding:3.2px;
+  background:
+    radial-gradient(54% 30% at 3% 99%, rgba(86,125,48,.28), transparent 60%),
+    radial-gradient(24% 16% at 1% 87%, rgba(140,172,88,.20), transparent 54%),
+    radial-gradient(28% 16% at 99% 2%, rgba(96,130,62,.18), transparent 52%),
+    radial-gradient(18% 12% at 92% 96%, rgba(74,111,44,.14), transparent 50%),
+    radial-gradient(circle at 14% 18%, rgba(255,255,255,.10), transparent 20%),
+    linear-gradient(180deg, rgba(255,255,255,.12), rgba(0,0,0,.36)),
+    url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 15% 14%/146% 146% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 82% 12%/148% 148% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 20% 84%/150% 150% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 84% 84%/152% 152% no-repeat;
+  opacity:1;
+  filter:contrast(1.75) saturate(.82) brightness(.92);
+}
+
+:root[data-dc-theme^="postApoc"] .card::after,
+:root[data-dc-theme^="postApoc"] .badge::after,
+:root[data-dc-theme^="postApoc"] .item::after,
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card::after,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card::after{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.13), rgba(0,0,0,.34)),
+    url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 74% 22%/154% 154% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 18% 82%/156% 156% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 18% 12%/144% 144% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 84% 82%/152% 152% no-repeat;
+  opacity:1;
+  filter:contrast(1.84) brightness(.86);
+}
+
+:root[data-dc-theme^="postApoc"] .dc-settings-shell-card,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-menu-card{
+  border-radius:16px !important;
+  clip-path:polygon(
+    .1% 13.6%, 1.3% 5.1%, 4.8% 1.2%, 10.3% .1%, 16.8% 4%, 24% .2%, 31.8% 3.1%,
+    40.4% .3%, 49.8% 3.5%, 59% .2%, 68.3% 3.1%, 76.9% .4%, 85.8% 2.9%, 93.2% .7%,
+    98.2% 2.4%, 99.8% 9.4%, 97.8% 17.7%, 99.6% 27.4%, 97.4% 37.4%, 99.7% 47.3%,
+    97.3% 57.8%, 99.8% 68.1%, 97.4% 78.5%, 99.4% 88.6%, 96.4% 96.8%, 89.8% 99.5%,
+    79.6% 96.8%, 68.6% 99.7%, 57.6% 96.5%, 47% 99.6%, 36.1% 96.4%, 25.3% 99.8%,
+    15.2% 96.8%, 7.1% 99.7%, 1.6% 96.2%, .1% 88.2%, 1.9% 78.2%, .1% 67.8%,
+    2.1% 57.1%, .1% 46.5%, 2.1% 35.6%, .1% 25.3%, 1.9% 16.2%);
+  box-shadow:
+    0 30px 64px rgba(0,0,0,.82),
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset 0 -2px 0 rgba(0,0,0,.74),
+    0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-theme-card,
+:root[data-dc-theme^="postApoc"] .dc-postapoc-pack-card,
+.dc-postapoc-kpi,
+.dc-postapoc-action,
+.dc-postapoc-apply-button,
+.dc-postapoc-preview-panel,
+.dc-postapoc-scene{
+  overflow:hidden;
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-theme-card{
+  border-radius:12px !important;
+  clip-path:polygon(
+    .1% 13.1%, 1.5% 5.1%, 4.8% 1.2%, 10.8% .1%, 17.4% 3.9%, 24.8% .3%, 33% 3.3%,
+    42.5% .4%, 52.1% 3.4%, 61.4% .2%, 71.2% 3.1%, 80% .4%, 88.6% 2.8%, 95.1% .9%,
+    98.7% 3.1%, 99.8% 10.1%, 97.8% 18.4%, 99.7% 28.5%, 97.5% 38.1%, 99.7% 48.8%,
+    97.4% 59.2%, 99.8% 69.2%, 97.7% 79.8%, 99.4% 89.7%, 95.8% 99.2%, 86.8% 96.6%,
+    76.4% 99.8%, 65.2% 96.3%, 54.7% 99.5%, 44.2% 96.1%, 33.6% 99.8%, 23.3% 96.4%,
+    13.3% 99.7%, 5.8% 96.8%, 1.2% 99.2%, .1% 90.7%, 2% 80.9%, .1% 70.4%, 2.2% 60.3%,
+    .2% 49.6%, 2.1% 39.4%, .1% 28.7%, 1.9% 18.7%);
+  box-shadow:
+    0 24px 44px rgba(0,0,0,.66),
+    inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 -2px 0 rgba(0,0,0,.72),
+    0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-theme-card::before{
+  background:
+    radial-gradient(46% 28% at 2% 98%, rgba(97,132,52,.36), transparent 58%),
+    radial-gradient(28% 15% at 1% 86%, rgba(143,176,92,.24), transparent 54%),
+    radial-gradient(28% 16% at 98% 2%, rgba(87,122,55,.24), transparent 52%),
+    radial-gradient(18% 12% at 92% 96%, rgba(71,109,44,.18), transparent 50%),
+    url(/theme-textures/postapoc-cracks-overlay.svg) center/cover no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 18% 82%/154% 154% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 79% 16%/150% 150% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 12% 14%/146% 146% no-repeat,
+    url(/theme-textures/postapoc-cracks-overlay.svg) 86% 84%/152% 152% no-repeat;
+  opacity:.98;
+  filter:contrast(1.78) brightness(.92);
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-theme-card::after{
+  padding:3.4px;
+  opacity:1;
+  filter:contrast(1.95) brightness(.82);
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-pack-card{
+  clip-path:polygon(
+    .1% 13%, 1.6% 5.2%, 5.2% 1.1%, 11.2% .1%, 18% 4.1%, 25.5% .2%, 33.4% 3.1%,
+    42.6% .3%, 52.2% 3.4%, 61.7% .2%, 70.9% 3.1%, 79.8% .3%, 88.1% 2.9%, 94.8% .8%,
+    98.7% 3.2%, 99.8% 10.3%, 97.7% 18.6%, 99.6% 28.8%, 97.5% 39.2%, 99.7% 49.2%,
+    97.4% 59.4%, 99.8% 69.4%, 97.6% 79.5%, 99.3% 89.6%, 95.6% 99.2%, 86.2% 96.7%,
+    75.2% 99.8%, 64.4% 96.3%, 53.6% 99.7%, 43.4% 96.3%, 32.9% 99.8%, 22.9% 96.5%,
+    13.4% 99.7%, 5.7% 96.8%, 1.2% 99.1%, .1% 90.7%, 1.9% 80.9%, .1% 70.6%, 2.1% 60.2%,
+    .2% 49.8%, 2.1% 39.3%, .2% 28.8%, 1.9% 18.5%);
+  box-shadow: 0 24px 42px rgba(0,0,0,.60), inset 0 1px 0 rgba(255,255,255,.07), inset 0 -2px 0 rgba(0,0,0,.68) !important;
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-pack-card::before,
+.dc-postapoc-kpi::before,
+.dc-postapoc-action::before,
+.dc-postapoc-apply-button::before,
+.dc-postapoc-preview-panel::before,
+.dc-postapoc-scene::after{
+  opacity:.72;
+  filter:contrast(1.68) brightness(.9);
+}
+
+:root[data-dc-theme^="postApoc"] .dc-postapoc-pack-card::after,
+.dc-postapoc-kpi::after,
+.dc-postapoc-action::after,
+.dc-postapoc-apply-button::after,
+.dc-postapoc-preview-panel::after{
+  padding:3px;
+  opacity:1;
+  filter:contrast(1.85) brightness(.82);
+}
+
+.dc-postapoc-kpi,
+.dc-postapoc-action,
+.dc-postapoc-apply-button{
+  clip-path:polygon(
+    .2% 12.2%, 2.4% 5.4%, 7.1% 1.2%, 15.8% .2%, 26.7% 3.5%, 40.5% .3%, 54.7% 3.1%,
+    68.7% .2%, 81.8% 3.3%, 92.7% .7%, 98.8% 4.1%, 99.6% 13.1%, 98% 24.8%, 99.7% 39.6%,
+    98% 54.1%, 99.6% 68.7%, 98.2% 82.7%, 99.1% 92.1%, 94.3% 99.1%, 82.2% 96.4%,
+    67.5% 99.8%, 52.6% 96.2%, 38.2% 99.8%, 23.7% 96.2%, 11% 99.5%, 3.4% 96.9%,
+    .2% 88.2%, 1.8% 74.1%, .2% 58.3%, 1.9% 42.8%, .2% 27.1%, 1.9% 17.1%) !important;
+}
+
+.dc-postapoc-kpi{
+  box-shadow:0 10px 22px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.06), inset 0 -2px 0 rgba(0,0,0,.58) !important;
+}
+
+.dc-postapoc-action,
+.dc-postapoc-apply-button{
+  box-shadow:0 12px 24px rgba(0,0,0,.56), inset 0 1px 0 rgba(255,255,255,.08), inset 0 -2px 0 rgba(0,0,0,.62) !important;
+}
+
+@keyframes dc-postapoc-overgrowth-drift-brutal {
+  0% { transform: translate3d(0,0,0) scale(1); opacity:.84; }
+  50% { transform: translate3d(-2.4%,1.9%,0) scale(1.08); opacity:1; }
+  100% { transform: translate3d(0,0,0) scale(1); opacity:.84; }
+}
+
+.dc-postapoc-overgrowth {
+  background:
+    radial-gradient(38% 22% at 5% 97%, rgba(103,136,56,.60), transparent 56%),
+    radial-gradient(28% 16% at 1% 84%, rgba(151,184,98,.30), transparent 54%),
+    radial-gradient(26% 14% at 95% 4%, rgba(91,128,57,.32), transparent 52%),
+    radial-gradient(20% 12% at 88% 10%, rgba(156,185,102,.18), transparent 54%),
+    radial-gradient(18% 11% at 88% 98%, rgba(74,110,46,.20), transparent 54%),
+    linear-gradient(180deg, transparent 0%, transparent 56%, rgba(70,100,44,.24) 100%);
+  filter: blur(1.6px) saturate(1.06);
+  animation: dc-postapoc-overgrowth-drift-brutal 7.5s ease-in-out infinite;
+}

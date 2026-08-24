@@ -1,0 +1,54 @@
+name: IndexNow - MULTISPORTS SCORING
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexnow-main
+  cancel-in-progress: true
+
+jobs:
+  notify-indexnow:
+    name: Notify IndexNow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Determine changed files
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            git ls-tree -r --name-only "$AFTER" > "$RUNNER_TEMP/indexnow-changed-files.txt"
+          else
+            git diff --name-only "$BEFORE" "$AFTER" > "$RUNNER_TEMP/indexnow-changed-files.txt"
+          fi
+
+          echo "Fichiers modifies :"
+          cat "$RUNNER_TEMP/indexnow-changed-files.txt"
+
+      - name: Notify changed public URLs
+        if: github.event_name == 'push'
+        run: node tools/indexnow-submit.mjs --changed-file-list "$RUNNER_TEMP/indexnow-changed-files.txt"
+
+      - name: Notify every sitemap URL
+        if: github.event_name == 'workflow_dispatch'
+        run: node tools/indexnow-submit.mjs --all
