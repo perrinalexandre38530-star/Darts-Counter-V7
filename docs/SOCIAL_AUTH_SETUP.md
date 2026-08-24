@@ -208,3 +208,26 @@ Important : Google, Facebook, Microsoft, Apple et les autres providers ne fourni
 - `android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java`
 - `tools/test-social-auth-integration.mjs`
 - `docs/SOCIAL_AUTH_SETUP.md`
+
+---
+
+## Verrou global de session / vraie déconnexion
+
+Le portail `AccountStart` affiche maintenant directement les 4 connexions principales (Facebook, Google, Microsoft, Apple) ainsi que **Plus de connexions (10)**.
+
+Une session authentifiée est désormais obligatoire pour accéder à l'application principale. Tant que `useAuthOnline()` n'est pas en état `signed_in` :
+
+- les pages Games / Profils / Online / Stats / Réglages et les modes de jeu sont bloqués par `AppGate` ;
+- la BottomNav, le sélecteur rapide de sport et le médaillon Awena ne sont pas rendus ;
+- toute tentative de navigation interne est redirigée vers `#/account/start`.
+
+Exception volontaire : la caméra compagnon X01 ouverte directement par QR code reste accessible comme écran technique standalone, sans accès à la navigation générale.
+
+La déconnexion depuis Réglages coupe maintenant la session NAS éventuelle **et** la session Supabase locale, purge les jetons navigateur et pose le verrou `dc_explicit_logout_v1`. Ce verrou empêche une ancienne session résiduelle d'être restaurée au redémarrage. Il est supprimé uniquement lorsqu'une nouvelle connexion ou création de compte est volontairement lancée.
+
+Fichiers concernés en plus du socle OAuth :
+
+- `src/pages/AccountStart.tsx`
+- `src/pages/Settings.tsx`
+- `src/pages/SettingsAccount.tsx`
+- `src/hooks/useAuthOnline.tsx`

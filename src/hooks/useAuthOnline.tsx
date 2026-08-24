@@ -26,8 +26,17 @@ const NAS_AUTH_COOLDOWN_MS = 1500;
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
-const AUTH_REDIRECT_LOGIN = "#/auth/login";
+const AUTH_REDIRECT_LOGIN = "#/account/start";
 const AUTH_REDIRECT_SIGNUP = "#/auth/signup";
+const EXPLICIT_LOGOUT_KEY = "dc_explicit_logout_v1";
+
+function isExplicitlyLoggedOut(): boolean {
+  try { return localStorage.getItem(EXPLICIT_LOGOUT_KEY) === "1"; } catch { return false; }
+}
+
+function clearExplicitLogout(): void {
+  try { localStorage.removeItem(EXPLICIT_LOGOUT_KEY); } catch {}
+}
 
 function purgeAuthKeysFromBrowser(): void {
   if (typeof window === "undefined") return;
@@ -218,6 +227,7 @@ type Ctx = AuthState & {
 const AuthOnlineContext = React.createContext<Ctx | null>(null);
 
 async function safeGetSession(): Promise<Session | null> {
+  if (isExplicitlyLoggedOut()) return null;
   try {
     // Priorité à la session interne NAS/R2 quand elle existe.
     // C'est le cas des comptes publics Supabase bridgés et des comptes invités NAS :
@@ -277,6 +287,7 @@ function applyAuthFromSession(
   setApiAccessToken((session as any)?.access_token || "");
 
   if (user) {
+    clearExplicitLogout();
     try {
       setStorageUser(String(user.id || ""));
       localStorage.setItem("dc_user_id", String(user.id || ""));
@@ -746,6 +757,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {
+      clearExplicitLogout();
       try {
         if (isNasProviderEnabled()) {
           await cleanupSupabaseLocalSessionForNas();
@@ -773,6 +785,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const login = React.useCallback(
     async (payload: { email?: string; nickname?: string; password?: string }) => {
+      clearExplicitLogout();
       try {
         if (isNasProviderEnabled()) {
           await cleanupSupabaseLocalSessionForNas();

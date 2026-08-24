@@ -9,6 +9,11 @@ const check = (name, ok) => checks.push({ name, ok: !!ok });
 
 const social = read("src/lib/socialAuth.ts");
 const login = read("src/pages/AuthV7Login.tsx");
+const accountStart = read("src/pages/AccountStart.tsx");
+const app = read("src/App.tsx");
+const settings = read("src/pages/Settings.tsx");
+const settingsAccount = read("src/pages/SettingsAccount.tsx");
+const authHook = read("src/hooks/useAuthOnline.tsx");
 const main = read("src/main.tsx");
 const manifest = read("android/app/src/main/AndroidManifest.xml");
 const activity = read("android/app/src/main/java/com/multisportsscoring/app/MainActivity.java");
@@ -62,6 +67,15 @@ check("10 secondary providers", social.includes(`SOCIAL_AUTH_SECONDARY_PROVIDERS
   "kakao",
 ] as const;`));
 check("Expandable login UI", login.includes("Plus de connexions") && login.includes("showMoreSocial"));
+check("Social providers visible on welcome portal", accountStart.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS.map") && accountStart.includes("Plus de connexions") && accountStart.includes("Connexion rapide"));
+check("Welcome portal has exactly 4 primary via shared config", accountStart.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS") && social.includes('"facebook",\n  "google",\n  "azure",\n  "apple",'));
+check("Global app gate requires session", app.includes("const needsSession = !isAuthFlow && !isStandaloneCompanion") && app.includes('go("account_start")'));
+check("Bottom navigation hidden while signed out", app.includes('const appChromeAllowed = online?.ready && online.status === "signed_in"') && app.includes("appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab)"));
+check("Awena hidden on auth shell", app.includes("{appChromeAllowed && (") && app.includes("<AwenaOverlay"));
+check("Explicit logout guard", onlineApi.includes("dc_explicit_logout_v1") && onlineApi.includes("markExplicitLogout()") && onlineApi.includes("isExplicitlyLoggedOut()"));
+check("Supabase local session really signed out", onlineApi.includes('supabase.auth.signOut({ scope: "local" })') && onlineApi.includes("clearSupabaseBrowserAuthStorage({ includeCompatSession: true })"));
+check("Settings logout lands on locked welcome", settings.includes('forceAuthRoute("#/account/start", false)') && settingsAccount.includes('window.location.hash = "#/account/start"'));
+check("Auth hook blocks stale restore after logout", authHook.includes("if (isExplicitlyLoggedOut()) return null") && authHook.includes('const AUTH_REDIRECT_LOGIN = "#/account/start"'));
 check("Microsoft uses Azure", social.includes('oauthProvider: "azure"') && social.includes('scopes: "email"'));
 check("LinkedIn OIDC", social.includes('oauthProvider: "linkedin_oidc"'));
 check("Instagram custom OAuth", social.includes('oauthProvider: "custom:instagram"') && setup.includes("Instagram Pro"));

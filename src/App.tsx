@@ -2177,6 +2177,7 @@ useEffect(() => {
     h.startsWith("#/auth/forgot") ||
     h.startsWith("#/auth/login") ||
     h.startsWith("#/auth/signup") ||
+    h.startsWith("#/account/start") ||
     isStandalonePublicHash(h);
     // INTRO OFF = aucun écran animé, aucun délai : GameSelect est rendu directement.
     return !isAuthFlow && getStartupIntroEnabled();
@@ -2330,6 +2331,12 @@ useEffect(() => {
         setTab(sessionId ? "viewer_display" : "viewer_host");
         return;
       }
+      if (h.startsWith("#/account/start")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("account_start");
+        return;
+      }
       if (h.startsWith("#/auth/login")) {
         setShowSplash(false);
         setRouteParams(null);
@@ -2416,7 +2423,8 @@ useEffect(() => {
       next === "auth_reset" ||
       next === "auth_forgot" ||
       next === "auth_v7_login" ||
-      next === "auth_v7_signup"
+      next === "auth_v7_signup" ||
+      next === "account_start"
     ) {
       setShowSplash(false);
     }
@@ -2427,6 +2435,7 @@ useEffect(() => {
       else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
       else if (next === "auth_v7_login") window.location.hash = "#/auth/login";
       else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
+      else if (next === "account_start") window.location.hash = "#/account/start";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "messages") window.location.hash = "#/messages";
       else if (next === "spectator") window.location.hash = "#/spectator";
@@ -2632,6 +2641,7 @@ useEffect(() => {
            h.startsWith("#/auth/forgot") ||
            h.startsWith("#/auth/login") ||
            h.startsWith("#/auth/signup") ||
+           h.startsWith("#/account/start") ||
            isStandalonePublicHash(h);
 
           if (!isAuthFlow) {
@@ -2853,6 +2863,9 @@ useEffect(() => {
                   hh.startsWith("#/auth/callback") ||
                   hh.startsWith("#/auth/reset") ||
                   hh.startsWith("#/auth/forgot") ||
+                  hh.startsWith("#/auth/login") ||
+                  hh.startsWith("#/auth/signup") ||
+                  hh.startsWith("#/account/start") ||
                   isStandalonePublicHash(hh);
 
                 if (!isAuthFlow && hasProfiles && hasActive) {
@@ -5736,7 +5749,20 @@ case "babyfoot_team_edit":
     "settings",    // Réglages global
   ] as any);
 
-  const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab);
+  const AUTH_SHELL_TABS = new Set<Tab>([
+    "auth_callback",
+    "auth_reset",
+    "auth_forgot",
+    "auth_start",
+    "account_start",
+    "auth_v7_login",
+    "auth_v7_signup",
+  ] as any);
+
+  const isAuthShell = AUTH_SHELL_TABS.has(tab);
+  const isStandaloneCompanion = isStandalonePublicHash(String(window.location.hash || "")) || tab === "x01_device_camera";
+  const appChromeAllowed = online?.ready && online.status === "signed_in" && !isAuthShell && !isStandaloneCompanion;
+  const showSportQuickSwitch = SPORT_QUICK_SWITCH_ALLOWED_TABS.has(tab) && appChromeAllowed;
 
 
   return (
@@ -5773,15 +5799,19 @@ case "babyfoot_team_edit":
 
         <NavigationBackgroundMusic route={String(tab)} />
 
-        <AwenaOverlay
-          route={String(tab)}
-          sport={String(activeSport || "")}
-          go={go}
-          inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
-        />
+        {appChromeAllowed && (
+          <AwenaOverlay
+            route={String(tab)}
+            sport={String(activeSport || "")}
+            go={go}
+            inGame={HIDE_BOTTOM_NAV_TABS.has(tab) && tab !== "gameSelect" && tab !== "x01_device_camera"}
+          />
+        )}
 
-        {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
-        {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} sportOverride={activeSport} />}
+        {/* Navigation totalement absente tant qu'aucune session n'est active. */}
+        {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
+          <BottomNav value={tab as any} onChange={(k: any) => go(k)} sportOverride={activeSport} />
+        )}
 
         <SWUpdateBanner />
       </>
@@ -5796,10 +5826,9 @@ case "babyfoot_team_edit":
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
 
-  // pages qui nécessitent une session online active
-  const needsSession = tab === "stats_online" || tab === "x01_online_setup";
-
-  // pendant les flows auth, on ne gate pas
+  // Les seuls écrans accessibles sans compte sont le tunnel d'authentification
+  // et la caméra compagnon X01 ouverte directement depuis un QR code. Cette
+  // dernière n'offre aucun accès à la navigation générale de l'application.
   const isAuthFlow =
     tab === "auth_reset" ||
     tab === "auth_callback" ||
@@ -5807,32 +5836,38 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     tab === "auth_start" ||
     tab === "account_start" ||
     tab === "auth_v7_login" ||
-    tab === "auth_v7_signup" ||
-    tab === "x01_device_camera";
+    tab === "auth_v7_signup";
 
-  // ✅ Ne jamais bloquer les onglets locaux à cause du provider online.
-  if (!needsSession || isAuthFlow) {
+  const isStandaloneCompanion = tab === "x01_device_camera";
+  const needsSession = !isAuthFlow && !isStandaloneCompanion;
+
+  React.useEffect(() => {
+    if (!ready || !needsSession || status === "signed_in") return;
+    go("account_start");
+  }, [ready, needsSession, status, go]);
+
+  if (isAuthFlow || isStandaloneCompanion) {
     return <>{children}</>;
   }
 
-  if (!ready) {
+  if (!ready || status === "checking") {
     return (
-      <div className="container" style={{ padding: 40, textAlign: "center" }}>
-        Vérification de la session…
+      <div className="container" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
+        <div>
+          <div style={{ fontWeight: 950, fontSize: 18 }}>Vérification du compte…</div>
+          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>MULTISPORTS SCORING nécessite une connexion active.</div>
+        </div>
       </div>
     );
   }
 
-  React.useEffect(() => {
-    if (needsSession && status !== "signed_in") {
-      go("auth_start");
-    }
-  }, [needsSession, status, go]);
-
-  if (needsSession && status !== "signed_in") {
+  if (status !== "signed_in") {
     return (
-      <div className="container" style={{ padding: 40, textAlign: "center" }}>
-        Redirection vers la connexion…
+      <div className="container" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
+        <div>
+          <div style={{ fontWeight: 950, fontSize: 18 }}>Connexion obligatoire</div>
+          <div style={{ marginTop: 7, opacity: 0.72, fontSize: 12 }}>Redirection vers la page de connexion…</div>
+        </div>
       </div>
     );
   }

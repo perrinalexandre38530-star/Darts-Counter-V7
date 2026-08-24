@@ -59,6 +59,22 @@ import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extrac
 
 export const CLOUD_STORE_KEY = "main";
 
+// Verrou explicite de déconnexion : empêche une ancienne session NAS/Supabase
+// résiduelle d’être restaurée après que l’utilisateur a demandé SE DÉCONNECTER.
+const EXPLICIT_LOGOUT_KEY = "dc_explicit_logout_v1";
+
+function isExplicitlyLoggedOut(): boolean {
+  try { return localStorage.getItem(EXPLICIT_LOGOUT_KEY) === "1"; } catch { return false; }
+}
+
+function clearExplicitLogout(): void {
+  try { localStorage.removeItem(EXPLICIT_LOGOUT_KEY); } catch {}
+}
+
+function markExplicitLogout(): void {
+  try { localStorage.setItem(EXPLICIT_LOGOUT_KEY, "1"); } catch {}
+}
+
 // ============================================================
 // ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
 // ============================================================
@@ -1175,6 +1191,7 @@ function normalizeAuthErrorMessage(msg: string) {
 // Public AUTH
 // ============================================================
 async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
+  clearExplicitLogout();
   const email = payload.email?.trim();
   const password = payload.password?.trim();
   const nickname = payload.nickname?.trim() || (email ? email.split("@")[0] : "Player");
@@ -1198,6 +1215,7 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
 }
 
 async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
+  clearExplicitLogout();
   const email = payload.email?.trim();
   const password = payload.password?.trim();
   if (!email || !password) throw new Error("Email et mot de passe requis pour se connecter.");
@@ -1235,6 +1253,7 @@ async function ensureNasAccountFailoverCopy(session: AuthSession, payload: Login
 }
 
 async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession> {
+  clearExplicitLogout();
   const invitationCode = String(payload.invitationCode || "").trim();
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
   try { await supabase.auth.signOut(); } catch {}
@@ -1247,6 +1266,7 @@ async function signupWithInvitation(payload: SignupPayload): Promise<AuthSession
 }
 
 async function loginWithInvitation(payload: LoginPayload): Promise<AuthSession> {
+  clearExplicitLogout();
   const invitationCode = String(payload.invitationCode || "").trim();
   if (!invitationCode) throw new Error("Code d’invitation requis pour cet accès privé.");
   try { await supabase.auth.signOut(); } catch {}
@@ -1357,6 +1377,10 @@ async function waitOnlineAuthReady(timeoutMs = 4000): Promise<boolean> {
   return true;
 }
 async function restoreSession(): Promise<AuthSession | null> {
+  if (isExplicitlyLoggedOut()) {
+    markAuthReady(false);
+    return null;
+  }
   // Mode hybride : une session NAS/R2 issue du bridge Supabase ou d’un compte invité
   // est une vraie session connectée. On ne l’efface plus au démarrage sous prétexte
   // que Supabase n’a pas de session navigateur active.
@@ -1430,12 +1454,19 @@ async function restoreSession(): Promise<AuthSession | null> {
 }
 
 async function logout(): Promise<void> {
+  // Une vraie déconnexion doit couper TOUS les mécanismes de session de cette
+  // installation : session NAS éventuelle + session Supabase du navigateur.
+  // scope=local ne déconnecte pas les autres téléphones de l'utilisateur.
   try {
     if (isNasProviderEnabled()) {
-      await nasLogout();
-    } else {
-      const { error } = await supabase.auth.signOut();
-      if (error) console.warn("[onlineApi] logout error", error);
+      try { await nasLogout(); } catch (error) { console.warn("[onlineApi] NAS logout error", error); }
+    }
+
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) console.warn("[onlineApi] Supabase logout error", error);
+    } catch (error) {
+      console.warn("[onlineApi] Supabase logout fatal", error);
     }
   } finally {
     __nasLastGoodSession = null;
@@ -1443,10 +1474,14 @@ async function logout(): Promise<void> {
     __nasEnsureInFlight = null;
     saveAuthToLS(null);
     purgeAuthLocalState();
+    clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
+    markAuthReady(false);
+    markExplicitLogout();
   }
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
+  if (isExplicitlyLoggedOut()) return null;
   const cached = loadAuthFromLS();
   if (isSupabaseFailoverSession(cached)) {
     const liveSupabase = await getLiveSupabaseSession();

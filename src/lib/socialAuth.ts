@@ -204,6 +204,9 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
   if (!SOCIAL_AUTH_PROVIDERS.includes(provider)) throw new Error("Fournisseur de connexion inconnu.");
   if (!__SUPABASE_ENV__.hasEnv) throw new Error("Supabase Auth n'est pas configuré sur cette version de l'application.");
 
+  // Une nouvelle tentative de connexion annule volontairement le verrou créé
+  // par une déconnexion explicite précédente.
+  try { localStorage.removeItem("dc_explicit_logout_v1"); } catch {}
   rememberPending(provider);
   const native = isCapacitorNativeRuntime();
   const config = SOCIAL_AUTH_CONFIG[provider];

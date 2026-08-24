@@ -163,7 +163,7 @@ export default function SettingsAccount({ store, update }: Props) {
         t("settings.account.logout.ok", "Tu es maintenant déconnecté.")
       );
       if (typeof window !== "undefined") {
-        window.location.hash = "#/auth/login";
+        window.location.hash = "#/account/start";
         try { window.dispatchEvent(new HashChangeEvent("hashchange")); } catch {}
       }
     } catch (err: any) {
