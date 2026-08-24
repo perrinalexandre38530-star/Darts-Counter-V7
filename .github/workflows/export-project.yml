@@ -1,0 +1,29 @@
+name: Export project ZIP
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create project ZIP
+        run: |
+          zip -qr MULTISPORTS_SCORING_SEO_AI_V1.zip . \
+            -x '.git/*' \
+            -x '.github/workflows/export-project.yml'
+
+      - name: Upload project ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: MULTISPORTS_SCORING_SEO_AI_V1
+          path: MULTISPORTS_SCORING_SEO_AI_V1.zip
+          compression-level: 0
+          retention-days: 1
