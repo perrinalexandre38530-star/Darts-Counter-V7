@@ -2532,10 +2532,13 @@ function AccountPages({
     if (next.selectedDestination === "founder_nas" && previous.selectedDestination !== "founder_nas") {
       const capability = await onlineApi.getPrivateNasCapability({ force: true });
       setPrivateNasCapability(capability);
-      if (!capability.authorized) {
+      if (capability.checked && !capability.authorized) {
         setCloudUsageError("Ce compte public n'est pas autorisé à accéder au NAS privé du fondateur.");
         return;
       }
+      // Si le pré-contrôle NAS est simplement indisponible/timeout, ne pas
+      // bloquer ici : switchAccountInfrastructure("nas") tentera le bridge
+      // sécurisé serveur, qui reste l'autorité finale.
     }
     const saved = saveStoragePrefs(next);
     setStoragePrefs(saved);
@@ -3613,7 +3616,7 @@ function AccountPages({
                 );
               })}
 
-              {privateNasCapability?.authorized === true && (
+              {(privateNasCapability?.authorized === true || storagePrefs.selectedDestination === "founder_nas") && (
                 <button
                   type="button"
                   disabled={!isSignedIn}

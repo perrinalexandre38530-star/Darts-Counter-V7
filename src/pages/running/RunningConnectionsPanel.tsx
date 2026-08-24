@@ -1,5 +1,5 @@
 import React from "react";
-import { RunningSurface } from "./RunningUi";
+import { RunningGlyph, RunningSurface, type RunningGlyphName } from "./RunningUi";
 import { getHealthConnectStatus, openHealthConnectSettings, requestHealthConnectWorkoutPermissions, type HealthConnectStatus } from "../../activity/healthConnectBridge";
 import { getLastHealthConnectSyncAt, syncHealthConnectWorkouts } from "../../activity/healthConnectSync";
 import { exportLocalWorkoutsToHealthConnect, getLastHealthConnectExportAt } from "../../activity/healthConnectExportSync";
@@ -30,8 +30,9 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     title: "CONNECTIONS & SENSORS", sub: "BLE sensors, Health Connect and FIT import are active for internal testing. Garmin Connect is waiting for your approved cloud endpoint.", hr: "HEART RATE STRAP", foot: "FOOTPOD / CADENCE", treadmill: "FTMS TREADMILL", connect: "CONNECT", disconnect: "DISCONNECT", live: "LIVE", unavailable: "BLE UNAVAILABLE", health: "HEALTH CONNECT", apple: "APPLE HEALTH", garmin: "GARMIN CONNECT", files: "SPORT FILES", native: "Native bridge required", detected: "Bridge detected", cloud: "Cloud API / OAuth required", configured: "API configured", filesReady: "FIT / GPX / TCX active", nativeGps: "NATIVE ANDROID GPS", screenOff: "Screen-off / background", grant: "AUTHORIZE", manage: "MANAGE", hcReady: "Workout permissions granted", hcAvailable: "Available · permissions pending", bpm: "bpm", spm: "steps/min", sync: "SYNC 30 DAYS", syncDone: "Sync complete", lastSync: "Last sync", routesMissing: "protected routes", routesOk: "Routes allowed", routesOff: "Allow exercise routes in Health Connect", export: "SEND MY WORKOUTS", exportDone: "Health Connect export complete", lastExport: "Last export",
   };
 
-  const connected = (kind: RunningSensorKind) => sensor.devices.some((d) => d.kind === kind && d.connected);
-  const deviceName = (kind: RunningSensorKind) => sensor.devices.find((d) => d.kind === kind)?.name || "";
+  const sensorDevices = Array.isArray(sensor.devices) ? sensor.devices : [];
+  const connected = (kind: RunningSensorKind) => sensorDevices.some((d) => d.kind === kind && d.connected);
+  const deviceName = (kind: RunningSensorKind) => sensorDevices.find((d) => d.kind === kind)?.name || "";
   const action = async (kind: RunningSensorKind) => {
     setMessage(""); setMessageKind("ok"); setBusy(kind);
     try {
@@ -86,11 +87,11 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     } finally { setExportBusy(false); }
   };
 
-  const sensorCard = (kind: RunningSensorKind, icon: string, title: string, value: string) => {
+  const sensorCard = (kind: RunningSensorKind, icon: RunningGlyphName, title: string, value: string) => {
     const on = connected(kind);
     return <RunningSurface accent={accent} active={on} padding={compact ? 10 : 12}>
       <div style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 9, alignItems: "center" }}>
-        <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28`, fontSize: 20 }}>{icon}</div>
+        <div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28`, color: accent }}><RunningGlyph name={icon} size={19}/></div>
         <div><div style={{ fontSize: 9.5, fontWeight: 1000 }}>{title}</div><div style={{ marginTop: 3, color: on ? accent : textSoft, fontSize: 8.3 }}>{on ? `${copy.live}${deviceName(kind) ? ` · ${deviceName(kind)}` : ""}${value ? ` · ${value}` : ""}` : capabilities.webBluetooth ? "BLE" : copy.unavailable}</div></div>
         <button className="btn" disabled={busy === kind || !capabilities.webBluetooth} onClick={() => void action(kind)} style={{ minHeight: 34, padding: "4px 8px", fontSize: 7.8, fontWeight: 1000, color: on ? accent : undefined, borderColor: on ? `${accent}66` : undefined }}>{busy === kind ? "…" : on ? copy.disconnect : copy.connect}</button>
       </div>
@@ -101,9 +102,9 @@ export default function RunningConnectionsPanel({ lang, accent, textSoft, compac
     {!compact ? <div style={{ color: accent, fontSize: 9, fontWeight: 1000, marginBottom: 5 }}>{copy.title}</div> : null}
     {!compact ? <div style={{ color: textSoft, fontSize: 8.6, lineHeight: 1.45, marginBottom: 9 }}>{copy.sub}</div> : null}
     <div style={{ display: "grid", gap: 7 }}>
-      {sensorCard("heart-rate", "❤️", copy.hr, sensor.heartRateBpm ? `${sensor.heartRateBpm} ${copy.bpm}` : "")}
-      {sensorCard("running-speed-cadence", "🦶", copy.foot, [sensor.cadenceSpm ? `${sensor.cadenceSpm} ${copy.spm}` : "", sensor.sensorSpeedMps ? `${(sensor.sensorSpeedMps * 3.6).toFixed(1)} km/h` : ""].filter(Boolean).join(" · "))}
-      {sensorCard("fitness-machine-treadmill", "🏃‍♂️", copy.treadmill, [sensor.treadmillSpeedMps ? `${(sensor.treadmillSpeedMps * 3.6).toFixed(1)} km/h` : "", sensor.treadmillDistanceM != null ? `${(sensor.treadmillDistanceM / 1000).toFixed(2)} km` : "", sensor.inclinePercent != null ? `${sensor.inclinePercent.toFixed(1)}%` : ""].filter(Boolean).join(" · "))}
+      {sensorCard("heart-rate", "heart", copy.hr, sensor.heartRateBpm ? `${sensor.heartRateBpm} ${copy.bpm}` : "")}
+      {sensorCard("running-speed-cadence", "footpod", copy.foot, [sensor.cadenceSpm ? `${sensor.cadenceSpm} ${copy.spm}` : "", sensor.sensorSpeedMps ? `${(sensor.sensorSpeedMps * 3.6).toFixed(1)} km/h` : ""].filter(Boolean).join(" · "))}
+      {sensorCard("fitness-machine-treadmill", "sport-treadmill", copy.treadmill, [sensor.treadmillSpeedMps ? `${(sensor.treadmillSpeedMps * 3.6).toFixed(1)} km/h` : "", sensor.treadmillDistanceM != null ? `${(sensor.treadmillDistanceM / 1000).toFixed(2)} km` : "", sensor.inclinePercent != null ? `${sensor.inclinePercent.toFixed(1)}%` : ""].filter(Boolean).join(" · "))}
     </div>
     {message ? <div style={{ marginTop: 7, padding: 8, borderRadius: 10, border: `1px solid ${messageKind === "error" ? "rgba(255,120,120,.26)" : `${accent}38`}`, color: messageKind === "error" ? "#ffb0b0" : accent, background: messageKind === "error" ? "rgba(255,90,90,.045)" : `${accent}08`, fontSize: 8.2 }}>{message}</div> : null}
     {!compact ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 9 }}>

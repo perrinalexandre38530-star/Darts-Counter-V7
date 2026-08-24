@@ -1949,9 +1949,14 @@ export default function StorageVaultPage({ go }: Props) {
       const capability = await mod?.onlineApi?.getPrivateNasCapability?.({ force: true });
       if (!alive) return;
       setPrivateNasCapability({ checked: capability?.checked !== false, authorized: capability?.authorized === true });
-      if (capability?.authorized === true) {
-        await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
-        if (alive) await auth.refresh?.();
+      // Un timeout du pré-contrôle ne doit pas condamner le NAS. La bascule
+      // explicite tente le bridge serveur, qui est l'autorité finale.
+      if (capability?.authorized === true || capability?.checked === false || founderNasSelected) {
+        const bridged = await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
+        if (alive && (bridged?.token || readNasAccessToken())) {
+          setPrivateNasCapability({ checked: true, authorized: true });
+          await auth.refresh?.();
+        }
       }
     }).catch(() => undefined);
     return () => { alive = false; };
@@ -2623,25 +2628,35 @@ ${label}`)) return;
     if (provider === "nas" && !readNasAccessToken()) {
       try {
         const mod: any = await import("../lib/onlineApi");
+        setMessage("Connexion au NAS privé… vérification du bridge sécurisé en cours.");
         const capability = await mod?.onlineApi?.getPrivateNasCapability?.({ force: true });
         setPrivateNasCapability({
           checked: capability?.checked !== false,
           authorized: capability?.authorized === true,
         });
-        if (capability?.authorized !== true) {
+
+        // Ne jamais confondre « contrôle temporairement indisponible » avec
+        // « compte non autorisé ». Même si /nas-capability a expiré, on tente le
+        // bridge explicite : le serveur /auth/supabase/bridge est l'autorité finale.
+        if (capability?.checked === true && capability?.authorized !== true && !founderNasSelected) {
           setMessage("Le NAS privé n’est pas autorisé pour ce compte. Cloud R2, cet appareil et les fichiers personnels restent disponibles.");
           return;
         }
-        await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
+
+        const bridged = await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
+        if (!bridged?.token && !readNasAccessToken()) {
+          throw new Error("Le bridge NAS n’a retourné aucun jeton d’accès.");
+        }
+        setPrivateNasCapability({ checked: true, authorized: true });
         await auth.refresh?.();
       } catch (error: any) {
-        setMessage(`Connexion au NAS privé impossible : ${error?.message || error}`);
+        setMessage(`Connexion au NAS privé impossible : ${error?.message || error}. Aucune sauvegarde NAS n’a été supprimée.`);
         return;
       }
     }
 
-    if (provider === "nas" && !canUsePrivateNas && !readNasAccessToken()) {
-      setMessage("Le NAS privé n’est pas disponible pour ce compte. Utilise Cloud R2, cet appareil ou un fichier personnel.");
+    if (provider === "nas" && !readNasAccessToken()) {
+      setMessage("Le NAS privé n’a pas pu être ouvert. Aucune sauvegarde NAS n’a été supprimée.");
       return;
     }
 

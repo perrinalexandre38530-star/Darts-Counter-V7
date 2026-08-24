@@ -847,7 +847,8 @@ async function probePrivateNasCapabilityForSession(
   }
 
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl && typeof window !== "undefined" ? window.setTimeout(() => ctrl.abort(), 4500) : null;
+  const capabilityTimeoutMs = opts?.force ? 12_000 : 4_500;
+  const timer = ctrl && typeof window !== "undefined" ? window.setTimeout(() => ctrl.abort(), capabilityTimeoutMs) : null;
   try {
     const res = await fetch(`${getApiUrl()}/auth/supabase/nas-capability`, {
       method: "POST",
@@ -910,7 +911,8 @@ async function bridgeSupabaseSessionToNas(session: any, userAuth: UserAuth, prof
   if (!accessToken) return null;
 
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), 5000) : null;
+  const bridgeTimeoutMs = force ? 15_000 : 5_000;
+  const timer = ctrl ? window.setTimeout(() => ctrl.abort(), bridgeTimeoutMs) : null;
   try {
     const res = await fetch(`${getApiUrl()}/auth/supabase/bridge`, {
       method: "POST",
@@ -1352,10 +1354,23 @@ async function switchAccountInfrastructure(target: "public" | "nas"): Promise<Au
   if (!session || !user) throw new Error("Aucune session publique disponible pour ouvrir le NAS privé.");
   const meta = (user.user_metadata || {}) as any; const nickname = meta?.nickname || meta?.displayName || user.email || "Player";
   const capability = await probePrivateNasCapabilityForSession(session, nickname, { force: true, bootstrapProfile: true });
-  if (!capability.authorized) throw new Error("Ce compte n'est pas autorisé à accéder au NAS privé du fondateur.");
   const userAuth: UserAuth = { id: String(user.id), email: user.email ?? undefined, nickname, createdAt: user.created_at ? Date.parse(user.created_at) : now() };
   const profile = mergeOnlineProfiles(capability.profile || null, await getOrCreateProfile(String(user.id), nickname, user));
-  const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile, true);
+
+  // IMPORTANT : /nas-capability est un pré-contrôle UX, pas l'autorité finale.
+  // Sur Android/NAS au réveil il peut expirer ou être momentanément indisponible.
+  // On tente donc TOUJOURS le bridge lorsque l'utilisateur demande explicitement
+  // le NAS. Le endpoint /auth/supabase/bridge reste l'autorité serveur et refuse
+  // lui-même les comptes réellement non autorisés.
+  let bridged: AuthSession | null = null;
+  try {
+    bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile, true);
+  } catch (bridgeError: any) {
+    if (capability.checked && !capability.authorized) {
+      throw new Error("Ce compte n'est pas autorisé à accéder au NAS privé du fondateur.");
+    }
+    throw new Error(`NAS privé temporairement inaccessible : ${bridgeError?.message || bridgeError}`);
+  }
   if (!bridged?.token) throw new Error("Le NAS privé n'a pas pu être activé pour ce compte.");
   bridged.authProvider = "nas"; bridged.degradedMode = false; saveAuthToLS(bridged); markAuthReady(true); return bridged;
 }

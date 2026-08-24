@@ -25,7 +25,13 @@ export type RunningGlyphName =
   | "free"
   | "distance"
   | "time"
-  | "pace";
+  | "pace"
+  | "heart"
+  | "footpod"
+  | "health"
+  | "native-gps"
+  | "garmin"
+  | "files";
 
 export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningGlyphName; size?: number; stroke?: number }) {
   const p = {
@@ -227,6 +233,41 @@ export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningG
           <path {...p} d="M4 17a8 8 0 0 1 16 0" />
           <path {...p} d="m12 13 4-4" />
           <path {...p} d="M7 17h10" />
+        </svg>
+      );
+    case "heart":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M12 20S4.5 15.5 4.5 9.5A4 4 0 0 1 12 7a4 4 0 0 1 7.5 2.5C19.5 15.5 12 20 12 20Z" />
+          <path {...p} d="M8 12h2l1-2.2 2 4.4 1.2-2.2H16" />
+        </svg>
+      );
+    case "footpod":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M8 4c1.7 3.2 1.4 6.1-.7 8.2-2 2-2.5 4.1-1.1 5.7 1.3 1.5 3.6 1.5 5.2.3 2.1-1.6 2.7-4.8 1.4-7.3C11.8 8.8 10.4 6.5 8 4Z" />
+          <circle {...p} cx="16.8" cy="7" r="1.2" />
+          <circle {...p} cx="18.7" cy="10" r="1" />
+        </svg>
+      );
+    case "health":
+      return <RunningGlyph name="heart" size={size} stroke={stroke} />;
+    case "native-gps":
+      return <RunningGlyph name="gps" size={size} stroke={stroke} />;
+    case "garmin":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <rect {...p} x="6" y="5" width="12" height="14" rx="3" />
+          <path {...p} d="M9 2h6M9 22h6" />
+          <circle {...p} cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case "files":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M7 3h7l4 4v14H7Z" />
+          <path {...p} d="M14 3v5h5" />
+          <path {...p} d="M10 13h5M10 16h5" />
         </svg>
       );
     default:

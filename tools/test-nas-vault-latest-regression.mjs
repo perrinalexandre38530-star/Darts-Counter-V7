@@ -17,6 +17,8 @@ assert(page.includes('if (current.length) return current;'), 'Un refresh NAS en 
 assert(page.includes('id: "latest"'), 'Le courant créé après /sync/push porte toujours l’identifiant latest');
 assert(page.includes('entry.latest || entry.quality.grade === "complete"'), 'Le courant NAS confirmé reste affiché même si son résumé est incomplet');
 assert(vault.includes('summary: summarizeVaultPayload(decoded)'), 'Le fallback /sync/pull reconstruit un résumé au lieu de masquer le courant');
+assert(page.includes('capability?.checked === true && capability?.authorized !== true && !founderNasSelected'), 'Un timeout du pré-contrôle NAS ne bloque plus la sélection fondateur');
+assert(page.includes('Aucune sauvegarde NAS n’a été supprimée'), 'Une erreur de bridge confirme explicitement qu’aucune sauvegarde NAS n’est supprimée');
 assert(nasApi.includes('une sauvegarde NAS ne doit JAMAIS déclencher'), 'Le push NAS ne déclenche plus de copie R2 implicite');
 assert(!page.includes('const canUsePrivateNas = !isPublicSupabaseVaultAuth'), 'La restauration NAS n’est plus masquée par une session Supabase publique/hybride');
 assert(page.includes('privateNasCapability.authorized || founderNasSelected'), 'Le NAS fondateur reste visible pendant la restauration du bridge privé');

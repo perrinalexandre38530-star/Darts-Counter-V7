@@ -20,11 +20,19 @@ export function buildTreadmillSplits(samples: ActivitySensorSample[]): ActivityS
   return out;
 }
 
-export function treadmillDistanceSource(devices: ActivitySensorDevice[], samples: ActivitySensorSample[], manualSpeedKmh: number): "ftms" | "footpod" | "manual-speed" {
-  if (devices.some((device) => device.kind === "fitness-machine-treadmill")) return "ftms";
-  if (devices.some((device) => device.kind === "running-speed-cadence")) return "footpod";
-  if (samples.some((sample) => Number.isFinite(sample.sensorSpeedMps) && sample.sensorSpeedMps! > 0)) return "footpod";
-  return manualSpeedKmh > 0 ? "manual-speed" : "manual-speed";
+export function treadmillDistanceSource(devices: ActivitySensorDevice[] | unknown, samples: ActivitySensorSample[] | unknown, manualSpeedKmh = 0): "ftms" | "footpod" | "manual-speed" {
+  const safeDevices = Array.isArray(devices) ? devices : [];
+  const safeSamples = Array.isArray(samples) ? samples : [];
+  if (safeDevices.some((device) => device?.kind === "fitness-machine-treadmill")) return "ftms";
+  if (safeDevices.some((device) => device?.kind === "running-speed-cadence")) return "footpod";
+  if (safeSamples.some((sample) => Number.isFinite(sample?.sensorSpeedMps) && Number(sample?.sensorSpeedMps) > 0)) return "footpod";
+  return "manual-speed";
+}
+
+export function treadmillDistanceSourceLabel(source: "ftms" | "footpod" | "manual-speed", lang = "fr") {
+  if (source === "ftms") return "FTMS";
+  if (source === "footpod") return "FOOTPOD";
+  return lang === "es" ? "MANUAL" : lang === "en" ? "MANUAL" : "MANUEL";
 }
 
 export function averageTreadmillIncline(samples: ActivitySensorSample[]) {

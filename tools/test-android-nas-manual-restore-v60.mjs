@@ -26,7 +26,7 @@ assert.match(page, /Aucune autre source ne sera chargée en arrière-plan/);
 assert.match(page, /if \(!Capacitor\.isNativePlatform\(\)\)/);
 assert.match(page, /État appliqué sans rechargement/);
 assert.match(page, /isPublicSupabaseVaultAuth/);
-assert.match(page, /Le NAS privé n’est pas disponible pour ce compte/);
+assert.match(page, /Aucune sauvegarde NAS n’a été supprimée/);
 assert.match(page, /canUsePrivateNas \? \(/);
 assert.match(page, /if \(!canUsePrivateNas\) return "cloud"/);
 
@@ -35,5 +35,5 @@ console.log("✅ les lectures automatiques conservent leurs délais courts");
 console.log("✅ aucune restauration R2 invisible sur Android");
 console.log("✅ aucune réécriture distante ni reload après restauration native");
 console.log("✅ message utilisateur explicite pendant le téléchargement NAS");
-console.log("✅ le NAS privé est masqué pour les comptes publics Supabase");
+console.log("✅ un timeout du pré-contrôle ne bloque plus le bridge NAS explicite");
 console.log("\n✅ ANDROID NAS MANUAL RESTORE V60 OK");
