@@ -18,7 +18,8 @@ jobs:
         run: |
           zip -qr MULTISPORTS_SCORING_SEO_AI_V1.zip . \
             -x '.git/*' \
-            -x '.github/workflows/export-project.yml'
+            -x '.github/workflows/export-project.yml' \
+            -x 'MSS_RECOVERY/*.tar'
 
       - name: Upload project ZIP
         uses: actions/upload-artifact@v4
