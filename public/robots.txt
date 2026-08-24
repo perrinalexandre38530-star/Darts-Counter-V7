@@ -18,4 +18,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://darts-counter-v7.pages.dev/sitemap.xml
+Sitemap: https://multisports-scoring.pages.dev/sitemap.xml
