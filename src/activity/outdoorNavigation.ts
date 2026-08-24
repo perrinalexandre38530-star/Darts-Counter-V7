@@ -25,6 +25,20 @@ export type OutdoorAheadProfile = {
   endAltitudeM: number | null;
 };
 
+
+export type OutdoorTurnKind = "straight" | "slight-left" | "left" | "sharp-left" | "slight-right" | "right" | "sharp-right" | "u-turn" | "finish";
+
+export type OutdoorDirectionalGuidance = {
+  id: string;
+  kind: OutdoorTurnKind;
+  distanceM: number;
+  targetDistanceM: number;
+  bearingDeg: number | null;
+  turnAngleDeg: number;
+  wrongWay: boolean;
+  wrongWayAngleDeg: number | null;
+};
+
 export type OutdoorRouteProgress = {
   matchedDistanceM: number;
   remainingM: number;
@@ -149,6 +163,95 @@ export function analyzeOutdoorRouteAhead(route: RunningRouteTemplate, fromDistan
   const endAltitudeM = Number.isFinite(points[end.index]?.altitude) ? Number(points[end.index].altitude) : null;
   const netElevationM = startAltitudeM != null && endAltitudeM != null ? endAltitudeM - startAltitudeM : gainM - lossM;
   return { horizonM: actualHorizonM, gainM, lossM, netElevationM, avgGradePct: actualHorizonM > 0 ? netElevationM / actualHorizonM * 100 : 0, maxGradePct, startAltitudeM, endAltitudeM };
+}
+
+
+function normalizeAngle(value: number) {
+  let out = value % 360;
+  if (out < 0) out += 360;
+  return out;
+}
+
+function signedAngleDelta(fromDeg: number, toDeg: number) {
+  let delta = normalizeAngle(toDeg) - normalizeAngle(fromDeg);
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  return delta;
+}
+
+export function outdoorBearingDegrees(a: GeoPoint, b: GeoPoint): number | null {
+  if (!a || !b || !Number.isFinite(a.lat) || !Number.isFinite(a.lon) || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) return null;
+  const toRad = (degrees: number) => degrees * Math.PI / 180;
+  const toDeg = (radians: number) => radians * 180 / Math.PI;
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  if (Math.abs(x) < 1e-12 && Math.abs(y) < 1e-12) return null;
+  return normalizeAngle(toDeg(Math.atan2(y, x)));
+}
+
+function turnKindFromAngle(delta: number): OutdoorTurnKind {
+  const abs = Math.abs(delta);
+  if (abs >= 150) return "u-turn";
+  if (delta <= -75) return "sharp-left";
+  if (delta <= -35) return "left";
+  if (delta <= -18) return "slight-left";
+  if (delta >= 75) return "sharp-right";
+  if (delta >= 35) return "right";
+  if (delta >= 18) return "slight-right";
+  return "straight";
+}
+
+export function outdoorDirectionalGuidance(
+  route: RunningRouteTemplate,
+  matchedDistanceM: number,
+  currentPoint?: GeoPoint | null,
+  previousPoint?: GeoPoint | null,
+): OutdoorDirectionalGuidance | null {
+  const points = route.route || [];
+  if (points.length < 2) return null;
+  const distances = cumulativeOutdoorRouteDistances(points);
+  const total = Math.max(0, Number(route.distanceM || distances[distances.length - 1] || 0));
+  const matched = clamp(matchedDistanceM, 0, total);
+  let currentIndex = distances.findIndex((distance) => distance >= matched);
+  if (currentIndex < 0) currentIndex = points.length - 1;
+  currentIndex = Math.max(0, Math.min(points.length - 1, currentIndex));
+
+  const currentRoutePoint = points[currentIndex];
+  const nextRoutePoint = points[Math.min(points.length - 1, currentIndex + 1)];
+  const routeBearing = currentRoutePoint && nextRoutePoint ? outdoorBearingDegrees(currentRoutePoint, nextRoutePoint) : null;
+  let wrongWayAngleDeg: number | null = null;
+  let wrongWay = false;
+  if (previousPoint && currentPoint && haversineMeters(previousPoint, currentPoint) >= 7 && routeBearing != null) {
+    const movementBearing = outdoorBearingDegrees(previousPoint, currentPoint);
+    if (movementBearing != null) {
+      wrongWayAngleDeg = Math.abs(signedAngleDelta(routeBearing, movementBearing));
+      wrongWay = wrongWayAngleDeg >= 105;
+    }
+  }
+
+  const searchStartM = matched + 18;
+  const searchEndM = Math.min(total, matched + 1200);
+  for (let index = Math.max(1, currentIndex + 1); index < points.length - 1; index += 1) {
+    const atDistance = distances[index] ?? 0;
+    if (atDistance < searchStartM) continue;
+    if (atDistance > searchEndM) break;
+    const beforeIndex = Math.max(0, index - 2);
+    const afterIndex = Math.min(points.length - 1, index + 2);
+    const before = points[beforeIndex], pivot = points[index], after = points[afterIndex];
+    if (!before || !pivot || !after) continue;
+    const inBearing = outdoorBearingDegrees(before, pivot);
+    const outBearing = outdoorBearingDegrees(pivot, after);
+    if (inBearing == null || outBearing == null) continue;
+    const turnAngleDeg = signedAngleDelta(inBearing, outBearing);
+    const kind = turnKindFromAngle(turnAngleDeg);
+    if (kind === "straight") continue;
+    return { id: `turn:${index}`, kind, distanceM: Math.max(0, atDistance - matched), targetDistanceM: atDistance, bearingDeg: outBearing, turnAngleDeg, wrongWay, wrongWayAngleDeg };
+  }
+
+  const remainingM = Math.max(0, total - matched);
+  return { id: "finish", kind: "finish", distanceM: remainingM, targetDistanceM: total, bearingDeg: routeBearing, turnAngleDeg: 0, wrongWay, wrongWayAngleDeg };
 }
 
 function remainingElevationGain(route: RunningRouteTemplate, fromDistanceM: number) {

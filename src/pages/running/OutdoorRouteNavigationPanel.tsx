@@ -1,6 +1,6 @@
 import React from "react";
 import { formatDistance, formatDuration } from "../../activity/activityMath";
-import { buildOutdoorRouteCheckpoints, estimateOutdoorRouteDurationMs, outdoorRouteProgress } from "../../activity/outdoorNavigation";
+import { buildOutdoorRouteCheckpoints, estimateOutdoorRouteDurationMs, outdoorDirectionalGuidance, outdoorRouteProgress, type OutdoorTurnKind } from "../../activity/outdoorNavigation";
 import type { GeoPoint } from "../../activity/activityTypes";
 import { gpsIntervalSecForBatteryMode, type OutdoorLongDistancePrefs } from "../../activity/outdoorLongDistance";
 import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
@@ -18,6 +18,7 @@ type Props = {
   liveDistanceM?: number;
   elapsedMs?: number;
   currentPoint?: GeoPoint | null;
+  previousPoint?: GeoPoint | null;
   liveElevationGainM?: number;
   extras?: OutdoorRouteExtras | null;
   longDistancePrefs?: OutdoorLongDistancePrefs | null;
@@ -34,27 +35,40 @@ function checkpointLabel(checkpoint: ReturnType<typeof buildOutdoorRouteCheckpoi
   return `${Math.round(checkpoint.distanceM / 1000)} KM`;
 }
 
-export default function OutdoorRouteNavigationPanel({ route, sport, lang, accent, textSoft, mode = "preview", liveDistanceM = 0, elapsedMs = 0, currentPoint = null, liveElevationGainM = 0, extras: extrasProp = null, longDistancePrefs = null }: Props) {
+export default function OutdoorRouteNavigationPanel({ route, sport, lang, accent, textSoft, mode = "preview", liveDistanceM = 0, elapsedMs = 0, currentPoint = null, previousPoint = null, liveElevationGainM = 0, extras: extrasProp = null, longDistancePrefs = null }: Props) {
   const extras = extrasProp || loadOutdoorRouteExtras(route.id);
   const checkpoints = React.useMemo(() => buildOutdoorRouteCheckpoints(route, sport, extras.waypoints), [extras.waypoints, route, sport]);
   const expectedMs = React.useMemo(() => estimateOutdoorRouteDurationMs(route, sport), [route, sport]);
   const live = React.useMemo(() => mode === "live" ? outdoorRouteProgress(route, sport, liveDistanceM, elapsedMs, currentPoint, liveElevationGainM, extras.waypoints, extras.offRouteAlertM) : null, [currentPoint, elapsedMs, extras.offRouteAlertM, extras.waypoints, liveDistanceM, liveElevationGainM, mode, route, sport]);
+  const guidance = React.useMemo(() => outdoorDirectionalGuidance(route, live?.matchedDistanceM ?? 0, currentPoint, previousPoint), [currentPoint, live?.matchedDistanceM, previousPoint, route]);
   const t = lang.startsWith("fr") ? {
-    preview: "PRÉPARATION PARCOURS", live: "NAVIGATION PARCOURS", estimate: "DURÉE EST.", checkpoints: "REPÈRES", next: "PROCHAIN", remaining: "RESTANT", eta: "ETA", routeGap: "ÉCART TRACÉ", vertical: "VITESSE VERT.", progress: "PROGRESSION", estimateHint: "Estimation indicative selon la distance, le sport et le dénivelé.", onRoute: "SUR LE TRACÉ", alert: "HORS TRACÉ", ahead: "2 KM À VENIR", gain: "D+ À VENIR", grade: "PENTE MOY.", maxGrade: "PENTE MAX",
+    preview: "PRÉPARATION PARCOURS", live: "NAVIGATION PARCOURS", estimate: "DURÉE EST.", checkpoints: "REPÈRES", next: "PROCHAIN", remaining: "RESTANT", eta: "ETA", routeGap: "ÉCART TRACÉ", vertical: "VITESSE VERT.", progress: "PROGRESSION", estimateHint: "Estimation indicative selon la distance, le sport et le dénivelé.", onRoute: "SUR LE TRACÉ", alert: "HORS TRACÉ", ahead: "2 KM À VENIR", gain: "D+ À VENIR", grade: "PENTE MOY.", maxGrade: "PENTE MAX", wrongWay: "MAUVAIS SENS", direction: "GUIDAGE",
   } : lang.startsWith("es") ? {
-    preview: "PREPARACIÓN DE RUTA", live: "NAVEGACIÓN DE RUTA", estimate: "DURACIÓN EST.", checkpoints: "PUNTOS", next: "SIGUIENTE", remaining: "RESTANTE", eta: "ETA", routeGap: "DESVÍO", vertical: "VEL. VERTICAL", progress: "PROGRESO", estimateHint: "Estimación orientativa según distancia, actividad y desnivel.", onRoute: "EN RUTA", alert: "FUERA DE RUTA", ahead: "PRÓXIMOS 2 KM", gain: "D+ PRÓXIMO", grade: "PEND. MEDIA", maxGrade: "PEND. MAX",
+    preview: "PREPARACIÓN DE RUTA", live: "NAVEGACIÓN DE RUTA", estimate: "DURACIÓN EST.", checkpoints: "PUNTOS", next: "SIGUIENTE", remaining: "RESTANTE", eta: "ETA", routeGap: "DESVÍO", vertical: "VEL. VERTICAL", progress: "PROGRESO", estimateHint: "Estimación orientativa según distancia, actividad y desnivel.", onRoute: "EN RUTA", alert: "FUERA DE RUTA", ahead: "PRÓXIMOS 2 KM", gain: "D+ PRÓXIMO", grade: "PEND. MEDIA", maxGrade: "PEND. MAX", wrongWay: "SENTIDO INCORRECTO", direction: "GUIADO",
   } : {
-    preview: "ROUTE PREPARATION", live: "ROUTE NAVIGATION", estimate: "EST. TIME", checkpoints: "CHECKPOINTS", next: "NEXT", remaining: "REMAINING", eta: "ETA", routeGap: "OFF ROUTE", vertical: "VERTICAL SPEED", progress: "PROGRESS", estimateHint: "Indicative estimate based on distance, activity and elevation.", onRoute: "ON ROUTE", alert: "OFF ROUTE", ahead: "NEXT 2 KM", gain: "GAIN AHEAD", grade: "AVG GRADE", maxGrade: "MAX GRADE",
+    preview: "ROUTE PREPARATION", live: "ROUTE NAVIGATION", estimate: "EST. TIME", checkpoints: "CHECKPOINTS", next: "NEXT", remaining: "REMAINING", eta: "ETA", routeGap: "OFF ROUTE", vertical: "VERTICAL SPEED", progress: "PROGRESS", estimateHint: "Indicative estimate based on distance, activity and elevation.", onRoute: "ON ROUTE", alert: "OFF ROUTE", ahead: "NEXT 2 KM", gain: "GAIN AHEAD", grade: "AVG GRADE", maxGrade: "MAX GRADE", wrongWay: "WRONG WAY", direction: "GUIDANCE",
   };
 
   const next = live?.nextCheckpoint || checkpoints[0] || null;
   const offRoute = live?.offRouteM;
   const offRouteColor = live?.offRouteAlert ? "#ff756d" : accent;
+  const turnIcon = (kind: OutdoorTurnKind) => kind === "left" ? "↰" : kind === "sharp-left" ? "↶" : kind === "slight-left" ? "↖" : kind === "right" ? "↱" : kind === "sharp-right" ? "↷" : kind === "slight-right" ? "↗" : kind === "u-turn" ? "↩" : kind === "finish" ? "🏁" : "↑";
+  const turnLabel = (kind: OutdoorTurnKind) => {
+    const fr: Record<OutdoorTurnKind, string> = { "straight": "CONTINUE TOUT DROIT", "slight-left": "LÉGÈREMENT À GAUCHE", "left": "TOURNE À GAUCHE", "sharp-left": "FORT À GAUCHE", "slight-right": "LÉGÈREMENT À DROITE", "right": "TOURNE À DROITE", "sharp-right": "FORT À DROITE", "u-turn": "FAIS DEMI-TOUR", "finish": "ARRIVÉE" };
+    const en: Record<OutdoorTurnKind, string> = { "straight": "KEEP STRAIGHT", "slight-left": "SLIGHT LEFT", "left": "TURN LEFT", "sharp-left": "SHARP LEFT", "slight-right": "SLIGHT RIGHT", "right": "TURN RIGHT", "sharp-right": "SHARP RIGHT", "u-turn": "U-TURN", "finish": "FINISH" };
+    const es: Record<OutdoorTurnKind, string> = { "straight": "SIGUE RECTO", "slight-left": "LIGERO A LA IZQUIERDA", "left": "GIRA A LA IZQUIERDA", "sharp-left": "GIRO FUERTE IZQUIERDA", "slight-right": "LIGERO A LA DERECHA", "right": "GIRA A LA DERECHA", "sharp-right": "GIRO FUERTE DERECHA", "u-turn": "MEDIA VUELTA", "finish": "LLEGADA" };
+    return lang.startsWith("fr") ? fr[kind] : lang.startsWith("es") ? es[kind] : en[kind];
+  };
 
   return <RunningSurface accent={live?.offRouteAlert ? "#ff756d" : accent} style={{ marginTop: 8 }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><div style={{ color: live?.offRouteAlert ? "#ff9b94" : accent, fontSize: 9, fontWeight: 1000, letterSpacing: .8 }}>{mode === "live" ? t.live : t.preview}</div>{live ? <span style={{ padding: "4px 7px", borderRadius: 999, border: `1px solid ${offRouteColor}48`, color: offRouteColor, fontSize: 7.2, fontWeight: 1000 }}>{live.offRouteAlert ? `${t.alert} · ${Math.round(offRoute || 0)} m` : t.onRoute}</span> : null}</div>
 
     {live ? <>
+      {guidance ? <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "68px 1fr auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, border: `1px solid ${guidance.wrongWay ? "rgba(255,100,90,.48)" : `${accent}32`}`, background: guidance.wrongWay ? "linear-gradient(145deg,rgba(255,80,70,.13),rgba(30,4,4,.55))" : `linear-gradient(145deg,${accent}10,rgba(4,6,10,.62))`, boxShadow: guidance.wrongWay ? "0 12px 28px rgba(255,60,50,.10)" : `0 12px 28px ${accent}0b` }}>
+        <div style={{ width: 62, height: 62, borderRadius: 18, display: "grid", placeItems: "center", border: `1px solid ${guidance.wrongWay ? "rgba(255,120,110,.55)" : `${accent}45`}`, background: guidance.wrongWay ? "rgba(255,90,80,.12)" : `${accent}12`, color: guidance.wrongWay ? "#ff9b94" : accent, fontSize: 36, fontWeight: 1000 }}>{guidance.wrongWay ? "↩" : turnIcon(guidance.kind)}</div>
+        <div style={{ minWidth: 0 }}><div style={{ fontSize: 7.2, color: guidance.wrongWay ? "#ff9b94" : textSoft, fontWeight: 1000, letterSpacing: .7 }}>{guidance.wrongWay ? t.wrongWay : t.direction}</div><div style={{ marginTop: 3, fontSize: 12.5, fontWeight: 1000, color: guidance.wrongWay ? "#ff9b94" : "inherit" }}>{guidance.wrongWay ? turnLabel("u-turn") : turnLabel(guidance.kind)}</div></div>
+        <div style={{ textAlign: "right", color: guidance.wrongWay ? "#ff9b94" : accent, fontSize: 12, fontWeight: 1000 }}>{guidance.distanceM < 950 ? `${Math.max(0, Math.round(guidance.distanceM / 10) * 10)} m` : `${(guidance.distanceM / 1000).toFixed(1)} km`}</div>
+      </div> : null}
       <div style={{ marginTop: 9, height: 7, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}><div style={{ width: `${live.progressPct}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg,${accent},#fff)`, boxShadow: `0 0 14px ${accent}55` }}/></div>
       <div style={{ marginTop: 5, display: "flex", justifyContent: "space-between", color: textSoft, fontSize: 7.4 }}><span>{t.progress} · {live.progressPct.toFixed(0)}%</span><span>{formatDistance(live.matchedDistanceM)} / {formatDistance(route.distanceM)}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5, marginTop: 8 }}><Mini label={t.remaining} value={formatDistance(live.remainingM)} accent={accent}/><Mini label={t.eta} value={live.etaMs != null ? formatDuration(live.etaMs) : "—"} accent={accent}/><Mini label={t.next} value={next ? checkpointLabel(next, lang) : "—"} accent={accent}/><Mini label={t.routeGap} value={offRoute == null ? "—" : `${Math.round(offRoute)} m`} accent={offRouteColor}/></div>
