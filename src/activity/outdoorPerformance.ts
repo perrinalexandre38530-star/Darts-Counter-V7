@@ -87,6 +87,42 @@ export function outdoorPresetIds(sport: OutdoorPerformanceSport) {
   return new Set(["free", "distance-5k", "distance-10k", "easy", "tempo", "intervals", "long", "hills"]);
 }
 
+
+export function outdoorTrainingPresetIds(sport: OutdoorPerformanceSport) {
+  if (sport === "running") return ["easy", "tempo", "intervals", "hills", "long", "recovery"];
+  if (sport === "trail") return ["easy", "hills", "long", "recovery"];
+  if (sport === "nordic-walking") return ["easy", "tempo", "hills"];
+  if (sport === "treadmill") return ["easy", "tempo", "intervals", "hills", "long", "recovery"];
+  return [];
+}
+
+export function outdoorGoalDistancesKm(sport: OutdoorPerformanceSport) {
+  if (sport === "running") return [1, 5, 10, 21.1];
+  if (sport === "trail") return [5, 10, 20, 30];
+  if (sport === "hiking") return [5, 10, 15, 20];
+  if (sport === "walking") return [3, 5, 10];
+  if (sport === "nordic-walking") return [5, 10, 15];
+  return [1, 5, 10];
+}
+
+export function outdoorGoalDurationsMin(sport: OutdoorPerformanceSport) {
+  if (sport === "trail") return [45, 60, 90, 120, 180];
+  if (sport === "hiking") return [60, 120, 180, 240];
+  if (sport === "walking") return [20, 30, 45, 60, 90];
+  if (sport === "nordic-walking") return [30, 45, 60, 90];
+  if (sport === "treadmill") return [20, 30, 45, 60];
+  return [20, 30, 45, 60, 90];
+}
+
+export function outdoorDefaultGoal(sport: OutdoorPerformanceSport) {
+  if (sport === "trail") return { distanceKm: 10, durationMin: 90 };
+  if (sport === "hiking") return { distanceKm: 10, durationMin: 120 };
+  if (sport === "walking") return { distanceKm: 5, durationMin: 45 };
+  if (sport === "nordic-walking") return { distanceKm: 10, durationMin: 60 };
+  if (sport === "treadmill") return { distanceKm: 5, durationMin: 30 };
+  return { distanceKm: 5, durationMin: 45 };
+}
+
 export function outdoorRecommendationPreset(sport: OutdoorPerformanceSport, hasElevation: boolean, longRoute: boolean) {
   if (sport === "trail") return hasElevation ? "hills" : longRoute ? "long" : "tempo";
   if (sport === "hiking") return hasElevation ? "hills" : "long";

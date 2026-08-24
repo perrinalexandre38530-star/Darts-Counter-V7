@@ -38,6 +38,10 @@ function clearExplicitLogout(): void {
   try { localStorage.removeItem(EXPLICIT_LOGOUT_KEY); } catch {}
 }
 
+function markExplicitLogout(): void {
+  try { localStorage.setItem(EXPLICIT_LOGOUT_KEY, "1"); } catch {}
+}
+
 function purgeAuthKeysFromBrowser(): void {
   if (typeof window === "undefined") return;
   try {
@@ -57,12 +61,19 @@ function purgeAuthKeysFromBrowser(): void {
     for (const key of keys) window.localStorage.removeItem(key);
     for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
       const key = window.localStorage.key(i) || "";
-      if (/^(sb-|supabase\.)/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
+      if (/^(sb-|supabase\.)/i.test(key) || /^dc-supabase-auth-v2:/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
         window.localStorage.removeItem(key);
       }
     }
   } catch {}
-  try { window.sessionStorage.clear(); } catch {}
+  try {
+    for (let i = window.sessionStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.sessionStorage.key(i) || "";
+      if (/^(sb-|supabase\.)/i.test(key) || /^dc-supabase-auth-v2:/i.test(key) || /auth.*token|token.*auth|refresh.*token/i.test(key)) {
+        window.sessionStorage.removeItem(key);
+      }
+    }
+  } catch {}
   setApiAccessToken("");
 }
 
@@ -287,7 +298,8 @@ function applyAuthFromSession(
   setApiAccessToken((session as any)?.access_token || "");
 
   if (user) {
-    clearExplicitLogout();
+    // IMPORTANT: une session résiduelle ne doit jamais annuler un logout explicite.
+    // Le verrou est retiré uniquement par une action volontaire de connexion/signup/OAuth.
     try {
       setStorageUser(String(user.id || ""));
       localStorage.setItem("dc_user_id", String(user.id || ""));
@@ -812,29 +824,43 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   );
 
   const logout = React.useCallback(async () => {
+    // LOGOUT LOCAL-FIRST : l'UI et le verrou de session basculent AVANT tout appel réseau.
+    // Ainsi une API lente/hors-ligne ou un listener Supabase retardé ne peut plus
+    // maintenir/restaurer artificiellement l'utilisateur dans l'application.
+    markExplicitLogout();
+    lastSignedInSessionRef.current = null;
+
     try {
-      lastSignedInSessionRef.current = null;
+      const authAny: any = (supabase as any)?.auth;
+      if (typeof authAny?.stopAutoRefresh === "function") authAny.stopAutoRefresh();
+    } catch {}
+
+    try { setStorageUser(null); } catch {}
+    purgeAuthKeysFromBrowser();
+
+    setState((s) => ({
+      ...s,
+      status: "signed_out",
+      session: null,
+      user: null,
+      profile: null,
+      loading: false,
+      ready: true,
+      error: null,
+    }));
+
+    // La sortie visuelle est immédiate et ne dépend jamais du réseau.
+    redirectToAuth(AUTH_REDIRECT_LOGIN);
+
+    try {
       await (onlineApi as any).logout?.();
     } catch (e) {
-      console.warn("[useAuthOnline] signOut error:", e);
+      console.warn("[useAuthOnline] remote signOut error (local logout already complete):", e);
     } finally {
-      try { setStorageUser(null); } catch {}
+      // Double verrouillage après les callbacks éventuels du provider.
+      markExplicitLogout();
       purgeAuthKeysFromBrowser();
-      if (isNasProviderEnabled()) {
-        await cleanupSupabaseLocalSessionForNas();
-      }
       lastSignedInSessionRef.current = null;
-      setState((s) => ({
-        ...s,
-        status: "signed_out",
-        session: null,
-        user: null,
-        profile: null,
-        loading: false,
-        ready: true,
-        error: null,
-      }));
-      redirectToAuth(AUTH_REDIRECT_LOGIN);
     }
   }, []);
 

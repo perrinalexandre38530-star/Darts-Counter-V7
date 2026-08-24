@@ -1454,21 +1454,42 @@ async function restoreSession(): Promise<AuthSession | null> {
 }
 
 async function logout(): Promise<void> {
-  // Une vraie déconnexion doit couper TOUS les mécanismes de session de cette
-  // installation : session NAS éventuelle + session Supabase du navigateur.
-  // scope=local ne déconnecte pas les autres téléphones de l'utilisateur.
+  // LOGOUT DUR : le verrou et les données locales sont supprimés EN PREMIER.
+  // Aucun appel réseau ne doit pouvoir bloquer la sortie ni restaurer une session.
+  markExplicitLogout();
+  __nasLastGoodSession = null;
+  __nasLastRestoreAt = 0;
+  __nasEnsureInFlight = null;
+  markAuthReady(false);
+
+  try {
+    const authAny: any = (supabase as any)?.auth;
+    if (typeof authAny?.stopAutoRefresh === "function") authAny.stopAutoRefresh();
+  } catch {}
+
+  saveAuthToLS(null);
+  purgeAuthLocalState();
+  clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
+
+  // Les révocations distantes restent best-effort et bornées dans le temps.
+  // La session locale est déjà détruite à ce stade.
+  const withTimeout = async (job: Promise<any>, ms = 1200) => {
+    await Promise.race([
+      job.catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, ms)),
+    ]);
+  };
+
   try {
     if (isNasProviderEnabled()) {
-      try { await nasLogout(); } catch (error) { console.warn("[onlineApi] NAS logout error", error); }
+      await withTimeout(nasLogout(), 1200);
     }
-
-    try {
-      const { error } = await supabase.auth.signOut({ scope: "local" });
-      if (error) console.warn("[onlineApi] Supabase logout error", error);
-    } catch (error) {
-      console.warn("[onlineApi] Supabase logout fatal", error);
-    }
+    await withTimeout(supabase.auth.signOut({ scope: "local" }) as any, 1200);
+  } catch (error) {
+    console.warn("[onlineApi] remote logout best-effort error", error);
   } finally {
+    // Un callback tardif ne doit jamais ressusciter la session.
+    markExplicitLogout();
     __nasLastGoodSession = null;
     __nasLastRestoreAt = 0;
     __nasEnsureInFlight = null;
@@ -1476,7 +1497,6 @@ async function logout(): Promise<void> {
     purgeAuthLocalState();
     clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
     markAuthReady(false);
-    markExplicitLogout();
   }
 }
 

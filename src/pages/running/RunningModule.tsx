@@ -11,7 +11,6 @@ import RunningGoalView from "./RunningGoalView";
 import RunningRunAnalysisPanel from "./RunningRunAnalysisPanel";
 import RunningElevationProfile from "./RunningElevationProfile";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
-import RunningConnectionsPanel from "./RunningConnectionsPanel";
 import OutdoorRouteNavigationPanel from "./OutdoorRouteNavigationPanel";
 import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
@@ -27,7 +26,7 @@ import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunning
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
-import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorPresetIds, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
+import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorDefaultGoal, outdoorGoalDistancesKm, outdoorGoalDurationsMin, outdoorPresetIds, outdoorSportLabel, outdoorTrainingPresetIds, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { loadOutdoorRouteExtras, type OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import { outdoorDirectionalGuidance, outdoorRouteProgress } from "../../activity/outdoorNavigation";
 import { getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorSnapshot } from "../../activity/runningSensors";
@@ -38,7 +37,8 @@ import { deleteActivity, listActivities, saveActivity } from "../../activity/act
 import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache";
 import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
-type SetupTab = "quick" | "training" | "pacer" | "custom";
+type SetupTab = "goal" | "training" | "advanced";
+type SimpleGoalMode = "free" | "distance" | "duration";
 type SetupPanel = "workout" | "route" | "ready";
 type RoutePanelTab = "choose" | "guide" | "offline";
 type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
@@ -138,6 +138,26 @@ catch {
 function presetLabel(p: Preset | undefined, lang: string) { if (!p)
     return "Running"; return pickLegacyLocalizedText(lang, p.fr, p.en, p.es); }
 function presetSub(p: Preset, lang: string) { return pickLegacyLocalizedText(lang, p.subFr, p.subEn, p.subEs); }
+function adaptPresetForSport(preset: Preset, sport: OutdoorPerformanceSport): Preset {
+    if (sport === "trail") {
+        if (preset.id === "easy") return { ...preset, fr: "ENDURANCE TRAIL · 45 MIN", en: "TRAIL ENDURANCE · 45 MIN", es: "RESISTENCIA TRAIL · 45 MIN", subFr: "Allure facile, terrain varié, sans chercher la vitesse.", subEn: "Easy effort on varied terrain without chasing speed.", subEs: "Esfuerzo suave en terreno variado sin buscar velocidad.", targetDurationMs: 45 * 60000 };
+        if (preset.id === "hills") return { ...preset, fr: "CÔTES TRAIL · 35 MIN", en: "TRAIL HILLS · 35 MIN", es: "CUESTAS TRAIL · 35 MIN", subFr: "Travail de montée court, récupération souple en descente ou retour.", subEn: "Short uphill work with easy downhill or return recovery.", subEs: "Trabajo corto en subida con recuperación suave." };
+        if (preset.id === "long") return { ...preset, fr: "SORTIE LONGUE TRAIL · 90 MIN", en: "LONG TRAIL · 90 MIN", es: "TRAIL LARGO · 90 MIN", subFr: "Endurance, gestion du relief et régularité sur la durée.", subEn: "Endurance, terrain management and steady long effort.", subEs: "Resistencia, gestión del terreno y esfuerzo regular.", targetDurationMs: 90 * 60000 };
+        if (preset.id === "recovery") return { ...preset, fr: "RÉCUP TRAIL · 25 MIN", en: "TRAIL RECOVERY · 25 MIN", es: "RECUP TRAIL · 25 MIN", targetDurationMs: 25 * 60000 };
+    }
+    if (sport === "nordic-walking") {
+        if (preset.id === "easy") return { ...preset, fr: "ENDURANCE · 45 MIN", en: "ENDURANCE · 45 MIN", es: "RESISTENCIA · 45 MIN", subFr: "Marche fluide, technique propre et cadence régulière.", subEn: "Smooth walking, clean technique and steady cadence.", subEs: "Marcha fluida, técnica limpia y cadencia regular.", targetDurationMs: 45 * 60000 };
+        if (preset.id === "tempo") return { ...preset, fr: "RYTHME SOUTENU · 35 MIN", en: "STEADY TEMPO · 35 MIN", es: "RITMO SOSTENIDO · 35 MIN", subFr: "Travail de cadence et d’engagement sans courir.", subEn: "Cadence and engagement work without running.", subEs: "Trabajo de cadencia e implicación sin correr." };
+        if (preset.id === "hills") return { ...preset, fr: "CÔTES & TECHNIQUE · 35 MIN", en: "HILLS & TECHNIQUE · 35 MIN", es: "CUESTAS Y TÉCNICA · 35 MIN" };
+    }
+    if (sport === "treadmill") {
+        const prefix = preset.id === "hills" ? "INCLINAISON" : preset.id === "intervals" ? "INTERVALLES" : preset.id === "long" ? "ENDURANCE LONGUE" : preset.id === "easy" ? "ENDURANCE" : preset.id === "recovery" ? "RÉCUPÉRATION" : "TEMPO";
+        const enPrefix = preset.id === "hills" ? "INCLINE" : preset.id === "intervals" ? "INTERVALS" : preset.id === "long" ? "LONG ENDURANCE" : preset.id === "easy" ? "ENDURANCE" : preset.id === "recovery" ? "RECOVERY" : "TEMPO";
+        const esPrefix = preset.id === "hills" ? "INCLINACIÓN" : preset.id === "intervals" ? "INTERVALOS" : preset.id === "long" ? "RESISTENCIA LARGA" : preset.id === "easy" ? "RESISTENCIA" : preset.id === "recovery" ? "RECUPERACIÓN" : "TEMPO";
+        return { ...preset, fr: `${prefix} TAPIS · ${Math.round((preset.targetDurationMs || 0) / 60000)} MIN`, en: `${enPrefix} TREADMILL · ${Math.round((preset.targetDurationMs || 0) / 60000)} MIN`, es: `${esPrefix} CINTA · ${Math.round((preset.targetDurationMs || 0) / 60000)} MIN` };
+    }
+    return preset;
+}
 function formatSignedDuration(ms: number | null) { if (ms == null || !Number.isFinite(ms))
     return "—"; const sign = ms > 0 ? "+" : "−"; return `${sign}${formatDuration(Math.abs(ms))}`; }
 function distanceLabel(m: number | null | undefined) { if (!m)
@@ -167,18 +187,19 @@ export default function RunningModule({ go, params }: Props) {
     const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : params?.runningView === "plan" ? "plan" : params?.runningView === "goal" ? "goal" : "setup";
     const initialPreset = String(params?.runningPresetId || (params?.runningTargetM ? "distance" : "free"));
     const [view, setView] = React.useState<View>(initialView);
-    const [setupTab, setSetupTab] = React.useState<SetupTab>(initialPreset === "pacer" ? "pacer" : initialPreset === "custom" ? "custom" : ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(initialPreset) ? "training" : "quick");
+    const [setupTab, setSetupTab] = React.useState<SetupTab>(initialPreset === "pacer" || initialPreset === "custom" ? "advanced" : ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(initialPreset) ? "training" : "goal");
     const [setupPanel, setSetupPanel] = React.useState<SetupPanel>("workout");
     const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => { const raw = String(params?.runningActivitySport || ""); return (["running","trail","hiking","walking","nordic-walking","treadmill"] as string[]).includes(raw) ? raw as OutdoorPerformanceSport : loadOutdoorPerformanceSport(); });
     const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
     const [selected, setSelected] = React.useState<ActivityRecord | null>(null);
     const [selectedPresetId, setSelectedPresetId] = React.useState(() => {
-        if (initialPreset === "distance") {
-            const m = Number(params?.runningTargetM || 5000);
-            return m === 1000 ? "distance-1k" : m === 10000 ? "distance-10k" : "distance-5k";
-        }
-        return PRESETS.some((p) => p.id === initialPreset) ? initialPreset : "free";
+        if (initialPreset === "distance") return "goal-distance";
+        return PRESETS.some((p) => p.id === initialPreset) ? initialPreset : "goal-free";
     });
+    const initialGoalDefaults = outdoorDefaultGoal(activitySport);
+    const [simpleGoalMode, setSimpleGoalMode] = React.useState<SimpleGoalMode>(() => initialPreset === "distance" ? "distance" : Number(params?.runningTargetDurationMs || 0) > 0 && initialPreset === "free" ? "duration" : "free");
+    const [simpleDistanceKm, setSimpleDistanceKm] = React.useState(() => Math.max(1, Number(params?.runningTargetM || initialGoalDefaults.distanceKm * 1000) / 1000));
+    const [simpleDurationMin, setSimpleDurationMin] = React.useState(() => Math.max(10, Math.round(Number(params?.runningTargetDurationMs || initialGoalDefaults.durationMin * 60000) / 60000)));
     const [pacerDistanceM, setPacerDistanceM] = React.useState(() => Number(params?.runningTargetM || 5000));
     const [pacerPace, setPacerPace] = React.useState(330);
     const [points, setPoints] = React.useState<GeoPoint[]>([]);
@@ -244,27 +265,43 @@ export default function RunningModule({ go, params }: Props) {
     });
     const sportProfile = OUTDOOR_SPORT_PROFILES[activitySport];
     const allowedPresetIds = React.useMemo(() => outdoorPresetIds(activitySport), [activitySport]);
+    const trainingPresetIds = React.useMemo(() => outdoorTrainingPresetIds(activitySport), [activitySport]);
+    const goalDistanceOptions = React.useMemo(() => outdoorGoalDistancesKm(activitySport), [activitySport]);
+    const goalDurationOptions = React.useMemo(() => outdoorGoalDurationsMin(activitySport), [activitySport]);
     React.useEffect(() => {
         saveOutdoorPerformanceSport(activitySport);
-        if ((!allowedPresetIds.has(selectedPresetId) && selectedPresetId !== "pacer" && selectedPresetId !== "custom") || (selectedPresetId === "pacer" && !sportProfile.supportsPacer) || (selectedPresetId === "custom" && !sportProfile.supportsIntervals)) {
-            setSelectedPresetId("free");
-            setSetupTab("quick");
+        const goalId = selectedPresetId.startsWith("goal-");
+        if ((!goalId && !allowedPresetIds.has(selectedPresetId) && selectedPresetId !== "pacer" && selectedPresetId !== "custom") || (selectedPresetId === "pacer" && !sportProfile.supportsPacer) || (selectedPresetId === "custom" && !sportProfile.supportsIntervals)) {
+            setSelectedPresetId("goal-free");
+            setSimpleGoalMode("free");
+            setSetupTab("goal");
         }
-        if (!sportProfile.supportsPacer && setupTab === "pacer") setSetupTab("quick");
-        if (!sportProfile.supportsIntervals && setupTab === "custom") setSetupTab("quick");
+        if (setupTab === "training" && !trainingPresetIds.length) setSetupTab("goal");
+        if (setupTab === "advanced" && !sportProfile.supportsPacer && !sportProfile.supportsIntervals) setSetupTab("goal");
+        const defaults = outdoorDefaultGoal(activitySport);
+        setSimpleDistanceKm(defaults.distanceKm);
+        setSimpleDurationMin(defaults.durationMin);
         setSelectedRouteId(null);
         setGhostEnabled(false);
         if (activitySport === "treadmill" && setupPanel === "route") setSetupPanel("workout");
-    }, [activitySport, allowedPresetIds, selectedPresetId, setupTab, sportProfile.supportsIntervals, sportProfile.supportsPacer]);
+    }, [activitySport]);
     const selectedPreset = React.useMemo(() => PRESETS.find((p) => p.id === selectedPresetId) || PRESETS[0], [selectedPresetId]);
+    const simpleGoalPreset = React.useMemo<Preset>(() => {
+        const label = outdoorSportLabel(activitySport, lang).toUpperCase();
+        if (simpleGoalMode === "distance") return { id: "goal-distance", type: "distance", icon: "", fr: `${label} · ${simpleDistanceKm.toFixed(simpleDistanceKm % 1 ? 1 : 0)} KM`, en: `${label} · ${simpleDistanceKm.toFixed(simpleDistanceKm % 1 ? 1 : 0)} KM`, es: `${label} · ${simpleDistanceKm.toFixed(simpleDistanceKm % 1 ? 1 : 0)} KM`, subFr: "Arrête le chrono quand la distance cible est atteinte.", subEn: "Track progress until the target distance is reached.", subEs: "Sigue el progreso hasta alcanzar la distancia objetivo.", targetDistanceM: simpleDistanceKm * 1000 };
+        if (simpleGoalMode === "duration") return { id: "goal-duration", type: "free", icon: "", fr: `${label} · ${simpleDurationMin} MIN`, en: `${label} · ${simpleDurationMin} MIN`, es: `${label} · ${simpleDurationMin} MIN`, subFr: "Objectif de temps simple, sans séance imposée.", subEn: "Simple time goal with no imposed workout structure.", subEs: "Objetivo de tiempo simple sin estructura de entrenamiento impuesta.", targetDurationMs: simpleDurationMin * 60000 };
+        return { id: "goal-free", type: "free", icon: "", fr: `${label} · LIBRE`, en: `${label} · FREE`, es: `${label} · LIBRE`, subFr: "Tu pars et tu t’arrêtes quand tu veux. Seules les mesures utiles sont suivies.", subEn: "Start and stop when you want. Only useful metrics are tracked.", subEs: "Empieza y termina cuando quieras. Solo se registran las métricas útiles.", targetDistanceM: null };
+    }, [activitySport, lang, simpleDistanceKm, simpleDurationMin, simpleGoalMode]);
     const effectivePreset: Preset = React.useMemo(() => {
-        let base: Preset = selectedPresetId === "pacer"
-            ? { id: "pacer", type: "pacer", icon: "⏱️", fr: "PACER", en: "PACER", es: "PACER", subFr: "Tiens ton allure cible et suis ton avance en direct.", subEn: "Hold target pace and track live time delta.", subEs: "Mantén el ritmo objetivo y sigue tu diferencia en directo.", targetDistanceM: pacerDistanceM, targetPaceSecPerKm: pacerPace }
-            : selectedPresetId === "custom" ? customWorkoutPreset(customWorkout) : selectedPreset;
+        let base: Preset = selectedPresetId.startsWith("goal-")
+            ? simpleGoalPreset
+            : selectedPresetId === "pacer"
+            ? { id: "pacer", type: "pacer", icon: "", fr: "PACER", en: "PACER", es: "PACER", subFr: "Tiens ton allure cible et suis ton avance en direct.", subEn: "Hold target pace and track live time delta.", subEs: "Mantén el ritmo objetivo y sigue tu diferencia en directo.", targetDistanceM: pacerDistanceM, targetPaceSecPerKm: pacerPace }
+            : selectedPresetId === "custom" ? customWorkoutPreset(customWorkout) : adaptPresetForSport(selectedPreset, activitySport);
         if (presetOverrideDurationMs && presetOverrideDurationMs > 0) base = { ...base, targetDurationMs: presetOverrideDurationMs };
         if (presetOverrideTitle) base = { ...base, fr: presetOverrideTitle, en: presetOverrideTitle, es: presetOverrideTitle };
         return base;
-    }, [customWorkout, pacerDistanceM, pacerPace, presetOverrideDurationMs, presetOverrideTitle, selectedPreset, selectedPresetId]);
+    }, [activitySport, customWorkout, pacerDistanceM, pacerPace, presetOverrideDurationMs, presetOverrideTitle, selectedPreset, selectedPresetId, simpleGoalPreset]);
     const refreshOfflineRoutes = React.useCallback(async () => {
         const packs = await listOutdoorOfflineRoutePacks();
         setOfflineRoutes(packs.filter((pack) => pack.sport === activitySport).map((pack) => ({ ...pack.route, name: pack.route.name.includes("OFFLINE") ? pack.route.name : `${pack.route.name} · OFFLINE` })));
@@ -288,7 +325,7 @@ export default function RunningModule({ go, params }: Props) {
     const selectedRouteHasReference = !!selectedRoute && Number(selectedRoute.referenceElapsedMs || 0) > 0;
     React.useEffect(() => { if (!selectedRouteHasReference && ghostEnabled) setGhostEnabled(false); }, [ghostEnabled, selectedRouteHasReference]);
     const favoriteSourceIds = React.useMemo(() => new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean)), [savedRoutes]);
-    const targetDistanceM = selectedRoute && effectivePreset.type === "free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
+    const targetDistanceM = selectedRoute && selectedPresetId === "goal-free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
     const targetDurationMs = effectivePreset.targetDurationMs ?? null;
     const targetPaceSecPerKm = effectivePreset.type === "pacer" ? pacerPace : null;
     const isTreadmillSport = activitySport === "treadmill";
@@ -823,14 +860,12 @@ export default function RunningModule({ go, params }: Props) {
     }, []);
     const selectRoute = React.useCallback((route: RunningRouteTemplate) => {
         setSelectedRouteId(route.id);
-        setGhostEnabled(true);
-        selectManualPreset("free");
-        setSetupTab("quick");
-    }, [selectManualPreset]);
+        setGhostEnabled(Number(route.referenceElapsedMs || 0) > 0);
+    }, []);
     const applyTerrainRecommendation = React.useCallback(() => {
         if (!selectedTerrainAdvice) return;
         selectManualPreset(selectedTerrainAdvice.presetId);
-        setSetupTab(selectedTerrainAdvice.presetId === "hills" || ["easy", "tempo", "intervals", "long", "recovery"].includes(selectedTerrainAdvice.presetId) ? "training" : "quick");
+        setSetupTab(["easy", "tempo", "intervals", "long", "hills", "recovery"].includes(selectedTerrainAdvice.presetId) ? "training" : "goal");
     }, [selectManualPreset, selectedTerrainAdvice]);
     const toggleFavoriteRoute = React.useCallback((route: RunningRouteTemplate) => {
         const saved = savedRoutes.find((item) => item.id === route.id || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
@@ -855,10 +890,10 @@ export default function RunningModule({ go, params }: Props) {
         if (session.customWorkout) {
             setCustomWorkout({ ...session.customWorkout, title: session.title });
             setSelectedPresetId("custom");
-            setSetupTab("custom");
+            setSetupTab("advanced");
         } else {
             setSelectedPresetId(session.presetId);
-            setSetupTab(session.presetId === "pacer" ? "pacer" : ["easy", "tempo", "intervals", "long", "hills", "recovery"].includes(session.presetId) ? "training" : "quick");
+            setSetupTab(session.presetId === "pacer" ? "advanced" : ["easy", "tempo", "intervals", "long", "hills", "recovery"].includes(session.presetId) ? "training" : "goal");
         }
         setView("setup");
     }, []);
@@ -947,17 +982,64 @@ export default function RunningModule({ go, params }: Props) {
     <RunningTabs items={[{ id: "workout" as const, label: pickLegacyLocalizedText(lang, "1 · SÉANCE", "1 · WORKOUT", "1 · SESIÓN"), icon: <RunningGlyph name="step-workout" size={16} /> }, ...(activitySport !== "treadmill" ? [{ id: "route" as const, label: pickLegacyLocalizedText(lang, "2 · PARCOURS", "2 · ROUTE", "2 · RUTA"), icon: <RunningGlyph name="step-route" size={16} />, badge: routeOptions.length || null }] : []), { id: "ready" as const, label: pickLegacyLocalizedText(lang, activitySport === "treadmill" ? "2 · DÉPART" : "3 · DÉPART", activitySport === "treadmill" ? "2 · START" : "3 · START", activitySport === "treadmill" ? "2 · SALIDA" : "3 · SALIDA"), icon: <RunningGlyph name="step-ready" size={16} /> }]} value={setupPanel} onChange={setSetupPanel} accent={accent} sticky />
 
     <div style={{ display: setupPanel === "workout" ? "block" : "none" }}>
-    <RunningTabs items={[{ id: "quick" as const, label: copy.quick, icon: "⚡" }, { id: "training" as const, label: copy.training, icon: "📋" }, ...(sportProfile.supportsPacer ? [{ id: "pacer" as const, label: copy.pacer, icon: "⏱️" }] : []), ...(sportProfile.supportsIntervals ? [{ id: "custom" as const, label: copy.custom, icon: "✦" }] : [])]} value={setupTab} onChange={(key) => { setSetupTab(key); if (key === "pacer") selectManualPreset("pacer"); if (key === "custom") selectManualPreset("custom"); }} accent={accent} />
+    <RunningTabs
+      items={[
+        { id: "goal" as const, label: pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO"), icon: <RunningGlyph name="goal" size={16} /> },
+        ...(trainingPresetIds.length ? [{ id: "training" as const, label: pickLegacyLocalizedText(lang, "SÉANCES", "WORKOUTS", "SESIONES"), icon: <RunningGlyph name="training" size={16} /> }] : []),
+        ...((sportProfile.supportsPacer || sportProfile.supportsIntervals) ? [{ id: "advanced" as const, label: pickLegacyLocalizedText(lang, "AVANCÉ", "ADVANCED", "AVANZADO"), icon: <RunningGlyph name="advanced" size={16} /> }] : []),
+      ]}
+      value={setupTab}
+      onChange={(key) => { setSetupTab(key); if (key === "goal") selectManualPreset(`goal-${simpleGoalMode}`); }}
+      accent={accent}
+    />
 
-    {setupTab === "quick" ? <div style={{ marginTop: 10 }}><Section title={copy.quick}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>{PRESETS.filter((p) => ["free", "distance-1k", "distance-5k", "distance-10k"].includes(p.id) && allowedPresetIds.has(p.id)).map((p) => <PresetCard key={p.id} preset={p} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div></Section></div> : null}
-    {setupTab === "training" ? <div style={{ marginTop: 10 }}><Section title={copy.training}><div style={{ display: "grid", gap: 8 }}>{PRESETS.filter((p) => ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(p.id) && allowedPresetIds.has(p.id)).map((p) => <TrainingCard key={p.id} preset={p} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div></Section></div> : null}
-    {setupTab === "pacer" ? <div style={{ marginTop: 10 }}><Section title={copy.pacer}><div style={{ fontSize: 10, color: textSoft, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Choisis une distance et une allure. Pendant la course, le PACER affiche ton avance ou ton retard et projette ton temps d’arrivée.", "Choose a distance and pace. During the run, PACER shows live ahead/behind time and projected finish.", "Elige distancia y ritmo. Durante la carrera, PACER muestra tu adelanto o retraso y proyecta tu llegada.")}</div><div style={{ marginTop: 12, fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.targetDistance}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACER_DISTANCES.map((m) => <Choice key={m} active={pacerDistanceM === m} accent={accent} onClick={() => { setPacerDistanceM(m); selectManualPreset("pacer"); }}>{distanceLabel(m)}</Choice>)}</div><div style={{ marginTop: 12, fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.targetPace}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACE_OPTIONS.map((p) => <Choice key={p} active={pacerPace === p} accent={accent} onClick={() => { setPacerPace(p); selectManualPreset("pacer"); }}>{formatPace(p)}/km</Choice>)}</div><div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.targetDistance} value={distanceLabel(pacerDistanceM)} accent={accent}/><MiniStat label={copy.targetPace} value={`${formatPace(pacerPace)}/km`} accent={accent}/><MiniStat label={copy.expected} value={formatDuration(pacerPace * pacerDistanceM)} accent={accent}/></div></Section></div> : null}
+    {setupTab === "goal" ? <div style={{ marginTop: 10 }}>
+      <Section title={pickLegacyLocalizedText(lang, "QUE VEUX-TU FAIRE ?", "WHAT DO YOU WANT TO DO?", "¿QUÉ QUIERES HACER?")}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+          <GoalModeButton active={simpleGoalMode === "free"} accent={accent} icon={<RunningGlyph name="free" size={18} />} label={pickLegacyLocalizedText(lang, "LIBRE", "FREE", "LIBRE")} onClick={() => { setSimpleGoalMode("free"); selectManualPreset("goal-free"); }}/>
+          <GoalModeButton active={simpleGoalMode === "distance"} accent={accent} icon={<RunningGlyph name="distance" size={18} />} label={pickLegacyLocalizedText(lang, "DISTANCE", "DISTANCE", "DISTANCIA")} onClick={() => { setSimpleGoalMode("distance"); selectManualPreset("goal-distance"); }}/>
+          <GoalModeButton active={simpleGoalMode === "duration"} accent={accent} icon={<RunningGlyph name="time" size={18} />} label={pickLegacyLocalizedText(lang, "DURÉE", "DURATION", "DURACIÓN")} onClick={() => { setSimpleGoalMode("duration"); selectManualPreset("goal-duration"); }}/>
+        </div>
 
-    {setupTab === "custom" ? <div style={{ marginTop: 10 }}><Section title={copy.custom}><div style={{ color: textSoft, fontSize: 9.5, lineHeight: 1.45, marginBottom: 10 }}>{pickLegacyLocalizedText(lang, "Construis une séance d’intervalles instantanée. Les blocs s’enchaînent automatiquement et Awena peut les annoncer pendant la course.", "Build an instant interval workout. Blocks advance automatically and Awena can announce them while you run.", "Crea una sesión de intervalos instantánea. Los bloques avanzan automáticamente y Awena puede anunciarlos durante la carrera.")}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Adjuster label={pickLegacyLocalizedText(lang, "ÉCHAUFFEMENT", "WARM UP", "CALENTAMIENTO")} value={customWorkout.warmupMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, warmupMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RÉPÉTITIONS", "REPEATS", "REPETICIONES")} value={customWorkout.reps} suffix="×" min={2} max={12} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, reps: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "EFFORT", "WORK", "ESFUERZO")} value={customWorkout.workMin} suffix="min" min={1} max={10} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, workMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RÉCUPÉRATION", "RECOVERY", "RECUPERACIÓN")} value={customWorkout.recoveryMin} suffix="min" min={0} max={6} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, recoveryMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RETOUR AU CALME", "COOL DOWN", "VUELTA A LA CALMA")} value={customWorkout.cooldownMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, cooldownMin: value }))}/><MiniStat label={pickLegacyLocalizedText(lang, "DURÉE TOTALE", "TOTAL TIME", "DURACIÓN TOTAL")} value={formatDuration(customWorkoutPreset(customWorkout).targetDurationMs || 0)} accent={accent}/></div></Section></div> : null}
+        {simpleGoalMode === "free" ? <div style={{ marginTop: 10, padding: "10px 11px", borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.06)", color: textSoft, fontSize: 9.1, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, activitySport === "hiking" ? "Pars sans objectif imposé. Le temps, la distance, le D+ et le parcours restent suivis." : activitySport === "trail" ? "Pars librement. Allure, D+, parcours et navigation restent suivis." : activitySport === "walking" || activitySport === "nordic-walking" ? "Pars sans contrainte : durée, distance et rythme restent enregistrés." : activitySport === "treadmill" ? "Démarre sans cible. Tu arrêtes la séance quand tu veux." : "Démarre sans cible. GPS, allure et splits restent enregistrés.", activitySport === "hiking" ? "Start with no imposed goal. Time, distance, elevation and route are still tracked." : activitySport === "trail" ? "Go freely. Pace, elevation, route and navigation are still tracked." : activitySport === "walking" || activitySport === "nordic-walking" ? "Start with no constraint: duration, distance and pace are recorded." : activitySport === "treadmill" ? "Start with no target and stop whenever you want." : "Start with no target. GPS, pace and splits are still recorded.", "Empieza sin objetivo impuesto. Las métricas útiles siguen registrándose.")}</div> : null}
+
+        {simpleGoalMode === "distance" ? <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 8.5, color: textSoft, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "DISTANCES UTILES", "USEFUL DISTANCES", "DISTANCIAS ÚTILES")}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>{goalDistanceOptions.map((km) => <Choice key={km} active={Math.abs(simpleDistanceKm - km) < .01} accent={accent} onClick={() => { setSimpleDistanceKm(km); selectManualPreset("goal-distance"); }}>{km % 1 ? km.toFixed(1) : km} km</Choice>)}</div>
+          <div style={{ maxWidth: 260, marginTop: 9 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "AJUSTER", "ADJUST", "AJUSTAR")} value={simpleDistanceKm} suffix="km" min={1} max={activitySport === "trail" || activitySport === "hiking" ? 100 : 50} step={1} onChange={(value) => { setSimpleDistanceKm(value); selectManualPreset("goal-distance"); }}/></div>
+        </div> : null}
+
+        {simpleGoalMode === "duration" ? <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 8.5, color: textSoft, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "DURÉES UTILES", "USEFUL DURATIONS", "DURACIONES ÚTILES")}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 7 }}>{goalDurationOptions.map((minutes) => <Choice key={minutes} active={simpleDurationMin === minutes} accent={accent} onClick={() => { setSimpleDurationMin(minutes); selectManualPreset("goal-duration"); }}>{minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`}</Choice>)}</div>
+          <div style={{ maxWidth: 260, marginTop: 9 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "AJUSTER", "ADJUST", "AJUSTAR")} value={simpleDurationMin} suffix="min" min={10} max={activitySport === "hiking" || activitySport === "trail" ? 480 : 180} step={5} onChange={(value) => { setSimpleDurationMin(value); selectManualPreset("goal-duration"); }}/></div>
+        </div> : null}
+      </Section>
+    </div> : null}
+
+    {setupTab === "training" && trainingPresetIds.length ? <div style={{ marginTop: 10 }}>
+      <Section title={pickLegacyLocalizedText(lang, activitySport === "trail" ? "SÉANCES TRAIL" : activitySport === "nordic-walking" ? "SÉANCES MARCHE NORDIQUE" : activitySport === "treadmill" ? "SÉANCES TAPIS" : "SÉANCES RUNNING", "WORKOUTS", "SESIONES")}>
+        <div style={{ display: "grid", gap: 8 }}>{PRESETS.filter((p) => trainingPresetIds.includes(p.id)).map((p) => <TrainingCard key={p.id} preset={adaptPresetForSport(p, activitySport)} lang={lang} selected={selectedPresetId === p.id} accent={accent} onClick={() => selectManualPreset(p.id)}/>)}</div>
+      </Section>
+    </div> : null}
+
+    {setupTab === "advanced" ? <div style={{ marginTop: 10 }}>
+      <Section title={pickLegacyLocalizedText(lang, "OPTIONS AVANCÉES", "ADVANCED OPTIONS", "OPCIONES AVANZADAS")}>
+        <div style={{ color: textSoft, fontSize: 9, lineHeight: 1.45, marginBottom: 9 }}>{pickLegacyLocalizedText(lang, "Ces réglages restent ici pour ne pas encombrer la préparation normale.", "These controls stay here so the normal setup remains simple.", "Estos ajustes se quedan aquí para no recargar la preparación normal.")}</div>
+        <div style={{ display: "grid", gridTemplateColumns: sportProfile.supportsPacer && sportProfile.supportsIntervals ? "repeat(2,minmax(0,1fr))" : "1fr", gap: 7 }}>
+          {sportProfile.supportsPacer ? <GoalModeButton active={selectedPresetId === "pacer"} accent={accent} icon={<RunningGlyph name="pace" size={18} />} label="PACER" onClick={() => selectManualPreset("pacer")}/> : null}
+          {sportProfile.supportsIntervals ? <GoalModeButton active={selectedPresetId === "custom"} accent={accent} icon={<RunningGlyph name="advanced" size={18} />} label={pickLegacyLocalizedText(lang, "INTERVALLES SUR MESURE", "CUSTOM INTERVALS", "INTERVALOS A MEDIDA")} onClick={() => selectManualPreset("custom")}/> : null}
+        </div>
+
+        {selectedPresetId === "pacer" && sportProfile.supportsPacer ? <div style={{ marginTop: 12 }}><div style={{ fontSize: 8.6, color: textSoft, fontWeight: 1000 }}>{copy.targetDistance}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACER_DISTANCES.map((m) => <Choice key={m} active={pacerDistanceM === m} accent={accent} onClick={() => { setPacerDistanceM(m); selectManualPreset("pacer"); }}>{distanceLabel(m)}</Choice>)}</div><div style={{ marginTop: 10, fontSize: 8.6, color: textSoft, fontWeight: 1000 }}>{copy.targetPace}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 6 }}>{PACE_OPTIONS.map((pace) => <Choice key={pace} active={pacerPace === pace} accent={accent} onClick={() => { setPacerPace(pace); selectManualPreset("pacer"); }}>{formatPace(pace)}/km</Choice>)}</div><div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.targetDistance} value={distanceLabel(pacerDistanceM)} accent={accent}/><MiniStat label={copy.targetPace} value={`${formatPace(pacerPace)}/km`} accent={accent}/><MiniStat label={copy.expected} value={formatDuration(pacerPace * pacerDistanceM)} accent={accent}/></div></div> : null}
+
+        {selectedPresetId === "custom" && sportProfile.supportsIntervals ? <div style={{ marginTop: 12 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Adjuster label={pickLegacyLocalizedText(lang, "ÉCHAUFFEMENT", "WARM UP", "CALENTAMIENTO")} value={customWorkout.warmupMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, warmupMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RÉPÉTITIONS", "REPEATS", "REPETICIONES")} value={customWorkout.reps} suffix="×" min={2} max={12} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, reps: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "EFFORT", "WORK", "ESFUERZO")} value={customWorkout.workMin} suffix="min" min={1} max={10} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, workMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RÉCUPÉRATION", "RECOVERY", "RECUPERACIÓN")} value={customWorkout.recoveryMin} suffix="min" min={0} max={6} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, recoveryMin: value }))}/><Adjuster label={pickLegacyLocalizedText(lang, "RETOUR AU CALME", "COOL DOWN", "VUELTA A LA CALMA")} value={customWorkout.cooldownMin} suffix="min" min={0} max={20} onChange={(value) => setCustomWorkout((prev) => ({ ...prev, cooldownMin: value }))}/><MiniStat label={pickLegacyLocalizedText(lang, "DURÉE TOTALE", "TOTAL TIME", "DURACIÓN TOTAL")} value={formatDuration(customWorkoutPreset(customWorkout).targetDurationMs || 0)} accent={accent}/></div></div> : null}
+      </Section>
+    </div> : null}
 
     </div>
 
-    <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: 15, background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 23 }}>{effectivePreset.icon}</div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 9.5, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface>
+    {setupPanel === "workout" ? <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, color: accent }}><PresetGlyph preset={effectivePreset} size={19}/></div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 8.8, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface> : null}
 
     <div style={{ display: setupPanel === "route" ? "block" : "none" }}>
       <RunningTabs items={[{ id: "choose" as const, label: pickLegacyLocalizedText(lang, "CHOISIR", "CHOOSE", "ELEGIR"), icon: <RunningGlyph name="route-choose" size={16} />, badge: routeOptions.length || null }, ...(selectedRoute ? [{ id: "guide" as const, label: pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO"), icon: <RunningGlyph name="route-guide" size={16} /> }, { id: "offline" as const, label: pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN"), icon: <RunningGlyph name="route-offline" size={16} /> }] : [])]} value={routePanelTab} onChange={setRoutePanelTab} accent={accent} />
@@ -1027,24 +1109,31 @@ export default function RunningModule({ go, params }: Props) {
     {isTreadmillSport ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr", gap: 10, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28` }}><RunningGlyph name="sport-treadmill" size={18} /></div><div><div style={{ fontSize: 10.2, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "MESURE TAPIS ROULANT", "TREADMILL MEASUREMENT", "MEDICIÓN CINTA")}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Priorité : tapis FTMS → footpod → vitesse manuelle.", "Priority: FTMS treadmill → footpod → manual speed.", "Prioridad: cinta FTMS → footpod → velocidad manual.")}</div></div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "VITESSE DE SECOURS", "FALLBACK SPEED", "VELOCIDAD DE RESPALDO")} value={manualTreadmillSpeedKmh} suffix="km/h" min={1} max={25} step={0.5} onChange={setManualTreadmillSpeedKmh}/><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={manualTreadmillIncline} suffix="%" min={0} max={20} step={0.5} onChange={setManualTreadmillIncline}/></div></RunningSurface> : <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28` }}><RunningGlyph name="gps" size={18} /></div><div><div style={{ fontSize: 10.2, fontWeight: 1000 }}>{copy.gps}</div><div style={{ marginTop: 2, fontSize: 9.4, color: gpsMessage === copy.gpsReady ? "#71ff9a" : textSoft }}>{gpsMessage || copy.gpsUnknown}{accuracy ? ` · ±${Math.round(accuracy)} m` : ""}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{isNativeActivityTrackingAvailable() ? (pickLegacyLocalizedText(lang, "Suivi Android natif écran éteint via service premier plan.", "Native Android screen-off tracking via foreground service.", "Seguimiento Android nativo con pantalla apagada.")) : copy.gpsHint}</div></div><button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button></div></RunningSurface>}
 
     <button className="btn primary" onClick={startCountdown} style={{ width: "100%", minHeight: 58, marginTop: 10, background: accent, fontWeight: 1000, fontSize: 13 }}>▶ {copy.start} · {presetLabel(effectivePreset, lang)}</button>
-    <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "CAPTEURS", "SENSORS", "SENSORES")}><RunningConnectionsPanel lang={lang} accent={accent} textSoft={textSoft} compact /></Section></div>
+    <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}10`, color: accent }}><RunningGlyph name="sensor" size={18}/></div><div><div style={{ fontSize: 10.1, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "CAPTEURS", "SENSORS", "SENSORES")}</div><div style={{ marginTop: 3, fontSize: 8.6, color: textSoft }}>{connectedDeviceCount ? `${connectedDeviceCount} ${pickLegacyLocalizedText(lang, "connecté(s) · utilisés automatiquement", "connected · used automatically", "conectado(s) · usados automáticamente")}` : pickLegacyLocalizedText(lang, "Aucun capteur connecté · optionnel", "No sensor connected · optional", "Ningún sensor conectado · opcional")}</div></div><button className="btn" onClick={() => go("stats")} style={{ minHeight: 34, padding: "4px 9px", fontSize: 8.2, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "GÉRER", "MANAGE", "GESTIONAR")}</button></div></RunningSurface>
     </div>
   </div>;
 }
-function PresetCard({ preset, lang, selected, accent, onClick }: {
-    preset: Preset;
-    lang: string;
-    selected: boolean;
-    accent: string;
-    onClick: () => void;
-}) { return <button onClick={onClick} style={{ minHeight: 112, borderRadius: 15, border: `1px solid ${selected ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: selected ? `linear-gradient(145deg,${accent}1d,rgba(4,6,10,.88))` : "linear-gradient(145deg,rgba(255,255,255,.04),rgba(4,6,10,.72))", color: "#fff", padding: 11, textAlign: "left", cursor: "pointer", boxShadow: selected ? `0 15px 28px ${accent}10, inset 0 1px 0 ${accent}18` : "0 12px 24px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.025)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 24 }}>{preset.icon}</span>{selected ? <span style={{ color: accent, fontWeight: 1000 }}>✓</span> : null}</div><div style={{ marginTop: 9, fontSize: 11, fontWeight: 1000, color: selected ? accent : undefined }}>{presetLabel(preset, lang)}</div><div style={{ marginTop: 4, fontSize: 9, lineHeight: 1.3, opacity: .58 }}>{presetSub(preset, lang)}</div></button>; }
+function presetGlyphName(preset: Preset): "free" | "distance" | "time" | "pace" | "training" | "sport-trail" {
+    if (preset.id === "pacer") return "pace";
+    if (preset.id === "custom" || preset.type === "intervals") return "training";
+    if (preset.type === "hills") return "sport-trail";
+    if (preset.targetDistanceM) return "distance";
+    if (preset.targetDurationMs) return "time";
+    return "free";
+}
+function PresetGlyph({ preset, size = 18 }: { preset: Preset; size?: number }) {
+    return <RunningGlyph name={presetGlyphName(preset)} size={size}/>;
+}
+function GoalModeButton({ active, accent, icon, label, onClick }: { active: boolean; accent: string; icon: React.ReactNode; label: string; onClick: () => void }) {
+    return <button type="button" onClick={onClick} style={{ minHeight: 72, borderRadius: 15, border: `1px solid ${active ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: active ? `linear-gradient(145deg,${accent}18,rgba(4,6,10,.88))` : "linear-gradient(145deg,rgba(255,255,255,.035),rgba(4,6,10,.72))", color: active ? accent : "rgba(255,255,255,.72)", display: "grid", placeItems: "center", alignContent: "center", gap: 7, padding: 8, cursor: "pointer", font: "inherit", boxShadow: active ? `0 12px 26px ${accent}0f,inset 0 1px 0 ${accent}18` : "inset 0 1px 0 rgba(255,255,255,.025)" }}><span style={{ width: 28, height: 28, display: "grid", placeItems: "center" }}>{icon}</span><span style={{ fontSize: 8.5, fontWeight: 1000, textAlign: "center", lineHeight: 1.15 }}>{label}</span></button>;
+}
 function TrainingCard({ preset, lang, selected, accent, onClick }: {
     preset: Preset;
     lang: string;
     selected: boolean;
     accent: string;
     onClick: () => void;
-}) { return <button onClick={onClick} style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", borderRadius: 14, border: `1px solid ${selected ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: selected ? `linear-gradient(145deg,${accent}18,rgba(4,6,10,.88))` : "linear-gradient(145deg,rgba(255,255,255,.04),rgba(4,6,10,.72))", color: "#fff", padding: 10, textAlign: "left", cursor: "pointer", boxShadow: selected ? `0 12px 24px ${accent}0e, inset 0 1px 0 ${accent}16` : "0 10px 22px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.025)" }}><span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 13, background: `${accent}12`, fontSize: 22 }}>{preset.icon}</span><span><b style={{ fontSize: 10.5, color: selected ? accent : undefined }}>{presetLabel(preset, lang)}</b><small style={{ display: "block", fontSize: 8.8, opacity: .58, marginTop: 3, lineHeight: 1.3 }}>{presetSub(preset, lang)}</small></span>{selected ? <b style={{ color: accent }}>✓</b> : <span style={{ opacity: .35 }}>›</span>}</button>; }
+}) { return <button onClick={onClick} style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center", borderRadius: 14, border: `1px solid ${selected ? `${accent}77` : "rgba(255,255,255,.08)"}`, background: selected ? `linear-gradient(145deg,${accent}18,rgba(4,6,10,.88))` : "linear-gradient(145deg,rgba(255,255,255,.035),rgba(4,6,10,.72))", color: "#fff", padding: 9, textAlign: "left", cursor: "pointer", boxShadow: selected ? `0 12px 24px ${accent}0e, inset 0 1px 0 ${accent}16` : "0 10px 22px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.025)" }}><span style={{ width: 40, height: 40, display: "grid", placeItems: "center", borderRadius: 12, background: `${accent}10`, color: selected ? accent : "rgba(255,255,255,.72)" }}><PresetGlyph preset={preset} size={18}/></span><span><b style={{ fontSize: 10.3, color: selected ? accent : undefined }}>{presetLabel(preset, lang)}</b><small style={{ display: "block", fontSize: 8.5, opacity: .55, marginTop: 3, lineHeight: 1.3 }}>{presetSub(preset, lang)}</small></span>{selected ? <RunningGlyph name="step-ready" size={16}/> : <span style={{ opacity: .28 }}>›</span>}</button>; }
 
 function TreadmillAdjuster({ label, value, suffix, min, max, step, onChange }: { label: string; value: number; suffix: string; min: number; max: number; step: number; onChange: (value: number) => void }) {
     const clamp = (next: number) => Math.max(min, Math.min(max, Math.round(next / step) * step));

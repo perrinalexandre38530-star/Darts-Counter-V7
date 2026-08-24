@@ -18,7 +18,14 @@ export type RunningGlyphName =
   | "voice"
   | "sensor"
   | "shoe"
-  | "safety";
+  | "safety"
+  | "goal"
+  | "training"
+  | "advanced"
+  | "free"
+  | "distance"
+  | "time"
+  | "pace";
 
 export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningGlyphName; size?: number; stroke?: number }) {
   const p = {
@@ -174,6 +181,52 @@ export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningG
           <path {...p} d="M12 3 5.5 6v5c0 4.5 2.4 7.4 6.5 10 4.1-2.6 6.5-5.5 6.5-10V6Z" />
           <path {...p} d="M12 8v4" />
           <circle {...p} cx="12" cy="15.8" r=".7" />
+        </svg>
+      );
+    case "goal":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle {...p} cx="12" cy="12" r="7" />
+          <circle {...p} cx="12" cy="12" r="3" />
+          <path {...p} d="M17 7 21 3" />
+        </svg>
+      );
+    case "training":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M5 19V9M10 19V5M15 19v-7M20 19V8" />
+        </svg>
+      );
+    case "advanced":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M5 7h14M5 17h14" />
+          <circle {...p} cx="9" cy="7" r="2" />
+          <circle {...p} cx="15" cy="17" r="2" />
+        </svg>
+      );
+    case "free":
+      return <RunningGlyph name="sport-running" size={size} stroke={stroke} />;
+    case "distance":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 16c4-8 8 0 16-8" />
+          <path {...p} d="M4 19h16" />
+        </svg>
+      );
+    case "time":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <circle {...p} cx="12" cy="13" r="7" />
+          <path {...p} d="M9 3h6M12 6v2M12 13l3-2" />
+        </svg>
+      );
+    case "pace":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 17a8 8 0 0 1 16 0" />
+          <path {...p} d="m12 13 4-4" />
+          <path {...p} d="M7 17h10" />
         </svg>
       );
     default:
