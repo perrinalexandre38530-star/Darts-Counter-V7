@@ -1,7 +1,7 @@
 # MULTISPORTS SCORING — Google Play test
 
-Version de référence : **1.0.0-rc12**  
-Code Google Play : **13**
+Version de référence : **1.0.0-rc13**  
+Code Google Play : **14**
 
 ## Source unique de version
 

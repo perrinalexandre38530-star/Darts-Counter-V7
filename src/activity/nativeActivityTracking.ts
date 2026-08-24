@@ -20,13 +20,14 @@ export type NativeTrackingSnapshot = {
 
 type ActivityTrackingPlugin = {
   getStatus?: () => Promise<NativeTrackingSnapshot>;
-  requestTrackingPermissions?: () => Promise<{ granted?: boolean; location?: boolean; notifications?: boolean; locationServicesEnabled?: boolean }>;
+  requestTrackingPermissions?: () => Promise<{ granted?: boolean; location?: boolean; precise?: boolean; notifications?: boolean; locationServicesEnabled?: boolean; settingsRequired?: boolean }>;
   startTracking?: (options: { sport: string }) => Promise<{ started?: boolean; sport?: string }>;
   pauseTracking?: () => Promise<NativeTrackingSnapshot>;
   resumeTracking?: () => Promise<NativeTrackingSnapshot>;
   stopTracking?: () => Promise<NativeTrackingSnapshot>;
   getTrack?: () => Promise<NativeTrackingSnapshot>;
   openLocationSettings?: () => Promise<{ opened?: boolean }>;
+  openAppLocationPermissionSettings?: () => Promise<{ opened?: boolean }>;
   addListener?: (eventName: "trackingState", listener: (snapshot: NativeTrackingSnapshot) => void) => Promise<{ remove?: () => Promise<void> | void }> | { remove?: () => Promise<void> | void };
 };
 
@@ -76,6 +77,7 @@ export async function resumeNativeTracking() { return plugin()?.resumeTracking?.
 export async function stopNativeTracking(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.stopTracking?.() || null; } catch { return null; } }
 export async function getNativeTrack(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.getTrack?.() || null; } catch { return null; } }
 export async function openNativeLocationSettings() { try { return await plugin()?.openLocationSettings?.() || { opened: false }; } catch { return { opened: false }; } }
+export async function openNativeAppLocationPermissionSettings() { try { return await plugin()?.openAppLocationPermissionSettings?.() || { opened: false }; } catch { return { opened: false }; } }
 export function addNativeTrackingListener(listener: (snapshot: NativeTrackingSnapshot) => void) {
   const p = plugin();
   if (!p?.addListener) return () => {};

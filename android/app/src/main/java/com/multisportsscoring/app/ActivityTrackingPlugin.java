@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
+import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 
@@ -50,6 +51,7 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
         result.put("locationPermission", hasFineLocationPermission() ? "granted" : hasLocationPermission() ? "approximate" : "prompt");
         result.put("notificationPermission", Build.VERSION.SDK_INT < 33 || getPermissionState("notifications") == PermissionState.GRANTED ? "granted" : "prompt");
         result.put("locationServicesEnabled", isLocationServicesEnabled());
+        result.put("settingsRequired", !hasLocationPermission());
         call.resolve(result);
     }
 
@@ -65,7 +67,7 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
     @PermissionCallback
     private void locationPermissionCallback(PluginCall call) {
         if (!hasLocationPermission()) {
-            JSObject result = new JSObject(); result.put("granted", false); result.put("location", false); result.put("precise", false); call.resolve(result); return;
+            JSObject result = new JSObject(); result.put("granted", false); result.put("location", false); result.put("precise", false); result.put("settingsRequired", true); call.resolve(result); return;
         }
         requestNotificationsIfNeeded(call);
     }
@@ -122,9 +124,29 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
 
 
     @PluginMethod
+    public void openAppLocationPermissionSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject out = new JSObject();
+            out.put("opened", true);
+            call.resolve(out);
+        } catch (Exception error) {
+            call.reject("Unable to open Android app permission settings", error);
+        }
+    }
+
+    @PluginMethod
     public void openLocationSettings(PluginCall call) {
         try {
-            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            } else {
+                intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
             JSObject out = new JSObject(); out.put("opened", true); call.resolve(out);

@@ -31,7 +31,7 @@ import { outdoorRouteProgress } from "../../activity/outdoorNavigation";
 import { getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorSnapshot } from "../../activity/runningSensors";
 import { sensorSummaryForActivity } from "../../activity/activitySensorInsights";
 import { buildTreadmillSplits, treadmillDistanceSource, averageTreadmillIncline } from "../../activity/treadmillPerformance";
-import { addNativeTrackingListener, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking, waitForNativeGpsFix } from "../../activity/nativeActivityTracking";
+import { addNativeTrackingListener, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeAppLocationPermissionSettings, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking, waitForNativeGpsFix } from "../../activity/nativeActivityTracking";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
 import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
@@ -482,7 +482,8 @@ export default function RunningModule({ go, params }: Props) {
             try {
                 const permissions: any = await requestNativeTrackingPermissions();
                 if (!permissions?.granted) {
-                    setGpsMessage(copy.gpsDenied);
+                    setGpsMessage(pickLegacyLocalizedText(lang, "AUTORISE LA LOCALISATION DANS ANDROID…", "ALLOW LOCATION IN ANDROID…", "AUTORIZA LA UBICACIÓN EN ANDROID…"));
+                    await openNativeAppLocationPermissionSettings();
                     return;
                 }
                 const status = await nativeTrackingStatus();
@@ -521,6 +522,29 @@ export default function RunningModule({ go, params }: Props) {
         }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
     }, [activitySport, copy.gpsDenied, copy.gpsLost, copy.gpsPoor, copy.gpsReady, copy.gpsSearching, lang]);
     const startGpsRun = React.useCallback(async () => {
+        if (activitySport !== "treadmill" && isNativeActivityTrackingAvailable()) {
+            try {
+                const permissions: any = await requestNativeTrackingPermissions();
+                if (!permissions?.granted) {
+                    nativeTrackingActiveRef.current = false;
+                    setGpsMessage(pickLegacyLocalizedText(lang, "AUTORISE LA LOCALISATION DANS ANDROID…", "ALLOW LOCATION IN ANDROID…", "AUTORIZA LA UBICACIÓN EN ANDROID…"));
+                    await openNativeAppLocationPermissionSettings();
+                    return;
+                }
+                const status = await nativeTrackingStatus();
+                if (permissions?.locationServicesEnabled === false || status?.locationServicesEnabled === false) {
+                    nativeTrackingActiveRef.current = false;
+                    setGpsMessage(pickLegacyLocalizedText(lang, "ACTIVE LE GPS ANDROID…", "TURN ON ANDROID LOCATION…", "ACTIVA LA UBICACIÓN ANDROID…"));
+                    await openNativeLocationSettings();
+                    return;
+                }
+            } catch {
+                nativeTrackingActiveRef.current = false;
+                setGpsMessage(copy.gpsLost);
+                return;
+            }
+        }
+
         setPoints([]);
         pointsRef.current = [];
         setManualLaps([]);
@@ -557,21 +581,6 @@ export default function RunningModule({ go, params }: Props) {
         stopWatch();
         if (isNativeActivityTrackingAvailable()) {
             try {
-                const permissions: any = await requestNativeTrackingPermissions();
-                if (!permissions?.granted) {
-                    nativeTrackingActiveRef.current = false;
-                    setGpsMessage(copy.gpsDenied);
-                    setIsRecording(false);
-                    return;
-                }
-                const status = await nativeTrackingStatus();
-                if (permissions?.locationServicesEnabled === false || status?.locationServicesEnabled === false) {
-                    nativeTrackingActiveRef.current = false;
-                    setGpsMessage(pickLegacyLocalizedText(lang, "ACTIVE LE GPS ANDROID…", "TURN ON ANDROID LOCATION…", "ACTIVA LA UBICACIÓN ANDROID…"));
-                    setIsRecording(false);
-                    await openNativeLocationSettings();
-                    return;
-                }
                 await startNativeTracking(activitySport);
                 nativeTrackingActiveRef.current = true;
                 setGpsMessage(copy.gpsSearching);
@@ -580,10 +589,16 @@ export default function RunningModule({ go, params }: Props) {
                 nativeTrackingActiveRef.current = false;
                 setGpsMessage(copy.gpsLost);
                 setIsRecording(false);
+                setView("setup");
                 return;
             }
         }
-        if (!navigator.geolocation) { setGpsMessage(copy.gpsDenied); setIsRecording(false); return; }
+        if (!navigator.geolocation) {
+            setGpsMessage(copy.gpsDenied);
+            setIsRecording(false);
+            setView("setup");
+            return;
+        }
         setGpsMessage(copy.gpsSearching);
         watchIdRef.current = navigator.geolocation.watchPosition((position) => {
             const ts = position.timestamp || Date.now();
@@ -600,7 +615,13 @@ export default function RunningModule({ go, params }: Props) {
             pointsRef.current = [...pointsRef.current, next];
             lastGpsPointAtRef.current = Date.now();
             setPoints(pointsRef.current);
-        }, (error) => setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost), { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
+        }, (error) => {
+            setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost);
+            if (error.code === 1) {
+                setIsRecording(false);
+                setView("setup");
+            }
+        }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
     }, [activeElapsedAt, activitySport, copy.gpsDenied, copy.gpsLost, copy.gpsPoor, copy.gpsReady, copy.gpsSearching, copy.pause, effectivePreset, lang, speakCoach, stopWatch]);
     const startCountdown = React.useCallback(() => {
         if (countdown != null || isRecording)
