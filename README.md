@@ -1,5 +1,38 @@
 # MULTISPORTS SCORING
 
+**MULTISPORTS SCORING** is an Android and Web sports scoring, statistics and performance-tracking application.
+
+- Official Web app: https://darts-counter-v7.pages.dev/
+- Google Play package: `com.multisportsscoring.app`
+- Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
+- Languages: French, English, Spanish
+
+## Sports & features
+
+### Darts
+MULTISPORTS SCORING includes dedicated scoring experiences for **X01 (301 / 501 / 701 / 901), Cricket, Killer, Shanghai** and additional darts modes. The application also provides player profiles, match history and performance statistics.
+
+### Running Performance
+The Running Performance module supports **GPS route tracking, distance, time, pace, kilometre splits, saved sessions and performance history**.
+
+### Multi-sport scoring
+The Android release also includes scoring tools for **pétanque** and **table football / foosball**, with the platform designed to expand to additional sports.
+
+## Public discovery pages
+
+- Français: https://darts-counter-v7.pages.dev/fr/
+- English: https://darts-counter-v7.pages.dev/en/
+- Español: https://darts-counter-v7.pages.dev/es/
+- Fléchettes: https://darts-counter-v7.pages.dev/fr/flechettes/
+- Darts: https://darts-counter-v7.pages.dev/en/darts/
+- Running: https://darts-counter-v7.pages.dev/en/running/
+
+The public site exposes a sitemap, structured `SoftwareApplication` metadata and crawler rules for Google, Bing and OpenAI Search discovery.
+
+---
+
+## Current release
+
 Version de référence : **1.0.0-rc13**  
 Code Google Play : **14**  
 Package Android : `com.multisportsscoring.app`
@@ -11,78 +44,6 @@ npm run version:sync
 npm run version:check
 ```
 
----
+## Development stack
 
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+React + TypeScript + Vite, with Capacitor for the Android application.
