@@ -705,6 +705,7 @@ type SettingsLoopCarouselProps = {
   ariaLabel: string;
   onActiveIndexChange?: (index: number) => void;
   snapMode?: "mandatory" | "proximity";
+  recenterOnInitialIndexChange?: boolean;
 };
 
 function SettingsLoopCarousel({
@@ -717,10 +718,12 @@ function SettingsLoopCarousel({
   ariaLabel,
   onActiveIndexChange,
   snapMode = "mandatory",
+  recenterOnInitialIndexChange = true,
 }: SettingsLoopCarouselProps) {
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const lastActiveRef = React.useRef(-1);
   const normalizingRef = React.useRef(false);
+  const didInitialCenterRef = React.useRef(false);
   const step = itemWidth + gap;
 
   const normalizedInitialIndex = items.length
@@ -736,9 +739,13 @@ function SettingsLoopCarousel({
   }, [items.length, step, normalizedInitialIndex, itemWidth]);
 
   React.useLayoutEffect(() => {
+    // The language picker receives many async i18n rerenders. When requested,
+    // only center on the first mount; afterwards the user owns the scroll position.
+    if (didInitialCenterRef.current && !recenterOnInitialIndexChange) return;
+    didInitialCenterRef.current = true;
     const raf = requestAnimationFrame(() => recenter("auto"));
     return () => cancelAnimationFrame(raf);
-  }, [recenter]);
+  }, [recenter, recenterOnInitialIndexChange]);
 
   const reportActive = React.useCallback(() => {
     const el = scrollerRef.current;
@@ -4255,6 +4262,266 @@ function CastViewerSettingsSection({ go }: { go?: (tab: any, params?: any) => vo
   );
 }
 
+type SettingsLanguageSectionProps = {
+  theme: any;
+  lang: Lang;
+  t: (key: string, fallback?: string) => string;
+  L: (fr: string, en: string, es: string) => string;
+  languageCarouselBrowseIndexRef: React.MutableRefObject<number | null>;
+  applyLanguage: (nextLang: Lang) => void;
+};
+
+function SettingsLanguageSection({
+  theme,
+  lang,
+  t,
+  L,
+  languageCarouselBrowseIndexRef,
+  applyLanguage,
+}: SettingsLanguageSectionProps) {
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const worldMapBase = React.useMemo(() => buildTerritoriesMap("WORLD"), []);
+  const languageMeta = LANGUAGE_WORLD_META[lang] || LANGUAGE_WORLD_META.fr;
+  const highlightedIds = React.useMemo(
+    () => languageMeta.countries.map((code) => `WORLD-${String(code).toUpperCase()}`),
+    [languageMeta],
+  );
+  const highlightedSet = React.useMemo(() => new Set(highlightedIds), [highlightedIds]);
+  const languageMap = React.useMemo(() => ({
+    ...worldMapBase,
+    territories: worldMapBase.territories.map((territory) => ({
+      ...territory,
+      ownerId: highlightedSet.has(String(territory.id)) ? "settings-language" : undefined,
+    })),
+  }), [worldMapBase, highlightedSet]);
+  // Ordre volontairement stable : ne jamais trier sur les libellés traduits
+  // asynchrones, sinon la liste change d'ordre pendant le scroll et le carrousel
+  // se recale visuellement sur la langue active. Les noms natifs servent de clé
+  // de tri fixe et les libellés affichés restent, eux, traduits normalement.
+  const sortedLanguages = React.useMemo(() => {
+    return [...LANG_CHOICES].sort((left, right) =>
+      String(left.defaultLabel).localeCompare(String(right.defaultLabel), "en", { sensitivity: "base" })
+    );
+  }, []);
+  const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());
+  const activeIndex = Math.max(0, sortedLanguages.findIndex((item) => item.id === lang));
+  const carouselInitialIndex = languageCarouselBrowseIndexRef.current == null
+    ? activeIndex
+    : Math.max(0, Math.min(sortedLanguages.length - 1, languageCarouselBrowseIndexRef.current));
+
+  const selectFromTerritory = (territoryId: string) => {
+    const nextLang = languageForWorldTerritory(territoryId, lang);
+    const nextIndex = sortedLanguages.findIndex((item) => item.id === nextLang);
+    if (nextIndex >= 0) languageCarouselBrowseIndexRef.current = nextIndex;
+    applyLanguage(nextLang);
+  };
+
+  return (
+    <section
+      style={{
+        background: CARD_BG,
+        borderRadius: 18,
+        border: `1px solid ${theme.borderSoft}`,
+        padding: 12,
+        marginBottom: 16,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          borderRadius: 16,
+          border: `1px solid ${theme.borderSoft}`,
+          background: "radial-gradient(circle at 50% 20%, rgba(255,255,255,.05), rgba(0,0,0,.18) 65%)",
+          padding: 8,
+          boxShadow: `inset 0 0 24px rgba(0,0,0,.36), 0 0 18px ${theme.primary}16`,
+        }}
+      >
+        <div style={{ padding: "3px 5px 7px" }}>
+          <div
+            style={{
+              fontSize: "clamp(8px,2.35vw,10px)",
+              color: theme.textSoft,
+              textTransform: "uppercase",
+              fontWeight: 900,
+              letterSpacing: ".65px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {L("CARTE LINGUISTIQUE MONDIALE", "WORLD LANGUAGE MAP", "MAPA LINGÜÍSTICO MUNDIAL")}
+          </div>
+          <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+              <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{LANG_FLAGS[lang] || "🌐"}</span>
+              <div style={{ color: theme.primary, fontSize: "clamp(12px,3.5vw,15px)", fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeLabel}</div>
+            </div>
+            <div style={{ fontSize: 9.5, color: theme.textSoft, textAlign: "right", flexShrink: 0 }}>
+              {highlightedIds.length} {L("zones", "areas", "zonas")}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ height: 218, width: "100%", borderRadius: 13, overflow: "hidden", background: "rgba(0,0,0,.24)" }}>
+          <TerritoriesMapView
+            country="WORLD"
+            map={languageMap}
+            ownerColors={{ "settings-language": theme.primary }}
+            activeColor={theme.primary}
+            themeColor={theme.primary}
+            interactive
+            onSelectTerritory={selectFromTerritory}
+            showViewportControls={false}
+            showViewportHint={false}
+            highlightTerritoryIds={highlightedIds}
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
+        <div style={{ padding: "7px 6px 2px", color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35, textAlign: "center" }}>
+          {L("Touchez un pays : sa langue disponible est sélectionnée, sinon l’anglais est utilisé.", "Tap a country: an available language is selected, otherwise English is used.", "Toca un país: se selecciona un idioma disponible; si no, se usa inglés.")}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          style={{
+            minWidth: 150,
+            borderRadius: 999,
+            border: `1px solid ${theme.primary}88`,
+            background: `${theme.primary}12`,
+            color: theme.primary,
+            padding: "8px 13px",
+            fontSize: 11,
+            fontWeight: 950,
+            cursor: "pointer",
+            boxShadow: `0 0 12px ${theme.primary}22`,
+          }}
+        >
+          {L("Choisir langue", "Choose language", "Elegir idioma")} ▾
+        </button>
+      </div>
+
+      <div style={{ marginTop: 13 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+          <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .75 }}>{L("Sélection rapide", "Quick selection", "Selección rápida")}</div>
+          <div style={{ fontSize: 9.5, color: theme.textSoft }}>{L("boucle · ordre alphabétique", "loop · alphabetical order", "bucle · orden alfabético")}</div>
+        </div>
+
+        <SettingsLoopCarousel
+          items={sortedLanguages}
+          theme={theme}
+          itemWidth={126}
+          gap={9}
+          initialIndex={carouselInitialIndex}
+          snapMode="proximity"
+          recenterOnInitialIndexChange={false}
+          onActiveIndexChange={(index) => {
+            languageCarouselBrowseIndexRef.current = index;
+          }}
+          ariaLabel={L("Carrousel des langues", "Language carousel", "Carrusel de idiomas")}
+          renderItem={(opt: (typeof LANG_CHOICES)[number], index: number) => {
+            const label = t(`lang.${opt.id}`, opt.defaultLabel);
+            const active = opt.id === lang;
+            const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  languageCarouselBrowseIndexRef.current = index;
+                  applyLanguage(opt.id);
+                }}
+                style={{
+                  width: "100%",
+                  height: 112,
+                  borderRadius: 15,
+                  border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+                  background: active ? `${theme.primary}12` : "rgba(255,255,255,.025)",
+                  color: active ? theme.primary : theme.text,
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  boxShadow: active ? `0 0 15px ${theme.primary}38` : "none",
+                  padding: 7,
+                }}
+              >
+                <CountryFlagShape countryCode={primaryCountry} accent={active ? theme.primary : "rgba(255,255,255,.55)"} width={84} height={58} />
+                <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 900 }}>{label}</span>
+              </button>
+            );
+          }}
+        />
+      </div>
+
+      {pickerOpen ? (
+        <div
+          role="presentation"
+          onClick={() => setPickerOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 5200,
+            background: "rgba(0,0,0,.72)",
+            backdropFilter: "blur(7px)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={L("Choisir la langue", "Choose language", "Elegir idioma")}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(430px, 94vw)",
+              maxHeight: "76vh",
+              borderRadius: 20,
+              border: `1px solid ${theme.primary}77`,
+              background: "linear-gradient(180deg,rgba(8,12,28,.99),rgba(3,5,15,.99))",
+              boxShadow: `0 0 26px ${theme.primary}28, 0 20px 54px rgba(0,0,0,.75)`,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 14px", borderBottom: `1px solid ${theme.borderSoft}` }}>
+              <div>
+                <div style={{ color: theme.primary, fontSize: 15, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>{L("Choisir langue", "Choose language", "Elegir idioma")}</div>
+                <div style={{ marginTop: 2, fontSize: 10.5, color: theme.textSoft }}>{L("Toutes les langues disponibles", "All available languages", "Todos los idiomas disponibles")}</div>
+              </div>
+              <button type="button" onClick={() => setPickerOpen(false)} aria-label={L("Fermer", "Close", "Cerrar")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: theme.text, fontSize: 20, cursor: "pointer" }}>×</button>
+            </div>
+            <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+                {sortedLanguages.map((opt, index) => (
+                  <LanguageChoiceButton
+                    key={opt.id}
+                    id={opt.id}
+                    label={t(`lang.${opt.id}`, opt.defaultLabel)}
+                    active={opt.id === lang}
+                    onClick={() => {
+                      languageCarouselBrowseIndexRef.current = index;
+                      applyLanguage(opt.id);
+                      setPickerOpen(false);
+                    }}
+                    primary={theme.primary}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+
 export function Settings({ go, params }: Props) {
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
@@ -4826,247 +5093,6 @@ export function Settings({ go, params }: Props) {
     );
   }
 
-  function LangSection() {
-    const [pickerOpen, setPickerOpen] = React.useState(false);
-    const worldMapBase = React.useMemo(() => buildTerritoriesMap("WORLD"), []);
-    const languageMeta = LANGUAGE_WORLD_META[lang] || LANGUAGE_WORLD_META.fr;
-    const highlightedIds = React.useMemo(
-      () => languageMeta.countries.map((code) => `WORLD-${String(code).toUpperCase()}`),
-      [languageMeta],
-    );
-    const highlightedSet = React.useMemo(() => new Set(highlightedIds), [highlightedIds]);
-    const languageMap = React.useMemo(() => ({
-      ...worldMapBase,
-      territories: worldMapBase.territories.map((territory) => ({
-        ...territory,
-        ownerId: highlightedSet.has(String(territory.id)) ? "settings-language" : undefined,
-      })),
-    }), [worldMapBase, highlightedSet]);
-    // Ordre volontairement stable : ne jamais trier sur les libellés traduits
-    // asynchrones, sinon la liste change d'ordre pendant le scroll et le carrousel
-    // se recale visuellement sur la langue active. Les noms natifs servent de clé
-    // de tri fixe et les libellés affichés restent, eux, traduits normalement.
-    const sortedLanguages = React.useMemo(() => {
-      return [...LANG_CHOICES].sort((left, right) =>
-        String(left.defaultLabel).localeCompare(String(right.defaultLabel), "en", { sensitivity: "base" })
-      );
-    }, []);
-    const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());
-    const activeIndex = Math.max(0, sortedLanguages.findIndex((item) => item.id === lang));
-    const carouselInitialIndex = languageCarouselBrowseIndexRef.current == null
-      ? activeIndex
-      : Math.max(0, Math.min(sortedLanguages.length - 1, languageCarouselBrowseIndexRef.current));
-
-    const selectFromTerritory = (territoryId: string) => {
-      const nextLang = languageForWorldTerritory(territoryId, lang);
-      const nextIndex = sortedLanguages.findIndex((item) => item.id === nextLang);
-      if (nextIndex >= 0) languageCarouselBrowseIndexRef.current = nextIndex;
-      applyLanguage(nextLang);
-    };
-
-    return (
-      <section
-        style={{
-          background: CARD_BG,
-          borderRadius: 18,
-          border: `1px solid ${theme.borderSoft}`,
-          padding: 12,
-          marginBottom: 16,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            borderRadius: 16,
-            border: `1px solid ${theme.borderSoft}`,
-            background: "radial-gradient(circle at 50% 20%, rgba(255,255,255,.05), rgba(0,0,0,.18) 65%)",
-            padding: 8,
-            boxShadow: `inset 0 0 24px rgba(0,0,0,.36), 0 0 18px ${theme.primary}16`,
-          }}
-        >
-          <div style={{ padding: "3px 5px 7px" }}>
-            <div
-              style={{
-                fontSize: "clamp(8px,2.35vw,10px)",
-                color: theme.textSoft,
-                textTransform: "uppercase",
-                fontWeight: 900,
-                letterSpacing: ".65px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {L("CARTE LINGUISTIQUE MONDIALE", "WORLD LANGUAGE MAP", "MAPA LINGÜÍSTICO MUNDIAL")}
-            </div>
-            <div style={{ marginTop: 5, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{LANG_FLAGS[lang] || "🌐"}</span>
-                <div style={{ color: theme.primary, fontSize: "clamp(12px,3.5vw,15px)", fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{activeLabel}</div>
-              </div>
-              <div style={{ fontSize: 9.5, color: theme.textSoft, textAlign: "right", flexShrink: 0 }}>
-                {highlightedIds.length} {L("zones", "areas", "zonas")}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ height: 218, width: "100%", borderRadius: 13, overflow: "hidden", background: "rgba(0,0,0,.24)" }}>
-            <TerritoriesMapView
-              country="WORLD"
-              map={languageMap}
-              ownerColors={{ "settings-language": theme.primary }}
-              activeColor={theme.primary}
-              themeColor={theme.primary}
-              interactive
-              onSelectTerritory={selectFromTerritory}
-              showViewportControls={false}
-              showViewportHint={false}
-              highlightTerritoryIds={highlightedIds}
-              style={{ width: "100%", height: "100%" }}
-            />
-          </div>
-          <div style={{ padding: "7px 6px 2px", color: theme.textSoft, fontSize: 9.5, lineHeight: 1.35, textAlign: "center" }}>
-            {L("Touchez un pays : sa langue disponible est sélectionnée, sinon l’anglais est utilisé.", "Tap a country: an available language is selected, otherwise English is used.", "Toca un país: se selecciona un idioma disponible; si no, se usa inglés.")}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            style={{
-              minWidth: 150,
-              borderRadius: 999,
-              border: `1px solid ${theme.primary}88`,
-              background: `${theme.primary}12`,
-              color: theme.primary,
-              padding: "8px 13px",
-              fontSize: 11,
-              fontWeight: 950,
-              cursor: "pointer",
-              boxShadow: `0 0 12px ${theme.primary}22`,
-            }}
-          >
-            {L("Choisir langue", "Choose language", "Elegir idioma")} ▾
-          </button>
-        </div>
-
-        <div style={{ marginTop: 13 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
-            <div style={{ fontSize: 10, color: theme.textSoft, textTransform: "uppercase", fontWeight: 900, letterSpacing: .75 }}>{L("Sélection rapide", "Quick selection", "Selección rápida")}</div>
-            <div style={{ fontSize: 9.5, color: theme.textSoft }}>{L("boucle · ordre alphabétique", "loop · alphabetical order", "bucle · orden alfabético")}</div>
-          </div>
-
-          <SettingsLoopCarousel
-            items={sortedLanguages}
-            theme={theme}
-            itemWidth={126}
-            gap={9}
-            initialIndex={carouselInitialIndex}
-            snapMode="proximity"
-            onActiveIndexChange={(index) => {
-              languageCarouselBrowseIndexRef.current = index;
-            }}
-            ariaLabel={L("Carrousel des langues", "Language carousel", "Carrusel de idiomas")}
-            renderItem={(opt: (typeof LANG_CHOICES)[number], index: number) => {
-              const label = t(`lang.${opt.id}`, opt.defaultLabel);
-              const active = opt.id === lang;
-              const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
-              return (
-                <button
-                  type="button"
-                  onClick={() => {
-                    languageCarouselBrowseIndexRef.current = index;
-                    applyLanguage(opt.id);
-                  }}
-                  style={{
-                    width: "100%",
-                    height: 112,
-                    borderRadius: 15,
-                    border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
-                    background: active ? `${theme.primary}12` : "rgba(255,255,255,.025)",
-                    color: active ? theme.primary : theme.text,
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                    boxShadow: active ? `0 0 15px ${theme.primary}38` : "none",
-                    padding: 7,
-                  }}
-                >
-                  <CountryFlagShape countryCode={primaryCountry} accent={active ? theme.primary : "rgba(255,255,255,.55)"} width={84} height={58} />
-                  <span style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, fontWeight: 900 }}>{label}</span>
-                </button>
-              );
-            }}
-          />
-        </div>
-
-        {pickerOpen ? (
-          <div
-            role="presentation"
-            onClick={() => setPickerOpen(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 5200,
-              background: "rgba(0,0,0,.72)",
-              backdropFilter: "blur(7px)",
-              display: "grid",
-              placeItems: "center",
-              padding: 16,
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={L("Choisir la langue", "Choose language", "Elegir idioma")}
-              onClick={(event) => event.stopPropagation()}
-              style={{
-                width: "min(430px, 94vw)",
-                maxHeight: "76vh",
-                borderRadius: 20,
-                border: `1px solid ${theme.primary}77`,
-                background: "linear-gradient(180deg,rgba(8,12,28,.99),rgba(3,5,15,.99))",
-                boxShadow: `0 0 26px ${theme.primary}28, 0 20px 54px rgba(0,0,0,.75)`,
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "13px 14px", borderBottom: `1px solid ${theme.borderSoft}` }}>
-                <div>
-                  <div style={{ color: theme.primary, fontSize: 15, fontWeight: 950, textTransform: "uppercase", letterSpacing: .7 }}>{L("Choisir langue", "Choose language", "Elegir idioma")}</div>
-                  <div style={{ marginTop: 2, fontSize: 10.5, color: theme.textSoft }}>{L("Toutes les langues disponibles", "All available languages", "Todos los idiomas disponibles")}</div>
-                </div>
-                <button type="button" onClick={() => setPickerOpen(false)} aria-label={L("Fermer", "Close", "Cerrar")} style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(255,255,255,.04)", color: theme.text, fontSize: 20, cursor: "pointer" }}>×</button>
-              </div>
-              <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                  {sortedLanguages.map((opt, index) => (
-                    <LanguageChoiceButton
-                      key={opt.id}
-                      id={opt.id}
-                      label={t(`lang.${opt.id}`, opt.defaultLabel)}
-                      active={opt.id === lang}
-                      onClick={() => {
-                        languageCarouselBrowseIndexRef.current = index;
-                        applyLanguage(opt.id);
-                        setPickerOpen(false);
-                      }}
-                      primary={theme.primary}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </section>
-    );
-  }
 
   function StartupIntroSection() {
     return <AudioSettingsPanel />;
@@ -5932,7 +5958,16 @@ export function Settings({ go, params }: Props) {
         {tab === "awena" && <AwenaSettingsSection />}
 
         {tab === "theme" && <ThemeSection />}
-        {tab === "lang" && <LangSection />}
+        {tab === "lang" && (
+          <SettingsLanguageSection
+            theme={theme}
+            lang={lang}
+            t={t}
+            L={L}
+            languageCarouselBrowseIndexRef={languageCarouselBrowseIndexRef}
+            applyLanguage={applyLanguage}
+          />
+        )}
         {tab === "audio" && <StartupIntroSection />}
         {tab === "sport" && <SportSection />}
         {tab === "castViewer" && <CastViewerSettingsSection go={go} />}
