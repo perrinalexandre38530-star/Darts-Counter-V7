@@ -1,0 +1,21 @@
+# MULTISPORTS SCORING — public discovery policy
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Search visibility stays enabled while training access is kept separate.
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://darts-counter-v7.pages.dev/sitemap.xml

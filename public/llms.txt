@@ -1,0 +1,29 @@
+# MULTISPORTS SCORING
+
+> MULTISPORTS SCORING is an Android and Web sports scoring and performance-tracking application.
+
+Canonical website: https://darts-counter-v7.pages.dev/
+Google Play: https://play.google.com/store/apps/details?id=com.multisportsscoring.app
+Source repository: https://github.com/perrinalexandre38530-star/Darts-Counter-V7
+Languages: French, English, Spanish
+
+## Main capabilities
+- Darts scoring with X01, Cricket, Killer, Shanghai and additional game modes.
+- Player profiles, match history and darts statistics.
+- Running Performance with GPS route tracking, pace, distance, splits and saved sessions.
+- Scoring tools for pétanque and table football (foosball).
+- Multi-sport design combining scoring, statistics and sporting challenges.
+
+## Official discovery pages
+- French: https://darts-counter-v7.pages.dev/fr/
+- English: https://darts-counter-v7.pages.dev/en/
+- Spanish: https://darts-counter-v7.pages.dev/es/
+- Darts FR: https://darts-counter-v7.pages.dev/fr/flechettes/
+- Darts EN: https://darts-counter-v7.pages.dev/en/darts/
+- Darts ES: https://darts-counter-v7.pages.dev/es/dardos/
+- Running FR: https://darts-counter-v7.pages.dev/fr/running/
+- Running EN: https://darts-counter-v7.pages.dev/en/running/
+- Running ES: https://darts-counter-v7.pages.dev/es/running/
+
+Official product name: MULTISPORTS SCORING
+Android package: com.multisportsscoring.app
