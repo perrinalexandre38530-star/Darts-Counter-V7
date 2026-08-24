@@ -704,6 +704,7 @@ type SettingsLoopCarouselProps = {
   initialIndex?: number;
   ariaLabel: string;
   onActiveIndexChange?: (index: number) => void;
+  snapMode?: "mandatory" | "proximity";
 };
 
 function SettingsLoopCarousel({
@@ -715,6 +716,7 @@ function SettingsLoopCarousel({
   initialIndex = 0,
   ariaLabel,
   onActiveIndexChange,
+  snapMode = "mandatory",
 }: SettingsLoopCarouselProps) {
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const lastActiveRef = React.useRef(-1);
@@ -809,7 +811,7 @@ function SettingsLoopCarousel({
           display: "flex",
           gap,
           overflowX: "auto",
-          scrollSnapType: "x mandatory",
+          scrollSnapType: `x ${snapMode}`,
           padding: "8px 8px 12px",
           WebkitOverflowScrolling: "touch",
           overscrollBehaviorX: "contain",
@@ -4343,6 +4345,10 @@ export function Settings({ go, params }: Props) {
     ? (String(params?.settingsTab) as SettingsTab)
     : "menu";
   const [tab, setTab] = React.useState<SettingsTab>(initialSettingsTab);
+  // Conserve la position parcourue dans le carrousel LANGUES même si Settings se
+  // rerend pendant le chargement des traductions. Sans cela, le sous-composant
+  // LangSection est remonté et se recentre sur la langue déjà sélectionnée.
+  const languageCarouselBrowseIndexRef = React.useRef<number | null>(null);
   const [shopInitialTab, setShopInitialTab] = React.useState<"premium" | "packs" | "billing">("premium");
   const [shopFocusPackId, setShopFocusPackId] = React.useState<string | null>(null);
   const [accountPage, setAccountPage] = React.useState<AccountPage>(() => {
@@ -4836,18 +4842,25 @@ export function Settings({ go, params }: Props) {
         ownerId: highlightedSet.has(String(territory.id)) ? "settings-language" : undefined,
       })),
     }), [worldMapBase, highlightedSet]);
+    // Ordre volontairement stable : ne jamais trier sur les libellés traduits
+    // asynchrones, sinon la liste change d'ordre pendant le scroll et le carrousel
+    // se recale visuellement sur la langue active. Les noms natifs servent de clé
+    // de tri fixe et les libellés affichés restent, eux, traduits normalement.
     const sortedLanguages = React.useMemo(() => {
-      return [...LANG_CHOICES].sort((left, right) => {
-        const a = t(`lang.${left.id}`, left.defaultLabel);
-        const b = t(`lang.${right.id}`, right.defaultLabel);
-        return String(a).localeCompare(String(b), localeForLang(lang), { sensitivity: "base" });
-      });
-    }, [t, lang]);
+      return [...LANG_CHOICES].sort((left, right) =>
+        String(left.defaultLabel).localeCompare(String(right.defaultLabel), "en", { sensitivity: "base" })
+      );
+    }, []);
     const activeLabel = t(`lang.${lang}`, LANG_CHOICES.find((item) => item.id === lang)?.defaultLabel || String(lang).toUpperCase());
     const activeIndex = Math.max(0, sortedLanguages.findIndex((item) => item.id === lang));
+    const carouselInitialIndex = languageCarouselBrowseIndexRef.current == null
+      ? activeIndex
+      : Math.max(0, Math.min(sortedLanguages.length - 1, languageCarouselBrowseIndexRef.current));
 
     const selectFromTerritory = (territoryId: string) => {
       const nextLang = languageForWorldTerritory(territoryId, lang);
+      const nextIndex = sortedLanguages.findIndex((item) => item.id === nextLang);
+      if (nextIndex >= 0) languageCarouselBrowseIndexRef.current = nextIndex;
       applyLanguage(nextLang);
     };
 
@@ -4949,16 +4962,23 @@ export function Settings({ go, params }: Props) {
             theme={theme}
             itemWidth={126}
             gap={9}
-            initialIndex={activeIndex}
+            initialIndex={carouselInitialIndex}
+            snapMode="proximity"
+            onActiveIndexChange={(index) => {
+              languageCarouselBrowseIndexRef.current = index;
+            }}
             ariaLabel={L("Carrousel des langues", "Language carousel", "Carrusel de idiomas")}
-            renderItem={(opt: (typeof LANG_CHOICES)[number]) => {
+            renderItem={(opt: (typeof LANG_CHOICES)[number], index: number) => {
               const label = t(`lang.${opt.id}`, opt.defaultLabel);
               const active = opt.id === lang;
               const primaryCountry = LANGUAGE_WORLD_META[opt.id]?.primaryCountry || opt.short;
               return (
                 <button
                   type="button"
-                  onClick={() => applyLanguage(opt.id)}
+                  onClick={() => {
+                    languageCarouselBrowseIndexRef.current = index;
+                    applyLanguage(opt.id);
+                  }}
                   style={{
                     width: "100%",
                     height: 112,
@@ -5025,13 +5045,14 @@ export function Settings({ go, params }: Props) {
               </div>
               <div className="dc-scroll-thin" style={{ overflowY: "auto", padding: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                  {sortedLanguages.map((opt) => (
+                  {sortedLanguages.map((opt, index) => (
                     <LanguageChoiceButton
                       key={opt.id}
                       id={opt.id}
                       label={t(`lang.${opt.id}`, opt.defaultLabel)}
                       active={opt.id === lang}
                       onClick={() => {
+                        languageCarouselBrowseIndexRef.current = index;
                         applyLanguage(opt.id);
                         setPickerOpen(false);
                       }}

@@ -1375,3 +1375,5 @@ html[data-dc-theme-page-scope="off"] body{
   filter: blur(1.6px) saturate(1.06);
   animation: dc-postapoc-overgrowth-drift-brutal 7.5s ease-in-out infinite;
 }
+
+@keyframes socialAuthSpin { to { transform: rotate(360deg); } }

@@ -17,7 +17,7 @@ import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import OutdoorSafetyPanel from "./OutdoorSafetyPanel";
-import { RunningSurface, RunningTabs } from "./RunningUi";
+import { RunningGlyph, RunningSurface, RunningTabs } from "./RunningUi";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { awenaVoice } from "../../awena/AwenaVoice";
 import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPlanSession, type RunningPlanState } from "../../activity/runningTraining";
@@ -291,6 +291,45 @@ export default function RunningModule({ go, params }: Props) {
     const targetDistanceM = selectedRoute && effectivePreset.type === "free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
     const targetDurationMs = effectivePreset.targetDurationMs ?? null;
     const targetPaceSecPerKm = effectivePreset.type === "pacer" ? pacerPace : null;
+    const isTreadmillSport = activitySport === "treadmill";
+    const isOutdoorAdventureSport = ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport);
+    const showShoeSelection = ["running", "trail", "treadmill"].includes(activitySport);
+    const availableShoes = React.useMemo(() => shoes.filter((shoe) => !shoe.retired), [shoes]);
+    const connectedDeviceCount = sensorSnapshot.devices.filter((device) => device.connected).length;
+    const startFocus = React.useMemo(() => {
+        switch (activitySport) {
+            case "trail":
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ton trail", "Prepare your trail", "Prepara tu trail"),
+                    hint: pickLegacyLocalizedText(lang, "Parcours, sécurité, GPS et autonomie avant de partir.", "Route, safety, GPS and battery before you go.", "Ruta, seguridad, GPS y autonomía antes de salir."),
+                };
+            case "hiking":
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ta randonnée", "Prepare your hike", "Prepara tu senderismo"),
+                    hint: pickLegacyLocalizedText(lang, "Itinéraire, guidage hors-ligne et fiche sécurité.", "Route, offline guidance and safety sheet.", "Ruta, guía sin conexión y ficha de seguridad."),
+                };
+            case "walking":
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ta marche", "Prepare your walk", "Prepara tu caminata"),
+                    hint: pickLegacyLocalizedText(lang, "Objectif simple, GPS et suivi de l'allure.", "Simple goal, GPS and pace tracking.", "Objetivo simple, GPS y control del ritmo."),
+                };
+            case "nordic-walking":
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ta marche nordique", "Prepare your nordic walk", "Prepara tu marcha nórdica"),
+                    hint: pickLegacyLocalizedText(lang, "Parcours, GPS et capteurs de cadence si disponibles.", "Route, GPS and cadence sensors when available.", "Ruta, GPS y sensores de cadencia si están disponibles."),
+                };
+            case "treadmill":
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ta séance tapis", "Prepare your treadmill session", "Prepara tu sesión en cinta"),
+                    hint: pickLegacyLocalizedText(lang, "Source de mesure, vitesse de secours et capteurs.", "Measurement source, fallback speed and sensors.", "Fuente de medición, velocidad de respaldo y sensores."),
+                };
+            default:
+                return {
+                    title: pickLegacyLocalizedText(lang, "Prépare ton running", "Prepare your run", "Prepara tu running"),
+                    hint: pickLegacyLocalizedText(lang, "Objectif, GPS, chaussures et retours vocaux.", "Goal, GPS, shoes and voice feedback.", "Objetivo, GPS, zapatillas y retorno por voz."),
+                };
+        }
+    }, [activitySport, lang]);
     React.useEffect(() => { try { localStorage.setItem(RUNNING_AUDIO_COACH_KEY, audioCoach ? "1" : "0"); } catch {} }, [audioCoach]);
     const speakCoach = React.useCallback((text: string) => {
         if (!audioCoach || !awena?.settings) return;
@@ -905,7 +944,7 @@ export default function RunningModule({ go, params }: Props) {
     }
     return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/>
     <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
-    <RunningTabs items={[{ id: "workout" as const, label: pickLegacyLocalizedText(lang, "1 · SÉANCE", "1 · WORKOUT", "1 · SESIÓN"), icon: "🏃" }, ...(activitySport !== "treadmill" ? [{ id: "route" as const, label: pickLegacyLocalizedText(lang, "2 · PARCOURS", "2 · ROUTE", "2 · RUTA"), icon: "🗺️", badge: routeOptions.length || null }] : []), { id: "ready" as const, label: pickLegacyLocalizedText(lang, activitySport === "treadmill" ? "2 · DÉPART" : "3 · DÉPART", activitySport === "treadmill" ? "2 · START" : "3 · START", activitySport === "treadmill" ? "2 · SALIDA" : "3 · SALIDA"), icon: "✓" }]} value={setupPanel} onChange={setSetupPanel} accent={accent} sticky />
+    <RunningTabs items={[{ id: "workout" as const, label: pickLegacyLocalizedText(lang, "1 · SÉANCE", "1 · WORKOUT", "1 · SESIÓN"), icon: <RunningGlyph name="step-workout" size={16} /> }, ...(activitySport !== "treadmill" ? [{ id: "route" as const, label: pickLegacyLocalizedText(lang, "2 · PARCOURS", "2 · ROUTE", "2 · RUTA"), icon: <RunningGlyph name="step-route" size={16} />, badge: routeOptions.length || null }] : []), { id: "ready" as const, label: pickLegacyLocalizedText(lang, activitySport === "treadmill" ? "2 · DÉPART" : "3 · DÉPART", activitySport === "treadmill" ? "2 · START" : "3 · START", activitySport === "treadmill" ? "2 · SALIDA" : "3 · SALIDA"), icon: <RunningGlyph name="step-ready" size={16} /> }]} value={setupPanel} onChange={setSetupPanel} accent={accent} sticky />
 
     <div style={{ display: setupPanel === "workout" ? "block" : "none" }}>
     <RunningTabs items={[{ id: "quick" as const, label: copy.quick, icon: "⚡" }, { id: "training" as const, label: copy.training, icon: "📋" }, ...(sportProfile.supportsPacer ? [{ id: "pacer" as const, label: copy.pacer, icon: "⏱️" }] : []), ...(sportProfile.supportsIntervals ? [{ id: "custom" as const, label: copy.custom, icon: "✦" }] : [])]} value={setupTab} onChange={(key) => { setSetupTab(key); if (key === "pacer") selectManualPreset("pacer"); if (key === "custom") selectManualPreset("custom"); }} accent={accent} />
@@ -921,7 +960,7 @@ export default function RunningModule({ go, params }: Props) {
     <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "50px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 48, height: 48, display: "grid", placeItems: "center", borderRadius: 15, background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 23 }}>{effectivePreset.icon}</div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 9.5, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface>
 
     <div style={{ display: setupPanel === "route" ? "block" : "none" }}>
-      <RunningTabs items={[{ id: "choose" as const, label: pickLegacyLocalizedText(lang, "CHOISIR", "CHOOSE", "ELEGIR"), icon: "◎", badge: routeOptions.length || null }, ...(selectedRoute ? [{ id: "guide" as const, label: pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO"), icon: "➜" }, { id: "offline" as const, label: pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN"), icon: "⬇" }] : [])]} value={routePanelTab} onChange={setRoutePanelTab} accent={accent} />
+      <RunningTabs items={[{ id: "choose" as const, label: pickLegacyLocalizedText(lang, "CHOISIR", "CHOOSE", "ELEGIR"), icon: <RunningGlyph name="route-choose" size={16} />, badge: routeOptions.length || null }, ...(selectedRoute ? [{ id: "guide" as const, label: pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO"), icon: <RunningGlyph name="route-guide" size={16} /> }, { id: "offline" as const, label: pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN"), icon: <RunningGlyph name="route-offline" size={16} /> }] : [])]} value={routePanelTab} onChange={setRoutePanelTab} accent={accent} />
 
       {routePanelTab === "choose" ? <>
         {routeOptions.length ? <div style={{ marginTop: 4 }}><Section title={pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA")} right={selectedRoute ? <button className="btn" disabled={!selectedRouteHasReference} onClick={() => selectedRouteHasReference && setGhostEnabled((value) => !value)} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, fontWeight: 1000, opacity: selectedRouteHasReference ? 1 : .45, color: ghostEnabled ? accent : undefined, borderColor: ghostEnabled ? `${accent}77` : undefined }}>{selectedRouteHasReference ? `GHOST ${ghostEnabled ? "ON" : "OFF"}` : pickLegacyLocalizedText(lang, "PARCOURS SEUL", "ROUTE ONLY", "SOLO RUTA")}</button> : undefined}>
@@ -939,15 +978,56 @@ export default function RunningModule({ go, params }: Props) {
     </div>
 
     <div style={{ display: setupPanel === "ready" ? "block" : "none" }}>
-    <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "ÉQUIPEMENT", "GEAR", "EQUIPO")}>{shoes.length ? <><div style={{ color: textSoft, fontSize: 9.1, marginBottom: 8 }}>{pickLegacyLocalizedText(lang, "Associe une paire à cette sortie pour suivre son kilométrage dans Stats.", "Attach shoes to this run to track their mileage in Stats.", "Asocia unas zapatillas para seguir su kilometraje en Stats.")}</div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>{shoes.filter((shoe) => !shoe.retired).map((shoe) => <Choice key={shoe.id} active={selectedShoeId === shoe.id} accent={accent} onClick={() => setSelectedShoeId(selectedShoeId === shoe.id ? "" : shoe.id)}>👟 {shoe.name}</Choice>)}</div></> : <div style={{ color: textSoft, fontSize: 9.2, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Aucune paire enregistrée. Ajoute tes chaussures depuis Stats > Équipement.", "No shoes saved yet. Add them from Stats > Gear.", "No hay zapatillas registradas. Añádelas desde Stats > Equipo.")}</div>}</Section></div>
+    <RunningSurface accent={accent} active style={{ marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isTreadmillSport ? "1fr" : "1fr auto", gap: 10, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 8.8, fontWeight: 1000, color: textSoft }}>{pickLegacyLocalizedText(lang, "CHECKLIST DE DÉPART", "START CHECKLIST", "CHECKLIST DE SALIDA")}</div>
+          <div style={{ marginTop: 4, fontSize: 12.4, fontWeight: 1000, color: accent }}>{startFocus.title}</div>
+          <div style={{ marginTop: 4, fontSize: 8.8, color: textSoft, lineHeight: 1.45 }}>{startFocus.hint}</div>
+        </div>
+        {!isTreadmillSport ? <button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button> : null}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}>
+        <div style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ fontSize: 7.7, opacity: .56, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN")}</div>
+          <div style={{ marginTop: 4, fontSize: 10.2, fontWeight: 1000, color: accent, lineHeight: 1.25 }}>{presetLabel(effectivePreset, lang)}</div>
+        </div>
+        <div style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ fontSize: 7.7, opacity: .56, fontWeight: 1000 }}>{isTreadmillSport ? pickLegacyLocalizedText(lang, "SOURCE", "SOURCE", "FUENTE") : copy.gps}</div>
+          <div style={{ marginTop: 4, fontSize: 10.2, fontWeight: 1000, color: accent, lineHeight: 1.25 }}>{isTreadmillSport ? treadmillDistanceSource(sensorSnapshot).label : `${gpsMessage || copy.gpsUnknown}${accuracy ? ` · ±${Math.round(accuracy)} m` : ""}`}</div>
+        </div>
+        <div style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ fontSize: 7.7, opacity: .56, fontWeight: 1000 }}>{isOutdoorAdventureSport ? copy.route : pickLegacyLocalizedText(lang, "CAPTEURS", "SENSORS", "SENSORES")}</div>
+          <div style={{ marginTop: 4, fontSize: 10.2, fontWeight: 1000, color: accent, lineHeight: 1.25 }}>{isOutdoorAdventureSport ? (selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "AUCUN PARCOURS", "NO ROUTE", "SIN RUTA")) : (connectedDeviceCount > 0 ? `${connectedDeviceCount} ${pickLegacyLocalizedText(lang, "connecté(s)", "connected", "conectado(s)")}` : pickLegacyLocalizedText(lang, "AUCUN", "NONE", "NINGUNO"))}</div>
+        </div>
+        <div style={{ borderRadius: 14, padding: 10, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ fontSize: 7.7, opacity: .56, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "ALERTES", "ALERTS", "ALERTAS")}</div>
+          <div style={{ marginTop: 4, fontSize: 10.2, fontWeight: 1000, color: accent, lineHeight: 1.25 }}>{audioCoach ? pickLegacyLocalizedText(lang, "AWENA ACTIVÉE", "AWENA ENABLED", "AWENA ACTIVADA") : pickLegacyLocalizedText(lang, "AWENA DÉSACTIVÉE", "AWENA DISABLED", "AWENA DESACTIVADA")}</div>
+        </div>
+      </div>
+    </RunningSurface>
 
-    {["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? <OutdoorSafetyPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft}/> : null}
+    {showShoeSelection ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "CHAUSSURES", "SHOES", "ZAPATILLAS")}>
+      {availableShoes.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>{availableShoes.map((shoe) => <Choice key={shoe.id} active={selectedShoeId === shoe.id} accent={accent} onClick={() => setSelectedShoeId(selectedShoeId === shoe.id ? "" : shoe.id)}><span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><RunningGlyph name="shoe" size={14} /> {shoe.name}</span></Choice>)}</div> : <div style={{ color: textSoft, fontSize: 9.2, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Ajoute une paire dans Stats > Matériel pour suivre le kilométrage.", "Add shoes in Stats > Gear to track mileage.", "Añade unas zapatillas en Stats > Material para seguir el kilometraje.")}</div>}
+    </Section></div> : null}
 
-    <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", borderRadius: 17, borderColor: audioCoach ? `${accent}48` : undefined, background: `linear-gradient(145deg,${audioCoach ? `${accent}10` : "rgba(255,255,255,.03)"},rgba(4,6,10,.78))`, boxShadow: "0 14px 28px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035)" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>🎙️</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.audioCoach}</div><div style={{ marginTop: 3, fontSize: 8.7, color: textSoft, lineHeight: 1.35 }}>{copy.audioCoachSub}</div></div><button className="btn" onClick={() => setAudioCoach((value) => !value)} style={{ minWidth: 58, minHeight: 36, borderColor: audioCoach ? `${accent}77` : undefined, color: audioCoach ? accent : undefined, fontWeight: 1000 }}>{audioCoach ? "ON" : "OFF"}</button></div>
+    {isOutdoorAdventureSport ? <OutdoorSafetyPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft}/> : null}
 
-    {activitySport === "treadmill" ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "48px 1fr", gap: 10, alignItems: "center" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>🏃‍♂️</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "MESURE TAPIS ROULANT", "TREADMILL MEASUREMENT", "MEDICIÓN CINTA")}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Priorité : tapis FTMS → footpod → vitesse manuelle. Aucun GPS nécessaire.", "Priority: FTMS treadmill → footpod → manual speed. GPS is not required.", "Prioridad: cinta FTMS → footpod → velocidad manual. No necesita GPS.")}</div></div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "VITESSE MANUELLE", "MANUAL SPEED", "VELOCIDAD MANUAL")} value={manualTreadmillSpeedKmh} suffix="km/h" min={1} max={25} step={0.5} onChange={setManualTreadmillSpeedKmh}/><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={manualTreadmillIncline} suffix="%" min={0} max={20} step={0.5} onChange={setManualTreadmillIncline}/></div><div style={{ marginTop: 8, fontSize: 8.2, color: textSoft }}>{sensorSnapshot.devices.some((device) => device.kind === "fitness-machine-treadmill" && device.connected) ? (pickLegacyBilingualText(lang, "✓ Tapis FTMS connecté : vitesse/distance/inclinaison automatiques.", "✓ FTMS treadmill connected: automatic speed/distance/incline.")) : sensorSnapshot.devices.some((device) => device.kind === "running-speed-cadence" && device.connected) ? (pickLegacyBilingualText(lang, "✓ Footpod connecté : vitesse/cadence utilisées automatiquement.", "✓ Footpod connected: speed/cadence used automatically.")) : (pickLegacyBilingualText(lang, "Mode manuel actif tant qu’aucun capteur de vitesse n’est connecté.", "Manual mode is active until a speed sensor is connected."))}</div></RunningSurface> : <div className="card" style={{ marginTop: 10, padding: 13, display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", borderRadius: 17, background: "linear-gradient(145deg,rgba(255,255,255,.035),rgba(4,6,10,.78))", boxShadow: "0 14px 28px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035)" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}14`, border: `1px solid ${accent}34`, fontSize: 22 }}>📍</div><div><div style={{ fontSize: 10.5, fontWeight: 1000 }}>{copy.gps}</div><div style={{ marginTop: 2, fontSize: 9.5, color: gpsMessage === copy.gpsReady ? "#71ff9a" : textSoft }}>{gpsMessage || copy.gpsUnknown}{accuracy ? ` · ±${Math.round(accuracy)} m` : ""}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{isNativeActivityTrackingAvailable() ? (pickLegacyLocalizedText(lang, "Android natif : le suivi continue écran éteint via service premier plan.", "Native Android: tracking continues with the screen off via foreground service.", "Android nativo: el seguimiento continúa con la pantalla apagada.")) : copy.gpsHint}</div></div><button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button></div>}
+    <RunningSurface accent={accent} style={{ marginTop: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 10, alignItems: "center" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28` }}><RunningGlyph name="voice" size={18} /></div>
+        <div>
+          <div style={{ fontSize: 10.2, fontWeight: 1000 }}>{copy.audioCoach}</div>
+          <div style={{ marginTop: 3, fontSize: 8.6, color: textSoft, lineHeight: 1.35 }}>{isOutdoorAdventureSport ? pickLegacyLocalizedText(lang, "Annonces guidage, repères et alertes utiles pendant la sortie.", "Guidance, cue and alert voice prompts during the activity.", "Anuncios de guiado, referencias y alertas durante la salida.") : isTreadmillSport ? pickLegacyLocalizedText(lang, "Annonces allure, blocs et repères sans dépendre du GPS.", "Announces pace, blocks and cues without relying on GPS.", "Anuncia ritmo, bloques y referencias sin depender del GPS.") : copy.audioCoachSub}</div>
+        </div>
+        <button className="btn" onClick={() => setAudioCoach((value) => !value)} style={{ minWidth: 58, minHeight: 36, borderColor: audioCoach ? `${accent}77` : undefined, color: audioCoach ? accent : undefined, fontWeight: 1000 }}>{audioCoach ? "ON" : "OFF"}</button>
+      </div>
+    </RunningSurface>
+
+    {isTreadmillSport ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr", gap: 10, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28` }}><RunningGlyph name="sport-treadmill" size={18} /></div><div><div style={{ fontSize: 10.2, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "MESURE TAPIS ROULANT", "TREADMILL MEASUREMENT", "MEDICIÓN CINTA")}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Priorité : tapis FTMS → footpod → vitesse manuelle.", "Priority: FTMS treadmill → footpod → manual speed.", "Prioridad: cinta FTMS → footpod → velocidad manual.")}</div></div></div><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8, marginTop: 10 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "VITESSE DE SECOURS", "FALLBACK SPEED", "VELOCIDAD DE RESPALDO")} value={manualTreadmillSpeedKmh} suffix="km/h" min={1} max={25} step={0.5} onChange={setManualTreadmillSpeedKmh}/><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={manualTreadmillIncline} suffix="%" min={0} max={20} step={0.5} onChange={setManualTreadmillIncline}/></div></RunningSurface> : <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}28` }}><RunningGlyph name="gps" size={18} /></div><div><div style={{ fontSize: 10.2, fontWeight: 1000 }}>{copy.gps}</div><div style={{ marginTop: 2, fontSize: 9.4, color: gpsMessage === copy.gpsReady ? "#71ff9a" : textSoft }}>{gpsMessage || copy.gpsUnknown}{accuracy ? ` · ±${Math.round(accuracy)} m` : ""}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{isNativeActivityTrackingAvailable() ? (pickLegacyLocalizedText(lang, "Suivi Android natif écran éteint via service premier plan.", "Native Android screen-off tracking via foreground service.", "Seguimiento Android nativo con pantalla apagada.")) : copy.gpsHint}</div></div><button className="btn" onClick={checkGps} style={{ minHeight: 36, fontSize: 8.5, fontWeight: 1000 }}>{copy.gpsCheck}</button></div></RunningSurface>}
+
     <button className="btn primary" onClick={startCountdown} style={{ width: "100%", minHeight: 58, marginTop: 10, background: accent, fontWeight: 1000, fontSize: 13 }}>▶ {copy.start} · {presetLabel(effectivePreset, lang)}</button>
-    <div style={{ marginTop: 10 }}><Section title={copy.watches}><RunningConnectionsPanel lang={lang} accent={accent} textSoft={textSoft} compact /></Section></div>
+    <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "CAPTEURS", "SENSORS", "SENSORES")}><RunningConnectionsPanel lang={lang} accent={accent} textSoft={textSoft} compact /></Section></div>
     </div>
   </div>;
 }

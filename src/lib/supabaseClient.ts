@@ -48,6 +48,7 @@ const isDev = !!import.meta.env.DEV;
 
 export const __SUPABASE_ENV__ = {
   url: SUPABASE_URL,
+  anonKey: SUPABASE_ANON_KEY,
   projectRef: CANONICAL_SUPABASE_PROJECT_REF,
   hasEnv: !!SUPABASE_URL && !!SUPABASE_ANON_KEY,
   disabledInNasMode: isSupabaseHardDisabledInNasMode(),

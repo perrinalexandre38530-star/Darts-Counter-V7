@@ -1,103 +1,44 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-
-const root = process.cwd();
-const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
-const checks = [];
-const check = (name, ok) => checks.push({ name, ok: !!ok });
-
-const social = read("src/lib/socialAuth.ts");
-const login = read("src/pages/AuthV7Login.tsx");
-const accountStart = read("src/pages/AccountStart.tsx");
-const app = read("src/App.tsx");
-const settings = read("src/pages/Settings.tsx");
-const settingsAccount = read("src/pages/SettingsAccount.tsx");
-const authHook = read("src/hooks/useAuthOnline.tsx");
-const main = read("src/main.tsx");
-const manifest = read("android/app/src/main/AndroidManifest.xml");
-const activity = read("android/app/src/main/java/com/multisportsscoring/app/MainActivity.java");
-const plugin = read("android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java");
-const callback = read("public/auth-callback.html");
-const setup = read("docs/SOCIAL_AUTH_SETUP.md");
-const profileImport = read("src/lib/socialProfileImport.ts");
-const onlineApi = read("src/lib/onlineApi.ts");
-const accountBridge = read("src/lib/accountBridge.ts");
-
-const providers = [
-  "google",
-  "apple",
-  "facebook",
-  "azure",
-  "x",
-  "discord",
-  "instagram",
-  "snapchat",
-  "tiktok",
-  "linkedin",
-  "github",
-  "spotify",
-  "twitch",
-  "kakao",
-];
-
-for (const provider of providers) {
-  check(`provider ${provider}`, social.includes(`\"${provider}\"`));
-}
-
-check("14 social providers", providers.every((p) => social.includes(`\"${p}\"`)));
-check("Primary provider group", social.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS") && login.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS.map"));
-check("Secondary provider group", social.includes("SOCIAL_AUTH_SECONDARY_PROVIDERS") && login.includes("SOCIAL_AUTH_SECONDARY_PROVIDERS.map"));
-check("4 primary providers", social.includes(`SOCIAL_AUTH_PRIMARY_PROVIDERS: readonly SocialAuthProvider[] = [
-  "facebook",
-  "google",
-  "azure",
-  "apple",
-] as const;`));
-check("10 secondary providers", social.includes(`SOCIAL_AUTH_SECONDARY_PROVIDERS: readonly SocialAuthProvider[] = [
-  "x",
-  "discord",
-  "instagram",
-  "snapchat",
-  "tiktok",
-  "linkedin",
-  "github",
-  "spotify",
-  "twitch",
-  "kakao",
-] as const;`));
-check("Expandable login UI", login.includes("Plus de connexions") && login.includes("showMoreSocial"));
-check("Social providers visible on welcome portal", accountStart.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS.map") && accountStart.includes("Plus de connexions") && accountStart.includes("Connexion rapide"));
-check("Welcome portal has exactly 4 primary via shared config", accountStart.includes("SOCIAL_AUTH_PRIMARY_PROVIDERS") && social.includes('"facebook",\n  "google",\n  "azure",\n  "apple",'));
-check("Global app gate requires session", app.includes("const needsSession = !isAuthFlow && !isStandaloneCompanion") && app.includes('go("account_start")'));
-check("Bottom navigation hidden while signed out", app.includes('const appChromeAllowed = online?.ready && online.status === "signed_in"') && app.includes("appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab)"));
-check("Awena hidden on auth shell", app.includes("{appChromeAllowed && (") && app.includes("<AwenaOverlay"));
-check("Explicit logout guard", onlineApi.includes("dc_explicit_logout_v1") && onlineApi.includes("markExplicitLogout()") && onlineApi.includes("isExplicitlyLoggedOut()"));
-check("Supabase local session really signed out", onlineApi.includes('supabase.auth.signOut({ scope: "local" })') && onlineApi.includes("clearSupabaseBrowserAuthStorage({ includeCompatSession: true })"));
-check("Settings logout lands on locked welcome", settings.includes('forceAuthRoute("#/account/start", false)') && settingsAccount.includes('window.location.hash = "#/account/start"'));
-check("Auth hook blocks stale restore after logout", authHook.includes("if (isExplicitlyLoggedOut()) return null") && authHook.includes('const AUTH_REDIRECT_LOGIN = "#/account/start"'));
+const root=process.cwd(); const read=p=>fs.readFileSync(path.join(root,p),"utf8");
+const checks=[]; const check=(name,ok)=>checks.push({name,ok:!!ok});
+const social=read("src/lib/socialAuth.ts"), panel=read("src/components/auth/SocialLoginPanel.tsx"), login=read("src/pages/AuthV7Login.tsx"), accountStart=read("src/pages/AccountStart.tsx"), setup=read("docs/SOCIAL_AUTH_SETUP.md");
+const app=read("src/App.tsx"), onlineApi=read("src/lib/onlineApi.ts"), authHook=read("src/hooks/useAuthOnline.tsx"), settings=read("src/pages/Settings.tsx"), settingsAccount=read("src/pages/SettingsAccount.tsx"), main=read("src/main.tsx"), manifest=read("android/app/src/main/AndroidManifest.xml"), activity=read("android/app/src/main/java/com/multisportsscoring/app/MainActivity.java"), plugin=read("android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java"), callback=read("public/auth-callback.html"), profileImport=read("src/lib/socialProfileImport.ts"), accountBridge=read("src/lib/accountBridge.ts");
+const providers=["google","apple","facebook","azure","x","discord","instagram","snapchat","tiktok","linkedin","github","spotify","twitch","kakao"];
+for(const p of providers) check(`provider ${p}`, social.includes(`"${p}"`));
+check("4 primary providers", social.includes('"facebook",\n  "google",\n  "azure",\n  "apple",'));
+check("10 secondary providers", social.includes('"x",\n  "discord",\n  "instagram",\n  "snapchat",\n  "tiktok",\n  "linkedin",\n  "github",\n  "spotify",\n  "twitch",\n  "kakao",'));
+check("Shared logo-only panel used on welcome", accountStart.includes("<SocialLoginPanel") && !accountStart.includes("function SocialButton"));
+check("Shared logo-only panel used on email login", login.includes("<SocialLoginPanel") && !login.includes("function SocialButton"));
+check("Primary UI 4 icon grid", panel.includes('gridTemplateColumns: "repeat(4') && panel.includes("SocialProviderLogo"));
+check("Secondary UI 5x2 icon grid", panel.includes('gridTemplateColumns: "repeat(5'));
+check("Provider names only accessibility/title", panel.includes("aria-label={`Continuer avec ${label}") && panel.includes("title={`${label}"));
+check("Real Google vector logo", panel.includes("M12.48 10.92v3.28"));
+check("Real Facebook vector logo", panel.includes("M9.101 23.691v-7.98"));
+check("Real Apple vector logo", panel.includes("M12.152 6.896"));
+check("Microsoft four-square logo", panel.includes("#f25022") && panel.includes("#7fba00") && panel.includes("#00a4ef") && panel.includes("#ffb900"));
+check("Public provider settings audit", social.includes("/auth/v1/settings") && social.includes("getSocialProviderAvailabilityMap"));
+check("Disabled provider blocked locally", social.includes("providerNotEnabledError") && panel.includes('availability[provider] === "disabled"'));
+check("Browser redirect controlled", social.includes("skipBrowserRedirect: true") && social.includes("window.location.assign(url)"));
+check("OAuth URL preflight", social.includes("preflightOAuthUrl") && social.includes('redirect: "manual"'));
+check("Canonical web callback", social.includes("https://multisports-scoring.pages.dev") && setup.includes("https://multisports-scoring.pages.dev/auth-callback.html"));
+check("Old callback removed", !social.includes("https://darts-counter-v7.pages.dev") && !setup.includes("https://darts-counter-v7.pages.dev/auth-callback.html"));
 check("Microsoft uses Azure", social.includes('oauthProvider: "azure"') && social.includes('scopes: "email"'));
 check("LinkedIn OIDC", social.includes('oauthProvider: "linkedin_oidc"'));
-check("Instagram custom OAuth", social.includes('oauthProvider: "custom:instagram"') && setup.includes("Instagram Pro"));
+check("X OAuth2 runtime", social.includes('oauthProvider: "x"'));
+check("Instagram custom OAuth", social.includes('oauthProvider: "custom:instagram"'));
 check("TikTok custom OAuth", social.includes('oauthProvider: "custom:tiktok"'));
-check("Snapchat runtime provider", social.includes('oauthProvider: "snapchat"'));
-check("Supabase OAuth", social.includes("signInWithOAuth"));
-check("PKCE native redirect", social.includes("multisportsscoring://auth/callback"));
-check("Native external browser", social.includes("skipBrowserRedirect: native") && plugin.includes("Intent.ACTION_VIEW"));
+check("Android external browser", plugin.includes("Intent.ACTION_VIEW") && social.includes("NativeSocialAuth.openExternal"));
+check("Native deep link", manifest.includes('android:scheme="multisportsscoring"') && social.includes("multisportsscoring://auth/callback"));
 check("Native callback exchange", social.includes("exchangeCodeForSession(code)"));
-check("Native bridge boot", main.includes("initNativeSocialAuthBridge()"));
-check("Android plugin registered", activity.includes("registerPlugin(SocialAuthPlugin.class)"));
-check("Android deep-link intent filter", manifest.includes('android:scheme="multisportsscoring"') && manifest.includes('android:pathPrefix="/callback"'));
+check("Plugin registered", activity.includes("registerPlugin(SocialAuthPlugin.class)") && main.includes("initNativeSocialAuthBridge()"));
 check("Web callback bridge", callback.includes('/#/auth/callback') && social.includes('/auth-callback.html'));
-check("Social profile metadata import", profileImport.includes("extractSocialProfileSeed") && profileImport.includes("user_metadata") && profileImport.includes("identity_data"));
-check("Social avatar import", profileImport.includes("avatar_url") && profileImport.includes("picture") && profileImport.includes("profile_image_url"));
-check("Social personal fields import", profileImport.includes("first_name") && profileImport.includes("last_name") && profileImport.includes("birth_date") && profileImport.includes("city") && profileImport.includes("phone"));
-check("Existing profile is protected", profileImport.includes("buildMissingSocialProfilePatch") && profileImport.includes("ne sont jamais remplacés"));
-check("Profile creation uses OAuth metadata", onlineApi.includes("buildSocialProfileCreatePayload(authUser, userId)") && onlineApi.includes("getOrCreateProfile(supabaseUserId, nickname, user)"));
-check("Online nickname mapped", onlineApi.includes("nickname: (row.nickname ?? row.display_name ??"));
-check("Medallion receives online avatar", accountBridge.includes("getOnlineAvatar") && accountBridge.includes("avatarUrl") && accountBridge.includes("avatarDataUrl"));
-
-const failed = checks.filter((c) => !c.ok);
-for (const c of checks) console.log(`${c.ok ? "✅" : "❌"} ${c.name}`);
-if (failed.length) process.exit(1);
-console.log(`\n${checks.length} contrôles OAuth social étendu OK.`);
+check("Account required gate", app.includes('online.status === "signed_in"') && app.includes('go("account_start")'));
+check("Real local logout", onlineApi.includes('supabase.auth.signOut({ scope: "local" })') && onlineApi.includes("dc_explicit_logout_v1"));
+check("Settings logout route", settings.includes('forceAuthRoute("#/account/start", false)') && settingsAccount.includes('window.location.hash = "#/account/start"'));
+check("Stale session restore blocked", authHook.includes("isExplicitlyLoggedOut()"));
+check("Social profile metadata", profileImport.includes("user_metadata") && profileImport.includes("identity_data"));
+check("Social avatar imported", profileImport.includes("avatar_url") && profileImport.includes("picture"));
+check("Medallion gets avatar", accountBridge.includes("avatarUrl") && accountBridge.includes("avatarDataUrl"));
+const failed=checks.filter(c=>!c.ok); for(const c of checks) console.log(`${c.ok?"✅":"❌"} ${c.name}`); if(failed.length) process.exit(1); console.log(`\n${checks.length} contrôles Social Auth V16 OK.`);

@@ -24,11 +24,21 @@
 
 L'écran de connexion n'affiche que les 4 principaux par défaut : Facebook, Google, Microsoft et Apple. Le bouton **Plus de connexions** déplie les 10 autres.
 
+## Audit V16 — sécurité de lancement OAuth
+
+L'application interroge désormais le point public Supabase Auth `/auth/v1/settings` avant d'ouvrir un fournisseur. Les providers désactivés sont atténués dans l'interface et un clic affiche une erreur locale claire au lieu d'ouvrir une page JSON Supabase.
+
+Le navigateur n'est plus redirigé automatiquement par `signInWithOAuth` : `skipBrowserRedirect: true` est utilisé sur Web et Android, puis MULTISPORTS SCORING vérifie l'URL OAuth avant de l'ouvrir.
+
+Sur le Web/PWA, l'URL de retour est calculée depuis `window.location.origin`; la valeur de secours officielle est `https://multisports-scoring.pages.dev`. Cela évite de renvoyer un déploiement actuel vers l'ancien domaine `darts-counter-v7.pages.dev`.
+
+**Important :** intégrer un bouton dans le code ne suffit pas à activer son OAuth. Chaque fournisseur doit disposer de ses identifiants développeur (Client ID / secret, clés Apple, etc.) puis être activé dans Supabase Authentication > Providers. Instagram et TikTok nécessitent en plus leurs providers OAuth personnalisés.
+
 ## Architecture
 
 Tous les fournisseurs passent par **Supabase Auth**. Aucun provider social n'accède directement aux sauvegardes, statistiques ou profils MULTISPORTS SCORING.
 
-Web/PWA : fournisseur → Supabase → `https://darts-counter-v7.pages.dev/auth-callback.html` → `/#/auth/callback`
+Web/PWA : fournisseur → Supabase → `https://multisports-scoring.pages.dev/auth-callback.html` → `/#/auth/callback`
 
 Android : fournisseur (navigateur système) → Supabase → `multisportsscoring://auth/callback` → échange PKCE dans l'app.
 
@@ -38,7 +48,7 @@ Après authentification, la logique existante MULTISPORTS SCORING reprend : rest
 
 Dans **Authentication → URL Configuration → Redirect URLs**, ajouter :
 
-- `https://darts-counter-v7.pages.dev/auth-callback.html`
+- `https://multisports-scoring.pages.dev/auth-callback.html`
 - `multisportsscoring://auth/callback`
 
 ## Callback fournisseur commun

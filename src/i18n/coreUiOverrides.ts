@@ -22,7 +22,7 @@ export const CORE_UI_OVERRIDES: Record<string, Record<string, string>> = {
     "settings.menu.backup": "Sauvegarde",
     "settings.menu.theme": "Thème",
     "settings.menu.audio": "Audio",
-    "settings.menu.castViewer": "Diffusion / Visionneuse",
+    "settings.menu.castViewer": "CAST / VIEWER",
     "settings.menu.advertising": "Publicité",
     "settings.menu.shop": "Boutique",
     "settings.menu.privacy": "Confidentialité & données",
