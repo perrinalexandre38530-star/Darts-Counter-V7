@@ -8,14 +8,17 @@ import { DICT } from "../i18n";
 import {
   createUiLiteralTranslator,
   getUiLiteralSourceLanguage,
+  hydrateUiLiteralTranslationCache,
   looksFrenchUiText,
   registerUiLiteralTranslationSource,
+  rememberUiLiteralTranslation,
   translateUiLiteralWithBrowser,
   warmUiLiteralTranslator,
 } from "../i18n/uiLiteralSafety";
 import { awenaTranslation } from "../awena/AwenaTranslation";
 import { registerConfigUiLiteralSources } from "../i18n/configUiLiteralRegistry";
 import { registerMonetizationUiLiteralSources } from "../i18n/monetizationUiLiteralRegistry";
+import { registerAppUiLiteralSources } from "../i18n/appUiLiteralRegistry";
 
 // -----------------------------
 // Types publics
@@ -87,7 +90,9 @@ const ALL_LANGS: Lang[] = [
 // Force type dynamique
 const DICT_ANY = DICT as any;
 
-// Register every historical Config/Setup and monetization literal before the first DOM scan.
+// Register authored UI sources application-wide before the first DOM scan.
+// The feature registries stay loaded too because they contain hand-authored EN/ES translations.
+registerAppUiLiteralSources();
 registerConfigUiLiteralSources();
 registerMonetizationUiLiteralSources();
 
@@ -129,9 +134,16 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     // Prépare immédiatement les traducteurs locaux pendant le clic utilisateur.
     // Chrome peut exiger cette activation et Android ML Kit peut télécharger le
     // modèle EN au premier usage. Le rendu statique reste disponible en secours.
+    hydrateUiLiteralTranslationCache(next);
     warmUiLiteralTranslator(next, "fr");
     warmUiLiteralTranslator(next, "en");
-    void awenaTranslation.prepare(next).catch(() => false);
+    warmUiLiteralTranslator(next, "es");
+    void Promise.all([
+      awenaTranslation.prepare(next).catch(() => false),
+      awenaTranslation.prepareBetween("fr", next).catch(() => false),
+      awenaTranslation.prepareBetween("en", next).catch(() => false),
+      awenaTranslation.prepareBetween("es", next).catch(() => false),
+    ]);
     setLangState(next);
     try {
       window.localStorage.setItem(
@@ -146,9 +158,16 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     // Warm both canonical source directions. This matters for configuration
     // screens because historical literals exist in both French and English.
+    hydrateUiLiteralTranslationCache(lang);
     warmUiLiteralTranslator(lang, "fr");
     warmUiLiteralTranslator(lang, "en");
-    if (lang !== "fr") void awenaTranslation.prepare(lang).catch(() => false);
+    warmUiLiteralTranslator(lang, "es");
+    void Promise.all([
+      awenaTranslation.prepare(lang).catch(() => false),
+      awenaTranslation.prepareBetween("fr", lang).catch(() => false),
+      awenaTranslation.prepareBetween("en", lang).catch(() => false),
+      awenaTranslation.prepareBetween("es", lang).catch(() => false),
+    ]);
   }, [lang]);
 
   // Keep the document metadata in sync with the selected language. This is
@@ -215,6 +234,8 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
         const lead = source.match(/^\s*/)?.[0] || "";
         const trail = source.match(/\s*$/)?.[0] || "";
         const applied = `${lead}${resolved.trim()}${trail}`;
+        const sourceLanguage = getUiLiteralSourceLanguage(source);
+        if (sourceLanguage) rememberUiLiteralTranslation(source, sourceLanguage, lang, resolved);
         textState.set(node, { ...state, applied, resolved: applied, resolvedLang: lang });
         if (node.nodeValue !== applied) node.nodeValue = applied;
       }).finally(() => {
@@ -234,6 +255,8 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
         const state = states?.get(attr);
         if (!state || state.source !== source) return;
         const applied = resolved.trim();
+        const sourceLanguage = getUiLiteralSourceLanguage(source);
+        if (sourceLanguage) rememberUiLiteralTranslation(source, sourceLanguage, lang, resolved);
         states?.set(attr, { ...state, applied, resolved: applied, resolvedLang: lang });
         if (el.getAttribute(attr) !== applied) el.setAttribute(attr, applied);
       }).finally(() => {

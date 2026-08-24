@@ -38,7 +38,12 @@ export type CollectibleCardId =
   | "firefighter_aero_platine"
   | "firefighter_aero_or"
   | "firefighter_aero_diamant"
-  | "firefighter_zephyr";
+  | "firefighter_zephyr_presentation"
+  | "firefighter_zephyr_bronze"
+  | "firefighter_zephyr_argent"
+  | "firefighter_zephyr_platine"
+  | "firefighter_zephyr_or"
+  | "firefighter_zephyr_diamant";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -116,8 +121,23 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_lyna_diamant", collection: "firefighter", name: "LYNA · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Éclaireuse tactique", en: "Tactical scout", es: "Exploradora táctica" }, requirements: [
     { metric: "firefighterTacticalActions", target: 200, label: { fr: "Actions tactiques réussies", en: "Successful tactical actions", es: "Acciones tácticas exitosas" } },
   ] },
-  { id: "firefighter_zephyr", collection: "firefighter", name: "ZÉPHYR", accent: "#4bc7ff", subtitle: { fr: "Experte météo & vent", en: "Weather & wind expert", es: "Experta en clima y viento" }, requirements: [
-    { metric: "firefighterWindMatches", target: 10, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
+  { id: "firefighter_zephyr_presentation", collection: "firefighter", name: "ZEPHYR", accent: "#4bc7ff", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 1, label: { fr: "Mission avec vent actif", en: "Mission with wind enabled", es: "Misión con viento activo" } },
+  ] },
+  { id: "firefighter_zephyr_bronze", collection: "firefighter", name: "ZEPHYR · BRONZE", tier: "bronze", stars: 6, accent: "#c77645", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 5, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
+  ] },
+  { id: "firefighter_zephyr_argent", collection: "firefighter", name: "ZEPHYR · ARGENT", tier: "argent", stars: 8, accent: "#c7ced8", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 15, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
+  ] },
+  { id: "firefighter_zephyr_platine", collection: "firefighter", name: "ZEPHYR · PLATINE", tier: "platine", stars: 10, accent: "#c9e7ff", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 30, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
+  ] },
+  { id: "firefighter_zephyr_or", collection: "firefighter", name: "ZEPHYR · OR", tier: "or", stars: 12, accent: "#f3c557", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 60, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
+  ] },
+  { id: "firefighter_zephyr_diamant", collection: "firefighter", name: "ZEPHYR · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Maîtresse des vents", en: "Mistress of the winds", es: "Maestra de los vientos" }, requirements: [
+    { metric: "firefighterWindMatches", target: 120, label: { fr: "Parties avec vent actif", en: "Matches with wind enabled", es: "Partidas con viento activo" } },
   ] },
   { id: "firefighter_kael_presentation", collection: "firefighter", name: "KAËL", accent: "#ff563f", subtitle: { fr: "Chef d’intervention", en: "Incident commander", es: "Jefe de intervención" }, requirements: [
     { metric: "firefighterKaelMatches", target: 1, label: { fr: "Mission terminée avec Kaël", en: "Completed mission with Kaël", es: "Misión completada con Kaël" } },

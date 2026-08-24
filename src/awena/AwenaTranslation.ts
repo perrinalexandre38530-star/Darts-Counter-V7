@@ -94,7 +94,7 @@ async function translateText(text: string, source: string, target: string): Prom
     });
     const translated = normalizeTargetTranslation(String(result?.text || clean), t);
     cache.set(key, translated);
-    if (cache.size > 2400) {
+    if (cache.size > 12000) {
       const first = cache.keys().next().value;
       if (first) cache.delete(first);
     }
@@ -116,6 +116,10 @@ async function localizeAction(action: AwenaAction, target: string): Promise<Awen
 
 export const awenaTranslation = {
   isNativeAvailable: isAndroidNative,
+
+  async prepareBetween(sourceLanguage: string, targetLanguage: string) {
+    return preparePair(sourceLanguage, targetLanguage);
+  },
 
   async prepare(targetLanguage: string) {
     const target = baseLang(targetLanguage);

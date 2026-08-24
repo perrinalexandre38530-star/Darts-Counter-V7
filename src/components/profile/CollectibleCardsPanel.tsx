@@ -36,7 +36,12 @@ import firefighterLynaArgent from "../../assets/collectible-cards/firefighter-ly
 import firefighterLynaPlatine from "../../assets/collectible-cards/firefighter-lyna-platine.webp";
 import firefighterLynaOr from "../../assets/collectible-cards/firefighter-lyna-or.webp";
 import firefighterLynaDiamant from "../../assets/collectible-cards/firefighter-lyna-diamant.webp";
-import firefighterZephyr from "../../assets/collectible-cards/firefighter-zephyr.webp";
+import firefighterZephyrPresentation from "../../assets/collectible-cards/firefighter-zephyr-presentation.webp";
+import firefighterZephyrBronze from "../../assets/collectible-cards/firefighter-zephyr-bronze.webp";
+import firefighterZephyrArgent from "../../assets/collectible-cards/firefighter-zephyr-argent.webp";
+import firefighterZephyrPlatine from "../../assets/collectible-cards/firefighter-zephyr-platine.webp";
+import firefighterZephyrOr from "../../assets/collectible-cards/firefighter-zephyr-or.webp";
+import firefighterZephyrDiamant from "../../assets/collectible-cards/firefighter-zephyr-diamant.webp";
 import firefighterBrazePresentation from "../../assets/collectible-cards/firefighter-braze-presentation.webp";
 import firefighterBrazeBronze from "../../assets/collectible-cards/firefighter-braze-bronze.webp";
 import firefighterBrazeArgent from "../../assets/collectible-cards/firefighter-braze-argent.webp";
@@ -86,7 +91,12 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_aero_platine: firefighterAeroPlatine,
   firefighter_aero_or: firefighterAeroOr,
   firefighter_aero_diamant: firefighterAeroDiamant,
-  firefighter_zephyr: firefighterZephyr,
+  firefighter_zephyr_presentation: firefighterZephyrPresentation,
+  firefighter_zephyr_bronze: firefighterZephyrBronze,
+  firefighter_zephyr_argent: firefighterZephyrArgent,
+  firefighter_zephyr_platine: firefighterZephyrPlatine,
+  firefighter_zephyr_or: firefighterZephyrOr,
+  firefighter_zephyr_diamant: firefighterZephyrDiamant,
 };
 
 type FilterId = "all" | "awena" | "firefighter" | "unlocked" | "locked";

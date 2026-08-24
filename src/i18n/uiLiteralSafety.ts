@@ -1015,6 +1015,8 @@ const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖ
 
 const ENGLISH_UI_SIGNAL = /\b(?:back|close|cancel|confirm|next|previous|player|players|team|teams|guided|full|setup|starting|checkout|input|audio|voice|board|keypad|presets|best\s+of|first\s+to|match|matches|rules|target|targets|random|shuffle|alternate|show|hide|select|selected|selection|profile|profiles|bot|bots|summary|format|home|games|stats|competition|competitions|winner|difficulty|start|continue|manual|saved|auto|custom|advanced|basic|easy|normal|hard|expert|duration|points|win|loss|draw|reset|add|remove|delete|choose|camera|phone|external|video|network|bridge|server|host|ready|loading|connect|connected|disconnected|single|double|master|training|level|sets|legs|visit|visits|darts|dart|sound|effects|settings|public|private|online|local|goal|goals|field|race|laps|turn|turns|order)\b/i;
 
+const SPANISH_UI_SIGNAL = /[ñáéíóúü¿¡]|\b(?:volver|cerrar|cancelar|confirmar|siguiente|anterior|jugador|jugadores|equipo|equipos|guiada|completa|configuración|inicio|puntuación|entrada|audio|voz|tablero|partido|partidos|reglas|objetivo|objetivos|aleatorio|seleccionar|seleccionado|selección|perfil|perfiles|resumen|formato|juegos|estadísticas|competición|competiciones|ganador|dificultad|empezar|continuar|manual|guardado|personalizado|avanzado|fácil|normal|difícil|experto|duración|puntos|victoria|derrota|empate|reiniciar|añadir|eliminar|elegir|cámara|teléfono|vídeo|servidor|anfitrión|listo|cargando|conectar|conectado|desconectado|entrenamiento|nivel|sets|legs|tirada|tiradas|dardos|sonido|efectos|ajustes|público|privado|local|gol|goles|turno|turnos|orden|publicidad|recompensa)\b/i;
+
 const PROPER_NAME_EXCEPTIONS = new Set([
   "Auvergne-Rhône-Alpes",
   "Île-de-France",
@@ -1028,6 +1030,36 @@ const PROPER_NAME_EXCEPTIONS = new Set([
   "Mölkky",
   "MÖLKKY",
   "mölkky",
+  "MULTISPORTS SCORING",
+  "Awena",
+  "AWENA",
+  "Eliaz",
+  "ELIAZ",
+  "Bleiz",
+  "BLEIZ",
+  "Nova",
+  "NOVA",
+  "Slyk",
+  "SLYK",
+  "Raven",
+  "RAVEN",
+  "Kron",
+  "KRON",
+  "AdMob",
+  "Google Play",
+  "Health Connect",
+  "Supabase",
+  "Cloudflare",
+  "Scolia",
+  "SCOLIA",
+  "GranBoard",
+  "GRANBOARD",
+  "Dartslive",
+  "DARTSLIVE",
+  "DartConnect",
+  "Strava",
+  "Garmin",
+  "YouTube",
 ]);
 
 function normalize(value: string): string {
@@ -1110,6 +1142,11 @@ export function looksEnglishUiText(value: string): boolean {
   return !!core && !PROPER_NAME_EXCEPTIONS.has(core) && ENGLISH_UI_SIGNAL.test(core);
 }
 
+export function looksSpanishUiText(value: string): boolean {
+  const core = normalize(String(value || ""));
+  return !!core && !PROPER_NAME_EXCEPTIONS.has(core) && SPANISH_UI_SIGNAL.test(core);
+}
+
 // t(...) can register the source language of a temporary fallback when a
 // selected-language dictionary does not yet contain a recent key. The text
 // remains visually normal, while the DOM safety-net knows whether it must ask
@@ -1135,7 +1172,7 @@ export function registerUiLiteralTranslation(
     registeredTargetTranslations.set(target, targetMap);
   }
   targetMap.set(core, translated);
-  if (targetMap.size > 2000) {
+  if (targetMap.size > 20000) {
     const first = targetMap.keys().next().value;
     if (first) targetMap.delete(first);
   }
@@ -1148,7 +1185,7 @@ export function registerUiLiteralTranslationSource(value: string, sourceLanguage
   registeredSourceLanguages.set(core, source);
   // Bounded cache: UI strings are finite, but avoid unbounded growth if a
   // dynamic fallback is accidentally registered.
-  if (registeredSourceLanguages.size > 4000) {
+  if (registeredSourceLanguages.size > 30000) {
     const first = registeredSourceLanguages.keys().next().value;
     if (first) registeredSourceLanguages.delete(first);
   }
@@ -1161,7 +1198,96 @@ export function getUiLiteralSourceLanguage(value: string): string | null {
   if (registered) return registered;
   if (looksFrenchUiText(core)) return "fr";
   if (looksEnglishUiText(core)) return "en";
+  if (looksSpanishUiText(core)) return "es";
   return null;
+}
+
+const UI_TRANSLATION_CACHE_PREFIX = "dc_i18n_ui_cache_v3:";
+const hydratedTranslationTargets = new Set<string>();
+const persistedTranslationBuffers = new Map<string, Map<string, readonly [string, string, number]>>();
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const MAX_PERSISTED_TRANSLATIONS_PER_LANGUAGE = 3200;
+
+function translationCacheKey(sourceLanguage: string, source: string): string {
+  return `${sourceLanguage}\u0001${normalize(source)}`;
+}
+
+function readPersistedTranslationBuffer(targetLanguage: string): Map<string, readonly [string, string, number]> {
+  const target = String(targetLanguage || "").toLowerCase().split("-")[0];
+  const existing = persistedTranslationBuffers.get(target);
+  if (existing) return existing;
+  const map = new Map<string, readonly [string, string, number]>();
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(`${UI_TRANSLATION_CACHE_PREFIX}${target}`);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) {
+        for (const row of parsed) {
+          if (!Array.isArray(row) || row.length < 4) continue;
+          const [sourceLanguage, source, translated, timestamp] = row;
+          if (typeof sourceLanguage !== "string" || typeof source !== "string" || typeof translated !== "string") continue;
+          map.set(translationCacheKey(sourceLanguage, source), [source, translated, Number(timestamp) || 0]);
+        }
+      }
+    } catch {}
+  }
+  persistedTranslationBuffers.set(target, map);
+  return map;
+}
+
+function flushPersistedTranslationBuffer(targetLanguage: string): void {
+  const target = String(targetLanguage || "").toLowerCase().split("-")[0];
+  persistTimers.delete(target);
+  if (typeof window === "undefined") return;
+  const map = persistedTranslationBuffers.get(target);
+  if (!map) return;
+  try {
+    const rows = [...map.entries()]
+      .map(([key, [source, translated, timestamp]]) => {
+        const sourceLanguage = key.split("\u0001", 1)[0] || "fr";
+        return [sourceLanguage, source, translated, timestamp] as const;
+      })
+      .sort((a, b) => Number(b[3]) - Number(a[3]))
+      .slice(0, MAX_PERSISTED_TRANSLATIONS_PER_LANGUAGE);
+    window.localStorage.setItem(`${UI_TRANSLATION_CACHE_PREFIX}${target}`, JSON.stringify(rows));
+  } catch {}
+}
+
+export function hydrateUiLiteralTranslationCache(targetLanguage: string): void {
+  const target = String(targetLanguage || "").toLowerCase().split("-")[0];
+  if (!target || hydratedTranslationTargets.has(target)) return;
+  hydratedTranslationTargets.add(target);
+  const map = readPersistedTranslationBuffer(target);
+  for (const [key, [source, translated]] of map) {
+    const sourceLanguage = key.split("\u0001", 1)[0] || "fr";
+    registerUiLiteralTranslation(source, sourceLanguage, target, translated);
+  }
+}
+
+export function rememberUiLiteralTranslation(
+  sourceValue: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+  translatedValue: string
+): void {
+  const source = normalize(String(sourceValue || ""));
+  const sourceLang = String(sourceLanguage || "").toLowerCase().split("-")[0];
+  const target = String(targetLanguage || "").toLowerCase().split("-")[0];
+  const translated = String(translatedValue || "").trim();
+  if (!source || !sourceLang || !target || sourceLang === target || !translated || translated === source) return;
+
+  registerUiLiteralTranslation(source, sourceLang, target, translated);
+  if (source.length > 700 || translated.length > 900) return;
+  const map = readPersistedTranslationBuffer(target);
+  map.set(translationCacheKey(sourceLang, source), [source, translated, Date.now()]);
+  while (map.size > MAX_PERSISTED_TRANSLATIONS_PER_LANGUAGE) {
+    const oldest = [...map.entries()].sort((a, b) => Number(a[1][2]) - Number(b[1][2]))[0]?.[0];
+    if (!oldest) break;
+    map.delete(oldest);
+  }
+  if (typeof window !== "undefined" && !persistTimers.has(target)) {
+    persistTimers.set(target, setTimeout(() => flushPersistedTranslationBuffer(target), 350));
+  }
 }
 
 type BrowserTranslatorLike = {
