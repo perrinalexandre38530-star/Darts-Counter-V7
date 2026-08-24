@@ -36,7 +36,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Foreground GPS recorder used by RUNNING PERFORMANCE.
  * The route continues to be sampled while the WebView is paused / screen is locked.
  * V19 also applies the selected battery profile and long-distance reminders natively.
- * RUNNING PERFORMANCE remains hidden from Android Store V1 until manual validation.
+ * RUNNING PERFORMANCE is released in the Android runtime with foreground GPS tracking.
  */
 public class ActivityTrackingService extends Service implements LocationListener {
     public static final String ACTION_START = "com.multisportsscoring.app.activity.START";
