@@ -80,6 +80,7 @@ import { botAvatarMediaKey, captureUserMediaFallback, hydrateStoreUserMedia, pro
 import BottomNav from "./components/BottomNav";
 import NavigationBackgroundMusic from "./components/NavigationBackgroundMusic";
 import GlobalMessengerCallBridge from "./components/GlobalMessengerCallBridge";
+import RunningActiveSessionDock from "./components/RunningActiveSessionDock";
 import SportQuickSwitch from "./components/SportQuickSwitch";
 // MONETIZATION_V1
 import { interceptMonetizedNavigation, markCompletedMatchForAds } from "./monetization/MonetizationManager";
@@ -1081,10 +1082,16 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         setMsg(`Connexion ${label} réussie ✅`);
       }
 
-      // Même logique que la connexion email : restaure les données R2 puis
-      // demande la création/liaison du profil local uniquement si nécessaire.
-      const remote = await maybeAutoRestoreCloudForSignedInUser(uid, { force: true }).catch(() => false);
-      if (remote) return true; // l'import effectif gère son propre reload
+      // AUTH FIRST : la connexion OAuth est considérée comme réussie dès que
+      // Supabase fournit une session valide. NAS/R2/profil ne doivent JAMAIS
+      // retenir l'utilisateur sur l'écran de connexion.
+      //
+      // Le hook Auth global s'occupe déjà de l'hydratation du profil. On lance
+      // seulement la restauration Cloud en arrière-plan (et elle est no-op sur
+      // Android natif hors restauration manuelle).
+      void maybeAutoRestoreCloudForSignedInUser(uid, { force: true }).catch((error) => {
+        console.warn("[auth_callback] background cloud restore skipped", error);
+      });
 
       let linked = false;
       try {
@@ -1169,8 +1176,9 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           return;
         }
 
-        try { await onlineApi.restoreSession(); } catch {}
-
+        // Ne bloque jamais le callback OAuth sur le bridge NAS/R2. Une session
+        // Supabase valide suffit pour entrer dans l'application ; l'hydratation
+        // onlineApi est déclenchée ensuite en arrière-plan par le hook Auth.
         const { data, error } = await supabase.auth.getSession();
         if (!alive) return;
 
@@ -1198,8 +1206,18 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         unsubscribe = () => sub.subscription.unsubscribe();
 
         setTimeout(() => {
-          if (alive) setMsg("Presque fini… si la connexion n'aboutit pas, reviens à l'écran de connexion et réessaie.");
+          if (alive) setMsg("Presque fini… finalisation de la session.");
         }, 900);
+
+        // Aucun callback OAuth ne doit laisser l'application bloquée indéfiniment.
+        // Si aucune session n'arrive après 12 s, on libère le pending/spinner et
+        // on revient sur la connexion avec un état propre.
+        window.setTimeout(() => {
+          if (!alive) return;
+          clearPendingSocialAuth();
+          setMsg("Le retour OAuth n'a pas finalisé la session. Réessaie la connexion.");
+          window.setTimeout(() => alive && go("auth_v7_login"), 700);
+        }, 12_000);
       } catch (e) {
         console.error("[auth_callback] fatal:", e);
         if (alive) setMsg("Erreur de connexion. Réessaie depuis l'écran de connexion.");
@@ -4357,7 +4375,7 @@ case "babyfoot_team_edit":
           ) : activeSport === "pingpong" ? (
             <PingPongStatsShell store={store} go={go} />
           ) : activeSport === "running" ? (
-            <RunningStatsPage go={go} />
+            <RunningStatsPage go={go} params={routeParams} />
           ) : (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
           );
@@ -5811,6 +5829,10 @@ case "babyfoot_team_edit":
         {/* Navigation totalement absente tant qu'aucune session n'est active. */}
         {appChromeAllowed && !HIDE_BOTTOM_NAV_TABS.has(tab) && (
           <BottomNav value={tab as any} onChange={(k: any) => go(k)} sportOverride={activeSport} />
+        )}
+
+        {appChromeAllowed && (
+          <RunningActiveSessionDock currentRoute={String(tab)} currentSport={String(activeSport || "")} go={go} />
         )}
 
         <SWUpdateBanner />

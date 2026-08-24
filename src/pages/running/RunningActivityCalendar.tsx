@@ -78,7 +78,7 @@ export default function RunningActivityCalendar({ activities, lang, accent, text
   });
   const monthLabel = new Intl.DateTimeFormat(loc, { month: "long", year: "numeric" }).format(new Date(monthTs));
 
-  return <Section title={copy.title} right={<button className="btn" onClick={() => { const now = monthStart(Date.now()); setMonthTs(now); setSelectedKey(keyOf(Date.now())); }} style={{ minHeight: 28, padding: "3px 7px", fontSize: 7.5 }}>{copy.today}</button>}>
+  return <div style={{ borderRadius: 18, padding: 10, background: "rgba(7,9,14,.975)", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 14px 34px rgba(0,0,0,.4)" }}><Section title={copy.title} right={<button className="btn" onClick={() => { const now = monthStart(Date.now()); setMonthTs(now); setSelectedKey(keyOf(Date.now())); }} style={{ minHeight: 28, padding: "3px 7px", fontSize: 7.5 }}>{copy.today}</button>}>
     <div style={{ display: "grid", gridTemplateColumns: "34px 1fr 34px", alignItems: "center", gap: 7 }}>
       <button className="btn" onClick={() => setMonthTs((value) => addMonths(value, -1))} style={{ minWidth: 34, minHeight: 34, padding: 0 }}>‹</button>
       <div style={{ textAlign: "center", fontWeight: 1000, fontSize: 11, textTransform: "uppercase", color: accent }}>{monthLabel}</div>
@@ -97,7 +97,7 @@ export default function RunningActivityCalendar({ activities, lang, accent, text
         if (!cell) return <div key={`empty-${index}`} style={{ minHeight: 48 }}/>
         const active = cell.key === selectedKey;
         const intensity = Math.min(1, cell.distanceM / maxDayDistance);
-        return <button key={cell.key} type="button" onClick={() => setSelectedKey(cell.key)} style={{ minWidth: 0, minHeight: 48, borderRadius: 10, border: `1px solid ${active ? `${accent}88` : cell.rows.length ? `${accent}2f` : "rgba(255,255,255,.06)"}`, background: cell.rows.length ? `linear-gradient(180deg,${accent}${Math.round(18 + intensity * 28).toString(16).padStart(2, "0")},rgba(255,255,255,.02))` : "rgba(255,255,255,.018)", color: "inherit", padding: "5px 2px", display: "grid", alignContent: "space-between", cursor: "pointer", boxShadow: active ? `0 0 12px ${accent}22` : "none" }}>
+        return <button key={cell.key} type="button" onClick={() => setSelectedKey(cell.key)} style={{ minWidth: 0, minHeight: 48, borderRadius: 10, border: `1px solid ${active ? `${accent}88` : cell.rows.length ? `${accent}2f` : "rgba(255,255,255,.06)"}`, background: cell.rows.length ? `linear-gradient(180deg,${accent}${Math.round(22 + intensity * 30).toString(16).padStart(2, "0")},rgba(8,10,16,.96))` : "rgba(8,10,16,.94)", color: "inherit", padding: "5px 2px", display: "grid", alignContent: "space-between", cursor: "pointer", boxShadow: active ? `0 0 12px ${accent}22` : "none" }}>
           <span style={{ fontSize: 8.5, fontWeight: 1000, color: active ? accent : undefined }}>{cell.day}</span>
           <span style={{ fontSize: 6.7, color: cell.rows.length ? accent : textSoft, fontWeight: 900 }}>{cell.rows.length ? `${(cell.distanceM / 1000).toFixed(cell.distanceM >= 10000 ? 0 : 1)}K` : "·"}</span>
         </button>;
@@ -105,12 +105,12 @@ export default function RunningActivityCalendar({ activities, lang, accent, text
     </div>
 
     <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-      {selectedRows.length ? selectedRows.map((row) => <div key={row.id} className="card" style={{ padding: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+      {selectedRows.length ? selectedRows.map((row) => <div key={row.id} className="card" style={{ padding: 9, background: "rgba(8,10,16,.96)", display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
         <div><div style={{ fontSize: 9.5, fontWeight: 1000 }}>{row.title || "RUNNING"}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8 }}>{new Intl.DateTimeFormat(loc, { hour: "2-digit", minute: "2-digit" }).format(new Date(row.startedAt))} · {formatDistance(row.distanceM)} · {formatDuration(row.elapsedMs)}</div></div>
         <div style={{ color: accent, fontSize: 9, fontWeight: 1000 }}>{formatPace(row.avgPaceSecPerKm)}/km</div>
       </div>) : <div style={{ color: textSoft, fontSize: 8.7, textAlign: "center", padding: 8 }}>{copy.empty}</div>}
     </div>
-  </Section>;
+  </Section></div>;
 }
 
 function Mini({ value, label, accent }: { value: string; label: string; accent: string }) {

@@ -21,12 +21,12 @@ import OutdoorAdventureStatsPanel from "./OutdoorAdventureStatsPanel";
 import { RunningMetricCard, RunningSurface, RunningTabs } from "./RunningUi";
 import { buildSensorSummary } from "../../activity/activitySensorInsights";
 
-type Props = { go: (route: any, params?: any) => void };
+type Props = { go: (route: any, params?: any) => void; params?: any };
 type StatsTab = "overview" | "performance" | "history" | "gear" | "sync";
 type AnalysisTab = "records" | "form" | "terrain";
 type SyncTab = "connections" | "files";
 
-export default function RunningStatsPage({ go }: Props) {
+export default function RunningStatsPage({ go, params }: Props) {
   const { theme } = useTheme();
   const { lang } = useLang() as any;
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
@@ -37,7 +37,7 @@ export default function RunningStatsPage({ go }: Props) {
   const [showAll, setShowAll] = React.useState(false);
   const [shoes, setShoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
   const [newShoeName, setNewShoeName] = React.useState("");
-  const [tab, setTab] = React.useState<StatsTab>("overview");
+  const [tab, setTab] = React.useState<StatsTab>(() => (["overview", "performance", "history", "gear", "sync"].includes(String(params?.runningStatsTab || "")) ? String(params.runningStatsTab) as StatsTab : "overview"));
   const [analysisTab, setAnalysisTab] = React.useState<AnalysisTab>("records");
   const [syncTab, setSyncTab] = React.useState<SyncTab>("connections");
 

@@ -147,6 +147,11 @@ export function getPendingSocialAuth(): { provider?: SocialAuthProvider; started
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!SOCIAL_AUTH_PROVIDERS.includes(parsed?.provider)) return null;
+    const startedAt = Number(parsed?.startedAt || 0);
+    if (startedAt > 0 && Date.now() - startedAt > 10 * 60 * 1000) {
+      localStorage.removeItem(PENDING_KEY);
+      return null;
+    }
     return parsed;
   } catch {
     return null;
@@ -360,7 +365,16 @@ async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
     const code = parsed.searchParams.get("code");
     if (!code) throw new Error("Retour OAuth reçu sans code de connexion.");
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const exchangeResult: any = await Promise.race([
+      supabase.auth.exchangeCodeForSession(code),
+      new Promise((_, reject) => {
+        window.setTimeout(
+          () => reject(new Error("Le retour OAuth Supabase n'a pas pu finaliser la session en 15 secondes.")),
+          15_000,
+        );
+      }),
+    ]);
+    const { error } = exchangeResult || {};
     if (error) throw error;
 
     saveCallbackResult({ ok: true, provider });

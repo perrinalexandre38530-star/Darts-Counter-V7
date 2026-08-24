@@ -125,7 +125,7 @@ export default function RunningPlanView({ activities, lang, accent, textSoft, on
   const adaptationReason = adaptation.reasonCode === "fatigue" ? copy.reasonFatigue : adaptation.reasonCode === "progress" ? copy.reasonProgress : adaptation.reasonCode === "missed" ? copy.reasonMissed : copy.reasonStable;
 
   return <div>
-    <div className="card" style={{ padding: 14, borderColor: `${accent}44`, background: `radial-gradient(circle at 80% 0,${accent}14,rgba(8,10,16,.78) 56%)` }}>
+    <div className="card" style={{ padding: 14, borderColor: `${accent}44`, background: `radial-gradient(circle at 80% 0,${accent}12,rgba(8,10,16,.985) 56%)` }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
         <div><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: 1 }}>{copy.active}</div><div style={{ fontWeight: 1000, fontSize: 18, marginTop: 4 }}>{goal.icon} {localeLabel(goal, lang)}</div><div style={{ color: textSoft, fontSize: 9.5, marginTop: 4 }}>{planDurationWeeks(plan.goal)} semaines · {plan.sessionsPerWeek} {copy.sessions}</div></div>
         <div style={{ minWidth: 58, textAlign: "right" }}><div style={{ color: accent, fontSize: 22, fontWeight: 1000 }}>{completion}%</div><div style={{ color: textSoft, fontSize: 8.5 }}>{copy.progress}</div></div>
@@ -160,7 +160,7 @@ export default function RunningPlanView({ activities, lang, accent, textSoft, on
       <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
         {currentWeek.sessions.map((session) => {
           const completed = planSessionCompletion(session, activities);
-          return <div key={session.id} className="card" style={{ padding: 11, display: "grid", gridTemplateColumns: "44px 1fr auto", gap: 9, alignItems: "center", borderColor: completed ? "rgba(113,255,154,.28)" : undefined }}>
+          return <div key={session.id} className="card" style={{ padding: 11, display: "grid", gridTemplateColumns: "44px 1fr auto", gap: 9, alignItems: "center", borderColor: completed ? "rgba(113,255,154,.28)" : "rgba(255,255,255,.08)", background: "rgba(8,10,16,.97)", boxShadow: "0 10px 24px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.025)" }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, display: "grid", placeItems: "center", background: completed ? "rgba(113,255,154,.1)" : `${accent}10`, border: `1px solid ${completed ? "rgba(113,255,154,.25)" : `${accent}28`}`, fontSize: 18 }}>{completed ? "✓" : session.presetId === "intervals" || session.presetId === "custom" ? "⚡" : session.presetId === "tempo" ? "🔥" : session.presetId === "long" ? "🛣️" : "🏃"}</div>
             <div><div style={{ fontSize: 10, fontWeight: 1000 }}>{session.title}</div><div style={{ fontSize: 8.8, color: textSoft, marginTop: 3 }}>{session.subtitle}</div><div style={{ fontSize: 8.5, color: textSoft, marginTop: 4 }}>{sessionDate(session.scheduledAt, lang)} · {workoutTarget(session)}</div></div>
             {completed ? <span style={{ color: "#71ff9a", fontWeight: 1000, fontSize: 8.5 }}>{copy.done}</span> : <button className="btn" onClick={() => onStart(plan, session)} style={{ minHeight: 34, fontSize: 8.5, fontWeight: 1000 }}>{copy.start}</button>}

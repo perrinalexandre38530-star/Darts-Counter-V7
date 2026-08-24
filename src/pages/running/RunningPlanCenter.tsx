@@ -76,7 +76,7 @@ export default function RunningPlanCenter({ go }: Props) {
       ) : null}
 
       {activitySport === "running" && tab === "program" ? (
-        <RunningSurface accent={accent} active>
+        <RunningSurface accent={accent} active style={{ background: "linear-gradient(180deg,rgba(8,10,16,.985),rgba(4,6,11,.975))" }}>
           <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>📈 {copy.programHint}</div>
           <RunningPlanView
             activities={activities}
@@ -89,7 +89,7 @@ export default function RunningPlanCenter({ go }: Props) {
       ) : null}
 
       {activitySport === "running" && tab === "races" ? (
-        <RunningSurface accent={accent} active>
+        <RunningSurface accent={accent} active style={{ background: "linear-gradient(180deg,rgba(8,10,16,.985),rgba(4,6,11,.975))" }}>
           <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>🏁 {copy.racesHint}</div>
           <RunningRaceCalendarView lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
         </RunningSurface>

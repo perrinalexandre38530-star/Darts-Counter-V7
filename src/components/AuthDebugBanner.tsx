@@ -44,7 +44,11 @@ export default function AuthDebugBanner() {
 
     load();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(() => load());
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // Même règle que le hook principal : aucun appel Auth async tant que
+      // le callback Supabase n'a pas rendu la main.
+      window.setTimeout(() => { void load(); }, 0);
+    });
 
     return () => {
       alive = false;

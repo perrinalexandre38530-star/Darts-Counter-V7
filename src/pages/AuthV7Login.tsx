@@ -8,6 +8,8 @@ import SocialLoginPanel from "../components/auth/SocialLoginPanel";
 import { onlineApi } from "../lib/onlineApi";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 import {
+  clearPendingSocialAuth,
+  getPendingSocialAuth,
   SOCIAL_AUTH_LABELS,
   startSocialSignIn,
   type SocialAuthProvider,
@@ -55,6 +57,47 @@ export default function AuthV7Login({ go }: Props) {
   const [canResend, setCanResend] = React.useState(false);
 
   const lastNetErrAtRef = React.useRef<number>(0);
+  const socialReturnTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (!socialBusy || typeof window === "undefined") return;
+
+    const cancelTimer = () => {
+      if (socialReturnTimerRef.current != null) {
+        window.clearTimeout(socialReturnTimerRef.current);
+        socialReturnTimerRef.current = null;
+      }
+    };
+
+    const armReturnRecovery = () => {
+      cancelTimer();
+      if (document.visibilityState !== "visible") return;
+      const pending = getPendingSocialAuth();
+      if (!pending?.provider) return;
+
+      // Le deep link Android est normalement consommé en moins d'une seconde.
+      // Si l'app est revenue au premier plan mais reste encore sur le formulaire
+      // plusieurs secondes plus tard, on libère l'UI au lieu de laisser tourner
+      // le médaillon indéfiniment.
+      socialReturnTimerRef.current = window.setTimeout(() => {
+        const stillPending = getPendingSocialAuth();
+        if (!stillPending?.provider) return;
+        clearPendingSocialAuth();
+        setSocialBusy(null);
+        setError(`Le retour ${SOCIAL_AUTH_LABELS[stillPending.provider]} n'a pas été reçu correctement. Réessaie la connexion.`);
+      }, 6_000);
+    };
+
+    window.addEventListener("focus", armReturnRecovery);
+    document.addEventListener("visibilitychange", armReturnRecovery);
+    armReturnRecovery();
+
+    return () => {
+      cancelTimer();
+      window.removeEventListener("focus", armReturnRecovery);
+      document.removeEventListener("visibilitychange", armReturnRecovery);
+    };
+  }, [socialBusy]);
 
   const showBackendUnreachable = (details?: string) => {
     const now = Date.now();
@@ -153,7 +196,7 @@ export default function AuthV7Login({ go }: Props) {
     } catch (err: any) {
       const msg = String(err?.message || err || "Connexion impossible.");
       if (looksLikeNetworkError(err)) {
-        showBackendUnreachable("Vérifie Supabase, le backend NAS/R2, le proxy Cloudflare et la connexion réseau.");
+        showBackendUnreachable("Vérifie Supabase et la connexion réseau. Le NAS/R2 n'est pas requis pour ouvrir une session publique.");
         return;
       }
       setError(msg);

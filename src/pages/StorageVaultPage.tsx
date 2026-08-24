@@ -747,6 +747,9 @@ function normalizeSummary(raw: Partial<VaultSummary> | undefined | null): VaultS
     sports: Array.isArray(s.sports) ? s.sports.map(String).filter(Boolean).slice(0, 16) : [],
     names: Array.isArray(s.names) ? s.names.map(String).filter(Boolean).slice(0, 20) : [],
     exportedAt: s.exportedAt || null,
+    matchFrom: s.matchFrom || null,
+    matchTo: s.matchTo || null,
+    x01Matches: n(s.x01Matches),
     probableContent: Array.isArray(s.probableContent) ? s.probableContent.map(String).filter(Boolean) : [],
   };
 }
@@ -1060,6 +1063,26 @@ function fmtDate(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString("fr-FR");
+}
+
+function localDateKey(value?: string | number | null): string {
+  if (value == null || value === "") return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function blockContainsExpertDate(block: StorageBlock, dateKey: string): boolean {
+  if (!dateKey) return true;
+  const summary = normalizeSummary(block.summary);
+  const fromKey = localDateKey(summary.matchFrom);
+  const toKey = localDateKey(summary.matchTo);
+  if (fromKey && toKey && dateKey >= fromKey && dateKey <= toKey) return true;
+  if (fromKey === dateKey || toKey === dateKey) return true;
+  return localDateKey(block.updatedAt || block.createdAt || null) === dateKey;
 }
 
 function join(values?: string[], fallback = "—") {
@@ -1523,8 +1546,16 @@ function TechnicalBlockCard({ block, busy, onExport }: {
         </div>
         <QualityBadge quality={q} />
       </div>
+      <div style={{ display: "grid", gap: 6, marginTop: 10, padding: 10, borderRadius: 13, border: "1px solid rgba(251,191,36,.24)", background: "rgba(251,191,36,.05)" }}>
+        <Line label="Date du bloc" value={fmtDate(block.updatedAt || block.createdAt || null)} />
+        <Line label="Parties du" value={summary.matchFrom ? fmtDate(summary.matchFrom) : "Date non détectée"} />
+        <Line label="Parties au" value={summary.matchTo ? fmtDate(summary.matchTo) : "Date non détectée"} />
+        <Line label="X01 détectées" value={summary.x01Matches || 0} />
+        {summary.sports.length ? <Line label="Modes" value={join(summary.sports)} /> : null}
+        {summary.names.length ? <Line label="Joueurs" value={join(summary.names)} /> : null}
+      </div>
       <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 8, ...wrapText }}>
-        Bloc brut détecté pour diagnostic. Il n’est pas proposé comme restauration principale.
+        Bloc brut détecté pour diagnostic. Utilise surtout les dates ci-dessus pour retrouver la bonne période avant d’exporter quoi que ce soit.
       </div>
       <div style={{ marginTop: 10 }}>
         <SummaryLines summary={summary} />
@@ -1869,6 +1900,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
+  const [expertDateFilter, setExpertDateFilter] = React.useState("");
   const [detailsState, setDetailsState] = React.useState<{ entry: SaveEntry; details?: BackupDetails | null; loading: boolean; error?: string | null } | null>(null);
   const [destinationSetup, setDestinationSetup] = React.useState<StorageDestinationId | null>(null);
   const [importedRestoreEntry, setImportedRestoreEntry] = React.useState<SaveEntry | null>(null);
@@ -2216,6 +2248,10 @@ export default function StorageVaultPage({ go }: Props) {
     });
   }, [matchBackups]);
   const technicalCount = blocks.length;
+  const filteredTechnicalBlocks = React.useMemo(
+    () => blocks.filter((block) => blockContainsExpertDate(block, expertDateFilter)),
+    [blocks, expertDateFilter],
+  );
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
     const preferred = readPreferredRemoteSource();
@@ -3833,10 +3869,25 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         {tab === "diagnostic" && (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div>Affiche les blocs bruts IndexedDB/localStorage. À utiliser uniquement pour diagnostiquer ou exporter une donnée technique.</div>}/>
+              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div>Scanne IndexedDB/localStorage et affiche maintenant la date du bloc, la période des parties détectées et le nombre de X01. Tu peux filtrer sur une journée précise avant d’exporter.</div>}/>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
                 <VaultActionButton icon="refresh" label="Scanner" disabled={busy} onClick={() => void refresh()}/>
                 <VaultActionButton icon="expert" label={showDiagnostic ? "Masquer blocs" : `Afficher ${technicalCount}`} active={showDiagnostic} onClick={() => setShowDiagnostic((v) => !v)}/>
+              </div>
+              <div style={{ marginTop: 10, border: "1px solid rgba(251,191,36,.30)", background: "rgba(251,191,36,.05)", borderRadius: 14, padding: 10 }}>
+                <label style={{ display: "grid", gap: 6, color: amber, fontWeight: 1000, fontSize: 11 }}>
+                  RECHERCHER LES BLOCS D’UNE DATE
+                  <input
+                    type="date"
+                    value={expertDateFilter}
+                    onChange={(event) => { setExpertDateFilter(event.currentTarget.value); setShowDiagnostic(true); }}
+                    style={{ width: "100%", minHeight: 42, borderRadius: 11, border: "1px solid rgba(251,191,36,.42)", background: "rgba(2,6,23,.88)", color: "#fff", padding: "8px 10px", fontWeight: 900, colorScheme: "dark" }}
+                  />
+                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
+                  <span>{expertDateFilter ? `${filteredTechnicalBlocks.length} bloc(s) compatible(s) avec cette date` : `${technicalCount} bloc(s) détecté(s)`}</span>
+                  {expertDateFilter ? <button type="button" onClick={() => setExpertDateFilter("")} style={{ ...btn, minHeight: 32, padding: "5px 9px", fontSize: 10 }}>Effacer date</button> : null}
+                </div>
               </div>
             </div>
             <div style={{ ...panel, padding: 11 }}>
@@ -3854,7 +3905,14 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                 </div>
               </div>
             </div>
-            {showDiagnostic ? blocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy || restoreRunning} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : null}
+            {showDiagnostic ? (
+              filteredTechnicalBlocks.length ? filteredTechnicalBlocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy || restoreRunning} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : (
+                <div style={{ ...panel, padding: 14, borderColor: "rgba(251,191,36,.28)", color: "#fff" }}>
+                  <strong style={{ color: amber }}>Aucun bloc trouvé pour cette date.</strong>
+                  <div style={{ color: muted, fontSize: 11.5, marginTop: 5 }}>Essaie d’effacer le filtre pour vérifier les dates voisines ou les blocs dont la date interne n’a pas pu être détectée.</div>
+                </div>
+              )
+            ) : null}
           </div>
         )}
       </div>

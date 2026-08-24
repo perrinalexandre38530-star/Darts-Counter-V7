@@ -709,39 +709,59 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        const { data } = supabase.auth.onAuthStateChange(async () => {
-          try {
-            if (!alive) return;
+        const { data } = supabase.auth.onAuthStateChange((event, emittedSession) => {
+          // IMPORTANT — SUPABASE AUTH LOCK:
+          // Ne JAMAIS lancer getSession/getUser/from()/restoreSession() directement
+          // dans ce callback. supabase-js peut conserver son verrou Auth tant que le
+          // callback n'est pas revenu, ce qui bloque ensuite exchangeCodeForSession(),
+          // signInWithPassword() et tous les appels Supabase suivants.
+          if (!alive) return;
 
-            // Résout toujours la session par onlineApi : NAS prioritaire quand il répond,
-            // Supabase de secours avec l'identifiant canonique quand le NAS est indisponible.
-            const resolvedSession = await safeGetSession();
-            if (!alive) return;
-
-            if (!resolvedSession?.user) {
-              lastSignedInSessionRef.current = null;
-              applyAuthFromSession(setState, null);
-              return;
-            }
-
-            lastSignedInSessionRef.current = resolvedSession;
-            applyAuthFromSession(setState, resolvedSession);
-
-            const nextUser = resolvedSession.user;
-            tryBridgeLocalProfile(nextUser, null);
-            safeLoadProfileBestEffort(nextUser).then((profile) => {
-              if (!alive) return;
-              setState((state) => {
-                if (!state.user || state.user.id !== nextUser.id) return state;
-                return { ...state, profile };
-              });
-              tryBridgeLocalProfile(nextUser, profile);
-              void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
-            });
-          } catch (e) {
-            console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
-            setState((state) => ({ ...state, loading: false, ready: true }));
+          if (event === "SIGNED_OUT" || !emittedSession?.user) {
+            lastSignedInSessionRef.current = null;
+            applyAuthFromSession(setState, null);
+            return;
           }
+
+          // La session fournie par l'événement suffit pour déverrouiller l'UI
+          // immédiatement. Le profil/NAS/R2 est du post-traitement best-effort.
+          lastSignedInSessionRef.current = emittedSession;
+          applyAuthFromSession(setState, emittedSession);
+          tryBridgeLocalProfile(emittedSession.user, null);
+
+          // Sort explicitement du callback Auth AVANT tout nouvel appel Supabase.
+          window.setTimeout(() => {
+            void (async () => {
+              try {
+                if (!alive) return;
+
+                // Résout ensuite l'identité canonique / éventuel bridge NAS,
+                // maintenant que le verrou Auth Supabase a été libéré.
+                const resolvedSession = await safeGetSession();
+                if (!alive) return;
+
+                const nextSession = resolvedSession?.user ? resolvedSession : emittedSession;
+                const nextUser = nextSession?.user ?? null;
+                if (!nextUser) return;
+
+                lastSignedInSessionRef.current = nextSession;
+                applyAuthFromSession(setState, nextSession);
+                tryBridgeLocalProfile(nextUser, null);
+
+                const profile = await safeLoadProfileBestEffort(nextUser);
+                if (!alive) return;
+                setState((state) => {
+                  if (!state.user || state.user.id !== nextUser.id) return state;
+                  return { ...state, profile };
+                });
+                tryBridgeLocalProfile(nextUser, profile);
+                void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
+              } catch (e) {
+                console.warn("[useAuthOnline] deferred auth-state hydration error:", e);
+                if (alive) setState((state) => ({ ...state, loading: false, ready: true }));
+              }
+            })();
+          }, 0);
         });
 
         supaSubscription = data?.subscription ?? null;

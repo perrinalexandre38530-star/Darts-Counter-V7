@@ -27,6 +27,12 @@ export type VaultSummary = {
   sports: string[];
   names: string[];
   exportedAt?: string | null;
+  /** Première date de partie réellement détectée dans ce bloc. */
+  matchFrom?: string | null;
+  /** Dernière date de partie réellement détectée dans ce bloc. */
+  matchTo?: string | null;
+  /** Nombre de parties X01 détectées dans ce bloc. */
+  x01Matches?: number;
   probableContent: string[];
 };
 
@@ -212,6 +218,63 @@ function historyRowsFromSnapshot(snapshot: any): any[] {
   return [];
 }
 
+function parseMatchTimestamp(value: any): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 0 && value < 10_000_000_000 ? value * 1000 : value;
+    return ms >= 946684800000 && ms <= 4102444800000 ? ms : null;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{10,13}$/.test(raw)) return parseMatchTimestamp(Number(raw));
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) && ms >= 946684800000 && ms <= 4102444800000 ? ms : null;
+}
+
+function matchPlayedAt(match: any): number | null {
+  if (!match || typeof match !== "object") return null;
+  // createdAt/startedAt représentent le mieux le jour où la partie a été jouée.
+  // Les champs de fin restent des replis pour les anciens formats.
+  const candidates = [
+    match.createdAt,
+    match.startedAt,
+    match.date,
+    match.playedAt,
+    match.finishedAt,
+    match.endedAt,
+    match.completedAt,
+    match.updatedAt,
+    match.savedAt,
+    match?.summary?.createdAt,
+    match?.summary?.startedAt,
+    match?.summary?.finishedAt,
+    match?.payload?.createdAt,
+    match?.payload?.startedAt,
+    match?.payload?.finishedAt,
+  ];
+  for (const value of candidates) {
+    const ms = parseMatchTimestamp(value);
+    if (ms != null) return ms;
+  }
+  return null;
+}
+
+function isX01Match(match: any): boolean {
+  const labels = [
+    match?.mode,
+    match?.kind,
+    match?.gameMode,
+    match?.game?.mode,
+    match?.summary?.mode,
+    match?.payload?.mode,
+    match?.payload?.kind,
+    match?.payload?.game?.mode,
+  ]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+  return labels.some((value) => value === "x01" || value.startsWith("x01_") || value.includes("x01"));
+}
+
 function telemetryArrayLength(value: any): number {
   if (Array.isArray(value)) return value.length;
   if (value && typeof value === "object") return Object.keys(value).length;
@@ -298,6 +361,9 @@ export function summarizeVaultPayload(value: any): VaultSummary {
   let dataImages = 0;
   let keys = 0;
   let exportedAt: string | null = null;
+  let matchFromMs = Number.POSITIVE_INFINITY;
+  let matchToMs = 0;
+  let x01Matches = 0;
 
   const walk = (node: any, path = "") => {
     if (node == null) return;
@@ -402,6 +468,15 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     : [];
   const canonicalMatches = historyMatches.length > 0 ? historyMatches : directRootMatches;
 
+  for (const match of canonicalMatches) {
+    const playedAt = matchPlayedAt(match);
+    if (playedAt != null) {
+      matchFromMs = Math.min(matchFromMs, playedAt);
+      matchToMs = Math.max(matchToMs, playedAt);
+    }
+    if (isX01Match(match)) x01Matches += 1;
+  }
+
   // Le nombre de parties provient exclusivement des lignes d'historique
   // canoniques (ou, à défaut, d'un tableau racine de vrais matchs).
   // Les volées, fléchettes et tableaux de télémétrie imbriqués ne sont
@@ -456,6 +531,9 @@ export function summarizeVaultPayload(value: any): VaultSummary {
     sports,
     names,
     exportedAt,
+    matchFrom: Number.isFinite(matchFromMs) ? new Date(matchFromMs).toISOString() : null,
+    matchTo: matchToMs > 0 ? new Date(matchToMs).toISOString() : null,
+    x01Matches,
     probableContent: Array.from(probable),
   };
 }
@@ -726,7 +804,17 @@ export async function scanLocalStorageAndIndexedDb(): Promise<StorageBlock[]> {
     recoverable: true,
     summary: slot.summary || summarizeVaultPayload(slot.payload),
   }));
-  return [...slotBlocks, ...ls, ...idb].sort((a, b) => (b.summary.matches + b.summary.profiles) - (a.summary.matches + a.summary.profiles));
+  return [...slotBlocks, ...ls, ...idb].sort((a, b) => {
+    const timeOf = (block: StorageBlock) => {
+      const matchTime = Date.parse(String(block.summary?.matchTo || ""));
+      if (Number.isFinite(matchTime)) return matchTime;
+      const blockTime = Date.parse(String(block.updatedAt || block.createdAt || ""));
+      return Number.isFinite(blockTime) ? blockTime : 0;
+    };
+    const byDate = timeOf(b) - timeOf(a);
+    if (byDate) return byDate;
+    return (b.summary.matches + b.summary.profiles) - (a.summary.matches + a.summary.profiles);
+  });
 }
 
 export function decodeMaybeCompressedNasPayload(payload: any): any {
