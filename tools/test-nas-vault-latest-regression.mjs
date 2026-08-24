@@ -18,5 +18,9 @@ assert(page.includes('id: "latest"'), 'Le courant créé après /sync/push porte
 assert(page.includes('entry.latest || entry.quality.grade === "complete"'), 'Le courant NAS confirmé reste affiché même si son résumé est incomplet');
 assert(vault.includes('summary: summarizeVaultPayload(decoded)'), 'Le fallback /sync/pull reconstruit un résumé au lieu de masquer le courant');
 assert(nasApi.includes('une sauvegarde NAS ne doit JAMAIS déclencher'), 'Le push NAS ne déclenche plus de copie R2 implicite');
+assert(!page.includes('const canUsePrivateNas = !isPublicSupabaseVaultAuth'), 'La restauration NAS n’est plus masquée par une session Supabase publique/hybride');
+assert(page.includes('privateNasCapability.authorized || founderNasSelected'), 'Le NAS fondateur reste visible pendant la restauration du bridge privé');
+assert(page.includes('getPrivateNasCapability?.({ force: true })'), 'La sélection NAS revérifie le droit fondateur avant restauration');
+assert(page.includes('switchAccountInfrastructure?.("nas")'), 'Le bridge NAS est recréé automatiquement si nécessaire');
 
 console.log('\n✅ NAS VAULT FRONTEND / NO-DISAPPEAR REGRESSION OK');

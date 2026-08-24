@@ -1898,16 +1898,64 @@ export default function StorageVaultPage({ go }: Props) {
       (auth.session as any)?.degradedMode === true,
   }), [auth.session, auth.user, auth.userId]);
 
-  const canUsePrivateNas = !isPublicSupabaseVaultAuth(currentAuthForVault) && Boolean(
-    readAuthTokenFromObject(currentAuthForVault) || readNasAccessToken()
-  );
+  const [privateNasCapability, setPrivateNasCapability] = React.useState<{ checked: boolean; authorized: boolean }>({ checked: false, authorized: false });
+  const founderNasSelected = storagePrefs.selectedDestination === "founder_nas";
+  const hasNasAccessToken = Boolean(readNasAccessToken());
+
+  // Le compte fondateur reste authentifié publiquement via Supabase (Google/email)
+  // même lorsque ses sauvegardes privées utilisent le NAS. L'ancien test
+  // !isPublicSupabaseVaultAuth(...) masquait donc à tort la restauration NAS
+  // après la refonte de l'authentification sociale. Le droit réel est contrôlé
+  // par /auth/supabase/nas-capability et le bridge NAS côté serveur.
+  const canUsePrivateNas = hasNasAccessToken || privateNasCapability.authorized || founderNasSelected;
 
   React.useEffect(() => {
-    if (canUsePrivateNas) return;
+    let alive = true;
+    if (!auth.userId && !auth.user) {
+      setPrivateNasCapability({ checked: true, authorized: false });
+      return () => { alive = false; };
+    }
+
+    void import("../lib/onlineApi").then(async (mod: any) => {
+      const capability = await mod?.onlineApi?.getPrivateNasCapability?.();
+      if (!alive) return;
+      setPrivateNasCapability({
+        checked: capability?.checked !== false,
+        authorized: capability?.authorized === true,
+      });
+    }).catch(() => {
+      if (alive) setPrivateNasCapability((current) => ({ ...current, checked: false }));
+    });
+
+    return () => { alive = false; };
+  }, [auth.userId, auth.user]);
+
+  React.useEffect(() => {
+    // Une préférence NAS fondateur valide ne doit jamais être remplacée par R2
+    // simplement parce que le bridge est encore en cours de restauration.
+    if (canUsePrivateNas || founderNasSelected || !privateNasCapability.checked) return;
     if (backupProvider === "nas") setBackupProvider("cloud");
     if (restoreSource === "nas") setRestoreSource("cloud");
     if (readPreferredRemoteSource() === "nas") writePreferredRemoteSource("cloud");
-  }, [canUsePrivateNas, backupProvider, restoreSource]);
+  }, [canUsePrivateNas, founderNasSelected, privateNasCapability.checked, backupProvider, restoreSource]);
+
+  React.useEffect(() => {
+    // Au redémarrage, la préférence peut encore être NAS alors que la session
+    // React vient juste d'être reconstruite depuis Supabase. On recrée alors le
+    // bridge NAS automatiquement au lieu de faire disparaître la source.
+    if (!founderNasSelected || hasNasAccessToken || !(accountScopeId || auth.userId || auth.user)) return;
+    let alive = true;
+    void import("../lib/onlineApi").then(async (mod: any) => {
+      const capability = await mod?.onlineApi?.getPrivateNasCapability?.({ force: true });
+      if (!alive) return;
+      setPrivateNasCapability({ checked: capability?.checked !== false, authorized: capability?.authorized === true });
+      if (capability?.authorized === true) {
+        await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
+        if (alive) await auth.refresh?.();
+      }
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [founderNasSelected, hasNasAccessToken, accountScopeId, auth.userId, auth.user, auth.refresh]);
 
   const ensureVaultNasToken = React.useCallback(() => {
     const token = persistNasAuthForVault(currentAuthForVault);
@@ -2571,10 +2619,32 @@ ${label}`)) return;
 
   const selectRemoteRestoreSource = async (provider: BackupProvider) => {
     lastUserActionAtRef.current = Date.now();
-    if (provider === "nas" && !canUsePrivateNas) {
+
+    if (provider === "nas" && !readNasAccessToken()) {
+      try {
+        const mod: any = await import("../lib/onlineApi");
+        const capability = await mod?.onlineApi?.getPrivateNasCapability?.({ force: true });
+        setPrivateNasCapability({
+          checked: capability?.checked !== false,
+          authorized: capability?.authorized === true,
+        });
+        if (capability?.authorized !== true) {
+          setMessage("Le NAS privé n’est pas autorisé pour ce compte. Cloud R2, cet appareil et les fichiers personnels restent disponibles.");
+          return;
+        }
+        await mod?.onlineApi?.switchAccountInfrastructure?.("nas");
+        await auth.refresh?.();
+      } catch (error: any) {
+        setMessage(`Connexion au NAS privé impossible : ${error?.message || error}`);
+        return;
+      }
+    }
+
+    if (provider === "nas" && !canUsePrivateNas && !readNasAccessToken()) {
       setMessage("Le NAS privé n’est pas disponible pour ce compte. Utilise Cloud R2, cet appareil ou un fichier personnel.");
       return;
     }
+
     writePreferredRemoteSource(provider);
     setBackupProvider(provider);
     setRestoreSource(provider);
