@@ -311,10 +311,10 @@ export default function BottomNav({
 
   const tabs: NavItem[] = sportLc === "running"
     ? [
-        { k: "home", label: tr("Accueil", "Home", "Inicio"), icon: <Icon name="home" /> },
+        { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
         {
           k: "games",
-          label: tr("Courir", "Run", "Correr"),
+          label: t("nav.run", tr("Courir", "Run", "Correr")),
           icon: (
             <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="15.5" cy="4.5" r="2" />
@@ -323,29 +323,29 @@ export default function BottomNav({
             </svg>
           ),
         },
-        { k: "running_plan", label: tr("Plan", "Plan", "Plan"), icon: <Icon name="running_plan" /> },
+        { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="running_plan" /> },
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "profiles", label: tr("Profil", "Profile", "Perfil"), icon: <Icon name="profiles" /> },
+        { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
       ]
     : [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
 
         ...(hideOnline ? [] : [
-          { k: "messages", label: tr("Messages", "Messages", "Mensajes"), icon: <Icon name="messages" /> },
+          { k: "messages", label: t("nav.messages", tr("Messages", "Messages", "Mensajes")), icon: <Icon name="messages" /> },
         ]),
 
         { k: "profiles", label: t("nav.profiles", tr("Profils", "Profiles", "Perfiles")), icon: <Icon name="profiles" /> },
         { k: "games", label: t("nav.games", tr("Jeux", "Games", "Juegos")), icon: <Icon name="games" /> },
-        { k: "tournaments", label: tr("Compétitions", "Competitions", "Competiciones"), icon: <Icon name="tournaments" /> },
+        { k: "tournaments", label: t("nav.competitions", tr("Compétitions", "Competitions", "Competiciones")), icon: <Icon name="tournaments" /> },
 
         ...(hideOnline ? [] : [
-          { k: "online", label: "Online", icon: <Icon name="friends" /> },
+          { k: "online", label: t("nav.online", tr("En ligne", "Online", "En línea")), icon: <Icon name="friends" /> },
         ]),
 
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
-        { k: "cast_host", label: tr("Écrans", "Screens", "Pantallas"), icon: <Icon name="cast_host" /> },
+        { k: "cast_host", label: t("nav.screens", tr("Écrans", "Screens", "Pantallas")), icon: <Icon name="cast_host" /> },
       ];
 
   const tap = (k: NavItem["k"]) => {

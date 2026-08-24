@@ -17,6 +17,7 @@ import { installPlayerNameTypography } from "./lib/playerNameTypography";
 import { isCapacitorNativeRuntime } from "./lib/nativePlatform";
 import { ensureNativeAdMobReady } from "./monetization/nativeAdMob";
 import { isGameplayRuntime, isRuntimeHidden, scheduleRuntimeIdle } from "./lib/runtimePerformance";
+import { initNativeSocialAuthBridge } from "./lib/socialAuth";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
@@ -27,6 +28,11 @@ if (isCapacitorNativeRuntime()) {
   void ensureNativeAdMobReady().then((status) => {
     try { (window as any).__mscAdMobStatus = status; } catch {}
   });
+}
+
+// OAuth Google/Facebook/X/Discord : écoute le deep link de retour Android.
+if (isCapacitorNativeRuntime()) {
+  initNativeSocialAuthBridge();
 }
 
 // Police dédiée aux noms des joueurs, appliquée globalement sur tous les écrans.

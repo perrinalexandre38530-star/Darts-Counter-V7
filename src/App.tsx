@@ -123,6 +123,8 @@ import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
+import { clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, peekSocialAuthCallbackResult, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
+import { maybeAutoRestoreCloudForSignedInUser } from "./lib/cloudAutoRestore";
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -1054,10 +1056,79 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 
   React.useEffect(() => {
     let alive = true;
+    let unsubscribe: (() => void) | null = null;
+
+    const finishSocialLanding = async (session: any) => {
+      const uid = String(session?.user?.id || "").trim();
+      const pending = getPendingSocialAuth();
+      const callbackResult = consumeSocialAuthCallbackResult();
+      const provider = (callbackResult?.provider || pending?.provider || "") as keyof typeof SOCIAL_AUTH_LABELS;
+      const socialFlow = !!provider || /(?:\?|&)social=1(?:&|$)/.test(String(window.location.hash || ""));
+
+      if (callbackResult && !callbackResult.ok) {
+        clearPendingSocialAuth();
+        if (!alive) return true;
+        setMsg(callbackResult.message || "La connexion sociale a échoué.");
+        window.setTimeout(() => alive && go("auth_v7_login"), 1200);
+        return true;
+      }
+
+      if (!socialFlow || !uid) return false;
+
+      clearPendingSocialAuth();
+      if (alive) {
+        const label = provider && SOCIAL_AUTH_LABELS[provider] ? SOCIAL_AUTH_LABELS[provider] : "sociale";
+        setMsg(`Connexion ${label} réussie ✅`);
+      }
+
+      // Même logique que la connexion email : restaure les données R2 puis
+      // demande la création/liaison du profil local uniquement si nécessaire.
+      const remote = await maybeAutoRestoreCloudForSignedInUser(uid, { force: true }).catch(() => false);
+      if (remote) return true; // l'import effectif gère son propre reload
+
+      let linked = false;
+      try {
+        const store = (window as any)?.__appStore?.store ?? null;
+        const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+        linked = profiles.some((p: any) => String((p?.privateInfo || {})?.onlineUserId || "") === uid);
+      } catch {}
+
+      if (!linked) {
+        try { localStorage.setItem("dc_nas_profile_onboarding_uid", uid); } catch {}
+        if (alive) {
+          go("profiles", {
+            view: "locals",
+            nasProfileOnboarding: true,
+            autoCreate: true,
+            returnTo: { tab: "profiles", params: { view: "me" } },
+          });
+        }
+        return true;
+      }
+
+      if (alive) go("gameSelect");
+      return true;
+    };
 
     (async () => {
       try {
-        // ✅ NEW: capture session from Supabase email links (PKCE code or implicit tokens)
+        // Erreur OAuth web (refus utilisateur, provider mal configuré, etc.).
+        try {
+          const hash = String(window.location.hash || "");
+          const query = hash.includes("?") ? hash.split("?")[1] : "";
+          const sp = new URLSearchParams(query);
+          const oauthError = sp.get("error_description") || sp.get("error");
+          if (oauthError && (getPendingSocialAuth() || sp.get("social") === "1")) {
+            clearPendingSocialAuth();
+            if (alive) {
+              setMsg(decodeURIComponent(oauthError));
+              window.setTimeout(() => alive && go("auth_v7_login"), 1200);
+            }
+            return;
+          }
+        } catch {}
+
+        // Capture session from Supabase email/social links (PKCE code or implicit tokens).
         try {
           const href = String(window.location.href || "");
           const u = new URL(href);
@@ -1069,69 +1140,75 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           })();
           const code = fromSearch || fromHashQuery;
 
-          // PKCE flow: exchange code -> session
           if (code) {
-            await supabase.auth.exchangeCodeForSession(code);
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) throw error;
           } else {
-            // Implicit flow: tokens can be in hash
             const h = String(u.hash || "").replace(/^#/, "");
             const qs = h.includes("?") ? h.split("?")[1] : h;
             const sp = new URLSearchParams(qs);
             const access_token = sp.get("access_token");
             const refresh_token = sp.get("refresh_token");
             if (access_token && refresh_token) {
-              await supabase.auth.setSession({ access_token, refresh_token });
+              const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+              if (error) throw error;
             }
           }
         } catch (e) {
           console.warn("[auth_callback] session parse/exchange failed", e);
         }
 
-        try {
-          await onlineApi.restoreSession();
-        } catch {}
+        const earlyCallbackResult = peekSocialAuthCallbackResult();
+        if (earlyCallbackResult && !earlyCallbackResult.ok) {
+          consumeSocialAuthCallbackResult();
+          clearPendingSocialAuth();
+          if (alive) {
+            setMsg(earlyCallbackResult.message || "La connexion sociale a échoué.");
+            window.setTimeout(() => alive && go("auth_v7_login"), 1200);
+          }
+          return;
+        }
+
+        try { await onlineApi.restoreSession(); } catch {}
 
         const { data, error } = await supabase.auth.getSession();
         if (!alive) return;
 
         if (error) {
           console.error("[auth_callback] getSession error:", error);
-          setMsg("Erreur de connexion. Ouvre le DERNIER email reçu et réessaie.");
+          setMsg("Erreur de connexion. Réessaie depuis l'écran de connexion.");
           return;
         }
 
         if (data?.session) {
-          try {
-            window.location.hash = "#/online";
-          } catch {}
+          if (await finishSocialLanding(data.session)) return;
+          try { window.location.hash = "#/online"; } catch {}
           go("online");
           return;
         }
 
         const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-          if (session) {
-            try {
-              window.location.hash = "#/online";
-            } catch {}
-            go("online");
-          }
+          if (!session) return;
+          void (async () => {
+            if (await finishSocialLanding(session)) return;
+            try { window.location.hash = "#/online"; } catch {}
+            if (alive) go("online");
+          })();
         });
+        unsubscribe = () => sub.subscription.unsubscribe();
 
         setTimeout(() => {
-          if (alive) {
-            setMsg("Presque fini… si ça bloque : ouvre le DERNIER email reçu (les anciens liens expirent).");
-          }
+          if (alive) setMsg("Presque fini… si la connexion n'aboutit pas, reviens à l'écran de connexion et réessaie.");
         }, 900);
-
-        return () => sub.subscription.unsubscribe();
       } catch (e) {
         console.error("[auth_callback] fatal:", e);
-        if (alive) setMsg("Erreur de connexion. Réessaie avec le DERNIER email reçu.");
+        if (alive) setMsg("Erreur de connexion. Réessaie depuis l'écran de connexion.");
       }
     })();
 
     return () => {
       alive = false;
+      try { unsubscribe?.(); } catch {}
     };
   }, [go]);
 
@@ -1143,7 +1220,6 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
     </div>
   );
 }
-
 /* --------------------------------------------
    ✅ NEW: FORGOT PASSWORD (REQUEST EMAIL)
 -------------------------------------------- */

@@ -1013,7 +1013,7 @@ const EN_FRAGMENT_RULES: Array<[RegExp, string]> = [
 
 const FRENCH_SIGNAL = /[àâäçéèêëîïôöùûüœÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŒ]|\b(?:retour|fermer|annuler|valider|suivant|précédent|joueur|joueurs|équipe|équipes|partie|parties|manche|manches|volée|volées|fléchette|fléchettes|règles|objectif|cible|cibles|victoire|victoires|défaite|défaites|vainqueur|statistiques|historique|profil|profils|préférences|paramètres|réglages|langue|thème|compte|sauvegarde|connexion|déconnexion|chargement|erreur|impossible|sélection|choisir|créer|supprimer|modifier|ajouter|démarrer|lancer|arrêter|reprendre|continuer|quitter|aucun|aucune|durée|moyenne|meilleur|meilleure|série|réussite|échec|raté|terminé|fumée|feu|menace|territoire|afficher|changer|nouveau|nouvelle|seulement|simuler|prochain|prochains|couverture|groupe|résumé|détails|année|résultats|évolution|débutant|intermédiaire|difficile|facile|légende|confirmé|défaut|téléphone|actualité|repêchage|proximité|période|événements|personnalisé|publicité|région|méthode|mot de passe|adresse email|aléatoire|éliminé|élimination|réinitialiser|connecté|cumulé|intensité|rafraîchir|sécurité|gagné|remporté|récupération|reçue|envoyé|prénom|récapitulatif|répondre|télécharger|validé|caméra|bientôt|définir|planifier|pièce jointe|actions spéciales|calibration|jouées|partagé|utilisateur|tournoi|jeux|amis|ami|envoyer|ouvrir|mots de passe|nom|publier|recherche|temps|feuilles|mettre|corbeille|masquer|liste|restant|confirmer|valide|corrige|camps|buts|saisie|tous|toutes|comprendre|valeurs|appareil|membres|messagerie|groupes|retirer|assigne|clique|bruitages|voix|sortie|depart|départ|manuel|manuelle|manuelles|enregistrée|enregistrées|enregistree|enregistrees|individuel|individuels|duel|actuelle|alterne|alterné|prolongation|gardien|coeur|cœur|vies|numero|numéro|proteger|protéger|degats|dégâts|fumees|fumées|regions|régions|deroule|déroulé|masques|masqués|prets|prêts|reussir|réussir|recupere|récupère|cote|côté|boules|quilles|navires|foyers|protections|relier|calibrer|comptage|externe|sondage|parcours|penalite|pénalité|sequence|séquence|conquete|conquête|tolerance|tolérance|personnaliser|propagation|brigade|croissance|usure|jauge|gage|gages|punition|multiplicateur|limite|fuyard|chasseur|poursuite|attaque|defense|défense|taxe|variante|principe|affiche|vitesse)\b/i;
 
-const ENGLISH_UI_SIGNAL = /\b(?:back|close|cancel|confirm|next|previous|player|players|team|teams|guided|full|setup|starting|checkout|input|audio|voice|board|keypad|presets|best\s+of|first\s+to|match|matches|rules|target|targets|random|shuffle|alternate|show|hide|select|selected|selection|profile|profiles|bot|bots|summary|format|home|games|stats|competition|competitions|winner|difficulty|start|continue|manual|saved|auto|custom|advanced|basic|easy|normal|hard|expert|duration|points|win|loss|draw|reset|add|remove|delete|choose|camera|phone|external|video|network|bridge|server|host|ready|loading|connect|connected|disconnected|single|double|master|training|level|sets|legs|visit|visits|darts|dart|sound|effects|settings|public|private|online|local|goal|goals|field|race|laps|turn|turns|order)\b/i;
+const ENGLISH_UI_SIGNAL = /\b(?:back|close|cancel|confirm|next|previous|player|players|team|teams|guided|full|setup|starting|checkout|input|audio|voice|board|keypad|presets|best\s+of|first\s+to|match|matches|rules|target|targets|random|shuffle|alternate|show|hide|select|selected|selection|profile|profiles|bot|bots|summary|format|home|games|stats|competition|competitions|winner|difficulty|start|continue|manual|saved|auto|custom|advanced|basic|easy|normal|hard|expert|duration|points|win|loss|draw|reset|add|remove|delete|choose|camera|phone|external|video|network|bridge|server|host|ready|loading|connect|connected|disconnected|single|double|master|training|level|sets|legs|visit|visits|darts|dart|sound|effects|settings|public|private|online|local|goal|goals|field|race|laps|turn|turns|order|language|languages|sport|sports|selection|sync|sharing|share|screen|screens|store|privacy|data|advertising|message|messages|competition|competitions|theme|account|backup|viewer|cast|statistics|history)\b/i;
 
 const SPANISH_UI_SIGNAL = /[ñáéíóúü¿¡]|\b(?:volver|cerrar|cancelar|confirmar|siguiente|anterior|jugador|jugadores|equipo|equipos|guiada|completa|configuración|inicio|puntuación|entrada|audio|voz|tablero|partido|partidos|reglas|objetivo|objetivos|aleatorio|seleccionar|seleccionado|selección|perfil|perfiles|resumen|formato|juegos|estadísticas|competición|competiciones|ganador|dificultad|empezar|continuar|manual|guardado|personalizado|avanzado|fácil|normal|difícil|experto|duración|puntos|victoria|derrota|empate|reiniciar|añadir|eliminar|elegir|cámara|teléfono|vídeo|servidor|anfitrión|listo|cargando|conectar|conectado|desconectado|entrenamiento|nivel|sets|legs|tirada|tiradas|dardos|sonido|efectos|ajustes|público|privado|local|gol|goles|turno|turnos|orden|publicidad|recompensa)\b/i;
 
@@ -1202,7 +1202,22 @@ export function getUiLiteralSourceLanguage(value: string): string | null {
   return null;
 }
 
-const UI_TRANSLATION_CACHE_PREFIX = "dc_i18n_ui_cache_v3:";
+const UI_TRANSLATION_CACHE_PREFIX = "dc_i18n_ui_cache_v4:";
+let legacyUiTranslationCachesPurged = false;
+
+function purgeLegacyUiTranslationCaches(): void {
+  if (legacyUiTranslationCachesPurged || typeof window === "undefined") return;
+  legacyUiTranslationCachesPurged = true;
+  try {
+    const stalePrefixes = ["dc_i18n_ui_cache_v1:", "dc_i18n_ui_cache_v2:", "dc_i18n_ui_cache_v3:"];
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && stalePrefixes.some((prefix) => key.startsWith(prefix))) keys.push(key);
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key));
+  } catch {}
+}
 const hydratedTranslationTargets = new Set<string>();
 const persistedTranslationBuffers = new Map<string, Map<string, readonly [string, string, number]>>();
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1254,6 +1269,7 @@ function flushPersistedTranslationBuffer(targetLanguage: string): void {
 }
 
 export function hydrateUiLiteralTranslationCache(targetLanguage: string): void {
+  purgeLegacyUiTranslationCaches();
   const target = String(targetLanguage || "").toLowerCase().split("-")[0];
   if (!target || hydratedTranslationTargets.has(target)) return;
   hydratedTranslationTargets.add(target);

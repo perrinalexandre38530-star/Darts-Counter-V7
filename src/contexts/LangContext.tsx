@@ -19,6 +19,7 @@ import { awenaTranslation } from "../awena/AwenaTranslation";
 import { registerConfigUiLiteralSources } from "../i18n/configUiLiteralRegistry";
 import { registerMonetizationUiLiteralSources } from "../i18n/monetizationUiLiteralRegistry";
 import { registerAppUiLiteralSources } from "../i18n/appUiLiteralRegistry";
+import { postProcessCoreUiTranslation, registerCoreUiLiteralTranslations } from "../i18n/coreUiOverrides";
 
 // -----------------------------
 // Types publics
@@ -91,6 +92,7 @@ const ALL_LANGS: Lang[] = [
 const DICT_ANY = DICT as any;
 
 // Register authored UI sources application-wide before the first DOM scan.
+registerCoreUiLiteralTranslations();
 // The feature registries stay loaded too because they contain hand-authored EN/ES translations.
 registerAppUiLiteralSources();
 registerConfigUiLiteralSources();
@@ -209,19 +211,22 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       // uses Croatian + Cyrillic normalization only as a fallback.
       if (lang === "sr") {
         const browser = await translateUiLiteralWithBrowser(source, lang, sourceLanguage);
-        if (browser) return browser;
+        if (browser) return postProcessCoreUiTranslation(lang, browser);
       }
 
       // Android: reuse the on-device ML Kit engine already integrated for Awena.
       if (awenaTranslation.isNativeAvailable()) {
         try {
           const native = await awenaTranslation.textBetween(source, sourceLanguage, lang);
-          if (native && native.trim() && native.trim() !== source.trim()) return native;
+          if (native && native.trim() && native.trim() !== source.trim()) {
+            return postProcessCoreUiTranslation(lang, native);
+          }
         } catch {}
       }
 
       // Web/desktop Chrome: Translator API on-device, no remote translation service.
-      return translateUiLiteralWithBrowser(source, lang, sourceLanguage);
+      const browser = await translateUiLiteralWithBrowser(source, lang, sourceLanguage);
+      return browser ? postProcessCoreUiTranslation(lang, browser) : null;
     };
 
     const scheduleTextResolve = (node: Text, source: string) => {

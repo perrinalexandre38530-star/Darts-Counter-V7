@@ -5682,11 +5682,11 @@ export function Settings({ go, params }: Props) {
         ? t("settings.account.danger", "Zone dangereuse")
         : t("settings.menu.account", "Compte")
       : tab === "advertising"
-      ? L("Publicité", "Advertising", "Publicidad")
+      ? t("settings.menu.advertising", L("Publicité", "Advertising", "Publicidad"))
       : tab === "shop"
-      ? L("Boutique", "Store", "Tienda")
+      ? t("settings.menu.shop", L("Boutique", "Store", "Tienda"))
       : tab === "privacy"
-      ? L("Confidentialité & données", "Privacy & data", "Privacidad y datos")
+      ? t("settings.menu.privacy", L("Confidentialité & données", "Privacy & data", "Privacidad y datos"))
       : tab === "awena"
       ? "Awena"
       : tab === "theme"
@@ -5698,7 +5698,7 @@ export function Settings({ go, params }: Props) {
       : tab === "general"
       ? L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")
       : tab === "castViewer"
-      ? "Cast / Viewer"
+      ? t("settings.menu.castViewer", "Cast / Viewer")
       : tab === "developer"
       ? devSub === "diagnostics"
         ? L("Diagnostic", "Diagnostics", "Diagnóstico")
@@ -5844,7 +5844,7 @@ export function Settings({ go, params }: Props) {
               onClick={() => setTab("lang")}
             />
             <SettingsMenuCard
-              title={L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD")}
+              title={t("settings.menu.backup", L("SAUVEGARDE", "BACKUP", "COPIA DE SEGURIDAD"))}
               subtitle={L("Backup NAS, synchronisation, restauration et scan des blocs valides sur une seule page.", "NAS backup, synchronization, restore and valid-block scan on one page.", "Copia NAS, sincronización, restauración y escaneo de bloques válidos en una sola página.")}
               theme={theme}
               onClick={() => go?.("storage_vault")}
@@ -5869,20 +5869,20 @@ export function Settings({ go, params }: Props) {
               onClick={() => go?.("cast_host", { screenTab: "settings" })}
             />
             <SettingsMenuCard
-              title={L("PUBLICITÉ", "ADVERTISING", "PUBLICIDAD")}
+              title={t("settings.menu.advertising", L("PUBLICITÉ", "ADVERTISING", "PUBLICIDAD"))}
               subtitle={L("Bannières, fin de partie et consentement AdMob.", "Banners, end-of-game ads and AdMob consent.", "Banners, anuncios de fin de partida y consentimiento AdMob.")}
               theme={theme}
               rightHint="FREE / PREMIUM"
               onClick={() => setTab("advertising")}
             />
             <SettingsMenuCard
-              title={L("BOUTIQUE", "STORE", "TIENDA")}
+              title={t("settings.menu.shop", L("BOUTIQUE", "STORE", "TIENDA"))}
               subtitle={L("Premium, packs additionnels et achats Google Play.", "Premium, add-on packs and Google Play purchases.", "Premium, packs adicionales y compras de Google Play.")}
               theme={theme}
               onClick={() => { setShopInitialTab("premium"); setShopFocusPackId(null); setTab("shop"); }}
             />
             <SettingsMenuCard
-              title={L("CONFIDENTIALITÉ & DONNÉES", "PRIVACY & DATA", "PRIVACIDAD Y DATOS")}
+              title={t("settings.menu.privacy", L("CONFIDENTIALITÉ & DONNÉES", "PRIVACY & DATA", "PRIVACIDAD Y DATOS"))}
               subtitle={L("Politique de confidentialité, droits, contact et suppression du compte.", "Privacy policy, rights, contact and account deletion.", "Política de privacidad, derechos, contacto y eliminación de la cuenta.")}
               theme={theme}
               rightHint="RGPD / PLAY"

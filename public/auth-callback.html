@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>MULTISPORTS SCORING — Connexion</title>
+  <style>
+    html,body{height:100%;margin:0;background:#070b14;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    body{display:grid;place-items:center}.box{padding:24px;text-align:center}.dot{font-size:28px;color:#ffd25a}
+  </style>
+</head>
+<body>
+  <div class="box"><div class="dot">●</div><strong>Connexion à MULTISPORTS SCORING…</strong></div>
+  <script>
+    (function () {
+      var q = window.location.search || "";
+      var frag = window.location.hash || "";
+      var extra = q || (frag ? "?" + frag.replace(/^#/, "") : "");
+      window.location.replace("/#/auth/callback" + extra + (extra ? "&social=1" : "?social=1"));
+    })();
+  </script>
+</body>
+</html>
