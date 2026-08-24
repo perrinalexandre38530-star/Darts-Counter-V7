@@ -263,6 +263,13 @@ async function preflightOAuthUrl(url: string, provider: SocialAuthProvider): Pro
   }
 }
 
+function resumeSupabaseAuthRuntime(): void {
+  try {
+    const authAny: any = (supabase as any)?.auth;
+    if (typeof authAny?.startAutoRefresh === "function") authAny.startAutoRefresh();
+  } catch {}
+}
+
 function friendlyOAuthError(error: any, provider: SocialAuthProvider): Error {
   const raw = String(error?.message || error || "Connexion sociale impossible.");
   const label = SOCIAL_AUTH_LABELS[provider];
@@ -292,6 +299,10 @@ function friendlyOAuthError(error: any, provider: SocialAuthProvider): Error {
 export async function startSocialSignIn(provider: SocialAuthProvider): Promise<void> {
   if (!SOCIAL_AUTH_PROVIDERS.includes(provider)) throw new Error("Fournisseur de connexion inconnu.");
   if (!__SUPABASE_ENV__.hasEnv) throw new Error("Supabase Auth n'est pas configuré sur cette version de l'application.");
+
+  // Une déconnexion locale peut avoir stoppé le scheduler Supabase dans la SPA.
+  // Toute nouvelle connexion sociale explicite le réarme avant de lancer OAuth.
+  resumeSupabaseAuthRuntime();
 
   const availability = await getSocialProviderAvailability(provider);
   if (availability === "disabled") throw providerNotEnabledError(provider);
@@ -337,6 +348,7 @@ function isNativeSocialCallback(url: string): boolean {
 async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
   if (!isNativeSocialCallback(url)) return false;
 
+  resumeSupabaseAuthRuntime();
   const pending = getPendingSocialAuth();
   const provider = pending?.provider;
 

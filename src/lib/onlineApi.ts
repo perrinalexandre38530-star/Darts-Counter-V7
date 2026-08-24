@@ -75,6 +75,16 @@ function markExplicitLogout(): void {
   try { localStorage.setItem(EXPLICIT_LOGOUT_KEY, "1"); } catch {}
 }
 
+function resumeSupabaseAuthRuntime(): void {
+  // logout() stoppe volontairement l’auto-refresh pour figer une ancienne session.
+  // Une nouvelle action de connexion explicite doit toujours réarmer le client
+  // Supabase déjà vivant dans la SPA, sinon on peut rester avec un client stoppé.
+  try {
+    const authAny: any = (supabase as any)?.auth;
+    if (typeof authAny?.startAutoRefresh === "function") authAny.startAutoRefresh();
+  } catch {}
+}
+
 // ============================================================
 // ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
 // ============================================================
@@ -407,12 +417,16 @@ function saveAuthToLS(session: AuthSession | null) {
 }
 
 function shouldUseNasForCurrentSession(): boolean {
-  // Source unique de vérité : provider NAS + JWT NAS + session active NAS.
-  // Un ancien token NAS peut rester stocké pour permettre un retour rapide au
-  // mode privé, mais il ne doit jamais détourner une session Supabase publique.
+  // Une session legacy NAS explicitement active reste valide même dans un build
+  // dont le provider public par défaut est Supabase. C’est indispensable pour ne
+  // pas casser les comptes invités/fondateur créés avant la migration OAuth.
+  const cached = loadAuthFromLS();
+  if (isValidNasSession(cached)) return !!readNasAccessToken();
+
+  // Pour les autres cas, on conserve le routage historique du build NAS.
   return useNasOnlineBackend()
     && canUseNasOnlineApi()
-    && !isSupabaseFailoverSession(loadAuthFromLS());
+    && !isSupabaseFailoverSession(cached);
 }
 
 function safeUpper(code: string) {
@@ -1192,6 +1206,7 @@ function normalizeAuthErrorMessage(msg: string) {
 // ============================================================
 async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
   clearExplicitLogout();
+  resumeSupabaseAuthRuntime();
   const email = payload.email?.trim();
   const password = payload.password?.trim();
   const nickname = payload.nickname?.trim() || (email ? email.split("@")[0] : "Player");
@@ -1215,27 +1230,55 @@ async function signupPublic(payload: SignupPayload): Promise<AuthSession> {
 }
 
 async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
+  // Une connexion volontaire annule immédiatement le verrou de logout et
+  // réactive le client Supabase qui a pu être stoppé lors de la déconnexion.
   clearExplicitLogout();
+  resumeSupabaseAuthRuntime();
+
   const email = payload.email?.trim();
   const password = payload.password?.trim();
   if (!email || !password) throw new Error("Email et mot de passe requis pour se connecter.");
   if (!__SUPABASE_ENV__.hasEnv) throw new Error("Backend public Supabase non configuré sur cette version de l'application.");
 
-  // Chemin public strict : aucune requête NAS, même en cas d'identifiants invalides.
-  // Le NAS privé s'ouvre uniquement via l'accès privé ou via switchAccountInfrastructure("nas").
-  const signInResult: any = await Promise.race([
-    supabase.auth.signInWithPassword({ email, password }),
-    new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
-  ]);
-  const { error } = signInResult || {};
-  if (error) throw new Error(normalizeAuthErrorMessage(error.message));
-  const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
-  if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
-  session.authProvider = "supabase";
-  session.degradedMode = false;
-  saveAuthToLS(session);
-  markAuthReady(true);
-  return session;
+  let supabaseError: any = null;
+
+  try {
+    const signInResult: any = await Promise.race([
+      supabase.auth.signInWithPassword({ email, password }),
+      new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
+    ]);
+    const { error } = signInResult || {};
+    if (error) throw error;
+
+    const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+    if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
+    session.authProvider = "supabase";
+    session.degradedMode = false;
+    saveAuthToLS(session);
+    markAuthReady(true);
+    return session;
+  } catch (error: any) {
+    supabaseError = error;
+    console.warn("[onlineApi] direct Supabase login failed; trying legacy NAS compatibility", error);
+  }
+
+  // COMPATIBILITÉ ABSOLUE : l’UI promet que les anciens comptes NAS déjà créés
+  // se reconnectent ici sans retaper le code d’invitation. Cette voie avait été
+  // perdue pendant la migration Supabase/OAuth. On la restaure en fallback doux.
+  try {
+    const legacy = await tryNasLoginWithoutInvitation({ email, password, nickname: payload.nickname });
+    if (legacy?.user?.id && legacy?.token) {
+      clearExplicitLogout();
+      saveAuthToLS(legacy);
+      markAuthReady(true);
+      return legacy;
+    }
+  } catch (legacyError) {
+    console.warn("[onlineApi] legacy NAS login fallback unavailable", legacyError);
+  }
+
+  const rawMessage = String(supabaseError?.message || supabaseError || "Connexion impossible.");
+  throw new Error(normalizeAuthErrorMessage(rawMessage));
 }
 
 async function ensureNasAccountFailoverCopy(session: AuthSession, payload: LoginPayload | SignupPayload): Promise<void> {
@@ -1488,21 +1531,28 @@ async function logout(): Promise<void> {
   } catch (error) {
     console.warn("[onlineApi] remote logout best-effort error", error);
   } finally {
-    // Un callback tardif ne doit jamais ressusciter la session.
-    markExplicitLogout();
-    __nasLastGoodSession = null;
-    __nasLastRestoreAt = 0;
-    __nasEnsureInFlight = null;
-    saveAuthToLS(null);
-    purgeAuthLocalState();
-    clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
-    markAuthReady(false);
+    // Si l’utilisateur a déjà lancé une NOUVELLE connexion, loginPublic/signup/OAuth
+    // a retiré le verrou. Dans ce cas un ancien logout tardif n’a plus le droit de
+    // repurger la nouvelle session.
+    if (isExplicitlyLoggedOut()) {
+      __nasLastGoodSession = null;
+      __nasLastRestoreAt = 0;
+      __nasEnsureInFlight = null;
+      saveAuthToLS(null);
+      purgeAuthLocalState();
+      clearSupabaseBrowserAuthStorage({ includeCompatSession: true });
+      markAuthReady(false);
+    }
   }
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
   if (isExplicitlyLoggedOut()) return null;
   const cached = loadAuthFromLS();
+
+  // Les anciens comptes NAS restent des sessions authentifiées valides, même
+  // lorsque le build public utilise Supabase par défaut.
+  if (isValidNasSession(cached)) return cached;
   if (isSupabaseFailoverSession(cached)) {
     const liveSupabase = await getLiveSupabaseSession();
     if (liveSupabase?.user) return cached;
@@ -1522,8 +1572,15 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 
 async function getProfile(): Promise<OnlineProfile | null> {
   if (shouldUseNasForCurrentSession()) {
-    await ensureNasSession();
-    return await nasGetProfile();
+    const cached = loadAuthFromLS();
+    // Le profil présent dans la session permet d’ouvrir immédiatement l’app,
+    // même si le NAS est momentanément lent. On rafraîchit seulement si possible.
+    try {
+      const live = await nasGetProfile();
+      return live || cached?.profile || null;
+    } catch {
+      return cached?.profile || null;
+    }
   }
 
   const s = await restoreSession();

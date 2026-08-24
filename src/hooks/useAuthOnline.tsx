@@ -857,10 +857,12 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } catch (e) {
       console.warn("[useAuthOnline] remote signOut error (local logout already complete):", e);
     } finally {
-      // Double verrouillage après les callbacks éventuels du provider.
-      markExplicitLogout();
-      purgeAuthKeysFromBrowser();
-      lastSignedInSessionRef.current = null;
+      // Ne jamais écraser une nouvelle connexion démarrée pendant que le logout
+      // distant finissait. Une connexion volontaire retire le verrou.
+      if (isExplicitlyLoggedOut()) {
+        purgeAuthKeysFromBrowser();
+        lastSignedInSessionRef.current = null;
+      }
     }
   }, []);
 

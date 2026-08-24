@@ -54,6 +54,13 @@ import firefighterAeroArgent from "../../assets/collectible-cards/firefighter-ae
 import firefighterAeroPlatine from "../../assets/collectible-cards/firefighter-aero-platine.webp";
 import firefighterAeroOr from "../../assets/collectible-cards/firefighter-aero-or.webp";
 import firefighterAeroDiamant from "../../assets/collectible-cards/firefighter-aero-diamant.webp";
+import loterieLucky from "../../assets/collectible-cards/loterie-lucky.webp";
+import loterieVega from "../../assets/collectible-cards/loterie-vega.webp";
+import loterieAce from "../../assets/collectible-cards/loterie-ace.webp";
+import loterieFortuna from "../../assets/collectible-cards/loterie-fortuna.webp";
+import loterieJinx from "../../assets/collectible-cards/loterie-jinx.webp";
+import loterieJack from "../../assets/collectible-cards/loterie-jack.webp";
+import loterieMidas from "../../assets/collectible-cards/loterie-midas.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_bronze: awenaBronze,
@@ -97,9 +104,16 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   firefighter_zephyr_platine: firefighterZephyrPlatine,
   firefighter_zephyr_or: firefighterZephyrOr,
   firefighter_zephyr_diamant: firefighterZephyrDiamant,
+  loterie_lucky: loterieLucky,
+  loterie_vega: loterieVega,
+  loterie_ace: loterieAce,
+  loterie_fortuna: loterieFortuna,
+  loterie_jinx: loterieJinx,
+  loterie_jack: loterieJack,
+  loterie_midas: loterieMidas,
 };
 
-type FilterId = "all" | "awena" | "firefighter" | "unlocked" | "locked";
+type FilterId = "all" | "awena" | "firefighter" | "loterie" | "unlocked" | "locked";
 
 const ZERO_METRICS: CollectibleMetrics = {
   matches: 0,
@@ -120,6 +134,13 @@ const ZERO_METRICS: CollectibleMetrics = {
   firefighterBrazeCriticalExtinguishes: 0,
   firefighterAeroMatches: 0,
   firefighterAeroCanadairs: 0,
+  loterieMatches: 0,
+  loterieWins: 0,
+  loterieCellsRevealed: 0,
+  loterieMultiHits: 0,
+  loterieCardsCompleted: 0,
+  loterieExpressFirstDartHits: 0,
+  loterieBestStreak: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {
@@ -220,7 +241,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const cards = React.useMemo(() => COLLECTIBLE_CARDS.filter((card) => {
     const isUnlocked = !!unlocks[card.id];
-    if (filter === "awena" || filter === "firefighter") return card.collection === filter;
+    if (filter === "awena" || filter === "firefighter" || filter === "loterie") return card.collection === filter;
     if (filter === "unlocked") return isUnlocked;
     if (filter === "locked") return !isUnlocked;
     return true;
@@ -232,9 +253,9 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const labels = pickLegacyLocalizedValue(
     lang,
-    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
-    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
-    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
+    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
+    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
+    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
   );
 
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
@@ -257,6 +278,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
       <FilterButton active={filter === "all"} label={labels.all} onClick={() => setFilter("all")} />
       <FilterButton active={filter === "awena"} label={labels.awena} onClick={() => setFilter("awena")} />
       <FilterButton active={filter === "firefighter"} label={labels.firefighter} onClick={() => setFilter("firefighter")} />
+      <FilterButton active={filter === "loterie"} label={labels.loterie} onClick={() => setFilter("loterie")} />
       <FilterButton active={filter === "unlocked"} label={labels.unlocked} onClick={() => setFilter("unlocked")} />
       <FilterButton active={filter === "locked"} label={labels.locked} onClick={() => setFilter("locked")} />
     </div>

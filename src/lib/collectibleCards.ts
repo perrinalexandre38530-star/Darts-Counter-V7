@@ -1,7 +1,7 @@
 import { loadNormalizedHistory, type NormalizedMatch } from "./statsNormalized";
 import { loadDartsFirefighterStatsUnified } from "./dartsFirefighterStats";
 
-export type CollectibleCollectionId = "awena" | "firefighter";
+export type CollectibleCollectionId = "awena" | "firefighter" | "loterie";
 export type CollectibleCardId =
   | "awena_bronze"
   | "awena_argent"
@@ -43,7 +43,14 @@ export type CollectibleCardId =
   | "firefighter_zephyr_argent"
   | "firefighter_zephyr_platine"
   | "firefighter_zephyr_or"
-  | "firefighter_zephyr_diamant";
+  | "firefighter_zephyr_diamant"
+  | "loterie_lucky"
+  | "loterie_vega"
+  | "loterie_ace"
+  | "loterie_fortuna"
+  | "loterie_jinx"
+  | "loterie_jack"
+  | "loterie_midas";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -63,7 +70,14 @@ export type CollectibleMetricKey =
   | "firefighterBrazeMatches"
   | "firefighterBrazeCriticalExtinguishes"
   | "firefighterAeroMatches"
-  | "firefighterAeroCanadairs";
+  | "firefighterAeroCanadairs"
+  | "loterieMatches"
+  | "loterieWins"
+  | "loterieCellsRevealed"
+  | "loterieMultiHits"
+  | "loterieCardsCompleted"
+  | "loterieExpressFirstDartHits"
+  | "loterieBestStreak";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -211,10 +225,42 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
   { id: "firefighter_malysia_diamant", collection: "firefighter", name: "MALYSIA · DIAMANT", tier: "diamant", stars: 14, accent: "#7ec5ff", subtitle: { fr: "Spécialiste feux de forêt", en: "Wildfire specialist", es: "Especialista en incendios forestales" }, requirements: [
     { metric: "firefighterMalysiaMatches", target: 120, label: { fr: "Missions terminées avec Malysia", en: "Completed missions with Malysia", es: "Misiones completadas con Malysia" } },
   ] },
+  { id: "loterie_lucky", collection: "loterie", name: "LUCKY", accent: "#65d66f", subtitle: { fr: "Le porte-bonheur", en: "The lucky charm", es: "El amuleto de la suerte" }, requirements: [
+    { metric: "loterieMatches", target: 3, label: { fr: "Parties LOTERIE terminées", en: "Completed LOTTERY matches", es: "Partidas de LOTERÍA terminadas" } },
+  ] },
+  { id: "loterie_vega", collection: "loterie", name: "VEGA", accent: "#ff4a45", subtitle: { fr: "Reine du jackpot", en: "Jackpot queen", es: "Reina del jackpot" }, requirements: [
+    { metric: "loterieWins", target: 3, label: { fr: "Victoires en LOTERIE", en: "LOTTERY wins", es: "Victorias en LOTERÍA" } },
+  ] },
+  { id: "loterie_ace", collection: "loterie", name: "ACE", accent: "#f3c557", subtitle: { fr: "As de la précision", en: "Ace of precision", es: "As de la precisión" }, requirements: [
+    { metric: "loterieExpressFirstDartHits", target: 15, label: { fr: "Cibles EXPRESS validées au 1er dart", en: "EXPRESS targets hit on dart 1", es: "Objetivos EXPRESS acertados al 1.er dardo" } },
+  ] },
+  { id: "loterie_fortuna", collection: "loterie", name: "FORTUNA", accent: "#bc78ff", subtitle: { fr: "Maîtresse du destin", en: "Mistress of fate", es: "Maestra del destino" }, requirements: [
+    { metric: "loterieBestStreak", target: 5, label: { fr: "Série de 5 tours gagnants", en: "5 successful turns in a row", es: "Racha de 5 turnos acertados" } },
+  ] },
+  { id: "loterie_jinx", collection: "loterie", name: "JINX", accent: "#ff4fc8", subtitle: { fr: "Chaos maîtrisé", en: "Controlled chaos", es: "Caos controlado" }, requirements: [
+    { metric: "loterieMultiHits", target: 10, label: { fr: "Multi-hits réalisés", en: "Multi-hits achieved", es: "Multi-hits realizados" } },
+  ] },
+  { id: "loterie_jack", collection: "loterie", name: "JACK", accent: "#d94b43", subtitle: { fr: "Maître du tirage", en: "Draw master", es: "Maestro del sorteo" }, requirements: [
+    { metric: "loterieCardsCompleted", target: 5, label: { fr: "Cartons LOTERIE complétés", en: "LOTTERY cards completed", es: "Cartones de LOTERÍA completados" } },
+  ] },
+  { id: "loterie_midas", collection: "loterie", name: "MIDAS", accent: "#ffd35a", subtitle: { fr: "Roi de la loterie", en: "King of the lottery", es: "Rey de la lotería" }, requirements: [
+    { metric: "loterieWins", target: 10, label: { fr: "Victoires en LOTERIE", en: "LOTTERY wins", es: "Victorias en LOTERÍA" } },
+    { metric: "loterieCellsRevealed", target: 250, label: { fr: "Cases révélées en LOTERIE", en: "LOTTERY cells revealed", es: "Casillas reveladas en LOTERÍA" } },
+  ] },
+
 ];
 
 function emptyMetrics(): CollectibleMetrics {
-  return { matches: 0, wins: 0, modes: 0, firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0, firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0, firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0, firefighterMalysiaWins: 0, firefighterLynaMatches: 0, firefighterBrazeMatches: 0, firefighterBrazeCriticalExtinguishes: 0, firefighterAeroMatches: 0, firefighterAeroCanadairs: 0 };
+  return {
+    matches: 0, wins: 0, modes: 0,
+    firefighterTacticalActions: 0, firefighterWindMatches: 0, firefighterWins: 0,
+    firefighterCriticalExtinguishes: 0, firefighterCanadairs: 0, firefighterMatches: 0,
+    firefighterKaelMatches: 0, firefighterKaelWins: 0, firefighterMalysiaMatches: 0,
+    firefighterMalysiaWins: 0, firefighterLynaMatches: 0, firefighterBrazeMatches: 0,
+    firefighterBrazeCriticalExtinguishes: 0, firefighterAeroMatches: 0, firefighterAeroCanadairs: 0,
+    loterieMatches: 0, loterieWins: 0, loterieCellsRevealed: 0, loterieMultiHits: 0,
+    loterieCardsCompleted: 0, loterieExpressFirstDartHits: 0, loterieBestStreak: 0,
+  };
 }
 
 function sameProfile(value: unknown, profileId: string): boolean {
@@ -264,6 +310,28 @@ function normalizedMatchWonByProfile(match: NormalizedMatch, profileId: string):
 function recordPlayer(row: any, profileId: string): any | null {
   const players = Array.isArray(row?.players) ? row.players : [];
   return players.find((player: any) => sameProfile(player?.id ?? player?.playerId ?? player?.profileId, profileId)) || null;
+}
+
+function loteriePlayerForMatch(match: NormalizedMatch, profileId: string): any | null {
+  const raw: any = match.raw || {};
+  const lists = [
+    raw?.players,
+    raw?.summary?.players,
+    raw?.summary?.perPlayer,
+    raw?.payload?.players,
+    raw?.payload?.stats?.players,
+  ];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    const player = list.find((entry: any) => sameProfile(entry?.id ?? entry?.playerId ?? entry?.profileId, profileId));
+    if (player) return player;
+  }
+  return null;
+}
+
+function collectibleNumber(value: any): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function countCriticalExtinguishes(row: any, profileId: string): number {
@@ -329,7 +397,21 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
     if (!mode) continue;
     metrics.matches += 1;
     modes.add(mode);
-    if (normalizedMatchWonByProfile(match, profileId)) metrics.wins += 1;
+    const won = normalizedMatchWonByProfile(match, profileId);
+    if (won) metrics.wins += 1;
+
+    if (mode.includes("loterie") || mode.includes("lottery")) {
+      metrics.loterieMatches += 1;
+      if (won) metrics.loterieWins += 1;
+      const player = loteriePlayerForMatch(match, profileId);
+      if (player) {
+        metrics.loterieCellsRevealed += collectibleNumber(player?.cellsRevealed ?? player?.lo_cells ?? player?.score ?? player?.points);
+        metrics.loterieMultiHits += collectibleNumber(player?.multiHits ?? player?.lo_multi);
+        metrics.loterieCardsCompleted += collectibleNumber(player?.cardsCompleted ?? player?.lo_done);
+        metrics.loterieExpressFirstDartHits += collectibleNumber(player?.expressSuccessOnDart1);
+        metrics.loterieBestStreak = Math.max(metrics.loterieBestStreak, collectibleNumber(player?.bestStreak ?? player?.lo_str));
+      }
+    }
   }
   metrics.modes = modes.size;
 
