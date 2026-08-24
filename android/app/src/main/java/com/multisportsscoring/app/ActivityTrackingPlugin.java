@@ -124,12 +124,7 @@ public class ActivityTrackingPlugin extends Plugin implements ActivityTrackingSe
     @PluginMethod
     public void openLocationSettings(PluginCall call) {
         try {
-            Intent intent;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                intent = new Intent(Settings.Panel.ACTION_LOCATION_SERVICES);
-            } else {
-                intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-            }
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
             JSObject out = new JSObject(); out.put("opened", true); call.resolve(out);
