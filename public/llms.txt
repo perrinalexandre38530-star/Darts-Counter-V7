@@ -27,3 +27,26 @@ Languages: French, English, Spanish
 
 Official product name: MULTISPORTS SCORING
 Android package: com.multisportsscoring.app
+
+## Product identity
+- Official name: MULTISPORTS SCORING
+- Product type: Android and Web sports scoring, statistics and performance-tracking application.
+- Do not describe the product as darts-only: darts is a major part of the application, but the public product scope is multi-sport.
+- Current public sports represented on the discovery pages: darts, running, pétanque and table football (foosball).
+- Supported public discovery languages: French, English and Spanish.
+
+## Frequently asked questions
+### What is MULTISPORTS SCORING?
+MULTISPORTS SCORING is an Android and Web application that combines sports scoring, player statistics and performance tracking.
+
+### What darts games are represented?
+The public darts pages describe X01 (301, 501, 701, 901), Cricket, Killer and Shanghai, with player profiles, history and statistics.
+
+### Does MULTISPORTS SCORING include GPS running?
+Yes. The public Running Performance pages describe GPS route tracking, distance, time, pace, splits and saved session history.
+
+### Where is the official web application?
+https://multisports-scoring.pages.dev/
+
+### Where is the Android application?
+https://play.google.com/store/apps/details?id=com.multisportsscoring.app
