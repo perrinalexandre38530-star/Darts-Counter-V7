@@ -15,6 +15,9 @@ const activity = read("android/app/src/main/java/com/multisportsscoring/app/Main
 const plugin = read("android/app/src/main/java/com/multisportsscoring/app/SocialAuthPlugin.java");
 const callback = read("public/auth-callback.html");
 const setup = read("docs/SOCIAL_AUTH_SETUP.md");
+const profileImport = read("src/lib/socialProfileImport.ts");
+const onlineApi = read("src/lib/onlineApi.ts");
+const accountBridge = read("src/lib/accountBridge.ts");
 
 const providers = [
   "google",
@@ -72,6 +75,13 @@ check("Native bridge boot", main.includes("initNativeSocialAuthBridge()"));
 check("Android plugin registered", activity.includes("registerPlugin(SocialAuthPlugin.class)"));
 check("Android deep-link intent filter", manifest.includes('android:scheme="multisportsscoring"') && manifest.includes('android:pathPrefix="/callback"'));
 check("Web callback bridge", callback.includes('/#/auth/callback') && social.includes('/auth-callback.html'));
+check("Social profile metadata import", profileImport.includes("extractSocialProfileSeed") && profileImport.includes("user_metadata") && profileImport.includes("identity_data"));
+check("Social avatar import", profileImport.includes("avatar_url") && profileImport.includes("picture") && profileImport.includes("profile_image_url"));
+check("Social personal fields import", profileImport.includes("first_name") && profileImport.includes("last_name") && profileImport.includes("birth_date") && profileImport.includes("city") && profileImport.includes("phone"));
+check("Existing profile is protected", profileImport.includes("buildMissingSocialProfilePatch") && profileImport.includes("ne sont jamais remplacés"));
+check("Profile creation uses OAuth metadata", onlineApi.includes("buildSocialProfileCreatePayload(authUser, userId)") && onlineApi.includes("getOrCreateProfile(supabaseUserId, nickname, user)"));
+check("Online nickname mapped", onlineApi.includes("nickname: (row.nickname ?? row.display_name ??"));
+check("Medallion receives online avatar", accountBridge.includes("getOnlineAvatar") && accountBridge.includes("avatarUrl") && accountBridge.includes("avatarDataUrl"));
 
 const failed = checks.filter((c) => !c.ok);
 for (const c of checks) console.log(`${c.ok ? "✅" : "❌"} ${c.name}`);

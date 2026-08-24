@@ -173,9 +173,32 @@ Le flux Android n'utilise pas une WebView OAuth embarquée :
 6. `exchangeCodeForSession()` finalise PKCE dans la WebView de l'application ;
 7. `#/auth/callback` reprend le parcours de compte MULTISPORTS SCORING existant.
 
+
+---
+
+## Import automatique vers MON PROFIL
+
+À la première connexion OAuth, Supabase crée automatiquement l'utilisateur Auth si le provider l'autorise. MULTISPORTS SCORING crée ensuite son profil applicatif associé et importe les informations réellement fournies par le provider :
+
+- pseudo / nom affiché ;
+- prénom ;
+- nom ;
+- email ;
+- téléphone si transmis ;
+- pays, ville et date de naissance si transmis ;
+- photo de profil (`avatar_url`, `picture`, `profile_image_url`, etc.).
+
+La photo sociale devient immédiatement l'avatar du profil compte et est donc utilisée par les médaillons via `accountBridge` / `ProfileAvatar`.
+
+Règle de sécurité UX : l'import social ne remplit que les champs encore vides (ou les noms génériques du type `Player` / partie locale de l'email). Une donnée personnalisée ensuite dans MON PROFIL, notamment l'avatar, n'est jamais écrasée à une reconnexion OAuth.
+
+Important : Google, Facebook, Microsoft, Apple et les autres providers ne fournissent pas tous les mêmes données ni les mêmes permissions. L'application n'invente donc jamais une ville, une date de naissance, un téléphone ou un pays absent de la réponse OAuth.
+
 ## Fichiers ajoutés/modifiés
 
 - `src/lib/socialAuth.ts`
+- `src/lib/socialProfileImport.ts`
+- `src/lib/onlineApi.ts`
 - `src/pages/AuthV7Login.tsx`
 - `src/App.tsx`
 - `src/main.tsx`

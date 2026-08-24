@@ -55,6 +55,7 @@ import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import { apiGet, apiPost, buildApiUrl, canUseNasOnlineApi, getApiUrl, readNasAccessToken } from "./apiClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 import { loadStoragePrefs } from "./storagePlans";
+import { buildMissingSocialProfilePatch, buildSocialProfileCreatePayload, extractSocialProfileSeed } from "./socialProfileImport";
 
 export const CLOUD_STORE_KEY = "main";
 
@@ -468,6 +469,8 @@ type SupabaseProfileRow = {
   city?: string | null;
   email?: string | null;
   phone?: string | null;
+  preferences?: any | null;
+  private_info?: any | null;
 
   bio?: string | null;
   stats?: any | null;
@@ -478,6 +481,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
     id: String(row.id),
     userId: String(row.id),
     displayName: (row.display_name ?? row.nickname ?? "") as any,
+    nickname: (row.nickname ?? row.display_name ?? "") as any,
     avatarUrl: (row.avatar_url ?? undefined) as any,
     country: (row.country ?? undefined) as any,
 
@@ -650,7 +654,7 @@ async function ensureAuthedUser() {
   return { user, session };
 }
 
-async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
+async function getOrCreateProfile(userId: string, fallbackNickname: string, authUser?: any): Promise<OnlineProfile | null> {
   const PROFILES_TABLE = await resolveProfilesTable();
 
   const { data: profileRow, error: selErr } = await supabase
@@ -665,9 +669,37 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
     return null;
   }
 
-  if (profileRow) return mapProfile(profileRow as any);
+  // Profil existant : importe uniquement les champs sociaux encore vides.
+  // Ainsi une photo, un pseudo ou un prénom choisis ensuite dans MON PROFIL
+  // restent prioritaires et ne sont jamais écrasés à la reconnexion.
+  if (profileRow) {
+    if (authUser) {
+      const socialPatch = buildMissingSocialProfilePatch(profileRow as any, authUser);
+      if (Object.keys(socialPatch).length) {
+        const hydrated = await writeWithColumnFallback<any>(
+          async (obj) => {
+            const { data, error } = await supabase
+              .from(PROFILES_TABLE)
+              .update(obj as any)
+              .eq("id", userId)
+              .select()
+              .single();
+            return { data, error };
+          },
+          socialPatch,
+          { maxStrips: 16, debugLabel: `profiles social hydrate (${PROFILES_TABLE})` }
+        );
+        if (!hydrated.error && hydrated.data) return mapProfile(hydrated.data as any);
+        if (hydrated.error) {
+          console.warn("[onlineApi] social profile hydration skipped", hydrated.error);
+        }
+      }
+    }
+    return mapProfile(profileRow as any);
+  }
 
-  const baseNick = String(fallbackNickname || "")
+  const socialSeed = authUser ? extractSocialProfileSeed(authUser) : null;
+  const baseNick = String(socialSeed?.nickname || fallbackNickname || "")
     .trim()
     .replace(/^mailto:/i, "")
     .replace(/@.*$/, "")
@@ -682,15 +714,22 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const nick = attempt === 0 ? baseNick : `${baseNick}-${Math.floor(Math.random() * 900 + 100)}`;
-    const payload = {
-      id: userId,
-      user_id: userId,
-      nickname: nick,
-      display_name: nick,
-      country: null,
-      avatar_url: null,
-      updated_at: new Date().toISOString(),
-    };
+    const payload = authUser
+      ? {
+          ...buildSocialProfileCreatePayload(authUser, userId),
+          nickname: nick,
+          // Si le display name normalisé est vide/générique, le nickname unique reste le secours.
+          display_name: socialSeed?.displayName || nick,
+        }
+      : {
+          id: userId,
+          user_id: userId,
+          nickname: nick,
+          display_name: nick,
+          country: null,
+          avatar_url: null,
+          updated_at: new Date().toISOString(),
+        };
 
     const res = await writeWithColumnFallback<any>(
       async (obj) => {
@@ -702,7 +741,7 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
         return { data, error };
       },
       payload,
-      { debugLabel: `profiles upsert (${PROFILES_TABLE})` }
+      { maxStrips: 16, debugLabel: `profiles upsert (${PROFILES_TABLE})` }
     );
 
     if (!res.error) return mapProfile(res.data as any);
@@ -1016,7 +1055,14 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
   if (!user) return null;
 
   const meta = (user.user_metadata || {}) as any;
-  const nickname = meta?.nickname || user.email || "Player";
+  const socialSeed = extractSocialProfileSeed(user);
+  const nickname =
+    socialSeed.nickname ||
+    meta?.nickname ||
+    meta?.full_name ||
+    meta?.name ||
+    user.email ||
+    "Player";
   const supabaseUserId = String(user.id || "");
 
   const supabaseUserAuth: UserAuth = {
@@ -1026,7 +1072,7 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  let profile = await getOrCreateProfile(supabaseUserId, nickname);
+  let profile = await getOrCreateProfile(supabaseUserId, nickname, user);
   let privateNasCapability: PrivateNasCapability | null = null;
   try {
     privateNasCapability = await probePrivateNasCapabilityForSession(session, nickname, { bootstrapProfile: true });
@@ -1245,7 +1291,7 @@ async function switchAccountInfrastructure(target: "public" | "nas"): Promise<Au
   const capability = await probePrivateNasCapabilityForSession(session, nickname, { force: true, bootstrapProfile: true });
   if (!capability.authorized) throw new Error("Ce compte n'est pas autorisé à accéder au NAS privé du fondateur.");
   const userAuth: UserAuth = { id: String(user.id), email: user.email ?? undefined, nickname, createdAt: user.created_at ? Date.parse(user.created_at) : now() };
-  const profile = mergeOnlineProfiles(capability.profile || null, await getOrCreateProfile(String(user.id), nickname));
+  const profile = mergeOnlineProfiles(capability.profile || null, await getOrCreateProfile(String(user.id), nickname, user));
   const bridged = await bridgeSupabaseSessionToNas(session, userAuth, profile, true);
   if (!bridged?.token) throw new Error("Le NAS privé n'a pas pu être activé pour ce compte.");
   bridged.authProvider = "nas"; bridged.degradedMode = false; saveAuthToLS(bridged); markAuthReady(true); return bridged;

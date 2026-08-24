@@ -203,6 +203,9 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
     const pendingAttr = new WeakMap<Element, Map<string, string>>();
 
     const resolveLiteralAsync = async (source: string): Promise<string | null> => {
+      // FR is the authored/source UI. Do not machine-translate any DOM literal
+      // into French; keep/restore the exact source wording instead.
+      if (lang === "fr") return null;
       const sourceLanguage = getUiLiteralSourceLanguage(source);
       if (!sourceLanguage || sourceLanguage === lang) return null;
 
@@ -278,7 +281,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const applied = resolved || translateLiteral(source);
       textState.set(node, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) node.nodeValue = applied;
-      if (!resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
+      if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleTextResolve(node, source);
     };
 
     const applyAttr = (el: Element, attr: string) => {
@@ -296,7 +299,7 @@ export function LangProvider({ children }: { children: React.ReactNode }) {
       const applied = resolved || translateLiteral(source);
       map.set(attr, { source, applied, resolved, resolvedLang: resolved ? lang : undefined });
       if (applied !== current) el.setAttribute(attr, applied);
-      if (!resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);
+      if (lang !== "fr" && !resolved && getUiLiteralSourceLanguage(source)) scheduleAttrResolve(el, attr, source);
     };
 
     const scan = (root: Node) => {

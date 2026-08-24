@@ -1031,6 +1031,9 @@ const PROPER_NAME_EXCEPTIONS = new Set([
   "MÖLKKY",
   "mölkky",
   "MULTISPORTS SCORING",
+  "DARTS SCORING",
+  "Darts Scoring",
+  "Darts scoring",
   "Awena",
   "AWENA",
   "Eliaz",
@@ -1378,6 +1381,14 @@ export async function translateUiLiteralWithBrowser(
 
 export function createUiLiteralTranslator(dicts: UiDictTable, targetLang: string) {
   const target = String(targetLang || "fr").toLowerCase().split("-")[0];
+
+  // French is the authored/source version of MULTISPORTS SCORING. Never run
+  // the DOM compatibility translator against it: the exact wording present in
+  // the React source / FR dictionaries must remain untouched. This also blocks
+  // stale EN→FR cache entries from turning branding such as DARTS SCORING into
+  // a literal machine translation.
+  if (target === "fr") return (raw: string): string => raw;
+
   const reverse = buildReverseDictionary(dicts, target);
   const reverseCi = buildCaseInsensitiveMap(reverse);
 
