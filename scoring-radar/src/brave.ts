@@ -1,4 +1,5 @@
 import type { Candidate, Market, RadarEnv } from './domain';
+import { braveSearchLanguage } from './config';
 import { sha256Hex } from './hash';
 
 interface BraveWebResult {
@@ -6,6 +7,7 @@ interface BraveWebResult {
   url?: string;
   description?: string;
   age?: string;
+  extra_snippets?: string[];
 }
 
 interface BraveResponse {
@@ -30,13 +32,18 @@ export async function searchBrave(
   url.searchParams.set('q', queryText);
   url.searchParams.set('count', String(count));
   url.searchParams.set('country', market.country);
-  url.searchParams.set('search_lang', market.language);
+  const searchLanguage = braveSearchLanguage(market);
+  if (searchLanguage) url.searchParams.set('search_lang', searchLanguage);
   url.searchParams.set('freshness', 'pd');
   url.searchParams.set('safesearch', 'moderate');
+  url.searchParams.set('text_decorations', 'false');
+  url.searchParams.set('extra_snippets', 'true');
+  url.searchParams.set('result_filter', 'web');
 
   const response = await fetch(url, {
     headers: {
       Accept: 'application/json',
+      'Cache-Control': 'no-cache',
       'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY
     }
   });
@@ -54,12 +61,15 @@ export async function searchBrave(
     const sourceUrl = result.url?.trim();
     if (!sourceUrl) continue;
     const id = await sha256Hex(`brave|${sourceUrl}`);
+    const snippets = [result.description, ...(result.extra_snippets ?? [])]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim());
     candidates.push({
       id,
       source: 'brave-web',
       sourceUrl,
       title: result.title?.trim() ?? '',
-      snippet: result.description?.trim() ?? '',
+      snippet: snippets.join('\n').slice(0, 4000),
       queryKey,
       queryText,
       market: `${market.language}:${market.country}`,

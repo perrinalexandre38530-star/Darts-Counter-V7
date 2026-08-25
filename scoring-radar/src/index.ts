@@ -1,3 +1,4 @@
+import { adminHtml } from './admin';
 import { classifyCandidates, localizeQuery } from './ai';
 import { searchBrave } from './brave';
 import { intFromEnv, marketKey, parseMarkets } from './config';
@@ -5,6 +6,7 @@ import {
   applyAnalysis,
   finishRun,
   getOpportunity,
+  getRadarStats,
   insertCandidate,
   listOpportunities,
   logClick,
@@ -24,19 +26,33 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function chooseRotating<T>(items: T[], count: number, tick: number): T[] {
-  if (items.length === 0 || count <= 0) return [];
+function chooseMarketBatch<T>(items: T[], count: number, tick: number): { selected: T[]; runsPerSweep: number } {
+  if (items.length === 0 || count <= 0) return { selected: [], runsPerSweep: 1 };
   const take = Math.min(count, items.length);
-  const start = Math.abs(tick) % items.length;
-  return Array.from({ length: take }, (_, index) => items[(start + index) % items.length]!);
+  const runsPerSweep = Math.max(1, Math.ceil(items.length / take));
+  const slot = Math.abs(tick) % runsPerSweep;
+  const start = slot * take;
+  return { selected: items.slice(start, start + take), runsPerSweep };
 }
 
-function safeDestination(base: string, sightingId: string, source: string): string {
+function safeDestination(base: string, row: { id: string; source: string; language: string | null; category: string | null; query_key: string }): string {
   const url = new URL(base);
-  url.searchParams.set('utm_source', source);
+  const language = (row.language ?? '').toLowerCase().split('-')[0];
+  const category = (row.category ?? '').toLowerCase();
+
+  if (language === 'fr') {
+    url.pathname = category.includes('dart') ? '/fr/flechettes/' : category.includes('running') ? '/fr/running/' : '/fr/';
+  } else if (language === 'en') {
+    url.pathname = category.includes('dart') ? '/en/darts/' : category.includes('running') ? '/en/running/' : '/en/';
+  } else if (language === 'es') {
+    url.pathname = category.includes('dart') ? '/es/dardos/' : category.includes('running') ? '/es/running/' : '/es/';
+  }
+
+  url.searchParams.set('utm_source', row.source);
   url.searchParams.set('utm_medium', 'organic_referral');
   url.searchParams.set('utm_campaign', 'scoring_radar');
-  url.searchParams.set('utm_content', sightingId.slice(0, 16));
+  url.searchParams.set('utm_content', row.id.slice(0, 16));
+  if (row.query_key) url.searchParams.set('utm_term', row.query_key);
   return url.toString();
 }
 
@@ -71,6 +87,16 @@ async function handleAdminApi(request: Request, env: RadarEnv, url: URL): Promis
         reply_with_link: row.suggested_reply?.replace('{{APP_LINK}}', `${publicBase}/go/${row.id}`) ?? null
       }
     });
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/stats') {
+    return json({ ok: true, stats: await getRadarStats(env) });
+  }
+
+  if (request.method === 'POST' && url.pathname === '/api/run') {
+    const started = Date.now();
+    await runScheduled(env, started);
+    return json({ ok: true, triggered_at: new Date(started).toISOString() });
   }
 
   if (request.method === 'POST' && url.pathname === '/api/ingest') {
@@ -124,18 +150,19 @@ async function handleGo(request: Request, env: RadarEnv, url: URL): Promise<Resp
     userAgent: request.headers.get('User-Agent')
   });
 
-  return Response.redirect(safeDestination(env.APP_DESTINATION_URL, id, row.source), 302);
+  return Response.redirect(safeDestination(env.APP_DESTINATION_URL, row), 302);
 }
 
 async function runScheduled(env: RadarEnv, scheduledTime: number): Promise<void> {
   const startedAt = new Date(scheduledTime).toISOString();
   const runId = crypto.randomUUID();
   const markets = parseMarkets(env);
-  const marketsPerRun = intFromEnv(env.RADAR_MARKETS_PER_RUN, 3, 1, 20);
+  const marketsPerRun = intFromEnv(env.RADAR_MARKETS_PER_RUN, 5, 1, 20);
   const resultsPerQuery = intFromEnv(env.RADAR_RESULTS_PER_QUERY, 10, 1, 20);
   const fiveMinuteTick = Math.floor(scheduledTime / 300_000);
-  const selectedMarkets = chooseRotating(markets, marketsPerRun, fiveMinuteTick);
-  const selectedIntent = SEARCH_INTENTS[Math.abs(fiveMinuteTick) % SEARCH_INTENTS.length]!;
+  const { selected: selectedMarkets, runsPerSweep } = chooseMarketBatch(markets, marketsPerRun, fiveMinuteTick);
+  const intentIndex = Math.floor(Math.abs(fiveMinuteTick) / runsPerSweep) % SEARCH_INTENTS.length;
+  const selectedIntent = SEARCH_INTENTS[intentIndex]!;
 
   await startRun(env, runId, startedAt, selectedMarkets.map(marketKey).join(','));
 
@@ -173,6 +200,12 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/health') {
       return json({ ok: true, service: 'scoring-radar', version: '0.1.0' });
+    }
+
+    if (request.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/')) {
+      return new Response(adminHtml(), {
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+      });
     }
 
     if (url.pathname.startsWith('/go/')) {

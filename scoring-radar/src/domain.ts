@@ -46,6 +46,7 @@ export type OpportunityRow = {
   source_url: string;
   title: string;
   snippet: string;
+  query_key: string;
   market: string;
   language: string | null;
   category: string | null;

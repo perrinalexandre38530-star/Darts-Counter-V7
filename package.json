@@ -85,7 +85,12 @@
     "test:awena:v92": "node tools/test-awena-v92-user-guide.mjs",
     "test:awena:v93": "node tools/test-awena-v93-mode-precision.mjs",
     "test:awena:v931": "node tools/test-awena-v931-killer-config.mjs && npm run test:awena:v93",
-    "test:social-auth": "node ./tools/test-social-auth-integration.mjs"
+    "test:social-auth": "node ./tools/test-social-auth-integration.mjs",
+    "radar:install": "npm --prefix scoring-radar install",
+    "radar:typecheck": "npm --prefix scoring-radar run typecheck",
+    "radar:dev": "npm --prefix scoring-radar run dev",
+    "radar:deploy": "npm --prefix scoring-radar run deploy",
+    "test:scoring-radar": "node ./tools/test-scoring-radar-integration.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

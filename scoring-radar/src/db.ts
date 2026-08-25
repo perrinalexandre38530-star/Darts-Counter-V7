@@ -58,7 +58,7 @@ export async function cacheQuery(env: RadarEnv, market: string, queryKey: string
 
 export async function listOpportunities(env: RadarEnv, minScore: number, limit: number): Promise<OpportunityRow[]> {
   const result = await env.DB.prepare(`
-    SELECT id, source, source_url, title, snippet, market, language, category, intent,
+    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
            score, eligible, reason, suggested_reply, captured_at, analyzed_at
     FROM sightings
     WHERE status = 'analyzed' AND eligible = 1 AND score >= ?
@@ -70,7 +70,7 @@ export async function listOpportunities(env: RadarEnv, minScore: number, limit: 
 
 export async function getOpportunity(env: RadarEnv, id: string): Promise<OpportunityRow | null> {
   return env.DB.prepare(`
-    SELECT id, source, source_url, title, snippet, market, language, category, intent,
+    SELECT id, source, source_url, title, snippet, query_key, market, language, category, intent,
            score, eligible, reason, suggested_reply, captured_at, analyzed_at
     FROM sightings WHERE id = ?
   `).bind(id).first<OpportunityRow>();
@@ -114,4 +114,36 @@ export async function finishRun(
     stats.error ?? null,
     id
   ).run();
+}
+
+export async function getRadarStats(env: RadarEnv): Promise<{
+  sightings: number;
+  analyzed: number;
+  eligible: number;
+  highIntent: number;
+  clicks: number;
+  latestRun: Record<string, unknown> | null;
+}> {
+  const counts = await env.DB.prepare(`
+    SELECT
+      COUNT(*) AS sightings,
+      SUM(CASE WHEN status = 'analyzed' THEN 1 ELSE 0 END) AS analyzed,
+      SUM(CASE WHEN eligible = 1 THEN 1 ELSE 0 END) AS eligible,
+      SUM(CASE WHEN eligible = 1 AND score >= 90 THEN 1 ELSE 0 END) AS high_intent
+    FROM sightings
+  `).first<{ sightings: number; analyzed: number | null; eligible: number | null; high_intent: number | null }>();
+  const clickRow = await env.DB.prepare('SELECT COUNT(*) AS clicks FROM clicks').first<{ clicks: number }>();
+  const latestRun = await env.DB.prepare(`
+    SELECT id, started_at, finished_at, markets, queries, candidates, queued, error
+    FROM run_log ORDER BY started_at DESC LIMIT 1
+  `).first<Record<string, unknown>>();
+
+  return {
+    sightings: Number(counts?.sightings ?? 0),
+    analyzed: Number(counts?.analyzed ?? 0),
+    eligible: Number(counts?.eligible ?? 0),
+    highIntent: Number(counts?.high_intent ?? 0),
+    clicks: Number(clickRow?.clicks ?? 0),
+    latestRun: latestRun ?? null
+  };
 }
