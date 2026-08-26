@@ -21,6 +21,16 @@ export type FitExercise = {
   equipment: FitEquipment;
   icon: string;
   accent: string;
+  /** Optional metadata used by the open FIT PERF catalogue. */
+  source?: "mss" | "free-exercise-db";
+  sourceId?: string;
+  sourceLicense?: string;
+  level?: string;
+  category?: string;
+  instructions?: string[];
+  imagePaths?: string[];
+  /** Motion family used to reuse one AWENA/mocap movement across exercise variants. */
+  motionKey?: string;
 };
 
 export type FitSet = {
@@ -58,6 +68,25 @@ export type FitTemplate = {
 };
 
 const STORAGE_KEY = "mss-fit-perf-sessions-v1";
+export const FREE_EXERCISE_CACHE_KEY = "mss-fit-perf-free-exercise-db-v1";
+
+const externalExerciseRegistry = new Map<string, FitExercise>();
+let externalCacheHydrated = false;
+
+export function registerExternalFitExercises(exercises: FitExercise[]) {
+  for (const exercise of exercises) {
+    if (exercise && typeof exercise.id === "string" && exercise.id) externalExerciseRegistry.set(exercise.id, exercise);
+  }
+}
+
+function hydrateExternalExerciseCache() {
+  if (externalCacheHydrated || typeof window === "undefined") return;
+  externalCacheHydrated = true;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(FREE_EXERCISE_CACHE_KEY) || "null") as { exercises?: FitExercise[] } | null;
+    if (Array.isArray(parsed?.exercises)) registerExternalFitExercises(parsed.exercises);
+  } catch {}
+}
 
 export const FIT_EXERCISES: FitExercise[] = [
   { id: "bench", name: "Développé couché", muscle: "Pectoraux", secondary: ["Triceps", "Épaules"], equipment: "Barre", icon: "▰", accent: "#f7c948" },
@@ -122,7 +151,10 @@ export function makeId(prefix = "fit") {
 }
 
 export function exerciseById(id: string): FitExercise | undefined {
-  return FIT_EXERCISES.find((exercise) => exercise.id === id);
+  const curated = FIT_EXERCISES.find((exercise) => exercise.id === id);
+  if (curated) return curated;
+  hydrateExternalExerciseCache();
+  return externalExerciseRegistry.get(id);
 }
 
 export function defaultSets(weightKg = 20, count = 3, reps = 10): FitSet[] {

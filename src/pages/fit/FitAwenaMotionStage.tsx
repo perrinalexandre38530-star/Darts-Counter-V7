@@ -1,5 +1,6 @@
 import React from "react";
 import type { FitExercise } from "../../fit/fitStore";
+import { resolveFitMotionKey } from "../../fit/awenaMocapRegistry";
 
 const AWENA_AVATAR = "/awena/awena-avatar.webp";
 
@@ -218,7 +219,11 @@ const MOTIONS: Record<string, MotionConfig> = {
 };
 
 export const FIT_AWENA_ANIMATED_EXERCISE_IDS = Object.freeze(Object.keys(MOTIONS));
-export function hasFitAwenaMotion(exerciseId: string) { return Boolean(MOTIONS[exerciseId]); }
+export function hasFitAwenaMotion(exercise: string | FitExercise) {
+  if (typeof exercise === "string") return Boolean(MOTIONS[exercise]);
+  const key = resolveFitMotionKey(exercise);
+  return Boolean(key && MOTIONS[key]);
+}
 
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 function pointLerp(a: Point, b: Point, t: number): Point { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)]; }
@@ -426,7 +431,8 @@ function AnimatedFigure({ exercise, config, compact }: { exercise: FitExercise; 
 }
 
 export default function FitAwenaMotionStage({ exercise, compact = false }: { exercise: FitExercise; compact?: boolean }) {
-  const config = MOTIONS[exercise.id];
+  const motionKey = resolveFitMotionKey(exercise);
+  const config = motionKey ? MOTIONS[motionKey] : undefined;
   if (!config) return null;
   return <AnimatedFigure exercise={exercise} config={config} compact={compact}/>;
 }

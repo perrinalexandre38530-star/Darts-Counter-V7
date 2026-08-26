@@ -23,6 +23,7 @@ import {
   type FitSet,
   type FitTemplate,
 } from "../../fit/fitStore";
+import { getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
 import { FitGlassCard, FitGhostButton, FitIcon, FitIconTabs, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void; store?: any; params?: any };
@@ -61,6 +62,23 @@ export default function FitPerfModule({ go, store, params }: Props) {
   const [showExercisePicker, setShowExercisePicker] = React.useState(false);
   const [expandedExerciseRowId, setExpandedExerciseRowId] = React.useState<string | null>(null);
   const [now, setNow] = React.useState(Date.now());
+  const [freeExercises, setFreeExercises] = React.useState(() => getCachedFreeExerciseCatalog());
+  const [freeCatalogLoading, setFreeCatalogLoading] = React.useState(false);
+  const [freeCatalogError, setFreeCatalogError] = React.useState("");
+  const pickerExercises = React.useMemo(() => [...FIT_EXERCISES, ...freeExercises], [freeExercises]);
+
+  const activateFreeCatalog = async () => {
+    if (freeCatalogLoading) return;
+    setFreeCatalogLoading(true);
+    setFreeCatalogError("");
+    try {
+      setFreeExercises(await loadFreeExerciseCatalog(false));
+    } catch (error) {
+      setFreeCatalogError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setFreeCatalogLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     if (view !== "workout") return;
@@ -190,7 +208,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
     const doneSets = completedSets(session);
     const allSets = totalSets(session);
     const progress = allSets ? (doneSets / allSets) * 100 : 0;
-    const filteredExercises = FIT_EXERCISES.filter((exercise) => {
+    const filteredExercises = pickerExercises.filter((exercise) => {
       const matchesFilter = exerciseFilter === "Tous" || exercise.muscle === exerciseFilter;
       const q = exerciseSearch.trim().toLowerCase();
       const matchesSearch = !q || exercise.name.toLowerCase().includes(q) || exercise.muscle.toLowerCase().includes(q) || exercise.equipment.toLowerCase().includes(q);
@@ -261,11 +279,13 @@ export default function FitPerfModule({ go, store, params }: Props) {
           {showExercisePicker ? <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,.72)", backdropFilter: "blur(10px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 10 }} onClick={() => setShowExercisePicker(false)}>
             <div onClick={(event) => event.stopPropagation()} style={{ width: "100%", maxWidth: 720, maxHeight: "82vh", overflow: "auto", borderRadius: "24px 24px 16px 16px", padding: 14, background: "#0b0e14", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 -20px 60px rgba(0,0,0,.55)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: 1 }}>BIBLIOTHÈQUE FIT PERF</div><div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000 }}>{t("Choisir un exercice", "Choose exercise", "Elegir ejercicio")}</div></div><button type="button" onClick={() => setShowExercisePicker(false)} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", cursor: "pointer", fontSize: 19 }}>×</button></div>
-              <input value={exerciseSearch} onChange={(event) => setExerciseSearch(event.target.value)} placeholder={t("Rechercher un exercice, muscle, matériel…", "Search exercise, muscle, equipment…", "Buscar ejercicio, músculo, material…")} style={{ width: "100%", boxSizing: "border-box", marginTop: 12, minHeight: 44, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", padding: "0 12px", outline: "none" }} />
+              <div style={{ marginTop: 10, padding: 9, borderRadius: 13, border: "1px solid rgba(114,222,244,.18)", background: "rgba(114,222,244,.035)", display: "flex", alignItems: "center", gap: 8 }}><div style={{ minWidth: 0, flex: 1 }}><div style={{ color: "#72def4", fontSize: 8, fontWeight: 1000 }}>OPEN EXERCISE DB · 0 €</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.5 }}>{freeExercises.length ? `${freeExercises.length} ${t("exercices libres disponibles", "open exercises available", "ejercicios libres disponibles")}` : t("Active la bibliothèque publique de 800+ exercices", "Enable the public 800+ exercise library", "Activa la biblioteca pública de 800+ ejercicios")}</div></div>{!freeExercises.length ? <button type="button" disabled={freeCatalogLoading} onClick={() => void activateFreeCatalog()} style={{ minHeight: 32, borderRadius: 10, border: "1px solid rgba(114,222,244,.34)", background: "rgba(114,222,244,.08)", color: "#72def4", padding: "0 9px", fontSize: 7, fontWeight: 1000 }}>{freeCatalogLoading ? "…" : t("ACTIVER", "ENABLE", "ACTIVAR")}</button> : null}</div>
+              {freeCatalogError ? <div style={{ marginTop: 5, color: "#ff8b8b", fontSize: 7 }}>{freeCatalogError}</div> : null}
+              <input value={exerciseSearch} onChange={(event) => setExerciseSearch(event.target.value)} placeholder={t("Rechercher un exercice, muscle, matériel…", "Search exercise, muscle, equipment…", "Buscar ejercicio, músculo, material…")} style={{ width: "100%", boxSizing: "border-box", marginTop: 10, minHeight: 44, borderRadius: 13, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.04)", color: "#fff", padding: "0 12px", outline: "none" }} />
               <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 9, paddingBottom: 2 }}>{["Tous","Pectoraux","Dos","Épaules","Biceps","Triceps","Quadriceps","Ischios","Fessiers","Abdos"].map((filter) => <button key={filter} type="button" onClick={() => setExerciseFilter(filter)} style={{ flex: "0 0 auto", minHeight: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${exerciseFilter === filter ? accent + "66" : "rgba(255,255,255,.07)"}`, background: exerciseFilter === filter ? `${accent}12` : "rgba(255,255,255,.025)", color: exerciseFilter === filter ? accent : "#fff", fontSize: 9.5, fontWeight: 900, cursor: "pointer" }}>{filter}</button>)}</div>
-              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{filteredExercises.map((exercise) => {
+              <div style={{ display: "grid", gap: 7, marginTop: 10 }}>{filteredExercises.slice(0, exerciseSearch.trim() ? 100 : 70).map((exercise) => {
                 const exists = session.exercises.some((row) => row.exerciseId === exercise.id);
-                return <button key={exercise.id} type="button" disabled={exists} onClick={() => addExercise(exercise.id)} style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center", minHeight: 58, borderRadius: 14, padding: "8px 10px", textAlign: "left", border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.028)", color: exists ? "rgba(255,255,255,.35)" : "#fff", cursor: exists ? "default" : "pointer" }}><div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}32`, fontSize: 18, fontWeight: 1000 }}>{exercise.icon}</div><div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{exercise.name}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 9 }}>{exercise.muscle} · {exercise.equipment}</div></div><b style={{ color: exists ? textSoft : accent, fontSize: 16 }}>{exists ? "✓" : "+"}</b></button>;
+                return <button key={exercise.id} type="button" disabled={exists} onClick={() => addExercise(exercise.id)} style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center", minHeight: 58, borderRadius: 14, padding: "8px 10px", textAlign: "left", border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.028)", color: exists ? "rgba(255,255,255,.35)" : "#fff", cursor: exists ? "default" : "pointer" }}><div style={{ width: 40, height: 40, borderRadius: 12, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}32`, fontSize: 18, fontWeight: 1000 }}>{exercise.icon}</div><div style={{ minWidth: 0 }}><div style={{ display: "flex", alignItems: "center", gap: 5 }}><div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11.5, fontWeight: 950 }}>{exercise.name}</div>{exercise.source === "free-exercise-db" ? <span style={{ flex: "0 0 auto", color: "#72def4", fontSize: 6, border: "1px solid rgba(114,222,244,.25)", borderRadius: 999, padding: "2px 4px" }}>OPEN</span> : null}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 9 }}>{exercise.muscle} · {exercise.equipment}</div></div><b style={{ color: exists ? textSoft : accent, fontSize: 16 }}>{exists ? "✓" : "+"}</b></button>;
               })}</div>
             </div>
           </div> : null}
