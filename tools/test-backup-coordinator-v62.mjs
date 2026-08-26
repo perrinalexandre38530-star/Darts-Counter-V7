@@ -9,6 +9,11 @@ const history = read("src/lib/history.ts");
 const cloudRestore = read("src/lib/cloudAutoRestore.ts");
 const autoService = read("src/lib/backup/autoBackupService.ts");
 const app = read("src/App.tsx");
+const login = read("src/pages/AuthV7Login.tsx");
+const authHook = read("src/hooks/useAuthOnline.tsx");
+const onlineApi = read("src/lib/onlineApi.ts");
+const directR2 = read("src/lib/directR2BackupApi.ts");
+const storage = read("src/lib/storage.ts");
 
 assert.match(coordinator, /scanLocal\(uid\)/);
 assert.match(coordinator, /source: "nas"/);
@@ -38,10 +43,28 @@ assert.match(completed, /match-end-auto:/);
 assert.match(completed, /RETRY_MS/);
 
 assert.match(cloudRestore, /restoreLatestBackupForSignedInUser/);
-assert.match(app, /Recherche de la dernière sauvegarde/);
+assert.doesNotMatch(app, /Recherche de la dernière sauvegarde/);
+assert.doesNotMatch(login, /maybeAutoRestoreCloudForSignedInUser/);
+assert.match(authHook, /shouldSearchBackupsForUser/);
+assert.match(authHook, /searchBackupsInBackground/);
+assert.doesNotMatch(authHook, /tryBridgeLocalProfile/);
+assert.match(app, /loadedStoreScopeRef\.current !== uid/);
+assert.match(app, /if \(accountChanged\) setStore\(\{ \.\.\.initialStore \}\)/);
+assert.match(coordinator, /inFlightByUser/);
+assert.doesNotMatch(coordinator, /let inFlight: Promise<boolean>/);
+assert.match(coordinator, /accountStillActive/);
+assert.match(coordinator, /payloadHasExplicitOwner/);
+assert.match(coordinator, /accountScoped/);
+assert.match(onlineApi, /rawHash\.startsWith\("#\/auth\/callback"\)/);
+assert.match(onlineApi, /clearStaleAccountCredentialsForSupabaseUser/);
+assert.match(directR2, /tokenMatchesCurrentAccount/);
+assert.match(directR2, /directTokenPromisesByAccount/);
+assert.match(directR2, /const accountKey = currentStorageAccountId\(\)/);
+assert.match(storage, /backupManifest/);
+assert.match(storage, /userId: ownerId \|\| null/);
 
 assert.match(autoService, /exportCloudSnapshot\(\{ mediaMirror: "skip" \}\)/);
 assert.doesNotMatch(autoService, /pushStoreToNas/);
 assert.doesNotMatch(autoService, /nasApi\.pushStoreSnapshot/);
 
-console.log("✅ BACKUP COORDINATOR V62: latest multi-source restore + safe per-match auto backup OK");
+console.log("✅ BACKUP COORDINATOR: isolation compte + restore arrière-plan + auto backup fin de partie OK");

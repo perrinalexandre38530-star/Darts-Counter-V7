@@ -3305,6 +3305,17 @@ export async function exportCloudSnapshot(opts: CloudSnapshotExportOptions = {})
       }
     }
 
+    // Toutes les nouvelles sauvegardes portent explicitement leur propriétaire.
+    // Le coordinateur peut ainsi refuser sans ambiguïté un fichier d'un autre compte.
+    const ownerId = String(getStorageUser() || "").trim();
+    clone.backupManifest = {
+      ...(clone?.backupManifest && typeof clone.backupManifest === "object" ? clone.backupManifest : {}),
+      _v: 1,
+      userId: ownerId || null,
+      createdAt: new Date().toISOString(),
+      schemaVersion: 1,
+    };
+
     return clone;
   } catch (err) {
     console.warn("[storage] exportCloudSnapshot sanitize failed", err);

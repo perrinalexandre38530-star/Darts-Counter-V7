@@ -22,6 +22,7 @@ let __authBootstrapPromise: Promise<void> | null = null;
 import { supabase, __SUPABASE_ENV__ } from "./supabaseClient";
 import {
   clearSupabaseBrowserAuthStorage,
+  decodeJwtPayloadUnsafe,
   isInvalidRefreshSessionError,
 } from "./authSessionGuard";
 import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
@@ -414,6 +415,88 @@ function saveAuthToLS(session: AuthSession | null) {
   try {
     window.dispatchEvent(new CustomEvent("dc-auth-changed"));
   } catch {}
+}
+
+function normalizedAccountIds(values: any[]): Set<string> {
+  const out = new Set<string>();
+  for (const value of values) {
+    const id = String(value || "").trim();
+    if (id) out.add(id);
+  }
+  return out;
+}
+
+function supabaseAccountIds(user: any): Set<string> {
+  const meta = user?.user_metadata || {};
+  return normalizedAccountIds([
+    user?.id,
+    resolveCanonicalUserId(user),
+    meta?.canonical_user_id,
+    meta?.nas_user_id,
+    meta?.multisports_user_id,
+  ]);
+}
+
+function cachedAuthAccountIds(session: AuthSession | null | undefined): Set<string> {
+  return normalizedAccountIds([
+    session?.user?.id,
+    session?.userId,
+    session?.supabaseUserId,
+  ]);
+}
+
+function accountSetsOverlap(a: Set<string>, b: Set<string>): boolean {
+  for (const id of a) if (b.has(id)) return true;
+  return false;
+}
+
+function cachedAuthMatchesSupabaseUser(session: AuthSession | null | undefined, user: any): boolean {
+  if (!session || !user) return false;
+  return accountSetsOverlap(cachedAuthAccountIds(session), supabaseAccountIds(user));
+}
+
+/**
+ * Coupe uniquement les identifiants techniques qui appartiennent clairement à
+ * un AUTRE compte. C'est indispensable lors d'un changement Google/Facebook/etc. :
+ * un ancien JWT NAS ne doit jamais survivre assez longtemps pour sélectionner
+ * l'espace NAS/R2 du précédent utilisateur.
+ */
+function clearStaleAccountCredentialsForSupabaseUser(user: any): void {
+  if (typeof window === "undefined" || !user?.id) return;
+  const validIds = supabaseAccountIds(user);
+  if (!validIds.size) return;
+
+  const cached = loadAuthFromLS();
+  const cachedIds = cachedAuthAccountIds(cached);
+  const cachedMismatch = cachedIds.size > 0 && !accountSetsOverlap(cachedIds, validIds);
+
+  let nasSub = "";
+  try {
+    const rawNas = String(
+      window.localStorage.getItem(NAS_TOKEN_KEY) ||
+      window.sessionStorage.getItem(NAS_TOKEN_KEY) ||
+      "",
+    ).trim();
+    nasSub = String(decodeJwtPayloadUnsafe(rawNas)?.sub || "").trim();
+  } catch {}
+  const nasMismatch = !!nasSub && !validIds.has(nasSub);
+
+  if (!cachedMismatch && !nasMismatch) return;
+
+  try {
+    window.localStorage.removeItem(NAS_TOKEN_KEY);
+    window.localStorage.removeItem(NAS_REFRESH_KEY);
+    window.sessionStorage.removeItem(NAS_TOKEN_KEY);
+    window.sessionStorage.removeItem(NAS_REFRESH_KEY);
+    if (cachedMismatch) window.localStorage.removeItem(LS_AUTH_KEY);
+  } catch {}
+
+  __nasLastGoodSession = null;
+  __nasLastRestoreAt = 0;
+  __nasEnsureInFlight = null;
+  if (__privateNasCapabilityMemory?.supabaseUserId && !validIds.has(String(__privateNasCapabilityMemory.supabaseUserId))) {
+    __privateNasCapabilityMemory = null;
+  }
 }
 
 function shouldUseNasForCurrentSession(): boolean {
@@ -1086,6 +1169,10 @@ async function buildAuthSessionFromSupabase(opts?: { allowNasFailure?: boolean }
   const user = session?.user;
   if (!user) return null;
 
+  // Une session Supabase fraîche est l'autorité du compte courant. Nettoie les
+  // restes techniques d'un compte précédent avant le bridge NAS / les accès R2.
+  clearStaleAccountCredentialsForSupabaseUser(user);
+
   const meta = (user.user_metadata || {}) as any;
   const socialSeed = extractSocialProfileSeed(user);
   const nickname =
@@ -1249,8 +1336,12 @@ async function loginPublic(payload: LoginPayload): Promise<AuthSession> {
       supabase.auth.signInWithPassword({ email, password }),
       new Promise((_, reject) => window.setTimeout(() => reject(new Error("Supabase ne répond pas (timeout 9000ms).")), 9000)),
     ]);
-    const { error } = signInResult || {};
+    const { data, error } = signInResult || {};
     if (error) throw error;
+
+    // Changement de compte : purge immédiatement les JWT NAS/compat qui ne
+    // correspondent pas au nouvel utilisateur AVANT toute lecture de backup.
+    if (data?.session?.user) clearStaleAccountCredentialsForSupabaseUser(data.session.user);
 
     const session = await buildAuthSessionFromSupabase({ allowNasFailure: true });
     if (!session) throw new Error("Impossible de récupérer la session Supabase après la connexion.");
@@ -1384,6 +1475,12 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
   const rawHash = String(window.location.hash || "");
   if (!rawHash) return;
 
+  // Le callback OAuth possède son propre échange PKCE dans App.tsx. Laisser
+  // restoreSession() consommer le même code en parallèle provoquait deux
+  // exchangeCodeForSession(), supprimait le verifier PKCE et pouvait ensuite
+  // retomber sur la session de l'ancien compte.
+  if (rawHash.startsWith("#/auth/callback")) return;
+
   const qIndex = rawHash.indexOf("?");
   if (qIndex >= 0) {
     const query = rawHash.slice(qIndex + 1);
@@ -1439,9 +1536,36 @@ async function restoreSession(): Promise<AuthSession | null> {
     markAuthReady(false);
     return null;
   }
-  // Mode hybride : une session NAS/R2 issue du bridge Supabase ou d’un compte invité
-  // est une vraie session connectée. On ne l’efface plus au démarrage sous prétexte
-  // que Supabase n’a pas de session navigateur active.
+
+  // En build public, la session Supabase ACTUELLE est toujours l'autorité de
+  // compte. C'est ce qui empêche une session NAS mise en cache par l'utilisateur
+  // précédent de reprendre la main après une connexion Google/Facebook/email.
+  if (!isNasProviderEnabled()) {
+    try {
+      await maybeConsumeAuthRedirectFromHash();
+      const liveSupabase = await getLiveSupabaseSession();
+      if (liveSupabase?.user) {
+        clearStaleAccountCredentialsForSupabaseUser(liveSupabase.user);
+        const cachedForSameAccount = loadAuthFromLS();
+        if (isValidNasSession(cachedForSameAccount) && cachedAuthMatchesSupabaseUser(cachedForSameAccount, liveSupabase.user)) {
+          __nasLastGoodSession = cachedForSameAccount;
+          saveNasTokens(cachedForSameAccount, { silent: true });
+          markAuthReady(true);
+          return cachedForSameAccount;
+        }
+
+        const live = await buildAuthSessionFromSupabase({ allowNasFailure: true });
+        if (live) {
+          try { importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {}); } catch {}
+          return live;
+        }
+      }
+    } catch (error) {
+      console.warn("[onlineApi] live Supabase restore preflight skipped", error);
+    }
+  }
+
+  // Sans session Supabase active, les anciens comptes NAS restent compatibles.
   const cachedNas = loadAuthFromLS();
   if (isValidNasSession(cachedNas)) {
     __nasLastGoodSession = cachedNas;
@@ -1452,29 +1576,17 @@ async function restoreSession(): Promise<AuthSession | null> {
 
   if (isSupabaseFailoverSession(cachedNas)) {
     const liveSupabase = await getLiveSupabaseSession();
-    if (liveSupabase?.user) {
+    if (liveSupabase?.user && cachedAuthMatchesSupabaseUser(cachedNas, liveSupabase.user)) {
       markAuthReady(true);
       return cachedNas;
     }
   }
 
-  if (isNasProviderEnabled()) {
-    return null;
-  }
+  if (isNasProviderEnabled()) return null;
 
   try {
-    await maybeConsumeAuthRedirectFromHash();
-
-    const live = await buildAuthSessionFromSupabase({ allowNasFailure: true });
-    if (live) {
-      try {
-        importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
-      } catch {}
-      return live;
-    }
-
     const cached = loadAuthFromLS();
-    if (cached?.token && cached.refreshToken) {
+    if (cached?.token && cached.refreshToken && String(cached.authProvider || "") !== "nas") {
       try {
         const restored = await supabase.auth.setSession({
           access_token: cached.token,
@@ -1490,9 +1602,7 @@ async function restoreSession(): Promise<AuthSession | null> {
         }
         const retry = await buildAuthSessionFromSupabase({ allowNasFailure: true });
         if (retry) {
-          try {
-            importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
-          } catch {}
+          try { importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {}); } catch {}
           return retry;
         }
       } catch (e) {
@@ -1504,9 +1614,7 @@ async function restoreSession(): Promise<AuthSession | null> {
   } catch (e) {
     markAuthReady(false);
     console.warn("[onlineApi] restoreSession error", e);
-    try {
-      saveAuthToLS(null);
-    } catch {}
+    try { saveAuthToLS(null); } catch {}
     return null;
   }
 }
@@ -1563,21 +1671,31 @@ async function logout(): Promise<void> {
 
 async function getCurrentSession(): Promise<AuthSession | null> {
   if (isExplicitlyLoggedOut()) return null;
-  const cached = loadAuthFromLS();
 
-  // Les anciens comptes NAS restent des sessions authentifiées valides, même
-  // lorsque le build public utilise Supabase par défaut.
+  // Même règle qu'au restore : en mode public, une session Supabase vivante
+  // prime sur tout cache NAS. On ne réutilise le bridge NAS que s'il est prouvé
+  // qu'il appartient au même compte Supabase/canonique.
+  if (!isNasProviderEnabled()) {
+    const liveSupabase = await getLiveSupabaseSession();
+    if (liveSupabase?.user) {
+      clearStaleAccountCredentialsForSupabaseUser(liveSupabase.user);
+      const cached = loadAuthFromLS();
+      if (isValidNasSession(cached) && cachedAuthMatchesSupabaseUser(cached, liveSupabase.user)) return cached;
+      return await restoreSession();
+    }
+  }
+
+  const cached = loadAuthFromLS();
   if (isValidNasSession(cached)) return cached;
   if (isSupabaseFailoverSession(cached)) {
     const liveSupabase = await getLiveSupabaseSession();
-    if (liveSupabase?.user) return cached;
+    if (liveSupabase?.user && cachedAuthMatchesSupabaseUser(cached, liveSupabase.user)) return cached;
   }
 
   if (useNasOnlineBackend()) {
     try {
       return await ensureNasSession();
     } catch {
-      // En mode hybride, on garde un dernier secours Supabase pour les anciens comptes non bridgés.
       if (!isNasProviderEnabled()) return await restoreSession();
       return null;
     }

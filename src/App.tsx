@@ -125,7 +125,6 @@ import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
 import { clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, peekSocialAuthCallbackResult, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
-import { maybeAutoRestoreCloudForSignedInUser } from "./lib/cloudAutoRestore";
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -1084,44 +1083,12 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       if (!socialFlow || !uid) return false;
 
       clearPendingSocialAuth();
-      if (alive) {
-        const label = provider && SOCIAL_AUTH_LABELS[provider] ? SOCIAL_AUTH_LABELS[provider] : "sociale";
-        setMsg(`Connexion ${label} réussie ✅`);
-      }
-
-      // Après OAuth, on détermine UNE source canonique avant de décider quel
-      // profil afficher : Local / NAS / R2 / fichier configuré sont comparés et
-      // seule la sauvegarde complète la plus récente est appliquée.
-      if (alive) setMsg("Connexion réussie ✅ Recherche de la dernière sauvegarde…");
-      const restoredLatest = await maybeAutoRestoreCloudForSignedInUser(uid, { force: true })
-        .catch((error) => {
-          console.warn("[auth_callback] latest backup restore skipped", error);
-          return false;
-        });
-      // Une restauration effective programme un reload propre. Ne surtout pas
-      // lancer l'onboarding sur l'ancien store pendant ces quelques millisecondes.
-      if (restoredLatest) return true;
-
-      let linked = false;
-      try {
-        const store = (window as any)?.__appStore?.store ?? null;
-        const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
-        linked = profiles.some((p: any) => String((p?.privateInfo || {})?.onlineUserId || "") === uid);
-      } catch {}
-
-      if (!linked) {
-        try { localStorage.setItem("dc_nas_profile_onboarding_uid", uid); } catch {}
-        if (alive) {
-          go("profiles", {
-            view: "locals",
-            nasProfileOnboarding: true,
-            autoCreate: true,
-            returnTo: { tab: "profiles", params: { view: "me" } },
-          });
-        }
-        return true;
-      }
-
+      // Le compte authentifié devient le scope local immédiatement. Cela empêche
+      // tout accès transitoire au namespace de l'utilisateur précédent.
+      try { setStorageUser(uid); localStorage.setItem("dc_user_id", uid); } catch {}
+      // Aucune sauvegarde n'est recherchée dans le callback OAuth. Le compte est
+      // ouvert immédiatement ; useAuthOnline recharge son store namespacé puis
+      // lance la recherche de sauvegarde en arrière-plan si elle est pertinente.
       if (alive) go("gameSelect");
       return true;
     };
@@ -1145,6 +1112,9 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         } catch {}
 
         // Capture session from Supabase email/social links (PKCE code or implicit tokens).
+        // IMPORTANT : ce callback est l'UNIQUE consommateur du code PKCE. Si
+        // l'échange échoue, on ne recycle jamais une ancienne session du navigateur.
+        let callbackExchangeFailed = false;
         try {
           const href = String(window.location.href || "");
           const u = new URL(href);
@@ -1171,8 +1141,16 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
             }
           }
         } catch (e) {
+          callbackExchangeFailed = true;
           console.warn("[auth_callback] session parse/exchange failed", e);
+          clearPendingSocialAuth();
+          try { await supabase.auth.signOut({ scope: "local" }); } catch {}
+          if (alive) {
+            setMsg("La connexion sociale n'a pas pu être finalisée. Réessaie.");
+            window.setTimeout(() => alive && go("auth_v7_login"), 900);
+          }
         }
+        if (callbackExchangeFailed) return;
 
         const earlyCallbackResult = peekSocialAuthCallbackResult();
         if (earlyCallbackResult && !earlyCallbackResult.ok) {
@@ -1942,6 +1920,16 @@ useEffect(() => {
     if (!online?.ready) return;
     if (online.status !== "signed_in") return;
 
+    const user = (online as any)?.user || (online as any)?.session?.user || null;
+    const uid = String(user?.id || "").trim();
+    if (!uid) return;
+
+    // ISOLATION COMPTE : le bridge profil n'a le droit de toucher le store qu'APRÈS
+    // que le namespace de ce même utilisateur a réellement fini de charger.
+    // Sans ce garde, une connexion B pouvait lier/copier le store encore affiché de A.
+    if (String(getStorageUser() || "").trim() !== uid) return;
+    if (!bootStoreLoadedRef.current || loadedStoreScopeRef.current !== uid) return;
+
     const hasMeaningfulLocalData =
       (store?.profiles?.length || 0) > 0 ||
       !!(store as any)?.activeProfileId ||
@@ -1954,8 +1942,6 @@ useEffect(() => {
     // ✅ V7 ACCOUNT CORE CLEAN:
     // On applique TOUJOURS le bridge vers un profil local stable id==uid.
     // Sinon, deux appareils peuvent chacun "lier" un profil local différent, ce qui casse la synchro.
-    const user = (online as any)?.user || (online as any)?.session?.user || null;
-    if (!user?.id) return;
 
     try {
       setStore((prev) => {
@@ -2527,12 +2513,19 @@ useEffect(() => {
       return;
     }
 
+    const previousScope = loadedStoreScopeRef.current;
+    const accountChanged = bootStoreLoadedRef.current && previousScope !== nextScope;
+
     cloudHydratedUserRef.current = uid;
     loadedStoreScopeRef.current = nextScope;
+    bootStoreLoadedRef.current = false;
 
     try { setStorageUser(nextScope); } catch {}
     setCloudHydrated(false);
     setCloudCanSync(false);
+    // Ne jamais laisser les données visuelles de l'ancien compte pendant que le
+    // nouveau namespace IndexedDB est en train d'être lu.
+    if (accountChanged) setStore({ ...initialStore });
 
     (async () => {
       try {

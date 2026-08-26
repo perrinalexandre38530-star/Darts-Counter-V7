@@ -23,7 +23,6 @@ import { readNasAccessToken, setApiAccessToken } from "../lib/apiClient";
 import { maybeAutoRestoreCloudForSignedInUser } from "../lib/cloudAutoRestore";
 
 const NAS_AUTH_COOLDOWN_MS = 1500;
-import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 const AUTH_REDIRECT_LOGIN = "#/account/start";
@@ -334,38 +333,6 @@ function applyAuthFromSession(
   }
 }
 
-function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null) {
-  try {
-    const w: any = window as any;
-    const appStore = w.__appStore;
-
-    if (!appStore || typeof appStore.update !== "function") return;
-
-    appStore.update((store: any) => {
-      const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
-      const uid = String(user?.id || "");
-
-      const alreadyLinked = profiles.find((p: any) => {
-        const pi = (p as any)?.privateInfo || {};
-        return String((pi as any)?.onlineUserId || "") === uid;
-      });
-
-      if (isNasProviderEnabled() && !alreadyLinked) {
-        return store;
-      }
-
-      const activeId = store?.activeProfileId;
-      if (activeId && profiles.find((p: any) => p.id === activeId) && !alreadyLinked) {
-        return store;
-      }
-
-      return ensureLocalProfileForOnlineUser(store, user, onlineProfile || undefined);
-    });
-  } catch (e) {
-    console.warn("[useAuthOnline] tryBridgeLocalProfile failed", e);
-  }
-}
-
 
 function forceOpenLoginRoute(): void {
   if (typeof window === "undefined") return;
@@ -410,6 +377,7 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
       user: {
         id: uid,
         email: s?.user?.email || undefined,
+        created_at: s?.user?.createdAt ? new Date(Number(s.user.createdAt)).toISOString() : undefined,
         user_metadata: {
           nickname: s?.user?.nickname || s?.profile?.displayName || s?.profile?.nickname || "Player",
           auth_provider: s?.authProvider || (degraded ? "supabase_failover" : "nas"),
@@ -421,6 +389,25 @@ function authSessionToPseudoSupabaseSession(s: any): Session | null {
   } catch {
     return null;
   }
+}
+
+
+function shouldSearchBackupsForUser(user: any): boolean {
+  // Un compte créé à l'instant ne peut pas avoir de sauvegarde historique à
+  // restaurer. On évite donc NAS/R2/fichier au premier login. Sur un nouvel
+  // appareil avec un ancien compte, created_at est ancien et la recherche part.
+  const createdMs = Date.parse(String(user?.created_at || ""));
+  if (!Number.isFinite(createdMs) || createdMs <= 0) return true;
+  const ageMs = Date.now() - createdMs;
+  return ageMs < -60_000 || ageMs > 10 * 60_000;
+}
+
+function searchBackupsInBackground(user: any): void {
+  if (!user?.id || !shouldSearchBackupsForUser(user)) return;
+  // Décalage court : laisse d'abord App.tsx basculer le namespace local du compte.
+  window.setTimeout(() => {
+    void maybeAutoRestoreCloudForSignedInUser(String(user.id)).catch(() => false);
+  }, 250);
 }
 
 async function safeGetNasBridgeSession(): Promise<Session | null> {
@@ -612,8 +599,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           if (!s.user || s.user.id !== user.id) return s;
           return { ...s, profile };
         });
-        tryBridgeLocalProfile(user, profile);
-        void maybeAutoRestoreCloudForSignedInUser(user.id);
+        searchBackupsInBackground(user);
       }
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
@@ -648,7 +634,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
         const user = session?.user ?? null;
         if (user) {
-          tryBridgeLocalProfile(user, null);
 
           safeLoadProfileBestEffort(user).then((profile) => {
             if (!alive) return;
@@ -656,8 +641,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
               if (!s.user || s.user.id !== user.id) return s;
               return { ...s, profile };
             });
-            tryBridgeLocalProfile(user, profile);
-            void maybeAutoRestoreCloudForSignedInUser(user.id);
+            searchBackupsInBackground(user);
           });
         }
 
@@ -686,15 +670,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
             const nextUser = nextSession?.user ?? null;
             if (nextUser) {
-              tryBridgeLocalProfile(nextUser, null);
               safeLoadProfileBestEffort(nextUser).then((profile) => {
                 if (!alive) return;
                 setState((s) => {
                   if (!s.user || s.user.id !== nextUser.id) return s;
                   return { ...s, profile };
                 });
-                tryBridgeLocalProfile(nextUser, profile);
-                void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
+                searchBackupsInBackground(nextUser);
               });
             }
           } catch (e) {
@@ -727,7 +709,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           // immédiatement. Le profil/NAS/R2 est du post-traitement best-effort.
           lastSignedInSessionRef.current = emittedSession;
           applyAuthFromSession(setState, emittedSession);
-          tryBridgeLocalProfile(emittedSession.user, null);
 
           // Sort explicitement du callback Auth AVANT tout nouvel appel Supabase.
           window.setTimeout(() => {
@@ -746,7 +727,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
                 lastSignedInSessionRef.current = nextSession;
                 applyAuthFromSession(setState, nextSession);
-                tryBridgeLocalProfile(nextUser, null);
 
                 const profile = await safeLoadProfileBestEffort(nextUser);
                 if (!alive) return;
@@ -754,8 +734,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
                   if (!state.user || state.user.id !== nextUser.id) return state;
                   return { ...state, profile };
                 });
-                tryBridgeLocalProfile(nextUser, profile);
-                void maybeAutoRestoreCloudForSignedInUser(nextUser.id);
+                searchBackupsInBackground(nextUser);
               } catch (e) {
                 console.warn("[useAuthOnline] deferred auth-state hydration error:", e);
                 if (alive) setState((state) => ({ ...state, loading: false, ready: true }));

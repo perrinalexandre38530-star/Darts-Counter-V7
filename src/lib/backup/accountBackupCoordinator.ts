@@ -1,4 +1,5 @@
 import { readNasAccessToken } from "../apiClient";
+import { decodeJwtPayloadUnsafe } from "../authSessionGuard";
 import {
   downloadCloudObject,
   listCloudVaultBackups,
@@ -19,6 +20,7 @@ import {
 import {
   exportCloudSnapshot,
   importCloudSnapshot,
+  getStorageUser,
   setStorageUser,
 } from "../storage";
 import { getAutoBackups, type AutoBackupItem } from "./autoBackupService";
@@ -33,6 +35,8 @@ export type AccountBackupCandidate = {
   updatedAtMs: number;
   revision: number;
   summary?: Partial<VaultSummary> | null;
+  /** La source elle-même garantit que la sauvegarde appartient au compte demandé. */
+  accountScoped: boolean;
   load: () => Promise<any>;
 };
 
@@ -46,8 +50,8 @@ const LAST_RESULT_PREFIX = "dc_backup_coordinator_last_result_v1";
 const BEFORE_RESTORE_LABEL = "Sécurité avant restauration automatique";
 const RUN_COOLDOWN_MS = 4_000;
 
-let inFlight: Promise<boolean> | null = null;
-let lastRunAt = 0;
+const inFlightByUser = new Map<string, Promise<boolean>>();
+const lastRunAtByUser = new Map<string, number>();
 
 function parseMs(value: any): number {
   const numeric = Number(value);
@@ -163,10 +167,25 @@ function snapshotOwnerIds(payload: any): string[] {
   return Array.from(ids);
 }
 
-function payloadOwnerCompatible(payload: any, userId: string): boolean {
+function payloadHasExplicitOwner(payload: any): boolean {
+  return snapshotOwnerIds(payload).length > 0;
+}
+
+function payloadOwnerCompatible(payload: any, userId: string, accountScoped = false): boolean {
   const ids = snapshotOwnerIds(payload);
-  if (!ids.length) return true; // compat anciennes sauvegardes sans manifeste propriétaire
-  return ids.includes(userId);
+  if (ids.length) return ids.includes(userId);
+  // Une vieille sauvegarde sans manifeste n'est autorisée en restauration AUTO
+  // que si le provider lui-même est déjà cloisonné par compte (NAS/R2/slot local).
+  return accountScoped;
+}
+
+function currentAccountScope(): string {
+  try { return String(getStorageUser() || localStorage.getItem("dc_storage_user_id_v1") || localStorage.getItem("dc_user_id") || "").trim(); }
+  catch { return String(getStorageUser() || "").trim(); }
+}
+
+function accountStillActive(userId: string): boolean {
+  return !!userId && currentAccountScope() === userId;
 }
 
 function meaningfulSummary(summary: Partial<VaultSummary> | null | undefined): boolean {
@@ -260,6 +279,7 @@ function localCandidate(slot: MemorySlot): AccountBackupCandidate | null {
     updatedAtMs: ms,
     revision: 0,
     summary: slot.summary || null,
+    accountScoped: true,
     load: async () => decodeMaybeCompressedNasPayloadAsync(slot.payload),
   };
 }
@@ -276,6 +296,7 @@ function nasCandidate(slot: NasSlot): AccountBackupCandidate | null {
     updatedAtMs: ms,
     revision: candidateRevision(slot.version),
     summary: slot.summary || null,
+    accountScoped: true,
     load: async () => {
       const pulled = await pullNasMemorySlot(id, { summaryHint: slot.summary as VaultSummary | undefined });
       return pulled.payload;
@@ -297,6 +318,7 @@ function r2Candidate(item: CloudObjectIndexItem): AccountBackupCandidate | null 
     updatedAtMs: ms,
     revision: candidateRevision(metadata.revision || metadata.version),
     summary,
+    accountScoped: true,
     load: async () => {
       const downloaded = await downloadCloudObject(id);
       if (!downloaded?.ok) throw new Error("Téléchargement R2 impossible");
@@ -317,12 +339,13 @@ function externalCandidate(payload: any): AccountBackupCandidate | null {
     updatedAtMs: ms,
     revision: candidateRevision(payload?.backupManifest?.revision),
     summary,
+    accountScoped: false,
     load: async () => payload,
   };
 }
 
 function legacyAutoCandidate(item: AutoBackupItem, index: number, userId: string): AccountBackupCandidate | null {
-  if (!item?.payload || !payloadOwnerCompatible(item.payload, userId)) return null;
+  if (!item?.payload || !payloadHasExplicitOwner(item.payload) || !payloadOwnerCompatible(item.payload, userId, false)) return null;
   const ms = candidateTime(item.createdAt, snapshotTimestamp(item.payload));
   const summary = summarizeVaultPayload(unwrapPayload(item.payload));
   return {
@@ -333,6 +356,7 @@ function legacyAutoCandidate(item: AutoBackupItem, index: number, userId: string
     updatedAtMs: ms,
     revision: 0,
     summary,
+    accountScoped: false,
     load: async () => item.payload,
   };
 }
@@ -352,23 +376,50 @@ async function scanLocal(userId: string): Promise<AccountBackupCandidate[]> {
   return [...primary, ...legacy];
 }
 
-async function scanNas(): Promise<AccountBackupCandidate[]> {
-  // Après une connexion Supabase fraîche, le token NAS privé peut ne pas encore
-  // avoir été recréé. On tente le bridge sécurisé uniquement si le serveur
-  // confirme que ce compte y est autorisé ; les comptes publics ordinaires ne
-  // basculent donc jamais vers le NAS par erreur.
-  if (!readNasAccessToken()) {
+async function scanNas(userId: string): Promise<AccountBackupCandidate[]> {
+  const uid = String(userId || "").trim();
+  if (!uid || !accountStillActive(uid)) return [];
+
+  const allowedIds = new Set<string>([uid]);
+  try {
+    const cached = JSON.parse(localStorage.getItem("dc_online_auth_supabase_v1") || "null");
+    if (String(cached?.supabaseUserId || "").trim() === uid) {
+      for (const id of [cached?.userId, cached?.user?.id]) {
+        const value = String(id || "").trim();
+        if (value) allowedIds.add(value);
+      }
+    }
+  } catch {}
+
+  const tokenBelongsToUser = () => {
+    const token = String(readNasAccessToken() || "").trim();
+    if (!token) return false;
+    const sub = String(decodeJwtPayloadUnsafe(token)?.sub || "").trim();
+    return !!sub && allowedIds.has(sub);
+  };
+
+  // Le bridge NAS reste best-effort et s'exécute désormais en tâche de fond.
+  // Un JWT NAS de l'utilisateur précédent est explicitement ignoré.
+  if (!tokenBelongsToUser()) {
     try {
       const mod = await import("../onlineApi");
+      if (!accountStillActive(uid)) return [];
       const capability = await mod.onlineApi.getPrivateNasCapability?.();
-      if (capability?.authorized === true) {
+      const canonical = String(capability?.canonicalUserId || "").trim();
+      if (canonical) allowedIds.add(canonical);
+      if (capability?.authorized === true && accountStillActive(uid)) {
         await mod.onlineApi.switchAccountInfrastructure?.("nas");
       }
     } catch {}
   }
-  if (!readNasAccessToken()) return [];
+  if (!accountStillActive(uid) || !tokenBelongsToUser()) return [];
+
   const slots = await listNasMemorySlots();
-  return slots.map(nasCandidate).filter(Boolean) as AccountBackupCandidate[];
+  if (!accountStillActive(uid)) return [];
+  return slots
+    .filter((slot) => !slot.ownerId || allowedIds.has(String(slot.ownerId).trim()))
+    .map(nasCandidate)
+    .filter(Boolean) as AccountBackupCandidate[];
 }
 
 async function scanR2(): Promise<AccountBackupCandidate[]> {
@@ -378,7 +429,7 @@ async function scanR2(): Promise<AccountBackupCandidate[]> {
 
 async function scanExternal(userId: string): Promise<AccountBackupCandidate[]> {
   const payload = await readExternalBackupSnapshotIfPermitted();
-  if (!payload || !payloadOwnerCompatible(payload, userId)) return [];
+  if (!payload || !payloadHasExplicitOwner(payload) || !payloadOwnerCompatible(payload, userId, false)) return [];
   const candidate = externalCandidate(payload);
   return candidate ? [candidate] : [];
 }
@@ -387,12 +438,13 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
   const uid = String(userId || "").trim();
   if (!uid) return { candidates: [], errors: [] };
 
-  try { setStorageUser(uid); } catch {}
-  try { localStorage.setItem("dc_user_id", uid); } catch {}
+  // Scanner n'a jamais le droit de changer de compte actif. L'authentification
+  // possède le scope ; si l'utilisateur a changé de compte entre-temps on annule.
+  if (!accountStillActive(uid)) return { candidates: [], errors: [] };
 
   const jobs: Array<{ source: AccountBackupSource; run: () => Promise<AccountBackupCandidate[]> }> = [
     { source: "local", run: () => scanLocal(uid) },
-    { source: "nas", run: scanNas },
+    { source: "nas", run: () => scanNas(uid) },
     { source: "r2", run: scanR2 },
     { source: "external", run: () => scanExternal(uid) },
   ];
@@ -404,6 +456,8 @@ export async function scanAccountBackups(userId: string): Promise<AccountBackupS
       return { source: job.source, items: [] as AccountBackupCandidate[], error: String(error?.message || error || "Source indisponible") };
     }
   }));
+
+  if (!accountStillActive(uid)) return { candidates: [], errors: [] };
 
   const candidates = settled.flatMap((row) => row.items)
     .filter((candidate) => candidate.updatedAtMs > 0 || summaryQuality(candidate.summary) > 0);
@@ -451,6 +505,8 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
   let safetySnapshot: any = null;
 
   try {
+    if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
+
     // Filet anti-régression : cette copie est explicitement exclue du choix automatique
     // au prochain boot, donc elle ne peut pas "gagner" parce qu'elle vient d'être créée.
     safetySnapshot = await exportCloudSnapshot({ mediaMirror: "skip" }).catch(() => null);
@@ -464,16 +520,20 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
       ).catch(() => null);
     }
 
+    if (!accountStillActive(userId)) throw new Error("Le compte actif a changé : restauration annulée.");
     const loaded = await candidate.load();
+    if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant le téléchargement : restauration annulée.");
     const payload = unwrapPayload(loaded);
     if (!payload || typeof payload !== "object") throw new Error("Sauvegarde vide ou illisible.");
-    if (!payloadOwnerCompatible(payload, userId)) throw new Error("Cette sauvegarde appartient à un autre compte.");
+    if (!payloadOwnerCompatible(payload, userId, candidate.accountScoped)) throw new Error("Cette sauvegarde appartient à un autre compte ou son propriétaire n'est pas vérifiable.");
 
     const loadedSummary = summarizeVaultPayload(payload);
     if (!meaningfulSummary(loadedSummary)) throw new Error("Sauvegarde invalide : aucune donnée restaurable détectée.");
 
+    if (!accountStillActive(userId)) throw new Error("Le compte actif a changé avant import : restauration annulée.");
     await importCloudSnapshot(payload, { mode: "replace" });
     restoreAuth();
+    if (!accountStillActive(userId)) throw new Error("Le compte actif a changé pendant l'import : rollback.");
     try { setStorageUser(userId); } catch {}
     try { localStorage.setItem("dc_user_id", userId); } catch {}
 
@@ -489,9 +549,13 @@ async function restoreCandidate(userId: string, candidate: AccountBackupCandidat
     if (safetySnapshot) {
       try {
         const authAgain = preserveCurrentAuth();
-        await importCloudSnapshot(safetySnapshot, { mode: "replace" });
-        authAgain();
-        try { setStorageUser(userId); } catch {}
+        // Ne rollback que si ce même compte est toujours actif. Une ancienne tâche
+        // n'a jamais le droit d'écraser le nouveau compte après un switch.
+        if (accountStillActive(userId)) {
+          await importCloudSnapshot(safetySnapshot, { mode: "replace" });
+          authAgain();
+          try { setStorageUser(userId); } catch {}
+        }
       } catch (rollbackError) {
         console.error("[backupCoordinator] rollback failed", rollbackError);
       }
@@ -513,16 +577,21 @@ export async function restoreLatestBackupForSignedInUser(
 ): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const uid = String(userId || "").trim();
-  if (!uid) return false;
+  if (!uid || !accountStillActive(uid)) return false;
 
-  if (inFlight) return inFlight;
+  const existing = inFlightByUser.get(uid);
+  if (existing) return existing;
   const now = Date.now();
+  const lastRunAt = lastRunAtByUser.get(uid) || 0;
   if (!opts?.force && now - lastRunAt < RUN_COOLDOWN_MS) return false;
-  lastRunAt = now;
+  lastRunAtByUser.set(uid, now);
 
-  inFlight = (async () => {
+  const task = (async () => {
     try {
+      if (!accountStillActive(uid)) return false;
       const scan = await scanAccountBackups(uid);
+      if (!accountStillActive(uid)) return false;
+
       const latest = pickLatestBackupCandidate(scan.candidates);
       if (!latest) {
         saveDiagnostic(uid, { ok: true, restored: false, reason: "no-backup", scanErrors: scan.errors });
@@ -533,6 +602,7 @@ export async function restoreLatestBackupForSignedInUser(
       const alreadyApplied = readAppliedSignature(uid) === signature;
       if (alreadyApplied) {
         const local = await summarizeCurrentLocal().catch(() => null);
+        if (!accountStillActive(uid)) return false;
         if (local && localLooksAtLeastAsComplete(local, latest.summary)) {
           saveDiagnostic(uid, { ok: true, restored: false, reason: "already-current", candidate: { ...latest, load: undefined }, scanErrors: scan.errors });
           return false;
@@ -540,6 +610,7 @@ export async function restoreLatestBackupForSignedInUser(
       }
 
       await restoreCandidate(uid, latest);
+      if (!accountStillActive(uid)) return false;
       writeAppliedSignature(uid, signature);
       saveDiagnostic(uid, {
         ok: true,
@@ -551,9 +622,9 @@ export async function restoreLatestBackupForSignedInUser(
         scanErrors: scan.errors,
       });
 
-      // Recharge une fois après l'import : tous les écrans repartent du même état
-      // IndexedDB/statistiques/médias au lieu de conserver des hooks montés avant restore.
+      // Reload uniquement si le compte restauré est TOUJOURS le compte actif.
       window.setTimeout(() => {
+        if (!accountStillActive(uid)) return;
         try { window.location.reload(); } catch {}
       }, 220);
       return true;
@@ -562,9 +633,10 @@ export async function restoreLatestBackupForSignedInUser(
       console.warn("[backupCoordinator] automatic latest-backup restore skipped", error);
       return false;
     } finally {
-      inFlight = null;
+      if (inFlightByUser.get(uid) === task) inFlightByUser.delete(uid);
     }
   })();
 
-  return inFlight;
+  inFlightByUser.set(uid, task);
+  return task;
 }

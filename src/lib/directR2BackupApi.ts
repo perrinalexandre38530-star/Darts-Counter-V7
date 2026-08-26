@@ -3,6 +3,7 @@ import { readNasAccessToken } from "./apiClient";
 import type { CloudObjectIndexItem } from "./cloudStorageApi";
 import { isPaidCloudPlanId, loadStoragePrefs, type StoragePlanId } from "./storagePlans";
 import {
+  decodeJwtPayloadUnsafe,
   isFreshSupabaseAccessToken,
   isJwtFresh,
 } from "./authSessionGuard";
@@ -248,11 +249,42 @@ function tokenFromStoredSupabaseSession(): string {
 const DIRECT_AUTH_REJECT_COOLDOWN_MS = 60_000;
 let directAuthRejectedUntil = 0;
 let directAuthRejectedFingerprint = "";
-let directTokenPromise: Promise<DirectStorageToken> | null = null;
+// Coalescing PAR COMPTE : jamais une Promise unique partagée pendant A -> B.
+const directTokenPromisesByAccount = new Map<string, Promise<DirectStorageToken>>();
 
 function tokenFingerprint(token: string): string {
   const value = String(token || "");
   return value ? `${value.slice(0, 10)}:${value.slice(-12)}` : "";
+}
+
+function currentStorageAccountId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return String(
+      window.localStorage.getItem("dc_storage_user_id_v1") ||
+      window.localStorage.getItem("dc_user_id") ||
+      "",
+    ).trim();
+  } catch { return ""; }
+}
+
+function tokenMatchesCurrentAccount(token: string): boolean {
+  const current = currentStorageAccountId();
+  if (!current) return true;
+  const sub = String(decodeJwtPayloadUnsafe(token)?.sub || "").trim();
+  if (!sub) return false;
+  if (sub === current) return true;
+
+  // Un compte bridge peut avoir un UID Supabase et un UID canonique NAS distincts.
+  // La session compat les relie explicitement ; on accepte ce couple uniquement
+  // quand le scope courant correspond bien au côté canonique de CETTE session.
+  try {
+    const cached = JSON.parse(window.localStorage.getItem("dc_online_auth_supabase_v1") || "null");
+    const canonicalIds = [cached?.userId, cached?.user?.id].map((v) => String(v || "").trim()).filter(Boolean);
+    const supabaseUserId = String(cached?.supabaseUserId || "").trim();
+    if (canonicalIds.includes(current) && supabaseUserId && sub === supabaseUserId) return true;
+  } catch {}
+  return false;
 }
 
 function markDirectAuthRejected(auth: DirectStorageToken): void {
@@ -274,14 +306,16 @@ function clearDirectAuthRejectionForNewToken(auth: DirectStorageToken): void {
 }
 
 export function canAttemptDirectR2FromStoredSession(): boolean {
-  const nasToken = String(readNasAccessToken() || "").trim();
-  if (nasToken && isJwtLike(nasToken)) {
-    const auth = { token: nasToken, kind: "nas" as const };
+  // Une session Supabase fraîche représente le compte actuellement connecté.
+  // Elle doit toujours passer AVANT un éventuel JWT NAS résiduel d'un autre compte.
+  const storedSupabase = tokenFromStoredSupabaseSession();
+  if (storedSupabase && tokenMatchesCurrentAccount(storedSupabase)) {
+    const auth = { token: storedSupabase, kind: "supabase" as const };
     if (!isDirectAuthRejected(auth)) return true;
   }
-  const storedSupabase = tokenFromStoredSupabaseSession();
-  if (storedSupabase) {
-    const auth = { token: storedSupabase, kind: "supabase" as const };
+  const nasToken = String(readNasAccessToken() || "").trim();
+  if (nasToken && isJwtLike(nasToken) && tokenMatchesCurrentAccount(nasToken)) {
+    const auth = { token: nasToken, kind: "nas" as const };
     return !isDirectAuthRejected(auth);
   }
   return false;
@@ -296,12 +330,35 @@ export function canAttemptDirectR2FromStoredSession(): boolean {
  * PostgreSQL, l'API NAS ou le tunnel sont indisponibles.
  */
 async function readDirectStorageToken(): Promise<DirectStorageToken> {
-  if (directTokenPromise) return directTokenPromise;
+  const accountKey = currentStorageAccountId() || "__no_account__";
+  const existing = directTokenPromisesByAccount.get(accountKey);
+  if (existing) return existing;
 
-  directTokenPromise = (async () => {
-    // Pour un compte NAS/fondateur, le JWT NAS valide reste prioritaire.
+  const directTokenPromise = (async (): Promise<DirectStorageToken> => {
+    const storedSupabase = tokenFromStoredSupabaseSession();
+    if (storedSupabase && tokenMatchesCurrentAccount(storedSupabase)) {
+      const auth = { token: storedSupabase, kind: "supabase" as const };
+      if (!isDirectAuthRejected(auth)) {
+        clearDirectAuthRejectionForNewToken(auth);
+        return auth;
+      }
+    }
+
+    try {
+      const result = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
+      ]);
+      const token = String((result as any)?.data?.session?.access_token || "").trim();
+      if (token && isSupabaseAccessToken(token) && currentStorageAccountId() === accountKey && tokenMatchesCurrentAccount(token)) {
+        const auth = { token, kind: "supabase" as const };
+        clearDirectAuthRejectionForNewToken(auth);
+        return auth;
+      }
+    } catch {}
+
     const nasToken = String(readNasAccessToken() || "").trim();
-    if (nasToken && isJwtLike(nasToken)) {
+    if (nasToken && isJwtLike(nasToken) && currentStorageAccountId() === accountKey && tokenMatchesCurrentAccount(nasToken)) {
       const auth = { token: nasToken, kind: "nas" as const };
       if (!isDirectAuthRejected(auth)) {
         clearDirectAuthRejectionForNewToken(auth);
@@ -309,35 +366,17 @@ async function readDirectStorageToken(): Promise<DirectStorageToken> {
       }
     }
 
-    // Évite de réveiller le SDK Supabase (et son refresh réseau) si un access token
-    // frais est déjà persisté localement.
-    const storedSupabase = tokenFromStoredSupabaseSession();
-    if (storedSupabase) {
-      const auth = { token: storedSupabase, kind: "supabase" as const };
-      clearDirectAuthRejectionForNewToken(auth);
-      return auth;
-    }
-
-    // Un seul getSession/refresh à la fois pour toute l'application.
-    try {
-      const result = await Promise.race([
-        supabase.auth.getSession(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
-      ]);
-      const token = String((result as any)?.data?.session?.access_token || "").trim();
-      if (token && isSupabaseAccessToken(token)) {
-        const auth = { token, kind: "supabase" as const };
-        clearDirectAuthRejectionForNewToken(auth);
-        return auth;
-      }
-    } catch {}
-
     return { token: "", kind: "none" as const };
-  })().finally(() => {
-    directTokenPromise = null;
-  });
+  })();
 
-  return directTokenPromise;
+  directTokenPromisesByAccount.set(accountKey, directTokenPromise);
+  try {
+    return await directTokenPromise;
+  } finally {
+    if (directTokenPromisesByAccount.get(accountKey) === directTokenPromise) {
+      directTokenPromisesByAccount.delete(accountKey);
+    }
+  }
 }
 
 async function fetchWithTimeout(
