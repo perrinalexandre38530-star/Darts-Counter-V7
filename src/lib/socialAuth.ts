@@ -218,6 +218,40 @@ export function clearPendingPkceBackup(): void {
   try { window.sessionStorage.removeItem(PKCE_BACKUP_KEY); } catch {}
 }
 
+/**
+ * Supprime à la fois la copie de secours MULTISPORTS et le verifier PKCE
+ * détenu par supabase-js. À n'utiliser que lorsqu'un callback est certain
+ * d'être ancien / déjà consommé.
+ */
+export function clearPendingPkceState(): void {
+  if (typeof window === "undefined") return;
+  const key = supabasePkceVerifierKey();
+  try { window.localStorage.removeItem(key); } catch {}
+  try { window.sessionStorage.removeItem(key); } catch {}
+  clearPendingPkceBackup();
+}
+
+/**
+ * Indique si un retour OAuth actuellement présent dans l'URL possède encore
+ * un contexte consommable. Cela permet de distinguer un vrai retour provider
+ * d'un ancien #/auth/callback restauré par le navigateur au prochain démarrage.
+ */
+export function hasActiveSocialAuthContext(): boolean {
+  if (typeof window === "undefined") return false;
+  if (getPendingSocialAuth()) return true;
+
+  const callbackResult = peekSocialAuthCallbackResult();
+  if (callbackResult) {
+    const at = Number((callbackResult as any)?.at || 0);
+    if (!at || Date.now() - at <= 10 * 60 * 1000) return true;
+  }
+
+  // restorePendingPkceVerifierIfNeeded() est volontairement utilisé ici :
+  // s'il ne reste que la sauvegarde MULTISPORTS, on restaure le verifier avant
+  // que le callback ne tente l'échange.
+  return restorePendingPkceVerifierIfNeeded();
+}
+
 export function clearPendingSocialAuth() {
   try { localStorage.removeItem(PENDING_KEY); } catch {}
 }

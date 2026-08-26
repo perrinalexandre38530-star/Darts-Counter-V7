@@ -124,7 +124,7 @@ import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
-import { clearPendingPkceBackup, clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, peekSocialAuthCallbackResult, restorePendingPkceVerifierIfNeeded, resumeSupabaseAuthRuntime, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
+import { clearPendingPkceBackup, clearPendingPkceState, clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, hasActiveSocialAuthContext, peekSocialAuthCallbackResult, restorePendingPkceVerifierIfNeeded, resumeSupabaseAuthRuntime, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -412,6 +412,82 @@ function isX01DevicePublicHash(hash: string): boolean {
 
 function isStandalonePublicHash(hash: string): boolean {
   return isX01DevicePublicHash(hash);
+}
+
+
+/**
+ * Un navigateur/PWA peut restaurer exactement la dernière URL visitée.
+ * Si cette URL est un ancien #/auth/callback?code=... déjà consommé, il ne
+ * faut surtout pas relancer exchangeCodeForSession() au démarrage suivant.
+ *
+ * Un vrai retour OAuth possède encore au moins un contexte actif :
+ * pending provider, résultat natif récent ou verifier PKCE Supabase/backup.
+ * Sans ce contexte, le callback est irrécupérable et doit être nettoyé.
+ */
+function scrubStaleOAuthCallbackUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  const hash = String(window.location.hash || "");
+  if (!hash.startsWith("#/auth/callback")) return false;
+
+  let handled = false;
+  let hasPayload = false;
+  try {
+    const query = hash.includes("?") ? hash.split("?")[1] : "";
+    const sp = new URLSearchParams(query);
+    handled = sp.get("handled") === "1";
+    hasPayload = !!(
+      sp.get("code") ||
+      sp.get("access_token") ||
+      sp.get("refresh_token") ||
+      sp.get("social") ||
+      sp.get("native") ||
+      sp.get("error")
+    );
+  } catch {}
+
+  const hasContext = !handled && hasActiveSocialAuthContext();
+  if (hasContext) return false;
+
+  // Même un callback sans payload n'a aucune raison d'être une route de boot.
+  // Si le navigateur l'a restauré sans contexte OAuth, on repart normalement.
+  if (!handled && !hasPayload && hash === "#/auth/callback") {
+    // route callback nue ouverte manuellement : on la considère également stale
+  }
+
+  try { consumeSocialAuthCallbackResult(); } catch {}
+  clearPendingSocialAuth();
+  clearPendingPkceState();
+
+  try {
+    window.history.replaceState(
+      window.history.state,
+      document.title,
+      `${window.location.pathname}#/gameSelect`,
+    );
+  } catch {
+    try { window.location.hash = "#/gameSelect"; } catch {}
+  }
+
+  console.info("[auth_callback] stale callback removed at startup");
+  return true;
+}
+
+/**
+ * Marque le callback courant comme déjà consommé sans déclencher hashchange.
+ * L'écran succès/erreur reste visible dans cette exécution, mais un refresh ou
+ * un prochain lancement ne pourra plus retraiter le même code OAuth.
+ */
+function markOAuthCallbackHandled(result: "success" | "error"): void {
+  if (typeof window === "undefined") return;
+  const hash = String(window.location.hash || "");
+  if (!hash.startsWith("#/auth/callback")) return;
+  try {
+    window.history.replaceState(
+      window.history.state,
+      document.title,
+      `${window.location.pathname}#/auth/callback?handled=1&result=${result}`,
+    );
+  } catch {}
 }
 
 // ============================================================
@@ -1092,6 +1168,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 
     const fail = (message: string, extra?: string) => {
       if (!alive || timedOut) return;
+      markOAuthCallbackHandled("error");
       setPhase("error");
       setTargetProgress(100);
       setMsg(message);
@@ -1116,8 +1193,9 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       if (!alive) return;
       timedOut = true;
       clearPendingSocialAuth();
-      clearPendingPkceBackup();
+      clearPendingPkceState();
       resumeSupabaseAuthRuntime();
+      markOAuthCallbackHandled("error");
       setPhase("error");
       setProgress(100);
       setTargetProgress(100);
@@ -1152,6 +1230,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 
       // IMPORTANT : aucune restauration NAS/R2/sauvegarde ne bloque cette page.
       // L'utilisateur entre dans l'app dès que Supabase confirme sa session.
+      markOAuthCallbackHandled("success");
       setPhase("success");
       setProgress(100);
       setTargetProgress(100);
@@ -1234,7 +1313,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           }
         } catch (e: any) {
           console.warn("[auth_callback] session parse/exchange failed", e);
-          clearPendingPkceBackup();
+          clearPendingPkceState();
           resumeSupabaseAuthRuntime();
           clearPendingSocialAuth();
           try { await Promise.race([supabase.auth.signOut({ scope: "local" }), new Promise((r) => setTimeout(r, 900))]); } catch {}
@@ -1919,6 +1998,10 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  // Nettoyage ultra-précoce : avant même le splash/routage, supprimer tout
+  // callback OAuth déjà consommé que Chrome/PWA aurait restauré au démarrage.
+  React.useState(() => scrubStaleOAuthCallbackUrl());
+
   const { theme } = useTheme();
 useEffect(() => {
   diagMarkStart("boot:App");
