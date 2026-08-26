@@ -98,6 +98,7 @@ export const SOCIAL_AUTH_LABELS: Record<SocialAuthProvider, string> = Object.fro
 
 const PENDING_KEY = "msc_social_auth_pending_v1";
 const CALLBACK_RESULT_KEY = "msc_social_auth_callback_v1";
+const PKCE_BACKUP_KEY = "msc_social_pkce_backup_v1";
 const NATIVE_CALLBACK_URL = "multisportsscoring://auth/callback";
 const NATIVE_CALLBACK_PREFIX = "multisportsscoring://auth/callback";
 
@@ -156,6 +157,65 @@ export function getPendingSocialAuth(): { provider?: SocialAuthProvider; started
   } catch {
     return null;
   }
+}
+
+function supabasePkceVerifierKey(): string {
+  return `dc-supabase-auth-v2:${__SUPABASE_ENV__.projectRef}-code-verifier`;
+}
+
+function backupPendingPkceVerifier(provider: SocialAuthProvider): boolean {
+  if (typeof window === "undefined") return false;
+  const key = supabasePkceVerifierKey();
+  let raw: string | null = null;
+  try { raw = window.localStorage.getItem(key); } catch {}
+  if (!raw) { try { raw = window.sessionStorage.getItem(key); } catch {} }
+  if (!raw) return false;
+  try {
+    window.localStorage.setItem(PKCE_BACKUP_KEY, JSON.stringify({ provider, key, raw, at: Date.now() }));
+    return true;
+  } catch {
+    try {
+      window.sessionStorage.setItem(PKCE_BACKUP_KEY, JSON.stringify({ provider, key, raw, at: Date.now() }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
+ * Supabase Auth peut supprimer son verifier PKCE lors d'une sauvegarde/rotation
+ * de session concurrente. On conserve donc une copie exacte hors du namespace
+ * Supabase et on la remet juste avant exchangeCodeForSession si nécessaire.
+ */
+export function restorePendingPkceVerifierIfNeeded(): boolean {
+  if (typeof window === "undefined") return false;
+  const key = supabasePkceVerifierKey();
+  try { if (window.localStorage.getItem(key) || window.sessionStorage.getItem(key)) return true; } catch {}
+
+  let rawBackup: string | null = null;
+  try { rawBackup = window.localStorage.getItem(PKCE_BACKUP_KEY); } catch {}
+  if (!rawBackup) { try { rawBackup = window.sessionStorage.getItem(PKCE_BACKUP_KEY); } catch {} }
+  if (!rawBackup) return false;
+
+  try {
+    const parsed = JSON.parse(rawBackup);
+    const at = Number(parsed?.at || 0);
+    const raw = typeof parsed?.raw === "string" ? parsed.raw : "";
+    if (!raw || (at > 0 && Date.now() - at > 10 * 60 * 1000)) {
+      clearPendingPkceBackup();
+      return false;
+    }
+    try { window.localStorage.setItem(key, raw); return true; } catch {}
+    try { window.sessionStorage.setItem(key, raw); return true; } catch {}
+  } catch {}
+  return false;
+}
+
+export function clearPendingPkceBackup(): void {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(PKCE_BACKUP_KEY); } catch {}
+  try { window.sessionStorage.removeItem(PKCE_BACKUP_KEY); } catch {}
 }
 
 export function clearPendingSocialAuth() {
@@ -268,7 +328,7 @@ async function preflightOAuthUrl(url: string, provider: SocialAuthProvider): Pro
   }
 }
 
-function resumeSupabaseAuthRuntime(): void {
+export function resumeSupabaseAuthRuntime(): void {
   try {
     const authAny: any = (supabase as any)?.auth;
     if (typeof authAny?.startAutoRefresh === "function") authAny.startAutoRefresh();
@@ -328,6 +388,11 @@ export async function startSocialSignIn(provider: SocialAuthProvider): Promise<v
 
     const url = String((data as any)?.url || "").trim();
     if (!url) throw new Error(`Supabase n'a pas retourné l'URL OAuth ${SOCIAL_AUTH_LABELS[provider]}.`);
+
+    // Sauvegarde le verifier PKCE immédiatement après sa création par supabase-js.
+    // Il reste ainsi récupérable même si une ancienne session est sauvegardée/
+    // rafraîchie pendant le détour chez le provider OAuth.
+    backupPendingPkceVerifier(provider);
     await preflightOAuthUrl(url, provider);
 
     try { localStorage.removeItem("dc_explicit_logout_v1"); } catch {}
@@ -353,7 +418,6 @@ function isNativeSocialCallback(url: string): boolean {
 async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
   if (!isNativeSocialCallback(url)) return false;
 
-  resumeSupabaseAuthRuntime();
   const pending = getPendingSocialAuth();
   const provider = pending?.provider;
 
@@ -365,6 +429,7 @@ async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
     const code = parsed.searchParams.get("code");
     if (!code) throw new Error("Retour OAuth reçu sans code de connexion.");
 
+    restorePendingPkceVerifierIfNeeded();
     const exchangeResult: any = await Promise.race([
       supabase.auth.exchangeCodeForSession(code),
       new Promise((_, reject) => {
@@ -377,6 +442,8 @@ async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
     const { error } = exchangeResult || {};
     if (error) throw error;
 
+    clearPendingPkceBackup();
+    resumeSupabaseAuthRuntime();
     saveCallbackResult({ ok: true, provider });
     clearPendingSocialAuth();
 
@@ -385,6 +452,7 @@ async function exchangeNativeCallbackUrl(url: string): Promise<boolean> {
     }
     return true;
   } catch (error: any) {
+    resumeSupabaseAuthRuntime();
     saveCallbackResult({
       ok: false,
       provider,

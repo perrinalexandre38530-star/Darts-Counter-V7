@@ -83,6 +83,22 @@ declare global {
 }
 
 const canUseWindow = typeof window !== "undefined";
+
+function isPkceCallbackLanding(): boolean {
+  if (!canUseWindow) return false;
+  try {
+    const href = String(window.location.href || "");
+    const hash = String(window.location.hash || "");
+    const url = new URL(href);
+    const hasCode = !!url.searchParams.get("code") || /(?:\?|&)code=/.test(hash);
+    const callbackRoute = /\/auth-callback\.html/i.test(url.pathname) || /^#\/auth\/callback/i.test(hash);
+    return callbackRoute && hasCode;
+  } catch {
+    return false;
+  }
+}
+
+const PKCE_CALLBACK_LANDING = isPkceCallbackLanding();
 if (canUseWindow) {
   purgeLegacyLocalStorageIfNeeded({ force: false });
   // Supprime uniquement les sessions du projet Supabase obsolète.
@@ -208,7 +224,9 @@ function createRealSupabaseClient(): SupabaseClient {
   return createClient(url, key, {
     auth: {
       persistSession: true,
-      autoRefreshToken: true,
+      // Pendant un retour OAuth PKCE, aucun refresh d'une ancienne session ne
+      // doit pouvoir supprimer le code-verifier avant exchangeCodeForSession().
+      autoRefreshToken: !PKCE_CALLBACK_LANDING,
       detectSessionInUrl: false,
       storage,
       storageKey: STORAGE_KEY,

@@ -124,7 +124,7 @@ import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
-import { clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, peekSocialAuthCallbackResult, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
+import { clearPendingPkceBackup, clearPendingSocialAuth, consumeSocialAuthCallbackResult, getPendingSocialAuth, peekSocialAuthCallbackResult, restorePendingPkceVerifierIfNeeded, resumeSupabaseAuthRuntime, SOCIAL_AUTH_LABELS } from "./lib/socialAuth";
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -1060,8 +1060,11 @@ function RedirectToStatsTraining({ go }: { go: (tab: Tab, params?: any) => void 
 -------------------------------------------- */
 function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [msg, setMsg] = React.useState("Connexion en cours…");
+  const exchangeStartedRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (exchangeStartedRef.current) return;
+    exchangeStartedRef.current = true;
     let alive = true;
     let unsubscribe: (() => void) | null = null;
 
@@ -1127,8 +1130,13 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           const code = fromSearch || fromHashQuery;
 
           if (code) {
+            // Le callback est chargé dans une nouvelle navigation. Restaure si
+            // nécessaire la copie de secours du verifier PKCE AVANT l'échange.
+            restorePendingPkceVerifierIfNeeded();
             const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) throw error;
+            clearPendingPkceBackup();
+            resumeSupabaseAuthRuntime();
           } else {
             const h = String(u.hash || "").replace(/^#/, "");
             const qs = h.includes("?") ? h.split("?")[1] : h;
@@ -1138,11 +1146,14 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
             if (access_token && refresh_token) {
               const { error } = await supabase.auth.setSession({ access_token, refresh_token });
               if (error) throw error;
+              resumeSupabaseAuthRuntime();
             }
           }
         } catch (e) {
           callbackExchangeFailed = true;
           console.warn("[auth_callback] session parse/exchange failed", e);
+          clearPendingPkceBackup();
+          resumeSupabaseAuthRuntime();
           clearPendingSocialAuth();
           try { await supabase.auth.signOut({ scope: "local" }); } catch {}
           if (alive) {
