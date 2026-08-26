@@ -21,6 +21,7 @@ import OutdoorRoutePhotoGallery from "./OutdoorRoutePhotoGallery";
 import OutdoorRouteCommunityPanel from "./OutdoorRouteCommunityPanel";
 import OutdoorRoutePlaceInfoPanel from "./OutdoorRoutePlaceInfoPanel";
 import OutdoorRouteSocialPanel from "./OutdoorRouteSocialPanel";
+import OutdoorRouteScoutDiscover from "./OutdoorRouteScoutDiscover";
 import { RunningGlyph, RunningHubCard, RunningSurface } from "./RunningUi";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { awenaVoice } from "../../awena/AwenaVoice";
@@ -410,7 +411,7 @@ export default function RunningModule({ go, params }: Props) {
             return false;
         }).slice().sort((a, b) => Number(a.elapsedMs || 0) - Number(b.elapsedMs || 0));
     }, [activities, selectedRoute]);
-    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode(selectedRoute ? "showcase" : "discover"); setRouteDetailsTab("details"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
+    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteChooseMode((current) => current === "scout" ? "scout" : selectedRoute ? "showcase" : "discover"); setRouteDetailsTab("details"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
     const selectedSportRouteDetails = React.useMemo(() => selectedRoute ? buildSportRouteDetails(selectedRoute, selectedTerrain, activitySport, lang) : null, [activitySport, lang, selectedRoute, selectedTerrain]);
@@ -1439,7 +1440,7 @@ export default function RunningModule({ go, params }: Props) {
             }
             setDiscoveredRoutes(result.routes);
             selectRoute(result.routes[0]);
-            setRouteChooseMode("showcase");
+            setRouteChooseMode("scout");
             const best = result.routes[0];
             const bestScore = Math.round(Number(best.scout?.score || 0));
             const searched = result.searchedRadiiKm.length ? ` · ${result.searchedRadiiKm.join("/ ")} km` : "";
@@ -1754,21 +1755,6 @@ export default function RunningModule({ go, params }: Props) {
                 <div style={{ marginTop: 5, color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}>{selectedRoute ? pickLegacyLocalizedText(lang, "La grande carte sert maintenant de vitrine principale. Choisis un parcours dans le carrousel, puis navigue avec les onglets Détails, Performance, Photos et Communauté.", "The large map is now the main showcase. Pick a route in the carousel, then switch between Details, Performance, Photos and Community.", "El gran mapa es ahora la vitrina principal. Elige una ruta en el carrusel y luego cambia entre Detalles, Rendimiento, Fotos y Comunidad.") : pickLegacyLocalizedText(lang, "Commence par découvrir ou générer des parcours. Dès qu’un tracé est disponible, il apparaît ici dans une grande carte immersive.", "Start by discovering or generating routes. As soon as one route is available, it appears here inside a large immersive map.", "Empieza descubriendo o generando rutas. En cuanto haya un trazado disponible, aparecerá aquí en un gran mapa inmersivo.")}</div>
               </div> : null}
 
-              {routeChooseMode === "scout" && activitySport !== "treadmill" ? <div style={{ padding: 12, borderRadius: 16, background: `linear-gradient(145deg,${accent}10,rgba(7,10,15,.88))`, border: `1px solid ${accent}35`, boxShadow: `0 18px 42px rgba(0,0,0,.34), inset 0 0 28px ${accent}08` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div>
-                    <div style={{ color: accent, fontSize: 9.4, fontWeight: 1000, letterSpacing: .6 }}>✦ {pickLegacyLocalizedText(lang, "SCOUT IA · PARCOURS EXISTANTS", "AI SCOUT · EXISTING ROUTES", "SCOUT IA · RUTAS EXISTENTES")}</div>
-                    <div style={{ marginTop: 4, color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, "Le Scout cherche de vrais parcours déjà cartographiés autour de toi, élargit automatiquement la zone si nécessaire, supprime les doublons puis classe les traces selon proximité, qualité du tracé, nom officiel, réseau, boucle et distance recherchée.", "Scout searches for real routes already mapped around you, automatically expands the area when needed, removes duplicates and ranks traces by proximity, geometry quality, official name, network, loop and target distance.", "Scout busca rutas reales ya cartografiadas cerca de ti, amplía automáticamente la zona si hace falta, elimina duplicados y clasifica las rutas por proximidad, calidad, nombre oficial, red, bucle y distancia objetivo.")}</div>
-                  </div>
-                  <div style={{ width: 42, height: 42, borderRadius: 14, display: "grid", placeItems: "center", background: `${accent}12`, border: `1px solid ${accent}35`, color: accent, fontSize: 18 }}>✦</div>
-                </div>
-                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{[10,20,35].map((radius) => <button key={radius} className="btn" onClick={() => setRouteScoutRadiusKm(radius)} style={{ minHeight: 32, padding: "4px 6px", color: routeScoutRadiusKm === radius ? accent : undefined, borderColor: routeScoutRadiusKm === radius ? `${accent}66` : undefined, fontSize: 8, fontWeight: 1000 }}>{radius} KM</button>)}</div>
-                <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 13, background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}><div><div style={{ fontSize: 7.5, color: textSoft, fontWeight: 900 }}>{pickLegacyLocalizedText(lang, "DISTANCE DE RÉFÉRENCE", "TARGET DISTANCE", "DISTANCIA DE REFERENCIA")}</div><div style={{ marginTop: 2, fontSize: 7.3, color: textSoft }}>{pickLegacyLocalizedText(lang, "Le Scout favorise les parcours proches de cette distance sans exclure les autres.", "Scout favors routes close to this distance without excluding the others.", "Scout favorece las rutas cercanas a esta distancia sin excluir las demás.")}</div></div><div style={{ color: accent, fontSize: 10, fontWeight: 1000 }}>{routeGenerationDistanceKm} KM</div></div>
-                <button className="btn" disabled={routeScoutBusy} onClick={() => void scoutExistingRoutes()} style={{ width: "100%", minHeight: 44, marginTop: 9, color: accent, borderColor: `${accent}77`, background: `${accent}0b`, fontSize: 8.8, fontWeight: 1000 }}>{routeScoutBusy ? pickLegacyLocalizedText(lang, "✦ LE SCOUT ANALYSE LA ZONE…", "✦ SCOUT IS ANALYSING THE AREA…", "✦ SCOUT ESTÁ ANALIZANDO LA ZONA…") : pickLegacyLocalizedText(lang, "✦ TROUVER LES MEILLEURS PARCOURS EXISTANTS", "✦ FIND THE BEST EXISTING ROUTES", "✦ ENCONTRAR LAS MEJORES RUTAS EXISTENTES")}</button>
-                {routeScoutMessage ? <div style={{ marginTop: 7, padding: "8px 9px", borderRadius: 12, color: textSoft, background: "rgba(255,255,255,.025)", fontSize: 8, lineHeight: 1.4 }}>{routeScoutMessage}</div> : null}
-                <div style={{ marginTop: 8, color: textSoft, fontSize: 7.3, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Source automatique actuelle : parcours publics OpenStreetMap/Overpass. Les services propriétaires comme Wikiloc ne proposent pas d’API publique utilisable automatiquement ; ils ne sont donc pas aspirés ou copiés.", "Current automatic source: public OpenStreetMap/Overpass routes. Proprietary services such as Wikiloc do not provide a public API suitable for automatic integration, so they are not scraped or copied.", "Fuente automática actual: rutas públicas de OpenStreetMap/Overpass. Los servicios propietarios como Wikiloc no ofrecen una API pública utilizable automáticamente, por lo que no se extraen ni copian.")}</div>
-              </div> : null}
-
               {routeChooseMode === "discover" && activitySport !== "treadmill" ? <div style={{ padding: 12, borderRadius: 16, background: "linear-gradient(145deg,rgba(255,255,255,.05),rgba(7,10,15,.84))", border: "1px solid rgba(255,255,255,.08)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                   <div>
@@ -1814,7 +1800,29 @@ export default function RunningModule({ go, params }: Props) {
             </div>
           </RunningSurface>
 
-          {routeOptions.length ? <RunningSurface accent={accent} active style={{ overflow: "hidden" }}>
+          {routeChooseMode === "scout" && activitySport !== "treadmill" ? <OutdoorRouteScoutDiscover
+            routes={routeOptions.filter((route) => !!route.scout)}
+            selectedRouteId={selectedRouteId}
+            savedRoutes={savedRoutes}
+            sport={activitySport}
+            lang={lang}
+            accent={accent}
+            textSoft={textSoft}
+            busy={routeScoutBusy}
+            message={routeScoutMessage}
+            radiusKm={routeScoutRadiusKm}
+            targetDistanceKm={routeGenerationDistanceKm}
+            onRadiusChange={setRouteScoutRadiusKm}
+            onTargetDistanceChange={setRouteGenerationDistanceKm}
+            onSearch={() => void scoutExistingRoutes()}
+            onSelect={(route) => selectRoute(route)}
+            onOpenDetails={(route) => { selectRoute(route); setRouteDetailsTab("details"); setRouteChooseMode("showcase"); }}
+            onGuide={(route) => { selectRoute(route); setRoutePanelTab("guide"); }}
+            onToggleFavorite={toggleFavoriteRoute}
+            onOpenMaps={openRouteInMaps}
+          /> : null}
+
+          {routeOptions.length && routeChooseMode !== "scout" ? <RunningSurface accent={accent} active style={{ overflow: "hidden" }}>
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
                 <div>

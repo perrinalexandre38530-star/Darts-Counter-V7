@@ -21,9 +21,16 @@ export type OutdoorRoutePhoto = {
 };
 
 const CACHE_KEY = "mss-route-photo-cache-v3";
+const COVER_CACHE_KEY = "mss-route-cover-photo-cache-v1";
 const MAX_AGE_MS = 5 * 24 * 60 * 60 * 1000;
 
 type CacheRow = { routeKey: string; photos: OutdoorRoutePhoto[]; updatedAt: number };
+
+type CoverCacheRow = { routeKey: string; photo: OutdoorRoutePhoto | null; updatedAt: number };
+function loadCoverCache(): CoverCacheRow[] {
+  try { const value = JSON.parse(localStorage.getItem(COVER_CACHE_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
+}
+function saveCoverCache(rows: CoverCacheRow[]) { try { localStorage.setItem(COVER_CACHE_KEY, JSON.stringify(rows.slice(0, 40))); } catch {} }
 
 function loadCache(): CacheRow[] {
   try { const value = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
@@ -216,4 +223,23 @@ export async function fetchOutdoorRoutePhotos(route: RunningRouteTemplate, limit
   const current = loadCache().filter((row) => row.routeKey !== routeKey);
   saveCache([{ routeKey, photos, updatedAt: Date.now() }, ...current]);
   return photos;
+}
+
+
+export async function fetchOutdoorRouteCoverPhoto(route: RunningRouteTemplate, lang = "fr"): Promise<OutdoorRoutePhoto | null> {
+  const routeKey = outdoorRouteKey(route);
+  const coverCached = loadCoverCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  if (coverCached) return coverCached.photo || null;
+  const fullCached = loadCache().find((row) => row.routeKey === routeKey && Date.now() - row.updatedAt < MAX_AGE_MS);
+  if (fullCached?.photos?.length) return fullCached.photos[0] || null;
+  const anchors = routeAnchors(route);
+  if (!anchors.length) return null;
+  const preferred = anchors.find((row) => row.kind === "middle") || anchors.find((row) => row.kind === "summit") || anchors[0];
+  const settled = await Promise.allSettled([fetchWikipediaNearby(route, preferred, lang, 5), fetchCommonsGeoPhotos(route, preferred, 7)]);
+  const pool: OutdoorRoutePhoto[] = [];
+  for (const result of settled) if (result.status === "fulfilled") pool.push(...result.value);
+  const photo = dedupePhotos(pool).filter((item) => item.distanceToRouteM == null || item.distanceToRouteM < 7000)[0] || null;
+  const current = loadCoverCache().filter((row) => row.routeKey !== routeKey);
+  saveCoverCache([{ routeKey, photo, updatedAt: Date.now() }, ...current]);
+  return photo;
 }
