@@ -13,7 +13,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
-import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
+import logoBabyFoot from "../../assets/games/logo-babyfoot.webp";
 import victoryCup from "../../assets/victory.webp";
 import { History } from "../../lib/history";
 import { buildMatchSharePacket, isMatchSharePacketV1, type MatchSharePacketV1 } from "../../lib/matchShare";

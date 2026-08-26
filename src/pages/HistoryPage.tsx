@@ -33,10 +33,10 @@ import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } 
 import { applyBabyFootImportRules, isBabyFootShareLike } from "../lib/babyfootImportRules";
 import { listInboxCloud, sendMatchToFriendUserId, setInboxStatusCloud, type InboxRowCloud } from "../lib/matchInboxCloud";
 import { listFriends, type OnlineFriendUser } from "../lib/friendsApi";
-import logoDarts from "../assets/games/logo-darts.png";
-import logoPingPong from "../assets/games/logo-pingpong.png";
-import logoPetanque from "../assets/games/logo-petanque.png";
-import logoBabyfoot from "../assets/games/logo-babyfoot.png";
+import logoDarts from "../assets/games/logo-darts.webp";
+import logoPingPong from "../assets/games/logo-pingpong.webp";
+import logoPetanque from "../assets/games/logo-petanque.webp";
+import logoBabyfoot from "../assets/games/logo-babyfoot.webp";
 import victoryCup from "../assets/victory.webp";
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import ProfileAvatar from "../components/ProfileAvatar";

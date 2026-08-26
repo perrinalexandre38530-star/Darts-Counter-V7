@@ -129,12 +129,12 @@ import { getDirectR2Status, getDirectR2Usage, isDirectR2PremiumWriteAllowed } fr
 import { useDevMode } from "../contexts/DevModeContext";
 
 // IMPORTANT: ajuste les chemins si tes assets sont ailleurs
-import logoDarts from "../assets/games/logo-darts.png";
-import logoPetanque from "../assets/games/logo-petanque.png";
-import logoPingPong from "../assets/games/logo-pingpong.png";
-import logoBabyFoot from "../assets/games/logo-babyfoot.png";
-import logoRunning from "../assets/games/logo-running-performance.png";
-import logoFitPerf from "../assets/games/logo-fit-performance.svg";
+import logoDarts from "../assets/games/logo-darts.webp";
+import logoPetanque from "../assets/games/logo-petanque.webp";
+import logoPingPong from "../assets/games/logo-pingpong.webp";
+import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
+import logoRunning from "../assets/games/logo-running-performance.webp";
+import logoFitPerf from "../assets/games/logo-fit-performance.webp";
 
 // ✅ Sports à venir (SOON)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -146,7 +146,7 @@ import logoBillard from "../assets/games/logo-billard.png";
 import logoBadminton from "../assets/games/logo-badminton.png";
 import logoBasket from "../assets/games/logo-basket.png";
 import logoCornhole from "../assets/games/logo-cornhole.png";
-import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoDiceGame from "../assets/games/logo-dicegame.webp";
 import logoFoot from "../assets/games/logo-foot.png";
 import logoRugby from "../assets/games/logo-rugby.png";
 import logoVolley from "../assets/games/logo-volley.png";

@@ -2,15 +2,15 @@ import React from "react";
 import { useSport, type SportId } from "../contexts/SportContext";
 import { filterSportsForCurrentRuntime } from "../config/androidStoreV1";
 
-import logoDarts from "../assets/games/logo-darts.png";
-import logoPetanque from "../assets/games/logo-petanque.png";
-import logoPingPong from "../assets/games/logo-pingpong.png";
-import logoBabyFoot from "../assets/games/logo-babyfoot.png";
+import logoDarts from "../assets/games/logo-darts.webp";
+import logoPetanque from "../assets/games/logo-petanque.webp";
+import logoPingPong from "../assets/games/logo-pingpong.webp";
+import logoBabyFoot from "../assets/games/logo-babyfoot.webp";
 import logoMolkky from "../assets/games/logo-molkky.png";
-import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoDiceGame from "../assets/games/logo-dicegame.webp";
 import logoFoot from "../assets/games/logo-foot.png";
-import logoRunning from "../assets/games/logo-running-performance.png";
-import logoFitPerf from "../assets/games/logo-fit-performance.svg";
+import logoRunning from "../assets/games/logo-running-performance.webp";
+import logoFitPerf from "../assets/games/logo-fit-performance.webp";
 
 type QuickSportId = Extract<SportId, "darts" | "petanque" | "babyfoot" | "pingpong" | "molkky" | "dicegame" | "foot" | "running" | "fit">;
 
