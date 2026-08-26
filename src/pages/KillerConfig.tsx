@@ -5,7 +5,7 @@
 // - Style proche X01ConfigV3 (cards, pills, carrousels)
 // - 100% labels FR
 // - Affiche profils locaux depuis store.profiles
-// - Ajout bots : PRO + bots user depuis localStorage dc_bots_v1 (fallback)
+// - Ajout bots : 14 KILLER IA officiels + BOTS CPU utilisateur depuis localStorage dc_bots_v1 (fallback)
 // - Corrige warning: pas de <button> imbriqués
 // - Sort un KillerConfig consommé par KillerPlay (routeParams.config)
 // - FIX: onStart peut être absent -> fallback go("killer_play", { config })
@@ -23,7 +23,6 @@
 // =============================================================
 
 import React from "react";
-import { applyResolvedBotCountries } from "../lib/botCountries";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -40,27 +39,7 @@ import killerAwenaRulesPosterFr from "../assets/videos/killer_awena_rules_poster
 import killerAwenaRulesPosterEn from "../assets/videos/killer_awena_rules_poster_en.webp";
 import { loadStoredBots, subscribeBotsChange, parseBotLevelValue, botLevelToStarAvg3d } from "../lib/bots";
 
-// 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
-import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
-import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
-import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
-import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
-import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
-import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
-import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
-import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
-import avatarJackpot from "../assets/avatars/bots-pro/jackpot.png";
-import avatarCraftyCockney from "../assets/avatars/bots-pro/crafty-cockney.png";
-import avatarBarney from "../assets/avatars/bots-pro/barney.png";
-import avatarTheMenace from "../assets/avatars/bots-pro/the-menace.png";
-import avatarDarthMaple from "../assets/avatars/bots-pro/darth-maple.png";
-import avatarTheGiant from "../assets/avatars/bots-pro/the-giant.png";
-import avatarTheHammer from "../assets/avatars/bots-pro/the-hammer.png";
-import avatarVoltage from "../assets/avatars/bots-pro/voltage.png";
-import avatarOneDart from "../assets/avatars/bots-pro/one-dart.png";
+import { DARTS_KILLER_BOTS } from "../lib/dartsKillerBots";
 
 // --------------------------------------------------
 // Types exportés (utilisés par KillerPlay.tsx)
@@ -139,38 +118,39 @@ type BotLite = {
   name: string;
   avatarDataUrl?: string | null;
   botLevel?: string;
+  profileStarring?: number;
+  groupLabel?: string;
+  source?: string;
+  isUserBot?: boolean;
 };
 
 // Clé LS bots
 const LS_BOTS_KEY = "dc_bots_v1";
 
-// Bots PRO (comme X01)
-const PRO_BOTS: BotLite[] = applyResolvedBotCountries([
-  { id: "bot_pro_mvg", name: "Green Machine", botLevel: "5/5", avatarDataUrl: avatarGreenMachine as any },
-  { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "5/5", avatarDataUrl: avatarWonderKid as any },
-  { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "5/5", avatarDataUrl: avatarCoolHand as any },
-  { id: "bot_pro_taylor", name: "The Power", botLevel: "5/5", avatarDataUrl: avatarThePower as any },
+function isNonUserSystemBot(input: any): boolean {
+  const id = String(input?.id || "").trim().toLowerCase();
+  const source = String(input?.source || "").trim().toLowerCase();
+  return Boolean(
+    input?.systemBot === true ||
+    input?.officialCharacter === true ||
+    input?.isProBot === true ||
+    source === "pro" ||
+    id === "bot_awena_official" ||
+    /^bot_pro_/.test(id) ||
+    /^pro_/.test(id)
+  );
+}
 
-  { id: "bot_pro_crafty", name: "Crafty", botLevel: "5/5", avatarDataUrl: avatarCraftyCockney as any },
-  { id: "bot_pro_jackpot", name: "Jackpot", botLevel: "4.5/5", avatarDataUrl: avatarJackpot as any },
-  { id: "bot_pro_barney", name: "Barney", botLevel: "4.5/5", avatarDataUrl: avatarBarney as any },
-  { id: "bot_pro_price", name: "Ice Man", botLevel: "4/5", avatarDataUrl: avatarIceMan as any },
-
-  { id: "bot_pro_wright", name: "Snake King", botLevel: "4/5", avatarDataUrl: avatarSnakeKing as any },
-  { id: "bot_pro_anderson", name: "Flying Scotsman", botLevel: "4/5", avatarDataUrl: avatarFlyingScotsman as any },
-  { id: "bot_pro_smith", name: "Bully Boy", botLevel: "4/5", avatarDataUrl: avatarBullyBoy as any },
-  { id: "bot_pro_clayton", name: "The Ferret", botLevel: "4/5", avatarDataUrl: avatarTheFerret as any },
-
-  { id: "bot_pro_aspinall", name: "The Asp", botLevel: "3.5/5", avatarDataUrl: avatarTheAsp as any },
-  { id: "bot_pro_dobey", name: "Hollywood", botLevel: "3.5/5", avatarDataUrl: avatarHollywood as any },
-  { id: "bot_pro_darth_maple", name: "Darth Maple", botLevel: "3.5/5", avatarDataUrl: avatarDarthMaple as any },
-  { id: "bot_pro_menace", name: "The Menace", botLevel: "3.5/5", avatarDataUrl: avatarTheMenace as any },
-
-  { id: "bot_pro_the_giant", name: "The Giant", botLevel: "3/5", avatarDataUrl: avatarTheGiant as any },
-  { id: "bot_pro_voltage", name: "Voltage", botLevel: "3/5", avatarDataUrl: avatarVoltage as any },
-  { id: "bot_pro_one_dart", name: "One Dart", botLevel: "3/5", avatarDataUrl: avatarOneDart as any },
-  { id: "bot_pro_the_hammer", name: "The Hammer", botLevel: "3/5", avatarDataUrl: avatarTheHammer as any },
-]) as BotLite[];
+// Casting IA officiel exclusif au mode Killer
+const KILLER_BOTS: BotLite[] = DARTS_KILLER_BOTS.map((bot) => ({
+  id: bot.id,
+  name: bot.name,
+  avatarDataUrl: bot.avatarDataUrl,
+  botLevel: bot.botLevel,
+  profileStarring: bot.profileStarring,
+  groupLabel: bot.groupLabel,
+  source: bot.source,
+}));
 
 function clampInt(n: any, min: number, max: number, fb: number) {
   const x = Math.floor(Number(n));
@@ -257,9 +237,9 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
   );
 }
 
-/* Médaillon BOT – doré PRO, bleu bots user */
+/* Médaillon BOT – rouge/or KILLER IA, bleu BOTS CPU utilisateur */
 function BotMedallion({ bot, level, active }: { bot: BotLite; level: number; active: boolean }) {
-  const isPro = bot.id.startsWith("bot_pro_");
+  const isPro = bot.id.startsWith("bot_killer_");
   const COLOR = isPro ? "#f7c85c" : "#00b4ff";
   const COLOR_GLOW = isPro ? "rgba(247,200,92,0.9)" : "rgba(0,172,255,0.65)";
 
@@ -451,7 +431,7 @@ export default function KillerConfigPage(props: Props) {
     [profiles]
   );
   const storeBots = React.useMemo(
-    () => (profiles || []).filter((p: any) => !!p?.isBot),
+    () => (profiles || []).filter((p: any) => !!p?.isBot && !isNonUserSystemBot(p)),
     [profiles]
   );
 
@@ -460,7 +440,7 @@ export default function KillerConfigPage(props: Props) {
     const syncBots = () => {
       try {
         const loaded = loadStoredBots();
-        const mapped: BotLite[] = (loaded || []).map((b: any) => ({
+        const mapped: BotLite[] = (loaded || []).filter((b: any) => !isNonUserSystemBot(b)).map((b: any) => ({
           id: b.id,
           name: b.name || "BOT",
           avatarDataUrl: b.avatarDataUrl ?? b.avatarUrl ?? b.avatar ?? null,
@@ -474,6 +454,9 @@ export default function KillerConfigPage(props: Props) {
             b.performanceLevel ??
             b.difficulty ??
             "",
+          groupLabel: "CPU Home",
+          source: "cpu",
+          isUserBot: true,
         }));
         setBotsFromLS(mapped);
       } catch {
@@ -484,7 +467,7 @@ export default function KillerConfigPage(props: Props) {
             return;
           }
           const parsed = JSON.parse(raw) as any[];
-          const mapped: BotLite[] = (parsed || []).map((b) => ({
+          const mapped: BotLite[] = (parsed || []).filter((b) => !isNonUserSystemBot(b)).map((b) => ({
             id: b.id,
             name: b.name || "BOT",
             avatarDataUrl: b.avatarDataUrl ?? null,
@@ -496,6 +479,9 @@ export default function KillerConfigPage(props: Props) {
               b.performanceLevel ??
               b.difficulty ??
               "",
+            groupLabel: "CPU Home",
+            source: "cpu",
+            isUserBot: true,
           }));
           setBotsFromLS(mapped);
         } catch {
@@ -521,6 +507,9 @@ export default function KillerConfigPage(props: Props) {
         p.performanceLevel ??
         p.difficulty ??
         "",
+      groupLabel: "CPU Home",
+      source: "cpu",
+      isUserBot: true,
     }));
 
     const merged = [...fromStore];
@@ -535,12 +524,12 @@ export default function KillerConfigPage(props: Props) {
   }, [storeBots, botsFromLS]);
 
   const botProfiles: BotLite[] = React.useMemo(() => {
-    const pro = PRO_BOTS.map((b) => ({ ...b, avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? null }));
+    const official = KILLER_BOTS.map((b) => ({ ...b, avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? null }));
     const usr = (userBots || []).map((b) => ({
       ...b,
       avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? (typeof b.avatarDataUrl === "string" ? b.avatarDataUrl : null),
     }));
-    return [...pro, ...usr];
+    return [...official, ...usr];
   }, [userBots]);
 
   // ------------------ state config ------------------
@@ -1274,13 +1263,13 @@ export default function KillerConfigPage(props: Props) {
                   letterSpacing: 0.7,
                 }}
               >
-                Gérer mes bots
+                Gérer mes BOTS CPU
               </button>
             </div>
           </div>
 
           <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
+            Ajoute les 14 BOTS IA officiels de KILLER ou tes BOTS CPU créés dans Profils.
           </p>
 
           {botsPanelEnabled ? (

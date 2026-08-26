@@ -395,7 +395,12 @@ function firstFreeNumber(players: any[], excludeIndex: number) {
 // BOT helpers
 // -----------------------------
 function resolveBotSkill(botLevelRaw?: string | null): number {
-  return Math.max(1, Math.min(5, parseBotLevelValue(botLevelRaw, 2)));
+  // Killer utilise des niveaux visuels par demi-étoile (3.5/5, 4.5/5...).
+  // Le moteur IA fonctionne sur 5 paliers comportementaux : on projette donc
+  // proprement la demi-étoile vers le palier le plus proche au lieu de laisser
+  // les comparaisons strictes ignorer les valeurs 3.5 / 4.5.
+  const parsed = parseBotLevelValue(botLevelRaw, 2);
+  return Math.max(1, Math.min(5, Math.round(parsed)));
 }
 
 function rand01() {

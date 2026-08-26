@@ -163,7 +163,7 @@ function CountryFlagBadge({ bot, accent, size = 26 }: { bot: any; accent: string
   );
 }
 
-const GROUP_ORDER = ["Loterie IA", "Firefighter IA", "Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
+const GROUP_ORDER = ["Killer IA", "Loterie IA", "Firefighter IA", "Elite", "Pro", "Challenger", "Mixte", "Rising", "CPU Home"];
 
 export default function BotPagedSelector({
   bots,
