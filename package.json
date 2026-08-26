@@ -91,7 +91,8 @@
     "radar:dev": "npm --prefix scoring-radar run dev",
     "radar:deploy": "npm --prefix scoring-radar run deploy",
     "test:scoring-radar": "node ./tools/test-scoring-radar-integration.mjs",
-    "test:fit-perf": "node ./tools/test-fit-perf-integration.mjs"
+    "test:fit-perf": "node ./tools/test-fit-perf-integration.mjs && node ./tools/test-fit-awena-premium-motion.mjs",
+    "awena:motion:build": "node ./tools/build-awena-premium-motion.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
