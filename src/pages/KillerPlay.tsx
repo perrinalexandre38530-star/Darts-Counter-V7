@@ -496,9 +496,9 @@ function decideBotThrow(
 
   const bullRate = Math.min(0.12, bullBase + bullBoost);
 
-  // Killer Progressif : l'attribution simule le lancer main opposée du BOT,
-  // mais garantit un numéro 1..20 unique afin de ne jamais bloquer le tour SELECT.
-  if (assignActive && me.killerPhase === "SELECT" && isProgressiveKillerConfig(config)) {
+  // Filet de sécurité pour anciennes sauvegardes : si un bot arrive encore en
+  // phase SELECT, il choisit toujours un numéro libre et valide, sans MISS/BULL.
+  if (assignActive && me.killerPhase === "SELECT") {
     const used = new Set(
       all
         .filter((p) => p.id !== me.id && !p.eliminated)
@@ -513,12 +513,6 @@ function decideBotThrow(
   if (r < missRate) return { target: 0, mult: 1 };
   if (r < missRate + bullRate)
     return { target: 25, mult: rand01() < 0.25 ? 2 : 1 };
-
-  // ✅ phase SELECT (assignation) => bot choisit un numéro random 1..20
-  if (assignActive && me.killerPhase === "SELECT") {
-    const n = randInt(1, 20);
-    return { target: n, mult: 1 };
-  }
 
   // ----------------------------
   // PAS KILLER ACTIF (chercher à devenir killer)
@@ -774,7 +768,7 @@ function rulesText(config: KillerConfig) {
     const target = clampInt((config as any)?.progressiveTarget, 1, 9, 5);
     return [
       { title: "Objectif", body: "Être le dernier joueur vivant. Un joueur n'est éliminé que lorsque son nombre de cœurs passe sous 0." },
-      { title: "Attribution", body: "Chaque joueur lance avec sa main opposée puis saisit le numéro obtenu. Les numéros doivent être uniques." },
+      { title: "Attribution", body: "Chaque joueur humain lance avec sa main opposée puis saisit le numéro obtenu. Les BOTS IA/CPU reçoivent automatiquement un numéro libre unique et ne passent jamais par cet écran." },
       { title: "Progression", body: `Tous commencent à 0 cœur. Sur son propre numéro : simple +1, double +2, triple +3, avec un maximum de ${target}.` },
       { title: "Statut KILLER", body: `À ${target} cœurs, le petit logo KILLER apparaît et le joueur peut attaquer. Dès qu'il redescend sous ${target}, il perd immédiatement ce statut et doit revenir à ${target}.` },
       { title: "Attaques", body: "Seul un KILLER peut toucher le numéro d'un adversaire : simple −1, double −2, triple −3. À 0 le joueur reste vivant ; sous 0 il est éliminé." },
@@ -787,7 +781,6 @@ function rulesText(config: KillerConfig) {
     ((config as any)?.numberAssignMode as any) ||
     (((config as any)?.selectNumberByThrow ? "throw" : "none") as any);
 
-  const selectMode = numberAssignMode === "throw" || numberAssignMode === "random";
 
   const becomeRuleText =
     config.becomeRule === "double"
@@ -853,9 +846,11 @@ function rulesText(config: KillerConfig) {
       title: "Mise en place",
       body:
         `Chaque joueur commence avec ${lives} vie(s).\n` +
-        (selectMode
-          ? "Le numéro est choisi au 1er lancer ou attribué dynamiquement selon le mode configuré."
-          : "Chaque joueur reçoit un numéro dès le départ et doit le toucher pour devenir KILLER."),
+        (numberAssignMode === "throw"
+          ? "Les joueurs humains choisissent leur numéro au 1er lancer. Les BOTS IA/CPU reçoivent automatiquement un numéro libre unique."
+          : numberAssignMode === "random"
+            ? "Les numéros sont attribués aléatoirement avant le début de la partie, sans modifier l'ordre de départ configuré."
+            : "Chaque joueur reçoit un numéro dès le départ et doit le toucher pour devenir KILLER."),
     },
     {
       title: "Base du mode",
@@ -2570,8 +2565,11 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
     ((config as any)?.numberAssignMode as any) ||
     (((config as any)?.selectNumberByThrow ? "throw" : "none") as any);
 
-  const inNumberAssignRound =
-    numberAssignMode === "throw" || numberAssignMode === "random";
+  // Seul le mode "1er lancer" possède une vraie phase d’assignation en jeu.
+  // Le mode aléatoire doit arriver directement en ARMING avec ses numéros déjà tirés,
+  // sinon assignDone reste faux et KillerPlay peut se comporter comme si une assignation
+  // était encore en cours.
+  const inNumberAssignRound = numberAssignMode === "throw";
 
   // ✅ AutoKill ON/OFF (ROBUSTE : supporte plusieurs structures de config)
 const autoKillOn = truthy(
@@ -2677,10 +2675,37 @@ React.useEffect(() => {
   }
 
   const [assignDone, setAssignDone] = React.useState<boolean>(() => {
+    if (!inNumberAssignRound) return true;
+
+    // Reprise robuste : si tous les humains ont déjà un numéro, une ancienne sauvegarde
+    // ne doit pas rester bloquée en assignation uniquement parce que assignDone=false.
+    const resumedPlayers = Array.isArray(resumeState?.players) ? resumeState.players : null;
+    if (resumedPlayers?.length) {
+      const humanStillNeedsNumber = resumedPlayers.some((p: any) => {
+        if (p?.eliminated || p?.isBot) return false;
+        const n = Number(p?.number || 0);
+        return p?.killerPhase === "SELECT" || n < 1 || n > 20;
+      });
+      if (!humanStillNeedsNumber) return true;
+    }
+
     if (typeof resumeState?.assignDone === "boolean") return !!resumeState.assignDone;
-    return !inNumberAssignRound;
+
+    // Une partie 100% bots n'a aucune saisie humaine à attendre.
+    return !(config?.players || []).some((p: any) => !p?.isBot);
   });
   const [assignIndex, setAssignIndex] = React.useState<number>(() => {
+    const resumedPlayers = Array.isArray(resumeState?.players) ? resumeState.players : null;
+    const source = resumedPlayers?.length ? resumedPlayers : (config?.players || []);
+    if (inNumberAssignRound && Array.isArray(source)) {
+      const firstHumanPending = source.findIndex((p: any) => {
+        if (p?.eliminated || p?.isBot) return false;
+        if (!resumedPlayers?.length) return true;
+        const n = Number(p?.number || 0);
+        return p?.killerPhase === "SELECT" || n < 1 || n > 20;
+      });
+      if (firstHumanPending >= 0) return firstHumanPending;
+    }
     const v = Number(resumeState?.assignIndex ?? 0);
     return Number.isFinite(v) && v >= 0 ? v : 0;
   });
@@ -2728,14 +2753,17 @@ React.useEffect(() => {
     const lives = progressiveMode ? 0 : clampInt(config?.lives, 1, 9, 3);
 
     const base = (config?.players || []).map((p) => {
-      const phase: KillerPhase = inNumberAssignRound ? "SELECT" : "ARMING";
+      const waitsForHumanThrow = inNumberAssignRound && !p.isBot;
+      const phase: KillerPhase = waitsForHumanThrow ? "SELECT" : "ARMING";
       return {
         id: p.id,
         name: p.name,
         avatarDataUrl: hydrateAvatarForPlayer(p, null),
         isBot: !!p.isBot,
         botLevel: p.botLevel ?? "",
-        number: inNumberAssignRound ? 0 : clampInt(p.number, 1, 20, 1),
+        // En "1er lancer", seuls les humains attendent une saisie. Les bots sont
+        // attribués automatiquement juste après la construction de la liste.
+        number: waitsForHumanThrow ? 0 : (inNumberAssignRound ? 0 : clampInt(p.number, 1, 20, 1)),
         lives,
         isKiller: false,
         eliminated: false,
@@ -2775,28 +2803,50 @@ React.useEffect(() => {
     });
 
     if (numberAssignMode === "random") {
-      // 🔀 shuffle des joueurs (ORDRE DE JEU RÉELLEMENT ALÉATOIRE)
-      for (let i = base.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [base[i], base[j]] = [base[j], base[i]];
-      }
-    
-      // 🎯 pool des numéros 1..20
+      // 🎯 Numéros aléatoires uniquement. L'ordre des joueurs est déjà décidé par
+      // KillerConfig via randomStartOrder : ne surtout pas le remélanger ici.
       const pool = Array.from({ length: 20 }, (_, i) => i + 1);
-    
-      // 🔀 shuffle des numéros
       for (let i = pool.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
       }
-    
-      // ✅ assignation numéros + phase ARMING (et reset flags)
+
       base.forEach((p, idx) => {
-        p.number = pool[idx % pool.length]; // si >20 joueurs, ça recycle (ok)
+        p.number = pool[idx % pool.length];
         p.killerPhase = "ARMING";
         p.isKiller = false;
-        p.eliminated = false; // ✅ safety
+        p.eliminated = false;
       });
+    }
+
+    if (numberAssignMode === "throw") {
+      // 🤖 Les BOTS IA/CPU ne doivent jamais apparaître dans l'écran de saisie du
+      // "1er lancer". On leur attribue immédiatement un numéro libre et unique.
+      const used = new Set<number>();
+      for (const p of base) {
+        if (p.isBot) continue;
+        const n = Number(p.number || 0);
+        if (n >= 1 && n <= 20) used.add(n);
+      }
+
+      const pool = Array.from({ length: 20 }, (_, i) => i + 1);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      let poolIndex = 0;
+      for (const p of base) {
+        if (!p.isBot) continue;
+        while (poolIndex < pool.length && used.has(pool[poolIndex])) poolIndex += 1;
+        let n = poolIndex < pool.length ? pool[poolIndex++] : 0;
+        if (!n) {
+          n = Array.from({ length: 20 }, (_, i) => i + 1).find((x) => !used.has(x)) || 1;
+        }
+        p.number = n;
+        p.killerPhase = "ARMING";
+        p.isKiller = false;
+        used.add(n);
+      }
     }
 
     return base;
@@ -2806,7 +2856,7 @@ React.useEffect(() => {
     const resumed = resumeState?.players;
     if (!Array.isArray(resumed) || resumed.length === 0) return initialPlayers;
     const byId = new Map(initialPlayers.map((p) => [p.id, p] as const));
-    return resumed.map((rp: any) => {
+    const hydrated = resumed.map((rp: any) => {
       const base = byId.get(rp?.id) || initialPlayers.find((p) => p.name === rp?.name) || initialPlayers[0];
       const merged: any = {
         ...(base as any),
@@ -2834,7 +2884,19 @@ React.useEffect(() => {
         hitsByNumber: { ...((base as any)?.hitsByNumber || {}), ...((rp as any)?.hitsByNumber || {}) },
         lastVisit: Array.isArray(rp?.lastVisit) ? rp.lastVisit.map((t: any) => ({ ...(t || {}) })) : ((base as any)?.lastVisit || null),
       };
-      if (progressiveMode && !merged.eliminated) {
+      const resumeNeedsHumanNumber =
+        numberAssignMode === "throw" &&
+        !merged.isBot &&
+        !merged.eliminated &&
+        ((rp as any)?.killerPhase === "SELECT" || Number(merged.number || 0) < 1 || Number(merged.number || 0) > 20);
+
+      // Ne pas écraser SELECT lors d'une reprise interrompue pendant le choix
+      // des numéros (notamment en Killer Progressif). Sinon l'humain peut se
+      // retrouver ARMING avec le numéro 0 et la partie reste bloquée.
+      if (resumeNeedsHumanNumber) {
+        merged.isKiller = false;
+        merged.killerPhase = "SELECT";
+      } else if (progressiveMode && !merged.eliminated) {
         merged.isKiller = Number(merged.lives) === progressiveTarget;
         merged.killerPhase = merged.isKiller ? "ACTIVE" : "ARMING";
       } else if (merged.isKiller && merged.killerPhase !== "ACTIVE") {
@@ -2842,11 +2904,76 @@ React.useEffect(() => {
       }
       return merged as KillerPlayerState;
     });
+
+    // Compatibilité des sauvegardes créées avant l'automatisation : un bot qui
+    // avait été sauvegardé en SELECT/numéro 0 reçoit ici un numéro libre au chargement.
+    if (numberAssignMode === "throw") {
+      const used = new Set<number>(
+        hydrated
+          .filter((p: any) => !p?.isBot)
+          .map((p: any) => Number(p?.number || 0))
+          .filter((n: number) => n >= 1 && n <= 20)
+      );
+      const pool = Array.from({ length: 20 }, (_, i) => i + 1);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      let pi = 0;
+      for (const p of hydrated as any[]) {
+        if (!p?.isBot) continue;
+        const existing = Number(p?.number || 0);
+        if (existing >= 1 && existing <= 20 && !used.has(existing)) {
+          used.add(existing);
+          if (p.killerPhase === "SELECT") p.killerPhase = "ARMING";
+          continue;
+        }
+        while (pi < pool.length && used.has(pool[pi])) pi += 1;
+        const n = pi < pool.length ? pool[pi++] : (Array.from({ length: 20 }, (_, i) => i + 1).find((x) => !used.has(x)) || 1);
+        p.number = n;
+        p.killerPhase = "ARMING";
+        p.isKiller = false;
+        used.add(n);
+      }
+    }
+
+    return hydrated as KillerPlayerState[];
   });
 
+  const humanAssignIndices = players
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p }) => !p.eliminated && !p.isBot)
+    .map(({ idx }) => idx);
+
+  const pendingHumanAssignIndices = players
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p }) => !p.eliminated && !p.isBot && p.killerPhase === "SELECT")
+    .map(({ idx }) => idx);
+
+  const effectiveAssignIndex =
+    pendingHumanAssignIndices.includes(assignIndex)
+      ? assignIndex
+      : (pendingHumanAssignIndices[0] ?? assignIndex ?? 0);
+
   const assignActive =
-    inNumberAssignRound && !assignDone && numberAssignMode === "throw";
-  const assignPlayer = assignActive ? (players[assignIndex] || players[0]) : null;
+    inNumberAssignRound &&
+    !assignDone &&
+    numberAssignMode === "throw" &&
+    pendingHumanAssignIndices.length > 0;
+
+  const assignPlayer = assignActive ? (players[effectiveAssignIndex] || null) : null;
+  const assignHumanOrdinal = Math.max(0, humanAssignIndices.indexOf(effectiveAssignIndex));
+  const assignHumanTotal = humanAssignIndices.length;
+
+  function nextPendingHumanAssignIndex(fromIndex: number): number {
+    if (!players.length) return 0;
+    for (let step = 1; step < players.length; step += 1) {
+      const idx = (fromIndex + step) % players.length;
+      const p = players[idx];
+      if (p && !p.eliminated && !p.isBot && p.killerPhase === "SELECT") return idx;
+    }
+    return fromIndex;
+  }
 
   const [turnIndex, setTurnIndex] = React.useState<number>(() => {
     const v = Number(resumeState?.turnIndex);
@@ -3143,7 +3270,8 @@ React.useEffect(() => {
   const botTimerRef = React.useRef<any>(null);
   const botBusyRef = React.useRef(false);
 
-  const current = players[turnIndex] ?? players[0];
+  const currentIndexForUi = assignActive ? effectiveAssignIndex : turnIndex;
+  const current = players[currentIndexForUi] ?? players[0];
   const w = winner(players);
   const aliveCount = players.filter((p) => !p.eliminated).length;
   const isBotTurn = !!current?.isBot;
@@ -4088,11 +4216,16 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     if (dartsLeft <= 0) return;
     if (isBotTurn) return;
 
+    // Pendant l'assignation, effectiveAssignIndex saute les bots déjà automatisés.
+    // On l'utilise aussi dans le handler pour éviter une fenêtre d'un rendu où
+    // actingTurnIndex pointe encore sur le bot qui vient d'être sauté.
+    const actingTurnIndex = assignActive ? effectiveAssignIndex : turnIndex;
+
     if (pendingChoiceNumber && current?.id === pendingChoiceNumber.playerId) {
       const chosen = normalizeNumberFromHit(t.target);
       if (!chosen) return;
       const alreadyTaken = players.some(
-        (p, idx) => idx !== turnIndex && !p.eliminated && p.number === chosen
+        (p, idx) => idx !== actingTurnIndex && !p.eliminated && p.number === chosen
       );
       if (alreadyTaken) {
         pushLog(`⚠️ ${current?.name || "Joueur"} : le numéro ${chosen} est déjà pris`);
@@ -4102,7 +4235,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
       snapshot();
       setPlayers((prev) => {
         const next = prev.map((p) => ({ ...p }));
-        const me = next[turnIndex];
+        const me = next[actingTurnIndex];
         if (!me || me.id !== pendingChoiceNumber.playerId) return prev;
         me.number = chosen;
         me.killerPhase = "ARMING";
@@ -4127,7 +4260,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
       setPendingChoiceNumber(null);
 
       setTimeout(() => {
-        const nextIdx = (assignIndex + 1) % players.length;
+        const nextIdx = nextPendingHumanAssignIndex(actingTurnIndex);
         setAssignIndex(nextIdx);
         setTurnIndex(nextIdx);
         setDartsLeft(1);
@@ -4142,8 +4275,8 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
       sfx.unlock?.();
     } catch {}
   
-    if (assignActive && turnIndex !== assignIndex) {
-      setTurnIndex(assignIndex);
+    if (assignActive && turnIndex !== actingTurnIndex) {
+      setTurnIndex(actingTurnIndex);
       setDartsLeft(1);
       setVisit([]);
     }
@@ -4172,7 +4305,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         hitsByNumber: { ...(p.hitsByNumber || {}) },
       }));
   
-      const me = next[turnIndex];
+      const me = next[actingTurnIndex];
       if (!me || me.eliminated) return prev;
   
       me.totalThrows += 1;
@@ -4278,7 +4411,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   }
 
   if (disarmEnabled) {
-    const disarmed = next.filter((p, idx) => idx !== turnIndex && !p.eliminated && isActiveKiller(p));
+    const disarmed = next.filter((p, idx) => idx !== actingTurnIndex && !p.eliminated && isActiveKiller(p));
     if (disarmed.length > 0) {
       for (const p of disarmed) {
         p.isKiller = false;
@@ -4305,7 +4438,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   // 1) Splash dmg: enlève 1 à tous (BULL) / 2 à tous (DBULL)
   if (killerCanUseBullVariants && splashEnabled) {
     const dmg = isDBull ? 2 : 1;
-    const victims = next.filter((p, idx) => idx !== turnIndex && !p.eliminated);
+    const victims = next.filter((p, idx) => idx !== actingTurnIndex && !p.eliminated);
 
     let totalLoss = 0;
     let anyElim = false;
@@ -4390,7 +4523,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         const n = normalizeNumberFromHit(thr.target);
   
         const alreadyTaken = next.some(
-          (p, idx) => idx !== turnIndex && !p.eliminated && p.number === n
+          (p, idx) => idx !== actingTurnIndex && !p.eliminated && p.number === n
         );
   
         if (alreadyTaken) {
@@ -4405,7 +4538,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
           });
   
           setTimeout(() => {
-            const nextIdx = (assignIndex + 1) % players.length;
+            const nextIdx = nextPendingHumanAssignIndex(actingTurnIndex);
             setAssignIndex(nextIdx);
             setTurnIndex(nextIdx);
             setDartsLeft(1);
@@ -4445,7 +4578,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         });
   
         setTimeout(() => {
-          const nextIdx = (assignIndex + 1) % players.length;
+          const nextIdx = nextPendingHumanAssignIndex(actingTurnIndex);
           setAssignIndex(nextIdx);
           setTurnIndex(nextIdx);
           setDartsLeft(1);
@@ -4456,7 +4589,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         return next;
       }
 
-      if (applyProgressiveThrowToState(next, turnIndex, thr, false)) {
+      if (applyProgressiveThrowToState(next, actingTurnIndex, thr, false)) {
         return next;
       }
   
@@ -4501,7 +4634,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   
       if (tryResurrectOnHit({
         players: next,
-        actorIndex: turnIndex,
+        actorIndex: actingTurnIndex,
         actor: me,
         target: thr.target,
         resurrectionEnabled,
@@ -4614,7 +4747,7 @@ if (isActiveKiller(me)) {
 
 	// HIT VICTIME (numéro d'un adversaire vivant)
   const victimIdx = next.findIndex(
-    (p, idx) => idx !== turnIndex && !p.eliminated && playerNumberMatchesTarget(p, thr.target)
+    (p, idx) => idx !== actingTurnIndex && !p.eliminated && playerNumberMatchesTarget(p, thr.target)
   );
 
   if (victimIdx >= 0) {
@@ -4901,7 +5034,7 @@ React.useEffect(() => {
   if (finishedRef.current || finished) return;
   if (winner(players)) return;
 
-  const activeTurnIndex = assignActive ? assignIndex : turnIndex;
+  const activeTurnIndex = assignActive ? effectiveAssignIndex : turnIndex;
   const me = players[activeTurnIndex];
   if (!me || me.eliminated) return;
   if (!me.isBot) return;
@@ -4985,6 +5118,8 @@ React.useEffect(() => {
       if (!me2 || me2.eliminated) return prev;
 
       me2.totalThrows += 1;
+      if (me2.killerPhase !== "ACTIVE" && !me2.becameAtThrow) me2.throwsToBecomeKiller += 1;
+      if (me2.killerPhase === "ACTIVE") me2.killerThrows += 1;
 
       const seg = segmentKey(thrSafe);
       me2.hitsBySegment = incMap(me2.hitsBySegment, seg, 1);
@@ -5123,6 +5258,29 @@ React.useEffect(() => {
           });
         }
 
+        if (disarmEnabled) {
+          const disarmed = next.filter((p, idx) => idx !== activeTurnIndex && !p.eliminated && isActiveKiller(p));
+          if (disarmed.length > 0) {
+            for (const p of disarmed) {
+              p.isKiller = false;
+              p.killerPhase = "ARMING";
+              p.disarmsReceived = Number(p.disarmsReceived || 0) + 1;
+            }
+            me2.disarmsTriggered = Number(me2.disarmsTriggered || 0) + disarmed.length;
+            didSomething = true;
+            pushLog(`💫 ${me2.name} touche DBULL et désarme ${disarmed.length} killer${disarmed.length > 1 ? "s" : ""}`);
+            pushEvent({
+              t: Date.now(),
+              type: "DISARM",
+              actorId: me2.id,
+              throw: thrSafe,
+              count: disarmed.length,
+              targetIds: disarmed.map((p) => p.id),
+              bot: true,
+            });
+          }
+        }
+
         const killerCanUseBullVariants2 = isActiveKiller(me2);
 
         // Si pas killer actif et pas de bouclier DBULL -> inutile
@@ -5145,10 +5303,11 @@ React.useEffect(() => {
           const victims = next.filter((p, idx) => idx !== activeTurnIndex && !p.eliminated);
 
           let totalLoss = 0;
+          let anyElim = false;
 
           for (const v of victims) {
-            if (playerHasShield(v)) {
-              pushLog(`🛡️ ${v.name} bloque les dégâts de zone`);
+            if (playerHasShield(v) || v.resurrectShield) {
+              pushLog(v.resurrectShield ? `🤍 ${v.name} est protégé après sa résurrection` : `🛡️ ${v.name} bloque les dégâts de zone`);
               continue;
             }
             const before = v.lives;
@@ -5162,9 +5321,13 @@ React.useEffect(() => {
               if (v.lives <= 0) {
                 v.eliminated = true;
                 v.resurrected = false;
-          v.resurrected = false;
+                v.resurrectShield = false;
+                v.shieldTurnsLeft = 0;
+                v.shieldJustGranted = false;
+                v.shieldStrength = 0;
                 v.eliminatedAt = Date.now();
                 me2.kills += 1;
+                anyElim = true;
                 if (!elimOrderRef.current.includes(v.id)) {
                   elimOrderRef.current = [...(elimOrderRef.current || []), v.id];
                 }
@@ -5176,6 +5339,7 @@ React.useEffect(() => {
             me2.killerHits += 1;
             me2.livesTaken += totalLoss;
             pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };
+            if (anyElim) pendingDeathAfterRef.current = true;
           }
 
           pushLog(
@@ -5330,6 +5494,10 @@ React.useEffect(() => {
         me2.lives = 0;
         me2.eliminated = true;
         me2.resurrected = false;
+        me2.resurrectShield = false;
+        me2.shieldTurnsLeft = 0;
+        me2.shieldJustGranted = false;
+        me2.shieldStrength = 0;
         me2.eliminatedAt = Date.now();
         me2.killerPhase = "ARMING";
         me2.isKiller = false;
@@ -5448,6 +5616,94 @@ React.useEffect(() => {
           const victim = next[victimIdx];
       
           me2.offensiveThrows += 1;
+
+          // Même règle que pour un joueur humain : un BOT ne traverse jamais un
+          // bouclier ni la protection blanche de résurrection.
+          if (playerHasShield(victim) || victim.resurrectShield) {
+            if (victim.resurrectShield) {
+              pushLog(`🤍 ${victim.name} est protégé après sa résurrection`);
+              pushEvent({
+                t: Date.now(),
+                type: "RESURRECT_SHIELD_BLOCK",
+                actorId: me2.id,
+                targetId: victim.id,
+                targetNumber: victim.number,
+                throw: thrSafe,
+                bot: true,
+              });
+              return next;
+            }
+
+            const beforeStrength = getShieldStrength(victim);
+            if (thrSafe.mult === 2) {
+              victim.shieldTurnsLeft = 0;
+              victim.shieldStrength = 0;
+              victim.shieldJustGranted = false;
+              victim.shieldBreaks = Number(victim.shieldBreaks || 0) + 1;
+              pushLog(`💥 ${me2.name} casse totalement le bouclier de ${victim.name} avec ${fmtThrow(thrSafe)}`);
+              pushEvent({
+                t: Date.now(),
+                type: "SHIELD_BREAK",
+                actorId: me2.id,
+                targetId: victim.id,
+                targetNumber: victim.number,
+                throw: thrSafe,
+                beforeStrength,
+                afterStrength: 0,
+                bot: true,
+              });
+              return next;
+            }
+
+            if (thrSafe.mult === 3) {
+              const afterStrength = beforeStrength > 0.5 ? 0.5 : 0;
+              victim.shieldStrength = afterStrength;
+              if (afterStrength <= 0) {
+                victim.shieldTurnsLeft = 0;
+                victim.shieldJustGranted = false;
+                victim.shieldBreaks = Number(victim.shieldBreaks || 0) + 1;
+                pushLog(`💥 ${me2.name} annule le bouclier de ${victim.name} avec ${fmtThrow(thrSafe)}`);
+                pushEvent({
+                  t: Date.now(),
+                  type: "SHIELD_BREAK",
+                  actorId: me2.id,
+                  targetId: victim.id,
+                  targetNumber: victim.number,
+                  throw: thrSafe,
+                  beforeStrength,
+                  afterStrength: 0,
+                  bot: true,
+                });
+              } else {
+                victim.shieldHalfBreaks = Number(victim.shieldHalfBreaks || 0) + 1;
+                pushLog(`⚡ ${me2.name} affaiblit le bouclier de ${victim.name} à 50% avec ${fmtThrow(thrSafe)}`);
+                pushEvent({
+                  t: Date.now(),
+                  type: "SHIELD_WEAKEN",
+                  actorId: me2.id,
+                  targetId: victim.id,
+                  targetNumber: victim.number,
+                  throw: thrSafe,
+                  beforeStrength,
+                  afterStrength,
+                  bot: true,
+                });
+              }
+              return next;
+            }
+
+            pushLog(`🛡️ ${victim.name} bloque l'attaque de ${me2.name}`);
+            pushEvent({
+              t: Date.now(),
+              type: "SHIELD_BLOCK",
+              actorId: me2.id,
+              targetId: victim.id,
+              targetNumber: victim.number,
+              throw: thrSafe,
+              bot: true,
+            });
+            return next;
+          }
       
           const dmg = dmgFrom(thrSafe.mult, config.damageRule);
           const before = victim.lives;
@@ -5484,7 +5740,10 @@ React.useEffect(() => {
           if (victim.lives <= 0) {
             victim.eliminated = true;
             victim.resurrected = false;
-      victim.resurrected = false;
+            victim.resurrectShield = false;
+            victim.shieldTurnsLeft = 0;
+            victim.shieldJustGranted = false;
+            victim.shieldStrength = 0;
             victim.eliminatedAt = Date.now();
             me2.kills += 1;
       
@@ -5608,14 +5867,28 @@ React.useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players]);
 
-  // boot assign
+  // boot assign : toujours pointer vers le prochain HUMAIN en attente.
   React.useEffect(() => {
     if (!assignActive) return;
-    setTurnIndex(assignIndex);
+    if (assignIndex !== effectiveAssignIndex) setAssignIndex(effectiveAssignIndex);
+    setTurnIndex(effectiveAssignIndex);
     setDartsLeft(1);
     setVisit([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignActive, assignIndex]);
+  }, [assignActive, effectiveAssignIndex]);
+
+  // Si les bots ont été attribués automatiquement et qu'aucun humain ne reste à
+  // traiter (partie 100% bots ou fin de la dernière saisie), finaliser proprement.
+  React.useEffect(() => {
+    if (!inNumberAssignRound || assignDone) return;
+    if (pendingHumanAssignIndices.length > 0) return;
+    const allHaveNumber = players.every(
+      (p) => p.eliminated || (Number(p.number || 0) >= 1 && Number(p.number || 0) <= 20)
+    );
+    if (!allHaveNumber) return;
+    finishAssignIfReady();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, assignDone, inNumberAssignRound, pendingHumanAssignIndices.length]);
 
   // ✅ FULLSCREEN PLAY: cache tabbar (sans toucher au scroll global)
 // - On NE modifie PAS overflow html/body (plus stable desktop/StackBlitz)
@@ -5775,8 +6048,8 @@ if (assignOnlyMode) {
       <AssignOverlay
         open={true}
         player={assignPlayer}
-        index={assignIndex}
-        total={players.length}
+        index={assignHumanOrdinal}
+        total={Math.max(1, assignHumanTotal)}
         takenNumbers={takenNumbers}
         selectBonusShieldOn={selectBonusShieldOn}
         pendingChoiceNumber={pendingChoiceNumber}
@@ -5838,8 +6111,8 @@ return (
     <AssignOverlay
       open={assignActive}
       player={assignPlayer}
-      index={assignIndex}
-      total={players.length}
+      index={assignHumanOrdinal}
+      total={Math.max(1, assignHumanTotal)}
       takenNumbers={takenNumbers}
       selectBonusShieldOn={selectBonusShieldOn}
       pendingChoiceNumber={pendingChoiceNumber}

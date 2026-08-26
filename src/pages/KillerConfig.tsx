@@ -769,9 +769,14 @@ export default function KillerConfigPage(props: Props) {
   }, [selectedIds]);
 
   function togglePlayer(id: string) {
+    const exists = selectedIds.includes(id);
+    if (!exists && selectedIds.length >= 20) {
+      alert("Killer utilise les numéros 1 à 20 : 20 participants maximum pour garantir un numéro unique à chacun.");
+      return;
+    }
     setSelectedIds((prev) => {
-      const exists = prev.includes(id);
-      return exists ? prev.filter((x) => x !== id) : [...prev, id];
+      const isSelected = prev.includes(id);
+      return isSelected ? prev.filter((x) => x !== id) : [...prev, id];
     });
   }
 
@@ -801,7 +806,7 @@ export default function KillerConfigPage(props: Props) {
     cursor: "pointer",
   };
 
-  const canStart = selectedIds.length >= 2;
+  const canStart = selectedIds.length >= 2 && selectedIds.length <= 20;
 
   function resolvePlayer(id: string) {
     const human = profiles.find((p) => p.id === id);
@@ -828,8 +833,12 @@ export default function KillerConfigPage(props: Props) {
   }
 
   function handleStart() {
-    if (!canStart) {
+    if (selectedIds.length < 2) {
       alert("Ajoute au moins 2 joueurs (profils locaux ou bots).");
+      return;
+    }
+    if (selectedIds.length > 20) {
+      alert("Killer est limité à 20 participants afin de conserver des numéros uniques de 1 à 20.");
       return;
     }
 
