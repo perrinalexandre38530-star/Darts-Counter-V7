@@ -6,7 +6,8 @@ export type FitIconName =
   | "home" | "today" | "progress" | "records" | "goals"
   | "workout" | "program" | "live" | "history" | "library"
   | "muscles" | "favorite" | "guide" | "search" | "settings"
-  | "timer" | "volume" | "strength" | "profile" | "coach" | "plus";
+  | "timer" | "volume" | "strength" | "profile" | "coach" | "plus"
+  | "chevron" | "info";
 
 export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -33,33 +34,40 @@ export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number 
     case "profile": return <svg {...common}><circle {...p} cx="12" cy="8" r="4"/><path {...p} d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>;
     case "coach": return <svg {...common}><circle {...p} cx="12" cy="7" r="3"/><path {...p} d="M7 21v-5a5 5 0 0 1 10 0v5M5 13l3-2M19 13l-3-2"/></svg>;
     case "plus": return <svg {...common}><path {...p} d="M12 5v14M5 12h14"/></svg>;
+    case "chevron": return <svg {...common}><path {...p} d="m9 6 6 6-6 6"/></svg>;
+    case "info": return <svg {...common}><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M12 10v6M12 7h.01"/></svg>;
     default: return null;
   }
 }
 
 export function FitShell({ children }: { children: React.ReactNode }) {
-  return <div style={{ width: "100%", maxWidth: FIT_PAGE_MAX, margin: "0 auto", padding: "16px 12px 112px", boxSizing: "border-box" }}>{children}</div>;
+  return <div style={{ width: "100%", maxWidth: FIT_PAGE_MAX, margin: "0 auto", padding: "11px 10px 104px", boxSizing: "border-box" }}>{children}</div>;
 }
 
 export function FitPageHeader({ title, eyebrow, accent = "#f6c256", children }: { title: string; eyebrow?: string; accent?: string; children?: React.ReactNode }) {
   return (
-    <div style={{ borderRadius: 28, padding: 18, marginBottom: 14, background: "linear-gradient(135deg,rgba(8,10,20,.98),rgba(14,18,34,.98))", border: "1px solid rgba(255,255,255,.10)", boxShadow: "0 20px 40px rgba(0,0,0,.7)", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      {eyebrow ? <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${accent}`, background: "linear-gradient(135deg,rgba(0,0,0,.9),rgba(255,255,255,.06))", marginBottom: 10, color: accent, fontSize: 12, fontWeight: 800, letterSpacing: 1.05, textTransform: "uppercase" }}>{eyebrow}</div> : null}
-      <div style={{ fontSize: 31, fontWeight: 1000, letterSpacing: 2.6, textAlign: "center", textTransform: "uppercase", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "fitTitlePulse 3.6s ease-in-out infinite,fitTitleShimmer 7s linear infinite" }}>{title}</div>
-      {children}
+    <div style={{ borderRadius: 20, padding: "12px 14px", marginBottom: 10, background: "linear-gradient(135deg,rgba(8,10,20,.97),rgba(14,18,34,.96))", border: "1px solid rgba(255,255,255,.08)", boxShadow: "0 12px 28px rgba(0,0,0,.45)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 40, height: 40, flex: "0 0 40px", borderRadius: 13, display: "grid", placeItems: "center", color: accent, border: `1px solid ${accent}46`, background: `${accent}10` }}><FitIcon name="strength" size={21}/></div>
+        <div style={{ minWidth: 0 }}>
+          {eyebrow ? <div style={{ color: accent, fontSize: 8, fontWeight: 950, letterSpacing: 1.15, textTransform: "uppercase" }}>{eyebrow}</div> : null}
+          <div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 20, lineHeight: 1, fontWeight: 1000, letterSpacing: -.55, textTransform: "uppercase" }}>{title}</div>
+        </div>
+      </div>
+      {children ? <div style={{ marginTop: 8 }}>{children}</div> : null}
     </div>
   );
 }
 
 export function FitIconTabs<T extends string>({ items, value, onChange, accent = "#f6c256" }: { items: { id: T; label: string; icon: FitIconName; badge?: string | number }[]; value: T; onChange: (id: T) => void; accent?: string }) {
   return (
-    <div style={{ display: "flex", gap: 7, overflowX: "auto", scrollbarWidth: "none", padding: "3px 1px 5px", margin: "0 0 10px" }}>
+    <div className="fit-icon-tabs" role="tablist" style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", scrollbarWidth: "none", padding: "4px", margin: "0 0 9px", borderRadius: 17, border: "1px solid rgba(255,255,255,.06)", background: "rgba(3,5,10,.48)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.025)" }}>
       {items.map((item) => {
         const active = item.id === value;
-        return <button key={item.id} type="button" onClick={() => onChange(item.id)} style={{ flex: "0 0 auto", minWidth: 72, minHeight: 61, borderRadius: 16, border: `1px solid ${active ? accent + "99" : "rgba(255,255,255,.075)"}`, background: active ? `linear-gradient(180deg,${accent}22,rgba(255,255,255,.035))` : "linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018))", color: active ? accent : "rgba(255,255,255,.68)", boxShadow: active ? `0 0 18px ${accent}22, inset 0 0 0 1px ${accent}12` : "none", cursor: "pointer", padding: "7px 9px", display: "grid", placeItems: "center", gap: 4, position: "relative" }}>
-          <FitIcon name={item.icon} size={21}/>
-          <span style={{ fontSize: 8.5, fontWeight: 950, letterSpacing: .45, textTransform: "uppercase", whiteSpace: "nowrap" }}>{item.label}</span>
-          {item.badge != null ? <span style={{ position: "absolute", right: 5, top: 5, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 999, display: "grid", placeItems: "center", background: accent, color: "#08090c", fontSize: 7.5, fontWeight: 1000 }}>{item.badge}</span> : null}
+        return <button key={item.id} role="tab" aria-selected={active} aria-label={item.label} title={item.label} type="button" onClick={() => onChange(item.id)} style={{ flex: active ? "0 0 auto" : "0 0 42px", width: active ? "auto" : 42, minWidth: active ? 88 : 42, height: 42, borderRadius: 13, border: `1px solid ${active ? accent + "68" : "transparent"}`, background: active ? `linear-gradient(135deg,${accent}1c,rgba(255,255,255,.055))` : "transparent", color: active ? accent : "rgba(255,255,255,.58)", boxShadow: active ? `0 0 16px ${accent}16, inset 0 0 0 1px ${accent}0d` : "none", cursor: "pointer", padding: active ? "0 12px" : 0, display: "flex", alignItems: "center", justifyContent: "center", gap: active ? 8 : 0, position: "relative", transition: "width .18s ease,min-width .18s ease,padding .18s ease,background .18s ease,color .18s ease,border-color .18s ease" }}>
+          <span style={{ display: "grid", placeItems: "center", flex: "0 0 auto" }}><FitIcon name={item.icon} size={20}/></span>
+          {active ? <span style={{ fontSize: 8.7, fontWeight: 1000, letterSpacing: .55, textTransform: "uppercase", whiteSpace: "nowrap", animation: "fitTabLabelIn .18s ease both" }}>{item.label}</span> : null}
+          {item.badge != null ? <span style={{ position: "absolute", right: active ? 4 : -2, top: -3, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, display: "grid", placeItems: "center", background: accent, color: "#08090c", fontSize: 7, fontWeight: 1000, boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}>{item.badge}</span> : null}
         </button>;
       })}
     </div>
@@ -67,50 +75,52 @@ export function FitIconTabs<T extends string>({ items, value, onChange, accent =
 }
 
 export function FitSectionTitle({ eyebrow, title, right }: { eyebrow?: string; title: string; right?: React.ReactNode }) {
-  return <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, margin: "18px 2px 10px" }}><div style={{ minWidth: 0 }}>{eyebrow ? <div style={{ color: "rgba(255,255,255,.47)", fontSize: 8.5, fontWeight: 950, letterSpacing: 1.35, textTransform: "uppercase" }}>{eyebrow}</div> : null}<div style={{ marginTop: eyebrow ? 3 : 0, fontSize: 17, lineHeight: 1.1, fontWeight: 1000, letterSpacing: -.35 }}>{title}</div></div>{right}</div>;
+  return <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, margin: "14px 2px 8px" }}><div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 7 }}>{eyebrow ? <span style={{ flex: "0 0 auto", padding: "3px 6px", borderRadius: 999, background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.5)", fontSize: 7.2, fontWeight: 1000, letterSpacing: .8, textTransform: "uppercase" }}>{eyebrow}</span> : null}<div style={{ minWidth: 0, fontSize: 14.5, lineHeight: 1.1, fontWeight: 1000, letterSpacing: -.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div></div>{right}</div>;
 }
 
 export function FitGlassCard({ children, accent = "#f6c256", style, onClick }: { children: React.ReactNode; accent?: string; style?: React.CSSProperties; onClick?: () => void }) {
-  return <div onClick={onClick} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,.075)", background: "linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))", boxShadow: `0 16px 36px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.035), 0 0 20px ${accent}0a`, ...style }}>{children}</div>;
+  return <div onClick={onClick} style={{ borderRadius: 15, border: "1px solid rgba(255,255,255,.065)", background: "linear-gradient(145deg,rgba(255,255,255,.038),rgba(255,255,255,.014))", boxShadow: `0 10px 24px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.025), 0 0 16px ${accent}08`, ...style }}>{children}</div>;
 }
 
 export function FitPill({ children, accent = "#f6c256", muted = false }: { children: React.ReactNode; accent?: string; muted?: boolean }) {
-  return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 26, padding: "0 9px", borderRadius: 999, border: `1px solid ${muted ? "rgba(255,255,255,.08)" : accent + "55"}`, background: muted ? "rgba(255,255,255,.045)" : `${accent}14`, color: muted ? "inherit" : accent, fontSize: 10, fontWeight: 900, letterSpacing: .65, whiteSpace: "nowrap" }}>{children}</span>;
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minHeight: 22, padding: "0 8px", borderRadius: 999, border: `1px solid ${muted ? "rgba(255,255,255,.07)" : accent + "42"}`, background: muted ? "rgba(255,255,255,.035)" : `${accent}10`, color: muted ? "inherit" : accent, fontSize: 8.5, fontWeight: 950, letterSpacing: .55, whiteSpace: "nowrap" }}>{children}</span>;
 }
 
 export function FitPrimaryButton({ children, accent = "#f6c256", onClick, disabled = false, style }: { children: React.ReactNode; accent?: string; onClick?: () => void; disabled?: boolean; style?: React.CSSProperties }) {
-  return <button type="button" onClick={onClick} disabled={disabled} style={{ minHeight: 48, borderRadius: 14, padding: "0 16px", border: `1px solid ${accent}88`, background: disabled ? "rgba(255,255,255,.06)" : `linear-gradient(135deg,${accent},#fff4ba 54%,${accent})`, color: disabled ? "rgba(255,255,255,.38)" : "#08090b", fontWeight: 1000, letterSpacing: .35, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : `0 12px 28px ${accent}20`, ...style }}>{children}</button>;
+  return <button type="button" onClick={onClick} disabled={disabled} style={{ minHeight: 44, borderRadius: 13, padding: "0 14px", border: `1px solid ${accent}72`, background: disabled ? "rgba(255,255,255,.06)" : `linear-gradient(135deg,${accent},#fff4ba 54%,${accent})`, color: disabled ? "rgba(255,255,255,.38)" : "#08090b", fontWeight: 1000, letterSpacing: .3, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : `0 9px 22px ${accent}18`, ...style }}>{children}</button>;
 }
 
 export function FitGhostButton({ children, onClick, accent = "#f6c256", style }: { children: React.ReactNode; onClick?: () => void; accent?: string; style?: React.CSSProperties }) {
-  return <button type="button" onClick={onClick} style={{ minHeight: 42, borderRadius: 13, padding: "0 13px", border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "inherit", fontWeight: 850, cursor: "pointer", boxShadow: `inset 0 0 0 1px ${accent}08`, ...style }}>{children}</button>;
+  return <button type="button" onClick={onClick} style={{ minHeight: 38, borderRadius: 12, padding: "0 12px", border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.032)", color: "inherit", fontWeight: 900, cursor: "pointer", boxShadow: `inset 0 0 0 1px ${accent}06`, ...style }}>{children}</button>;
 }
 
 export function FitMetric({ label, value, sub, accent = "#f6c256" }: { label: string; value: React.ReactNode; sub?: string; accent?: string }) {
-  return <div style={{ minWidth: 0, padding: "13px 12px", borderRadius: 16, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.032)" }}><div style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: 1.15, opacity: .56, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 5, color: accent, fontSize: 18, lineHeight: 1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>{sub ? <div style={{ marginTop: 5, opacity: .5, fontSize: 8.5 }}>{sub}</div> : null}</div>;
+  return <div style={{ minWidth: 0, padding: "10px", borderRadius: 13, border: "1px solid rgba(255,255,255,.055)", background: "rgba(255,255,255,.025)" }}><div style={{ fontSize: 8, fontWeight: 950, letterSpacing: .9, opacity: .52, textTransform: "uppercase" }}>{label}</div><div style={{ marginTop: 4, color: accent, fontSize: 16, lineHeight: 1, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>{sub ? <div style={{ marginTop: 4, opacity: .44, fontSize: 7.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}</div>;
 }
 
 export function FitProgress({ value, accent = "#f6c256", height = 7 }: { value: number; accent?: string; height?: number }) {
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
-  return <div style={{ height, width: "100%", borderRadius: 99, background: "rgba(255,255,255,.065)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${accent},#fff2a7)`, boxShadow: `0 0 12px ${accent}55`, transition: "width .25s ease" }}/></div>;
+  return <div style={{ height, width: "100%", borderRadius: 99, background: "rgba(255,255,255,.055)", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", borderRadius: 99, background: `linear-gradient(90deg,${accent},#fff2a7)`, boxShadow: `0 0 10px ${accent}40`, transition: "width .25s ease" }}/></div>;
 }
 
 export function FitRing({ value, label, accent = "#f6c256", size = 86 }: { value: number; label: string; accent?: string; size?: number }) {
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
-  return <div style={{ width: size, height: size, flex: `0 0 ${size}px`, borderRadius: 999, background: `conic-gradient(${accent} ${pct * 3.6}deg, rgba(255,255,255,.07) 0)`, padding: 7, boxSizing: "border-box", boxShadow: `0 0 24px ${accent}18` }}><div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", textAlign: "center", background: "radial-gradient(circle at 50% 38%,rgba(255,255,255,.07),#090b10 68%)", border: "1px solid rgba(255,255,255,.06)" }}><div><div style={{ color: accent, fontWeight: 1000, fontSize: Math.round(size * .24), lineHeight: 1 }}>{Math.round(pct)}</div><div style={{ marginTop: 4, fontSize: Math.max(6, Math.round(size * .075)), fontWeight: 950, letterSpacing: .7, opacity: .5 }}>{label}</div></div></div></div>;
+  return <div style={{ width: size, height: size, flex: `0 0 ${size}px`, borderRadius: 999, background: `conic-gradient(${accent} ${pct * 3.6}deg, rgba(255,255,255,.07) 0)`, padding: 6, boxSizing: "border-box", boxShadow: `0 0 18px ${accent}12` }}><div style={{ width: "100%", height: "100%", borderRadius: 999, display: "grid", placeItems: "center", textAlign: "center", background: "radial-gradient(circle at 50% 38%,rgba(255,255,255,.06),#090b10 68%)", border: "1px solid rgba(255,255,255,.05)" }}><div><div style={{ color: accent, fontWeight: 1000, fontSize: Math.round(size * .24), lineHeight: 1 }}>{Math.round(pct)}</div><div style={{ marginTop: 3, fontSize: Math.max(6, Math.round(size * .073)), fontWeight: 950, letterSpacing: .65, opacity: .46 }}>{label}</div></div></div></div>;
 }
 
 export function FitMiniBars({ values, accent = "#f6c256", height = 70 }: { values: number[]; accent?: string; height?: number }) {
   const max = Math.max(1, ...values);
-  return <div style={{ height, display: "flex", alignItems: "flex-end", gap: 6 }}>{values.map((value, index) => <div key={index} style={{ flex: 1, minWidth: 6, height: `${Math.max(6, (Math.max(0, value) / max) * 100)}%`, borderRadius: "6px 6px 2px 2px", background: `linear-gradient(180deg,#fff4b7,${accent})`, boxShadow: `0 0 10px ${accent}20`, opacity: .92 }} />)}</div>;
+  return <div style={{ height, display: "flex", alignItems: "flex-end", gap: 5 }}>{values.map((value, index) => <div key={index} style={{ flex: 1, minWidth: 5, height: `${Math.max(6, (Math.max(0, value) / max) * 100)}%`, borderRadius: "5px 5px 2px 2px", background: `linear-gradient(180deg,#fff4b7,${accent})`, boxShadow: `0 0 8px ${accent}18`, opacity: .9 }} />)}</div>;
 }
 
 export function FitHeroMark({ accent = "#f6c256", size = 84 }: { accent?: string; size?: number }) {
-  return <div style={{ width: size, height: size, borderRadius: 22, display: "grid", placeItems: "center", background: `radial-gradient(circle at 50% 35%,${accent}28,rgba(255,255,255,.025) 55%,rgba(0,0,0,.1))`, border: `1px solid ${accent}38`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.08),0 0 26px ${accent}16` }}><FitIcon name="strength" size={Math.round(size * .56)}/></div>;
+  return <div style={{ width: size, height: size, borderRadius: 20, display: "grid", placeItems: "center", background: `radial-gradient(circle at 50% 35%,${accent}24,rgba(255,255,255,.02) 55%,rgba(0,0,0,.1))`, border: `1px solid ${accent}30`, boxShadow: `inset 0 1px 0 rgba(255,255,255,.06),0 0 22px ${accent}12` }}><FitIcon name="strength" size={Math.round(size * .56)}/></div>;
 }
 
 export const fitUiCss = `
-@keyframes fitTitlePulse{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.025);filter:brightness(1.16)}}
+@keyframes fitTitlePulse{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.018);filter:brightness(1.12)}}
 @keyframes fitTitleShimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
-@keyframes fitSoftFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes fitSoftFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes fitTabLabelIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+.fit-icon-tabs::-webkit-scrollbar{display:none}
 `;

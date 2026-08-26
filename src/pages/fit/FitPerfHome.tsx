@@ -127,12 +127,15 @@ export default function FitPerfHome({ store, go }: Props) {
       <FitShell>
         <style>{fitUiCss}</style>
 
-        {/* Même langage visuel que la HOME DARTS COUNTER */}
-        <div style={{ borderRadius: 28, padding: 18, marginBottom: 16, background: "linear-gradient(135deg,rgba(8,10,20,.98),rgba(14,18,34,.98))", border: `1px solid ${(theme as any)?.borderSoft || "rgba(255,255,255,.10)"}`, boxShadow: "0 20px 40px rgba(0,0,0,.7)", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${accent}`, background: "linear-gradient(135deg,rgba(0,0,0,.9),rgba(255,255,255,.06))", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.1, textTransform: "uppercase", color: accent }}>{t("Bienvenue", "Welcome", "Bienvenido")}</span>
+        {/* Home FIT PERF : même logique que DARTS COUNTER, mais plus compacte. */}
+        <div style={{ borderRadius: 20, padding: "12px 14px", marginBottom: 10, background: "linear-gradient(135deg,rgba(8,10,20,.97),rgba(14,18,34,.96))", border: `1px solid ${(theme as any)?.borderSoft || "rgba(255,255,255,.08)"}`, boxShadow: "0 12px 28px rgba(0,0,0,.45)", display: "grid", gridTemplateColumns: "54px 1fr auto", gap: 11, alignItems: "center" }}>
+          <img src={logoFitPerf} alt="FIT PERF" style={{ width: 54, height: 54, objectFit: "contain", filter: `drop-shadow(0 0 12px ${accent}30)` }}/>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: accent, fontSize: 8, fontWeight: 1000, letterSpacing: 1.2 }}>{t("PERFORMANCE", "PERFORMANCE", "RENDIMIENTO")}</div>
+            <div style={{ marginTop: 2, fontSize: 22, lineHeight: 1, fontWeight: 1000, letterSpacing: -.7 }}>FIT PERF</div>
+            <div style={{ marginTop: 4, color: textSoft, fontSize: 8.5 }}>{t("Ta progression, sans surcharge.", "Your progress, without clutter.", "Tu progreso, sin sobrecarga.")}</div>
           </div>
-          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "fitTitlePulse 3.6s ease-in-out infinite,fitTitleShimmer 7s linear infinite" }}>FIT PERF</div>
+          <FitRing value={summary.score} label="SCORE" accent={accent} size={58}/>
         </div>
 
         <InlineAdBanner placement="home" slotKey="fit-home-top" offset={0} compact style={{ marginBottom: 16 }}/>
@@ -168,20 +171,17 @@ export default function FitPerfHome({ store, go }: Props) {
         </div>
 
         {tab === "overview" ? <>
-          <FitSectionTitle eyebrow={t("ACTION RAPIDE", "QUICK ACTION", "ACCIÓN RÁPIDA")} title={t("Ta prochaine séance", "Your next workout", "Tu próxima sesión")}/>
-          <div style={{ display: "grid", gridTemplateColumns: "1.35fr .9fr", gap: 9 }}>
-            <FitGlassCard accent={accent} style={{ padding: 14, minHeight: 154, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div><FitPill accent={accent}><FitIcon name="workout" size={14}/> {t("SÉANCE", "WORKOUT", "SESIÓN")}</FitPill><div style={{ marginTop: 10, fontSize: 18, fontWeight: 1000 }}>{t("Prêt à t'entraîner ?", "Ready to train?", "¿Listo para entrenar?")}</div><div style={{ marginTop: 5, color: textSoft, fontSize: 9.5, lineHeight: 1.45 }}>{t("Lance une séance libre ou choisis un programme.", "Start a free workout or choose a program.", "Inicia una sesión libre o elige un programa.")}</div></div>
-              <FitPrimaryButton accent={accent} onClick={() => go("games", { fitTemplateId: "free" })} style={{ width: "100%", minHeight: 43 }}><FitIcon name="plus" size={16}/> {t("DÉMARRER", "START", "EMPEZAR")}</FitPrimaryButton>
-            </FitGlassCard>
-            <FitGlassCard accent="#75ed9a" style={{ padding: 13, display: "grid", placeItems: "center", textAlign: "center" }}><FitRing value={summary.score} label="FIT SCORE" accent="#75ed9a" size={88}/><div style={{ marginTop: 8, color: textSoft, fontSize: 8.5 }}>{t("Indice personnel", "Personal index", "Índice personal")}</div></FitGlassCard>
-          </div>
-          <FitSectionTitle eyebrow={t("CETTE SEMAINE", "THIS WEEK", "ESTA SEMANA")} title={t("Performance en un coup d'œil", "Performance at a glance", "Rendimiento de un vistazo")}/>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-            <FitMetric label={t("Séances", "Sessions", "Sesiones")} value={`${summary.weekSessions}/${weeklyGoal}`} sub={t("objectif hebdo", "weekly goal", "objetivo semanal")} accent={accent}/>
-            <FitMetric label={t("Volume", "Volume", "Volumen")} value={formatVolume(summary.weekVolumeKg)} sub={t("charge cumulée", "total load", "carga acumulada")} accent="#72def4"/>
-            <FitMetric label={t("Records", "Records", "Récords")} value={summary.records} sub={t("exercices suivis", "tracked exercises", "ejercicios seguidos")} accent="#b59cff"/>
-            <FitMetric label={t("Temps", "Time", "Tiempo")} value={formatDuration(summary.totalDurationMs)} sub={t("entraînement cumulé", "training total", "entrenamiento total")} accent="#75ed9a"/>
+          <FitSectionTitle eyebrow={t("ACTION", "ACTION", "ACCIÓN")} title={t("Prochaine séance", "Next workout", "Próxima sesión")}/>
+          <FitGlassCard accent={accent} style={{ padding: 11, display: "grid", gridTemplateColumns: "40px 1fr auto", gap: 10, alignItems: "center" }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}34` }}><FitIcon name="workout" size={20}/></div>
+            <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, fontWeight: 1000 }}>{t("Démarrer une séance libre", "Start a free workout", "Iniciar sesión libre")}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.2 }}>{t("Ajoute tes exercices au fur et à mesure.", "Add exercises as you go.", "Añade ejercicios sobre la marcha.")}</div></div>
+            <button type="button" onClick={() => go("games", { fitTemplateId: "free" })} aria-label={t("Démarrer", "Start", "Empezar")} style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${accent}66`, background: `${accent}14`, color: accent, display: "grid", placeItems: "center" }}><FitIcon name="chevron" size={19}/></button>
+          </FitGlassCard>
+          <FitSectionTitle eyebrow={t("SEMAINE", "WEEK", "SEMANA")} title={t("Essentiel", "Essentials", "Esencial")}/>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>
+            <FitMetric label={t("Séances", "Sessions", "Sesiones")} value={`${summary.weekSessions}/${weeklyGoal}`} accent={accent}/>
+            <FitMetric label={t("Volume", "Volume", "Volumen")} value={formatVolume(summary.weekVolumeKg)} accent="#72def4"/>
+            <FitMetric label={t("Records", "Records", "Récords")} value={summary.records} accent="#b59cff"/>
           </div>
         </> : null}
 
