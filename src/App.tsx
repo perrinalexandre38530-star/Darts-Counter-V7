@@ -1059,45 +1059,115 @@ function RedirectToStatsTraining({ go }: { go: (tab: Tab, params?: any) => void 
    ✅ NEW: AUTH CALLBACK (PROD)
 -------------------------------------------- */
 function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
-  const [msg, setMsg] = React.useState("Connexion en cours…");
+  const [msg, setMsg] = React.useState("Préparation de la connexion…");
+  const [detail, setDetail] = React.useState("Sécurisation du retour OAuth");
+  const [progress, setProgress] = React.useState(4);
+  const [targetProgress, setTargetProgress] = React.useState(8);
+  const [phase, setPhase] = React.useState<"working" | "success" | "error">("working");
+  const [providerLabel, setProviderLabel] = React.useState("Compte MULTISPORTS");
   const exchangeStartedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= targetProgress) return current;
+        return Math.min(targetProgress, current + Math.max(1, Math.ceil((targetProgress - current) / 7)));
+      });
+    }, 55);
+    return () => window.clearInterval(timer);
+  }, [targetProgress]);
 
   React.useEffect(() => {
     if (exchangeStartedRef.current) return;
     exchangeStartedRef.current = true;
     let alive = true;
+    let timedOut = false;
     let unsubscribe: (() => void) | null = null;
 
+    const pendingAtStart = getPendingSocialAuth();
+    const initialProvider = pendingAtStart?.provider as keyof typeof SOCIAL_AUTH_LABELS | undefined;
+    if (initialProvider && SOCIAL_AUTH_LABELS[initialProvider]) {
+      setProviderLabel(SOCIAL_AUTH_LABELS[initialProvider]);
+    }
+
+    const fail = (message: string, extra?: string) => {
+      if (!alive || timedOut) return;
+      setPhase("error");
+      setTargetProgress(100);
+      setMsg(message);
+      setDetail(extra || "La session n'a pas été créée. Tu peux réessayer immédiatement.");
+    };
+
+    async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+      let timer = 0;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise<T>((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error(message)), ms);
+          }),
+        ]);
+      } finally {
+        if (timer) window.clearTimeout(timer);
+      }
+    }
+
+    const hardStopTimer = window.setTimeout(() => {
+      if (!alive) return;
+      timedOut = true;
+      clearPendingSocialAuth();
+      clearPendingPkceBackup();
+      resumeSupabaseAuthRuntime();
+      setPhase("error");
+      setProgress(100);
+      setTargetProgress(100);
+      setMsg("La connexion a dépassé le délai autorisé.");
+      setDetail("Arrêt automatique après 11 secondes : aucun écran OAuth ne doit rester bloqué plusieurs minutes.");
+    }, 11_000);
+
     const finishSocialLanding = async (session: any) => {
+      if (!alive || timedOut) return true;
       const uid = String(session?.user?.id || "").trim();
       const pending = getPendingSocialAuth();
       const callbackResult = consumeSocialAuthCallbackResult();
       const provider = (callbackResult?.provider || pending?.provider || "") as keyof typeof SOCIAL_AUTH_LABELS;
       const socialFlow = !!provider || /(?:\?|&)social=1(?:&|$)/.test(String(window.location.hash || ""));
 
+      if (provider && SOCIAL_AUTH_LABELS[provider]) setProviderLabel(SOCIAL_AUTH_LABELS[provider]);
+
       if (callbackResult && !callbackResult.ok) {
         clearPendingSocialAuth();
-        if (!alive) return true;
-        setMsg(callbackResult.message || "La connexion sociale a échoué.");
-        window.setTimeout(() => alive && go("auth_v7_login"), 1200);
+        fail(callbackResult.message || "La connexion sociale a échoué.");
         return true;
       }
 
       if (!socialFlow || !uid) return false;
 
+      setTargetProgress(88);
+      setMsg("Session validée");
+      setDetail("Ouverture de ton espace MULTISPORTS…");
+
       clearPendingSocialAuth();
-      // Le compte authentifié devient le scope local immédiatement. Cela empêche
-      // tout accès transitoire au namespace de l'utilisateur précédent.
       try { setStorageUser(uid); localStorage.setItem("dc_user_id", uid); } catch {}
-      // Aucune sauvegarde n'est recherchée dans le callback OAuth. Le compte est
-      // ouvert immédiatement ; useAuthOnline recharge son store namespacé puis
-      // lance la recherche de sauvegarde en arrière-plan si elle est pertinente.
-      if (alive) go("gameSelect");
+
+      // IMPORTANT : aucune restauration NAS/R2/sauvegarde ne bloque cette page.
+      // L'utilisateur entre dans l'app dès que Supabase confirme sa session.
+      setPhase("success");
+      setProgress(100);
+      setTargetProgress(100);
+      setMsg("Connexion réussie");
+      setDetail("Bienvenue dans MULTISPORTS SCORING");
+      await new Promise((resolve) => window.setTimeout(resolve, 160));
+      if (alive && !timedOut) go("gameSelect");
       return true;
     };
 
     (async () => {
       try {
+        setTargetProgress(18);
+        setMsg("Retour sécurisé reçu");
+        setDetail("Lecture de la réponse du fournisseur…");
+
         // Erreur OAuth web (refus utilisateur, provider mal configuré, etc.).
         try {
           const hash = String(window.location.hash || "");
@@ -1106,18 +1176,15 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           const oauthError = sp.get("error_description") || sp.get("error");
           if (oauthError && (getPendingSocialAuth() || sp.get("social") === "1")) {
             clearPendingSocialAuth();
-            if (alive) {
-              setMsg(decodeURIComponent(oauthError));
-              window.setTimeout(() => alive && go("auth_v7_login"), 1200);
-            }
+            fail(decodeURIComponent(oauthError), "Le fournisseur a refusé ou interrompu la connexion.");
             return;
           }
         } catch {}
 
-        // Capture session from Supabase email/social links (PKCE code or implicit tokens).
-        // IMPORTANT : ce callback est l'UNIQUE consommateur du code PKCE. Si
-        // l'échange échoue, on ne recycle jamais une ancienne session du navigateur.
-        let callbackExchangeFailed = false;
+        // Le callback est l'UNIQUE consommateur du code PKCE.
+        // Contrairement à l'ancienne version, chaque appel potentiellement réseau
+        // possède son propre timeout : aucun await ne peut figer cet écran.
+        let sessionFromExchange: any = null;
         try {
           const href = String(window.location.href || "");
           const u = new URL(href);
@@ -1130,13 +1197,20 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           const code = fromSearch || fromHashQuery;
 
           if (code) {
-            // Le callback est chargé dans une nouvelle navigation. Restaure si
-            // nécessaire la copie de secours du verifier PKCE AVANT l'échange.
+            setTargetProgress(42);
+            setMsg("Validation de l'autorisation");
+            setDetail("Échange sécurisé avec Supabase…");
             restorePendingPkceVerifierIfNeeded();
-            const { error } = await supabase.auth.exchangeCodeForSession(code);
-            if (error) throw error;
+            const exchange: any = await withTimeout(
+              supabase.auth.exchangeCodeForSession(code),
+              7_500,
+              "Le serveur d'authentification n'a pas répondu assez vite.",
+            );
+            if (exchange?.error) throw exchange.error;
+            sessionFromExchange = exchange?.data?.session || null;
             clearPendingPkceBackup();
             resumeSupabaseAuthRuntime();
+            setTargetProgress(72);
           } else {
             const h = String(u.hash || "").replace(/^#/, "");
             const qs = h.includes("?") ? h.split("?")[1] : h;
@@ -1144,98 +1218,250 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
             const access_token = sp.get("access_token");
             const refresh_token = sp.get("refresh_token");
             if (access_token && refresh_token) {
-              const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-              if (error) throw error;
+              setTargetProgress(45);
+              setMsg("Création de la session");
+              setDetail("Finalisation de l'identité MULTISPORTS…");
+              const sessionResult: any = await withTimeout(
+                supabase.auth.setSession({ access_token, refresh_token }),
+                5_000,
+                "La création de session a dépassé le délai autorisé.",
+              );
+              if (sessionResult?.error) throw sessionResult.error;
+              sessionFromExchange = sessionResult?.data?.session || null;
               resumeSupabaseAuthRuntime();
+              setTargetProgress(72);
             }
           }
-        } catch (e) {
-          callbackExchangeFailed = true;
+        } catch (e: any) {
           console.warn("[auth_callback] session parse/exchange failed", e);
           clearPendingPkceBackup();
           resumeSupabaseAuthRuntime();
           clearPendingSocialAuth();
-          try { await supabase.auth.signOut({ scope: "local" }); } catch {}
-          if (alive) {
-            setMsg("La connexion sociale n'a pas pu être finalisée. Réessaie.");
-            window.setTimeout(() => alive && go("auth_v7_login"), 900);
-          }
+          try { await Promise.race([supabase.auth.signOut({ scope: "local" }), new Promise((r) => setTimeout(r, 900))]); } catch {}
+          fail(
+            "La connexion sociale n'a pas pu être finalisée.",
+            String(e?.message || e || "Réessaie depuis l'écran de connexion."),
+          );
+          return;
         }
-        if (callbackExchangeFailed) return;
+        if (!alive || timedOut) return;
 
         const earlyCallbackResult = peekSocialAuthCallbackResult();
         if (earlyCallbackResult && !earlyCallbackResult.ok) {
           consumeSocialAuthCallbackResult();
           clearPendingSocialAuth();
-          if (alive) {
-            setMsg(earlyCallbackResult.message || "La connexion sociale a échoué.");
-            window.setTimeout(() => alive && go("auth_v7_login"), 1200);
-          }
+          fail(earlyCallbackResult.message || "La connexion sociale a échoué.");
           return;
         }
 
-        // Ne bloque jamais le callback OAuth sur le bridge NAS/R2. Une session
-        // Supabase valide suffit pour entrer dans l'application ; l'hydratation
-        // onlineApi est déclenchée ensuite en arrière-plan par le hook Auth.
-        const { data, error } = await supabase.auth.getSession();
-        if (!alive) return;
-
-        if (error) {
-          console.error("[auth_callback] getSession error:", error);
-          setMsg("Erreur de connexion. Réessaie depuis l'écran de connexion.");
-          return;
-        }
-
-        if (data?.session) {
-          if (await finishSocialLanding(data.session)) return;
+        // Chemin rapide : exchangeCodeForSession/setSession fournit déjà la session.
+        // On évite donc un second aller-retour getSession() inutile.
+        if (sessionFromExchange) {
+          setTargetProgress(82);
+          setMsg("Compte identifié");
+          setDetail("Préparation de l'application…");
+          if (await finishSocialLanding(sessionFromExchange)) return;
           try { window.location.hash = "#/online"; } catch {}
           go("online");
           return;
         }
 
-        const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-          if (!session) return;
-          void (async () => {
-            if (await finishSocialLanding(session)) return;
-            try { window.location.hash = "#/online"; } catch {}
-            if (alive) go("online");
-          })();
-        });
-        unsubscribe = () => sub.subscription.unsubscribe();
+        // Cas natif/callback déjà échangé : lecture locale de session, bornée à 2,5 s.
+        setTargetProgress(74);
+        setMsg("Vérification de la session");
+        setDetail("Dernière vérification locale…");
+        const sessionRead: any = await withTimeout(
+          supabase.auth.getSession(),
+          2_500,
+          "La session n'a pas pu être relue dans le délai attendu.",
+        );
+        if (!alive || timedOut) return;
 
-        setTimeout(() => {
-          if (alive) setMsg("Presque fini… finalisation de la session.");
-        }, 900);
+        if (sessionRead?.error) {
+          console.error("[auth_callback] getSession error:", sessionRead.error);
+          fail("Erreur de connexion.", sessionRead.error?.message || "Réessaie depuis l'écran de connexion.");
+          return;
+        }
 
-        // Aucun callback OAuth ne doit laisser l'application bloquée indéfiniment.
-        // Si aucune session n'arrive après 12 s, on libère le pending/spinner et
-        // on revient sur la connexion avec un état propre.
-        window.setTimeout(() => {
-          if (!alive) return;
-          clearPendingSocialAuth();
-          setMsg("Le retour OAuth n'a pas finalisé la session. Réessaie la connexion.");
-          window.setTimeout(() => alive && go("auth_v7_login"), 700);
-        }, 12_000);
-      } catch (e) {
+        if (sessionRead?.data?.session) {
+          if (await finishSocialLanding(sessionRead.data.session)) return;
+          try { window.location.hash = "#/online"; } catch {}
+          go("online");
+          return;
+        }
+
+        // Une très courte fenêtre laisse onAuthStateChange livrer une session déjà
+        // en cours d'écriture, mais cette attente est elle aussi strictement bornée.
+        const sessionFromEvent = await withTimeout<any>(
+          new Promise((resolve) => {
+            const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+              if (!session) return;
+              try { sub.subscription.unsubscribe(); } catch {}
+              resolve(session);
+            });
+            unsubscribe = () => sub.subscription.unsubscribe();
+          }),
+          1_800,
+          "Aucune session n'a été reçue après le retour OAuth.",
+        ).catch(() => null);
+
+        if (sessionFromEvent) {
+          if (await finishSocialLanding(sessionFromEvent)) return;
+          try { window.location.hash = "#/online"; } catch {}
+          go("online");
+          return;
+        }
+
+        fail("La session n'a pas été créée.", "Réessaie la connexion : l'attente a été interrompue automatiquement.");
+      } catch (e: any) {
         console.error("[auth_callback] fatal:", e);
-        if (alive) setMsg("Erreur de connexion. Réessaie depuis l'écran de connexion.");
+        fail("Erreur de connexion.", String(e?.message || e || "Réessaie depuis l'écran de connexion."));
       }
     })();
 
     return () => {
       alive = false;
+      window.clearTimeout(hardStopTimer);
       try { unsubscribe?.(); } catch {}
     };
   }, [go]);
 
+  const isError = phase === "error";
+  const isSuccess = phase === "success";
+  const accent = isError ? "#ff5d67" : isSuccess ? "#48f2a5" : "#ffd34f";
+
   return (
-    <div style={{ padding: 16 }}>
-      <button onClick={() => go("profiles", { view: "me", autoCreate: true })}>← Retour</button>
-      <h2 style={{ marginTop: 10 }}>Authentification</h2>
-      <p style={{ opacity: 0.9 }}>{msg}</p>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        padding: "22px 16px",
+        color: "#f6f8fb",
+        background:
+          "radial-gradient(circle at 50% 12%, rgba(0,214,255,.14), transparent 34%), radial-gradient(circle at 18% 82%, rgba(255,209,67,.10), transparent 32%), #030609",
+      }}
+    >
+      <div
+        style={{
+          width: "min(470px, 94vw)",
+          borderRadius: 28,
+          border: "1px solid rgba(89,222,255,.20)",
+          background: "linear-gradient(180deg, rgba(8,17,25,.96), rgba(2,7,11,.98))",
+          boxShadow: "0 26px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ height: 3, background: "linear-gradient(90deg,#4df3ff,#ffd34f,#ff4bda)" }} />
+        <div style={{ padding: "28px 26px 26px" }}>
+          <div style={{ display: "grid", placeItems: "center", marginBottom: 18 }}>
+            <div
+              style={{
+                width: 108,
+                height: 108,
+                borderRadius: 27,
+                display: "grid",
+                placeItems: "center",
+                background: "rgba(0,0,0,.55)",
+                border: `1px solid ${accent}55`,
+                boxShadow: `0 0 34px ${accent}22`,
+              }}
+            >
+              <img
+                src="/app-512.png"
+                alt="MULTISPORTS SCORING"
+                style={{ width: 88, height: 88, objectFit: "contain", borderRadius: 18 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", marginBottom: 22 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2.4, fontWeight: 900, color: "#ffd34f", marginBottom: 7 }}>
+              MULTISPORTS SCORING
+            </div>
+            <h2 style={{ margin: 0, fontSize: 28, lineHeight: 1.08, fontWeight: 950 }}>
+              {isError ? "Connexion interrompue" : isSuccess ? "Connexion réussie" : "Connexion sécurisée"}
+            </h2>
+            <div style={{ marginTop: 9, fontSize: 14, color: "#9fb1c1" }}>{providerLabel}</div>
+          </div>
+
+          <div
+            style={{
+              padding: "17px 17px 16px",
+              borderRadius: 18,
+              background: "rgba(255,255,255,.035)",
+              border: "1px solid rgba(255,255,255,.07)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 10 }}>
+              <strong style={{ fontSize: 14 }}>{msg}</strong>
+              <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 15, fontWeight: 950, color: accent }}>
+                {Math.round(progress)}%
+              </span>
+            </div>
+            <div style={{ height: 10, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" }}>
+              <div
+                style={{
+                  width: `${Math.max(4, Math.min(100, progress))}%`,
+                  height: "100%",
+                  borderRadius: 999,
+                  background: isError
+                    ? "linear-gradient(90deg,#ff765f,#ff3f72)"
+                    : "linear-gradient(90deg,#3fe9ff,#ffd34f,#ff4bd6)",
+                  boxShadow: `0 0 14px ${accent}66`,
+                  transition: "width 80ms linear",
+                }}
+              />
+            </div>
+            <div style={{ minHeight: 38, marginTop: 12, fontSize: 12.5, lineHeight: 1.45, color: isError ? "#ffb4b9" : "#9db0bf" }}>
+              {detail}
+            </div>
+          </div>
+
+          {!isError && !isSuccess && (
+            <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#7f94a5", fontSize: 12 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: "#ffd34f", boxShadow: "0 0 10px #ffd34f" }} />
+              Temps maximum de finalisation : 11 secondes
+            </div>
+          )}
+
+          {isError && (
+            <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
+              <button
+                onClick={() => go("auth_v7_login")}
+                style={{
+                  minHeight: 48,
+                  border: 0,
+                  borderRadius: 14,
+                  fontWeight: 900,
+                  background: "linear-gradient(180deg,#ffd851,#ffb900)",
+                  color: "#111",
+                  cursor: "pointer",
+                }}
+              >
+                Réessayer la connexion
+              </button>
+              <button
+                onClick={() => go("profiles", { view: "me", autoCreate: true })}
+                style={{
+                  minHeight: 42,
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,.12)",
+                  background: "rgba(255,255,255,.035)",
+                  color: "#dbe5ec",
+                  cursor: "pointer",
+                }}
+              >
+                Retour
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
 /* --------------------------------------------
    ✅ NEW: FORGOT PASSWORD (REQUEST EMAIL)
 -------------------------------------------- */

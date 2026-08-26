@@ -21,10 +21,10 @@ const MAX_DISCOVERED_ROUTES = 18;
 const MAX_POINTS_PER_DISCOVERED_ROUTE = 520;
 
 function routeKindsForSport(sport: OutdoorPerformanceSport) {
-  if (sport === "running") return "running|foot|hiking";
-  if (sport === "trail") return "hiking|foot|running";
-  if (sport === "hiking" || sport === "walking" || sport === "nordic-walking") return "hiking|foot|running";
-  return "hiking|foot|running";
+  if (sport === "running") return "running|foot|hiking|fitness_trail";
+  if (sport === "trail") return "hiking|foot|running|fitness_trail";
+  if (sport === "hiking" || sport === "walking" || sport === "nordic-walking") return "hiking|foot|running|fitness_trail";
+  return "hiking|foot|running|fitness_trail";
 }
 
 function bboxAround(center: OutdoorRouteDiscoveryCenter, radiusKm: number) {

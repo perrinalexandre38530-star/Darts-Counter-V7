@@ -11,6 +11,16 @@ export type RunningRouteTemplate = {
   referenceElapsedMs: number;
   createdAt: number;
   source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated";
+  scout?: {
+    provider: "openstreetmap-route-scout" | "routeyou";
+    score: number;
+    reasons: string[];
+    distanceFromCenterM?: number;
+    loop?: boolean;
+    quality?: "excellent" | "good" | "fair";
+    sourceUrl?: string;
+    discoveredAt: number;
+  };
   generation?: {
     provider: "openstreetmap-overpass-local-router" | "openrouteservice-round-trip";
     targetDistanceM: number;
