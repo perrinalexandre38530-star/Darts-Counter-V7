@@ -1089,16 +1089,18 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         setMsg(`Connexion ${label} réussie ✅`);
       }
 
-      // AUTH FIRST : la connexion OAuth est considérée comme réussie dès que
-      // Supabase fournit une session valide. NAS/R2/profil ne doivent JAMAIS
-      // retenir l'utilisateur sur l'écran de connexion.
-      //
-      // Le hook Auth global s'occupe déjà de l'hydratation du profil. On lance
-      // seulement la restauration Cloud en arrière-plan (et elle est no-op sur
-      // Android natif hors restauration manuelle).
-      void maybeAutoRestoreCloudForSignedInUser(uid, { force: true }).catch((error) => {
-        console.warn("[auth_callback] background cloud restore skipped", error);
-      });
+      // Après OAuth, on détermine UNE source canonique avant de décider quel
+      // profil afficher : Local / NAS / R2 / fichier configuré sont comparés et
+      // seule la sauvegarde complète la plus récente est appliquée.
+      if (alive) setMsg("Connexion réussie ✅ Recherche de la dernière sauvegarde…");
+      const restoredLatest = await maybeAutoRestoreCloudForSignedInUser(uid, { force: true })
+        .catch((error) => {
+          console.warn("[auth_callback] latest backup restore skipped", error);
+          return false;
+        });
+      // Une restauration effective programme un reload propre. Ne surtout pas
+      // lancer l'onboarding sur l'ancien store pendant ces quelques millisecondes.
+      if (restoredLatest) return true;
 
       let linked = false;
       try {

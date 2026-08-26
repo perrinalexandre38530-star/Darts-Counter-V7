@@ -157,7 +157,7 @@ export default function AuthV7Login({ go }: Props) {
     const hardStop = setTimeout(() => {
       setLoading(false);
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
-    }, 20000);
+    }, 135000);
 
     try {
       const session = await withTimeout(
@@ -172,11 +172,12 @@ export default function AuthV7Login({ go }: Props) {
         // Ne jamais exiger de token NAS ici : le QNAP privé peut être hors ligne.
         const remote = await withTimeout(
           maybeAutoRestoreCloudForSignedInUser(uid, { force: true }),
-          15000,
-          "Restauration Cloud R2"
+          130000,
+          "Recherche de la dernière sauvegarde"
         ).catch(() => false);
 
         // Une restauration effective déclenche son propre reload après import.
+        // Le coordinateur a comparé Local + NAS + R2 + fichier/SD/cloud perso.
         if (remote) return;
 
         const linked = hasLinkedLocalProfile(uid);

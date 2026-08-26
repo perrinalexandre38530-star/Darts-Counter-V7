@@ -80,7 +80,7 @@ export type CloudImportResult = {
 ========================= */
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
-import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
+import { queueCompletedMatchAutoBackup } from "./completedMatchAutoBackup";
 import { saveMatchBackupAfterHistoryUpsert } from "./matchAutoBackup";
 import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { encodeCompactMatch, estimateCompactBytes } from "./matchCompactCodec";
@@ -3676,8 +3676,26 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     }
   }
 
-  // Auto-backup (centralized) after persisting history
-  triggerAutoBackupIfEnabled();
+  // Sauvegarde complète après CHAQUE partie réellement terminée.
+  // IMPORTANT : plusieurs modes utilisent "live", "started", "active", etc.
+  // pendant le jeu. Tester seulement `status !== in_progress` déclenchait donc des
+  // sauvegardes lourdes en pleine partie. On s'appuie sur le normaliseur History
+  // et on exclut explicitement tous les états actifs connus.
+  try {
+    const rawStatus = String((safe as any)?.status || "").trim().toLowerCase();
+    const activeStatuses = new Set([
+      "in_progress", "inprogress", "playing", "live", "started",
+      "active", "pending", "running", "lobby",
+    ]);
+    const definitelyFinished = inferHistoryStatus(safe) === "finished" && !activeStatuses.has(rawStatus);
+    if (!isCloudImporting() && definitelyFinished) {
+      queueCompletedMatchAutoBackup({
+        matchId: String((safe as any)?.matchId || (safe as any)?.id || "match"),
+        updatedAt: (safe as any)?.updatedAt || (safe as any)?.finishedAt || Date.now(),
+        kind: String((safe as any)?.kind || "match"),
+      });
+    }
+  } catch {}
 }
 
 // ============================================

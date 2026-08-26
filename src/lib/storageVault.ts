@@ -62,7 +62,7 @@ export type MemorySlot = {
   createdAt: string;
   updatedAt: string;
   label: string;
-  source: "local" | "before-restore" | "before-nas-backup" | "manual";
+  source: "local" | "auto" | "before-restore" | "before-nas-backup" | "manual";
   payload: any;
   summary: VaultSummary;
 };

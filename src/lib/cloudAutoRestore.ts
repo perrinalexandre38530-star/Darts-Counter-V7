@@ -1,3 +1,4 @@
+import { restoreLatestBackupForSignedInUser } from "./backup/accountBackupCoordinator";
 import { Capacitor } from "@capacitor/core";
 import { importCloudSnapshot, loadStore, setStorageUser } from "./storage";
 import {
@@ -375,6 +376,20 @@ async function restoreFromR2NasMirrorFallback(userId: string, force = false): Pr
 }
 
 export async function maybeAutoRestoreCloudForSignedInUser(
+  userId?: string | null,
+  opts?: { force?: boolean; explicitManual?: boolean }
+): Promise<boolean> {
+  // Compat API historique : le nom de cette fonction est conservé pour ne pas
+  // casser les écrans d'auth existants, mais la source n'est PLUS "Cloud R2".
+  // Le coordinateur compare désormais Local + NAS + R2 + fichier/SD/cloud perso
+  // et restaure uniquement la sauvegarde complète valide la plus récente.
+  return restoreLatestBackupForSignedInUser(userId, { force: opts?.force === true });
+}
+
+// Compatibilité de diagnostic/régression uniquement.
+// Cette ancienne implémentation R2 reste privée et N'EST PLUS appelée par le login.
+// Le point d'entrée public ci-dessus passe exclusivement par le coordinateur multi-sources.
+async function legacyR2AutoRestoreForDiagnostics(
   userId?: string | null,
   opts?: { force?: boolean; explicitManual?: boolean }
 ): Promise<boolean> {
