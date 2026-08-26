@@ -1359,42 +1359,31 @@ function SaveCard({ entry, busy, onDetails, onRestore, onExport, onDelete, onClo
   const sourceLabel = sourceLabelForEntry(entry);
   const dateValue = entry.createdAt || entry.updatedAt || s.exportedAt || null;
   return (
-    <div style={{ ...panel, padding: 13, borderColor: q.restorable ? "rgba(52,211,153,.38)" : "rgba(251,191,36,.28)", overflow: "visible" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "50px minmax(0,1fr) auto", gap: 10, alignItems: "center", minWidth: 0 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", border: `1px solid ${q.color}`, background: `color-mix(in srgb, ${q.color} 11%, transparent)`, color: q.color, boxShadow: `0 0 18px color-mix(in srgb, ${q.color} 24%, transparent)` }}>
-          <VaultGlyph name={sourceIcon} size={27}/>
+    <div style={{ ...panel, padding: 10, borderRadius: 16, borderColor: q.restorable ? "rgba(52,211,153,.34)" : "rgba(251,191,36,.26)", overflow: "visible" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "40px minmax(0,1fr) auto", gap: 9, alignItems: "center", minWidth: 0 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, display: "grid", placeItems: "center", border: `1px solid ${q.color}`, background: `color-mix(in srgb, ${q.color} 9%, transparent)`, color: q.color }}>
+          <VaultGlyph name={sourceIcon} size={22}/>
         </div>
         <div style={wrapText}>
-          <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
-            <strong style={{ color: "#fff", fontSize: 15.5, ...wrapText }}>{entry.title}</strong>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <strong style={{ color: "#fff", fontSize: 13.5, lineHeight: 1.15, ...wrapText }}>{entry.title}</strong>
             <QualityBadge quality={q}/>
           </div>
-          <div style={{ color: muted, fontSize: 10.5, fontWeight: 800, marginTop: 4 }}>{sourceLabel} · {fmtDate(dateValue)} · {fmtBytes(s.bytes)}</div>
-          <div style={{ color: q.color, fontSize: 11, fontWeight: 900, marginTop: 4 }}>{q.label}</div>
-        </div>
-        <button type="button" onClick={onDetails} disabled={busy} style={{ ...btn, minWidth: 42, height: 42, padding: 0, borderRadius: 13, display: "grid", placeItems: "center", borderColor: "rgba(148,163,184,.38)", color: "#fff" }} aria-label="Afficher les détails">
-          <VaultGlyph name="expert" size={22}/>
-        </button>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-        {[
-          ["PARTIES", s.matches, gold],
-          ["PROFILS", s.profiles, neon],
-          ["STATS", s.statsMatches || s.statsBlocks, green],
-        ].map(([label, value, color]) => (
-          <div key={String(label)} style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 14, padding: "9px 7px", textAlign: "center", background: "rgba(2,6,23,.62)" }}>
-            <div style={{ color: muted, fontSize: 9.5, fontWeight: 1000 }}>{label}</div>
-            <div style={{ color: String(color), fontSize: 20, lineHeight: 1.15, fontWeight: 1000, marginTop: 3 }}>{String(value)}</div>
+          <div style={{ color: muted, fontSize: 10, marginTop: 3, ...wrapText }}>{sourceLabel} · {fmtDate(dateValue)} · {fmtBytes(s.bytes)}</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
+            <span style={{ border: "1px solid rgba(217,255,51,.24)", borderRadius: 999, padding: "3px 7px", color: gold, fontSize: 9.5, fontWeight: 900 }}>{s.matches} parties</span>
+            <span style={{ border: "1px solid rgba(34,211,238,.24)", borderRadius: 999, padding: "3px 7px", color: neon, fontSize: 9.5, fontWeight: 900 }}>{s.profiles} profils</span>
+            <span style={{ border: "1px solid rgba(52,211,153,.24)", borderRadius: 999, padding: "3px 7px", color: green, fontSize: 9.5, fontWeight: 900 }}>{s.statsMatches || s.statsBlocks} stats</span>
           </div>
-        ))}
+        </div>
+        <MiniInfoButton title="Détails de la sauvegarde" color={q.color} content={<div style={{ display: "grid", gap: 9 }}><div><b>{q.label}</b></div><div>{q.reason}</div><SummaryLines summary={s}/><button type="button" style={{ ...btn, width: "100%" }} onClick={onDetails}>Voir l’analyse complète</button></div>}/>
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={q.restorable ? primaryBtn : { ...btn, borderColor: muted, color: muted }} disabled={busy || !q.restorable} onClick={onRestore}>{restoreLabel}</button>
-        <button style={btn} disabled={busy} onClick={onExport}>{exportLabel}</button>
-        {onCloudCopy ? <button style={{ ...btn, borderColor: gold, color: gold }} disabled={busy} onClick={onCloudCopy}>{cloudCopyLabel}</button> : null}
-        {onDelete ? <button style={dangerBtn} disabled={busy} onClick={onDelete}>{deleteLabel}</button> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+        <button style={{ ...(q.restorable ? primaryBtn : btn), minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy || !q.restorable} onClick={onRestore}>{restoreLabel}</button>
+        <button style={{ ...btn, minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy} onClick={onExport}>{exportLabel}</button>
+        {onCloudCopy ? <button style={{ ...btn, minHeight: 38, padding: "7px 6px", fontSize: 10.5, borderColor: gold, color: gold }} disabled={busy} onClick={onCloudCopy}>{cloudCopyLabel}</button> : null}
+        {onDelete ? <button style={{ ...dangerBtn, minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy} onClick={onDelete}>{deleteLabel}</button> : null}
       </div>
     </div>
   );
@@ -1545,52 +1534,20 @@ function MatchBackupCard({ item, busy, onRestore, onExport, onDelete }: {
   const originColor = item.origin === "nas" ? neon : item.origin === "cloud" ? gold : green;
   const when = item.updatedAt || item.createdAt || Date.parse(item.savedAt || "") || 0;
   return (
-    <div style={{ ...panel, borderColor: "rgba(52,211,153,.38)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "54px minmax(0,1fr) auto", gap: 12, alignItems: "center", minWidth: 0 }}>
-        <div style={{
-          width: 50,
-          height: 50,
-          borderRadius: 16,
-          display: "grid",
-          placeItems: "center",
-          background: "color-mix(in srgb, var(--dc-accent-soft, #22d3ee) 14%, transparent)",
-          border: `1px solid ${originColor}`,
-          color: originColor,
-          fontWeight: 1000,
-          boxShadow: `0 0 18px color-mix(in srgb, ${originColor} 28%, transparent)`,
-        }}>{origin}</div>
+    <div style={{ ...panel, padding: 10, borderRadius: 16, borderColor: "rgba(52,211,153,.32)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "38px minmax(0,1fr) auto", gap: 9, alignItems: "center", minWidth: 0 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center", background: `color-mix(in srgb, ${originColor} 10%, transparent)`, border: `1px solid ${originColor}`, color: originColor, fontWeight: 1000, fontSize: 9 }}>{origin}</div>
         <div style={wrapText}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <strong style={{ color: "#fff", fontSize: 16, ...wrapText }}>{item.title || "Partie sauvegardée"}</strong>
-            <span style={{ border: `1px solid ${green}`, color: green, borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 1000 }}>RESTAURABLE</span>
-          </div>
-          <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 4, ...wrapText }}>
-            {String(item.sport || "darts")} • {String(item.kind || "match")} • {fmtDate(when)}
-          </div>
-          <div style={{ color: neon, fontSize: 12, fontWeight: 900, marginTop: 6, ...wrapText }}>
-            {names || "Joueurs détectés dans le détail"}
-          </div>
+          <strong style={{ color: "#fff", fontSize: 13.5, lineHeight: 1.15, display: "block", ...wrapText }}>{item.title || "Partie sauvegardée"}</strong>
+          <div style={{ color: "#cbd5e1", fontSize: 10.5, marginTop: 3, ...wrapText }}>{String(item.sport || "darts")} · {String(item.kind || "match")} · {fmtDate(when)}</div>
+          <div style={{ color: neon, fontSize: 10.5, fontWeight: 900, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{names || "Joueurs à consulter"}</div>
         </div>
-        <div style={{ color: gold, fontWeight: 1000, fontSize: 13, textAlign: "right" }}>{fmtBytes(item.payloadBytes || 0)}</div>
+        <MiniInfoButton title="Détails de la partie" color={green} content={<div style={{ display: "grid", gap: 7 }}><Line label="Origine" value={origin}/><Line label="Date" value={fmtDate(when)}/><Line label="Joueurs" value={players.length || "—"}/><Line label="Noms" value={names || "—"}/><Line label="Vainqueur" value={item.winnerId ? "Détecté" : "—"}/><Line label="Détail" value={item.payloadCompressed || item.origin === "nas" || item.origin === "cloud" ? "Disponible" : "—"}/><Line label="Taille" value={fmtBytes(item.payloadBytes || 0)}/></div>}/>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 12 }}>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>JOUEURS</div>
-          <div style={{ color: gold, fontWeight: 1000, fontSize: 18 }}>{players.length || "—"}</div>
-        </div>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>VAINQUEUR</div>
-          <div style={{ color: green, fontWeight: 1000, fontSize: 18 }}>{item.winnerId ? "OK" : "—"}</div>
-        </div>
-        <div style={{ ...panel, borderRadius: 14, padding: 10 }}>
-          <div style={{ color: muted, fontSize: 10, fontWeight: 900 }}>DÉTAIL</div>
-          <div style={{ color: neon, fontWeight: 1000, fontSize: 18 }}>{item.payloadCompressed || item.origin === "nas" || item.origin === "cloud" ? "OK" : "—"}</div>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={primaryBtn} disabled={busy || !item.matchId} onClick={onRestore}>Restaurer cette partie</button>
-        <button style={btn} disabled={busy} onClick={onExport}>Exporter JSON</button>
-        {onDelete && <button style={dangerBtn} disabled={busy} onClick={onDelete}>Supprimer</button>}
+      <div style={{ display: "grid", gridTemplateColumns: onDelete ? "repeat(3,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 9 }}>
+        <button style={{ ...primaryBtn, minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy || !item.matchId} onClick={onRestore}>Restaurer</button>
+        <button style={{ ...btn, minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy} onClick={onExport}>Exporter</button>
+        {onDelete && <button style={{ ...dangerBtn, minHeight: 38, padding: "7px 6px", fontSize: 10.5 }} disabled={busy} onClick={onDelete}>Supprimer</button>}
       </div>
     </div>
   );
@@ -1603,32 +1560,27 @@ function TechnicalBlockCard({ block, busy, onExport }: {
 }) {
   const summary = normalizeSummary(block.summary);
   const q = assessSave(summary);
+  const dateLabel = fmtDate(block.updatedAt || block.createdAt || null);
+  const matchRange = summary.matchFrom || summary.matchTo
+    ? `${summary.matchFrom ? fmtDate(summary.matchFrom) : "?"} → ${summary.matchTo ? fmtDate(summary.matchTo) : "?"}`
+    : "Dates parties non détectées";
   return (
-    <div style={{ ...panel, borderColor: "rgba(148,163,184,.18)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, minWidth: 0 }}>
+    <div style={{ ...panel, padding: 10, borderRadius: 15, borderColor: "rgba(148,163,184,.18)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "start", minWidth: 0 }}>
         <div style={wrapText}>
-          <strong style={{ color: "#fff", fontSize: 14, ...wrapText }}>{block.title}</strong>
-          <div style={{ color: muted, fontSize: 11, marginTop: 3, ...wrapText }}>{block.subtitle || block.location}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <strong style={{ color: "#fff", fontSize: 12.5, ...wrapText }}>{block.title}</strong>
+            {summary.x01Matches ? <span style={{ border: "1px solid rgba(217,255,51,.34)", color: gold, borderRadius: 999, padding: "2px 6px", fontSize: 9, fontWeight: 1000 }}>{summary.x01Matches} X01</span> : null}
+          </div>
+          <div style={{ color: muted, fontSize: 9.8, marginTop: 3, ...wrapText }}>{dateLabel} · {matchRange}</div>
+          {(summary.names.length || summary.sports.length) ? <div style={{ color: neon, fontSize: 10, fontWeight: 850, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{join(summary.names, join(summary.sports, "Bloc technique"))}</div> : null}
         </div>
-        <QualityBadge quality={q} />
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <QualityBadge quality={q}/>
+          <MiniInfoButton title="Détails du bloc" color={amber} content={<div style={{ display: "grid", gap: 7 }}><Line label="Bloc" value={dateLabel}/><Line label="Parties du" value={summary.matchFrom ? fmtDate(summary.matchFrom) : "—"}/><Line label="Parties au" value={summary.matchTo ? fmtDate(summary.matchTo) : "—"}/><Line label="X01" value={summary.x01Matches || 0}/><Line label="Modes" value={join(summary.sports)}/><Line label="Joueurs" value={join(summary.names)}/><SummaryLines summary={summary}/><div style={{ color: muted, fontSize: 11 }}>Bloc brut de diagnostic : exporte-le seulement si tu veux l’analyser ou récupérer son contenu.</div></div>}/>
+        </div>
       </div>
-      <div style={{ display: "grid", gap: 6, marginTop: 10, padding: 10, borderRadius: 13, border: "1px solid rgba(251,191,36,.24)", background: "rgba(251,191,36,.05)" }}>
-        <Line label="Date du bloc" value={fmtDate(block.updatedAt || block.createdAt || null)} />
-        <Line label="Parties du" value={summary.matchFrom ? fmtDate(summary.matchFrom) : "Date non détectée"} />
-        <Line label="Parties au" value={summary.matchTo ? fmtDate(summary.matchTo) : "Date non détectée"} />
-        <Line label="X01 détectées" value={summary.x01Matches || 0} />
-        {summary.sports.length ? <Line label="Modes" value={join(summary.sports)} /> : null}
-        {summary.names.length ? <Line label="Joueurs" value={join(summary.names)} /> : null}
-      </div>
-      <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 8, ...wrapText }}>
-        Bloc brut détecté pour diagnostic. Utilise surtout les dates ci-dessus pour retrouver la bonne période avant d’exporter quoi que ce soit.
-      </div>
-      <div style={{ marginTop: 10 }}>
-        <SummaryLines summary={summary} />
-      </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <button style={btn} disabled={busy} onClick={onExport}>Exporter bloc</button>
-      </div>
+      <button style={{ ...btn, width: "100%", minHeight: 34, padding: "6px 8px", fontSize: 10, marginTop: 7 }} disabled={busy} onClick={onExport}>Exporter ce bloc</button>
     </div>
   );
 }
@@ -1884,7 +1836,7 @@ function StorageTickerHeader({ ticker, alt, onBack, onRefresh, busy, help }: { t
 function VaultNavButton({ active, icon, label, onClick, disabled = false }: { active: boolean; icon: VaultGlyphName; label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={onClick} style={{
-      minWidth: 0, height: 66, padding: "7px 4px", borderRadius: 16,
+      minWidth: 0, height: 56, padding: "6px 4px", borderRadius: 14,
       display: "grid", placeItems: "center", gap: 3,
       border: active ? `1px solid ${neon}` : "1px solid rgba(148,163,184,.22)",
       background: active ? "rgba(34,211,238,.10)" : "rgba(15,23,42,.72)",
@@ -1892,8 +1844,8 @@ function VaultNavButton({ active, icon, label, onClick, disabled = false }: { ac
       boxShadow: active ? `0 0 18px ${accentSoftGlow}, inset 0 0 14px rgba(34,211,238,.05)` : "none",
       cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .45 : 1,
     }}>
-      <span style={{ color: active ? neon : "currentColor", lineHeight: 0 }}><VaultGlyph name={icon} size={25}/></span>
-      <span style={{ fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ color: active ? neon : "currentColor", lineHeight: 0 }}><VaultGlyph name={icon} size={22}/></span>
+      <span style={{ fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{label}</span>
     </button>
   );
 }
@@ -1902,13 +1854,13 @@ function VaultActionButton({ icon, label, onClick, active = false, disabled = fa
   const color = danger ? red : active ? gold : neon;
   return (
     <button type="button" disabled={disabled} onClick={onClick} style={{
-      ...btn, padding: "9px 8px", minHeight: 58, display: "grid", placeItems: "center", gap: 4,
+      ...btn, padding: "7px 7px", minHeight: 50, display: "grid", placeItems: "center", gap: 3,
       borderColor: active ? color : `color-mix(in srgb, ${color} 58%, transparent)`, color,
       background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : "rgba(15,23,42,.65)",
       boxShadow: active ? `0 0 16px color-mix(in srgb, ${color} 28%, transparent)` : "none",
       opacity: disabled ? .46 : 1,
     }}>
-      <VaultGlyph name={icon} size={23}/>
+      <VaultGlyph name={icon} size={20}/>
       <span style={{ fontSize: 10.5, lineHeight: 1.1 }}>{label}</span>
     </button>
   );
@@ -1964,6 +1916,7 @@ export default function StorageVaultPage({ go }: Props) {
   const restoreViewRef = React.useRef<RestoreView>("current");
   React.useEffect(() => { restoreViewRef.current = restoreView; }, [restoreView]);
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
+  const [matchSearchQuery, setMatchSearchQuery] = React.useState("");
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
   const [expertSearchQuery, setExpertSearchQuery] = React.useState("");
@@ -2314,6 +2267,19 @@ export default function StorageVaultPage({ go }: Props) {
       return tb - ta;
     });
   }, [matchBackups]);
+  const filteredMatchBackupEntries = React.useMemo(() => {
+    const tokens = matchSearchQuery.toLocaleLowerCase("fr-FR").trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length) return matchBackupEntries;
+    return matchBackupEntries.filter((item) => {
+      const players = Array.isArray(item.players) ? item.players : [];
+      const when = item.updatedAt || item.createdAt || Date.parse(item.savedAt || "") || 0;
+      const index = [
+        item.title, item.matchId, item.id, item.sport, item.kind, item.origin, fmtDate(when),
+        ...players.flatMap((player: any) => [player?.name, player?.displayName, player?.nickname, player?.id]),
+      ].filter(Boolean).join(" ").toLocaleLowerCase("fr-FR");
+      return tokens.every((token) => index.includes(token));
+    });
+  }, [matchBackupEntries, matchSearchQuery]);
   const technicalCount = blocks.length;
   const filteredTechnicalBlocks = React.useMemo(() => {
     const filtered = blocks.filter((block) =>
@@ -3798,35 +3764,33 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
           onRefresh={() => void refresh()}
         />
 
-        <div style={{ ...panel, padding: 11, marginBottom: 10, borderColor: accentSoftBorder }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+        <div style={{ ...panel, padding: "8px 10px", marginBottom: 8, borderRadius: 16, borderColor: accentSoftBorder }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr)) auto", gap: 6, alignItems: "center" }}>
             {[
               ["PARTIES", headerSummary.matches, gold],
               ["PROFILS", headerSummary.profiles, neon],
               ["STATS", headerSummary.statsMatches || headerSummary.statsBlocks, green],
             ].map(([label, value, color]) => (
-              <div key={String(label)} style={{ border: "1px solid rgba(148,163,184,.18)", borderRadius: 14, padding: 9, textAlign: "center", background: "rgba(2,6,23,.62)" }}>
-                <div style={{ color: muted, fontSize: 9.5, fontWeight: 1000 }}>{label}</div>
-                <div style={{ color: String(color), fontSize: 21, fontWeight: 1000, marginTop: 3 }}>{String(value)}</div>
+              <div key={String(label)} style={{ minWidth: 0, textAlign: "center", padding: "3px 2px" }}>
+                <div style={{ color: String(color), fontSize: 18, lineHeight: 1, fontWeight: 1000 }}>{String(value)}</div>
+                <div style={{ color: muted, fontSize: 8.5, fontWeight: 1000, marginTop: 3 }}>{label}</div>
               </div>
             ))}
+            <MiniInfoButton title="Résumé de la sauvegarde" color={neon} content={<div style={{ display: "grid", gap: 7 }}><div><b>Dernière sauvegarde affichée</b> : {fmtDate(headerDate)}</div><div><b>Parties</b> : {headerSummary.matches}</div><div><b>Profils</b> : {headerSummary.profiles}</div><div><b>Stats exploitables</b> : {headerSummary.statsMatches || headerSummary.statsBlocks}</div></div>}/>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
-            <span style={wrapText}>Dernière sauvegarde affichée : <b style={{ color: "#fff" }}>{fmtDate(headerDate)}</b></span>
-            <MiniInfoButton title="Signification des compteurs" color={neon} content={<div style={{ display: "grid", gap: 7 }}><div><b>Parties</b> : nombre total de parties contenues dans la sauvegarde.</div><div><b>Profils</b> : profils locaux réellement sauvegardés.</div><div><b>Stats</b> : nombre de parties possédant des volées, impacts, scores ou statistiques exploitables.</div></div>}/>
-          </div>
+          <div style={{ color: muted, fontSize: 9.5, textAlign: "center", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Dernière : <b style={{ color: "#fff" }}>{fmtDate(headerDate)}</b></div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7, marginBottom: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginBottom: 8 }}>
           <VaultNavButton active={tab === "restore"} icon="restore" label="Restaurer" onClick={() => setTab("restore")}/>
           <VaultNavButton active={tab === "matches"} icon="matches" label="Parties" onClick={() => setTab("matches")}/>
           <VaultNavButton active={tab === "backup"} icon="save" label="Sauver" onClick={() => setTab("backup")}/>
           <VaultNavButton active={tab === "diagnostic"} icon="expert" label="Expert" onClick={() => setTab("diagnostic")}/>
         </div>
 
-        <div style={{ ...panel, padding: "9px 11px", marginBottom: 10, borderColor: busy || restoreRunning ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+        <div style={{ ...panel, padding: "7px 9px", marginBottom: 8, borderRadius: 14, borderColor: busy || restoreRunning ? "rgba(251,191,36,.48)" : "rgba(34,211,238,.22)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 7, alignItems: "center" }}>
           <span style={{ color: busy || restoreRunning ? amber : green, lineHeight: 0 }}>{busy || restoreRunning ? <VaultGlyph name={restoreRunning ? "restore" : "save"} size={20}/> : <VaultGlyph name="shield" size={20}/>}</span>
-          <div title={message} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{message}</div>
+          <div title={message} style={{ color: "#d9e2ef", fontSize: 11.5, fontWeight: 800, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical", lineHeight: 1.25 }}>{message}</div>
           <MiniInfoButton title="État détaillé" color={busy || restoreRunning ? amber : neon} content={<div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{message}</div>}/>
           {busy || restoreRunning ? <div style={{ gridColumn: "1 / -1", height: 3, borderRadius: 999, overflow: "hidden", background: "rgba(251,191,36,.14)" }}><div style={{ width: "42%", height: "100%", borderRadius: 999, background: amber, boxShadow: `0 0 12px ${amber}`, animation: "dcVaultBusy 1.1s ease-in-out infinite alternate" }}/></div> : null}
         </div>
@@ -3878,9 +3842,16 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         )}
 
         {tab === "matches" && (
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ ...panel, padding: 11 }}><CompactSectionTitle title="PARTIES À L’UNITÉ" color={green} info={<div>Chaque bloc restaure une seule partie dans l’Historique. Aucune autre partie ni aucun profil n’est remplacé.</div>} right={<button type="button" style={{ ...btn, width: 35, height: 35, padding: 0, borderRadius: 999, display: "grid", placeItems: "center" }} onClick={() => void refresh()}><VaultGlyph name="refresh" size={19}/></button>}/></div>
-            {matchBackupEntries.length ? matchBackupEntries.map((item) => <MatchBackupCard key={`${item.origin || "local"}:${item.matchId || item.id}`} item={item} busy={busy || restoreRunning} onRestore={() => restoreSingleMatch(item)} onExport={() => exportSingleMatch(item)} onDelete={() => deleteSingleMatch(item)}/>) : <CompactEmpty title="Aucune sauvegarde de partie détectée" detail="Les nouvelles parties terminées seront ajoutées automatiquement."/>}
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ ...panel, padding: "8px 10px", borderRadius: 15 }}>
+              <CompactSectionTitle title="PARTIES À L’UNITÉ" color={green} info={<div>Chaque bloc restaure une seule partie dans l’Historique sans remplacer les autres parties ni les profils. Utilise la recherche pour éviter de parcourir toute la liste.</div>} right={<button type="button" style={{ ...btn, width: 32, height: 32, padding: 0, borderRadius: 999, display: "grid", placeItems: "center" }} onClick={() => void refresh()}><VaultGlyph name="refresh" size={17}/></button>}/>
+              <div style={{ position: "relative" }}>
+                <input aria-label="Rechercher une partie sauvegardée" type="search" value={matchSearchQuery} onChange={(event) => setMatchSearchQuery(event.currentTarget.value)} placeholder="Date, joueur, X01, ID…" style={{ width: "100%", minHeight: 38, borderRadius: 11, border: "1px solid rgba(52,211,153,.28)", background: "rgba(2,6,23,.82)", color: "#fff", padding: matchSearchQuery ? "7px 34px 7px 10px" : "7px 10px", fontWeight: 850, fontSize: 11 }} />
+                {matchSearchQuery ? <button type="button" aria-label="Effacer la recherche" onClick={() => setMatchSearchQuery("")} style={{ position: "absolute", right: 4, top: 4, width: 30, height: 30, borderRadius: 999, border: "none", background: "rgba(148,163,184,.12)", color: "#fff", fontSize: 17, cursor: "pointer" }}>×</button> : null}
+              </div>
+              <div style={{ color: muted, fontSize: 9.5, marginTop: 5 }}>{filteredMatchBackupEntries.length} partie(s){matchSearchQuery ? ` sur ${matchBackupEntries.length}` : ""}</div>
+            </div>
+            {filteredMatchBackupEntries.length ? filteredMatchBackupEntries.map((item) => <MatchBackupCard key={`${item.origin || "local"}:${item.matchId || item.id}`} item={item} busy={busy || restoreRunning} onRestore={() => restoreSingleMatch(item)} onExport={() => exportSingleMatch(item)} onDelete={() => deleteSingleMatch(item)}/>) : <CompactEmpty title={matchSearchQuery ? "Aucune partie correspondante" : "Aucune sauvegarde de partie détectée"} detail={matchSearchQuery ? "Essaie un nom de joueur, une date, un mode ou un ID plus court." : "Les nouvelles parties terminées seront ajoutées automatiquement."}/>}
           </div>
         )}
 
@@ -3895,8 +3866,8 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   const disabled = busy || (accountRequired && !hasConnectedAccount);
                   return (
                     <div key={destination.id} style={{ position: "relative", minWidth: 0 }}>
-                      <button type="button" disabled={disabled} onClick={() => void selectStorageDestination(destination.id)} style={{ width: "100%", minHeight: 82, padding: "10px 38px 9px 10px", borderRadius: 16, border: active ? `1px solid ${gold}` : "1px solid rgba(148,163,184,.24)", background: active ? accentSoftBg : "rgba(15,23,42,.72)", color: active ? gold : "#e5e7eb", boxShadow: active ? `0 0 17px ${accentGlow}` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .48 : 1, display: "grid", gridTemplateColumns: "34px minmax(0,1fr)", alignItems: "center", gap: 8, textAlign: "left" }}>
-                        <span style={{ color: active ? gold : neon, lineHeight: 0 }}><VaultGlyph name={destinationIconName(destination.id)} size={29}/></span>
+                      <button type="button" disabled={disabled} onClick={() => void selectStorageDestination(destination.id)} style={{ width: "100%", minHeight: 66, padding: "8px 36px 7px 8px", borderRadius: 16, border: active ? `1px solid ${gold}` : "1px solid rgba(148,163,184,.24)", background: active ? accentSoftBg : "rgba(15,23,42,.72)", color: active ? gold : "#e5e7eb", boxShadow: active ? `0 0 17px ${accentGlow}` : "none", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? .48 : 1, display: "grid", gridTemplateColumns: "29px minmax(0,1fr)", alignItems: "center", gap: 8, textAlign: "left" }}>
+                        <span style={{ color: active ? gold : neon, lineHeight: 0 }}><VaultGlyph name={destinationIconName(destination.id)} size={24}/></span>
                         <span><b style={{ display: "block", fontSize: 11.5, lineHeight: 1.15 }}>{destination.shortLabel}</b><small style={{ display: "block", color: active ? green : muted, fontSize: 9.5, marginTop: 4 }}>{active ? "ACTIF" : accountRequired && !hasConnectedAccount ? "CONNEXION" : "SÉLECTIONNER"}</small></span>
                       </button>
                       <div style={{ position: "absolute", top: 8, right: 7 }}><MiniInfoButton title={destination.shortLabel} color={active ? gold : neon} content={destinationHelp(destination)}/></div>
@@ -3937,77 +3908,66 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         )}
 
         {tab === "diagnostic" && (
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div>Scanne IndexedDB/localStorage puis recherche dans le contenu technique sans restaurer quoi que ce soit. La recherche couvre notamment les parties, identifiants, dates, profils/joueurs, modes, sets/dartsets, stores et clés.</div>}/>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-                <VaultActionButton icon="refresh" label="Scanner" disabled={busy} onClick={() => void refresh()}/>
-                <VaultActionButton icon="expert" label={showDiagnostic ? "Masquer blocs" : `Afficher ${technicalCount}`} active={showDiagnostic} onClick={() => setShowDiagnostic((v) => !v)}/>
-              </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ ...panel, padding: 10, borderRadius: 16 }}>
+              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div style={{ display: "grid", gap: 8 }}><div>Recherche sans restaurer dans IndexedDB et localStorage : parties, ID, dates, profils/joueurs, modes, sets/dartsets, stores et clés.</div><div><b>Astuce :</b> saisis plusieurs mots, par exemple <b>X01 Vincent 22/08/2026</b>. Tous les mots doivent être présents.</div><div>Les données médias lourdes ne sont pas indexées.</div></div>} right={<span style={{ color: muted, fontSize: 10, fontWeight: 900 }}>{filteredTechnicalBlocks.length}/{technicalCount}</span>}/>
 
-              <div style={{ marginTop: 10, border: `1px solid ${accentSoftBorder}`, background: accentSoftBg, borderRadius: 14, padding: 10 }}>
-                <label style={{ display: "grid", gap: 6, color: neon, fontWeight: 1000, fontSize: 11 }}>
-                  RECHERCHE EXPERT GLOBALE
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 118px", gap: 7 }}>
+                <div style={{ position: "relative", minWidth: 0 }}>
                   <input
+                    aria-label="Recherche expert globale"
                     type="search"
                     value={expertSearchQuery}
                     onChange={(event) => { setExpertSearchQuery(event.currentTarget.value); setShowDiagnostic(true); }}
-                    placeholder="Partie, ID, 22/08/2026, Vincent, X01, profil, dartset…"
+                    placeholder="X01, joueur, ID, profil, set…"
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    style={{ width: "100%", minHeight: 44, borderRadius: 11, border: `1px solid ${accentSoftBorder}`, background: "rgba(2,6,23,.88)", color: "#fff", padding: "9px 10px", fontWeight: 900 }}
+                    style={{ width: "100%", minHeight: 40, borderRadius: 11, border: `1px solid ${accentSoftBorder}`, background: "rgba(2,6,23,.88)", color: "#fff", padding: expertSearchQuery ? "8px 34px 8px 10px" : "8px 10px", fontWeight: 850, fontSize: 11.5 }}
                   />
-                </label>
-                <div style={{ color: muted, fontSize: 10.5, lineHeight: 1.45, marginTop: 7 }}>
-                  Plusieurs mots sont combinés : par exemple <b style={{ color: "#fff" }}>X01 Vincent 22/08/2026</b> ne garde que les blocs contenant tous ces éléments. Les données médias lourdes ne sont pas indexées.
+                  {expertSearchQuery ? <button type="button" aria-label="Effacer la recherche" onClick={() => setExpertSearchQuery("")} style={{ position: "absolute", right: 5, top: 5, width: 30, height: 30, borderRadius: 999, border: "none", background: "rgba(148,163,184,.12)", color: "#fff", fontSize: 17, cursor: "pointer" }}>×</button> : null}
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
-                  <span>{expertSearchQuery.trim() ? `${filteredTechnicalBlocks.length} résultat(s) sur ${technicalCount} bloc(s)` : `${technicalCount} bloc(s) indexé(s)`}</span>
-                  {expertSearchQuery ? <button type="button" onClick={() => setExpertSearchQuery("")} style={{ ...btn, minHeight: 32, padding: "5px 9px", fontSize: 10 }}>Effacer recherche</button> : null}
-                </div>
+                <input
+                  aria-label="Filtrer par date"
+                  title="Filtrer par date"
+                  type="date"
+                  value={expertDateFilter}
+                  onChange={(event) => { setExpertDateFilter(event.currentTarget.value); setShowDiagnostic(true); }}
+                  style={{ width: "100%", minWidth: 0, minHeight: 40, borderRadius: 11, border: expertDateFilter ? "1px solid rgba(251,191,36,.55)" : "1px solid rgba(148,163,184,.24)", background: "rgba(2,6,23,.88)", color: expertDateFilter ? amber : "#fff", padding: "7px 6px", fontWeight: 850, fontSize: 10.5, colorScheme: "dark" }}
+                />
               </div>
 
-              <div style={{ marginTop: 10, border: "1px solid rgba(251,191,36,.30)", background: "rgba(251,191,36,.05)", borderRadius: 14, padding: 10 }}>
-                <label style={{ display: "grid", gap: 6, color: amber, fontWeight: 1000, fontSize: 11 }}>
-                  FILTRE DATE PRÉCIS
-                  <input
-                    type="date"
-                    value={expertDateFilter}
-                    onChange={(event) => { setExpertDateFilter(event.currentTarget.value); setShowDiagnostic(true); }}
-                    style={{ width: "100%", minHeight: 42, borderRadius: 11, border: "1px solid rgba(251,191,36,.42)", background: "rgba(2,6,23,.88)", color: "#fff", padding: "8px 10px", fontWeight: 900, colorScheme: "dark" }}
-                  />
-                </label>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
-                  <span>{expertDateFilter ? `${filteredTechnicalBlocks.length} résultat(s) après filtre date${expertSearchQuery.trim() ? " + recherche" : ""}` : "Optionnel : limite les résultats à une journée."}</span>
-                  {expertDateFilter ? <button type="button" onClick={() => setExpertDateFilter("")} style={{ ...btn, minHeight: 32, padding: "5px 9px", fontSize: 10 }}>Effacer date</button> : null}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
+                <VaultActionButton icon="refresh" label="Scanner" disabled={busy} onClick={() => void refresh()}/>
+                <VaultActionButton icon="expert" label={showDiagnostic ? "Masquer" : `Résultats ${technicalCount}`} active={showDiagnostic} onClick={() => setShowDiagnostic((v) => !v)}/>
+                <VaultActionButton icon="download" label="Transfert" disabled={busy} onClick={() => void runExternalBackupAction("download")}/>
+              </div>
+
+              {(expertSearchQuery || expertDateFilter) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, marginTop: 7 }}>
+                <span style={{ color: muted, fontSize: 9.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filteredTechnicalBlocks.length} résultat(s){expertDateFilter ? ` · ${expertDateFilter.split("-").reverse().join("/")}` : ""}</span>
+                <button type="button" onClick={() => { setExpertSearchQuery(""); setExpertDateFilter(""); }} style={{ ...btn, minHeight: 28, padding: "4px 8px", borderRadius: 999, fontSize: 9.5, borderColor: "rgba(148,163,184,.25)", color: muted }}>Réinitialiser</button>
+              </div> : null}
+            </div>
+
+            <div style={{ ...panel, padding: 9, borderRadius: 15 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" }}>
+                <div style={wrapText}>
+                  <strong style={{ color: neon, fontSize: 11.5 }}>TRANSFÉRER SUR UN AUTRE APPAREIL</strong>
+                  <div style={{ color: muted, fontSize: 9.8, marginTop: 2 }}>Fichier gratuit ou copie Cloud R2 PREMIUM.</div>
                 </div>
+                <MiniInfoButton title="Transfert entre appareils" color={neon} content={<div style={{ display: "grid", gap: 9 }}><div><b style={{ color: green }}>Gratuit :</b> exporte un fichier, envoie-le sur l’autre appareil puis ouvre Restaurer → Fichier / SD / Cloud perso.</div><div><b style={{ color: gold }}>Cloud PREMIUM :</b> crée une copie R2, connecte le même compte sur l’autre appareil puis ouvre Restaurer → Cloud R2.</div></div>}/>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6, marginTop: 7 }}>
+                <button type="button" style={{ ...btn, minHeight: 36, padding: "6px 7px", fontSize: 10 }} disabled={busy} onClick={() => void runExternalBackupAction("download")}>Fichier gratuit</button>
+                <button type="button" style={{ ...btn, minHeight: 36, padding: "6px 7px", fontSize: 10, borderColor: gold, color: gold }} disabled={busy || !hasConnectedAccount || cloudTransferBusy !== null} onClick={() => void publishCurrentDeviceToCloud()}>{cloudTransferBusy === "current" ? "Envoi…" : "Cloud R2"}</button>
               </div>
             </div>
-            <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="TRANSFÉRER VERS UN AUTRE APPAREIL" color={gold} info={<div>Cette fonction ne synchronise pas deux téléphones en direct. Elle crée une copie transportable, puis l’autre appareil la restaure.</div>}/>
-              <div style={{ display: "grid", gap: 9 }}>
-                <div style={{ border: "1px solid rgba(52,211,153,.28)", borderRadius: 14, padding: 11, background: "rgba(52,211,153,.05)" }}>
-                  <div style={{ color: green, fontWeight: 1000 }}>MÉTHODE GRATUITE</div>
-                  <div style={{ color: "#dbe5f1", fontSize: 11.5, lineHeight: 1.45, marginTop: 5 }}>Exporte un fichier, envoie-le sur l’autre appareil, puis ouvre Restaurer → Fichier / SD / Cloud perso.</div>
-                  <button type="button" style={{ ...btn, width: "100%", marginTop: 8 }} disabled={busy} onClick={() => void runExternalBackupAction("download")}>Exporter un fichier de transfert</button>
-                </div>
-                <div style={{ border: "1px solid rgba(217,255,51,.28)", borderRadius: 14, padding: 11, background: accentSoftBg }}>
-                  <div style={{ color: gold, fontWeight: 1000 }}>MÉTHODE CLOUD PREMIUM</div>
-                  <div style={{ color: "#dbe5f1", fontSize: 11.5, lineHeight: 1.45, marginTop: 5 }}>Crée une copie R2. Sur l’autre appareil, connecte le même compte puis ouvre Restaurer → Cloud R2.</div>
-                  <button type="button" style={{ ...btn, width: "100%", marginTop: 8, borderColor: gold, color: gold }} disabled={busy || !hasConnectedAccount || cloudTransferBusy !== null} onClick={() => void publishCurrentDeviceToCloud()}>{cloudTransferBusy === "current" ? "Envoi en cours…" : "Créer la copie R2 pour l’autre appareil"}</button>
-                </div>
-              </div>
-            </div>
+
             {showDiagnostic ? (
               filteredTechnicalBlocks.length ? filteredTechnicalBlocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy || restoreRunning} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : (
-                <div style={{ ...panel, padding: 14, borderColor: "rgba(251,191,36,.28)", color: "#fff" }}>
-                  <strong style={{ color: amber }}>{expertSearchQuery.trim() ? "Aucun bloc ne correspond à cette recherche." : "Aucun bloc trouvé pour cette date."}</strong>
-                  <div style={{ color: muted, fontSize: 11.5, marginTop: 5 }}>
-                    {expertSearchQuery.trim()
-                      ? <>Essaie un terme plus court, uniquement un nom de joueur/profil, un ID de partie, un mode comme X01 ou une date. Tu peux aussi effacer le filtre date s’il est actif.</>
-                      : <>Essaie d’effacer le filtre pour vérifier les dates voisines ou les blocs dont la date interne n’a pas pu être détectée.</>}
-                  </div>
+                <div style={{ ...panel, padding: 11, borderRadius: 15, borderColor: "rgba(251,191,36,.28)", textAlign: "center" }}>
+                  <strong style={{ color: amber, fontSize: 12 }}>{expertSearchQuery.trim() ? "Aucun résultat" : "Aucun bloc pour cette date"}</strong>
+                  <div style={{ color: muted, fontSize: 10, marginTop: 4 }}>Réduis la recherche ou réinitialise les filtres.</div>
                 </div>
               )
             ) : null}
