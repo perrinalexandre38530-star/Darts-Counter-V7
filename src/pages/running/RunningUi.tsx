@@ -31,7 +31,13 @@ export type RunningGlyphName =
   | "health"
   | "native-gps"
   | "garmin"
-  | "files";
+  | "files"
+  | "history"
+  | "chart"
+  | "recover"
+  | "play"
+  | "pause"
+  | "spark";
 
 export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningGlyphName; size?: number; stroke?: number }) {
   const p = {
@@ -270,6 +276,48 @@ export function RunningGlyph({ name, size = 18, stroke = 2.1 }: { name: RunningG
           <path {...p} d="M10 13h5M10 16h5" />
         </svg>
       );
+
+    case "history":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 12a8 8 0 1 0 2.3-5.7" />
+          <path {...p} d="M4 5v5h5" />
+          <path {...p} d="M12 8v5l3 2" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M4 19V9M10 19V5M16 19v-7M22 19V8" />
+        </svg>
+      );
+    case "recover":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M5 8V4h4" />
+          <path {...p} d="M5.5 4.5A8 8 0 1 1 4 14" />
+          <path {...p} d="M12 8v5l3 2" />
+        </svg>
+      );
+    case "play":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="m8 5 11 7-11 7Z" />
+        </svg>
+      );
+    case "pause":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M8 5v14M16 5v14" />
+        </svg>
+      );
+    case "spark":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="m12 3 1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8Z" />
+          <path {...p} d="m18.5 15 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -307,8 +355,8 @@ export function RunningTabs<T extends string>({
         padding: 5,
         borderRadius: 16,
         border: "1px solid rgba(255,255,255,.08)",
-        background: "rgba(7,9,14,.86)",
-        boxShadow: "0 12px 30px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035)",
+        background: "linear-gradient(180deg,rgba(10,14,23,.97),rgba(5,8,14,.98))",
+        boxShadow: "0 14px 32px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.055)",
         backdropFilter: "blur(16px)",
         overflowX: "auto",
         scrollbarWidth: "none",
@@ -404,9 +452,9 @@ export function RunningSurface({
       style={{
         position: "relative",
         overflow: "hidden",
-        borderRadius: 18,
+        borderRadius: 20,
         border: `1px solid ${active ? `${accent}50` : "rgba(255,255,255,.085)"}`,
-        background: `linear-gradient(145deg,${active ? `${accent}11` : "rgba(255,255,255,.032)"},rgba(5,7,12,.82) 56%,rgba(0,0,0,.38))`,
+        background: `radial-gradient(circle at 92% 0%,${accent}${active ? "1b" : "0d"},transparent 34%),linear-gradient(155deg,rgba(17,22,34,.97),rgba(6,9,16,.985) 62%,rgba(3,5,10,.99))`,
         boxShadow: active
           ? `0 18px 38px rgba(0,0,0,.42), 0 0 28px ${accent}0f, inset 0 1px 0 ${accent}18`
           : "0 16px 34px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.035)",
@@ -473,4 +521,33 @@ export function RunningMetricCard({
       </div>
     </RunningSurface>
   );
+}
+
+
+export function RunningSectionHeading({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: React.ReactNode }) {
+  return <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10, margin: "2px 2px 9px" }}>
+    <div style={{ minWidth: 0 }}>
+      {eyebrow ? <div style={{ fontSize: 7.2, letterSpacing: 1.35, fontWeight: 1000, opacity: .48, textTransform: "uppercase" }}>{eyebrow}</div> : null}
+      <div style={{ marginTop: eyebrow ? 2 : 0, fontSize: 12.4, fontWeight: 1000, letterSpacing: .3 }}>{title}</div>
+    </div>
+    {action}
+  </div>;
+}
+
+export function RunningActionTile({ icon, title, subtitle, accent, onClick, featured = false, meta }: { icon: React.ReactNode; title: string; subtitle?: string; accent: string; onClick: () => void; featured?: boolean; meta?: React.ReactNode }) {
+  return <button type="button" onClick={onClick} style={{ position: "relative", overflow: "hidden", minHeight: featured ? 118 : 92, width: "100%", padding: featured ? 14 : 12, borderRadius: 19, border: `1px solid ${featured ? `${accent}62` : "rgba(255,255,255,.085)"}`, background: featured ? `radial-gradient(circle at 90% 10%,${accent}24,transparent 38%),linear-gradient(150deg,rgba(18,24,38,.99),rgba(5,8,14,.99))` : "linear-gradient(150deg,rgba(15,20,31,.98),rgba(5,8,14,.99))", color: "#fff", boxShadow: featured ? `0 18px 42px rgba(0,0,0,.48),0 0 34px ${accent}12,inset 0 1px 0 ${accent}20` : "0 14px 30px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.04)", textAlign: "left", cursor: "pointer", font: "inherit" }}>
+    <span aria-hidden style={{ position: "absolute", width: 120, height: 120, right: -50, bottom: -65, borderRadius: 999, border: `1px solid ${accent}18` }} />
+    <div style={{ position: "relative", display: "grid", gridTemplateColumns: "44px 1fr auto", gap: 10, alignItems: "center" }}>
+      <span style={{ width: 42, height: 42, borderRadius: 14, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}30` }}>{icon}</span>
+      <span style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: featured ? 13 : 11.2, lineHeight: 1.15, color: featured ? accent : "#fff" }}>{title}</b>{subtitle ? <small style={{ display: "block", marginTop: 5, fontSize: 8.5, lineHeight: 1.4, color: "rgba(255,255,255,.58)" }}>{subtitle}</small> : null}</span>
+      <span style={{ display: "grid", justifyItems: "end", gap: 6 }}>{meta}<span style={{ color: accent, fontSize: 18, fontWeight: 1000 }}>›</span></span>
+    </div>
+  </button>;
+}
+
+export function RunningStatusChip({ icon, label, value, accent }: { icon?: React.ReactNode; label: string; value: React.ReactNode; accent: string }) {
+  return <div style={{ minWidth: 0, padding: "9px 9px", borderRadius: 14, background: "rgba(255,255,255,.028)", border: "1px solid rgba(255,255,255,.065)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.025)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 7.2, opacity: .5, fontWeight: 1000, letterSpacing: .45, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{icon}<span>{label}</span></div>
+    <div style={{ marginTop: 4, color: accent, fontSize: 13.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+  </div>;
 }

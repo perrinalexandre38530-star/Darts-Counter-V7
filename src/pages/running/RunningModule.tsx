@@ -547,6 +547,18 @@ export default function RunningModule({ go, params }: Props) {
             sessionId,
             activityId,
             sport: activitySport,
+            title: session.title,
+            presetId: session.presetId,
+            workoutType: session.workoutType,
+            startedAt: session.startedAt,
+            mode: session.mode,
+            targetDistanceM: session.targetDistanceM,
+            targetDurationMs: session.targetDurationMs,
+            targetPaceSecPerKm: session.targetPaceSecPerKm,
+            routeReferenceId: session.routeReferenceId,
+            shoeId: session.shoeId,
+            paused: session.paused,
+            pausedAt: session.pausedAt,
             route: [...pointsRef.current],
             manualLaps: [...manualLaps],
             sensorSamples: [...sensorSamplesRef.current],
@@ -910,7 +922,7 @@ export default function RunningModule({ go, params }: Props) {
             return;
         }
         activeSessionIdRef.current = liveSessionId;
-        await saveRunningSessionDraft({ sessionId: liveSessionId, activityId: sessionActivityId, sport: activitySport, route: [], manualLaps: [], sensorSamples: [], treadmillDistanceM: 0, manualTreadmillSpeedKmh, manualTreadmillIncline, lastLapElapsedMs: 0, lastLapDistanceM: 0, pausedTotalMs: 0, updatedAt: Date.now() });
+        await saveRunningSessionDraft({ sessionId: liveSessionId, activityId: sessionActivityId, sport: activitySport, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, presetId: effectivePreset.id, workoutType: effectivePreset.type, startedAt: startedAtRef.current, mode: activitySport === "treadmill" ? "treadmill" : isNativeActivityTrackingAvailable() ? "native-gps" : "web-gps", targetDistanceM, targetDurationMs, targetPaceSecPerKm, routeReferenceId: selectedRoute?.id, shoeId: selectedShoeId || undefined, paused: false, route: [], manualLaps: [], sensorSamples: [], treadmillDistanceM: 0, manualTreadmillSpeedKmh, manualTreadmillIncline, lastLapElapsedMs: 0, lastLapDistanceM: 0, pausedTotalMs: 0, updatedAt: Date.now() });
         patchRunningActiveSession(liveSessionId, { lastDraftAt: Date.now() });
         setNow(startedAtRef.current);
         setPaused(false);

@@ -1,4 +1,4 @@
-import type { ActivityLap, ActivitySensorSample, ActivitySport, GeoPoint } from "./activityTypes";
+import type { ActivityLap, ActivityRecord, ActivitySensorSample, ActivitySport, GeoPoint } from "./activityTypes";
 
 const DRAFT_DB_NAME = "mss-running-session-drafts-v1";
 const DRAFT_DB_VERSION = 1;
@@ -9,6 +9,18 @@ export type RunningSessionDraft = {
   sessionId: string;
   activityId: string;
   sport: ActivitySport;
+  title?: string;
+  presetId?: string;
+  workoutType?: ActivityRecord["workoutType"];
+  startedAt?: number;
+  mode?: "native-gps" | "web-gps" | "treadmill";
+  targetDistanceM?: number | null;
+  targetDurationMs?: number | null;
+  targetPaceSecPerKm?: number | null;
+  routeReferenceId?: string;
+  shoeId?: string;
+  paused?: boolean;
+  pausedAt?: number;
   route: GeoPoint[];
   manualLaps: ActivityLap[];
   sensorSamples: ActivitySensorSample[];
@@ -44,6 +56,18 @@ function sanitizeDraft(value: unknown): RunningSessionDraft | null {
     sessionId: row.sessionId,
     activityId: row.activityId,
     sport: String(row.sport || "running") as ActivitySport,
+    title: typeof row.title === "string" ? row.title : undefined,
+    presetId: typeof row.presetId === "string" ? row.presetId : undefined,
+    workoutType: row.workoutType,
+    startedAt: Number.isFinite(Number(row.startedAt)) ? Number(row.startedAt) : undefined,
+    mode: ["native-gps", "web-gps", "treadmill"].includes(String(row.mode || "")) ? row.mode : undefined,
+    targetDistanceM: row.targetDistanceM == null ? undefined : Math.max(0, Number(row.targetDistanceM || 0)),
+    targetDurationMs: row.targetDurationMs == null ? undefined : Math.max(0, Number(row.targetDurationMs || 0)),
+    targetPaceSecPerKm: row.targetPaceSecPerKm == null ? undefined : Math.max(0, Number(row.targetPaceSecPerKm || 0)),
+    routeReferenceId: typeof row.routeReferenceId === "string" ? row.routeReferenceId : undefined,
+    shoeId: typeof row.shoeId === "string" ? row.shoeId : undefined,
+    paused: typeof row.paused === "boolean" ? row.paused : undefined,
+    pausedAt: Number.isFinite(Number(row.pausedAt)) ? Number(row.pausedAt) : undefined,
     route: sanitizeRoute(row.route),
     manualLaps: Array.isArray(row.manualLaps) ? row.manualLaps : [],
     sensorSamples: Array.isArray(row.sensorSamples) ? row.sensorSamples : [],
@@ -197,4 +221,11 @@ export async function deleteRunningSessionDraft(sessionId: string): Promise<void
   } catch {
     fallbackWrite(fallbackRead().filter((row) => row.sessionId !== sessionId));
   }
+}
+
+
+export async function listRecoverableRunningSessionDrafts(activeSessionIds: string[] = [], maxAgeMs = 72 * 3600000): Promise<RunningSessionDraft[]> {
+  const active = new Set(activeSessionIds.map(String));
+  const now = Date.now();
+  return (await listRunningSessionDrafts()).filter((draft) => !active.has(draft.sessionId) && now - Number(draft.updatedAt || 0) <= maxAgeMs);
 }
