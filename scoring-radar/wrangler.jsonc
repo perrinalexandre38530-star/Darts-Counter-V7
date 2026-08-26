@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "scoring-radar-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "6e48bf0b-efac-4c96-a322-6bb69eb6e358"
     }
   ],
   "queues": {
