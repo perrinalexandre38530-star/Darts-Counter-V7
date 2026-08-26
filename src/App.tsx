@@ -1142,6 +1142,13 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [phase, setPhase] = React.useState<"working" | "success" | "error">("working");
   const [providerLabel, setProviderLabel] = React.useState("Compte MULTISPORTS");
   const exchangeStartedRef = React.useRef(false);
+  // La navigation de l'App est recréée à chaque render. Le callback OAuth ne doit
+  // jamais dépendre de son identité, sinon le passage SIGNED_IN / success déclenche
+  // le cleanup avant la redirection finale vers GameSelect.
+  const goRef = React.useRef(go);
+  React.useEffect(() => {
+    goRef.current = go;
+  }, [go]);
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1237,7 +1244,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       setMsg("Connexion réussie");
       setDetail("Bienvenue dans MULTISPORTS SCORING");
       await new Promise((resolve) => window.setTimeout(resolve, 160));
-      if (alive && !timedOut) go("gameSelect");
+      if (alive && !timedOut) goRef.current("gameSelect");
       return true;
     };
 
@@ -1341,7 +1348,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           setDetail("Préparation de l'application…");
           if (await finishSocialLanding(sessionFromExchange)) return;
           try { window.location.hash = "#/online"; } catch {}
-          go("online");
+          goRef.current("online");
           return;
         }
 
@@ -1365,7 +1372,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         if (sessionRead?.data?.session) {
           if (await finishSocialLanding(sessionRead.data.session)) return;
           try { window.location.hash = "#/online"; } catch {}
-          go("online");
+          goRef.current("online");
           return;
         }
 
@@ -1387,7 +1394,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
         if (sessionFromEvent) {
           if (await finishSocialLanding(sessionFromEvent)) return;
           try { window.location.hash = "#/online"; } catch {}
-          go("online");
+          goRef.current("online");
           return;
         }
 
@@ -1403,7 +1410,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
       window.clearTimeout(hardStopTimer);
       try { unsubscribe?.(); } catch {}
     };
-  }, [go]);
+  }, []);
 
   const isError = phase === "error";
   const isSuccess = phase === "success";
