@@ -54,11 +54,7 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
   },
   "incline-db": { exerciseId: "incline-db", label: "Développé incliné" },
   "cable-fly": { exerciseId: "cable-fly", label: "Écarté poulie" },
-  pullup: {
-    exerciseId: "pullup",
-    label: "Tractions",
-    frameSequence: frames("pullup", 5, 3.2, [0, 1, 2, 1]),
-  },
+  pullup: { exerciseId: "pullup", label: "Tractions" },
   row: { exerciseId: "row", label: "Rowing barre" },
   "lat-pulldown": { exerciseId: "lat-pulldown", label: "Tirage vertical" },
   ohp: { exerciseId: "ohp", label: "Développé militaire" },
@@ -69,21 +65,13 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
     frameSequence: frames("curl", 5, 3.6),
   },
   "triceps-push": { exerciseId: "triceps-push", label: "Extension triceps" },
-  squat: {
-    exerciseId: "squat",
-    label: "Squat",
-    frameSequence: frames("squat", 5, 3.6),
-  },
+  squat: { exerciseId: "squat", label: "Squat" },
   "leg-press": { exerciseId: "leg-press", label: "Presse à cuisses" },
   rdl: { exerciseId: "rdl", label: "Soulevé de terre roumain" },
   "hip-thrust": { exerciseId: "hip-thrust", label: "Hip thrust" },
   calf: { exerciseId: "calf", label: "Mollets debout" },
   plank: { exerciseId: "plank", label: "Gainage" },
-  deadlift: {
-    exerciseId: "deadlift",
-    label: "Soulevé de terre",
-    frameSequence: frames("deadlift", 5, 3.4),
-  },
+  deadlift: { exerciseId: "deadlift", label: "Soulevé de terre" },
   goblet: { exerciseId: "goblet", label: "Goblet squat" },
 };
 

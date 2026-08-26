@@ -1,12 +1,15 @@
 import type { FitExercise } from "./fitStore";
 
 export type FitMocapSource = "cmu" | "mocapflow" | "procedural";
+export type FitMocapFormat = "bvh" | "glb" | "fbx";
 
 export type FitMocapBinding = {
   motionKey: string;
   source: FitMocapSource;
   sourceMotionId?: string;
   localAsset?: string;
+  remoteAsset?: string;
+  format?: FitMocapFormat;
   license: string;
   note?: string;
 };
@@ -23,8 +26,11 @@ export const FIT_MOCAP_BINDINGS: Record<string, FitMocapBinding> = {
     motionKey: "squat",
     source: "cmu",
     sourceMotionId: "22_14",
-    license: "CMU Graphics Lab Motion Capture Database usage terms",
-    note: "Verified source: CMU subject 22 trial 14 = alternating squats (subject A). The source motion is mapped, but no converted BVH is bundled yet; procedural 3D remains the fallback until a checked local asset is vendored.",
+    format: "bvh",
+    localAsset: "/fit/mocap/cmu/22_14.bvh",
+    remoteAsset: "https://raw.githubusercontent.com/una-dinosauria/cmu-mocap/master/data/022/22_14.bvh",
+    license: "CMU Graphics Lab Motion Capture Database usage terms + Bruce Hahne BVH conversion (no additional restrictions)",
+    note: "Verified source: CMU subject 22 trial 14 = alternating squats (subject A). FIT PERF now loads the checked BVH through a local-first/cache-first runtime, with the procedural motion as a non-blocking fallback.",
   },
   bench: { motionKey: "bench", source: "procedural", license: "MULTISPORTS SCORING original procedural animation" },
   "incline-db": { motionKey: "incline-db", source: "procedural", license: "MULTISPORTS SCORING original procedural animation" },

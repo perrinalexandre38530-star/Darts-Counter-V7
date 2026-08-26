@@ -18,19 +18,22 @@ for (const exerciseId of exerciseIds) {
   assert.ok(slotPattern.test(catalog), `Slot premium AWENA absent pour ${exerciseId}`);
 }
 
-for (const feature of ["IntersectionObserver", "visibilitychange", "prefers-reduced-motion", "requestAnimationFrame", "playsInline", "preload=\"metadata\""]) {
+for (const feature of ["IntersectionObserver", "visibilitychange", "prefers-reduced-motion", "requestAnimationFrame", "playsInline", 'preload="metadata"']) {
   assert.ok(player.includes(feature), `Optimisation lecteur premium manquante : ${feature}`);
 }
 assert.ok(player.includes("video?.sources") && player.includes("frameSequence"), "Le lecteur ne gère pas VIDEO + FRAMES");
 assert.ok(renderer.includes("FitPremiumMotionPlayer") && renderer.includes("hasAwenaPremiumMotion"), "Le lecteur premium n'est pas branché dans FitExerciseMotion");
-assert.ok(renderer.includes("FitAwenaMotionStage"), "Le fallback procédural AWENA a été supprimé");
+assert.ok(renderer.includes("FitAwena3DStage") && renderer.includes("FitAwenaMotionStage"), "La chaîne fallback 3D/procédurale AWENA a été cassée");
 
-const pilot = ["squat", "bench", "deadlift", "curl", "pullup"];
-for (const exerciseId of pilot) {
+const declaredFrameSlots = [...catalog.matchAll(/frameSequence:\s*frames\("([^"]+)",\s*(\d+)/g)]
+  .map((match) => ({ exerciseId: match[1], count: Number(match[2]) }));
+assert.ok(declaredFrameSlots.length >= 2, "Aucune vraie séquence premium déclarée");
+
+for (const { exerciseId, count } of declaredFrameSlots) {
   const frameDir = path.join("public", "fit", "motions", "awena", "premium", exerciseId, "frames");
   assert.ok(fs.existsSync(frameDir), `Dossier frames premium absent : ${exerciseId}`);
   const frameFiles = fs.readdirSync(frameDir).filter((file) => /^frame-\d+\.webp$/.test(file)).sort();
-  assert.ok(frameFiles.length >= 5, `Moins de 5 keyframes premium pour ${exerciseId}`);
+  assert.equal(frameFiles.length, count, `Nombre de frames incohérent pour ${exerciseId}`);
   for (const frame of frameFiles) {
     const filePath = path.join(frameDir, frame);
     assert.ok(fs.statSync(filePath).size > 8_000, `Frame premium anormalement légère/corrompue : ${filePath}`);
@@ -40,6 +43,6 @@ for (const exerciseId of pilot) {
 }
 
 console.log("✅ AWENA PREMIUM MOTION CHECK OK");
-console.log(`   ${exerciseIds.length} slots premium prêts · VIDEO > FRAMES > PROCEDURAL`);
-console.log(`   ${pilot.length} exercices avec keyframes WebP installées`);
+console.log(`   ${exerciseIds.length} slots premium prêts · VIDEO > FRAMES > REAL 3D > PROCEDURAL`);
+console.log(`   ${declaredFrameSlots.length} exercices avec séquences WebP réellement installées`);
 console.log("   Visibilité · pause onglet · reduced motion · preload · fallback contrôlés");

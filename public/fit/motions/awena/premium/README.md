@@ -6,7 +6,8 @@ Ce dossier est le point d'entrée unique des animations premium AWENA.
 
 1. **Vidéo premium** WebM / MP4 déclarée dans `src/fit/awenaPremiumMotions.ts`.
 2. **Séquence de frames WebP** déclarée dans le même registre.
-3. **Renderer procédural AWENA** existant si aucun média premium n'est encore disponible.
+3. **Renderer AWENA 3D** (vraie mocap BVH lorsqu'elle existe, sinon 3D procédurale).
+4. **Renderer procédural AWENA 2D** comme dernier filet de sécurité.
 
 L'interface FIT PERF ne doit pas être modifiée pour ajouter un nouvel exercice premium.
 
@@ -63,4 +64,4 @@ La vidéo devient automatiquement prioritaire. Si elle échoue, les frames reste
 
 `bench`, `incline-db`, `cable-fly`, `pullup`, `row`, `lat-pulldown`, `ohp`, `lateral-raise`, `curl`, `triceps-push`, `squat`, `leg-press`, `rdl`, `hip-thrust`, `calf`, `plank`, `deadlift`, `goblet`.
 
-Les premiers keyframes premium fournis dans ce patch sont installés pour : **squat, développé couché, deadlift, curl biceps et tractions**. Ils peuvent être remplacés sans toucher à l'UI lorsque les séquences 12–24 frames ou les vidéos 3D finales seront disponibles.
+Dans le ZIP V82 actuel, les séquences WebP réellement présentes et déclarées sont : **développé couché** et **curl biceps**. Les autres slots restent volontairement vides jusqu'à ce que leurs médias existent réellement ; ils passent alors vers la 3D/mocap sans requêtes 404 inutiles.

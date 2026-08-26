@@ -91,9 +91,11 @@
     "radar:dev": "npm --prefix scoring-radar run dev",
     "radar:deploy": "npm --prefix scoring-radar run deploy",
     "test:scoring-radar": "node ./tools/test-scoring-radar-integration.mjs",
-    "test:fit-perf": "node ./tools/test-fit-perf-integration.mjs && node ./tools/test-fit-awena-premium-motion.mjs",
+    "test:fit-perf": "node ./tools/test-fit-perf-integration.mjs && node ./tools/test-fit-awena-premium-motion.mjs && node ./tools/test-fit-perf-free-3d.mjs && node ./tools/test-fit-perf-bvh-runtime.mjs",
     "awena:motion:build": "node ./tools/build-awena-premium-motion.mjs",
-    "test:fit-perf:free3d": "node ./tools/test-fit-perf-free-3d.mjs"
+    "test:fit-perf:free3d": "node ./tools/test-fit-perf-free-3d.mjs",
+    "test:fit-perf:bvh": "node ./tools/test-fit-perf-bvh-runtime.mjs",
+    "fit:mocap:vendor": "node ./tools/vendor-fit-mocap.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

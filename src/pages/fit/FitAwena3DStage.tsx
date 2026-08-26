@@ -1,6 +1,7 @@
 import React from "react";
 import type { FitExercise } from "../../fit/fitStore";
 import { getFitMocapBinding, resolveFitMotionKey } from "../../fit/awenaMocapRegistry";
+import { loadFitMocapText } from "../../fit/fitMocapRuntime";
 
 type Vec3 = [number, number, number];
 type Joint =
@@ -200,12 +201,25 @@ function lerpPose(a: Pose3D, b: Pose3D, t: number): Pose3D {
 
 function center(a: Vec3, b: Vec3): Vec3 { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; }
 
+const CMU_BVH_BONES: Record<Joint, string> = {
+  head: "Head", neck: "Neck1",
+  shoulderL: "LeftArm", shoulderR: "RightArm",
+  elbowL: "LeftForeArm", elbowR: "RightForeArm",
+  handL: "LeftHand", handR: "RightHand",
+  hipL: "LeftUpLeg", hipR: "RightUpLeg",
+  kneeL: "LeftLeg", kneeR: "RightLeg",
+  ankleL: "LeftFoot", ankleR: "RightFoot",
+  toeL: "LeftToeBase", toeR: "RightToeBase",
+};
+
 export default function FitAwena3DStage({ exercise, compact = false, onFail }: { exercise: FitExercise; compact?: boolean; onFail?: () => void }) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const stoppedRef = React.useRef(false);
   const [ready, setReady] = React.useState(false);
   const [paused, setPaused] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [mocapStatus, setMocapStatus] = React.useState<"procedural" | "loading" | "live" | "fallback">("procedural");
+  const [mocapOrigin, setMocapOrigin] = React.useState<"local" | "cache" | "remote" | null>(null);
   const pausedRef = React.useRef(paused);
   pausedRef.current = paused;
   const motionKey = resolveFitMotionKey(exercise);
@@ -225,7 +239,7 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
     const boot = async () => {
       try {
         const importModule = new Function("url", "return import(url)") as (url: string) => Promise<any>;
-        const THREE = await importModule("https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js");
+        const THREE = await importModule("https://esm.sh/three@0.180.0?bundle");
         if (disposed || !hostRef.current) return;
 
         const scene = new THREE.Scene();
@@ -246,6 +260,15 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
         const root = new THREE.Group();
         root.rotation.y = .06;
         scene.add(root);
+
+        let mocapRuntime: null | {
+          mixer: any;
+          rootBone: any;
+          bones: Map<string, any>;
+          scale: number;
+          floorY: number;
+          duration: number;
+        } = null;
 
         const floor = new THREE.Mesh(
           new THREE.CircleGeometry(2.15, 64),
@@ -349,6 +372,79 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
         };
         const setPoint = (mesh: any, p: Vec3) => mesh.position.set(p[0], p[1], p[2]);
 
+        const extractMocapPose = (): Pose3D | null => {
+          if (!mocapRuntime) return null;
+          mocapRuntime.rootBone.updateMatrixWorld(true);
+          const temp = new THREE.Vector3();
+          const raw = {} as Record<Joint, Vec3>;
+          for (const joint of Object.keys(CMU_BVH_BONES) as Joint[]) {
+            const bone = mocapRuntime.bones.get(CMU_BVH_BONES[joint]);
+            if (!bone) return null;
+            bone.getWorldPosition(temp);
+            raw[joint] = [temp.x, temp.y, temp.z];
+          }
+          const hip = center(raw.hipL, raw.hipR);
+          const out = {} as Pose3D;
+          for (const joint of Object.keys(raw) as Joint[]) {
+            const value = raw[joint];
+            out[joint] = [
+              -(value[0] - hip[0]) * mocapRuntime.scale,
+              (value[1] - mocapRuntime.floorY) * mocapRuntime.scale,
+              (value[2] - hip[2]) * mocapRuntime.scale,
+            ];
+          }
+          return out;
+        };
+
+        const bootRealMocap = async () => {
+          if (compact || binding?.source !== "cmu" || binding.format !== "bvh" || (!binding.localAsset && !binding.remoteAsset)) {
+            setMocapStatus("procedural");
+            setMocapOrigin(null);
+            return;
+          }
+          setMocapStatus("loading");
+          setMocapOrigin(null);
+          try {
+            const [{ BVHLoader }, asset] = await Promise.all([
+              importModule("https://esm.sh/three@0.180.0/examples/jsm/loaders/BVHLoader.js?bundle"),
+              loadFitMocapText(binding),
+            ]);
+            if (disposed) return;
+            const parsed = new BVHLoader().parse(asset.text);
+            const rootBone = parsed?.skeleton?.bones?.[0];
+            const clip = parsed?.clip;
+            if (!rootBone || !clip) throw new Error("BVHLoader returned an incomplete CMU motion");
+            const bones = new Map<string, any>();
+            rootBone.traverse((node: any) => { if (node?.name) bones.set(node.name, node); });
+            for (const boneName of Object.values(CMU_BVH_BONES)) {
+              if (!bones.has(boneName)) throw new Error(`CMU BVH bone missing: ${boneName}`);
+            }
+            const mixer = new THREE.AnimationMixer(rootBone);
+            const action = mixer.clipAction(clip);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.clampWhenFinished = false;
+            action.play();
+            mixer.setTime(0);
+            rootBone.updateMatrixWorld(true);
+            const temp = new THREE.Vector3();
+            const readY = (name: string) => {
+              const bone = bones.get(name);
+              bone.getWorldPosition(temp);
+              return temp.y;
+            };
+            const headY = readY("Head");
+            const floorY = Math.min(readY("LeftFoot"), readY("RightFoot"), readY("LeftToeBase"), readY("RightToeBase"));
+            const rawHeight = Math.max(1, headY - floorY);
+            mocapRuntime = { mixer, rootBone, bones, scale: 2.68 / rawHeight, floorY, duration: Math.max(.5, Number(clip.duration) || 5.9) };
+            setMocapOrigin(asset.origin);
+            setMocapStatus("live");
+          } catch (error) {
+            console.warn("[FIT PERF] Real CMU BVH unavailable, procedural 3D stays active", error);
+            if (!disposed) { setMocapStatus("fallback"); setMocapOrigin(null); }
+          }
+        };
+        void bootRealMocap();
+
         let drag = false, dragX = 0, dragY = 0;
         const down = (event: PointerEvent) => { drag = true; dragX = event.clientX; dragY = event.clientY; renderer.domElement.setPointerCapture?.(event.pointerId); };
         const move = (event: PointerEvent) => { if (!drag) return; const dx = event.clientX - dragX, dy = event.clientY - dragY; dragX = event.clientX; dragY = event.clientY; orbit -= dx * .009; pitch = Math.max(-.25, Math.min(.35, pitch + dy * .004)); };
@@ -386,8 +482,10 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
             const angle = Math.atan2(toe[0] - ankle[0], toe[2] - ankle[2]); shoe.rotation.y = angle; stripe.rotation.y = angle;
           }
           if (motion.equipment === "barbell" && bar) {
-            const handC = center(j.handL, j.handR); bar.position.set(handC[0], handC[1], handC[2]);
-            plateL.position.set(handC[0] - .88, handC[1], handC[2]); plateR.position.set(handC[0] + .88, handC[1], handC[2]);
+            const handC = center(j.handL, j.handR);
+            const barC = mocapRuntime && motionKey === "squat" ? [shoulderC[0], shoulderC[1] + .08, shoulderC[2] - .08] as Vec3 : handC;
+            bar.position.set(barC[0], barC[1], barC[2]);
+            plateL.position.set(barC[0] - .88, barC[1], barC[2]); plateR.position.set(barC[0] + .88, barC[1], barC[2]);
           } else if (motion.equipment === "dumbbells") {
             dumbbells[0]?.position.set(...j.handL); dumbbells[1]?.position.set(...j.handR);
           } else if (motion.equipment === "kettlebell") {
@@ -395,13 +493,24 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
           }
         };
 
+        let lastFrame = performance.now();
         const render = (now: number) => {
           if (disposed || stoppedRef.current) return;
           const elapsed = now - clockStart;
-          const raw = reduced ? .22 : ((elapsed % motion.duration) / motion.duration);
-          const phase = pausedRef.current ? .18 : raw;
-          const t = (1 - Math.cos(phase * Math.PI * 2)) / 2;
-          const j = lerpPose(motion.start, motion.end, t);
+          const deltaSeconds = Math.min(.05, Math.max(0, (now - lastFrame) / 1000));
+          lastFrame = now;
+          let phase = pausedRef.current ? .18 : (reduced ? .22 : ((elapsed % motion.duration) / motion.duration));
+          let j: Pose3D | null = null;
+          if (mocapRuntime) {
+            if (!pausedRef.current && !reduced) mocapRuntime.mixer.update(deltaSeconds);
+            if (reduced) mocapRuntime.mixer.setTime(mocapRuntime.duration * .22);
+            phase = mocapRuntime.duration > 0 ? ((mocapRuntime.mixer.time % mocapRuntime.duration) / mocapRuntime.duration) : phase;
+            j = extractMocapPose();
+          }
+          if (!j) {
+            const t = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+            j = lerpPose(motion.start, motion.end, t);
+          }
           update(j, phase);
           const targetY = motionKey === "plank" || motionKey === "bench" || motionKey === "hip-thrust" ? .85 : 1.42;
           camera.position.set(Math.sin(orbit) * cameraRadius, targetY + 1.12 + pitch, Math.cos(orbit) * cameraRadius);
@@ -427,7 +536,7 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
       disposed = true; stoppedRef.current = true; cancelAnimationFrame(raf); resizeObserver?.disconnect();
       const cleanup = (host as any).__fit3dCleanup; if (typeof cleanup === "function") cleanup(); delete (host as any).__fit3dCleanup;
     };
-  }, [motionKey, motion, compact, accent, onFail]);
+  }, [motionKey, motion, compact, accent, onFail, binding?.source, binding?.format, binding?.localAsset, binding?.remoteAsset]);
 
   if (!motion || failed) return null;
   return <div style={{ position: "relative", width: "100%", height: compact ? 112 : 220, minHeight: compact ? 112 : 220, overflow: "hidden", background: `radial-gradient(circle at 50% 44%,${accent}16,rgba(2,4,9,.97) 68%)` }}>
@@ -439,7 +548,9 @@ export default function FitAwena3DStage({ exercise, compact = false, onFail }: {
     </div>
     <div style={{ position: "absolute", right: 7, top: 7, padding: compact ? "3px 6px" : "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.76)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.78)", fontSize: compact ? 5.8 : 6.8, fontWeight: 950, letterSpacing: .6, pointerEvents: "none" }}>{motion.cueA} · {motion.cueB}</div>
     {!compact && ready ? <div style={{ position: "absolute", left: 7, right: 7, bottom: 7, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-      <div style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.76)", border: "1px solid rgba(255,255,255,.08)", color: "rgba(255,255,255,.58)", fontSize: 6.6, fontWeight: 900, pointerEvents: "none" }}>GLISSER ↔ · ROTATION 3D{binding?.source === "cmu" ? ` · CMU ${binding.sourceMotionId} MAPPÉ` : " · MOCAP READY"}</div>
+      <div style={{ padding: "4px 7px", borderRadius: 999, background: "rgba(3,5,10,.76)", border: "1px solid rgba(255,255,255,.08)", color: mocapStatus === "live" ? accent : "rgba(255,255,255,.58)", fontSize: 6.6, fontWeight: 900, pointerEvents: "none" }}>
+        GLISSER ↔ · ROTATION 3D · {mocapStatus === "live" ? `MOCAP CMU ${binding?.sourceMotionId || ""}${mocapOrigin ? ` · ${mocapOrigin.toUpperCase()}` : ""}` : mocapStatus === "loading" ? "MOCAP EN CHARGE…" : mocapStatus === "fallback" ? "MOCAP INDISPONIBLE · PROCÉDURAL" : "PROCÉDURAL"}
+      </div>
       <button type="button" onClick={() => setPaused((value) => !value)} style={{ minWidth: 54, minHeight: 28, borderRadius: 999, border: `1px solid ${accent}45`, background: "rgba(3,5,10,.82)", color: accent, fontSize: 6.8, fontWeight: 1000 }}>{paused ? "LECTURE" : "PAUSE"}</button>
     </div> : null}
   </div>;
