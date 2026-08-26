@@ -46,6 +46,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
   const L = React.useCallback((fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es), [lang]);
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
   const isMolkkySport = effectiveSport === "molkky";
+  const isFitSport = effectiveSport === "fit";
 
   const profiles = store?.profiles ?? [];
   const activeProfileId = store?.activeProfileId ?? null;
@@ -210,10 +211,12 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
           <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
             {isMolkkySport
                 ? L("Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique.", "Mölkky statistics center: active player, local profiles, rankings and history.", "Centro de estadísticas Mölkky: jugador activo, perfiles locales, clasificaciones e historial.")
-                : t(
-                    "statsShell.subtitle",
-                    "Analyse tes performances, ton training, ton historique et synchronise tes stats."
-                  )}
+                : isFitSport
+                  ? L("Centre de statistiques FIT PERF : volume, séries, 1RM, records, progression et historique.", "FIT PERF statistics center: volume, sets, 1RM, records, progress and history.", "Centro de estadísticas FIT PERF: volumen, series, 1RM, récords, progreso e historial.")
+                  : t(
+                      "statsShell.subtitle",
+                      "Analyse tes performances, ton training, ton historique et synchronise tes stats."
+                    )}
           </div>
           <button
             onClick={() => go("sync_center" as any)}
@@ -268,13 +271,16 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         />
 
         <StatsShellCard
-          title={t("statsShell.locals.title", "PROFILS LOCAUX")}
-          subtitle={t(
-            "statsShell.locals.subtitle",
-            "Accède aux mêmes vues de stats pour tous les profils locaux."
-          )}
+          title={isFitSport ? L("PROFILS FIT PERF", "FIT PERF PROFILES", "PERFILES FIT PERF") : t("statsShell.locals.title", "PROFILS LOCAUX")}
+          subtitle={isFitSport
+            ? L("Retrouve les profils existants et leurs performances FIT PERF individuelles.", "Open existing profiles and their individual FIT PERF performance.", "Consulta los perfiles existentes y su rendimiento FIT PERF individual.")
+            : t("statsShell.locals.subtitle", "Accède aux mêmes vues de stats pour tous les profils locaux.")}
           theme={theme}
           onClick={() => {
+            if (isFitSport) {
+              go("profiles", { view: "locals", sport: "fit" });
+              return;
+            }
             go("statsHub", {
               tab: "stats",
               mode: "locals",
@@ -285,14 +291,16 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         />
 
         <StatsShellCard
-          title={L("CLASSEMENTS", "RANKINGS", "CLASIFICACIONES")}
-          subtitle={L(
-            "Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.).",
-            "Global rankings by game mode (X01 multi, Cricket, Killer, etc.).",
-            "Clasificaciones globales por modo de juego (X01 multi, Cricket, Killer, etc.)."
-          )}
+          title={isFitSport ? L("PROGRESSION & RECORDS", "PROGRESS & RECORDS", "PROGRESO Y RÉCORDS") : L("CLASSEMENTS", "RANKINGS", "CLASIFICACIONES")}
+          subtitle={isFitSport
+            ? L("Volume, évolution hebdomadaire, records personnels et estimation 1RM.", "Volume, weekly progress, personal records and estimated 1RM.", "Volumen, evolución semanal, récords personales y 1RM estimado.")
+            : L("Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.).", "Global rankings by game mode (X01 multi, Cricket, Killer, etc.).", "Clasificaciones globales por modo de juego (X01 multi, Cricket, Killer, etc.).")}
           theme={theme}
           onClick={() => {
+            if (isFitSport) {
+              go("statsHub", { tab: "stats", mode: "active", fitView: "progress" });
+              return;
+            }
             if (isMolkkySport) {
               go("statsHub", { tab: "stats", mode: "locals", initialStatsSubTab: "leaderboards" });
               return;
@@ -302,7 +310,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
           onInfo={() => setInfoMode("leaderboards")}
         />
 
-        {!isMolkkySport && (
+        {!isMolkkySport && !isFitSport && (
           <>
             <StatsShellCard
               title={t("statsShell.training.title", "TRAINING")}
@@ -329,27 +337,24 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
         )}
 
         <StatsShellCard
-          title={t("statsShell.history.title", "HISTORIQUE")}
-          subtitle={isMolkkySport
-            ? L(
-                "Historique des parties Mölkky locales et reprises en cours.",
-                "History of local Mölkky games and games currently in progress.",
-                "Historial de partidas locales de Mölkky y partidas en curso."
-              )
-            : t(
-                "statsShell.history.subtitle",
-                "Toutes tes parties et reprise des parties en cours."
-              )}
+          title={isFitSport ? L("HISTORIQUE DES SÉANCES", "WORKOUT HISTORY", "HISTORIAL DE SESIONES") : t("statsShell.history.title", "HISTORIQUE")}
+          subtitle={isFitSport
+            ? L("Toutes les séances FIT PERF enregistrées, avec volume, durée et séries réalisées.", "All saved FIT PERF workouts with volume, duration and completed sets.", "Todas las sesiones FIT PERF guardadas con volumen, duración y series completadas.")
+            : isMolkkySport
+              ? L("Historique des parties Mölkky locales et reprises en cours.", "History of local Mölkky games and games currently in progress.", "Historial de partidas locales de Mölkky y partidas en curso.")
+              : t("statsShell.history.subtitle", "Toutes tes parties et reprise des parties en cours.")}
           theme={theme}
           onClick={() =>
-            isMolkkySport
-              ? go("statsHub", {
-                  tab: "stats",
-                  mode: "locals",
-                  initialPlayerId: null,
-                  initialStatsSubTab: "history",
-                })
-              : go("statsHub", { tab: "history" })
+            isFitSport
+              ? go("statsHub", { tab: "history", fitView: "history" })
+              : isMolkkySport
+                ? go("statsHub", {
+                    tab: "stats",
+                    mode: "locals",
+                    initialPlayerId: null,
+                    initialStatsSubTab: "history",
+                  })
+                : go("statsHub", { tab: "history" })
           }
           onInfo={() => setInfoMode("history")}
         />

@@ -551,3 +551,98 @@ export function RunningStatusChip({ icon, label, value, accent }: { icon?: React
     <div style={{ marginTop: 4, color: accent, fontSize: 13.5, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
   </div>;
 }
+
+export function RunningHubCard({
+  title,
+  subtitle,
+  icon,
+  accent,
+  onClick,
+  badge,
+  disabled = false,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  icon: React.ReactNode;
+  accent: string;
+  onClick: () => void;
+  badge?: React.ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        width: "100%",
+        minHeight: 74,
+        display: "grid",
+        gridTemplateColumns: "46px 1fr auto",
+        alignItems: "center",
+        gap: 11,
+        padding: "11px 12px",
+        borderRadius: 17,
+        border: `1px solid ${disabled ? "rgba(255,255,255,.06)" : `${accent}2f`}`,
+        background: disabled
+          ? "rgba(255,255,255,.018)"
+          : `linear-gradient(145deg,${accent}0e,rgba(8,11,18,.965) 52%,rgba(3,5,9,.985))`,
+        boxShadow: disabled ? "none" : `0 14px 28px rgba(0,0,0,.34), inset 0 1px 0 ${accent}12`,
+        color: disabled ? "rgba(255,255,255,.34)" : "#fff",
+        textAlign: "left",
+        cursor: disabled ? "default" : "pointer",
+        font: "inherit",
+      }}
+    >
+      <span style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, border: `1px solid ${disabled ? "rgba(255,255,255,.07)" : `${accent}32`}`, background: disabled ? "rgba(255,255,255,.025)" : `${accent}0d`, color: disabled ? "rgba(255,255,255,.30)" : accent }}>
+        {icon}
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <b style={{ display: "block", fontSize: 10.4, letterSpacing: .3 }}>{title}</b>
+        {subtitle ? <small style={{ display: "block", marginTop: 4, fontSize: 8.3, lineHeight: 1.4, color: "rgba(255,255,255,.52)" }}>{subtitle}</small> : null}
+      </span>
+      <span style={{ display: "grid", placeItems: "center", gap: 4, color: disabled ? "rgba(255,255,255,.24)" : accent }}>
+        {badge ? <small style={{ fontSize: 7.2, fontWeight: 1000 }}>{badge}</small> : null}
+        {!disabled ? (
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m9 5 7 7-7 7" />
+          </svg>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+export function RunningSubpageHeader({
+  title,
+  subtitle,
+  accent,
+  onBack,
+  right,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+  accent: string;
+  onBack: () => void;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center", margin: "8px 0 12px" }}>
+      <button
+        type="button"
+        onClick={onBack}
+        aria-label="Retour"
+        style={{ width: 40, height: 40, borderRadius: 14, border: `1px solid ${accent}35`, background: "rgba(5,8,14,.90)", color: accent, display: "grid", placeItems: "center", cursor: "pointer" }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m15 5-7 7 7 7" />
+        </svg>
+      </button>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 1000, color: accent, letterSpacing: .45 }}>{title}</div>
+        {subtitle ? <div style={{ marginTop: 3, fontSize: 8.3, color: "rgba(255,255,255,.50)", lineHeight: 1.4 }}>{subtitle}</div> : null}
+      </div>
+      {right || null}
+    </div>
+  );
+}

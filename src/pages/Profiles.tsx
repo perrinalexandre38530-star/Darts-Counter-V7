@@ -96,6 +96,7 @@ import { scheduleRuntimeIdle } from "../lib/runtimePerformance";
 import { createCooperativeYielder } from "../lib/mainThreadYield";
 import { profileAvatarMediaKey, readLocalUserMediaFallback, resolveUserMediaFallback } from "../lib/userMediaFallback";
 import { resolveRuntimeMediaUrl } from "../lib/serverConfig";
+import { buildFitProfileSummary, fitSessionsForProfile, formatVolume as formatFitVolume, loadFitSessions } from "../fit/fitStore";
 
 /**
  * Totalise les utilisations enregistrées dans tous les modes de jeu.
@@ -449,6 +450,18 @@ type BabyFootMiniStats = {
   rating: number;
 };
 
+type FitMiniStats = {
+  score: number;
+  sessions: number;
+  weekSessions: number;
+  volumeKg: number;
+  weekVolumeKg: number;
+  sets: number;
+  records: number;
+  bestOneRm: number;
+  totalDurationMs: number;
+};
+
 type ProfileMiniStats = {
   avg3: number;
   bestVisit: number;
@@ -458,6 +471,7 @@ type ProfileMiniStats = {
   winRate: number;
   darts: number;
   babyfoot?: BabyFootMiniStats;
+  fit?: FitMiniStats;
 };
 
 const EMPTY_PROFILE_MINI_STATS: ProfileMiniStats = {
@@ -513,6 +527,19 @@ function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
       }
     : undefined;
 
+  const rawFit = basic?.fit;
+  const fit: FitMiniStats | undefined = rawFit ? {
+    score: Number(rawFit?.score ?? 0) || 0,
+    sessions: Math.max(0, Number(rawFit?.sessions ?? 0) || 0),
+    weekSessions: Math.max(0, Number(rawFit?.weekSessions ?? 0) || 0),
+    volumeKg: Math.max(0, Number(rawFit?.volumeKg ?? 0) || 0),
+    weekVolumeKg: Math.max(0, Number(rawFit?.weekVolumeKg ?? 0) || 0),
+    sets: Math.max(0, Number(rawFit?.sets ?? 0) || 0),
+    records: Math.max(0, Number(rawFit?.records ?? 0) || 0),
+    bestOneRm: Math.max(0, Number(rawFit?.bestOneRm ?? 0) || 0),
+    totalDurationMs: Math.max(0, Number(rawFit?.totalDurationMs ?? 0) || 0),
+  } : undefined;
+
   return {
     avg3: Number(basic?.avg3 ?? 0) || 0,
     bestVisit: Number(basic?.bestVisit ?? 0) || 0,
@@ -522,6 +549,7 @@ function normalizeProfileMiniStats(basic: any): ProfileMiniStats {
     winRate,
     darts: Number(basic?.darts ?? 0) || 0,
     babyfoot,
+    fit,
   };
 }
 const LINKED_PROFILE_STATS_OVERRIDE_KEY = "dc_linked_profile_stats_overrides_v1";
@@ -582,8 +610,13 @@ function isBabyFootSportKey(value: any): boolean {
   return key.includes("babyfoot") || key.includes("baby-foot") || key.includes("baby_foot");
 }
 
+function isFitSportKey(value: any): boolean {
+  const key = String(value ?? "").toLowerCase();
+  return key === "fit" || key.includes("fitperf") || key.includes("fit_perf") || key === "fitness";
+}
+
 function profileMiniStatsCacheKey(playerId: string | undefined | null, sportKey?: string | null): string {
-  const sportPart = isBabyFootSportKey(sportKey) ? "babyfoot" : "darts";
+  const sportPart = isBabyFootSportKey(sportKey) ? "babyfoot" : isFitSportKey(sportKey) ? "fit" : "darts";
   return `${sportPart}:${String(playerId || "")}`;
 }
 
@@ -593,6 +626,29 @@ function deleteProfileMiniStatsCache(playerId: string | undefined | null) {
   profileMiniStatsCache.delete(raw);
   profileMiniStatsCache.delete(profileMiniStatsCacheKey(raw, "darts"));
   profileMiniStatsCache.delete(profileMiniStatsCacheKey(raw, "babyfoot"));
+  profileMiniStatsCache.delete(profileMiniStatsCacheKey(raw, "fit"));
+}
+
+function getFitProfileMiniStats(playerId: string): ProfileMiniStats {
+  const pid = String(playerId || "").trim();
+  if (!pid) return EMPTY_PROFILE_MINI_STATS;
+  try {
+    const sessions = loadFitSessions();
+    const scoped = fitSessionsForProfile(sessions, pid);
+    const summary = buildFitProfileSummary(sessions, pid);
+    return normalizeProfileMiniStats({
+      avg3: summary.score,
+      bestVisit: summary.sessions,
+      bestCheckout: summary.records,
+      wins: summary.weekSessions,
+      games: summary.sessions,
+      winRate: summary.score,
+      darts: summary.sets,
+      fit: summary,
+    });
+  } catch {
+    return EMPTY_PROFILE_MINI_STATS;
+  }
 }
 
 async function getBabyFootProfileMiniStats(playerId: string): Promise<ProfileMiniStats> {
@@ -736,6 +792,8 @@ async function getStatsHubAlignedProfileMiniStats(
   // Source de vérité volontairement alignée sur le Dashboard global du Centre de statistiques.
   // Avant, la page Profils lisait surtout le mini-cache statsBridge ; ce cache pouvait rester
   // différent du dashboard après import/suppression/rebuild, d'où Moy/3D, Best CO et Win% incohérents.
+  if (isFitSportKey(sportKey)) return getFitProfileMiniStats(playerId);
+
   const override = readLinkedProfileStatsOverride(playerId);
   if (override && !isBabyFootSportKey(sportKey)) return override;
 
@@ -819,6 +877,12 @@ function readProfileMiniStatsSync(playerId: string | undefined | null, sportKey?
   const cached = profileMiniStatsCache.get(cacheKey);
   if (cached) return cached;
 
+  if (isFitSportKey(sportKey)) {
+    const fitStats = getFitProfileMiniStats(key);
+    profileMiniStatsCache.set(cacheKey, fitStats);
+    return fitStats;
+  }
+
   if (isBabyFootSportKey(sportKey)) return EMPTY_PROFILE_MINI_STATS;
 
   const linkedOverride = readLinkedProfileStatsOverride(key);
@@ -879,6 +943,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
     };
     window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     window.addEventListener("dc-history-updated", onStatsUpdated as EventListener);
+    window.addEventListener("dc:fit-session-saved", onStatsUpdated as EventListener);
     window.addEventListener("storage", onStatsUpdated as EventListener);
 
     return () => {
@@ -886,6 +951,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
       cancelDeepStats?.();
       window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
       window.removeEventListener("dc-history-updated", onStatsUpdated as EventListener);
+      window.removeEventListener("dc:fit-session-saved", onStatsUpdated as EventListener);
       window.removeEventListener("storage", onStatsUpdated as EventListener);
     };
   }, [key, enabled, playerName, sportKey]);
@@ -2080,6 +2146,7 @@ export default function Profiles({
   const sportKey = String(sportResolved ?? "").toLowerCase();
   const isPetanque = sportKey.includes("petanque");
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
+  const isFit = isFitSportKey(sportKey);
   const isDarts = sportKey.includes("darts");
 
 
@@ -7380,6 +7447,7 @@ function LocalProfilesRefonte({
   const sportResolved = sport;
   const isDarts = sportResolved === "darts";
   const isBabyFoot = isBabyFootSportKey(sportResolved);
+  const isFit = isFitSportKey(sportResolved);
   const { t, lang } = useLang();
   const primary = theme.primary;
   const [localSection, setLocalSection] = React.useState<LocalProfilesSection>(onboardingMode ? "create" : "list");
@@ -7715,6 +7783,7 @@ function LocalProfilesRefonte({
   const bestCheckout = Number(bs.bestCheckout ?? 0);
   const winPct = Math.round(Number(bs.winRate ?? 0));
   const babyStats = bs.babyfoot;
+  const fitStats = bs.fit;
   const babyWinPct = Math.round((Number(babyStats?.winRate ?? 0) || 0) * 100);
   const babyAvgGF = Number(babyStats?.avgGF ?? 0) || 0;
   const babyAvgGA = Number(babyStats?.avgGA ?? 0) || 0;
@@ -8238,7 +8307,14 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                   paddingBottom: 2,
                 }}
               >
-                {isBabyFoot ? (
+                {isFit ? (
+                  <>
+                    <KpiPill label="FIT" value={String(Math.round(Number(fitStats?.score ?? 0)))} />
+                    <KpiPill label="Séances" value={String(Number(fitStats?.sessions ?? 0))} />
+                    <KpiPill label="Volume" value={formatFitVolume(Number(fitStats?.volumeKg ?? 0))} />
+                    <KpiPill label="PR" value={String(Number(fitStats?.records ?? 0))} />
+                  </>
+                ) : isBabyFoot ? (
                   <>
                     <KpiPill label="Ratio" value={formatBabyFootRatio(babyStats?.ratio ?? null)} />
                     <KpiPill label="Win %" value={`${babyWinPct}%`} />
@@ -8249,22 +8325,10 @@ Sus partidas y estadísticas históricas permanecerán guardadas. Si más adelan
                   </>
                 ) : (
                   <>
-                    <KpiPill
-                      label={t("home.stats.avg3", "AVG3D")}
-                      value={(Math.round(avg3 * 10) / 10).toFixed(1)}
-                    />
-                    <KpiPill
-                      label={t("home.stats.best", "Best visit")}
-                      value={String(bestVisit)}
-                    />
-                    <KpiPill
-                      label={t("home.stats.co", "Best CO")}
-                      value={String(bestCheckout)}
-                    />
-                    <KpiPill
-                      label={t("home.stats.winPct", "Win %")}
-                      value={`${winPct}%`}
-                    />
+                    <KpiPill label={t("home.stats.avg3", "AVG3D")} value={(Math.round(avg3 * 10) / 10).toFixed(1)} />
+                    <KpiPill label={t("home.stats.best", "Best visit")} value={String(bestVisit)} />
+                    <KpiPill label={t("home.stats.co", "Best CO")} value={String(bestCheckout)} />
+                    <KpiPill label={t("home.stats.winPct", "Win %")} value={`${winPct}%`} />
                   </>
                 )}
               </div>
@@ -9087,6 +9151,7 @@ function GoldMiniStats({
 
   const primary = theme.primary;
   const isBabyFoot = isBabyFootSportKey(sportResolved);
+  const isFit = isFitSportKey(sportResolved);
 
   const avg3 = Number.isFinite(bs.avg3) ? bs.avg3 : 0;
   const best = Number(bs.bestVisit ?? 0);
@@ -9094,12 +9159,20 @@ function GoldMiniStats({
   const winPct = Math.round(Number(bs.winRate ?? 0));
 
   const baby = bs.babyfoot;
+  const fit = bs.fit;
   const babyWinPct = Math.round((Number(baby?.winRate ?? 0) || 0) * 100);
   const babyAvgGF = Number(baby?.avgGF ?? 0) || 0;
   const babyAvgGA = Number(baby?.avgGA ?? 0) || 0;
-  const pillW = isBabyFoot ? "clamp(48px, 14vw, 64px)" : "clamp(58px, 17vw, 78px)";
+  const pillW = isBabyFoot ? "clamp(48px, 14vw, 64px)" : isFit ? "clamp(58px, 17vw, 82px)" : "clamp(58px, 17vw, 78px)";
 
-  const items = isBabyFoot
+  const items = isFit
+    ? [
+        { label: "FIT", value: String(Math.round(Number(fit?.score ?? 0))) },
+        { label: "Séances", value: String(Number(fit?.sessions ?? 0)) },
+        { label: "Volume", value: formatFitVolume(Number(fit?.volumeKg ?? 0)) },
+        { label: "PR", value: String(Number(fit?.records ?? 0)) },
+      ]
+    : isBabyFoot
     ? [
         { label: "Ratio", value: formatBabyFootRatio(baby?.ratio ?? null) },
         { label: "Win%", value: `${babyWinPct}%` },

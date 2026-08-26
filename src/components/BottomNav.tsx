@@ -97,12 +97,19 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "running_plan":
-    case "fit_plan":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M6 3v3M18 3v3M4 8h16" />
           <rect {...p} x="4" y="5" width="16" height="16" rx="2.5" />
           <path {...p} d="m8 13 2.2 2.2L16 10" />
+        </svg>
+      );
+
+    case "fit_plan":
+      return (
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path {...p} d="M5 4h5v16H5zM14 4h5v16h-5z" />
+          <path {...p} d="M7.5 8h0M16.5 8h0" />
         </svg>
       );
 
@@ -342,7 +349,7 @@ export default function BottomNav({
               </svg>
             ),
           },
-          { k: "fit_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="fit_plan" /> },
+          { k: "fit_plan", label: tr("Exercices", "Exercises", "Ejercicios"), icon: <Icon name="fit_plan" /> },
           { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
           { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
           { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },

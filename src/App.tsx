@@ -4396,7 +4396,7 @@ case "babyfoot_team_edit":
           ) : activeSport === "running" ? (
             <RunningStatsPage go={go} params={routeParams} />
           ) : activeSport === "fit" ? (
-            <FitPerfStatsPage go={go} params={routeParams} />
+            <StatsShell store={store} go={go} sportOverride={activeSport} />
           ) : (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
           );
@@ -4472,7 +4472,9 @@ case "babyfoot_team_edit":
         break;
 
       case "statsHub":
-        page = (
+        page = activeSport === "fit" ? (
+          <FitPerfStatsPage go={go} params={routeParams} store={store} />
+        ) : (
           <StatsHub
             go={go}
             sportOverride={activeSport}

@@ -19,6 +19,11 @@ export type RunningRouteTemplate = {
     distanceErrorPct: number;
     trailSharePct: number;
     overlapPct: number;
+    elevationGainMinM?: number;
+    elevationGainMaxM?: number;
+    elevationErrorM?: number;
+    elevationTargetMatched?: boolean;
+    elevationSource?: "open-meteo-copernicus-dem" | "embedded";
   };
   externalId?: string;
   network?: string;

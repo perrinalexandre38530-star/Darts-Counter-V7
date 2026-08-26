@@ -18,13 +18,13 @@ import RunningTerrainStatsPanel from "./RunningTerrainStatsPanel";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import RunningConnectionsPanel from "./RunningConnectionsPanel";
 import OutdoorAdventureStatsPanel from "./OutdoorAdventureStatsPanel";
-import { RunningMetricCard, RunningSurface, RunningTabs } from "./RunningUi";
+import { RunningGlyph, RunningHubCard, RunningMetricCard, RunningSubpageHeader, RunningSurface } from "./RunningUi";
 import { buildSensorSummary } from "../../activity/activitySensorInsights";
 
 type Props = { go: (route: any, params?: any) => void; params?: any };
-type StatsTab = "overview" | "performance" | "history" | "gear" | "sync";
-type AnalysisTab = "records" | "form" | "terrain";
-type SyncTab = "connections" | "files";
+type StatsTab = "hub" | "overview" | "performance" | "history" | "gear" | "sync";
+type AnalysisTab = "hub" | "records" | "form" | "terrain";
+type SyncTab = "hub" | "connections" | "files";
 
 export default function RunningStatsPage({ go, params }: Props) {
   const { theme } = useTheme();
@@ -37,9 +37,9 @@ export default function RunningStatsPage({ go, params }: Props) {
   const [showAll, setShowAll] = React.useState(false);
   const [shoes, setShoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
   const [newShoeName, setNewShoeName] = React.useState("");
-  const [tab, setTab] = React.useState<StatsTab>(() => (["overview", "performance", "history", "gear", "sync"].includes(String(params?.runningStatsTab || "")) ? String(params.runningStatsTab) as StatsTab : "overview"));
-  const [analysisTab, setAnalysisTab] = React.useState<AnalysisTab>("records");
-  const [syncTab, setSyncTab] = React.useState<SyncTab>("connections");
+  const [tab, setTab] = React.useState<StatsTab>(() => (["overview", "performance", "history", "gear", "sync"].includes(String(params?.runningStatsTab || "")) ? String(params.runningStatsTab) as StatsTab : "hub"));
+  const [analysisTab, setAnalysisTab] = React.useState<AnalysisTab>("hub");
+  const [syncTab, setSyncTab] = React.useState<SyncTab>("hub");
 
   const refreshActivities = React.useCallback(async () => setActivities(await listActivities(activitySport)), [activitySport]);
   React.useEffect(() => { saveOutdoorPerformanceSport(activitySport); void refreshActivities(); }, [activitySport, refreshActivities]);
@@ -72,34 +72,29 @@ export default function RunningStatsPage({ go, params }: Props) {
     title: "PERFORMANCE STATS", sub: "Your outdoor data without an endless page", total: "TOTAL DISTANCE", runs: "ACTIVITIES", time: "TIME", climb: "ELEVATION", best: "BEST PACE", longest: "LONGEST", week: "LAST 7 DAYS", load: "TRAINING LOAD", freshness: "Readiness", acute: "7-day load", ratio: "7/28 ratio", records: "PERSONAL RECORDS", predictions: "PREDICTIONS", gear: "GEAR", addShoe: "ADD SHOES", shoePlaceholder: "Shoe name…", mileage: "Mileage", wear: "Estimated wear", active: "ACTIVE", retired: "RETIRED", recent: "RECENT ACTIVITIES", all: "VIEW ALL", less: "SHOW LESS", noRuns: "No runs saved yet.", info: "Simplified layout: Overview, Analysis, Journal, Gear and Sync for sensors and data exchange.", tabs: { overview: "OVERVIEW", performance: "ANALYSIS", history: "JOURNAL", gear: "GEAR", sync: "SYNC" }
   };
 
-  const tabs = React.useMemo(() => [
-    { id: "overview" as const, label: copy.tabs.overview, icon: "◉" },
-    { id: "performance" as const, label: copy.tabs.performance, icon: "⚡" },
-    { id: "history" as const, label: copy.tabs.history, icon: "▤", badge: activities.length || null },
-    { id: "gear" as const, label: copy.tabs.gear, icon: "👟", badge: shoes.length || null },
-    { id: "sync" as const, label: copy.tabs.sync, icon: "⇄" },
-  ], [activities.length, copy.tabs, shoes.length]);
 
-  const recordRows = [
-    ["400 M", stats.best400m], ["1 KM", stats.best1k], ["1 MILE", stats.bestMile], ["5 KM", stats.best5k], ["10 KM", stats.best10k], ["SEMI", stats.bestHalf], ["MARATHON", stats.bestMarathon],
-  ] as const;
 
-  const analysisTabs = React.useMemo(() => [
-    { id: "records" as const, label: lang === "fr" ? "RECORDS" : lang === "es" ? "RÉCORDS" : "RECORDS", icon: "🏆" },
-    { id: "form" as const, label: lang === "fr" ? "FORME" : lang === "es" ? "FORMA" : "FORM", icon: "⚡" },
-    { id: "terrain" as const, label: lang === "fr" ? "TERRAIN" : lang === "es" ? "TERRENO" : "TERRAIN", icon: "⛰️" },
-  ], [lang]);
-
-  const syncTabs = React.useMemo(() => [
-    { id: "connections" as const, label: lang === "fr" ? "CAPTEURS" : lang === "es" ? "SENSORES" : "SENSORS", icon: "⌚" },
-    { id: "files" as const, label: lang === "fr" ? "FICHIERS" : lang === "es" ? "ARCHIVOS" : "FILES", icon: "⇄" },
-  ], [lang]);
+  const pageTitle = tab === "overview" ? copy.tabs.overview : tab === "performance" ? copy.tabs.performance : tab === "history" ? copy.tabs.history : tab === "gear" ? copy.tabs.gear : tab === "sync" ? copy.tabs.sync : copy.title;
+  const backFromPage = () => {
+    if (tab === "performance" && analysisTab !== "hub") { setAnalysisTab("hub"); return; }
+    if (tab === "sync" && syncTab !== "hub") { setSyncTab("hub"); return; }
+    if (tab !== "hub") { setTab("hub"); return; }
+    go("home");
+  };
 
   return (
     <div className="container" style={{ maxWidth: 620, paddingBottom: 92 }}>
-      <PageHeader title={copy.title} subtitle={`${outdoorSportLabel(activitySport, String(lang || "fr"))} · ${copy.sub}`} left={<BackDot onClick={() => go("home")} />} right={<InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.55 }}>{copy.info}</div>} />} />
-      <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={String(lang || "fr")} accent={accent} compact />
-      <RunningTabs items={tabs} value={tab} onChange={setTab} accent={accent} sticky />
+      <PageHeader title={pageTitle} subtitle={`${outdoorSportLabel(activitySport, String(lang || "fr"))}${tab === "hub" ? ` · ${copy.sub}` : ""}`} left={<BackDot onClick={backFromPage} />} right={<InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.55 }}>{copy.info}</div>} />} />
+      {tab === "hub" ? <>
+        <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={String(lang || "fr")} accent={accent} compact />
+        <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+          <RunningHubCard title={copy.tabs.overview} subtitle={lang === "fr" ? "Synthèse, semaine et charge d’entraînement" : lang === "es" ? "Resumen, semana y carga de entrenamiento" : "Summary, week and training load"} icon={<RunningGlyph name="chart" size={20}/>} accent={accent} onClick={() => setTab("overview")}/>
+          <RunningHubCard title={copy.tabs.performance} subtitle={lang === "fr" ? "Records, forme et terrain" : lang === "es" ? "Récords, forma y terreno" : "Records, fitness and terrain"} icon={<RunningGlyph name="spark" size={20}/>} accent={accent} onClick={() => { setAnalysisTab("hub"); setTab("performance"); }}/>
+          <RunningHubCard title={copy.tabs.history} subtitle={lang === "fr" ? "Calendrier et dernières activités" : lang === "es" ? "Calendario y últimas actividades" : "Calendar and recent activities"} icon={<RunningGlyph name="history" size={20}/>} accent={accent} onClick={() => setTab("history")} badge={activities.length || undefined}/>
+          <RunningHubCard title={copy.tabs.gear} subtitle={lang === "fr" ? "Chaussures et kilométrage" : lang === "es" ? "Zapatillas y kilometraje" : "Shoes and mileage"} icon={<RunningGlyph name="shoe" size={20}/>} accent={accent} onClick={() => setTab("gear")} badge={shoes.length || undefined}/>
+          <RunningHubCard title={copy.tabs.sync} subtitle={lang === "fr" ? "Capteurs, Health Connect et fichiers" : lang === "es" ? "Sensores, Health Connect y archivos" : "Sensors, Health Connect and files"} icon={<RunningGlyph name="sensor" size={20}/>} accent={accent} onClick={() => { setSyncTab("hub"); setTab("sync"); }}/>
+        </div>
+      </> : null}
 
       {tab === "overview" ? <>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
@@ -133,7 +128,11 @@ export default function RunningStatsPage({ go, params }: Props) {
       </> : null}
 
       {tab === "performance" ? <>
-        <RunningTabs items={analysisTabs} value={analysisTab} onChange={setAnalysisTab} accent={accent} />
+        {analysisTab === "hub" ? <div style={{ display: "grid", gap: 9 }}>
+          <RunningHubCard title={lang === "fr" ? "RECORDS" : lang === "es" ? "RÉCORDS" : "RECORDS"} subtitle={copy.predictions} icon={<RunningGlyph name="goal" size={19}/>} accent={accent} onClick={() => setAnalysisTab("records")}/>
+          <RunningHubCard title={lang === "fr" ? "FORME" : lang === "es" ? "FORMA" : "FORM"} subtitle={lang === "fr" ? "Charge, capteurs et tendances" : lang === "es" ? "Carga, sensores y tendencias" : "Load, sensors and trends"} icon={<RunningGlyph name="heart" size={19}/>} accent={accent} onClick={() => setAnalysisTab("form")}/>
+          <RunningHubCard title={lang === "fr" ? "TERRAIN" : lang === "es" ? "TERRENO" : "TERRAIN"} subtitle={lang === "fr" ? "Relief, côtes et endurance outdoor" : lang === "es" ? "Desnivel, cuestas y resistencia outdoor" : "Elevation, hills and outdoor endurance"} icon={<RunningGlyph name="sport-trail" size={19}/>} accent={accent} onClick={() => setAnalysisTab("terrain")}/>
+        </div> : <RunningSubpageHeader title={analysisTab === "records" ? (lang === "fr" ? "RECORDS" : lang === "es" ? "RÉCORDS" : "RECORDS") : analysisTab === "form" ? (lang === "fr" ? "FORME" : lang === "es" ? "FORMA" : "FORM") : (lang === "fr" ? "TERRAIN" : lang === "es" ? "TERRENO" : "TERRAIN")} accent={accent} onBack={() => setAnalysisTab("hub")}/>} 
 
         {analysisTab === "records" ? <>
           <RunningSurface accent={accent} active>
@@ -190,7 +189,10 @@ export default function RunningStatsPage({ go, params }: Props) {
       </RunningSurface> : null}
 
       {tab === "sync" ? <>
-        <RunningTabs items={syncTabs} value={syncTab} onChange={setSyncTab} accent={accent} />
+        {syncTab === "hub" ? <div style={{ display: "grid", gap: 9 }}>
+          <RunningHubCard title={lang === "fr" ? "CAPTEURS & APPLIS" : lang === "es" ? "SENSORES Y APPS" : "SENSORS & APPS"} subtitle={lang === "fr" ? "BLE, Health Connect, Garmin et connexions" : lang === "es" ? "BLE, Health Connect, Garmin y conexiones" : "BLE, Health Connect, Garmin and connections"} icon={<RunningGlyph name="sensor" size={19}/>} accent={accent} onClick={() => setSyncTab("connections")}/>
+          <RunningHubCard title={lang === "fr" ? "FICHIERS" : lang === "es" ? "ARCHIVOS" : "FILES"} subtitle="FIT · GPX · TCX" icon={<RunningGlyph name="files" size={19}/>} accent={accent} onClick={() => setSyncTab("files")}/>
+        </div> : <RunningSubpageHeader title={syncTab === "connections" ? (lang === "fr" ? "CAPTEURS & APPLIS" : lang === "es" ? "SENSORES Y APPS" : "SENSORS & APPS") : (lang === "fr" ? "FICHIERS" : lang === "es" ? "ARCHIVOS" : "FILES")} accent={accent} onBack={() => setSyncTab("hub")}/>} 
         {syncTab === "connections" ? <RunningSurface accent={accent} active><RunningConnectionsPanel lang={String(lang || "fr")} accent={accent} textSoft={textSoft} onActivitiesChanged={refreshActivities} /></RunningSurface> : null}
         {syncTab === "files" ? <RunningSurface accent={accent} active><RunningDataToolsPanel activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} onActivitiesChanged={refreshActivities} selectedSport={activitySport} /></RunningSurface> : null}
       </> : null}

@@ -11,13 +11,13 @@ import type { RunningPlanSession, RunningPlanState } from "../../activity/runnin
 import RunningGoalView from "./RunningGoalView";
 import RunningPlanView from "./RunningPlanView";
 import RunningRaceCalendarView from "./RunningRaceCalendarView";
-import { RunningSurface, RunningTabs } from "./RunningUi";
+import { RunningGlyph, RunningHubCard, RunningSurface } from "./RunningUi";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import OutdoorActivityPlanPanel from "./OutdoorActivityPlanPanel";
 import { loadOutdoorPerformanceSport, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 
 type Props = { go: (route: any, params?: any) => void };
-type PlanTab = "goal" | "program" | "races";
+type PlanTab = "hub" | "goal" | "program" | "races";
 
 export default function RunningPlanCenter({ go }: Props) {
   const { theme } = useTheme();
@@ -27,7 +27,7 @@ export default function RunningPlanCenter({ go }: Props) {
   const textSoft = (theme as any)?.textSoft || "#a8a8b3";
   const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => loadOutdoorPerformanceSport());
   const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
-  const [tab, setTab] = React.useState<PlanTab>("goal");
+  const [tab, setTab] = React.useState<PlanTab>("hub");
 
   React.useEffect(() => { saveOutdoorPerformanceSport(activitySport); void listActivities(activitySport).then(setActivities); }, [activitySport]);
 
@@ -50,34 +50,39 @@ export default function RunningPlanCenter({ go }: Props) {
     });
   }, [go]);
 
-  const tabs = React.useMemo(() => [
-    { id: "goal" as const, label: copy.goal, icon: "🎯" },
-    { id: "program" as const, label: copy.program, icon: "📈" },
-    { id: "races" as const, label: copy.races, icon: "🏁" },
-  ], [copy.goal, copy.program, copy.races]);
+
+
+  const pageTitle = tab === "goal" ? copy.goal : tab === "program" ? copy.program : tab === "races" ? copy.races : copy.title;
+  const pageSubtitle = tab === "hub" ? `${outdoorSportLabel(activitySport, String(lang || "fr"))} · ${copy.sub}` : outdoorSportLabel(activitySport, String(lang || "fr"));
 
   return (
     <div className="container" style={{ maxWidth: 620, paddingBottom: 92 }}>
       <PageHeader
-        title={copy.title}
-        subtitle={`${outdoorSportLabel(activitySport, String(lang || "fr"))} · ${copy.sub}`}
-        left={<BackDot onClick={() => go("home")} />}
+        title={pageTitle}
+        subtitle={pageSubtitle}
+        left={<BackDot onClick={() => tab === "hub" ? go("home") : setTab("hub")} />}
         right={<InfoDot title={copy.title} color={accent} glow={`${accent}88`} content={<div style={{ lineHeight: 1.55 }}>{copy.info}</div>} />}
       />
-      <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={String(lang || "fr")} accent={accent} compact />
 
-      {activitySport === "running" ? <RunningTabs items={tabs} value={tab} onChange={setTab} accent={accent} sticky /> : null}
+      {tab === "hub" ? <>
+        <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={String(lang || "fr")} accent={accent} compact />
+        {activitySport === "running" ? <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+          <RunningHubCard title={copy.goal} subtitle={copy.goalHint} icon={<RunningGlyph name="goal" size={20}/>} accent={accent} onClick={() => setTab("goal")}/>
+          <RunningHubCard title={copy.program} subtitle={copy.programHint} icon={<RunningGlyph name="training" size={20}/>} accent={accent} onClick={() => setTab("program")}/>
+          <RunningHubCard title={copy.races} subtitle={copy.racesHint} icon={<RunningGlyph name="history" size={20}/>} accent={accent} onClick={() => setTab("races")}/>
+        </div> : <OutdoorActivityPlanPanel sport={activitySport} activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} onStart={(presetId) => go("games", { runningPresetId: presetId, runningActivitySport: activitySport })} />}
+      </> : null}
 
       {activitySport === "running" && tab === "goal" ? (
         <RunningSurface accent={accent} active>
-          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>🎯 {copy.goalHint}</div>
+          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>{copy.goalHint}</div>
           <RunningGoalView stats={stats} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
         </RunningSurface>
       ) : null}
 
       {activitySport === "running" && tab === "program" ? (
         <RunningSurface accent={accent} active style={{ background: "linear-gradient(180deg,rgba(8,10,16,.985),rgba(4,6,11,.975))" }}>
-          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>📈 {copy.programHint}</div>
+          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>{copy.programHint}</div>
           <RunningPlanView
             activities={activities}
             lang={String(lang || "fr")}
@@ -90,12 +95,11 @@ export default function RunningPlanCenter({ go }: Props) {
 
       {activitySport === "running" && tab === "races" ? (
         <RunningSurface accent={accent} active style={{ background: "linear-gradient(180deg,rgba(8,10,16,.985),rgba(4,6,11,.975))" }}>
-          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>🏁 {copy.racesHint}</div>
+          <div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .7, marginBottom: 8 }}>{copy.racesHint}</div>
           <RunningRaceCalendarView lang={String(lang || "fr")} accent={accent} textSoft={textSoft} />
         </RunningSurface>
       ) : null}
 
-      {activitySport !== "running" ? <OutdoorActivityPlanPanel sport={activitySport} activities={activities} lang={String(lang || "fr")} accent={accent} textSoft={textSoft} onStart={(presetId) => go("games", { runningPresetId: presetId, runningActivitySport: activitySport })} /> : null}
     </div>
   );
 }

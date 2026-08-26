@@ -1,6 +1,7 @@
 import { haversineMeters } from "./activityMath";
 import type { GeoPoint } from "./activityTypes";
 import type { OutdoorPerformanceSport } from "./outdoorPerformance";
+import { enrichOutdoorRoutesElevation, routeHasElevation } from "./outdoorRouteElevation";
 import type { RunningRouteTemplate } from "./runningRoutes";
 
 export type OutdoorRouteGenerationCenter = { lat: number; lon: number };
@@ -14,6 +15,8 @@ export type OutdoorRouteGenerationRequest = {
   profile?: OutdoorRouteGenerationProfile;
   shape?: OutdoorRouteGenerationShape;
   count?: number;
+  elevationGainMinM?: number | null;
+  elevationGainMaxM?: number | null;
 };
 
 export type OutdoorRouteGenerationResult = {
@@ -23,6 +26,12 @@ export type OutdoorRouteGenerationResult = {
   provider: "openstreetmap-overpass-local-router";
   networkNodeCount: number;
   networkEdgeCount: number;
+  elevationTarget?: {
+    minGainM: number;
+    maxGainM: number;
+    matchedCount: number;
+    closestGainM: number | null;
+  };
 };
 
 type OsmWay = {
@@ -456,9 +465,26 @@ function dedupeCandidates(candidates: Candidate[]) {
       return midpointDistance < 180 && distanceRatio < 0.08;
     });
     if (!duplicate) output.push(candidate);
-    if (output.length >= 8) break;
+    if (output.length >= 12) break;
   }
   return output;
+}
+
+export function normalizeOutdoorElevationTarget(minValue?: number | null, maxValue?: number | null) {
+  const hasMin = minValue != null && Number.isFinite(Number(minValue));
+  const hasMax = maxValue != null && Number.isFinite(Number(maxValue));
+  if (!hasMin && !hasMax) return null;
+  let minGainM = clamp(Math.round(hasMin ? Number(minValue) : 0), 0, 5000);
+  let maxGainM = clamp(Math.round(hasMax ? Number(maxValue) : Math.max(minGainM, 5000)), 0, 5000);
+  if (maxGainM < minGainM) [minGainM, maxGainM] = [maxGainM, minGainM];
+  return { minGainM, maxGainM };
+}
+
+export function outdoorElevationTargetError(gainM: number, minGainM: number, maxGainM: number) {
+  const gain = Math.max(0, Number(gainM || 0));
+  if (gain < minGainM) return minGainM - gain;
+  if (gain > maxGainM) return gain - maxGainM;
+  return 0;
 }
 
 function labelProfile(profile: OutdoorRouteGenerationProfile) {
@@ -499,6 +525,7 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
   const profile = request.profile || (sport === "trail" || sport === "hiking" ? "trails" : "balanced");
   const shape = request.shape || "loop";
   const count = clamp(Math.round(request.count || 3), 1, 5);
+  const elevationTarget = normalizeOutdoorElevationTarget(request.elevationGainMinM, request.elevationGainMaxM);
   const radiusM = generationRadiusM(distanceKm, shape);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 30000);
@@ -513,11 +540,12 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
     const rawCandidates = shape === "out-back"
       ? buildOutBackCandidates(graph, center, start.node.key, targetDistanceM)
       : buildLoopCandidates(graph, center, start.node.key, targetDistanceM);
-    const candidates = dedupeCandidates(rawCandidates).slice(0, count);
+    const candidatePoolSize = elevationTarget ? Math.min(12, Math.max(8, count * 3)) : count;
+    const candidates = dedupeCandidates(rawCandidates).slice(0, candidatePoolSize);
     if (!candidates.length) throw new Error("Impossible de construire un parcours cohérent ici. Essaie une autre distance ou le mode aller-retour.");
 
     const now = Date.now();
-    const routes = candidates.map((candidate, index): RunningRouteTemplate => {
+    let routes = candidates.map((candidate, index): RunningRouteTemplate => {
       const distanceM = candidate.distanceM;
       const deviationPct = targetDistanceM > 0 ? Math.abs(distanceM - targetDistanceM) / targetDistanceM * 100 : 0;
       return {
@@ -539,9 +567,56 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
           distanceErrorPct: Math.round(deviationPct * 10) / 10,
           trailSharePct: Math.round(candidate.trailSharePct),
           overlapPct: Math.round(candidate.overlapPct),
+          elevationGainMinM: elevationTarget?.minGainM,
+          elevationGainMaxM: elevationTarget?.maxGainM,
         },
       };
     });
+
+    let elevationTargetResult: OutdoorRouteGenerationResult["elevationTarget"] | undefined;
+    if (elevationTarget) {
+      const enriched = await enrichOutdoorRoutesElevation(routes, 4);
+      const available = enriched.filter(routeHasElevation);
+      if (!available.length) throw new Error("Le relief n'a pas pu être calculé. Réessaie dans quelques secondes ou génère sans contrainte de D+.");
+      const scale = Math.max(120, (elevationTarget.maxGainM - elevationTarget.minGainM) / 2, (elevationTarget.minGainM + elevationTarget.maxGainM) * 0.12);
+      routes = enriched
+        .filter(routeHasElevation)
+        .map((route) => {
+          const gainM = Math.max(0, Math.round(Number(route.elevationGainM || 0)));
+          const elevationErrorM = outdoorElevationTargetError(gainM, elevationTarget.minGainM, elevationTarget.maxGainM);
+          const matched = elevationErrorM === 0;
+          const distancePenalty = Math.max(0, Number(route.generation?.distanceErrorPct || 0)) / 100;
+          const elevationPenalty = elevationErrorM / scale;
+          const rankingScore = distancePenalty + elevationPenalty * 1.65;
+          return {
+            route: {
+              ...route,
+              name: `${route.name} · D+ ${gainM} m`,
+              generation: route.generation ? {
+                ...route.generation,
+                elevationErrorM: Math.round(elevationErrorM),
+                elevationTargetMatched: matched,
+                elevationSource: "open-meteo-copernicus-dem" as const,
+              } : route.generation,
+            },
+            rankingScore,
+            matched,
+            gainM,
+          };
+        })
+        .sort((a, b) => Number(b.matched) - Number(a.matched) || a.rankingScore - b.rankingScore)
+        .map((item) => item.route);
+      const matchedCount = routes.filter((route) => route.generation?.elevationTargetMatched).length;
+      const closest = routes[0];
+      elevationTargetResult = {
+        minGainM: elevationTarget.minGainM,
+        maxGainM: elevationTarget.maxGainM,
+        matchedCount,
+        closestGainM: closest ? Math.round(Number(closest.elevationGainM || 0)) : null,
+      };
+    }
+
+    routes = routes.slice(0, count);
 
     return {
       routes,
@@ -550,6 +625,7 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
       provider: "openstreetmap-overpass-local-router",
       networkNodeCount: graph.nodes.size,
       networkEdgeCount: graph.edgeCount,
+      elevationTarget: elevationTargetResult,
     };
   } catch (error: any) {
     if (error?.name === "AbortError") throw new Error("La génération a expiré. Réessaie avec une distance plus courte ou dans quelques secondes.");

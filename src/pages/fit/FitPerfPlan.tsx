@@ -2,50 +2,100 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
-import { FIT_TEMPLATES } from "../../fit/fitStore";
-import { FitGlassCard, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell } from "./FitPerfUi";
+import { FIT_EXERCISES, FIT_TEMPLATES, type FitExercise } from "../../fit/fitStore";
+import FitExerciseMotion from "./FitExerciseMotion";
+import { FitGlassCard, FitIcon, FitIconTabs, FitPageHeader, FitPill, FitPrimaryButton, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void };
+type Tab = "library" | "muscles" | "favorites" | "programs" | "guides";
+const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
+
+function readFavorites(): string[] {
+  try { const raw = JSON.parse(localStorage.getItem(FAVORITES_KEY) || "[]"); return Array.isArray(raw) ? raw.map(String) : []; } catch { return []; }
+}
+function saveFavorites(ids: string[]) { try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids)); } catch {} }
 
 export default function FitPerfPlan({ go }: Props) {
   const { theme } = useTheme();
   const langApi = useLang() as any;
   const lang = String(langApi?.lang || "fr").toLowerCase();
+  const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
-  const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
-  const [selected, setSelected] = React.useState("ppl");
+  const [tab, setTab] = React.useState<Tab>("library");
+  const [search, setSearch] = React.useState("");
+  const [muscle, setMuscle] = React.useState("Tous");
+  const [selected, setSelected] = React.useState<FitExercise | null>(FIT_EXERCISES[0] || null);
+  const [favorites, setFavorites] = React.useState<string[]>(readFavorites);
 
-  const programs = [
-    { id: "ppl", name: "PUSH / PULL / LEGS", level: t("INTERMÉDIAIRE", "INTERMEDIATE", "INTERMEDIO"), days: 3, accent, description: t("Structure simple et efficace sur 3 séances. Idéale pour progresser en volume et en régularité.", "Simple, effective 3-session structure. Ideal for volume and consistency.", "Estructura simple y eficaz de 3 sesiones. Ideal para volumen y regularidad."), schedule: ["PUSH", "PULL", "LEGS"] },
-    { id: "upperlower", name: "UPPER / LOWER", level: t("DÉBUTANT +", "BEGINNER +", "PRINCIPIANTE +"), days: 4, accent: "#76e4f7", description: t("Deux séances haut du corps et deux séances bas du corps pour une fréquence équilibrée.", "Two upper and two lower sessions for balanced frequency.", "Dos sesiones de tren superior y dos de tren inferior para frecuencia equilibrada."), schedule: ["UPPER", "LOWER", "UPPER", "LOWER"] },
-    { id: "strength", name: "FORCE 5×5", level: t("FORCE", "STRENGTH", "FUERZA"), days: 3, accent: "#b59cff", description: t("Priorité aux mouvements polyarticulaires, charges progressives et récupération plus longue.", "Focus on compound lifts, progressive loads and longer recovery.", "Prioridad a movimientos compuestos, cargas progresivas y recuperación larga."), schedule: ["A", "B", "A/B"] },
-  ];
-  const current = programs.find((program) => program.id === selected) || programs[0]!;
+  const toggleFavorite = (id: string) => {
+    setFavorites((current) => {
+      const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+      saveFavorites(next);
+      return next;
+    });
+  };
+
+  const filtered = FIT_EXERCISES.filter((exercise) => {
+    const q = search.trim().toLowerCase();
+    const matchesQ = !q || `${exercise.name} ${exercise.muscle} ${exercise.equipment}`.toLowerCase().includes(q);
+    const matchesMuscle = muscle === "Tous" || exercise.muscle === muscle;
+    const matchesFav = tab !== "favorites" || favorites.includes(exercise.id);
+    return matchesQ && matchesMuscle && matchesFav;
+  });
+  const muscles = ["Tous", ...Array.from(new Set(FIT_EXERCISES.map((e) => e.muscle)))];
 
   return <div style={{ minHeight: "100%", color: "#fff", background: (theme as any)?.pageBackground || (theme as any)?.bg || "#05060b" }}>
     <FitShell>
-      <FitGlassCard accent={accent} style={{ marginTop: 8, padding: 18, borderRadius: 26, background: "linear-gradient(145deg,rgba(8,11,17,.98),rgba(16,19,29,.97))" }}>
-        <FitPill accent={accent}>FIT PERF · PROGRAMMES</FitPill>
-        <div style={{ marginTop: 10, fontSize: 28, fontWeight: 1000, letterSpacing: -1 }}>{t("Structure ta progression", "Structure your progress", "Estructura tu progreso")}</div>
-        <div style={{ marginTop: 6, color: textSoft, fontSize: 10.5, lineHeight: 1.45 }}>{t("Cette première version prépare déjà le centre de programmes. Les modèles ci-dessous lancent directement les séances FIT PERF correspondantes.", "This first version already lays out the program center. Templates below launch the matching FIT PERF workouts directly.", "Esta primera versión ya prepara el centro de programas. Los modelos inician directamente las sesiones FIT PERF correspondientes.")}</div>
-      </FitGlassCard>
+      <style>{fitUiCss}</style>
+      <FitPageHeader eyebrow="FIT PERF" title={t("EXERCICES", "EXERCISES", "EJERCICIOS")} accent={accent}>
+        <div style={{ marginTop: 8, color: textSoft, fontSize: 10, textAlign: "center" }}>{t("Bibliothèque · programmes · guides · AWENA COACH", "Library · programs · guides · AWENA COACH", "Biblioteca · programas · guías · AWENA COACH")}</div>
+      </FitPageHeader>
 
-      <FitSectionTitle eyebrow={t("PROGRAMMES", "PROGRAMS", "PROGRAMAS")} title={t("Choisir une structure", "Choose a structure", "Elegir una estructura")} />
-      <div style={{ display: "grid", gap: 9 }}>
-        {programs.map((program) => <button key={program.id} type="button" onClick={() => setSelected(program.id)} style={{ textAlign: "left", color: "#fff", borderRadius: 18, padding: 13, border: `1px solid ${selected === program.id ? program.accent + "77" : "rgba(255,255,255,.08)"}`, background: selected === program.id ? `linear-gradient(145deg,${program.accent}18,rgba(255,255,255,.025))` : "linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))", cursor: "pointer" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><div><div style={{ color: program.accent, fontSize: 9, fontWeight: 1000, letterSpacing: 1 }}>{program.level}</div><div style={{ marginTop: 4, fontSize: 14, fontWeight: 1000 }}>{program.name}</div></div><FitPill accent={program.accent}>{program.days} J / SEM.</FitPill></div><div style={{ marginTop: 7, color: textSoft, fontSize: 9.5, lineHeight: 1.45 }}>{program.description}</div></button>)}
-      </div>
+      <FitIconTabs<Tab> value={tab} onChange={setTab} accent={accent} items={[
+        { id: "library", label: t("Bibliothèque", "Library", "Biblioteca"), icon: "library" },
+        { id: "muscles", label: t("Muscles", "Muscles", "Músculos"), icon: "muscles" },
+        { id: "favorites", label: t("Favoris", "Favorites", "Favoritos"), icon: "favorite", badge: favorites.length || undefined },
+        { id: "programs", label: t("Programmes", "Programs", "Programas"), icon: "program" },
+        { id: "guides", label: t("Guides", "Guides", "Guías"), icon: "guide" },
+      ]}/>
 
-      <FitSectionTitle eyebrow={t("APERÇU", "PREVIEW", "VISTA PREVIA")} title={current.name} right={<FitPill accent={current.accent}>{current.level}</FitPill>} />
-      <FitGlassCard accent={current.accent} style={{ padding: 14 }}>
-        <div style={{ display: "grid", gap: 8 }}>{current.schedule.map((day, index) => <div key={`${day}-${index}`} style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", minHeight: 58, padding: "8px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.025)" }}><div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", background: `${current.accent}12`, border: `1px solid ${current.accent}38`, color: current.accent, fontWeight: 1000 }}>J{index + 1}</div><div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{day}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 9 }}>{t("Séance planifiée", "Planned workout", "Sesión planificada")}</div></div><span style={{ color: current.accent, fontWeight: 1000 }}>›</span></div>)}</div>
-        <div style={{ marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", color: textSoft, fontSize: 9.5, marginBottom: 6 }}><span>{t("Progression hebdomadaire", "Weekly progression", "Progresión semanal")}</span><b style={{ color: current.accent }}>0%</b></div><FitProgress value={0} accent={current.accent} /></div>
-      </FitGlassCard>
+      {(tab === "library" || tab === "muscles" || tab === "favorites") ? <>
+        <FitGlassCard accent={accent} style={{ padding: 10 }}>
+          <div style={{ position: "relative" }}><span style={{ position: "absolute", left: 11, top: 11, color: textSoft }}><FitIcon name="search" size={18}/></span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Rechercher un exercice, muscle, matériel…", "Search exercise, muscle, equipment…", "Buscar ejercicio, músculo, material…")} style={{ width: "100%", minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.075)", background: "rgba(255,255,255,.035)", color: "#fff", padding: "0 12px 0 38px", boxSizing: "border-box", outline: "none" }}/></div>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 8, paddingBottom: 2 }}>{muscles.map((item) => <button key={item} type="button" onClick={() => setMuscle(item)} style={{ flex: "0 0 auto", minHeight: 31, borderRadius: 999, border: `1px solid ${muscle === item ? accent + "77" : "rgba(255,255,255,.07)"}`, background: muscle === item ? `${accent}14` : "rgba(255,255,255,.02)", color: muscle === item ? accent : "rgba(255,255,255,.7)", padding: "0 10px", fontSize: 8.5, fontWeight: 900 }}>{item}</button>)}</div>
+        </FitGlassCard>
 
-      <FitSectionTitle eyebrow={t("SÉANCES", "WORKOUTS", "SESIONES")} title={t("Lancer un jour du programme", "Launch a program day", "Iniciar un día del programa")} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
-        {FIT_TEMPLATES.map((template) => <FitGlassCard key={template.id} accent={template.accent} style={{ padding: 12 }}><div style={{ width: 34, height: 34, borderRadius: 11, display: "grid", placeItems: "center", color: template.accent, background: `${template.accent}12`, border: `1px solid ${template.accent}38`, fontWeight: 1000 }}>{template.icon}</div><div style={{ marginTop: 8, fontSize: 11.5, fontWeight: 1000 }}>{template.name}</div><div style={{ minHeight: 28, marginTop: 4, color: textSoft, fontSize: 8.8, lineHeight: 1.35 }}>{template.subtitle}</div><FitPrimaryButton onClick={() => go("games", { fitTemplateId: template.id })} accent={template.accent} style={{ width: "100%", minHeight: 38, marginTop: 9, fontSize: 9 }}>▶ {t("LANCER", "START", "INICIAR")}</FitPrimaryButton></FitGlassCard>)}
-      </div>
+        {selected && filtered.some((e) => e.id === selected.id) ? <div style={{ marginTop: 10 }}><FitExerciseMotion exercise={selected}/></div> : null}
+
+        <FitSectionTitle eyebrow={t("BIBLIOTHÈQUE FIT PERF", "FIT PERF LIBRARY", "BIBLIOTECA FIT PERF")} title={`${filtered.length} ${t("exercices", "exercises", "ejercicios")}`} right={<FitPill accent="#72def4">AWENA COACH</FitPill>}/>
+        <div style={{ display: "grid", gap: 8 }}>
+          {filtered.map((exercise) => {
+            const active = selected?.id === exercise.id;
+            const fav = favorites.includes(exercise.id);
+            return <FitGlassCard key={exercise.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: active ? `${exercise.accent}66` : undefined }}>
+              <div role="button" tabIndex={0} onClick={() => setSelected(exercise)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(exercise); }} style={{ width: "100%", display: "grid", gridTemplateColumns: "45px 1fr auto", gap: 10, alignItems: "center", padding: 11, border: 0, background: "transparent", color: "#fff", textAlign: "left", cursor: "pointer", boxSizing: "border-box" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 13, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}12`, border: `1px solid ${exercise.accent}36`, fontSize: 19, fontWeight: 1000 }}>{exercise.icon}</div>
+                <div style={{ minWidth: 0 }}><div style={{ color: exercise.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .8 }}>{exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{exercise.name}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.5 }}>{exercise.equipment}{exercise.secondary?.length ? ` · ${exercise.secondary.join(" · ")}` : ""}</div></div>
+                <button type="button" aria-label={fav ? "Retirer des favoris" : "Ajouter aux favoris"} onClick={(event) => { event.stopPropagation(); toggleFavorite(exercise.id); }} style={{ width: 35, height: 35, borderRadius: 11, display: "grid", placeItems: "center", border: `1px solid ${fav ? exercise.accent + "66" : "rgba(255,255,255,.07)"}`, background: fav ? `${exercise.accent}12` : "rgba(255,255,255,.025)", color: fav ? exercise.accent : textSoft }}><FitIcon name="favorite" size={17}/></button>
+              </div>
+              {active ? <div style={{ padding: "0 11px 11px" }}><FitExerciseMotion exercise={exercise} compact/><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 8 }}><FitPrimaryButton accent={exercise.accent} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: exercise.id })} style={{ minHeight: 40, fontSize: 9.5 }}>{t("AJOUTER À UNE SÉANCE", "ADD TO WORKOUT", "AÑADIR A SESIÓN")}</FitPrimaryButton><button type="button" onClick={() => setTab("guides")} style={{ minHeight: 40, borderRadius: 13, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.035)", color: "#fff", fontWeight: 900, fontSize: 9.5 }}>{t("VOIR LE GUIDE", "VIEW GUIDE", "VER GUÍA")}</button></div></div> : null}
+            </FitGlassCard>;
+          })}
+          {!filtered.length ? <FitGlassCard accent={accent} style={{ padding: 24, textAlign: "center", color: textSoft }}>{tab === "favorites" ? t("Aucun exercice favori pour le moment.", "No favorite exercise yet.", "Aún no hay ejercicios favoritos.") : t("Aucun exercice ne correspond à ta recherche.", "No exercise matches your search.", "Ningún ejercicio coincide con tu búsqueda.")}</FitGlassCard> : null}
+        </div>
+      </> : null}
+
+      {tab === "programs" ? <>
+        <FitSectionTitle eyebrow={t("PROGRAMMES", "PROGRAMS", "PROGRAMAS")} title={t("Choisis une structure de séance", "Choose a workout structure", "Elige una estructura")}/>
+        <div style={{ display: "grid", gap: 9 }}>{FIT_TEMPLATES.map((program) => <FitGlassCard key={program.id} accent={program.accent} style={{ padding: 13 }}><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 44, height: 44, borderRadius: 14, display: "grid", placeItems: "center", color: program.accent, background: `${program.accent}12`, border: `1px solid ${program.accent}38`, fontWeight: 1000 }}>{program.icon}</div><div><div style={{ color: program.accent, fontSize: 13, fontWeight: 1000 }}>{program.name}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 9 }}>{program.subtitle}</div><div style={{ marginTop: 5, color: "rgba(255,255,255,.65)", fontSize: 8.5 }}>{program.exerciseIds.length} {t("exercices", "exercises", "ejercicios")}</div></div><button type="button" onClick={() => go("games", { fitTemplateId: program.id })} style={{ width: 42, height: 42, borderRadius: 13, border: `1px solid ${program.accent}66`, background: `${program.accent}12`, color: program.accent, cursor: "pointer" }}>▶</button></div></FitGlassCard>)}</div>
+      </> : null}
+
+      {tab === "guides" ? <>
+        <FitSectionTitle eyebrow="AWENA COACH" title={t("Guides d’exécution", "Execution guides", "Guías de ejecución")}/>
+        <FitGlassCard accent="#72def4" style={{ padding: 14 }}><div style={{ display: "grid", gridTemplateColumns: "48px 1fr", gap: 10, alignItems: "center" }}><div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", color: "#72def4", background: "rgba(114,222,244,.10)", border: "1px solid rgba(114,222,244,.30)" }}><FitIcon name="coach" size={24}/></div><div><div style={{ fontSize: 12, fontWeight: 1000 }}>{t("Animations AWENA prêtes à être branchées", "AWENA animations ready to plug in", "Animaciones AWENA listas para integrar")}</div><div style={{ marginTop: 4, color: textSoft, fontSize: 9, lineHeight: 1.45 }}>{t("Chaque exercice cherche automatiquement son WebP animé dans /public/fit/motions/awena/. Tant que le fichier n’existe pas, un fallback Awena s’affiche sans casser la page.", "Each exercise automatically loads its animated WebP from /public/fit/motions/awena/. Until the file exists, an Awena fallback is shown without breaking the page.", "Cada ejercicio carga automáticamente su WebP animado desde /public/fit/motions/awena/. Mientras no exista, se muestra un fallback de Awena sin romper la página.")}</div></div></div></FitGlassCard>
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>{FIT_EXERCISES.slice(0, 10).map((exercise) => <FitGlassCard key={exercise.id} accent={exercise.accent} style={{ padding: 10 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={{ color: exercise.accent, fontSize: 8, fontWeight: 1000 }}>{exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 950 }}>{exercise.name}</div></div><FitPill accent={exercise.accent}>{t("DÉMO", "DEMO", "DEMO")}</FitPill></div><div style={{ marginTop: 8 }}><FitExerciseMotion exercise={exercise} compact/></div></FitGlassCard>)}</div>
+      </> : null}
     </FitShell>
   </div>;
 }

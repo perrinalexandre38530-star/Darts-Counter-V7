@@ -16,7 +16,9 @@ import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
 import OutdoorSafetyPanel from "./OutdoorSafetyPanel";
-import { RunningGlyph, RunningSurface, RunningTabs } from "./RunningUi";
+import OutdoorRoutePhotoGallery from "./OutdoorRoutePhotoGallery";
+import OutdoorRouteCommunityPanel from "./OutdoorRouteCommunityPanel";
+import { RunningGlyph, RunningHubCard, RunningSurface } from "./RunningUi";
 import { useAwenaOptional } from "../../awena/AwenaProvider";
 import { awenaVoice } from "../../awena/AwenaVoice";
 import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPlanSession, type RunningPlanState } from "../../activity/runningTraining";
@@ -25,6 +27,8 @@ import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, s
 import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunningRoutes, removeRunningRoute, routeTemplateFromActivity, upsertRunningRoute, type RunningRouteTemplate } from "../../activity/runningRoutes";
 import { discoverOutdoorRoutes } from "../../activity/outdoorRouteDiscovery";
 import { generateOutdoorRoutes, type OutdoorRouteGenerationProfile, type OutdoorRouteGenerationShape } from "../../activity/outdoorRouteGenerator";
+import { enrichOutdoorRouteElevation, routeHasElevation } from "../../activity/outdoorRouteElevation";
+import { syncOutdoorRouteAttempt } from "../../activity/outdoorRouteCommunity";
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
@@ -41,11 +45,12 @@ import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache
 import { deleteRunningSessionDraft, loadRunningSessionDraft, mergeRunningDraftRoutes, saveRunningSessionDraft, type RunningSessionDraft } from "../../activity/runningSessionDrafts";
 import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
-type SetupTab = "goal" | "training" | "advanced";
+type SetupTab = "menu" | "goal" | "training" | "advanced";
 type SimpleGoalMode = "free" | "distance" | "duration";
-type SetupPanel = "workout" | "route" | "ready";
-type RoutePanelTab = "choose" | "guide" | "offline";
+type SetupPanel = "menu" | "workout" | "route" | "ready";
+type RoutePanelTab = "menu" | "choose" | "guide" | "offline";
 type RouteDetailsTab = "details" | "performance" | "photos";
+type LivePage = "cockpit" | "route" | "splits" | "details";
 type WorkoutType = NonNullable<ActivityRecord["workoutType"]>;
 type WorkoutStep = {
     id: string;
@@ -192,8 +197,8 @@ export default function RunningModule({ go, params }: Props) {
     const initialView: View = params?.runningView === "history" ? "history" : params?.runningView === "records" ? "records" : params?.runningView === "plan" ? "plan" : params?.runningView === "goal" ? "goal" : "setup";
     const initialPreset = String(params?.runningPresetId || (params?.runningTargetM ? "distance" : "free"));
     const [view, setView] = React.useState<View>(initialView);
-    const [setupTab, setSetupTab] = React.useState<SetupTab>(initialPreset === "pacer" || initialPreset === "custom" ? "advanced" : ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(initialPreset) ? "training" : "goal");
-    const [setupPanel, setSetupPanel] = React.useState<SetupPanel>("workout");
+    const [setupTab, setSetupTab] = React.useState<SetupTab>(() => params?.runningPresetId ? (initialPreset === "pacer" || initialPreset === "custom" ? "advanced" : ["easy", "tempo", "intervals", "hills", "long", "recovery"].includes(initialPreset) ? "training" : "goal") : "menu");
+    const [setupPanel, setSetupPanel] = React.useState<SetupPanel>(() => params?.runningPresetId ? "workout" : "menu");
     const [activitySport, setActivitySport] = React.useState<OutdoorPerformanceSport>(() => { const raw = String(params?.runningActivitySport || ""); return (["running","trail","hiking","walking","nordic-walking","treadmill"] as string[]).includes(raw) ? raw as OutdoorPerformanceSport : loadOutdoorPerformanceSport(); });
     const [activities, setActivities] = React.useState<ActivityRecord[]>([]);
     const [selected, setSelected] = React.useState<ActivityRecord | null>(null);
@@ -233,13 +238,19 @@ export default function RunningModule({ go, params }: Props) {
     const [routeGenerationDistanceKm, setRouteGenerationDistanceKm] = React.useState(10);
     const [routeGenerationProfile, setRouteGenerationProfile] = React.useState<OutdoorRouteGenerationProfile>("balanced");
     const [routeGenerationShape, setRouteGenerationShape] = React.useState<OutdoorRouteGenerationShape>("loop");
+    const [routeGenerationElevationEnabled, setRouteGenerationElevationEnabled] = React.useState(false);
+    const [routeGenerationElevationMinM, setRouteGenerationElevationMinM] = React.useState(300);
+    const [routeGenerationElevationMaxM, setRouteGenerationElevationMaxM] = React.useState(600);
     const [routeGenerationBusy, setRouteGenerationBusy] = React.useState(false);
     const [routeGenerationMessage, setRouteGenerationMessage] = React.useState("");
     const [selectedRouteId, setSelectedRouteId] = React.useState<string | null>(null);
     const [routeExtras, setRouteExtras] = React.useState<OutdoorRouteExtras | null>(null);
-    const [routePanelTab, setRoutePanelTab] = React.useState<RoutePanelTab>("choose");
+    const [routePanelTab, setRoutePanelTab] = React.useState<RoutePanelTab>("menu");
     const [routeListOpen, setRouteListOpen] = React.useState(true);
     const [routeDetailsTab, setRouteDetailsTab] = React.useState<RouteDetailsTab>("details");
+    const [routeElevationOverrides, setRouteElevationOverrides] = React.useState<Record<string, RunningRouteTemplate>>({});
+    const [routeElevationMessage, setRouteElevationMessage] = React.useState("");
+    const [livePage, setLivePage] = React.useState<LivePage>("cockpit");
     const [offlineRoutes, setOfflineRoutes] = React.useState<RunningRouteTemplate[]>([]);
     const [ghostEnabled, setGhostEnabled] = React.useState(false);
     const [shoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
@@ -272,6 +283,8 @@ export default function RunningModule({ go, params }: Props) {
     const wrongWayAlertRef = React.useRef(false);
     const turnAnnouncedRef = React.useRef<Set<string>>(new Set());
     const checkpointAnnouncedRef = React.useRef<Set<string>>(new Set());
+    const routeElevationTriedRef = React.useRef<Set<string>>(new Set());
+    const routeSwipeStartXRef = React.useRef<number | null>(null);
     const copy = pickLegacyLocalizedValue(lang, {
         title: "RUNNING PERFORMANCE", setupSub: "Prépare ta séance avant le départ", recordSub: "Session GPS en cours", history: "MES SORTIES", records: "MES RECORDS", setup: "COURIR", quick: "RAPIDE", training: "ENTRAÎNEMENT", pacer: "PACER", selected: "SÉANCE SÉLECTIONNÉE", start: "DÉMARRER", gps: "GPS", gpsCheck: "TESTER LE GPS", gpsReady: "GPS PRÊT", gpsSearching: "RECHERCHE GPS…", gpsLost: "SIGNAL GPS PERDU", gpsUnknown: "GPS À VÉRIFIER", gpsPoor: "SIGNAL FAIBLE", gpsDenied: "LOCALISATION REFUSÉE", gpsHint: "Teste le GPS avant le départ pour éviter une sortie sans tracé.", local: "RUNNING PERFORMANCE — GPS · CARTE · CAPTEURS · HEALTH CONNECT", watches: "MONTRES & CAPTEURS", soon: "BIENTÔT", targetPace: "ALLURE CIBLE", targetDistance: "DISTANCE CIBLE", expected: "TEMPS CIBLE", countdown: "PRÊT ?", go: "GO !",
         distance: "DISTANCE", time: "TEMPS", avgPace: "ALLURE MOY.", livePace: "ALLURE LIVE", speed: "VITESSE", elevation: "DÉNIVELÉ +", accuracy: "PRÉCISION", moving: "TEMPS MOUV.", target: "OBJECTIF", ahead: "EN AVANCE", behind: "EN RETARD", projected: "ARRIVÉE PROJETÉE", phase: "BLOC EN COURS", remaining: "RESTANT", route: "PARCOURS", waiting: "En attente du premier point GPS…", pause: "PAUSE", resume: "REPRENDRE", finish: "TERMINER", cancel: "ANNULER", lap: "TOUR", splits: "SPLITS KM", laps: "TOURS MANUELS", targetReached: "OBJECTIF ATTEINT", insufficient: "Il faut au moins deux points GPS pour enregistrer la sortie.", complete: "SORTIE TERMINÉE", verified: "GPS VÉRIFIÉ", delete: "SUPPRIMER LA SORTIE", empty: "Aucune sortie enregistrée.", noRecord: "Pas encore de record", longestLabel: "PLUS LONGUE", bestEfforts: "MEILLEURS EFFORTS", consistency: "RÉGULARITÉ", negative: "NEGATIVE SPLIT", achievements: "PERFORMANCES DÉBLOQUÉES", firstRun: "PREMIÈRE SORTIE", longestBadge: "PLUS LONGUE SORTIE", personalBest: "NOUVEAU RECORD", filters: ["TOUTES", "LIBRES", "SÉANCES", "PACER"], plan: "PLAN", custom: "SUR MESURE", audioCoach: "COACH VOCAL AWENA", audioCoachSub: "Annonce les blocs, splits et repères de séance pendant la course.", feedback: "RESSENTI APRÈS LA SORTIE", effort: "EFFORT PERÇU", feeling: "SENSATIONS", notes: "NOTES", save: "ENREGISTRER", info: "RUNNING PERFORMANCE regroupe Running, Trail, Randonnée, Marche, Marche nordique et Tapis roulant. Le GPS natif Android écran éteint est désormais câblé pour les tests internes, tandis que le module reste masqué de la Store V1.",
@@ -348,11 +361,11 @@ export default function RunningModule({ go, params }: Props) {
             const key = route.externalId || route.id;
             if (seen.has(key)) continue;
             seen.add(key);
-            unique.push(route);
+            unique.push(routeElevationOverrides[route.id] || route);
             if (unique.length >= 24) break;
         }
         return unique;
-    }, [activities, activitySport, discoveredRoutes, offlineRoutes, savedRoutes]);
+    }, [activities, activitySport, discoveredRoutes, offlineRoutes, routeElevationOverrides, savedRoutes]);
     const selectedRoute = React.useMemo(() => routeOptions.find((route) => route.id === selectedRouteId) || null, [routeOptions, selectedRouteId]);
     const selectedRouteIndex = React.useMemo(() => Math.max(0, routeOptions.findIndex((route) => route.id === selectedRouteId)), [routeOptions, selectedRouteId]);
     const selectedRouteAttempts = React.useMemo(() => {
@@ -376,9 +389,19 @@ export default function RunningModule({ go, params }: Props) {
             return false;
         }).slice().sort((a, b) => Number(a.elapsedMs || 0) - Number(b.elapsedMs || 0));
     }, [activities, selectedRoute]);
-    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteDetailsTab("details"); }, [selectedRoute?.id]);
+    React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); setRouteDetailsTab("details"); setRouteElevationMessage(selectedRoute && routeHasElevation(selectedRoute) ? pickLegacyLocalizedText(lang, "Relief disponible.", "Elevation available.", "Relieve disponible.") : ""); }, [lang, selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
+    const selectedSportRouteDetails = React.useMemo(() => selectedRoute ? buildSportRouteDetails(selectedRoute, selectedTerrain, activitySport, lang) : null, [activitySport, lang, selectedRoute, selectedTerrain]);
+    React.useEffect(() => {
+        if (!selectedRoute || activitySport === "treadmill" || routeHasElevation(selectedRoute) || routeElevationTriedRef.current.has(selectedRoute.id)) return;
+        routeElevationTriedRef.current.add(selectedRoute.id);
+        setRouteElevationMessage(pickLegacyLocalizedText(lang, "Calcul du relief…", "Loading elevation…", "Cargando relieve…"));
+        void enrichOutdoorRouteElevation(selectedRoute).then((enriched) => {
+            setRouteElevationOverrides((current) => ({ ...current, [selectedRoute.id]: enriched }));
+            setRouteElevationMessage(pickLegacyLocalizedText(lang, "Relief calculé · D+, D− et point culminant disponibles.", "Elevation ready · gain, loss and high point available.", "Relieve listo · desnivel y punto más alto disponibles."));
+        }).catch(() => setRouteElevationMessage(pickLegacyLocalizedText(lang, "Relief indisponible pour le moment.", "Elevation unavailable for now.", "Relieve no disponible por ahora.")));
+    }, [activitySport, lang, selectedRoute]);
     const selectedRouteHasReference = !!selectedRoute && Number(selectedRoute.referenceElapsedMs || 0) > 0;
     React.useEffect(() => { if (!selectedRouteHasReference && ghostEnabled) setGhostEnabled(false); }, [ghostEnabled, selectedRouteHasReference]);
     const targetDistanceM = selectedRoute && selectedPresetId === "goal-free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
@@ -442,6 +465,16 @@ export default function RunningModule({ go, params }: Props) {
         if (nextRoute)
             selectRoute(nextRoute);
     }, [routeOptions, selectedRouteIndex]);
+    const onRouteSwipeStart = React.useCallback((event: React.TouchEvent) => { routeSwipeStartXRef.current = event.touches[0]?.clientX ?? null; }, []);
+    const onRouteSwipeEnd = React.useCallback((event: React.TouchEvent) => {
+        const startX = routeSwipeStartXRef.current;
+        routeSwipeStartXRef.current = null;
+        if (startX == null) return;
+        const endX = event.changedTouches[0]?.clientX ?? startX;
+        const delta = endX - startX;
+        if (Math.abs(delta) < 48) return;
+        selectAdjacentRoute(delta < 0 ? 1 : -1);
+    }, [selectAdjacentRoute]);
     const refreshActivities = React.useCallback(async () => setActivities(await listActivities(activitySport)), [activitySport]);
     React.useEffect(() => { void refreshActivities(); }, [refreshActivities]);
     React.useEffect(() => {
@@ -463,6 +496,7 @@ export default function RunningModule({ go, params }: Props) {
         pausedRef.current = !!session.paused;
         setPaused(!!session.paused);
         setIsRecording(true);
+        setLivePage("cockpit");
         setView("record");
         setNow(Date.now());
         patchRunningActiveSession(session.id, { activityId, recoveredAt: Date.now() });
@@ -960,6 +994,7 @@ export default function RunningModule({ go, params }: Props) {
         setNow(startedAtRef.current);
         setPaused(false);
         setIsRecording(true);
+        setLivePage("cockpit");
         setView("record");
         speakCoach(pickLegacyLocalizedText(lang, `Départ. ${presetLabel(effectivePreset, lang)}.`, `Start. ${presetLabel(effectivePreset, lang)}.`, `Salida. ${presetLabel(effectivePreset, lang)}.`));
         if (activitySport === "treadmill") {
@@ -1212,6 +1247,7 @@ export default function RunningModule({ go, params }: Props) {
         if (consistency != null && consistency >= 90)
             badges.push(`${copy.consistency} · ${consistency}%`);
         await saveActivity(record);
+        if (selectedRoute) void syncOutdoorRouteAttempt(selectedRoute, record);
         if (sessionId) {
             removeRunningActiveSession(sessionId);
             clearNativeTrackingOwnerIf(sessionId);
@@ -1308,6 +1344,8 @@ export default function RunningModule({ go, params }: Props) {
                 profile: routeGenerationProfile,
                 shape: routeGenerationShape,
                 count: 3,
+                elevationGainMinM: routeGenerationElevationEnabled ? routeGenerationElevationMinM : null,
+                elevationGainMaxM: routeGenerationElevationEnabled ? routeGenerationElevationMaxM : null,
             });
             setDiscoveredRoutes(result.routes);
             if (result.routes.length) {
@@ -1315,14 +1353,19 @@ export default function RunningModule({ go, params }: Props) {
                 const best = result.routes[0];
                 const generated = best.generation;
                 const trailInfo = generated ? ` · ${generated.trailSharePct}% ${pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos")}` : "";
-                setRouteGenerationMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours générés autour de toi. Le meilleur fait ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`, `${result.routes.length} routes generated around you. Best match is ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`, `${result.routes.length} rutas generadas a tu alrededor. La mejor hace ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`));
+                const elevationInfo = result.elevationTarget
+                    ? result.elevationTarget.matchedCount > 0
+                        ? ` · D+ ${Math.round(best.elevationGainM)} m ✓`
+                        : ` · D+ ${Math.round(best.elevationGainM)} m (${pickLegacyLocalizedText(lang, "plus proche disponible", "closest available", "más cercano disponible")})`
+                    : "";
+                setRouteGenerationMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours générés autour de toi. Le meilleur fait ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}${elevationInfo}.`, `${result.routes.length} routes generated around you. Best match is ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}${elevationInfo}.`, `${result.routes.length} rutas generadas a tu alrededor. La mejor hace ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}${elevationInfo}.`));
             }
         } catch (error: any) {
             setRouteGenerationMessage(error?.message || pickLegacyLocalizedText(lang, "Impossible de générer un parcours ici.", "Unable to generate a route here.", "No se pudo generar una ruta aquí."));
         } finally {
             setRouteGenerationBusy(false);
         }
-    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute]);
+    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationElevationEnabled, routeGenerationElevationMaxM, routeGenerationElevationMinM, routeGenerationProfile, routeGenerationShape, selectRoute]);
     const applyTerrainRecommendation = React.useCallback(() => {
         if (!selectedTerrainAdvice) return;
         selectManualPreset(selectedTerrainAdvice.presetId);
@@ -1365,30 +1408,53 @@ export default function RunningModule({ go, params }: Props) {
     if (view === "record") {
         const deltaGood = paceDelta != null && paceDelta <= 0;
         const gpsFixVerified = activitySport === "treadmill" || (points.length > 0 && gpsMessage !== copy.gpsDenied && gpsMessage !== copy.gpsLost && gpsMessage !== copy.gpsSearching);
+        const liveHr = sensorSnapshot.heartRateBpm ? `${sensorSnapshot.heartRateBpm} bpm` : "—";
+        const liveCadence = sensorSnapshot.cadenceSpm ? `${sensorSnapshot.cadenceSpm} spm` : "—";
+        const treadmillSpeed = (sensorSnapshot.treadmillSpeedMps ?? sensorSnapshot.sensorSpeedMps ?? manualTreadmillSpeedKmh / 3.6) * 3.6;
+        const treadmillIncline = sensorSnapshot.inclinePercent ?? manualTreadmillIncline;
+        const routeRemainingM = selectedRoute ? Math.max(0, selectedRoute.distanceM - liveDistance) : null;
+        const liveTitle = livePage === "route" ? (activitySport === "treadmill" ? pickLegacyLocalizedText(lang, "SÉANCE LIVE", "LIVE WORKOUT", "SESIÓN LIVE") : pickLegacyLocalizedText(lang, "NAVIGATION", "NAVIGATION", "NAVEGACIÓN")) : livePage === "splits" ? pickLegacyLocalizedText(lang, "SPLITS & TOURS", "SPLITS & LAPS", "SPLITS Y VUELTAS") : livePage === "details" ? pickLegacyLocalizedText(lang, "DÉTAILS LIVE", "LIVE DETAILS", "DETALLES LIVE") : outdoorSportLabel(activitySport, lang).toUpperCase();
         return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH, paddingBottom: 190 }}>
-      <PageHeader title={copy.title} subtitle={`${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)} · ${paused ? copy.pause : copy.recordSub}`} left={<BackDot onClick={cancelRun}/>} right={infoDot}/>
-      {splitToast ? <div style={{ position: "fixed", top: 88, left: "50%", transform: "translateX(-50%)", zIndex: 90, width: "min(92vw,440px)", padding: "10px 14px", borderRadius: 999, textAlign: "center", background: "rgba(5,8,13,.92)", border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 11, boxShadow: "0 12px 36px rgba(0,0,0,.55)", backdropFilter: "blur(14px)" }}>{splitToast}</div> : null}
+      <PageHeader title={liveTitle} subtitle={`${presetLabel(effectivePreset, lang)} · ${paused ? copy.pause : copy.recordSub}`} left={<BackDot onClick={() => livePage === "cockpit" ? cancelRun() : setLivePage("cockpit")}/>} right={infoDot}/>
+      {splitToast ? <div style={{ position: "fixed", top: 88, left: "50%", transform: "translateX(-50%)", zIndex: 90, width: "min(92vw,440px)", padding: "10px 14px", borderRadius: 999, textAlign: "center", background: "rgba(5,8,13,.96)", border: `1px solid ${accent}66`, color: accent, fontWeight: 1000, fontSize: 11, boxShadow: "0 12px 36px rgba(0,0,0,.55)", backdropFilter: "blur(14px)" }}>{splitToast}</div> : null}
 
-      <div className="card" style={{ padding: 15, textAlign: "center", borderColor: `${accent}40`, background: `radial-gradient(circle at 50% 0,${accent}18,rgba(8,10,16,.82) 58%)` }}>
-        <div style={{ display: "flex", justifyContent: "center", gap: 7, flexWrap: "wrap" }}><StatusPill text={gpsMessage || copy.gpsUnknown} good={gpsMessage === copy.gpsReady} accent={accent}/><StatusPill text={paused ? copy.pause : (gpsFixVerified ? copy.verified : copy.gpsSearching)} good={!paused && gpsFixVerified} accent={accent}/></div>
-        <div style={{ marginTop: 13, fontSize: 10, color: textSoft, fontWeight: 1000, letterSpacing: 1 }}>{copy.distance}</div><div style={{ fontSize: "clamp(52px,15vw,78px)", lineHeight: 1.02, fontWeight: 1000, color: accent, textShadow: `0 0 28px ${accent}30` }}>{(liveDistance / 1000).toFixed(2)}<small style={{ fontSize: 17, marginLeft: 5 }}>KM</small></div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 13 }}><HeroMetric label={copy.time} value={formatDuration(elapsedMs)}/><HeroMetric label={copy.avgPace} value={`${formatPace(livePace)}/km`}/><HeroMetric label={copy.livePace} value={`${formatPace(rollingPace)}/km`}/></div>
-        {progress != null ? <div style={{ marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: textSoft, fontWeight: 900 }}><span>{copy.target} · {targetDistanceM ? distanceLabel(targetDistanceM) : formatDuration(targetDurationMs || 0)}</span><span style={{ color: targetReached ? "#71ff9a" : accent }}>{targetReached ? copy.targetReached : `${Math.round(progress)}%`}</span></div><Progress value={progress} accent={targetReached ? "#71ff9a" : accent}/></div> : null}
-      </div>
+      {livePage === "cockpit" ? <>
+        <RunningSurface accent={accent} active padding={14}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}><StatusPill text={paused ? copy.pause : (gpsFixVerified ? copy.verified : (gpsMessage || copy.gpsSearching))} good={!paused && gpsFixVerified} accent={accent}/>{selectedRoute ? <StatusPill text={pickLegacyLocalizedText(lang, "PARCOURS ACTIF", "ROUTE ACTIVE", "RUTA ACTIVA")} good accent={accent}/> : null}</div>
+          <div style={{ marginTop: 12, textAlign: "center" }}><div style={{ fontSize: 8.5, color: textSoft, fontWeight: 1000, letterSpacing: 1 }}>{copy.distance}</div><div style={{ fontSize: "clamp(52px,15vw,78px)", lineHeight: 1.02, fontWeight: 1000, color: accent, textShadow: `0 0 28px ${accent}30` }}>{(liveDistance / 1000).toFixed(2)}<small style={{ fontSize: 16, marginLeft: 5 }}>KM</small></div></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7, marginTop: 12 }}>
+            <HeroMetric label={copy.time} value={formatDuration(elapsedMs)}/>
+            {activitySport === "treadmill" ? <HeroMetric label={copy.speed} value={`${treadmillSpeed.toFixed(1)} km/h`}/> : ["trail","hiking","walking","nordic-walking"].includes(activitySport) ? <HeroMetric label={copy.elevation} value={`+${Math.round(liveElevation)} m`}/> : <HeroMetric label={copy.livePace} value={`${formatPace(rollingPace)}/km`}/>} 
+            {activitySport === "treadmill" ? <HeroMetric label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${treadmillIncline.toFixed(1)}%`}/> : <HeroMetric label={copy.avgPace} value={`${formatPace(livePace)}/km`}/>} 
+            {sensorSnapshot.heartRateBpm ? <HeroMetric label={pickLegacyLocalizedText(lang, "CARDIO", "HEART RATE", "CARDIO")} value={liveHr}/> : routeRemainingM != null ? <HeroMetric label={pickLegacyLocalizedText(lang, "RESTANT", "REMAINING", "RESTANTE")} value={formatDistance(routeRemainingM)}/> : <HeroMetric label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`}/>} 
+          </div>
+          {progress != null ? <div style={{ marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", fontSize: 8.7, color: textSoft, fontWeight: 900 }}><span>{copy.target}</span><span style={{ color: targetReached ? "#71ff9a" : accent }}>{targetReached ? copy.targetReached : `${Math.round(progress)}%`}</span></div><Progress value={progress} accent={targetReached ? "#71ff9a" : accent}/></div> : null}
+          {phase ? <div style={{ marginTop: 11, padding: "9px 10px", borderRadius: 13, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 8.3, color: textSoft }}><b style={{ color: phase.step.tone === "hard" ? "#ff8a67" : accent }}>{phase.label}</b><span>#{phase.index + 1}/{effectivePreset.steps?.length || 1}</span></div><div style={{ marginTop: 4, fontSize: 18, fontWeight: 1000 }}>{formatDuration(phase.remainingMs)}</div><Progress value={phase.progress} accent={phase.step.tone === "hard" ? "#ff8a67" : accent}/></div> : null}
+        </RunningSurface>
 
-      {phase ? <div style={{ marginTop: 10 }}><Section title={copy.phase} right={<span style={{ color: phase.step.tone === "hard" ? "#ff8a67" : accent, fontSize: 10, fontWeight: 1000 }}>{phase.label}</span>}><div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end" }}><div><div style={{ fontSize: 10, color: textSoft }}>{copy.remaining}</div><div style={{ fontSize: 26, fontWeight: 1000 }}>{formatDuration(phase.remainingMs)}</div></div><div style={{ fontSize: 10, color: textSoft }}>#{phase.index + 1}/{effectivePreset.steps?.length || 1}</div></div><Progress value={phase.progress} accent={phase.step.tone === "hard" ? "#ff8a67" : accent}/></Section></div> : null}
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          {activitySport !== "treadmill" ? <RunningHubCard title={selectedRoute ? pickLegacyLocalizedText(lang, "NAVIGATION", "NAVIGATION", "NAVEGACIÓN") : copy.route} subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Carte et position en direct", "Live map and position", "Mapa y posición en directo")} icon={<RunningGlyph name="route-guide" size={19}/>} accent={accent} onClick={() => setLivePage("route")}/> : null}
+          <RunningHubCard title={pickLegacyLocalizedText(lang, "SPLITS & TOURS", "SPLITS & LAPS", "SPLITS Y VUELTAS")} subtitle={liveSplits.length ? `${liveSplits.length} ${pickLegacyLocalizedText(lang, "splits enregistrés", "splits recorded", "splits registrados")}` : pickLegacyLocalizedText(lang, "Chronos intermédiaires et tours manuels", "Intermediate times and manual laps", "Tiempos intermedios y vueltas manuales")} icon={<RunningGlyph name="history" size={19}/>} accent={accent} onClick={() => setLivePage("splits")} badge={liveSplits.length || undefined}/>
+          <RunningHubCard title={pickLegacyLocalizedText(lang, "DÉTAILS LIVE", "LIVE DETAILS", "DETALLES LIVE")} subtitle={sensorSnapshot.heartRateBpm || sensorSnapshot.cadenceSpm ? `${liveHr} · ${liveCadence}` : pickLegacyLocalizedText(lang, "Allure, objectif, Ghost et capteurs", "Pace, target, Ghost and sensors", "Ritmo, objetivo, Ghost y sensores")} icon={<RunningGlyph name="chart" size={19}/>} accent={accent} onClick={() => setLivePage("details")}/>
+        </div>
+      </> : null}
 
-      {targetPaceSecPerKm ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 10 }}><Metric label={copy.targetPace} value={`${formatPace(targetPaceSecPerKm)}/km`} accent={accent}/><Metric label={deltaGood ? copy.ahead : copy.behind} value={formatSignedDuration(paceDelta)} accent={deltaGood ? "#71ff9a" : "#ff8a67"}/><Metric label={copy.projected} value={projected ? formatDuration(projected) : "—"} accent={accent}/></div> : null}
+      {livePage === "route" ? <>
+        {selectedRoute && ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras}/> : null}
+        <RunningSurface accent={accent} active style={{ marginTop: selectedRoute ? 8 : 0 }}><RouteMap points={points} accent={accent} waiting={copy.waiting} showRouteNetwork={activitySport !== "treadmill"}/></RunningSurface>
+      </> : null}
 
-      {selectedRoute && selectedRouteHasReference && ghostEnabled ? <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "GHOST · SORTIE DE RÉFÉRENCE", "GHOST · REFERENCE RUN", "GHOST · CARRERA DE REFERENCIA")} right={<span style={{ color: liveGhostMatch?.matchedBy === "position" ? "#71ff9a" : accent, fontSize: 8.5, fontWeight: 1000 }}>{liveGhostMatch?.matchedBy === "position" ? (pickLegacyLocalizedText(lang, "SUR LE TRACÉ", "ON ROUTE", "EN RUTA")) : selectedRoute.name}</span>}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={pickLegacyLocalizedText(lang, "RÉFÉRENCE", "REFERENCE", "REFERENCIA")} value={formatDuration(selectedRoute.referenceElapsedMs)} accent={accent}/><MiniStat label={liveGhostDelta != null && liveGhostDelta <= 0 ? copy.ahead : copy.behind} value={liveGhostDelta == null ? "—" : formatDuration(Math.abs(liveGhostDelta))} accent={liveGhostDelta != null && liveGhostDelta <= 0 ? "#71ff9a" : "#ff8a67"}/><MiniStat label={copy.targetDistance} value={formatDistance(selectedRoute.distanceM)} accent={accent}/></div></Section></div> : null}
+      {livePage === "splits" ? <>
+        <RunningSurface accent={accent} active><div style={{ color: accent, fontSize: 9, fontWeight: 1000, marginBottom: 8 }}>{copy.splits}</div>{liveSplits.length ? <SplitTable splits={liveSplits} accent={accent}/> : <div style={{ padding: 18, textAlign: "center", color: textSoft, fontSize: 9 }}>{pickLegacyLocalizedText(lang, "Le premier split apparaîtra ici.", "Your first split will appear here.", "Tu primer split aparecerá aquí.")}</div>}</RunningSurface>
+        {manualLaps.length ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, marginBottom: 8 }}>{copy.laps}</div><LapTable laps={manualLaps} accent={accent}/></RunningSurface> : null}
+      </> : null}
 
-      {selectedRoute && ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras}/> : null}
-
-      {activitySport !== "treadmill" ? <div style={{ marginTop: 10 }}><Section title={copy.route} right={<span style={{ fontSize: 9.5, color: textSoft }}>{points.length} GPS</span>}><RouteMap points={points} accent={accent} waiting={copy.waiting} showRouteNetwork={activitySport !== "treadmill"}/></Section></div> : <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "TAPIS ROULANT · LIVE", "TREADMILL · LIVE", "CINTA · LIVE")}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${((sensorSnapshot.treadmillSpeedMps ?? sensorSnapshot.sensorSpeedMps ?? manualTreadmillSpeedKmh / 3.6) * 3.6).toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${(sensorSnapshot.inclinePercent ?? manualTreadmillIncline).toFixed(1)}%`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "SOURCE", "SOURCE", "FUENTE")} value={safeSensorDevices.some((d) => d.kind === "fitness-machine-treadmill" && d.connected) ? "FTMS" : safeSensorDevices.some((d) => d.kind === "running-speed-cadence" && d.connected) ? "FOOTPOD" : "MANUEL"} accent={accent}/></div></Section></div>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Metric label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/><Metric label={copy.accuracy} value={accuracy ? `±${Math.round(accuracy)} m` : "—"} accent={accent}/><Metric label={copy.moving} value={formatDuration(liveMoving || elapsedMs)} accent={accent}/></div>
-      {(sensorSnapshot.heartRateBpm || sensorSnapshot.cadenceSpm || sensorSnapshot.sensorSpeedMps) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 8 }}><Metric label="CARDIO" value={sensorSnapshot.heartRateBpm ? `${sensorSnapshot.heartRateBpm} bpm` : "—"} accent="#ff7b8b"/><Metric label="CADENCE" value={sensorSnapshot.cadenceSpm ? `${sensorSnapshot.cadenceSpm} spm` : "—"} accent={accent}/><Metric label="CAPTEUR" value={sensorSnapshot.sensorSpeedMps ? `${(sensorSnapshot.sensorSpeedMps * 3.6).toFixed(1)} km/h` : "—"} accent={accent}/></div> : null}
-      {liveSplits.length ? <div style={{ marginTop: 10 }}><Section title={copy.splits}><SplitTable splits={liveSplits.slice(-4)} accent={accent}/></Section></div> : null}
-      {manualLaps.length ? <div style={{ marginTop: 10 }}><Section title={copy.laps}><LapTable laps={manualLaps.slice(-4)} accent={accent}/></Section></div> : null}
+      {livePage === "details" ? <>
+        <RunningSurface accent={accent} active><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><MiniStat label={copy.avgPace} value={`${formatPace(livePace)}/km`} accent={accent}/><MiniStat label={copy.livePace} value={`${formatPace(rollingPace)}/km`} accent={accent}/><MiniStat label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent}/><MiniStat label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CARDIO", "HEART RATE", "CARDIO")} value={liveHr} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CADENCE", "CADENCE", "CADENCIA")} value={liveCadence} accent={accent}/></div></RunningSurface>
+        {targetPaceSecPerKm ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.targetPace} value={`${formatPace(targetPaceSecPerKm)}/km`} accent={accent}/><MiniStat label={deltaGood ? copy.ahead : copy.behind} value={formatSignedDuration(paceDelta)} accent={deltaGood ? "#71ff9a" : "#ff8a67"}/><MiniStat label={copy.projected} value={projected ? formatDuration(projected) : "—"} accent={accent}/></div></RunningSurface> : null}
+        {selectedRoute && selectedRouteHasReference && ghostEnabled ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><MiniStat label={pickLegacyLocalizedText(lang, "GHOST", "GHOST", "GHOST")} value={liveGhostDelta == null ? "—" : formatDuration(Math.abs(liveGhostDelta))} accent={liveGhostDelta != null && liveGhostDelta <= 0 ? "#71ff9a" : "#ff8a67"}/><MiniStat label={liveGhostMatch?.matchedBy === "position" ? pickLegacyLocalizedText(lang, "SUR LE TRACÉ", "ON ROUTE", "EN RUTA") : copy.targetDistance} value={formatDistance(selectedRoute.distanceM)} accent={accent}/></div></RunningSurface> : null}
+        {activitySport === "treadmill" ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${treadmillSpeed.toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${treadmillIncline.toFixed(1)}%`} accent={accent}/></div></RunningSurface> : null}
+      </> : null}
 
       <div style={recordDock}><button className="btn" onClick={addLap} disabled={!isRecording || paused} style={{ minHeight: 52, fontWeight: 1000 }}>{copy.lap}</button><button className="btn" onClick={togglePause} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000 }}>{paused ? `▶ ${copy.resume}` : `Ⅱ ${copy.pause}`}</button><button className="btn primary" onClick={() => void finishRun()} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000, background: accent }}>■ {copy.finish}</button></div>
     </div>;
@@ -1439,21 +1505,31 @@ export default function RunningModule({ go, params }: Props) {
       <button className="btn danger" style={{ width: "100%", marginTop: 2, fontWeight: 1000 }} onClick={() => void removeSelected()}>{copy.delete}</button>
     </div>;
     }
-    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={copy.title} subtitle={copy.setupSub} left={<BackDot onClick={() => go("home")}/>} right={infoDot}/>
-    <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
-    <RunningTabs items={[{ id: "workout" as const, label: pickLegacyLocalizedText(lang, "1 · SÉANCE", "1 · WORKOUT", "1 · SESIÓN"), icon: <RunningGlyph name="step-workout" size={16} /> }, ...(activitySport !== "treadmill" ? [{ id: "route" as const, label: pickLegacyLocalizedText(lang, "2 · PARCOURS", "2 · ROUTE", "2 · RUTA"), icon: <RunningGlyph name="step-route" size={16} />, badge: routeOptions.length || null }] : []), { id: "ready" as const, label: pickLegacyLocalizedText(lang, activitySport === "treadmill" ? "2 · DÉPART" : "3 · DÉPART", activitySport === "treadmill" ? "2 · START" : "3 · START", activitySport === "treadmill" ? "2 · SALIDA" : "3 · SALIDA"), icon: <RunningGlyph name="step-ready" size={16} /> }]} value={setupPanel} onChange={setSetupPanel} accent={accent} sticky />
+    const setupPageTitle = setupPanel === "workout" && setupTab !== "menu" ? (setupTab === "goal" ? pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO") : setupTab === "training" ? pickLegacyLocalizedText(lang, "SÉANCES", "WORKOUTS", "SESIONES") : pickLegacyLocalizedText(lang, "AVANCÉ", "ADVANCED", "AVANZADO")) : setupPanel === "route" && routePanelTab !== "menu" ? (routePanelTab === "choose" ? pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA") : routePanelTab === "guide" ? pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO") : pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN")) : setupPanel === "workout" ? pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN") : setupPanel === "route" ? pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA") : setupPanel === "ready" ? pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA") : copy.title;
+    const setupPageSubtitle = setupPanel === "menu" ? copy.setupSub : `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`;
+    const backFromSetup = () => {
+        if (setupPanel === "workout" && setupTab !== "menu") { setSetupTab("menu"); return; }
+        if (setupPanel === "route" && routePanelTab !== "menu") { setRoutePanelTab("menu"); return; }
+        if (setupPanel !== "menu") { setSetupPanel("menu"); return; }
+        go("home");
+    };
+    return <div className="container" style={{ maxWidth: PAGE_MAX_WIDTH }}><PageHeader title={setupPageTitle} subtitle={setupPageSubtitle} left={<BackDot onClick={backFromSetup}/>} right={infoDot}/>
+
+    {setupPanel === "menu" ? <>
+      <OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/>
+      <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+        <RunningHubCard title={pickLegacyLocalizedText(lang, "SÉANCE", "WORKOUT", "SESIÓN")} subtitle={`${presetLabel(effectivePreset, lang)}${targetDistanceM ? ` · ${distanceLabel(targetDistanceM)}` : targetDurationMs ? ` · ${formatDuration(targetDurationMs)}` : ""}`} icon={<RunningGlyph name="step-workout" size={20}/>} accent={accent} onClick={() => { setSetupTab("menu"); setSetupPanel("workout"); }}/>
+        {activitySport !== "treadmill" ? <RunningHubCard title={pickLegacyLocalizedText(lang, "PARCOURS", "ROUTE", "RUTA")} subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, `${routeOptions.length} parcours disponibles`, `${routeOptions.length} routes available`, `${routeOptions.length} rutas disponibles`)} icon={<RunningGlyph name="step-route" size={20}/>} accent={accent} onClick={() => { setRoutePanelTab("menu"); setSetupPanel("route"); }} badge={selectedRoute ? "✓" : routeOptions.length || undefined}/> : null}
+        <RunningHubCard title={pickLegacyLocalizedText(lang, "DÉPART", "START", "SALIDA")} subtitle={activitySport === "treadmill" ? treadmillSourceLabel : `${gpsMessage || copy.gpsUnknown}${connectedDeviceCount ? ` · ${connectedDeviceCount} capteur${connectedDeviceCount > 1 ? "s" : ""}` : ""}`} icon={<RunningGlyph name="step-ready" size={20}/>} accent={accent} onClick={() => setSetupPanel("ready")}/>
+      </div>
+    </> : null}
 
     <div style={{ display: setupPanel === "workout" ? "block" : "none" }}>
-    <RunningTabs
-      items={[
-        { id: "goal" as const, label: pickLegacyLocalizedText(lang, "OBJECTIF", "GOAL", "OBJETIVO"), icon: <RunningGlyph name="goal" size={16} /> },
-        ...(trainingPresetIds.length ? [{ id: "training" as const, label: pickLegacyLocalizedText(lang, "SÉANCES", "WORKOUTS", "SESIONES"), icon: <RunningGlyph name="training" size={16} /> }] : []),
-        ...((sportProfile.supportsPacer || sportProfile.supportsIntervals) ? [{ id: "advanced" as const, label: pickLegacyLocalizedText(lang, "AVANCÉ", "ADVANCED", "AVANZADO"), icon: <RunningGlyph name="advanced" size={16} /> }] : []),
-      ]}
-      value={setupTab}
-      onChange={(key) => { setSetupTab(key); if (key === "goal") selectManualPreset(`goal-${simpleGoalMode}`); }}
-      accent={accent}
-    />
+    {setupTab === "menu" ? <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+      <RunningHubCard title={pickLegacyLocalizedText(lang, "OBJECTIF SIMPLE", "SIMPLE GOAL", "OBJETIVO SIMPLE")} subtitle={pickLegacyLocalizedText(lang, "Libre, distance ou durée. Le plus rapide pour partir.", "Free, distance or duration. The fastest way to start.", "Libre, distancia o duración. La forma más rápida de salir.")} icon={<RunningGlyph name="goal" size={19}/>} accent={accent} onClick={() => { setSetupTab("goal"); selectManualPreset(`goal-${simpleGoalMode}`); }}/>
+      {trainingPresetIds.length ? <RunningHubCard title={pickLegacyLocalizedText(lang, "SÉANCE STRUCTURÉE", "STRUCTURED WORKOUT", "SESIÓN ESTRUCTURADA")} subtitle={pickLegacyLocalizedText(lang, "Uniquement les séances utiles à cette discipline.", "Only workouts useful for this discipline.", "Solo sesiones útiles para esta disciplina.")} icon={<RunningGlyph name="training" size={19}/>} accent={accent} onClick={() => setSetupTab("training")}/> : null}
+      {(sportProfile.supportsPacer || sportProfile.supportsIntervals) ? <RunningHubCard title={pickLegacyLocalizedText(lang, "AVANCÉ", "ADVANCED", "AVANZADO")} subtitle={pickLegacyLocalizedText(lang, "Pacer et séance personnalisée, seulement si nécessaire.", "Pacer and custom workout, only when needed.", "Pacer y sesión personalizada, solo si hace falta.")} icon={<RunningGlyph name="advanced" size={19}/>} accent={accent} onClick={() => setSetupTab("advanced")}/> : null}
+    </div> : null}
 
     {setupTab === "goal" ? <div style={{ marginTop: 10 }}>
       <Section title={pickLegacyLocalizedText(lang, "QUE VEUX-TU FAIRE ?", "WHAT DO YOU WANT TO DO?", "¿QUÉ QUIERES HACER?")}>
@@ -1501,10 +1577,14 @@ export default function RunningModule({ go, params }: Props) {
 
     </div>
 
-    {setupPanel === "workout" ? <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, color: accent }}><PresetGlyph preset={effectivePreset} size={19}/></div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 8.8, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface> : null}
+    {setupPanel === "workout" && setupTab !== "menu" ? <RunningSurface accent={accent} active style={{ marginTop: 10 }}><div style={{ fontSize: 9.5, color: textSoft, fontWeight: 1000 }}>{copy.selected}</div><div style={{ display: "grid", gridTemplateColumns: "46px 1fr auto", gap: 10, alignItems: "center", marginTop: 8 }}><div style={{ width: 44, height: 44, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}12`, border: `1px solid ${accent}30`, color: accent }}><PresetGlyph preset={effectivePreset} size={19}/></div><div><div style={{ fontWeight: 1000, color: accent }}>{presetLabel(effectivePreset, lang)}</div><div style={{ color: textSoft, fontSize: 8.8, marginTop: 3, lineHeight: 1.35 }}>{presetSub(effectivePreset, lang)}</div></div>{targetDistanceM ? <b style={{ fontSize: 10 }}>{distanceLabel(targetDistanceM)}</b> : targetDurationMs ? <b style={{ fontSize: 10 }}>{formatDuration(targetDurationMs)}</b> : null}</div></RunningSurface> : null}
 
     <div style={{ display: setupPanel === "route" ? "block" : "none" }}>
-      <RunningTabs items={[{ id: "choose" as const, label: pickLegacyLocalizedText(lang, "CHOISIR", "CHOOSE", "ELEGIR"), icon: <RunningGlyph name="route-choose" size={16} />, badge: routeOptions.length || null }, ...(selectedRoute ? [{ id: "guide" as const, label: pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO"), icon: <RunningGlyph name="route-guide" size={16} /> }, { id: "offline" as const, label: pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN"), icon: <RunningGlyph name="route-offline" size={16} /> }] : [])]} value={routePanelTab} onChange={setRoutePanelTab} accent={accent} />
+      {routePanelTab === "menu" ? <div style={{ display: "grid", gap: 9, marginTop: 10 }}>
+        <RunningHubCard title={pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA")} subtitle={selectedRoute ? selectedRoute.name : pickLegacyLocalizedText(lang, "Bibliothèque, favoris et découverte autour de toi.", "Library, favorites and discovery around you.", "Biblioteca, favoritos y descubrimiento cerca de ti.")} icon={<RunningGlyph name="route-choose" size={19}/>} accent={accent} onClick={() => setRoutePanelTab("choose")} badge={routeOptions.length || undefined}/>
+        <RunningHubCard title={pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO")} subtitle={selectedRoute ? pickLegacyLocalizedText(lang, "Navigation, checkpoints et préparation longue distance.", "Navigation, checkpoints and long-distance preparation.", "Navegación, checkpoints y preparación larga distancia.") : pickLegacyLocalizedText(lang, "Choisis d’abord un parcours.", "Choose a route first.", "Elige primero una ruta.")} icon={<RunningGlyph name="route-guide" size={19}/>} accent={accent} onClick={() => selectedRoute && setRoutePanelTab("guide")} disabled={!selectedRoute}/>
+        <RunningHubCard title={pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN")} subtitle={selectedRoute ? pickLegacyLocalizedText(lang, "Prépare la trace et le roadbook pour une sortie sans réseau.", "Prepare route and roadbook for no-network use.", "Prepara la ruta y el roadbook para usar sin red.") : pickLegacyLocalizedText(lang, "Choisis d’abord un parcours.", "Choose a route first.", "Elige primero una ruta.")} icon={<RunningGlyph name="route-offline" size={19}/>} accent={accent} onClick={() => selectedRoute && setRoutePanelTab("offline")} disabled={!selectedRoute}/>
+      </div> : null}
 
       {routePanelTab === "choose" ? <>
         {activitySport !== "treadmill" ? <RunningSurface accent={accent} active style={{ marginTop: 8 }}>
@@ -1519,7 +1599,7 @@ export default function RunningModule({ go, params }: Props) {
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
             <div>
               <div style={{ color: accent, fontSize: 9.2, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "GÉNÉRER MON PARCOURS", "GENERATE MY ROUTE", "GENERAR MI RUTA")}</div>
-              <div style={{ marginTop: 3, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Choisis distance, forme et terrain. L'application analyse les chemins OpenStreetMap autour de ta position et construit 3 propositions.", "Choose distance, shape and terrain. The app analyses OpenStreetMap paths around you and builds 3 proposals.", "Elige distancia, forma y terreno. La app analiza los caminos de OpenStreetMap a tu alrededor y crea 3 propuestas.")}</div>
+              <div style={{ marginTop: 3, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Choisis distance, forme, terrain et éventuellement une plage de D+. L'application compare plusieurs tracés et leur relief avant de proposer les 3 meilleurs.", "Choose distance, shape, terrain and optionally an elevation-gain range. The app compares several routes and their elevation before returning the 3 best matches.", "Elige distancia, forma, terreno y, si quieres, un rango de desnivel positivo. La app compara varias rutas y su relieve antes de proponer las 3 mejores.")}</div>
             </div>
             <RunningGlyph name="route-guide" size={20}/>
           </div>
@@ -1533,6 +1613,10 @@ export default function RunningModule({ go, params }: Props) {
           </div>
           <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
             {(["balanced","trails","easy"] as OutdoorRouteGenerationProfile[]).map((profile) => <button key={profile} className="btn" onClick={() => setRouteGenerationProfile(profile)} style={{ minHeight: 33, padding: "4px 5px", color: routeGenerationProfile === profile ? accent : undefined, borderColor: routeGenerationProfile === profile ? `${accent}66` : undefined, fontSize: 7.4, fontWeight: 1000 }}>{profile === "trails" ? pickLegacyLocalizedText(lang, "🥾 SENTIERS", "🥾 TRAILS", "🥾 SENDEROS") : profile === "easy" ? pickLegacyLocalizedText(lang, "◌ FACILE", "◌ EASY", "◌ FÁCIL") : pickLegacyLocalizedText(lang, "◎ ÉQUILIBRÉ", "◎ BALANCED", "◎ EQUILIBRADO")}</button>)}
+          </div>
+          <div style={{ marginTop: 8, padding: 9, borderRadius: 13, border: `1px solid ${routeGenerationElevationEnabled ? `${accent}55` : "rgba(255,255,255,.08)"}`, background: routeGenerationElevationEnabled ? `${accent}08` : "rgba(255,255,255,.02)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}><div><div style={{ fontSize: 8.4, fontWeight: 1000, color: routeGenerationElevationEnabled ? accent : undefined }}>⛰️ {pickLegacyLocalizedText(lang, "CIBLER LE DÉNIVELÉ POSITIF", "TARGET ELEVATION GAIN", "OBJETIVO DE DESNIVEL POSITIVO")}</div><div style={{ marginTop: 2, fontSize: 7.5, color: textSoft, lineHeight: 1.35 }}>{pickLegacyLocalizedText(lang, "Le moteur calcule le relief des candidats puis favorise ceux compris dans la plage demandée.", "The engine calculates candidate elevation and prioritizes routes inside your requested range.", "El motor calcula el relieve de las rutas candidatas y prioriza las que están dentro del rango solicitado.")}</div></div><button className="btn" onClick={() => setRouteGenerationElevationEnabled((value) => !value)} style={{ minWidth: 54, minHeight: 32, color: routeGenerationElevationEnabled ? accent : undefined, borderColor: routeGenerationElevationEnabled ? `${accent}66` : undefined, fontSize: 8, fontWeight: 1000 }}>{routeGenerationElevationEnabled ? "ON" : "OFF"}</button></div>
+            {routeGenerationElevationEnabled ? <><div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>{([[0,150],[150,350],[350,650],[650,1000]] as Array<[number, number]>).map(([min, max]) => <button key={`${min}-${max}`} className="btn" onClick={() => { setRouteGenerationElevationMinM(min); setRouteGenerationElevationMaxM(max); }} style={{ minHeight: 31, padding: "4px 3px", fontSize: 7.2, fontWeight: 1000, color: routeGenerationElevationMinM === min && routeGenerationElevationMaxM === max ? accent : undefined, borderColor: routeGenerationElevationMinM === min && routeGenerationElevationMaxM === max ? `${accent}66` : undefined }}>+{min}–{max} m</button>)}</div><div style={{ marginTop: 7, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "D+ MIN", "MIN GAIN", "DESN. MIN")} value={routeGenerationElevationMinM} suffix="m" min={0} max={2500} step={50} onChange={(value) => { setRouteGenerationElevationMinM(Math.min(value, routeGenerationElevationMaxM)); }}/><TreadmillAdjuster label={pickLegacyLocalizedText(lang, "D+ MAX", "MAX GAIN", "DESN. MAX")} value={routeGenerationElevationMaxM} suffix="m" min={50} max={3000} step={50} onChange={(value) => { setRouteGenerationElevationMaxM(Math.max(value, routeGenerationElevationMinM)); }}/></div></> : null}
           </div>
           <button className="btn" disabled={routeGenerationBusy} onClick={() => void generateRoutes()} style={{ width: "100%", minHeight: 42, marginTop: 8, color: accent, borderColor: `${accent}77`, fontSize: 8.8, fontWeight: 1000 }}>{routeGenerationBusy ? pickLegacyLocalizedText(lang, "GÉNÉRATION…", "GENERATING…", "GENERANDO…") : pickLegacyLocalizedText(lang, "✨ GÉNÉRER 3 PARCOURS", "✨ GENERATE 3 ROUTES", "✨ GENERAR 3 RUTAS")}</button>
           {routeGenerationMessage ? <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{routeGenerationMessage}</div> : null}
@@ -1554,21 +1638,22 @@ export default function RunningModule({ go, params }: Props) {
                 const highest = routeTerrain.maxAltitudeM != null ? Math.round(routeTerrain.maxAltitudeM) : null;
                 const startPoint = route.route[0] || null;
                 const endPoint = route.route[route.route.length - 1] || null;
-                return <div key={route.id} className="card" style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", borderRadius: 15, borderColor: active ? `${accent}66` : undefined, background: active ? `linear-gradient(145deg,${accent}16,rgba(4,6,10,.82))` : "linear-gradient(145deg,rgba(255,255,255,.038),rgba(4,6,10,.70))" }}><button type="button" onClick={() => selectRoute(route)} style={{ border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><div style={{ fontSize: 10.2, fontWeight: 1000, color: active ? accent : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{index + 1}. {routeName}</div>{routeTerrain.hasElevation ? <span style={{ flex: "0 0 auto", padding: "2px 6px", borderRadius: 999, border: `1px solid ${accent}33`, color: accent, fontSize: 6.8, fontWeight: 1000 }}>{terrainLabel(routeTerrain.terrain, lang)} · {routeTerrain.difficultyScore}</span> : null}</div><div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 5, fontSize: 7.7, color: textSoft }}><span>📏 {formatDistance(route.distanceM)}</span><span>⛰️ +{Math.round(routeTerrain.hasElevation ? routeTerrain.gainM : route.elevationGainM)} m</span>{highest != null ? <span>🏔️ {highest} m</span> : null}<span>{route.referenceElapsedMs > 0 ? `⏱️ ${formatDuration(route.referenceElapsedMs)}` : `⏱️ ${pickLegacyLocalizedText(lang, "sans chrono", "no timing", "sin tiempo")}`}</span></div><div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 5, fontSize: 7.3, color: textSoft }}><span>🚩 {startPoint ? `${startPoint.lat.toFixed(4)}, ${startPoint.lon.toFixed(4)}` : "—"}</span><span>🏁 {endPoint ? `${endPoint.lat.toFixed(4)}, ${endPoint.lon.toFixed(4)}` : "—"}</span></div>{route.generation ? <div style={{ marginTop: 4, fontSize: 7.2, color: accent, opacity: .9 }}>{pickLegacyLocalizedText(lang, "CIBLE", "TARGET", "OBJETIVO")} {(route.generation.targetDistanceM / 1000).toFixed(0)} km · {route.generation.trailSharePct}% {pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos")} · {pickLegacyLocalizedText(lang, "écart", "error", "desvío")} {route.generation.distanceErrorPct.toFixed(1)}%</div> : null}</button><div style={{ display: "grid", gap: 6 }}><button className="btn" onClick={() => toggleFavoriteRoute(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}66` : undefined }}>{favorite ? "★" : "☆"}</button><button className="btn" onClick={() => openRouteGpsActions(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, fontSize: 12 }} title="GPS">📍</button></div></div>;
+                return <div key={route.id} className="card" style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", borderRadius: 15, borderColor: active ? `${accent}66` : undefined, background: active ? `linear-gradient(145deg,${accent}16,rgba(4,6,10,.82))` : "linear-gradient(145deg,rgba(255,255,255,.038),rgba(4,6,10,.70))" }}><button type="button" onClick={() => selectRoute(route)} style={{ border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><div style={{ fontSize: 10.2, fontWeight: 1000, color: active ? accent : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{index + 1}. {routeName}</div>{routeTerrain.hasElevation ? <span style={{ flex: "0 0 auto", padding: "2px 6px", borderRadius: 999, border: `1px solid ${accent}33`, color: accent, fontSize: 6.8, fontWeight: 1000 }}>{terrainLabel(routeTerrain.terrain, lang)} · {routeTerrain.difficultyScore}</span> : null}</div><div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 5, fontSize: 7.7, color: textSoft }}><span>📏 {formatDistance(route.distanceM)}</span><span>⛰️ +{Math.round(routeTerrain.hasElevation ? routeTerrain.gainM : route.elevationGainM)} m</span>{highest != null ? <span>🏔️ {highest} m</span> : null}<span>{route.referenceElapsedMs > 0 ? `⏱️ ${formatDuration(route.referenceElapsedMs)}` : `⏱️ ${pickLegacyLocalizedText(lang, "sans chrono", "no timing", "sin tiempo")}`}</span></div><div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 5, fontSize: 7.3, color: textSoft }}><span>🚩 {startPoint ? `${startPoint.lat.toFixed(4)}, ${startPoint.lon.toFixed(4)}` : "—"}</span><span>🏁 {endPoint ? `${endPoint.lat.toFixed(4)}, ${endPoint.lon.toFixed(4)}` : "—"}</span></div>{route.generation ? <div style={{ marginTop: 4, fontSize: 7.2, color: accent, opacity: .9 }}>{pickLegacyLocalizedText(lang, "CIBLE", "TARGET", "OBJETIVO")} {(route.generation.targetDistanceM / 1000).toFixed(0)} km · {route.generation.trailSharePct}% {pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos")} · {pickLegacyLocalizedText(lang, "écart", "error", "desvío")} {route.generation.distanceErrorPct.toFixed(1)}%</div> : null}{route.generation?.elevationGainMaxM != null ? <div style={{ marginTop: 3, fontSize: 7.2, color: route.generation.elevationTargetMatched ? "#71ff9a" : textSoft, fontWeight: 900 }}>⛰️ D+ {Math.round(route.elevationGainM)} m · {Math.round(route.generation.elevationGainMinM || 0)}–{Math.round(route.generation.elevationGainMaxM)} m {route.generation.elevationTargetMatched ? "✓" : `· ${pickLegacyLocalizedText(lang, "plus proche", "closest", "más cercano")}`}</div> : null}</button><div style={{ display: "grid", gap: 6 }}><button className="btn" onClick={() => toggleFavoriteRoute(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}66` : undefined }}>{favorite ? "★" : "☆"}</button><button className="btn" onClick={() => openRouteGpsActions(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, fontSize: 12 }} title="GPS">📍</button></div></div>;
               })}</div> : null}
 
-              {selectedRoute ? <div style={{ marginTop: 2 }}>
+              {selectedRoute ? <div style={{ marginTop: 2, touchAction: "pan-y" }} onTouchStart={onRouteSwipeStart} onTouchEnd={onRouteSwipeEnd}>
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 7, alignItems: "center", marginBottom: 7 }}>
                   <button className="btn" onClick={() => selectAdjacentRoute(-1)} style={{ minWidth: 34, minHeight: 34, padding: 0, fontSize: 13 }}>‹</button>
-                  <div style={{ textAlign: "center", minWidth: 0 }}><div style={{ fontSize: 10.2, fontWeight: 1000, color: accent, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div><div style={{ marginTop: 2, fontSize: 7.8, color: textSoft }}>{selectedRouteIndex + 1}/{routeOptions.length} · {pickLegacyLocalizedText(lang, "carrousel synchronisé", "synced carousel", "carrusel sincronizado")}</div></div>
+                  <div style={{ textAlign: "center", minWidth: 0 }}><div style={{ fontSize: 10.2, fontWeight: 1000, color: accent, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div><div style={{ marginTop: 2, fontSize: 7.8, color: textSoft }}>{selectedRouteIndex + 1}/{routeOptions.length} · {pickLegacyLocalizedText(lang, "balaye pour changer de parcours", "swipe to change route", "desliza para cambiar de ruta")}</div></div>
                   <button className="btn" onClick={() => selectAdjacentRoute(1)} style={{ minWidth: 34, minHeight: 34, padding: 0, fontSize: 13 }}>›</button>
                 </div>
                 <RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting} showRouteNetwork zoomable route={selectedRoute} terrain={selectedTerrain}/>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6, marginTop: 8 }}><MiniStat label={pickLegacyLocalizedText(lang, "DIFFICULTÉ", "DIFFICULTY", "DIFICULTAD")} value={selectedTerrain?.hasElevation ? `${selectedTerrain.difficultyScore}/100` : "—"} accent={accent}/><MiniStat label="D+" value={selectedTerrain?.hasElevation ? `+${Math.round(selectedTerrain.gainM)} m` : `+${Math.round(selectedRoute.elevationGainM || 0)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "POINT CULMINANT", "HIGH POINT", "PUNTO MÁS ALTO")} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : "—"} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "DURÉE EST.", "EST. TIME", "TIEMPO EST.")} value={formatDuration(estimateOutdoorRouteDurationMs(selectedRoute, activitySport))} accent={accent}/></div>
+                {routeElevationMessage ? <div style={{ marginTop: 6, color: selectedTerrain?.hasElevation ? accent : textSoft, fontSize: 7.5, lineHeight: 1.35 }}>⛰️ {routeElevationMessage}{routeElevationOverrides[selectedRoute.id] ? <span style={{ opacity: .65 }}> · Open-Meteo / Copernicus DEM</span> : null}</div> : null}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6, marginTop: 8 }}>{([['details', pickLegacyLocalizedText(lang, 'DÉTAILS', 'DETAILS', 'DETALLES')], ['performance', pickLegacyLocalizedText(lang, 'PERFORMANCE', 'PERFORMANCE', 'RENDIMIENTO')], ['photos', pickLegacyLocalizedText(lang, 'PHOTOS', 'PHOTOS', 'FOTOS')]] as Array<[RouteDetailsTab, string]>).map(([id, label]) => <button key={id} className="btn" onClick={() => setRouteDetailsTab(id)} style={{ minHeight: 34, padding: '4px 5px', fontSize: 7.8, fontWeight: 1000, color: routeDetailsTab === id ? accent : undefined, borderColor: routeDetailsTab === id ? `${accent}66` : undefined }}>{label}</button>)}</div>
-                {routeDetailsTab === 'details' ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 7 }}><MiniStat label={pickLegacyLocalizedText(lang, 'DISTANCE', 'DISTANCE', 'DISTANCIA')} value={formatDistance(selectedRoute.distanceM)} accent={accent}/><MiniStat label='D−' value={selectedTerrain?.hasElevation ? `-${Math.round(selectedTerrain.lossM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MIN', 'MIN ALT', 'ALT. MIN')} value={selectedTerrain?.minAltitudeM != null ? `${Math.round(selectedTerrain.minAltitudeM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MAX', 'MAX ALT', 'ALT. MAX')} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'PENTE MAX', 'MAX GRADE', 'PEND. MAX')} value={selectedTerrain?.hasElevation ? `${selectedTerrain.maxGradePct.toFixed(1)}%` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'TYPE', 'TYPE', 'TIPO')} value={selectedTerrain ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)} accent={accent}/></div><div style={{ marginTop: 8, color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{selectedTerrainAdvice ? <><b style={{ color: accent }}>{terrainLabel(selectedTerrain.terrain, lang)}</b> · {selectedTerrainAdvice.text}</> : pickLegacyLocalizedText(lang, 'Départ, arrivée, dénivelé et point culminant sont regroupés ici pour mieux préparer la sortie.', 'Start, finish, elevation and high point are grouped here to better prepare the outing.', 'Salida, llegada, desnivel y punto más alto se agrupan aquí para preparar mejor la salida.')}</div>{selectedTerrainAdvice ? <button className="btn" onClick={applyTerrainRecommendation} style={{ width: '100%', minHeight: 36, marginTop: 8, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, 'UTILISER LA SÉANCE CONSEILLÉE', 'USE RECOMMENDED WORKOUT', 'USAR SESIÓN RECOMENDADA')}</button> : null}</RunningSurface> : null}
-                {routeDetailsTab === 'performance' ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, 'PERFORMANCES SUR CE PARCOURS', 'PERFORMANCES ON THIS ROUTE', 'RENDIMIENTO EN ESTA RUTA')}</div><div style={{ marginTop: 7, display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 6 }}><MiniStat label={pickLegacyLocalizedText(lang, 'TENTATIVES', 'ATTEMPTS', 'INTENTOS')} value={String(selectedRouteAttempts.length)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'MEILLEUR TEMPS', 'BEST TIME', 'MEJOR TIEMPO')} value={selectedRouteAttempts[0] ? formatDuration(selectedRouteAttempts[0].elapsedMs) : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALLURE MOY.', 'AVG PACE', 'RITMO MEDIO')} value={selectedRouteAttempts.length && selectedRouteAttempts.some((item) => item.avgPaceSecPerKm != null) ? `${formatPace(Math.round(selectedRouteAttempts.reduce((sum, item) => sum + Number(item.avgPaceSecPerKm || 0), 0) / Math.max(1, selectedRouteAttempts.filter((item) => item.avgPaceSecPerKm != null).length)))}/km` : '—'} accent={accent}/></div>{selectedRouteAttempts.length ? <div style={{ marginTop: 8, display: 'grid', gap: 5 }}>{selectedRouteAttempts.slice(0, 5).map((activity, index) => <div key={activity.id} style={{ display: 'grid', gridTemplateColumns: '26px 1fr auto', gap: 7, alignItems: 'center', padding: '8px 9px', borderRadius: 11, background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)' }}><div style={{ fontWeight: 1000, color: index === 0 ? accent : textSoft }}>#{index + 1}</div><div><div style={{ fontSize: 8.6, fontWeight: 1000 }}>{activity.title || buildRouteDisplayName(selectedRoute, selectedTerrain, lang)}</div><div style={{ marginTop: 2, fontSize: 7.4, color: textSoft }}>{activityDate(activity.startedAt, lang)} · {formatDistance(activity.distanceM)}</div></div><div style={{ textAlign: 'right' }}><div style={{ fontSize: 8.8, fontWeight: 1000, color: accent }}>{formatDuration(activity.elapsedMs)}</div><div style={{ fontSize: 7.2, color: textSoft }}>{activity.avgPaceSecPerKm != null ? `${formatPace(activity.avgPaceSecPerKm)}/km` : '—'}</div></div></div>)}</div> : <div style={{ marginTop: 8, color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, 'Aucune performance locale enregistrée pour ce parcours. Les chronos apparaîtront ici après les premières sorties.', 'No local performance recorded for this route yet. Times will appear here after the first attempts.', 'Aún no hay rendimiento local registrado para esta ruta. Los tiempos aparecerán aquí tras las primeras salidas.')}</div>}</RunningSurface> : null}
-                {routeDetailsTab === 'photos' ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, 'VISUELS DU LIEU', 'PLACE VISUALS', 'VISUALES DEL LUGAR')}</div><div style={{ marginTop: 6, color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{pickLegacyLocalizedText(lang, 'Prépare le terrain pour afficher des photos du lieu. En attendant, ouvre directement la zone du départ dans Maps ou une recherche images.', 'Prepares the ground for place photos. In the meantime, open the start area directly in Maps or an image search.', 'Prepara la base para mostrar fotos del lugar. Mientras tanto, abre la zona de salida directamente en Maps o una búsqueda de imágenes.')}</div><div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}><button className="btn" onClick={() => openRouteInMaps(selectedRoute)} style={{ minHeight: 38, fontSize: 8.1, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>🗺️ {pickLegacyLocalizedText(lang, 'OUVRIR DANS MAPS', 'OPEN IN MAPS', 'ABRIR EN MAPS')}</button><button className="btn" onClick={() => searchRouteImages(selectedRoute)} style={{ minHeight: 38, fontSize: 8.1, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, '🔎 CHERCHER DES IMAGES', '🔎 SEARCH IMAGES', '🔎 BUSCAR IMÁGENES')}</button></div></RunningSurface> : null}
+                {routeDetailsTab === 'details' ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 7 }}><MiniStat label={pickLegacyLocalizedText(lang, 'DISTANCE', 'DISTANCE', 'DISTANCIA')} value={formatDistance(selectedRoute.distanceM)} accent={accent}/><MiniStat label='D−' value={selectedTerrain?.hasElevation ? `-${Math.round(selectedTerrain.lossM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MIN', 'MIN ALT', 'ALT. MIN')} value={selectedTerrain?.minAltitudeM != null ? `${Math.round(selectedTerrain.minAltitudeM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALT. MAX', 'MAX ALT', 'ALT. MAX')} value={selectedTerrain?.maxAltitudeM != null ? `${Math.round(selectedTerrain.maxAltitudeM)} m` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'PENTE MAX', 'MAX GRADE', 'PEND. MAX')} value={selectedTerrain?.hasElevation ? `${selectedTerrain.maxGradePct.toFixed(1)}%` : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'TYPE', 'TYPE', 'TIPO')} value={selectedTerrain ? terrainLabel(selectedTerrain.terrain, lang) : outdoorSportLabel(activitySport, lang)} accent={accent}/></div>{selectedSportRouteDetails ? <><div style={{ marginTop: 8, fontSize: 7.5, color: accent, fontWeight: 1000, letterSpacing: .5 }}>{selectedSportRouteDetails.title}</div><div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 6 }}>{selectedSportRouteDetails.metrics.map((metric) => <MiniStat key={metric.label} label={metric.label} value={metric.value} accent={accent}/>)}</div><div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.45 }}>{selectedSportRouteDetails.note}</div></> : null}<div style={{ marginTop: 8, color: textSoft, fontSize: 8.2, lineHeight: 1.45 }}>{selectedTerrainAdvice ? <><b style={{ color: accent }}>{terrainLabel(selectedTerrain.terrain, lang)}</b> · {selectedTerrainAdvice.text}</> : pickLegacyLocalizedText(lang, 'Départ, arrivée, dénivelé et point culminant sont regroupés ici pour mieux préparer la sortie.', 'Start, finish, elevation and high point are grouped here to better prepare the outing.', 'Salida, llegada, desnivel y punto más alto se agrupan aquí para preparar mejor la salida.')}</div>{selectedTerrainAdvice ? <button className="btn" onClick={applyTerrainRecommendation} style={{ width: '100%', minHeight: 36, marginTop: 8, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, 'UTILISER LA SÉANCE CONSEILLÉE', 'USE RECOMMENDED WORKOUT', 'USAR SESIÓN RECOMENDADA')}</button> : null}</RunningSurface> : null}
+                {routeDetailsTab === 'performance' ? <><RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ color: accent, fontSize: 9, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, 'MES DONNÉES SUR CE PARCOURS', 'MY DATA ON THIS ROUTE', 'MIS DATOS EN ESTA RUTA')}</div><div style={{ marginTop: 7, display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 6 }}><MiniStat label={pickLegacyLocalizedText(lang, 'TENTATIVES', 'ATTEMPTS', 'INTENTOS')} value={String(selectedRouteAttempts.length)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'MEILLEUR TEMPS', 'BEST TIME', 'MEJOR TIEMPO')} value={selectedRouteAttempts[0] ? formatDuration(selectedRouteAttempts[0].elapsedMs) : '—'} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, 'ALLURE MOY.', 'AVG PACE', 'RITMO MEDIO')} value={selectedRouteAttempts.length && selectedRouteAttempts.some((item) => item.avgPaceSecPerKm != null) ? `${formatPace(Math.round(selectedRouteAttempts.reduce((sum, item) => sum + Number(item.avgPaceSecPerKm || 0), 0) / Math.max(1, selectedRouteAttempts.filter((item) => item.avgPaceSecPerKm != null).length)))}/km` : '—'} accent={accent}/></div></RunningSurface><OutdoorRouteCommunityPanel route={selectedRoute} localAttempts={selectedRouteAttempts} lang={lang} accent={accent} textSoft={textSoft}/></> : null}
+                {routeDetailsTab === 'photos' ? <><OutdoorRoutePhotoGallery route={selectedRoute} lang={lang} accent={accent} textSoft={textSoft} onSearchImages={() => searchRouteImages(selectedRoute)}/><button className="btn" onClick={() => openRouteInMaps(selectedRoute)} style={{ width: '100%', minHeight: 38, marginTop: 7, fontSize: 8.1, fontWeight: 1000, color: accent, borderColor: `${accent}55` }}>🗺️ {pickLegacyLocalizedText(lang, 'OUVRIR LE DÉPART DANS MAPS', 'OPEN START IN MAPS', 'ABRIR SALIDA EN MAPS')}</button></> : null}
               </div> : null}
             </div>
           </RunningSurface>
@@ -1725,6 +1810,47 @@ function Bars({ rows, accent }: {
     }>;
     accent: string;
 }) { const max = Math.max(1, ...rows.map((r) => r.value)); return <div style={{ display: "grid", gridTemplateColumns: `repeat(${rows.length},minmax(0,1fr))`, gap: 8, alignItems: "end", height: 118 }}>{rows.map((r) => <div key={r.label} style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, alignItems: "end", height: "100%", textAlign: "center" }}><div style={{ height: 88, display: "flex", alignItems: "end", borderRadius: 8, background: "rgba(255,255,255,.025)", overflow: "hidden" }}><div style={{ width: "100%", height: `${Math.max(r.value ? 8 : 2, r.value / max * 100)}%`, background: `linear-gradient(180deg,${accent},${accent}60)`, borderRadius: "7px 7px 2px 2px" }}/></div><div style={{ fontSize: 8 }}>{r.label}<br /><b>{r.value.toFixed(1)}</b></div></div>)}</div>; }
+function buildSportRouteDetails(route: RunningRouteTemplate, terrain: ReturnType<typeof analyzeRunningTerrain> | null, sport: OutdoorPerformanceSport, lang: string) {
+    const gainPerKm = terrain?.hasElevation ? terrain.gainPerKm : 0;
+    const estimated = formatDuration(estimateOutdoorRouteDurationMs(route, sport));
+    const format = route.generation?.shape === "loop" ? pickLegacyLocalizedText(lang, "BOUCLE", "LOOP", "BUCLE") : pickLegacyLocalizedText(lang, "LINÉAIRE", "POINT TO POINT", "LINEAL");
+    if (sport === "trail") return {
+        title: pickLegacyLocalizedText(lang, "LECTURE TRAIL", "TRAIL READOUT", "LECTURA TRAIL"),
+        metrics: [
+            { label: pickLegacyLocalizedText(lang, "SENTIERS", "TRAILS", "SENDEROS"), value: route.generation ? `${Math.round(route.generation.trailSharePct)}%` : "—" },
+            { label: "D+/KM", value: terrain?.hasElevation ? `${Math.round(gainPerKm)} m` : "—" },
+            { label: pickLegacyLocalizedText(lang, "PENTE MAX", "MAX GRADE", "PEND. MAX"), value: terrain?.hasElevation ? `${terrain.maxGradePct.toFixed(1)}%` : "—" },
+        ],
+        note: pickLegacyLocalizedText(lang, `Trail ${format.toLowerCase()} · ${estimated} estimées. Surveille surtout D+/km et pente max pour doser l'effort.`, `${format.toLowerCase()} trail · ${estimated} estimated. Watch elevation per km and max grade to pace the effort.`, `Trail ${format.toLowerCase()} · ${estimated} estimadas. Vigila el desnivel/km y la pendiente máxima.`),
+    };
+    if (sport === "hiking") return {
+        title: pickLegacyLocalizedText(lang, "LECTURE RANDONNÉE", "HIKING READOUT", "LECTURA SENDERISMO"),
+        metrics: [
+            { label: pickLegacyLocalizedText(lang, "DURÉE", "DURATION", "DURACIÓN"), value: estimated },
+            { label: pickLegacyLocalizedText(lang, "ASCENSION", "ASCENT", "ASCENSO"), value: terrain?.hasElevation ? `+${Math.round(terrain.gainM)} m` : "—" },
+            { label: pickLegacyLocalizedText(lang, "POINT HAUT", "HIGH POINT", "PUNTO ALTO"), value: terrain?.maxAltitudeM != null ? `${Math.round(terrain.maxAltitudeM)} m` : "—" },
+        ],
+        note: pickLegacyLocalizedText(lang, `Randonnée ${format.toLowerCase()} : durée, D+ et point culminant sont prioritaires pour préparer eau, équipement et horaire.`, `${format.toLowerCase()} hike: duration, ascent and high point are the key values for water, gear and timing.`, `Senderismo ${format.toLowerCase()}: duración, ascenso y punto más alto son clave para agua, material y horario.`),
+    };
+    if (sport === "walking" || sport === "nordic-walking") return {
+        title: pickLegacyLocalizedText(lang, sport === "nordic-walking" ? "LECTURE MARCHE NORDIQUE" : "LECTURE MARCHE", sport === "nordic-walking" ? "NORDIC WALK READOUT" : "WALK READOUT", sport === "nordic-walking" ? "LECTURA MARCHA NÓRDICA" : "LECTURA MARCHA"),
+        metrics: [
+            { label: pickLegacyLocalizedText(lang, "DURÉE", "DURATION", "DURACIÓN"), value: estimated },
+            { label: "D+", value: terrain?.hasElevation ? `+${Math.round(terrain.gainM)} m` : "—" },
+            { label: pickLegacyLocalizedText(lang, "FORMAT", "FORMAT", "FORMATO"), value: format },
+        ],
+        note: pickLegacyLocalizedText(lang, "Pour la marche, la durée estimée et le relief donnent une meilleure idée de l'effort réel que la distance seule.", "For walking, estimated duration and elevation describe the real effort better than distance alone.", "Para caminar, la duración estimada y el relieve describen mejor el esfuerzo real que la distancia sola."),
+    };
+    return {
+        title: pickLegacyLocalizedText(lang, "LECTURE RUNNING", "RUNNING READOUT", "LECTURA RUNNING"),
+        metrics: [
+            { label: pickLegacyLocalizedText(lang, "DURÉE EST.", "EST. TIME", "TIEMPO EST."), value: estimated },
+            { label: "D+/KM", value: terrain?.hasElevation ? `${Math.round(gainPerKm)} m` : "—" },
+            { label: pickLegacyLocalizedText(lang, "FORMAT", "FORMAT", "FORMATO"), value: format },
+        ],
+        note: pickLegacyLocalizedText(lang, "Pour la course, compare surtout distance, D+/km et profil général avant de choisir ton allure ou ta séance.", "For running, compare distance, elevation per km and the overall profile before choosing pace or workout.", "Para running, compara distancia, desnivel/km y perfil general antes de elegir ritmo o sesión."),
+    };
+}
 function RouteMap({ points, accent, waiting, showRouteNetwork = false, zoomable = false, route, terrain }: {
     points: GeoPoint[];
     accent: string;

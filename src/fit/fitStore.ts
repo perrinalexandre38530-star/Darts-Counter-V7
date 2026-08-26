@@ -41,6 +41,8 @@ export type FitSession = {
   id: string;
   title: string;
   templateId?: string;
+  profileId?: string;
+  profileName?: string;
   startedAt: number;
   endedAt?: number;
   exercises: FitSessionExercise[];
@@ -127,12 +129,14 @@ export function defaultSets(weightKg = 20, count = 3, reps = 10): FitSet[] {
   return Array.from({ length: count }, (_, index) => ({ id: makeId("set"), weightKg, reps, completed: false, warmup: index === 0 && count >= 4 }));
 }
 
-export function createSessionFromTemplate(template: FitTemplate | null): FitSession {
+export function createSessionFromTemplate(template: FitTemplate | null, owner?: { profileId?: string | null; profileName?: string | null }): FitSession {
   const exerciseIds = template?.exerciseIds || ["bench", "row", "squat"];
   return {
     id: makeId("session"),
     title: template?.name || "SÉANCE LIBRE",
     templateId: template?.id,
+    profileId: owner?.profileId ? String(owner.profileId) : undefined,
+    profileName: owner?.profileName ? String(owner.profileName) : undefined,
     startedAt: Date.now(),
     exercises: exerciseIds.map((exerciseId) => ({ id: makeId("sx"), exerciseId, sets: defaultSets(exerciseId === "squat" || exerciseId === "deadlift" ? 40 : 20, 3, 10) })),
   };
@@ -217,4 +221,43 @@ export function formatDuration(ms: number) {
   const hours = Math.floor(totalMin / 60);
   const minutes = totalMin % 60;
   return hours > 0 ? `${hours} h ${String(minutes).padStart(2, "0")}` : `${minutes} min`;
+}
+
+
+export function fitSessionsForProfile(sessions: FitSession[], profileId?: string | null): FitSession[] {
+  const key = String(profileId || "").trim();
+  if (!key) return sessions;
+  const tagged = sessions.filter((session) => String(session.profileId || "").trim() === key);
+  // Legacy V1 sessions had no owner. Keep them visible only when there is no tagged
+  // session yet, so an existing user does not lose the first FIT PERF tests.
+  if (tagged.length) return tagged;
+  return sessions.filter((session) => !String(session.profileId || "").trim());
+}
+
+export type FitProfileSummary = {
+  sessions: number;
+  weekSessions: number;
+  volumeKg: number;
+  weekVolumeKg: number;
+  sets: number;
+  records: number;
+  bestOneRm: number;
+  totalDurationMs: number;
+  score: number;
+};
+
+export function buildFitProfileSummary(sessions: FitSession[], profileId?: string | null): FitProfileSummary {
+  const scoped = fitSessionsForProfile(sessions, profileId);
+  const week = sessionsSince(scoped, weekStart());
+  const volumeKg = scoped.reduce((sum, session) => sum + sessionVolume(session), 0);
+  const weekVolumeKg = week.reduce((sum, session) => sum + sessionVolume(session), 0);
+  const sets = scoped.reduce((sum, session) => sum + completedSets(session), 0);
+  const records = buildFitRecords(scoped);
+  const totalDurationMs = scoped.reduce((sum, session) => sum + sessionDurationMs(session, session.endedAt || session.startedAt), 0);
+  const bestOneRm = records.reduce((best, record) => Math.max(best, record.oneRm), 0);
+  const recent28 = sessionsSince(scoped, Date.now() - 28 * 86400000).length;
+  const goalPct = Math.min(100, (week.length / 3) * 100);
+  const consistency = Math.min(100, (recent28 / 12) * 100);
+  const score = scoped.length ? Math.min(99, Math.round(goalPct * .45 + consistency * .35 + Math.min(100, records.length * 7) * .2)) : 0;
+  return { sessions: scoped.length, weekSessions: week.length, volumeKg, weekVolumeKg, sets, records: records.length, bestOneRm, totalDurationMs, score };
 }

@@ -12,6 +12,8 @@ import {
   exerciseById,
   formatDuration,
   formatVolume,
+  loadFitSessions,
+  fitSessionsForProfile,
   makeId,
   sessionDurationMs,
   sessionVolume,
@@ -21,7 +23,7 @@ import {
   type FitSet,
   type FitTemplate,
 } from "../../fit/fitStore";
-import { FitGlassCard, FitGhostButton, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell } from "./FitPerfUi";
+import { FitGlassCard, FitGhostButton, FitIcon, FitIconTabs, FitPill, FitPrimaryButton, FitProgress, FitSectionTitle, FitShell, fitUiCss } from "./FitPerfUi";
 
 type Props = { go: (route: any, params?: any) => void; store?: any; params?: any };
 type View = "setup" | "workout" | "history";
@@ -37,13 +39,15 @@ function initialRestSeconds() {
   }
 }
 
-export default function FitPerfModule({ go, params }: Props) {
+export default function FitPerfModule({ go, store, params }: Props) {
   const { theme } = useTheme();
   const langApi = useLang() as any;
   const lang = String(langApi?.lang || "fr").toLowerCase();
   const accent = (theme as any)?.primary || (theme as any)?.accent || "#f6c256";
   const textSoft = (theme as any)?.textSoft || "#9ca3af";
   const t = (fr: string, en: string, es: string) => pickLegacyLocalizedText(lang, fr, en, es);
+  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+  const activeProfile = profiles.find((item: any) => String(item?.id || "") === String(store?.activeProfileId || "")) || profiles[0] || null;
   const requestedTemplateId = String(params?.fitTemplateId || "free");
   const requestedTemplate = FIT_TEMPLATES.find((item) => item.id === requestedTemplateId) || null;
 
@@ -71,10 +75,14 @@ export default function FitPerfModule({ go, params }: Props) {
 
   const startWorkout = (templateId = selectedTemplateId) => {
     const template = FIT_TEMPLATES.find((item) => item.id === templateId) || null;
-    const next = createSessionFromTemplate(template);
+    const next = createSessionFromTemplate(template, { profileId: activeProfile?.id, profileName: activeProfile?.name });
     if (templateId === "free") {
       next.exercises = [];
       next.title = t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE");
+      const requestedExerciseId = String(params?.fitExerciseId || "");
+      if (requestedExerciseId && exerciseById(requestedExerciseId)) {
+        next.exercises = [{ id: makeId("sx"), exerciseId: requestedExerciseId, sets: defaultSets(20, 3, 10) }];
+      }
     }
     setSession(next);
     setView("workout");
@@ -151,6 +159,26 @@ export default function FitPerfModule({ go, params }: Props) {
     setRestSeconds(next);
     try { localStorage.setItem(REST_SECONDS_KEY, String(next)); } catch {}
   };
+
+  if (view === "history") {
+    const history = fitSessionsForProfile(loadFitSessions(), activeProfile?.id);
+    return (
+      <div style={{ minHeight: "100%", color: "#fff", background: (theme as any)?.pageBackground || (theme as any)?.bg || "#05060b" }}>
+        <FitShell>
+          <style>{fitUiCss}</style>
+          <FitIconTabs<"setup" | "history"> value="history" onChange={(next) => setView(next)} accent={accent} items={[
+            { id: "setup", label: t("Démarrer", "Start", "Empezar"), icon: "workout" },
+            { id: "history", label: t("Historique", "History", "Historial"), icon: "history", badge: history.length || undefined },
+          ]}/>
+          <FitGlassCard accent={accent} style={{ padding: 16 }}><FitPill accent={accent}>FIT PERF · {t("HISTORIQUE", "HISTORY", "HISTORIAL")}</FitPill><div style={{ marginTop: 9, fontSize: 23, fontWeight: 1000 }}>{t("Tes séances", "Your workouts", "Tus sesiones")}</div><div style={{ marginTop: 5, color: textSoft, fontSize: 9.5 }}>{activeProfile?.name || t("Profil actif", "Active profile", "Perfil activo")}</div></FitGlassCard>
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            {history.map((item) => <FitGlassCard key={item.id} accent={accent} style={{ padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center" }}><div style={{ width: 40, height: 40, borderRadius: 13, display: "grid", placeItems: "center", color: accent, background: `${accent}12`, border: `1px solid ${accent}35` }}><FitIcon name="history" size={20}/></div><div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{item.title}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.5 }}>{new Date(item.endedAt || item.startedAt).toLocaleString()} · {completedSets(item)} {t("séries", "sets", "series")}</div></div><div style={{ textAlign: "right" }}><div style={{ color: accent, fontSize: 11, fontWeight: 1000 }}>{formatVolume(sessionVolume(item))}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8 }}>{formatDuration(sessionDurationMs(item, item.endedAt || item.startedAt))}</div></div></FitGlassCard>)}
+            {!history.length ? <FitGlassCard accent={accent} style={{ padding: 24, textAlign: "center", color: textSoft }}>{t("Aucune séance enregistrée pour ce profil.", "No workout saved for this profile.", "No hay sesiones guardadas para este perfil.")}</FitGlassCard> : null}
+          </div>
+        </FitShell>
+      </div>
+    );
+  }
 
   if (view === "workout" && session) {
     const doneSets = completedSets(session);
@@ -241,7 +269,12 @@ export default function FitPerfModule({ go, params }: Props) {
   return (
     <div style={{ minHeight: "100%", color: "#fff", background: (theme as any)?.pageBackground || (theme as any)?.bg || "#05060b" }}>
       <FitShell>
-        <FitGlassCard accent={accent} style={{ marginTop: 8, padding: 18, borderRadius: 26, background: "linear-gradient(145deg, rgba(8,11,17,.98), rgba(16,19,29,.97))" }}>
+        <style>{fitUiCss}</style>
+        <FitIconTabs<"setup" | "history"> value="setup" onChange={(next) => setView(next)} accent={accent} items={[
+          { id: "setup", label: t("Démarrer", "Start", "Empezar"), icon: "workout" },
+          { id: "history", label: t("Historique", "History", "Historial"), icon: "history", badge: fitSessionsForProfile(loadFitSessions(), activeProfile?.id).length || undefined },
+        ]}/>
+        <FitGlassCard accent={accent} style={{ marginTop: 2, padding: 18, borderRadius: 26, background: "linear-gradient(145deg, rgba(8,11,17,.98), rgba(16,19,29,.97))" }}>
           <FitPill accent={accent}>FIT PERF · TRAINING</FitPill>
           <div style={{ marginTop: 10, fontSize: 28, fontWeight: 1000, letterSpacing: -1 }}>{t("Prépare ta séance", "Prepare your workout", "Prepara tu sesión")}</div>
           <div style={{ marginTop: 6, color: textSoft, fontSize: 10.5, lineHeight: 1.45 }}>{t("Choisis un format ou démarre librement. Chaque série sera enregistrée individuellement pour alimenter tes statistiques et records.", "Choose a format or start freely. Every set is stored individually to power your stats and records.", "Elige un formato o empieza libremente. Cada serie se guarda individualmente para alimentar estadísticas y récords.")}</div>
@@ -255,12 +288,10 @@ export default function FitPerfModule({ go, params }: Props) {
 
         <FitPrimaryButton onClick={() => startWorkout()} accent={accent} style={{ width: "100%", marginTop: 11, minHeight: 58, fontSize: 13 }}>▶ {t("DÉMARRER LA SÉANCE", "START WORKOUT", "INICIAR SESIÓN")}</FitPrimaryButton>
 
-        <FitSectionTitle eyebrow={t("BIBLIOTHÈQUE", "LIBRARY", "BIBLIOTECA")} title={t("Exercices intégrés", "Built-in exercises", "Ejercicios integrados")} right={<FitPill accent="#76e4f7">{FIT_EXERCISES.length} EXOS</FitPill>} />
-        <FitGlassCard accent="#76e4f7" style={{ padding: 13 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}>
-            {FIT_EXERCISES.slice(0, 8).map((exercise) => <div key={exercise.id} style={{ minHeight: 58, borderRadius: 13, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.025)", padding: 9, display: "grid", gridTemplateColumns: "32px 1fr", gap: 8, alignItems: "center" }}><div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}28`, fontWeight: 1000 }}>{exercise.icon}</div><div style={{ minWidth: 0 }}><div style={{ fontSize: 9.5, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.5 }}>{exercise.muscle}</div></div></div>)}
-          </div>
-          <div style={{ marginTop: 9, color: textSoft, fontSize: 9.5, lineHeight: 1.45 }}>{t("La bibliothèque complète devient accessible pendant la séance via “Ajouter un exercice”.", "The full library is available during workouts via “Add exercise”.", "La biblioteca completa está disponible durante la sesión mediante “Añadir ejercicio”.")}</div>
+        <FitGlassCard accent="#72def4" style={{ marginTop: 12, padding: 12, display: "grid", gridTemplateColumns: "42px 1fr auto", gap: 10, alignItems: "center" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 13, display: "grid", placeItems: "center", color: "#72def4", background: "rgba(114,222,244,.10)", border: "1px solid rgba(114,222,244,.30)" }}><FitIcon name="library" size={20}/></div>
+          <div><div style={{ fontSize: 11.5, fontWeight: 950 }}>{t("Bibliothèque d’exercices", "Exercise library", "Biblioteca de ejercicios")}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.8 }}>{t("Exercices, favoris, programmes et guides AWENA sont regroupés dans l’onglet EXERCICES.", "Exercises, favorites, programs and AWENA guides are grouped in the EXERCISES tab.", "Ejercicios, favoritos, programas y guías AWENA están en la pestaña EJERCICIOS.")}</div></div>
+          <button type="button" onClick={() => go("fit_plan")} style={{ width: 38, height: 38, borderRadius: 12, border: "1px solid rgba(114,222,244,.35)", background: "rgba(114,222,244,.08)", color: "#72def4" }}>›</button>
         </FitGlassCard>
 
         <FitSectionTitle eyebrow={t("SUIVI INTELLIGENT", "SMART TRACKING", "SEGUIMIENTO INTELIGENTE")} title={t("Ce que FIT PERF calcule déjà", "What FIT PERF already calculates", "Lo que FIT PERF ya calcula")} />
