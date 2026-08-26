@@ -65,7 +65,14 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
     frameSequence: frames("curl", 5, 3.6),
   },
   "triceps-push": { exerciseId: "triceps-push", label: "Extension triceps" },
-  squat: { exerciseId: "squat", label: "Squat" },
+  squat: {
+    exerciseId: "squat",
+    label: "Squat",
+    video: {
+      sources: [{ src: `${ROOT}/squat/motion.mp4`, type: "video/mp4" }],
+      poster: `${ROOT}/squat/poster.webp`,
+    },
+  },
   "leg-press": { exerciseId: "leg-press", label: "Presse à cuisses" },
   rdl: { exerciseId: "rdl", label: "Soulevé de terre roumain" },
   "hip-thrust": { exerciseId: "hip-thrust", label: "Hip thrust" },

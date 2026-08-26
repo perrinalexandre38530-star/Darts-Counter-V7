@@ -67,7 +67,7 @@ export default function FitPremiumMotionPlayer({
     onFail?.();
   }, [canUseVideo, canUseFrames, onFail]);
 
-  const height = compact ? 112 : 220;
+  const height = compact ? 168 : 260;
   const frameSrc = frameSequence?.frames[Math.min(frameIndex, Math.max(0, (frameSequence?.frames.length || 1) - 1))];
 
   return (

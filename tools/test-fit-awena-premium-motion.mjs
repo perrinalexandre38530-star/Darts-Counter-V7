@@ -42,6 +42,14 @@ for (const { exerciseId, count } of declaredFrameSlots) {
   assert.ok(fs.existsSync(poster) && fs.statSync(poster).size > 8_000, `Poster premium absent : ${exerciseId}`);
 }
 
+
+const squatVideo = path.join("public", "fit", "motions", "awena", "premium", "squat", "motion.mp4");
+const squatPoster = path.join("public", "fit", "motions", "awena", "premium", "squat", "poster.webp");
+assert.ok(catalog.includes('`${ROOT}/squat/motion.mp4`') && catalog.includes('type: "video/mp4"'), "Vidéo premium locale Squat non déclarée");
+assert.ok(fs.existsSync(squatVideo) && fs.statSync(squatVideo).size > 80_000 && fs.statSync(squatVideo).size < 500_000, "Vidéo Squat absente ou mal compressée");
+assert.ok(fs.existsSync(squatPoster) && fs.statSync(squatPoster).size > 5_000, "Poster Squat absent");
+assert.ok(player.includes('compact ? 168 : 260'), "Affichage premium encore trop petit pour les vidéos AWENA");
+
 console.log("✅ AWENA PREMIUM MOTION CHECK OK");
 console.log(`   ${exerciseIds.length} slots premium prêts · VIDEO > FRAMES > REAL 3D > PROCEDURAL`);
 console.log(`   ${declaredFrameSlots.length} exercices avec séquences WebP réellement installées`);
