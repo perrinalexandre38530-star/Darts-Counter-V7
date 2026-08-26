@@ -13,6 +13,8 @@ const fitHome = read("src/pages/fit/FitPerfHome.tsx");
 const fitModule = read("src/pages/fit/FitPerfModule.tsx");
 const fitPlan = read("src/pages/fit/FitPerfPlan.tsx");
 const fitStats = read("src/pages/fit/FitPerfStatsPage.tsx");
+const fitExerciseMotion = read("src/pages/fit/FitExerciseMotion.tsx");
+const fitAwenaMotionStage = read("src/pages/fit/FitAwenaMotionStage.tsx");
 
 assert.ok(gameSelect.includes('id: "fit"'), "FIT PERF absent du sélecteur de sports");
 assert.ok(gameSelect.includes("logo-fit-performance"), "Logo FIT PERF absent du sélecteur");
@@ -31,7 +33,17 @@ assert.ok(fitModule.includes("appendFitSession"), "Sauvegarde des séances FIT P
 assert.ok(fitHome.includes("FIT SCORE"), "Dashboard performance FIT PERF incomplet");
 assert.ok(fitPlan.includes("AWENA COACH") && fitPlan.includes("FIT_TEMPLATES") && fitPlan.includes("favorites"), "Centre exercices/programmes FIT PERF incomplet");
 assert.ok(fitStats.includes("1RM"), "Stats records FIT PERF incomplètes");
+assert.ok(fitExerciseMotion.includes("FitAwenaMotionStage") && fitExerciseMotion.includes("MEDIA_OVERRIDES"), "Renderer AWENA Motion non branché");
+assert.ok(!fitExerciseMotion.includes("/fit/motions/awena/${exercise.id}.webp"), "Ancien chargement placeholder AWENA encore actif");
+const exerciseBlock = fitStore.split("export const FIT_EXERCISES")[1]?.split("];", 1)[0] || "";
+const exerciseIds = [...exerciseBlock.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1]);
+assert.ok(exerciseIds.length >= 18, "Bibliothèque d’exercices FIT PERF anormalement réduite");
+for (const exerciseId of exerciseIds) {
+  const covered = fitAwenaMotionStage.includes(`${exerciseId}: {`) || fitAwenaMotionStage.includes(`"${exerciseId}": {`);
+  assert.ok(covered, `Animation AWENA manquante pour ${exerciseId}`);
+}
 
 console.log("✅ FIT PERF INTEGRATION CHECK OK");
 console.log("   Sélecteur · Home · Séance · Exercices · Stats · BottomNav · QuickSwitch");
 console.log("   Séries individuelles · volume · chrono repos · records · 1RM · localStorage");
+console.log(`   AWENA Motion · ${exerciseIds.length} exercices animés couverts`);
