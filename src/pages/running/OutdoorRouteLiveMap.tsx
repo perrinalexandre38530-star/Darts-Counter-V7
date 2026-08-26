@@ -9,6 +9,7 @@ import {
   outdoorRouteRejoinPlan,
   type OutdoorTurnKind,
 } from "../../activity/outdoorNavigation";
+import { outdoorRerouteMatchedDistanceM, rerouteAsRunningRoute, type OutdoorRouteRerouteResult } from "../../activity/outdoorRouteRerouting";
 import type { OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import type { OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
 import type { RunningRouteTemplate } from "../../activity/runningRoutes";
@@ -24,6 +25,8 @@ type Props = {
   elapsedMs: number;
   liveElevationGainM?: number;
   extras: OutdoorRouteExtras;
+  reroute?: OutdoorRouteRerouteResult | null;
+  rerouteBusy?: boolean;
   onClose: () => void;
 };
 
@@ -104,7 +107,7 @@ function checkpointText(kind: string | undefined, name: string | undefined, lang
   return lang.startsWith("fr") ? "REPÈRE" : lang.startsWith("es") ? "PUNTO" : "CHECKPOINT";
 }
 
-export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent, textSoft, liveDistanceM, elapsedMs, liveElevationGainM = 0, extras, onClose }: Props) {
+export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent, textSoft, liveDistanceM, elapsedMs, liveElevationGainM = 0, extras, reroute = null, rerouteBusy = false, onClose }: Props) {
   const [follow, setFollow] = React.useState(true);
   const [zoomDelta, setZoomDelta] = React.useState(0);
   const currentPoint = track[track.length - 1] || route.route[0] || null;
@@ -112,22 +115,27 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   const progress = React.useMemo(() => outdoorRouteProgress(route, sport, liveDistanceM, elapsedMs, currentPoint, liveElevationGainM, extras.waypoints, extras.offRouteAlertM), [currentPoint, elapsedMs, extras.offRouteAlertM, extras.waypoints, liveDistanceM, liveElevationGainM, route, sport]);
   const guidance = React.useMemo(() => outdoorDirectionalGuidance(route, progress.matchedDistanceM, currentPoint, previousPoint), [currentPoint, previousPoint, progress.matchedDistanceM, route]);
   const rejoin = React.useMemo(() => progress.offRouteAlert ? outdoorRouteRejoinPlan(route, currentPoint, progress.matchedDistanceM) : null, [currentPoint, progress.matchedDistanceM, progress.offRouteAlert, route]);
+  const rerouteRoute = React.useMemo(() => reroute ? rerouteAsRunningRoute(reroute, sport) : null, [reroute, sport]);
+  const rerouteMatchedM = React.useMemo(() => reroute ? outdoorRerouteMatchedDistanceM(reroute, currentPoint) : 0, [currentPoint, reroute]);
+  const rerouteGuidance = React.useMemo(() => rerouteRoute && progress.offRouteAlert ? outdoorDirectionalGuidance(rerouteRoute, rerouteMatchedM, currentPoint, previousPoint) : null, [currentPoint, previousPoint, progress.offRouteAlert, rerouteMatchedM, rerouteRoute]);
+  const activeGuidance = progress.offRouteAlert && rerouteGuidance ? rerouteGuidance : guidance;
 
   const mapAnchor = React.useMemo(() => {
     if (follow && currentPoint) return currentPoint;
-    const points = route.route || [];
+    const points = reroute?.route?.length ? [...(route.route || []), ...reroute.route] : (route.route || []);
     if (!points.length) return currentPoint;
     const lats = points.map((p) => p.lat), lons = points.map((p) => p.lon);
     return { lat: (Math.min(...lats) + Math.max(...lats)) / 2, lon: (Math.min(...lons) + Math.max(...lons)) / 2, timestamp: Date.now() } as GeoPoint;
-  }, [currentPoint, follow, route.route]);
-  const baseZoom = React.useMemo(() => follow ? 16 : fitZoom(route.route || [], 1000, 1600), [follow, route.route]);
+  }, [currentPoint, follow, reroute?.route, route.route]);
+  const baseZoom = React.useMemo(() => follow ? 16 : fitZoom(reroute?.route?.length ? [...(route.route || []), ...reroute.route] : (route.route || []), 1000, 1600), [follow, reroute?.route, route.route]);
   const zoom = clamp(baseZoom + zoomDelta, 3, 19);
   const layout = React.useMemo(() => mapAnchor ? buildLayout(mapAnchor, zoom) : null, [mapAnchor, zoom]);
   const routeLine = React.useMemo(() => layout ? (route.route || []).map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, route.route]);
   const trackLine = React.useMemo(() => layout ? track.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, track]);
-  const turnPoint = React.useMemo(() => guidance ? routePointAtDistance(route, guidance.targetDistanceM) : null, [guidance, route]);
+  const rerouteLine = React.useMemo(() => layout && reroute ? reroute.route.map((point) => { const p = screenPoint(point, layout); return `${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" ") : "", [layout, reroute]);
+  const turnPoint = React.useMemo(() => activeGuidance ? routePointAtDistance(progress.offRouteAlert && rerouteRoute ? rerouteRoute : route, activeGuidance.targetDistanceM) : null, [activeGuidance, progress.offRouteAlert, rerouteRoute, route]);
   const movementBearing = previousPoint && currentPoint ? outdoorBearingDegrees(previousPoint, currentPoint) : null;
-  const isAlert = progress.offRouteAlert || !!guidance?.wrongWay;
+  const isAlert = progress.offRouteAlert || !!activeGuidance?.wrongWay;
 
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -140,16 +148,16 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
   }, [onClose]);
 
   const copy = lang.startsWith("fr") ? {
-    nav: "NAVIGATION ACTIVE", close: "FERMER", follow: "SUIVRE", overview: "VUE GLOBALE", off: "HORS TRACÉ", on: "SUR LE TRACÉ", wrong: "MAUVAIS SENS", rejoin: "REJOINS LE PARCOURS", recalculated: "RECALCUL LOCAL", remaining: "RESTANT", eta: "ETA", next: "PROCHAIN", gap: "ÉCART", routeReturn: "retour au tracé", then: "puis", ahead: "plus loin sur le parcours",
+    nav: "NAVIGATION ACTIVE", close: "FERMER", follow: "SUIVRE", overview: "VUE GLOBALE", off: "HORS TRACÉ", on: "SUR LE TRACÉ", wrong: "MAUVAIS SENS", rejoin: "SUIS LE REROUTAGE", recalculated: "REROUTAGE OSM", calculating: "CALCUL DU CHEMIN…", local: "RECALCUL LOCAL", remaining: "RESTANT", eta: "ETA", next: "PROCHAIN", gap: "ÉCART", routeReturn: "pour rejoindre le tracé", then: "puis", ahead: "plus loin sur le parcours",
   } : lang.startsWith("es") ? {
-    nav: "NAVEGACIÓN ACTIVA", close: "CERRAR", follow: "SEGUIR", overview: "VISTA GLOBAL", off: "FUERA DE RUTA", on: "EN RUTA", wrong: "SENTIDO INCORRECTO", rejoin: "VUELVE A LA RUTA", recalculated: "RECÁLCULO LOCAL", remaining: "RESTANTE", eta: "ETA", next: "SIGUIENTE", gap: "DESVÍO", routeReturn: "vuelta a la ruta", then: "después", ahead: "más adelante en la ruta",
+    nav: "NAVEGACIÓN ACTIVA", close: "CERRAR", follow: "SEGUIR", overview: "VISTA GLOBAL", off: "FUERA DE RUTA", on: "EN RUTA", wrong: "SENTIDO INCORRECTO", rejoin: "SIGUE EL REROUTING", recalculated: "REROUTING OSM", calculating: "CALCULANDO CAMINO…", local: "RECÁLCULO LOCAL", remaining: "RESTANTE", eta: "ETA", next: "SIGUIENTE", gap: "DESVÍO", routeReturn: "para volver a la ruta", then: "después", ahead: "más adelante en la ruta",
   } : {
-    nav: "ACTIVE NAVIGATION", close: "CLOSE", follow: "FOLLOW", overview: "OVERVIEW", off: "OFF ROUTE", on: "ON ROUTE", wrong: "WRONG WAY", rejoin: "REJOIN ROUTE", recalculated: "LOCAL RECALC", remaining: "REMAINING", eta: "ETA", next: "NEXT", gap: "OFF ROUTE", routeReturn: "route rejoin", then: "then", ahead: "ahead on route",
+    nav: "ACTIVE NAVIGATION", close: "CLOSE", follow: "FOLLOW", overview: "OVERVIEW", off: "OFF ROUTE", on: "ON ROUTE", wrong: "WRONG WAY", rejoin: "FOLLOW REROUTE", recalculated: "OSM REROUTING", calculating: "CALCULATING PATH…", local: "LOCAL RECALC", remaining: "REMAINING", eta: "ETA", next: "NEXT", gap: "OFF ROUTE", routeReturn: "to rejoin route", then: "then", ahead: "ahead on route",
   };
 
-  const instructionKind: OutdoorTurnKind = guidance?.wrongWay ? "u-turn" : guidance?.kind || "straight";
-  const instruction = progress.offRouteAlert && rejoin ? copy.rejoin : turnLabel(instructionKind, lang);
-  const instructionDistanceM = progress.offRouteAlert && rejoin ? rejoin.distanceToTargetM : (guidance?.distanceM ?? progress.remainingM);
+  const instructionKind: OutdoorTurnKind = activeGuidance?.wrongWay ? "u-turn" : activeGuidance?.kind || "straight";
+  const instruction = progress.offRouteAlert && reroute ? turnLabel(instructionKind, lang) : progress.offRouteAlert && rejoin ? copy.rejoin : turnLabel(instructionKind, lang);
+  const instructionDistanceM = progress.offRouteAlert && reroute ? (activeGuidance?.distanceM ?? Math.max(0, reroute.distanceM - rerouteMatchedM)) : progress.offRouteAlert && rejoin ? rejoin.distanceToTargetM : (activeGuidance?.distanceM ?? progress.remainingM);
 
   if (!layout) return null;
   const currentScreen = currentPoint ? screenPoint(currentPoint, layout) : null;
@@ -165,10 +173,10 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
         <polyline points={routeLine} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round"/>
         <polyline points={routeLine} fill="none" stroke={accent} strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/>
         {trackLine ? <polyline points={trackLine} fill="none" stroke="rgba(255,255,255,.94)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/> : null}
-        {rejoin && currentScreen && rejoinScreen ? <><line x1={currentScreen.x} y1={currentScreen.y} x2={rejoinScreen.x} y2={rejoinScreen.y} stroke="#ff6b62" strokeWidth="7" strokeDasharray="16 11"/><circle cx={rejoinScreen.x} cy={rejoinScreen.y} r="10" fill="#ff6b62" stroke="#fff" strokeWidth="3"/></> : null}
+        {rerouteLine ? <><polyline points={rerouteLine} fill="none" stroke="rgba(0,0,0,.82)" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round"/><polyline points={rerouteLine} fill="none" stroke="#ffad4f" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round"/></> : rejoin && currentScreen && rejoinScreen ? <><line x1={currentScreen.x} y1={currentScreen.y} x2={rejoinScreen.x} y2={rejoinScreen.y} stroke="#ff6b62" strokeWidth="7" strokeDasharray="16 11"/><circle cx={rejoinScreen.x} cy={rejoinScreen.y} r="10" fill="#ff6b62" stroke="#fff" strokeWidth="3"/></> : null}
         {startScreen ? <text x={startScreen.x} y={startScreen.y} textAnchor="middle" dominantBaseline="central" fontSize="25">🚩</text> : null}
         {finishScreen ? <text x={finishScreen.x} y={finishScreen.y} textAnchor="middle" dominantBaseline="central" fontSize="25">🏁</text> : null}
-        {turnScreen && !progress.offRouteAlert ? <><circle cx={turnScreen.x} cy={turnScreen.y} r="12" fill="#0a0d12" stroke={accent} strokeWidth="4"/><text x={turnScreen.x} y={turnScreen.y + 2} textAnchor="middle" dominantBaseline="central" fontSize="19" fill={accent}>{turnIcon(guidance?.kind || "straight")}</text></> : null}
+        {turnScreen ? <><circle cx={turnScreen.x} cy={turnScreen.y} r="12" fill="#0a0d12" stroke={progress.offRouteAlert && reroute ? "#ffad4f" : accent} strokeWidth="4"/><text x={turnScreen.x} y={turnScreen.y + 2} textAnchor="middle" dominantBaseline="central" fontSize="19" fill={progress.offRouteAlert && reroute ? "#ffad4f" : accent}>{turnIcon(activeGuidance?.kind || "straight")}</text></> : null}
       </svg>
       {currentScreen ? <div style={{ position: "absolute", left: `${currentScreen.x / layout.width * 100}%`, top: `${currentScreen.y / layout.height * 100}%`, transform: `translate(-50%,-50%) rotate(${movementBearing || 0}deg)`, width: 38, height: 38, borderRadius: 999, display: "grid", placeItems: "center", background: "#fff", color: "#0b1016", border: `4px solid ${isAlert ? "#ff6b62" : accent}`, boxShadow: `0 0 0 6px ${isAlert ? "rgba(255,107,98,.18)" : `${accent}2c`},0 7px 22px rgba(0,0,0,.48)`, zIndex: 6, fontSize: 18, fontWeight: 1000 }}>▲</div> : null}
     </div>
@@ -177,14 +185,15 @@ export default function OutdoorRouteLiveMap({ route, track, sport, lang, accent,
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", padding: 9, borderRadius: 16, background: "rgba(7,10,15,.91)", border: "1px solid rgba(255,255,255,.13)", backdropFilter: "blur(18px)", boxShadow: "0 12px 35px rgba(0,0,0,.38)" }}>
         <button className="btn" onClick={onClose} style={{ minWidth: 40, minHeight: 40, padding: 0, fontSize: 16 }}>×</button>
         <div style={{ minWidth: 0 }}><div style={{ fontSize: 7.5, color: isAlert ? "#ff9b94" : accent, fontWeight: 1000, letterSpacing: 1 }}>{copy.nav}</div><div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{route.name}</div></div>
-        <span style={{ padding: "5px 8px", borderRadius: 999, border: `1px solid ${isAlert ? "rgba(255,107,98,.55)" : `${accent}55`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 7.5, fontWeight: 1000 }}>{guidance?.wrongWay ? copy.wrong : progress.offRouteAlert ? `${copy.off} · ${Math.round(progress.offRouteM || 0)} m` : copy.on}</span>
+        <span style={{ padding: "5px 8px", borderRadius: 999, border: `1px solid ${isAlert ? "rgba(255,107,98,.55)" : `${accent}55`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 7.5, fontWeight: 1000 }}>{activeGuidance?.wrongWay ? copy.wrong : progress.offRouteAlert ? `${copy.off} · ${Math.round(progress.offRouteM || 0)} m` : copy.on}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "66px 1fr auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 17, background: isAlert ? "rgba(42,8,8,.92)" : "rgba(7,10,15,.91)", border: `1px solid ${isAlert ? "rgba(255,107,98,.50)" : `${accent}42`}`, backdropFilter: "blur(18px)", boxShadow: "0 12px 35px rgba(0,0,0,.38)" }}>
         <div style={{ width: 60, height: 60, borderRadius: 18, display: "grid", placeItems: "center", background: isAlert ? "rgba(255,107,98,.13)" : `${accent}12`, border: `1px solid ${isAlert ? "rgba(255,107,98,.50)" : `${accent}48`}`, color: isAlert ? "#ff9b94" : accent, fontSize: 34, fontWeight: 1000 }}>{progress.offRouteAlert ? "↪" : turnIcon(instructionKind)}</div>
-        <div style={{ minWidth: 0 }}><div style={{ fontSize: 7.3, color: isAlert ? "#ff9b94" : textSoft, fontWeight: 1000, letterSpacing: .7 }}>{progress.offRouteAlert ? copy.recalculated : guidance?.wrongWay ? copy.wrong : copy.nav}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 1000, color: isAlert ? "#ffb0aa" : "#fff", lineHeight: 1.12 }}>{instruction}</div></div>
+        <div style={{ minWidth: 0 }}><div style={{ fontSize: 7.3, color: isAlert ? "#ff9b94" : textSoft, fontWeight: 1000, letterSpacing: .7 }}>{progress.offRouteAlert ? (reroute ? copy.recalculated : copy.local) : activeGuidance?.wrongWay ? copy.wrong : copy.nav}</div><div style={{ marginTop: 3, fontSize: 13, fontWeight: 1000, color: isAlert ? "#ffb0aa" : "#fff", lineHeight: 1.12 }}>{instruction}</div></div>
         <div style={{ textAlign: "right", minWidth: 66, color: isAlert ? "#ff9b94" : accent, fontSize: 13, fontWeight: 1000 }}>{instructionDistanceM < 950 ? `${Math.max(0, Math.round(instructionDistanceM / 10) * 10)} m` : `${(instructionDistanceM / 1000).toFixed(1)} km`}</div>
       </div>
-      {rejoin && progress.offRouteAlert ? <div style={{ padding: "8px 10px", borderRadius: 13, background: "rgba(55,8,8,.90)", border: "1px solid rgba(255,107,98,.45)", color: "#ffd0cc", fontSize: 8.2, lineHeight: 1.4, backdropFilter: "blur(14px)" }}><b style={{ color: "#ff9b94" }}>{copy.recalculated}</b> · {formatDistance(rejoin.distanceToTargetM)} {copy.routeReturn} · {copy.then} {formatDistance(rejoin.routeRemainingAfterRejoinM)} · {Math.round(rejoin.forwardAdvanceM)} m {copy.ahead}.</div> : null}
+      {progress.offRouteAlert && rerouteBusy && !reroute ? <div style={{ padding: "8px 10px", borderRadius: 13, background: "rgba(39,25,5,.92)", border: "1px solid rgba(255,173,79,.42)", color: "#ffe0b5", fontSize: 8.2, lineHeight: 1.4, backdropFilter: "blur(14px)" }}><b style={{ color: "#ffbd68" }}>{copy.recalculated}</b> · {copy.calculating}</div> : null}
+      {reroute && progress.offRouteAlert ? <div style={{ padding: "8px 10px", borderRadius: 13, background: "rgba(39,25,5,.92)", border: "1px solid rgba(255,173,79,.42)", color: "#ffe0b5", fontSize: 8.2, lineHeight: 1.4, backdropFilter: "blur(14px)" }}><b style={{ color: "#ffbd68" }}>{copy.recalculated}</b> · {formatDistance(Math.max(0, reroute.distanceM - rerouteMatchedM))} {copy.routeReturn} · {copy.then} {formatDistance(reroute.routeRemainingAfterRejoinM)} · {Math.round(reroute.forwardAdvanceM)} m {copy.ahead}.</div> : rejoin && progress.offRouteAlert ? <div style={{ padding: "8px 10px", borderRadius: 13, background: "rgba(55,8,8,.90)", border: "1px solid rgba(255,107,98,.45)", color: "#ffd0cc", fontSize: 8.2, lineHeight: 1.4, backdropFilter: "blur(14px)" }}><b style={{ color: "#ff9b94" }}>{copy.local}</b> · {formatDistance(rejoin.distanceToTargetM)} {copy.routeReturn} · {copy.then} {formatDistance(rejoin.routeRemainingAfterRejoinM)} · {Math.round(rejoin.forwardAdvanceM)} m {copy.ahead}.</div> : null}
     </div>
 
     <div style={{ position: "absolute", right: 10, top: "38%", zIndex: 12, display: "grid", gap: 7 }}>
