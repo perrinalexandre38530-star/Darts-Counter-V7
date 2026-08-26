@@ -26,6 +26,7 @@ type ActivityTrackingPlugin = {
   resumeTracking?: () => Promise<NativeTrackingSnapshot>;
   stopTracking?: () => Promise<NativeTrackingSnapshot>;
   getTrack?: () => Promise<NativeTrackingSnapshot>;
+  getCurrentPosition?: (options?: { timeoutMs?: number }) => Promise<{ point?: GeoPoint; locationServicesEnabled?: boolean; precise?: boolean }>;
   openLocationSettings?: () => Promise<{ opened?: boolean }>;
   openAppLocationPermissionSettings?: () => Promise<{ opened?: boolean }>;
   addListener?: (eventName: "trackingState", listener: (snapshot: NativeTrackingSnapshot) => void) => Promise<{ remove?: () => Promise<void> | void }> | { remove?: () => Promise<void> | void };
@@ -47,7 +48,7 @@ function plugin(): ActivityTrackingPlugin | null {
     // Relying on window.Capacitor.registerPlugin is not guaranteed and can
     // silently fall back to WebView geolocation, which does not drive our
     // native foreground tracking permission flow.
-    pluginCache = registerPlugin<ActivityTrackingPlugin>("ActivityTracking");
+    pluginCache = registerPlugin("ActivityTracking") as ActivityTrackingPlugin;
     return pluginCache;
   } catch {
     try {
@@ -76,6 +77,15 @@ export async function pauseNativeTracking() { return plugin()?.pauseTracking?.()
 export async function resumeNativeTracking() { return plugin()?.resumeTracking?.(); }
 export async function stopNativeTracking(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.stopTracking?.() || null; } catch { return null; } }
 export async function getNativeTrack(): Promise<NativeTrackingSnapshot | null> { try { return await plugin()?.getTrack?.() || null; } catch { return null; } }
+export async function getNativeCurrentPosition(timeoutMs = 15000): Promise<GeoPoint | null> {
+  try {
+    const result = await plugin()?.getCurrentPosition?.({ timeoutMs });
+    const point = result?.point;
+    return point && Number.isFinite(point.lat) && Number.isFinite(point.lon) ? point : null;
+  } catch {
+    return null;
+  }
+}
 export async function openNativeLocationSettings() { try { return await plugin()?.openLocationSettings?.() || { opened: false }; } catch { return { opened: false }; } }
 export async function openNativeAppLocationPermissionSettings() { try { return await plugin()?.openAppLocationPermissionSettings?.() || { opened: false }; } catch { return { opened: false }; } }
 export function addNativeTrackingListener(listener: (snapshot: NativeTrackingSnapshot) => void) {

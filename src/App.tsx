@@ -318,6 +318,12 @@ import RunningModule from "./pages/running/RunningModule";
 import RunningPlanCenter from "./pages/running/RunningPlanCenter";
 import RunningStatsPage from "./pages/running/RunningStatsPage";
 
+// ✅ FIT PERF — musculation / salle / performance
+import FitPerfHome from "./pages/fit/FitPerfHome";
+import FitPerfModule from "./pages/fit/FitPerfModule";
+import FitPerfPlan from "./pages/fit/FitPerfPlan";
+import FitPerfStatsPage from "./pages/fit/FitPerfStatsPage";
+
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 import DartsModeConfig from "./pages/modes/DartsModeConfig";
@@ -593,7 +599,7 @@ function safeRouteParamsForCrash(input: any) {
 }
 
 const START_GAME_KEY = "dc-start-game";
-type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame" | "foot" | "running" | "fit";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -880,6 +886,7 @@ type Tab =
   | "gameSelect"
   | "games"
   | "running_plan"
+  | "fit_plan"
   | "cast_join"
   | "cast_host"
   | "cast_room"
@@ -4058,6 +4065,8 @@ const unifiedStats = (() => {
             <PingPongHome store={store} update={update} go={go} />
           ) : activeSport === "running" ? (
             <RunningHome store={store} go={go} />
+          ) : activeSport === "fit" ? (
+            <FitPerfHome store={store} go={go} />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -4080,6 +4089,8 @@ const unifiedStats = (() => {
             <PingPongMenuGames go={go} />
           ) : activeSport === "running" ? (
             <RunningModule go={go} store={store} params={routeParams} />
+          ) : activeSport === "fit" ? (
+            <FitPerfModule go={go} store={store} params={routeParams} />
           ) : (
             <Games setTab={(t: any, p?: any) => go(t, p)} params={routeParams} />
           );
@@ -4088,6 +4099,14 @@ const unifiedStats = (() => {
       case "running_plan":
         page = activeSport === "running" ? (
           <RunningPlanCenter go={go} />
+        ) : (
+          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+        );
+        break;
+
+      case "fit_plan":
+        page = activeSport === "fit" ? (
+          <FitPerfPlan go={go} />
         ) : (
           <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
         );
@@ -4376,6 +4395,8 @@ case "babyfoot_team_edit":
             <PingPongStatsShell store={store} go={go} />
           ) : activeSport === "running" ? (
             <RunningStatsPage go={go} params={routeParams} />
+          ) : activeSport === "fit" ? (
+            <FitPerfStatsPage go={go} params={routeParams} />
           ) : (
             <StatsShell store={store} go={go} sportOverride={activeSport} />
           );

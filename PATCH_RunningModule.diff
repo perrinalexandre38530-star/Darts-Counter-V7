@@ -1,0 +1,461 @@
+--- run_v25_37_orig/src/pages/running/RunningModule.tsx	2026-08-26 06:01:58.000000000 +0000
++++ run_v25_37/src/pages/running/RunningModule.tsx	2026-08-26 06:13:25.823331262 +0000
+@@ -36,8 +36,9 @@
+ import { buildTreadmillSplits, treadmillDistanceSource, treadmillDistanceSourceLabel, averageTreadmillIncline } from "../../activity/treadmillPerformance";
+ import { addNativeTrackingListener, getNativeCurrentPosition, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeAppLocationPermissionSettings, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking } from "../../activity/nativeActivityTracking";
+ import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
+-import { getRunningActiveSession, loadRunningActiveSessions, patchRunningActiveSession, removeRunningActiveSession, upsertRunningActiveSession } from "../../activity/runningActiveSessions";
++import { clearNativeTrackingOwnerIf, getNativeTrackingOwnerSessionId, getRunningActiveSession, getRunningRecordingSession, loadRunningActiveSessions, patchRunningActiveSession, removeRunningActiveSession, resumedRunningSessionTiming, setNativeTrackingOwnerSessionId, upsertRunningActiveSession } from "../../activity/runningActiveSessions";
+ import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache";
++import { deleteRunningSessionDraft, loadRunningSessionDraft, mergeRunningDraftRoutes, saveRunningSessionDraft, type RunningSessionDraft } from "../../activity/runningSessionDrafts";
+ import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
+ type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
+ type SetupTab = "goal" | "training" | "advanced";
+@@ -413,9 +414,11 @@
+     React.useEffect(() => {
+         if (activeSessionRestoreRef.current) return;
+         activeSessionRestoreRef.current = true;
++        if (params?.runningNewSession) return;
+         const requestedId = params?.runningResumeSessionId ? String(params.runningResumeSessionId) : null;
+         const session = getRunningActiveSession(requestedId);
+         if (!session) return;
++        const activityId = session.activityId || makeId();
+         activeSessionIdRef.current = session.id;
+         setActivitySport(session.sport as OutdoorPerformanceSport);
+         setSelectedPresetId(session.presetId || "goal-free");
+@@ -429,27 +432,96 @@
+         setIsRecording(true);
+         setView("record");
+         setNow(Date.now());
+-        if (session.mode === "native-gps") {
+-            void (async () => {
+-                try {
+-                    const status = await nativeTrackingStatus();
+-                    const track = await getNativeTrack();
+-                    if (status?.running) {
+-                        nativeTrackingActiveRef.current = true;
+-                        const route = Array.isArray(track?.route) ? track!.route! : [];
+-                        if (route.length) { pointsRef.current = route; setPoints(route); }
+-                        const nativePaused = !!status?.paused;
+-                        pausedRef.current = nativePaused;
+-                        setPaused(nativePaused);
+-                        patchRunningActiveSession(session.id, { paused: nativePaused, status: nativePaused ? "paused" : "recording", lastElapsedMs: Number(status?.elapsedMs || session.lastElapsedMs || 0) });
+-                    } else {
+-                        pausedRef.current = true;
+-                        setPaused(true);
+-                        patchRunningActiveSession(session.id, { paused: true, pausedAt: Date.now(), status: "paused" });
++        patchRunningActiveSession(session.id, { activityId, recoveredAt: Date.now() });
++
++        void (async () => {
++            const draft = await loadRunningSessionDraft(session.id);
++            if (draft) {
++                const restoredRoute = Array.isArray(draft.route) ? draft.route : [];
++                if (restoredRoute.length) {
++                    pointsRef.current = restoredRoute;
++                    setPoints(restoredRoute);
++                }
++                sensorSamplesRef.current = Array.isArray(draft.sensorSamples) ? draft.sensorSamples : [];
++                const restoredLaps = Array.isArray(draft.manualLaps) ? draft.manualLaps : [];
++                setManualLaps(restoredLaps);
++                lastLapElapsedRef.current = Number(draft.lastLapElapsedMs || 0);
++                lastLapDistanceRef.current = Number(draft.lastLapDistanceM || 0);
++                treadmillDistanceRef.current = Number(draft.treadmillDistanceM || 0);
++                setTreadmillDistanceM(treadmillDistanceRef.current);
++                if (Number.isFinite(draft.manualTreadmillSpeedKmh)) setManualTreadmillSpeedKmh(Number(draft.manualTreadmillSpeedKmh));
++                if (Number.isFinite(draft.manualTreadmillIncline)) setManualTreadmillIncline(Number(draft.manualTreadmillIncline));
++                pausedTotalRef.current = Math.max(pausedTotalRef.current, Number(draft.pausedTotalMs || 0));
++                if (session.paused && draft.pauseStartedAt) pauseStartedRef.current = Number(draft.pauseStartedAt);
++                patchRunningActiveSession(session.id, { activityId: draft.activityId || activityId, lastDraftAt: draft.updatedAt });
++            }
++
++            if (session.mode !== "native-gps") {
++                // Web GPS / tapis ne peuvent pas continuer à collecter leurs données
++                // quand le composant est démonté. Ils reviennent donc en pause,
++                // mais leur brouillon complet est restauré.
++                if (!session.paused) {
++                    const pausedAt = Date.now();
++                    pausedRef.current = true;
++                    pauseStartedRef.current = pausedAt;
++                    setPaused(true);
++                    patchRunningActiveSession(session.id, { paused: true, pausedAt, status: "paused", activityId });
++                }
++                return;
++            }
++
++            let ownerId = getNativeTrackingOwnerSessionId();
++            if (!ownerId) {
++                const nativeRecording = loadRunningActiveSessions().filter((row) => row.mode === "native-gps" && !row.paused);
++                if (nativeRecording.length <= 1) {
++                    ownerId = session.id;
++                    setNativeTrackingOwnerSessionId(session.id);
++                }
++            }
++            if (ownerId !== session.id) {
++                const pausedAt = Date.now();
++                pausedRef.current = true;
++                pauseStartedRef.current = pausedAt;
++                setPaused(true);
++                nativeTrackingActiveRef.current = false;
++                patchRunningActiveSession(session.id, { paused: true, pausedAt, status: "paused", activityId });
++                return;
++            }
++
++            try {
++                const status = await nativeTrackingStatus();
++                const track = await getNativeTrack();
++                if (status?.running) {
++                    nativeTrackingActiveRef.current = true;
++                    const nativeRoute = Array.isArray(track?.route) ? track!.route! : [];
++                    const mergedRoute = mergeRunningDraftRoutes(draft?.route, nativeRoute);
++                    if (mergedRoute.length) {
++                        pointsRef.current = mergedRoute;
++                        setPoints(mergedRoute);
+                     }
+-                } catch {}
+-            })();
+-        }
++                    const nativePaused = !!status?.paused;
++                    pausedRef.current = nativePaused;
++                    setPaused(nativePaused);
++                    if (nativePaused && !pauseStartedRef.current) pauseStartedRef.current = Date.now();
++                    patchRunningActiveSession(session.id, {
++                        activityId,
++                        paused: nativePaused,
++                        pausedAt: nativePaused ? (session.pausedAt || Date.now()) : undefined,
++                        status: nativePaused ? "paused" : "recording",
++                        lastElapsedMs: Number(status?.elapsedMs || session.lastElapsedMs || 0),
++                        lastDistanceM: mergedRoute.length > 1 ? routeDistanceMeters(mergedRoute) : session.lastDistanceM,
++                    });
++                } else {
++                    pausedRef.current = true;
++                    setPaused(true);
++                    nativeTrackingActiveRef.current = false;
++                    const pausedAt = Date.now();
++                    pauseStartedRef.current = pausedAt;
++                    patchRunningActiveSession(session.id, { activityId, paused: true, pausedAt, status: "paused" });
++                    clearNativeTrackingOwnerIf(session.id);
++                }
++            } catch {}
++        })();
+     // Restore only once when the Running module is mounted.
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, []);
+@@ -463,6 +535,61 @@
+         const currentPause = pausedRef.current && pauseStartedRef.current ? Math.max(0, ts - pauseStartedRef.current) : 0;
+         return Math.max(0, ts - startedAtRef.current - pausedTotalRef.current - currentPause);
+     }, []);
++    const persistCurrentDraft = React.useCallback(async () => {
++        const sessionId = activeSessionIdRef.current;
++        if (!sessionId) return;
++        const session = getRunningActiveSession(sessionId);
++        if (!session) return;
++        const activityId = session.activityId || makeId();
++        if (!session.activityId) patchRunningActiveSession(sessionId, { activityId });
++        const now = Date.now();
++        const draft: RunningSessionDraft = {
++            sessionId,
++            activityId,
++            sport: activitySport,
++            route: [...pointsRef.current],
++            manualLaps: [...manualLaps],
++            sensorSamples: [...sensorSamplesRef.current],
++            treadmillDistanceM: Number(treadmillDistanceRef.current || 0),
++            manualTreadmillSpeedKmh,
++            manualTreadmillIncline,
++            lastLapElapsedMs: Number(lastLapElapsedRef.current || 0),
++            lastLapDistanceM: Number(lastLapDistanceRef.current || 0),
++            pausedTotalMs: Number(pausedTotalRef.current || 0),
++            pauseStartedAt: pausedRef.current && pauseStartedRef.current ? pauseStartedRef.current : undefined,
++            updatedAt: now,
++        };
++        await saveRunningSessionDraft(draft);
++        patchRunningActiveSession(sessionId, {
++            activityId,
++            lastDraftAt: now,
++            lastElapsedMs: activeElapsedAt(now),
++            lastDistanceM: activitySport === "treadmill" ? treadmillDistanceRef.current : routeDistanceMeters(pointsRef.current),
++        });
++    }, [activeElapsedAt, activitySport, manualLaps, manualTreadmillIncline, manualTreadmillSpeedKmh]);
++
++    React.useEffect(() => {
++        if (!isRecording || !activeSessionIdRef.current) return;
++        void persistCurrentDraft();
++        const timer = window.setInterval(() => { void persistCurrentDraft(); }, 5000);
++        const onVisibility = () => { if (document.visibilityState !== "visible") void persistCurrentDraft(); };
++        window.addEventListener("pagehide", persistCurrentDraft as any);
++        document.addEventListener("visibilitychange", onVisibility);
++        return () => {
++            window.clearInterval(timer);
++            window.removeEventListener("pagehide", persistCurrentDraft as any);
++            document.removeEventListener("visibilitychange", onVisibility);
++        };
++    }, [isRecording, persistCurrentDraft]);
++
++    React.useEffect(() => () => {
++        const sessionId = activeSessionIdRef.current;
++        if (!sessionId) return;
++        const session = getRunningActiveSession(sessionId);
++        if (!session || session.mode === "native-gps" || session.paused) return;
++        const pausedAt = Date.now();
++        patchRunningActiveSession(sessionId, { paused: true, pausedAt, status: "paused" });
++    }, []);
+     React.useEffect(() => {
+         if (!isRecording || !activeSessionIdRef.current) return;
+         const sync = () => {
+@@ -546,10 +673,11 @@
+         if (!isRecording || !nativeTrackingActiveRef.current || activitySport === "treadmill") return;
+         const id = window.setInterval(() => { void getNativeTrack().then((snapshot) => {
+             if (!snapshot?.route?.length) return;
+-            pointsRef.current = snapshot.route;
++            const mergedRoute = mergeRunningDraftRoutes(pointsRef.current, snapshot.route);
++            pointsRef.current = mergedRoute;
+             lastGpsPointAtRef.current = Date.now();
+-            setPoints(snapshot.route);
+-            const point = snapshot.route[snapshot.route.length - 1];
++            setPoints(mergedRoute);
++            const point = mergedRoute[mergedRoute.length - 1];
+             if (point) {
+                 setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
+                 setGpsMessage(Number(point.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
+@@ -768,19 +896,22 @@
+         pausedTotalRef.current = 0;
+         pauseStartedRef.current = 0;
+         startedAtRef.current = Date.now();
+-        const otherRecording = loadRunningActiveSessions().find((row) => row.id !== activeSessionIdRef.current && !row.paused);
++        const otherRecording = getRunningRecordingSession(activeSessionIdRef.current);
+         if (otherRecording) {
+             setGpsMessage(pickLegacyLocalizedText(lang, "UNE AUTRE ACTIVITÉ EST DÉJÀ EN COURS. METS-LA EN PAUSE AVANT D'EN DÉMARRER UNE AUTRE.", "ANOTHER ACTIVITY IS ALREADY RECORDING. PAUSE IT BEFORE STARTING ANOTHER.", "YA HAY OTRA ACTIVIDAD EN CURSO. PÁUSALA ANTES DE INICIAR OTRA."));
+             return;
+         }
+         const liveSessionId = activeSessionIdRef.current || `running-live-${startedAtRef.current}-${Math.random().toString(36).slice(2, 7)}`;
++        const sessionActivityId = makeId();
+         const mode = activitySport === "treadmill" ? "treadmill" : isNativeActivityTrackingAvailable() ? "native-gps" : "web-gps";
+-        const activeRegistration = upsertRunningActiveSession({ id: liveSessionId, sport: activitySport, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, presetId: effectivePreset.id, workoutType: effectivePreset.type, startedAt: startedAtRef.current, paused: false, pausedTotalMs: 0, status: "recording", mode, targetDistanceM, targetDurationMs, targetPaceSecPerKm, routeReferenceId: selectedRoute?.id, shoeId: selectedShoeId || undefined, lastDistanceM: 0, lastElapsedMs: 0, lastUpdatedAt: Date.now() });
++        const activeRegistration = upsertRunningActiveSession({ id: liveSessionId, activityId: sessionActivityId, sport: activitySport, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, presetId: effectivePreset.id, workoutType: effectivePreset.type, startedAt: startedAtRef.current, paused: false, pausedTotalMs: 0, status: "recording", mode, targetDistanceM, targetDurationMs, targetPaceSecPerKm, routeReferenceId: selectedRoute?.id, shoeId: selectedShoeId || undefined, lastDistanceM: 0, lastElapsedMs: 0, lastUpdatedAt: Date.now() });
+         if (!activeRegistration.ok) {
+             setGpsMessage(pickLegacyLocalizedText(lang, "3 ACTIVITÉS ACTIVES MAXIMUM. TERMINE OU ANNULE UNE SESSION AVANT D'EN CRÉER UNE AUTRE.", "MAXIMUM 3 ACTIVE ACTIVITIES. FINISH OR CANCEL ONE BEFORE CREATING ANOTHER.", "MÁXIMO 3 ACTIVIDADES ACTIVAS. TERMINA O CANCELA UNA ANTES DE CREAR OTRA."));
+             return;
+         }
+         activeSessionIdRef.current = liveSessionId;
++        await saveRunningSessionDraft({ sessionId: liveSessionId, activityId: sessionActivityId, sport: activitySport, route: [], manualLaps: [], sensorSamples: [], treadmillDistanceM: 0, manualTreadmillSpeedKmh, manualTreadmillIncline, lastLapElapsedMs: 0, lastLapDistanceM: 0, pausedTotalMs: 0, updatedAt: Date.now() });
++        patchRunningActiveSession(liveSessionId, { lastDraftAt: Date.now() });
+         setNow(startedAtRef.current);
+         setPaused(false);
+         setIsRecording(true);
+@@ -793,7 +924,19 @@
+         stopWatch();
+         if (isNativeActivityTrackingAvailable()) {
+             try {
++                const previousOwnerId = getNativeTrackingOwnerSessionId();
++                if (previousOwnerId && previousOwnerId !== liveSessionId) {
++                    const previousDraft = await loadRunningSessionDraft(previousOwnerId);
++                    const previousTrack = await getNativeTrack();
++                    const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
++                    if (previousDraft) {
++                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
++                        await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
++                        patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
++                    }
++                }
+                 await startNativeTracking(activitySport);
++                setNativeTrackingOwnerSessionId(liveSessionId);
+                 nativeTrackingActiveRef.current = true;
+                 setGpsMessage(copy.gpsSearching);
+                 return;
+@@ -801,7 +944,12 @@
+                 nativeTrackingActiveRef.current = false;
+                 setGpsMessage(copy.gpsLost);
+                 setIsRecording(false);
+-                if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
++                if (activeSessionIdRef.current) {
++                    const failedSessionId = activeSessionIdRef.current;
++                    removeRunningActiveSession(failedSessionId);
++                    clearNativeTrackingOwnerIf(failedSessionId);
++                    void deleteRunningSessionDraft(failedSessionId);
++                }
+                 activeSessionIdRef.current = null;
+                 setView("setup");
+                 return;
+@@ -810,7 +958,11 @@
+         if (!navigator.geolocation) {
+             setGpsMessage(copy.gpsDenied);
+             setIsRecording(false);
+-            if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
++            if (activeSessionIdRef.current) {
++                const failedSessionId = activeSessionIdRef.current;
++                removeRunningActiveSession(failedSessionId);
++                void deleteRunningSessionDraft(failedSessionId);
++            }
+             activeSessionIdRef.current = null;
+             setView("setup");
+             return;
+@@ -835,6 +987,12 @@
+             setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost);
+             if (error.code === 1) {
+                 setIsRecording(false);
++                if (activeSessionIdRef.current) {
++                    const failedSessionId = activeSessionIdRef.current;
++                    removeRunningActiveSession(failedSessionId);
++                    void deleteRunningSessionDraft(failedSessionId);
++                    activeSessionIdRef.current = null;
++                }
+                 setView("setup");
+             }
+         }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
+@@ -861,27 +1019,59 @@
+             catch { }
+         } }, 850);
+     }, [countdown, isRecording, startGpsRun]);
+-    const togglePause = React.useCallback(() => {
+-        if (!isRecording)
+-            return;
++    const togglePause = React.useCallback(async () => {
++        if (!isRecording) return;
++        const sessionId = activeSessionIdRef.current;
++        const session = sessionId ? getRunningActiveSession(sessionId) : null;
+         if (!pausedRef.current) {
+             pausedRef.current = true;
+             pauseStartedRef.current = Date.now();
+             setPaused(true);
+-            if (activeSessionIdRef.current) patchRunningActiveSession(activeSessionIdRef.current, { paused: true, pausedAt: pauseStartedRef.current, status: "paused", pausedTotalMs: pausedTotalRef.current });
+-            if (nativeTrackingActiveRef.current) void pauseNativeTracking();
++            if (sessionId) patchRunningActiveSession(sessionId, { paused: true, pausedAt: pauseStartedRef.current, status: "paused", pausedTotalMs: pausedTotalRef.current });
++            if (nativeTrackingActiveRef.current) {
++                await pauseNativeTracking();
++                await persistCurrentDraft();
++            }
++            return;
++        }
++
++        const otherRecording = getRunningRecordingSession(sessionId);
++        if (otherRecording) {
++            setGpsMessage(pickLegacyLocalizedText(lang, "UNE AUTRE ACTIVITÉ UTILISE DÉJÀ LE TRACKING. METS-LA EN PAUSE D'ABORD.", "ANOTHER ACTIVITY IS ALREADY USING TRACKING. PAUSE IT FIRST.", "OTRA ACTIVIDAD YA ESTÁ USANDO EL SEGUIMIENTO. PÁUSALA PRIMERO."));
+             return;
+         }
++
++        if (session?.mode === "native-gps" && !nativeTrackingActiveRef.current) {
++            try {
++                const previousOwnerId = getNativeTrackingOwnerSessionId();
++                if (previousOwnerId && previousOwnerId !== sessionId) {
++                    const previousDraft = await loadRunningSessionDraft(previousOwnerId);
++                    const previousTrack = await getNativeTrack();
++                    const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
++                    if (previousDraft) {
++                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
++                        await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
++                        patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
++                    }
++                }
++                await startNativeTracking(activitySport);
++                setNativeTrackingOwnerSessionId(sessionId!);
++                nativeTrackingActiveRef.current = true;
++            } catch {
++                setGpsMessage(copy.gpsLost);
++                return;
++            }
++        }
++
+         const resumed = Date.now();
+-        if (pauseStartedRef.current)
+-            pausedTotalRef.current += Math.max(0, resumed - pauseStartedRef.current);
++        if (pauseStartedRef.current) pausedTotalRef.current += Math.max(0, resumed - pauseStartedRef.current);
+         pauseStartedRef.current = 0;
+         pausedRef.current = false;
+         setPaused(false);
+-        if (activeSessionIdRef.current) patchRunningActiveSession(activeSessionIdRef.current, { paused: false, pausedAt: undefined, pausedTotalMs: pausedTotalRef.current, status: "recording" });
+-        if (nativeTrackingActiveRef.current) void resumeNativeTracking();
++        if (sessionId) patchRunningActiveSession(sessionId, { ...resumedRunningSessionTiming(session || ({ pausedAt: resumed, pausedTotalMs: pausedTotalRef.current } as any), resumed), pausedTotalMs: pausedTotalRef.current });
++        if (nativeTrackingActiveRef.current) await resumeNativeTracking();
+         setNow(resumed);
+-    }, [isRecording]);
++    }, [activitySport, copy.gpsLost, isRecording, lang, persistCurrentDraft]);
+     const addLap = React.useCallback(() => {
+         if (!isRecording || paused)
+             return;
+@@ -901,28 +1091,64 @@
+         }
+         catch { }
+     }, [activeElapsedAt, activitySport, copy.lap, isRecording, manualLaps.length, paused]);
+-    const cancelRun = React.useCallback(() => { stopWatch(); if (nativeTrackingActiveRef.current) { void stopNativeTracking(); nativeTrackingActiveRef.current = false; } if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current); activeSessionIdRef.current = null; setIsRecording(false); setPaused(false); pausedRef.current = false; pointsRef.current = []; setPoints([]); setManualLaps([]); setGpsMessage(""); setView("setup"); }, [stopWatch]);
++    const cancelRun = React.useCallback(() => {
++        stopWatch();
++        const sessionId = activeSessionIdRef.current;
++        if (nativeTrackingActiveRef.current) { void stopNativeTracking(); nativeTrackingActiveRef.current = false; }
++        if (sessionId) {
++            removeRunningActiveSession(sessionId);
++            clearNativeTrackingOwnerIf(sessionId);
++            void deleteRunningSessionDraft(sessionId);
++        }
++        activeSessionIdRef.current = null;
++        setIsRecording(false);
++        setPaused(false);
++        pausedRef.current = false;
++        pointsRef.current = [];
++        setPoints([]);
++        setManualLaps([]);
++        setGpsMessage("");
++        setView("setup");
++    }, [stopWatch]);
+     const finishRun = React.useCallback(async () => {
+-        let routeForSave = pointsRef.current;
++        const sessionId = activeSessionIdRef.current;
++        const activeSession = sessionId ? getRunningActiveSession(sessionId) : null;
++        const draft = sessionId ? await loadRunningSessionDraft(sessionId) : null;
++        let routeForSave = mergeRunningDraftRoutes(draft?.route, pointsRef.current);
+         const wasNativeTracking = nativeTrackingActiveRef.current;
+         if (nativeTrackingActiveRef.current && activitySport !== "treadmill") {
+             const native = await stopNativeTracking();
+             nativeTrackingActiveRef.current = false;
+-            if (native?.route?.length) { routeForSave = native.route; pointsRef.current = native.route; setPoints(native.route); }
++            if (sessionId) clearNativeTrackingOwnerIf(sessionId);
++            routeForSave = mergeRunningDraftRoutes(routeForSave, native?.route);
++            if (routeForSave.length) { pointsRef.current = routeForSave; setPoints(routeForSave); }
++        }
++        const indoorDistance = Math.max(Number(treadmillDistanceRef.current || 0), Number(draft?.treadmillDistanceM || 0));
++        if (activitySport === "treadmill" ? indoorDistance < 10 : routeForSave.length < 2) {
++            if (sessionId && draft) await saveRunningSessionDraft({ ...draft, route: routeForSave, treadmillDistanceM: indoorDistance, updatedAt: Date.now() });
++            if (sessionId) {
++                const pausedAt = Date.now();
++                patchRunningActiveSession(sessionId, { paused: true, pausedAt, status: "paused", lastDraftAt: draft ? Date.now() : activeSession?.lastDraftAt });
++                pausedRef.current = true;
++                pauseStartedRef.current = pausedAt;
++                setPaused(true);
++            }
++            setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "Distance insuffisante pour enregistrer la séance.", "Not enough distance to save the workout.", "Distancia insuficiente para guardar la sesión.")) : copy.insufficient);
++            return;
+         }
+-        const indoorDistance = treadmillDistanceRef.current;
+-        if (activitySport === "treadmill" ? indoorDistance < 10 : routeForSave.length < 2) { setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "Distance insuffisante pour enregistrer la séance.", "Not enough distance to save the workout.", "Distancia insuficiente para guardar la sesión.")) : copy.insufficient); return; }
+         stopWatch();
+         const endedAt = Date.now();
+         let pauseTotal = pausedTotalRef.current;
+-        if (pausedRef.current && pauseStartedRef.current)
+-            pauseTotal += endedAt - pauseStartedRef.current;
++        if (pausedRef.current && pauseStartedRef.current) pauseTotal += endedAt - pauseStartedRef.current;
+         const elapsed = Math.max(1, endedAt - startedAtRef.current - pauseTotal);
+         const route = activitySport === "treadmill" ? [] : routeForSave;
+         const distanceM = activitySport === "treadmill" ? indoorDistance : routeDistanceMeters(route);
+-        const splits = activitySport === "treadmill" ? buildTreadmillSplits(sensorSamplesRef.current) : buildKilometerSplits(route, startedAtRef.current);
++        const finalSensorSamples = sensorSamplesRef.current.length ? [...sensorSamplesRef.current] : [...(draft?.sensorSamples || [])];
++        const finalManualLaps = manualLaps.length ? manualLaps : [...(draft?.manualLaps || [])];
++        const splits = activitySport === "treadmill" ? buildTreadmillSplits(finalSensorSamples) : buildKilometerSplits(route, startedAtRef.current);
+         const finalGhostDelta = activitySport !== "treadmill" && ghostEnabled ? runningGhostMatch(selectedRoute, route[route.length - 1], distanceM, elapsed)?.deltaMs ?? null : null;
+-        const record: ActivityRecord = { id: makeId(), sport: activitySport, source: activitySport === "treadmill" ? "manual" : "phone-gps", verification: activitySport === "treadmill" && safeSensorDevices.some((device) => device.connected) ? "connected" : activitySport === "treadmill" ? "declared" : "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: activitySport === "treadmill" ? elapsed : (movingTimeMs(route) || elapsed), distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: activitySport === "treadmill" ? 0 : elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps, planId, planSessionId, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, shoeId: selectedShoeId || undefined, routeReferenceId: selectedRoute?.id, ghostEnabled: activitySport !== "treadmill" && ghostEnabled && !!selectedRoute, ghostDeltaMs: finalGhostDelta, deviceName: activitySport === "treadmill" ? (safeSensorDevices.find((device) => device.kind === "fitness-machine-treadmill" && device.connected)?.name || safeSensorDevices.find((device) => device.kind === "running-speed-cadence" && device.connected)?.name || "Tapis roulant") : (wasNativeTracking ? "Android Native GPS" : "Phone GPS"), sensorSamples: sensorSamplesRef.current.length ? [...sensorSamplesRef.current] : undefined, sensorDevices: safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), indoor: activitySport === "treadmill" || undefined, treadmill: activitySport === "treadmill" ? { distanceSource: treadmillDistanceSource(safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), sensorSamplesRef.current, manualTreadmillSpeedKmh), manualSpeedKmh: manualTreadmillSpeedKmh, inclinePercent: averageTreadmillIncline(sensorSamplesRef.current) ?? manualTreadmillIncline } : undefined, createdAt: Date.now() };
++        const stableActivityId = activeSession?.activityId || draft?.activityId || makeId();
++        const record: ActivityRecord = { id: stableActivityId, sport: activitySport, source: activitySport === "treadmill" ? "manual" : "phone-gps", verification: activitySport === "treadmill" && safeSensorDevices.some((device) => device.connected) ? "connected" : activitySport === "treadmill" ? "declared" : "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: activitySport === "treadmill" ? elapsed : (movingTimeMs(route) || elapsed), distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: activitySport === "treadmill" ? 0 : elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps: finalManualLaps, planId, planSessionId, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, shoeId: selectedShoeId || undefined, routeReferenceId: selectedRoute?.id, ghostEnabled: activitySport !== "treadmill" && ghostEnabled && !!selectedRoute, ghostDeltaMs: finalGhostDelta, deviceName: activitySport === "treadmill" ? (safeSensorDevices.find((device) => device.kind === "fitness-machine-treadmill" && device.connected)?.name || safeSensorDevices.find((device) => device.kind === "running-speed-cadence" && device.connected)?.name || "Tapis roulant") : (wasNativeTracking || activeSession?.mode === "native-gps" ? "Android Native GPS" : "Phone GPS"), sensorSamples: finalSensorSamples.length ? finalSensorSamples : undefined, sensorDevices: safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), indoor: activitySport === "treadmill" || undefined, treadmill: activitySport === "treadmill" ? { distanceSource: treadmillDistanceSource(safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), finalSensorSamples, manualTreadmillSpeedKmh), manualSpeedKmh: manualTreadmillSpeedKmh, inclinePercent: averageTreadmillIncline(finalSensorSamples) ?? manualTreadmillIncline } : undefined, createdAt: Date.now() };
+         const prior = buildRunningStats(activities, Date.now(), localeForLang(lang));
+         const badges: string[] = [];
+         if (!activities.length)
+@@ -941,7 +1167,11 @@
+         if (consistency != null && consistency >= 90)
+             badges.push(`${copy.consistency} · ${consistency}%`);
+         await saveActivity(record);
+-        if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
++        if (sessionId) {
++            removeRunningActiveSession(sessionId);
++            clearNativeTrackingOwnerIf(sessionId);
++            await deleteRunningSessionDraft(sessionId);
++        }
+         activeSessionIdRef.current = null;
+         setFinishBadges(badges);
+         setIsRecording(false);

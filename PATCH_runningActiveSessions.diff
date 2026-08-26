@@ -1,0 +1,67 @@
+--- run_v25_37_orig/src/activity/runningActiveSessions.ts	2026-08-26 06:01:58.000000000 +0000
++++ run_v25_37/src/activity/runningActiveSessions.ts	2026-08-26 06:08:26.514916216 +0000
+@@ -3,12 +3,14 @@
+ export const RUNNING_ACTIVE_SESSIONS_KEY = "mss-running-active-sessions-v1";
+ export const RUNNING_ACTIVE_SESSIONS_EVENT = "mss:running-active-sessions";
+ export const MAX_RUNNING_ACTIVE_SESSIONS = 3;
++export const RUNNING_NATIVE_TRACKING_OWNER_KEY = "mss-running-native-tracking-owner-v1";
+ 
+ export type RunningActiveSessionStatus = "recording" | "paused";
+ export type RunningActiveSessionMode = "native-gps" | "web-gps" | "treadmill";
+ 
+ export type RunningActiveSession = {
+   id: string;
++  activityId?: string;
+   sport: ActivitySport;
+   title: string;
+   presetId: string;
+@@ -26,6 +28,8 @@
+   shoeId?: string;
+   lastDistanceM?: number;
+   lastElapsedMs?: number;
++  lastDraftAt?: number;
++  recoveredAt?: number;
+   lastUpdatedAt: number;
+ };
+ 
+@@ -98,3 +102,40 @@
+   window.addEventListener(RUNNING_ACTIVE_SESSIONS_EVENT, handler as EventListener);
+   return () => window.removeEventListener(RUNNING_ACTIVE_SESSIONS_EVENT, handler as EventListener);
+ }
++
++export function getNativeTrackingOwnerSessionId(): string | null {
++  if (typeof window === "undefined") return null;
++  try {
++    const value = String(window.localStorage.getItem(RUNNING_NATIVE_TRACKING_OWNER_KEY) || "").trim();
++    return value || null;
++  } catch {
++    return null;
++  }
++}
++
++export function setNativeTrackingOwnerSessionId(sessionId: string | null) {
++  if (typeof window === "undefined") return;
++  try {
++    if (sessionId) window.localStorage.setItem(RUNNING_NATIVE_TRACKING_OWNER_KEY, sessionId);
++    else window.localStorage.removeItem(RUNNING_NATIVE_TRACKING_OWNER_KEY);
++  } catch {}
++}
++
++export function clearNativeTrackingOwnerIf(sessionId: string | null | undefined) {
++  if (!sessionId) return;
++  if (getNativeTrackingOwnerSessionId() === sessionId) setNativeTrackingOwnerSessionId(null);
++}
++
++export function getRunningRecordingSession(excludeId?: string | null): RunningActiveSession | null {
++  return loadRunningActiveSessions().find((row) => row.id !== excludeId && !row.paused && row.status === "recording") || null;
++}
++
++export function resumedRunningSessionTiming(session: RunningActiveSession, now = Date.now()) {
++  const pausedAt = Number(session.pausedAt || now);
++  return {
++    paused: false,
++    pausedAt: undefined,
++    status: "recording" as const,
++    pausedTotalMs: Math.max(0, Number(session.pausedTotalMs || 0) + Math.max(0, now - pausedAt)),
++  };
++}

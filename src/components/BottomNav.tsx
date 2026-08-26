@@ -23,6 +23,7 @@ type TabKey =
   | "home"
   | "games"
   | "running_plan"
+  | "fit_plan"
   | "tournaments"
   | "tournament_create"
   | "tournament_list"
@@ -96,6 +97,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "running_plan":
+    case "fit_plan":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M6 3v3M18 3v3M4 8h16" />
@@ -249,7 +251,7 @@ export default function BottomNav({
   // Online masqué uniquement pour les sports sans salon en ligne dédié.
   // Baby-Foot utilise le hub Online existant via l'onglet `friends`.
   const sportLc = String(sport).toLowerCase();
-  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running";
+  const hideOnline = shouldHideOnlineMessagingForCurrentRuntime() || sportLc === "petanque" || sportLc === "pingpong" || sportLc === "running" || sportLc === "fit";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -328,7 +330,24 @@ export default function BottomNav({
         { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
       ]
-    : [
+    : sportLc === "fit"
+      ? [
+          { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+          {
+            k: "games",
+            label: t("nav.train", tr("Séance", "Train", "Sesión")),
+            icon: (
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 9v6M17 9v6M4 7v10M20 7v10M7 12h10" />
+              </svg>
+            ),
+          },
+          { k: "fit_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="fit_plan" /> },
+          { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
+          { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
+          { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
+        ]
+      : [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
 
         ...(hideOnline ? [] : [

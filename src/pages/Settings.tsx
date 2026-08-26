@@ -134,6 +134,7 @@ import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 import logoRunning from "../assets/games/logo-running-performance.png";
+import logoFitPerf from "../assets/games/logo-fit-performance.svg";
 
 // ✅ Sports à venir (SOON)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -5650,13 +5651,13 @@ export function Settings({ go, params }: Props) {
 
   function SportSection() {
     type GameId =
-      | "darts" | "petanque" | "pingpong" | "babyfoot" | "running" | "archery" | "molkky" | "padel" | "pickleball"
+      | "darts" | "petanque" | "pingpong" | "babyfoot" | "running" | "fit" | "archery" | "molkky" | "padel" | "pickleball"
       | "frisbee" | "billard" | "badminton" | "basket" | "cornhole" | "dicegame" | "foot" | "rugby" | "volley" | "tennis" | "chess";
 
     const GAMES: { id: GameId; label: string; logo: string }[] = [
       { id: "darts", label: "Fléchettes", logo: logoDarts }, { id: "petanque", label: "Pétanque", logo: logoPetanque },
       { id: "pingpong", label: "Ping-Pong", logo: logoPingPong }, { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
-      { id: "running", label: "Running Performance", logo: logoRunning }, { id: "molkky", label: "Mölkky", logo: logoMolkky }, { id: "archery", label: "Tir à l'arc", logo: logoArchery },
+      { id: "running", label: "Running Performance", logo: logoRunning }, { id: "fit", label: "FIT PERF", logo: logoFitPerf }, { id: "molkky", label: "Mölkky", logo: logoMolkky }, { id: "archery", label: "Tir à l'arc", logo: logoArchery },
       { id: "badminton", label: "Badminton", logo: logoBadminton }, { id: "basket", label: "Basket", logo: logoBasket },
       { id: "billard", label: "Billard", logo: logoBillard }, { id: "chess", label: "Échecs", logo: logoChess },
       { id: "cornhole", label: "Cornhole", logo: logoCornhole }, { id: "dicegame", label: "Dice Game", logo: logoDiceGame },
@@ -5666,7 +5667,7 @@ export function Settings({ go, params }: Props) {
     ];
 
     const ENABLED: Record<GameId, boolean> = {
-      darts: true, petanque: true, pingpong: true, babyfoot: true, running: true, molkky: true, dicegame: true,
+      darts: true, petanque: true, pingpong: true, babyfoot: true, running: true, fit: true, molkky: true, dicegame: true,
       archery: false, padel: false, pickleball: false, frisbee: false, billard: false, badminton: false,
       basket: false, cornhole: false, foot: false, rugby: false, volley: false, tennis: false, chess: false,
     };

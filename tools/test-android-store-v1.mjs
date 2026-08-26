@@ -8,7 +8,7 @@ const quickSwitch = fs.readFileSync("src/components/SportQuickSwitch.tsx", "utf8
 const bottomNav = fs.readFileSync("src/components/BottomNav.tsx", "utf8");
 const games = fs.readFileSync("src/pages/Games.tsx", "utf8");
 
-for (const id of ["darts", "babyfoot", "petanque", "running"]) {
+for (const id of ["darts", "babyfoot", "petanque", "running", "fit"]) {
   assert.ok(policy.includes(`"${id}"`), `Sport Store V1 manquant: ${id}`);
 }
 for (const id of [
@@ -25,6 +25,6 @@ assert.ok(bottomNav.includes('{ k: "tournaments"'), "Compétitions doit rester d
 assert.ok(bottomNav.includes('{ k: "cast_host"'), "Écrans/Cast doit rester disponible en Android V1.");
 assert.ok(games.includes("filterDartsGamesForCurrentRuntime"), "Games n'applique pas la whitelist Darts Android V1.");
 console.log("✅ ANDROID STORE V1 POLICY CHECK OK");
-console.log("   Sports: Darts · Baby-foot · Pétanque · Running Performance");
+console.log("   Sports: Darts · Baby-foot · Pétanque · Running Performance · FIT PERF");
 console.log("   Online/Messages masqués · Compétitions/Cast conservés");
 console.log("   Darts: Store V1 validé, Darts Firefighter inclus");

@@ -90,7 +90,8 @@
     "radar:typecheck": "npm --prefix scoring-radar run typecheck",
     "radar:dev": "npm --prefix scoring-radar run dev",
     "radar:deploy": "npm --prefix scoring-radar run deploy",
-    "test:scoring-radar": "node ./tools/test-scoring-radar-integration.mjs"
+    "test:scoring-radar": "node ./tools/test-scoring-radar-integration.mjs",
+    "test:fit-perf": "node ./tools/test-fit-perf-integration.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

@@ -1085,6 +1085,72 @@ function blockContainsExpertDate(block: StorageBlock, dateKey: string): boolean 
   return localDateKey(block.updatedAt || block.createdAt || null) === dateKey;
 }
 
+function normalizeExpertQuery(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expertSearchTerms(query: string): string[] {
+  return Array.from(new Set(normalizeExpertQuery(query).split(" ").filter((term) => term.length > 0)));
+}
+
+function expertBlockMetadataText(block: StorageBlock): string {
+  const summary = normalizeSummary(block.summary);
+  return normalizeExpertQuery([
+    block.id,
+    block.source,
+    block.title,
+    block.subtitle,
+    block.location,
+    block.dbName,
+    block.storeName,
+    block.key,
+    block.updatedAt,
+    block.createdAt,
+    summary.matchFrom,
+    summary.matchTo,
+    summary.exportedAt,
+    ...(summary.sports || []),
+    ...(summary.names || []),
+    ...(summary.probableContent || []),
+  ].filter(Boolean).join(" "));
+}
+
+function blockContainsExpertSearch(block: StorageBlock, query: string): boolean {
+  const terms = expertSearchTerms(query);
+  if (!terms.length) return true;
+  const metadata = expertBlockMetadataText(block);
+  const index = `${metadata} ${block.searchIndex || ""}`;
+  return terms.every((term) => index.includes(term));
+}
+
+function expertBlockSearchScore(block: StorageBlock, query: string): number {
+  const terms = expertSearchTerms(query);
+  if (!terms.length) return 0;
+  const metadata = expertBlockMetadataText(block);
+  const title = normalizeExpertQuery(`${block.title} ${block.subtitle || ""} ${block.key || ""} ${block.location}`);
+  const summary = normalizeSummary(block.summary);
+  const important = normalizeExpertQuery(`${(summary.names || []).join(" ")} ${(summary.sports || []).join(" ")} ${summary.matchFrom || ""} ${summary.matchTo || ""}`);
+  const index = block.searchIndex || "";
+  let score = 0;
+  for (const term of terms) {
+    if (title.includes(term)) score += 80;
+    if (important.includes(term)) score += 45;
+    if (metadata.includes(term)) score += 20;
+    if (index.includes(term)) score += 8;
+  }
+  const full = normalizeExpertQuery(query);
+  if (full && title.includes(full)) score += 120;
+  else if (full && important.includes(full)) score += 70;
+  else if (full && index.includes(full)) score += 25;
+  return score;
+}
+
 function join(values?: string[], fallback = "—") {
   const list = Array.isArray(values) ? values.filter(Boolean).slice(0, 10) : [];
   return list.length ? list.join(", ") : fallback;
@@ -1900,6 +1966,7 @@ export default function StorageVaultPage({ go }: Props) {
   const [matchBackups, setMatchBackups] = React.useState<MatchBackupItem[]>([]);
   const [blocks, setBlocks] = React.useState<StorageBlock[]>([]);
   const [showDiagnostic, setShowDiagnostic] = React.useState(false);
+  const [expertSearchQuery, setExpertSearchQuery] = React.useState("");
   const [expertDateFilter, setExpertDateFilter] = React.useState("");
   const [detailsState, setDetailsState] = React.useState<{ entry: SaveEntry; details?: BackupDetails | null; loading: boolean; error?: string | null } | null>(null);
   const [destinationSetup, setDestinationSetup] = React.useState<StorageDestinationId | null>(null);
@@ -2248,10 +2315,13 @@ export default function StorageVaultPage({ go }: Props) {
     });
   }, [matchBackups]);
   const technicalCount = blocks.length;
-  const filteredTechnicalBlocks = React.useMemo(
-    () => blocks.filter((block) => blockContainsExpertDate(block, expertDateFilter)),
-    [blocks, expertDateFilter],
-  );
+  const filteredTechnicalBlocks = React.useMemo(() => {
+    const filtered = blocks.filter((block) =>
+      blockContainsExpertDate(block, expertDateFilter) && blockContainsExpertSearch(block, expertSearchQuery)
+    );
+    if (!expertSearchQuery.trim()) return filtered;
+    return filtered.sort((a, b) => expertBlockSearchScore(b, expertSearchQuery) - expertBlockSearchScore(a, expertSearchQuery));
+  }, [blocks, expertDateFilter, expertSearchQuery]);
 
   const resolveBackupProvider = React.useCallback(async (): Promise<BackupProvider> => {
     const preferred = readPreferredRemoteSource();
@@ -3869,14 +3939,38 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
         {tab === "diagnostic" && (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ ...panel, padding: 11 }}>
-              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div>Scanne IndexedDB/localStorage et affiche maintenant la date du bloc, la période des parties détectées et le nombre de X01. Tu peux filtrer sur une journée précise avant d’exporter.</div>}/>
+              <CompactSectionTitle title="MODE EXPERT" color={amber} info={<div>Scanne IndexedDB/localStorage puis recherche dans le contenu technique sans restaurer quoi que ce soit. La recherche couvre notamment les parties, identifiants, dates, profils/joueurs, modes, sets/dartsets, stores et clés.</div>}/>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
                 <VaultActionButton icon="refresh" label="Scanner" disabled={busy} onClick={() => void refresh()}/>
                 <VaultActionButton icon="expert" label={showDiagnostic ? "Masquer blocs" : `Afficher ${technicalCount}`} active={showDiagnostic} onClick={() => setShowDiagnostic((v) => !v)}/>
               </div>
+
+              <div style={{ marginTop: 10, border: `1px solid ${accentSoftBorder}`, background: accentSoftBg, borderRadius: 14, padding: 10 }}>
+                <label style={{ display: "grid", gap: 6, color: neon, fontWeight: 1000, fontSize: 11 }}>
+                  RECHERCHE EXPERT GLOBALE
+                  <input
+                    type="search"
+                    value={expertSearchQuery}
+                    onChange={(event) => { setExpertSearchQuery(event.currentTarget.value); setShowDiagnostic(true); }}
+                    placeholder="Partie, ID, 22/08/2026, Vincent, X01, profil, dartset…"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    style={{ width: "100%", minHeight: 44, borderRadius: 11, border: `1px solid ${accentSoftBorder}`, background: "rgba(2,6,23,.88)", color: "#fff", padding: "9px 10px", fontWeight: 900 }}
+                  />
+                </label>
+                <div style={{ color: muted, fontSize: 10.5, lineHeight: 1.45, marginTop: 7 }}>
+                  Plusieurs mots sont combinés : par exemple <b style={{ color: "#fff" }}>X01 Vincent 22/08/2026</b> ne garde que les blocs contenant tous ces éléments. Les données médias lourdes ne sont pas indexées.
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
+                  <span>{expertSearchQuery.trim() ? `${filteredTechnicalBlocks.length} résultat(s) sur ${technicalCount} bloc(s)` : `${technicalCount} bloc(s) indexé(s)`}</span>
+                  {expertSearchQuery ? <button type="button" onClick={() => setExpertSearchQuery("")} style={{ ...btn, minHeight: 32, padding: "5px 9px", fontSize: 10 }}>Effacer recherche</button> : null}
+                </div>
+              </div>
+
               <div style={{ marginTop: 10, border: "1px solid rgba(251,191,36,.30)", background: "rgba(251,191,36,.05)", borderRadius: 14, padding: 10 }}>
                 <label style={{ display: "grid", gap: 6, color: amber, fontWeight: 1000, fontSize: 11 }}>
-                  RECHERCHER LES BLOCS D’UNE DATE
+                  FILTRE DATE PRÉCIS
                   <input
                     type="date"
                     value={expertDateFilter}
@@ -3885,7 +3979,7 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
                   />
                 </label>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8, color: muted, fontSize: 10.5 }}>
-                  <span>{expertDateFilter ? `${filteredTechnicalBlocks.length} bloc(s) compatible(s) avec cette date` : `${technicalCount} bloc(s) détecté(s)`}</span>
+                  <span>{expertDateFilter ? `${filteredTechnicalBlocks.length} résultat(s) après filtre date${expertSearchQuery.trim() ? " + recherche" : ""}` : "Optionnel : limite les résultats à une journée."}</span>
                   {expertDateFilter ? <button type="button" onClick={() => setExpertDateFilter("")} style={{ ...btn, minHeight: 32, padding: "5px 9px", fontSize: 10 }}>Effacer date</button> : null}
                 </div>
               </div>
@@ -3908,8 +4002,12 @@ Cette copie sera visible sur les autres appareils connectés au même compte.`))
             {showDiagnostic ? (
               filteredTechnicalBlocks.length ? filteredTechnicalBlocks.map((block) => <TechnicalBlockCard key={`diag-${block.id}`} block={block} busy={busy || restoreRunning} onExport={() => { void exportJsonDownload(block, `${block.id.replace(/[^a-z0-9_-]/gi, "_")}.json`).catch((error: any) => setMessage(`Export diagnostic impossible : ${error?.message || error}`)); }}/>) : (
                 <div style={{ ...panel, padding: 14, borderColor: "rgba(251,191,36,.28)", color: "#fff" }}>
-                  <strong style={{ color: amber }}>Aucun bloc trouvé pour cette date.</strong>
-                  <div style={{ color: muted, fontSize: 11.5, marginTop: 5 }}>Essaie d’effacer le filtre pour vérifier les dates voisines ou les blocs dont la date interne n’a pas pu être détectée.</div>
+                  <strong style={{ color: amber }}>{expertSearchQuery.trim() ? "Aucun bloc ne correspond à cette recherche." : "Aucun bloc trouvé pour cette date."}</strong>
+                  <div style={{ color: muted, fontSize: 11.5, marginTop: 5 }}>
+                    {expertSearchQuery.trim()
+                      ? <>Essaie un terme plus court, uniquement un nom de joueur/profil, un ID de partie, un mode comme X01 ou une date. Tu peux aussi effacer le filtre date s’il est actif.</>
+                      : <>Essaie d’effacer le filtre pour vérifier les dates voisines ou les blocs dont la date interne n’a pas pu être détectée.</>}
+                  </div>
                 </div>
               )
             ) : null}

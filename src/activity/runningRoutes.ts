@@ -10,13 +10,26 @@ export type RunningRouteTemplate = {
   elevationGainM: number;
   referenceElapsedMs: number;
   createdAt: number;
-  source?: "activity" | "gpx" | "tcx" | "fit";
+  source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated";
+  generation?: {
+    provider: "openstreetmap-overpass-local-router";
+    targetDistanceM: number;
+    profile: "balanced" | "trails" | "easy";
+    shape: "loop" | "out-back";
+    distanceErrorPct: number;
+    trailSharePct: number;
+    overlapPct: number;
+  };
+  externalId?: string;
+  network?: string;
+  routeRef?: string;
+  operator?: string;
   sourceFileName?: string;
   sport?: ActivitySport;
 };
 
 const STORAGE_KEY = "mss-running-routes-v1";
-const MAX_ROUTES = 16;
+const MAX_ROUTES = 40;
 const MAX_POINTS_PER_ROUTE = 420;
 
 function safeParse(raw: string | null): RunningRouteTemplate[] {
@@ -84,7 +97,7 @@ export function favoriteRouteFromActivity(activity: ActivityRecord, name?: strin
 
 export function upsertRunningRoute(route: RunningRouteTemplate): RunningRouteTemplate[] {
   const current = loadRunningRoutes();
-  const next = [route, ...current.filter((item) => item.id !== route.id && (!route.sourceActivityId || item.sourceActivityId !== route.sourceActivityId))];
+  const next = [route, ...current.filter((item) => item.id !== route.id && (!route.sourceActivityId || item.sourceActivityId !== route.sourceActivityId) && (!route.externalId || item.externalId !== route.externalId))];
   saveRunningRoutes(next);
   return next.slice(0, MAX_ROUTES);
 }

@@ -51,6 +51,8 @@ export type StorageBlock = {
   recoverable: boolean;
   summary: VaultSummary;
   payload?: any;
+  /** Index texte compact construit uniquement pour la recherche du mode Expert. */
+  searchIndex?: string;
 };
 
 export type MemorySlot = {
@@ -229,6 +231,136 @@ function parseMatchTimestamp(value: any): number | null {
   if (/^\d{10,13}$/.test(raw)) return parseMatchTimestamp(Number(raw));
   const ms = Date.parse(raw);
   return Number.isFinite(ms) && ms >= 946684800000 && ms <= 4102444800000 ? ms : null;
+}
+
+
+const EXPERT_SEARCH_MAX_CHARS = 180_000;
+const EXPERT_SEARCH_MAX_NODES = 50_000;
+
+function normalizeExpertSearchValue(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expertDateVariants(value: unknown): string[] {
+  if (value == null || value === "") return [];
+  if (typeof value === "string") {
+    const raw = value.trim();
+    // Evite que Date.parse transforme un simple nom ou un petit nombre en date.
+    if (!/^\d{10,13}$/.test(raw) && !/\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|T\d{1,2}:\d{2}/.test(raw)) return [];
+  }
+  const ms = parseMatchTimestamp(value);
+  if (ms == null) return [];
+  const d = new Date(ms);
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return [
+    `${yyyy}-${mm}-${dd}`,
+    `${dd}/${mm}/${yyyy}`,
+    `${dd}-${mm}-${yyyy}`,
+    `${yyyy}/${mm}/${dd}`,
+  ];
+}
+
+/**
+ * Construit un index de recherche borné pour le mode Expert.
+ * On indexe les clés, noms, ids, modes, dates, profils, sets, etc. mais on
+ * ignore volontairement les data-URI / blobs / longues données médias afin de
+ * ne pas faire exploser la mémoire de la WebView Android.
+ */
+function buildExpertSearchIndex(value: any, seeds: unknown[] = []): string {
+  const terms = new Set<string>();
+  const seen = new WeakSet<object>();
+  let chars = 0;
+  let nodes = 0;
+
+  const add = (raw: unknown) => {
+    if (raw == null || chars >= EXPERT_SEARCH_MAX_CHARS) return;
+    let text = String(raw).trim();
+    if (!text) return;
+    if (/^(?:data:|blob:)/i.test(text)) return;
+    if (text.length > 1024 && /^[A-Za-z0-9+/=_-]+$/.test(text)) return;
+    if (text.length > 512) text = text.slice(0, 512);
+    const normalized = normalizeExpertSearchValue(text);
+    if (normalized && !terms.has(normalized)) {
+      terms.add(normalized);
+      chars += normalized.length + 1;
+    }
+    for (const variant of expertDateVariants(raw)) {
+      const dateText = normalizeExpertSearchValue(variant);
+      if (dateText && !terms.has(dateText)) {
+        terms.add(dateText);
+        chars += dateText.length + 1;
+      }
+    }
+  };
+
+  for (const seed of seeds) add(seed);
+
+  const walk = (node: any) => {
+    if (node == null || nodes >= EXPERT_SEARCH_MAX_NODES || chars >= EXPERT_SEARCH_MAX_CHARS) return;
+    nodes += 1;
+    if (typeof node === "string" || typeof node === "number" || typeof node === "boolean") {
+      add(node);
+      return;
+    }
+    if (typeof node !== "object") return;
+    if (node instanceof ArrayBuffer || ArrayBuffer.isView(node)) return;
+    if (seen.has(node)) return;
+    seen.add(node);
+
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (nodes >= EXPERT_SEARCH_MAX_NODES || chars >= EXPERT_SEARCH_MAX_CHARS) break;
+        walk(item);
+      }
+      return;
+    }
+
+    for (const [key, item] of Object.entries(node)) {
+      if (nodes >= EXPERT_SEARCH_MAX_NODES || chars >= EXPERT_SEARCH_MAX_CHARS) break;
+      add(key);
+      // Certains champs médias contiennent plusieurs Mo : leur nom reste indexé,
+      // leur contenu binaire/base64 ne l'est pas.
+      if (/^(?:base64|bytes|binary|blob|imageData|audioData|videoData)$/i.test(key)) continue;
+      walk(item);
+    }
+  };
+
+  walk(value);
+  return Array.from(terms).join(" ");
+}
+
+function withExpertSearchIndex(block: StorageBlock, searchPayload?: any): StorageBlock {
+  const summary = block.summary || ({} as VaultSummary);
+  const seeds: unknown[] = [
+    block.id,
+    block.source,
+    block.title,
+    block.subtitle,
+    block.location,
+    block.dbName,
+    block.storeName,
+    block.key,
+    block.createdAt,
+    block.updatedAt,
+    summary.matchFrom,
+    summary.matchTo,
+    summary.exportedAt,
+    ...(summary.sports || []),
+    ...(summary.names || []),
+    ...(summary.probableContent || []),
+  ];
+  return {
+    ...block,
+    searchIndex: buildExpertSearchIndex(searchPayload === undefined ? block.payload : searchPayload, seeds),
+  };
 }
 
 function matchPlayedAt(match: any): number | null {
@@ -711,7 +843,7 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
       const rows = rowsRaw.filter((r) => dbOwned || stringContainsCurrentUser(String(r.key || "")) || payloadMentionsCurrentUser(r.value));
       if (!rows.length) continue;
       const wholeSummary = summarizeVaultPayload(rows.map((r) => r.value));
-      blocks.push({
+      blocks.push(withExpertSearchIndex({
         id: stableId("idb-store", [name, storeName]),
         source: "indexedDB",
         title: `IndexedDB · ${name}`,
@@ -722,11 +854,11 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
         recoverable: wholeSummary.matches > 0 || wholeSummary.profiles > 0 || wholeSummary.keys > 0,
         summary: { ...wholeSummary, keys: rows.length || wholeSummary.keys },
         payload: { dbName: name, storeName, rows },
-      });
+      }, rows));
       for (const row of rows.slice(0, 120)) {
         const summary = summarizeVaultPayload(row.value);
         if (summary.matches <= 0 && summary.profiles <= 0 && summary.historyRows <= 0 && summary.statsBlocks <= 0) continue;
-        blocks.push({
+        blocks.push(withExpertSearchIndex({
           id: stableId("idb", [name, storeName, row.key]),
           source: "indexedDB",
           title: `Bloc IDB · ${String(row.key)}`,
@@ -738,7 +870,7 @@ export async function scanIndexedDbBlocks(): Promise<StorageBlock[]> {
           recoverable: true,
           summary,
           payload: { dbName: name, storeName, rows: [row] },
-        });
+        }, row.value));
       }
     }
     try { db.close(); } catch {}
@@ -760,7 +892,7 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
       all[key] = tryParse(value);
       const summary = summarizeVaultPayload(all[key]);
       if (summary.matches > 0 || summary.profiles > 0 || summary.historyRows > 0 || summary.statsBlocks > 0 || /history|match|profile|store|dart|babyfoot|stats/i.test(key)) {
-        blocks.push({
+        blocks.push(withExpertSearchIndex({
           id: stableId("ls", [key]),
           source: "localStorage",
           title: `LocalStorage · ${key}`,
@@ -769,11 +901,11 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
           recoverable: true,
           summary,
           payload: { key, value },
-        });
+        }, { key, value }));
       }
     }
     const whole = summarizeVaultPayload(all);
-    blocks.unshift({
+    blocks.unshift(withExpertSearchIndex({
       id: "localStorage:all",
       source: "localStorage",
       title: "LocalStorage complet",
@@ -782,7 +914,7 @@ export async function scanLocalStorageBlocks(): Promise<StorageBlock[]> {
       recoverable: true,
       summary: { ...whole, keys: ls.length },
       payload: { all },
-    });
+    }, all));
   } catch {}
   return blocks;
 }
@@ -793,7 +925,7 @@ export async function scanLocalStorageAndIndexedDb(): Promise<StorageBlock[]> {
     scanIndexedDbBlocks(),
     listLocalMemorySlots().catch(() => []),
   ]);
-  const slotBlocks: StorageBlock[] = slots.map((slot) => ({
+  const slotBlocks: StorageBlock[] = slots.map((slot) => withExpertSearchIndex({
     id: slot.id,
     source: "localSlot" as const,
     title: slot.label || "Bloc local",
@@ -803,7 +935,7 @@ export async function scanLocalStorageAndIndexedDb(): Promise<StorageBlock[]> {
     updatedAt: slot.updatedAt,
     recoverable: true,
     summary: slot.summary || summarizeVaultPayload(slot.payload),
-  }));
+  }, slot.payload));
   return [...slotBlocks, ...ls, ...idb].sort((a, b) => {
     const timeOf = (block: StorageBlock) => {
       const matchTime = Date.parse(String(block.summary?.matchTo || ""));

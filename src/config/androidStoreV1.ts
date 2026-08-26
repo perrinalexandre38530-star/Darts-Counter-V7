@@ -8,7 +8,7 @@ import { getRuntimePlatform } from "../lib/nativePlatform";
  * Android Capacitor afin que la première version publique n'expose que les
  * sports/modes validés pour le lancement.
  */
-export const ANDROID_STORE_V1_SPORT_IDS = ["darts", "babyfoot", "petanque", "running"] as const;
+export const ANDROID_STORE_V1_SPORT_IDS = ["darts", "babyfoot", "petanque", "running", "fit"] as const;
 
 export const ANDROID_STORE_V1_DARTS_GAME_IDS = [
   "x01",

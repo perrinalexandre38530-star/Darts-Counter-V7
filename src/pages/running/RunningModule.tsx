@@ -23,6 +23,8 @@ import { RUNNING_AUDIO_COACH_KEY, type RunningCustomWorkoutSpec, type RunningPla
 import { averagePaceSecPerKm, averageSpeedMps, buildKilometerSplits, elevationGainMeters, formatDistance, formatDuration, formatPace, movingTimeMs, rollingPaceSecPerKm, routeDistanceMeters, shouldAcceptRunningPoint, } from "../../activity/activityMath";
 import { buildRunningStats, bestEffortMs, hasNegativeSplit, projectedFinishMs, splitConsistencyScore, targetPaceDeltaMs } from "../../activity/runningInsights";
 import { favoriteRouteFromActivity, ghostMatch as runningGhostMatch, loadRunningRoutes, removeRunningRoute, routeTemplateFromActivity, upsertRunningRoute, type RunningRouteTemplate } from "../../activity/runningRoutes";
+import { discoverOutdoorRoutes } from "../../activity/outdoorRouteDiscovery";
+import { generateOutdoorRoutes, type OutdoorRouteGenerationProfile, type OutdoorRouteGenerationShape } from "../../activity/outdoorRouteGenerator";
 import { loadRunningShoes, type RunningShoe } from "../../activity/runningGear";
 import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runningCoach";
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
@@ -32,10 +34,11 @@ import { outdoorDirectionalGuidance, outdoorRouteProgress } from "../../activity
 import { getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorSnapshot } from "../../activity/runningSensors";
 import { sensorSummaryForActivity } from "../../activity/activitySensorInsights";
 import { buildTreadmillSplits, treadmillDistanceSource, treadmillDistanceSourceLabel, averageTreadmillIncline } from "../../activity/treadmillPerformance";
-import { addNativeTrackingListener, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeAppLocationPermissionSettings, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking, waitForNativeGpsFix } from "../../activity/nativeActivityTracking";
+import { addNativeTrackingListener, getNativeCurrentPosition, getNativeTrack, isNativeActivityTrackingAvailable, nativeTrackingStatus, openNativeAppLocationPermissionSettings, openNativeLocationSettings, pauseNativeTracking, requestNativeTrackingPermissions, resumeNativeTracking, startNativeTracking, stopNativeTracking } from "../../activity/nativeActivityTracking";
 import { deleteActivity, listActivities, saveActivity } from "../../activity/activityStore";
-import { getRunningActiveSession, loadRunningActiveSessions, patchRunningActiveSession, removeRunningActiveSession, upsertRunningActiveSession } from "../../activity/runningActiveSessions";
+import { clearNativeTrackingOwnerIf, getNativeTrackingOwnerSessionId, getRunningActiveSession, getRunningRecordingSession, loadRunningActiveSessions, patchRunningActiveSession, removeRunningActiveSession, resumedRunningSessionTiming, setNativeTrackingOwnerSessionId, upsertRunningActiveSession } from "../../activity/runningActiveSessions";
 import { listOutdoorOfflineRoutePacks } from "../../activity/outdoorOfflineCache";
+import { deleteRunningSessionDraft, loadRunningSessionDraft, mergeRunningDraftRoutes, saveRunningSessionDraft, type RunningSessionDraft } from "../../activity/runningSessionDrafts";
 import type { ActivityLap, ActivityRecord, ActivitySensorSample, GeoPoint } from "../../activity/activityTypes";
 type View = "setup" | "record" | "history" | "detail" | "records" | "plan" | "goal";
 type SetupTab = "goal" | "training" | "advanced";
@@ -221,6 +224,16 @@ export default function RunningModule({ go, params }: Props) {
     const [presetOverrideDurationMs, setPresetOverrideDurationMs] = React.useState<number | null>(() => Number.isFinite(Number(params?.runningTargetDurationMs)) ? Number(params.runningTargetDurationMs) : null);
     const [audioCoach, setAudioCoach] = React.useState(() => { try { const raw = localStorage.getItem(RUNNING_AUDIO_COACH_KEY); return raw == null ? true : raw === "1"; } catch { return true; } });
     const [savedRoutes, setSavedRoutes] = React.useState<RunningRouteTemplate[]>(() => loadRunningRoutes());
+    const [discoveredRoutes, setDiscoveredRoutes] = React.useState<RunningRouteTemplate[]>([]);
+    const [routeDiscoveryCenter, setRouteDiscoveryCenter] = React.useState<GeoPoint | null>(null);
+    const [routeDiscoveryRadiusKm, setRouteDiscoveryRadiusKm] = React.useState(10);
+    const [routeDiscoveryBusy, setRouteDiscoveryBusy] = React.useState(false);
+    const [routeDiscoveryMessage, setRouteDiscoveryMessage] = React.useState("");
+    const [routeGenerationDistanceKm, setRouteGenerationDistanceKm] = React.useState(10);
+    const [routeGenerationProfile, setRouteGenerationProfile] = React.useState<OutdoorRouteGenerationProfile>("balanced");
+    const [routeGenerationShape, setRouteGenerationShape] = React.useState<OutdoorRouteGenerationShape>("loop");
+    const [routeGenerationBusy, setRouteGenerationBusy] = React.useState(false);
+    const [routeGenerationMessage, setRouteGenerationMessage] = React.useState("");
     const [selectedRouteId, setSelectedRouteId] = React.useState<string | null>(null);
     const [routeExtras, setRouteExtras] = React.useState<OutdoorRouteExtras | null>(null);
     const [routePanelTab, setRoutePanelTab] = React.useState<RoutePanelTab>("choose");
@@ -310,6 +323,13 @@ export default function RunningModule({ go, params }: Props) {
         setOfflineRoutes(packs.filter((pack) => pack.sport === activitySport).map((pack) => ({ ...pack.route, name: pack.route.name.includes("OFFLINE") ? pack.route.name : `${pack.route.name} · OFFLINE` })));
     }, [activitySport]);
     React.useEffect(() => { void refreshOfflineRoutes(); }, [refreshOfflineRoutes]);
+    React.useEffect(() => {
+        setDiscoveredRoutes([]);
+        setRouteDiscoveryCenter(null);
+        setRouteDiscoveryMessage("");
+        setRouteGenerationMessage("");
+        setRouteGenerationProfile(activitySport === "trail" || activitySport === "hiking" ? "trails" : "balanced");
+    }, [activitySport]);
     const routeOptions = React.useMemo(() => {
         const savedSourceIds = new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean));
         const recent = activities
@@ -317,17 +337,25 @@ export default function RunningModule({ go, params }: Props) {
             .slice(0, 6)
             .map((activity) => routeTemplateFromActivity(activity));
         const savedForSport = savedRoutes.filter((route) => !route.sport ? activitySport === "running" : route.sport === activitySport);
-        const knownIds = new Set(savedForSport.map((route) => route.id));
-        const offlineOnly = offlineRoutes.filter((route) => !knownIds.has(route.id));
-        return [...savedForSport, ...offlineOnly, ...recent].slice(0, 12);
-    }, [activities, activitySport, offlineRoutes, savedRoutes]);
+        const discoveredForSport = discoveredRoutes.filter((route) => !route.sport || route.sport === activitySport);
+        const candidates = [...discoveredForSport, ...savedForSport, ...offlineRoutes, ...recent];
+        const unique: RunningRouteTemplate[] = [];
+        const seen = new Set<string>();
+        for (const route of candidates) {
+            const key = route.externalId || route.id;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(route);
+            if (unique.length >= 24) break;
+        }
+        return unique;
+    }, [activities, activitySport, discoveredRoutes, offlineRoutes, savedRoutes]);
     const selectedRoute = React.useMemo(() => routeOptions.find((route) => route.id === selectedRouteId) || null, [routeOptions, selectedRouteId]);
     React.useEffect(() => { setRouteExtras(selectedRoute ? loadOutdoorRouteExtras(selectedRoute.id) : null); offRouteAlertRef.current = false; wrongWayAlertRef.current = false; turnAnnouncedRef.current = new Set(); setRoutePanelTab("choose"); }, [selectedRoute?.id]);
     const selectedTerrain = React.useMemo(() => selectedRoute ? analyzeRunningTerrain(selectedRoute.route) : null, [selectedRoute]);
     const selectedTerrainAdvice = React.useMemo(() => selectedTerrain ? terrainAdvice(selectedTerrain, lang) : null, [lang, selectedTerrain]);
     const selectedRouteHasReference = !!selectedRoute && Number(selectedRoute.referenceElapsedMs || 0) > 0;
     React.useEffect(() => { if (!selectedRouteHasReference && ghostEnabled) setGhostEnabled(false); }, [ghostEnabled, selectedRouteHasReference]);
-    const favoriteSourceIds = React.useMemo(() => new Set(savedRoutes.map((route) => route.sourceActivityId).filter(Boolean)), [savedRoutes]);
     const targetDistanceM = selectedRoute && selectedPresetId === "goal-free" ? selectedRoute.distanceM : effectivePreset.targetDistanceM ?? null;
     const targetDurationMs = effectivePreset.targetDurationMs ?? null;
     const targetPaceSecPerKm = effectivePreset.type === "pacer" ? pacerPace : null;
@@ -386,9 +414,11 @@ export default function RunningModule({ go, params }: Props) {
     React.useEffect(() => {
         if (activeSessionRestoreRef.current) return;
         activeSessionRestoreRef.current = true;
+        if (params?.runningNewSession) return;
         const requestedId = params?.runningResumeSessionId ? String(params.runningResumeSessionId) : null;
         const session = getRunningActiveSession(requestedId);
         if (!session) return;
+        const activityId = session.activityId || makeId();
         activeSessionIdRef.current = session.id;
         setActivitySport(session.sport as OutdoorPerformanceSport);
         setSelectedPresetId(session.presetId || "goal-free");
@@ -402,27 +432,96 @@ export default function RunningModule({ go, params }: Props) {
         setIsRecording(true);
         setView("record");
         setNow(Date.now());
-        if (session.mode === "native-gps") {
-            void (async () => {
-                try {
-                    const status = await nativeTrackingStatus();
-                    const track = await getNativeTrack();
-                    if (status?.running) {
-                        nativeTrackingActiveRef.current = true;
-                        const route = Array.isArray(track?.route) ? track!.route! : [];
-                        if (route.length) { pointsRef.current = route; setPoints(route); }
-                        const nativePaused = !!status?.paused;
-                        pausedRef.current = nativePaused;
-                        setPaused(nativePaused);
-                        patchRunningActiveSession(session.id, { paused: nativePaused, status: nativePaused ? "paused" : "recording", lastElapsedMs: Number(status?.elapsedMs || session.lastElapsedMs || 0) });
-                    } else {
-                        pausedRef.current = true;
-                        setPaused(true);
-                        patchRunningActiveSession(session.id, { paused: true, pausedAt: Date.now(), status: "paused" });
+        patchRunningActiveSession(session.id, { activityId, recoveredAt: Date.now() });
+
+        void (async () => {
+            const draft = await loadRunningSessionDraft(session.id);
+            if (draft) {
+                const restoredRoute = Array.isArray(draft.route) ? draft.route : [];
+                if (restoredRoute.length) {
+                    pointsRef.current = restoredRoute;
+                    setPoints(restoredRoute);
+                }
+                sensorSamplesRef.current = Array.isArray(draft.sensorSamples) ? draft.sensorSamples : [];
+                const restoredLaps = Array.isArray(draft.manualLaps) ? draft.manualLaps : [];
+                setManualLaps(restoredLaps);
+                lastLapElapsedRef.current = Number(draft.lastLapElapsedMs || 0);
+                lastLapDistanceRef.current = Number(draft.lastLapDistanceM || 0);
+                treadmillDistanceRef.current = Number(draft.treadmillDistanceM || 0);
+                setTreadmillDistanceM(treadmillDistanceRef.current);
+                if (Number.isFinite(draft.manualTreadmillSpeedKmh)) setManualTreadmillSpeedKmh(Number(draft.manualTreadmillSpeedKmh));
+                if (Number.isFinite(draft.manualTreadmillIncline)) setManualTreadmillIncline(Number(draft.manualTreadmillIncline));
+                pausedTotalRef.current = Math.max(pausedTotalRef.current, Number(draft.pausedTotalMs || 0));
+                if (session.paused && draft.pauseStartedAt) pauseStartedRef.current = Number(draft.pauseStartedAt);
+                patchRunningActiveSession(session.id, { activityId: draft.activityId || activityId, lastDraftAt: draft.updatedAt });
+            }
+
+            if (session.mode !== "native-gps") {
+                // Web GPS / tapis ne peuvent pas continuer à collecter leurs données
+                // quand le composant est démonté. Ils reviennent donc en pause,
+                // mais leur brouillon complet est restauré.
+                if (!session.paused) {
+                    const pausedAt = Date.now();
+                    pausedRef.current = true;
+                    pauseStartedRef.current = pausedAt;
+                    setPaused(true);
+                    patchRunningActiveSession(session.id, { paused: true, pausedAt, status: "paused", activityId });
+                }
+                return;
+            }
+
+            let ownerId = getNativeTrackingOwnerSessionId();
+            if (!ownerId) {
+                const nativeRecording = loadRunningActiveSessions().filter((row) => row.mode === "native-gps" && !row.paused);
+                if (nativeRecording.length <= 1) {
+                    ownerId = session.id;
+                    setNativeTrackingOwnerSessionId(session.id);
+                }
+            }
+            if (ownerId !== session.id) {
+                const pausedAt = Date.now();
+                pausedRef.current = true;
+                pauseStartedRef.current = pausedAt;
+                setPaused(true);
+                nativeTrackingActiveRef.current = false;
+                patchRunningActiveSession(session.id, { paused: true, pausedAt, status: "paused", activityId });
+                return;
+            }
+
+            try {
+                const status = await nativeTrackingStatus();
+                const track = await getNativeTrack();
+                if (status?.running) {
+                    nativeTrackingActiveRef.current = true;
+                    const nativeRoute = Array.isArray(track?.route) ? track!.route! : [];
+                    const mergedRoute = mergeRunningDraftRoutes(draft?.route, nativeRoute);
+                    if (mergedRoute.length) {
+                        pointsRef.current = mergedRoute;
+                        setPoints(mergedRoute);
                     }
-                } catch {}
-            })();
-        }
+                    const nativePaused = !!status?.paused;
+                    pausedRef.current = nativePaused;
+                    setPaused(nativePaused);
+                    if (nativePaused && !pauseStartedRef.current) pauseStartedRef.current = Date.now();
+                    patchRunningActiveSession(session.id, {
+                        activityId,
+                        paused: nativePaused,
+                        pausedAt: nativePaused ? (session.pausedAt || Date.now()) : undefined,
+                        status: nativePaused ? "paused" : "recording",
+                        lastElapsedMs: Number(status?.elapsedMs || session.lastElapsedMs || 0),
+                        lastDistanceM: mergedRoute.length > 1 ? routeDistanceMeters(mergedRoute) : session.lastDistanceM,
+                    });
+                } else {
+                    pausedRef.current = true;
+                    setPaused(true);
+                    nativeTrackingActiveRef.current = false;
+                    const pausedAt = Date.now();
+                    pauseStartedRef.current = pausedAt;
+                    patchRunningActiveSession(session.id, { activityId, paused: true, pausedAt, status: "paused" });
+                    clearNativeTrackingOwnerIf(session.id);
+                }
+            } catch {}
+        })();
     // Restore only once when the Running module is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -435,6 +534,61 @@ export default function RunningModule({ go, params }: Props) {
             return 0;
         const currentPause = pausedRef.current && pauseStartedRef.current ? Math.max(0, ts - pauseStartedRef.current) : 0;
         return Math.max(0, ts - startedAtRef.current - pausedTotalRef.current - currentPause);
+    }, []);
+    const persistCurrentDraft = React.useCallback(async () => {
+        const sessionId = activeSessionIdRef.current;
+        if (!sessionId) return;
+        const session = getRunningActiveSession(sessionId);
+        if (!session) return;
+        const activityId = session.activityId || makeId();
+        if (!session.activityId) patchRunningActiveSession(sessionId, { activityId });
+        const now = Date.now();
+        const draft: RunningSessionDraft = {
+            sessionId,
+            activityId,
+            sport: activitySport,
+            route: [...pointsRef.current],
+            manualLaps: [...manualLaps],
+            sensorSamples: [...sensorSamplesRef.current],
+            treadmillDistanceM: Number(treadmillDistanceRef.current || 0),
+            manualTreadmillSpeedKmh,
+            manualTreadmillIncline,
+            lastLapElapsedMs: Number(lastLapElapsedRef.current || 0),
+            lastLapDistanceM: Number(lastLapDistanceRef.current || 0),
+            pausedTotalMs: Number(pausedTotalRef.current || 0),
+            pauseStartedAt: pausedRef.current && pauseStartedRef.current ? pauseStartedRef.current : undefined,
+            updatedAt: now,
+        };
+        await saveRunningSessionDraft(draft);
+        patchRunningActiveSession(sessionId, {
+            activityId,
+            lastDraftAt: now,
+            lastElapsedMs: activeElapsedAt(now),
+            lastDistanceM: activitySport === "treadmill" ? treadmillDistanceRef.current : routeDistanceMeters(pointsRef.current),
+        });
+    }, [activeElapsedAt, activitySport, manualLaps, manualTreadmillIncline, manualTreadmillSpeedKmh]);
+
+    React.useEffect(() => {
+        if (!isRecording || !activeSessionIdRef.current) return;
+        void persistCurrentDraft();
+        const timer = window.setInterval(() => { void persistCurrentDraft(); }, 5000);
+        const onVisibility = () => { if (document.visibilityState !== "visible") void persistCurrentDraft(); };
+        window.addEventListener("pagehide", persistCurrentDraft as any);
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener("pagehide", persistCurrentDraft as any);
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, [isRecording, persistCurrentDraft]);
+
+    React.useEffect(() => () => {
+        const sessionId = activeSessionIdRef.current;
+        if (!sessionId) return;
+        const session = getRunningActiveSession(sessionId);
+        if (!session || session.mode === "native-gps" || session.paused) return;
+        const pausedAt = Date.now();
+        patchRunningActiveSession(sessionId, { paused: true, pausedAt, status: "paused" });
     }, []);
     React.useEffect(() => {
         if (!isRecording || !activeSessionIdRef.current) return;
@@ -519,10 +673,11 @@ export default function RunningModule({ go, params }: Props) {
         if (!isRecording || !nativeTrackingActiveRef.current || activitySport === "treadmill") return;
         const id = window.setInterval(() => { void getNativeTrack().then((snapshot) => {
             if (!snapshot?.route?.length) return;
-            pointsRef.current = snapshot.route;
+            const mergedRoute = mergeRunningDraftRoutes(pointsRef.current, snapshot.route);
+            pointsRef.current = mergedRoute;
             lastGpsPointAtRef.current = Date.now();
-            setPoints(snapshot.route);
-            const point = snapshot.route[snapshot.route.length - 1];
+            setPoints(mergedRoute);
+            const point = mergedRoute[mergedRoute.length - 1];
             if (point) {
                 setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
                 setGpsMessage(Number(point.accuracy || 0) > 45 ? copy.gpsPoor : copy.gpsReady);
@@ -654,8 +809,8 @@ export default function RunningModule({ go, params }: Props) {
         if (isNativeActivityTrackingAvailable()) {
             try {
                 const permissions: any = await requestNativeTrackingPermissions();
-                if (!permissions?.granted) {
-                    setGpsMessage(pickLegacyLocalizedText(lang, "AUTORISE LA LOCALISATION DANS ANDROID…", "ALLOW LOCATION IN ANDROID…", "AUTORIZA LA UBICACIÓN EN ANDROID…"));
+                if (!permissions?.granted || permissions?.precise === false) {
+                    setGpsMessage(pickLegacyLocalizedText(lang, "ACTIVE LA LOCALISATION PRÉCISE POUR RUNNING PERFORMANCE…", "ENABLE PRECISE LOCATION FOR RUNNING PERFORMANCE…", "ACTIVA LA UBICACIÓN PRECISA PARA RUNNING PERFORMANCE…"));
                     await openNativeAppLocationPermissionSettings();
                     return;
                 }
@@ -665,11 +820,8 @@ export default function RunningModule({ go, params }: Props) {
                     await openNativeLocationSettings();
                     return;
                 }
-                await startNativeTracking("gps-check");
-                const point = await waitForNativeGpsFix(15000);
-                const snapshot = await stopNativeTracking();
-                const resolved = point || snapshot?.lastPoint || (snapshot?.route?.length ? snapshot.route[snapshot.route.length - 1] : undefined);
-                    if (!resolved) {
+                const resolved = await getNativeCurrentPosition(15000);
+                if (!resolved) {
                     setGpsMessage(copy.gpsLost);
                     return;
                 }
@@ -698,9 +850,9 @@ export default function RunningModule({ go, params }: Props) {
         if (activitySport !== "treadmill" && isNativeActivityTrackingAvailable()) {
             try {
                 const permissions: any = await requestNativeTrackingPermissions();
-                if (!permissions?.granted) {
+                if (!permissions?.granted || permissions?.precise === false) {
                     nativeTrackingActiveRef.current = false;
-                    setGpsMessage(pickLegacyLocalizedText(lang, "AUTORISE LA LOCALISATION DANS ANDROID…", "ALLOW LOCATION IN ANDROID…", "AUTORIZA LA UBICACIÓN EN ANDROID…"));
+                    setGpsMessage(pickLegacyLocalizedText(lang, "ACTIVE LA LOCALISATION PRÉCISE POUR RUNNING PERFORMANCE…", "ENABLE PRECISE LOCATION FOR RUNNING PERFORMANCE…", "ACTIVA LA UBICACIÓN PRECISA PARA RUNNING PERFORMANCE…"));
                     await openNativeAppLocationPermissionSettings();
                     return;
                 }
@@ -744,19 +896,22 @@ export default function RunningModule({ go, params }: Props) {
         pausedTotalRef.current = 0;
         pauseStartedRef.current = 0;
         startedAtRef.current = Date.now();
-        const otherRecording = loadRunningActiveSessions().find((row) => row.id !== activeSessionIdRef.current && !row.paused);
+        const otherRecording = getRunningRecordingSession(activeSessionIdRef.current);
         if (otherRecording) {
             setGpsMessage(pickLegacyLocalizedText(lang, "UNE AUTRE ACTIVITÉ EST DÉJÀ EN COURS. METS-LA EN PAUSE AVANT D'EN DÉMARRER UNE AUTRE.", "ANOTHER ACTIVITY IS ALREADY RECORDING. PAUSE IT BEFORE STARTING ANOTHER.", "YA HAY OTRA ACTIVIDAD EN CURSO. PÁUSALA ANTES DE INICIAR OTRA."));
             return;
         }
         const liveSessionId = activeSessionIdRef.current || `running-live-${startedAtRef.current}-${Math.random().toString(36).slice(2, 7)}`;
+        const sessionActivityId = makeId();
         const mode = activitySport === "treadmill" ? "treadmill" : isNativeActivityTrackingAvailable() ? "native-gps" : "web-gps";
-        const activeRegistration = upsertRunningActiveSession({ id: liveSessionId, sport: activitySport, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, presetId: effectivePreset.id, workoutType: effectivePreset.type, startedAt: startedAtRef.current, paused: false, pausedTotalMs: 0, status: "recording", mode, targetDistanceM, targetDurationMs, targetPaceSecPerKm, routeReferenceId: selectedRoute?.id, shoeId: selectedShoeId || undefined, lastDistanceM: 0, lastElapsedMs: 0, lastUpdatedAt: Date.now() });
+        const activeRegistration = upsertRunningActiveSession({ id: liveSessionId, activityId: sessionActivityId, sport: activitySport, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, presetId: effectivePreset.id, workoutType: effectivePreset.type, startedAt: startedAtRef.current, paused: false, pausedTotalMs: 0, status: "recording", mode, targetDistanceM, targetDurationMs, targetPaceSecPerKm, routeReferenceId: selectedRoute?.id, shoeId: selectedShoeId || undefined, lastDistanceM: 0, lastElapsedMs: 0, lastUpdatedAt: Date.now() });
         if (!activeRegistration.ok) {
             setGpsMessage(pickLegacyLocalizedText(lang, "3 ACTIVITÉS ACTIVES MAXIMUM. TERMINE OU ANNULE UNE SESSION AVANT D'EN CRÉER UNE AUTRE.", "MAXIMUM 3 ACTIVE ACTIVITIES. FINISH OR CANCEL ONE BEFORE CREATING ANOTHER.", "MÁXIMO 3 ACTIVIDADES ACTIVAS. TERMINA O CANCELA UNA ANTES DE CREAR OTRA."));
             return;
         }
         activeSessionIdRef.current = liveSessionId;
+        await saveRunningSessionDraft({ sessionId: liveSessionId, activityId: sessionActivityId, sport: activitySport, route: [], manualLaps: [], sensorSamples: [], treadmillDistanceM: 0, manualTreadmillSpeedKmh, manualTreadmillIncline, lastLapElapsedMs: 0, lastLapDistanceM: 0, pausedTotalMs: 0, updatedAt: Date.now() });
+        patchRunningActiveSession(liveSessionId, { lastDraftAt: Date.now() });
         setNow(startedAtRef.current);
         setPaused(false);
         setIsRecording(true);
@@ -769,7 +924,19 @@ export default function RunningModule({ go, params }: Props) {
         stopWatch();
         if (isNativeActivityTrackingAvailable()) {
             try {
+                const previousOwnerId = getNativeTrackingOwnerSessionId();
+                if (previousOwnerId && previousOwnerId !== liveSessionId) {
+                    const previousDraft = await loadRunningSessionDraft(previousOwnerId);
+                    const previousTrack = await getNativeTrack();
+                    const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
+                    if (previousDraft) {
+                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
+                        await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
+                        patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
+                    }
+                }
                 await startNativeTracking(activitySport);
+                setNativeTrackingOwnerSessionId(liveSessionId);
                 nativeTrackingActiveRef.current = true;
                 setGpsMessage(copy.gpsSearching);
                 return;
@@ -777,7 +944,12 @@ export default function RunningModule({ go, params }: Props) {
                 nativeTrackingActiveRef.current = false;
                 setGpsMessage(copy.gpsLost);
                 setIsRecording(false);
-                if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
+                if (activeSessionIdRef.current) {
+                    const failedSessionId = activeSessionIdRef.current;
+                    removeRunningActiveSession(failedSessionId);
+                    clearNativeTrackingOwnerIf(failedSessionId);
+                    void deleteRunningSessionDraft(failedSessionId);
+                }
                 activeSessionIdRef.current = null;
                 setView("setup");
                 return;
@@ -786,7 +958,11 @@ export default function RunningModule({ go, params }: Props) {
         if (!navigator.geolocation) {
             setGpsMessage(copy.gpsDenied);
             setIsRecording(false);
-            if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
+            if (activeSessionIdRef.current) {
+                const failedSessionId = activeSessionIdRef.current;
+                removeRunningActiveSession(failedSessionId);
+                void deleteRunningSessionDraft(failedSessionId);
+            }
             activeSessionIdRef.current = null;
             setView("setup");
             return;
@@ -811,6 +987,12 @@ export default function RunningModule({ go, params }: Props) {
             setGpsMessage(error.code === 1 ? copy.gpsDenied : copy.gpsLost);
             if (error.code === 1) {
                 setIsRecording(false);
+                if (activeSessionIdRef.current) {
+                    const failedSessionId = activeSessionIdRef.current;
+                    removeRunningActiveSession(failedSessionId);
+                    void deleteRunningSessionDraft(failedSessionId);
+                    activeSessionIdRef.current = null;
+                }
                 setView("setup");
             }
         }, { enableHighAccuracy: true, maximumAge: 1500, timeout: 15000 });
@@ -837,27 +1019,59 @@ export default function RunningModule({ go, params }: Props) {
             catch { }
         } }, 850);
     }, [countdown, isRecording, startGpsRun]);
-    const togglePause = React.useCallback(() => {
-        if (!isRecording)
-            return;
+    const togglePause = React.useCallback(async () => {
+        if (!isRecording) return;
+        const sessionId = activeSessionIdRef.current;
+        const session = sessionId ? getRunningActiveSession(sessionId) : null;
         if (!pausedRef.current) {
             pausedRef.current = true;
             pauseStartedRef.current = Date.now();
             setPaused(true);
-            if (activeSessionIdRef.current) patchRunningActiveSession(activeSessionIdRef.current, { paused: true, pausedAt: pauseStartedRef.current, status: "paused", pausedTotalMs: pausedTotalRef.current });
-            if (nativeTrackingActiveRef.current) void pauseNativeTracking();
+            if (sessionId) patchRunningActiveSession(sessionId, { paused: true, pausedAt: pauseStartedRef.current, status: "paused", pausedTotalMs: pausedTotalRef.current });
+            if (nativeTrackingActiveRef.current) {
+                await pauseNativeTracking();
+                await persistCurrentDraft();
+            }
             return;
         }
+
+        const otherRecording = getRunningRecordingSession(sessionId);
+        if (otherRecording) {
+            setGpsMessage(pickLegacyLocalizedText(lang, "UNE AUTRE ACTIVITÉ UTILISE DÉJÀ LE TRACKING. METS-LA EN PAUSE D'ABORD.", "ANOTHER ACTIVITY IS ALREADY USING TRACKING. PAUSE IT FIRST.", "OTRA ACTIVIDAD YA ESTÁ USANDO EL SEGUIMIENTO. PÁUSALA PRIMERO."));
+            return;
+        }
+
+        if (session?.mode === "native-gps" && !nativeTrackingActiveRef.current) {
+            try {
+                const previousOwnerId = getNativeTrackingOwnerSessionId();
+                if (previousOwnerId && previousOwnerId !== sessionId) {
+                    const previousDraft = await loadRunningSessionDraft(previousOwnerId);
+                    const previousTrack = await getNativeTrack();
+                    const previousRoute = Array.isArray(previousTrack?.route) ? previousTrack!.route! : [];
+                    if (previousDraft) {
+                        const mergedPrevious = mergeRunningDraftRoutes(previousDraft.route, previousRoute);
+                        await saveRunningSessionDraft({ ...previousDraft, route: mergedPrevious, updatedAt: Date.now() });
+                        patchRunningActiveSession(previousOwnerId, { lastDraftAt: Date.now(), lastDistanceM: mergedPrevious.length > 1 ? routeDistanceMeters(mergedPrevious) : undefined });
+                    }
+                }
+                await startNativeTracking(activitySport);
+                setNativeTrackingOwnerSessionId(sessionId!);
+                nativeTrackingActiveRef.current = true;
+            } catch {
+                setGpsMessage(copy.gpsLost);
+                return;
+            }
+        }
+
         const resumed = Date.now();
-        if (pauseStartedRef.current)
-            pausedTotalRef.current += Math.max(0, resumed - pauseStartedRef.current);
+        if (pauseStartedRef.current) pausedTotalRef.current += Math.max(0, resumed - pauseStartedRef.current);
         pauseStartedRef.current = 0;
         pausedRef.current = false;
         setPaused(false);
-        if (activeSessionIdRef.current) patchRunningActiveSession(activeSessionIdRef.current, { paused: false, pausedAt: undefined, pausedTotalMs: pausedTotalRef.current, status: "recording" });
-        if (nativeTrackingActiveRef.current) void resumeNativeTracking();
+        if (sessionId) patchRunningActiveSession(sessionId, { ...resumedRunningSessionTiming(session || ({ pausedAt: resumed, pausedTotalMs: pausedTotalRef.current } as any), resumed), pausedTotalMs: pausedTotalRef.current });
+        if (nativeTrackingActiveRef.current) await resumeNativeTracking();
         setNow(resumed);
-    }, [isRecording]);
+    }, [activitySport, copy.gpsLost, isRecording, lang, persistCurrentDraft]);
     const addLap = React.useCallback(() => {
         if (!isRecording || paused)
             return;
@@ -877,28 +1091,64 @@ export default function RunningModule({ go, params }: Props) {
         }
         catch { }
     }, [activeElapsedAt, activitySport, copy.lap, isRecording, manualLaps.length, paused]);
-    const cancelRun = React.useCallback(() => { stopWatch(); if (nativeTrackingActiveRef.current) { void stopNativeTracking(); nativeTrackingActiveRef.current = false; } if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current); activeSessionIdRef.current = null; setIsRecording(false); setPaused(false); pausedRef.current = false; pointsRef.current = []; setPoints([]); setManualLaps([]); setGpsMessage(""); setView("setup"); }, [stopWatch]);
+    const cancelRun = React.useCallback(() => {
+        stopWatch();
+        const sessionId = activeSessionIdRef.current;
+        if (nativeTrackingActiveRef.current) { void stopNativeTracking(); nativeTrackingActiveRef.current = false; }
+        if (sessionId) {
+            removeRunningActiveSession(sessionId);
+            clearNativeTrackingOwnerIf(sessionId);
+            void deleteRunningSessionDraft(sessionId);
+        }
+        activeSessionIdRef.current = null;
+        setIsRecording(false);
+        setPaused(false);
+        pausedRef.current = false;
+        pointsRef.current = [];
+        setPoints([]);
+        setManualLaps([]);
+        setGpsMessage("");
+        setView("setup");
+    }, [stopWatch]);
     const finishRun = React.useCallback(async () => {
-        let routeForSave = pointsRef.current;
+        const sessionId = activeSessionIdRef.current;
+        const activeSession = sessionId ? getRunningActiveSession(sessionId) : null;
+        const draft = sessionId ? await loadRunningSessionDraft(sessionId) : null;
+        let routeForSave = mergeRunningDraftRoutes(draft?.route, pointsRef.current);
         const wasNativeTracking = nativeTrackingActiveRef.current;
         if (nativeTrackingActiveRef.current && activitySport !== "treadmill") {
             const native = await stopNativeTracking();
             nativeTrackingActiveRef.current = false;
-            if (native?.route?.length) { routeForSave = native.route; pointsRef.current = native.route; setPoints(native.route); }
+            if (sessionId) clearNativeTrackingOwnerIf(sessionId);
+            routeForSave = mergeRunningDraftRoutes(routeForSave, native?.route);
+            if (routeForSave.length) { pointsRef.current = routeForSave; setPoints(routeForSave); }
         }
-        const indoorDistance = treadmillDistanceRef.current;
-        if (activitySport === "treadmill" ? indoorDistance < 10 : routeForSave.length < 2) { setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "Distance insuffisante pour enregistrer la séance.", "Not enough distance to save the workout.", "Distancia insuficiente para guardar la sesión.")) : copy.insufficient); return; }
+        const indoorDistance = Math.max(Number(treadmillDistanceRef.current || 0), Number(draft?.treadmillDistanceM || 0));
+        if (activitySport === "treadmill" ? indoorDistance < 10 : routeForSave.length < 2) {
+            if (sessionId && draft) await saveRunningSessionDraft({ ...draft, route: routeForSave, treadmillDistanceM: indoorDistance, updatedAt: Date.now() });
+            if (sessionId) {
+                const pausedAt = Date.now();
+                patchRunningActiveSession(sessionId, { paused: true, pausedAt, status: "paused", lastDraftAt: draft ? Date.now() : activeSession?.lastDraftAt });
+                pausedRef.current = true;
+                pauseStartedRef.current = pausedAt;
+                setPaused(true);
+            }
+            setGpsMessage(activitySport === "treadmill" ? (pickLegacyLocalizedText(lang, "Distance insuffisante pour enregistrer la séance.", "Not enough distance to save the workout.", "Distancia insuficiente para guardar la sesión.")) : copy.insufficient);
+            return;
+        }
         stopWatch();
         const endedAt = Date.now();
         let pauseTotal = pausedTotalRef.current;
-        if (pausedRef.current && pauseStartedRef.current)
-            pauseTotal += endedAt - pauseStartedRef.current;
+        if (pausedRef.current && pauseStartedRef.current) pauseTotal += endedAt - pauseStartedRef.current;
         const elapsed = Math.max(1, endedAt - startedAtRef.current - pauseTotal);
         const route = activitySport === "treadmill" ? [] : routeForSave;
         const distanceM = activitySport === "treadmill" ? indoorDistance : routeDistanceMeters(route);
-        const splits = activitySport === "treadmill" ? buildTreadmillSplits(sensorSamplesRef.current) : buildKilometerSplits(route, startedAtRef.current);
+        const finalSensorSamples = sensorSamplesRef.current.length ? [...sensorSamplesRef.current] : [...(draft?.sensorSamples || [])];
+        const finalManualLaps = manualLaps.length ? manualLaps : [...(draft?.manualLaps || [])];
+        const splits = activitySport === "treadmill" ? buildTreadmillSplits(finalSensorSamples) : buildKilometerSplits(route, startedAtRef.current);
         const finalGhostDelta = activitySport !== "treadmill" && ghostEnabled ? runningGhostMatch(selectedRoute, route[route.length - 1], distanceM, elapsed)?.deltaMs ?? null : null;
-        const record: ActivityRecord = { id: makeId(), sport: activitySport, source: activitySport === "treadmill" ? "manual" : "phone-gps", verification: activitySport === "treadmill" && safeSensorDevices.some((device) => device.connected) ? "connected" : activitySport === "treadmill" ? "declared" : "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: activitySport === "treadmill" ? elapsed : (movingTimeMs(route) || elapsed), distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: activitySport === "treadmill" ? 0 : elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps, planId, planSessionId, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, shoeId: selectedShoeId || undefined, routeReferenceId: selectedRoute?.id, ghostEnabled: activitySport !== "treadmill" && ghostEnabled && !!selectedRoute, ghostDeltaMs: finalGhostDelta, deviceName: activitySport === "treadmill" ? (safeSensorDevices.find((device) => device.kind === "fitness-machine-treadmill" && device.connected)?.name || safeSensorDevices.find((device) => device.kind === "running-speed-cadence" && device.connected)?.name || "Tapis roulant") : (wasNativeTracking ? "Android Native GPS" : "Phone GPS"), sensorSamples: sensorSamplesRef.current.length ? [...sensorSamplesRef.current] : undefined, sensorDevices: safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), indoor: activitySport === "treadmill" || undefined, treadmill: activitySport === "treadmill" ? { distanceSource: treadmillDistanceSource(safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), sensorSamplesRef.current, manualTreadmillSpeedKmh), manualSpeedKmh: manualTreadmillSpeedKmh, inclinePercent: averageTreadmillIncline(sensorSamplesRef.current) ?? manualTreadmillIncline } : undefined, createdAt: Date.now() };
+        const stableActivityId = activeSession?.activityId || draft?.activityId || makeId();
+        const record: ActivityRecord = { id: stableActivityId, sport: activitySport, source: activitySport === "treadmill" ? "manual" : "phone-gps", verification: activitySport === "treadmill" && safeSensorDevices.some((device) => device.connected) ? "connected" : activitySport === "treadmill" ? "declared" : "gps", startedAt: startedAtRef.current, endedAt, elapsedMs: elapsed, movingMs: activitySport === "treadmill" ? elapsed : (movingTimeMs(route) || elapsed), distanceM, avgSpeedMps: averageSpeedMps(distanceM, elapsed), avgPaceSecPerKm: averagePaceSecPerKm(distanceM, elapsed), elevationGainM: activitySport === "treadmill" ? 0 : elevationGainMeters(route), route, splits, targetDistanceM, targetDurationMs, targetPaceSecPerKm, workoutType: effectivePreset.type, manualLaps: finalManualLaps, planId, planSessionId, title: `${outdoorSportLabel(activitySport, lang)} · ${presetLabel(effectivePreset, lang)}`, shoeId: selectedShoeId || undefined, routeReferenceId: selectedRoute?.id, ghostEnabled: activitySport !== "treadmill" && ghostEnabled && !!selectedRoute, ghostDeltaMs: finalGhostDelta, deviceName: activitySport === "treadmill" ? (safeSensorDevices.find((device) => device.kind === "fitness-machine-treadmill" && device.connected)?.name || safeSensorDevices.find((device) => device.kind === "running-speed-cadence" && device.connected)?.name || "Tapis roulant") : (wasNativeTracking || activeSession?.mode === "native-gps" ? "Android Native GPS" : "Phone GPS"), sensorSamples: finalSensorSamples.length ? finalSensorSamples : undefined, sensorDevices: safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), indoor: activitySport === "treadmill" || undefined, treadmill: activitySport === "treadmill" ? { distanceSource: treadmillDistanceSource(safeSensorDevices.filter((device) => device.connected).map((device) => ({ kind: device.kind, name: device.name })), finalSensorSamples, manualTreadmillSpeedKmh), manualSpeedKmh: manualTreadmillSpeedKmh, inclinePercent: averageTreadmillIncline(finalSensorSamples) ?? manualTreadmillIncline } : undefined, createdAt: Date.now() };
         const prior = buildRunningStats(activities, Date.now(), localeForLang(lang));
         const badges: string[] = [];
         if (!activities.length)
@@ -917,7 +1167,11 @@ export default function RunningModule({ go, params }: Props) {
         if (consistency != null && consistency >= 90)
             badges.push(`${copy.consistency} · ${consistency}%`);
         await saveActivity(record);
-        if (activeSessionIdRef.current) removeRunningActiveSession(activeSessionIdRef.current);
+        if (sessionId) {
+            removeRunningActiveSession(sessionId);
+            clearNativeTrackingOwnerIf(sessionId);
+            await deleteRunningSessionDraft(sessionId);
+        }
         activeSessionIdRef.current = null;
         setFinishBadges(badges);
         setIsRecording(false);
@@ -947,22 +1201,100 @@ export default function RunningModule({ go, params }: Props) {
         setSelectedRouteId(route.id);
         setGhostEnabled(Number(route.referenceElapsedMs || 0) > 0);
     }, []);
+    const resolveRoutePosition = React.useCallback(async (): Promise<GeoPoint> => {
+        let point: GeoPoint | null = null;
+        if (isNativeActivityTrackingAvailable()) {
+            const permissions: any = await requestNativeTrackingPermissions();
+            if (!permissions?.granted || permissions?.precise === false) {
+                await openNativeAppLocationPermissionSettings();
+                throw new Error(pickLegacyLocalizedText(lang, "La localisation précise Android est nécessaire pour utiliser les parcours autour de toi.", "Android precise location is required to use routes around you.", "La ubicación precisa de Android es necesaria para usar rutas cercanas."));
+            }
+            const status = await nativeTrackingStatus();
+            if (permissions?.locationServicesEnabled === false || status?.locationServicesEnabled === false) {
+                await openNativeLocationSettings();
+                throw new Error(pickLegacyLocalizedText(lang, "Active le GPS Android puis réessaie.", "Turn on Android location then try again.", "Activa la ubicación Android y vuelve a intentarlo."));
+            }
+            point = await getNativeCurrentPosition(15000);
+        } else if (navigator.geolocation) {
+            point = await new Promise<GeoPoint | null>((resolve) => navigator.geolocation.getCurrentPosition((position) => resolve({
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                timestamp: position.timestamp || Date.now(),
+                accuracy: Number.isFinite(position.coords.accuracy) ? Number(position.coords.accuracy) : undefined,
+                altitude: Number.isFinite(position.coords.altitude) ? Number(position.coords.altitude) : undefined,
+            }), () => resolve(null), { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }));
+        }
+        if (!point) throw new Error(pickLegacyLocalizedText(lang, "Impossible d'obtenir ta position GPS.", "Unable to get your GPS position.", "No se pudo obtener tu posición GPS."));
+        setRouteDiscoveryCenter(point);
+        setAccuracy(Number.isFinite(point.accuracy) ? Number(point.accuracy) : null);
+        return point;
+    }, [lang]);
+
+    const discoverNearbyRoutes = React.useCallback(async () => {
+        if (activitySport === "treadmill") return;
+        setRouteDiscoveryBusy(true);
+        setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, "LOCALISATION ET RECHERCHE DES PARCOURS…", "LOCATING AND SEARCHING ROUTES…", "LOCALIZANDO Y BUSCANDO RUTAS…"));
+        try {
+            const point = await resolveRoutePosition();
+            const result = await discoverOutdoorRoutes({ lat: point.lat, lon: point.lon }, activitySport, routeDiscoveryRadiusKm);
+            setDiscoveredRoutes(result.routes);
+            if (result.routes.length) {
+                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours OpenStreetMap trouvés dans un rayon de ${result.radiusKm} km.`, `${result.routes.length} OpenStreetMap routes found within ${result.radiusKm} km.`, `${result.routes.length} rutas de OpenStreetMap encontradas en ${result.radiusKm} km.`));
+                if (!selectedRouteId) selectRoute(result.routes[0]);
+            } else {
+                setRouteDiscoveryMessage(pickLegacyLocalizedText(lang, `Aucun itinéraire balisé trouvé dans ${result.radiusKm} km. Essaie un rayon plus grand ou importe un GPX.`, `No mapped route found within ${result.radiusKm} km. Try a larger radius or import a GPX.`, `No se encontró ninguna ruta señalizada en ${result.radiusKm} km. Prueba un radio mayor o importa un GPX.`));
+            }
+        } catch (error: any) {
+            setRouteDiscoveryMessage(error?.message || pickLegacyLocalizedText(lang, "Recherche cartographique indisponible.", "Map route search unavailable.", "Búsqueda cartográfica no disponible."));
+        } finally {
+            setRouteDiscoveryBusy(false);
+        }
+    }, [activitySport, lang, resolveRoutePosition, routeDiscoveryRadiusKm, selectRoute, selectedRouteId]);
+    const generateRoutes = React.useCallback(async () => {
+        if (activitySport === "treadmill") return;
+        setRouteGenerationBusy(true);
+        setRouteGenerationMessage(pickLegacyLocalizedText(lang, "ANALYSE DES CHEMINS ET CRÉATION DE 3 PARCOURS…", "ANALYSING PATHS AND BUILDING 3 ROUTES…", "ANALIZANDO CAMINOS Y CREANDO 3 RUTAS…"));
+        try {
+            const point = await resolveRoutePosition();
+            const result = await generateOutdoorRoutes({
+                center: { lat: point.lat, lon: point.lon },
+                sport: activitySport,
+                distanceKm: routeGenerationDistanceKm,
+                profile: routeGenerationProfile,
+                shape: routeGenerationShape,
+                count: 3,
+            });
+            setDiscoveredRoutes(result.routes);
+            if (result.routes.length) {
+                selectRoute(result.routes[0]);
+                const best = result.routes[0];
+                const generated = best.generation;
+                const trailInfo = generated ? ` · ${generated.trailSharePct}% ${pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos")}` : "";
+                setRouteGenerationMessage(pickLegacyLocalizedText(lang, `${result.routes.length} parcours générés autour de toi. Le meilleur fait ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`, `${result.routes.length} routes generated around you. Best match is ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`, `${result.routes.length} rutas generadas a tu alrededor. La mejor hace ${(best.distanceM / 1000).toFixed(1)} km${trailInfo}.`));
+            }
+        } catch (error: any) {
+            setRouteGenerationMessage(error?.message || pickLegacyLocalizedText(lang, "Impossible de générer un parcours ici.", "Unable to generate a route here.", "No se pudo generar una ruta aquí."));
+        } finally {
+            setRouteGenerationBusy(false);
+        }
+    }, [activitySport, lang, resolveRoutePosition, routeGenerationDistanceKm, routeGenerationProfile, routeGenerationShape, selectRoute]);
     const applyTerrainRecommendation = React.useCallback(() => {
         if (!selectedTerrainAdvice) return;
         selectManualPreset(selectedTerrainAdvice.presetId);
         setSetupTab(["easy", "tempo", "intervals", "long", "hills", "recovery"].includes(selectedTerrainAdvice.presetId) ? "training" : "goal");
     }, [selectManualPreset, selectedTerrainAdvice]);
     const toggleFavoriteRoute = React.useCallback((route: RunningRouteTemplate) => {
-        const saved = savedRoutes.find((item) => item.id === route.id || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
+        const saved = savedRoutes.find((item) => item.id === route.id || (!!route.externalId && item.externalId === route.externalId) || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId));
         if (saved) {
             const next = removeRunningRoute(saved.id);
             setSavedRoutes(next);
-            if (selectedRouteId === saved.id) setSelectedRouteId(null);
+            if (selectedRouteId === saved.id && route.source === "activity") setSelectedRouteId(null);
             return;
         }
         const source = route.sourceActivityId ? activities.find((activity) => activity.id === route.sourceActivityId) : null;
-        if (!source) return;
-        const favorite = favoriteRouteFromActivity(source, route.name);
+        const favorite = source
+            ? favoriteRouteFromActivity(source, route.name)
+            : { ...route, createdAt: Date.now() };
         const next = upsertRunningRoute(favorite);
         setSavedRoutes(next);
         if (selectedRouteId === route.id) setSelectedRouteId(favorite.id);
@@ -1007,7 +1339,7 @@ export default function RunningModule({ go, params }: Props) {
 
       {selectedRoute && ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras}/> : null}
 
-      {activitySport !== "treadmill" ? <div style={{ marginTop: 10 }}><Section title={copy.route} right={<span style={{ fontSize: 9.5, color: textSoft }}>{points.length} GPS</span>}><RouteMap points={points} accent={accent} waiting={copy.waiting}/></Section></div> : <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "TAPIS ROULANT · LIVE", "TREADMILL · LIVE", "CINTA · LIVE")}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${((sensorSnapshot.treadmillSpeedMps ?? sensorSnapshot.sensorSpeedMps ?? manualTreadmillSpeedKmh / 3.6) * 3.6).toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${(sensorSnapshot.inclinePercent ?? manualTreadmillIncline).toFixed(1)}%`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "SOURCE", "SOURCE", "FUENTE")} value={safeSensorDevices.some((d) => d.kind === "fitness-machine-treadmill" && d.connected) ? "FTMS" : safeSensorDevices.some((d) => d.kind === "running-speed-cadence" && d.connected) ? "FOOTPOD" : "MANUEL"} accent={accent}/></div></Section></div>}
+      {activitySport !== "treadmill" ? <div style={{ marginTop: 10 }}><Section title={copy.route} right={<span style={{ fontSize: 9.5, color: textSoft }}>{points.length} GPS</span>}><RouteMap points={points} accent={accent} waiting={copy.waiting} showRouteNetwork={activitySport !== "treadmill"}/></Section></div> : <div style={{ marginTop: 10 }}><Section title={pickLegacyLocalizedText(lang, "TAPIS ROULANT · LIVE", "TREADMILL · LIVE", "CINTA · LIVE")}><div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${((sensorSnapshot.treadmillSpeedMps ?? sensorSnapshot.sensorSpeedMps ?? manualTreadmillSpeedKmh / 3.6) * 3.6).toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${(sensorSnapshot.inclinePercent ?? manualTreadmillIncline).toFixed(1)}%`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "SOURCE", "SOURCE", "FUENTE")} value={safeSensorDevices.some((d) => d.kind === "fitness-machine-treadmill" && d.connected) ? "FTMS" : safeSensorDevices.some((d) => d.kind === "running-speed-cadence" && d.connected) ? "FOOTPOD" : "MANUEL"} accent={accent}/></div></Section></div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}><Metric label={copy.speed} value={`${liveSpeed.toFixed(1)} km/h`} accent={accent}/><Metric label={copy.elevation} value={`+${Math.round(liveElevation)} m`} accent={accent}/><Metric label={copy.accuracy} value={accuracy ? `±${Math.round(accuracy)} m` : "—"} accent={accent}/><Metric label={copy.moving} value={formatDuration(liveMoving || elapsedMs)} accent={accent}/></div>
       {(sensorSnapshot.heartRateBpm || sensorSnapshot.cadenceSpm || sensorSnapshot.sensorSpeedMps) ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginTop: 8 }}><Metric label="CARDIO" value={sensorSnapshot.heartRateBpm ? `${sensorSnapshot.heartRateBpm} bpm` : "—"} accent="#ff7b8b"/><Metric label="CADENCE" value={sensorSnapshot.cadenceSpm ? `${sensorSnapshot.cadenceSpm} spm` : "—"} accent={accent}/><Metric label="CAPTEUR" value={sensorSnapshot.sensorSpeedMps ? `${(sensorSnapshot.sensorSpeedMps * 3.6).toFixed(1)} km/h` : "—"} accent={accent}/></div> : null}
       {liveSplits.length ? <div style={{ marginTop: 10 }}><Section title={copy.splits}><SplitTable splits={liveSplits.slice(-4)} accent={accent}/></Section></div> : null}
@@ -1130,10 +1462,41 @@ export default function RunningModule({ go, params }: Props) {
       <RunningTabs items={[{ id: "choose" as const, label: pickLegacyLocalizedText(lang, "CHOISIR", "CHOOSE", "ELEGIR"), icon: <RunningGlyph name="route-choose" size={16} />, badge: routeOptions.length || null }, ...(selectedRoute ? [{ id: "guide" as const, label: pickLegacyLocalizedText(lang, "GUIDAGE", "GUIDANCE", "GUIADO"), icon: <RunningGlyph name="route-guide" size={16} /> }, { id: "offline" as const, label: pickLegacyLocalizedText(lang, "HORS-LIGNE", "OFFLINE", "SIN CONEXIÓN"), icon: <RunningGlyph name="route-offline" size={16} /> }] : [])]} value={routePanelTab} onChange={setRoutePanelTab} accent={accent} />
 
       {routePanelTab === "choose" ? <>
+        {activitySport !== "treadmill" ? <RunningSurface accent={accent} active style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><div><div style={{ color: accent, fontSize: 9.2, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "PARCOURS AUTOUR DE MOI", "ROUTES AROUND ME", "RUTAS CERCA DE MÍ")}</div><div style={{ marginTop: 3, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Recherche les itinéraires balisés OpenStreetMap adaptés à la course, au trail, à la randonnée et à la marche.", "Find mapped OpenStreetMap routes for running, trail, hiking and walking.", "Busca rutas señalizadas de OpenStreetMap para running, trail, senderismo y marcha.")}</div></div><RunningGlyph name="route-choose" size={20}/></div>
+          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>{[5,10,20].map((radius) => <button key={radius} className="btn" onClick={() => setRouteDiscoveryRadiusKm(radius)} style={{ minHeight: 31, padding: "4px 6px", color: routeDiscoveryRadiusKm === radius ? accent : undefined, borderColor: routeDiscoveryRadiusKm === radius ? `${accent}66` : undefined, fontSize: 8.1, fontWeight: 1000 }}>{radius} KM</button>)}</div>
+          <button className="btn" disabled={routeDiscoveryBusy} onClick={() => void discoverNearbyRoutes()} style={{ width: "100%", minHeight: 39, marginTop: 7, color: accent, borderColor: `${accent}66`, fontSize: 8.8, fontWeight: 1000 }}>{routeDiscoveryBusy ? pickLegacyLocalizedText(lang, "RECHERCHE…", "SEARCHING…", "BUSCANDO…") : pickLegacyLocalizedText(lang, "DÉCOUVRIR LES PARCOURS", "DISCOVER ROUTES", "DESCUBRIR RUTAS")}</button>
+          {routeDiscoveryMessage ? <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{routeDiscoveryMessage}</div> : null}
+          {routeDiscoveryCenter && !selectedRoute ? <div style={{ marginTop: 8 }}><RouteMap points={[routeDiscoveryCenter]} accent={accent} waiting={copy.waiting} showRouteNetwork /></div> : null}
+        </RunningSurface> : null}
+
+        {activitySport !== "treadmill" ? <RunningSurface accent={accent} active style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div>
+              <div style={{ color: accent, fontSize: 9.2, fontWeight: 1000, letterSpacing: .5 }}>{pickLegacyLocalizedText(lang, "GÉNÉRER MON PARCOURS", "GENERATE MY ROUTE", "GENERAR MI RUTA")}</div>
+              <div style={{ marginTop: 3, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{pickLegacyLocalizedText(lang, "Choisis distance, forme et terrain. L'application analyse les chemins OpenStreetMap autour de ta position et construit 3 propositions.", "Choose distance, shape and terrain. The app analyses OpenStreetMap paths around you and builds 3 proposals.", "Elige distancia, forma y terreno. La app analiza los caminos de OpenStreetMap a tu alrededor y crea 3 propuestas.")}</div>
+            </div>
+            <RunningGlyph name="route-guide" size={20}/>
+          </div>
+          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}>{[5,10,15,20].map((distance) => <button key={distance} className="btn" onClick={() => setRouteGenerationDistanceKm(distance)} style={{ minHeight: 31, padding: "4px 5px", color: routeGenerationDistanceKm === distance ? accent : undefined, borderColor: routeGenerationDistanceKm === distance ? `${accent}66` : undefined, fontSize: 8, fontWeight: 1000 }}>{distance} KM</button>)}</div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+            <input aria-label={pickLegacyLocalizedText(lang, "Distance du parcours", "Route distance", "Distancia de la ruta")} type="range" min={2} max={35} step={1} value={routeGenerationDistanceKm} onChange={(event) => setRouteGenerationDistanceKm(Number(event.target.value))}/>
+            <div style={{ minWidth: 54, textAlign: "right", color: accent, fontSize: 9, fontWeight: 1000 }}>{routeGenerationDistanceKm} KM</div>
+          </div>
+          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 6 }}>
+            {(["loop","out-back"] as OutdoorRouteGenerationShape[]).map((shape) => <button key={shape} className="btn" onClick={() => setRouteGenerationShape(shape)} style={{ minHeight: 33, padding: "4px 6px", color: routeGenerationShape === shape ? accent : undefined, borderColor: routeGenerationShape === shape ? `${accent}66` : undefined, fontSize: 7.8, fontWeight: 1000 }}>{shape === "loop" ? pickLegacyLocalizedText(lang, "↻ BOUCLE", "↻ LOOP", "↻ BUCLE") : pickLegacyLocalizedText(lang, "↔ ALLER-RETOUR", "↔ OUT & BACK", "↔ IDA Y VUELTA")}</button>)}
+          </div>
+          <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 6 }}>
+            {(["balanced","trails","easy"] as OutdoorRouteGenerationProfile[]).map((profile) => <button key={profile} className="btn" onClick={() => setRouteGenerationProfile(profile)} style={{ minHeight: 33, padding: "4px 5px", color: routeGenerationProfile === profile ? accent : undefined, borderColor: routeGenerationProfile === profile ? `${accent}66` : undefined, fontSize: 7.4, fontWeight: 1000 }}>{profile === "trails" ? pickLegacyLocalizedText(lang, "🥾 SENTIERS", "🥾 TRAILS", "🥾 SENDEROS") : profile === "easy" ? pickLegacyLocalizedText(lang, "◌ FACILE", "◌ EASY", "◌ FÁCIL") : pickLegacyLocalizedText(lang, "◎ ÉQUILIBRÉ", "◎ BALANCED", "◎ EQUILIBRADO")}</button>)}
+          </div>
+          <button className="btn" disabled={routeGenerationBusy} onClick={() => void generateRoutes()} style={{ width: "100%", minHeight: 42, marginTop: 8, color: accent, borderColor: `${accent}77`, fontSize: 8.8, fontWeight: 1000 }}>{routeGenerationBusy ? pickLegacyLocalizedText(lang, "GÉNÉRATION…", "GENERATING…", "GENERANDO…") : pickLegacyLocalizedText(lang, "✨ GÉNÉRER 3 PARCOURS", "✨ GENERATE 3 ROUTES", "✨ GENERAR 3 RUTAS")}</button>
+          {routeGenerationMessage ? <div style={{ marginTop: 7, color: textSoft, fontSize: 8.1, lineHeight: 1.4 }}>{routeGenerationMessage}</div> : null}
+        </RunningSurface> : null}
+
         {routeOptions.length ? <div style={{ marginTop: 4 }}><Section title={pickLegacyLocalizedText(lang, "CHOISIR UN PARCOURS", "CHOOSE A ROUTE", "ELEGIR UNA RUTA")} right={selectedRoute ? <button className="btn" disabled={!selectedRouteHasReference} onClick={() => selectedRouteHasReference && setGhostEnabled((value) => !value)} style={{ minHeight: 30, padding: "4px 8px", fontSize: 8.5, fontWeight: 1000, opacity: selectedRouteHasReference ? 1 : .45, color: ghostEnabled ? accent : undefined, borderColor: ghostEnabled ? `${accent}77` : undefined }}>{selectedRouteHasReference ? `GHOST ${ghostEnabled ? "ON" : "OFF"}` : pickLegacyLocalizedText(lang, "PARCOURS SEUL", "ROUTE ONLY", "SOLO RUTA")}</button> : undefined}>
-          <div style={{ display: "grid", gap: 7 }}>{routeOptions.slice(0, 8).map((route) => { const active = selectedRouteId === route.id; const favorite = !!route.sourceActivityId && favoriteSourceIds.has(route.sourceActivityId); const routeTerrain = analyzeRunningTerrain(route.route); return <div key={route.id} className="card" style={{ padding: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 7, alignItems: "center", borderRadius: 15, borderColor: active ? `${accent}66` : undefined, background: active ? `linear-gradient(145deg,${accent}16,rgba(4,6,10,.82))` : "linear-gradient(145deg,rgba(255,255,255,.038),rgba(4,6,10,.70))" }}><button type="button" onClick={() => selectRoute(route)} style={{ border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><div style={{ fontSize: 10, fontWeight: 1000, color: active ? accent : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{route.name}</div>{routeTerrain.hasElevation ? <span style={{ flex: "0 0 auto", padding: "2px 5px", borderRadius: 999, border: `1px solid ${accent}33`, color: accent, fontSize: 6.8, fontWeight: 1000 }}>{terrainLabel(routeTerrain.terrain, lang)} {routeTerrain.difficultyScore}</span> : null}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{formatDistance(route.distanceM)} · +{Math.round(routeTerrain.hasElevation ? routeTerrain.gainM : route.elevationGainM)} m · {route.referenceElapsedMs > 0 ? formatDuration(route.referenceElapsedMs) : pickLegacyLocalizedText(lang, "sans chrono", "no timing", "sin tiempo")}{route.source && route.source !== "activity" ? ` · ${route.source.toUpperCase()}` : ""}</div></button><button className="btn" onClick={() => toggleFavoriteRoute(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}66` : undefined }}>{favorite ? "★" : "☆"}</button></div>; })}</div>
-          {selectedRoute ? <div style={{ marginTop: 9 }}><RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting}/>{selectedTerrain?.hasElevation ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label={pickLegacyLocalizedText(lang, "DIFFICULTÉ", "DIFFICULTY", "DIFICULTAD")} value={`${selectedTerrain.difficultyScore}/100`} accent={accent}/><MiniStat label="D+" value={`+${Math.round(selectedTerrain.gainM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CÔTES", "HILLS", "CUESTAS")} value={String(selectedTerrain.hills.length)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "PENTE MAX", "MAX GRADE", "PEND. MAX")} value={`${selectedTerrain.maxGradePct.toFixed(1)}%`} accent={accent}/></div><div style={{ marginTop: 7, color: textSoft, fontSize: 8.2, lineHeight: 1.4 }}><b style={{ color: accent }}>{terrainLabel(selectedTerrain.terrain, lang)}</b> · {selectedTerrainAdvice?.text}</div>{selectedTerrainAdvice ? <button className="btn" onClick={applyTerrainRecommendation} style={{ width: "100%", minHeight: 36, marginTop: 8, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "UTILISER LA SÉANCE CONSEILLÉE", "USE RECOMMENDED WORKOUT", "USAR SESIÓN RECOMENDADA")}</button> : null}</RunningSurface> : null}</div> : null}
-        </Section></div> : <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ textAlign: "center", color: textSoft, fontSize: 9.5, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Aucun parcours. Une sortie GPS ou un import FIT/GPX/TCX apparaîtra ici.", "No routes yet. A GPS activity or FIT/GPX/TCX import will appear here.", "Todavía no hay rutas. Una actividad GPS o una importación FIT/GPX/TCX aparecerá aquí.")}</div></RunningSurface>}
+          <div style={{ display: "grid", gap: 7 }}>{routeOptions.slice(0, 8).map((route) => { const active = selectedRouteId === route.id; const favorite = savedRoutes.some((item) => item.id === route.id || (!!route.externalId && item.externalId === route.externalId) || (!!route.sourceActivityId && item.sourceActivityId === route.sourceActivityId)); const routeTerrain = analyzeRunningTerrain(route.route); return <div key={route.id} className="card" style={{ padding: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 7, alignItems: "center", borderRadius: 15, borderColor: active ? `${accent}66` : undefined, background: active ? `linear-gradient(145deg,${accent}16,rgba(4,6,10,.82))` : "linear-gradient(145deg,rgba(255,255,255,.038),rgba(4,6,10,.70))" }}><button type="button" onClick={() => selectRoute(route)} style={{ border: 0, background: "transparent", color: "inherit", padding: 0, textAlign: "left", cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}><div style={{ fontSize: 10, fontWeight: 1000, color: active ? accent : undefined, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{route.name}</div>{routeTerrain.hasElevation ? <span style={{ flex: "0 0 auto", padding: "2px 5px", borderRadius: 999, border: `1px solid ${accent}33`, color: accent, fontSize: 6.8, fontWeight: 1000 }}>{terrainLabel(routeTerrain.terrain, lang)} {routeTerrain.difficultyScore}</span> : null}</div><div style={{ marginTop: 3, fontSize: 8.5, color: textSoft }}>{formatDistance(route.distanceM)} · +{Math.round(routeTerrain.hasElevation ? routeTerrain.gainM : route.elevationGainM)} m · {route.referenceElapsedMs > 0 ? formatDuration(route.referenceElapsedMs) : pickLegacyLocalizedText(lang, "sans chrono", "no timing", "sin tiempo")}{route.source && route.source !== "activity" ? ` · ${route.source.toUpperCase()}` : ""}</div>{route.generation ? <div style={{ marginTop: 3, fontSize: 7.4, color: accent, opacity: .9 }}>{pickLegacyLocalizedText(lang, "CIBLE", "TARGET", "OBJETIVO")} {(route.generation.targetDistanceM / 1000).toFixed(0)} km · {route.generation.trailSharePct}% {pickLegacyLocalizedText(lang, "sentiers", "trails", "senderos")} · {pickLegacyLocalizedText(lang, "écart", "error", "desvío")} {route.generation.distanceErrorPct.toFixed(1)}%</div> : null}</button><button className="btn" onClick={() => toggleFavoriteRoute(route)} style={{ minWidth: 34, minHeight: 34, padding: 0, color: favorite ? accent : undefined, borderColor: favorite ? `${accent}66` : undefined }}>{favorite ? "★" : "☆"}</button></div>; })}</div>
+          {selectedRoute ? <div style={{ marginTop: 9 }}><RouteMap points={selectedRoute.route} accent={accent} waiting={copy.waiting} showRouteNetwork/>{selectedTerrain?.hasElevation ? <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 6 }}><MiniStat label={pickLegacyLocalizedText(lang, "DIFFICULTÉ", "DIFFICULTY", "DIFICULTAD")} value={`${selectedTerrain.difficultyScore}/100`} accent={accent}/><MiniStat label="D+" value={`+${Math.round(selectedTerrain.gainM)} m`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "CÔTES", "HILLS", "CUESTAS")} value={String(selectedTerrain.hills.length)} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "PENTE MAX", "MAX GRADE", "PEND. MAX")} value={`${selectedTerrain.maxGradePct.toFixed(1)}%`} accent={accent}/></div><div style={{ marginTop: 7, color: textSoft, fontSize: 8.2, lineHeight: 1.4 }}><b style={{ color: accent }}>{terrainLabel(selectedTerrain.terrain, lang)}</b> · {selectedTerrainAdvice?.text}</div>{selectedTerrainAdvice ? <button className="btn" onClick={applyTerrainRecommendation} style={{ width: "100%", minHeight: 36, marginTop: 8, color: accent, borderColor: `${accent}55`, fontSize: 8, fontWeight: 1000 }}>{pickLegacyLocalizedText(lang, "UTILISER LA SÉANCE CONSEILLÉE", "USE RECOMMENDED WORKOUT", "USAR SESIÓN RECOMENDADA")}</button> : null}</RunningSurface> : null}</div> : null}
+        </Section></div> : <RunningSurface accent={accent} style={{ marginTop: 8 }}><div style={{ textAlign: "center", color: textSoft, fontSize: 9.5, lineHeight: 1.5, padding: 12 }}>{pickLegacyLocalizedText(lang, "Aucun parcours enregistré. Lance « Découvrir les parcours » ou importe un FIT/GPX/TCX.", "No saved routes yet. Use “Discover routes” or import a FIT/GPX/TCX file.", "Todavía no hay rutas guardadas. Usa «Descubrir rutas» o importa un FIT/GPX/TCX.")}</div></RunningSurface>}
       </> : null}
 
       {routePanelTab === "guide" && selectedRoute ? <>
@@ -1286,11 +1649,12 @@ function Bars({ rows, accent }: {
     }>;
     accent: string;
 }) { const max = Math.max(1, ...rows.map((r) => r.value)); return <div style={{ display: "grid", gridTemplateColumns: `repeat(${rows.length},minmax(0,1fr))`, gap: 8, alignItems: "end", height: 118 }}>{rows.map((r) => <div key={r.label} style={{ display: "grid", gridTemplateRows: "1fr auto", gap: 5, alignItems: "end", height: "100%", textAlign: "center" }}><div style={{ height: 88, display: "flex", alignItems: "end", borderRadius: 8, background: "rgba(255,255,255,.025)", overflow: "hidden" }}><div style={{ width: "100%", height: `${Math.max(r.value ? 8 : 2, r.value / max * 100)}%`, background: `linear-gradient(180deg,${accent},${accent}60)`, borderRadius: "7px 7px 2px 2px" }}/></div><div style={{ fontSize: 8 }}>{r.label}<br /><b>{r.value.toFixed(1)}</b></div></div>)}</div>; }
-function RouteMap({ points, accent, waiting }: {
+function RouteMap({ points, accent, waiting, showRouteNetwork = false }: {
     points: GeoPoint[];
     accent: string;
     waiting: string;
-}) { const layout = React.useMemo(() => buildMapLayout(points), [points]); return <div style={{ width: "100%", aspectRatio: "5/3", maxHeight: 340, minHeight: 190, position: "relative", overflow: "hidden", borderRadius: 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)" }}>{layout ? <>{layout.tiles.map((tile) => <img key={`${tile.z}-${tile.x}-${tile.y}`} src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/> : null}{layout.end ? <circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/> : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap</a></div>; }
+    showRouteNetwork?: boolean;
+}) { const layout = React.useMemo(() => buildMapLayout(points), [points]); return <div style={{ width: "100%", aspectRatio: "5/3", maxHeight: 340, minHeight: 190, position: "relative", overflow: "hidden", borderRadius: 15, background: "#101821", border: "1px solid rgba(255,255,255,.08)" }}>{layout ? <>{layout.tiles.map((tile) => <React.Fragment key={`${tile.z}-${tile.x}-${tile.y}`}><img src={tile.url} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none" }}/>{showRouteNetwork ? <img src={tile.routeOverlayUrl} alt="" draggable={false} style={{ position: "absolute", left: `${tile.left / layout.width * 100}%`, top: `${tile.top / layout.height * 100}%`, width: `${256 / layout.width * 100}%`, height: `${256 / layout.height * 100}%`, objectFit: "cover", userSelect: "none", pointerEvents: "none" }}/> : null}</React.Fragment>)}<svg viewBox={`0 0 ${layout.width} ${layout.height}`} preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}><polyline points={layout.polyline} fill="none" stroke="rgba(0,0,0,.78)" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/><polyline points={layout.polyline} fill="none" stroke={accent} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>{layout.start ? <circle cx={layout.start.x} cy={layout.start.y} r="9" fill="#42ef7e" stroke="#fff" strokeWidth="3"/> : null}{layout.end ? <circle cx={layout.end.x} cy={layout.end.y} r="9" fill="#ff5668" stroke="#fff" strokeWidth="3"/> : null}</svg></> : <div style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", backgroundImage: "linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px)", backgroundSize: "30px 30px", color: "rgba(255,255,255,.55)", fontSize: 10 }}>◎<br />{waiting}</div>}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" style={{ position: "absolute", right: 4, bottom: 3, padding: "2px 4px", borderRadius: 4, background: "rgba(0,0,0,.68)", color: "#fff", fontSize: 7, textDecoration: "none", zIndex: 4 }}>© OpenStreetMap · routes Waymarked Trails</a></div>; }
 type MapLayout = {
     width: number;
     height: number;
@@ -1310,6 +1674,7 @@ type MapLayout = {
         left: number;
         top: number;
         url: string;
+        routeOverlayUrl: string;
     }>;
 };
 function buildMapLayout(points: GeoPoint[]): MapLayout | null { if (!points.length)
@@ -1324,7 +1689,7 @@ function buildMapLayout(points: GeoPoint[]): MapLayout | null { if (!points.leng
         if (ty < 0 || ty >= count)
             continue;
         const wx = ((tx % count) + count) % count;
-        tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png` });
+        tiles.push({ z: zoom, x: tx, y: ty, left: tx * 256 - center.x + width / 2, top: ty * 256 - center.y + height / 2, url: `https://tile.openstreetmap.org/${zoom}/${wx}/${ty}.png`, routeOverlayUrl: `https://tile.waymarkedtrails.org/hiking/${zoom}/${wx}/${ty}.png` });
     } return { width, height, tiles, polyline: screen.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" "), start: screen[0] || null, end: screen[screen.length - 1] || null }; }
 function mercatorPixel(lat: number, lon: number, zoom: number) { const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat)), scale = 256 * 2 ** zoom, sin = Math.sin(clamped * Math.PI / 180); return { x: (lon + 180) / 360 * scale, y: (.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale }; }
 const recordDock: React.CSSProperties = { position: "fixed", left: "max(10px,env(safe-area-inset-left))", right: "max(10px,env(safe-area-inset-right))", bottom: "calc(82px + env(safe-area-inset-bottom))", zIndex: 45, maxWidth: 600, margin: "0 auto", display: "grid", gridTemplateColumns: ".75fr 1fr 1.25fr", gap: 7, padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,.10)", background: "rgba(8,9,14,.9)", backdropFilter: "blur(18px)", boxShadow: "0 16px 40px rgba(0,0,0,.58)" };
