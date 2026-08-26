@@ -12,7 +12,7 @@ export type RunningRouteTemplate = {
   createdAt: number;
   source?: "activity" | "gpx" | "tcx" | "fit" | "osm" | "generated";
   generation?: {
-    provider: "openstreetmap-overpass-local-router";
+    provider: "openstreetmap-overpass-local-router" | "openrouteservice-round-trip";
     targetDistanceM: number;
     profile: "balanced" | "trails" | "easy";
     shape: "loop" | "out-back";

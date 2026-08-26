@@ -23,7 +23,7 @@ export type OutdoorRouteGenerationResult = {
   routes: RunningRouteTemplate[];
   center: OutdoorRouteGenerationCenter;
   targetDistanceKm: number;
-  provider: "openstreetmap-overpass-local-router";
+  provider: "openstreetmap-overpass-local-router" | "openrouteservice-round-trip";
   networkNodeCount: number;
   networkEdgeCount: number;
   elevationTarget?: {
@@ -74,6 +74,7 @@ type Candidate = {
   score: number;
   trailSharePct: number;
   overlapPct: number;
+  shape: OutdoorRouteGenerationShape;
 };
 
 const OVERPASS_ENDPOINTS = [
@@ -93,6 +94,11 @@ const HIGHWAYS = new Set([
   "service",
   "unclassified",
   "tertiary",
+  "secondary",
+  "secondary_link",
+  "primary",
+  "primary_link",
+  "road",
   "steps",
 ]);
 
@@ -100,6 +106,104 @@ const TRAIL_HIGHWAYS = new Set(["path", "track", "bridleway"]);
 const UNPAVED_SURFACES = new Set(["unpaved", "gravel", "fine_gravel", "dirt", "earth", "ground", "grass", "mud", "sand", "woodchips"]);
 const MAX_GRAPH_NODES = 28000;
 const MAX_ROUTE_POINTS = 620;
+
+function openRouteServiceApiKey() {
+  try {
+    return String((import.meta as any)?.env?.VITE_OPENROUTESERVICE_API_KEY || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function orsProfileForSport(sport: OutdoorPerformanceSport) {
+  return sport === "trail" || sport === "hiking" ? "foot-hiking" : "foot-walking";
+}
+
+async function generateOpenRouteServiceLoops(request: OutdoorRouteGenerationRequest, signal: AbortSignal): Promise<RunningRouteTemplate[]> {
+  const apiKey = openRouteServiceApiKey();
+  if (!apiKey || request.shape === "out-back" || request.sport === "treadmill") return [];
+  const count = clamp(Math.round(request.count || 3), 1, 5);
+  const targetDistanceM = clamp(Number(request.distanceKm || 0) * 1000, 2000, 35000);
+  const profile = request.profile || (request.sport === "trail" || request.sport === "hiking" ? "trails" : "balanced");
+  const endpoint = `https://api.openrouteservice.org/v2/directions/${orsProfileForSport(request.sport)}/geojson`;
+  const attempts = Array.from({ length: Math.max(count, 3) }, (_, index) => index + 1);
+  const settled = await Promise.allSettled(attempts.map(async (seed) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      signal,
+      headers: {
+        Authorization: apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/geo+json,application/json",
+      },
+      body: JSON.stringify({
+        coordinates: [[request.center.lon, request.center.lat]],
+        elevation: true,
+        instructions: false,
+        options: { round_trip: { length: Math.round(targetDistanceM), points: 5, seed } },
+      }),
+    });
+    if (!response.ok) throw new Error(`openrouteservice HTTP ${response.status}`);
+    const json = await response.json();
+    const feature = Array.isArray(json?.features) ? json.features[0] : null;
+    const coords = feature?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 4) throw new Error("openrouteservice route invalide");
+    const route: GeoPoint[] = coords.map((coord: any, index: number) => ({
+      lon: Number(coord?.[0]),
+      lat: Number(coord?.[1]),
+      altitude: Number.isFinite(Number(coord?.[2])) ? Number(coord[2]) : undefined,
+      timestamp: Date.now() + index,
+    })).filter((point: GeoPoint) => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+    if (route.length < 4) throw new Error("openrouteservice route vide");
+    const distanceM = routeDistanceFromPoints(route);
+    const deviationPct = Math.abs(distanceM - targetDistanceM) / Math.max(1, targetDistanceM) * 100;
+    const elevationGainM = elevationGainFromPoints(route);
+    return {
+      id: `generated:ors:${Date.now()}:${seed}:${Math.round(distanceM)}`,
+      externalId: `generated:ors:${seed}:${Math.round(distanceM)}`,
+      name: `Boucle ${(targetDistanceM / 1000).toFixed(targetDistanceM % 1000 ? 1 : 0)} km · ${labelProfile(profile)} ${String.fromCharCode(64 + seed)}`,
+      route: simplify(route),
+      distanceM,
+      elevationGainM,
+      referenceElapsedMs: 0,
+      createdAt: Date.now() + seed,
+      source: "generated" as const,
+      sport: request.sport,
+      generation: {
+        provider: "openrouteservice-round-trip" as const,
+        targetDistanceM,
+        profile,
+        shape: "loop" as const,
+        distanceErrorPct: Math.round(deviationPct * 10) / 10,
+        trailSharePct: profile === "trails" ? 70 : 0,
+        overlapPct: 0,
+        elevationGainMinM: request.elevationGainMinM == null ? undefined : Number(request.elevationGainMinM),
+        elevationGainMaxM: request.elevationGainMaxM == null ? undefined : Number(request.elevationGainMaxM),
+        elevationTargetMatched: request.elevationGainMinM == null && request.elevationGainMaxM == null ? undefined : outdoorElevationTargetError(elevationGainM, Number(request.elevationGainMinM || 0), Number(request.elevationGainMaxM ?? 5000)) === 0,
+        elevationSource: route.some((point) => Number.isFinite(point.altitude)) ? "embedded" as const : undefined,
+      },
+    } satisfies RunningRouteTemplate;
+  }));
+  return settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []).sort((a, b) => Number(a.generation?.distanceErrorPct || 0) - Number(b.generation?.distanceErrorPct || 0)).slice(0, count);
+}
+
+function routeDistanceFromPoints(points: GeoPoint[]) {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) total += haversineMeters(points[index - 1]!, points[index]!);
+  return total;
+}
+
+function elevationGainFromPoints(points: GeoPoint[]) {
+  let gain = 0;
+  let previous: number | null = null;
+  for (const point of points) {
+    const altitude = Number(point.altitude);
+    if (!Number.isFinite(altitude)) continue;
+    if (previous != null && altitude > previous) gain += altitude - previous;
+    previous = altitude;
+  }
+  return Math.round(gain);
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -112,8 +216,8 @@ function generationRadiusM(distanceKm: number, shape: OutdoorRouteGenerationShap
 }
 
 function overpassQuery(center: OutdoorRouteGenerationCenter, radiusM: number) {
-  const highwayRegex = "path|footway|pedestrian|track|bridleway|cycleway|living_street|residential|service|unclassified|tertiary|steps";
-  return `[out:json][timeout:24];\nway(around:${Math.round(radiusM)},${center.lat.toFixed(6)},${center.lon.toFixed(6)})["highway"~"^(${highwayRegex})$"];\nout tags geom;`;
+  const highwayRegex = "path|footway|pedestrian|track|bridleway|cycleway|living_street|residential|service|unclassified|tertiary|secondary|secondary_link|primary|primary_link|road|steps";
+  return `[out:json][timeout:28];\nway(around:${Math.round(radiusM)},${center.lat.toFixed(6)},${center.lon.toFixed(6)})["highway"~"^(${highwayRegex})$"];\nout tags geom;`;
 }
 
 function isAllowedWay(tags: Record<string, string> | undefined) {
@@ -123,6 +227,7 @@ function isAllowedWay(tags: Record<string, string> | undefined) {
   const foot = String(tags?.foot || "").toLowerCase();
   if (["private", "no"].includes(access) || ["private", "no"].includes(foot)) return false;
   if (String(tags?.motorroad || "").toLowerCase() === "yes") return false;
+  if (String(tags?.construction || "").toLowerCase() === "yes") return false;
   return true;
 }
 
@@ -147,6 +252,9 @@ function preferenceFactor(tags: Record<string, string> | undefined, profile: Out
     else if (highway === "service" || highway === "living_street") factor *= 1.22;
     else if (highway === "residential" || highway === "unclassified") factor *= 1.38;
     else if (highway === "tertiary") factor *= 1.75;
+    else if (highway === "secondary" || highway === "secondary_link") factor *= 2.35;
+    else if (highway === "primary" || highway === "primary_link") factor *= 2.8;
+    else if (highway === "road") factor *= 1.9;
     if (unpaved) factor *= 0.8;
   } else if (profile === "easy") {
     if (highway === "pedestrian") factor *= 0.72;
@@ -157,6 +265,9 @@ function preferenceFactor(tags: Record<string, string> | undefined, profile: Out
     else if (highway === "path") factor *= 1.18;
     else if (highway === "track" || highway === "bridleway") factor *= 1.32;
     else if (highway === "steps") factor *= 2.2;
+    else if (highway === "secondary" || highway === "secondary_link") factor *= 1.8;
+    else if (highway === "primary" || highway === "primary_link") factor *= 2.25;
+    else if (highway === "road") factor *= 1.45;
     if (unpaved) factor *= 1.2;
   } else {
     if (highway === "path" || highway === "footway" || highway === "pedestrian") factor *= 0.82;
@@ -165,6 +276,9 @@ function preferenceFactor(tags: Record<string, string> | undefined, profile: Out
     else if (highway === "residential" || highway === "service") factor *= 1.04;
     else if (highway === "unclassified") factor *= 1.12;
     else if (highway === "tertiary") factor *= 1.42;
+    else if (highway === "secondary" || highway === "secondary_link") factor *= 2.15;
+    else if (highway === "primary" || highway === "primary_link") factor *= 2.65;
+    else if (highway === "road") factor *= 1.85;
     else if (highway === "steps") factor *= 1.25;
   }
 
@@ -221,6 +335,62 @@ function buildGraph(ways: OsmWay[], profile: OutdoorRouteGenerationProfile, spor
   }
 
   return { nodes, edgeCount };
+}
+
+type GraphComponents = {
+  componentByNode: Map<string, number>;
+  nodesByComponent: Map<number, Set<string>>;
+};
+
+function graphComponents(graph: Graph): GraphComponents {
+  const componentByNode = new Map<string, number>();
+  const nodesByComponent = new Map<number, Set<string>>();
+  let componentId = 0;
+  for (const key of graph.nodes.keys()) {
+    if (componentByNode.has(key)) continue;
+    componentId += 1;
+    const members = new Set<string>();
+    const stack = [key];
+    componentByNode.set(key, componentId);
+    while (stack.length) {
+      const current = stack.pop()!;
+      members.add(current);
+      const node = graph.nodes.get(current);
+      if (!node) continue;
+      for (const edge of node.edges) {
+        if (componentByNode.has(edge.to)) continue;
+        componentByNode.set(edge.to, componentId);
+        stack.push(edge.to);
+      }
+    }
+    nodesByComponent.set(componentId, members);
+  }
+  return { componentByNode, nodesByComponent };
+}
+
+function pickStartNode(graph: Graph, center: OutdoorRouteGenerationCenter, maxDistanceM = 2200) {
+  const components = graphComponents(graph);
+  const targetPoint = { lat: center.lat, lon: center.lon, timestamp: 0 };
+  const candidates: Array<{ node: GraphNode; distanceM: number; componentId: number; componentSize: number; score: number }> = [];
+  for (const node of graph.nodes.values()) {
+    const distanceM = haversineMeters(targetPoint, { lat: node.lat, lon: node.lon, timestamp: 0 });
+    if (distanceM > maxDistanceM) continue;
+    const componentId = components.componentByNode.get(node.key) || 0;
+    const componentSize = components.nodesByComponent.get(componentId)?.size || 0;
+    if (componentSize < 12) continue;
+    const connectivityBonus = Math.min(1200, Math.log2(Math.max(2, componentSize)) * 105);
+    candidates.push({ node, distanceM, componentId, componentSize, score: distanceM - connectivityBonus });
+  }
+  candidates.sort((a, b) => a.score - b.score || b.componentSize - a.componentSize || a.distanceM - b.distanceM);
+  const chosen = candidates[0];
+  if (!chosen) return null;
+  return {
+    node: chosen.node,
+    distanceM: chosen.distanceM,
+    componentId: chosen.componentId,
+    componentSize: chosen.componentSize,
+    allowedKeys: components.nodesByComponent.get(chosen.componentId) || new Set<string>([chosen.node.key]),
+  };
 }
 
 class MinHeap {
@@ -309,11 +479,12 @@ function shortestPath(graph: Graph, startKey: string, endKey: string, usedEdges?
   };
 }
 
-function nearestNode(graph: Graph, target: OutdoorRouteGenerationCenter, maxDistanceM = Number.POSITIVE_INFINITY) {
+function nearestNode(graph: Graph, target: OutdoorRouteGenerationCenter, maxDistanceM = Number.POSITIVE_INFINITY, allowedKeys?: Set<string>) {
   let best: GraphNode | null = null;
   let bestDistance = maxDistanceM;
   const targetPoint = { lat: target.lat, lon: target.lon, timestamp: 0 };
   for (const node of graph.nodes.values()) {
+    if (allowedKeys && !allowedKeys.has(node.key)) continue;
     const distance = haversineMeters(targetPoint, { lat: node.lat, lon: node.lon, timestamp: 0 });
     if (distance < bestDistance) {
       best = node;
@@ -381,56 +552,63 @@ function simplify(points: GeoPoint[]) {
   return reduced;
 }
 
-function buildLoopCandidates(graph: Graph, center: OutdoorRouteGenerationCenter, startKey: string, targetDistanceM: number) {
+function buildLoopCandidates(graph: Graph, center: OutdoorRouteGenerationCenter, startKey: string, targetDistanceM: number, allowedKeys?: Set<string>) {
   const candidates: Candidate[] = [];
   const radiusBase = targetDistanceM / 5.45;
-  const bearings = [0, 45, 90, 135, 180, 225, 270, 315];
-  const radiusFactors = [0.82, 1, 1.16];
+  const bearings = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+  const radiusFactors = [0.7, 0.86, 1, 1.14, 1.32];
+  const patterns: number[][] = [
+    [0, 120, 240],
+    [0, 90, 180, 270],
+    [0, 72, 180, 288],
+  ];
 
   for (const factor of radiusFactors) {
     const radius = clamp(radiusBase * factor, 550, 5200);
     for (const bearing of bearings) {
-      const targets = [bearing, bearing + 120, bearing + 240]
-        .map((angle) => nearestNode(graph, destinationPoint(center, angle, radius), Math.max(850, radius * 0.55))?.node)
-        .filter((node): node is GraphNode => !!node);
-      if (targets.length !== 3) continue;
-      const uniqueTargets = new Set(targets.map((node) => node.key));
-      if (uniqueTargets.size !== 3 || uniqueTargets.has(startKey)) continue;
+      for (const pattern of patterns) {
+        const targets = pattern
+          .map((offset) => nearestNode(graph, destinationPoint(center, bearing + offset, radius), Math.max(1000, radius * 0.75), allowedKeys)?.node)
+          .filter((node): node is GraphNode => !!node);
+        if (targets.length !== pattern.length) continue;
+        const uniqueTargets = new Set(targets.map((node) => node.key));
+        if (uniqueTargets.size !== targets.length || uniqueTargets.has(startKey)) continue;
 
-      const used = new Map<string, number>();
-      const paths: PathResult[] = [];
-      let from = startKey;
-      let failed = false;
-      for (const target of [...targets, graph.nodes.get(startKey)!]) {
-        const path = shortestPath(graph, from, target.key, used);
-        if (!path || path.meters < 35) {
-          failed = true;
-          break;
+        const used = new Map<string, number>();
+        const paths: PathResult[] = [];
+        let from = startKey;
+        let failed = false;
+        for (const target of [...targets, graph.nodes.get(startKey)!]) {
+          const path = shortestPath(graph, from, target.key, used);
+          if (!path || path.meters < 25) {
+            failed = true;
+            break;
+          }
+          paths.push(path);
+          for (const key of path.edgeKeys) used.set(key, (used.get(key) || 0) + 1);
+          from = target.key;
         }
-        paths.push(path);
-        for (const key of path.edgeKeys) used.set(key, (used.get(key) || 0) + 1);
-        from = target.key;
+        if (failed) continue;
+        const merged = mergePaths(graph, paths);
+        if (merged.points.length < 4 || merged.meters < targetDistanceM * 0.42 || merged.meters > targetDistanceM * 2.05) continue;
+        const deviation = Math.abs(merged.meters - targetDistanceM) / targetDistanceM;
+        const overlapPenalty = Math.max(0, merged.overlapPct - 10) / 100;
+        const score = deviation + overlapPenalty * 0.88 - Math.min(0.1, merged.trailSharePct / 900);
+        candidates.push({ route: simplify(merged.points), distanceM: merged.meters, score, trailSharePct: merged.trailSharePct, overlapPct: merged.overlapPct, shape: "loop" });
       }
-      if (failed) continue;
-      const merged = mergePaths(graph, paths);
-      if (merged.points.length < 4 || merged.meters < targetDistanceM * 0.5 || merged.meters > targetDistanceM * 1.75) continue;
-      const deviation = Math.abs(merged.meters - targetDistanceM) / targetDistanceM;
-      const overlapPenalty = Math.max(0, merged.overlapPct - 12) / 100;
-      const score = deviation + overlapPenalty * 0.92 - Math.min(0.08, merged.trailSharePct / 1000);
-      candidates.push({ route: simplify(merged.points), distanceM: merged.meters, score, trailSharePct: merged.trailSharePct, overlapPct: merged.overlapPct });
     }
   }
   return candidates;
 }
 
-function buildOutBackCandidates(graph: Graph, center: OutdoorRouteGenerationCenter, startKey: string, targetDistanceM: number) {
+function buildOutBackCandidates(graph: Graph, center: OutdoorRouteGenerationCenter, startKey: string, targetDistanceM: number, allowedKeys?: Set<string>) {
   const candidates: Candidate[] = [];
   const outwardTarget = targetDistanceM / 2;
-  const bearings = [0, 45, 90, 135, 180, 225, 270, 315];
-  for (const factor of [0.72, 0.9, 1.08, 1.25]) {
+  const bearings = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+  for (const factor of [0.55, 0.7, 0.84, 1, 1.16, 1.34]) {
     const radius = clamp(outwardTarget * factor, 500, 9000);
     for (const bearing of bearings) {
-      const target = nearestNode(graph, destinationPoint(center, bearing, radius), Math.max(900, radius * 0.45))?.node;
+      const target = nearestNode(graph, destinationPoint(center, bearing, radius), Math.max(1100, radius * 0.7), allowedKeys)?.node;
       if (!target || target.key === startKey) continue;
       const outward = shortestPath(graph, startKey, target.key);
       if (!outward || outward.meters < 180) continue;
@@ -443,10 +621,10 @@ function buildOutBackCandidates(graph: Graph, center: OutdoorRouteGenerationCent
         })
         .filter((point): point is GeoPoint => !!point);
       const distanceM = outward.meters * 2;
-      if (distanceM < targetDistanceM * 0.55 || distanceM > targetDistanceM * 1.65) continue;
+      if (distanceM < targetDistanceM * 0.4 || distanceM > targetDistanceM * 2.0) continue;
       const deviation = Math.abs(distanceM - targetDistanceM) / targetDistanceM;
       const trailSharePct = outward.meters > 0 ? outward.trailMeters / outward.meters * 100 : 0;
-      candidates.push({ route: simplify(points), distanceM, score: deviation, trailSharePct, overlapPct: 50 });
+      candidates.push({ route: simplify(points), distanceM, score: deviation + 0.06, trailSharePct, overlapPct: 50, shape: "out-back" });
     }
   }
   return candidates;
@@ -526,20 +704,55 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
   const shape = request.shape || "loop";
   const count = clamp(Math.round(request.count || 3), 1, 5);
   const elevationTarget = normalizeOutdoorElevationTarget(request.elevationGainMinM, request.elevationGainMaxM);
-  const radiusM = generationRadiusM(distanceKm, shape);
+  const radiusM = Math.round(clamp(generationRadiusM(distanceKm, shape) * 1.28, 3000, 16500));
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 30000);
 
   try {
+    try {
+      const remoteRoutes = await generateOpenRouteServiceLoops({ ...request, distanceKm, profile, shape, count }, controller.signal);
+      if (remoteRoutes.length >= count) {
+        const sortedRemote = elevationTarget
+          ? [...remoteRoutes].sort((a, b) => {
+              const aError = outdoorElevationTargetError(Number(a.elevationGainM || 0), elevationTarget.minGainM, elevationTarget.maxGainM);
+              const bError = outdoorElevationTargetError(Number(b.elevationGainM || 0), elevationTarget.minGainM, elevationTarget.maxGainM);
+              return Number(aError > 0) - Number(bError > 0) || aError - bError || Number(a.generation?.distanceErrorPct || 0) - Number(b.generation?.distanceErrorPct || 0);
+            })
+          : remoteRoutes;
+        return {
+          routes: sortedRemote.slice(0, count),
+          center,
+          targetDistanceKm: distanceKm,
+          provider: "openrouteservice-round-trip",
+          networkNodeCount: 0,
+          networkEdgeCount: 0,
+          elevationTarget: elevationTarget ? {
+            minGainM: elevationTarget.minGainM,
+            maxGainM: elevationTarget.maxGainM,
+            matchedCount: sortedRemote.filter((route) => outdoorElevationTargetError(Number(route.elevationGainM || 0), elevationTarget.minGainM, elevationTarget.maxGainM) === 0).length,
+            closestGainM: sortedRemote[0] ? Math.round(Number(sortedRemote[0].elevationGainM || 0)) : null,
+          } : undefined,
+        };
+      }
+    } catch {
+      // Optional provider: the local OpenStreetMap engine below remains the no-key fallback.
+    }
+
     const ways = await fetchNetwork(overpassQuery(center, radiusM), controller.signal);
     const graph = buildGraph(ways, profile, sport);
     if (graph.nodes.size < 20 || graph.edgeCount < 40) throw new Error("Pas assez de chemins praticables autour de ta position pour générer un parcours.");
-    const start = nearestNode(graph, center, 1400);
+    const start = pickStartNode(graph, center, 2400);
     if (!start) throw new Error("Aucun chemin praticable n'a été trouvé près de ta position GPS.");
 
-    const rawCandidates = shape === "out-back"
-      ? buildOutBackCandidates(graph, center, start.node.key, targetDistanceM)
-      : buildLoopCandidates(graph, center, start.node.key, targetDistanceM);
+    const primaryCandidates = shape === "out-back"
+      ? buildOutBackCandidates(graph, center, start.node.key, targetDistanceM, start.allowedKeys)
+      : buildLoopCandidates(graph, center, start.node.key, targetDistanceM, start.allowedKeys);
+    const fallbackCandidates = primaryCandidates.length >= Math.max(3, count)
+      ? []
+      : shape === "loop"
+        ? buildOutBackCandidates(graph, center, start.node.key, targetDistanceM, start.allowedKeys)
+        : buildLoopCandidates(graph, center, start.node.key, targetDistanceM, start.allowedKeys);
+    const rawCandidates = [...primaryCandidates, ...fallbackCandidates.map((candidate) => ({ ...candidate, score: candidate.score + 0.22 }))];
     const candidatePoolSize = elevationTarget ? Math.min(12, Math.max(8, count * 3)) : count;
     const candidates = dedupeCandidates(rawCandidates).slice(0, candidatePoolSize);
     if (!candidates.length) throw new Error("Impossible de construire un parcours cohérent ici. Essaie une autre distance ou le mode aller-retour.");
@@ -551,7 +764,7 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
       return {
         id: `generated:${now}:${index}:${Math.round(distanceM)}`,
         externalId: `generated:${now}:${index}`,
-        name: `${shape === "loop" ? "Boucle" : "Aller-retour"} ${distanceKm.toFixed(distanceKm % 1 ? 1 : 0)} km · ${labelProfile(profile)} ${String.fromCharCode(65 + index)}`,
+        name: `${candidate.shape === "loop" ? "Boucle" : "Aller-retour"} ${distanceKm.toFixed(distanceKm % 1 ? 1 : 0)} km · ${labelProfile(profile)} ${String.fromCharCode(65 + index)}`,
         route: candidate.route,
         distanceM,
         elevationGainM: 0,
@@ -563,7 +776,7 @@ export async function generateOutdoorRoutes(request: OutdoorRouteGenerationReque
           provider: "openstreetmap-overpass-local-router",
           targetDistanceM,
           profile,
-          shape,
+          shape: candidate.shape,
           distanceErrorPct: Math.round(deviationPct * 10) / 10,
           trailSharePct: Math.round(candidate.trailSharePct),
           overlapPct: Math.round(candidate.overlapPct),
