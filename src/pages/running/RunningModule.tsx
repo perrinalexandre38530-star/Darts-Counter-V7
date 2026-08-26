@@ -12,6 +12,7 @@ import RunningRunAnalysisPanel from "./RunningRunAnalysisPanel";
 import RunningElevationProfile from "./RunningElevationProfile";
 import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import OutdoorRouteNavigationPanel from "./OutdoorRouteNavigationPanel";
+import OutdoorRouteLiveMap from "./OutdoorRouteLiveMap";
 import OutdoorRoutePlannerPanel from "./OutdoorRoutePlannerPanel";
 import OutdoorLongDistancePanel from "./OutdoorLongDistancePanel";
 import OutdoorOfflineRoutePanel from "./OutdoorOfflineRoutePanel";
@@ -36,7 +37,7 @@ import { adaptiveMilestoneCoach, adaptiveSplitCoach } from "../../activity/runni
 import { analyzeRunningTerrain, terrainAdvice, terrainLabel } from "../../activity/runningElevation";
 import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorDefaultGoal, outdoorGoalDistancesKm, outdoorGoalDurationsMin, outdoorPresetIds, outdoorSportLabel, outdoorTrainingPresetIds, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
 import { loadOutdoorRouteExtras, type OutdoorRouteExtras } from "../../activity/outdoorRouteExtras";
-import { estimateOutdoorRouteDurationMs, outdoorDirectionalGuidance, outdoorRouteProgress } from "../../activity/outdoorNavigation";
+import { estimateOutdoorRouteDurationMs, outdoorDirectionalGuidance, outdoorRouteProgress, outdoorRouteRejoinPlan } from "../../activity/outdoorNavigation";
 import { getRunningSensorSnapshot, subscribeRunningSensors, type RunningSensorSnapshot } from "../../activity/runningSensors";
 import { sensorSummaryForActivity } from "../../activity/activitySensorInsights";
 import { buildTreadmillSplits, treadmillDistanceSource, treadmillDistanceSourceLabel, averageTreadmillIncline } from "../../activity/treadmillPerformance";
@@ -253,6 +254,7 @@ export default function RunningModule({ go, params }: Props) {
     const [routeElevationOverrides, setRouteElevationOverrides] = React.useState<Record<string, RunningRouteTemplate>>({});
     const [routeElevationMessage, setRouteElevationMessage] = React.useState("");
     const [livePage, setLivePage] = React.useState<LivePage>("cockpit");
+    const [liveRouteMapFullscreen, setLiveRouteMapFullscreen] = React.useState(false);
     const [offlineRoutes, setOfflineRoutes] = React.useState<RunningRouteTemplate[]>([]);
     const [ghostEnabled, setGhostEnabled] = React.useState(false);
     const [shoes] = React.useState<RunningShoe[]>(() => loadRunningShoes());
@@ -499,6 +501,7 @@ export default function RunningModule({ go, params }: Props) {
         setPaused(!!session.paused);
         setIsRecording(true);
         setLivePage("cockpit");
+        setLiveRouteMapFullscreen(false);
         setView("record");
         setNow(Date.now());
         patchRunningActiveSession(session.id, { activityId, recoveredAt: Date.now() });
@@ -799,14 +802,16 @@ export default function RunningModule({ go, params }: Props) {
     const paceDelta = targetPaceSecPerKm ? targetPaceDeltaMs(liveDistance, elapsedMs, targetPaceSecPerKm) : null;
     const projected = targetDistanceM ? projectedFinishMs(liveDistance, elapsedMs, targetDistanceM) : null;
     const liveGhostMatch = React.useMemo(() => activitySport !== "treadmill" && ghostEnabled ? runningGhostMatch(selectedRoute, points[points.length - 1], liveDistance, elapsedMs) : null, [activitySport, elapsedMs, ghostEnabled, liveDistance, points, selectedRoute]);
-    const liveOutdoorProgress = React.useMemo(() => selectedRoute && routeExtras && ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? outdoorRouteProgress(selectedRoute, activitySport, liveDistance, elapsedMs, points[points.length - 1] || null, liveElevation, routeExtras.waypoints, routeExtras.offRouteAlertM) : null, [activitySport, elapsedMs, liveDistance, liveElevation, points, routeExtras, selectedRoute]);
+    const liveOutdoorProgress = React.useMemo(() => selectedRoute && routeExtras && activitySport !== "treadmill" ? outdoorRouteProgress(selectedRoute, activitySport, liveDistance, elapsedMs, points[points.length - 1] || null, liveElevation, routeExtras.waypoints, routeExtras.offRouteAlertM) : null, [activitySport, elapsedMs, liveDistance, liveElevation, points, routeExtras, selectedRoute]);
     const liveOutdoorDirection = React.useMemo(() => selectedRoute && liveOutdoorProgress ? outdoorDirectionalGuidance(selectedRoute, liveOutdoorProgress.matchedDistanceM, points[points.length - 1] || null, points[points.length - 2] || null) : null, [liveOutdoorProgress?.matchedDistanceM, points, selectedRoute]);
+    const liveOutdoorRejoin = React.useMemo(() => selectedRoute && liveOutdoorProgress?.offRouteAlert ? outdoorRouteRejoinPlan(selectedRoute, points[points.length - 1] || null, liveOutdoorProgress.matchedDistanceM) : null, [liveOutdoorProgress?.matchedDistanceM, liveOutdoorProgress?.offRouteAlert, points, selectedRoute]);
     React.useEffect(() => {
         if (!isRecording || !routeExtras?.alertsEnabled || !liveOutdoorProgress) { offRouteAlertRef.current = false; wrongWayAlertRef.current = false; return; }
         if (liveOutdoorProgress.offRouteAlert && !offRouteAlertRef.current) {
             offRouteAlertRef.current = true;
             try { navigator.vibrate?.([120, 80, 120]); } catch {}
-            speakCoach(pickLegacyLocalizedText(lang, `Attention, tu es à ${Math.round(liveOutdoorProgress.offRouteM || 0)} mètres du parcours.`, `Caution, you are ${Math.round(liveOutdoorProgress.offRouteM || 0)} metres off route.`, `Atención, estás a ${Math.round(liveOutdoorProgress.offRouteM || 0)} metros de la ruta.`));
+            const rejoinDistance = liveOutdoorRejoin ? Math.max(20, Math.round(liveOutdoorRejoin.distanceToTargetM / 10) * 10) : null;
+            speakCoach(pickLegacyLocalizedText(lang, rejoinDistance != null ? `Attention, tu es à ${Math.round(liveOutdoorProgress.offRouteM || 0)} mètres du parcours. Rejoins le tracé dans environ ${rejoinDistance} mètres.` : `Attention, tu es à ${Math.round(liveOutdoorProgress.offRouteM || 0)} mètres du parcours.`, rejoinDistance != null ? `Caution, you are ${Math.round(liveOutdoorProgress.offRouteM || 0)} metres off route. Rejoin the route in about ${rejoinDistance} metres.` : `Caution, you are ${Math.round(liveOutdoorProgress.offRouteM || 0)} metres off route.`, rejoinDistance != null ? `Atención, estás a ${Math.round(liveOutdoorProgress.offRouteM || 0)} metros de la ruta. Vuelve a la ruta en unos ${rejoinDistance} metros.` : `Atención, estás a ${Math.round(liveOutdoorProgress.offRouteM || 0)} metros de la ruta.`));
         } else if (!liveOutdoorProgress.offRouteAlert && offRouteAlertRef.current && Number(liveOutdoorProgress.offRouteM || 0) < routeExtras.offRouteAlertM * 0.7) {
             offRouteAlertRef.current = false;
             speakCoach(pickLegacyLocalizedText(lang, "Tu es revenu sur le parcours.", "You are back on route.", "Has vuelto a la ruta."));
@@ -818,8 +823,13 @@ export default function RunningModule({ go, params }: Props) {
         } else if (!liveOutdoorDirection?.wrongWay && wrongWayAlertRef.current) {
             wrongWayAlertRef.current = false;
         }
-        if (liveOutdoorDirection && liveOutdoorDirection.kind !== "finish" && !liveOutdoorDirection.wrongWay && liveOutdoorDirection.distanceM <= 90 && !turnAnnouncedRef.current.has(liveOutdoorDirection.id)) {
-            turnAnnouncedRef.current.add(liveOutdoorDirection.id);
+        const announceTurn = (thresholdM: number, bucket: string) => {
+            if (!liveOutdoorDirection || liveOutdoorDirection.kind === "finish" || liveOutdoorDirection.wrongWay || liveOutdoorDirection.distanceM > thresholdM)
+                return;
+            const key = `${liveOutdoorDirection.id}:${bucket}`;
+            if (turnAnnouncedRef.current.has(key))
+                return;
+            turnAnnouncedRef.current.add(key);
             const direction = liveOutdoorDirection.kind.includes("left")
                 ? pickLegacyLocalizedText(lang, "tourne à gauche", "turn left", "gira a la izquierda")
                 : liveOutdoorDirection.kind.includes("right")
@@ -828,14 +838,16 @@ export default function RunningModule({ go, params }: Props) {
                         ? pickLegacyLocalizedText(lang, "fais demi-tour", "make a U-turn", "da la vuelta")
                         : pickLegacyLocalizedText(lang, "continue tout droit", "keep straight", "sigue recto");
             speakCoach(pickLegacyLocalizedText(lang, `${direction} dans ${Math.max(20, Math.round(liveOutdoorDirection.distanceM / 10) * 10)} mètres.`, `${direction} in ${Math.max(20, Math.round(liveOutdoorDirection.distanceM / 10) * 10)} metres.`, `${direction} en ${Math.max(20, Math.round(liveOutdoorDirection.distanceM / 10) * 10)} metros.`));
-        }
+        };
+        announceTurn(260, "early");
+        announceTurn(80, "near");
         const checkpoint = liveOutdoorProgress.nextCheckpoint;
         if (checkpoint && liveOutdoorProgress.nextCheckpointDistanceM != null && liveOutdoorProgress.nextCheckpointDistanceM <= 180 && !checkpointAnnouncedRef.current.has(checkpoint.id)) {
             checkpointAnnouncedRef.current.add(checkpoint.id);
             const label = checkpoint.name || (checkpoint.kind === "finish" ? pickLegacyLocalizedText(lang, "arrivée", "finish", "llegada") : checkpoint.kind === "high-point" ? pickLegacyLocalizedText(lang, "point haut", "high point", "punto alto") : `${Math.round(checkpoint.distanceM / 1000)} km`);
             speakCoach(pickLegacyLocalizedText(lang, `${label} dans ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} mètres.`, `${label} in ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} metres.`, `${label} en ${Math.max(30, Math.round(liveOutdoorProgress.nextCheckpointDistanceM / 10) * 10)} metros.`));
         }
-    }, [isRecording, lang, liveOutdoorDirection?.distanceM, liveOutdoorDirection?.id, liveOutdoorDirection?.kind, liveOutdoorDirection?.wrongWay, liveOutdoorProgress?.nextCheckpoint?.id, liveOutdoorProgress?.nextCheckpointDistanceM, liveOutdoorProgress?.offRouteAlert, liveOutdoorProgress?.offRouteM, routeExtras?.alertsEnabled, routeExtras?.offRouteAlertM, speakCoach]);
+    }, [isRecording, lang, liveOutdoorDirection?.distanceM, liveOutdoorDirection?.id, liveOutdoorDirection?.kind, liveOutdoorDirection?.wrongWay, liveOutdoorProgress?.nextCheckpoint?.id, liveOutdoorProgress?.nextCheckpointDistanceM, liveOutdoorProgress?.offRouteAlert, liveOutdoorProgress?.offRouteM, liveOutdoorRejoin?.distanceToTargetM, routeExtras?.alertsEnabled, routeExtras?.offRouteAlertM, speakCoach]);
     const liveGhostDelta = liveGhostMatch?.deltaMs ?? null;
     const targetReached = (targetDistanceM && liveDistance >= targetDistanceM) || (targetDurationMs && elapsedMs >= targetDurationMs);
     React.useEffect(() => {
@@ -997,6 +1009,7 @@ export default function RunningModule({ go, params }: Props) {
         setPaused(false);
         setIsRecording(true);
         setLivePage("cockpit");
+        setLiveRouteMapFullscreen(false);
         setView("record");
         speakCoach(pickLegacyLocalizedText(lang, `Départ. ${presetLabel(effectivePreset, lang)}.`, `Start. ${presetLabel(effectivePreset, lang)}.`, `Salida. ${presetLabel(effectivePreset, lang)}.`));
         if (activitySport === "treadmill") {
@@ -1442,7 +1455,7 @@ export default function RunningModule({ go, params }: Props) {
       </> : null}
 
       {livePage === "route" ? <>
-        {selectedRoute && ["trail", "hiking", "walking", "nordic-walking"].includes(activitySport) ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras}/> : null}
+        {selectedRoute && activitySport !== "treadmill" ? <OutdoorRouteNavigationPanel route={selectedRoute} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} mode="live" liveDistanceM={liveDistance} elapsedMs={elapsedMs} currentPoint={points[points.length - 1] || null} previousPoint={points[points.length - 2] || null} liveElevationGainM={liveElevation} extras={routeExtras} onOpenMap={() => setLiveRouteMapFullscreen(true)}/> : null}
         <RunningSurface accent={accent} active style={{ marginTop: selectedRoute ? 8 : 0 }}><RouteMap points={points} accent={accent} waiting={copy.waiting} showRouteNetwork={activitySport !== "treadmill"}/></RunningSurface>
       </> : null}
 
@@ -1458,6 +1471,7 @@ export default function RunningModule({ go, params }: Props) {
         {activitySport === "treadmill" ? <RunningSurface accent={accent} style={{ marginTop: 10 }}><div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 7 }}><MiniStat label={copy.speed} value={`${treadmillSpeed.toFixed(1)} km/h`} accent={accent}/><MiniStat label={pickLegacyLocalizedText(lang, "INCLINAISON", "INCLINE", "INCLINACIÓN")} value={`${treadmillIncline.toFixed(1)}%`} accent={accent}/></div></RunningSurface> : null}
       </> : null}
 
+      {liveRouteMapFullscreen && selectedRoute && routeExtras && activitySport !== "treadmill" ? <OutdoorRouteLiveMap route={selectedRoute} track={points} sport={activitySport} lang={lang} accent={accent} textSoft={textSoft} liveDistanceM={liveDistance} elapsedMs={elapsedMs} liveElevationGainM={liveElevation} extras={routeExtras} onClose={() => setLiveRouteMapFullscreen(false)}/> : null}
       <div style={recordDock}><button className="btn" onClick={addLap} disabled={!isRecording || paused} style={{ minHeight: 52, fontWeight: 1000 }}>{copy.lap}</button><button className="btn" onClick={togglePause} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000 }}>{paused ? `▶ ${copy.resume}` : `Ⅱ ${copy.pause}`}</button><button className="btn primary" onClick={() => void finishRun()} disabled={!isRecording} style={{ minHeight: 52, fontWeight: 1000, background: accent }}>■ {copy.finish}</button></div>
     </div>;
     }

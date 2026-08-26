@@ -1,7 +1,9 @@
+import { History } from "./history";
 import { loadNormalizedHistory, type NormalizedMatch } from "./statsNormalized";
 import { loadDartsFirefighterStatsUnified } from "./dartsFirefighterStats";
+import { computeKillerStatsAggForProfile } from "./statsKiller";
 
-export type CollectibleCollectionId = "awena" | "firefighter" | "loterie";
+export type CollectibleCollectionId = "awena" | "firefighter" | "loterie" | "killer";
 export type CollectibleCardId =
   | "awena_bronze"
   | "awena_argent"
@@ -50,7 +52,21 @@ export type CollectibleCardId =
   | "loterie_fortuna"
   | "loterie_jinx"
   | "loterie_jack"
-  | "loterie_midas";
+  | "loterie_midas"
+  | "killer_morrow"
+  | "killer_velvet"
+  | "killer_brutus"
+  | "killer_djuno"
+  | "killer_thorn"
+  | "killer_miasma"
+  | "killer_raze"
+  | "killer_noz"
+  | "killer_zeno"
+  | "killer_brat"
+  | "killer_viper"
+  | "killer_west"
+  | "killer_batuga"
+  | "killer_skull";
 
 export type CollectibleMetricKey =
   | "matches"
@@ -77,7 +93,15 @@ export type CollectibleMetricKey =
   | "loterieMultiHits"
   | "loterieCardsCompleted"
   | "loterieExpressFirstDartHits"
-  | "loterieBestStreak";
+  | "loterieBestStreak"
+  | "killerMatches"
+  | "killerWins"
+  | "killerKills"
+  | "killerHits"
+  | "killerAutoHits"
+  | "killerPodiums"
+  | "killerFirsts"
+  | "killerPrecision";
 
 export type CollectibleMetrics = Record<CollectibleMetricKey, number>;
 export type LocalizedText = { fr: string; en: string; es: string };
@@ -248,6 +272,57 @@ export const COLLECTIBLE_CARDS: CollectibleCardDefinition[] = [
     { metric: "loterieCellsRevealed", target: 250, label: { fr: "Cases révélées en LOTERIE", en: "LOTTERY cells revealed", es: "Casillas reveladas en LOTERÍA" } },
   ] },
 
+  { id: "killer_morrow", collection: "killer", name: "MORROW", stars: 5, accent: "#e54848", subtitle: { fr: "Seigneur de la cité rouge", en: "Lord of the red city", es: "Señor de la ciudad roja" }, requirements: [
+    { metric: "killerMatches", target: 1, label: { fr: "Partie KILLER terminée", en: "Completed KILLER match", es: "Partida KILLER completada" } },
+  ] },
+  { id: "killer_velvet", collection: "killer", name: "VELVET", stars: 4.5, accent: "#44d18f", subtitle: { fr: "Enchanteresse des lianes", en: "Vine enchantress", es: "Hechicera de las lianas" }, requirements: [
+    { metric: "killerWins", target: 2, label: { fr: "Victoires en KILLER", en: "KILLER wins", es: "Victorias en KILLER" } },
+  ] },
+  { id: "killer_brutus", collection: "killer", name: "BRUTUS", stars: 4.5, accent: "#ff7f45", subtitle: { fr: "Colosse des forges", en: "Forge colossus", es: "Coloso de las forjas" }, requirements: [
+    { metric: "killerKills", target: 10, label: { fr: "Kills réalisés en KILLER", en: "KILLER kills", es: "Kills realizados en KILLER" } },
+  ] },
+  { id: "killer_djuno", collection: "killer", name: "DJUNO", stars: 4, accent: "#ff4fc8", subtitle: { fr: "Joker néon du chaos", en: "Neon joker of chaos", es: "Bufón neón del caos" }, requirements: [
+    { metric: "killerHits", target: 15, label: { fr: "Hits enregistrés en KILLER", en: "KILLER hits", es: "Impactos en KILLER" } },
+  ] },
+  { id: "killer_thorn", collection: "killer", name: "THORN", stars: 4, accent: "#7ecf6e", subtitle: { fr: "Traqueur des marais", en: "Marsh tracker", es: "Rastreador de los pantanos" }, requirements: [
+    { metric: "killerMatches", target: 5, label: { fr: "Parties KILLER terminées", en: "Completed KILLER matches", es: "Partidas KILLER completadas" } },
+    { metric: "killerPodiums", target: 3, label: { fr: "Podiums en KILLER", en: "KILLER podiums", es: "Podios en KILLER" } },
+  ] },
+  { id: "killer_miasma", collection: "killer", name: "MIASMA", stars: 3.5, accent: "#c8e05a", subtitle: { fr: "Médecin de la peste", en: "Plague doctor", es: "Médico de la peste" }, requirements: [
+    { metric: "killerAutoHits", target: 3, label: { fr: "Auto-hits / pénalités subies", en: "Self-hits / penalties taken", es: "Autoimpactos / penalizaciones" } },
+  ] },
+  { id: "killer_raze", collection: "killer", name: "RAZE", stars: 3.5, accent: "#ff8a3d", subtitle: { fr: "Seigneur des flammes", en: "Lord of flames", es: "Señor de las llamas" }, requirements: [
+    { metric: "killerKills", target: 25, label: { fr: "Kills réalisés en KILLER", en: "KILLER kills", es: "Kills realizados en KILLER" } },
+  ] },
+  { id: "killer_noz", collection: "killer", name: "NOZ", stars: 5, accent: "#d650ff", subtitle: { fr: "Héros gothique lunaire", en: "Moonlit gothic hero", es: "Héroe gótico lunar" }, requirements: [
+    { metric: "killerWins", target: 8, label: { fr: "Victoires en KILLER", en: "KILLER wins", es: "Victorias en KILLER" } },
+    { metric: "killerFirsts", target: 5, label: { fr: "1res places en KILLER", en: "1st places in KILLER", es: "Primeros puestos en KILLER" } },
+  ] },
+  { id: "killer_zeno", collection: "killer", name: "ZENO", stars: 4.5, accent: "#ef5555", subtitle: { fr: "Samouraï biker", en: "Biker samurai", es: "Samurái motero" }, requirements: [
+    { metric: "killerMatches", target: 12, label: { fr: "Parties KILLER terminées", en: "Completed KILLER matches", es: "Partidas KILLER completadas" } },
+    { metric: "killerWins", target: 6, label: { fr: "Victoires en KILLER", en: "KILLER wins", es: "Victorias en KILLER" } },
+  ] },
+  { id: "killer_brat", collection: "killer", name: "BRAT", stars: 4.5, accent: "#ff7d45", subtitle: { fr: "Brute cybernétique", en: "Cybernetic brute", es: "Bruto cibernético" }, requirements: [
+    { metric: "killerHits", target: 60, label: { fr: "Hits enregistrés en KILLER", en: "KILLER hits", es: "Impactos en KILLER" } },
+    { metric: "killerKills", target: 30, label: { fr: "Kills réalisés en KILLER", en: "KILLER kills", es: "Kills realizados en KILLER" } },
+  ] },
+  { id: "killer_viper", collection: "killer", name: "VIPER", stars: 4, accent: "#60d26e", subtitle: { fr: "Gardienne serpentine", en: "Serpentine guardian", es: "Guardiana serpentina" }, requirements: [
+    { metric: "killerPrecision", target: 35, label: { fr: "Précision KILLER (%)", en: "KILLER accuracy (%)", es: "Precisión KILLER (%)" } },
+    { metric: "killerMatches", target: 8, label: { fr: "Parties KILLER terminées", en: "Completed KILLER matches", es: "Partidas KILLER completadas" } },
+  ] },
+  { id: "killer_west", collection: "killer", name: "WEST", stars: 4, accent: "#c88c5b", subtitle: { fr: "Gunslinger mort-vivant", en: "Undead gunslinger", es: "Pistolero no muerto" }, requirements: [
+    { metric: "killerFirsts", target: 3, label: { fr: "1res places en KILLER", en: "1st places in KILLER", es: "Primeros puestos en KILLER" } },
+    { metric: "killerWins", target: 5, label: { fr: "Victoires en KILLER", en: "KILLER wins", es: "Victorias en KILLER" } },
+  ] },
+  { id: "killer_batuga", collection: "killer", name: "BATUGA", stars: 3.5, accent: "#b650ff", subtitle: { fr: "Vampire gothique", en: "Gothic vampire", es: "Vampira gótica" }, requirements: [
+    { metric: "killerPodiums", target: 8, label: { fr: "Podiums en KILLER", en: "KILLER podiums", es: "Podios en KILLER" } },
+    { metric: "killerMatches", target: 15, label: { fr: "Parties KILLER terminées", en: "Completed KILLER matches", es: "Partidas KILLER completadas" } },
+  ] },
+  { id: "killer_skull", collection: "killer", name: "SKULL", stars: 3, accent: "#ff55c9", subtitle: { fr: "Squelette punk", en: "Punk skeleton", es: "Esqueleto punk" }, requirements: [
+    { metric: "killerMatches", target: 20, label: { fr: "Parties KILLER terminées", en: "Completed KILLER matches", es: "Partidas KILLER completadas" } },
+    { metric: "killerKills", target: 40, label: { fr: "Kills réalisés en KILLER", en: "KILLER kills", es: "Kills realizados en KILLER" } },
+  ] },
+
 ];
 
 function emptyMetrics(): CollectibleMetrics {
@@ -260,6 +335,8 @@ function emptyMetrics(): CollectibleMetrics {
     firefighterBrazeCriticalExtinguishes: 0, firefighterAeroMatches: 0, firefighterAeroCanadairs: 0,
     loterieMatches: 0, loterieWins: 0, loterieCellsRevealed: 0, loterieMultiHits: 0,
     loterieCardsCompleted: 0, loterieExpressFirstDartHits: 0, loterieBestStreak: 0,
+    killerMatches: 0, killerWins: 0, killerKills: 0, killerHits: 0, killerAutoHits: 0,
+    killerPodiums: 0, killerFirsts: 0, killerPrecision: 0,
   };
 }
 
@@ -385,9 +462,10 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
   const metrics = emptyMetrics();
   if (!profileId) return metrics;
 
-  const [history, firefighter] = await Promise.all([
+  const [history, firefighter, rawHistory] = await Promise.all([
     loadNormalizedHistory().catch(() => [] as NormalizedMatch[]),
     loadDartsFirefighterStatsUnified().catch(() => [] as any[]),
+    History.list().catch(() => [] as any[]),
   ]);
 
   const modes = new Set<string>();
@@ -458,6 +536,16 @@ export async function computeCollectibleMetrics(profileIdInput: string): Promise
       metrics.firefighterAeroCanadairs += countCanadairs(row, profileId);
     }
   }
+
+  const killerAgg = computeKillerStatsAggForProfile(rawHistory as any[], profileId);
+  metrics.killerMatches = Number(killerAgg?.played || 0);
+  metrics.killerWins = Number(killerAgg?.wins || 0);
+  metrics.killerKills = Number(killerAgg?.killsTotal || killerAgg?.kills || 0);
+  metrics.killerHits = Number(killerAgg?.totalHits || 0);
+  metrics.killerAutoHits = Number(killerAgg?.autoHitsTotal || 0);
+  metrics.killerPodiums = Number(killerAgg?.podiums || 0);
+  metrics.killerFirsts = Number(killerAgg?.firsts || 0);
+  metrics.killerPrecision = Math.round(Number(killerAgg?.precisionKiller || 0));
 
   return metrics;
 }

@@ -54,6 +54,17 @@ export type OutdoorRouteProgress = {
   ahead: OutdoorAheadProfile;
 };
 
+export type OutdoorRouteRejoinPlan = {
+  targetPoint: GeoPoint;
+  targetIndex: number;
+  targetDistanceM: number;
+  distanceToTargetM: number;
+  bearingDeg: number | null;
+  routeRemainingAfterRejoinM: number;
+  recalculatedRemainingM: number;
+  forwardAdvanceM: number;
+};
+
 function clamp(value: number, min: number, max: number) { return Math.max(min, Math.min(max, value)); }
 
 function baseSpeedKmh(sport: OutdoorPerformanceSport) {
@@ -252,6 +263,60 @@ export function outdoorDirectionalGuidance(
 
   const remainingM = Math.max(0, total - matched);
   return { id: "finish", kind: "finish", distanceM: remainingM, targetDistanceM: total, bearingDeg: routeBearing, turnAngleDeg: 0, wrongWay, wrongWayAngleDeg };
+}
+
+/**
+ * Builds a lightweight, dependency-free plan to rejoin the selected route.
+ * It deliberately chooses a point AHEAD on the original route so the user is
+ * not sent backwards to the nearest geometric point when two sections cross.
+ * This is a local rejoin plan, not road/path routing through an external API.
+ */
+export function outdoorRouteRejoinPlan(
+  route: RunningRouteTemplate,
+  currentPoint: GeoPoint | null | undefined,
+  matchedDistanceM: number,
+): OutdoorRouteRejoinPlan | null {
+  if (!currentPoint) return null;
+  const points = route.route || [];
+  if (points.length < 2) return null;
+  const distances = cumulativeOutdoorRouteDistances(points);
+  const total = Math.max(0, Number(route.distanceM || distances[distances.length - 1] || 0));
+  const matched = clamp(matchedDistanceM, 0, total);
+  const minTargetM = Math.min(total, matched + 45);
+  const maxTargetM = Math.min(total, matched + 2400);
+
+  let best: { index: number; distanceToTargetM: number; score: number } | null = null;
+  for (let index = 0; index < points.length; index += 1) {
+    const routeDistanceM = distances[index] || 0;
+    if (routeDistanceM < minTargetM) continue;
+    if (routeDistanceM > maxTargetM) break;
+    // Dense GPX/OSM polylines can contain hundreds of near-identical points.
+    // Sampling keeps this inexpensive while retaining plenty of precision.
+    if (index % 2 !== 0 && index !== points.length - 1) continue;
+    const straightM = haversineMeters(currentPoint, points[index]);
+    const forwardAdvanceM = Math.max(0, routeDistanceM - matched);
+    // Prefer a nearby future point, with a small penalty for skipping too far.
+    const score = straightM + Math.max(0, forwardAdvanceM - 500) * 0.055;
+    if (!best || score < best.score) best = { index, distanceToTargetM: straightM, score };
+  }
+
+  if (!best) {
+    const finalIndex = points.length - 1;
+    best = { index: finalIndex, distanceToTargetM: haversineMeters(currentPoint, points[finalIndex]), score: 0 };
+  }
+  const targetPoint = points[best.index];
+  const targetDistanceM = distances[best.index] || total;
+  const routeRemainingAfterRejoinM = Math.max(0, total - targetDistanceM);
+  return {
+    targetPoint,
+    targetIndex: best.index,
+    targetDistanceM,
+    distanceToTargetM: best.distanceToTargetM,
+    bearingDeg: outdoorBearingDegrees(currentPoint, targetPoint),
+    routeRemainingAfterRejoinM,
+    recalculatedRemainingM: best.distanceToTargetM + routeRemainingAfterRejoinM,
+    forwardAdvanceM: Math.max(0, targetDistanceM - matched),
+  };
 }
 
 function remainingElevationGain(route: RunningRouteTemplate, fromDistanceM: number) {

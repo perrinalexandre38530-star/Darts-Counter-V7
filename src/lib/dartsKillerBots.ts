@@ -101,10 +101,10 @@ function bot(
  */
 export const DARTS_KILLER_BOTS: DartsKillerBot[] = [
   bot("bot_killer_marron", "MORROW", avatarMarron, 5, 96, "spectral", "Traqueur spectral", "Élite"),
-  bot("bot_killer_verveine", "VELVET", avatarVerveine, 4, 82, "venom", "Spécialiste du contrôle", "Confirmée"),
-  bot("bot_killer_brutes", "BRUTUS", avatarBrutes, 3.5, 78, "brute", "Colosse frontal", "Avancé"),
-  bot("bot_killer_djuno", "DJUNO", avatarDjuno, 3, 70, "chaos", "Style imprévisible", "Intermédiaire"),
-  bot("bot_killer_thorn", "THORN", avatarThorn, 4.5, 87, "hunter", "Chasseur camouflé", "Expert"),
+  bot("bot_killer_verveine", "VELVET", avatarVerveine, 4.5, 90, "venom", "Spécialiste du contrôle", "Experte"),
+  bot("bot_killer_brutes", "BRUTUS", avatarBrutes, 4.5, 89, "brute", "Colosse frontal", "Expert"),
+  bot("bot_killer_djuno", "DJUNO", avatarDjuno, 4, 84, "chaos", "Style imprévisible", "Confirmée"),
+  bot("bot_killer_thorn", "THORN", avatarThorn, 4, 85, "hunter", "Chasseur camouflé", "Confirmé"),
   bot("bot_killer_miasma", "MIASMA", avatarMiasma, 3.5, 76, "toxic", "Alchimiste tactique", "Avancé"),
   bot("bot_killer_raze", "RAZE", avatarRaze, 3.5, 75, "berserker", "Combattant agressif", "Avancé"),
   bot("bot_killer_noz", "NOZ", avatarNoz, 5, 94, "precision", "Maître de la précision", "Élite"),

@@ -61,6 +61,20 @@ import loterieFortuna from "../../assets/collectible-cards/loterie-fortuna.webp"
 import loterieJinx from "../../assets/collectible-cards/loterie-jinx.webp";
 import loterieJack from "../../assets/collectible-cards/loterie-jack.webp";
 import loterieMidas from "../../assets/collectible-cards/loterie-midas.webp";
+import killerMorrow from "../../assets/collectible-cards/killer-morrow.webp";
+import killerVelvet from "../../assets/collectible-cards/killer-velvet.webp";
+import killerBrutus from "../../assets/collectible-cards/killer-brutus.webp";
+import killerDjuno from "../../assets/collectible-cards/killer-djuno.webp";
+import killerThorn from "../../assets/collectible-cards/killer-thorn.webp";
+import killerMiasma from "../../assets/collectible-cards/killer-miasma.webp";
+import killerRaze from "../../assets/collectible-cards/killer-raze.webp";
+import killerNoz from "../../assets/collectible-cards/killer-noz.webp";
+import killerZeno from "../../assets/collectible-cards/killer-zeno.webp";
+import killerBrat from "../../assets/collectible-cards/killer-brat.webp";
+import killerViper from "../../assets/collectible-cards/killer-viper.webp";
+import killerWest from "../../assets/collectible-cards/killer-west.webp";
+import killerBatuga from "../../assets/collectible-cards/killer-batuga.webp";
+import killerSkull from "../../assets/collectible-cards/killer-skull.webp";
 
 const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   awena_bronze: awenaBronze,
@@ -111,9 +125,23 @@ const IMAGE_BY_CARD: Record<CollectibleCardId, string> = {
   loterie_jinx: loterieJinx,
   loterie_jack: loterieJack,
   loterie_midas: loterieMidas,
+  killer_morrow: killerMorrow,
+  killer_velvet: killerVelvet,
+  killer_brutus: killerBrutus,
+  killer_djuno: killerDjuno,
+  killer_thorn: killerThorn,
+  killer_miasma: killerMiasma,
+  killer_raze: killerRaze,
+  killer_noz: killerNoz,
+  killer_zeno: killerZeno,
+  killer_brat: killerBrat,
+  killer_viper: killerViper,
+  killer_west: killerWest,
+  killer_batuga: killerBatuga,
+  killer_skull: killerSkull,
 };
 
-type FilterId = "all" | "awena" | "firefighter" | "loterie" | "unlocked" | "locked";
+type FilterId = "all" | "awena" | "firefighter" | "loterie" | "killer" | "unlocked" | "locked";
 
 const ZERO_METRICS: CollectibleMetrics = {
   matches: 0,
@@ -141,6 +169,14 @@ const ZERO_METRICS: CollectibleMetrics = {
   loterieCardsCompleted: 0,
   loterieExpressFirstDartHits: 0,
   loterieBestStreak: 0,
+  killerMatches: 0,
+  killerWins: 0,
+  killerKills: 0,
+  killerHits: 0,
+  killerAutoHits: 0,
+  killerPodiums: 0,
+  killerFirsts: 0,
+  killerPrecision: 0,
 };
 
 function localText(lang: string, value: { fr: string; en: string; es: string }): string {
@@ -241,7 +277,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const cards = React.useMemo(() => COLLECTIBLE_CARDS.filter((card) => {
     const isUnlocked = !!unlocks[card.id];
-    if (filter === "awena" || filter === "firefighter" || filter === "loterie") return card.collection === filter;
+    if (filter === "awena" || filter === "firefighter" || filter === "loterie" || filter === "killer") return card.collection === filter;
     if (filter === "unlocked") return isUnlocked;
     if (filter === "locked") return !isUnlocked;
     return true;
@@ -253,9 +289,9 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
 
   const labels = pickLegacyLocalizedValue(
     lang,
-    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
-    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
-    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
+    { all:"TOUTES", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERIE", killer:"KILLER", unlocked:"DÉBLOQUÉES", locked:"VERROUILLÉES", title:"COLLECTION DE CARTES", subtitle:"Relève les défis pour débloquer définitivement les cartes de ce profil.", noProfile:"Sélectionne un profil actif pour commencer une collection.", progress:"PROGRESSION COLLECTION", lockedCard:"CARTE VERROUILLÉE", unlockedCard:"DÉBLOQUÉE", close:"FERMER", continue:"CONTINUER", justUnlocked:"CARTE DÉBLOQUÉE", scan:"ACTUALISER" },
+    { all:"ALL", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTTERY", killer:"KILLER", unlocked:"UNLOCKED", locked:"LOCKED", title:"CARD COLLECTION", subtitle:"Complete challenges to permanently unlock cards for this profile.", noProfile:"Select an active profile to start a collection.", progress:"COLLECTION PROGRESS", lockedCard:"LOCKED CARD", unlockedCard:"UNLOCKED", close:"CLOSE", continue:"CONTINUE", justUnlocked:"CARD UNLOCKED", scan:"REFRESH" },
+    { all:"TODAS", awena:"AWENA", firefighter:"FIREFIGHTER", loterie:"LOTERÍA", killer:"KILLER", unlocked:"DESBLOQUEADAS", locked:"BLOQUEADAS", title:"COLECCIÓN DE CARTAS", subtitle:"Completa desafíos para desbloquear cartas permanentemente para este perfil.", noProfile:"Selecciona un perfil activo para iniciar una colección.", progress:"PROGRESO DE COLECCIÓN", lockedCard:"CARTA BLOQUEADA", unlockedCard:"DESBLOQUEADA", close:"CERRAR", continue:"CONTINUAR", justUnlocked:"CARTA DESBLOQUEADA", scan:"ACTUALIZAR" },
   );
 
   if (!String(profileId || "").trim()) return <div style={{ padding:18, borderRadius:18, border:`1px dashed ${theme.borderSoft}`, textAlign:"center", color:theme.textSoft, fontSize:12 }}>{labels.noProfile}</div>;
@@ -279,6 +315,7 @@ export default function CollectibleCardsPanel({ profileId, profileName, persiste
       <FilterButton active={filter === "awena"} label={labels.awena} onClick={() => setFilter("awena")} />
       <FilterButton active={filter === "firefighter"} label={labels.firefighter} onClick={() => setFilter("firefighter")} />
       <FilterButton active={filter === "loterie"} label={labels.loterie} onClick={() => setFilter("loterie")} />
+      <FilterButton active={filter === "killer"} label={labels.killer} onClick={() => setFilter("killer")} />
       <FilterButton active={filter === "unlocked"} label={labels.unlocked} onClick={() => setFilter("unlocked")} />
       <FilterButton active={filter === "locked"} label={labels.locked} onClick={() => setFilter("locked")} />
     </div>
