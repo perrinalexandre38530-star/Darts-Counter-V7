@@ -254,30 +254,100 @@ function limb(a: Point, b: Point, color: string, width: number, opacity = 1) {
   return <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={color} strokeWidth={width} strokeLinecap="round" opacity={opacity}/>;
 }
 
+function angleDeg(a: Point, b: Point) {
+  return Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+}
+
 function Equipment({ kind, joints, accent }: { kind: EquipmentKind; joints: Pose; accent: string }) {
   const handsMid = pointLerp(joints.handL, joints.handR, .5);
   const barY = (joints.handL[1] + joints.handR[1]) / 2;
   switch (kind) {
     case "barbell": {
-      const minX = Math.min(joints.handL[0], joints.handR[0]) - 34;
-      const maxX = Math.max(joints.handL[0], joints.handR[0]) + 34;
-      return <g opacity=".96">
-        <line x1={minX} y1={barY} x2={maxX} y2={barY} stroke="#d7dde8" strokeWidth="4" strokeLinecap="round"/>
-        {[minX + 4, minX + 10, maxX - 10, maxX - 4].map((x) => <line key={x} x1={x} y1={barY - 10} x2={x} y2={barY + 10} stroke={accent} strokeWidth="5" strokeLinecap="round"/>)}
+      const minX = Math.min(joints.handL[0], joints.handR[0]) - 40;
+      const maxX = Math.max(joints.handL[0], joints.handR[0]) + 40;
+      return <g opacity=".98">
+        <line x1={minX} y1={barY} x2={maxX} y2={barY} stroke="#e8eef9" strokeWidth="4.5" strokeLinecap="round"/>
+        {[minX + 6, minX + 14, maxX - 14, maxX - 6].map((x) => <line key={x} x1={x} y1={barY - 12} x2={x} y2={barY + 12} stroke="#121826" strokeWidth="7" strokeLinecap="round"/>)}
+        {[minX + 6, minX + 14, maxX - 14, maxX - 6].map((x) => <line key={`accent-${x}`} x1={x} y1={barY - 11} x2={x} y2={barY + 11} stroke={accent} strokeWidth="2.2" strokeLinecap="round" opacity=".85"/>)}
       </g>;
     }
-    case "dumbbells": return <g>{[joints.handL, joints.handR].map((hand, i) => <g key={i} transform={`translate(${hand[0]} ${hand[1]})`}><line x1="-9" y1="0" x2="9" y2="0" stroke="#d7dde8" strokeWidth="3"/><rect x="-12" y="-5" width="4" height="10" rx="2" fill={accent}/><rect x="8" y="-5" width="4" height="10" rx="2" fill={accent}/></g>)}</g>;
-    case "cableFly": return <g opacity=".8"><line x1="25" y1="34" x2={joints.handL[0]} y2={joints.handL[1]} stroke={accent} strokeWidth="2"/><line x1="295" y1="34" x2={joints.handR[0]} y2={joints.handR[1]} stroke={accent} strokeWidth="2"/><circle cx="25" cy="34" r="7" fill="none" stroke="#cbd5e1" strokeWidth="3"/><circle cx="295" cy="34" r="7" fill="none" stroke="#cbd5e1" strokeWidth="3"/></g>;
-    case "pullup": return <g><line x1="90" y1="26" x2="230" y2="26" stroke="#d7dde8" strokeWidth="6" strokeLinecap="round"/><line x1="104" y1="17" x2="104" y2="26" stroke={accent} strokeWidth="4"/><line x1="216" y1="17" x2="216" y2="26" stroke={accent} strokeWidth="4"/></g>;
-    case "pulldown": return <g><line x1="105" y1="28" x2="215" y2="28" stroke="#d7dde8" strokeWidth="5" strokeLinecap="round"/><line x1="160" y1="4" x2="160" y2="28" stroke={accent} strokeWidth="2" opacity=".7"/><rect x="126" y="147" width="68" height="8" rx="4" fill="#667085" opacity=".8"/></g>;
-    case "bench": return <g><rect x="115" y="112" width="127" height="12" rx="6" fill="#5f6878"/><line x1="132" y1="123" x2="121" y2="157" stroke="#5f6878" strokeWidth="7"/><line x1="220" y1="123" x2="231" y2="157" stroke="#5f6878" strokeWidth="7"/></g>;
-    case "inclineBench": return <g><line x1="132" y1="124" x2="216" y2="70" stroke="#5f6878" strokeWidth="12" strokeLinecap="round"/><line x1="144" y1="118" x2="132" y2="158" stroke="#5f6878" strokeWidth="7"/><line x1="198" y1="83" x2="212" y2="150" stroke="#5f6878" strokeWidth="7"/></g>;
-    case "legPress": return <g opacity=".9"><line x1="228" y1="54" x2="282" y2="18" stroke="#5f6878" strokeWidth="9"/><line x1="228" y1="68" x2="289" y2="28" stroke="#5f6878" strokeWidth="4"/><rect x="76" y="91" width="75" height="13" rx="6" transform="rotate(28 76 91)" fill="#5f6878"/><rect x="221" y="54" width="15" height="42" rx="5" transform="rotate(56 221 54)" fill={accent}/></g>;
-    case "machineCalf": return <g opacity=".85"><line x1="127" y1="62" x2="193" y2="62" stroke={accent} strokeWidth="6" strokeLinecap="round"/><line x1="124" y1="21" x2="124" y2="159" stroke="#5f6878" strokeWidth="5"/><line x1="196" y1="21" x2="196" y2="159" stroke="#5f6878" strokeWidth="5"/><line x1="116" y1="166" x2="204" y2="166" stroke="#8b95a7" strokeWidth="5"/></g>;
-    case "hipBench": return <g><rect x="72" y="101" width="66" height="12" rx="6" fill="#5f6878"/><line x1="82" y1="113" x2="74" y2="150" stroke="#5f6878" strokeWidth="6"/><line x1="128" y1="113" x2="136" y2="150" stroke="#5f6878" strokeWidth="6"/><line x1={handsMid[0] - 28} y1={handsMid[1] + 2} x2={handsMid[0] + 28} y2={handsMid[1] + 2} stroke={accent} strokeWidth="5" strokeLinecap="round"/></g>;
-    case "kettlebell": return <g transform={`translate(${handsMid[0]} ${handsMid[1] + 5})`}><circle cx="0" cy="4" r="10" fill={accent} opacity=".9"/><path d="M-6 -2a6 6 0 0 1 12 0" fill="none" stroke="#d7dde8" strokeWidth="3"/></g>;
-    default: return null;
+    case "dumbbells":
+      return <g>{[joints.handL, joints.handR].map((hand, i) => <g key={i} transform={`translate(${hand[0]} ${hand[1]})`}>
+        <line x1="-10" y1="0" x2="10" y2="0" stroke="#e6edf8" strokeWidth="3.3"/>
+        <rect x="-15" y="-6" width="5" height="12" rx="2.5" fill="#0e1320"/>
+        <rect x="10" y="-6" width="5" height="12" rx="2.5" fill="#0e1320"/>
+        <rect x="-13.5" y="-5" width="2" height="10" rx="1" fill={accent}/>
+        <rect x="11.5" y="-5" width="2" height="10" rx="1" fill={accent}/>
+      </g>)}</g>;
+    case "cableFly":
+      return <g opacity=".92"><line x1="28" y1="32" x2={joints.handL[0]} y2={joints.handL[1]} stroke={accent} strokeWidth="2.2"/><line x1="292" y1="32" x2={joints.handR[0]} y2={joints.handR[1]} stroke={accent} strokeWidth="2.2"/><circle cx="28" cy="32" r="7" fill="none" stroke="#dbe4f3" strokeWidth="3"/><circle cx="292" cy="32" r="7" fill="none" stroke="#dbe4f3" strokeWidth="3"/></g>;
+    case "pullup":
+      return <g><line x1="86" y1="26" x2="234" y2="26" stroke="#dfe7f4" strokeWidth="6" strokeLinecap="round"/><line x1="104" y1="18" x2="104" y2="26" stroke={accent} strokeWidth="4"/><line x1="216" y1="18" x2="216" y2="26" stroke={accent} strokeWidth="4"/></g>;
+    case "pulldown":
+      return <g><rect x="229" y="30" width="46" height="118" rx="10" fill="#1b2332" opacity=".9"/><line x1="252" y1="8" x2="252" y2="144" stroke="#697489" strokeWidth="3" opacity=".7"/><line x1="116" y1="28" x2="208" y2="28" stroke="#e4ebf7" strokeWidth="5" strokeLinecap="round"/><line x1="162" y1="8" x2="162" y2="28" stroke={accent} strokeWidth="2.4" opacity=".8"/><rect x="127" y="147" width="70" height="8" rx="4" fill="#667085" opacity=".8"/></g>;
+    case "bench":
+      return <g><rect x="112" y="111" width="131" height="12" rx="6" fill="#5f6878"/><line x1="130" y1="122" x2="119" y2="159" stroke="#5f6878" strokeWidth="7"/><line x1="223" y1="122" x2="234" y2="159" stroke="#5f6878" strokeWidth="7"/><rect x="143" y="52" width="10" height="57" rx="4" fill="#596171"/><rect x="199" y="52" width="10" height="57" rx="4" fill="#596171"/></g>;
+    case "inclineBench":
+      return <g><line x1="132" y1="124" x2="216" y2="70" stroke="#5f6878" strokeWidth="12" strokeLinecap="round"/><line x1="144" y1="118" x2="132" y2="158" stroke="#5f6878" strokeWidth="7"/><line x1="198" y1="83" x2="212" y2="150" stroke="#5f6878" strokeWidth="7"/></g>;
+    case "legPress":
+      return <g opacity=".95"><line x1="230" y1="52" x2="286" y2="18" stroke="#636d7d" strokeWidth="9"/><line x1="228" y1="67" x2="289" y2="28" stroke="#636d7d" strokeWidth="4"/><rect x="78" y="92" width="73" height="13" rx="6" transform="rotate(28 78 92)" fill="#5f6878"/><rect x="223" y="53" width="16" height="43" rx="5" transform="rotate(56 223 53)" fill={accent}/></g>;
+    case "machineCalf":
+      return <g opacity=".9"><line x1="127" y1="62" x2="193" y2="62" stroke={accent} strokeWidth="6" strokeLinecap="round"/><line x1="124" y1="21" x2="124" y2="159" stroke="#5f6878" strokeWidth="5"/><line x1="196" y1="21" x2="196" y2="159" stroke="#5f6878" strokeWidth="5"/><line x1="116" y1="166" x2="204" y2="166" stroke="#8b95a7" strokeWidth="5"/></g>;
+    case "hipBench":
+      return <g><rect x="72" y="101" width="66" height="12" rx="6" fill="#5f6878"/><line x1="82" y1="113" x2="74" y2="150" stroke="#5f6878" strokeWidth="6"/><line x1="128" y1="113" x2="136" y2="150" stroke="#5f6878" strokeWidth="6"/><line x1={handsMid[0] - 30} y1={handsMid[1] + 2} x2={handsMid[0] + 30} y2={handsMid[1] + 2} stroke="#202938" strokeWidth="10" strokeLinecap="round"/><line x1={handsMid[0] - 30} y1={handsMid[1] + 2} x2={handsMid[0] + 30} y2={handsMid[1] + 2} stroke={accent} strokeWidth="4" strokeLinecap="round" opacity=".85"/></g>;
+    case "kettlebell":
+      return <g transform={`translate(${handsMid[0]} ${handsMid[1] + 5})`}><circle cx="0" cy="4" r="11" fill="#111827" opacity=".95"/><circle cx="0" cy="4" r="9" fill={accent} opacity=".7"/><path d="M-6 -2a6 6 0 0 1 12 0" fill="none" stroke="#eef3fb" strokeWidth="3"/></g>;
+    default:
+      return null;
   }
+}
+
+function FigureOutfit({ joints, accent, clipId }: { joints: Pose; accent: string; clipId: string }) {
+  const bustY = (joints.neck[1] + joints.hipL[1]) / 2 - 8;
+  return <>
+    <path d={`M ${joints.shoulderL[0]-4} ${joints.shoulderL[1]+3} Q ${joints.head[0]} ${bustY-10} ${joints.shoulderR[0]+4} ${joints.shoulderR[1]+3} L ${joints.hipR[0]-1} ${joints.hipR[1]-2} Q ${joints.head[0]} ${joints.hipL[1]-3} ${joints.hipL[0]+1} ${joints.hipL[1]-2} Z`} fill={`url(#${clipId}-top)`} stroke="rgba(255,255,255,.10)" strokeWidth="1"/>
+    <path d={`M ${joints.hipL[0]-4} ${joints.hipL[1]-1} L ${joints.hipR[0]+4} ${joints.hipR[1]-1} L ${joints.kneeR[0]-1} ${joints.kneeR[1]-4} Q ${joints.head[0]} ${joints.hipL[1]+18} ${joints.kneeL[0]+1} ${joints.kneeL[1]-4} Z`} fill={`url(#${clipId}-shorts)`} stroke="rgba(255,255,255,.08)" strokeWidth="1"/>
+    <path d={`M ${joints.shoulderL[0]+2} ${joints.shoulderL[1]+8} Q ${joints.head[0]} ${bustY} ${joints.shoulderR[0]-2} ${joints.shoulderR[1]+8}`} fill="none" stroke="#00d3ff" strokeWidth="2" strokeLinecap="round" opacity=".95"/>
+    <path d={`M ${joints.hipL[0]+1} ${joints.hipL[1]+10} Q ${joints.head[0]} ${joints.hipL[1]+2} ${joints.hipR[0]-1} ${joints.hipR[1]+10}`} fill="none" stroke="#ffd54d" strokeWidth="2" strokeLinecap="round" opacity=".9"/>
+    <path d={`M ${joints.hipL[0]+2} ${joints.hipL[1]+3} Q ${joints.kneeL[0]-7} ${joints.kneeL[1]-7} ${joints.kneeL[0]-4} ${joints.kneeL[1]+1}`} fill="none" stroke="#ff4fd5" strokeWidth="2" strokeLinecap="round" opacity=".95"/>
+    <path d={`M ${joints.hipR[0]-2} ${joints.hipR[1]+3} Q ${joints.kneeR[0]+7} ${joints.kneeR[1]-7} ${joints.kneeR[0]+4} ${joints.kneeR[1]+1}`} fill="none" stroke="#7dff66" strokeWidth="2" strokeLinecap="round" opacity=".95"/>
+    <circle cx={joints.head[0]} cy={bustY+5} r="3" fill="#111" opacity=".88"/>
+    <circle cx={joints.head[0]} cy={bustY+5} r="1.8" fill={accent} opacity=".95"/>
+  </>;
+}
+
+function LimbCapsule({ a, b, width, stroke, opacity = 1 }: { a: Point; b: Point; width: number; stroke: string; opacity?: number }) {
+  return <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={stroke} strokeWidth={width} strokeLinecap="round" opacity={opacity}/>;
+}
+
+function Glove({ hand, accent }: { hand: Point; accent: string }) {
+  return <g transform={`translate(${hand[0]} ${hand[1]})`}>
+    <circle cx="0" cy="0" r="5.5" fill="#131823"/>
+    <circle cx="0" cy="0" r="4" fill="#202938"/>
+    <path d="M-4 1 Q 0 -2 4 1" fill="none" stroke={accent} strokeWidth="1.4" strokeLinecap="round" opacity=".9"/>
+  </g>;
+}
+
+function Shoe({ ankle, toe, accent, mirrored = false }: { ankle: Point; toe: Point; accent: string; mirrored?: boolean }) {
+  const angle = angleDeg(ankle, toe);
+  return <g transform={`translate(${ankle[0]} ${ankle[1]}) rotate(${angle}) scale(${mirrored ? -1 : 1} 1)`}>
+    <rect x="-4" y="-5" width="8" height="10" rx="2" fill="#fafcff" opacity=".86"/>
+    <path d="M -2 0 C 3 -6 14 -5 18 -1 L 18 6 C 12 7 4 7 -3 4 Z" fill="#0f1218"/>
+    <path d="M 2 1 C 7 -2 12 -2 16 0" fill="none" stroke={accent} strokeWidth="1.6" strokeLinecap="round"/>
+    <path d="M 0 5 H 18" fill="none" stroke="#ffffff" strokeWidth="1.3" opacity=".9"/>
+  </g>;
+}
+
+function Hair({ head, neck, progress, clipId }: { head: Point; neck: Point; progress: number; clipId: string }) {
+  const sway = Math.sin(progress * Math.PI * 2) * 4;
+  const ponyBase: Point = [head[0] + 4, head[1] - 14];
+  return <>
+    <path d={`M ${head[0]-16} ${head[1]-2} Q ${head[0]-17} ${head[1]-24} ${head[0]} ${head[1]-27} Q ${head[0]+18} ${head[1]-24} ${head[0]+17} ${head[1]-2} Q ${head[0]+16} ${head[1]+8} ${head[0]+4} ${head[1]+11} Q ${head[0]-10} ${head[1]+10} ${head[0]-16} ${head[1]-2} Z`} fill={`url(#${clipId}-hair)`}/>
+    <path d={`M ${ponyBase[0]} ${ponyBase[1]} C ${ponyBase[0]+18+sway} ${ponyBase[1]+10}, ${ponyBase[0]+23+sway} ${ponyBase[1]+34}, ${ponyBase[0]+16+sway} ${ponyBase[1]+54} C ${ponyBase[0]+8+sway} ${ponyBase[1]+72}, ${ponyBase[0]-4+sway} ${ponyBase[1]+84}, ${ponyBase[0]-8+sway} ${ponyBase[1]+100}`} fill="none" stroke="#2e1718" strokeWidth="10" strokeLinecap="round" opacity=".9"/>
+    <path d={`M ${ponyBase[0]} ${ponyBase[1]+1} C ${ponyBase[0]+16+sway*.85} ${ponyBase[1]+12}, ${ponyBase[0]+19+sway*.85} ${ponyBase[1]+35}, ${ponyBase[0]+12+sway*.85} ${ponyBase[1]+54} C ${ponyBase[0]+6+sway*.85} ${ponyBase[1]+71}, ${ponyBase[0]-6+sway*.85} ${ponyBase[1]+86}, ${ponyBase[0]-10+sway*.85} ${ponyBase[1]+101}`} fill="none" stroke="#5b302c" strokeWidth="5" strokeLinecap="round" opacity=".9"/>
+    <circle cx={ponyBase[0]} cy={ponyBase[1]} r="4" fill="#131823"/>
+    <circle cx={ponyBase[0]} cy={ponyBase[1]} r="2.2" fill="#00d3ff" opacity=".9"/>
+  </>;
 }
 
 function AnimatedFigure({ exercise, config, compact }: { exercise: FitExercise; config: MotionConfig; compact: boolean }) {
@@ -288,50 +358,70 @@ function AnimatedFigure({ exercise, config, compact }: { exercise: FitExercise; 
   const floorY = config.floorY ?? 168;
   const shoulderMid = pointLerp(joints.shoulderL, joints.shoulderR, .5);
   const hipMid = pointLerp(joints.hipL, joints.hipR, .5);
-  const headSize = compact ? 12.5 : 14;
+  const headSize = compact ? 11.5 : 13.5;
+  const cue = progress < .5 ? config.cueUp : config.cueDown;
+  const handToward = pointLerp(joints.handL, joints.handR, .5);
+  const shoeTargetL: Point = [joints.ankleL[0] + 16, joints.ankleL[1] + 2];
+  const shoeTargetR: Point = [joints.ankleR[0] + 16, joints.ankleR[1] + 2];
 
   return <div style={{ position: "relative", width: "100%", height: compact ? 82 : 154 }}>
     <svg viewBox="0 0 320 180" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" aria-label={`Démonstration animée AWENA : ${exercise.name}`} role="img" style={{ display: "block" }}>
       <defs>
-        <radialGradient id={`${clipId}-halo`} cx="50%" cy="42%" r="55%"><stop offset="0" stopColor={accent} stopOpacity=".16"/><stop offset="1" stopColor={accent} stopOpacity="0"/></radialGradient>
-        <linearGradient id={`${clipId}-body`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={accent}/><stop offset="1" stopColor="#7c3aed"/></linearGradient>
-        <clipPath id={`${clipId}-head`}><circle cx={joints.head[0]} cy={joints.head[1]} r={headSize}/></clipPath>
+        <radialGradient id={`${clipId}-halo`} cx="50%" cy="42%" r="55%"><stop offset="0" stopColor={accent} stopOpacity=".17"/><stop offset="1" stopColor={accent} stopOpacity="0"/></radialGradient>
+        <linearGradient id={`${clipId}-skin`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffc3a4"/><stop offset="1" stopColor="#d97847"/></linearGradient>
+        <linearGradient id={`${clipId}-skinBack`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#d59274"/><stop offset="1" stopColor="#b8643d"/></linearGradient>
+        <linearGradient id={`${clipId}-top`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#1f2430"/><stop offset="1" stopColor="#0b0e15"/></linearGradient>
+        <linearGradient id={`${clipId}-shorts`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#181d27"/><stop offset="1" stopColor="#05070d"/></linearGradient>
+        <linearGradient id={`${clipId}-hair`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#704138"/><stop offset="1" stopColor="#1b0c0d"/></linearGradient>
       </defs>
-      <ellipse cx="160" cy="92" rx="132" ry="78" fill={`url(#${clipId}-halo)`}/>
-      <line x1="26" y1={floorY} x2="294" y2={floorY} stroke="rgba(255,255,255,.10)" strokeWidth="1" strokeDasharray="5 7"/>
+
+      <ellipse cx="160" cy="93" rx="133" ry="79" fill={`url(#${clipId}-halo)`}/>
+      <line x1="24" y1={floorY} x2="296" y2={floorY} stroke="rgba(255,255,255,.11)" strokeWidth="1" strokeDasharray="5 7"/>
+      <ellipse cx={hipMid[0]} cy={floorY + 2} rx="44" ry="8" fill="rgba(0,0,0,.23)"/>
       <Equipment kind={config.equipment} joints={joints} accent={accent}/>
 
-      {/* far side */}
-      {limb(joints.shoulderR, joints.elbowR, "#7a8496", 9, .48)}
-      {limb(joints.elbowR, joints.handR, "#8d96a6", 8, .48)}
-      {limb(joints.hipR, joints.kneeR, "#70798a", 11, .5)}
-      {limb(joints.kneeR, joints.ankleR, "#7f8999", 9, .5)}
+      {/* back limbs */}
+      <LimbCapsule a={joints.shoulderR} b={joints.elbowR} width={9} stroke={`url(#${clipId}-skinBack)`} opacity={.62}/>
+      <LimbCapsule a={joints.elbowR} b={joints.handR} width={8} stroke={`url(#${clipId}-skinBack)`} opacity={.62}/>
+      <LimbCapsule a={joints.hipR} b={joints.kneeR} width={12} stroke={`url(#${clipId}-skinBack)`} opacity={.7}/>
+      <LimbCapsule a={joints.kneeR} b={joints.ankleR} width={10} stroke={`url(#${clipId}-skinBack)`} opacity={.7}/>
 
-      {/* torso */}
-      <polygon points={`${joints.shoulderL[0]},${joints.shoulderL[1]} ${joints.shoulderR[0]},${joints.shoulderR[1]} ${joints.hipR[0]},${joints.hipR[1]} ${joints.hipL[0]},${joints.hipL[1]}`} fill={`url(#${clipId}-body)`} opacity=".94"/>
-      <line x1={shoulderMid[0]} y1={shoulderMid[1]} x2={hipMid[0]} y2={hipMid[1]} stroke="rgba(255,255,255,.20)" strokeWidth="2"/>
+      {/* body and front limbs */}
+      <FigureOutfit joints={joints} accent={accent} clipId={clipId}/>
+      <LimbCapsule a={joints.shoulderL} b={joints.elbowL} width={10} stroke={`url(#${clipId}-skin)`}/>
+      <LimbCapsule a={joints.elbowL} b={joints.handL} width={8.5} stroke={`url(#${clipId}-skin)`}/>
+      <LimbCapsule a={joints.hipL} b={joints.kneeL} width={13} stroke={`url(#${clipId}-skin)`}/>
+      <LimbCapsule a={joints.kneeL} b={joints.ankleL} width={10.5} stroke={`url(#${clipId}-skin)`}/>
 
-      {/* near side */}
-      {limb(joints.shoulderL, joints.elbowL, "#d9b7a2", 10)}
-      {limb(joints.elbowL, joints.handL, "#e4c1ab", 8)}
-      {limb(joints.hipL, joints.kneeL, "#7f62c9", 12)}
-      {limb(joints.kneeL, joints.ankleL, "#9a7be4", 10)}
-      <circle cx={joints.handL[0]} cy={joints.handL[1]} r="4.5" fill="#e6c4b0"/>
-      <circle cx={joints.handR[0]} cy={joints.handR[1]} r="4.1" fill="#d8b49f" opacity=".75"/>
+      <line x1={shoulderMid[0]} y1={shoulderMid[1]} x2={hipMid[0]} y2={hipMid[1]} stroke="rgba(255,255,255,.08)" strokeWidth="1.8"/>
 
-      {/* head: real AWENA avatar retained as identity marker */}
-      <circle cx={joints.head[0]} cy={joints.head[1]} r={headSize + 2.2} fill="#080a10" stroke={accent} strokeWidth="2"/>
-      <image href={AWENA_AVATAR} x={joints.head[0] - headSize} y={joints.head[1] - headSize} width={headSize * 2} height={headSize * 2} preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipId}-head)`}/>
+      {/* head and face */}
+      <Hair head={joints.head} neck={joints.neck} progress={progress} clipId={clipId}/>
+      <ellipse cx={joints.head[0]} cy={joints.head[1]} rx={headSize} ry={headSize + 2} fill={`url(#${clipId}-skin)`} stroke="rgba(255,255,255,.15)" strokeWidth=".8"/>
+      <circle cx={joints.head[0] - 4} cy={joints.head[1] - 1} r="1.4" fill="#2c1c18"/>
+      <circle cx={joints.head[0] + 4} cy={joints.head[1] - 1} r="1.4" fill="#2c1c18"/>
+      <path d={`M ${joints.head[0]-4} ${joints.head[1]+5} Q ${joints.head[0]} ${joints.head[1]+8} ${joints.head[0]+4} ${joints.head[1]+5}`} fill="none" stroke="#a44c44" strokeWidth="1.4" strokeLinecap="round"/>
+      <path d={`M ${joints.head[0]-2.5} ${joints.head[1]+1.5} Q ${joints.head[0]} ${joints.head[1]+3.3} ${joints.head[0]+2.5} ${joints.head[1]+1.5}`} fill="none" stroke="#cc7f63" strokeWidth="1" opacity=".85"/>
 
-      {/* movement path accent */}
-      <circle cx={pointLerp(config.start.handL, config.end.handL, progress)[0]} cy={pointLerp(config.start.handL, config.end.handL, progress)[1]} r="2.4" fill={accent} opacity=".8"/>
+      {/* accessories */}
+      <Glove hand={joints.handL} accent={accent}/>
+      <Glove hand={joints.handR} accent={accent}/>
+      <Shoe ankle={joints.ankleL} toe={shoeTargetL} accent={accent}/>
+      <Shoe ankle={joints.ankleR} toe={shoeTargetR} accent={accent} mirrored/>
+      <circle cx={joints.shoulderL[0]-7} cy={joints.shoulderL[1]+12} r="6" fill="#0d1320" opacity=".95"/>
+      <circle cx={joints.shoulderL[0]-7} cy={joints.shoulderL[1]+12} r="3.5" fill={accent} opacity=".9"/>
+      <path d={`M ${joints.shoulderL[0]-10} ${joints.shoulderL[1]+12} H ${joints.shoulderL[0]-4}`} stroke="#ffffff" strokeWidth=".9" opacity=".8"/>
+
+      {/* motion accent */}
+      <path d={`M ${pointLerp(config.start.handL, config.end.handL, .12)[0]} ${pointLerp(config.start.handL, config.end.handL, .12)[1]} Q ${handToward[0]-8} ${handToward[1]-8} ${pointLerp(config.start.handL, config.end.handL, .88)[0]} ${pointLerp(config.start.handL, config.end.handL, .88)[1]}`} fill="none" stroke={accent} strokeWidth="1.8" strokeDasharray="4 4" opacity=".45"/>
     </svg>
 
     <div style={{ position: "absolute", left: compact ? 6 : 9, top: compact ? 5 : 8, display: "flex", alignItems: "center", gap: 5, padding: compact ? "3px 6px" : "4px 7px", borderRadius: 999, background: "rgba(4,6,12,.78)", border: `1px solid ${accent}35`, backdropFilter: "blur(8px)" }}>
       <span style={{ width: 5, height: 5, borderRadius: "50%", background: accent, boxShadow: `0 0 8px ${accent}` }}/>
-      <span style={{ color: accent, fontSize: compact ? 6.2 : 7.1, fontWeight: 1000, letterSpacing: .9 }}>AWENA MOTION</span>
+      <span style={{ color: accent, fontSize: compact ? 6.2 : 7.1, fontWeight: 1000, letterSpacing: .9 }}>AWENA 3D</span>
     </div>
-    <div style={{ position: "absolute", right: compact ? 6 : 9, bottom: compact ? 5 : 8, padding: compact ? "3px 6px" : "4px 8px", borderRadius: 999, background: "rgba(4,6,12,.80)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.74)", fontSize: compact ? 6 : 7, fontWeight: 950, letterSpacing: .65 }}>{((config.duration || 2400) / 1000).toFixed(1)} S · BOUCLE</div>
+    <div style={{ position: "absolute", right: compact ? 6 : 9, top: compact ? 5 : 8, padding: compact ? "3px 6px" : "4px 8px", borderRadius: 999, background: "rgba(4,6,12,.80)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.78)", fontSize: compact ? 6 : 7, fontWeight: 950, letterSpacing: .65 }}>{cue}</div>
+    {!compact ? <div style={{ position: "absolute", right: 9, bottom: 8, padding: "4px 8px", borderRadius: 999, background: "rgba(4,6,12,.80)", border: "1px solid rgba(255,255,255,.09)", color: "rgba(255,255,255,.74)", fontSize: 7, fontWeight: 950, letterSpacing: .65 }}>{((config.duration || 2400) / 1000).toFixed(1)} S · BOUCLE</div> : null}
   </div>;
 }
 

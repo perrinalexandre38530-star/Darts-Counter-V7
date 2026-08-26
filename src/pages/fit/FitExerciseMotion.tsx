@@ -13,19 +13,45 @@ const AWENA_AVATAR = "/awena/awena-avatar.webp";
  * WebP/video can be introduced exercise-by-exercise by adding it here as an
  * explicit media override, without changing FitPerfPlan or the exercise store.
  */
-const MEDIA_OVERRIDES: Partial<Record<string, string>> = {};
+type MotionMediaOverride = {
+  src: string;
+  kind?: "image" | "video";
+  poster?: string;
+};
+
+const MEDIA_OVERRIDES: Partial<Record<string, MotionMediaOverride>> = {};
+
+function detectMediaKind(src: string, kind?: MotionMediaOverride["kind"]) {
+  if (kind) return kind;
+  return /\.(mp4|webm|mov)$/i.test(src) ? "video" : "image";
+}
 
 export default function FitExerciseMotion({ exercise, accent, compact = false }: { exercise: FitExercise; accent?: string; compact?: boolean }) {
   const color = accent || exercise.accent || "#f6c256";
-  const mediaSrc = MEDIA_OVERRIDES[exercise.id];
-  const [mediaOk, setMediaOk] = React.useState(Boolean(mediaSrc));
+  const media = MEDIA_OVERRIDES[exercise.id];
+  const mediaKind = detectMediaKind(media?.src || "", media?.kind);
+  const [mediaOk, setMediaOk] = React.useState(Boolean(media?.src));
 
-  React.useEffect(() => { setMediaOk(Boolean(mediaSrc)); }, [mediaSrc]);
+  React.useEffect(() => { setMediaOk(Boolean(media?.src)); }, [media?.src]);
 
   return (
     <div style={{ position: "relative", overflow: "hidden", borderRadius: compact ? 12 : 16, minHeight: compact ? 82 : 154, border: `1px solid ${color}30`, background: `radial-gradient(circle at 50% 30%,${color}14,rgba(3,5,10,.96) 66%)`, boxShadow: `inset 0 0 24px ${color}09` }}>
-      {mediaSrc && mediaOk ? (
-        <img src={mediaSrc} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}/>
+      {media?.src && mediaOk ? (
+        mediaKind === "video" ? (
+          <video
+            src={media.src}
+            poster={media.poster}
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload="metadata"
+            onError={() => setMediaOk(false)}
+            style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}
+          />
+        ) : (
+          <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}/>
+        )
       ) : hasFitAwenaMotion(exercise.id) ? (
         <FitAwenaMotionStage exercise={exercise} compact={compact}/>
       ) : (
