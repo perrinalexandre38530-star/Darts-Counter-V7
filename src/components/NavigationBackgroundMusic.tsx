@@ -12,32 +12,24 @@ import {
   getNavigationMusicTrack,
   type NavigationMusicTrackId,
 } from "../lib/navigationMusicCatalog";
+import {
+  GAMEPLAY_ROUTE_STATE_EVENT,
+  isGameplayRouteName,
+  type GameplayRouteStateDetail,
+} from "../lib/gameplayRoutes";
 
 type NavigationMusicZone = "navigation" | null;
 
-const GAMEPLAY_ROUTE_ALIASES = new Set([
-  "x01",
-  "cricket",
-  "x01_device_camera",
-  "training_clock",
-  "training_mode",
-  "pingpong_training",
-  "petanque_tournament_match_score",
-]);
-
 export function isNavigationGameplayRoute(routeLike: unknown): boolean {
-  const route = String(routeLike || "").trim().toLowerCase();
-  if (!route) return false;
-  return (
-    route.endsWith("_play") ||
-    route.endsWith(".play") ||
-    GAMEPLAY_ROUTE_ALIASES.has(route)
-  );
+  return isGameplayRouteName(routeLike);
 }
 
-export function navigationMusicZoneForRoute(routeLike: unknown): NavigationMusicZone {
+export function navigationMusicZoneForRoute(
+  routeLike: unknown,
+  gameplayActive = false,
+): NavigationMusicZone {
   const route = String(routeLike || "").trim().toLowerCase();
-  if (!route || isNavigationGameplayRoute(route)) return null;
+  if (!route || gameplayActive || isGameplayRouteName(route)) return null;
   return "navigation";
 }
 
@@ -68,10 +60,16 @@ function isAudibleVideo(target: EventTarget | null): target is HTMLVideoElement 
   return !target.muted && Number(target.volume ?? 1) > 0;
 }
 
-export default function NavigationBackgroundMusic({ route }: { route: string }) {
+export default function NavigationBackgroundMusic({
+  route,
+  gameplayActive = false,
+}: {
+  route: string;
+  gameplayActive?: boolean;
+}) {
   const { muted } = useAudio();
   const awena = useAwenaOptional();
-  const zone = navigationMusicZoneForRoute(route);
+  const zone = navigationMusicZoneForRoute(route, gameplayActive);
   const [prefs, setPrefs] = React.useState<AudioPreferences>(() => getAudioPreferences());
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
@@ -83,6 +81,7 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
   const pausedByPreviewRef = React.useRef(false);
   const activeVideoRefs = React.useRef<Set<HTMLVideoElement>>(new Set());
   const pendingAutoplayRef = React.useRef(false);
+  const playRequestSerialRef = React.useRef(0);
   const volumeRafRef = React.useRef<number | null>(null);
   const mountedRef = React.useRef(false);
   const prefsRef = React.useRef(prefs);
@@ -170,13 +169,22 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
   const requestPlay = React.useCallback(async () => {
     const audio = audioRef.current;
     if (!audio || !canPlay()) return;
+    const requestSerial = ++playRequestSerialRef.current;
     audio.muted = false;
     rampVolume(getTargetVolume(), 220);
     try {
       await audio.play();
+      // A route can switch to PLAY while the browser is still resolving an
+      // autoplay promise. Never let that delayed promise restart the music.
+      if (requestSerial !== playRequestSerialRef.current || !canPlay()) {
+        try { audio.pause(); } catch {}
+        return;
+      }
       pendingAutoplayRef.current = false;
     } catch {
-      pendingAutoplayRef.current = true;
+      if (requestSerial === playRequestSerialRef.current && canPlay()) {
+        pendingAutoplayRef.current = true;
+      }
     }
   }, [canPlay, getTargetVolume, rampVolume]);
 
@@ -197,6 +205,25 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
       audio.removeAttribute("src");
     }
   }, [loadNextTrack, rebuildCycle]);
+
+  const hardStopForGameplay = React.useCallback(() => {
+    // Invalidate every pending play() call before touching the element.
+    playRequestSerialRef.current += 1;
+    pendingAutoplayRef.current = false;
+    pausedByPreviewRef.current = false;
+    zoneRef.current = null;
+    cycleRef.current = [];
+    cursorRef.current = 0;
+    currentTrackIdRef.current = null;
+    cancelVolumeRamp();
+
+    const audio = audioRef.current;
+    if (!audio) return;
+    try { audio.pause(); } catch {}
+    try { audio.currentTime = 0; } catch {}
+    try { audio.removeAttribute("src"); } catch {}
+    try { audio.load(); } catch {}
+  }, [cancelVolumeRamp]);
 
   const resumeAfterBlockingMedia = React.useCallback(() => {
     const connected = new Set<HTMLVideoElement>();
@@ -233,20 +260,31 @@ export default function NavigationBackgroundMusic({ route }: { route: string }) 
   }, []);
 
   React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onGameplayRouteState = (event: Event) => {
+      const detail = (event as CustomEvent<GameplayRouteStateDetail>).detail;
+      if (detail?.gameplay || isGameplayRouteName(detail?.route)) {
+        hardStopForGameplay();
+      }
+    };
+    window.addEventListener(GAMEPLAY_ROUTE_STATE_EVENT, onGameplayRouteState as EventListener);
+    return () => window.removeEventListener(GAMEPLAY_ROUTE_STATE_EVENT, onGameplayRouteState as EventListener);
+  }, [hardStopForGameplay]);
+
+  React.useEffect(() => {
     const previousZone = zoneRef.current;
     if (zone === previousZone) {
       if (zone) void requestPlay();
       return;
     }
     if (!zone) {
-      zoneRef.current = null;
-      resetPlaylist(null);
+      hardStopForGameplay();
       return;
     }
     zoneRef.current = zone;
     resetPlaylist(zone);
     void requestPlay();
-  }, [zone, requestPlay, resetPlaylist]);
+  }, [zone, hardStopForGameplay, requestPlay, resetPlaylist]);
 
   const playlistSignature = React.useMemo(() => JSON.stringify({
     enabledTrackIds: prefs.enabledTrackIds,
