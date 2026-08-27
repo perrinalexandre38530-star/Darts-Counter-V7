@@ -12,6 +12,7 @@ const fitStore = read("src/fit/fitStore.ts");
 const fitHome = read("src/pages/fit/FitPerfHome.tsx");
 const fitModule = read("src/pages/fit/FitPerfModule.tsx");
 const fitPlan = read("src/pages/fit/FitPerfPlan.tsx");
+const fitBodyMap = read("src/pages/fit/FitBodyMap.tsx");
 const fitStats = read("src/pages/fit/FitPerfStatsPage.tsx");
 const fitExerciseMotion = read("src/pages/fit/FitExerciseMotion.tsx");
 const fitAwenaMotionStage = read("src/pages/fit/FitAwenaMotionStage.tsx");
@@ -34,6 +35,8 @@ assert.ok(fitModule.includes("RÉCUPÉRATION"), "Chronomètre récupération FIT
 assert.ok(fitModule.includes("appendFitSession"), "Sauvegarde des séances FIT PERF absente");
 assert.ok(fitHome.includes("FIT SCORE"), "Dashboard performance FIT PERF incomplet");
 assert.ok(fitPlan.includes("AWENA COACH") && fitPlan.includes("FIT_TEMPLATES") && fitPlan.includes("favorites"), "Centre exercices/programmes FIT PERF incomplet");
+assert.ok(fitBodyMap.includes("body-muscles@1.0.0") && fitBodyMap.includes("BodyChart") && fitBodyMap.includes("fitBodyMusclePulse"), "Carte anatomique Body Muscles FIT PERF absente");
+assert.ok(!fitBodyMap.includes("FRONT_HOTSPOTS") && !fitBodyMap.includes("anatomyImage"), "Ancien mannequin/hotspots FIT PERF encore actif");
 assert.ok(fitStats.includes("1RM"), "Stats records FIT PERF incomplètes");
 assert.ok(fitExerciseMotion.includes("FitAwenaMotionStage") && fitExerciseMotion.includes("FitPremiumMotionPlayer"), "Renderer AWENA Premium Motion non branché");
 assert.ok(fitPremiumMotionPlayer.includes("frameSequence") && fitPremiumMotionPlayer.includes("<video"), "Lecteur premium frames/vidéo incomplet");
