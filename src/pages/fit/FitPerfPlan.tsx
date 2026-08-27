@@ -196,17 +196,34 @@ export default function FitPerfPlan({ go }: Props) {
       ]} />
 
       {tab === "body" ? <>
-        <FitSectionTitle eyebrow={t("ANATOMIE", "ANATOMY", "ANATOMÍA")} title={t("Quelle zone veux-tu travailler ?", "Which area do you want to train?", "¿Qué zona quieres trabajar?")} right={muscle !== "Tous" ? <button type="button" onClick={() => setMuscle("Tous")} style={{ border: 0, background: "transparent", color: textSoft, fontSize: 7.5, fontWeight: 900 }}>{t("TOUT", "ALL", "TODO")}</button> : null} />
-        <FitBodyMap selected={muscle} onSelect={selectBodyMuscle} counts={counts} lang={lang} />
+        <FitSectionTitle
+          eyebrow={t("ANATOMIE", "ANATOMY", "ANATOMÍA")}
+          title={t("Quelle zone veux-tu travailler ?", "Which area do you want to train?", "¿Qué zona quieres trabajar?")}
+          right={muscle !== "Tous" ? <button type="button" onClick={() => setMuscle("Tous")} aria-label={t("Effacer la sélection", "Clear selection", "Borrar selección")} style={{ width: 28, height: 28, borderRadius: 9, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.03)", color: textSoft, display: "grid", placeItems: "center", cursor: "pointer", fontSize: 14 }}>×</button> : null}
+        />
+        <FitBodyMap selected={muscle} onSelect={selectBodyMuscle} lang={lang} />
 
-        <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 8, paddingBottom: 2 }}>
-          {FIT_MUSCLE_ORDER.filter((item) => item !== "Full body" && counts[item] > 0).map((item) => filterChip(`${FIT_MUSCLE_LABELS[item][langKey]} · ${counts[item]}`, muscle === item, () => setMuscle(item)))}
-        </div>
-
-        {muscle !== "Tous" ? <>
-          <FitSectionTitle eyebrow={t("SÉLECTION", "SELECTION", "SELECCIÓN")} title={`${counts[muscle] || 0} ${t("exercices pour cette zone", "exercises for this area", "ejercicios para esta zona")}`} right={<button type="button" onClick={() => setTab("library")} style={{ border: 0, background: "transparent", color: accent, fontSize: 7.8, fontWeight: 1000 }}>{t("VOIR TOUT", "VIEW ALL", "VER TODO")} ›</button>} />
-          <div style={{ display: "grid", gap: 6 }}>{allExercises.filter((exercise) => exerciseMatchesMuscle(exercise, muscle)).slice(0, 8).map(renderExerciseCard)}</div>
-        </> : <FitGlassCard accent={accent} style={{ marginTop: 10, padding: 12, display: "grid", gridTemplateColumns: "38px 1fr", gap: 10, alignItems: "center" }}><div style={{ width: 36, height: 36, borderRadius: 12, display: "grid", placeItems: "center", color: accent, background: `${accent}10`, border: `1px solid ${accent}30` }}><FitIcon name="info" size={17} /></div><div><div style={{ fontSize: 10, fontWeight: 1000 }}>{t("Touchez directement une zone du corps", "Tap a body area directly", "Toca directamente una zona del cuerpo")}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.6 }}>{t("Face et dos sont interactifs. Les exercices sont filtrés immédiatement.", "Front and back are interactive. Exercises are filtered instantly.", "Frente y espalda son interactivos. Los ejercicios se filtran al instante.")}</div></div></FitGlassCard>}
+        {muscle !== "Tous" ? (
+          <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", padding: "10px 11px 10px 13px", borderRadius: 17, border: "1px solid rgba(255,255,255,.07)", background: "linear-gradient(135deg,rgba(255,61,98,.085),rgba(255,255,255,.025) 42%,rgba(255,255,255,.012))", boxShadow: "0 10px 24px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.025)" }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 11 }}>
+              <div style={{ width: 8, height: 34, flex: "0 0 8px", borderRadius: 999, background: "#ff3d62", boxShadow: "0 0 13px rgba(255,61,98,.42)" }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, lineHeight: 1.05, fontWeight: 1000, letterSpacing: -.2, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{FIT_MUSCLE_LABELS[muscle][langKey]}</div>
+                <div style={{ marginTop: 5, color: textSoft, fontSize: 8.1, fontWeight: 850 }}>{counts[muscle] || 0} {t("exercices", "exercises", "ejercicios")}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab("library")}
+              aria-label={`${t("Voir les exercices", "View exercises", "Ver ejercicios")} ${FIT_MUSCLE_LABELS[muscle][langKey]}`}
+              title={t("Voir les exercices", "View exercises", "Ver ejercicios")}
+              style={{ width: 54, height: 54, borderRadius: 16, border: `1px solid ${accent}68`, background: `linear-gradient(145deg,${accent}1b,rgba(255,255,255,.055))`, color: accent, boxShadow: `0 0 17px ${accent}1c, inset 0 0 0 1px ${accent}0d`, display: "grid", placeItems: "center", cursor: "pointer", padding: 0 }}
+            >
+              <span style={{ display: "grid", placeItems: "center" }}><FitIcon name="library" size={22} /></span>
+              <span style={{ marginTop: -7, fontSize: 6.4, fontWeight: 1000, letterSpacing: .55 }}>{t("VOIR", "VIEW", "VER")}</span>
+            </button>
+          </div>
+        ) : null}
       </> : null}
 
       {(tab === "library" || tab === "favorites") ? <>

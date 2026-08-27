@@ -5,7 +5,6 @@ import { FIT_MUSCLE_LABELS } from "../../fit/fitExerciseTaxonomy";
 type Props = {
   selected: FitMuscle | "Tous";
   onSelect: (muscle: FitMuscle) => void;
-  counts?: Partial<Record<FitMuscle, number>>;
   lang?: string;
 };
 
@@ -137,7 +136,7 @@ function BodyMusclesPanel({
   );
 }
 
-export default function FitBodyMap({ selected, onSelect, counts = {}, lang = "fr" }: Props) {
+export default function FitBodyMap({ selected, onSelect, lang = "fr" }: Props) {
   const key = lang.startsWith("en") ? "en" : lang.startsWith("es") ? "es" : "fr";
   const [module, setModule] = React.useState<BodyMusclesModule | null>(null);
   const [loadState, setLoadState] = React.useState<"loading" | "ready" | "error">("loading");
@@ -164,35 +163,33 @@ export default function FitBodyMap({ selected, onSelect, counts = {}, lang = "fr
     return () => { cancelled = true; };
   }, [retryKey]);
 
-  const selectedLabel = selected === "Tous"
-    ? (key === "en" ? "All muscle groups" : key === "es" ? "Todos los grupos" : "Tous les groupes")
-    : FIT_MUSCLE_LABELS[selected][key];
-  const selectedCount = selected === "Tous"
-    ? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0)
-    : Number(counts[selected] || 0);
-
   const frontLabel = key === "en" ? "FRONT" : key === "es" ? "FRENTE" : "FACE";
   const backLabel = key === "en" ? "BACK" : key === "es" ? "ESPALDA" : "DOS";
 
   return (
-    <div className="fit-body-muscles-map" style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(11,14,24,.98),rgba(7,10,18,.94))", boxShadow: "0 18px 44px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04)", overflow: "hidden" }}>
+    <div className="fit-body-muscles-map" style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,.075)", background: "linear-gradient(180deg,rgba(10,13,22,.96),rgba(6,9,16,.91))", boxShadow: "0 15px 38px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.035)", overflow: "hidden", padding: 9 }}>
       <style>{`
         @keyframes fitBodyMusclePulse {
           0%,100% { stroke-opacity:1; filter:drop-shadow(0 0 3px rgba(255,61,98,.66)) drop-shadow(0 0 9px rgba(255,61,98,.32)); }
           50% { stroke-opacity:.28; filter:drop-shadow(0 0 6px rgba(255,61,98,.95)) drop-shadow(0 0 15px rgba(255,61,98,.56)); }
         }
+        .fit-body-muscles-grid {
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:9px;
+        }
         .fit-body-muscles-host {
           position:relative;
-          height:360px;
+          height:315px;
           min-width:0;
-          border-radius:20px;
+          border-radius:18px;
           overflow:hidden;
-          border:1px solid rgba(255,255,255,.055);
-          background:radial-gradient(circle at 50% 34%,rgba(255,255,255,.045),rgba(255,255,255,.012) 58%,rgba(0,0,0,.10));
+          border:1px solid rgba(255,255,255,.05);
+          background:radial-gradient(circle at 50% 34%,rgba(255,255,255,.042),rgba(255,255,255,.01) 60%,rgba(0,0,0,.08));
         }
         .fit-body-muscles-host .body-chart-container {
           box-sizing:border-box !important;
-          padding:5px 2px !important;
+          padding:3px 0 !important;
           width:100% !important;
           height:100% !important;
         }
@@ -205,9 +202,7 @@ export default function FitBodyMap({ selected, onSelect, counts = {}, lang = "fr
           filter:none !important;
           overflow:visible !important;
         }
-        .fit-body-muscles-host .body-chart-background {
-          opacity:.12 !important;
-        }
+        .fit-body-muscles-host .body-chart-background { opacity:.11 !important; }
         .fit-body-muscles-host .body-chart-muscle {
           fill:#d8dbe2 !important;
           fill-opacity:.90 !important;
@@ -228,50 +223,28 @@ export default function FitBodyMap({ selected, onSelect, counts = {}, lang = "fr
           animation:fitBodyMusclePulse 1.05s ease-in-out infinite !important;
         }
         @media (max-width:560px) {
-          .fit-body-muscles-host { height:300px; }
+          .fit-body-muscles-host { height:255px; }
+          .fit-body-muscles-grid { gap:6px; }
         }
       `}</style>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", padding: "14px 15px 11px" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 7.5, fontWeight: 1000, letterSpacing: 1, opacity: .52 }}>{key === "en" ? "TARGET AREA" : key === "es" ? "ZONA OBJETIVO" : "ZONE CIBLÉE"}</div>
-          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 1000, letterSpacing: -.35 }}>{selectedLabel}</div>
-          <div style={{ marginTop: 4, color: "rgba(255,255,255,.62)", fontSize: 8.2 }}>
-            {key === "en" ? "Tap an anatomical region. Symmetric work zones are selected together." : key === "es" ? "Toca una zona anatómica. Las zonas simétricas se seleccionan juntas." : "Touchez une zone anatomique. Les zones de travail symétriques sont sélectionnées ensemble."}
-          </div>
-        </div>
-        <div style={{ minWidth: 62, minHeight: 46, padding: "0 10px", borderRadius: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.08)", background: "linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03))" }}>
-          <div style={{ fontSize: 18, fontWeight: 1000 }}>{selected === "Tous" ? "∞" : selectedCount}</div>
-          <div style={{ marginTop: 2, fontSize: 6.6, opacity: .5, fontWeight: 1000, letterSpacing: .8 }}>{key === "en" ? "EXERCISES" : key === "es" ? "EJERCICIOS" : "EXERCICES"}</div>
-        </div>
-      </div>
-
       {loadState === "ready" && module ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10, padding: "0 10px 11px" }}>
+        <div className="fit-body-muscles-grid">
           <BodyMusclesPanel view="FRONT" label={frontLabel} selected={selected} onSelect={onSelect} module={module} />
           <BodyMusclesPanel view="BACK" label={backLabel} selected={selected} onSelect={onSelect} module={module} />
         </div>
       ) : (
-        <div style={{ margin: "0 10px 11px", minHeight: 320, borderRadius: 20, border: "1px solid rgba(255,255,255,.06)", background: "rgba(255,255,255,.018)", display: "grid", placeItems: "center", padding: 18, textAlign: "center" }}>
+        <div style={{ minHeight: 280, borderRadius: 18, border: "1px solid rgba(255,255,255,.05)", background: "rgba(255,255,255,.014)", display: "grid", placeItems: "center", padding: 18, textAlign: "center" }}>
           {loadState === "loading" ? (
             <div><div style={{ fontSize: 22 }}>◌</div><div style={{ marginTop: 8, fontSize: 9, fontWeight: 1000 }}>{key === "en" ? "Loading anatomical map…" : key === "es" ? "Cargando mapa anatómico…" : "Chargement de la carte anatomique…"}</div></div>
           ) : (
             <div>
               <div style={{ fontSize: 10, fontWeight: 1000 }}>{key === "en" ? "Anatomical map unavailable" : key === "es" ? "Mapa anatómico no disponible" : "Carte anatomique indisponible"}</div>
-              <div style={{ marginTop: 5, maxWidth: 300, color: "rgba(255,255,255,.52)", fontSize: 8 }}>{key === "en" ? "Check the connection and retry." : key === "es" ? "Comprueba la conexión y vuelve a intentarlo." : "Vérifie la connexion puis relance le chargement."}</div>
               <button type="button" onClick={() => setRetryKey((value) => value + 1)} style={{ marginTop: 10, minHeight: 34, padding: "0 13px", borderRadius: 11, border: "1px solid rgba(255,61,98,.42)", background: "rgba(255,61,98,.09)", color: "#ff6b86", fontSize: 8, fontWeight: 1000, cursor: "pointer" }}>{key === "en" ? "RETRY" : key === "es" ? "REINTENTAR" : "RÉESSAYER"}</button>
             </div>
           )}
         </div>
       )}
-
-      <div style={{ padding: "0 12px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "rgba(255,255,255,.42)", fontSize: 6.8, fontWeight: 800 }}>
-        <span style={{ width: 8, height: 8, borderRadius: 999, background: "#d8dbe2", border: "1px solid #6f7480" }} />
-        {key === "en" ? "AVAILABLE" : key === "es" ? "DISPONIBLE" : "DISPONIBLE"}
-        <span style={{ width: 8, height: 8, borderRadius: 999, background: "#ff3d62", border: "1px solid #fff", boxShadow: "0 0 8px rgba(255,61,98,.55)", marginLeft: 6 }} />
-        {key === "en" ? "SELECTED" : key === "es" ? "SELECCIONADO" : "SÉLECTIONNÉ"}
-        <span style={{ marginLeft: 8, opacity: .62 }}>Body Muscles · Apache 2.0</span>
-      </div>
     </div>
   );
 }
