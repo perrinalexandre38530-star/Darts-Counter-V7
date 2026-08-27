@@ -7,7 +7,7 @@ export type FitIconName =
   | "workout" | "program" | "live" | "history" | "library"
   | "muscles" | "favorite" | "guide" | "search" | "settings"
   | "timer" | "volume" | "strength" | "profile" | "coach" | "plus"
-  | "chevron" | "info";
+  | "chevron" | "info" | "filter";
 
 export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -36,6 +36,7 @@ export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number 
     case "plus": return <svg {...common}><path {...p} d="M12 5v14M5 12h14"/></svg>;
     case "chevron": return <svg {...common}><path {...p} d="m9 6 6 6-6 6"/></svg>;
     case "info": return <svg {...common}><circle {...p} cx="12" cy="12" r="9"/><path {...p} d="M12 10v6M12 7h.01"/></svg>;
+    case "filter": return <svg {...common}><path {...p} d="M4 6h16M7 12h10M10 18h4"/><circle {...p} cx="8" cy="6" r="1.6"/><circle {...p} cx="15" cy="12" r="1.6"/><circle {...p} cx="12" cy="18" r="1.6"/></svg>;
     default: return null;
   }
 }

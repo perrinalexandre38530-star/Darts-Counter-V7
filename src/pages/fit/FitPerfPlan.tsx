@@ -4,6 +4,7 @@ import { useLang } from "../../contexts/LangContext";
 import { pickLegacyLocalizedText } from "../../i18n/legacyLocalizedText";
 import { FIT_EXERCISES, FIT_TEMPLATES, buildFitRecords, formatKg, loadFitSessions, type FitEquipment, type FitExercise, type FitMuscle } from "../../fit/fitStore";
 import { freeExerciseImageUrl, getCachedFreeExerciseCatalog, loadFreeExerciseCatalog } from "../../fit/freeExerciseCatalog";
+import { getAwenaPremiumMotion } from "../../fit/awenaPremiumMotions";
 import {
   FIT_EQUIPMENT_ORDER,
   FIT_MUSCLE_COLORS,
@@ -14,9 +15,7 @@ import {
   inferMovementPattern,
   muscleExerciseCount,
   normalizeLevel,
-  type FitGoalFilter,
   type FitLevelFilter,
-  type FitMovementFilter,
 } from "../../fit/fitExerciseTaxonomy";
 import FitBodyMap from "./FitBodyMap";
 import FitExerciseMotion from "./FitExerciseMotion";
@@ -24,6 +23,8 @@ import { FitGlassCard, FitIcon, FitIconTabs, FitMetric, FitPageHeader, FitPill, 
 
 type Props = { go: (route: any, params?: any) => void };
 type Tab = "body" | "library" | "favorites" | "programs";
+type FilterTab = "zone" | "equipment" | "level";
+const EXERCISES_PER_PAGE = 9;
 const FAVORITES_KEY = "mss-fit-perf-favorite-exercises-v1";
 
 function readFavorites(): string[] {
@@ -73,13 +74,15 @@ export default function FitPerfPlan({ go }: Props) {
   const [muscle, setMuscle] = React.useState<FitMuscle | "Tous">("Tous");
   const [equipment, setEquipment] = React.useState<FitEquipment | "Tous">("Tous");
   const [level, setLevel] = React.useState<FitLevelFilter>("Tous");
-  const [movement, setMovement] = React.useState<FitMovementFilter>("Tous");
-  const [goal, setGoal] = React.useState<FitGoalFilter>("Tous");
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [filterTab, setFilterTab] = React.useState<FilterTab>("zone");
+  const [page, setPage] = React.useState(0);
   const [detail, setDetail] = React.useState<FitExercise | null>(null);
   const [favorites, setFavorites] = React.useState<string[]>(readFavorites);
   const [freeExercises, setFreeExercises] = React.useState<FitExercise[]>(cachedAtStart);
   const [catalogStatus, setCatalogStatus] = React.useState<"idle" | "loading" | "ready" | "error">(cachedAtStart.length ? "ready" : "idle");
 
+  // OPEN EXERCISE DB remains the open catalogue source; its vendor label is intentionally hidden from the compact UI.
   React.useEffect(() => {
     if (freeExercises.length || catalogStatus === "loading") return;
     let cancelled = false;
@@ -120,21 +123,17 @@ export default function FitPerfPlan({ go }: Props) {
     if (!exerciseMatchesMuscle(exercise, muscle)) return false;
     if (equipment !== "Tous" && exercise.equipment !== equipment) return false;
     if (level !== "Tous" && normalizeLevel(exercise.level) !== level) return false;
-    if (movement !== "Tous" && movementValue !== movement) return false;
-    if (goal !== "Tous" && !goals.includes(goal)) return false;
     if (tab === "favorites" && !favorites.includes(exercise.id)) return false;
     return true;
-  }), [allExercises, search, muscle, equipment, level, movement, goal, tab, favorites]);
+  }), [allExercises, search, muscle, equipment, level, tab, favorites]);
 
-  const clearFilters = () => { setSearch(""); setMuscle("Tous"); setEquipment("Tous"); setLevel("Tous"); setMovement("Tous"); setGoal("Tous"); };
-  const activeFilterCount = [muscle, equipment, level, movement, goal].filter((value) => value !== "Tous").length + (search.trim() ? 1 : 0);
+  const clearFilters = () => { setMuscle("Tous"); setEquipment("Tous"); setLevel("Tous"); };
+  const activeFilterCount = [muscle, equipment, level].filter((value) => value !== "Tous").length;
 
   const selectBodyMuscle = (next: FitMuscle) => {
     setMuscle(next);
     setEquipment("Tous");
     setLevel("Tous");
-    setMovement("Tous");
-    setGoal("Tous");
   };
 
   const recordByExercise = React.useMemo(() => {
@@ -145,38 +144,74 @@ export default function FitPerfPlan({ go }: Props) {
   const detailRecord = detail ? recordByExercise.get(detail.id) : null;
   const detailImages = detail ? (detail.imagePaths || []).map((_, index) => freeExerciseImageUrl(detail, index)).filter((url): url is string => Boolean(url)).slice(0, 4) : [];
 
-  const renderExerciseCard = (exercise: FitExercise) => {
+  const pageCount = Math.max(1, Math.ceil(filtered.length / EXERCISES_PER_PAGE));
+  const pagedExercises = React.useMemo(() => filtered.slice(page * EXERCISES_PER_PAGE, page * EXERCISES_PER_PAGE + EXERCISES_PER_PAGE), [filtered, page]);
+
+  React.useEffect(() => { setPage(0); }, [search, muscle, equipment, level, tab]);
+  React.useEffect(() => { if (page >= pageCount) setPage(Math.max(0, pageCount - 1)); }, [page, pageCount]);
+
+  const goPrevPage = () => setPage((current) => pageCount <= 1 ? 0 : (current - 1 + pageCount) % pageCount);
+  const goNextPage = () => setPage((current) => pageCount <= 1 ? 0 : (current + 1) % pageCount);
+  const filterSelections = [
+    muscle !== "Tous" ? { key: "zone", label: FIT_MUSCLE_LABELS[muscle][langKey], clear: () => setMuscle("Tous") } : null,
+    equipment !== "Tous" ? { key: "equipment", label: equipment, clear: () => setEquipment("Tous") } : null,
+    level !== "Tous" ? { key: "level", label: levelLabel(level, t), clear: () => setLevel("Tous") } : null,
+  ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
+
+  const renderExerciseTile = (exercise: FitExercise) => {
     const fav = favorites.includes(exercise.id);
-    const movementName = inferMovementPattern(exercise);
-    const exerciseRecord = recordByExercise.get(exercise.id);
+    const premium = getAwenaPremiumMotion(exercise.id);
+    const video = premium?.video?.sources?.[0]?.src || null;
+    const poster = premium?.video?.poster || premium?.frameSequence?.poster || freeExerciseImageUrl(exercise) || null;
     return (
-      <FitGlassCard key={exercise.id} accent={exercise.accent} style={{ overflow: "hidden", borderRadius: 18, background: `linear-gradient(135deg, ${exercise.accent}10, rgba(255,255,255,.02) 28%, rgba(255,255,255,.016))` }}>
-        <div style={{ display: "grid", gridTemplateColumns: "48px 1fr auto", gap: 10, alignItems: "center", padding: 11 }}>
-          <button type="button" onClick={() => setDetail(exercise)} aria-label={exercise.name} style={{ width: 48, height: 48, borderRadius: 15, display: "grid", placeItems: "center", color: exercise.accent, background: `linear-gradient(145deg, ${exercise.accent}18, rgba(255,255,255,.06))`, border: `1px solid ${exercise.accent}3d`, fontSize: 18, fontWeight: 1000, boxShadow: `0 8px 18px ${exercise.accent}14` }}>{exercise.icon}</button>
-          <button type="button" onClick={() => setDetail(exercise)} style={{ minWidth: 0, border: 0, background: "transparent", color: "#fff", padding: 0, textAlign: "left" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-              <div style={{ minWidth: 0, fontSize: 11.4, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div>
-              <DifficultyStars level={exercise.level} accent="#ffd869" size={10} />
-            </div>
-            <div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ color: exercise.accent, fontSize: 7.4, fontWeight: 950 }}>{FIT_MUSCLE_LABELS[exercise.muscle][langKey]}</span>
-              <span style={{ color: textSoft, fontSize: 7.2 }}>· {exercise.equipment} · {movementName}</span>
-            </div>
-            <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
-              <FitPill accent={exercise.accent}>{levelLabel(exercise.level, t)}</FitPill>
-              {exerciseRecord ? <FitPill accent="#7df29a">PR · {formatKg(exerciseRecord.weightKg)} × {exerciseRecord.reps}</FitPill> : null}
-            </div>
-          </button>
-          <div style={{ display: "flex", gap: 5 }}>
-            <button type="button" aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")} onClick={() => toggleFavorite(exercise.id)} style={{ width: 33, height: 33, borderRadius: 10, border: `1px solid ${fav ? exercise.accent + "55" : "rgba(255,255,255,.06)"}`, background: fav ? `${exercise.accent}12` : "transparent", color: fav ? exercise.accent : textSoft, display: "grid", placeItems: "center" }}><FitIcon name="favorite" size={14} /></button>
-            <button type="button" aria-label={t("Ajouter à la séance", "Add to workout", "Añadir a sesión")} onClick={() => go("games", { fitTemplateId: "free", fitExerciseId: exercise.id })} style={{ width: 33, height: 33, borderRadius: 10, border: `1px solid ${exercise.accent}42`, background: `${exercise.accent}0d`, color: exercise.accent, display: "grid", placeItems: "center" }}><FitIcon name="plus" size={15} /></button>
+      <div
+        key={exercise.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setDetail(exercise)}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setDetail(exercise); } }}
+        aria-label={exercise.name}
+        style={{
+          minWidth: 0,
+          overflow: "hidden",
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,.09)",
+          background: "linear-gradient(180deg,rgba(17,22,31,.99),rgba(10,14,21,.99))",
+          boxShadow: "0 9px 22px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.035)",
+          color: "#fff",
+          padding: 0,
+          textAlign: "left",
+          cursor: "pointer",
+          position: "relative",
+        }}
+      >
+        <div style={{ position: "relative", height: 102, background: `radial-gradient(circle at 50% 36%,${exercise.accent}18,#070a10 70%)`, overflow: "hidden" }}>
+          {video ? (
+            <video src={video} poster={poster || undefined} muted loop autoPlay playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : poster ? (
+            <img src={poster} alt="" loading="lazy" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <div style={{ height: "100%", display: "grid", placeItems: "center", color: exercise.accent, fontSize: 28, fontWeight: 1000 }}>{exercise.icon}</div>
+          )}
+          <button
+            type="button"
+            aria-label={fav ? t("Retirer des favoris", "Remove favorite", "Quitar favorito") : t("Ajouter aux favoris", "Add favorite", "Añadir favorito")}
+            onClick={(event) => { event.stopPropagation(); toggleFavorite(exercise.id); }}
+            style={{ position: "absolute", right: 6, top: 6, width: 27, height: 27, borderRadius: 9, border: `1px solid ${fav ? exercise.accent + "88" : "rgba(255,255,255,.13)"}`, background: "rgba(5,8,13,.88)", color: fav ? exercise.accent : "rgba(255,255,255,.78)", display: "grid", placeItems: "center", cursor: "pointer" }}
+          ><FitIcon name="favorite" size={13} /></button>
+        </div>
+        <div style={{ padding: "9px 9px 10px" }}>
+          <div style={{ minHeight: 29, fontSize: 9.5, lineHeight: 1.16, fontWeight: 1000, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{exercise.name}</div>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5 }}>
+            <DifficultyStars level={exercise.level} accent="#ffd869" size={9} />
+            <span style={{ minWidth: 0, color: exercise.accent, fontSize: 6.6, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{FIT_MUSCLE_LABELS[exercise.muscle][langKey]}</span>
           </div>
         </div>
-      </FitGlassCard>
+      </div>
     );
   };
 
-  const filterChip = (label: string, active: boolean, onClick: () => void) => <button type="button" onClick={onClick} style={{ flex: "0 0 auto", minHeight: 30, borderRadius: 999, border: `1px solid ${active ? accent + "66" : "rgba(255,255,255,.065)"}`, background: active ? `${accent}14` : "rgba(255,255,255,.02)", color: active ? accent : "rgba(255,255,255,.68)", padding: "0 10px", fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap" }}>{label}</button>;
+  const filterChip = (label: string, active: boolean, onClick: () => void) => <button type="button" onClick={onClick} style={{ flex: "0 0 auto", minHeight: 30, borderRadius: 999, border: `1px solid ${active ? accent + "66" : "rgba(255,255,255,.065)"}`, background: active ? `${accent}24` : "rgba(255,255,255,.075)", color: active ? accent : "rgba(255,255,255,.68)", padding: "0 10px", fontSize: 7.6, fontWeight: 950, whiteSpace: "nowrap" }}>{label}</button>;
 
   return <div style={{ minHeight: "100%", color: "#fff", background: (theme as any)?.pageBackground || (theme as any)?.bg || "#05060b" }}>
     <FitShell>
@@ -227,29 +262,64 @@ export default function FitPerfPlan({ go }: Props) {
       </> : null}
 
       {(tab === "library" || tab === "favorites") ? <>
-        <FitGlassCard accent={accent} style={{ padding: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
-            <div style={{ position: "relative" }}><span style={{ position: "absolute", left: 10, top: 10, color: textSoft }}><FitIcon name="search" size={17} /></span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Exercice, muscle, matériel…", "Exercise, muscle, equipment…", "Ejercicio, músculo, material…")} style={{ width: "100%", minHeight: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.065)", background: "rgba(255,255,255,.028)", color: "#fff", padding: "0 10px 0 35px", boxSizing: "border-box", outline: "none" }} /></div>
-            {activeFilterCount ? <button type="button" onClick={clearFilters} style={{ minWidth: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.03)", color: accent, fontWeight: 1000 }}>×{activeFilterCount}</button> : null}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: 9, borderRadius: 18, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(9,13,21,.97),rgba(7,10,17,.98))", boxShadow: "0 12px 30px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.035)" }}>
+          <div style={{ position: "relative" }}>
+            <span style={{ position: "absolute", left: 11, top: 11, color: "rgba(255,255,255,.74)" }}><FitIcon name="search" size={17} /></span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Rechercher un exercice…", "Search an exercise…", "Buscar un ejercicio…")} style={{ width: "100%", minHeight: 40, borderRadius: 12, border: "1px solid rgba(255,255,255,.1)", background: "rgba(18,23,32,.96)", color: "#fff", padding: "0 11px 0 37px", boxSizing: "border-box", outline: "none", fontWeight: 800 }} />
+          </div>
+          <button type="button" onClick={() => setFiltersOpen(true)} aria-label={t("Filtres", "Filters", "Filtros")} style={{ minWidth: 94, height: 40, borderRadius: 12, border: `1px solid ${activeFilterCount ? accent + "70" : "rgba(255,255,255,.1)"}`, background: activeFilterCount ? `linear-gradient(135deg,${accent}25,rgba(18,23,32,.98))` : "rgba(18,23,32,.96)", color: activeFilterCount ? accent : "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer", position: "relative" }}>
+            <FitIcon name="filter" size={18} />
+            <span style={{ fontSize: 8.2, fontWeight: 1000, letterSpacing: .6 }}>{t("FILTRES", "FILTERS", "FILTROS")}</span>
+            {activeFilterCount ? <span style={{ position: "absolute", right: -5, top: -6, minWidth: 18, height: 18, borderRadius: 99, display: "grid", placeItems: "center", background: accent, color: "#071016", fontSize: 7.5, fontWeight: 1000 }}>{activeFilterCount}</span> : null}
+          </button>
+        </div>
+
+        {filterSelections.length ? <div style={{ display: "flex", gap: 5, overflowX: "auto", margin: "7px 1px 0", paddingBottom: 1 }}>{filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} title={t("Retirer ce filtre", "Remove filter", "Quitar filtro")} style={{ flex: "0 0 auto", minHeight: 25, borderRadius: 999, border: `1px solid ${accent}36`, background: "rgba(9,13,21,.93)", color: "rgba(255,255,255,.88)", padding: "0 8px", fontSize: 6.9, fontWeight: 950 }}>{item.label} <span style={{ color: accent, marginLeft: 3 }}>×</span></button>)}</div> : null}
+
+        <div style={{ marginTop: 9, padding: 10, borderRadius: 20, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(8,12,20,.98),rgba(6,9,15,.99))", boxShadow: "0 14px 34px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.035)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
+            <div><div style={{ color: "rgba(255,255,255,.46)", fontSize: 6.7, fontWeight: 1000, letterSpacing: .85 }}>{tab === "favorites" ? t("FAVORIS", "FAVORITES", "FAVORITOS") : t("RÉSULTATS", "RESULTS", "RESULTADOS")}</div><div style={{ marginTop: 2, fontSize: 15, fontWeight: 1000 }}>{filtered.length} {t("exercices", "exercises", "ejercicios")}</div></div>
+            <div style={{ textAlign: "right" }}><div style={{ color: accent, fontSize: 10.5, fontWeight: 1000 }}>{page + 1} / {pageCount}</div><div style={{ marginTop: 2, color: "rgba(255,255,255,.4)", fontSize: 6.4, fontWeight: 900 }}>{t("9 PAR PAGE", "9 PER PAGE", "9 POR PÁGINA")}</div></div>
           </div>
 
-          <div style={{ marginTop: 7, color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .7 }}>{t("ZONE", "AREA", "ZONA")}</div>
-          <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 4 }}>{filterChip(t("Toutes", "All", "Todas"), muscle === "Tous", () => setMuscle("Tous"))}{FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0).map((item) => filterChip(FIT_MUSCLE_LABELS[item][langKey], muscle === item, () => setMuscle(item)))}</div>
+          {pagedExercises.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>{pagedExercises.map(renderExerciseTile)}</div> : <div style={{ padding: "32px 12px", textAlign: "center", color: textSoft, fontSize: 9 }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</div>}
 
-          <div style={{ marginTop: 7, color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .7 }}>{t("MATÉRIEL", "EQUIPMENT", "MATERIAL")}</div>
-          <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 4 }}>{filterChip(t("Tous", "All", "Todos"), equipment === "Tous", () => setEquipment("Tous"))}{FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item)).map((item) => filterChip(item, equipment === item, () => setEquipment(item)))}</div>
-
-          <div style={{ marginTop: 7, color: textSoft, fontSize: 6.8, fontWeight: 1000, letterSpacing: .7 }}>{t("NIVEAU · MOUVEMENT · OBJECTIF", "LEVEL · MOVEMENT · GOAL", "NIVEL · MOVIMIENTO · OBJETIVO")}</div>
-          <div style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 4 }}>
-            {(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).map((item) => filterChip(item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : item, level === item, () => setLevel(item)))}
-            {(["Poussée", "Tirage", "Squat", "Charnière", "Isolation", "Gainage", "Mobilité", "Cardio"] as FitMovementFilter[]).map((item) => filterChip(item, movement === item, () => setMovement(movement === item ? "Tous" : item)))}
-            {(["Force", "Hypertrophie", "Endurance", "Mobilité", "Explosivité", "Cardio"] as FitGoalFilter[]).map((item) => filterChip(item, goal === item, () => setGoal(goal === item ? "Tous" : item)))}
+          <div style={{ display: "grid", gridTemplateColumns: "40px 40px 1fr 40px 40px", gap: 6, alignItems: "center", marginTop: 11 }}>
+            <button type="button" disabled={pageCount <= 1} onClick={() => setPage(0)} aria-label={t("Première page", "First page", "Primera página")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.8)", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>«</button>
+            <button type="button" disabled={pageCount <= 1} onClick={goPrevPage} aria-label={t("Page précédente", "Previous page", "Página anterior")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>‹</button>
+            <div style={{ height: 36, borderRadius: 11, border: `1px solid ${accent}34`, background: `${accent}0d`, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><span style={{ color: accent, fontSize: 8.5, fontWeight: 1000 }}>{t("PAGE", "PAGE", "PÁGINA")}</span><span style={{ fontSize: 11, fontWeight: 1000 }}>{page + 1}</span></div>
+            <button type="button" disabled={pageCount <= 1} onClick={goNextPage} aria-label={t("Page suivante", "Next page", "Página siguiente")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "#fff", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>›</button>
+            <button type="button" disabled={pageCount <= 1} onClick={() => setPage(pageCount - 1)} aria-label={t("Dernière page", "Last page", "Última página")} style={{ height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "rgba(255,255,255,.8)", fontWeight: 1000, cursor: pageCount > 1 ? "pointer" : "default", opacity: pageCount > 1 ? 1 : .35 }}>»</button>
           </div>
-        </FitGlassCard>
-
-        <FitSectionTitle eyebrow={tab === "favorites" ? t("FAVORIS", "FAVORITES", "FAVORITOS") : t("RÉSULTATS", "RESULTS", "RESULTADOS")} title={`${filtered.length} ${t("exercices", "exercises", "ejercicios")}`} right={<span style={{ color: catalogStatus === "loading" ? "#72def4" : textSoft, fontSize: 7 }}>{catalogStatus === "loading" ? t("Catalogue en cours…", "Loading catalog…", "Cargando catálogo…") : freeExercises.length ? `OPEN EXERCISE DB ${freeExercises.length}` : "FIT PERF"}</span>} />
-        <div style={{ display: "grid", gap: 6 }}>{filtered.slice(0, 120).map(renderExerciseCard)}{filtered.length > 120 ? <FitGlassCard accent={accent} style={{ padding: 10, textAlign: "center", color: textSoft, fontSize: 7.8 }}>{filtered.length - 120} {t("autres résultats · affine les filtres", "more results · refine filters", "resultados más · ajusta los filtros")}</FitGlassCard> : null}{!filtered.length ? <FitGlassCard accent={accent} style={{ padding: 22, textAlign: "center", color: textSoft }}>{tab === "favorites" ? t("Aucun favori avec ces filtres.", "No favorites with these filters.", "No hay favoritos con estos filtros.") : t("Aucun exercice ne correspond à ces filtres.", "No exercise matches these filters.", "Ningún ejercicio coincide con estos filtros.")}</FitGlassCard> : null}</div>
+        </div>
       </> : null}
+
+      {filtersOpen ? <div role="dialog" aria-modal="true" onClick={() => setFiltersOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 132, background: "rgba(0,0,0,.66)", backdropFilter: "blur(8px)", display: "grid", placeItems: "center", padding: 14 }}>
+        <div onClick={(event) => event.stopPropagation()} style={{ width: "100%", maxWidth: 500, borderRadius: 24, padding: 12, background: "linear-gradient(180deg,rgba(10,14,22,.995),rgba(7,10,17,.995))", border: "1px solid rgba(255,255,255,.1)", boxShadow: "0 28px 80px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.04)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}><div><div style={{ color: accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: 1 }}>{t("BIBLIOTHÈQUE", "LIBRARY", "BIBLIOTECA")}</div><div style={{ marginTop: 3, fontSize: 18, fontWeight: 1000 }}>{t("Filtres", "Filters", "Filtros")}</div></div><button type="button" onClick={() => setFiltersOpen(false)} style={{ width: 36, height: 36, borderRadius: 11, border: "1px solid rgba(255,255,255,.09)", background: "rgba(255,255,255,.045)", color: "#fff", fontSize: 17, cursor: "pointer" }}>×</button></div>
+
+          <div style={{ marginTop: 10, minHeight: 40, padding: 7, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.035)" }}>
+            <div style={{ color: "rgba(255,255,255,.42)", fontSize: 6.5, fontWeight: 1000, letterSpacing: .8 }}>{t("FILTRES ACTIFS", "ACTIVE FILTERS", "FILTROS ACTIVOS")}</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>{filterSelections.length ? filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} style={{ minHeight: 25, borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}10`, color: "#fff", padding: "0 8px", fontSize: 7, fontWeight: 950 }}>{item.label} <span style={{ color: accent }}>×</span></button>) : <span style={{ color: textSoft, fontSize: 7.6 }}>{t("Aucun filtre sélectionné", "No filter selected", "Ningún filtro seleccionado")}</span>}</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 9 }}>
+            {([
+              ["zone", t("Zone", "Area", "Zona"), "muscles"],
+              ["equipment", t("Matériel", "Equipment", "Material"), "strength"],
+              ["level", t("Niveau", "Level", "Nivel"), "progress"],
+            ] as [FilterTab, string, any][]).map(([id, label, icon]) => { const active = filterTab === id; return <button key={id} type="button" onClick={() => setFilterTab(id)} style={{ height: 46, borderRadius: 13, border: `1px solid ${active ? accent + "66" : "rgba(255,255,255,.07)"}`, background: active ? `linear-gradient(135deg,${accent}1f,rgba(255,255,255,.05))` : "rgba(255,255,255,.025)", color: active ? accent : "rgba(255,255,255,.66)", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 8, fontWeight: 1000, cursor: "pointer" }}><FitIcon name={icon} size={18} />{label.toUpperCase()}</button>; })}
+          </div>
+
+          <div style={{ marginTop: 9, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.025)" }}>
+            {filterTab === "zone" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{filterChip(t("Toutes", "All", "Todas"), muscle === "Tous", () => setMuscle("Tous"))}{FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0).map((item) => filterChip(FIT_MUSCLE_LABELS[item][langKey], muscle === item, () => setMuscle(item)))}</div> : null}
+            {filterTab === "equipment" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{filterChip(t("Tous", "All", "Todos"), equipment === "Tous", () => setEquipment("Tous"))}{FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item)).map((item) => filterChip(item, equipment === item, () => setEquipment(item)))}</div> : null}
+            {filterTab === "level" ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).map((item) => filterChip(item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : levelLabel(item, t), level === item, () => setLevel(item)))}</div> : null}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 7, marginTop: 10 }}><button type="button" onClick={clearFilters} style={{ minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.035)", color: "rgba(255,255,255,.72)", padding: "0 12px", fontWeight: 950 }}>{t("EFFACER", "CLEAR", "BORRAR")}</button><button type="button" onClick={() => setFiltersOpen(false)} style={{ minHeight: 42, borderRadius: 12, border: `1px solid ${accent}62`, background: `linear-gradient(135deg,${accent},#dffaff)`, color: "#071016", fontWeight: 1000 }}>{t("APPLIQUER · VOIR LES RÉSULTATS", "APPLY · VIEW RESULTS", "APLICAR · VER RESULTADOS")}</button></div>
+        </div>
+      </div> : null}
 
       {tab === "programs" ? <>
         <FitSectionTitle eyebrow={t("PROGRAMMES", "PROGRAMS", "PROGRAMAS")} title={t("Démarrage rapide", "Quick start", "Inicio rápido")} />
