@@ -5,13 +5,14 @@ import {
   type FitExercise,
   type FitMuscle,
 } from "./fitStore";
+import { FIT_MUSCLE_COLORS, inferGoalTags, inferMovementPattern } from "./fitExerciseTaxonomy";
 
 export const FREE_EXERCISE_DB_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/dist/exercises.json";
 export const FREE_EXERCISE_IMAGE_ROOT = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
 export const FREE_EXERCISE_DB_REPOSITORY = "https://github.com/yuhonas/free-exercise-db";
 export const FREE_EXERCISE_DB_LICENSE = "Unlicense / public domain";
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FreeExerciseDbRow = {
@@ -36,49 +37,40 @@ type FreeExerciseCache = {
 
 const muscleMap: Record<string, FitMuscle> = {
   abdominals: "Abdos",
-  abductors: "Fessiers",
-  adductors: "Quadriceps",
+  abductors: "Abducteurs",
+  adductors: "Adducteurs",
   biceps: "Biceps",
   calves: "Mollets",
   chest: "Pectoraux",
-  forearms: "Biceps",
+  forearms: "Avant-bras",
   glutes: "Fessiers",
   hamstrings: "Ischios",
   lats: "Dos",
-  "lower back": "Dos",
+  "lower back": "Lombaires",
   "middle back": "Dos",
-  neck: "Épaules",
+  neck: "Cou",
   quadriceps: "Quadriceps",
   shoulders: "Épaules",
   traps: "Dos",
   triceps: "Triceps",
 };
 
-const muscleAccent: Record<FitMuscle, string> = {
-  Pectoraux: "#f7c948",
-  Dos: "#70def4",
-  Épaules: "#b69dff",
-  Biceps: "#ff8fb8",
-  Triceps: "#ff719f",
-  Quadriceps: "#72ed98",
-  Ischios: "#61d981",
-  Fessiers: "#69eca5",
-  Mollets: "#54d58a",
-  Abdos: "#ff9b66",
-  "Full body": "#f58d62",
-};
-
 const muscleIcon: Record<FitMuscle, string> = {
   Pectoraux: "▰",
   Dos: "≋",
+  Lombaires: "⌁",
   Épaules: "↔",
   Biceps: "◜",
   Triceps: "⇢",
+  "Avant-bras": "⌇",
   Quadriceps: "⌄",
   Ischios: "⌁",
   Fessiers: "◓",
+  Adducteurs: "◢",
+  Abducteurs: "◣",
   Mollets: "⌃",
   Abdos: "▬",
+  Cou: "◇",
   "Full body": "◆",
 };
 
@@ -96,12 +88,17 @@ function mapMuscle(value: string): FitMuscle {
 
 function mapEquipment(value: string): FitEquipment {
   const key = value.trim().toLowerCase();
-  if (key.includes("barbell") || key.includes("e-z") || key === "other") return "Barre";
+  if (!key || key === "body only" || key === "bodyweight" || key === "none") return "Poids du corps";
+  if (key.includes("barbell") || key.includes("e-z")) return "Barre";
   if (key.includes("dumbbell")) return "Haltères";
   if (key.includes("kettlebell")) return "Kettlebell";
   if (key.includes("cable")) return "Poulie";
   if (key.includes("machine") || key.includes("sled")) return "Machine";
-  return "Poids du corps";
+  if (key.includes("band")) return "Élastique";
+  if (key.includes("trx") || key.includes("suspension")) return "TRX";
+  if (key.includes("bench")) return "Banc";
+  if (key.includes("medicine ball") || key.includes("med ball")) return "Médecine ball";
+  return "Autre";
 }
 
 function inferMotionKey(name: string): string | undefined {
@@ -135,23 +132,30 @@ function normalizeRow(row: FreeExerciseDbRow): FitExercise | null {
   const secondary = asStringArray(row.secondaryMuscles);
   const muscle = primary.length ? mapMuscle(primary[0]) : "Full body";
   const secondaryMapped = Array.from(new Set([...primary.slice(1), ...secondary].map(mapMuscle))).filter((entry) => entry !== muscle).slice(0, 4);
-  return {
+  const exercise: FitExercise = {
     id: `fedb:${sourceId}`,
     name,
     muscle,
     secondary: secondaryMapped,
     equipment: mapEquipment(asString(row.equipment)),
     icon: muscleIcon[muscle],
-    accent: muscleAccent[muscle],
+    accent: FIT_MUSCLE_COLORS[muscle],
     source: "free-exercise-db",
     sourceId,
     sourceLicense: FREE_EXERCISE_DB_LICENSE,
     level: asString(row.level) || undefined,
     category: asString(row.category) || undefined,
+    force: asString(row.force) || undefined,
+    mechanic: asString(row.mechanic) || undefined,
+    rawPrimaryMuscles: primary,
+    rawSecondaryMuscles: secondary,
     instructions: asStringArray(row.instructions).slice(0, 10),
     imagePaths: asStringArray(row.images).slice(0, 4),
     motionKey: inferMotionKey(name),
   };
+  exercise.movementPattern = inferMovementPattern(exercise);
+  exercise.goalTags = inferGoalTags(exercise);
+  return exercise;
 }
 
 function readCacheEnvelope(): FreeExerciseCache | null {

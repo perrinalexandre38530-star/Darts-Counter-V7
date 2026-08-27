@@ -1,17 +1,33 @@
 export type FitMuscle =
   | "Pectoraux"
   | "Dos"
+  | "Lombaires"
   | "Épaules"
   | "Biceps"
   | "Triceps"
+  | "Avant-bras"
   | "Quadriceps"
   | "Ischios"
   | "Fessiers"
+  | "Adducteurs"
+  | "Abducteurs"
   | "Mollets"
   | "Abdos"
+  | "Cou"
   | "Full body";
 
-export type FitEquipment = "Barre" | "Haltères" | "Machine" | "Poulie" | "Poids du corps" | "Kettlebell";
+export type FitEquipment =
+  | "Barre"
+  | "Haltères"
+  | "Machine"
+  | "Poulie"
+  | "Poids du corps"
+  | "Kettlebell"
+  | "Élastique"
+  | "TRX"
+  | "Banc"
+  | "Médecine ball"
+  | "Autre";
 
 export type FitExercise = {
   id: string;
@@ -27,7 +43,15 @@ export type FitExercise = {
   sourceLicense?: string;
   level?: string;
   category?: string;
+  force?: string;
+  mechanic?: string;
+  movementPattern?: string;
+  goalTags?: string[];
+  rawPrimaryMuscles?: string[];
+  rawSecondaryMuscles?: string[];
   instructions?: string[];
+  tips?: string[];
+  commonMistakes?: string[];
   imagePaths?: string[];
   /** Motion family used to reuse one AWENA/mocap movement across exercise variants. */
   motionKey?: string;
