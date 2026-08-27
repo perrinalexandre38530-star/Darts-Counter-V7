@@ -65,6 +65,15 @@ export const AWENA_PREMIUM_MOTION_SLOTS: Record<string, AwenaPremiumMotionSlot> 
     frameSequence: frames("curl", 5, 3.6),
   },
   "triceps-push": { exerciseId: "triceps-push", label: "Extension triceps" },
+  pushup: {
+    exerciseId: "pushup",
+    label: "Pompes / Push Up",
+    video: {
+      sources: [{ src: `${ROOT}/pushup/motion.webm`, type: "video/webm" }],
+      poster: `${ROOT}/pushup/poster.webp`,
+    },
+  },
+  burpee: { exerciseId: "burpee", label: "Burpee" },
   squat: {
     exerciseId: "squat",
     label: "Squat",

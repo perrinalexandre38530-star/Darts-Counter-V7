@@ -41,7 +41,8 @@ export default function FitExerciseMotion({ exercise, accent, compact = false }:
   const [freeImageOk, setFreeImageOk] = React.useState(Boolean(freeReferenceImage));
   const mark3DFailed = React.useCallback(() => setThreeDFailed(true), []);
   const markPremiumFailed = React.useCallback(() => setPremiumFailed(true), []);
-  const premiumMotion = getAwenaPremiumMotion(exercise.id);
+  const motionExerciseId = exercise.motionKey || exercise.id;
+  const premiumMotion = getAwenaPremiumMotion(motionExerciseId);
 
   React.useEffect(() => { setMediaOk(Boolean(media?.src)); }, [media?.src]);
   React.useEffect(() => { setThreeDFailed(false); setPremiumFailed(false); }, [exercise.id]);
@@ -65,7 +66,7 @@ export default function FitExerciseMotion({ exercise, accent, compact = false }:
         ) : (
           <img src={media.src} alt={`Mouvement ${exercise.name} avec Awena`} onError={() => setMediaOk(false)} draggable={false} style={{ width: "100%", height: compact ? 82 : 154, objectFit: "contain", display: "block" }}/>
         )
-      ) : hasAwenaPremiumMotion(exercise.id) && premiumMotion && !premiumFailed ? (
+      ) : hasAwenaPremiumMotion(motionExerciseId) && premiumMotion && !premiumFailed ? (
         <FitPremiumMotionPlayer slot={premiumMotion} compact={compact} onFail={markPremiumFailed}/>
       ) : hasFitAwena3DMotion(exercise) && !threeDFailed ? (
         <FitAwena3DStage exercise={exercise} compact={compact} onFail={mark3DFailed}/>

@@ -12,7 +12,7 @@ export const FREE_EXERCISE_IMAGE_ROOT = "https://raw.githubusercontent.com/yuhon
 export const FREE_EXERCISE_DB_REPOSITORY = "https://github.com/yuhonas/free-exercise-db";
 export const FREE_EXERCISE_DB_LICENSE = "Unlicense / public domain";
 
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FreeExerciseDbRow = {
@@ -102,7 +102,10 @@ function mapEquipment(value: string): FitEquipment {
 }
 
 function inferMotionKey(name: string): string | undefined {
-  const value = name.toLowerCase();
+  const value = name.toLowerCase().trim();
+  const compact = value.replace(/[^a-z0-9]+/g, " ").trim();
+  if (["push up", "push ups", "pushup", "pushups"].includes(compact)) return "pushup";
+  if (["burpee", "burpees"].includes(compact)) return "burpee";
   if (value.includes("goblet") && value.includes("squat")) return "goblet";
   if (value.includes("squat")) return "squat";
   if (value.includes("romanian") && (value.includes("deadlift") || value.includes("stiff"))) return "rdl";

@@ -50,6 +50,16 @@ assert.ok(fs.existsSync(squatVideo) && fs.statSync(squatVideo).size > 80_000 && 
 assert.ok(fs.existsSync(squatPoster) && fs.statSync(squatPoster).size > 5_000, "Poster Squat absent");
 assert.ok(player.includes('compact ? 168 : 260'), "Affichage premium encore trop petit pour les vidéos AWENA");
 
+const pushupVideo = path.join("public", "fit", "motions", "awena", "premium", "pushup", "motion.webm");
+const pushupPoster = path.join("public", "fit", "motions", "awena", "premium", "pushup", "poster.webp");
+assert.ok(catalog.includes('pushup: {') && catalog.includes('`${ROOT}/pushup/motion.webm`') && catalog.includes('type: "video/webm"'), "Vidéo premium Push Up WebM non déclarée");
+assert.ok(catalog.includes('burpee: { exerciseId: "burpee"'), "Slot premium Burpee non préparé");
+assert.ok(fs.existsSync(pushupVideo) && fs.statSync(pushupVideo).size > 70_000 && fs.statSync(pushupVideo).size < 300_000, "Vidéo Push Up absente ou mal compressée");
+assert.ok(fs.existsSync(pushupPoster) && fs.statSync(pushupPoster).size > 4_000, "Poster Push Up absent");
+const freeCatalog = read("src/fit/freeExerciseCatalog.ts");
+assert.ok(freeCatalog.includes('return "pushup"') && freeCatalog.includes('return "burpee"'), "Mapping motionKey Push Up/Burpee absent");
+assert.ok(renderer.includes("exercise.motionKey || exercise.id"), "FitExerciseMotion n'utilise pas motionKey pour les exercices externes");
+
 console.log("✅ AWENA PREMIUM MOTION CHECK OK");
 console.log(`   ${exerciseIds.length} slots premium prêts · VIDEO > FRAMES > REAL 3D > PROCEDURAL`);
 console.log(`   ${declaredFrameSlots.length} exercices avec séquences WebP réellement installées`);
