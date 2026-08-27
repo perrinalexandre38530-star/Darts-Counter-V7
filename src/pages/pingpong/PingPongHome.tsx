@@ -21,6 +21,7 @@ import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { loadPingPongState, newPingPongState, savePingPongState } from "../../lib/pingpongStore";
 import { loadPingPongHistory } from "../../lib/pingpongHistory";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 
 type Props = {
   store: Store;
@@ -516,8 +517,9 @@ export default function PingPongHome({ store, go }: Props) {
       `}</style>
 
       {/* ===== HEADER (Bienvenue + titre) ===== */}
-      <div style={{ ...sectionWrap, marginBottom: 10 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ ...sectionWrap, marginBottom: 10, position: "relative", overflow: "hidden", isolation: "isolate" }}>
+        <SportWelcomeWatermark sport="pingpong" opacity={0.12} size={185} />
+        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           {/* ✅ Bienvenue = pill/badge */}
           <div
             style={{

@@ -18,6 +18,7 @@ import ArcadeTicker, {
   type ArcadeTickerItem,
 } from "../components/home/ArcadeTicker";
 import { InlineAdBanner } from "../monetization/AdSlot";
+import SportWelcomeWatermark from "../components/home/SportWelcomeWatermark";
 import { canRequestBannerAds, getVerifiedAdFreeState, loadMonetizationPrefs, subscribeMonetizationPrefs, subscribeVerifiedEntitlements } from "../monetization/prefs";
 import footHomeCover01 from "../assets/tickers/foot-01.webp";
 import footHomeCover02 from "../assets/tickers/foot-02.webp";
@@ -2895,10 +2896,15 @@ React.useEffect(() => {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
+            position: "relative",
+            overflow: "hidden",
+            isolation: "isolate",
           }}
         >
+          <SportWelcomeWatermark sport={String(sport)} opacity={0.12} size={205} />
           <div
             style={{
+              position: "relative", zIndex: 2,
               display: "inline-flex",
               padding: "5px 18px",
               borderRadius: 999,
@@ -2923,6 +2929,8 @@ React.useEffect(() => {
   
           <div
             style={{
+              position: "relative",
+              zIndex: 2,
               fontSize: 32,
               fontWeight: 900,
               letterSpacing: 3,

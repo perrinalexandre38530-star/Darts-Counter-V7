@@ -36,6 +36,7 @@ import tickerPetanqueEvenements3 from "../../assets/tickers/ticker_petanque_even
 import tickerPetanqueAstuce1 from "../../assets/tickers/ticker_petanque_astuce.png";
 import tickerPetanqueAstuce2 from "../../assets/tickers/ticker_petanque_astuce_2.png";
 import tickerPetanqueAstuce3 from "../../assets/tickers/ticker_petanque_astuce_3.png";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
@@ -835,8 +836,9 @@ const secondaryTicker = tickerItems.length
       `}</style>
 
       {/* ===== HEADER (même "Bienvenue" que Darts + titre jamais coupé) ===== */}
-      <div style={{ ...sectionWrap, marginBottom: 10 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ ...sectionWrap, marginBottom: 10, position: "relative", overflow: "hidden", isolation: "isolate" }}>
+        <SportWelcomeWatermark sport="petanque" opacity={0.12} size={185} />
+        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           {/* ✅ Bienvenue = pill/badge (comme Darts) */}
           <div
             style={{

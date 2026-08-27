@@ -13,6 +13,7 @@ import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { PageAdBanner } from "../../monetization/AdSlot";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 
 const PAGE_MAX_WIDTH = 620;
 const SECTION_PAD_X = 10;
@@ -153,7 +154,9 @@ export default function DiceHome({ store, update, go }: Props) {
         gap: 14,
       }}
     >
-      <div style={sectionWrap}>
+      <div style={{ ...sectionWrap, position: "relative", overflow: "hidden", isolation: "isolate", borderRadius: 18, paddingTop: 12, paddingBottom: 12 }}>
+        <SportWelcomeWatermark sport="dicegame" opacity={0.12} size={185} />
+        <div style={{ position: "relative", zIndex: 2 }}>
         <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.78 }}>{t?.("home.welcome", "Bienvenue")}</div>
         <div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}>
           <div
@@ -170,6 +173,7 @@ export default function DiceHome({ store, update, go }: Props) {
           >
             Dice Scoring
           </div>
+        </div>
         </div>
       </div>
 

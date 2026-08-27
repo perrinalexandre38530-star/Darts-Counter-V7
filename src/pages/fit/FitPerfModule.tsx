@@ -33,6 +33,14 @@ type View = "setup" | "workout" | "history";
 
 const REST_SECONDS_KEY = "mss-fit-perf-rest-seconds-v1";
 
+const TEMPLATE_VISUALS: Record<string, { imageUrl: string; imagePosition?: string }> = {
+  free: { imageUrl: "/fit/tickers/free-awena.png", imagePosition: "left center" },
+  push: { imageUrl: "/fit/tickers/push-awena.png", imagePosition: "left center" },
+  pull: { imageUrl: "/fit/tickers/pull-awena.png", imagePosition: "left center" },
+  legs: { imageUrl: "/fit/tickers/legs-awena.png", imagePosition: "left center" },
+  full: { imageUrl: "/fit/tickers/full-awena.png", imagePosition: "right center" },
+};
+
 function initialRestSeconds() {
   try {
     const n = Number(localStorage.getItem(REST_SECONDS_KEY));
@@ -56,6 +64,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
 
   const [view, setView] = React.useState<View>(() => params?.fitView === "history" ? "history" : "setup");
   const [selectedTemplateId, setSelectedTemplateId] = React.useState(requestedTemplate?.id || "free");
+  const [programExerciseIds, setProgramExerciseIds] = React.useState<Record<string, string[]>>(() => Object.fromEntries(FIT_TEMPLATES.map((template) => [template.id, [...template.exerciseIds]])));
   const [session, setSession] = React.useState<FitSession | null>(null);
   const [restSeconds, setRestSeconds] = React.useState(initialRestSeconds);
   const [restLeft, setRestLeft] = React.useState(0);
@@ -84,9 +93,9 @@ export default function FitPerfModule({ go, store, params }: Props) {
 
 
   React.useEffect(() => {
-    if (view !== "setup" || freeExercises.length || freeCatalogLoading) return;
+    if ((view !== "setup" && view !== "workout") || freeExercises.length || freeCatalogLoading) return;
     void activateFreeCatalog();
-    // The catalogue is used only to resolve static exercise thumbnails in the setup preview.
+    // The catalogue resolves thumbnails and enables richer randomized programs in setup/workout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
@@ -102,8 +111,51 @@ export default function FitPerfModule({ go, store, params }: Props) {
     return () => window.clearInterval(timer);
   }, [restLeft]);
 
+  const effectiveTemplate = React.useCallback((templateId: string): FitTemplate | null => {
+    const base = FIT_TEMPLATES.find((item) => item.id === templateId) || null;
+    if (!base) return null;
+    return { ...base, exerciseIds: programExerciseIds[base.id] || base.exerciseIds };
+  }, [programExerciseIds]);
+
+  const shuffle = React.useCallback(<T,>(items: T[]) => {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }, []);
+
+  const randomizeProgram = React.useCallback((templateId: string) => {
+    const pool = [...FIT_EXERCISES, ...freeExercises];
+    const byMuscles = (muscles: string[]) => pool.filter((exercise) => muscles.includes(exercise.muscle) || (exercise.secondary || []).some((muscle) => muscles.includes(muscle)));
+    let ids: string[] = [];
+    if (templateId === "push") ids = shuffle(byMuscles(["Pectoraux", "Épaules", "Triceps"])).slice(0, 6).map((exercise) => exercise.id);
+    if (templateId === "pull") ids = shuffle(byMuscles(["Dos", "Biceps", "Lombaires", "Ischios"])).slice(0, 5).map((exercise) => exercise.id);
+    if (templateId === "legs") ids = shuffle(byMuscles(["Quadriceps", "Ischios", "Fessiers", "Mollets", "Adducteurs", "Abducteurs"])).slice(0, 5).map((exercise) => exercise.id);
+    if (templateId === "full") {
+      const buckets = [
+        byMuscles(["Pectoraux", "Épaules"]),
+        byMuscles(["Dos", "Biceps"]),
+        byMuscles(["Quadriceps", "Fessiers"]),
+        byMuscles(["Ischios", "Lombaires"]),
+        byMuscles(["Abdos"]),
+        pool.filter((exercise) => exercise.muscle === "Full body"),
+      ];
+      const picked: string[] = [];
+      buckets.forEach((bucket) => {
+        const candidate = shuffle(bucket).find((exercise) => !picked.includes(exercise.id));
+        if (candidate) picked.push(candidate.id);
+      });
+      ids = picked;
+      if (ids.length < 6) ids.push(...shuffle(pool.filter((exercise) => !ids.includes(exercise.id))).slice(0, 6 - ids.length).map((exercise) => exercise.id));
+    }
+    const fallback = FIT_TEMPLATES.find((item) => item.id === templateId)?.exerciseIds || [];
+    setProgramExerciseIds((current) => ({ ...current, [templateId]: ids.length >= 4 ? ids : [...fallback] }));
+  }, [freeExercises, shuffle]);
+
   const startWorkout = (templateId = selectedTemplateId) => {
-    const template = FIT_TEMPLATES.find((item) => item.id === templateId) || null;
+    const template = effectiveTemplate(templateId);
     const next = createSessionFromTemplate(template, { profileId: activeProfile?.id, profileName: activeProfile?.name });
     if (templateId === "free") {
       next.exercises = [];
@@ -128,7 +180,7 @@ export default function FitPerfModule({ go, store, params }: Props) {
   }, []);
 
 
-  const selectedTemplate = FIT_TEMPLATES.find((item) => item.id === selectedTemplateId) || null;
+  const selectedTemplate = effectiveTemplate(selectedTemplateId);
   const selectedTemplateExerciseIds = selectedTemplate?.exerciseIds || [];
   const previewQueryById: Record<string, string[]> = {
     bench: ["bench press"], "incline-db": ["incline dumbbell"], "cable-fly": ["cable crossover", "cable fly"], pullup: ["pullup", "pull-up"], row: ["barbell row"],
@@ -139,10 +191,13 @@ export default function FitPerfModule({ go, store, params }: Props) {
     const premium = getAwenaPremiumMotion(exerciseId);
     const premiumPoster = premium?.video?.poster || premium?.frameSequence?.poster;
     if (premiumPoster) return premiumPoster;
+    const direct = freeExercises.find((item) => item.id === exerciseId);
+    if (direct) return freeExerciseImageUrl(direct);
     const queries = previewQueryById[exerciseId] || [];
     const match = freeExercises.find((item) => queries.some((query) => item.name.toLowerCase().includes(query)));
     return match ? freeExerciseImageUrl(match) : null;
   };
+
 
   const updateExercise = React.useCallback((exerciseRowId: string, updater: (row: FitSessionExercise) => FitSessionExercise) => {
     setSession((current) => current ? { ...current, exercises: current.exercises.map((row) => row.id === exerciseRowId ? updater(row) : row) } : current);
@@ -276,8 +331,8 @@ export default function FitPerfModule({ go, store, params }: Props) {
               const rowDone = row.sets.filter((set) => set.completed).length;
               const expanded = expandedExerciseRowId === row.id;
               return <FitGlassCard key={row.id} accent={exercise.accent} style={{ overflow: "hidden", borderColor: expanded ? `${exercise.accent}66` : "rgba(255,255,255,.13)", background: expanded ? `linear-gradient(145deg,${exercise.accent}12,rgba(7,10,16,.99) 28%,rgba(4,6,11,.995))` : "linear-gradient(180deg,rgba(9,12,18,.985),rgba(5,8,13,.995))", boxShadow: "0 10px 28px rgba(0,0,0,.48)" }}>
-                <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(expanded ? null : row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(expanded ? null : row.id); }} style={{ display: "grid", gridTemplateColumns: "38px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}30`, fontSize: 16, fontWeight: 1000 }}>{exercise.icon}</div>
+                <div role="button" tabIndex={0} onClick={() => setExpandedExerciseRowId(expanded ? null : row.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setExpandedExerciseRowId(expanded ? null : row.id); }} style={{ display: "grid", gridTemplateColumns: "54px 1fr auto auto", gap: 8, alignItems: "center", padding: 9, cursor: "pointer" }}>
+                  <div style={{ width: 52, height: 46, borderRadius: 11, display: "grid", placeItems: "center", color: exercise.accent, background: `${exercise.accent}10`, border: `1px solid ${exercise.accent}30`, fontSize: 16, fontWeight: 1000, overflow: "hidden" }}>{exercisePreviewUrl(exercise.id) ? <img src={exercisePreviewUrl(exercise.id) || undefined} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : exercise.icon}</div>
                   <div style={{ minWidth: 0 }}><div style={{ color: exercise.accent, fontSize: 7.4, fontWeight: 1000, letterSpacing: .7 }}>{String(exerciseIndex + 1).padStart(2, "0")} · {exercise.muscle.toUpperCase()}</div><div style={{ marginTop: 2, fontSize: 11.2, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise.name}</div><div style={{ marginTop: 2, color: textSoft, fontSize: 7.8 }}>{rowDone}/{row.sets.length} {t("séries", "sets", "series")}</div></div>
                   <FitPill accent={rowDone === row.sets.length && row.sets.length ? "#75ed9a" : exercise.accent}>{rowDone}/{row.sets.length}</FitPill>
                   <span style={{ color: expanded ? exercise.accent : textSoft, display: "grid", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .18s ease" }}><FitIcon name="chevron" size={16}/></span>
@@ -336,15 +391,19 @@ export default function FitPerfModule({ go, store, params }: Props) {
 
         <FitSectionTitle eyebrow={t("DÉMARRAGE RAPIDE", "QUICK START", "INICIO RÁPIDO")} title={t("Choisis ta séance", "Choose your workout", "Elige tu sesión")} />
         <div style={{ display: "grid", gap: 9 }}>
-          <TemplateCard template={null} selected={selectedTemplateId === "free"} accent={accent} title={t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE")} subtitle={t("Construis ta séance exercice par exercice", "Build your workout exercise by exercise", "Construye tu sesión ejercicio por ejercicio")} onClick={() => setSelectedTemplateId("free")} wide />
+          <TemplateCard selected={selectedTemplateId === "free"} accent={accent} title={t("SÉANCE LIBRE", "FREE WORKOUT", "SESIÓN LIBRE")} subtitle={t("Construis ta séance exercice par exercice", "Build your workout exercise by exercise", "Construye tu sesión ejercicio por ejercicio")} onClick={() => setSelectedTemplateId("free")} wide imageUrl={TEMPLATE_VISUALS.free.imageUrl} imagePosition={TEMPLATE_VISUALS.free.imagePosition} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 9 }}>
-            {FIT_TEMPLATES.map((template) => <TemplateCard key={template.id} template={template} selected={selectedTemplateId === template.id} accent={template.accent} title={template.name} subtitle={template.subtitle} onClick={() => setSelectedTemplateId(template.id)} />)}
+            {FIT_TEMPLATES.map((template) => {
+              const visual = TEMPLATE_VISUALS[template.id] || null;
+              return <TemplateCard key={template.id} selected={selectedTemplateId === template.id} accent={template.accent} title={template.name} subtitle={template.subtitle} onClick={() => setSelectedTemplateId(template.id)} imageUrl={visual?.imageUrl} imagePosition={visual?.imagePosition} />;
+            })}
           </div>
         </div>
 
         {selectedTemplate ? <FitGlassCard accent={selectedTemplate.accent} style={{ marginTop: 11, padding: 12, background: `linear-gradient(145deg,${selectedTemplate.accent}10,rgba(6,9,15,.99) 28%,rgba(3,6,10,.995))`, borderColor: `${selectedTemplate.accent}46`, boxShadow: "0 14px 34px rgba(0,0,0,.48)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: selectedTemplate.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .9 }}>{t("PROGRAMME SÉLECTIONNÉ", "SELECTED PROGRAM", "PROGRAMA SELECCIONADO")}</div><div style={{ marginTop: 3, fontSize: 15, fontWeight: 1000 }}>{selectedTemplate.name}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.68)", fontSize: 8.4 }}>{selectedTemplate.subtitle}</div></div><FitPill accent={selectedTemplate.accent}>{selectedTemplate.exerciseIds.length} EXOS</FitPill></div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div><div style={{ color: selectedTemplate.accent, fontSize: 8, fontWeight: 1000, letterSpacing: .9 }}>{t("PROGRAMME SÉLECTIONNÉ", "SELECTED PROGRAM", "PROGRAMA SELECCIONADO")}</div><div style={{ marginTop: 3, fontSize: 15, fontWeight: 1000 }}>{selectedTemplate.name}</div><div style={{ marginTop: 3, color: "rgba(255,255,255,.68)", fontSize: 8.4 }}>{selectedTemplate.subtitle}</div></div><div style={{ display: "flex", alignItems: "center", gap: 6 }}><button type="button" onClick={() => randomizeProgram(selectedTemplate.id)} title={t("Générer une autre séance", "Generate another workout", "Generar otra sesión")} style={{ width: 38, height: 38, borderRadius: 12, border: `1px solid ${selectedTemplate.accent}45`, background: `${selectedTemplate.accent}0f`, color: selectedTemplate.accent, display: "grid", placeItems: "center", cursor: "pointer" }}><FitIcon name="shuffle" size={19}/></button><FitPill accent={selectedTemplate.accent}>{selectedTemplate.exerciseIds.length} EXOS</FitPill></div></div>
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7 }}>{selectedTemplateExerciseIds.map((exerciseId) => { const ex = exerciseById(exerciseId); const image = exercisePreviewUrl(exerciseId); if (!ex) return null; return <div key={exerciseId} style={{ minWidth: 0, overflow: "hidden", borderRadius: 12, border: `1px solid ${ex.accent}30`, background: "rgba(12,16,23,.99)" }}><div style={{ height: 72, display: "grid", placeItems: "center", background: `radial-gradient(circle at center,${ex.accent}18,#05080d 72%)`, overflow: "hidden" }}>{image ? <img src={image} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}/> : <div style={{ color: ex.accent, fontSize: 26, fontWeight: 1000 }}>{ex.icon}</div>}</div><div style={{ padding: "6px 6px 7px", fontSize: 7.2, lineHeight: 1.15, fontWeight: 950, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ex.name}</div></div>; })}</div>
+          <button type="button" onClick={() => randomizeProgram(selectedTemplate.id)} style={{ width: "100%", minHeight: 38, marginTop: 9, borderRadius: 12, border: `1px solid ${selectedTemplate.accent}3f`, background: `${selectedTemplate.accent}0c`, color: selectedTemplate.accent, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 8.3, fontWeight: 1000, letterSpacing: .5, cursor: "pointer" }}><FitIcon name="shuffle" size={17}/>{t("NOUVEAU TIRAGE", "NEW RANDOM SET", "NUEVO SORTEO")}</button>
         </FitGlassCard> : null}
 
         <FitPrimaryButton onClick={() => startWorkout()} accent={accent} style={{ width: "100%", marginTop: 11, minHeight: 58, fontSize: 13 }}>▶ {t("DÉMARRER LA SÉANCE", "START WORKOUT", "INICIAR SESIÓN")}</FitPrimaryButton>
@@ -364,9 +423,22 @@ export default function FitPerfModule({ go, store, params }: Props) {
   );
 }
 
-function TemplateCard({ template, selected, accent, title, subtitle, onClick, wide = false }: { template: FitTemplate | null; selected: boolean; accent: string; title: string; subtitle: string; onClick: () => void; wide?: boolean }) {
-  const icon = !template ? "free" : template.id === "push" ? "push" : template.id === "pull" ? "pull" : template.id === "legs" ? "legs" : "fullbody";
-  return <button type="button" onClick={onClick} style={{ minHeight: wide ? 104 : 118, borderRadius: 18, textAlign: "center", color: "#fff", padding: "11px 9px", border: `1px solid ${selected ? accent + "78" : "rgba(255,255,255,.12)"}`, background: selected ? `linear-gradient(160deg,${accent}18,rgba(8,12,19,.99) 38%,rgba(4,7,12,.995))` : "linear-gradient(180deg,rgba(10,14,21,.985),rgba(5,8,13,.995))", boxShadow: selected ? `0 10px 28px ${accent}16` : "0 8px 22px rgba(0,0,0,.34)", cursor: "pointer", display: "flex", flexDirection: wide ? "row" : "column", alignItems: "center", justifyContent: "center", gap: wide ? 13 : 7, transition: "border-color .18s ease,background .18s ease,transform .18s ease" }}><span style={{ width: wide ? 58 : 52, height: wide ? 58 : 52, flex: "0 0 auto", borderRadius: 16, display: "grid", placeItems: "center", color: accent, background: `${accent}10`, border: `1px solid ${accent}3d`, boxShadow: selected ? `0 0 18px ${accent}18` : "none" }}><FitIcon name={icon as any} size={wide ? 31 : 28}/></span><span style={{ minWidth: 0, textAlign: wide ? "left" : "center" }}><b style={{ display: "block", color: selected ? accent : "#fff", fontSize: wide ? 13 : 11.5, lineHeight: 1.05 }}>{title}</b><small style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,.68)", fontSize: 7.8, lineHeight: 1.25 }}>{subtitle}</small></span></button>;
+function TemplateBackdrop({ imageUrl, imagePosition = "center center", selected }: { imageUrl?: string; imagePosition?: string; selected: boolean }) {
+  if (!imageUrl) return null;
+  return <div aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", borderRadius: "inherit", pointerEvents: "none" }}>
+    <img src={imageUrl} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: imagePosition, filter: `saturate(${selected ? 1 : .95}) contrast(1.05) brightness(${selected ? .88 : .74})`, transform: selected ? "scale(1.02)" : "scale(1)", transition: "transform .18s ease, filter .18s ease" }} />
+    <div style={{ position: "absolute", inset: 0, background: selected ? "linear-gradient(180deg,rgba(4,7,12,.20),rgba(4,7,12,.78)),linear-gradient(90deg,rgba(4,7,12,.18),rgba(4,7,12,.08) 42%,rgba(4,7,12,.82))" : "linear-gradient(180deg,rgba(4,7,12,.34),rgba(4,7,12,.88)),linear-gradient(90deg,rgba(4,7,12,.26),rgba(4,7,12,.10) 42%,rgba(4,7,12,.88))" }} />
+  </div>;
+}
+
+function TemplateCard({ selected, accent, title, subtitle, onClick, wide = false, imageUrl, imagePosition }: { selected: boolean; accent: string; title: string; subtitle: string; onClick: () => void; wide?: boolean; imageUrl?: string; imagePosition?: string }) {
+  return <button type="button" onClick={onClick} style={{ minHeight: wide ? 104 : 124, borderRadius: 18, textAlign: "left", color: "#fff", padding: wide ? "16px 16px" : "12px 12px", border: `1px solid ${selected ? accent + "88" : "rgba(255,255,255,.12)"}`, background: "linear-gradient(180deg,rgba(8,12,18,.99),rgba(4,7,12,.995))", boxShadow: selected ? `0 10px 28px ${accent}18` : "0 8px 22px rgba(0,0,0,.34)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: wide ? "flex-start" : "center", justifyContent: wide ? "center" : "flex-end", gap: 6, transition: "border-color .18s ease,background .18s ease,transform .18s ease", position: "relative", overflow: "hidden", isolation: "isolate" }}>
+    <TemplateBackdrop imageUrl={imageUrl} imagePosition={imagePosition} selected={selected} />
+    <span style={{ position: "relative", zIndex: 2, minWidth: 0, width: wide ? "min(68%, 360px)" : "100%", textAlign: wide ? "left" : "center", padding: wide ? "10px 12px" : "8px 7px", borderRadius: 13, background: wide ? "rgba(4,7,12,.58)" : "rgba(4,7,12,.72)", backdropFilter: "blur(5px)", border: `1px solid ${selected ? accent + "44" : accent + "22"}` }}>
+      <b style={{ display: "block", color: selected ? accent : "#fff", fontSize: wide ? 13 : 12, lineHeight: 1.05 }}>{title}</b>
+      <small style={{ display: "block", marginTop: 5, color: "rgba(255,255,255,.76)", fontSize: 7.8, lineHeight: 1.25 }}>{subtitle}</small>
+    </span>
+  </button>;
 }
 
 function SetRow({ index, set, accent, onWeight, onReps, onToggle, onRemove }: { index: number; set: FitSet; accent: string; onWeight: (value: number) => void; onReps: (value: number) => void; onToggle: () => void; onRemove: () => void }) {

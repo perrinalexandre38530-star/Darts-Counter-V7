@@ -16,6 +16,7 @@ import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 import { PageAdBanner } from "../../monetization/AdSlot";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 
 import { loadBabyFootState } from "../../lib/babyfootStore";
 import { History } from "../../lib/history";
@@ -778,8 +779,9 @@ export default function BabyFootHome({ store, go }: Props) {
       `}</style>
 
       {/* ===== HEADER ===== */}
-      <div style={{ ...sectionWrap, marginBottom: 10 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ ...sectionWrap, marginBottom: 10, position: "relative", overflow: "hidden", isolation: "isolate" }}>
+        <SportWelcomeWatermark sport="babyfoot" opacity={0.12} size={185} />
+        <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           <div
             style={{
               display: "inline-flex",

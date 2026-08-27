@@ -9,7 +9,7 @@ export type FitIconName =
   | "timer" | "volume" | "strength" | "profile" | "coach" | "plus"
   | "chevron" | "info" | "filter"
   | "body" | "dumbbell" | "barbell" | "cable" | "machine" | "kettlebell" | "band" | "medicine" | "star"
-  | "free" | "push" | "pull" | "legs" | "fullbody";
+  | "free" | "push" | "pull" | "legs" | "fullbody" | "shuffle";
 
 export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number }) {
   const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -53,6 +53,7 @@ export function FitIcon({ name, size = 21 }: { name: FitIconName; size?: number 
     case "pull": return <svg {...common}><path {...p} d="M19 12H7M11 8l-4 4 4 4M19 8v8"/></svg>;
     case "legs": return <svg {...common}><path {...p} d="M8 4h3l1 7-2 9H6l2-9zM16 4h-3l-1 7 2 9h4l-2-9z"/></svg>;
     case "fullbody": return <svg {...common}><circle {...p} cx="12" cy="4" r="2"/><path {...p} d="M9 7h6l2 5-2 2 1 7M15 14H9l-1 7M9 7 6 13M15 7l3 6"/></svg>;
+    case "shuffle": return <svg {...common}><path {...p} d="M4 7h3c4 0 5 10 9 10h4M17 14l3 3-3 3M4 17h3c1.7 0 2.9-1.8 4-4M14 7c.7 0 1.3 0 2 0h4M17 4l3 3-3 3"/></svg>;
     default: return null;
   }
 }
@@ -139,5 +140,6 @@ export const fitUiCss = `
 @keyframes fitTitleShimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
 @keyframes fitSoftFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes fitTabLabelIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fitProgramTicker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .fit-icon-tabs::-webkit-scrollbar{display:none}
 `;

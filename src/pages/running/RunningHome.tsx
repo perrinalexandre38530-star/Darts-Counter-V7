@@ -14,6 +14,7 @@ import OutdoorActivitySelector from "./OutdoorActivitySelector";
 import { RunningActionTile, RunningGlyph, RunningSectionHeading, RunningStatusChip, RunningSurface } from "./RunningUi";
 import { loadRunningActiveSessions, runningActiveElapsedMs, subscribeRunningActiveSessions, type RunningActiveSession } from "../../activity/runningActiveSessions";
 import { OUTDOOR_SPORT_PROFILES, loadOutdoorPerformanceSport, outdoorSportLabel, saveOutdoorPerformanceSport, type OutdoorPerformanceSport } from "../../activity/outdoorPerformance";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 const PAGE_MAX_WIDTH = 620;
 const sectionWrap: React.CSSProperties = { width: "100%", boxSizing: "border-box" };
 const GOAL_KEY = "mss-running-weekly-goal-km-v1";
@@ -155,9 +156,10 @@ export default function RunningHome({ store, go }: Props) {
     <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH }}>
       <style>{`@keyframes dcTitlePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}@keyframes dcTitleShimmer{0%{background-position:0% 0%}100%{background-position:200% 0%}}`}</style>
 
-      <div style={{ borderRadius: 28, padding: 18, marginBottom: 14, background: "linear-gradient(135deg,rgba(8,10,20,.985),rgba(14,18,34,.985))", border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,.10)"}`, boxShadow: "0 20px 40px rgba(0,0,0,.68)", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <div style={{ display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${accent}`, background: "linear-gradient(135deg,rgba(0,0,0,.92),rgba(255,255,255,.055))", marginBottom: 10 }}><span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.1, textTransform: "uppercase", color: accent }}>{copy.welcome}</span></div>
-        <div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", marginInline: "auto", fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "center" }}>{copy.title}</div></div>
+      <div style={{ borderRadius: 28, padding: 18, marginBottom: 14, background: "linear-gradient(135deg,rgba(8,10,20,.985),rgba(14,18,34,.985))", border: `1px solid ${(theme as any).borderSoft ?? "rgba(255,255,255,.10)"}`, boxShadow: "0 20px 40px rgba(0,0,0,.68)", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden", isolation: "isolate" }}>
+        <SportWelcomeWatermark sport="running" opacity={0.12} size={205} />
+        <div style={{ position: "relative", zIndex: 2, display: "inline-flex", padding: "5px 18px", borderRadius: 999, border: `1px solid ${accent}`, background: "linear-gradient(135deg,rgba(0,0,0,.92),rgba(255,255,255,.055))", marginBottom: 10 }}><span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.1, textTransform: "uppercase", color: accent }}>{copy.welcome}</span></div>
+        <div ref={wrapRef} style={{ position: "relative", zIndex: 2, width: "100%", overflow: "hidden" }}><div ref={textRef} style={{ width: "fit-content", marginInline: "auto", fontSize: 32, fontWeight: 900, letterSpacing: 3, textAlign: "center", textTransform: "uppercase", whiteSpace: "nowrap", backgroundImage: `linear-gradient(120deg,${accent},#fff,${accent})`, backgroundSize: "200% 100%", WebkitBackgroundClip: "text", color: "transparent", animation: "dcTitlePulse 3.6s ease-in-out infinite,dcTitleShimmer 7s linear infinite", transform: `scale(${scale})`, transformOrigin: "center" }}>{copy.title}</div></div>
       </div>
 
       <div style={sectionWrap}><OutdoorActivitySelector value={activitySport} onChange={setActivitySport} lang={lang} accent={accent}/></div>

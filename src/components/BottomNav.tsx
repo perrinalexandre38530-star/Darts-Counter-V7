@@ -321,6 +321,7 @@ export default function BottomNav({
   const tabs: NavItem[] = sportLc === "running"
     ? [
         { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+        { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
         {
           k: "games",
           label: t("nav.run", tr("Courir", "Run", "Correr")),
@@ -334,12 +335,12 @@ export default function BottomNav({
         },
         { k: "running_plan", label: t("nav.plan", tr("Plan", "Plan", "Plan")), icon: <Icon name="running_plan" /> },
         { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-        { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
         { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
       ]
     : sportLc === "fit"
       ? [
           { k: "home", label: t("nav.home", tr("Accueil", "Home", "Inicio")), icon: <Icon name="home" /> },
+          { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
           {
             k: "games",
             label: t("nav.train", tr("Séance", "Train", "Sesión")),
@@ -351,7 +352,6 @@ export default function BottomNav({
           },
           { k: "fit_plan", label: tr("Exercices", "Exercises", "Ejercicios"), icon: <Icon name="fit_plan" /> },
           { k: "stats", label: t("nav.stats", "Stats"), icon: <Icon name="stats" /> },
-          { k: "profiles", label: t("nav.profiles", tr("Profil", "Profile", "Perfil")), icon: <Icon name="profiles" /> },
           { k: "settings", label: t("nav.settings", tr("Réglages", "Settings", "Ajustes")), icon: <Icon name="settings" /> },
         ]
       : [

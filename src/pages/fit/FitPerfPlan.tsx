@@ -60,27 +60,33 @@ function DifficultyStars({ level, accent = "#ffd66b", size = 12 }: { level?: str
 }
 
 
-function MuscleFilterIcon({ muscle, active }: { muscle: FitMuscle | "Tous"; active: boolean }) {
+function MuscleFilterIcon({ muscle, active, size = 42 }: { muscle: FitMuscle | "Tous"; active: boolean; size?: number }) {
   const hot = active ? "#5ce9ff" : "#ff4f6f";
-  const neutral = "rgba(220,225,232,.72)";
-  const dim = "rgba(133,141,153,.50)";
-  const selected = (name: string) => muscle === "Tous" || muscle === name;
-  const fill = (name: string) => selected(name) ? hot : neutral;
-  const backOnly = ["Dos","Lombaires","Triceps","Fessiers","Ischios"].includes(String(muscle));
-  return (
-    <svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true" style={{ overflow: "visible", filter: active ? `drop-shadow(0 0 5px ${hot}66)` : "none" }}>
-      <g transform={backOnly ? "translate(8 1)" : "translate(8 1)"} stroke={dim} strokeWidth="1" strokeLinejoin="round">
-        <circle cx="16" cy="5" r="3.2" fill={neutral}/><path d="M13.8 8.3h4.4l2.8 6.4-2 10.2H13l-2-10.2z" fill={muscle === "Full body" || muscle === "Tous" ? hot : neutral}/>
-        <path d="M11.2 10.2 7.6 12.6 5.4 22l3 1.1 4-8.2" fill={fill(muscle === "Biceps" || muscle === "Triceps" ? String(muscle) : "Épaules")}/>
-        <path d="M20.8 10.2 24.4 12.6 26.6 22l-3 1.1-4-8.2" fill={fill(muscle === "Biceps" || muscle === "Triceps" ? String(muscle) : "Épaules")}/>
-        <path d="M8.3 23 6.2 32l3 1 3.2-9" fill={fill("Avant-bras")}/><path d="M23.7 23 25.8 32l-3 1-3.2-9" fill={fill("Avant-bras")}/>
-        <path d="M13 24.8 11.2 35l3.6 8h3.1l-1.7-9.2 1.6-9z" fill={fill(backOnly ? "Ischios" : "Quadriceps")}/>
-        <path d="M19 24.8 20.8 35l-3.6 8h-3.1l1.7-9.2-1.6-9z" fill={fill(backOnly ? "Ischios" : "Quadriceps")}/>
-        <path d="M12.2 34.8 11 44h3.5l1.2-8.5" fill={fill("Mollets")}/><path d="M19.8 34.8 21 44h-3.5l-1.2-8.5" fill={fill("Mollets")}/>
-        {!backOnly ? <><path d="M12.4 10.4h7.2v5.8h-7.2z" fill={fill("Pectoraux")}/><path d="M13.4 16.8h5.2v7h-5.2z" fill={fill("Abdos")}/><path d="M13.2 8.3h5.6v2.4h-5.6z" fill={fill("Cou")}/><path d="M11.6 24.2h3.1v5h-3.1zM17.3 24.2h3.1v5h-3.1z" fill={fill("Adducteurs")}/><path d="M10.2 23.2h2.4v6h-2.4zM19.4 23.2h2.4v6h-2.4z" fill={fill("Abducteurs")}/></> : <><path d="M12.2 10.3h7.6v9.3h-7.6z" fill={fill("Dos")}/><path d="M13.6 19.4h4.8v5.5h-4.8z" fill={fill("Lombaires")}/><path d="M12 23.5h8v5.7h-8z" fill={fill("Fessiers")}/><path d="M13.2 8.3h5.6v2.4h-5.6z" fill={fill("Cou")}/></>}
-      </g>
-    </svg>
-  );
+  const neutral = active ? "rgba(92,233,255,.22)" : "rgba(220,225,232,.16)";
+  const stroke = active ? hot : "rgba(225,230,238,.78)";
+  const common = { fill: neutral, stroke, strokeWidth: 1.7, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
+  const shape = (() => {
+    switch (muscle) {
+      case "Pectoraux": return <><path {...common} d="M8 15c4-5 10-6 16-2v13c-6 3-12 1-16-3Z"/><path {...common} d="M40 15c-4-5-10-6-16-2v13c6 3 12 1 16-3Z"/></>;
+      case "Dos": return <path {...common} d="M13 10 24 6l11 4 5 8-7 18-9 6-9-6-7-18Z"/>;
+      case "Lombaires": return <><path {...common} d="m17 8 6 3-2 27-7 4-3-9Z"/><path {...common} d="m31 8-6 3 2 27 7 4 3-9Z"/></>;
+      case "Épaules": return <><path {...common} d="M5 23c0-8 5-14 13-14l3 8-7 10Z"/><path {...common} d="M43 23c0-8-5-14-13-14l-3 8 7 10Z"/></>;
+      case "Biceps": return <><path {...common} d="M10 8c7 2 9 10 7 18l-5 14-6-4 2-14Z"/><path {...common} d="M38 8c-7 2-9 10-7 18l5 14 6-4-2-14Z"/></>;
+      case "Triceps": return <><path {...common} d="M9 9c7 1 10 8 9 17l-5 15-7-5 3-14Z"/><path {...common} d="M39 9c-7 1-10 8-9 17l5 15 7-5-3-14Z"/></>;
+      case "Avant-bras": return <><path {...common} d="M12 6h6l-4 34-8 3 3-19Z"/><path {...common} d="M36 6h-6l4 34 8 3-3-19Z"/></>;
+      case "Abdos": return <><rect {...common} x="14" y="7" width="8" height="9" rx="3"/><rect {...common} x="26" y="7" width="8" height="9" rx="3"/><rect {...common} x="14" y="19" width="8" height="9" rx="3"/><rect {...common} x="26" y="19" width="8" height="9" rx="3"/><rect {...common} x="14" y="31" width="8" height="9" rx="3"/><rect {...common} x="26" y="31" width="8" height="9" rx="3"/></>;
+      case "Fessiers": return <><path {...common} d="M8 12c9-7 16 0 16 10v13c-7 7-17 6-20-3Z"/><path {...common} d="M40 12c-9-7-16 0-16 10v13c7 7 17 6 20-3Z"/></>;
+      case "Quadriceps": return <><path {...common} d="M10 5c9 3 11 12 9 23-2 9-5 14-9 15-5-6-6-16-5-25Z"/><path {...common} d="M38 5c-9 3-11 12-9 23 2 9 5 14 9 15 5-6 6-16 5-25Z"/></>;
+      case "Ischios": return <><path {...common} d="M12 5c8 5 9 13 7 23-1 8-4 13-8 15-6-8-6-18-4-28Z"/><path {...common} d="M36 5c-8 5-9 13-7 23 1 8 4 13 8 15 6-8 6-18 4-28Z"/></>;
+      case "Adducteurs": return <><path {...common} d="m12 7 10 6-2 29-8-12Z"/><path {...common} d="m36 7-10 6 2 29 8-12Z"/></>;
+      case "Abducteurs": return <><path {...common} d="M6 10c8-5 13 1 14 9l-7 23-8-9Z"/><path {...common} d="M42 10c-8-5-13 1-14 9l7 23 8-9Z"/></>;
+      case "Mollets": return <><path {...common} d="M12 5c7 5 8 15 4 26l-5 12-6-8 2-20Z"/><path {...common} d="M36 5c-7 5-8 15-4 26l5 12 6-8-2-20Z"/></>;
+      case "Cou": return <><path {...common} d="m15 7 7 5-4 29-9-12Z"/><path {...common} d="m33 7-7 5 4 29 9-12Z"/></>;
+      case "Full body": return <><circle {...common} cx="24" cy="8" r="4"/><path {...common} d="M17 13h14l5 12-5 3-2-8-2 22h-6l-2-22-2 8-5-3Z"/></>;
+      default: return <><circle {...common} cx="24" cy="9" r="4"/><path {...common} d="M16 14h16l4 10-6 3-2 15h-8l-2-15-6-3Z"/></>;
+    }
+  })();
+  return <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" style={{ overflow: "visible", filter: active ? `drop-shadow(0 0 6px ${hot}66)` : "none" }}>{shape}</svg>;
 }
 
 function EquipmentFilterIcon({ equipment, active }: { equipment: FitEquipment | "Tous"; active: boolean }) {
@@ -98,7 +104,7 @@ function LevelFilterIcon({ level, active }: { level: FitLevelFilter; active: boo
 }
 
 function FilterChoiceTile({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 70, borderRadius: 14, border: `1px solid ${active ? "#5ce9ff88" : "rgba(255,255,255,.09)"}`, background: active ? "linear-gradient(145deg,rgba(92,233,255,.18),rgba(9,14,22,.98))" : "linear-gradient(180deg,rgba(20,25,34,.99),rgba(12,16,24,.99))", color: active ? "#5ce9ff" : "rgba(255,255,255,.78)", boxShadow: active ? "0 0 15px rgba(92,233,255,.12)" : "none", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 4px", cursor: "pointer" }}><span style={{ display: "grid", placeItems: "center", minHeight: 34 }}>{children}</span><span style={{ maxWidth: "100%", fontSize: 6.7, fontWeight: 1000, letterSpacing: .25, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span></button>;
+  return <button type="button" onClick={onClick} style={{ minWidth: 0, minHeight: 84, borderRadius: 15, border: `1px solid ${active ? "#5ce9ff88" : "rgba(255,255,255,.09)"}`, background: active ? "linear-gradient(145deg,rgba(92,233,255,.18),rgba(9,14,22,.98))" : "linear-gradient(180deg,rgba(20,25,34,.99),rgba(12,16,24,.99))", color: active ? "#5ce9ff" : "rgba(255,255,255,.78)", boxShadow: active ? "0 0 15px rgba(92,233,255,.12)" : "none", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 4px", cursor: "pointer" }}><span style={{ display: "grid", placeItems: "center", minHeight: 42 }}>{children}</span><span style={{ maxWidth: "100%", fontSize: 7.2, fontWeight: 1000, letterSpacing: .25, lineHeight: 1.05, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span></button>;
 }
 
 export default function FitPerfPlan({ go }: Props) {
@@ -195,10 +201,10 @@ export default function FitPerfPlan({ go }: Props) {
   const goPrevPage = () => setPage((current) => pageCount <= 1 ? 0 : (current - 1 + pageCount) % pageCount);
   const goNextPage = () => setPage((current) => pageCount <= 1 ? 0 : (current + 1) % pageCount);
   const filterSelections = [
-    muscle !== "Tous" ? { key: "zone", label: FIT_MUSCLE_LABELS[muscle][langKey], clear: () => setMuscle("Tous") } : null,
-    equipment !== "Tous" ? { key: "equipment", label: equipment, clear: () => setEquipment("Tous") } : null,
-    level !== "Tous" ? { key: "level", label: levelLabel(level, t), clear: () => setLevel("Tous") } : null,
-  ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
+    muscle !== "Tous" ? { key: "zone", label: FIT_MUSCLE_LABELS[muscle][langKey], clear: () => setMuscle("Tous"), icon: <MuscleFilterIcon muscle={muscle} active size={32}/> } : null,
+    equipment !== "Tous" ? { key: "equipment", label: equipment, clear: () => setEquipment("Tous"), icon: <EquipmentFilterIcon equipment={equipment} active /> } : null,
+    level !== "Tous" ? { key: "level", label: levelLabel(level, t), clear: () => setLevel("Tous"), icon: <LevelFilterIcon level={level} active /> } : null,
+  ].filter(Boolean) as { key: string; label: string; clear: () => void; icon: React.ReactNode }[];
 
   const renderExerciseTile = (exercise: FitExercise) => {
     const fav = favorites.includes(exercise.id);
@@ -316,7 +322,7 @@ export default function FitPerfPlan({ go }: Props) {
           </button>
         </div>
 
-        {filterSelections.length ? <div style={{ display: "flex", gap: 5, overflowX: "auto", margin: "7px 1px 0", paddingBottom: 1 }}>{filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} title={t("Retirer ce filtre", "Remove filter", "Quitar filtro")} style={{ flex: "0 0 auto", minHeight: 25, borderRadius: 999, border: `1px solid ${accent}36`, background: "rgba(9,13,21,.93)", color: "rgba(255,255,255,.88)", padding: "0 8px", fontSize: 6.9, fontWeight: 950 }}>{item.label} <span style={{ color: accent, marginLeft: 3 }}>×</span></button>)}</div> : null}
+        {filterSelections.length ? <div style={{ display: "flex", gap: 6, overflowX: "auto", margin: "7px 1px 0", paddingBottom: 1 }}>{filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} title={t("Retirer ce filtre", "Remove filter", "Quitar filtro")} style={{ flex: "0 0 auto", minHeight: 38, borderRadius: 12, border: `1px solid ${accent}36`, background: "rgba(9,13,21,.96)", color: "rgba(255,255,255,.9)", padding: "3px 8px 3px 5px", display: "flex", alignItems: "center", gap: 5, fontSize: 7, fontWeight: 950 }}><span style={{ width: 28, height: 28, display: "grid", placeItems: "center", overflow: "hidden" }}>{item.icon}</span><span>{item.label}</span><span style={{ color: accent, marginLeft: 2 }}>×</span></button>)}</div> : null}
 
         <div style={{ marginTop: 9, padding: 10, borderRadius: 20, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(8,12,20,.98),rgba(6,9,15,.99))", boxShadow: "0 14px 34px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.035)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 9 }}>
@@ -342,7 +348,7 @@ export default function FitPerfPlan({ go }: Props) {
 
           <div style={{ marginTop: 10, minHeight: 40, padding: 7, borderRadius: 13, border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.035)" }}>
             <div style={{ color: "rgba(255,255,255,.42)", fontSize: 6.5, fontWeight: 1000, letterSpacing: .8 }}>{t("FILTRES ACTIFS", "ACTIVE FILTERS", "FILTROS ACTIVOS")}</div>
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 5 }}>{filterSelections.length ? filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} style={{ minHeight: 25, borderRadius: 999, border: `1px solid ${accent}45`, background: `${accent}10`, color: "#fff", padding: "0 8px", fontSize: 7, fontWeight: 950 }}>{item.label} <span style={{ color: accent }}>×</span></button>) : <span style={{ color: textSoft, fontSize: 7.6 }}>{t("Aucun filtre sélectionné", "No filter selected", "Ningún filtro seleccionado")}</span>}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 7, marginTop: 7 }}>{filterSelections.length ? filterSelections.map((item) => <button key={item.key} type="button" onClick={item.clear} style={{ minHeight: 76, minWidth: 0, borderRadius: 14, border: `1px solid ${accent}55`, background: `linear-gradient(145deg,${accent}16,rgba(10,15,23,.99))`, color: accent, padding: "7px 5px", fontSize: 7, fontWeight: 1000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, position: "relative" }}><span style={{ minHeight: 38, display: "grid", placeItems: "center", overflow: "hidden" }}>{item.icon}</span><span style={{ color: "#fff", maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span><span style={{ position: "absolute", right: 6, top: 5, color: accent, fontSize: 13 }}>×</span></button>) : <span style={{ gridColumn: "1/-1", color: textSoft, fontSize: 7.6 }}>{t("Aucun filtre sélectionné", "No filter selected", "Ningún filtro seleccionado")}</span>}</div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 9 }}>
@@ -354,15 +360,15 @@ export default function FitPerfPlan({ go }: Props) {
           </div>
 
           <div style={{ marginTop: 9, padding: 9, borderRadius: 15, border: "1px solid rgba(255,255,255,.09)", background: "linear-gradient(180deg,rgba(15,19,27,.995),rgba(9,12,18,.995))", maxHeight: "42vh", overflowY: "auto" }}>
-            {filterTab === "zone" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
-              <FilterChoiceTile label={t("Toutes", "All", "Todas")} active={muscle === "Tous"} onClick={() => setMuscle("Tous")}><MuscleFilterIcon muscle="Tous" active={muscle === "Tous"}/></FilterChoiceTile>
-              {FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0).map((item) => <FilterChoiceTile key={item} label={FIT_MUSCLE_LABELS[item][langKey]} active={muscle === item} onClick={() => setMuscle(item)}><MuscleFilterIcon muscle={item} active={muscle === item}/></FilterChoiceTile>)}
+            {filterTab === "zone" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              <FilterChoiceTile label={t("Toutes", "All", "Todas")} active={muscle === "Tous"} onClick={() => setMuscle("Tous")}><MuscleFilterIcon muscle="Tous" active={muscle === "Tous"} size={44}/></FilterChoiceTile>
+              {FIT_MUSCLE_ORDER.filter((item) => counts[item] > 0 && item !== muscle).map((item) => <FilterChoiceTile key={item} label={FIT_MUSCLE_LABELS[item][langKey]} active={false} onClick={() => setMuscle(item)}><MuscleFilterIcon muscle={item} active={false} size={44}/></FilterChoiceTile>)}
             </div> : null}
-            {filterTab === "equipment" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
-              {(["Tous", ...FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item))] as (FitEquipment | "Tous")[]).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous", "All", "Todos") : item} active={equipment === item} onClick={() => setEquipment(item)}><EquipmentFilterIcon equipment={item} active={equipment === item}/></FilterChoiceTile>)}
+            {filterTab === "equipment" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              {(["Tous", ...FIT_EQUIPMENT_ORDER.filter((item) => allExercises.some((exercise) => exercise.equipment === item))] as (FitEquipment | "Tous")[]).filter((item) => item === "Tous" || item !== equipment).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous", "All", "Todos") : item} active={equipment === item} onClick={() => setEquipment(item)}><EquipmentFilterIcon equipment={item} active={equipment === item}/></FilterChoiceTile>)}
             </div> : null}
-            {filterTab === "level" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 7 }}>
-              {(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : levelLabel(item, t)} active={level === item} onClick={() => setLevel(item)}><LevelFilterIcon level={item} active={level === item}/></FilterChoiceTile>)}
+            {filterTab === "level" ? <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+              {(["Tous", "Débutant", "Intermédiaire", "Avancé"] as FitLevelFilter[]).filter((item) => item === "Tous" || item !== level).map((item) => <FilterChoiceTile key={item} label={item === "Tous" ? t("Tous niveaux", "All levels", "Todos niveles") : levelLabel(item, t)} active={level === item} onClick={() => setLevel(item)}><LevelFilterIcon level={item} active={level === item}/></FilterChoiceTile>)}
             </div> : null}
           </div>
 

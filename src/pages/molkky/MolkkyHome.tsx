@@ -16,6 +16,7 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 import { PageAdBanner } from "../../monetization/AdSlot";
 
 import { useHistory } from "../../hooks/useHistory";
+import SportWelcomeWatermark from "../../components/home/SportWelcomeWatermark";
 
 type Props = {
   store: Store;
@@ -256,9 +257,13 @@ export default function MolkkyHome({ store, go }: Props) {
             background: "rgba(0,0,0,0.22)",
             boxShadow: "0 18px 70px rgba(0,0,0,0.55)",
             padding: 14,
+            position: "relative",
+            overflow: "hidden",
+            isolation: "isolate",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <SportWelcomeWatermark sport="molkky" opacity={0.12} size={185} />
+          <div style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <div
               style={{
                 display: "inline-flex",
@@ -280,7 +285,7 @@ export default function MolkkyHome({ store, go }: Props) {
             </div>
           </div>
 
-          <div ref={titleWrapRef} style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+          <div ref={titleWrapRef} style={{ position: "relative", zIndex: 2, width: "100%", display: "flex", justifyContent: "center" }}>
             <div
               ref={titleTextRef}
               style={{
